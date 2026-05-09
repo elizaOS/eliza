@@ -303,7 +303,9 @@ function instrumentRuntime(
   // runtimes still expose runtime.evaluate, newer ones do not — skip if absent).
   if (typeof (runtime as { evaluate?: unknown }).evaluate === "function") {
     const origEvaluate = runtime.evaluate.bind(runtime);
-    runtime.evaluate = (async (...args: Parameters<typeof runtime.evaluate>) => {
+    runtime.evaluate = (async (
+      ...args: Parameters<typeof runtime.evaluate>
+    ) => {
       const start = performance.now();
       const result = await origEvaluate(...args);
       pipelineTimer.record("evaluator", performance.now() - start);

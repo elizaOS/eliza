@@ -47,7 +47,9 @@ if (!SHOULD_RUN) {
 } else {
   describe("Google GenAI trajectory wrapping (live)", () => {
     it("records text and structured-output generation via TEXT_* through recordLlmCall", async () => {
-      const { handleTextSmall, handleTextLarge } = await import("../models/text");
+      const { handleTextSmall, handleTextLarge } = await import(
+        "../models/text"
+      );
 
       const calls: CapturedLlmCall[] = [];
       const runtime = createInlineRuntime(calls);

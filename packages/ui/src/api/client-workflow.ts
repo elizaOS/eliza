@@ -8,12 +8,12 @@
 
 import { ElizaClient } from "./client-base";
 import type {
-  WorkflowStatusResponse,
   WorkflowDefinition,
   WorkflowDefinitionGenerateRequest,
   WorkflowDefinitionGenerateResponse,
   WorkflowDefinitionResolveClarificationRequest,
   WorkflowDefinitionWriteRequest,
+  WorkflowStatusResponse,
 } from "./client-types-chat";
 
 // ---------------------------------------------------------------------------
@@ -25,7 +25,9 @@ declare module "./client-base" {
     getWorkflowStatus(): Promise<WorkflowStatusResponse>;
     getWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
     listWorkflowDefinitions(): Promise<WorkflowDefinition[]>;
-    createWorkflowDefinition(request: WorkflowDefinitionWriteRequest): Promise<WorkflowDefinition>;
+    createWorkflowDefinition(
+      request: WorkflowDefinitionWriteRequest,
+    ): Promise<WorkflowDefinition>;
     updateWorkflowDefinition(
       id: string,
       request: WorkflowDefinitionWriteRequest,

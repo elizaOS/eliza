@@ -30,13 +30,14 @@ interface AppShellPageRegistryStore {
   entries: Map<string, AppShellPageRegistration>;
 }
 
-const APP_SHELL_PAGE_REGISTRY_KEY = Symbol.for(
-  "elizaos.app-core.app-shell-page-registry",
-);
+function appShellPageRegistryKey(): symbol {
+  return Symbol.for("elizaos.app-core.app-shell-page-registry");
+}
 
 function getRegistryStore(): AppShellPageRegistryStore {
   const globalObject = globalThis as Record<PropertyKey, unknown>;
-  const existing = globalObject[APP_SHELL_PAGE_REGISTRY_KEY] as
+  const registryKey = appShellPageRegistryKey();
+  const existing = globalObject[registryKey] as
     | AppShellPageRegistryStore
     | null
     | undefined;
@@ -44,7 +45,7 @@ function getRegistryStore(): AppShellPageRegistryStore {
   const created: AppShellPageRegistryStore = {
     entries: new Map<string, AppShellPageRegistration>(),
   };
-  globalObject[APP_SHELL_PAGE_REGISTRY_KEY] = created;
+  globalObject[registryKey] = created;
   return created;
 }
 

@@ -71,18 +71,30 @@ type GenericToolDescriptor = {
   function?: { name?: string; description?: string; parameters?: unknown };
 };
 
-type GenerateTextParamsWithAttachments = GenerateTextParams & {
+type LocalToolChoice =
+  | "auto"
+  | "required"
+  | "none"
+  | { type: "tool"; toolName?: string; name?: string }
+  | { type: "function"; function: { name: string } }
+  | { name: string };
+
+type GenerateTextParamsWithAttachments = Omit<
+  GenerateTextParams,
+  "tools" | "toolChoice" | "responseSchema"
+> & {
   attachments?: ChatAttachment[];
   /** Native or generic tool definitions; converted to Google functionDeclarations. */
-  tools?: GenericToolDescriptor[] | GoogleToolDeclaration[] | Record<string, GenericToolDescriptor>;
-  /** Tool selection hint: "auto" | "required" | "none" | { type: "tool"; toolName }. */
-  toolChoice?:
-    | "auto"
-    | "required"
-    | "none"
-    | { type: "tool"; toolName?: string; name?: string };
+  tools?:
+    | GenericToolDescriptor[]
+    | GoogleToolDeclaration[]
+    | Record<string, GenericToolDescriptor>;
+  /** Tool selection hint: "auto" | "required" | "none" | { type: "tool"; toolName } | { type: "function"; function }. */
+  toolChoice?: LocalToolChoice;
   /** JSON Schema for structured output; routes through responseJsonSchema. */
-  responseSchema?: Record<string, unknown> | { schema: Record<string, unknown> };
+  responseSchema?:
+    | Record<string, unknown>
+    | { schema: Record<string, unknown> };
 };
 type GoogleGenAIClient = NonNullable<ReturnType<typeof createGoogleGenAI>>;
 type GenerateContentParams = Parameters<
@@ -118,8 +130,10 @@ function normalizeToolsForGoogle(
     const description = tool.description ?? tool.function?.description;
     const parameters = (tool.parameters ??
       tool.inputSchema ??
-      tool.function?.parameters ??
-      { type: "object", properties: {} }) as Record<string, unknown>;
+      tool.function?.parameters ?? {
+        type: "object",
+        properties: {},
+      }) as Record<string, unknown>;
     declarations.push({
       name,
       ...(description ? { description } : {}),
@@ -127,12 +141,21 @@ function normalizeToolsForGoogle(
     });
   }
 
-  return declarations.length > 0 ? [{ functionDeclarations: declarations }] : undefined;
+  return declarations.length > 0
+    ? [{ functionDeclarations: declarations }]
+    : undefined;
 }
 
 function normalizeToolConfigForGoogle(
   toolChoice: GenerateTextParamsWithAttachments["toolChoice"],
-): { functionCallingConfig: { mode: "AUTO" | "ANY" | "NONE"; allowedFunctionNames?: string[] } } | undefined {
+):
+  | {
+      functionCallingConfig: {
+        mode: "AUTO" | "ANY" | "NONE";
+        allowedFunctionNames?: string[];
+      };
+    }
+  | undefined {
   if (!toolChoice) return undefined;
   if (toolChoice === "auto") {
     return { functionCallingConfig: { mode: "AUTO" } };
@@ -143,7 +166,15 @@ function normalizeToolConfigForGoogle(
   if (toolChoice === "none") {
     return { functionCallingConfig: { mode: "NONE" } };
   }
-  const toolName = toolChoice.toolName ?? toolChoice.name;
+  let toolName: string | undefined;
+  if ("type" in toolChoice) {
+    toolName =
+      toolChoice.type === "function"
+        ? toolChoice.function.name
+        : (toolChoice.toolName ?? toolChoice.name);
+  } else {
+    toolName = toolChoice.name;
+  }
   if (toolName) {
     return {
       functionCallingConfig: {

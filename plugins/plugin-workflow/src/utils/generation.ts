@@ -683,10 +683,10 @@ export async function assessFeasibility(
   try {
     const result = await useStructuredModel<FeasibilityResult>(
       runtime,
-        `${FEASIBILITY_CHECK_PROMPT}\n\n## User Request\n${userPrompt}` +
-          `\n\n## Removed Integrations (unavailable)\n${removedList}` +
-          `\n\n## Available Service Integrations\n${availableList}` +
-          `\n\n## Available Utility Nodes\n${utilityList}`,
+      `${FEASIBILITY_CHECK_PROMPT}\n\n## User Request\n${userPrompt}` +
+        `\n\n## Removed Integrations (unavailable)\n${removedList}` +
+        `\n\n## Available Service Integrations\n${availableList}` +
+        `\n\n## Available Utility Nodes\n${utilityList}`,
       feasibilitySchema
     );
 

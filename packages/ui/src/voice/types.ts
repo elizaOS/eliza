@@ -1,3 +1,4 @@
+export type { VoicePreset } from "@elizaos/shared";
 export {
   EDGE_BACKUP_VOICES,
   hasConfiguredApiKey,
@@ -5,4 +6,3 @@ export {
   sanitizeApiKey,
   VOICE_PROVIDERS,
 } from "@elizaos/shared";
-export type { VoicePreset } from "@elizaos/shared";

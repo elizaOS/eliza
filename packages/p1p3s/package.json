@@ -1,7 +1,7 @@
 {
-  "name": "@elizaos/workflows",
+  "name": "@elizaos/p1p3s",
   "version": "0.1.0",
-  "description": "workflows workflow type contracts and helpers for elizaOS workflow plugins.",
+  "description": "p1p3s workflow type contracts and helpers for elizaOS workflow plugins.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

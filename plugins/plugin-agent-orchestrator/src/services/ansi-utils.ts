@@ -138,7 +138,8 @@ function isLikelyRawPatchOrSourceDump(text: string): boolean {
     removedPatchLines.length > 0 &&
     patchLines.length >= 5 &&
     patchLines.length / lines.length >= 0.8 &&
-    sourceLikePatchLines.length >= Math.max(3, Math.ceil(patchLines.length * 0.6))
+    sourceLikePatchLines.length >=
+      Math.max(3, Math.ceil(patchLines.length * 0.6))
   );
 }
 

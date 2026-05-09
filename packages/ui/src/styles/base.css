@@ -267,7 +267,7 @@ body.desktop {
   padding-left: env(safe-area-inset-left, 0px);
 }
 
-@supports not (padding: env(safe-area-inset-top)) {
+@supports not (padding-top: env(safe-area-inset-top)) {
   body.desktop {
     padding-top: 0px;
   }

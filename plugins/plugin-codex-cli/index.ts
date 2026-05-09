@@ -1,11 +1,4 @@
-import type {
-  GenerateTextParams,
-  IAgentRuntime,
-  JsonValue,
-  ObjectGenerationParams,
-  Plugin,
-  TextStreamResult,
-} from "@elizaos/core";
+import type { GenerateTextParams, IAgentRuntime, Plugin, TextStreamResult } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { CodexBackend, type CodexGenerateResult } from "./src/codex-backend";
 
@@ -83,16 +76,32 @@ function toTextReturn(
 }
 
 function buildCodexGenerateParams(runtime: IAgentRuntime, params: GenerateTextParams) {
+  // Honor `responseSchema` natively. OpenAI-compatible Codex models accept
+  // `response_format: { type: "json_schema", schema }` for guaranteed JSON
+  // output; if the caller already passed a custom `responseFormat`, leave it
+  // alone.
+  const paramsWithSchema = params as GenerateTextParams & {
+    responseSchema?: unknown;
+    system?: string;
+  };
+  const responseFormat =
+    params.responseFormat ??
+    (paramsWithSchema.responseSchema
+      ? {
+          type: "json_schema" as const,
+          schema: paramsWithSchema.responseSchema as Record<string, unknown>,
+        }
+      : undefined);
   return {
     prompt: params.prompt,
-    system: (params as GenerateTextParams & { system?: string }).system,
+    system: paramsWithSchema.system,
     messages: params.messages,
     tools: params.tools,
     toolChoice: params.toolChoice,
     model: getCodexModel(runtime),
     temperature: params.temperature,
     maxTokens: params.maxTokens,
-    responseFormat: params.responseFormat,
+    responseFormat,
   };
 }
 
@@ -160,34 +169,6 @@ async function generateTextWithCodex(
   return toTextReturn(params, result);
 }
 
-async function generateObjectWithCodex(
-  runtime: IAgentRuntime,
-  params: ObjectGenerationParams,
-  modelType: string
-): Promise<Record<string, JsonValue>> {
-  const schemaInstruction = params.schema
-    ? `\n\nReturn only a JSON object matching this JSON Schema:\n${JSON.stringify(params.schema)}`
-    : "\n\nReturn only a JSON object.";
-  const prompt = `${params.prompt}${schemaInstruction}`;
-  const result = await createBackend(runtime).generate({
-    prompt,
-    model: getCodexModel(runtime),
-    temperature: params.temperature,
-    maxTokens: params.maxTokens,
-    responseFormat: { type: "json_object" },
-  });
-  try {
-    const parsed = JSON.parse(result.text) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
-      return parsed as Record<string, JsonValue>;
-  } catch (err) {
-    throw new Error(
-      `codex ${modelType} returned invalid JSON: ${err instanceof Error ? err.message : String(err)}`
-    );
-  }
-  throw new Error(`codex ${modelType} returned non-object JSON`);
-}
-
 const codexModels = {
   [ModelType.TEXT_SMALL]: (runtime: IAgentRuntime, params: GenerateTextParams) =>
     generateTextWithCodex(runtime, params, ModelType.TEXT_SMALL),
@@ -203,10 +184,6 @@ const codexModels = {
     generateTextWithCodex(runtime, params, RESPONSE_HANDLER_MODEL_TYPE),
   [ACTION_PLANNER_MODEL_TYPE]: (runtime: IAgentRuntime, params: GenerateTextParams) =>
     generateTextWithCodex(runtime, params, ACTION_PLANNER_MODEL_TYPE),
-  [ModelType.OBJECT_SMALL]: (runtime: IAgentRuntime, params: ObjectGenerationParams) =>
-    generateObjectWithCodex(runtime, params, ModelType.OBJECT_SMALL),
-  [ModelType.OBJECT_LARGE]: (runtime: IAgentRuntime, params: ObjectGenerationParams) =>
-    generateObjectWithCodex(runtime, params, ModelType.OBJECT_LARGE),
 } as unknown as Plugin["models"];
 
 export const codexCliPlugin: Plugin = {
@@ -216,15 +193,12 @@ export const codexCliPlugin: Plugin = {
     // No env-key auto-enable; activated when an auth profile selects codex-cli
     // as its provider (e.g. via subscription onboarding).
     shouldEnable: (_env, config) => {
-      const auth = (config as { auth?: { profiles?: Record<string, unknown> } })
-        .auth;
+      const auth = (config as { auth?: { profiles?: Record<string, unknown> } }).auth;
       const profiles = auth?.profiles;
       if (!profiles || typeof profiles !== "object") return false;
       return Object.values(profiles).some((profile) => {
         if (!profile || typeof profile !== "object") return false;
-        return (
-          (profile as { provider?: unknown }).provider === "codex-cli"
-        );
+        return (profile as { provider?: unknown }).provider === "codex-cli";
       });
     },
   },

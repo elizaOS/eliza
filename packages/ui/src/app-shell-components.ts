@@ -11,11 +11,11 @@
  * `app.navTabs` declaration and the static page list at render time.
  */
 
+export type { AppShellPageRegistration } from "./app-shell-registry";
 export {
   listAppShellPages,
   registerAppShellPage,
 } from "./app-shell-registry";
-export type { AppShellPageRegistration } from "./app-shell-registry";
 export { GameViewOverlay } from "./components/apps/GameViewOverlay";
 export { CharacterEditor } from "./components/character/CharacterEditor";
 export { SaveCommandModal } from "./components/chat/SaveCommandModal";

@@ -11,7 +11,7 @@ import {
 } from "@elizaos/ui";
 import { useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
-import type { WorkflowDefinition, TriggerSummary } from "../../api/client";
+import type { TriggerSummary, WorkflowDefinition } from "../../api/client";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import {
   DURATION_UNITS,

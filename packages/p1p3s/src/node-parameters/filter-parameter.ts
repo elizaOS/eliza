@@ -8,9 +8,9 @@ import type {
 	ValidationResult,
 } from '../interfaces.js';
 import * as LoggerProxy from '../logger-proxy.js';
-import { ApplicationError } from '../workflows-errors/index.js';
 import type { Result } from '../result.js';
 import { validateFieldType } from '../type-validation.js';
+import { ApplicationError } from '../workflows-errors/index.js';
 
 type FilterConditionMetadata = {
 	index: number;

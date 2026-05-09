@@ -271,7 +271,8 @@ keys.doc = {
 	description:
 		"Returns an array with all the field names (keys) the Object contains. The same as JavaScript's <code>Object.keys(obj)</code>.",
 	examples: [{ example: "({ name: 'Mr Nathan', age: 42 }).keys()", evaluated: "['name', 'age']" }],
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/objects/#object-keys',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/objects/#object-keys',
 	returnType: 'Array',
 };
 
@@ -282,7 +283,8 @@ values.doc = {
 	examples: [
 		{ example: "({ name: 'Mr Nathan', age: 42 }).values()", evaluated: "['Mr Nathan', 42]" },
 	],
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/objects/#object-values',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/objects/#object-values',
 	returnType: 'Array',
 };
 

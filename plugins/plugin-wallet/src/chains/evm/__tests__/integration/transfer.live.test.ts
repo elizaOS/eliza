@@ -19,8 +19,7 @@ import {
 } from "./live-rpc";
 
 if (!HAS_ELIZA_CLOUD_RPC_KEY) {
-  process.env.SKIP_REASON ||=
-    "ELIZAOS_CLOUD_API_KEY required to verify Eliza Cloud RPC routing";
+  process.env.SKIP_REASON ||= "ELIZAOS_CLOUD_API_KEY required to verify Eliza Cloud RPC routing";
 }
 
 // Test environment - use a funded wallet private key for real testing

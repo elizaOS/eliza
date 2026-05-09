@@ -102,12 +102,33 @@ import {
   resolveServiceRoutingInConfig,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
+import type { Vault } from "@elizaos/vault";
 
-async function importAppCoreRuntime(): Promise<Record<string, any>> {
+type AccountPoolCredentialsOptions = {
+  activeBackend?: string | undefined;
+  accountStrategies?: Record<string, unknown> | undefined;
+  serviceRouting?: ReturnType<typeof resolveServiceRoutingInConfig>;
+};
+
+type AppCoreRuntimeModule = {
+  hydrateWalletKeysFromNodePlatformSecureStore: () => Promise<void> | void;
+  runVaultBootstrap: () => Promise<{
+    migrated: number;
+    failed: unknown[];
+  }>;
+  sharedVault: () => Vault;
+  getDefaultAccountPool: () => unknown;
+  applyAccountPoolApiCredentials: (
+    options: AccountPoolCredentialsOptions,
+  ) => Promise<void> | void;
+  startAccountPoolKeepAlive: () => void;
+};
+
+async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
   const moduleId = "@elizaos/app-core";
-  return import(/* webpackIgnore: true */ moduleId) as Promise<
-    Record<string, any>
-  >;
+  return import(
+    /* webpackIgnore: true */ moduleId
+  ) as Promise<AppCoreRuntimeModule>;
 }
 
 import { buildCharacterFromConfig } from "./build-character-config.js";

@@ -1,5 +1,5 @@
 import { Check, Copy, Info, LogOut } from "lucide-react";
-import { type KeyboardEvent, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   buildFullPhoneNumber,
@@ -151,17 +151,6 @@ export default function ConnectedPage() {
   const getFullPhoneNumber = useCallback(() => {
     return buildFullPhoneNumber(phoneValue, selectedCountry, countryOptions);
   }, [phoneValue, selectedCountry, countryOptions]);
-
-  const handleActivationKey = useCallback(
-    (event: KeyboardEvent<HTMLDivElement>, action: () => void) => {
-      if (event.target !== event.currentTarget) return;
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        action();
-      }
-    },
-    [],
-  );
 
   const handleLinkPhone = useCallback(async () => {
     if (!phoneValue.trim()) return;
@@ -321,7 +310,10 @@ export default function ConnectedPage() {
         {/* User profile with dropdown menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="focus:outline-none focus:ring-2 focus:ring-white/20 rounded-full">
+            <button
+              type="button"
+              className="focus:outline-none focus:ring-2 focus:ring-white/20 rounded-full"
+            >
               {user.avatar ? (
                 <img
                   src={user.avatar}
@@ -391,24 +383,22 @@ export default function ConnectedPage() {
         <div className="flex flex-col gap-4">
           {/* Telegram option - different states based on whether connected */}
           {user.telegram_id ? (
-            <div
-              className="w-full h-[72px] rounded-2xl bg-[#229ED9]/10 hover:bg-[#229ED9]/20 text-white border border-[#229ED9]/30 flex items-center gap-4 px-5 cursor-pointer transition-colors"
-              onClick={handleOpenTelegram}
-              onKeyDown={(event) =>
-                handleActivationKey(event, handleOpenTelegram)
-              }
-              role="button"
-              tabIndex={0}
-            >
-              <div className="w-8 h-8 shrink-0 flex items-center justify-center">
-                <TelegramIcon className="size-8 text-[#229ED9]" />
-              </div>
-              <div className="flex flex-col items-start flex-1">
-                <span className="text-lg font-medium">Telegram</span>
-                <span className="text-sm text-white/50">
-                  @{getTelegramBotUsername()}
-                </span>
-              </div>
+            <div className="w-full h-[72px] rounded-2xl bg-[#229ED9]/10 hover:bg-[#229ED9]/20 text-white border border-[#229ED9]/30 flex items-center px-5 transition-colors">
+              <button
+                type="button"
+                onClick={handleOpenTelegram}
+                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-white"
+              >
+                <div className="w-8 h-8 shrink-0 flex items-center justify-center">
+                  <TelegramIcon className="size-8 text-[#229ED9]" />
+                </div>
+                <div className="flex flex-col items-start flex-1">
+                  <span className="text-lg font-medium">Telegram</span>
+                  <span className="text-sm text-white/50">
+                    @{getTelegramBotUsername()}
+                  </span>
+                </div>
+              </button>
               <Button
                 type="button"
                 variant="ghost"
@@ -447,24 +437,22 @@ export default function ConnectedPage() {
 
           {/* iMessage option - different states based on whether phone is linked */}
           {user.phone_number ? (
-            <div
-              className="w-full h-[72px] rounded-2xl bg-[#34C759]/10 hover:bg-[#34C759]/20 text-white border border-[#34C759]/30 flex items-center gap-4 px-5 cursor-pointer transition-colors"
-              onClick={handleOpenMessages}
-              onKeyDown={(event) =>
-                handleActivationKey(event, handleOpenMessages)
-              }
-              role="button"
-              tabIndex={0}
-            >
-              <div className="w-8 h-8 shrink-0 flex items-center justify-center">
-                <AppleMessagesIcon className="size-8" />
-              </div>
-              <div className="flex flex-col items-start flex-1">
-                <span className="text-lg font-medium">iMessage</span>
-                <span className="text-sm text-white/50">
-                  {ELIZA_PHONE_FORMATTED}
-                </span>
-              </div>
+            <div className="w-full h-[72px] rounded-2xl bg-[#34C759]/10 hover:bg-[#34C759]/20 text-white border border-[#34C759]/30 flex items-center px-5 transition-colors">
+              <button
+                type="button"
+                onClick={handleOpenMessages}
+                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-white"
+              >
+                <div className="w-8 h-8 shrink-0 flex items-center justify-center">
+                  <AppleMessagesIcon className="size-8" />
+                </div>
+                <div className="flex flex-col items-start flex-1">
+                  <span className="text-lg font-medium">iMessage</span>
+                  <span className="text-sm text-white/50">
+                    {ELIZA_PHONE_FORMATTED}
+                  </span>
+                </div>
+              </button>
               <Button
                 type="button"
                 variant="ghost"
@@ -485,14 +473,10 @@ export default function ConnectedPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              <div
+              <button
+                type="button"
                 className="w-full h-[72px] rounded-2xl bg-[#34C759]/10 hover:bg-[#34C759]/20 text-white border border-[#34C759]/30 flex items-center gap-4 px-5 cursor-pointer transition-colors"
                 onClick={() => setShowPhoneInput((v) => !v)}
-                onKeyDown={(event) =>
-                  handleActivationKey(event, () => setShowPhoneInput((v) => !v))
-                }
-                role="button"
-                tabIndex={0}
               >
                 <div className="w-8 h-8 shrink-0 flex items-center justify-center">
                   <AppleMessagesIcon className="size-8" />
@@ -503,7 +487,7 @@ export default function ConnectedPage() {
                     Add your phone number to enable
                   </span>
                 </div>
-              </div>
+              </button>
 
               {/* Inline phone input form */}
               {showPhoneInput && (
@@ -553,19 +537,22 @@ export default function ConnectedPage() {
 
           {/* WhatsApp option - different states based on whether connected */}
           {user.whatsapp_id ? (
-            <div
-              className="w-full h-[72px] rounded-2xl bg-[#25D366]/10 hover:bg-[#25D366]/20 text-white border border-[#25D366]/30 flex items-center gap-4 px-5 cursor-pointer transition-colors"
-              onClick={handleOpenWhatsApp}
-            >
-              <div className="w-8 h-8 shrink-0 flex items-center justify-center">
-                <WhatsAppIcon className="size-8 text-[#25D366]" />
-              </div>
-              <div className="flex flex-col items-start flex-1">
-                <span className="text-lg font-medium">WhatsApp</span>
-                <span className="text-sm text-white/50">
-                  {user.whatsapp_name || "Open WhatsApp"}
-                </span>
-              </div>
+            <div className="w-full h-[72px] rounded-2xl bg-[#25D366]/10 hover:bg-[#25D366]/20 text-white border border-[#25D366]/30 flex items-center px-5 transition-colors">
+              <button
+                type="button"
+                onClick={handleOpenWhatsApp}
+                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-white"
+              >
+                <div className="w-8 h-8 shrink-0 flex items-center justify-center">
+                  <WhatsAppIcon className="size-8 text-[#25D366]" />
+                </div>
+                <div className="flex flex-col items-start flex-1">
+                  <span className="text-lg font-medium">WhatsApp</span>
+                  <span className="text-sm text-white/50">
+                    {user.whatsapp_name || "Open WhatsApp"}
+                  </span>
+                </div>
+              </button>
               <Button
                 type="button"
                 variant="ghost"
@@ -585,7 +572,8 @@ export default function ConnectedPage() {
               </Button>
             </div>
           ) : (
-            <div
+            <button
+              type="button"
               className="w-full h-[72px] rounded-2xl bg-[#25D366]/10 hover:bg-[#25D366]/20 text-white border border-[#25D366]/30 flex items-center gap-4 px-5 cursor-pointer transition-colors"
               onClick={handleOpenWhatsApp}
             >
@@ -598,24 +586,27 @@ export default function ConnectedPage() {
                   Message to connect
                 </span>
               </div>
-            </div>
+            </button>
           )}
 
           {/* Discord option - different states based on whether connected */}
           {user.discord_id ? (
-            <div
-              className="w-full h-[72px] rounded-2xl bg-[#5865F2]/10 hover:bg-[#5865F2]/20 text-white border border-[#5865F2]/30 flex items-center gap-4 px-5 cursor-pointer transition-colors"
-              onClick={handleOpenDiscord}
-            >
-              <div className="w-8 h-8 shrink-0 flex items-center justify-center">
-                <DiscordIcon className="size-8 text-[#5865F2]" />
-              </div>
-              <div className="flex flex-col items-start flex-1">
-                <span className="text-lg font-medium">Discord</span>
-                <span className="text-sm text-white/50">
-                  @{user.discord_username || "Eliza"}
-                </span>
-              </div>
+            <div className="w-full h-[72px] rounded-2xl bg-[#5865F2]/10 hover:bg-[#5865F2]/20 text-white border border-[#5865F2]/30 flex items-center px-5 transition-colors">
+              <button
+                type="button"
+                onClick={handleOpenDiscord}
+                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-white"
+              >
+                <div className="w-8 h-8 shrink-0 flex items-center justify-center">
+                  <DiscordIcon className="size-8 text-[#5865F2]" />
+                </div>
+                <div className="flex flex-col items-start flex-1">
+                  <span className="text-lg font-medium">Discord</span>
+                  <span className="text-sm text-white/50">
+                    @{user.discord_username || "Eliza"}
+                  </span>
+                </div>
+              </button>
               <Button
                 type="button"
                 variant="ghost"

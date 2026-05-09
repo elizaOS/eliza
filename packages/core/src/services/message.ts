@@ -21,7 +21,6 @@ import {
 	createV5MessageHandlerTool,
 	V5_MESSAGE_HANDLER_TOOL_NAME,
 } from "../prompts/message-handler";
-import { composePrompt } from "../utils";
 import { checkSenderRole } from "../roles";
 import {
 	buildActionCatalog,
@@ -29,6 +28,7 @@ import {
 } from "../runtime/action-catalog";
 import { retrieveActions } from "../runtime/action-retrieval";
 import { tierActionResults } from "../runtime/action-tiering";
+import { applyAddressedTo } from "../runtime/addressed-to";
 import {
 	filterByContextGate,
 	satisfiesContextGate,
@@ -49,13 +49,11 @@ import {
 	type EvaluatorOutput,
 	runEvaluator,
 } from "../runtime/evaluator";
-import { runPostTurnEvaluators } from "./evaluator";
 import {
 	type ExecutePlannedToolCallContext,
 	type ExecutePlannedToolCallOptions,
 	executePlannedToolCall,
 } from "../runtime/execute-planned-tool-call";
-import { applyAddressedTo } from "../runtime/addressed-to";
 import {
 	type FactsAndRelationshipsRunResult,
 	runFactsAndRelationshipsStage,
@@ -150,6 +148,7 @@ import type {
 	StreamingToolResultPayload,
 } from "../types/streaming";
 import {
+	composePrompt,
 	getLocalServerUrl,
 	parseBooleanFromText,
 	parseJSONObjectFromText,
@@ -176,6 +175,7 @@ import {
 	hasFirstSentence,
 } from "../utils/text-splitting";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
+import { runPostTurnEvaluators } from "./evaluator";
 import {
 	OPTIMIZED_PROMPT_SERVICE,
 	type OptimizedPromptService,
@@ -1877,8 +1877,10 @@ function getStage1OwnerPreferenceRepairPlan(args: {
 		/\b(?:travel|booking|flight|flights?|seat|seats?|aisle|window|carry-?on|checked bags?|luggage|hotel|hotels?|venue|venues?)\b/.test(
 			lower,
 		);
-	const contexts = (["memory", "settings", "calendar"] as AgentContext[]).filter(
-		(context) => contextAvailableForRepair(context, args.availableContexts),
+	const contexts = (
+		["memory", "settings", "calendar"] as AgentContext[]
+	).filter((context) =>
+		contextAvailableForRepair(context, args.availableContexts),
 	);
 	return {
 		contexts: contexts.length > 0 ? contexts : ["general"],

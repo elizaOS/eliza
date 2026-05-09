@@ -187,11 +187,7 @@ const OPENAI_PROVIDER: ProviderDefinition = {
   label: "OpenAI API",
   kind: "cloud-api",
   description: "GPT models via the OpenAI API. Requires an API key.",
-  supportedSlots: [
-    "TEXT_SMALL",
-    "TEXT_LARGE",
-    "TEXT_EMBEDDING",
-  ],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
   async getEnableState(): Promise<ProviderEnableState> {
     const key = process.env.OPENAI_API_KEY?.trim();
     return key
@@ -223,11 +219,7 @@ const ELIZACLOUD_PROVIDER: ProviderDefinition = {
   kind: "cloud-subscription",
   description:
     "Eliza-hosted inference routed through your subscription. No API key to manage.",
-  supportedSlots: [
-    "TEXT_SMALL",
-    "TEXT_LARGE",
-    "TEXT_EMBEDDING",
-  ],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
   async getEnableState(): Promise<ProviderEnableState> {
     const token =
       process.env.ELIZA_CLOUD_TOKEN?.trim() ??

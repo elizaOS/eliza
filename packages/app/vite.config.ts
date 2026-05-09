@@ -152,6 +152,56 @@ function createWorkspacePackageAliases(packageRoots: string[]) {
   return aliases;
 }
 
+function resolveAppPluginBrowserEntry(pkgDir: string): string | null {
+  const preferred = [
+    "src/ui.ts",
+    "src/ui/index.ts",
+    "src/register.ts",
+    "src/index.ts",
+  ];
+  for (const relativePath of preferred) {
+    const candidate = path.join(pkgDir, relativePath);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function createAppPluginBrowserAliases() {
+  const pluginsRoot = path.resolve(elizaRoot, "plugins");
+  const aliases = [];
+  if (!fs.existsSync(pluginsRoot)) return aliases;
+
+  for (const entry of fs.readdirSync(pluginsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith("app-")) continue;
+    const pkgDir = path.join(pluginsRoot, entry.name);
+    const pkgPath = path.join(pkgDir, "package.json");
+    if (!fs.existsSync(pkgPath)) continue;
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+    const pkgName = pkg.name;
+    if (!pkgName) continue;
+
+    const browserEntry = resolveAppPluginBrowserEntry(pkgDir);
+    if (browserEntry) {
+      aliases.push({
+        find: new RegExp(`^${escapeRegExp(pkgName)}$`),
+        replacement: browserEntry,
+      });
+    }
+
+    for (const uiEntry of ["src/ui.ts", "src/ui/index.ts"]) {
+      const candidate = path.join(pkgDir, uiEntry);
+      if (!fs.existsSync(candidate)) continue;
+      aliases.push({
+        find: new RegExp(`^${escapeRegExp(pkgName)}/ui$`),
+        replacement: candidate,
+      });
+      break;
+    }
+  }
+
+  return aliases;
+}
+
 function resolveAppShellMetadata() {
   const branding = resolveAppBranding(appConfig);
   const themeColor = appConfig.web?.themeColor?.trim() || "#08080a";
@@ -1053,7 +1103,9 @@ export default defineConfig({
         find: /^@elizaos\/ui\/styles\/(.*)$/,
         replacement: path.join(uiPkgRoot, "src/styles/$1"),
       },
-      // Dynamic aliases for local app plugin packages.
+      // Browser-safe aliases for local app plugin package roots.
+      ...createAppPluginBrowserAliases(),
+      // Dynamic aliases for local app plugin package subpaths.
       ...createWorkspacePackageAliases([path.resolve(elizaRoot, "plugins")]),
       ...(() => {
         const sharedPkgPath = path.resolve(
@@ -1121,7 +1173,7 @@ export default defineConfig({
           }
         }
 
-        const uiSource = path.resolve(elizaRoot, "packages/app-core/src/ui");
+        const uiSource = path.resolve(elizaRoot, "packages/ui/src");
 
         return [
           ...generatedAliases,

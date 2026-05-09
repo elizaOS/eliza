@@ -213,6 +213,7 @@ function SuccessRedirect({
 
       {/* Primary action - Open Telegram now */}
       <Button
+        type="button"
         onClick={handleOpenTelegramNow}
         className="w-full h-[52px] rounded-xl bg-[#229ED9] hover:bg-[#229ED9]/90 text-white font-medium gap-2 mb-4"
       >
@@ -222,6 +223,7 @@ function SuccessRedirect({
 
       {/* Secondary option - iMessage */}
       <button
+        type="button"
         onClick={handleOpenMessages}
         className="w-full text-sm text-neutral-500 hover:text-neutral-700"
       >
@@ -340,6 +342,39 @@ export default function GetStartedPage() {
   const countryOptions = useCountryOptions();
 
   const hasPhoneNumber = phoneValue.trim().length > 0;
+
+  /**
+   * Redirect to Discord OAuth2 authorization page
+   */
+  const handleDiscordOAuthRedirect = useCallback(() => {
+    const clientId = getDiscordClientId();
+    if (!clientId) {
+      setDiscordError("Discord not configured");
+      return;
+    }
+
+    // Generate and store a cryptographic random state for CSRF protection
+    const state = generateOAuthState();
+    sessionStorage.setItem(DISCORD_OAUTH_STATE_KEY, state);
+
+    // Persist link mode across OAuth redirect (query params are lost during Discord redirect)
+    if (isLinkMode) {
+      sessionStorage.setItem(DISCORD_LINK_MODE_KEY, "true");
+    } else {
+      sessionStorage.removeItem(DISCORD_LINK_MODE_KEY);
+    }
+
+    const redirectUri = `${window.location.origin}/get-started`;
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: "identify",
+      state,
+    });
+
+    window.location.href = `https://discord.com/oauth2/authorize?${params.toString()}`;
+  }, [isLinkMode]);
 
   // Redirect if already authenticated (unless suppressed for setup guide, link mode,
   // or an unprocessed Discord callback code is present in the URL).
@@ -645,39 +680,6 @@ export default function GetStartedPage() {
   // ============================================================================
 
   /**
-   * Redirect to Discord OAuth2 authorization page
-   */
-  const handleDiscordOAuthRedirect = useCallback(() => {
-    const clientId = getDiscordClientId();
-    if (!clientId) {
-      setDiscordError("Discord not configured");
-      return;
-    }
-
-    // Generate and store a cryptographic random state for CSRF protection
-    const state = generateOAuthState();
-    sessionStorage.setItem(DISCORD_OAUTH_STATE_KEY, state);
-
-    // Persist link mode across OAuth redirect (query params are lost during Discord redirect)
-    if (isLinkMode) {
-      sessionStorage.setItem(DISCORD_LINK_MODE_KEY, "true");
-    } else {
-      sessionStorage.removeItem(DISCORD_LINK_MODE_KEY);
-    }
-
-    const redirectUri = `${window.location.origin}/get-started`;
-    const params = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      response_type: "code",
-      scope: "identify",
-      state,
-    });
-
-    window.location.href = `https://discord.com/oauth2/authorize?${params.toString()}`;
-  }, [isLinkMode]);
-
-  /**
    * Process Discord OAuth callback code - submit to backend with optional phone and CSRF state.
    * If in link mode, passes the existing session token for session-based linking.
    */
@@ -873,6 +875,7 @@ export default function GetStartedPage() {
         <div className="w-16">
           {step === "DISCORD_SETUP_GUIDE" ? null : step !== "SELECT_METHOD" ? (
             <button
+              type="button"
               onClick={handleBack}
               className="inline-flex items-center gap-2 text-neutral-600 hover:text-neutral-900 transition-colors cursor-pointer"
             >
@@ -1131,6 +1134,7 @@ export default function GetStartedPage() {
 
               {/* Option to also connect Telegram */}
               <button
+                type="button"
                 onClick={() => {
                   setSelectedMethod("telegram");
                   setStep("TELEGRAM_OAUTH");
@@ -1177,6 +1181,7 @@ export default function GetStartedPage() {
 
               {/* Option to use other platforms */}
               <button
+                type="button"
                 onClick={() => {
                   setSelectedMethod("telegram");
                   setStep("TELEGRAM_OAUTH");
@@ -1249,6 +1254,7 @@ export default function GetStartedPage() {
                     Try Again
                   </Button>
                   <button
+                    type="button"
                     onClick={handleBack}
                     className="w-full mt-4 text-sm text-neutral-500 hover:text-neutral-700 cursor-pointer"
                   >
@@ -1301,6 +1307,7 @@ export default function GetStartedPage() {
                   </Button>
 
                   <button
+                    type="button"
                     onClick={handleDiscordSkipPhone}
                     disabled={isDiscordLoading}
                     className="w-full mt-4 text-sm text-neutral-500 hover:text-neutral-700 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"

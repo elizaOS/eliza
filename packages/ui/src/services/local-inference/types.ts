@@ -211,10 +211,7 @@ export interface DownloadEvent {
  * match the `ModelType` enum in `@elizaos/core` — kept as string literals
  * here so the types file stays framework-free.
  */
-export type AgentModelSlot =
-  | "TEXT_SMALL"
-  | "TEXT_LARGE"
-  | "TEXT_EMBEDDING";
+export type AgentModelSlot = "TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING";
 
 export type TextGenerationSlot = Extract<
   AgentModelSlot,

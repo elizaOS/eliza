@@ -100,7 +100,7 @@ const pluginTests = [
               properties: { message: { type: "string" } },
               required: ["message"],
             },
-          } as unknown as Parameters<typeof runtime.useModel>[1]);
+          } as unknown as GenerateTextParams);
 
           if (!result || (typeof result !== "object" && typeof result !== "string")) {
             throw new Error("Failed to generate structured output: invalid response");
@@ -119,7 +119,7 @@ const pluginTests = [
               properties: { message: { type: "string" } },
               required: ["message"],
             },
-          } as unknown as Parameters<typeof runtime.useModel>[1]);
+          } as unknown as GenerateTextParams);
 
           if (!result || (typeof result !== "object" && typeof result !== "string")) {
             throw new Error("Failed to generate structured output: invalid response");

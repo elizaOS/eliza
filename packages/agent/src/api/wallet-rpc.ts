@@ -278,7 +278,9 @@ function buildCloudRpcProxyUrl(
     return null;
   }
 
-  const cloudBaseUrl = resolveCloudApiBaseUrl(options.cloudBaseUrl ?? undefined);
+  const cloudBaseUrl = resolveCloudApiBaseUrl(
+    options.cloudBaseUrl ?? undefined,
+  );
   if (!cloudBaseUrl) {
     return null;
   }

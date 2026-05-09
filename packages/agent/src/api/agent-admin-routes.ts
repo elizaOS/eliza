@@ -7,6 +7,7 @@ import {
 } from "@elizaos/shared";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import { resolveUserPath } from "../config/paths.js";
+import type { AutonomousConfigLike } from "../types/config-like.js";
 import { detectRuntimeModel } from "./agent-model.js";
 import { clearPersistedOnboardingConfig } from "./provider-switch-config.js";
 
@@ -19,13 +20,17 @@ type AgentStateStatus =
   | "restarting"
   | "error";
 
-import type { AutonomousConfigLike } from "../types/config-like.js";
+type AppCoreRuntimeModule = {
+  sharedVault: () => {
+    remove: (key: string) => Promise<void> | void;
+  };
+};
 
-async function importAppCoreRuntime(): Promise<Record<string, any>> {
+async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
   const moduleId = "@elizaos/app-core";
-  return import(/* webpackIgnore: true */ moduleId) as Promise<
-    Record<string, any>
-  >;
+  return import(
+    /* webpackIgnore: true */ moduleId
+  ) as Promise<AppCoreRuntimeModule>;
 }
 
 function resolveDefaultAgentName(config: AutonomousConfigLike): string {
