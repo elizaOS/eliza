@@ -135,7 +135,7 @@ class PayoutStatusService {
     }
 
     return {
-      available: networkStatus.status === "operational",
+      available: networkStatus.status === "operational" || networkStatus.status === "low_balance",
       message: networkStatus.message,
     };
   }

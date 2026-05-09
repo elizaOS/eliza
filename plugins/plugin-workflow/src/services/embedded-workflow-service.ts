@@ -414,6 +414,7 @@ function createScheduleTriggerNode(): INodeType {
       inputs: [],
       outputs: ['main'] as never,
       properties: [],
+      capabilities: { requiresLongRunning: true },
     },
     async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
       return [
@@ -711,6 +712,7 @@ function createWebhookNode(): INodeType {
         { displayName: 'HTTP Method', name: 'httpMethod', type: 'string', default: 'POST' },
         { displayName: 'Embedded Payload', name: '__embeddedPayload', type: 'json', default: {} },
       ] as never,
+      capabilities: { requiresInbound: true },
     },
     async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
       const parameters = this.getNode().parameters as Record<string, unknown>;
@@ -739,6 +741,7 @@ function createRespondToWebhookNode(): INodeType {
       properties: [
         { displayName: 'Response Body', name: 'responseBody', type: 'json', default: {} },
       ] as never,
+      capabilities: { requiresInbound: true },
     },
     async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
       const inputItems = this.getInputData();
@@ -1173,6 +1176,7 @@ export class EmbeddedWorkflowService extends Service {
     'Feature-flagged embedded workflow runtime for local plugin-owned workflow execution.';
 
   private readonly nodeTypes = new EmbeddedNodeTypes();
+  private readonly hostCapabilities = detectHostCapabilities();
   private schemaReady: Promise<void> | null = null;
 
   static async start(runtime: IAgentRuntime): Promise<EmbeddedWorkflowService> {
@@ -1710,6 +1714,54 @@ export class EmbeddedWorkflowService extends Service {
     if (missing.length > 0) {
       throw new WorkflowApiError(
         `Embedded workflow runtime does not support node(s): ${missing.join(', ')}`,
+        400
+      );
+    }
+  }
+
+  /**
+   * Verify the host can host every active node's capability requirements
+   * (fs, inbound, longRunning, childProcess, net). On failure, throw a
+   * 400 with one actionable line per offending node.
+   */
+  private assertHostSupports(workflow: WorkflowDefinition): void {
+    const host = this.hostCapabilities;
+    const issues: string[] = [];
+    for (const node of workflow.nodes) {
+      if (node.disabled) continue;
+      if (!this.nodeTypes.has(node.type)) continue;
+      const nodeType = this.nodeTypes.getByNameAndVersion(node.type);
+      const caps = (nodeType.description as { capabilities?: NodeCapabilities }).capabilities;
+      if (!caps) continue;
+      if (caps.requiresFs && !host.fs) {
+        issues.push(
+          `${node.name} (${node.type}) needs filesystem access; host '${host.label}' has no fs — run on a server agent`
+        );
+      }
+      if (caps.requiresInbound && !host.inbound) {
+        issues.push(
+          `${node.name} needs an inbound public webhook; host '${host.label}' can't receive — pair Eliza Cloud or enable plugin-tunnel`
+        );
+      }
+      if (caps.requiresLongRunning && !host.longRunning) {
+        issues.push(
+          `${node.name} needs a long-running process; host '${host.label}' is short-lived — schedule via the cloud cron handler`
+        );
+      }
+      if (caps.requiresChildProcess && !host.childProcess) {
+        issues.push(
+          `${node.name} spawns a child process; not allowed on '${host.label}' — run on a server agent`
+        );
+      }
+      if (caps.requiresNet && !host.net) {
+        issues.push(
+          `${node.name} needs raw sockets; not available on '${host.label}' — use the HTTP Request node or run on a server agent`
+        );
+      }
+    }
+    if (issues.length > 0) {
+      throw new WorkflowApiError(
+        `Workflow incompatible with host '${host.label}':\n  - ${issues.join('\n  - ')}`,
         400
       );
     }

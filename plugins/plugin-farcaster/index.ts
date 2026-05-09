@@ -3,6 +3,7 @@ import { createFarcasterConnectorAccountProvider } from "./connector-account-pro
 import { farcasterProviders } from "./providers";
 import { farcasterWebhookRoutes } from "./routes/webhook";
 import { FarcasterService } from "./services/FarcasterService";
+import { FarcasterWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 export { FarcasterClient } from "./client/FarcasterClient";
 export {
@@ -37,7 +38,7 @@ export {
 export const farcasterPlugin: Plugin = {
   name: "farcaster",
   description: "Farcaster client plugin for sending and receiving casts",
-  services: [FarcasterService],
+  services: [FarcasterService, FarcasterWorkflowCredentialProvider],
   actions: [],
   providers: farcasterProviders,
   routes: farcasterWebhookRoutes,

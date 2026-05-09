@@ -77,3 +77,43 @@ describe('WORKFLOW_GENERATION_SYSTEM_PROMPT — structured ClarificationRequest 
     );
   });
 });
+
+describe('WORKFLOW_GENERATION_SYSTEM_PROMPT — verb→operation discrimination', () => {
+  test('teaches the verb→operation table', () => {
+    expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(/Resource and operation selection/);
+    expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(/Verb in the user's prompt/);
+    expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(/"send", "post", "deliver"/);
+    expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(/`send` or `post` \(NOT `create`\)/);
+  });
+
+  test('explains the resource is the *object* of the verb', () => {
+    expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(
+      /resource.*is the \*object\* of the verb/
+    );
+    expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(/Send a meow message/);
+  });
+
+  test('demands the read-back self-check before emitting (resource, operation)', () => {
+    expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(/Self-check before emitting/);
+    expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(/Discord message:send/);
+  });
+});
+
+describe('WORKFLOW_GENERATION_SYSTEM_PROMPT — self-monitor anti-pattern', () => {
+  test('teaches the canonical Schedule + execution-history loop', () => {
+    expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(/Self-monitoring workflows/);
+    expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(/Schedule Trigger \(every N minutes\)/);
+    expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(/Execution-history node/);
+  });
+
+  test('hard-rules out errorTrigger for self-monitoring', () => {
+    expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(/`errorTrigger` is never the right answer/);
+    expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(/is a \*callback\*, not a \*poller\*/);
+    expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(/Refuse to emit it/);
+  });
+
+  test('hard-rules out external scanners like urlScanIoApi for self-monitoring', () => {
+    expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(/urlScanIoApi/);
+    expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(/URL-safety service/);
+  });
+});

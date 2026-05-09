@@ -499,29 +499,17 @@ async function repairRuntimeAfterBoot(
     stopTelegramBotPolling("passive-lifeops-connectors");
   }
 
-  // Register the WORKFLOW_DISPATCH service so trigger dispatchers carrying
-  // `kind: "workflow"` can call runtime.getService("WORKFLOW_DISPATCH").execute(id).
-  // Dispatch delegates to the in-process EmbeddedWorkflowService registered
-  // by `@elizaos/plugin-workflow`.
-  await ensureWorkflowDispatchService(runtime);
-
   // Subscribe the trigger event bridge to the runtime event bus so
   // event-kind triggers fire on real MESSAGE_RECEIVED / REACTION_RECEIVED /
-  // etc. emissions. Runs after WORKFLOW_DISPATCH so workflow-kind event
-  // triggers can dispatch immediately on first emit.
+  // etc. emissions. plugin-workflow registers WORKFLOW_DISPATCH in its `init`
+  // so by the time the bridge starts, workflow-kind event triggers already
+  // have a dispatcher to call.
   await ensureTriggerEventBridge(runtime);
 
   await ensureConnectorTargetCatalog(runtime);
 
   return runtime;
 }
-
-// Module-level handle for the WORKFLOW_DISPATCH service instance. Kept across
-// hot-reloads so we can clear the runtime.services slot on shutdown without
-// leaking closures that hold a stale runtime reference.
-let _workflowDispatch: {
-  execute: (workflowId: string) => Promise<unknown>;
-} | null = null;
 
 // Module-level handle for the trigger event bridge. Reset across
 // hot-reloads so we never leave two handler sets racing the runtime's
@@ -540,46 +528,6 @@ let _discordEnumerationCache:
 let _connectorTargetCatalog: { stop: () => void } | null = null;
 
 const CONNECTOR_TARGET_CATALOG_SERVICE_TYPE = "connector_target_catalog";
-
-async function ensureWorkflowDispatchService(
-  runtime: AgentRuntime,
-): Promise<void> {
-  // Clear any prior instance so a hot-reloaded runtime never holds a stale
-  // closure binding to a discarded AgentRuntime.
-  if (_workflowDispatch) {
-    try {
-      runtime.services.delete("WORKFLOW_DISPATCH" as never);
-    } catch {
-      /* ignore */
-    }
-    _workflowDispatch = null;
-  }
-  try {
-    const { createWorkflowDispatchService } = await import(
-      "../services/workflow-dispatch.js"
-    );
-    const dispatchInstance = createWorkflowDispatchService({ runtime });
-    _workflowDispatch = dispatchInstance;
-    // Register directly into the runtime services map. `registerService`
-    // expects a Service class with a static `start()`, which is a poor fit
-    // for a pre-constructed function-based service. The map-set pattern
-    // mirrors `runtime/plugin-lifecycle.ts` and `test/scripts/*.ts`.
-    const serviceEntry = {
-      execute: dispatchInstance.execute,
-      stop: async () => {},
-      capabilityDescription:
-        "Executes embedded workflows by id via the in-process workflow service.",
-    };
-    runtime.services.set("WORKFLOW_DISPATCH" as never, [serviceEntry as never]);
-    logger.info("[eliza] workflow dispatch service registered");
-  } catch (err) {
-    logger.warn(
-      `[eliza] Failed to register workflow dispatch service: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
-}
 
 async function ensureTriggerEventBridge(runtime: AgentRuntime): Promise<void> {
   if (_triggerEventBridge) {
@@ -1214,12 +1162,6 @@ export async function startEliza(
         stopTelegramBotPolling("SIGINT");
         if (currentRuntime) {
           await upstreamShutdownRuntime(currentRuntime, "server-only shutdown");
-        }
-        // Clear the workflow dispatch service slot. The service owns no
-        // external state, so just drop the reference so a subsequent boot
-        // registers a fresh closure on the new runtime.
-        if (_workflowDispatch) {
-          _workflowDispatch = null;
         }
         // Stop the trigger event bridge so its event handlers do not
         // fire against the runtime after shutdown begins.

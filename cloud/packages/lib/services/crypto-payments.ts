@@ -14,6 +14,8 @@ import { creditsService } from "./credits";
 import { discordService } from "./discord";
 import { invoicesService } from "./invoices";
 import { isOxaPayConfigured, type OxaPayNetwork, oxaPayService } from "./oxapay";
+import { redeemableEarningsService } from "./redeemable-earnings";
+import { referralsService } from "./referrals";
 
 /**
  * Typed error codes for crypto payment operations.
@@ -531,6 +533,12 @@ class CryptoPaymentsService {
         },
       });
 
+      await this.creditReferralRevenueSplits({
+        payment,
+        purchaseAmount: receivedDecimal.toNumber(),
+        txHash,
+      });
+
       logger.info("[Crypto Payments] Payment confirmed and credits added", {
         paymentId: redact.paymentId(paymentId),
         txHash: redact.txHash(txHash),
@@ -813,6 +821,12 @@ class CryptoPaymentsService {
           },
         });
 
+        await this.creditReferralRevenueSplits({
+          payment,
+          purchaseAmount: receivedAmount.toNumber(),
+          txHash,
+        });
+
         logger.info("[Crypto Payments] Manual confirmation successful", {
           paymentId: redact.paymentId(paymentId),
           txHash: redact.txHash(txHash),
@@ -836,6 +850,46 @@ class CryptoPaymentsService {
         success: false,
         message: error instanceof Error ? error.message : "Confirmation failed",
       };
+    }
+  }
+
+  private async creditReferralRevenueSplits(params: {
+    payment: CryptoPayment;
+    purchaseAmount: number;
+    txHash: string;
+  }): Promise<void> {
+    const { payment, purchaseAmount, txHash } = params;
+    if (!payment.user_id) return;
+
+    const { splits } = await referralsService.calculateRevenueSplits(payment.user_id, purchaseAmount);
+    if (splits.length === 0) return;
+
+    for (const split of splits) {
+      if (split.amount <= 0) continue;
+      const source =
+        split.role === "app_owner" ? "app_owner_revenue_share" : "creator_revenue_share";
+      const sourceId = `crypto_revenue_split:${payment.id}:${split.userId}`;
+      const result = await redeemableEarningsService.addEarnings({
+        userId: split.userId,
+        amount: split.amount,
+        source,
+        sourceId,
+        dedupeBySourceId: true,
+        description: `${
+          split.role === "app_owner" ? "App Owner" : "Creator"
+        } revenue share (${((split.amount / purchaseAmount) * 100).toFixed(0)}%) for crypto payment $${purchaseAmount.toFixed(2)}`,
+        metadata: {
+          buyer_user_id: payment.user_id,
+          buyer_org_id: payment.organization_id,
+          crypto_payment_id: payment.id,
+          transaction_hash: txHash,
+          role: split.role,
+        },
+      });
+
+      if (!result.success) {
+        throw new Error(`Failed to process crypto revenue split: ${result.error}`);
+      }
     }
   }
 

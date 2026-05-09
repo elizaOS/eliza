@@ -340,23 +340,114 @@ declare module "@elizaos/app-documents/routes" {
 }
 
 declare module "@elizaos/app-documents/service-loader" {
-  // Source of truth lives in @elizaos/agent/api/documents-service-loader.
-  // The plugin re-exports those names verbatim, so this ambient declaration
-  // simply forwards the same surface for environments where the workspace
-  // resolver fails to pick up the plugin's TypeScript exports map.
-  export type {
-    DocumentAddedByRole,
-    DocumentAddedFrom,
-    DocumentSearchMode,
-    DocumentsLoadFailReason,
-    DocumentsServiceLike,
-    DocumentsServiceResult,
-    DocumentVisibilityScope,
-  } from "@elizaos/agent/api/documents-service-loader";
-  export {
-    getDocumentsService,
-    getDocumentsServiceTimeoutMs,
-  } from "@elizaos/agent/api/documents-service-loader";
+  import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+
+  export type DocumentVisibilityScope =
+    | "global"
+    | "owner-private"
+    | "user-private"
+    | "agent-private";
+
+  export type DocumentAddedByRole =
+    | "OWNER"
+    | "ADMIN"
+    | "USER"
+    | "AGENT"
+    | "RUNTIME";
+
+  export type DocumentAddedFrom =
+    | "chat"
+    | "upload"
+    | "url"
+    | "file"
+    | "agent-autonomous"
+    | "runtime-internal"
+    | "lifeops"
+    | "default-seed"
+    | "character";
+
+  export type DocumentSearchMode = "hybrid" | "vector" | "keyword";
+
+  export interface DocumentsServiceLike {
+    addDocument(options: {
+      agentId?: UUID;
+      worldId: UUID;
+      roomId: UUID;
+      entityId: UUID;
+      clientDocumentId: UUID;
+      contentType: string;
+      originalFilename: string;
+      content: string;
+      metadata?: Record<string, unknown>;
+      scope?: DocumentVisibilityScope;
+      scopedToEntityId?: UUID;
+      addedBy?: UUID;
+      addedByRole?: DocumentAddedByRole;
+      addedFrom?: DocumentAddedFrom;
+    }): Promise<{
+      clientDocumentId: string;
+      storedDocumentMemoryId: UUID;
+      fragmentCount: number;
+    }>;
+    searchDocuments(
+      message: Memory,
+      scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
+      searchMode?: DocumentSearchMode,
+    ): Promise<
+      Array<{
+        id: UUID;
+        content: { text?: string };
+        similarity?: number;
+        metadata?: Record<string, unknown>;
+        worldId?: UUID;
+      }>
+    >;
+    listDocuments?(
+      message?: Memory,
+      options?: Record<string, unknown>,
+    ): Promise<Memory[]>;
+    getDocumentById?(
+      documentId: UUID,
+      message?: Memory,
+    ): Promise<Memory | null>;
+    getMemories(params: {
+      tableName: string;
+      roomId?: UUID;
+      count?: number;
+      offset?: number;
+      end?: number;
+    }): Promise<Memory[]>;
+    countMemories(params: {
+      tableName: string;
+      roomId?: UUID;
+      unique?: boolean;
+    }): Promise<number>;
+    updateDocument(options: {
+      documentId: UUID;
+      content: string;
+      message?: Memory;
+    }): Promise<{
+      documentId: UUID;
+      fragmentCount: number;
+    }>;
+    deleteDocument?(documentId: UUID, message?: Memory): Promise<void>;
+    deleteMemory(memoryId: UUID): Promise<void>;
+  }
+
+  export type DocumentsLoadFailReason =
+    | "timeout"
+    | "runtime_unavailable"
+    | "not_registered";
+
+  export interface DocumentsServiceResult {
+    service: DocumentsServiceLike | null;
+    reason?: DocumentsLoadFailReason;
+  }
+
+  export function getDocumentsServiceTimeoutMs(): number;
+  export function getDocumentsService(
+    runtime: AgentRuntime | null,
+  ): Promise<DocumentsServiceResult>;
 }
 
 declare module "@elizaos/app-training/core/context-types" {

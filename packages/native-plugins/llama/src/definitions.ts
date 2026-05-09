@@ -80,6 +80,19 @@ export interface HardwareInfo {
   dflashSupported?: boolean;
   dflashReason?: string;
   source?: "native" | "adapter-fallback";
+  /**
+   * Names of fork-specific kernels compiled into the loaded native library
+   * (e.g. "turbo3", "turbo4", "turbo3_tcq", "dflash", "qjl_full"). Empty
+   * when the loaded build is stock llama.cpp or when no native lib is loaded.
+   * Surfaced from the native bridge via a `kernels.json` manifest shipped
+   * alongside the .so.
+   */
+  nativeKernels?: string[];
+  /**
+   * Which native llama.cpp variant is loaded. `null` when the plugin
+   * isn't loaded at all (web fallback or native lib failed to load).
+   */
+  forkVariant?: "buun-llama-cpp" | "stock-llama-cpp" | null;
 }
 
 export interface EmbedOptions {
@@ -104,6 +117,17 @@ export interface EmbedResult {
   tokens: number;
 }
 
+export interface SetSpecTypeArgs {
+  /** Path to the target (large) GGUF. */
+  target: string;
+  /** Path to the drafter (small) GGUF. */
+  drafter: string;
+  /** Currently only "dflash" is honoured by the buun fork. */
+  specType: "dflash";
+  draftMin: number;
+  draftMax: number;
+}
+
 export interface LlamaAdapter {
   getHardwareInfo(): Promise<HardwareInfo>;
   isLoaded(): Promise<{ loaded: boolean; modelPath: string | null }>;
@@ -120,4 +144,16 @@ export interface LlamaAdapter {
    * does not expose an embedding method on the active platform.
    */
   embed(options: EmbedOptions): Promise<EmbedResult>;
+  /**
+   * Configure the KV cache types used by the next loaded context. Only
+   * the buun-llama-cpp fork honours TurboQuant cache types like
+   * `q4_tq3` / `q4_tq4`. Stock builds will warn-and-no-op when the
+   * underlying plugin doesn't expose the bridge method.
+   */
+  setCacheType?(typeK: string, typeV: string): Promise<void>;
+  /**
+   * Configure DFlash speculative decoding for the next loaded context.
+   * Stock builds without speculative bridge methods warn-and-no-op.
+   */
+  setSpecType?(args: SetSpecTypeArgs): Promise<void>;
 }

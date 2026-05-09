@@ -8,9 +8,16 @@ import {
 import { workflowRoutes } from './routes/index';
 import {
   EmbeddedWorkflowService,
+  registerWorkflowDispatchService,
   WorkflowCredentialStore,
   WorkflowService,
 } from './services/index';
+// Side-effect: register the rawPath route plugin
+// (`@elizaos/plugin-workflow:routes`) with the app-route-plugin-registry so
+// the runtime mounts /api/workflow/* on the host HTTP server. Without this
+// import the registry call in register-routes.ts never fires and every
+// /api/workflow/* request returns 404.
+import './register-routes';
 
 /**
  * Workflow Plugin for ElizaOS
@@ -68,6 +75,10 @@ export const workflowPlugin: Plugin = {
         `Pre-configured credentials: ${credCount} credential types`
       );
     }
+
+    // Register WORKFLOW_DISPATCH so trigger-kind=workflow tasks can call
+    // runtime.getService("WORKFLOW_DISPATCH").execute(workflowId).
+    registerWorkflowDispatchService(runtime);
 
     logger.info(
       { src: 'plugin:workflow:plugin:init' },
