@@ -137,15 +137,13 @@ def main() -> int:
     if not tasks:
         raise SystemExit("no app-eval tasks matched filters")
 
-    manager: ElizaServerManager | None = None
-    client = ElizaClient()
+    # Always start our own bench server so we control the bearer token. Reusing
+    # a stray server from a prior benchmark leaves the client without auth and
+    # every request fails with HTTP 401.
+    manager = ElizaServerManager()
+    manager.start()
+    client = manager.client
     try:
-        try:
-            client.wait_until_ready(timeout=2)
-        except TimeoutError:
-            manager = ElizaServerManager()
-            manager.start()
-            client = manager.client
 
         started = datetime.now(timezone.utc)
         results = [_run_task(client, task, args.timeout_ms) for task in tasks]
