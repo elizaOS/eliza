@@ -1,4 +1,5 @@
 import type { Message as DiscordMessage } from "discord.js";
+import { isDiscordUserAddressed } from "./addressing";
 
 export type StatusReactionScope = "all" | "group-mentions" | "none";
 
@@ -30,9 +31,12 @@ export function shouldShowStatusReaction(
 		return true;
 	}
 
-	const isMentioned = Boolean(botId && message.mentions.users?.has(botId));
-	const isReplyToBot = message.mentions.repliedUser?.id === botId;
-	return isMentioned || isReplyToBot;
+	return isDiscordUserAddressed({
+		text: message.content,
+		userId: botId,
+		hasMessageReference: Boolean(message.reference?.messageId),
+		repliedUserId: message.mentions.repliedUser?.id,
+	});
 }
 
 export function createStatusReactionController(

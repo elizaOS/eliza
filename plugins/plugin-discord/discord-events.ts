@@ -22,6 +22,7 @@ import {
 	type Message,
 	type User,
 } from "discord.js";
+import { isDiscordUserAddressed } from "./addressing";
 import {
 	type ChannelDebouncer,
 	createChannelDebouncer,
@@ -243,28 +244,17 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				return;
 			}
 
-			const clientUser = service.client?.user;
-			const botId = clientUser?.id;
-			const agentName = service.character?.name?.toLowerCase();
-
 			let anchor: Message | undefined;
+			const botId = service.client?.user?.id;
 			if (botId) {
-				anchor = messages.find(
-					(message) =>
-						message.mentions?.users?.has(botId) ||
-						Boolean(
-							agentName &&
-								agentName.length >= 2 &&
-								message.content?.toLowerCase().includes(agentName),
-						),
+				anchor = messages.find((message) =>
+					isDiscordUserAddressed({
+						text: message.content,
+						userId: botId,
+						hasMessageReference: Boolean(message.reference?.messageId),
+						repliedUserId: message.mentions?.repliedUser?.id,
+					}),
 				);
-				if (!anchor) {
-					anchor = messages.find(
-						(message) =>
-							Boolean(message.reference?.messageId) &&
-							message.mentions?.repliedUser?.id === botId,
-					);
-				}
 			}
 
 			anchor ??= messages[messages.length - 1];
@@ -303,6 +293,12 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 						: anchor.content || "";
 				const combined = Object.create(anchor, {
 					content: { value: combinedText, writable: true, enumerable: true },
+					__discordAddressingContent: {
+						value: anchor.content,
+						writable: false,
+						enumerable: false,
+						configurable: true,
+					},
 				});
 				void service.messageManager.handleMessage(combined as Message);
 			}
@@ -313,7 +309,6 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			debounceMs: effectiveChannelDebounceMs,
 			responseCooldownMs,
 			getBotUserId: () => service.client?.user?.id,
-			botName: service.character?.name,
 			coalesceEnabled: messageCoalesce.enabled,
 			maxBatch: messageCoalesce.maxBatch,
 		},

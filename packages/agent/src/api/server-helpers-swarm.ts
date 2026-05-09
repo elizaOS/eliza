@@ -14,8 +14,10 @@ import type {
 import {
   type AgentRuntime,
   ChannelType,
+  ContentType,
   createMessageMemory,
   logger,
+  type Media,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -43,6 +45,39 @@ const CHAT_SUPPRESSED_AUTONOMY_SOURCES = new Set([
   "proactive-gm",
   "proactive-gn",
   "proactive-nudge",
+]);
+
+const MAX_SYNTHESIS_ATTACHMENTS = 4;
+const MAX_SYNTHESIS_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const SYNTHESIS_ATTACHMENT_CONTENT_TYPES = new Map<
+  string,
+  Media["contentType"]
+>([
+  [".png", ContentType.IMAGE],
+  [".jpg", ContentType.IMAGE],
+  [".jpeg", ContentType.IMAGE],
+  [".gif", ContentType.IMAGE],
+  [".webp", ContentType.IMAGE],
+  [".svg", ContentType.IMAGE],
+  [".mp4", ContentType.VIDEO],
+  [".webm", ContentType.VIDEO],
+  [".mov", ContentType.VIDEO],
+  [".mp3", ContentType.AUDIO],
+  [".wav", ContentType.AUDIO],
+  [".m4a", ContentType.AUDIO],
+  [".pdf", ContentType.DOCUMENT],
+  [".txt", ContentType.DOCUMENT],
+  [".md", ContentType.DOCUMENT],
+  [".json", ContentType.DOCUMENT],
+  [".csv", ContentType.DOCUMENT],
+]);
+const SYNTHESIS_ATTACHMENT_INPUT_DIRS = new Set([
+  "input",
+  "inputs",
+  "ref",
+  "refs",
+  "reference",
+  "references",
 ]);
 
 export async function routeAutonomyTextToUser(
@@ -263,18 +298,92 @@ export async function handleSwarmSynthesis(
     `[swarm-synthesis] Generating synthesis for ${payload.total} tasks (${payload.completed} completed, ${payload.stopped} stopped, ${payload.errored} errored)`,
   );
 
-  const resultText = await buildSynthesisResultText(payload);
-  logger.info("[swarm-synthesis] Synthesis generated, routing to user");
-  await routeMessage(resultText, "swarm_synthesis");
+  for (const groupedPayload of splitSynthesisPayloadByReplyTarget(payload)) {
+    const resultText = await buildSynthesisResultText(groupedPayload);
+    const attachments = await collectSynthesisAttachments(
+      groupedPayload,
+      resultText,
+    );
+    const userText = removeLocalPathReferences(
+      resultText,
+      attachments,
+      groupedPayload,
+    );
+    logger.info("[swarm-synthesis] Synthesis generated, routing to user");
+    await routeMessage(userText, "swarm_synthesis");
+    const { roomId, replyToExternalMessageId } =
+      selectConnectorFallback(groupedPayload);
+    await routeSynthesisToConnector(
+      runtime,
+      userText,
+      attachments,
+      roomId,
+      replyToExternalMessageId,
+    );
+  }
+}
+
+function splitSynthesisPayloadByReplyTarget<
+  T extends {
+    replyToExternalMessageId?: string | null;
+    roomId?: string | null;
+    status: string;
+  },
+>(payload: {
+  tasks: T[];
+  total: number;
+  completed: number;
+  stopped: number;
+  errored: number;
+}): Array<{
+  tasks: T[];
+  total: number;
+  completed: number;
+  stopped: number;
+  errored: number;
+}> {
+  const groups = new Map<string, T[]>();
+  for (const task of payload.tasks) {
+    const replyId =
+      typeof task.replyToExternalMessageId === "string" &&
+      task.replyToExternalMessageId.trim().length > 0
+        ? task.replyToExternalMessageId.trim()
+        : null;
+    const key = replyId ? `reply:${replyId}` : "default";
+    const group = groups.get(key);
+    if (group) {
+      group.push(task);
+    } else {
+      groups.set(key, [task]);
+    }
+  }
+  if (groups.size <= 1) return [payload];
+  return [...groups.values()].map((tasks) => ({
+    ...payload,
+    tasks,
+    total: tasks.length,
+    completed: tasks.filter((task) => task.status === "completed").length,
+    stopped: tasks.filter((task) => task.status === "stopped").length,
+    errored: tasks.filter((task) => task.status === "error").length,
+  }));
+}
+
+function selectConnectorFallback(payload: {
+  tasks: Array<{
+    roomId?: string | null;
+    status: string;
+    replyToExternalMessageId?: string | null;
+  }>;
+}): { roomId: string | null; replyToExternalMessageId: string | null } {
   // coordinator.sourceRoomId is declared on the interface but never assigned
   // by the orchestrator, so without a fallback the connector route is dead.
   // Pick the most recently terminal task's roomId: that's the task whose
-  // completion fired this swarm_complete, and whose room is waiting for an
+  // completion fired this synthesis group, and whose room is waiting for an
   // answer. Naively taking "first task with a roomId" leaks results into
   // stale rooms when the coordinator carries tasks across rooms.
   const terminalStatuses = new Set(["completed", "stopped", "errored"]);
-  let fallbackRoomId: string | null = null;
-  let fallbackReplyToExternalMessageId: string | null = null;
+  let roomId: string | null = null;
+  let replyToExternalMessageId: string | null = null;
   for (let i = payload.tasks.length - 1; i >= 0; i--) {
     const candidate = payload.tasks[i];
     const candidateReplyId =
@@ -284,22 +393,17 @@ export async function handleSwarmSynthesis(
         : null;
     if (typeof candidate.roomId !== "string" || !candidate.roomId) continue;
     if (terminalStatuses.has(candidate.status)) {
-      fallbackRoomId = candidate.roomId;
-      fallbackReplyToExternalMessageId = candidateReplyId;
+      roomId = candidate.roomId;
+      replyToExternalMessageId = candidateReplyId;
       break;
     }
     // Track last-seen room as a fallback if no terminal task carries one.
-    if (!fallbackRoomId) {
-      fallbackRoomId = candidate.roomId;
-      fallbackReplyToExternalMessageId = candidateReplyId;
+    if (!roomId) {
+      roomId = candidate.roomId;
+      replyToExternalMessageId = candidateReplyId;
     }
   }
-  await routeSynthesisToConnector(
-    runtime,
-    resultText,
-    fallbackRoomId,
-    fallbackReplyToExternalMessageId,
-  );
+  return { roomId, replyToExternalMessageId };
 }
 
 async function buildSynthesisResultText(payload: {
@@ -338,10 +442,12 @@ async function buildTaskResultLine(task: {
         : finalText;
     }
   }
-  if (validationSummary) {
-    return preserveEvidenceUrls(validationSummary, task.completionSummary);
+  if (task.completionSummary) {
+    return validationSummary
+      ? preserveEvidenceUrls(task.completionSummary, validationSummary)
+      : task.completionSummary;
   }
-  if (task.completionSummary) return task.completionSummary;
+  if (validationSummary) return validationSummary;
   const portMatch = task.originalTask.match(/port\s+(\d+)/i);
   const port = portMatch?.[1];
   if (!port) return task.originalTask;
@@ -379,6 +485,151 @@ function preserveEvidenceUrls(summary: string, evidence: string): string {
   );
   if (missingUrls.length === 0) return summary;
   return [summary, ...missingUrls].join("\n");
+}
+
+async function collectSynthesisAttachments(
+  payload: {
+    tasks: Array<{
+      workdir?: string;
+      completionSummary: string;
+      validationSummary?: string;
+    }>;
+  },
+  resultText: string,
+): Promise<Media[]> {
+  const seen = new Set<string>();
+  const attachments: Media[] = [];
+  for (const task of payload.tasks) {
+    if (!task.workdir) continue;
+    const workdir = path.resolve(task.workdir);
+    const referencedPaths = extractLocalArtifactPaths(
+      [resultText, task.completionSummary, task.validationSummary ?? ""].join(
+        "\n",
+      ),
+    );
+    for (const referencedPath of referencedPaths) {
+      if (attachments.length >= MAX_SYNTHESIS_ATTACHMENTS) return attachments;
+      const resolved = path.resolve(referencedPath);
+      if (
+        seen.has(resolved) ||
+        (resolved !== workdir && !resolved.startsWith(`${workdir}${path.sep}`))
+      ) {
+        continue;
+      }
+      if (isInputReferencePath(workdir, resolved)) continue;
+      const contentType = SYNTHESIS_ATTACHMENT_CONTENT_TYPES.get(
+        path.extname(resolved).toLowerCase(),
+      );
+      if (!contentType) continue;
+      try {
+        const stat = await fs.stat(resolved);
+        if (!stat.isFile() || stat.size > MAX_SYNTHESIS_ATTACHMENT_BYTES) {
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      seen.add(resolved);
+      attachments.push({
+        id: crypto.randomUUID(),
+        url: resolved,
+        title: path.basename(resolved),
+        source: "task-agent-artifact",
+        contentType,
+      });
+    }
+  }
+  return attachments;
+}
+
+function isInputReferencePath(workdir: string, filePath: string): boolean {
+  const relativePath = path.relative(workdir, filePath);
+  if (!relativePath || relativePath.startsWith("..")) return false;
+  return relativePath
+    .split(path.sep)
+    .some((part) => SYNTHESIS_ATTACHMENT_INPUT_DIRS.has(part.toLowerCase()));
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function removeLocalPathReferences(
+  text: string,
+  attachments: Media[],
+  payload: { tasks: Array<{ workdir?: string }> },
+): string {
+  let cleaned = replaceAttachedArtifactMarkdownLinks(text, attachments);
+  const titles: string[] = [];
+  for (const attachment of attachments) {
+    if (!attachment.url.startsWith("/")) continue;
+    const title = attachment.title || path.basename(attachment.url);
+    titles.push(title);
+    const escapedPath = escapeRegExp(attachment.url);
+    cleaned = cleaned
+      .replace(new RegExp(`\`${escapedPath}\``, "gu"), title)
+      .replace(new RegExp(escapedPath, "gu"), title);
+  }
+
+  const workdirs = payload.tasks
+    .map((task) => (task.workdir ? path.resolve(task.workdir) : null))
+    .filter((workdir): workdir is string => Boolean(workdir));
+  for (const localPath of extractLocalArtifactPaths(cleaned)) {
+    const resolved = path.resolve(localPath);
+    if (
+      !workdirs.some(
+        (workdir) =>
+          resolved === workdir || resolved.startsWith(`${workdir}${path.sep}`),
+      )
+    ) {
+      continue;
+    }
+    const title = path.basename(resolved);
+    const escapedPath = escapeRegExp(localPath);
+    cleaned = cleaned
+      .replace(new RegExp(`\`${escapedPath}\``, "gu"), title)
+      .replace(new RegExp(escapedPath, "gu"), title);
+  }
+
+  const trimmed = cleaned.trim();
+  if (titles.length === 1 && trimmed === titles[0]) {
+    return `Attached ${titles[0]}.`;
+  }
+  return cleaned;
+}
+
+function replaceAttachedArtifactMarkdownLinks(
+  text: string,
+  attachments: Media[],
+): string {
+  const attachmentTitles = new Set(
+    attachments
+      .map((attachment) => attachment.title || path.basename(attachment.url))
+      .filter(Boolean),
+  );
+  if (attachmentTitles.size === 0) return text;
+
+  return text.replace(
+    /\[([^\]\n]+)\]\(([^)\n]+)\)/gu,
+    (link, label: string, target: string) => {
+      const labelBase = path.basename(label.trim());
+      const targetBase = path.basename(target.trim());
+      if (attachmentTitles.has(targetBase)) return targetBase;
+      if (attachmentTitles.has(labelBase)) return labelBase;
+      return link;
+    },
+  );
+}
+
+function extractLocalArtifactPaths(text: string): string[] {
+  const paths = new Set<string>();
+  for (const match of text.matchAll(/`(\/[^`\n]+)`/gu)) {
+    paths.add(match[1]);
+  }
+  for (const match of text.matchAll(/(?:^|\s)(\/[^\s"'`<>|]+)/gmu)) {
+    paths.add(match[1].replace(/[),.;:!?]+$/u, ""));
+  }
+  return [...paths];
 }
 
 async function readAgentFinalAssistantMessage(
@@ -459,6 +710,7 @@ async function isPortServing(port: string): Promise<boolean> {
 async function routeSynthesisToConnector(
   runtime: AgentRuntime,
   resultText: string,
+  attachments: Media[] = [],
   fallbackRoomId: string | null = null,
   replyToExternalMessageId: string | null = null,
 ): Promise<void> {
@@ -478,6 +730,7 @@ async function routeSynthesisToConnector(
       {
         text: resultText,
         source: "swarm_synthesis",
+        ...(attachments.length > 0 ? { attachments } : {}),
         ...(replyToExternalMessageId
           ? { inReplyTo: replyToExternalMessageId }
           : {}),
