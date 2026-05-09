@@ -19,9 +19,11 @@ import {
   setBenchmarkContext,
 } from "./plugin";
 import {
+  type BenchmarkLlmCallUsage,
   type BenchmarkOutboxEntry,
   type BenchmarkSession,
   type BenchmarkTrajectoryStep,
+  type BenchmarkTurnUsage,
   capturedActionToParams,
   coerceActions,
   coerceParams,

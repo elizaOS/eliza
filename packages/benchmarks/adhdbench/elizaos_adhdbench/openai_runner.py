@@ -316,7 +316,10 @@ class OpenAICompatibleADHDBenchRunner:
                 ],
             })
 
-        score = compute_scenario_score(turn_results)
+        # OpenAI-compatible providers can't observe runtime provider
+        # invocations, so PROVIDERS_REQUESTED outcomes are skipped at
+        # scoring time.
+        score = compute_scenario_score(turn_results, has_runtime_signal=False)
         return ScenarioResult(
             scenario_id=scenario.id,
             scenario_name=scenario.name,
