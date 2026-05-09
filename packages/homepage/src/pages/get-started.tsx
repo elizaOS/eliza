@@ -37,20 +37,22 @@ import {
   useAuth,
 } from "@/lib/context/auth-context";
 
-type TelegramLoginWindow = Window & {
-  Telegram?: {
-    Login?: {
-      auth: (
-        options: { bot_id: string; request_access?: string },
-        callback: (data: TelegramAuthData | false) => void,
-      ) => void;
-    };
+type TelegramLoginApi = {
+  Login?: {
+    auth: (
+      options: { bot_id: string; request_access?: string },
+      callback: (data: TelegramAuthData | false) => void,
+    ) => void;
   };
+};
+
+type TelegramLoginWindow = Window & {
+  Telegram?: TelegramLoginApi;
 };
 
 declare global {
   interface Window {
-    Telegram?: TelegramLoginWindow["Telegram"];
+    Telegram?: TelegramLoginApi;
   }
 }
 
@@ -605,7 +607,7 @@ export default function GetStartedPage() {
       setIsTelegramLoading(true);
       telegram.Login.auth(
         { bot_id: botId, request_access: "write" },
-        (data) => {
+        (data: TelegramAuthData | false) => {
           setIsTelegramLoading(false);
           if (data) {
             handleTelegramAuthCallback(data);

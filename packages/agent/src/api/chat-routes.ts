@@ -1559,7 +1559,7 @@ export async function generateChatResponse(
                   text: localResult.text,
                   source: "client_chat",
                   actions: ["REPLY"],
-                  localInference: localResult.localInference as unknown as
+                  localInference: localResult.localInference as
                     | Record<string, unknown>
                     | undefined,
                   failureKind:
@@ -1567,7 +1567,7 @@ export async function generateChatResponse(
                     localResult.localInference.status === "no_space"
                       ? "local_inference"
                       : undefined,
-                } as unknown as Content,
+                } as Content,
                 responseMessages: [],
               } as typeof result;
               responseText = localResult.text;

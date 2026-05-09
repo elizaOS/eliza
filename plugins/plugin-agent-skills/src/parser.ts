@@ -47,7 +47,7 @@ export function parseFrontmatter(content: string): {
 	const body = content.slice(match[0].length).trim();
 
 	try {
-		const frontmatter = parseYamlSubset(raw) as unknown as SkillFrontmatter;
+		const frontmatter = parseYamlSubset(raw) as SkillFrontmatter;
 		return { frontmatter, body, raw };
 	} catch {
 		return { frontmatter: null, body, raw };

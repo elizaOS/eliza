@@ -168,6 +168,7 @@ export function toStandardNetwork(
 ): string {
   if (network === "BASE") return "eip155:8453";
   if (network === "POLYGON") return "eip155:137";
+  if (network === "BSC") return "eip155:56";
   return "solana:mainnet";
 }
 

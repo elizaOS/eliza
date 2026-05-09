@@ -54,6 +54,7 @@ Use these string names in `x402.paymentConfigs` or in `character.settings.x402.d
 | `base_usdc` | Base (8453) | USDC |
 | `solana_usdc` | Solana | USDC |
 | `polygon_usdc` | Polygon (137) | USDC |
+| `bsc_usdc` | BNB Smart Chain (56) | Binance-Peg USDC |
 | `base_elizaos` | Base | elizaOS (ERC-20) |
 | `solana_elizaos` | Solana | elizaOS (SPL) |
 | `solana_degenai` | Solana | degenAI (SPL) |
@@ -94,6 +95,7 @@ On each route (alongside `type`, `path`, `handler`):
 - **`BASE_PUBLIC_KEY`** or **`PAYMENT_WALLET_BASE`** — Base / EVM payout address.
 - **`SOLANA_PUBLIC_KEY`** or **`PAYMENT_WALLET_SOLANA`** — Solana payout address.
 - **`POLYGON_PUBLIC_KEY`** or **`PAYMENT_WALLET_POLYGON`** — Polygon payout address.
+- **`BSC_PUBLIC_KEY`** or **`PAYMENT_WALLET_BSC`** — BNB Smart Chain / EVM payout address.
 
 **URLs & facilitator**
 
@@ -105,7 +107,7 @@ On each route (alongside `type`, `path`, `handler`):
 
 **RPC / runtime settings**
 
-Verification uses public RPC defaults; override per network via runtime settings **`BASE_RPC_URL`**, **`POLYGON_RPC_URL`**, **`ETHEREUM_RPC_URL`** (see `getSetting` in the agent runtime).
+Verification uses public RPC defaults; override per network via runtime settings **`BASE_RPC_URL`**, **`POLYGON_RPC_URL`**, **`BSC_RPC_URL`**, **`ETHEREUM_RPC_URL`** (see `getSetting` in the agent runtime).
 
 **Verification policy**
 
@@ -116,6 +118,7 @@ Verification uses public RPC defaults; override per network via runtime settings
 **Payout safety**
 
 - Built-in presets ship with **example** Base/Solana payout addresses when env vars are unset. **`NODE_ENV=production`** startup validation **fails** if a paid route still resolves to those bundled examples — set **`BASE_PUBLIC_KEY`**, **`SOLANA_PUBLIC_KEY`**, etc., to your real treasury.
+- **BNB Smart Chain uses 18-decimal Binance-Peg USDC** at `0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d`. For facilitator-settled `exact` payments, make sure the token/facilitator combination supports the signature scheme you advertise; raw transaction hash verification works for direct ERC-20 transfers to the configured `payTo`.
 
 **Solana legacy proofs**
 

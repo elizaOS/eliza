@@ -215,13 +215,16 @@ export function installMediaElementShims(): void {
 	if (typeof document === "undefined") return;
 	if (globalObject.Audio?.[AUDIO_PATCH_MARK]) return;
 
-	const AudioShim = function AudioShim(src?: string) {
-		const audio = document.createElement("audio");
-		if (typeof src === "string") {
-			audio.src = src;
+	const AudioShim = class AudioShim extends HTMLAudioElement {
+		constructor(src?: string) {
+			super();
+			const audio = document.createElement("audio");
+			if (typeof src === "string") {
+				audio.src = src;
+			}
+			return audio;
 		}
-		return audio;
-	} as unknown as typeof Audio & {
+	} as typeof Audio & {
 		[AUDIO_PATCH_MARK]?: boolean;
 	};
 	AudioShim[AUDIO_PATCH_MARK] = true;

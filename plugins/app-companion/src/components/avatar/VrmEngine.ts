@@ -245,7 +245,7 @@ function getSharedDracoLoader(): CompatibleDracoLoader {
   }
   // three/examples and the current GLTF loader declarations diverge on the
   // decoder surface, but this runtime instance is the loader we use in app.
-  return sharedDracoLoader as unknown as CompatibleDracoLoader;
+  return sharedDracoLoader as CompatibleDracoLoader;
 }
 
 function configureVrmGltfLoader(loader: GLTFLoader): void {
@@ -475,7 +475,7 @@ async function createRenderer(
         canvas,
         alpha: true,
         antialias: true,
-      }) as unknown as RendererLike & { init?: () => Promise<unknown> };
+      }) as RendererLike & { init?: () => Promise<unknown> };
       await renderer.init?.();
       console.info("[VrmEngine] Using WebGPURenderer");
       return { backend: "webgpu", renderer };
@@ -914,7 +914,7 @@ export class VrmEngine {
     ) {
       return;
     }
-    const lookAtState = vrm.lookAt as unknown as
+    const lookAtState = vrm.lookAt as
       | ({ _yaw?: number; _pitch?: number } & object)
       | null
       | undefined;
@@ -1704,9 +1704,7 @@ export class VrmEngine {
       if (webGpuNodes) {
         const mtoonOptions = {
           materialType: webGpuNodes.MToonNodeMaterial as unknown,
-        } as unknown as ConstructorParameters<
-          typeof MToonMaterialLoaderPlugin
-        >[1];
+        } as ConstructorParameters<typeof MToonMaterialLoaderPlugin>[1];
         const mtoonMaterialPlugin = new MToonMaterialLoaderPlugin(
           parser,
           mtoonOptions,

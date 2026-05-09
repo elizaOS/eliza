@@ -18,7 +18,7 @@ import {
   recoverTypedDataAddress,
   type TypedDataDomain,
 } from "viem";
-import { base, mainnet, polygon } from "viem/chains";
+import { base, bsc, mainnet, polygon } from "viem/chains";
 import {
   atomicAmountForPriceInCents,
   getCAIP19FromConfig,
@@ -169,6 +169,8 @@ function getViemChain(network: string) {
       return base;
     case "POLYGON":
       return polygon;
+    case "BSC":
+      return bsc;
     case "ETHEREUM":
       return mainnet;
     default:
@@ -192,6 +194,8 @@ function getRpcUrl(network: string, runtime: X402Runtime): string {
       return "https://mainnet.base.org";
     case "POLYGON":
       return "https://polygon-rpc.com";
+    case "BSC":
+      return "https://bsc-dataseed.binance.org";
     case "ETHEREUM":
       return "https://eth.llamarpc.com";
     default:
@@ -208,6 +212,8 @@ function getUsdcContractAddress(network: string): Address {
       return "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
     case "POLYGON":
       return "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359";
+    case "BSC":
+      return "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
     case "ETHEREUM":
       return "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
     default:
@@ -218,6 +224,7 @@ function getUsdcContractAddress(network: string): Address {
 function chainIdToNetwork(chainId: number): Network | null {
   if (chainId === 8453) return "BASE";
   if (chainId === 137) return "POLYGON";
+  if (chainId === 56) return "BSC";
   return null;
 }
 
@@ -411,7 +418,10 @@ async function verifyPayment(
 
           if (hasEip712) {
             const evmCandidates = configsOrdered.filter(
-              (c) => c.cfg.network === "BASE" || c.cfg.network === "POLYGON",
+              (c) =>
+                c.cfg.network === "BASE" ||
+                c.cfg.network === "POLYGON" ||
+                c.cfg.network === "BSC",
             );
 
             for (const { name, cfg } of evmCandidates) {
@@ -497,7 +507,11 @@ async function verifyPayment(
                   });
                 }
               }
-            } else if (network === "BASE" || network === "POLYGON") {
+            } else if (
+              network === "BASE" ||
+              network === "POLYGON" ||
+              network === "BSC"
+            ) {
               for (const { name, cfg } of configsOrdered) {
                 if (cfg.network !== network) continue;
                 if (cfg.assetNamespace !== "erc20") continue;
@@ -1728,7 +1742,11 @@ function buildX402Response(
     };
 
     // Add EIP-712 domain for EVM chains (helps client developers)
-    if (config.network === "BASE" || config.network === "POLYGON") {
+    if (
+      config.network === "BASE" ||
+      config.network === "POLYGON" ||
+      config.network === "BSC"
+    ) {
       const isUsdc = config.symbol?.toUpperCase() === "USDC";
       const tokenName = isUsdc ? "USD Coin" : config.symbol || "Token";
       extra.name = tokenName;
@@ -1789,9 +1807,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isOpenAPIObjectSchema(
-  schema: unknown,
-): schema is OpenAPIObjectSchema {
+function isOpenAPIObjectSchema(schema: unknown): schema is OpenAPIObjectSchema {
   if (!isRecord(schema) || schema.type !== "object") {
     return false;
   }

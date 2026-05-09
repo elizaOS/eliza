@@ -569,7 +569,7 @@ export function wireCoordinatorEventRouting(st: ServerState): boolean {
           });
 
           // Temporarily force TEXT_SMALL -- coordinator events are time-sensitive.
-          const rt = runtime as unknown as Record<string, unknown>;
+          const rt = runtime as AgentRuntime & Record<string, unknown>;
           const prevLlmMode = rt["llmModeOption"];
           rt["llmModeOption"] = "SMALL";
           let result: { text: string; agentName?: string };

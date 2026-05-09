@@ -524,7 +524,7 @@ export function RuntimeGate() {
     setSubView((current) =>
       current === "chooser" ? pickerTargetOverride : current,
     );
-  }, [pickerOverride, pickerTargetOverride, runtimeChoiceKey, runtimeChoices]);
+  }, [pickerOverride, pickerTargetOverride, runtimeChoices]);
 
   // ── Gateway discovery (LAN autodetect) ────────────────────────────
   useEffect(() => {

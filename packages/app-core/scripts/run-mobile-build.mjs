@@ -2382,7 +2382,7 @@ function hasSimulatorSlice(xcframeworkDir) {
         continue;
       }
       if (
-        entry.name === "llama-cpp" &&
+        (entry.name === "LlamaCpp" || entry.name === "llama-cpp") &&
         readMachOPlatform(entryPath) === 7 &&
         readMachOArchs(entryPath).includes("arm64")
       ) {
@@ -2396,7 +2396,7 @@ function hasSimulatorSlice(xcframeworkDir) {
 export function patchLlamaCppCapacitorPodspecForXcframework(
   packageDir,
   {
-    xcframeworkRelPath = "ios/Frameworks-xcframework/llama-cpp.xcframework",
+    xcframeworkRelPath = "ios/Frameworks-xcframework/LlamaCpp.xcframework",
   } = {},
 ) {
   const podspecPath = path.join(packageDir, "LlamaCppCapacitor.podspec");
@@ -2407,7 +2407,15 @@ export function patchLlamaCppCapacitorPodspecForXcframework(
     `s.vendored_frameworks = '${xcframeworkRelPath}'`,
   );
   patched = patched.replace(
+    "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.framework'",
+    `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+  );
+  patched = patched.replace(
     "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.xcframework'",
+    `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+  );
+  patched = patched.replace(
+    "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.xcframework'",
     `s.vendored_frameworks = '${xcframeworkRelPath}'`,
   );
   patched = patched.replace(
@@ -2437,12 +2445,15 @@ export function patchLlamaCppCapacitorPodspecForXcframework(
 }
 
 function moveDeviceOnlyLlamaCppFrameworkForSimulator(frameworksDir) {
-  const deviceFramework = path.join(frameworksDir, "llama-cpp.framework");
-  if (!fs.existsSync(deviceFramework)) return;
+  const deviceFramework = firstExisting([
+    path.join(frameworksDir, "LlamaCpp.framework"),
+    path.join(frameworksDir, "llama-cpp.framework"),
+  ]);
+  if (!deviceFramework || !fs.existsSync(deviceFramework)) return;
 
   const archivedFramework = path.join(
     frameworksDir,
-    "llama-cpp-device.framework",
+    `${path.basename(deviceFramework, ".framework")}-device.framework`,
   );
   fs.rmSync(archivedFramework, { recursive: true, force: true });
   fs.renameSync(deviceFramework, archivedFramework);
@@ -2489,6 +2500,8 @@ async function buildIosLlamaCppSimulatorFramework(packageDir) {
   );
 
   const frameworkDir = firstExisting([
+    path.join(buildDir, "LlamaCpp.framework"),
+    path.join(buildDir, "Release", "LlamaCpp.framework"),
     path.join(buildDir, "llama-cpp.framework"),
     path.join(buildDir, "Release", "llama-cpp.framework"),
   ]);
@@ -2515,7 +2528,7 @@ async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
     "ios",
     "Frameworks-xcframework",
   );
-  const xcframeworkDir = path.join(xcframeworksDir, "llama-cpp.xcframework");
+  const xcframeworkDir = path.join(xcframeworksDir, "LlamaCpp.xcframework");
   patchLlamaCppCapacitorPodspecForXcframework(packageDir);
 
   if (hasSimulatorSlice(xcframeworkDir)) {
@@ -2525,9 +2538,13 @@ async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
 
   const simulatorFramework =
     await buildIosLlamaCppSimulatorFramework(packageDir);
-  const deviceFramework = path.join(frameworksDir, "llama-cpp.framework");
+  const deviceFramework = firstExisting([
+    path.join(frameworksDir, "LlamaCpp.framework"),
+    path.join(frameworksDir, "llama-cpp.framework"),
+  ]);
   const createArgs = ["-create-xcframework"];
   if (
+    deviceFramework &&
     frameworkMatches({
       frameworkDir: deviceFramework,
       platform: 2,
@@ -2551,7 +2568,7 @@ async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
   //   ld: building for 'iOS-simulator', but linking in dylib (...) built for 'iOS'
   // Move the device-only framework out of the search path so only the
   // xcframework's per-platform slice can resolve.
-  if (fs.existsSync(deviceFramework)) {
+  if (deviceFramework && fs.existsSync(deviceFramework)) {
     const archivedDeviceFramework = path.join(
       packageDir,
       "ios",
@@ -2587,17 +2604,28 @@ export function resolveIosBuildTarget({
   const includeDeviceOnlyLlama =
     isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA) ||
     isTruthyEnv(env.MILADY_IOS_INCLUDE_LLAMA);
-  const llamaCppFramework = path.join(
-    appDirValue,
-    "node_modules",
-    "llama-cpp-capacitor",
-    "ios",
-    "Frameworks",
-    "llama-cpp.framework",
-    "llama-cpp",
-  );
+  const llamaCppFramework = firstExisting([
+    path.join(
+      appDirValue,
+      "node_modules",
+      "llama-cpp-capacitor",
+      "ios",
+      "Frameworks",
+      "LlamaCpp.framework",
+      "LlamaCpp",
+    ),
+    path.join(
+      appDirValue,
+      "node_modules",
+      "llama-cpp-capacitor",
+      "ios",
+      "Frameworks",
+      "llama-cpp.framework",
+      "llama-cpp",
+    ),
+  ]);
 
-  if (includeDeviceOnlyLlama && fs.existsSync(llamaCppFramework)) {
+  if (includeDeviceOnlyLlama && llamaCppFramework) {
     return {
       destination: "generic/platform=iOS",
       sdk: "iphoneos",

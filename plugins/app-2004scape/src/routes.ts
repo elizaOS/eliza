@@ -1541,7 +1541,7 @@ async function proxyViewerRequest(
   };
 
   if (ctx.method !== "GET" && ctx.method !== "HEAD") {
-    requestInit.body = ctx.req as unknown as BodyInit;
+    requestInit.body = ctx.req as BodyInit;
     requestInit.duplex = "half";
   }
 
@@ -1563,9 +1563,9 @@ async function proxyViewerRequest(
     return true;
   }
 
-  Readable.fromWeb(
-    upstream.body as unknown as NodeReadableStream<Uint8Array>,
-  ).pipe(ctx.res);
+  Readable.fromWeb(upstream.body as NodeReadableStream<Uint8Array>).pipe(
+    ctx.res,
+  );
   return true;
 }
 

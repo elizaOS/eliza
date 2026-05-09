@@ -48,7 +48,7 @@ async function runE2ETests() {
       return "Test response";
     },
     services: new Map(),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 
   visionService = await VisionService.start(runtime);
   runtime.services = new Map([[VisionServiceType.VISION, [visionService]]]);

@@ -41,12 +41,12 @@ import { logger } from "@elizaos/core";
 import type { X402ScanNetwork } from "./x402-types.js";
 
 /** Networks supported by built-in x402 presets and verification */
-export type Network = "BASE" | "SOLANA" | "POLYGON";
+export type Network = "BASE" | "SOLANA" | "POLYGON" | "BSC";
 
 /**
  * Built-in networks supported by default
  */
-export const BUILT_IN_NETWORKS = ["BASE", "SOLANA", "POLYGON"] as const;
+export const BUILT_IN_NETWORKS = ["BASE", "SOLANA", "POLYGON", "BSC"] as const;
 
 // Default network configuration
 export const DEFAULT_NETWORK: Network = "SOLANA";
@@ -60,6 +60,7 @@ export function toX402Network(network: Network): X402ScanNetwork {
     BASE: "base",
     SOLANA: "solana",
     POLYGON: "polygon",
+    BSC: "bsc",
   };
 
   const mappedNetwork = networkMap[network];
@@ -86,7 +87,7 @@ export function paymentAddressIsBundledExample(
   const a = paymentAddress.trim();
   if (!a) return false;
   if (network === "SOLANA") return a === BUNDLED_EXAMPLE_SOLANA_PAYOUT;
-  if (network === "BASE" || network === "POLYGON") {
+  if (network === "BASE" || network === "POLYGON" || network === "BSC") {
     return a.toLowerCase() === BUNDLED_EXAMPLE_EVM_PAYOUT.toLowerCase();
   }
   return false;
@@ -107,6 +108,10 @@ export const PAYMENT_ADDRESSES: Partial<Record<Network, string>> = {
     BUNDLED_EXAMPLE_SOLANA_PAYOUT,
   POLYGON:
     process.env.POLYGON_PUBLIC_KEY || process.env.PAYMENT_WALLET_POLYGON || "",
+  BSC:
+    process.env.BSC_PUBLIC_KEY ||
+    process.env.PAYMENT_WALLET_BSC ||
+    BUNDLED_EXAMPLE_EVM_PAYOUT,
 };
 
 /**
@@ -185,12 +190,24 @@ export const POLYGON_TOKENS = {
 } as const;
 
 /**
+ * Token configuration for BNB Smart Chain (EVM)
+ */
+export const BSC_TOKENS = {
+  USDC: {
+    symbol: "USDC",
+    address: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+    decimals: 18,
+  },
+} as const;
+
+/**
  * Default asset for each network (used in x402 responses)
  */
 export const NETWORK_ASSETS: Partial<Record<Network, string>> = {
   BASE: "USDC", // USDC on Base
   SOLANA: "USDC", // USDC on Solana (default, but also supports ai16z and degenai)
   POLYGON: "USDC", // USDC on Polygon
+  BSC: "USDC", // Binance-Peg USDC on BNB Smart Chain
 };
 
 /**
@@ -206,6 +223,9 @@ export function getNetworkAssets(network: Network): string[] {
   }
   if (network === "POLYGON") {
     return Object.values(POLYGON_TOKENS).map((t) => t.symbol);
+  }
+  if (network === "BSC") {
+    return Object.values(BSC_TOKENS).map((t) => t.symbol);
   }
 
   const defaultAsset = NETWORK_ASSETS[network];
@@ -262,6 +282,14 @@ export const PAYMENT_CONFIGS: Record<string, PaymentConfigDefinition> = {
     symbol: "USDC",
     chainId: "137",
   },
+  bsc_usdc: {
+    network: "BSC",
+    assetNamespace: "erc20",
+    assetReference: BSC_TOKENS.USDC.address,
+    paymentAddress: PAYMENT_ADDRESSES.BSC ?? BUNDLED_EXAMPLE_EVM_PAYOUT,
+    symbol: "USDC",
+    chainId: "56",
+  },
   base_elizaos: {
     network: "BASE",
     assetNamespace: "erc20",
@@ -298,7 +326,9 @@ export function getCAIP19FromConfig(config: PaymentConfigDefinition): string {
       ? "8453"
       : config.network === "POLYGON"
         ? "137"
-        : "1");
+        : config.network === "BSC"
+          ? "56"
+          : "1");
   const chainId = `${chainNamespace}:${chainReference}`;
 
   // Build asset part: namespace:reference
@@ -463,7 +493,7 @@ export function getNetworkAddresses(networks: Network[]): Array<{
       name: network,
       address: PAYMENT_ADDRESSES[network] as string,
       // Add facilitator endpoint for EVM chains if configured
-      ...((network === "BASE" || network === "POLYGON") &&
+      ...((network === "BASE" || network === "POLYGON" || network === "BSC") &&
         process.env.EVM_FACILITATOR && {
           facilitatorEndpoint: process.env.EVM_FACILITATOR,
         }),
@@ -554,6 +584,10 @@ function getTokenDecimals(asset: string, network?: Network): number {
     );
     if (polygonToken) return polygonToken.decimals;
   }
+  if (network === "BSC") {
+    const bscToken = Object.values(BSC_TOKENS).find((t) => t.symbol === asset);
+    if (bscToken) return bscToken.decimals;
+  }
 
   // Check all token configs if no network specified
   const solanaToken = Object.values(SOLANA_TOKENS).find(
@@ -568,6 +602,9 @@ function getTokenDecimals(asset: string, network?: Network): number {
     (t) => t.symbol === asset,
   );
   if (polygonToken) return polygonToken.decimals;
+
+  const bscToken = Object.values(BSC_TOKENS).find((t) => t.symbol === asset);
+  if (bscToken) return bscToken.decimals;
 
   // Defaults
   if (asset === "USDC") return 6;
@@ -649,6 +686,10 @@ export function getTokenAddress(
     const token = Object.values(POLYGON_TOKENS).find((t) => t.symbol === asset);
     return token?.address;
   }
+  if (network === "BSC") {
+    const token = Object.values(BSC_TOKENS).find((t) => t.symbol === asset);
+    return token?.address;
+  }
   return undefined;
 }
 
@@ -679,7 +720,7 @@ export function getX402Health(): {
   }>;
   facilitator: { url: string | null; configured: boolean };
 } {
-  const networks: Network[] = ["BASE", "SOLANA", "POLYGON"];
+  const networks: Network[] = ["BASE", "SOLANA", "POLYGON", "BSC"];
 
   return {
     networks: networks.map((network) => ({

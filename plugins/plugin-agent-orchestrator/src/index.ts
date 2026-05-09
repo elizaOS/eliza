@@ -21,17 +21,19 @@ import { PTYService } from "./services/pty-service.js";
 import { SubAgentRouter } from "./services/sub-agent-router.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
 
+const orchestratorServices: ServiceClass[] = [
+  AcpService as ServiceClass,
+  SubAgentRouter as ServiceClass,
+  PTYService as ServiceClass,
+  CodingWorkspaceService as ServiceClass,
+];
+
 export const agentOrchestratorPlugin: Plugin = {
   name: "@elizaos/plugin-agent-orchestrator",
   description:
     "Spawn and orchestrate coding agents via the Agent Client Protocol (acpx) with workspace lifecycle, GitHub integration, task history, sub-agent routing, and skill-recommender support. Single TASKS parent action covers create / spawn_agent / send / stop_agent / list_agents / cancel / history / control / share / provision_workspace / submit_workspace / manage_issues / archive / reopen.",
   // Services manage ACPX subprocesses, PTY sessions, workspaces, and sub-agent routing.
-  services: [
-    AcpService as unknown as ServiceClass,
-    SubAgentRouter as unknown as ServiceClass,
-    PTYService as unknown as ServiceClass,
-    CodingWorkspaceService as unknown as ServiceClass,
-  ],
+  services: orchestratorServices,
   actions: [tasksAction],
   providers: [
     availableAgentsProvider, // Adapter inventory + raw session list

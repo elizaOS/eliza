@@ -142,6 +142,89 @@ declare module "@elizaos/plugin-elizacloud/onboarding" {
     chosenTemplate?: unknown,
   ): Promise<CloudOnboardingResult | null>;
 }
+declare module "@elizaos/plugin-elizacloud" {
+  export interface CloudConfigLike {
+    apiKey?: string | null;
+    baseUrl?: string | null;
+    [key: string]: unknown;
+  }
+
+  export interface CloudOnboardingResult {
+    apiKey: string;
+    agentId: string | undefined;
+    baseUrl: string;
+    bridgeUrl?: string;
+  }
+
+  export interface CloudRouteState {
+    config?: unknown;
+    runtime?: unknown;
+    [key: string]: unknown;
+  }
+
+  export interface CloudWalletDescriptor {
+    agentWalletId: string;
+    walletAddress: string;
+    walletProvider: CloudWalletProvider;
+    chainType: "evm" | "solana";
+    balance?: string | number;
+  }
+
+  export type CloudWalletProvider = "privy" | "steward";
+
+  export class ElizaCloudClient {
+    constructor(...args: unknown[]);
+    [key: string]: unknown;
+  }
+
+  export class CloudManager {
+    constructor(...args: unknown[]);
+    init(): Promise<void>;
+    connect(agentId: string): Promise<{ agentName?: string; [key: string]: unknown }>;
+    disconnect(): Promise<void>;
+    [key: string]: unknown;
+  }
+
+  export function normalizeCloudSiteUrl(value?: string): string;
+  export function normalizeCloudSecret(value: string | null | undefined): string | null;
+  export function validateCloudBaseUrl(value: string): string | null;
+  export function resolveCloudApiBaseUrl(...args: unknown[]): string;
+  export function resolveCloudApiKey(...args: unknown[]): string | null;
+  export function __resetCloudBaseUrlCache(): void;
+  export function clearCloudSecrets(): void;
+  export function ensureCloudTtsApiKeyAlias(...args: unknown[]): void;
+  export function getCloudSecret(...args: unknown[]): string | undefined;
+  export function getOrCreateClientAddressKey(): Promise<{ address: string }>;
+  export function isCloudProvisionedContainer(...args: unknown[]): boolean;
+  export function provisionCloudWalletsBestEffort(
+    ...args: unknown[]
+  ): Promise<{
+    descriptors: Partial<Record<"evm" | "solana", CloudWalletDescriptor>>;
+    failures: Array<{ chain: "evm" | "solana"; error: unknown }>;
+    warnings: string[];
+  }>;
+  export function persistCloudWalletCache(...args: unknown[]): void;
+  export function resolveCloudTtsBaseUrl(...args: unknown[]): string;
+  export function resolveElevenLabsApiKeyForCloudMode(
+    ...args: unknown[]
+  ): string | undefined;
+  export function runCloudOnboarding(
+    ...args: unknown[]
+  ): Promise<CloudOnboardingResult | null>;
+
+  export function handleCloudBillingRoute(...args: unknown[]): Promise<boolean>;
+  export function handleCloudCompatRoute(...args: unknown[]): Promise<boolean>;
+  export function handleCloudRelayRoute(...args: unknown[]): Promise<boolean>;
+  export function handleCloudRoute(...args: unknown[]): Promise<boolean>;
+  export function handleCloudStatusRoutes(...args: unknown[]): Promise<boolean>;
+  export function handleCloudTtsPreviewRoute(
+    ...args: unknown[]
+  ): Promise<boolean>;
+  export function mirrorCompatHeaders(...args: unknown[]): void;
+
+  const plugin: unknown;
+  export default plugin;
+}
 declare module "@elizaos/plugin-commands";
 declare module "@elizaos/plugin-discord" {
   export interface DiscordProfileLike {

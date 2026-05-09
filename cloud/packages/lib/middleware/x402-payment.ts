@@ -29,7 +29,7 @@ import { logger } from "@/lib/utils/logger";
 
 /** Configuration for an x402-protected route */
 export interface X402PaymentConfig {
-  /** Price in USDC base units (6 decimals). "1000000" = $1.00 */
+  /** Price in the selected USDC token's base units. "1000000" = $1.00 for 6-decimal USDC. */
   price: string;
   /** CAIP-2 network identifier. Default: "eip155:8453" (Base) */
   network?: string;
@@ -149,7 +149,7 @@ export function withX402Payment<T = Record<string, string>>(
     }
     const parsedPaymentPayload = paymentPayload;
     const paymentRequirements = {
-      scheme: "upto",
+      scheme: "exact",
       network,
       asset: getUsdcAddress(network),
       amount: config.price,
@@ -271,7 +271,7 @@ function buildPaymentRequiredResponse(
     x402Version: 2,
     accepts: [
       {
-        scheme: "upto",
+        scheme: "exact",
         network,
         maxAmountRequired: price,
         resource,
@@ -302,8 +302,9 @@ function buildPaymentRequiredResponse(
       status: 402,
       headers: {
         "Content-Type": "application/json",
+        "PAYMENT-REQUIRED": encoded,
         "Payment-Required": encoded,
-        "Access-Control-Expose-Headers": "Payment-Required",
+        "Access-Control-Expose-Headers": "PAYMENT-REQUIRED, Payment-Required",
       },
     },
   );
@@ -314,7 +315,9 @@ function buildPaymentRequiredResponse(
  */
 function getUsdcDomainName(network: string): string {
   // Ethereum mainnet uses "USD Coin", all others use "USDC"
-  return network === "eip155:1" ? "USD Coin" : "USDC";
+  return network === "eip155:1" || network === "eip155:56" || network === "eip155:97"
+    ? "USD Coin"
+    : "USDC";
 }
 
 function getUsdcAddress(network: string): string {
@@ -323,6 +326,8 @@ function getUsdcAddress(network: string): string {
     "eip155:84532": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     "eip155:1": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
     "eip155:11155111": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+    "eip155:56": "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+    "eip155:97": "0x64544969ed7EBf5f083679233325356EBe738930",
   };
   return addresses[network] ?? addresses["eip155:8453"];
 }

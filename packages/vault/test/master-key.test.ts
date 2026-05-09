@@ -84,7 +84,8 @@ describe("passphraseMasterKey", () => {
   test("rejects non-string passphrase", () => {
     expect(() =>
       passphraseMasterKey({
-        passphrase: undefined as unknown as string,
+        // @ts-expect-error exercises runtime validation for invalid callers.
+        passphrase: undefined,
         cost: 1024,
       }),
     ).toThrow(MasterKeyUnavailableError);

@@ -15,7 +15,6 @@ import {
 } from "node:http";
 import { request as requestHttps } from "node:https";
 import net from "node:net";
-import { Readable } from "node:stream";
 import {
   type Action,
   type HandlerOptions,
@@ -253,6 +252,27 @@ async function toRequestBodyBuffer(
   throw new Error("Unsupported request body type for custom action fetch");
 }
 
+function incomingMessageBody(
+  response: IncomingMessage,
+): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      response.on("data", (chunk: Buffer | string) => {
+        controller.enqueue(
+          typeof chunk === "string"
+            ? Buffer.from(chunk)
+            : new Uint8Array(chunk),
+        );
+      });
+      response.on("end", () => controller.close());
+      response.on("error", (error) => controller.error(error));
+    },
+    cancel() {
+      response.destroy();
+    },
+  });
+}
+
 function responseFromIncomingMessage(response: IncomingMessage): Response {
   const headers = new Headers();
   for (const [key, value] of Object.entries(response.headers)) {
@@ -264,10 +284,10 @@ function responseFromIncomingMessage(response: IncomingMessage): Response {
   }
 
   const status = response.statusCode ?? 500;
-	const body =
-		status === 204 || status === 205 || status === 304
-			? null
-			: (Readable.toWeb(response) as unknown as ReadableStream<Uint8Array>);
+  const body =
+    status === 204 || status === 205 || status === 304
+      ? null
+      : incomingMessageBody(response);
 
   return new Response(body, {
     status,

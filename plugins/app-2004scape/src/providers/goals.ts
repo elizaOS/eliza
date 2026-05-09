@@ -171,7 +171,7 @@ export const goalsProvider: Provider = {
     _state: State,
   ): Promise<ProviderResult> {
     try {
-      const service = runtime.getService("rs_2004scape") as unknown as {
+      const service = runtime.getService("rs_2004scape") as {
         getBotState(): BotState | null;
         getEventLog(): Array<{ action: string; timestamp: number }>;
       } | null;

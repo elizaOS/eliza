@@ -99,7 +99,7 @@ export const worldKnowledgeProvider: Provider = {
     _state: State,
   ): Promise<ProviderResult> {
     try {
-      const service = runtime.getService("rs_2004scape") as unknown as {
+      const service = runtime.getService("rs_2004scape") as {
         getBotState(): BotState | null;
       } | null;
       const state = service?.getBotState?.();

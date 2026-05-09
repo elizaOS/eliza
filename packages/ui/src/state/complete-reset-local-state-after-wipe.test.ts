@@ -7,7 +7,24 @@ import {
 
 const okOptions = {
   names: [],
-  styles: [{ id: "a", name: "A", avatarIndex: 0 }],
+  styles: [
+    {
+      id: "a",
+      name: "A",
+      avatarIndex: 0,
+      voicePresetId: "default",
+      greetingAnimation: "idle",
+      catchphrase: "",
+      hint: "",
+      bio: [],
+      system: "",
+      adjectives: [],
+      style: { all: [], chat: [], post: [] },
+      topics: [],
+      postExamples: [],
+      messageExamples: [],
+    },
+  ],
   providers: [],
   cloudProviders: [],
   models: {},

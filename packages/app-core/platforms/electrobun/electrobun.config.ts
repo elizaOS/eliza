@@ -5,6 +5,16 @@ import type { ElectrobunConfig } from "electrobun/bun";
 
 const electrobunDir = path.dirname(fileURLToPath(import.meta.url));
 
+function chromiumFlags(
+	flags: Record<string, string | boolean>,
+): Record<string, string | true> {
+	return Object.fromEntries(
+		Object.entries(flags)
+			.filter(([, value]) => value !== false)
+			.map(([key, value]) => [key, value === true ? true : value]),
+	) as Record<string, string | true>;
+}
+
 export function hasElectrobunWorkspaceRoot(candidateDir: string): boolean {
 	return (
 		fs.existsSync(path.join(candidateDir, "bun.lock")) &&
@@ -315,7 +325,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
 				bundleWGPU: true,
 				defaultRenderer: "cef",
 				icon: "assets/appIcon.png",
-				chromiumFlags: ({
+				chromiumFlags: chromiumFlags({
 					"enable-unsafe-webgpu": true,
 					"enable-features": "Vulkan",
 					"disable-gpu": false,
@@ -327,26 +337,20 @@ export function createElectrobunConfig(): ElectrobunConfig {
 					"disable-accelerated-video-decode": false,
 					"disable-accelerated-video-encode": false,
 					"disable-gpu-memory-buffer-video-frames": false,
-				} satisfies Record<string, string | boolean>) as Record<
-					string,
-					string | true
-				>,
+					}),
 			},
 			win: {
 				bundleCEF: true,
 				bundleWGPU: true,
 				defaultRenderer: "cef",
 				icon: "assets/appIcon.ico",
-				chromiumFlags: ({
+				chromiumFlags: chromiumFlags({
 					"enable-unsafe-webgpu": true,
 					"enable-features": "Vulkan",
 					"in-process-gpu": true,
 					"disable-gpu-sandbox": true,
 					"no-sandbox": true,
-				} satisfies Record<string, string | boolean>) as Record<
-					string,
-					string | true
-				>,
+				}),
 			},
 		},
 		...(releaseUrl

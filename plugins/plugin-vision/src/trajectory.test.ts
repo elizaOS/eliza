@@ -14,7 +14,7 @@ function createRuntime() {
       llmCalls.push(call);
     }),
   };
-  const runtime = {
+  const runtime = Object.assign(Object.create(null) as IAgentRuntime, {
     agentId: "agent-vision",
     character: {},
     getSetting: vi.fn(() => undefined),
@@ -24,7 +24,7 @@ function createRuntime() {
     getServicesByType: vi.fn((type: string) =>
       type === "trajectories" ? [trajectoryLogger] : [],
     ),
-  } as unknown as IAgentRuntime;
+  });
 
   return { runtime, trajectoryLogger, llmCalls };
 }

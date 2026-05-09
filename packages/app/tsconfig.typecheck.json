@@ -54,8 +54,8 @@
       "@elizaos/plugin-sql/*": [
         "../../plugins/plugin-sql/typescript/dist/*"
       ],
-      "@elizaos/agent": ["../agent/dist/packages/agent/src/index.d.ts"],
-      "@elizaos/agent/*": ["../agent/dist/packages/agent/src/*"],
+      "@elizaos/agent": ["./src/types/typecheck-package-shims.d.ts"],
+      "@elizaos/agent/*": ["./src/types/typecheck-package-shims.d.ts"],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"

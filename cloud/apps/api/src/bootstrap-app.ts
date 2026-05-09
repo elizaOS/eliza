@@ -53,15 +53,27 @@ export function createApp(): Hono<AppEnv> {
     return c.redirect(url.toString(), 308);
   });
 
-  app.get("/", (c) =>
-    c.json({
+  app.get("/", (c) => {
+    const hostname = new URL(c.req.url).hostname;
+    if (hostname === "x402.elizaos.ai") {
+      return c.json({
+        name: "eliza-x402",
+        description: "Eliza Cloud x402 facilitator",
+        discovery: "/api/v1/x402",
+        verify: "/api/v1/x402/verify",
+        settle: "/api/v1/x402/settle",
+        topup: ["/api/v1/topup/10", "/api/v1/topup/50", "/api/v1/topup/100"],
+      });
+    }
+
+    return c.json({
       name: "eliza-cloud-api",
       description: "Eliza Cloud API",
       docs: "https://elizacloud.ai/docs",
       health: "/api/health",
       openapi: "/api/openapi.json",
-    }),
-  );
+    });
+  });
 
   mountRoutes(app);
 

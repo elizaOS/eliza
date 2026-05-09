@@ -56,6 +56,8 @@ export type X402ScanNetwork =
   | "sei-testnet"
   | "polygon"
   | "polygon-amoy"
+  | "bsc"
+  | "bsc-testnet"
   | "peaq";
 
 /**
@@ -137,6 +139,8 @@ const VALID_NETWORKS: X402ScanNetwork[] = [
   "sei-testnet",
   "polygon",
   "polygon-amoy",
+  "bsc",
+  "bsc-testnet",
   "peaq",
 ];
 

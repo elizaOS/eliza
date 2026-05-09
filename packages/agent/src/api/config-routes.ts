@@ -113,6 +113,10 @@ interface ReloadDiff {
   requiresRestart: string[];
 }
 
+function asConfigRecord<T extends object>(value: T): T & Record<string, unknown> {
+  return value as T & Record<string, unknown>;
+}
+
 /**
  * Compute which top-level keys differ between the current in-memory config
  * and a freshly-loaded copy from disk, and bucket them into hot-reloadable
@@ -163,8 +167,8 @@ async function applyReloadedConfig(params: {
   const { state, next, runtime, blockedEnvKeys } = params;
 
   // Replace top-level keys in the live state.config with the loaded values.
-  const stateRecord = state as unknown as Record<string, unknown>;
-  const nextRecord = next as unknown as Record<string, unknown>;
+  const stateRecord = asConfigRecord(state);
+  const nextRecord = asConfigRecord(next);
   for (const key of Object.keys(stateRecord)) {
     if (!(key in nextRecord)) {
       delete stateRecord[key];
@@ -201,10 +205,10 @@ async function applyReloadedConfig(params: {
 
   // Re-derive character fields from the freshly-loaded config and apply
   // them to the live runtime. This propagates renames, system prompt
-  // edits, bio/style updates, and topic/adjective changes.
-  if (runtime) {
-    const rebuilt = buildCharacterFromConfig(next);
-    const character = runtime.character as unknown as Record<string, unknown>;
+	// edits, bio/style updates, and topic/adjective changes.
+	if (runtime) {
+		const rebuilt = buildCharacterFromConfig(next);
+		const character = asConfigRecord(runtime.character);
     const HOT_CHARACTER_FIELDS = [
       "name",
       "username",
@@ -216,12 +220,12 @@ async function applyReloadedConfig(params: {
       "messageExamples",
       "postExamples",
       "settings",
-    ] as const;
-    const rebuiltRecord = rebuilt as unknown as Record<string, unknown>;
+		] as const;
+		const rebuiltRecord = asConfigRecord(rebuilt);
     for (const field of HOT_CHARACTER_FIELDS) {
       const value = rebuiltRecord[field];
       if (value !== undefined) {
-        character[field] = value;
+        character[field as string] = value;
       }
     }
   }
@@ -277,8 +281,8 @@ export async function handleConfigRoutes(
       return true;
     }
 
-    const currentRecord = config as unknown as Record<string, unknown>;
-    const nextRecord = next as unknown as Record<string, unknown>;
+    const currentRecord = asConfigRecord(config);
+    const nextRecord = asConfigRecord(next);
     const diff = computeReloadDiff(currentRecord, nextRecord);
 
     await applyReloadedConfig({
@@ -313,7 +317,7 @@ export async function handleConfigRoutes(
     }
     json(
       res,
-      redactConfigSecrets(config as unknown as Record<string, unknown>),
+      redactConfigSecrets(asConfigRecord(config)),
     );
     return true;
   }
@@ -598,7 +602,7 @@ export async function handleConfigRoutes(
     }
     json(
       res,
-      redactConfigSecrets(config as unknown as Record<string, unknown>),
+      redactConfigSecrets(asConfigRecord(config)),
     );
     return true;
   }
