@@ -40,6 +40,19 @@ env:
   NODE_VERSION: "23"
   NODE_NO_WARNINGS: "1"
   NODE_OPTIONS: "--max-old-space-size=4096"
+  # Live-test keys. Suites gated via describeLive() / requiredEnv skip cleanly
+  # with a yellow warning when a key is missing — the workflow stays green.
+  # Cerebras is the universal default LLM (gpt-oss-120b); the OPENAI_* aliases
+  # are auto-applied by scripts/run-all-tests.mjs when CEREBRAS_API_KEY is set.
+  CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+  XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+  NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+  ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
 
 jobs:
   server-tests:
