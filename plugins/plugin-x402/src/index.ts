@@ -15,7 +15,7 @@
  *
  * @example
  * ```typescript
- * import { applyPaymentProtection } from './middleware/x402';
+ * import { applyPaymentProtection } from '@elizaos/plugin-x402';
  *
  * // In your plugin:
  * export const routes: Route[] = [
@@ -71,6 +71,11 @@ export {
   X402_EVENT_PAYMENT_REQUIRED,
   X402_EVENT_PAYMENT_VERIFIED,
 } from "./x402-resolve.js";
+export {
+  type StartupValidationResult,
+  validateAndThrowIfInvalid,
+  validateX402Startup,
+} from "./startup-validator.js";
 
 export {
   type Accepts,
@@ -82,3 +87,27 @@ export {
   type X402Response,
   type X402ScanNetwork,
 } from "./x402-types.js";
+
+import type { Plugin } from "@elizaos/core";
+
+/**
+ * elizaOS plugin descriptor for x402.
+ *
+ * The middleware exported above is the actual integration surface — plugins
+ * declare `x402` on their routes and the agent's HTTP dispatch wraps them via
+ * `applyPaymentProtection` / `createPaymentAwareHandler`. This Plugin object
+ * exists so the runtime's plugin loader can register `@elizaos/plugin-x402` as
+ * a first-class auto-loadable plugin (config: `x402.enabled`).
+ */
+const x402Plugin: Plugin = {
+  name: "x402",
+  description:
+    "x402 micropayment middleware for elizaOS plugin HTTP routes (HTTP 402 / payment-required).",
+  actions: [],
+  providers: [],
+  evaluators: [],
+  services: [],
+};
+
+export default x402Plugin;
+export { x402Plugin };
