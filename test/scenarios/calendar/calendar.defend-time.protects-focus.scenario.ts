@@ -44,7 +44,7 @@ export default scenario({
       name: "request-during-focus",
       text: "Add a 30-minute call with Sam tomorrow at 10:30am even though that's during my focus block.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_CALENDAR", "OWNER_CALENDAR"],
+        acceptedActions: ["CALENDAR", "CALENDAR"],
         description: "focus-block conflict handling",
       }),
       responseIncludesAny: [
@@ -59,13 +59,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["OWNER_CALENDAR", "OWNER_CALENDAR"],
+      actionName: ["CALENDAR", "CALENDAR"],
     },
     {
       type: "custom",
       name: "focus-block-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_CALENDAR", "OWNER_CALENDAR"],
+        acceptedActions: ["CALENDAR", "CALENDAR"],
         description: "focus-block conflict handling",
         includesAny: ["focus", "Sam", "10:30"],
       }),

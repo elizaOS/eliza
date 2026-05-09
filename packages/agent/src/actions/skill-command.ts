@@ -14,12 +14,12 @@ import type {
   Action,
   ActionResult,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasRoleAccess } from "../security/access.js";
 import type { AgentSkillsServiceLike } from "../types/agent-skills.js";
 
 /** Set of registered skill slugs — populated by registerSkillCommands(). */
@@ -58,8 +58,23 @@ function extractSkillSlug(text: string): { slug: string; args: string } | null {
   return null;
 }
 
+function skillCommandResult(
+  success: boolean,
+  text: string,
+  data: Record<string, unknown>,
+): ActionResult {
+  return {
+    success,
+    text,
+    values: { success, actionName: "SKILL_COMMAND" },
+    data: { actionName: "SKILL_COMMAND", ...data },
+  };
+}
+
 export const skillCommandAction: Action = {
   name: "SKILL_COMMAND",
+  contexts: ["admin", "agent_internal", "automation"],
+  roleGate: { minRole: "ADMIN" },
   similes: ["/skill"],
   description:
     "Dispatch a slash command to an installed skill. Loads the skill's instructions and responds with contextual guidance.",
@@ -67,40 +82,39 @@ export const skillCommandAction: Action = {
     "dispatch slash command install skill load skill instruction respond w/ contextual guidance",
 
   validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
+    _runtime: IAgentRuntime,
+    _message: Memory,
   ): Promise<boolean> => {
-    if (!(await hasRoleAccess(runtime, message, "ADMIN"))) {
-      return false;
-    }
-
-    const text = (message.content as Record<string, unknown>)?.text;
-    if (typeof text !== "string") return false;
-    return extractSkillSlug(text) !== null;
+    return registeredSkillSlugs.size > 0;
   },
 
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: unknown,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
-  ): Promise<ActionResult | undefined> => {
-    if (!(await hasRoleAccess(runtime, message, "ADMIN"))) {
-      const text =
-        "Permission denied: slash skill commands require owner or admin access.";
-      await callback?.({ text });
-      return { success: false, text };
-    }
-
+  ): Promise<ActionResult> => {
+    const params = _options?.parameters as
+      | { slug?: string; args?: string }
+      | undefined;
+    const nativeSlug =
+      typeof params?.slug === "string" ? params.slug.trim().toLowerCase() : "";
+    const nativeArgs =
+      typeof params?.args === "string" ? params.args.trim() : "";
     const text =
       ((message.content as Record<string, unknown>)?.text as string) ?? "";
-    const match = extractSkillSlug(text);
+    const match =
+      nativeSlug && registeredSkillSlugs.has(nativeSlug)
+        ? { slug: nativeSlug, args: nativeArgs }
+        : extractSkillSlug(text);
     if (!match) {
-      await callback?.({
-        text: "Could not identify a skill command. Use /help to see available commands.",
+      const text =
+        "Could not identify a skill command. Use /help to see available commands.";
+      await callback?.({ text });
+      return skillCommandResult(false, text, {
+        reason: "unknown_skill_command",
       });
-      return;
     }
 
     const service = runtime.getService(
@@ -108,18 +122,23 @@ export const skillCommandAction: Action = {
     ) as unknown as AgentSkillsServiceLike | null;
 
     if (!service) {
-      await callback?.({
-        text: "Skills service is not available. The agent is still starting up.",
+      const text =
+        "Skills service is not available. The agent is still starting up.";
+      await callback?.({ text });
+      return skillCommandResult(false, text, {
+        slug: match.slug,
+        reason: "skills_service_unavailable",
       });
-      return;
     }
 
     const instructions = service.getSkillInstructions(match.slug);
     if (!instructions?.body) {
-      await callback?.({
-        text: `Skill "${match.slug}" is registered but has no instructions available.`,
+      const text = `Skill "${match.slug}" is registered but has no instructions available.`;
+      await callback?.({ text });
+      return skillCommandResult(false, text, {
+        slug: match.slug,
+        reason: "skill_instructions_unavailable",
       });
-      return;
     }
 
     // Cap instructions to keep context reasonable
@@ -156,9 +175,28 @@ export const skillCommandAction: Action = {
       text: response,
       actions: ["SKILL_COMMAND"],
     });
+    return skillCommandResult(true, response, {
+      slug: match.slug,
+      args: match.args,
+      skillName,
+      bodyTruncated: instructions.body.length > maxChars,
+    });
   },
 
-  parameters: [],
+  parameters: [
+    {
+      name: "slug",
+      description: "Registered skill slug to dispatch.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "args",
+      description: "Optional arguments or request text for the skill.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+  ],
   examples: [
     [
       {
@@ -168,7 +206,7 @@ export const skillCommandAction: Action = {
       {
         name: "{{agent}}",
         content: {
-          text: "## Skill: GitHub\n\n[github skill instructions]\n\n---\n\n**User request:** create an issue about the login bug",
+          text: "## Skill: GitHub\n\nRelevant GitHub skill instructions.\n\n---\n\n**User request:** create an issue about the login bug",
           actions: ["SKILL_COMMAND"],
         },
       },
@@ -181,7 +219,7 @@ export const skillCommandAction: Action = {
       {
         name: "{{agent}}",
         content: {
-          text: "## Skill: Weather\n\n[weather skill instructions]\n\n---\n\n**User request:** tokyo",
+          text: "## Skill: Weather\n\nRelevant weather skill instructions.\n\n---\n\n**User request:** tokyo",
           actions: ["SKILL_COMMAND"],
         },
       },

@@ -8,11 +8,11 @@
  * (`gateway-webhook`, `gateway-discord`) do not currently depend on the
  * Next.js `lib/` module graph and must stay lightweight.
  *
- * All arithmetic is done with integer cents to avoid float drift when many
- * small charges are aggregated for a month-to-date breakdown. Callers that
+ * Dollar arithmetic is rounded once at the billing boundary. Callers that
  * already work in cents should use {@link applyMarkupCents}. Callers that
- * start from a dollar amount can use {@link applyMarkup} which handles the
- * cents conversion once, at the boundary.
+ * start from a dollar amount can use {@link applyMarkup}; the default precision
+ * is whole cents, with an explicit precision escape hatch for services that
+ * intentionally bill smaller USD fractions.
  */
 
 /**
@@ -22,6 +22,18 @@
  * cost * 1.20.
  */
 export const DEFAULT_MARKUP_RATE = 0.2;
+
+/**
+ * Platform markup multiplier applied to provider costs.
+ *
+ * 1.2 means the user is billed provider cost plus 20%.
+ */
+export const PLATFORM_MARKUP_MULTIPLIER = 1 + DEFAULT_MARKUP_RATE;
+
+/**
+ * Default USD precision for persisted billing amounts: whole cents.
+ */
+export const DEFAULT_USD_ROUNDING_PRECISION = 2;
 
 export interface MarkupBreakdown {
   /** Raw provider cost in USD. */
@@ -59,25 +71,51 @@ function assertValidCost(cost: number, fieldName: string): void {
   }
 }
 
+function assertValidPrecision(precision: number): void {
+  if (!Number.isInteger(precision)) {
+    throw new RangeError(`precision must be an integer, received ${precision}`);
+  }
+  if (precision < 0 || precision > 12) {
+    throw new RangeError(`precision must be between 0 and 12, received ${precision}`);
+  }
+}
+
+/**
+ * Round a USD-denominated value to a fixed decimal precision.
+ */
+export function roundUsd(
+  value: number,
+  precision: number = DEFAULT_USD_ROUNDING_PRECISION,
+): number {
+  if (!Number.isFinite(value)) {
+    throw new RangeError(`value must be a finite number, received ${value}`);
+  }
+  assertValidPrecision(precision);
+
+  const factor = 10 ** precision;
+  return Math.round(value * factor) / factor;
+}
+
 /**
  * Apply the platform markup to a dollar-denominated cost and return the
- * full breakdown rounded to whole cents (the unit we bill in).
+ * full breakdown rounded to the requested USD precision.
  */
 export function applyMarkup(
   cost: number,
   markupRate: number = DEFAULT_MARKUP_RATE,
+  precision: number = DEFAULT_USD_ROUNDING_PRECISION,
 ): MarkupBreakdown {
   assertValidCost(cost, "cost");
   assertValidRate(markupRate);
+  assertValidPrecision(precision);
 
-  const rawCents = Math.round(cost * 100);
-  const markedUpCents = applyMarkupCents(rawCents, markupRate);
-  const markupCents = markedUpCents - rawCents;
+  const rawCost = roundUsd(cost, precision);
+  const billedCost = roundUsd(rawCost * (1 + markupRate), precision);
 
   return {
-    rawCost: rawCents / 100,
-    markup: markupCents / 100,
-    billedCost: markedUpCents / 100,
+    rawCost,
+    markup: roundUsd(billedCost - rawCost, precision),
+    billedCost,
     markupRate,
   };
 }
@@ -100,7 +138,8 @@ export function applyMarkupCents(
   return Math.round(rawCents * (1 + markupRate));
 }
 
-const TWILIO_SMS_SEGMENT_CHAR_LIMIT = 160;
+export const TWILIO_SMS_SEGMENT_CHAR_LIMIT = 160;
+export const DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD = 0.0075;
 
 /**
  * Estimate the number of Twilio SMS segments for a body.
@@ -112,6 +151,31 @@ const TWILIO_SMS_SEGMENT_CHAR_LIMIT = 160;
 export function estimateTwilioSmsSegments(body: string): number {
   if (body.length === 0) return 1;
   return Math.ceil(body.length / TWILIO_SMS_SEGMENT_CHAR_LIMIT);
+}
+
+/**
+ * Resolve the Twilio SMS segment unit cost from configuration.
+ */
+export function resolveTwilioSmsCostPerSegment(
+  rawCostPerSegment: string | number | null | undefined,
+  fallbackCostPerSegment: number = DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD,
+): number {
+  assertValidCost(fallbackCostPerSegment, "fallbackCostPerSegment");
+
+  if (rawCostPerSegment === null || rawCostPerSegment === undefined || rawCostPerSegment === "") {
+    return fallbackCostPerSegment;
+  }
+
+  const parsed =
+    typeof rawCostPerSegment === "number"
+      ? rawCostPerSegment
+      : Number.parseFloat(rawCostPerSegment);
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallbackCostPerSegment;
+  }
+
+  return parsed;
 }
 
 /**

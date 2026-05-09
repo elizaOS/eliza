@@ -146,6 +146,10 @@ export const socialAlphaProvider: Provider = {
 		"provide trust score, win rate, performance ranking token recommender (shill/fud tracker) show whether person past call make lost money",
 
 	dynamic: true,
+	contexts: ["finance", "crypto", "social_posting"],
+	contextGate: { anyOf: ["finance", "crypto", "social_posting"] },
+	cacheStable: false,
+	cacheScope: "turn",
 	relevanceKeywords: [
 		"socialalpha",
 		"socialalphaprovider",

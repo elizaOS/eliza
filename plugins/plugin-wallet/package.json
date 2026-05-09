@@ -26,32 +26,43 @@
       }
     },
     "./plugin": {
-      "types": "./src/routes/plugin.ts",
-      "import": "./src/routes/plugin.ts",
-      "default": "./src/routes/plugin.ts"
+      "types": "./dist/routes/plugin.d.ts",
+      "import": "./dist/routes/plugin.js",
+      "default": "./dist/routes/plugin.js"
     },
     "./register-routes": {
-      "types": "./src/register-routes.ts",
-      "import": "./src/register-routes.ts",
-      "default": "./src/register-routes.ts"
+      "types": "./dist/register-routes.d.ts",
+      "import": "./dist/register-routes.js",
+      "default": "./dist/register-routes.js"
     },
     "./routes/*": {
-      "types": "./src/routes/*.ts",
-      "import": "./src/routes/*.ts",
-      "default": "./src/routes/*.ts"
+      "types": "./dist/routes/*.d.ts",
+      "import": "./dist/routes/*.js",
+      "default": "./dist/routes/*.js"
     },
     "./lib/*": {
-      "types": "./src/lib/*.ts",
-      "import": "./src/lib/*.ts",
-      "default": "./src/lib/*.ts"
+      "types": "./dist/lib/*.d.ts",
+      "import": "./dist/lib/*.js",
+      "default": "./dist/lib/*.js"
     },
     "./package.json": "./package.json"
   },
   "files": [
     "dist",
     "src",
+    "auto-enable.ts",
     "SDK-LICENSE"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "wallet",
+        "evm",
+        "solana"
+      ]
+    }
+  },
   "scripts": {
     "build": "tsdown --no-config src/index.ts --format esm --dts --clean -d dist && tsdown --no-config src/sdk/index.ts --format esm --dts --no-clean -d dist/sdk && mv dist/index-*.d.ts dist/index.d.ts 2>/dev/null || true && mv dist/sdk/index-*.d.ts dist/sdk/index.d.ts 2>/dev/null || true",
     "check": "tsc --noEmit",
@@ -64,7 +75,7 @@
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
     "form-data": "4.0.5",
     "whatwg-url": "^16.0.0"
   },
@@ -75,8 +86,8 @@
     "@lifi/sdk": "^3.7.9",
     "@lifi/types": "^17.18.0",
     "@orca-so/whirlpools": "^2.2.0",
-    "@orca-so/whirlpools-client": "^2.0.0",
-    "@orca-so/whirlpools-core": "^2.0.0",
+    "@orca-so/whirlpools-client": "^6.2.1",
+    "@orca-so/whirlpools-core": "^3.1.0",
     "@orca-so/whirlpools-sdk": "^0.20.0",
     "@solana/spl-token": "0.4.14",
     "@solana/spl-token-metadata": "^0.1.6",
@@ -93,11 +104,10 @@
     "access": "public"
   },
   "devDependencies": {
-    "@elizaos/app-steward": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@types/node": "^24.0.0",
-    "tsdown": "^0.21.0",
-    "typescript": "^6.0.0",
+    "tsdown": "^0.21.10",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.18"
   },
   "agentConfig": {

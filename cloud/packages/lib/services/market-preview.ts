@@ -4,7 +4,7 @@ import type {
   WalletMarketOverviewSource,
   WalletMarketPrediction,
   WalletMarketPriceSnapshot,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";
 import { getCookieValueFromRequest } from "@/lib/http/cookie-header";
 import { isValidAddress, isValidChain } from "@/lib/services/proxy/services/address-validation";
 import {

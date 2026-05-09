@@ -7,11 +7,8 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-import {
-  parseToonKeyValue,
-  type IAgentRuntime,
-  ModelType,
-} from "@elizaos/core";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import { parseJsonObjectResponse } from "./json-model-output.js";
 import type {
   SwarmCoordinatorContext,
   TaskContext,
@@ -109,9 +106,7 @@ function normalizeValidationResponse(
 }
 
 function parseValidationResponse(raw: string): ValidationResponse | null {
-  return normalizeValidationResponse(
-    parseToonKeyValue<Record<string, unknown>>(raw),
-  );
+  return normalizeValidationResponse(parseJsonObjectResponse(raw));
 }
 
 function getValidationRootDir(): string {
@@ -643,13 +638,17 @@ function buildValidationPrompt(
 
   return [
     "You are validating whether an orchestrated task is actually finished.",
-    "Return TOON only with this shape:",
-    "verdict: pass",
-    "summary: short summary",
-    "followUpPrompt: only if verdict=revise",
-    "checklist[2]:",
-    "  optional evidence note",
-    "  optional evidence note",
+    "Return JSON only with this shape:",
+    JSON.stringify(
+      {
+        verdict: "pass",
+        summary: "concise user-facing result",
+        followUpPrompt: "only if verdict=revise",
+        checklist: ["optional evidence note", "optional evidence note"],
+      },
+      null,
+      2,
+    ),
     "",
     `Task title: ${task.label}`,
     `Original request: ${task.originalTask}`,
@@ -683,6 +682,7 @@ function buildValidationPrompt(
     "",
     "Rules:",
     "- Pass only if the task appears complete and the available evidence supports that claim.",
+    "- When passing, write summary as the final result that can be shown to the requester. Use concrete facts from the transcript, artifacts, workspace evidence, screenshots, and trajectories. Preserve exact URLs and source links from the evidence when they are part of the result. Include important limitations or uncertainty. Do not describe the validation process.",
     "- Revise if the agent should keep working. In that case, provide a direct follow-up prompt.",
     "- Escalate if the task cannot be validated from available evidence and needs human review.",
     "- For information / question-answering / research tasks (no repo, no files expected), the completion summary IS the deliverable. Pass if the summary directly answers the original request with concrete content. Empty workspace evidence is expected for these and is not a failure signal.",

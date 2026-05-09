@@ -11,7 +11,7 @@ export type { NewOrgRateLimitOverride, OrgRateLimitOverride };
 /**
  * Repository for per-organization rate limit overrides.
  *
- * Read operations → dbRead (read replica)
+ * Read operations → dbRead (read-intent connection)
  * Write operations → dbWrite (primary)
  */
 export class OrgRateLimitOverridesRepository {

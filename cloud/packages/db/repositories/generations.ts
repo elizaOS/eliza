@@ -183,12 +183,12 @@ async function prepareGenerationPayload(
 /**
  * Repository for generation (image/video) database operations.
  *
- * Read operations → dbRead (read replica)
- * Write operations → dbWrite (NA primary)
+ * Read operations → dbRead (read-intent connection)
+ * Write operations → dbWrite (primary)
  */
 export class GenerationsRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -431,7 +431,7 @@ export class GenerationsRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**

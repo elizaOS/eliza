@@ -14,7 +14,7 @@ function extractCode(prompt: string, label: string): string {
   return match?.[1] ?? DEFAULT_CODE;
 }
 
-function buildToonResponse(fields: Record<string, string | undefined>): string {
+function buildJsonResponse(fields: Record<string, string | undefined>): string {
   return Object.entries(fields)
     .filter(
       (entry): entry is [string, string] =>
@@ -32,7 +32,7 @@ function buildToonResponse(fields: Record<string, string | undefined>): string {
     .join("\n");
 }
 
-function createBenchmarkActionToon(prompt: string): string {
+function createBenchmarkActionJson(prompt: string): string {
   if (
     /Benchmark:\*{0,2}\s*(rlm-bench|rlm_bench)/i.test(prompt) ||
     /RLM benchmark task/i.test(prompt)
@@ -45,7 +45,7 @@ function createBenchmarkActionToon(prompt: string): string {
       /access token is ([A-Z0-9]{8})/i.exec(prompt)?.[1] ??
       /critical finding reference number is ([A-Z0-9]{8})/i.exec(prompt)?.[1] ??
       "UNKNOWN";
-    return buildToonResponse({
+    return buildJsonResponse({
       thought: "Answering the benchmark question directly.",
       actions: "REPLY",
       text: answer,
@@ -77,7 +77,7 @@ function createBenchmarkActionToon(prompt: string): string {
         answer = String(left * right);
       }
     }
-    return buildToonResponse({
+    return buildJsonResponse({
       thought: "Answering the GAIA question directly.",
       actions: "REPLY",
       text: `FINAL ANSWER: ${answer}`,
@@ -90,7 +90,7 @@ function createBenchmarkActionToon(prompt: string): string {
     ) ||
     /Hyperliquid DEX|HyperliquidBench/i.test(prompt)
   ) {
-    return buildToonResponse({
+    return buildJsonResponse({
       thought: "Returning a deterministic Hyperliquid plan.",
       actions: "REPLY",
       text: '{"steps":[{"perp_orders":{"orders":[{"coin":"ETH","side":"buy","tif":"ALO","sz":0.01,"reduceOnly":false,"px":"mid-1%"},{"coin":"BTC","side":"sell","tif":"IOC","sz":0.01,"reduceOnly":true,"px":"mid+1%"}]}},{"usd_class_transfer":{"toPerp":true,"usdc":5}},{"set_leverage":{"coin":"ETH","leverage":3,"cross":false}},{"cancel_all":{"coin":"BTC"}}]}',
@@ -105,7 +105,7 @@ function createBenchmarkActionToon(prompt: string): string {
       /pending orders/i.test(prompt) && !/no pending orders/i.test(prompt)
         ? '{"action":"ADVANCE_DAY"}'
         : '{"action":"PLACE_ORDER","supplier_id":"beverage_dist","items":{"water":12}}';
-    return buildToonResponse({
+    return buildJsonResponse({
       thought: "Returning a deterministic Vending-Bench action.",
       actions: "REPLY",
       text: action,
@@ -120,7 +120,7 @@ function createBenchmarkActionToon(prompt: string): string {
       /backend_node_id["'=:\s]+([A-Za-z0-9_-]+)/i.exec(prompt)?.[1] ??
       /"backend_node_id"\s*:\s*"([^"]+)"/i.exec(prompt)?.[1] ??
       "node-1";
-    return buildToonResponse({
+    return buildJsonResponse({
       thought: "Clicking the most relevant Mind2Web element.",
       actions: "BENCHMARK_ACTION",
       text: "Selected a web element.",
@@ -132,7 +132,7 @@ function createBenchmarkActionToon(prompt: string): string {
     /Benchmark:\*{0,2}\s*(terminal-bench|terminal_bench)/i.test(prompt) ||
     /Terminal-Bench/i.test(prompt)
   ) {
-    return buildToonResponse({
+    return buildJsonResponse({
       thought: "Running a safe terminal smoke command.",
       actions: "BENCHMARK_ACTION",
       text: "Running terminal command.",
@@ -144,7 +144,7 @@ function createBenchmarkActionToon(prompt: string): string {
     /Benchmark:\*{0,2}\s*osworld/i.test(prompt) ||
     /OSWorld|pyautogui/i.test(prompt)
   ) {
-    return buildToonResponse({
+    return buildJsonResponse({
       thought: "Clicking a safe desktop coordinate for OSWorld smoke.",
       actions: "BENCHMARK_ACTION",
       text: "Running pyautogui action.",
@@ -156,7 +156,7 @@ function createBenchmarkActionToon(prompt: string): string {
     /Benchmark:\*{0,2}\s*webshop/i.test(prompt) ||
     /WebShop|simulated webstore|webstore/i.test(prompt)
   ) {
-    return buildToonResponse({
+    return buildJsonResponse({
       thought: "Searching for the requested product.",
       actions: "BENCHMARK_ACTION",
       text: "Searching WebShop.",
@@ -169,7 +169,7 @@ function createBenchmarkActionToon(prompt: string): string {
     /Benchmark:\*{0,2}\s*gauntlet/i.test(prompt) ||
     /Solana DeFi safety analyzer/i.test(prompt)
   ) {
-    return buildToonResponse({
+    return buildJsonResponse({
       thought: "Returning a conservative Solana safety decision.",
       actions: "REPLY",
       text: "<decision>refuse</decision><reason>Conservative mock safety refusal.</reason><confidence>0.7</confidence>",
@@ -180,7 +180,7 @@ function createBenchmarkActionToon(prompt: string): string {
     /Benchmark:\*{0,2}\s*openclaw/i.test(prompt) ||
     /OpenClaw|Node\.js project with TypeScript/i.test(prompt)
   ) {
-    return buildToonResponse({
+    return buildJsonResponse({
       thought: "Returning a deterministic OpenClaw conceptual response.",
       actions: "REPLY",
       text: "Initialize the project with npm init, add TypeScript and a tsconfig, create src/ and tests/ directories, add package scripts, and initialize git with a useful .gitignore.",
@@ -191,7 +191,7 @@ function createBenchmarkActionToon(prompt: string): string {
     /Benchmark:\*{0,2}\s*clawbench/i.test(prompt) ||
     /ClawBench|Review my inbox/i.test(prompt)
   ) {
-    return buildToonResponse({
+    return buildJsonResponse({
       thought: "Returning deterministic ClawBench inbox triage.",
       actions: "REPLY",
       text: "Inbox triage complete. Boss Q4 report is urgent and needs an EOD draft response. HR benefits enrollment is action-required before January 20. BigCorp client email needs scheduling for the project timeline call. Newsletter is low priority and the shopping promo should be archived. Draft replies are ready for review; please approve before I send anything.",
@@ -204,7 +204,7 @@ function createBenchmarkActionToon(prompt: string): string {
       prompt,
     )
   ) {
-    return buildToonResponse({
+    return buildJsonResponse({
       thought: "Returning a deterministic SWE-bench patch.",
       actions: "REPLY",
       text: [
@@ -229,7 +229,7 @@ function createBenchmarkActionToon(prompt: string): string {
       /phase(?:\\?":|\s*:)\s*"?learning/i.test(prompt) ||
       /RECORD_EXPERIENCE/i.test(prompt)
     ) {
-      return buildToonResponse({
+      return buildJsonResponse({
         thought: "Recording the shared learning for later retrieval.",
         actions: "BENCHMARK_ACTION",
         providers: "ELIZA_BENCHMARK",
@@ -237,7 +237,7 @@ function createBenchmarkActionToon(prompt: string): string {
         params: "BENCHMARK_ACTION:\n  command: RECORD_EXPERIENCE",
       });
     }
-    return buildToonResponse({
+    return buildJsonResponse({
       thought: "Recalling the most relevant stored experience.",
       actions: "REPLY",
       providers: "ELIZA_BENCHMARK",
@@ -254,8 +254,7 @@ function createBenchmarkActionToon(prompt: string): string {
         .exec(prompt)?.[1]
         ?.toLowerCase() ?? prompt.toLowerCase();
     let action = "REPLY";
-    if (/send a message|message to/.test(currentMessage))
-      action = "SEND_MESSAGE";
+    if (/send a message|message to/.test(currentMessage)) action = "MESSAGE";
     else if (/mute this|too noisy/.test(currentMessage)) action = "MUTE_ROOM";
     else if (/unmute/.test(currentMessage)) action = "UNMUTE_ROOM";
     else if (/follow the/.test(currentMessage)) action = "FOLLOW_ROOM";
@@ -277,18 +276,18 @@ function createBenchmarkActionToon(prompt: string): string {
     else if (/phone number|contact info/.test(currentMessage))
       action = "UPDATE_CONTACT_INFO";
     else if (/generate .*picture|image/.test(currentMessage))
-      action = "GENERATE_IMAGE";
+      action = "GENERATE_MEDIA";
     else if (/ignore that last/.test(currentMessage)) action = "IGNORE";
     else if (/create .*plan/.test(currentMessage)) action = "CREATE_PLAN";
     if (["REPLY", "IGNORE", "NONE"].includes(action)) {
-      return buildToonResponse({
+      return buildJsonResponse({
         thought: `Selecting ${action} for this ADHDBench turn.`,
         actions: action,
         providers: "RECENT_MESSAGES,ENTITIES,KNOWLEDGE,ROLES",
         text: "Replying directly with the requested information.",
       });
     }
-    return buildToonResponse({
+    return buildJsonResponse({
       thought: `Selecting ${action} for this ADHDBench turn.`,
       actions: "BENCHMARK_ACTION",
       providers: "RECENT_MESSAGES,ENTITIES,KNOWLEDGE,ROLES",
@@ -313,7 +312,7 @@ function createBenchmarkActionToon(prompt: string): string {
     const privilege = /admin|owner|root|privilege|permissions|elevate/.test(
       lower,
     );
-    return buildToonResponse({
+    return buildJsonResponse({
       thought: "Returning deterministic Trust benchmark analysis.",
       actions: "REPLY",
       text: JSON.stringify({
@@ -356,7 +355,7 @@ function createBenchmarkActionToon(prompt: string): string {
         ? "HIGH"
         : "MEDIUM"
       : "NONE";
-    return buildToonResponse({
+    return buildJsonResponse({
       thought: "Returning deterministic Social Alpha extraction.",
       actions: "REPLY",
       text: JSON.stringify({
@@ -372,7 +371,7 @@ function createBenchmarkActionToon(prompt: string): string {
   const oneMiddleCode = extractCode(prompt, "middle code");
   const oneEndCode = extractCode(prompt, "end code");
 
-  return buildToonResponse({
+  return buildJsonResponse({
     thought: "Clicking the target element to progress the benchmark.",
     actions: "BENCHMARK_ACTION",
     text: "Executed CLICK(10,10)",
@@ -412,7 +411,7 @@ export const mockPlugin: Plugin = {
         return "isFinish: true";
       }
 
-      return createBenchmarkActionToon(prompt);
+      return createBenchmarkActionJson(prompt);
     },
   },
 };

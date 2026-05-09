@@ -32,14 +32,14 @@ messages: [{ role: 'user', content: 'Hello!' }],
 
 console.log(response.choices[0].message.content);
 
-````
+```
   </Tabs.Tab>
   <Tabs.Tab>
 ```python
 from openai import OpenAI
 
 client = OpenAI(
-    api_key="ek_xxx",
+    api_key="eliza_xxx",
     base_url="https://elizacloud.ai/api/v1"
 )
 
@@ -49,7 +49,7 @@ response = client.chat.completions.create(
 )
 
 print(response.choices[0].message.content)
-````
+```
 
   </Tabs.Tab>
   <Tabs.Tab>
@@ -123,7 +123,7 @@ pip install openai
 from openai import OpenAI
 
 client = OpenAI(
-    api_key="ek_xxx",
+    api_key="eliza_xxx",
     base_url="https://elizacloud.ai/api/v1"
 )
 
@@ -193,22 +193,6 @@ console.log(data.video.url);
 
 ## Framework Integrations
 
-### LangChain
-
-```typescript
-import { ChatOpenAI } from "@langchain/openai";
-
-const model = new ChatOpenAI({
-  openAIApiKey: process.env.ELIZA_API_KEY,
-  configuration: {
-    baseURL: "https://elizacloud.ai/api/v1",
-  },
-  modelName: "gpt-4o",
-});
-
-const response = await model.invoke("Hello!");
-```
-
 ### Vercel AI SDK
 
 ```typescript
@@ -232,7 +216,7 @@ const { text } = await generateText({
 from llama_index.llms.openai import OpenAI
 
 llm = OpenAI(
-    api_key="ek_xxx",
+    api_key="eliza_xxx",
     api_base="https://elizacloud.ai/api/v1",
     model="gpt-4o"
 )

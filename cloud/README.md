@@ -29,28 +29,27 @@ Eliza Cloud V2 is a full-stack AI-as-a-Service platform that combines:
 - **elizaOS Integration**: Full-featured autonomous agent runtime with memory, rooms, and plugins
 - **SaaS Platform**: User management, API keys, credit-based billing, usage tracking
 - **Container Deployment**: Deploy elizaOS projects via `elizaos deploy` CLI to AWS ECS
-- **Enterprise Features**: Privy authentication with multi-provider support, Stripe billing, ECR image storage, health monitoring
+- **Enterprise Features**: Steward-backed session auth, API keys, Stripe billing, ECR image storage, health monitoring
 
 ## ✨ Key Features
 
 ### 🤖 AI Generation Studio
 
 - **Text & Chat**:
-  - Multi-model support (GPT-4, Claude, Gemini, etc.) via OpenRouter
+  - Multi-model support via OpenRouter and provider-specific fallbacks
   - Real-time streaming responses
   - Anthropic-compatible `/api/v1/messages` endpoint for Claude Code and Anthropic SDK clients
   - Conversation persistence with full history
   - Model selection and configuration
 
 - **Image Creation**:
-  - Google Gemini 2.5 Flash multimodal generation
+  - Image generation through the configured image model catalog
   - High-quality images (1024x1024)
   - Automatic R2 storage
   - Base64 preview + downloadable files
 
 - **Video Generation**:
-  - Multiple Fal.ai models: Veo3, Kling v2.1, MiniMax Hailuo
-  - Long-form video support (up to 5 minutes)
+  - Video generation through the configured Fal.ai model catalog
   - Automatic R2 upload
   - Fallback handling with error recovery
 
@@ -80,7 +79,7 @@ Eliza Cloud V2 is a full-stack AI-as-a-Service platform that combines:
   - Add funds via Stripe integration
   - Automatic deduction for AI operations
   - Usage tracking per organization/user
-  - Credit packs with volume pricing
+  - Credit purchases and usage-based billing
 
 - **API Key Management**:
   - Generate API keys for programmatic access
@@ -117,9 +116,9 @@ Eliza Cloud V2 is a full-stack AI-as-a-Service platform that combines:
 ### 🔐 Security & Infrastructure
 
 - **Enterprise Auth**:
-  - Privy authentication with email, wallet, and social logins
+  - Steward-backed login with session cookies
   - Organization and user management
-  - Webhook-based user synchronization
+  - User synchronization from Steward session identities
   - Role-based access (admin, member)
 
 - **Billing Integration**:
@@ -254,13 +253,13 @@ cloud/
 graph TD
     A[Client Request] --> B[Next.js Middleware]
     B --> C{Auth Required?}
-    C -->|Yes| D[Privy Auth]
+    C -->|Yes| D[Steward Session / API Key Auth]
     C -->|No| E[Route Handler]
     D -->|Authenticated| E
     D -->|Unauthenticated| F[Redirect to Login]
     E --> G{Request Type}
     G -->|AI Chat| H[OpenRouter]
-    G -->|Image/Video| I[Gemini/Fal.ai]
+    G -->|Image/Video| I[Configured Providers]
     G -->|Data| J[Drizzle ORM]
     G -->|Container| K[AWS ECS/ECR]
     G -->|elizaOS| L[AgentRuntime]
@@ -310,9 +309,10 @@ The platform uses a single database with integrated schemas:
 
 ### Authentication & Billing
 
-- **Privy Auth**: Web3-native authentication with multi-provider support (email, wallet, social logins)
-  - `@privy-io/react-auth` for frontend
-  - `@privy-io/server-auth` for backend token verification
+- **Steward Auth**: Session authentication with Steward-managed identities
+  - `steward-token` HTTP-only session cookie for browser flows
+  - `Authorization: Bearer <steward-jwt>` for handlers that accept session bearer tokens
+  - `Authorization: Bearer eliza_<secret>` or `X-API-Key: eliza_<secret>` for programmatic API access
 - **Stripe 19.1.0**: Payment processing and credit purchases
 - **@stripe/stripe-js 8.0.0**: Client-side Stripe integration
 
@@ -365,11 +365,10 @@ The platform uses a single database with integrated schemas:
    - Create a new project
    - Copy the connection string
 
-2. **Privy** ([privy.io](https://privy.io))
-   - Create an application
-   - Configure webhook endpoint: `http://localhost:3000/api/privy/webhook`
-   - Enable desired login methods (email, wallet, social)
-   - Note your Client ID and API Key
+2. **Steward auth**
+   - Configure the Steward API URL and matching JWT/session secret for the environment
+   - Use the same-origin `/steward` mount in local/frontend flows when available
+   - See `.env.example`, `packages/lib/auth.ts`, and `packages/lib/auth/steward-client.ts` for the current variable names and verification path
 
 3. **OpenAI or OpenRouter** (at least one)
    - OpenAI API key for direct access, OR
@@ -442,8 +441,7 @@ Two local modes:
 Object storage: prod uses Cloudflare R2 via the `BLOB` Worker binding. Local
 dev defaults to inline-in-Postgres (`SQL_HEAVY_PAYLOAD_STORAGE=inline`); point
 `STORAGE_PROVIDER` at any S3-compatible endpoint when you need to exercise the
-object-storage code path. See [docs/object-storage.md](docs/object-storage.md)
-for the full setup.
+object-storage code path.
 
 **Minimum required variables:**
 
@@ -451,10 +449,11 @@ for the full setup.
 # Database
 DATABASE_URL=postgresql://user:password@host:5432/database?sslmode=require
 
-# Privy Authentication
-NEXT_PUBLIC_PRIVY_APP_ID=your_privy_app_id_here
-PRIVY_APP_SECRET=your_privy_app_secret_here
-PRIVY_WEBHOOK_SECRET=replace_with_strong_random_secret
+# Steward Authentication
+STEWARD_API_URL=http://localhost:8787/steward
+NEXT_PUBLIC_STEWARD_API_URL=/steward
+STEWARD_SESSION_SECRET=replace_with_shared_session_secret
+STEWARD_JWT_SECRET=replace_with_shared_session_secret
 
 # AI (OpenRouter is the principal provider)
 OPENROUTER_API_KEY=your_openrouter_key
@@ -499,7 +498,7 @@ See [.env.example](.env.example) for the full list of Eliza App environment vari
 **Generate secure passwords:**
 
 ```bash
-# Generate PRIVY_WEBHOOK_SECRET (min 32 chars)
+# Generate STEWARD_SESSION_SECRET / STEWARD_JWT_SECRET
 openssl rand -base64 32
 
 # Generate CRON_SECRET / ELIZA_APP_JWT_SECRET
@@ -540,7 +539,7 @@ Visit [http://localhost:3000](http://localhost:3000).
 
 ### 6. First Login
 
-1. Click "Sign In" → Privy will create your user
+1. Click "Sign In" → Steward will create or resolve your user session
 2. You'll be redirected to the dashboard
 3. Your organization starts with 10,000 credits
 
@@ -587,11 +586,14 @@ Env is loaded from `.env`, `.env.local`, and `.env.test` via preload.
 
 ### Engineering docs (WHYs)
 
-- **[docs/unit-testing-agent-mocks.md](docs/unit-testing-agent-mocks.md)** — Why partial `AGENT_PRICING` mocks break other Agent modules under Bun, and how the billing cron tests isolate `mock.module("@/db/client")` contention.
-- **[docs/openrouter-model-id-compatibility.md](docs/openrouter-model-id-compatibility.md)** — **Why** `xai/` vs `x-ai/` and `mistral/` vs `mistralai/` must normalize the same way in SQL and TS (billing, usage, catalog); checklist for new code paths.
-- **[docs/anthropic-cot-budget.md](docs/anthropic-cot-budget.md)** — Per-agent `settings.anthropicThinkingBudgetTokens` (MCP/A2A), env default (`ANTHROPIC_COT_BUDGET`) and cap (`ANTHROPIC_COT_BUDGET_MAX`), and **why** thinking budgets are not request parameters.
+These are internal engineering notes, not public API/product references. Use
+`packages/content` and the API Explorer for user-facing docs, live API shapes,
+model catalogs, and pricing behavior.
+
+- **[packages/docs/unit-testing-agent-mocks.md](packages/docs/unit-testing-agent-mocks.md)** — Why partial `AGENT_PRICING` mocks break other Agent modules under Bun, and how the billing cron tests isolate `mock.module("@/db/client")` contention.
+- **[packages/docs/anthropic-cot-budget.md](packages/docs/anthropic-cot-budget.md)** — Per-agent `settings.anthropicThinkingBudgetTokens` (MCP/A2A), env default (`ANTHROPIC_COT_BUDGET`) and cap (`ANTHROPIC_COT_BUDGET_MAX`), and **why** thinking budgets are not request parameters.
 - **[CHANGELOG.md](CHANGELOG.md)** — Engineering changelog (Keep a Changelog style).
-- **[docs/ROADMAP.md](docs/ROADMAP.md)** — Product direction and rationale; “Done” links to the above where relevant.
+- **[packages/docs/ROADMAP.md](packages/docs/ROADMAP.md)** — Product direction and rationale; “Done” links to the above where relevant.
 
 ### Development Workflow
 
@@ -613,17 +615,17 @@ Env is loaded from `.env`, `.env.local`, and `.env.test` via preload.
 
 ## 🔐 Production Security
 
-⚠️ **IMPORTANT**: Before deploying to production, you MUST complete the security configuration for Privy authentication.
+⚠️ **IMPORTANT**: Before deploying to production, complete the security configuration for Steward session auth, API key handling, and third-party provider callbacks used by your deployment.
 
 ### Security Features Implemented
 
-✅ **Content Security Policy (CSP)**: Comprehensive CSP configured in `next.config.ts` that:
+✅ **Content Security Policy (CSP)**: CSP configured for the frontend/API deployment that:
 
 - Protects against XSS attacks
-- Allows Privy authentication iframe
+- Allows configured auth and wallet integration frames where required
 - Allows WalletConnect and wallet integrations
 - Prevents clickjacking with frame-ancestors restrictions
-- Includes all required domains for Privy, Solana, and third-party services
+- Includes required domains for auth, Solana, and third-party services
 
 ✅ **Security Headers**: Multiple layers of protection:
 
@@ -637,24 +639,21 @@ Env is loaded from `.env`, `.env.local`, and `.env.test` via preload.
 
 Before deploying to production, complete these critical steps:
 
-#### 1. Configure Privy Dashboard
+#### 1. Configure Auth Provider
 
-Visit https://dashboard.privy.io and configure:
-
-- ✅ Add production domain to **Allowed Domains**
-- ✅ Remove all test/development domains
-- ✅ Enable **HttpOnly cookies** for enhanced security
-- ✅ Complete domain ownership verification
-- ✅ Configure MFA settings (disable SMS, enable authenticator apps)
-- ✅ Review OAuth providers and session duration
+- ✅ Configure the production app/domain in Steward or the environment's auth control plane
+- ✅ Remove test/development callback domains from production auth settings
+- ✅ Use HTTP-only cookies for browser sessions
+- ✅ Review OAuth providers, wallet providers, and session duration
+- ✅ Keep Steward JWT/session secrets consistent between the auth service and API
 
 #### 2. Set Environment Variables
 
 ```bash
-NEXT_PUBLIC_PRIVY_APP_ID=your_production_app_id
-NEXT_PUBLIC_PRIVY_CLIENT_ID=your_production_client_id
-PRIVY_APP_SECRET=your_production_app_secret
-PRIVY_WEBHOOK_SECRET=strong_random_secret_here
+STEWARD_API_URL=https://your-domain.com/steward
+NEXT_PUBLIC_STEWARD_API_URL=/steward
+STEWARD_SESSION_SECRET=strong_shared_secret_here
+STEWARD_JWT_SECRET=strong_shared_secret_here
 ```
 
 #### 3. Test Security Configuration
@@ -676,13 +675,9 @@ npm run test:security-headers
 
 ### Documentation
 
-Complete security documentation is available:
-
-- **Quick Start**: [docs/PRIVY_PRODUCTION_QUICKSTART.md](./docs/PRIVY_PRODUCTION_QUICKSTART.md) - 5-minute setup guide
-- **Complete Guide**: [docs/PRIVY_PRODUCTION_SECURITY.md](./docs/PRIVY_PRODUCTION_SECURITY.md) - Comprehensive security documentation
-- **CSP Testing**: [docs/CSP_TESTING_GUIDE.md](./docs/CSP_TESTING_GUIDE.md) - Testing and debugging CSP
-- **Full Checklist**: [docs/PRODUCTION_CHECKLIST.md](./docs/PRODUCTION_CHECKLIST.md) - Complete deployment checklist
-- **Summary**: [SECURITY_UPDATES_SUMMARY.md](./SECURITY_UPDATES_SUMMARY.md) - What was implemented
+Use the deployment checklist in this README plus `.env.example`,
+`packages/lib/auth.ts`, and `packages/lib/auth/steward-client.ts` for the
+canonical auth variables and verification behavior.
 
 ### Testing Your Security Setup
 
@@ -695,7 +690,7 @@ npm run test:security-headers
 This will verify:
 
 - All security headers are present
-- CSP includes required Privy domains
+- CSP includes required auth and wallet domains
 - Frame embedding protection is active
 - All security directives are configured
 
@@ -703,17 +698,18 @@ This will verify:
 
 **Issue: "Domain not allowed"**
 
-- Solution: Add your domain to Privy Dashboard > Configuration > App settings > Allowed domains
+- Solution: Add your domain to the production auth provider's allowed domains/callback URLs.
 
-**Issue: Privy iframe not loading**
+**Issue: Auth frame or redirect not loading**
 
-- Solution: Check browser console for CSP violations. Verify `frame-src` includes `https://auth.privy.io`
+- Solution: Check browser console for CSP violations and verify `frame-src`/redirect settings include the configured auth provider URLs.
 
 **Issue: CSP violations**
 
 - Solution: Review browser console, determine if legitimate, update `next.config.ts` if needed
 
-See [docs/CSP_TESTING_GUIDE.md](./docs/CSP_TESTING_GUIDE.md) for detailed troubleshooting.
+Check browser console CSP violations and the active auth provider settings for
+provider-specific troubleshooting.
 
 ---
 
@@ -725,7 +721,7 @@ See [docs/CSP_TESTING_GUIDE.md](./docs/CSP_TESTING_GUIDE.md) for detailed troubl
 
 **Features**:
 
-- Multi-model support (GPT-4, Claude, Gemini, etc.)
+- Multi-model support through the configured model catalog
 - Real-time streaming responses with `useChat` hook
 - Conversation persistence with full history
 - Model selection dropdown
@@ -742,11 +738,12 @@ const { messages, input, handleSubmit, isLoading } = useChat({
 });
 ```
 
-**Cost**: Token-based pricing from `lib/pricing.ts`
+**Cost**: Token-based and model-specific. See [Models API](https://elizacloud.ai/docs/api/models)
+and [Billing](https://elizacloud.ai/docs/billing) for current pricing behavior.
 
 **Anthropic Messages API (Claude Code):** For tools that expect the [Anthropic Messages API](https://docs.anthropic.com/en/api/messages) (e.g. Claude Code), use **POST /api/v1/messages** with the same request/response shape. Set `ANTHROPIC_BASE_URL=https://elizacloud.ai/api/v1` and `ANTHROPIC_API_KEY` to your Cloud API key so usage goes through Cloud credits instead of a direct Anthropic key. See [API docs → Anthropic Messages](/docs/api/messages). *Why: single API key and billing for both OpenAI-style and Anthropic-style clients.*
 
-**Public cloud agents (MCP / A2A) — Anthropic extended thinking:** For **`POST /api/agents/{id}/mcp`** (`chat` tool) and **`POST /api/agents/{id}/a2a`** (`chat`), extended thinking uses the character’s **`settings.anthropicThinkingBudgetTokens`** when the model is Anthropic (`0` = off; omitted = fall back to `ANTHROPIC_COT_BUDGET`). Optional **`ANTHROPIC_COT_BUDGET_MAX`** clamps any effective budget. *Why: the agent owner controls cost/quality per agent; MCP/A2A clients cannot pass a thinking budget in the request (untrusted input).* See [docs/anthropic-cot-budget.md](docs/anthropic-cot-budget.md).
+**Public cloud agents (MCP / A2A) — Anthropic extended thinking:** For **`POST /api/agents/{id}/mcp`** (`chat` tool) and **`POST /api/agents/{id}/a2a`** (`chat`), extended thinking uses the character’s **`settings.anthropicThinkingBudgetTokens`** when the model is Anthropic (`0` = off; omitted = fall back to `ANTHROPIC_COT_BUDGET`). Optional **`ANTHROPIC_COT_BUDGET_MAX`** clamps any effective budget. *Why: the agent owner controls cost/quality per agent; MCP/A2A clients cannot pass a thinking budget in the request (untrusted input).* See [packages/docs/anthropic-cot-budget.md](packages/docs/anthropic-cot-budget.md).
 
 ### 2. AI Image Generation
 
@@ -754,7 +751,7 @@ const { messages, input, handleSubmit, isLoading } = useChat({
 
 **Features**:
 
-- Google Gemini 2.5 Flash multimodal generation
+- Image model availability is managed through the API model catalog
 - High-quality 1024x1024 images
 - Automatic R2 upload
 - Base64 preview for instant display
@@ -772,7 +769,8 @@ Authorization: Bearer eliza_your_api_key
 }
 ```
 
-**Cost**: $0.01 per image
+**Cost**: Model-specific. See [Images API](https://elizacloud.ai/docs/api/images)
+and [Billing](https://elizacloud.ai/docs/billing) for current pricing behavior.
 
 ### 3. AI Video Generation
 
@@ -780,11 +778,8 @@ Authorization: Bearer eliza_your_api_key
 
 **Features**:
 
-- Multiple Fal.ai models:
-  - `fal-ai/veo3` (Google Veo 3)
-  - `fal-ai/veo3/fast` (faster version)
-  - `fal-ai/kling-video/v2.1/pro/text-to-video` (Kling Pro)
-  - `fal-ai/minimax/hailuo-02/pro/text-to-video` (MiniMax)
+- Multiple Fal.ai video models; use the API reference or API Explorer for the
+  current model catalog.
 - Automatic R2 upload
 - Progress tracking with queue updates
 - Fallback video on errors
@@ -802,7 +797,8 @@ Authorization: Bearer eliza_your_api_key
 }
 ```
 
-**Cost**: $0.05 per video ($0.025 for fallback)
+**Cost**: Model-specific. See [Video API](https://elizacloud.ai/docs/api/video)
+and [Billing](https://elizacloud.ai/docs/billing) for current pricing behavior.
 
 ### 4. Gallery & Media Storage
 
@@ -994,7 +990,7 @@ Authorization: Bearer eliza_your_api_key
 - elizaOS Cloud account with API key
 - VPC with public subnets configured
 - IAM roles for ECS task execution
-- Environment variables set (see `.env.example` and `docs/ENV_VARIABLES.md`)
+- Environment variables set (see `.env.example`)
 
 ### 6. elizaOS Agent Integration
 
@@ -1042,7 +1038,7 @@ POST /api/eliza/rooms/{roomId}/messages
 
 **Features**:
 
-- AI-assisted character building using gpt-5-mini
+- AI-assisted character building using the configured text model
 - Progressive JSON generation
 - Live preview of character definition
 - Import/export elizaOS-compatible JSON
@@ -1087,7 +1083,7 @@ API key authentication is available for the specific endpoints documented in thi
 - **Billing Automation**: Monitor balance, configure auto-top-up, and manage credits programmatically
 - **AI Agent Autonomy**: Enable AI agents to manage their own resources and budgets
 
-Session-based auth only (no API key support yet): `/api/v1/api-keys`, `/api/v1/apps/[id]/deploy`, `/api/v1/dashboard`, `/api/my-agents/characters/[id]/track-interaction`.
+Session-based auth only (no API key support yet): `GET /api/v1/api-keys`, `POST /api/v1/api-keys`, `/api/v1/apps/[id]/deploy`, `/api/v1/dashboard`, `/api/my-agents/characters/[id]/track-interaction`. API key update/delete/regenerate routes accept API keys; use a different key than the one being changed.
 
 **Why API Keys for Management Endpoints?**
 
@@ -1116,7 +1112,7 @@ Traditional SaaS platforms only expose limited APIs. We've enabled API key authe
 - Usage tracking and statistics
 - Expires_at support for time-limited keys
 
-**Key Format**: `eliza_<random_32_chars>`
+**Key Format**: `eliza_<random_hex_secret>` (generated by `packages/lib/services/api-keys.ts`)
 
 **API**:
 
@@ -1161,12 +1157,9 @@ curl https://your-app.com/api/v1/chat \
 **Pricing**:
 
 - **Text Chat**: Token-based (varies by model)
-- **Image Generation**: $0.01 per image
-- **Video Generation**: $0.05 per video
-- **Container Running**: $0.67/day (~$20/month) - billed daily
-- **Container Deployment**: $0.50 one-time per deployment
-- **Voice Clone (Instant)**: 50 credits
-- **Voice Clone (Professional)**: $2.00
+- **Image Generation**: Model-specific
+- **Video Generation**: Model-specific
+- **Containers and voice**: See [Billing](https://elizacloud.ai/docs/billing) and the relevant API docs for current rates
 
 **Stripe Integration**:
 
@@ -1187,7 +1180,8 @@ curl https://your-app.com/api/v1/chat \
 
 **Setup**:
 
-See `docs/STRIPE_SETUP.md` for detailed Stripe configuration.
+Use the Stripe dashboard and current Stripe documentation for detailed Stripe
+configuration.
 
 #### Referrals & Affiliates
 
@@ -1196,19 +1190,19 @@ See `docs/STRIPE_SETUP.md` for detailed Stripe configuration.
 - **No double-apply:** Referral splits apply only to Stripe checkout and x402; affiliate markup only to auto top-up and MCP. No single transaction pays both.
 - **Invite links (referral):** Signed-in users can copy `…/login?ref=<code>` from the dashboard header (**Invite**) and from the **Invite friends** card on `/dashboard/affiliates`. **`GET /api/v1/referrals`** returns `{ code, total_referrals, is_active }` and creates a code on first use. **`POST /api/v1/referrals/apply`** still applies someone else’s code after login. **Why:** Referral economics existed in code, but there was no product surface for “my link”; flat JSON and a dedicated card avoid confusing referral URLs (`?ref=`) with affiliate URLs (`?affiliate=`).
 
-See [docs/referrals.md](./docs/referrals.md) for flow, APIs, UI behavior, and WHYs; [docs/affiliate-referral-comparison.md](./docs/affiliate-referral-comparison.md) for a side-by-side with affiliates.
+See [packages/docs/referrals.md](./packages/docs/referrals.md) for flow, APIs, UI behavior, and WHYs; [packages/docs/affiliate-referral-comparison.md](./packages/docs/affiliate-referral-comparison.md) for a side-by-side with affiliates.
 
 #### Signup codes
 
 - **What**: One-time bonus credits per organization, e.g. `launch50` → $50. Codes are defined in the `SIGNUP_CODES_JSON` env var (JSON object); if unset, defaults to `{}` (no codes). **Why env var:** So each environment (staging, prod) can have its own codes without committing them; no config file in the repo.
 - **Where**: Redeem via `POST /api/signup-code/redeem` (session auth only) or during **Discord/Telegram** signup by passing `signup_code` in the auth body. **Why one per org:** Prevents abuse (one shared code = one bonus per org) and keeps "welcome bonus" semantics.
-- **Distinct from referrals:** Referrals split **revenue** on purchases (50/40/10). Signup codes are flat **campaign bonuses**; an org can use both. See [docs/signup-codes.md](./docs/signup-codes.md) for API, security (rate limit CRITICAL, no-cache, two-layer one-per-org), and WHYs.
+- **Distinct from referrals:** Referrals split **revenue** on purchases (50/40/10). Signup codes are flat **campaign bonuses**; an org can use both.
 
 #### Wallet API (SIWE + wallet header auth)
 
 - **SIWE (EIP-4361):** `GET /api/auth/siwe/nonce` → sign message → `POST /api/auth/siwe/verify` → receive API key. New wallets get an account and initial free credits. **Why:** Agents and headless clients need a way to sign in and get an API key without a browser.
 - **Wallet header signature:** Send `X-Wallet-Address`, `X-Timestamp`, `X-Wallet-Signature` on each request to authenticate without storing a key. First valid request for an unknown wallet creates the account. **Why:** Some clients prefer not to store an API key; the wallet proves ownership per request.
-- **x402 topup:** Can credit the signer when wallet sig headers are present, or use `body.walletAddress`. All wallet signup (SIWE, wallet-header, topup) uses the same `findOrCreateUserByWalletAddress` path (slug, credits, race handling). See [docs/wallet-api.md](./docs/wallet-api.md) and [Authentication](https://elizacloud.ai/docs/authentication) / [Wallet API](https://elizacloud.ai/docs/wallet-api) for full reference and WHYs.
+- **x402 topup:** Can credit the signer when wallet sig headers are present, or use `body.walletAddress`. All wallet signup (SIWE, wallet-header, topup) uses the same `findOrCreateUserByWalletAddress` path (slug, credits, race handling). See [Authentication](https://elizacloud.ai/docs/authentication) / [Wallet API](https://elizacloud.ai/docs/wallet-api) for full reference.
 
 ### 10. Analytics & Monitoring
 
@@ -1256,7 +1250,7 @@ See [docs/referrals.md](./docs/referrals.md) for flow, APIs, UI behavior, and WH
 1. **check_credits**: View organization balance and recent transactions
 2. **get_recent_usage**: View recent API usage statistics
 3. **generate_text**: Generate text using AI models
-4. **generate_image**: Generate images using Google Gemini 2.5
+4. **generate_image**: Generate images using the configured image model catalog
 5. **save_memory**: Save to long-term memory
 6. **retrieve_memories**: Search and retrieve memories
 7. **chat_with_agent**: Chat with deployed elizaOS agents
@@ -1301,7 +1295,7 @@ Add to your Claude Desktop config:
   - webhook_url for notifications
 
 - **users**: User accounts linked to organizations
-  - privy_user_id for authentication
+  - steward_user_id for authentication
   - role: admin, member
   - is_active for deactivation
 
@@ -1500,15 +1494,15 @@ See `lib/queries/container-quota.ts` for full implementation.
 
 Documented management endpoints support multiple authentication methods:
 
-1. **Session Cookie** (Privy): Automatic for logged-in users
+1. **Session Cookie** (Steward): Automatic for logged-in users
 2. **API Key Header**: `Authorization: Bearer eliza_your_key` or `X-API-Key: eliza_your_key`
 3. **SIWE**: Get nonce from `GET /api/auth/siwe/nonce`, sign EIP-4361 message, `POST /api/auth/siwe/verify` to receive an API key
 4. **Wallet header**: `X-Wallet-Address`, `X-Timestamp`, `X-Wallet-Signature` (per-request signature; first request can create account)
 
 **Policy and rationale:** Some routes accept **only** a browser session (edge returns `session_auth_required` if you send an API key). Others accept **session or API key** depending on the handler. **Why:** automation should work where it is safe and expected; human-only flows (e.g. certain checkouts, invite accept, promo redeem) stay session-bound to reduce scripted abuse and confusing semantics.
 
-- **Mechanics:** [docs/api-authentication.md](docs/api-authentication.md) (CORS, rate limits, error shape, route lists)
-- **Design / WHY:** [docs/auth-api-consistency.md](docs/auth-api-consistency.md)
+- **Mechanics:** [packages/docs/api-authentication.md](packages/docs/api-authentication.md) (CORS, rate limits, error shape, route lists)
+- **Design / WHY:** [packages/docs/auth-api-consistency.md](packages/docs/auth-api-consistency.md)
 
 ### Base URL
 
@@ -1540,7 +1534,7 @@ POST /api/v1/generate-video
   "model": "fal-ai/veo3"
 }
 
-# Available Models
+# Models API
 GET /api/v1/models
 ```
 
@@ -1621,6 +1615,48 @@ POST /api/v1/api-keys/{id}/regenerate
 # Delete Key
 DELETE /api/v1/api-keys/{id}
 ```
+
+#### Agent Workflows (proxy → plugin-workflow on the user's agent)
+
+Authenticated proxy from cloud to a Railway-deployed agent's
+`@elizaos/plugin-workflow` HTTP surface. Org ownership is enforced by
+`elizaSandboxService.findRunningSandbox`. Cloud forwards the request to
+`<agent>/api/workflow/...` with a `Bearer ELIZA_API_TOKEN` header.
+
+```bash
+# List workflows
+curl -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  https://api.elizaos.ai/api/v1/agents/$AGENT_ID/workflows
+
+# Create workflow
+curl -X POST -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"my-flow","nodes":[]}' \
+  https://api.elizaos.ai/api/v1/agents/$AGENT_ID/workflows
+
+# Get / update / delete one workflow
+curl  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  https://api.elizaos.ai/api/v1/agents/$AGENT_ID/workflows/$WORKFLOW_ID
+curl -X PUT -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  -H "Content-Type: application/json" -d '{"name":"renamed"}' \
+  https://api.elizaos.ai/api/v1/agents/$AGENT_ID/workflows/$WORKFLOW_ID
+curl -X DELETE -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  https://api.elizaos.ai/api/v1/agents/$AGENT_ID/workflows/$WORKFLOW_ID
+
+# Trigger an execution (returns 202 + execution id)
+curl -X POST -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  -H "Content-Type: application/json" -d '{"inputs":{}}' \
+  https://api.elizaos.ai/api/v1/agents/$AGENT_ID/workflows/$WORKFLOW_ID/run
+
+# Poll execution status
+curl -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  https://api.elizaos.ai/api/v1/agents/$AGENT_ID/workflows/executions/$EXECUTION_ID
+```
+
+Note: the `/run` and `/executions/:id` paths require the agent-side
+`@elizaos/plugin-workflow` to mount its run + executions handlers in
+`src/plugin-routes.ts`. Until then those forwarded calls receive whatever
+the agent returns (currently HTTP 404).
 
 #### User Info
 
@@ -1737,11 +1773,9 @@ DATABASE_URL=postgres://prod-url bun run db:migrate
 
 **Solutions**:
 
-- Verify `NEXT_PUBLIC_PRIVY_APP_ID` and `PRIVY_APP_SECRET` are correct
-- Check allowed origins in Privy dashboard match your domain (e.g., `https://elizacloud.ai`)
+- Verify Steward API URL and JWT/session secret configuration
+- Check allowed auth origins/callbacks match your domain (e.g., `https://elizacloud.ai`)
 - Clear browser cookies and localStorage, then try again
-- Ensure Privy webhook is configured: `https://your-domain.com/api/privy/webhook`
-- Check webhook secret matches `PRIVY_WEBHOOK_SECRET` in your environment
 
 #### 3. Environment Variables Not Loading
 
@@ -1772,9 +1806,9 @@ DATABASE_URL=postgres://prod-url bun run db:migrate
 - Test AWS credentials: `aws sts get-caller-identity`
 - Check quota: `GET /api/v1/containers/quota`
 - View logs in AWS CloudWatch or ECS console
-- Ensure shared infrastructure is deployed: `cd scripts/cloudformation && ./deploy-shared.sh`
 
-See `docs/DEPLOYMENT_TROUBLESHOOTING.md` for detailed troubleshooting.
+Use the deployment notes in this README plus Cloudflare/Vercel provider logs for
+detailed troubleshooting.
 
 #### 5. Docker Image Push Fails
 
@@ -1794,7 +1828,7 @@ See `docs/DEPLOYMENT_TROUBLESHOOTING.md` for detailed troubleshooting.
 
 **Solutions**:
 
-- **Image**: Verify Google Gemini access via OpenRouter or OpenAI API key
+- **Image**: Verify configured image provider credentials and model availability
 - **Video**: Check `FAL_KEY` is set correctly
 - Try simpler prompts first
 - Check rate limits in provider dashboard
@@ -1827,10 +1861,10 @@ See `docs/DEPLOYMENT_TROUBLESHOOTING.md` for detailed troubleshooting.
 
 ### Getting Help
 
-- Check detailed docs in `/docs` folder
+- Check public docs in `packages/content` and engineering notes in `packages/docs`
 - [Next.js Documentation](https://nextjs.org/docs)
 - [Drizzle ORM Docs](https://orm.drizzle.team/docs)
-- [Privy Documentation](https://docs.privy.io)
+- [Steward auth implementation](packages/lib/auth.ts)
 - [AI SDK Docs](https://ai-sdk.dev/docs)
 - [elizaOS Documentation](https://github.com/elizaos/eliza)
 
@@ -1845,7 +1879,7 @@ Deploy elizaOS agents to AWS ECS (Elastic Container Service) using Docker contai
 # Visit https://your-domain.com/dashboard/api-keys
 
 # 2. Set your API key
-export ELIZAOS_API_KEY="your-api-key-here"
+export ELIZAOS_API_KEY="eliza_your_api_key_here"
 
 # 3. Ensure Docker is running locally
 docker --version
@@ -1867,23 +1901,7 @@ elizaos deploy
 
 ### AWS Infrastructure Setup (Platform Maintainers)
 
-**1. Deploy Shared Infrastructure**
-
-The platform uses CloudFormation to provision per-user infrastructure. First, deploy shared resources:
-
-```bash
-cd scripts/cloudformation
-./deploy-shared.sh
-```
-
-This creates:
-
-- VPC with public subnets
-- Application Load Balancer (ALB) for routing
-- IAM roles for ECS tasks
-- Security groups
-
-**2. Configure Environment Variables**
+**1. Configure Environment Variables**
 
 ```bash
 # AWS Credentials
@@ -1891,7 +1909,7 @@ AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=your_aws_access_key
 AWS_SECRET_ACCESS_KEY=your_aws_secret
 
-# Network Configuration (from CloudFormation outputs)
+# Network Configuration
 AWS_VPC_ID=vpc-xxxxx
 AWS_SUBNET_IDS=subnet-xxxxx,subnet-yyyyy
 AWS_SECURITY_GROUP_IDS=sg-xxxxx
@@ -1909,7 +1927,7 @@ ECS_SHARED_LISTENER_ARN=arn:aws:elasticloadbalancing:...
 ENVIRONMENT=production
 ```
 
-**3. Start the Platform**
+**2. Start the Platform**
 
 ```bash
 npm run dev  # Development
@@ -1958,8 +1976,7 @@ curl https://elizacloud.ai/api/v1/containers \
 
 Container deployments are billed **daily**:
 
-- **Deployment**: $0.50 one-time per deployment
-- **Running Costs**: $0.67/day per container (~$20/month)
+- **Deployment and running costs**: modelled by the current billing constants and surfaced in the dashboard/API docs
   - Billed automatically at midnight UTC
   - 48-hour warning email sent when credits are low
   - Container shut down after 48 hours if no credits added
@@ -1974,7 +1991,7 @@ Container deployments are billed **daily**:
 **Daily Billing Behavior**:
 
 1. CRON runs daily at midnight UTC
-2. Charges $0.67 per running container
+2. Charges each running container according to the current billing configuration
 3. If insufficient credits: 48-hour shutdown warning email
 4. If still insufficient after 48 hours: container stopped
 
@@ -1986,11 +2003,10 @@ Container deployments are billed **daily**:
 
 ### Platform documentation (this repo)
 
-- [docs/api-authentication.md](docs/api-authentication.md) — Auth headers, CORS, rate limits, errors
-- [docs/auth-api-consistency.md](docs/auth-api-consistency.md) — **Why** session vs API key vs edge behavior
-- [docs/openrouter-model-id-compatibility.md](docs/openrouter-model-id-compatibility.md) — **Why** OpenRouter vs legacy model/provider spellings must stay aligned in analytics and pricing
+- [packages/docs/api-authentication.md](packages/docs/api-authentication.md) — Auth headers, CORS, rate limits, errors
+- [packages/docs/auth-api-consistency.md](packages/docs/auth-api-consistency.md) — **Why** session vs API key vs edge behavior
 - [CHANGELOG.md](CHANGELOG.md) — Engineering changelog
-- [docs/ROADMAP.md](docs/ROADMAP.md) — Direction and follow-ups
+- [packages/docs/ROADMAP.md](packages/docs/ROADMAP.md) — Direction and follow-ups
 
 ### Core Framework
 
@@ -2018,8 +2034,8 @@ Container deployments are billed **daily**:
 
 ### Authentication & Billing
 
-- [Privy Authentication](https://docs.privy.io/guide/react/wallets/usage/overview)
-- [Privy Webhooks](https://docs.privy.io/guide/server/webhooks)
+- [Steward auth implementation](packages/lib/auth.ts)
+- [API authentication engineering note](packages/docs/api-authentication.md)
 - [Stripe API Documentation](https://stripe.com/docs/api)
 - [Stripe Checkout](https://stripe.com/docs/payments/checkout)
 - [Stripe Webhooks](https://stripe.com/docs/webhooks)
@@ -2031,7 +2047,6 @@ Container deployments are billed **daily**:
 - [AWS ECS Documentation](https://docs.aws.amazon.com/ecs/)
 - [AWS ECR Documentation](https://docs.aws.amazon.com/ecr/)
 - [AWS SDK for JavaScript](https://docs.aws.amazon.com/sdk-for-javascript/)
-- [AWS CloudFormation](https://docs.aws.amazon.com/cloudformation/)
 
 ### UI & Styling
 

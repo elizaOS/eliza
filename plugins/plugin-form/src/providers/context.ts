@@ -62,26 +62,12 @@ import {
 } from "../template";
 import type { FormContextState } from "../types";
 
-function toonCell(value: unknown): string {
-  const text = String(value ?? "")
-    .replace(/\r?\n/g, " ")
-    .replace(/\s+/g, " ")
-    .replace(/,/g, ";")
-    .trim();
-  return text || "none";
+function compactJson(value: unknown): string {
+  return JSON.stringify(value, null, 2);
 }
 
-function toonRows(name: string, columns: string[], rows: object[]): string {
-  const header = `${name}[${rows.length}]{${columns.join(",")}}:`;
-  if (rows.length === 0) return header;
-  return [
-    header,
-    ...rows.map((row) => {
-      const record = row as Record<string, unknown>;
-      return `  ${columns.map((column) => toonCell(record[column])).join(",")}`;
-    }),
-  ].join("\n");
-}
+const MAX_CONTEXT_FIELDS = 20;
+const MAX_STASHED_FOR_CONTEXT = 10;
 
 /**
  * Form Context Provider
@@ -90,15 +76,19 @@ function toonRows(name: string, columns: string[], rows: object[]): string {
  * allowing the agent to respond naturally about form progress
  * and nudge for missing fields (one or several at once).
  *
- * WHY a provider (not evaluator):
+ * WHY a provider (not an ALWAYS_AFTER hook):
  * - Providers run BEFORE response generation
  * - Agent needs context to generate appropriate response
- * - Evaluator runs AFTER, too late for response
+ * - ALWAYS_AFTER hooks run after the response, too late
  */
 export const formContextProvider: Provider = {
   name: "FORM_CONTEXT",
   description: "Provides context about active form sessions",
   descriptionCompressed: "Active form session context.",
+  contexts: ["automation", "knowledge"],
+  contextGate: { anyOf: ["automation", "knowledge"] },
+  cacheStable: false,
+  cacheScope: "turn",
 
   /**
    * Get form context for the current message.
@@ -237,60 +227,42 @@ export const formContextProvider: Provider = {
             "Required fields are done. Optionally nudge for remaining optional fields, or nudge to submit.";
         }
 
-        contextText = [
-          "form_context:",
-          "  active: true",
-          `  form_id: ${toonCell(session.formId)}`,
-          `  form_name: ${toonCell(form?.name || session.formId)}`,
-          `  progress: ${contextState.progress}`,
-          `  status: ${toonCell(contextState.status)}`,
-          toonRows(
-            "required_missing",
-            ["key", "label", "description", "ask_prompt"],
-            contextState.missingRequired,
+        contextText = `form_context_json:\n${compactJson({
+          active: true,
+          form_id: session.formId,
+          form_name: form?.name || session.formId,
+          progress: contextState.progress,
+          status: contextState.status,
+          required_missing: contextState.missingRequired.slice(
+            0,
+            MAX_CONTEXT_FIELDS,
           ),
-          toonRows(
-            "required_filled",
-            ["key", "label", "value"],
-            requiredFilled.map((field) => ({
-              ...field,
-              value: field.displayValue,
-            })),
-          ),
-          toonRows(
-            "optional_missing",
-            ["key", "label", "description", "ask_prompt"],
-            optionalMissing,
-          ),
-          toonRows(
-            "optional_filled",
-            ["key", "label", "value"],
-            optionalFilled.map((field) => ({
-              ...field,
-              value: field.displayValue,
-            })),
-          ),
-          toonRows(
-            "uncertain_fields",
-            ["key", "label", "value", "confidence"],
-            contextState.uncertainFields.map((field) => ({
+          required_filled: requiredFilled.map((field) => ({
+            ...field,
+            value: field.displayValue,
+          })).slice(0, MAX_CONTEXT_FIELDS),
+          optional_missing: optionalMissing.slice(0, MAX_CONTEXT_FIELDS),
+          optional_filled: optionalFilled.map((field) => ({
+            ...field,
+            value: field.displayValue,
+          })).slice(0, MAX_CONTEXT_FIELDS),
+          uncertain_fields: contextState.uncertainFields
+            .slice(0, MAX_CONTEXT_FIELDS)
+            .map((field) => ({
               ...field,
               confidence: Math.round(field.confidence * 100) / 100,
             })),
-          ),
-          toonRows(
-            "pending_external_fields",
-            ["key", "label", "instructions", "age_minutes", "address"],
-            contextState.pendingExternalFields.map((field) => ({
+          pending_external_fields: contextState.pendingExternalFields.map(
+            (field) => ({
               ...field,
               age_minutes: Math.max(
                 0,
                 Math.floor((Date.now() - field.activatedAt) / 60000),
               ),
-            })),
-          ),
-          `instruction: ${toonCell(instruction)}`,
-        ].join("\n");
+            }),
+          ).slice(0, MAX_CONTEXT_FIELDS),
+          instruction,
+        })}`;
       } else {
         // No active session — only stashed forms exist
         // WHY build contextState anyway: Return shape is consistent; callers get hasActiveForm: false, stashedCount; stashed list goes in text below
@@ -304,18 +276,17 @@ export const formContextProvider: Provider = {
           stashedCount: stashed.length,
           pendingExternalFields: [],
         };
-        contextText = [
-          "form_context:",
-          "  active: false",
-          "  progress: 0",
-          `  stashed_count: ${stashed.length}`,
-        ].join("\n");
+        contextText = `form_context_json:\n${compactJson({
+          active: false,
+          progress: 0,
+          stashed_count: stashed.length,
+        })}`;
       }
 
       // Stashed forms reminder
       // WHY: User might have forgotten about saved forms; agent can say "You have a saved form, say resume to continue"
       if (stashed.length > 0) {
-        stashedRows = stashed.map((s) => {
+        stashedRows = stashed.slice(0, MAX_STASHED_FOR_CONTEXT).map((s) => {
           const f = formService.getForm(s.formId);
           const ctx = formService.getSessionContext(s);
           return {
@@ -324,7 +295,7 @@ export const formContextProvider: Provider = {
             progress: ctx.progress,
           };
         });
-        contextText += `\n${toonRows("stashed_forms", ["form_id", "form_name", "progress"], stashedRows)}`;
+        contextText += `\nstashed_forms_json:\n${compactJson(stashedRows)}`;
         contextText +=
           "\nstashed_instruction: User can say resume to restore one.";
       }
@@ -352,8 +323,8 @@ export const formContextProvider: Provider = {
       // WHY return safe fallback: Provider failure should not break response generation; agent gets empty form context
       return {
         data: { hasActiveForm: false, error: true },
-        values: { formContext: "form_context:\n  error: true" },
-        text: "form_context:\n  error: true",
+        values: { formContext: 'form_context_json:\n{"error":true}' },
+        text: 'form_context_json:\n{"error":true}',
       };
     }
   },

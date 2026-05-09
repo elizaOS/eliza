@@ -3,14 +3,20 @@ import { join } from "node:path";
 import type {
   Trajectory,
   TrajectoryLlmCall,
-} from "@elizaos/agent/types/trajectory";
+} from "@elizaos/agent";
+import {
+  ELIZA_NATIVE_MODEL_BOUNDARIES,
+  buildElizaNativeTrajectoryRows,
+  ELIZA_NATIVE_TRAJECTORY_FORMAT,
+  type ElizaNativeTrajectoryRow,
+} from "@elizaos/core";
+import {
+  extractElizaNativeRowsFromExportText,
+  listTrajectoryCallEntries,
+  parseTrajectoryExportText,
+} from "./trajectory-consumer.js";
 
-export interface GeminiTuningExample {
-  messages: Array<{
-    role: "system" | "user" | "model";
-    content: string;
-  }>;
-}
+export type ElizaNativeTrainingExample = ElizaNativeTrajectoryRow;
 
 export type TrajectoryTrainingTask =
   | "should_respond"
@@ -31,7 +37,7 @@ export interface TrajectoryTaskDatasetPaths {
 export interface TrajectoryTaskDatasetExport {
   counts: Record<TrajectoryTrainingTask, number>;
   paths: TrajectoryTaskDatasetPaths;
-  examples: Record<TrajectoryTrainingTask, GeminiTuningExample[]>;
+  examples: Record<TrajectoryTrainingTask, ElizaNativeTrainingExample[]>;
   summary: TrajectoryTaskDatasetSummary;
 }
 
@@ -45,6 +51,8 @@ export interface TrajectoryTaskDatasetSummary {
   generatedAt: string;
   trajectoryCount: number;
   llmCallCount: number;
+  skippedNonNativeRows: number;
+  warnings: string[];
   counts: Record<TrajectoryTrainingTask, number>;
   tasks: TrajectoryTrainingTask[];
   taskMetrics: Record<TrajectoryTrainingTask, TrajectoryTaskDatasetTaskSummary>;
@@ -62,7 +70,9 @@ const TASK_FILE_NAMES: Record<TrajectoryTrainingTask, string> = {
   media_description: "media_description_trajectories.jsonl",
 };
 
-type TaskExampleMap = Record<TrajectoryTrainingTask, GeminiTuningExample[]>;
+const NATIVE_MODEL_BOUNDARIES = new Set<string>(ELIZA_NATIVE_MODEL_BOUNDARIES);
+
+type TaskExampleMap = Record<TrajectoryTrainingTask, ElizaNativeTrainingExample[]>;
 type TaskCountMap = Record<TrajectoryTrainingTask, number>;
 type TaskTrajectoryIdMap = Record<TrajectoryTrainingTask, Set<string>>;
 
@@ -71,6 +81,8 @@ interface TrajectoryTaskExtractionResult {
   sourceCallCounts: TaskCountMap;
   sourceTrajectoryIds: TaskTrajectoryIdMap;
   llmCallCount: number;
+  skippedNonNativeRows: number;
+  warnings: string[];
 }
 
 function createEmptyExampleMap(): TaskExampleMap {
@@ -117,6 +129,21 @@ function normalizeToken(value: unknown): string {
     .replace(/_+/g, "_");
 }
 
+function normalizeTrainingTask(value: unknown): TrajectoryTrainingTask | null {
+  const normalized = normalizeToken(value);
+  if (
+    normalized === "should_respond" ||
+    normalized === "context_routing" ||
+    normalized === "action_planner" ||
+    normalized === "response" ||
+    normalized === "reply" ||
+    normalized === "media_description"
+  ) {
+    return normalized === "reply" ? "response" : normalized;
+  }
+  return null;
+}
+
 function collectCallHints(call: TrajectoryCallLike): string[] {
   const metadata = call.metadata ?? {};
   const tags = Array.isArray(call.tags) ? call.tags : [];
@@ -144,11 +171,16 @@ function hasContextRoutingFields(text: string): boolean {
   return (
     /(^|\n)primaryContext:/m.test(text) ||
     /(^|\n)secondaryContexts:/m.test(text) ||
-    /(^|\n)evidenceTurnIds:/m.test(text) ||
     /<primaryContext>/i.test(text) ||
-    /<secondaryContexts>/i.test(text) ||
-    /<evidenceTurnIds>/i.test(text)
+    /<secondaryContexts>/i.test(text)
   );
+}
+
+function hasMessageHandlerJsonFields(text: string): boolean {
+  const parsed = parseJsonObject(text);
+  if (!parsed) return false;
+  const candidate = getMessageHandlerCandidate(parsed);
+  return Boolean(candidate);
 }
 
 function looksLikePlannerCall(call: TrajectoryCallLike): boolean {
@@ -163,46 +195,71 @@ function looksLikePlannerCall(call: TrajectoryCallLike): boolean {
   );
 }
 
-const MAX_TRAJECTORY_TEXT_LENGTH = 200_000;
-
-function clampTrajectoryText(text: string): string {
-  return text.length > MAX_TRAJECTORY_TEXT_LENGTH
-    ? text.slice(0, MAX_TRAJECTORY_TEXT_LENGTH)
-    : text;
-}
-
-function stripContextRoutingPrompt(prompt: string): string {
-  const clamped = clampTrajectoryText(prompt);
-  // Find first context_routing: and the next decision_note: after it via
-  // string indexOf to avoid polynomial backtracking on inputs containing
-  // many repeated 'context_routing:' segments.
-  const startMarker = "\ncontext_routing:";
-  const endMarker = "\ndecision_note:";
-  let stripped = clamped;
-  const startIdx = stripped.indexOf(startMarker);
-  if (startIdx !== -1) {
-    const endIdx = stripped.indexOf(endMarker, startIdx + startMarker.length);
-    if (endIdx !== -1) {
-      stripped = stripped.slice(0, startIdx) + stripped.slice(endIdx);
-    }
+function parseJsonObject(text: string): Record<string, unknown> | null {
+  const trimmed = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "");
+  if (!trimmed.startsWith("{")) {
+    return null;
   }
-  return stripped
-    .replace(/\n- primaryContext:[^\n]*/g, "")
-    .replace(/\n- secondaryContexts:[^\n]*/g, "")
-    .replace(/\n- evidenceTurnIds:[^\n]*/g, "")
-    .trim();
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
 }
 
-function stripContextRoutingResponse(response: string): string {
-  return response
-    .replace(/\nprimaryContext:[^\n]*/g, "")
-    .replace(/\nsecondaryContexts:[^\n]*/g, "")
-    .replace(/\nevidenceTurnIds:[^\n]*/g, "")
-    .replace(/<primaryContext>[\s\S]*?<\/primaryContext>/gi, "")
-    .replace(/<secondaryContexts>[\s\S]*?<\/secondaryContexts>/gi, "")
-    .replace(/<evidenceTurnIds>[\s\S]*?<\/evidenceTurnIds>/gi, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+function getMessageHandlerCandidate(
+  parsed: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const nested = parsed.messageHandler;
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    return nested as Record<string, unknown>;
+  }
+  if (
+    typeof parsed.action === "string" &&
+    typeof parsed.simple === "boolean" &&
+    Array.isArray(parsed.contexts) &&
+    typeof parsed.thought === "string"
+  ) {
+    return parsed;
+  }
+  return null;
+}
+
+function normalizeMessageHandlerJson(response: string): string | null {
+  const parsed = parseJsonObject(response);
+  if (!parsed) return null;
+  const candidate = getMessageHandlerCandidate(parsed);
+  if (!candidate) return null;
+
+  const action = candidate.action;
+  if (action !== "RESPOND" && action !== "IGNORE" && action !== "STOP") {
+    return null;
+  }
+
+  const contexts = Array.isArray(candidate.contexts)
+    ? candidate.contexts.filter(
+        (context): context is string => typeof context === "string",
+      )
+    : [];
+  const normalized = {
+    messageHandler: {
+      action,
+      simple:
+        typeof candidate.simple === "boolean"
+          ? candidate.simple
+          : action === "RESPOND" && contexts.length === 0,
+      contexts,
+      thought: typeof candidate.thought === "string" ? candidate.thought : "",
+      reply: typeof candidate.reply === "string" ? candidate.reply : "",
+    },
+  };
+  return JSON.stringify(normalized);
 }
 
 function inferTasksForCall(call: TrajectoryCallLike): TrajectoryTrainingTask[] {
@@ -213,7 +270,8 @@ function inferTasksForCall(call: TrajectoryCallLike): TrajectoryTrainingTask[] {
   if (
     hints.includes("should_respond") ||
     hints.includes("response_handler") ||
-    hints.includes("shouldrespond")
+    hints.includes("shouldrespond") ||
+    hasMessageHandlerJsonFields(response)
   ) {
     tasks.add("should_respond");
   }
@@ -263,40 +321,105 @@ function inferTasksForCall(call: TrajectoryCallLike): TrajectoryTrainingTask[] {
 }
 
 function buildExampleForTask(
+  trajectory: Trajectory,
   call: TrajectoryCallLike,
   task: TrajectoryTrainingTask,
-): GeminiTuningExample | null {
-  const systemPrompt = call.systemPrompt?.trim();
-  const userPrompt = call.userPrompt?.trim();
+): ElizaNativeTrainingExample | null {
   const response = call.response?.trim();
+  const trajectoryId = String(trajectory.trajectoryId ?? "");
+  const callId =
+    typeof call.callId === "string" && call.callId.trim().length > 0
+      ? call.callId
+      : `${trajectoryId}-call`;
 
-  if (!systemPrompt || !userPrompt || !response) {
+  if (!response) {
     return null;
   }
 
-  if (task === "should_respond") {
-    return {
-      messages: [
-        { role: "system", content: stripContextRoutingPrompt(systemPrompt) },
-        { role: "user", content: userPrompt },
-        { role: "model", content: stripContextRoutingResponse(response) },
-      ],
-    };
+  if (task === "should_respond" || task === "context_routing") {
+    if (!normalizeMessageHandlerJson(response)) {
+      return null;
+    }
   }
 
+  const row = buildElizaNativeTrajectoryRows([trajectory]).find(
+    (candidate) => candidate.callId === callId,
+  );
+  if (!row) return null;
+
   return {
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-      { role: "model", content: response },
-    ],
+    ...row,
+    format: ELIZA_NATIVE_TRAJECTORY_FORMAT,
+    metadata: {
+      ...row.metadata,
+      task_type: task,
+      source_dataset: `eliza_native/${task}`,
+      trajectory_id: trajectoryId,
+      call_id: callId,
+      agent_id: String(trajectory.agentId ?? "unknown"),
+      trajectory_source:
+        typeof trajectory.metadata?.source === "string"
+          ? trajectory.metadata.source
+          : row.metadata.trajectory_source,
+    },
   };
 }
 
+function hasNativeRequestPayload(row: ElizaNativeTrajectoryRow): boolean {
+  const request = row.request;
+  if (!request || typeof request !== "object") {
+    return false;
+  }
+  if (typeof request.prompt === "string" && request.prompt.length > 0) {
+    return true;
+  }
+  if (Array.isArray(request.messages) && request.messages.length > 0) {
+    return true;
+  }
+  return false;
+}
+
+function hasNativeResponsePayload(row: ElizaNativeTrajectoryRow): boolean {
+  const response = row.response;
+  if (!response || typeof response !== "object") {
+    return false;
+  }
+  if (typeof response.text === "string" && response.text.length > 0) {
+    return true;
+  }
+  return Array.isArray(response.toolCalls) && response.toolCalls.length > 0;
+}
+
+function isNativeRowUsableForTask(
+  row: ElizaNativeTrajectoryRow,
+  task: TrajectoryTrainingTask,
+): boolean {
+  if (!NATIVE_MODEL_BOUNDARIES.has(row.boundary)) {
+    return false;
+  }
+  if (!hasNativeRequestPayload(row) || !hasNativeResponsePayload(row)) {
+    return false;
+  }
+  if (task === "should_respond" || task === "context_routing") {
+    return normalizeMessageHandlerJson(row.response.text ?? "") !== null;
+  }
+  return true;
+}
+
 function collectTrajectoryExamplesByTask(
-  trajectories: Trajectory[],
+  trajectoriesInput: Trajectory[] | string,
   tasks?: readonly TrajectoryTrainingTask[],
 ): TrajectoryTaskExtractionResult {
+  const nativeRows =
+    typeof trajectoriesInput === "string"
+      ? extractElizaNativeRowsFromExportText(trajectoriesInput)
+      : [];
+  const nonNativeRowCount =
+    typeof trajectoriesInput === "string" && nativeRows.length === 0
+      ? parseTrajectoryExportText(trajectoriesInput).length
+      : 0;
+  const trajectories =
+    typeof trajectoriesInput === "string" ? [] : trajectoriesInput;
   const requestedTasks = new Set<TrajectoryTrainingTask>(
     tasks ?? [
       "should_respond",
@@ -310,28 +433,78 @@ function collectTrajectoryExamplesByTask(
   const sourceCallCounts = createEmptyCountMap();
   const sourceTrajectoryIds = createEmptyTrajectoryIdMap();
   let llmCallCount = 0;
+  let skippedNonNativeRows = 0;
+  const warnings: string[] = [];
+  const warnSkip = (message: string, count = 1): void => {
+    skippedNonNativeRows += count;
+    warnings.push(message);
+    console.warn(message);
+  };
+
+  if (nativeRows.length > 0) {
+    for (const row of nativeRows) {
+      llmCallCount += 1;
+      const task =
+        normalizeTrainingTask(row.metadata?.task_type) ??
+        normalizeTrainingTask(row.purpose) ??
+        normalizeTrainingTask(row.stepType) ??
+        normalizeTrainingTask(row.actionType);
+      if (!task || !requestedTasks.has(task)) {
+        continue;
+      }
+      if (!isNativeRowUsableForTask(row, task)) {
+        warnSkip(
+          `[trajectory-task-datasets] skipped native ${task} row from trajectory ${row.trajectoryId} call ${row.callId}; expected exact request payload and model response`,
+        );
+        continue;
+      }
+      examples[task].push(row);
+      sourceCallCounts[task] += 1;
+      if (typeof row.trajectoryId === "string") {
+        sourceTrajectoryIds[task].add(row.trajectoryId);
+      }
+    }
+    return {
+      examples,
+      sourceCallCounts,
+      sourceTrajectoryIds,
+      llmCallCount,
+      skippedNonNativeRows,
+      warnings,
+    };
+  }
+
+  if (nonNativeRowCount > 0) {
+    warnSkip(
+      `[trajectory-task-datasets] skipped ${nonNativeRowCount} non-native trajectory row(s); expected eliza_native_v1`,
+      nonNativeRowCount,
+    );
+  }
 
   for (const trajectory of trajectories) {
     const trajectoryId = trajectory.trajectoryId;
-    for (const step of trajectory.steps ?? []) {
-      for (const llmCall of step.llmCalls ?? []) {
-        llmCallCount += 1;
-        const call = llmCall as TrajectoryCallLike;
-        const inferredTasks = inferTasksForCall(call);
-        for (const task of inferredTasks) {
-          if (!requestedTasks.has(task)) {
-            continue;
-          }
-
-          const example = buildExampleForTask(call, task);
-          if (!example) {
-            continue;
-          }
-
-          examples[task].push(example);
-          sourceCallCounts[task] += 1;
-          sourceTrajectoryIds[task].add(trajectoryId);
+    for (const entry of listTrajectoryCallEntries(trajectory)) {
+      llmCallCount += 1;
+      const call = entry.call as TrajectoryCallLike;
+      const inferredTasks = inferTasksForCall(call);
+      for (const task of inferredTasks) {
+        if (!requestedTasks.has(task)) {
+          continue;
         }
+
+        const example = buildExampleForTask(trajectory, call, task);
+        if (!example) {
+          if (task === "should_respond" || task === "context_routing") {
+            warnSkip(
+              `[trajectory-task-datasets] skipped non-native ${task} row from trajectory ${trajectoryId} call ${call.callId ?? "unknown"}; expected native messageHandler JSON`,
+            );
+          }
+          continue;
+        }
+
+        examples[task].push(example);
+        sourceCallCounts[task] += 1;
+        sourceTrajectoryIds[task].add(trajectoryId);
       }
     }
   }
@@ -341,24 +514,32 @@ function collectTrajectoryExamplesByTask(
     sourceCallCounts,
     sourceTrajectoryIds,
     llmCallCount,
+    skippedNonNativeRows,
+    warnings,
   };
 }
 
 export function extractTrajectoryExamplesByTask(
-  trajectories: Trajectory[],
+  trajectories: Trajectory[] | string,
   tasks?: readonly TrajectoryTrainingTask[],
-): Record<TrajectoryTrainingTask, GeminiTuningExample[]> {
+): Record<TrajectoryTrainingTask, ElizaNativeTrainingExample[]> {
   return collectTrajectoryExamplesByTask(trajectories, tasks).examples;
 }
 
 export async function exportTrajectoryTaskDatasets(
-  trajectories: Trajectory[],
+  trajectories: Trajectory[] | string,
   outputDir: string,
   tasks?: readonly TrajectoryTrainingTask[],
 ): Promise<TrajectoryTaskDatasetExport> {
   await mkdir(outputDir, { recursive: true });
 
   const extraction = collectTrajectoryExamplesByTask(trajectories, tasks);
+  const normalizedTrajectories =
+    typeof trajectories === "string" ? [] : trajectories;
+  const nativeRows =
+    typeof trajectories === "string"
+      ? extractElizaNativeRowsFromExportText(trajectories)
+      : [];
   const { examples } = extraction;
   const counts: Record<TrajectoryTrainingTask, number> = {
     should_respond: examples.should_respond.length,
@@ -378,8 +559,13 @@ export async function exportTrajectoryTaskDatasets(
   };
   const summary: TrajectoryTaskDatasetSummary = {
     generatedAt: new Date().toISOString(),
-    trajectoryCount: trajectories.length,
+    trajectoryCount:
+      normalizedTrajectories.length > 0
+        ? normalizedTrajectories.length
+        : new Set(nativeRows.map((row) => row.trajectoryId)).size,
     llmCallCount: extraction.llmCallCount,
+    skippedNonNativeRows: extraction.skippedNonNativeRows,
+    warnings: extraction.warnings,
     counts,
     tasks: [
       "should_respond",

@@ -28,7 +28,10 @@ import {
   ModelType,
   type TextEmbeddingParams,
 } from "@elizaos/core";
-import type { LocalInferenceLoader } from "../services/local-inference/active-model";
+import {
+  type LocalInferenceLoader,
+  resolveLocalInferenceLoadArgs,
+} from "../services/local-inference/active-model";
 import {
   autoAssignAtBoot,
   readEffectiveAssignments,
@@ -146,7 +149,7 @@ async function ensureAssignedModelLoaded(
 
   if (loader) {
     await loader.unloadModel();
-    await loader.loadModel({ modelPath: target.path });
+    await loader.loadModel(await resolveLocalInferenceLoadArgs(target));
   } else {
     await localInferenceEngine.load(target.path);
   }
@@ -165,7 +168,7 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
     // standalone engine.
     if (loader?.generate) {
       return loader.generate({
-        prompt: params.prompt,
+        prompt: params.prompt ?? "",
         stopSequences: params.stopSequences,
       });
     }
@@ -180,7 +183,7 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
       );
     }
     return localInferenceEngine.generate({
-      prompt: params.prompt,
+      prompt: params.prompt ?? "",
       stopSequences: params.stopSequences,
     });
   };
@@ -264,9 +267,7 @@ async function tryRegisterAospLlamaLoader(
 ): Promise<boolean> {
   if (process.env.ELIZA_LOCAL_LLAMA?.trim() !== "1") return false;
   try {
-    const mod = (await import(
-      "@elizaos/agent/runtime/aosp-llama-adapter"
-    )) as unknown as {
+    const mod = (await import("@elizaos/agent")) as unknown as {
       registerAospLlamaLoader?: (r: AgentRuntime) => Promise<boolean> | boolean;
     };
     if (typeof mod.registerAospLlamaLoader !== "function") {

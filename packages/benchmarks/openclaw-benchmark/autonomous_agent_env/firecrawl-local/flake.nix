@@ -16,7 +16,7 @@
           buildInputs = with pkgs; [
             # Node.js Runtime
             nodejs_22
-            pnpm
+            bun
             
             # Datenbanken (lokal starten)
             redis
@@ -46,11 +46,11 @@
             echo ""
             echo "📋 SETUP (einmalig):"
             echo "   1. git clone https://github.com/mendableai/firecrawl.git firecrawl-src"
-            echo "   2. cd firecrawl-src/apps/api && pnpm install"
+            echo "   2. cd firecrawl-src/apps/api && bun install"
             echo ""
             echo "📋 STARTEN:"
             echo "   ./start-services.sh   # Redis + PostgreSQL starten"
-            echo "   cd firecrawl-src/apps/api && pnpm run dev"
+            echo "   cd firecrawl-src/apps/api && bun run dev"
             echo ""
             echo "📋 CLI NUTZEN:"
             echo "   firecrawl --api-url http://localhost:3002 scrape https://example.com"

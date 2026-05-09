@@ -22,10 +22,19 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "messaging"
+      ]
+    }
+  },
   "scripts": {
-    "build": "tsdown src/index.ts --format esm --dts --clean && mv dist/index-*.d.ts dist/index.d.ts 2>/dev/null || true",
+    "build": "tsdown && mv dist/index-*.d.ts dist/index.d.ts 2>/dev/null || true",
     "check": "tsc --noEmit",
     "test": "vitest run --config ./vitest.config.ts",
     "test:watch": "vitest --config ./vitest.config.ts",
@@ -39,8 +48,8 @@
   },
   "devDependencies": {
     "@elizaos/core": "workspace:*",
-    "tsdown": "^0.21.0",
-    "typescript": "^6.0.0",
+    "tsdown": "^0.21.10",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.18"
   },
   "agentConfig": {

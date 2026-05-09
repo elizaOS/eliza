@@ -90,7 +90,7 @@ Create a new trigger. Returns `429` if the active trigger limit for the creator 
 | `wakeMode` | string | No | `"inject_now"` fires immediately (default), other modes defer |
 | `enabled` | boolean | No | Whether the trigger is active (default: `true`) |
 | `createdBy` | string | No | Creator identifier for limit tracking (default: `"api"`) |
-| `workflowId` | string | No | n8n workflow ID (required when `kind` is `"workflow"`) |
+| `workflowId` | string | No | workflow ID (required when `kind` is `"workflow"`) |
 | `workflowName` | string | No | Human-readable workflow name (for `kind: "workflow"`) |
 
 **Response (201 Created)**

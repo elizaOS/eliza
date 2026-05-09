@@ -62,7 +62,7 @@ function getProxyUrl(): string | null {
           `Invalid proxy protocol: ${url.protocol}. Supported: http, https, socks4, socks5`,
         );
       }
-    } catch (error) {
+    } catch (_error) {
       logger.warn(`Invalid proxy URL format: ${proxyUrl}`);
     }
   }
@@ -1132,7 +1132,7 @@ export class AudioCacheService {
           `Creating read stream for cached file: ${filePath} (${(stats.size / 1024 / 1024).toFixed(2)}MB, ${stats.size.toLocaleString()} bytes)`,
         );
       }
-    } catch (probeError) {
+    } catch (_probeError) {
       logger.debug(
         `Creating read stream for cached file: ${filePath} (${(stats.size / 1024 / 1024).toFixed(2)}MB, ${stats.size.toLocaleString()} bytes)`,
       );

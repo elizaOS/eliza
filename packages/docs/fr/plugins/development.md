@@ -303,7 +303,7 @@ Les paramètres permettent au LLM d'extraire des données structurées de la con
 
 ```typescript
 const sendMessageAction: Action = {
-  name: "SEND_MESSAGE",
+  name: "MESSAGE",
   description: "Send a message to a specific user on a platform",
 
   parameters: [
@@ -1096,10 +1096,6 @@ const ModelType = {
   AUDIO: "AUDIO",                          // Audio processing
   VIDEO: "VIDEO",                          // Video processing
 
-  // Structured output
-  OBJECT_SMALL: "OBJECT_SMALL",
-  OBJECT_LARGE: "OBJECT_LARGE",
-
   // Research
   RESEARCH: "RESEARCH",
 };
@@ -1265,4 +1261,4 @@ const myPlugin: Plugin = {
 
 - [Documentation des Skills](/fr/plugins/skills) — Apprenez les extensions de compétences basées sur markdown
 - [Guide du Registre](/fr/plugins/registry) — Publication dans le registre de plugins
-- [Guide de Contribution](/fr/guides/contribution-guide) — Contribuer à Eliza/elizaOS
+- [Guide de Contribution](/fr/guides/contributing) — Contribuer à Eliza/elizaOS

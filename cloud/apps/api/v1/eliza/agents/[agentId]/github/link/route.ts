@@ -60,13 +60,18 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
       );
     }
 
+    const connectionRole =
+      connection.connectionRole === "owner" || connection.connectionRole === "agent"
+        ? connection.connectionRole
+        : undefined;
+
     const result = await managedAgentGithubService.connectAgent({
       agentId,
       organizationId: user.organization_id,
       binding: {
-        mode: connection.connectionRole === "owner" ? "shared-owner" : "cloud-managed",
+        mode: connectionRole === "owner" ? "shared-owner" : "cloud-managed",
         connectionId,
-        connectionRole: connection.connectionRole,
+        connectionRole,
         source: connection.source,
         githubUserId: connection.platformUserId || "",
         githubUsername: connection.username || "",

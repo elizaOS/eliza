@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { resolveOAuthDir } from "@elizaos/agent/config/paths";
+import { resolveOAuthDir } from "@elizaos/agent";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
@@ -452,12 +452,13 @@ export function readStoredHealthToken(
   }
   const raw = fs.readFileSync(filePath, "utf8");
   const parsed = JSON.parse(raw) as unknown;
-  const text = isEncryptedTokenEnvelope(parsed)
-    ? decryptTokenEnvelope(
-        parsed,
-        resolveTokenEncryptionKey(tokenStorageRoot(env), env),
-      )
-    : raw;
+  if (!isEncryptedTokenEnvelope(parsed)) {
+    throw new Error("Stored health token is not encrypted. Re-link the account.");
+  }
+  const text = decryptTokenEnvelope(
+    parsed,
+    resolveTokenEncryptionKey(tokenStorageRoot(env), env),
+  );
   return JSON.parse(text) as StoredHealthConnectorToken;
 }
 

@@ -5,11 +5,11 @@ import type {
   CreateBrowserBridgeCompanionAutoPairRequest,
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSessionProgressRequest,
-} from "@elizaos/plugin-browser-bridge";
+} from "@elizaos/plugin-browser";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   LifeOpsBrowserSession,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 
 export type CompanionSyncRequest = SyncBrowserBridgeStateRequest;
 export type CompanionSession = LifeOpsBrowserSession;

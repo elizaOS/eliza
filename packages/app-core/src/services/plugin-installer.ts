@@ -32,11 +32,10 @@ import {
   getPluginInfo,
   loadElizaConfig,
   type RegistryPluginInfo,
-  requestRestart,
   saveElizaConfig,
 } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
-import { createSerialise } from "../utils/serialise";
+import { createSerialise, requestRestart } from "@elizaos/shared";
 
 const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);

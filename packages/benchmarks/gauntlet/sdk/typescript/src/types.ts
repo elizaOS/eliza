@@ -49,7 +49,7 @@ export interface ScenarioContext {
 export interface Task {
   taskId: string;
   type: TaskType;
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
   timeoutMs: number;
 }
 
@@ -68,7 +68,7 @@ export interface AgentResponse {
  */
 export interface TraceStep {
   action: string;
-  result?: Record<string, any>;
+  result?: Record<string, unknown>;
   reasoning?: string;
   timestampMs: number;
 }

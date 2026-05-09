@@ -1,5 +1,4 @@
 import {
-    encodeToonValue,
     type IAgentRuntime,
     type Memory,
     type Provider,
@@ -73,7 +72,7 @@ export class SunoProvider {
             }
 
             const data = await response.json();
-            details.response = encodeToonValue({ suno_response: data });
+            details.response = JSON.stringify({ suno_response: data });
             return data;
         });
     }
@@ -93,17 +92,21 @@ export const sunoStatusProvider: Provider = {
     name: 'SUNO_STATUS',
     description: 'Suno music generation status',
     descriptionCompressed: 'Suno generation availability.',
+    contexts: ["media"],
+    contextGate: { anyOf: ["media"] },
+    cacheStable: false,
+    cacheScope: "turn",
     get: async (runtime: IAgentRuntime) => {
         const configured = Boolean(runtime.getSetting('SUNO_API_KEY'));
         return {
-            text: encodeToonValue({
+            text: JSON.stringify({
                 suno: {
                     configured,
                     status: configured ? 'ready' : 'missing_api_key',
                     action: 'MUSIC_GENERATION',
                     subactions: ['generate', 'custom', 'extend'],
                 },
-            }),
+            }, null, 2),
             data: { configured },
             values: { sunoConfigured: configured },
         };

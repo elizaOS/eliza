@@ -19,7 +19,7 @@ async function gotoDashboardChat(page: Page, search: string) {
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.locator("body")).toContainText("Create New Agent");
+  await expect(page.locator("body")).toContainText(/New chat|Model Playground|Meet Agent\.Pro/);
 
   return response;
 }

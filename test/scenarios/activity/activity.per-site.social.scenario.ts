@@ -62,7 +62,7 @@ export default scenario({
       room: "main",
       text: "Which social sites did I spend the most time on this week?",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_SCREEN_TIME", "SCREEN_TIME"],
+        acceptedActions: ["SCREEN_TIME", "SCREEN_TIME"],
         description: "social website breakdown",
       }),
       responseIncludesAny: [
@@ -75,13 +75,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["OWNER_SCREEN_TIME", "SCREEN_TIME"],
+      actionName: ["SCREEN_TIME", "SCREEN_TIME"],
     },
     {
       type: "custom",
       name: "per-site-social-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_SCREEN_TIME", "SCREEN_TIME"],
+        acceptedActions: ["SCREEN_TIME", "SCREEN_TIME"],
         description: "social website breakdown",
       }),
     },
@@ -90,7 +90,7 @@ export default scenario({
       name: "per-site-social-result",
       predicate: async (ctx) => {
         const hit = ctx.actionsCalled.find((action) =>
-          ["OWNER_SCREEN_TIME", "SCREEN_TIME"].includes(action.actionName),
+          ["SCREEN_TIME", "SCREEN_TIME"].includes(action.actionName),
         );
         if (!hit) {
           return "expected screen-time action result";

@@ -15,7 +15,7 @@ export const BLOCK_RULE_RECONCILE_INTERVAL_MS = 60_000;
 /**
  * T7g — Website blocker chat integration reconciler (plan §6.8).
  *
- * Walks the `life_block_rules` table every tick and releases rules whose
+ * Walks the `app_lifeops.life_block_rules` table every tick and releases rules whose
  * gates have been fulfilled. `harsh_no_bypass` rules behave like
  * `until_todo` but also reject manual release attempts in the writer.
  */
@@ -26,14 +26,14 @@ async function isTodoCompleted(
 ): Promise<boolean> {
   const rows = await executeRawSql(
     runtime,
-    `SELECT state FROM life_task_occurrences
+    `SELECT state FROM app_lifeops.life_task_occurrences
        WHERE id = ${sqlQuote(todoId)}
        LIMIT 1`,
   );
   if (rows.length === 0) {
     const defRows = await executeRawSql(
       runtime,
-      `SELECT status FROM life_task_definitions
+      `SELECT status FROM app_lifeops.life_task_definitions
          WHERE id = ${sqlQuote(todoId)}
          LIMIT 1`,
     );
@@ -99,7 +99,7 @@ async function evaluateRule(
 }
 
 async function scheduleAutoReLock(
-  runtime: IAgentRuntime,
+  _runtime: IAgentRuntime,
   writer: BlockRuleWriter,
   rule: BlockRule,
   nowMs: number,

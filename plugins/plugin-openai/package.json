@@ -30,8 +30,22 @@
   },
   "files": [
     "dist",
-    "rust"
+    "rust",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "text-large",
+        "text-small",
+        "tool-use",
+        "embedding",
+        "text-to-speech",
+        "image-description"
+      ]
+    }
+  },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.9",
     "ai": "^6.0.30",
@@ -44,7 +58,7 @@
     "@types/bun": "^1.3.8",
     "@types/json-schema": "^7.0.15",
     "@types/node": "^25.0.3",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "uuid": "^14.0.0",
     "vitest": "^4.0.0"
   },
@@ -94,7 +108,7 @@
         "type": "string",
         "description": "Fallback identifier for the small language model if OPENAI_SMALL_MODEL is not set.",
         "required": false,
-        "default": "gpt-5-mini",
+        "default": "gpt-5.4-mini",
         "sensitive": false
       },
       "OPENAI_LARGE_MODEL": {

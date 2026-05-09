@@ -1,7 +1,9 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
+  asRecord,
   isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
@@ -12,7 +14,6 @@ import {
   getPluginWidgets,
   type PluginWidgetDeclarationServer,
 } from "../config/plugin-widgets.js";
-import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
 import {
   type AdvancedCapabilityPluginId,
   applyAdvancedCapabilitiesConfig,
@@ -29,7 +30,7 @@ import type {
   InstallProgressLike,
   PluginManagerLike,
 } from "../services/plugin-manager-types.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 import { applyPluginRuntimeMutation } from "./plugin-runtime-apply.js";
 import {
   type PluginParamInfo,
@@ -224,9 +225,7 @@ export interface PluginRouteContext {
   applySignalQrOverride: (
     plugins: PluginEntry[],
     workspaceDir: string,
-    signalAuthExists: (dir: string) => boolean,
   ) => void;
-  signalAuthExists: (dir: string) => boolean;
   resolvePluginConfigMutationRejections: (
     parameters: PluginParamDef[],
     configObj: Record<string, string>,
@@ -244,13 +243,6 @@ function readCompatEnabledFromConfig(
   config: ElizaConfig,
   pluginId: string,
 ): boolean | null {
-  const asRecord = (value: unknown): Record<string, unknown> | null => {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      return null;
-    }
-    return value as Record<string, unknown>;
-  };
-
   const container =
     asRecord(config.connectors)?.[pluginId] ??
     asRecord(config.streaming)?.[pluginId];
@@ -330,7 +322,6 @@ export async function handlePluginRoutes(
     EVM_PLUGIN_PACKAGE,
     applyWhatsAppQrOverride,
     applySignalQrOverride,
-    signalAuthExists,
     resolvePluginConfigMutationRejections,
     requirePluginManager,
     requireCoreManager,
@@ -521,7 +512,6 @@ export async function handlePluginRoutes(
     applySignalQrOverride(
       allPlugins,
       resolveDefaultAgentWorkspaceDir(),
-      signalAuthExists,
     );
 
     for (const plugin of allPlugins) {
@@ -1667,7 +1657,7 @@ export async function handlePluginRoutes(
   if (method === "GET" && pathname === "/api/plugins/core") {
     // Build a set of loaded plugin names for robust matching.
     // Plugin internal names vary wildly (e.g. "local-ai" for plugin-local-embedding,
-    // "eliza-coder" for plugin-code), so we check loaded names against multiple
+    // "coding-tools" for plugin-coding-tools), so we check loaded names against multiple
     // derived forms of the npm package name.
     const loadedNames: Set<string> = state.runtime
       ? new Set(state.runtime.plugins.map((p: { name: string }) => p.name))

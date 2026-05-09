@@ -21,14 +21,14 @@ export default scenario({
       kind: "message",
       name: "create-simple-event",
       text: "Schedule a meeting with Alex tomorrow at 3pm.",
-      expectedActions: ["OWNER_CALENDAR"],
+      expectedActions: ["CALENDAR"],
       responseIncludesAny: ["alex", "3", "tomorrow", "meeting", "scheduled"],
     },
   ],
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "OWNER_CALENDAR",
+      actionName: "CALENDAR",
       minCount: 1,
     },
   ],

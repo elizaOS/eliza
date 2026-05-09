@@ -85,15 +85,15 @@ function buildResultActions(
 
 function describeChips(actions: SkillResultAction[]): string {
 	// Mention the action verbs so an LLM rendering this output can pick the
-	// right follow-up action by name (e.g. ENABLE_SKILL, USE_SKILL).
+	// right parent action + op for the follow-up.
 	const map: Record<SkillResultActionKind, string> = {
 		use: "USE_SKILL",
-		enable: "ENABLE_SKILL",
-		disable: "DISABLE_SKILL",
-		install: "INSTALL_SKILL",
-		uninstall: "UNINSTALL_SKILL",
+		enable: "SKILL op=toggle enabled=true",
+		disable: "SKILL op=toggle enabled=false",
+		install: "SKILL op=install",
+		uninstall: "SKILL op=uninstall",
 		copy: "Copy SKILL.md",
-		details: "GET_SKILL_DETAILS",
+		details: "SKILL op=details",
 	};
 	return actions.map((a) => map[a.kind]).join(" · ");
 }
@@ -161,9 +161,9 @@ export async function runSkillSearch(
 		),
 		"next_actions:",
 		"  use: USE_SKILL for enabled skills",
-		"  toggle: ENABLE_SKILL or DISABLE_SKILL for installed skills",
-		"  install: INSTALL_SKILL for not-installed skills",
-		"  details: GET_SKILL_DETAILS for a selected slug",
+		"  toggle: SKILL op=toggle for installed skills",
+		"  install: SKILL op=install for not-installed skills",
+		"  details: SKILL op=details for a selected slug",
 	];
 
 	return {
@@ -179,8 +179,11 @@ export async function runSkillSearch(
 	};
 }
 
-export const searchSkillsAction: Action = {
-	name: "SEARCH_SKILLS",
+export const searchSkillsAction = {
+	name: "SKILL",
+	contexts: ["knowledge", "automation", "settings"],
+	contextGate: { anyOf: ["knowledge", "automation", "settings"] },
+	roleGate: { minRole: "USER" },
 	similes: ["BROWSE_SKILLS", "LIST_SKILLS", "FIND_SKILLS"],
 	description:
 		"Search the skill registry for available skills by keyword or category. Returns each result with action chips (use/enable/disable/install/copy/details).",
@@ -251,12 +254,12 @@ export const searchSkillsAction: Action = {
 			{
 				name: "{{agentName}}",
 				content: {
-					text: '## Skills matching "data analysis"\n\n1. **Data Analysis** (`data-analysis`) [not installed]\n   Analyze datasets and generate insights\n   → INSTALL_SKILL · GET_SKILL_DETAILS',
-					actions: ["SEARCH_SKILLS"],
+					text: '## Skills matching "data analysis"\n\n1. **Data Analysis** (`data-analysis`) [not installed]\n   Analyze datasets and generate insights\n   → SKILL op=install · SKILL op=details',
+					actions: ["SKILL"],
 				},
 			},
 		],
 	],
-};
+} satisfies Action;
 
 export default searchSkillsAction;

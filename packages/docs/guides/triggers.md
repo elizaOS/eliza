@@ -400,7 +400,7 @@ The response uses `Math.max(inMemory, durable)` for execution and failure counts
 
 ## Creating Triggers from Chat
 
-The `CREATE_TRIGGER_TASK` action (with similes `CREATE_TRIGGER` and `SCHEDULE_TRIGGER`) allows users to create triggers through natural language in the chat. The action validates against these keyword phrases:
+The `WORKFLOW` action with `op="create_trigger"` (similes include `CREATE_TRIGGER`, `SCHEDULE_TRIGGER`, `CREATE_TRIGGER_TASK`) allows users to create triggers through natural language in the chat. The action validates against these keyword phrases:
 
 - `"create trigger"` / `"create a trigger"`
 - `"create task"` / `"schedule task"`

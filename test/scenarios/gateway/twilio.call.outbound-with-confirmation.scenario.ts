@@ -32,7 +32,7 @@ export default scenario({
       room: "main",
       text: "Call Downtown Dental at +15555550101 and reschedule my appointment to next Tuesday, but wait for my approval before dialing.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_VOICE_CALL"],
+        acceptedActions: ["VOICE_CALL"],
         description: "twilio outbound call draft",
         includesAny: ["call", "downtown", "dental", "confirm", "15555550101"],
       }),
@@ -49,7 +49,7 @@ export default scenario({
       room: "main",
       text: "Yes, place the call to +15555550101 now.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_VOICE_CALL"],
+        acceptedActions: ["VOICE_CALL"],
         description: "twilio outbound call confirmed",
         includesAny: ["call", "place", "dial", "15555550101"],
       }),
@@ -64,7 +64,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["OWNER_VOICE_CALL"],
+      actionName: ["VOICE_CALL"],
     },
     {
       type: "approvalRequestExists",
@@ -77,13 +77,13 @@ export default scenario({
     {
       type: "connectorDispatchOccurred",
       channel: "phone_call",
-      actionName: ["OWNER_VOICE_CALL"],
+      actionName: ["VOICE_CALL"],
     },
     {
       type: "custom",
       name: "twilio-call-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_VOICE_CALL"],
+        acceptedActions: ["VOICE_CALL"],
         description: "twilio outbound call draft then send",
         includesAny: ["call", "confirm", "dial", "15555550101"],
         minCount: 2,
@@ -94,7 +94,7 @@ export default scenario({
       name: "twilio-call-dispatch",
       predicate: expectConnectorDispatch({
         channel: "phone_call",
-        actionName: ["OWNER_VOICE_CALL"],
+        actionName: ["VOICE_CALL"],
         description:
           "the confirmed Twilio call goes through the voice dispatcher",
       }),

@@ -14,13 +14,12 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
+import type { DrizzleDatabase } from "@elizaos/plugin-sql";
 import { AuthStore } from "../services/auth-store";
 import { extractHeaderValue } from "./auth";
 import {
   appendAuditEvent,
   bootstrapExchangeLimiter,
-  markLegacyBearerInvalidated,
   serializeCsrfCookie,
   serializeSessionCookie,
   verifyBootstrapToken,
@@ -125,7 +124,7 @@ export async function handleAuthBootstrapRoutes(
   const userAgent = extractHeaderValue(req.headers["user-agent"]);
   const result = await verifyBootstrapToken(token, { authStore: store });
 
-  if (!result.ok) {
+  if (result.ok === false) {
     // Failure path is audited so the operator can see replay / mismatch
     // attempts. The token itself is never written — just the failure
     // reason.
@@ -197,16 +196,6 @@ export async function handleAuthBootstrapRoutes(
     serializeSessionCookie(session),
     serializeCsrfCookie(session),
   ]);
-
-  // A real auth method just landed — the legacy static bearer is retired
-  // immediately for this installation per plan §9 step 3.
-  await markLegacyBearerInvalidated(store, {
-    actorIdentityId: identityId,
-    ip,
-    userAgent,
-  }).catch((err: unknown) => {
-    console.error("[auth] legacy invalidate audit failed:", err);
-  });
 
   await appendAuditEvent(
     {

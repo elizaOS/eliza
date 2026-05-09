@@ -18,9 +18,13 @@
  *   - file0,file1... File (1..10, total <= 100MB)
  */
 
-import { eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { getDb } from "@/db/worker-neon-http";
+import {
+  type NewUserVoice,
+  type NewVoiceCloningJob,
+  type NewVoiceSample,
+  userVoicesRepository,
+} from "@/db/repositories/user-voices";
 import { failureResponse, jsonError, ValidationError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -34,14 +38,6 @@ import {
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
-import {
-  type NewUserVoice,
-  type NewVoiceCloningJob,
-  type NewVoiceSample,
-  userVoices,
-  voiceCloningJobs,
-  voiceSamples,
-} from "../../../../../packages/db/schemas/user-voices";
 
 const MAX_FILES = 10;
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
@@ -213,8 +209,6 @@ app.post("/", async (c) => {
       throw error;
     }
 
-    const db = getDb(c);
-
     const newJob: NewVoiceCloningJob = {
       organizationId: user.organization_id,
       userId: user.id,
@@ -225,10 +219,7 @@ app.post("/", async (c) => {
       metadata: { fileCount, totalSize },
       startedAt: new Date(),
     };
-    const [createdJob] = await db.insert(voiceCloningJobs).values(newJob).returning();
-    if (!createdJob) {
-      throw new Error("Failed to create voice cloning job");
-    }
+    const createdJob = await userVoicesRepository.createCloningJob(newJob);
     jobId = createdJob.id;
 
     // 1) Upload samples to R2 in parallel. Persisted alongside the DB row so
@@ -267,7 +258,7 @@ app.post("/", async (c) => {
     );
 
     if (sampleRecords.length > 0) {
-      await db.insert(voiceSamples).values(sampleRecords.map((s) => s.record));
+      await userVoicesRepository.createSamples(sampleRecords.map((s) => s.record));
     }
 
     // 2) Call ElevenLabs.
@@ -293,36 +284,20 @@ app.post("/", async (c) => {
       sampleCount: fileCount,
       creationCost: String(cloneCost.totalCost),
     };
-    const [insertedVoice] = await db.insert(userVoices).values(newUserVoice).returning();
-    if (!insertedVoice) {
-      throw new Error("Failed to insert user_voices row");
-    }
+    const insertedVoice = await userVoicesRepository.createVoice(newUserVoice);
     userVoicePersisted = true;
 
     // Backfill the sample rows with the new userVoiceId.
-    await db
-      .update(voiceSamples)
-      .set({ userVoiceId: insertedVoice.id })
-      .where(eq(voiceSamples.jobId, createdJob.id));
+    await userVoicesRepository.attachSamplesToVoice(createdJob.id, insertedVoice.id);
 
     const startTime = createdJob.startedAt?.getTime() ?? Date.now();
     const duration = Date.now() - startTime;
 
-    const [updatedJob] = await db
-      .update(voiceCloningJobs)
-      .set({
-        status: "completed",
-        userVoiceId: insertedVoice.id,
-        elevenlabsVoiceId,
-        progress: 100,
-        completedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(voiceCloningJobs.id, createdJob.id))
-      .returning();
-    if (!updatedJob) {
-      throw new Error("Failed to update voice cloning job");
-    }
+    const updatedJob = await userVoicesRepository.completeCloningJob({
+      jobId: createdJob.id,
+      userVoiceId: insertedVoice.id,
+      elevenlabsVoiceId,
+    });
 
     const billing = await billFlatUsage(
       {
@@ -408,13 +383,11 @@ app.post("/", async (c) => {
     // Each cleanup operation is wrapped in its own try/catch so a cleanup
     // failure does not mask the original error from the client.
     if (jobId) {
-      const db = getDb(c);
-
       if (!userVoicePersisted) {
         // 1) Drop the voice_samples rows we wrote for this job (orphaned
         //    rows referencing R2 keys we're about to delete).
         try {
-          await db.delete(voiceSamples).where(eq(voiceSamples.jobId, jobId));
+          await userVoicesRepository.deleteSamplesByJobId(jobId);
         } catch (dbError) {
           logger.error("[Voice Clone API] Failed to delete orphan voice_samples rows", {
             jobId,
@@ -439,10 +412,7 @@ app.post("/", async (c) => {
       // 3) Mark the job failed last so it carries the canonical error
       //    message even if step 1 or 2 emitted their own log lines.
       try {
-        await db
-          .update(voiceCloningJobs)
-          .set({ status: "failed", errorMessage, updatedAt: new Date() })
-          .where(eq(voiceCloningJobs.id, jobId));
+        await userVoicesRepository.markCloningJobFailed(jobId, errorMessage);
       } catch (dbError) {
         logger.error("[Voice Clone API] Failed to mark job failed", {
           jobId,

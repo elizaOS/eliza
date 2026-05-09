@@ -303,7 +303,7 @@ Los parámetros permiten al LLM extraer datos estructurados de la conversación:
 
 ```typescript
 const sendMessageAction: Action = {
-  name: "SEND_MESSAGE",
+  name: "MESSAGE",
   description: "Send a message to a specific user on a platform",
 
   parameters: [
@@ -1096,10 +1096,6 @@ const ModelType = {
   AUDIO: "AUDIO",                          // Audio processing
   VIDEO: "VIDEO",                          // Video processing
 
-  // Structured output
-  OBJECT_SMALL: "OBJECT_SMALL",
-  OBJECT_LARGE: "OBJECT_LARGE",
-
   // Research
   RESEARCH: "RESEARCH",
 };
@@ -1265,4 +1261,4 @@ const myPlugin: Plugin = {
 
 - [Documentación de Skills](/es/plugins/skills) — Aprende sobre extensiones de habilidades basadas en markdown
 - [Guía del Registro](/es/plugins/registry) — Publicación en el registro de plugins
-- [Guía de Contribución](/es/guides/contribution-guide) — Contribuir a Eliza/elizaOS
+- [Guía de Contribución](/es/guides/contributing) — Contribuir a Eliza/elizaOS

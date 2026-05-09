@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { dbRead } from "@/db/helpers";
 import { usageRecords } from "@/db/schemas/usage-records";
-import { requireAdminWithResponse } from "@/lib/api/admin-auth";
+import { requireAdminWithResponse } from "@/lib/auth/admin";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 

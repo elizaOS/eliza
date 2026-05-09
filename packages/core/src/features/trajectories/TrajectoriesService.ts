@@ -11,6 +11,17 @@
 import { sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../../logger";
+import { serializeTrajectoryExport } from "../../services/trajectory-export";
+import type {
+	TrajectoryExportOptions as CanonicalTrajectoryExportOptions,
+	TrajectoryDetailRecord,
+	TrajectoryExportResult,
+} from "../../services/trajectory-types";
+
+/** Public alias for {@link CanonicalTrajectoryExportOptions} (canonical type lives in services). */
+export type TrajectoryExportOptions = CanonicalTrajectoryExportOptions;
+
+import type { TrajectoryRuntimeLlmCallParams } from "../../trajectory-utils";
 import type { IAgentRuntime } from "../../types";
 import { Service } from "../../types/service";
 
@@ -94,16 +105,6 @@ export interface TrajectoryStats {
 	bySource: Record<string, number>;
 	byStatus: Record<string, number>;
 	byScenario: Record<string, number>;
-}
-
-export interface TrajectoryExportOptions {
-	format: "json" | "art" | "csv";
-	includePrompts?: boolean;
-	trajectoryIds?: string[];
-	startDate?: string;
-	endDate?: string;
-	scenarioId?: string;
-	batchId?: string;
 }
 
 export interface TrajectoryZipExportOptions {
@@ -356,7 +357,15 @@ export class TrajectoriesService extends Service {
 		}
 
 		const sqlHelper = this.getSqlHelper();
-		const db = runtime.adapter.db as {
+		const dbCandidate = runtime.adapter.db as { execute?: unknown } | undefined;
+		// Adapters without SQL support (e.g. InMemoryDatabaseAdapter used in tests)
+		// expose `db = {}` rather than a Drizzle handle. Treat schema/CRUD calls as
+		// no-ops so trajectory logging can degrade gracefully instead of spamming
+		// "db.execute is not a function" for every step.
+		if (!dbCandidate || typeof dbCandidate.execute !== "function") {
+			return { rows: [], columns: [] };
+		}
+		const db = dbCandidate as {
 			execute(query: ReturnType<typeof sql.raw>): Promise<SqlExecuteResult>;
 		};
 		const query = sqlHelper.raw(sqlText);
@@ -375,10 +384,20 @@ export class TrajectoriesService extends Service {
 		if (this.initialized) return;
 		this.exposeBoundMethods();
 
-		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
+		const runtime = this.runtime as IAgentRuntime & {
+			adapter?: { db?: unknown };
+		};
 		if (!runtime?.adapter) {
 			logger.warn(
 				"[trajectory-logger] No runtime adapter available, skipping initialization",
+			);
+			return;
+		}
+
+		const db = runtime.adapter.db as { execute?: unknown } | undefined;
+		if (!db || typeof db.execute !== "function") {
+			logger.warn(
+				"[trajectory-logger] Runtime adapter does not support db.execute (likely InMemory adapter); skipping table setup",
 			);
 			return;
 		}
@@ -885,27 +904,7 @@ export class TrajectoriesService extends Service {
 	 * Called by the runtime when an LLM call is made.
 	 * This is the interface the runtime expects.
 	 */
-	logLlmCall(params: {
-		stepId: string;
-		model: string;
-		modelVersion?: string;
-		systemPrompt: string;
-		userPrompt: string;
-		response: string;
-		reasoning?: string;
-		temperature: number;
-		maxTokens: number;
-		purpose: string;
-		actionType: string;
-		latencyMs: number;
-		promptTokens?: number;
-		completionTokens?: number;
-		modelSlot?: string;
-		runId?: string;
-		roomId?: string;
-		messageId?: string;
-		executionTraceId?: string;
-	}): void {
+	logLlmCall(params: TrajectoryRuntimeLlmCallParams): void {
 		if (!this.enabled) return;
 
 		// Resolve trajectory synchronously from in-memory map (set by startStep).
@@ -941,27 +940,7 @@ export class TrajectoriesService extends Service {
 
 	private async _persistLlmCall(
 		trajectoryId: string,
-		params: {
-			stepId: string;
-			model: string;
-			modelVersion?: string;
-			systemPrompt: string;
-			userPrompt: string;
-			response: string;
-			reasoning?: string;
-			temperature: number;
-			maxTokens: number;
-			purpose: string;
-			actionType: string;
-			latencyMs: number;
-			promptTokens?: number;
-			completionTokens?: number;
-			modelSlot?: string;
-			runId?: string;
-			roomId?: string;
-			messageId?: string;
-			executionTraceId?: string;
-		},
+		params: TrajectoryRuntimeLlmCallParams,
 	): Promise<void> {
 		await this.withTrajectoryWriteLock(trajectoryId, async () => {
 			const trajectory = await this.getTrajectoryById(trajectoryId);
@@ -973,9 +952,20 @@ export class TrajectoriesService extends Service {
 				timestamp: Date.now(),
 				model: params.model,
 				modelVersion: params.modelVersion,
+				modelType: params.modelType,
+				provider: params.provider,
 				systemPrompt: params.systemPrompt,
 				userPrompt: params.userPrompt,
+				prompt: params.prompt ?? params.userPrompt,
+				messages: params.messages,
+				tools: params.tools,
+				toolChoice: params.toolChoice,
+				responseSchema: params.responseSchema,
+				providerOptions: params.providerOptions,
 				response: params.response,
+				toolCalls: params.toolCalls,
+				finishReason: params.finishReason,
+				providerMetadata: params.providerMetadata,
 				reasoning: params.reasoning,
 				temperature: params.temperature,
 				maxTokens: params.maxTokens,
@@ -983,6 +973,8 @@ export class TrajectoriesService extends Service {
 				actionType: params.actionType,
 				promptTokens: params.promptTokens,
 				completionTokens: params.completionTokens,
+				cacheReadInputTokens: params.cacheReadInputTokens,
+				cacheCreationInputTokens: params.cacheCreationInputTokens,
 				latencyMs: params.latencyMs,
 				modelSlot: params.modelSlot,
 				runId: params.runId,
@@ -1487,8 +1479,14 @@ export class TrajectoriesService extends Service {
 	async listTrajectories(
 		options: TrajectoryListOptions = {},
 	): Promise<TrajectoryListResult> {
-		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
+		const runtime = this.runtime as IAgentRuntime & {
+			adapter?: { db?: unknown };
+		};
 		if (!runtime?.adapter) {
+			return { trajectories: [], total: 0, offset: 0, limit: 50 };
+		}
+		const db = runtime.adapter.db as { execute?: unknown } | undefined;
+		if (!db || typeof db.execute !== "function") {
 			return { trajectories: [], total: 0, offset: 0, limit: 50 };
 		}
 		await this.ensureStorageReady();
@@ -1904,8 +1902,8 @@ export class TrajectoriesService extends Service {
 	// ─────────────────────────────────────────────────────────────────────────
 
 	async exportTrajectories(
-		options: TrajectoryExportOptions,
-	): Promise<{ data: string; filename: string; mimeType: string }> {
+		options: CanonicalTrajectoryExportOptions,
+	): Promise<TrajectoryExportResult> {
 		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
 		if (!runtime?.adapter) {
 			throw new Error("Database not available");
@@ -1941,50 +1939,18 @@ export class TrajectoriesService extends Service {
 			`SELECT * FROM trajectories ${whereClause} ORDER BY created_at DESC`,
 		);
 
-		const trajectories = result.rows.map((row) => this.rowToTrajectory(row));
-		const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-
-		if (options.format === "csv") {
-			const lines: string[] = [
-				"id,agent_id,source,status,start_time,end_time,duration_ms,step_count,llm_call_count,total_reward,scenario_id",
-			];
-			for (const t of trajectories) {
-				lines.push(
-					[
-						t.trajectoryId,
-						t.agentId,
-						t.metadata.source ?? "chat",
-						t.metrics.finalStatus,
-						t.startTime,
-						t.endTime,
-						t.durationMs,
-						t.steps.length,
-						t.steps.reduce((sum, s) => sum + s.llmCalls.length, 0),
-						t.totalReward,
-						t.scenarioId ?? "",
-					].join(","),
-				);
-			}
+		const trajectories: TrajectoryDetailRecord[] = result.rows.map((row) => {
+			const trajectory = this.rowToTrajectory(row);
 			return {
-				data: lines.join("\n"),
-				filename: `trajectories-${timestamp}.csv`,
-				mimeType: "text/csv",
+				...trajectory,
+				source:
+					typeof trajectory.metadata?.source === "string"
+						? trajectory.metadata.source
+						: undefined,
 			};
-		}
+		});
 
-		// For JSON format, optionally redact prompts
-		let exportData = trajectories;
-		if (!options.includePrompts) {
-			exportData = trajectories.map((trajectory) =>
-				this.redactTrajectoryPrompts(trajectory),
-			);
-		}
-
-		return {
-			data: JSON.stringify(exportData, null, 2),
-			filename: `trajectories-${timestamp}.json`,
-			mimeType: "application/json",
-		};
+		return serializeTrajectoryExport(trajectories, options);
 	}
 
 	// ─────────────────────────────────────────────────────────────────────────

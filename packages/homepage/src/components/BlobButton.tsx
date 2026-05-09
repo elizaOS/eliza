@@ -1,16 +1,14 @@
-import { useState, useRef, useEffect, type ReactNode } from "react";
+import { animated, useSpring } from "@react-spring/web";
 import type { ComponentType, HTMLAttributes } from "react";
-import { useSpring, animated } from "@react-spring/web";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import type { SpringAnimatedStyle } from "@/lib/spring-types";
 
-type SpringAnimatedStyle = Record<
-  string,
-  string | number | boolean | null | undefined | object
->;
 type AnimatedDivProps = Omit<HTMLAttributes<HTMLDivElement>, "style"> & {
   style?: SpringAnimatedStyle;
 };
 
 const AnimatedDiv = animated.div as ComponentType<AnimatedDivProps>;
+
 import QRCode from "@/components/QRCode";
 
 interface BlobButtonProps {
@@ -59,10 +57,12 @@ export default function BlobButton({
   });
 
   return (
-    <div
-      className="relative z-30 inline-flex items-center"
+    <fieldset
+      className="relative z-30 m-0 inline-flex min-w-0 items-center border-0 p-0"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onFocus={() => setHovered(true)}
+      onBlur={() => setHovered(false)}
     >
       {/* Single glass shape: starts as the pill, morphs into pill+panel */}
       <AnimatedDiv
@@ -107,6 +107,6 @@ export default function BlobButton({
       >
         {children}
       </a>
-    </div>
+    </fieldset>
   );
 }

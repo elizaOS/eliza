@@ -1,14 +1,15 @@
 import path from "node:path";
-import type { AgentRuntime, UUID } from "@elizaos/core";
+import type { AgentRuntime, RouteRequestMeta, UUID } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/shared";
 import {
   getDefaultStylePreset,
   normalizeCharacterLanguage,
 } from "@elizaos/shared";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import { resolveUserPath } from "../config/paths.js";
+import type { AutonomousConfigLike } from "../types/config-like.js";
 import { detectRuntimeModel } from "./agent-model.js";
 import { clearPersistedOnboardingConfig } from "./provider-switch-config.js";
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
 
 type AgentStateStatus =
   | "not_started"
@@ -19,7 +20,18 @@ type AgentStateStatus =
   | "restarting"
   | "error";
 
-import type { AutonomousConfigLike } from "../types/config-like.js";
+type AppCoreRuntimeModule = {
+  sharedVault: () => {
+    remove: (key: string) => Promise<void> | void;
+  };
+};
+
+async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
+  const moduleId = "@elizaos/app-core";
+  return import(
+    /* webpackIgnore: true */ moduleId
+  ) as Promise<AppCoreRuntimeModule>;
+}
 
 function resolveDefaultAgentName(config: AutonomousConfigLike): string {
   const ui = config.ui as
@@ -193,9 +205,7 @@ export async function handleAgentAdminRoutes(
       // → useCloudState reports cloud connected → user sees themselves still
       // logged in even though they just hit "Reset".
       try {
-        const { sharedVault } = await import(
-          "@elizaos/app-core/services/vault-mirror"
-        );
+        const { sharedVault } = await importAppCoreRuntime();
         const vault = sharedVault();
         const cloudKeys = [
           "ELIZAOS_CLOUD_API_KEY",

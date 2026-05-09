@@ -3,10 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { browserAction } from "../actions/browser-action.js";
-import { fileAction } from "../actions/file-action.js";
-import { manageWindowAction } from "../actions/manage-window.js";
-import { terminalAction } from "../actions/terminal-action.js";
+import { desktopAction } from "../actions/desktop.js";
 import { useComputerAction } from "../actions/use-computer.js";
 import computerUsePlugin from "../index.js";
 import { ComputerUseService } from "../services/computer-use-service.js";
@@ -54,15 +51,23 @@ describe("computer-use live parity", () => {
 
   it("exports the full public action surface", () => {
     expect(computerUsePlugin.actions?.map((action) => action.name)).toEqual([
-      "USE_COMPUTER",
-      "BROWSER_ACTION",
-      "MANAGE_WINDOW",
-      "FILE_ACTION",
-      "TERMINAL_ACTION",
+      "COMPUTER_USE",
+      "DESKTOP",
     ]);
+    expect(useComputerAction.similes).toContain("USE_COMPUTER");
+    expect(useComputerAction.roleGate).toMatchObject({ minRole: "OWNER" });
+    expect(desktopAction.similes).toEqual(
+      expect.arrayContaining([
+        "FILE_ACTION",
+        "MANAGE_WINDOW",
+        "TERMINAL_ACTION",
+        "DESKTOP",
+        "USE_DESKTOP",
+      ]),
+    );
   });
 
-  it("publishes the upstream desktop/browser/window/file/terminal action surfaces", () => {
+  it("publishes the COMPUTER_USE desktop op surface and DESKTOP op enum", () => {
     const desktopActions = useComputerAction.parameters?.find(
       (parameter) => parameter.name === "action",
     );
@@ -84,83 +89,18 @@ describe("computer-use live parity", () => {
       ]),
     });
 
-    const browserActions = browserAction.parameters?.find(
-      (parameter) => parameter.name === "action",
+    const desktopOp = desktopAction.parameters?.find(
+      (parameter) => parameter.name === "op",
     );
-    expect(browserActions?.schema).toMatchObject({
+    expect(desktopOp?.schema).toMatchObject({
       enum: expect.arrayContaining([
-        "open",
-        "connect",
-        "close",
-        "navigate",
-        "click",
-        "type",
-        "scroll",
+        "file",
+        "window",
+        "terminal",
+        // Reserved future ops — currently live on COMPUTER_USE.
         "screenshot",
-        "dom",
-        "get_dom",
-        "clickables",
-        "get_clickables",
-        "execute",
-        "state",
-        "info",
-        "context",
-        "wait",
-        "list_tabs",
-        "open_tab",
-        "close_tab",
-        "switch_tab",
-      ]),
-    });
-
-    const windowActions = manageWindowAction.parameters?.find(
-      (parameter) => parameter.name === "action",
-    );
-    expect(windowActions?.schema).toMatchObject({
-      enum: expect.arrayContaining([
-        "list",
-        "focus",
-        "switch",
-        "arrange",
-        "move",
-        "minimize",
-        "maximize",
-        "restore",
-        "close",
-      ]),
-    });
-
-    const fileActions = fileAction.parameters?.find(
-      (parameter) => parameter.name === "action",
-    );
-    expect(fileActions?.schema).toMatchObject({
-      enum: expect.arrayContaining([
-        "read",
-        "write",
-        "edit",
-        "append",
-        "delete",
-        "exists",
-        "list",
-        "delete_directory",
-        "upload",
-        "download",
-        "list_downloads",
-      ]),
-    });
-
-    const terminalActions = terminalAction.parameters?.find(
-      (parameter) => parameter.name === "action",
-    );
-    expect(terminalActions?.schema).toMatchObject({
-      enum: expect.arrayContaining([
-        "connect",
-        "execute",
-        "read",
-        "type",
-        "clear",
-        "close",
-        "execute_command",
+        "ocr",
+        "detect_elements",
       ]),
     });
   });

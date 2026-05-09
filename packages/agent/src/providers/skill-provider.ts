@@ -305,6 +305,7 @@ function truncateDesc(desc: string, maxLen: number): string {
 const THRESHOLD_RELEVANT = 3;
 const THRESHOLD_HIGHLY_RELEVANT = 8;
 const MAX_INSTRUCTION_CHARS = 2000;
+const MAX_SKILL_MATCHES = 3;
 
 // ── Provider ─────────────────────────────────────────────────────────────────
 
@@ -321,107 +322,126 @@ export function createDynamicSkillProvider(): Provider {
       "lightweight dynamic skill match inject relevant skill per turn",
     dynamic: true,
     position: -10,
+    contexts: ["general", "agent_internal"],
+    contextGate: { anyOf: ["general", "agent_internal"] },
+    cacheStable: false,
+    cacheScope: "turn",
+    roleGate: { minRole: "USER" },
 
     async get(
       runtime: IAgentRuntime,
       message: Memory,
       state: State,
     ): Promise<ProviderResult> {
-      if (!(await hasAdminAccess(runtime, message))) {
-        return { text: "", values: {}, data: {} };
-      }
+      try {
+        if (!(await hasAdminAccess(runtime, message))) {
+          return { text: "", values: {}, data: {} };
+        }
 
-      const service = runtime.getService(
-        "AGENT_SKILLS_SERVICE",
-      ) as unknown as AgentSkillsServiceLike | null;
-      if (!service) return { text: "" };
+        const service = runtime.getService(
+          "AGENT_SKILLS_SERVICE",
+        ) as unknown as AgentSkillsServiceLike | null;
+        if (!service) return { text: "", values: {}, data: {} };
 
-      const skills = service.getLoadedSkills();
-      if (skills.length === 0) return { text: "" };
+        const skills = service.getLoadedSkills();
+        if (skills.length === 0) return { text: "", values: {}, data: {} };
 
-      // Rebuild index if stale or skill count changed
-      if (
-        !indexCache ||
-        Date.now() - indexCache.builtAt > INDEX_TTL_MS ||
-        indexCache.skillCount !== skills.length
-      ) {
-        indexCache = buildIndex(skills);
-      }
+        // Rebuild index if stale or skill count changed
+        if (
+          !indexCache ||
+          Date.now() - indexCache.builtAt > INDEX_TTL_MS ||
+          indexCache.skillCount !== skills.length
+        ) {
+          indexCache = buildIndex(skills);
+        }
 
-      // Score against current message + recent context
-      const messageText =
-        ((message.content as Record<string, unknown>)?.text as string) ?? "";
-      const recentContext = getRecentContext(state);
-      const queryText = `${messageText} ${recentContext}`;
+        // Score against current message + recent context
+        const messageText =
+          ((message.content as Record<string, unknown>)?.text as string) ?? "";
+        const recentContext = getRecentContext(state);
+        const queryText = `${messageText} ${recentContext}`;
 
-      const scored = scoreQuery(indexCache, queryText);
-      const topMatch = scored[0];
+        const scored = scoreQuery(indexCache, queryText);
+        const topMatch = scored[0];
 
-      // Tier 0: No relevant match — 1-line footer only
-      if (!topMatch || topMatch.score < THRESHOLD_RELEVANT) {
+        // Tier 0: No relevant match — 1-line footer only
+        if (!topMatch || topMatch.score < THRESHOLD_RELEVANT) {
+          return {
+            text: `Skills: ${skills.length} installed. Ask "what can you do?" or describe a task to activate relevant skills.`,
+            values: { skillMatchTier: "none" as never },
+            data: { matchedSkills: [] },
+          };
+        }
+
+        // Tier 1: Moderate match — compact top-3 list
+        const topMatches = scored
+          .slice(0, MAX_SKILL_MATCHES)
+          .filter((s) => s.score >= THRESHOLD_RELEVANT);
+        const compactList = topMatches
+          .map(
+            (s) =>
+              `- **${s.name}** (${s.slug}): ${truncateDesc(s.description, 80)}`,
+          )
+          .join("\n");
+
+        if (topMatch.score < THRESHOLD_HIGHLY_RELEVANT) {
+          return {
+            text: `## Relevant Skills\n\n${compactList}\n\n*Use USE_SKILL to invoke one, or SEARCH_SKILLS for more detail.*`,
+            values: {
+              skillMatchTier: "relevant" as never,
+              topSkill: topMatch.slug as never,
+            },
+            data: {
+              matchedSkills: topMatches.map((s) => ({
+                slug: s.slug,
+                score: s.score,
+              })),
+            },
+          };
+        }
+
+        // Tier 2: Strong match — full instructions of #1, capped
+        const instructions = service.getSkillInstructions(topMatch.slug);
+        let body = "";
+        if (instructions?.body) {
+          body =
+            instructions.body.length > MAX_INSTRUCTION_CHARS
+              ? `${instructions.body.substring(0, MAX_INSTRUCTION_CHARS)}\n\n...[truncated — use USE_SKILL for full instructions]`
+              : instructions.body;
+        }
+
+        const otherMatches =
+          topMatches.length > 1
+            ? `\n\nAlso relevant: ${topMatches
+                .slice(1)
+                .map((s) => s.name)
+                .join(", ")}`
+            : "";
+
         return {
-          text: `Skills: ${skills.length} installed. Ask "what can you do?" or describe a task to activate relevant skills.`,
-          values: { skillMatchTier: "none" as never },
-          data: { matchedSkills: [] },
-        };
-      }
-
-      // Tier 1: Moderate match — compact top-3 list
-      const top3 = scored
-        .slice(0, 3)
-        .filter((s) => s.score >= THRESHOLD_RELEVANT);
-      const compactList = top3
-        .map(
-          (s) =>
-            `- **${s.name}** (${s.slug}): ${truncateDesc(s.description, 80)}`,
-        )
-        .join("\n");
-
-      if (topMatch.score < THRESHOLD_HIGHLY_RELEVANT) {
-        return {
-          text: `## Relevant Skills\n\n${compactList}\n\n*Use USE_SKILL to invoke one, or SEARCH_SKILLS for more detail.*`,
+          text: `## Active Skill: ${topMatch.name}\n\n${body}${otherMatches}`,
           values: {
-            skillMatchTier: "relevant" as never,
-            topSkill: topMatch.slug as never,
+            skillMatchTier: "active" as never,
+            activeSkill: topMatch.slug as never,
+            relevanceScore: topMatch.score as never,
           },
           data: {
-            matchedSkills: top3.map((s) => ({ slug: s.slug, score: s.score })),
+            activeSkill: { slug: topMatch.slug, score: topMatch.score },
+            otherMatches: topMatches
+              .slice(1)
+              .map((s) => ({ slug: s.slug, score: s.score })),
+          },
+        };
+      } catch (error) {
+        return {
+          text: "",
+          values: { skillMatchTier: "error" as never },
+          data: {
+            matchedSkills: [],
+            error: error instanceof Error ? error.message : String(error),
           },
         };
       }
-
-      // Tier 2: Strong match — full instructions of #1, capped
-      const instructions = service.getSkillInstructions(topMatch.slug);
-      let body = "";
-      if (instructions?.body) {
-        body =
-          instructions.body.length > MAX_INSTRUCTION_CHARS
-            ? `${instructions.body.substring(0, MAX_INSTRUCTION_CHARS)}\n\n...[truncated — use USE_SKILL for full instructions]`
-            : instructions.body;
-      }
-
-      const otherMatches =
-        top3.length > 1
-          ? `\n\nAlso relevant: ${top3
-              .slice(1)
-              .map((s) => s.name)
-              .join(", ")}`
-          : "";
-
-      return {
-        text: `## Active Skill: ${topMatch.name}\n\n${body}${otherMatches}`,
-        values: {
-          skillMatchTier: "active" as never,
-          activeSkill: topMatch.slug as never,
-          relevanceScore: topMatch.score as never,
-        },
-        data: {
-          activeSkill: { slug: topMatch.slug, score: topMatch.score },
-          otherMatches: top3
-            .slice(1)
-            .map((s) => ({ slug: s.slug, score: s.score })),
-        },
-      };
     },
   };
 }

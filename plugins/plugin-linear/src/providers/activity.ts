@@ -22,6 +22,10 @@ export const linearActivityProvider: Provider = {
   description: "Provides context about recent Linear activity",
   descriptionCompressed: "provide context recent Linear activity",
   dynamic: true,
+  contexts: ["automation", "connectors"],
+  contextGate: { anyOf: ["automation", "connectors"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "ADMIN" },
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     try {
       const linearService = runtime.getService<LinearService>("linear");

@@ -1,11 +1,8 @@
-import { useRef, useEffect, useCallback, useState } from "react";
+import { animated, useSpring } from "@react-spring/web";
 import type { ComponentType, HTMLAttributes } from "react";
-import { useSpring, animated } from "@react-spring/web";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { SpringAnimatedStyle } from "@/lib/spring-types";
 
-type SpringAnimatedStyle = Record<
-  string,
-  string | number | boolean | null | undefined | object
->;
 type AnimatedDivProps = Omit<HTMLAttributes<HTMLDivElement>, "style"> & {
   style?: SpringAnimatedStyle;
 };
@@ -31,7 +28,9 @@ export default function VideoCall({ visible, onClose }: VideoCallProps) {
 
   const stopStream = useCallback(() => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current.getTracks().forEach((t) => {
+        t.stop();
+      });
       streamRef.current = null;
     }
     if (videoRef.current) {
@@ -51,7 +50,9 @@ export default function VideoCall({ visible, onClose }: VideoCallProps) {
       .getUserMedia({ video: true })
       .then((stream) => {
         if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
+          stream.getTracks().forEach((t) => {
+            t.stop();
+          });
           return;
         }
         streamRef.current = stream;
@@ -104,7 +105,9 @@ export default function VideoCall({ visible, onClose }: VideoCallProps) {
           {/* Close button */}
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5">
             <button
+              type="button"
               onClick={onClose}
+              aria-label="End call"
               className="size-14 flex items-center justify-center rounded-full bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer"
             >
               <svg
@@ -115,6 +118,7 @@ export default function VideoCall({ visible, onClose }: VideoCallProps) {
                 strokeLinecap="round"
                 className="size-8"
               >
+                <title>End call</title>
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>
             </button>

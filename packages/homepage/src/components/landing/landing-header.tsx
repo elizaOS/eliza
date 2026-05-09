@@ -4,21 +4,21 @@
  * Desktop hover shows QR code to continue on phone.
  */
 
+import { AnimatePresence, motion } from "framer-motion";
+import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { QRCodeSVG } from "qrcode.react";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 import { Button } from "@/components/ui/button";
+import { buildElizaSmsHref } from "@/lib/contact";
 
-const IMESSAGE_PHONE_NUMBER = "+14245074963";
 const SMS_PREWRITTEN_MESSAGE = "Hello Eliza!";
 
 export function LandingHeader() {
   const [showQR, setShowQR] = useState(false);
 
   // SMS URI that opens native messaging app with pre-written text
-  const smsUri = `sms:${IMESSAGE_PHONE_NUMBER}&body=${encodeURIComponent(SMS_PREWRITTEN_MESSAGE)}`;
+  const smsUri = buildElizaSmsHref(SMS_PREWRITTEN_MESSAGE);
 
   return (
     <motion.header
@@ -33,10 +33,12 @@ export function LandingHeader() {
         </Link>
 
         {/* Get Started button with QR code hover */}
-        <div
-          className="relative"
+        <fieldset
+          className="relative m-0 min-w-0 border-0 p-0"
           onMouseEnter={() => setShowQR(true)}
           onMouseLeave={() => setShowQR(false)}
+          onFocus={() => setShowQR(true)}
+          onBlur={() => setShowQR(false)}
         >
           <Button
             size="sm"
@@ -78,7 +80,7 @@ export function LandingHeader() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
+        </fieldset>
       </div>
     </motion.header>
   );

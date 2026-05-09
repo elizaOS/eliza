@@ -24,8 +24,8 @@ import { redeemableEarnings, redeemableEarningsLedger } from "@/db/schemas/redee
 import { agentBudgetService } from "@/lib/services/agent-budgets";
 import { creditsService } from "@/lib/services/credits";
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
-import { getConnectionString } from "@/tests/helpers/local-database";
-import { cleanupTestData, createTestDataSet } from "@/tests/helpers/test-data-factory";
+import { getConnectionString } from "@/tests/infrastructure/local-database";
+import { cleanupTestData, createTestDataSet } from "@/tests/infrastructure/test-data-factory";
 
 /**
  * Property test configuration

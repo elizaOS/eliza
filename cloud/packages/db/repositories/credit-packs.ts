@@ -9,7 +9,7 @@ export type { CreditPack, NewCreditPack };
  */
 export class CreditPacksRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -50,7 +50,7 @@ export class CreditPacksRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**

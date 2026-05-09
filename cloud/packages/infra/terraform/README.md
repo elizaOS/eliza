@@ -1,4 +1,14 @@
-# Gateway Discord Terraform Infrastructure
+# Package Infra Terraform
+
+This package-level Terraform root is no longer an active Gateway Discord deployment source.
+
+- Canonical Gateway Discord AWS Terraform lives in `cloud/services/gateway-discord/terraform` and is what CI uses.
+- The previous package-level AWS copy is quarantined in `legacy-gateway-discord-aws/` for audit/reference only.
+- The `gcp/` roots are partial and are not wired to any CI workflow found in this repository. Treat them as experimental until a consumer is added and documented.
+
+Do not run Terraform from this directory expecting Gateway Discord AWS infrastructure to change.
+
+## Quarantined Gateway Discord Terraform Infrastructure
 
 This Terraform configuration provisions the AWS infrastructure required for the Discord Gateway service.
 

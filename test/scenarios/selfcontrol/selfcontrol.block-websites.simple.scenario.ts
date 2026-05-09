@@ -24,7 +24,7 @@ export default scenario({
       name: "request-block",
       room: "main",
       text: "Block X and Instagram for 2 hours so I can focus.",
-      expectedActions: ["OWNER_WEBSITE_BLOCK"],
+      expectedActions: ["WEBSITE_BLOCK"],
       responseIncludesAny: ["block", "x", "instagram", "2 hour", "focus"],
     },
   ],

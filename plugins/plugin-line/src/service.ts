@@ -4,8 +4,10 @@
 
 import type {
   Content,
+  Entity,
   EventPayload,
   IAgentRuntime,
+  Memory,
   MessageConnectorChatContext,
   MessageConnectorTarget,
   MessageConnectorUserContext,
@@ -91,6 +93,97 @@ function lineRoomToConnectorTarget(room: Room, score = 0.55): MessageConnectorTa
   };
 }
 
+type ConnectorHookContext = {
+  runtime: IAgentRuntime;
+  roomId?: UUID;
+  target?: TargetInfo;
+};
+
+type ConnectorReadParams = {
+  target?: TargetInfo;
+  limit?: number;
+  query?: string;
+};
+
+type ConnectorUserLookupParams = {
+  userId?: string;
+  username?: string;
+  handle?: string;
+  target?: TargetInfo;
+};
+
+type AdditiveMessageConnectorHooks = {
+  fetchMessages?: (
+    context: ConnectorHookContext,
+    params?: ConnectorReadParams
+  ) => Promise<Memory[]>;
+  searchMessages?: (
+    context: ConnectorHookContext,
+    params: ConnectorReadParams & { query: string }
+  ) => Promise<Memory[]>;
+  leaveHandler?: (
+    runtime: IAgentRuntime,
+    params: { channelId?: string; target?: TargetInfo }
+  ) => Promise<void>;
+  getUser?: (runtime: IAgentRuntime, params: ConnectorUserLookupParams) => Promise<Entity | null>;
+};
+
+type ExtendedMessageConnectorRegistration = Parameters<
+  IAgentRuntime["registerMessageConnector"]
+>[0] &
+  AdditiveMessageConnectorHooks;
+
+function normalizeConnectorLimit(limit: number | undefined, fallback = 50): number {
+  if (!Number.isFinite(limit) || !limit || limit <= 0) {
+    return fallback;
+  }
+  return Math.min(Math.floor(limit), 200);
+}
+
+async function readStoredMessageMemories(
+  runtime: IAgentRuntime,
+  roomId: UUID,
+  limit: number
+): Promise<Memory[]> {
+  return runtime.getMemories({
+    tableName: "messages",
+    roomId,
+    limit,
+    orderBy: "createdAt",
+    orderDirection: "desc",
+  });
+}
+
+async function readStoredMessagesForTargets(
+  runtime: IAgentRuntime,
+  targets: MessageConnectorTarget[],
+  limit: number
+): Promise<Memory[]> {
+  const roomIds = Array.from(
+    new Set(targets.map((target) => target.target.roomId).filter((id): id is UUID => Boolean(id)))
+  );
+  const chunks = await Promise.all(
+    roomIds.map((roomId) => readStoredMessageMemories(runtime, roomId, limit))
+  );
+  return chunks
+    .flat()
+    .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+    .slice(0, limit);
+}
+
+function filterMemoriesByQuery(memories: Memory[], query: string, limit: number): Memory[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return memories.slice(0, limit);
+  }
+  return memories
+    .filter((memory) => {
+      const text = typeof memory.content?.text === "string" ? memory.content.text : "";
+      return text.toLowerCase().includes(normalized);
+    })
+    .slice(0, limit);
+}
+
 function quickReplyItemsFromStrings(values: unknown): LineQuickReplyItem[] | undefined {
   if (!Array.isArray(values)) {
     return undefined;
@@ -144,10 +237,17 @@ export class LineService extends Service implements ILineService {
   }
 
   static registerSendHandlers(runtime: IAgentRuntime, service: LineService): void {
-    const sendHandler = service.handleSendMessage.bind(service);
+    const sendHandler = async (
+      handlerRuntime: IAgentRuntime,
+      target: TargetInfo,
+      content: Content
+    ): Promise<Memory | undefined> => {
+      await service.handleSendMessage(handlerRuntime, target, content);
+      return undefined;
+    };
 
     if (typeof runtime.registerMessageConnector === "function") {
-      runtime.registerMessageConnector({
+      const registration = {
         source: LINE_SERVICE_NAME,
         label: "LINE",
         capabilities: [
@@ -205,6 +305,64 @@ export class LineService extends Service implements ILineService {
           (await service.listConnectorRooms(context.runtime)).map((room) =>
             lineRoomToConnectorTarget(room)
           ),
+        fetchMessages: async (context, params) => {
+          const limit = normalizeConnectorLimit(params?.limit);
+          const target = params?.target ?? context.target;
+          if (target?.roomId) {
+            return readStoredMessageMemories(context.runtime, target.roomId, limit);
+          }
+          const targets = (await service.listConnectorRooms(context.runtime))
+            .slice(0, 10)
+            .map((room) => lineRoomToConnectorTarget(room));
+          return readStoredMessagesForTargets(context.runtime, targets, limit);
+        },
+        searchMessages: async (context, params) => {
+          const limit = normalizeConnectorLimit(params?.limit);
+          const target = params?.target ?? context.target;
+          const messages = target?.roomId
+            ? await readStoredMessageMemories(context.runtime, target.roomId, Math.max(limit, 100))
+            : await readStoredMessagesForTargets(
+                context.runtime,
+                (await service.listConnectorRooms(context.runtime))
+                  .slice(0, 10)
+                  .map((room) => lineRoomToConnectorTarget(room)),
+                Math.max(limit, 100)
+              );
+          return filterMemoriesByQuery(messages, params.query, limit);
+        },
+        leaveHandler: async (handlerRuntime, params) => {
+          const target = params.target ?? ({ source: LINE_SERVICE_NAME } as TargetInfo);
+          const room = target.roomId ? await handlerRuntime.getRoom(target.roomId) : null;
+          const channelId = String(params?.channelId ?? target.channelId ?? room?.channelId ?? "");
+          const chatType = getChatTypeFromId(channelId);
+          if (chatType !== "group" && chatType !== "room") {
+            throw new Error("LINE leaveHandler requires a group or room target");
+          }
+          await service.leaveChat(channelId, chatType);
+        },
+        getUser: async (_handlerRuntime, params) => {
+          const userId = String(
+            params.userId ??
+              params.username ??
+              params.handle ??
+              params.target?.entityId ??
+              params.target?.channelId ??
+              ""
+          ).trim();
+          if (!userId || getChatTypeFromId(userId) !== "user") {
+            return null;
+          }
+          const user = await service.getUserProfile(userId).catch(() => null);
+          if (!user) {
+            return null;
+          }
+          return {
+            id: user.userId as unknown as UUID,
+            names: [user.displayName, user.userId].filter((value) => value.length > 0),
+            agentId: _handlerRuntime.agentId,
+            metadata: { line: objectToMetadataValue(user) },
+          } satisfies Entity;
+        },
         getChatContext: async (target, context) => {
           const room = target.roomId ? await context.runtime.getRoom(target.roomId) : null;
           const channelId = String(target.channelId ?? room?.channelId ?? "").trim();
@@ -263,7 +421,8 @@ export class LineService extends Service implements ILineService {
             metadata: entity.metadata,
           } satisfies MessageConnectorUserContext;
         },
-      });
+      } as ExtendedMessageConnectorRegistration;
+      runtime.registerMessageConnector(registration);
       return;
     }
 

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Link, useParams } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
-import { ElizaPageClient } from "@/packages/ui/src/components/chat/eliza-page-client";
+import { ElizaPageClient } from "../../../components/chat/eliza-page-client";
 import { api } from "../../../lib/api-client";
 
 interface PublicCharacterInfo {

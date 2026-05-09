@@ -24,7 +24,7 @@ Remote/second-device support exists in several partially overlapping layers:
 - `plugins/app-lifeops/src/remote/tailscale-transport.ts:1` - Tailscale/cloud/local transport types and `tailscale serve` probe/reserve/release helpers.
 - `plugins/app-lifeops/src/actions/start-remote-session.ts:1` - owner-only T9a start action, pairing-code input, confirmation requirement, data-plane-not-configured response.
 - `plugins/app-lifeops/src/actions/list-remote-sessions.ts:1` and `plugins/app-lifeops/src/actions/revoke-remote-session.ts:1` - owner-only session list/revoke actions.
-- `plugins/app-lifeops/src/actions/owner-remote-desktop.ts:1` - routing layer that sends `start/list/revoke` to T9a actions while keeping `status/end` on the legacy backend.
+- `plugins/app-lifeops/src/actions/remote-desktop.ts:1` - routing layer that sends `start/list/revoke` to T9a actions while keeping `status/end` on the legacy backend.
 - `plugins/app-lifeops/src/actions/remote-desktop.ts:1` and `plugins/app-lifeops/src/lifeops/remote-desktop.ts:1` - legacy VNC/SSH/ngrok remote desktop implementation, mock backend, session expiry, listing, and revoke behavior.
 - `packages/app-core/src/services/phone-companion/session-client.ts:1` - companion WebSocket client, token query parameter, input event sending, touch event conversion, base64 pairing payload decoder.
 - `packages/app-core/src/components/phone-companion/RemoteSession.tsx:120` - ingress URL safety checks, viewer/input URL builders, iframe sandbox, input overlay wiring.
@@ -81,7 +81,7 @@ Remote/second-device support exists in several partially overlapping layers:
 ### P2
 
 - Tailscale transport helpers are implemented and tested, but they are not wired into the default T9a `RemoteSessionService`; the default launch path still returns `data-plane-not-configured`.
-- Legacy `REMOTE_DESKTOP` and newer T9a remote sessions coexist with different stores, commands, names, and lifecycle semantics. `OWNER_REMOTE_DESKTOP` routes some operations to T9a and others to legacy code, which raises user-facing status/revoke confusion risk.
+- Legacy `REMOTE_DESKTOP` and newer T9a remote sessions coexist with different stores, commands, names, and lifecycle semantics. `REMOTE_DESKTOP` routes some operations to T9a and others to legacy code, which raises user-facing status/revoke confusion risk.
 - Remote scenario coverage is thin. One pair scenario expects an unrelated `LIST_ACTIVE_BLOCKS` action, and the suite does not validate QR payloads, APNs, noVNC rendering, companion input transport, cloud pairing promotion, or revoke effects.
 - Security-critical URL builders in `RemoteSession.tsx` are private and were not covered by direct tests in the targeted run. The code looks careful, but ingress URL validation should be locked with tests before exposing remote control broadly.
 - Session conflict behavior is basic. List/revoke filter by state, but there is no evident active-session limit, controller arbitration, or test proving that revocation closes/rejects existing input sockets.

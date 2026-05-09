@@ -89,7 +89,7 @@ async function prepareAgentEventPayload(data: NewAgentEvent): Promise<NewAgentEv
 
 export class AgentEventsRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   async findById(id: string): Promise<AgentEvent | undefined> {
@@ -210,7 +210,7 @@ export class AgentEventsRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   async create(data: NewAgentEvent): Promise<AgentEvent> {

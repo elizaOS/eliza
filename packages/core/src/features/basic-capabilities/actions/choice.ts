@@ -1,6 +1,5 @@
 import { requireActionSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
-import { optionExtractionTemplate } from "../../../prompts.ts";
 import { getUserServerRole } from "../../../roles.ts";
 import type {
 	Action,
@@ -12,13 +11,34 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
-import { ModelType } from "../../../types/index.ts";
-import { composePrompt, parseToonKeyValue } from "../../../utils.ts";
 
 const spec = requireActionSpec("CHOOSE_OPTION");
 
+function _readChoiceParameters(
+	message: Memory,
+	options?: HandlerOptions,
+): { taskId?: string; selectedOption?: string } {
+	const params =
+		options?.parameters && typeof options.parameters === "object"
+			? (options.parameters as Record<string, unknown>)
+			: {};
+	const taskId = params.taskId ?? message.content.taskId;
+	const selectedOption =
+		params.selectedOption ?? message.content.selectedOption;
+	return {
+		taskId:
+			typeof taskId === "string" && taskId.trim() ? taskId.trim() : undefined,
+		selectedOption:
+			typeof selectedOption === "string" && selectedOption.trim()
+				? selectedOption.trim()
+				: undefined,
+	};
+}
+
 export const choiceAction: Action = {
 	name: spec.name,
+	contexts: ["general", "tasks", "admin"],
+	roleGate: { minRole: "ADMIN" },
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 
@@ -139,32 +159,7 @@ export const choiceAction: Action = {
 				};
 			});
 
-		const tasksString = formattedTasks
-			.map((task) => {
-				const taskOptions = task.options;
-				return `Task ID: ${task.taskId} - ${task.name}\nAvailable options:\n${taskOptions ? taskOptions.map((opt) => `- ${opt.name}: ${opt.description}`).join("\n") : ""}`;
-			})
-			.join("\n");
-
-		const prompt = composePrompt({
-			state: {
-				tasks: tasksString,
-				recentMessages: message.content.text || "",
-			},
-			template: optionExtractionTemplate,
-		});
-
-		const result = await runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt,
-			stopSequences: [],
-		});
-
-		const parsed = parseToonKeyValue(result);
-		interface ParsedChoice {
-			taskId?: string;
-			selectedOption?: string;
-		}
-		const { taskId, selectedOption } = (parsed as ParsedChoice) || {};
+		const { taskId, selectedOption } = _readChoiceParameters(message, _options);
 
 		if (taskId && selectedOption) {
 			const taskMap = new Map(
@@ -359,6 +354,20 @@ export const choiceAction: Action = {
 		};
 	},
 
+	parameters: [
+		{
+			name: "taskId",
+			description: "Short or full ID of the pending choice task.",
+			required: true,
+			schema: { type: "string" as const, minLength: 1 },
+		},
+		{
+			name: "selectedOption",
+			description: "Option name to select for the pending task.",
+			required: true,
+			schema: { type: "string" as const, minLength: 1 },
+		},
+	],
 	examples: (spec.examples ?? []) as ActionExample[][],
 };
 

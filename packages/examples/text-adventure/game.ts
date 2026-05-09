@@ -26,6 +26,7 @@ import {
   ChannelType,
   createCharacter,
   createMessageMemory,
+  type Plugin,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -535,101 +536,98 @@ interface GameSession {
   gameMasterId: UUID; // The "dungeon master" sending game state messages
 }
 
-class Configuration {
-  static load(): AppConfiguration {
-    const openaiKey = process.env.OPENAI_API_KEY;
-    if (!openaiKey?.trim()) {
-      throw new Error("OPENAI_API_KEY environment variable is required");
-    }
-
-    return {
-      openaiApiKey: openaiKey,
-      postgresUrl: process.env.POSTGRES_URL || "",
-      pgliteDataDir: process.env.PGLITE_DATA_DIR || "memory://",
-    };
+function loadConfiguration(): AppConfiguration {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey?.trim()) {
+    throw new Error("OPENAI_API_KEY environment variable is required");
   }
+
+  return {
+    openaiApiKey: openaiKey,
+    postgresUrl: process.env.POSTGRES_URL || "",
+    pgliteDataDir: process.env.PGLITE_DATA_DIR || "memory://",
+  };
 }
 
-class AdventureAgent {
-  private static createCharacter() {
-    return createCharacter({
-      name: "Eliza the Adventurer",
-      username: "eliza_adventurer",
-      bio: [
-        "A brave AI adventurer exploring dangerous dungeons.",
-        "Known for clever problem-solving and careful exploration.",
-        "Prefers to be well-prepared before combat.",
+function createAdventureAgentCharacter(): ReturnType<typeof createCharacter> {
+  return createCharacter({
+    name: "Eliza the Adventurer",
+    username: "eliza_adventurer",
+    bio: [
+      "A brave AI adventurer exploring dangerous dungeons.",
+      "Known for clever problem-solving and careful exploration.",
+      "Prefers to be well-prepared before combat.",
+    ],
+    adjectives: ["brave", "curious", "strategic", "cautious"],
+    style: {
+      all: [
+        "Think carefully about each situation",
+        "Consider available options before acting",
+        "Prioritize survival and gathering resources",
       ],
-      adjectives: ["brave", "curious", "strategic", "cautious"],
-      style: {
-        all: [
-          "Think carefully about each situation",
-          "Consider available options before acting",
-          "Prioritize survival and gathering resources",
-        ],
-        chat: ["Be descriptive about your reasoning"],
-      },
-    });
-  }
+      chat: ["Be descriptive about your reasoning"],
+    },
+  });
+}
 
-  static async initialize(): Promise<GameSession> {
-    const task = clack.spinner();
+async function initializeGameSession(): Promise<GameSession> {
+  const task = clack.spinner();
 
-    task.start("Initializing adventure...");
+  task.start("Initializing adventure...");
 
-    const config = Configuration.load();
-    const character = AdventureAgent.createCharacter();
-    const agentId = stringToUuid(character.name ?? "AdventureAgent");
+  const config = loadConfiguration();
+  const character = createAdventureAgentCharacter();
+  const agentId = stringToUuid(character.name ?? "AdventureAgent");
 
-    task.message("Creating AI adventurer...");
-    // The sqlPlugin will handle database setup and migrations automatically
-    // actionPlanning: false ensures only one action is executed per turn,
-    // which is critical for game scenarios where state changes after each action
-    const runtime = new AgentRuntime({
-      character,
-      plugins: [sqlPlugin, openaiPlugin],
-      settings: {
-        OPENAI_API_KEY: config.openaiApiKey,
-        POSTGRES_URL: config.postgresUrl || undefined,
-        PGLITE_DATA_DIR: config.pgliteDataDir,
-      },
-      actionPlanning: false, // Single action per turn for game state consistency
-    });
+  task.message("Creating AI adventurer...");
+  // The sqlPlugin will handle database setup and migrations automatically
+  // actionPlanning: false ensures only one action is executed per turn,
+  // which is critical for game scenarios where state changes after each action
+  const runtime = new AgentRuntime({
+    character,
+    plugins: [sqlPlugin, openaiPlugin] as Plugin[],
+    settings: {
+      OPENAI_API_KEY: config.openaiApiKey,
+      POSTGRES_URL: config.postgresUrl || undefined,
+      PGLITE_DATA_DIR: config.pgliteDataDir,
+    },
+    actionPlanning: false, // Single action per turn for game state consistency
+  });
 
-    await runtime.initialize();
+  await runtime.initialize();
 
-    const game = new AdventureGame();
-    const roomId = stringToUuid("adventure-game-room");
-    const worldId = stringToUuid("adventure-game-world");
-    const gameMasterId = stringToUuid("dungeon-master");
+  const game = new AdventureGame();
+  const roomId = stringToUuid("adventure-game-room");
+  const worldId = stringToUuid("adventure-game-world");
+  const gameMasterId = stringToUuid("dungeon-master");
 
-    // Set up proper connection for message handling pipeline
-    task.message("Setting up game room...");
-    await runtime.ensureConnection({
-      entityId: gameMasterId,
-      roomId,
-      worldId,
-      userName: "Dungeon Master",
-      source: "adventure-game",
-      channelId: "adventure-room",
-      serverId: "game-server",
-      type: ChannelType.DM,
-    } as Parameters<typeof runtime.ensureConnection>[0]);
+  // Set up proper connection for message handling pipeline
+  task.message("Setting up game room...");
+  await runtime.ensureConnection({
+    entityId: gameMasterId,
+    roomId,
+    worldId,
+    userName: "Dungeon Master",
+    source: "adventure-game",
+    channelId: "adventure-room",
+    serverId: "game-server",
+    type: ChannelType.DM,
+  } as Parameters<typeof runtime.ensureConnection>[0]);
 
-    task.stop("✅ Adventure ready!");
+  task.stop("✅ Adventure ready!");
 
-    return { runtime, game, roomId, agentId, worldId, gameMasterId };
-  }
+  return { runtime, game, roomId, agentId, worldId, gameMasterId };
+}
 
-  static async decideAction(session: GameSession): Promise<string> {
-    const { runtime, game, roomId, gameMasterId } = session;
+async function decideNextAction(session: GameSession): Promise<string> {
+  const { runtime, game, roomId, gameMasterId } = session;
 
-    const state = game.getState();
-    const room = game.getCurrentRoom();
-    const actions = game.getAvailableActions();
+  const state = game.getState();
+  const room = game.getCurrentRoom();
+  const actions = game.getAvailableActions();
 
-    // Build the game state message from the Dungeon Master
-    const gameContext = `DUNGEON MASTER UPDATE:
+  // Build the game state message from the Dungeon Master
+  const gameContext = `DUNGEON MASTER UPDATE:
 
 GAME STATE:
 - Location: ${room.name}
@@ -664,87 +662,85 @@ Based on the current situation, choose the best action. Consider:
 Respond with ONLY the exact action text you want to take (e.g., "go north" or "attack with sword").
 `;
 
-    // Create a proper message memory from the Dungeon Master
-    const message = createMessageMemory({
-      id: uuidv4() as UUID,
-      entityId: gameMasterId,
-      roomId,
-      content: { text: gameContext },
-    });
+  // Create a proper message memory from the Dungeon Master
+  const message = createMessageMemory({
+    id: uuidv4() as UUID,
+    entityId: gameMasterId,
+    roomId,
+    content: { text: gameContext },
+  });
 
-    // Use the message service to handle the message through the full pipeline
-    // This gives the agent access to recent messages, providers, etc.
-    let chosenAction = "look around"; // Default fallback
+  // Use the message service to handle the message through the full pipeline
+  // This gives the agent access to recent messages, providers, etc.
+  let chosenAction = "look around"; // Default fallback
 
-    const result = await runtime.messageService?.handleMessage(
-      runtime,
-      message,
-      async (content) => {
-        if (content.text) {
-          chosenAction = content.text.trim();
-        }
-        return [];
-      },
-    );
+  const result = await runtime.messageService?.handleMessage(
+    runtime,
+    message,
+    async (content) => {
+      if (content.text) {
+        chosenAction = content.text.trim();
+      }
+      return [];
+    },
+  );
 
-    // If the agent responded, extract the action from the response
-    if (result?.responseContent?.text) {
-      chosenAction = result?.responseContent?.text.trim();
-    }
-
-    // Validate the action is in available actions (case-insensitive match)
-    const matchedAction = actions.find(
-      (a) => a.toLowerCase() === chosenAction.toLowerCase(),
-    );
-
-    if (matchedAction) {
-      return matchedAction;
-    }
-
-    // Try to find a partial match
-    const partialMatch = actions.find(
-      (a) =>
-        a.toLowerCase().includes(chosenAction.toLowerCase()) ||
-        chosenAction.toLowerCase().includes(a.toLowerCase()),
-    );
-
-    if (partialMatch) {
-      return partialMatch;
-    }
-
-    // Default to looking around if no valid action found
-    return "look around";
+  // If the agent responded, extract the action from the response
+  if (result?.responseContent?.text) {
+    chosenAction = result.responseContent.text.trim();
   }
 
-  /**
-   * Save a game result message so the agent can see the outcome
-   */
-  static async saveGameResult(
-    session: GameSession,
-    result: string,
-  ): Promise<void> {
-    const { runtime, roomId, gameMasterId } = session;
+  // Validate the action is in available actions (case-insensitive match)
+  const matchedAction = actions.find(
+    (a) => a.toLowerCase() === chosenAction.toLowerCase(),
+  );
 
-    const resultMessage = createMessageMemory({
-      id: uuidv4() as UUID,
-      entityId: gameMasterId,
-      roomId,
-      content: { text: `GAME RESULT: ${result}` },
-    });
-
-    // Save to memory so it appears in conversation history
-    await runtime.createMemory(resultMessage, "messages");
+  if (matchedAction) {
+    return matchedAction;
   }
+
+  // Try to find a partial match
+  const partialMatch = actions.find(
+    (a) =>
+      a.toLowerCase().includes(chosenAction.toLowerCase()) ||
+      chosenAction.toLowerCase().includes(a.toLowerCase()),
+  );
+
+  if (partialMatch) {
+    return partialMatch;
+  }
+
+  // Default to looking around if no valid action found
+  return "look around";
+}
+
+/**
+ * Save a game result message so the agent can see the outcome
+ */
+async function saveGameResultMemory(
+  session: GameSession,
+  result: string,
+): Promise<void> {
+  const { runtime, roomId, gameMasterId } = session;
+
+  const resultMessage = createMessageMemory({
+    id: uuidv4() as UUID,
+    entityId: gameMasterId,
+    roomId,
+    content: { text: `GAME RESULT: ${result}` },
+  });
+
+  // Save to memory so it appears in conversation history
+  await runtime.createMemory(resultMessage, "messages");
 }
 
 // ============================================================================
 // GAME DISPLAY
 // ============================================================================
 
-class GameDisplay {
-  static showIntro(): void {
-    clack.intro("🏰 elizaOS Adventure Game Demo");
-    console.log(`
+function showGameIntro(): void {
+  clack.intro("🏰 elizaOS Adventure Game Demo");
+  console.log(`
 ╔════════════════════════════════════════════════════════════════════╗
 ║                   THE DUNGEON OF DOOM                              ║
 ╠════════════════════════════════════════════════════════════════════╣
@@ -760,31 +756,34 @@ class GameDisplay {
 ║  AI: OpenAI via @elizaos/plugin-openai                             ║
 ╚════════════════════════════════════════════════════════════════════╝
 `);
-  }
+}
 
-  static showTurn(turnNumber: number, action: string): void {
-    console.log(`\n${"═".repeat(60)}`);
-    console.log(`🎮 TURN ${turnNumber}`);
-    console.log(`${"─".repeat(60)}`);
-    console.log(`🤖 Eliza decides: "${action}"`);
-    console.log(`${"─".repeat(60)}`);
-  }
+function showGameTurn(turnNumber: number, action: string): void {
+  console.log(`\n${"═".repeat(60)}`);
+  console.log(`🎮 TURN ${turnNumber}`);
+  console.log(`${"─".repeat(60)}`);
+  console.log(`🤖 Eliza decides: "${action}"`);
+  console.log(`${"─".repeat(60)}`);
+}
 
-  static showResult(result: string, status: string): void {
-    console.log(result);
-    console.log(`\n${status}`);
-  }
+function printGameActionOutput(result: string, status: string): void {
+  console.log(result);
+  console.log(`\n${status}`);
+}
 
-  static showGameOver(victory: boolean, score: number, turns: number): void {
-    console.log(`\n${"═".repeat(60)}`);
-    if (victory) {
-      console.log("🏆 VICTORY! Eliza has conquered the dungeon!");
-    } else {
-      console.log("💀 GAME OVER! Eliza has fallen...");
-    }
-    console.log(`Final Score: ${score} points in ${turns} turns`);
-    console.log(`${"═".repeat(60)}\n`);
+function showGameOverSummary(
+  victory: boolean,
+  score: number,
+  turns: number,
+): void {
+  console.log(`\n${"═".repeat(60)}`);
+  if (victory) {
+    console.log("🏆 VICTORY! Eliza has conquered the dungeon!");
+  } else {
+    console.log("💀 GAME OVER! Eliza has fallen...");
   }
+  console.log(`Final Score: ${score} points in ${turns} turns`);
+  console.log(`${"═".repeat(60)}\n`);
 }
 
 // ============================================================================
@@ -792,9 +791,9 @@ class GameDisplay {
 // ============================================================================
 
 async function runAdventureGame(): Promise<void> {
-  GameDisplay.showIntro();
+  showGameIntro();
 
-  const session = await AdventureAgent.initialize();
+  const session = await initializeGameSession();
   const { game } = session;
 
   // Show initial room
@@ -803,22 +802,22 @@ async function runAdventureGame(): Promise<void> {
   console.log(initialDescription);
 
   // Save initial room description as a message so agent has context
-  await AdventureAgent.saveGameResult(session, initialDescription);
+  await saveGameResultMemory(session, initialDescription);
 
   const delayMs = 2000; // Delay between turns for readability
 
   while (!game.getState().gameOver) {
     // Get AI's decision
-    const action = await AdventureAgent.decideAction(session);
+    const action = await decideNextAction(session);
 
     // Display and execute the action
-    GameDisplay.showTurn(game.getState().turnsPlayed + 1, action);
+    showGameTurn(game.getState().turnsPlayed + 1, action);
 
     const result = game.executeAction(action);
-    GameDisplay.showResult(result, game.getStatusLine());
+    printGameActionOutput(result, game.getStatusLine());
 
     // Save the game result as a message so the agent can learn from outcomes
-    await AdventureAgent.saveGameResult(session, result);
+    await saveGameResultMemory(session, result);
 
     // Small delay for readability
     await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -831,7 +830,7 @@ async function runAdventureGame(): Promise<void> {
   }
 
   const finalState = game.getState();
-  GameDisplay.showGameOver(
+  showGameOverSummary(
     finalState.victory,
     finalState.score,
     finalState.turnsPlayed,
@@ -846,9 +845,9 @@ async function runAdventureGame(): Promise<void> {
 // ============================================================================
 
 async function runInteractiveMode(): Promise<void> {
-  GameDisplay.showIntro();
+  showGameIntro();
 
-  const session = await AdventureAgent.initialize();
+  const session = await initializeGameSession();
   const { game } = session;
 
   console.log("\n📜 INTERACTIVE MODE: Guide Eliza through the dungeon!\n");
@@ -859,7 +858,7 @@ async function runInteractiveMode(): Promise<void> {
   console.log(initialDescription);
 
   // Save initial room description as a message
-  await AdventureAgent.saveGameResult(session, initialDescription);
+  await saveGameResultMemory(session, initialDescription);
 
   while (!game.getState().gameOver) {
     console.log(`\n${game.getStatusLine()}`);
@@ -878,7 +877,7 @@ async function runInteractiveMode(): Promise<void> {
     if (input === "ai") {
       const spinner = clack.spinner();
       spinner.start("Eliza is thinking...");
-      action = await AdventureAgent.decideAction(session);
+      action = await decideNextAction(session);
       spinner.stop(`Eliza chooses: "${action}"`);
     } else {
       action = input;
@@ -888,12 +887,12 @@ async function runInteractiveMode(): Promise<void> {
     console.log(`\n${result}`);
 
     // Save game result as message so agent can learn from outcomes
-    await AdventureAgent.saveGameResult(session, result);
+    await saveGameResultMemory(session, result);
   }
 
   const finalState = game.getState();
   if (finalState.gameOver) {
-    GameDisplay.showGameOver(
+    showGameOverSummary(
       finalState.victory,
       finalState.score,
       finalState.turnsPlayed,

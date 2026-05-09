@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { createUniqueUuid } from "../../entities";
+import type { TrajectoryFinalStatus } from "../../trajectory-utils";
 import type {
 	IAgentRuntime,
 	JsonValue,
@@ -7,14 +8,13 @@ import type {
 	Plugin,
 	RunEventPayload,
 } from "../../types";
+import { asRecordOrUndefined } from "../../utils/type-guards.ts";
 import { TrajectoriesService } from "./TrajectoriesService";
 
 const pendingTrajectoryStepByReplyId = new Map<string, string>();
 const pendingTrajectoryStepByMessageId = new Map<string, string>();
 const pendingTrajectoryMessageIdByStepId = new Map<string, string>();
 const pendingTrajectoryEndTargetByStepId = new Map<string, string>();
-
-type TrajectoryFinalStatus = "completed" | "error" | "timeout" | "terminated";
 
 function cleanupPendingTrajectory(
 	runtime: IAgentRuntime,
@@ -76,12 +76,6 @@ const WEB_CONVERSATION_STRING_KEYS = [
 	"terminalBridgeConversationId",
 ] as const;
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-	return value && typeof value === "object"
-		? (value as Record<string, unknown>)
-		: undefined;
-}
-
 function readNonEmptyString(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim().length > 0
 		? value.trim()
@@ -106,7 +100,9 @@ function copyJsonMetadataField(
 function readStoredWebConversation(
 	roomMetadata: unknown,
 ): Record<string, JsonValue> | undefined {
-	const stored = asRecord(asRecord(roomMetadata)?.webConversation);
+	const stored = asRecordOrUndefined(
+		asRecordOrUndefined(roomMetadata)?.webConversation,
+	);
 	if (!stored) return undefined;
 
 	const webConversation: Record<string, JsonValue> = {};
@@ -387,6 +383,7 @@ export const trajectoriesPlugin: Plugin = {
 
 export default trajectoriesPlugin;
 
+export type { TrajectoryExportOptions } from "../../services/trajectory-types.ts";
 // ==========================================
 // ACTION-LEVEL INSTRUMENTATION
 // For manual trajectory collection in actions
@@ -413,7 +410,6 @@ export * from "./integration";
 // ==========================================
 export * from "./reward-service";
 export type {
-	TrajectoryExportOptions,
 	TrajectoryListItem,
 	TrajectoryListOptions,
 	TrajectoryListResult,

@@ -11,6 +11,7 @@ import { buildSendTxParams } from "./actions/helpers";
 import { SwapAction } from "./actions/swap";
 import { TransferAction } from "./actions/transfer";
 import { NATIVE_TOKEN_ADDRESS } from "./constants";
+import { routeEvmGovernance } from "./gov-router";
 import { initWalletProvider, type WalletProvider } from "./providers/wallet";
 import type {
   WalletChainHandler,
@@ -20,7 +21,7 @@ import type {
 } from "../../types/wallet-router.js";
 import type { SupportedChain, Transaction } from "./types";
 
-export type EvmWalletSubaction = "transfer" | "swap";
+export type EvmWalletSubaction = "transfer" | "swap" | "gov";
 export type EvmWalletMode = "prepare" | "execute";
 
 export interface EvmWalletChainHandlerOptions {
@@ -154,7 +155,7 @@ export class EvmWalletChainHandler implements WalletChainHandler {
   readonly chain: string;
   readonly name: string;
   readonly aliases: readonly string[];
-  readonly supportedActions = ["transfer", "swap"] as const;
+  readonly supportedActions = ["transfer", "swap", "gov"] as const;
   readonly tokens: WalletChainHandler["tokens"];
   readonly signer: WalletChainHandler["signer"];
   readonly dryRun: WalletChainHandler["dryRun"];
@@ -184,7 +185,7 @@ export class EvmWalletChainHandler implements WalletChainHandler {
     };
     this.dryRun = {
       supported: true,
-      supportedActions: ["transfer", "swap"],
+      supportedActions: ["transfer", "swap", "gov"],
       description: "Prepare mode and dry-run return route metadata without signing.",
     };
   }
@@ -194,13 +195,32 @@ export class EvmWalletChainHandler implements WalletChainHandler {
     context: WalletRouterContext
   ): Promise<EvmRouterResult> {
     if (params.mode === "prepare" || params.dryRun) {
-      return params.subaction === "transfer"
-        ? this.prepareTransfer(params)
-        : this.prepareSwap(params);
+      if (params.subaction === "transfer") {
+        return this.prepareTransfer(params);
+      }
+      if (params.subaction === "swap") {
+        return this.prepareSwap(params);
+      }
+      return routeEvmGovernance(
+        params,
+        context,
+        this.chain,
+        this.chainConfig
+      ) as Promise<EvmRouterResult>;
     }
-    return params.subaction === "transfer"
-      ? this.executeTransfer(params, context)
-      : this.executeSwap(params, context);
+    if (params.subaction === "transfer") {
+      return this.executeTransfer(params, context);
+    }
+    if (params.subaction === "swap") {
+      return this.executeSwap(params, context);
+    }
+    return routeEvmGovernance(
+      params,
+      context,
+      this.chain,
+      this.chainConfig,
+      await this.getWalletProvider(context)
+    ) as Promise<EvmRouterResult>;
   }
 
   prepareTransfer(params: WalletRouterParams): EvmPreparedResult {

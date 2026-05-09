@@ -5,7 +5,7 @@ const CLI_NAME = process.env.APP_CLI_NAME?.trim() || "eliza";
 
 /** Matches a CLI command with optional package-runner prefix. */
 export const CLI_PREFIX_RE =
-  /^(?:((?:pnpm|bun|npm|bunx|npx)\s+))?(?:eliza|elizaos)\b/;
+  /^(?:((?:bun|npm|bunx|npx)\s+))?(?:eliza|elizaos)\b/;
 
 export function resolveCliName(argv: string[] = process.argv): string {
   const argv1 = argv[1];

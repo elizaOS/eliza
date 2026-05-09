@@ -1,5 +1,4 @@
 import type { Action, Provider } from "@elizaos/core";
-import { remoteAttestationAction } from "../actions/remoteAttestation";
 import {
   phalaDeriveKeyProvider,
   phalaRemoteAttestationProvider,
@@ -10,7 +9,7 @@ export class PhalaVendor implements TeeVendorInterface {
   readonly type = TeeVendorNames.PHALA;
 
   getActions(): Action[] {
-    return [remoteAttestationAction];
+    return [];
   }
 
   getProviders(): Provider[] {

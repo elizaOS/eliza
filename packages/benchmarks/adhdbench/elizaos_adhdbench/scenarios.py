@@ -64,10 +64,10 @@ L0_SCENARIOS: list[Scenario] = [
     ),
     Scenario(
         id="L0-002", name="Send message to contact",
-        description="Agent should SEND_MESSAGE with correct target, not SEND_TOKENS",
+        description="Agent should MESSAGE with correct target, not SEND_TOKENS",
         level=L0, tags=("core", "send_message"), distractor_action_count=30,
         turns=(Turn(role="user", text="Send a message to Alice saying I will be late to the meeting",
-            expected_outcomes=(_action("SEND_MESSAGE"), _no_action("SEND_TOKENS"), _no_action("REPLY_TWEET"))),),
+            expected_outcomes=(_action("MESSAGE"), _no_action("SEND_TOKENS"), _no_action("REPLY_TWEET"))),),
     ),
     Scenario(
         id="L0-003", name="Store preference via conversation",
@@ -99,10 +99,10 @@ L0_SCENARIOS: list[Scenario] = [
     ),
     Scenario(
         id="L0-007", name="Image generation",
-        description="Agent should GENERATE_IMAGE, not DESIGN_LOGO or EDIT_IMAGE",
+        description="Agent should GENERATE_MEDIA, not DESIGN_LOGO or EDIT_IMAGE",
         level=L0, tags=("core", "image"), distractor_action_count=30,
         turns=(Turn(role="user", text="Can you generate a picture of a cat wearing a top hat?",
-            expected_outcomes=(_action("GENERATE_IMAGE"), _no_action("DESIGN_LOGO"), _no_action("EDIT_IMAGE"))),),
+            expected_outcomes=(_action("GENERATE_MEDIA"), _no_action("DESIGN_LOGO"), _no_action("EDIT_IMAGE"))),),
     ),
     Scenario(
         id="L0-008", name="Follow room",
@@ -214,7 +214,7 @@ L1_SCENARIOS: list[Scenario] = [
             Turn(role="user", text="Going back to the dog thing - I live in a small apartment though",
                 expected_outcomes=(_action("REPLY"), _contains("apartment", weight=0.5))),
             Turn(role="user", text="Oh and remind me about the vet appointment Friday at 3pm",
-                expected_outcomes=(_action("SCHEDULE_FOLLOW_UP"),)),
+                expected_outcomes=(_action(["SCHEDULE_FOLLOW_UP", "CREATE_TASK"]),)),
             Turn(role="user", text="So based on the apartment thing, what breed do you recommend?",
                 expected_outcomes=(_action("REPLY"), _contains("apartment", weight=0.8))),
             Turn(role="user", text="What was that reminder I just set?",
@@ -311,7 +311,7 @@ L1_SCENARIOS: list[Scenario] = [
             Turn(role="user", text="OK back to the dinner plan - what was step 2 again?",
                 expected_outcomes=(_action("REPLY"), _contains("invitation", weight=0.8))),
             Turn(role="user", text="Great, now do step 2 - send a message to the team about the dinner",
-                expected_outcomes=(_action("SEND_MESSAGE"),)),
+                expected_outcomes=(_action("MESSAGE"),)),
         ),
     ),
     Scenario(
@@ -338,7 +338,7 @@ L1_SCENARIOS: list[Scenario] = [
             Turn(role="user", text="I just had a meeting with the marketing team about the Q3 campaign."),
             Turn(role="user", text="They want us to increase the budget by 20 percent."),
             Turn(role="user", text="Can you send them a message saying we will review it?",
-                expected_outcomes=(_action("SEND_MESSAGE"),)),
+                expected_outcomes=(_action("MESSAGE"),)),
         ),
     ),
     Scenario(
@@ -374,14 +374,14 @@ L1_SCENARIOS: list[Scenario] = [
     ),
     Scenario(
         id="L1-010", name="Action momentum",
-        description="After 3 SEND_MESSAGE actions, ambiguous message should favour SEND_MESSAGE",
+        description="After 3 MESSAGE actions, ambiguous message should favour MESSAGE",
         level=L1, tags=("context", "momentum"), distractor_action_count=15,
         turns=(
             Turn(role="user", text="Send a message to Alice: Meeting at 3pm"),
             Turn(role="user", text="Also send one to Bob: Please review the doc"),
             Turn(role="user", text="And send Carol: Budget approved"),
             Turn(role="user", text="Also tell Dave about the meeting",
-                expected_outcomes=(_action("SEND_MESSAGE"),)),
+                expected_outcomes=(_action("MESSAGE"),)),
         ),
     ),
     Scenario(
@@ -430,9 +430,9 @@ L1_SCENARIOS: list[Scenario] = [
             Turn(role="user", text="Do the thing",
                 expected_outcomes=(_action("REPLY"),)),
             Turn(role="user", text="I mean, send a message to Alice saying hello",
-                expected_outcomes=(_action("SEND_MESSAGE"),)),
+                expected_outcomes=(_action("MESSAGE"),)),
             Turn(role="user", text="Do the thing again",
-                expected_outcomes=(_action("SEND_MESSAGE"), _contains("Alice", weight=0.5))),
+                expected_outcomes=(_action("MESSAGE"), _contains("Alice", weight=0.5))),
         ),
     ),
     Scenario(
@@ -460,7 +460,7 @@ L2_SCENARIOS: list[Scenario] = [
         level=L2, tags=("complex", "multi_action", "contacts"), distractor_action_count=25,
         turns=(Turn(role="user",
             text="Add my new colleague Alice (alice@corp.com) to my contacts, then send her a welcome message, then schedule a follow-up for next week to check in with her",
-            expected_outcomes=(_action("ADD_CONTACT"), _action("SEND_MESSAGE"), _action("SCHEDULE_FOLLOW_UP"))),),
+            expected_outcomes=(_action("ADD_CONTACT"), _action("MESSAGE"), _action("SCHEDULE_FOLLOW_UP"))),),
     ),
     Scenario(
         id="L2-002", name="Room setup",
@@ -468,7 +468,7 @@ L2_SCENARIOS: list[Scenario] = [
         level=L2, tags=("complex", "multi_action", "room_mgmt"), distractor_action_count=30,
         turns=(Turn(role="user",
             text="Set up the new project room: follow it, make sure it is unmuted, give Sarah admin access, and post a welcome message",
-            expected_outcomes=(_action("FOLLOW_ROOM"), _action("UNMUTE_ROOM"), _action("UPDATE_ROLE"), _action("SEND_MESSAGE"))),),
+            expected_outcomes=(_action("FOLLOW_ROOM"), _action("UNMUTE_ROOM"), _action("UPDATE_ROLE"), _action("MESSAGE"))),),
     ),
     Scenario(
         id="L2-003", name="Research and report",
@@ -476,7 +476,7 @@ L2_SCENARIOS: list[Scenario] = [
         level=L2, tags=("complex", "multi_action"), distractor_action_count=25,
         turns=(Turn(role="user",
             text="Search our contacts for anyone in the sales department and then send them a message about the new pricing update",
-            expected_outcomes=(_action("SEARCH_CONTACTS"), _action("SEND_MESSAGE"))),),
+            expected_outcomes=(_action("SEARCH_CONTACTS"), _action("MESSAGE"))),),
     ),
     Scenario(
         id="L2-004", name="Selective room cleanup",
@@ -506,7 +506,7 @@ L2_SCENARIOS: list[Scenario] = [
         level=L2, tags=("complex", "conditional"), distractor_action_count=20,
         turns=(Turn(role="user",
             text="Search our contacts for Bob. If he is there, send him the meeting notes. If not, add him first (bob@example.com) and then send the notes.",
-            expected_outcomes=(_action("SEARCH_CONTACTS"), _action(["SEND_MESSAGE", "ADD_CONTACT"]))),),
+            expected_outcomes=(_action("SEARCH_CONTACTS"), _action(["MESSAGE", "ADD_CONTACT"]))),),
     ),
     Scenario(
         id="L2-007", name="Correction mid-task",
@@ -515,10 +515,10 @@ L2_SCENARIOS: list[Scenario] = [
         turns=(
             Turn(role="user",
                 text="Add Alice, Bob, and Carol to contacts and send them all a message about the Friday meeting",
-                expected_outcomes=(_action("ADD_CONTACT"), _action("SEND_MESSAGE"))),
+                expected_outcomes=(_action("ADD_CONTACT"), _action("MESSAGE"))),
             Turn(role="user",
                 text="Wait, not Carol. Remove her if you added her. Just send the message to Alice and Bob.",
-                expected_outcomes=(_action(["REMOVE_CONTACT", "SEND_MESSAGE", "REPLY"]),)),
+                expected_outcomes=(_action(["REMOVE_CONTACT", "MESSAGE", "REPLY"]),)),
         ),
     ),
     Scenario(
@@ -527,9 +527,9 @@ L2_SCENARIOS: list[Scenario] = [
         level=L2, tags=("complex", "priority"), distractor_action_count=15,
         turns=(
             Turn(role="user", text="Send an urgent message to the team about the server outage right now",
-                expected_outcomes=(_action("SEND_MESSAGE"),)),
+                expected_outcomes=(_action("MESSAGE"),)),
             Turn(role="user", text="Also generate an image for the monthly report when you get a chance",
-                expected_outcomes=(_action("GENERATE_IMAGE"),)),
+                expected_outcomes=(_action("GENERATE_MEDIA"),)),
             Turn(role="user", text="Which task did you handle first?",
                 expected_outcomes=(_action("REPLY"), _contains("server", weight=0.5))),
         ),
@@ -558,7 +558,7 @@ L2_SCENARIOS: list[Scenario] = [
             Turn(role="user", text="How is the stock market doing?"),
             Turn(role="user",
                 text="Send a message to each team member about tomorrow all-hands meeting. Alice should present the technical update, Bob should prepare mockups, Carol should lead the agenda. Also schedule a follow-up.",
-                expected_outcomes=(_action("SEND_MESSAGE"), _action("SCHEDULE_FOLLOW_UP"),
+                expected_outcomes=(_action("MESSAGE"), _action("SCHEDULE_FOLLOW_UP"),
                     _contains("Alice", weight=0.3), _contains("Bob", weight=0.3), _contains("Carol", weight=0.3))),
         ),
     ),

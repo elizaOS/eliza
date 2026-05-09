@@ -1,11 +1,6 @@
 import pc from "picocolors";
-import { getTemplateById, loadManifest } from "../manifest.js";
+import { getTemplateById, loadManifest, TEMPLATE_ICONS } from "../manifest.js";
 import type { InfoOptions } from "../types.js";
-
-const TEMPLATE_ICONS: Record<string, string> = {
-  plugin: "🔌",
-  project: "🧱",
-};
 
 export function info(options: InfoOptions): void {
   const manifest = loadManifest();

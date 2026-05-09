@@ -88,6 +88,12 @@ export function createAdminPanelProvider(): Provider {
       "surface owner recent Eliza app chat agent context across platform",
     dynamic: true,
     position: 14,
+    contexts: ["admin", "settings"],
+    contextGate: { anyOf: ["admin", "settings"] },
+    cacheStable: false,
+    cacheScope: "turn",
+    roleGate: { minRole: "ADMIN" },
+
     async get(
       runtime: IAgentRuntime,
       message: Memory,

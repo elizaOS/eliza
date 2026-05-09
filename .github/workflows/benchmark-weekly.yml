@@ -99,16 +99,6 @@ jobs:
           test -f packages/scenario-runner/src/cli.ts || \
             { echo "scenario-runner CLI missing"; exit 1; }
 
-      - name: Generate proto-derived TypeScript modules
-        # The scenario runner imports packages/core/src/types/proto.ts
-        # which transitively pulls src/types/generated/eliza/v1/agent_pb.js.
-        # That directory is .gitignored (regenerated from packages/schemas/),
-        # so we need to materialize it before tsx tries to resolve the import.
-        run: |
-          if [ ! -d packages/core/src/types/generated ]; then
-            cd packages/schemas && bunx buf generate
-          fi
-
       - name: Build benchmark runtime packages
         # The benchmark executes TypeScript sources directly, but several
         # workspace packages intentionally export dist/* entry points. Because

@@ -14,6 +14,11 @@ const externalDeps = ["@elizaos/core", "zod"];
 async function build(): Promise<void> {
   const totalStart = Date.now();
 
+  const { mkdir } = await import("node:fs/promises");
+  await mkdir("dist/node", { recursive: true });
+  await mkdir("dist/browser", { recursive: true });
+  await mkdir("dist/cjs", { recursive: true });
+
   // Node ESM build
   const nodeStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-xai for Node (ESM)...");
@@ -96,16 +101,10 @@ async function build(): Promise<void> {
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
 
-  const { mkdir, writeFile } = await import("node:fs/promises");
+  const { writeFile } = await import("node:fs/promises");
   const { $ } = await import("bun");
 
   await $`tsc --project tsconfig.build.json`;
-
-  // Create output directories
-  await mkdir("dist", { recursive: true });
-  await mkdir("dist/node", { recursive: true });
-  await mkdir("dist/browser", { recursive: true });
-  await mkdir("dist/cjs", { recursive: true });
 
   // Create re-export declaration files for each entry point
   const reexportDeclaration = `export * from '../index';

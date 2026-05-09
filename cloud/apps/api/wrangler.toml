@@ -26,7 +26,7 @@ __filename = '"/worker.js"'
 
 [alias]
 "@elizaos/plugin-sql" = "./src/stubs/elizaos-plugin-sql.ts"
-"@elizaos/core" = "../../packages/stubs/elizaos-core.ts"
+"@elizaos/core" = "./src/stubs/elizaos-core.ts"
 "@elizaos/cloud-sdk" = "../../packages/sdk/src/index.ts"
 # ssh2 is Node-only (.node native binding). Container/agent SSH lives on the
 # sidecar (cloud/INFRA.md). Stub at bundle time so the Worker compiles; any
@@ -124,7 +124,6 @@ LLM_TRAJECTORY_STORAGE = "r2"
 # file and leave a note in cloud/INFRA.md).
 #
 #   DATABASE_URL                       Neon Postgres
-#   DATABASE_URL_EU_READ               (optional) EU read replica
 #   STEWARD_API_URL                    Optional Steward base URL override;
 #       defaults to NEXT_PUBLIC_STEWARD_API_URL or NEXT_PUBLIC_API_URL + /steward
 #   STEWARD_SESSION_SECRET             HS256 secret for Steward JWT verify (jose); MUST match Steward host

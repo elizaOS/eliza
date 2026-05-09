@@ -14,7 +14,7 @@ import {
   type AgentRuntime,
   ChannelType,
   type Memory,
-  parseToonKeyValue,
+  parseJSONObjectFromText,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -81,6 +81,18 @@ export interface ActionBenchmarkTagStats {
   accuracy: number;
 }
 
+export interface ActionBenchmarkCacheStats {
+  llmCalls: number;
+  llmCallsWithUsage: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputRatio: number;
+  cacheCreationInputRatio: number;
+}
+
 export interface CaseReliability {
   caseId: string;
   expectedAction: string | null;
@@ -98,6 +110,7 @@ export interface ActionBenchmarkReport {
   accuracy: number;
   byTag: Record<string, ActionBenchmarkTagStats>;
   latency: ActionBenchmarkLatencyStats;
+  cache?: ActionBenchmarkCacheStats;
   /** Per-case reliability when runsPerCase > 1. */
   reliability?: CaseReliability[];
   /** Number of independent runs scheduled per case. */
@@ -142,6 +155,134 @@ const BENCHMARK_USER_NAME = "Owner";
 const RETRYABLE_CASE_ATTEMPTS = 3;
 const RETRYABLE_CASE_BACKOFF_MS = 5_000;
 const GENERIC_ACTION_NAMES = new Set(["REPLY", "IGNORE", "NONE"]);
+const NON_SELECTION_ACTION_NAMES = new Set([
+  "FACT_EXTRACTOR",
+  "REFLECTION",
+  "SKILL_LEARNING",
+]);
+const ACTION_CANONICAL_NAMES = new Map<string, string>([
+  ["GOOGLE_CALENDAR", "CALENDAR"],
+  ["CALENDLY", "CALENDAR"],
+  ["SCHEDULING", "CALENDAR"],
+  ["PROPOSE_MEETING_TIMES", "CALENDAR"],
+  ["CHECK_AVAILABILITY", "CALENDAR"],
+  ["UPDATE_MEETING_PREFERENCES", "CALENDAR"],
+  ["CALENDAR_READ", "CALENDAR"],
+  ["CALENDAR_CREATE_EVENT", "CALENDAR"],
+  ["CALENDAR_FEED", "CALENDAR"],
+  ["ADD_TODO", "LIFE"],
+  ["CREATE_TODO", "LIFE"],
+  ["TODO_ADD", "LIFE"],
+  ["TODO_CREATE", "LIFE"],
+  ["TODOS_ADD", "LIFE"],
+  ["TODOS_CREATE", "LIFE"],
+  ["TASK_ADD", "LIFE"],
+  ["TASK_CREATE", "LIFE"],
+  ["ADD_TASK", "LIFE"],
+  ["CREATE_TASK", "LIFE"],
+  ["LIST_TODOS", "LIFE"],
+  ["GET_TODOS", "LIFE"],
+  ["TODO_LIST", "LIFE"],
+  ["TODO_LIST_TODAY", "LIFE"],
+  ["TODOS_LIST", "LIFE"],
+  ["TODO_GET", "LIFE"],
+  ["TODOS_GET", "LIFE"],
+  ["TODOS_REVIEW", "LIFE"],
+  ["TASK_LIST", "LIFE"],
+  ["TASK_LIST_TODAY", "LIFE"],
+  ["TASKS_REVIEW", "LIFE"],
+  ["LIFE_GET_TODOS", "LIFE"],
+  ["LIFE_TODO", "LIFE"],
+  ["ADD_HABIT", "LIFE"],
+  ["CREATE_HABIT", "LIFE"],
+  ["LIST_HABITS", "LIFE"],
+  ["ADD_GOAL", "LIFE"],
+  ["CREATE_GOAL", "LIFE"],
+  ["CREATE_REMINDER", "LIFE"],
+  ["SET_REMINDER_RULE", "LIFE"],
+  ["CHECK_IN", "CHECKIN"],
+  ["LIFE_CHECK_IN", "CHECKIN"],
+  ["MORNING_CHECKIN", "CHECKIN"],
+  ["MORNING_CHECK_IN", "CHECKIN"],
+  ["NIGHT_CHECKIN", "CHECKIN"],
+  ["NIGHT_CHECK_IN", "CHECKIN"],
+  ["RUN_CHECKIN", "CHECKIN"],
+  ["RUN_MORNING_CHECKIN", "CHECKIN"],
+  ["RUN_NIGHT_CHECKIN", "CHECKIN"],
+  ["AUTOMATION_RUN", "CHECKIN"],
+  ["DAILY_BRIEF", "CHECKIN"],
+  ["MEMORY_SET", "PROFILE"],
+  ["MEMORY_WRITE", "PROFILE"],
+  ["REMEMBER_PREFERENCES", "PROFILE"],
+  ["MESSAGE", "MESSAGE"],
+  ["DISPATCH_DRAFT", "MESSAGE"],
+  ["CONFIRM_AND_SEND", "MESSAGE"],
+  ["SOCIAL_POSTING", "POST"],
+  ["GET_TIMELINE", "POST"],
+  ["READ_TIMELINE", "POST"],
+  ["SEARCH_TWITTER", "POST"],
+  ["TWITTER_SEARCH", "POST"],
+  ["X_SEARCH", "POST"],
+  ["SEARCH_TWITTER_POSTS", "POST"],
+  ["TWITTER_POST_SEARCH", "POST"],
+  ["FETCH_X_TIMELINE", "POST"],
+  ["VIEW_X_FEED", "POST"],
+  ["FETCH_TWITTER_FEED", "POST"],
+  ["FETCH_TWITTER_TIMELINE", "POST"],
+  ["FETCH_TWITTER_DMS", "MESSAGE"],
+  ["READ_TWITTER_DMS", "MESSAGE"],
+  ["READ_TWITTER_DM", "MESSAGE"],
+  ["FETCH_X_DMS", "MESSAGE"],
+  ["READ_X_DMS", "MESSAGE"],
+  ["READ_X_DM", "MESSAGE"],
+  ["DISCORD_POST_MESSAGE", "MESSAGE"],
+  ["DISCORD_SEND_MESSAGE", "MESSAGE"],
+  ["SEND_DISCORD_MESSAGE", "MESSAGE"],
+  ["SLACK_POST_MESSAGE", "MESSAGE"],
+  ["TELEGRAM_SEND_MESSAGE", "MESSAGE"],
+  ["EMAIL_FETCH_LATEST", "MESSAGE"],
+  ["EMAIL_SEARCH_LATEST_FROM", "MESSAGE"],
+  ["EMAIL_SEARCH_FROM", "MESSAGE"],
+  ["EMAIL_SEARCH", "MESSAGE"],
+  ["EMAIL_DRAFT_REPLY", "MESSAGE"],
+  ["EMAIL_FETCH_UNREAD", "MESSAGE"],
+  ["FETCH_UNREAD_EMAIL", "MESSAGE"],
+  ["LIST_UNREAD_EMAILS", "MESSAGE"],
+  ["SUMMARIZE_UNREAD_EMAILS", "MESSAGE"],
+  ["SUMMARISE_UNREAD_EMAILS", "MESSAGE"],
+  ["UNREAD_EMAIL_SUMMARY", "MESSAGE"],
+  ["READ_UNREAD_EMAILS", "MESSAGE"],
+  ["BLOCK_WEBSITE", "WEBSITE_BLOCK"],
+  ["WEBSITE_BLOCKER", "WEBSITE_BLOCK"],
+  ["AUTOMATION_FOCUS_BLOCK", "WEBSITE_BLOCK"],
+  ["FOCUS_BLOCK", "WEBSITE_BLOCK"],
+  ["SET_APP_BLOCK", "APP_BLOCK"],
+  ["PHONE_SET_APP_BLOCK", "APP_BLOCK"],
+  ["PHONE_BLOCK_APPS", "APP_BLOCK"],
+  ["BLOCK_APPS", "APP_BLOCK"],
+  ["ADMIN_REJECT_APPROVAL", "RESOLVE_REQUEST"],
+  ["REJECT_APPROVAL", "RESOLVE_REQUEST"],
+  ["DENY_APPROVAL", "RESOLVE_REQUEST"],
+  ["DECLINE_APPROVAL", "RESOLVE_REQUEST"],
+  ["BROADCAST_INTENT", "DEVICE_INTENT"],
+  ["BROADCAST_REMINDER", "DEVICE_INTENT"],
+  ["DEVICE_BROADCAST", "DEVICE_INTENT"],
+  ["MOBILE_REMINDER", "DEVICE_INTENT"],
+  ["INTENT_SYNC", "DEVICE_INTENT"],
+  ["FILE_ACTION", "COMPUTER_USE"],
+  ["TERMINAL_ACTION", "COMPUTER_USE"],
+  ["BROWSER_ACTION", "COMPUTER_USE"],
+  ["MANAGE_WINDOW", "COMPUTER_USE"],
+  ["DESKTOP", "COMPUTER_USE"],
+  ["TASKS_ADD_TODO", "LIFE"],
+  ["TASKS_CREATE_TODO", "LIFE"],
+  ["TASKS_CREATE_REMINDER", "LIFE"],
+  ["TASKS_LIST_TODAY", "LIFE"],
+  ["TASKS_LIST_TODOS", "LIFE"],
+  ["TASKS_SET_GOAL", "LIFE"],
+  ["LIST_TASKS", "LIFE"],
+  ["SET_GOAL", "LIFE"],
+]);
 
 function resolveBenchmarkOwnerEntityId(runtime: AgentRuntime): UUID {
   const configured = runtime.getSetting("ELIZA_ADMIN_ENTITY_ID");
@@ -149,6 +290,98 @@ function resolveBenchmarkOwnerEntityId(runtime: AgentRuntime): UUID {
     return configured as UUID;
   }
   return stringToUuid(`${runtime.agentId}-admin-entity`);
+}
+
+function makeBenchmarkConnectorMemory(args: {
+  runtime: AgentRuntime;
+  text: string;
+  source: string;
+  index: number;
+}): Memory {
+  return {
+    id: stringToUuid(
+      `benchmark-${args.source}-${args.runtime.agentId}-${args.index}-${args.text}`,
+    ),
+    entityId: args.runtime.agentId,
+    agentId: args.runtime.agentId,
+    roomId: stringToUuid(`benchmark-${args.source}-room-${args.runtime.agentId}`),
+    content: {
+      text: args.text,
+      source: args.source,
+      channelType: ChannelType.DM,
+    },
+    createdAt: Date.now() - args.index * 60_000,
+  } as Memory;
+}
+
+function registerBenchmarkXConnectors(runtime: AgentRuntime): void {
+  const withConnectors = runtime as AgentRuntime & {
+    registerPostConnector?: (registration: Record<string, unknown>) => void;
+    registerMessageConnector?: (registration: Record<string, unknown>) => void;
+  };
+  const account = {
+    source: "x",
+    accountId: "benchmark-x-owner",
+    label: "Benchmark X",
+    role: "OWNER",
+    health: "HEALTHY",
+  };
+  withConnectors.registerPostConnector?.({
+    source: "x",
+    accountId: "benchmark-x-owner",
+    account,
+    label: "Benchmark X",
+    capabilities: ["read_feed", "search_posts"],
+    contexts: ["social_posting", "connectors"],
+    fetchFeed: async () => [
+      makeBenchmarkConnectorMemory({
+        runtime,
+        source: "x",
+        index: 1,
+        text: "@elizaOS: Latest project update and community highlights.",
+      }),
+      makeBenchmarkConnectorMemory({
+        runtime,
+        source: "x",
+        index: 2,
+        text: "@milady: Agent runtime benchmarks are looking healthier.",
+      }),
+    ],
+    searchPosts: async (_context: unknown, params: { query?: string }) => {
+      const query = params.query?.trim() || "elizaOS";
+      return [
+        makeBenchmarkConnectorMemory({
+          runtime,
+          source: "x",
+          index: 1,
+          text: `Search result for ${query}: elizaOS agents shipping better action routing.`,
+        }),
+      ];
+    },
+  });
+  withConnectors.registerMessageConnector?.({
+    source: "x",
+    accountId: "benchmark-x-owner",
+    account,
+    label: "Benchmark X DMs",
+    capabilities: ["read_messages", "search_messages"],
+    supportedTargetKinds: ["channel", "user", "room"],
+    contexts: ["messaging", "connectors"],
+    fetchMessages: async () => [
+      makeBenchmarkConnectorMemory({
+        runtime,
+        source: "x",
+        index: 1,
+        text: "DM from @alex: quick question about the elizaOS roadmap.",
+      }),
+      makeBenchmarkConnectorMemory({
+        runtime,
+        source: "x",
+        index: 2,
+        text: "DM from @sam: can you send the benchmark aggregate?",
+      }),
+    ],
+  });
 }
 
 async function _ensureBenchmarkConversation(args: {
@@ -193,11 +426,34 @@ async function _ensureBenchmarkConversation(args: {
   await runtime.ensureParticipantInRoom(entityId, roomId);
 }
 
-function normalizeActionName(name: string | null | undefined): string | null {
+export function normalizeActionName(
+  name: string | null | undefined,
+): string | null {
   if (typeof name !== "string") return null;
   const trimmed = name.trim();
   if (trimmed.length === 0) return null;
-  return trimmed.toUpperCase().replace(/[\s-]+/g, "_");
+  const normalized = trimmed
+    .toUpperCase()
+    .replace(/^FUNCTIONS\./, "")
+    .replace(/[\s-]+/g, "_");
+  const compoundMatch = normalized.match(/^([A-Z0-9_]+)\.[A-Z0-9_]+$/);
+  if (compoundMatch?.[1]) {
+    return ACTION_CANONICAL_NAMES.get(compoundMatch[1]) ?? compoundMatch[1];
+  }
+  if (
+    /^EMAIL_(?:FETCH|SEARCH|READ|LIST|SUMMARIZE|SUMMARISE|DRAFT|REPLY|RESPOND|SEND|UNREAD)/.test(
+      normalized,
+    )
+  ) {
+    return "MESSAGE";
+  }
+  return ACTION_CANONICAL_NAMES.get(normalized) ?? normalized;
+}
+
+function canonicalActionName(name: string | null | undefined): string | null {
+  const normalized = normalizeActionName(name);
+  if (normalized === null) return null;
+  return ACTION_CANONICAL_NAMES.get(normalized) ?? normalized;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -239,23 +495,23 @@ function caseThrottleMs(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
-function caseMatches(
+export function caseMatches(
   actual: string | null,
   expected: string | null,
   acceptable: string[] | undefined,
 ): boolean {
-  const actualNorm = normalizeActionName(actual);
+  const actualNorm = canonicalActionName(actual);
   if (expected === null) {
     return (
       actualNorm === null ||
       (actualNorm !== null && GENERIC_ACTION_NAMES.has(actualNorm))
     );
   }
-  const expectedNorm = normalizeActionName(expected);
+  const expectedNorm = canonicalActionName(expected);
   if (actualNorm !== null && actualNorm === expectedNorm) return true;
   if (!acceptable) return false;
   for (const alt of acceptable) {
-    if (actualNorm !== null && normalizeActionName(alt) === actualNorm) {
+    if (actualNorm !== null && canonicalActionName(alt) === actualNorm) {
       return true;
     }
   }
@@ -276,11 +532,16 @@ function firstMatchingActionName(
 }
 
 function isGenericActionName(name: string | null | undefined): boolean {
-  const normalized = normalizeActionName(name);
+  const normalized = canonicalActionName(name);
   return normalized !== null && GENERIC_ACTION_NAMES.has(normalized);
 }
 
-function pickObservedAction(
+function isNonSelectionActionName(name: string | null | undefined): boolean {
+  const normalized = canonicalActionName(name);
+  return normalized !== null && NON_SELECTION_ACTION_NAMES.has(normalized);
+}
+
+export function pickObservedAction(
   records: ReadonlyArray<{
     phase: "started" | "completed";
     actionName: string;
@@ -309,13 +570,34 @@ function pickObservedAction(
       return true;
     })
     .map((record) => record.actionName)
-    .filter((name) => typeof name === "string" && name.trim().length > 0);
+    .filter(
+      (name) =>
+        typeof name === "string" &&
+        name.trim().length > 0 &&
+        !isNonSelectionActionName(name),
+    );
   return (
     firstMatchingActionName(names, expected, acceptable) ??
-    names.find((name) => !isGenericActionName(name)) ??
-    names[0] ??
+    names.find(
+      (name) => !isGenericActionName(name) && !isNonSelectionActionName(name),
+    ) ??
     null
   );
+}
+
+function computeFilteredActions(
+  registeredActions: string[],
+  availableActions: string[],
+): string[] {
+  const availableCanonical = new Set(
+    availableActions
+      .map((actionName) => canonicalActionName(actionName))
+      .filter((actionName): actionName is string => actionName !== null),
+  );
+  return registeredActions.filter((actionName) => {
+    const canonical = canonicalActionName(actionName);
+    return canonical === null || !availableCanonical.has(canonical);
+  });
 }
 
 /**
@@ -355,9 +637,9 @@ export function determineFailureMode(args: {
 }): ActionFailureMode {
   if (args.pass) return "passed";
   if (args.hadError) return "error";
-  const actualNorm = normalizeActionName(args.actual);
-  const plannedNorm = normalizeActionName(args.planned);
-  const expectedNorm = normalizeActionName(args.expected);
+  const actualNorm = canonicalActionName(args.actual);
+  const plannedNorm = canonicalActionName(args.planned);
+  const expectedNorm = canonicalActionName(args.expected);
   if (
     actualNorm !== null &&
     expectedNorm !== null &&
@@ -367,7 +649,7 @@ export function determineFailureMode(args: {
   }
   if (
     expectedNorm !== null &&
-    args.filtered.some((n) => normalizeActionName(n) === expectedNorm)
+    args.filtered.some((n) => canonicalActionName(n) === expectedNorm)
   ) {
     return "validate_filtered";
   }
@@ -384,13 +666,74 @@ export function determineFailureMode(args: {
   if (actualNorm === null && plannedNorm === null) {
     if (
       expectedNorm !== null &&
-      args.filtered.some((n) => normalizeActionName(n) === expectedNorm)
+      args.filtered.some((n) => canonicalActionName(n) === expectedNorm)
     ) {
       return "validate_filtered";
     }
     return "llm_chose_reply";
   }
   return "llm_chose_other_action";
+}
+
+function finiteToken(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function summarizeCacheStats(
+  results: readonly ActionBenchmarkResult[],
+): ActionBenchmarkCacheStats | undefined {
+  let llmCalls = 0;
+  let llmCallsWithUsage = 0;
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let totalTokens = 0;
+  let cacheReadInputTokens = 0;
+  let cacheCreationInputTokens = 0;
+
+  for (const result of results) {
+    for (const call of result.trajectory?.agentTrajectory.llmCalls ?? []) {
+      llmCalls += 1;
+      const callPromptTokens = finiteToken(call.promptTokens);
+      const callCompletionTokens = finiteToken(call.completionTokens);
+      const callTotalTokens = finiteToken(call.totalTokens);
+      const callCacheReadInputTokens = finiteToken(call.cacheReadInputTokens);
+      const callCacheCreationInputTokens = finiteToken(
+        call.cacheCreationInputTokens,
+      );
+      if (
+        callPromptTokens > 0 ||
+        callCompletionTokens > 0 ||
+        callTotalTokens > 0 ||
+        callCacheReadInputTokens > 0 ||
+        callCacheCreationInputTokens > 0
+      ) {
+        llmCallsWithUsage += 1;
+      }
+      promptTokens += callPromptTokens;
+      completionTokens += callCompletionTokens;
+      totalTokens +=
+        callTotalTokens > 0
+          ? callTotalTokens
+          : callPromptTokens + callCompletionTokens;
+      cacheReadInputTokens += callCacheReadInputTokens;
+      cacheCreationInputTokens += callCacheCreationInputTokens;
+    }
+  }
+
+  if (llmCalls === 0) return undefined;
+  return {
+    llmCalls,
+    llmCallsWithUsage,
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    cacheReadInputTokens,
+    cacheCreationInputTokens,
+    cacheReadInputRatio:
+      promptTokens === 0 ? 0 : cacheReadInputTokens / promptTokens,
+    cacheCreationInputRatio:
+      promptTokens === 0 ? 0 : cacheCreationInputTokens / promptTokens,
+  };
 }
 
 interface PlannerDecision {
@@ -400,6 +743,24 @@ interface PlannerDecision {
 }
 
 function parseAvailableActionsFromPrompt(prompt: string): string[] {
+  try {
+    const parsed = JSON.parse(prompt) as { tools?: unknown };
+    if (Array.isArray(parsed.tools)) {
+      return parsed.tools
+        .flatMap((tool) => {
+          if (!tool || typeof tool !== "object") return [];
+          const record = tool as Record<string, unknown>;
+          const fn = record.function as Record<string, unknown> | undefined;
+          const name = record.name ?? record.toolName ?? fn?.name;
+          return typeof name === "string" ? [name] : [];
+        })
+        .map((name) => normalizeActionName(name))
+        .filter((name): name is string => name !== null);
+    }
+  } catch {
+    // Fall back to parsing the legacy markdown prompt below.
+  }
+
   const lines = prompt.split("\n");
   const available: string[] = [];
   let inSection = false;
@@ -421,13 +782,112 @@ function parseAvailableActionsFromPrompt(prompt: string): string[] {
   return available;
 }
 
-function parsePlannedActionsFromResponse(response: string): string[] {
-  const parsed = parseToonKeyValue<Record<string, unknown>>(response);
-  if (!parsed) {
-    return [];
+function parseRecordValue(value: unknown): Record<string, unknown> | undefined {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
   }
-  const rawActions =
-    parsed.actions ?? parsed.action ?? parsed.name ?? parsed.actionName;
+  if (typeof value === "string" && value.trim().startsWith("{")) {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function parseArrayValueFromText(value: string): unknown[] | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  const candidates: string[] = [];
+  const fullFence = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  candidates.push(fullFence?.[1]?.trim() ?? trimmed);
+  for (const match of trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi)) {
+    const candidate = match[1]?.trim();
+    if (candidate) candidates.push(candidate);
+  }
+  const start = trimmed.indexOf("[");
+  const end = trimmed.lastIndexOf("]");
+  if (start >= 0 && end > start) {
+    candidates.push(trimmed.slice(start, end + 1));
+  }
+
+  for (const candidate of [...new Set(candidates)]) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return undefined;
+}
+
+function extractFirstJsonObjectText(value: string): string | undefined {
+  const start = value.indexOf("{");
+  if (start < 0) return undefined;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < value.length; index += 1) {
+    const char = value[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+    if (char !== "}") continue;
+    depth -= 1;
+    if (depth === 0) {
+      return value.slice(start, index + 1);
+    }
+  }
+  return undefined;
+}
+
+function parseObjectValueFromText(
+  value: string,
+): Record<string, unknown> | undefined {
+  const objectText = extractFirstJsonObjectText(value);
+  if (!objectText) return undefined;
+  try {
+    const parsed = JSON.parse(objectText);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isPlannerWrapperAction(name: string | null): boolean {
+  return name === "CALL_ACTION" || name === "PLAN_ACTIONS";
+}
+
+function isPlannerProtocolAction(name: string | null): boolean {
+  const canonical = canonicalActionName(name);
+  return canonical === "HANDLE_RESPONSE" || isPlannerWrapperAction(canonical);
+}
+
+function parseActionNamesFromValue(rawActions: unknown): string[] {
   const actionValues = Array.isArray(rawActions) ? rawActions : [rawActions];
   const names = actionValues
     .flatMap((action) => {
@@ -436,36 +896,132 @@ function parsePlannedActionsFromResponse(response: string): string[] {
       }
       if (action && typeof action === "object") {
         const record = action as Record<string, unknown>;
-        const rawName = record.name ?? record.action ?? record.actionName;
+        const rawFunction = parseRecordValue(record.function);
+        const input =
+          parseRecordValue(record.input) ??
+          parseRecordValue(record.arguments) ??
+          parseRecordValue(rawFunction?.arguments);
+        const rawName =
+          record.name ??
+          record.action ??
+          record.actionName ??
+          record.toolName ??
+          record.tool ??
+          rawFunction?.name;
+        const canonicalRawName =
+          typeof rawName === "string" ? canonicalActionName(rawName) : null;
+        if (isPlannerWrapperAction(canonicalRawName)) {
+          const actionParameters = parseRecordValue(record.actionParameters);
+          const nestedName =
+            input?.action ??
+            input?.actionName ??
+            input?.name ??
+            actionParameters?.action ??
+            actionParameters?.actionName;
+          return typeof nestedName === "string" ? [nestedName] : [];
+        }
         return typeof rawName === "string" ? [rawName] : [];
       }
       return [];
     })
-    .map((name) => normalizeActionName(name))
-    .filter((name): name is string => name !== null);
+    .map((name) => canonicalActionName(name))
+    .filter(
+      (name): name is string => name !== null && !isPlannerProtocolAction(name),
+    );
   return [...new Set(names)];
+}
+
+export function parsePlannedActionsFromResponse(response: string): string[] {
+  const parsed =
+    parseJSONObjectFromText(response) ??
+    parseObjectValueFromText(response) ??
+    parseArrayValueFromText(response);
+  if (!parsed) {
+    return [];
+  }
+  const rawActions =
+    Array.isArray(parsed)
+      ? parsed
+      : parsed.toolCalls ??
+        parsed.tool_calls ??
+        parsed.actions ??
+        parsed.action ??
+        parsed.actionName ??
+        parsed.name ??
+        parsed.tool ??
+        parsed.function;
+  const names = parseActionNamesFromValue(rawActions);
+  if (
+    names.length === 0 &&
+    !Array.isArray(parsed) &&
+    typeof parsed.text === "string" &&
+    parsed.text.trim() !== response.trim()
+  ) {
+    return parsePlannedActionsFromResponse(parsed.text);
+  }
+  return names;
 }
 
 function extractPlannerDecision(
   trajectory: TrajectoryRecord | undefined,
+  registeredActions: readonly string[] = [],
 ): PlannerDecision {
-  const plannerCall = trajectory?.agentTrajectory.llmCalls.find(
-    (call) => call.purpose === "action_planner",
-  );
-  if (!plannerCall) {
+  const plannerCalls =
+    trajectory?.agentTrajectory.llmCalls.filter(
+      (call) => call.purpose === "action_planner",
+    ) ?? [];
+  if (plannerCalls.length === 0) {
     return {
       availableActions: [],
       plannedActions: [],
       plannedAction: null,
     };
   }
-  const availableActions = parseAvailableActionsFromPrompt(plannerCall.prompt);
-  const plannedActions = parsePlannedActionsFromResponse(plannerCall.response);
-  return {
-    availableActions,
-    plannedActions,
-    plannedAction: plannedActions[0] ?? null,
-  };
+  let fallback: PlannerDecision | null = null;
+  let latestPlanned: PlannerDecision | null = null;
+  for (const plannerCall of plannerCalls) {
+    const rawAvailableActions = parseAvailableActionsFromPrompt(
+      plannerCall.prompt,
+    );
+    const visibleActionsAreWrappers =
+      rawAvailableActions.length > 0 &&
+      rawAvailableActions.every((name) =>
+        isPlannerProtocolAction(canonicalActionName(name)),
+      );
+    const availableActions =
+      visibleActionsAreWrappers && registeredActions.length > 0
+        ? registeredActions
+            .map((name) => normalizeActionName(name))
+            .filter((name): name is string => name !== null)
+        : rawAvailableActions;
+    const plannedActions = parsePlannedActionsFromResponse(
+      plannerCall.response,
+    );
+    const decision = {
+      availableActions,
+      plannedActions,
+      plannedAction: plannedActions[0] ?? null,
+    };
+    fallback ??= decision;
+    if (plannedActions.length > 0) {
+      latestPlanned = decision;
+      if (
+        plannedActions.some(
+          (action) => !isGenericActionName(action) && !isNonSelectionActionName(action),
+        )
+      ) {
+        return decision;
+      }
+    }
+  }
+  return (
+    latestPlanned ??
+    fallback ?? {
+      availableActions: [],
+      plannedActions: [],
+      plannedAction: null,
+    }
+  );
 }
 
 /**
@@ -481,6 +1037,7 @@ function extractPlannerDecision(
 async function seedBenchmarkCaseFixtures(
   runtime: AgentRuntime,
   userEntityId: string,
+  tc: ActionBenchmarkCase,
 ): Promise<void> {
   // 1) Ensure the LifeOps plugin schema (incl. life_scheduling_negotiations,
   //    life_scheduling_proposals, life_connector_grants, life_relationships)
@@ -544,7 +1101,7 @@ async function seedBenchmarkCaseFixtures(
       });
 
       // Counterparty fixtures referenced by scheduling cases. Without
-      // these, OWNER_CALENDAR(negotiate_start) fails downstream with
+      // these, CALENDAR(negotiate_start) fails downstream with
       // SCHEDULING_NO_COUNTERPARTY_CONTACT because the design-team /
       // Marco / engineering-discord references can't resolve to a known
       // relationship row.
@@ -589,6 +1146,48 @@ async function seedBenchmarkCaseFixtures(
           updatedAt: now,
         });
       }
+
+      const relationshipsService = runtime.getService("relationships") as
+        | {
+            addContact?: (
+              entityId: UUID,
+              categories?: string[],
+              preferences?: Record<string, string>,
+              customFields?: Record<string, string>,
+            ) => Promise<unknown>;
+          }
+        | undefined;
+      if (typeof relationshipsService?.addContact === "function") {
+        for (const contact of [
+          { name: "David", email: "david@example.com", category: "colleague" },
+          { name: "Marco", email: "marco@example.com", category: "colleague" },
+          { name: "Sarah", email: "sarah@example.com", category: "colleague" },
+          {
+            name: "design team",
+            email: "design@example.com",
+            category: "team",
+          },
+        ]) {
+          const entityId = stringToUuid(
+            `benchmark-contact-${contact.name}-${runtime.agentId}`,
+          );
+          const existing = await runtime.getEntityById(entityId);
+          if (!existing) {
+            await runtime.createEntity({
+              id: entityId,
+              names: [contact.name],
+              agentId: runtime.agentId,
+              metadata: { email: contact.email, benchmark: true },
+            });
+          }
+          await relationshipsService.addContact(
+            entityId,
+            [contact.category],
+            { email: contact.email },
+            { displayName: contact.name, email: contact.email },
+          );
+        }
+      }
     }
     runtime.logger?.debug?.(
       { src: "benchmark", userEntityId },
@@ -626,6 +1225,13 @@ async function seedBenchmarkCaseFixtures(
     };
     await seedModule.seedGoogleConnectorGrant(runtime, {
       grantId: `bench-google-${runtime.agentId}`,
+      capabilities: [
+        "google.calendar.read",
+        "google.calendar.write",
+        "google.gmail.triage",
+        "google.gmail.send",
+        "google.gmail.manage",
+      ],
       email: "owner@example.test",
     });
     runtime.logger?.debug?.(
@@ -667,15 +1273,111 @@ async function seedBenchmarkCaseFixtures(
       ) => Promise<void>;
     };
     await seedModule.seedXConnectorGrant(runtime, { side: "owner" });
+    registerBenchmarkXConnectors(runtime);
     runtime.logger?.debug?.(
       { src: "benchmark", userEntityId, agentId: runtime.agentId },
       "seedBenchmarkCaseFixtures: x connector grant seeded",
     );
   } catch (error) {
+    registerBenchmarkXConnectors(runtime);
     runtime.logger?.debug?.(
       { src: "benchmark", userEntityId, error: String(error) },
-      "seedBenchmarkCaseFixtures: x grant seed skipped",
+      "seedBenchmarkCaseFixtures: x grant seed skipped; registered benchmark X connectors",
     );
+  }
+
+  // 5) Approval benchmark cases say there is a pending travel request. Seed
+  //    one so the handler can resolve the user instruction end-to-end instead
+  //    of asking for an id the fixture never created.
+  if (tc.tags.includes("approval")) {
+    let seeded = false;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 20 && !seeded; attempt += 1) {
+      try {
+        const approvalModule = await import(
+          // @ts-expect-error — workspace package resolved at runtime
+          "@elizaos/app-lifeops/lifeops/approval-queue"
+        );
+        const createApprovalQueue =
+          (approvalModule as { createApprovalQueue?: unknown })
+            .createApprovalQueue ??
+          (
+            approvalModule as {
+              default?: { createApprovalQueue?: unknown };
+            }
+          ).default?.createApprovalQueue;
+        const createQueue =
+          typeof createApprovalQueue === "function"
+            ? createApprovalQueue
+            : null;
+        const fallbackModule =
+          createQueue === null
+            ? await import(
+                // @ts-expect-error — path resolved at runtime relative to this file
+                "../../../../plugins/app-lifeops/src/lifeops/approval-queue.ts"
+              )
+            : null;
+        const createApprovalQueueFinal =
+          createQueue ??
+          (fallbackModule as { createApprovalQueue?: unknown })
+            ?.createApprovalQueue;
+        if (typeof createApprovalQueueFinal !== "function") {
+          throw new TypeError("createApprovalQueue export is unavailable");
+        }
+        const queue = createApprovalQueueFinal(runtime, {
+          agentId: runtime.agentId,
+        });
+        const existing = await queue.list({
+          subjectUserId: userEntityId,
+          state: "pending",
+          action: "execute_workflow",
+          limit: 1,
+        });
+        if (existing.length === 0) {
+          await queue.enqueue({
+            requestedBy: "benchmark:action-selection",
+            subjectUserId: userEntityId,
+            action: "execute_workflow",
+            payload: {
+              action: "execute_workflow",
+              workflowId: "bench-travel-booking-approval",
+              input: {
+                kind: "travel_booking",
+                summary: "San Francisco to New York travel booking",
+                itineraryRef: "bench-travel-approval",
+                estimatedTotalCents: 49900,
+                currency: "USD",
+              },
+            },
+            channel: "internal",
+            reason:
+              "Pending travel booking request for benchmark approval flow.",
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          });
+        }
+        const pending = await queue.list({
+          subjectUserId: userEntityId,
+          state: "pending",
+          action: null,
+          limit: 1,
+        });
+        seeded = pending.length > 0;
+      } catch (error) {
+        lastError = error;
+        await sleep(250);
+      }
+    }
+    if (seeded) {
+      runtime.logger?.debug?.(
+        { src: "benchmark", userEntityId, agentId: runtime.agentId },
+        "seedBenchmarkCaseFixtures: approval request seeded",
+      );
+    } else {
+      runtime.logger?.warn?.(
+        { src: "benchmark", userEntityId, error: String(lastError) },
+        "seedBenchmarkCaseFixtures: approval request seed skipped",
+      );
+    }
   }
 }
 
@@ -694,7 +1396,7 @@ async function runSingleCaseWithRecording(
   const started = Date.now();
   const userEntityId = resolveBenchmarkOwnerEntityId(runtime);
   runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", userEntityId, false);
-  await seedBenchmarkCaseFixtures(runtime, userEntityId);
+  await seedBenchmarkCaseFixtures(runtime, userEntityId, tc);
   const harness = new RecordingHarness(runtime, {
     caseId: tc.id,
     userId: userEntityId,
@@ -726,12 +1428,10 @@ async function runSingleCaseWithRecording(
         ? turn.responseText.slice(0, 200)
         : undefined;
     const trajectory = harness.dumpTrajectory();
-    const planner = extractPlannerDecision(trajectory);
+    const planner = extractPlannerDecision(trajectory, registeredActions);
     const filteredActions =
       planner.availableActions.length > 0
-        ? registeredActions.filter(
-            (actionName) => !planner.availableActions.includes(actionName),
-          )
+        ? computeFilteredActions(registeredActions, planner.availableActions)
         : [];
     const plannerPass = caseMatches(
       planner.plannedAction,
@@ -798,12 +1498,10 @@ async function runSingleCaseWithRecording(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const trajectory = harness.dumpTrajectory();
-    const planner = extractPlannerDecision(trajectory);
+    const planner = extractPlannerDecision(trajectory, registeredActions);
     const filteredActions =
       planner.availableActions.length > 0
-        ? registeredActions.filter(
-            (actionName) => !planner.availableActions.includes(actionName),
-          )
+        ? computeFilteredActions(registeredActions, planner.availableActions)
         : [];
     startedAction ??= pickObservedAction(
       trajectory.actions,
@@ -1108,6 +1806,7 @@ export async function runActionSelectionBenchmark(
       p50: percentile(latencies, 50),
       p95: percentile(latencies, 95),
     },
+    cache: summarizeCacheStats(results),
     reliability,
     runsPerCase: runsPerCase > 1 ? runsPerCase : undefined,
     failures: results.filter((r) => !r.pass),
@@ -1128,9 +1827,11 @@ async function writeTrajectoryIndexHtml(
       const planned = r.plannedAction ?? "(none)";
       const completed = r.completedAction ?? "(none)";
       const link = `cases/${r.case.id}.json`;
+      const markdownLink = `cases/${r.case.id}.md`;
       const colour = r.pass ? "#0a7" : "#c33";
       return `<tr>
   <td><a href="${link}">${escapeHtml(r.case.id)}</a></td>
+  <td><a href="${markdownLink}">markdown</a></td>
   <td style="color:${colour};font-weight:600">${status}</td>
   <td>${escapeHtml(expected)}</td>
   <td>${escapeHtml(planned)}</td>
@@ -1151,7 +1852,7 @@ async function writeTrajectoryIndexHtml(
 <h1>Action Benchmark Trajectories</h1>
 <p>${results.filter((r) => r.pass).length} / ${results.length} passed.</p>
 <table>
-<thead><tr><th>Case</th><th>Result</th><th>Expected</th><th>Planned</th><th>Completed</th><th>Latency</th><th>Tags</th></tr></thead>
+<thead><tr><th>Case</th><th>Review</th><th>Result</th><th>Expected</th><th>Planned</th><th>Completed</th><th>Latency</th><th>Tags</th></tr></thead>
 <tbody>
 ${rows}
 </tbody></table>
@@ -1197,6 +1898,17 @@ export function formatBenchmarkReportMarkdown(
   lines.push(
     `**Execution Accuracy:** ${(report.total === 0 ? 0 : (executionPassed / report.total) * 100).toFixed(1)}% (${executionPassed}/${report.total})`,
   );
+  if (report.cache) {
+    lines.push(
+      `**LLM Token Usage:** input ${report.cache.promptTokens} · output ${report.cache.completionTokens} · total ${report.cache.totalTokens} (${report.cache.llmCallsWithUsage}/${report.cache.llmCalls} calls reported usage)`,
+    );
+    lines.push(
+      `**Cache Read:** ${(report.cache.cacheReadInputRatio * 100).toFixed(1)}% (${report.cache.cacheReadInputTokens}/${report.cache.promptTokens} input tokens)`,
+    );
+    lines.push(
+      `**Cache Write:** ${(report.cache.cacheCreationInputRatio * 100).toFixed(1)}% (${report.cache.cacheCreationInputTokens}/${report.cache.promptTokens} input tokens)`,
+    );
+  }
   lines.push("");
 
   if (report.reliability && report.runsPerCase && report.runsPerCase > 1) {

@@ -1,13 +1,11 @@
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { build } from "bun";
 
 const ROOT = resolve(dirname(import.meta.path));
 const DIST = join(ROOT, "dist");
 
-if (existsSync(DIST)) {
-  rmSync(DIST, { recursive: true });
-}
+rmSync(DIST, { recursive: true, force: true });
 mkdirSync(DIST, { recursive: true });
 mkdirSync(join(DIST, "node"), { recursive: true });
 mkdirSync(join(DIST, "browser"), { recursive: true });
@@ -22,7 +20,7 @@ await build({
   splitting: false,
   sourcemap: "linked",
   minify: false,
-  external: ["@elizaos/core", "ai", "ollama-ai-provider"],
+  external: ["@elizaos/core", "ai", "ollama-ai-provider-v2"],
   naming: {
     entry: "index.node.js",
   },
@@ -37,7 +35,7 @@ await build({
   splitting: false,
   sourcemap: "linked",
   minify: false,
-  external: ["@elizaos/core", "ai", "ollama-ai-provider"],
+  external: ["@elizaos/core", "ai", "ollama-ai-provider-v2"],
   naming: {
     entry: "index.browser.js",
   },
@@ -52,7 +50,7 @@ await build({
   splitting: false,
   sourcemap: "linked",
   minify: false,
-  external: ["@elizaos/core", "ai", "ollama-ai-provider"],
+  external: ["@elizaos/core", "ai", "ollama-ai-provider-v2"],
   naming: {
     entry: "index.node.cjs",
   },

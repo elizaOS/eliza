@@ -4,7 +4,7 @@
  * Unified APP action with sub-modes (`launch`, `relaunch`,
  * `load_from_directory`, `list`, `create`).
  *
- * Validate gates on owner role + a keyword heuristic + a lookup against
+ * Validate gates on owner role + structured context + a lookup against
  * any pending APP_CREATE intent task in the same room (so the multi-turn
  * choice reply still resolves).
  *
@@ -118,9 +118,6 @@ function inferMode(
 	return null;
 }
 
-const KEYWORD_HEURISTIC =
-	/\b(launch|open|start|stop|close|relaunch|restart|create|build|make|new|scaffold|list|show|running)\b.*\b(app|application|mini)\b|\b(create|build|make|scaffold)\b.*\b(app|game|tool|application)\b|\b(load|register|import).*\b(directory|folder)\b/i;
-
 // `defaultOwnerAccessFn` is the real `hasOwnerAccess` from ./security.js
 // (imported above), which uses `checkSenderRole` from `@elizaos/core`.
 // Defined in ./security so this plugin doesn't need an `@elizaos/agent` dep.
@@ -149,6 +146,9 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 
 	return {
 		name: "APP",
+		contexts: ["automation", "settings", "code"],
+		contextGate: { anyOf: ["automation", "settings", "code"] },
+		roleGate: { minRole: "USER" },
 		similes: ["APP_CONTROL", "MANAGE_APPS"],
 		description:
 			"Unified app control. mode=launch starts a registered app; mode=relaunch stops then launches (optionally with verify); mode=list shows installed + running runs; mode=load_from_directory registers apps from an absolute folder; mode=create runs the multi-turn create-or-edit flow that searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validator.",
@@ -244,8 +244,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 				if (await hasPendingIntent(runtime, roomId)) return true;
 			}
 
-			// First-turn intent.
-			return KEYWORD_HEURISTIC.test(text);
+			return true;
 		},
 
 		handler: async (

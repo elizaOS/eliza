@@ -3,7 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 import { generatePageMetadata } from "@/lib/seo";
 import type { Metadata } from "@/lib/seo/types";
-import LandingHeader from "@/packages/ui/src/components/layout/landing-header";
+import LandingHeader from "../../components/layout/landing-header";
 
 export const metadata: Metadata = generatePageMetadata({
   title: "Terms of Service",

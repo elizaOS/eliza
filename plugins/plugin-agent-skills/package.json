@@ -14,8 +14,17 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "agent-skills"
+      ]
+    }
+  },
   "keywords": [
     "elizaos",
     "plugin",
@@ -34,7 +43,7 @@
     "@anthropic-ai/sdk": "^0.92.0",
     "@biomejs/biome": "^2.4.14",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "scripts": {

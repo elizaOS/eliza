@@ -1,14 +1,37 @@
-import type { Plugin } from "@elizaos/core";
-import { messageOpAction } from "./actions";
+import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import { createWhatsAppConnectorAccountProvider } from "./connector-account-provider";
 import { WhatsAppConnectorService } from "./runtime-service";
 import { whatsappSetupRoutes } from "./setup-routes";
 
 const whatsappPlugin: Plugin = {
   name: "whatsapp",
   description: "WhatsApp integration for ElizaOS (Cloud API + Baileys)",
-  actions: [messageOpAction],
+  actions: [],
   services: [WhatsAppConnectorService],
   routes: whatsappSetupRoutes,
+  // Self-declared auto-enable: activate when the "whatsapp" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["whatsapp"],
+  },
+  init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+    // Register the WhatsApp provider with the ConnectorAccountManager so the
+    // HTTP CRUD surface (packages/agent/src/api/connector-account-routes.ts)
+    // can list, create, patch, and delete WhatsApp accounts.
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createWhatsAppConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:whatsapp",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register WhatsApp provider with ConnectorAccountManager"
+      );
+    }
+  },
 };
 
 export default whatsappPlugin;
@@ -44,6 +67,11 @@ export type {
   WhatsAppChannelConfig,
   WhatsAppGroupConfig,
 } from "./config";
+// ConnectorAccountManager provider exports
+export {
+  createWhatsAppConnectorAccountProvider,
+  WHATSAPP_PROVIDER_ID,
+} from "./connector-account-provider";
 // Normalization and utility exports
 export {
   buildWhatsAppUserJid,
@@ -74,3 +102,12 @@ export {
 export { WhatsAppConnectorService } from "./runtime-service";
 export { stopAllPairingSessions, whatsappSetupRoutes } from "./setup-routes";
 export * from "./types";
+export {
+  applyWhatsAppQrOverride,
+  handleWhatsAppRoute,
+  MAX_PAIRING_SESSIONS as WHATSAPP_MAX_PAIRING_SESSIONS,
+  type WhatsAppPairingEventLike,
+  type WhatsAppPairingSessionLike,
+  type WhatsAppRouteDeps,
+  type WhatsAppRouteState,
+} from "./api/whatsapp-routes";

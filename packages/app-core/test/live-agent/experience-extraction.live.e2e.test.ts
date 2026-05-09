@@ -3,6 +3,7 @@ import {
   type AgentRuntime,
   ChannelType,
   createMessageMemory,
+  EvaluatorService,
   type Memory,
   type Plugin,
   type UUID,
@@ -10,7 +11,7 @@ import {
 import { afterAll, beforeAll, describe, expect } from "vitest";
 import { itIf } from "../../../../test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../../test/helpers/live-provider";
-import { experienceEvaluator } from "../../../core/src/features/advanced-capabilities/experience/evaluators/experienceEvaluator.ts";
+import { experiencePatternEvaluator } from "../../../core/src/features/advanced-capabilities/experience/evaluators/experience-items.ts";
 import { ExperienceService } from "../../../core/src/features/advanced-capabilities/experience/service.ts";
 import {
   ExperienceType,
@@ -30,7 +31,7 @@ const experienceCapabilityPlugin: Plugin = {
   description:
     "Registers the built-in experience capability for live e2e tests.",
   services: [ExperienceService],
-  evaluators: [experienceEvaluator],
+  evaluators: [experiencePatternEvaluator],
 };
 
 function createAgentMessage(
@@ -94,6 +95,7 @@ describe("Experience extraction live LLM E2E", () => {
   let runtime: AgentRuntime;
   let cleanup: (() => Promise<void>) | undefined;
   let experienceService: ExperienceService;
+  let evaluatorService: EvaluatorService;
 
   beforeAll(async () => {
     if (!canRunLiveTests) return;
@@ -118,6 +120,7 @@ describe("Experience extraction live LLM E2E", () => {
       throw new Error("Experience service is not registered");
     }
     experienceService = service;
+    evaluatorService = runtime.getService("evaluator") as EvaluatorService;
     runtime.setSetting("AUTO_RECORD_THRESHOLD", "0.4");
     await flushExperienceLoad();
   }, 180_000);
@@ -169,11 +172,22 @@ describe("Experience extraction live LLM E2E", () => {
           trigger,
         ]);
 
-        const shouldRun = await experienceEvaluator.validate(runtime, trigger);
+        await runtime.setCache(
+          `experience-extraction:${harness.roomId}:message-count`,
+          "24",
+        );
+        const shouldRun = await experiencePatternEvaluator.shouldRun({
+          runtime,
+          message: trigger,
+          options: { didRespond: true },
+        });
         expect(shouldRun).toBe(true);
 
-        const result = await experienceEvaluator.handler(runtime, trigger);
-        expect(result?.success).toBe(true);
+        const result = await evaluatorService.run(trigger, undefined, {
+          didRespond: true,
+          responses: [trigger],
+        });
+        expect(result.processedEvaluators).toContain("experiencePatterns");
 
         const after = await experienceService.listExperiences({ limit: 100 });
         const recorded = after.filter(
@@ -248,10 +262,21 @@ describe("Experience extraction live LLM E2E", () => {
           duplicateTrigger,
         ]);
 
+        await runtime.setCache(
+          `experience-extraction:${harness.roomId}:message-count`,
+          "24",
+        );
         expect(
-          await experienceEvaluator.validate(runtime, duplicateTrigger),
+          await experiencePatternEvaluator.shouldRun({
+            runtime,
+            message: duplicateTrigger,
+            options: { didRespond: true },
+          }),
         ).toBe(true);
-        await experienceEvaluator.handler(runtime, duplicateTrigger);
+        await evaluatorService.run(duplicateTrigger, undefined, {
+          didRespond: true,
+          responses: [duplicateTrigger],
+        });
 
         const duplicateAfter = await experienceService.listExperiences({
           limit: 100,
@@ -276,7 +301,7 @@ describe("Experience extraction live LLM E2E", () => {
           },
         );
         await runtime.setCache(
-          "experience-extraction:last-message-count",
+          `experience-extraction:${harness.roomId}:message-count`,
           "24",
         );
         await seedMessages(runtime, [
@@ -285,9 +310,13 @@ describe("Experience extraction live LLM E2E", () => {
           simpleTrigger,
         ]);
 
-        expect(await experienceEvaluator.validate(runtime, simpleTrigger)).toBe(
-          false,
-        );
+        expect(
+          await experiencePatternEvaluator.shouldRun({
+            runtime,
+            message: simpleTrigger,
+            options: { didRespond: true },
+          }),
+        ).toBe(true);
       } finally {
         await harness.cleanup();
       }

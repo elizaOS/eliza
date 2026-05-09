@@ -7,18 +7,35 @@ import {
   logger,
   type Memory,
   ModelType,
+  requireConfirmation,
   type State,
 } from "@elizaos/core";
-import { deleteIssueTemplate } from "../generated/prompts/typescript/prompts.js";
+import { deleteIssueTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import type { DeleteIssueParameters } from "../types/index.js";
+import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
 import { getStringValue, parseLinearPromptResponse } from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
+const LINEAR_MODEL_TIMEOUT_MS = 15_000;
+const LINEAR_ISSUE_TITLE_MAX_CHARS = 300;
+
 export const deleteIssueAction: Action = {
   name: "DELETE_LINEAR_ISSUE",
+  contexts: ["tasks", "connectors", "automation"],
+  contextGate: { anyOf: ["tasks", "connectors", "automation"] },
+  roleGate: { minRole: "USER" },
   description: "Delete (archive) an issue in Linear",
   descriptionCompressed: "delete (archive) issue Linear",
+  parameters: [
+    {
+      name: "issueId",
+      description: "Linear issue id or identifier to archive.",
+      required: false,
+      schema: { type: "string" },
+    },
+    linearAccountIdParameter,
+  ],
   similes: [
     "delete-linear-issue",
     "archive-linear-issue",
@@ -92,6 +109,7 @@ export const deleteIssueAction: Action = {
       if (!linearService) {
         throw new Error("Linear service not available");
       }
+      const accountId = getLinearAccountId(runtime, _options);
 
       const content = message.content.text;
       if (!content) {
@@ -114,9 +132,17 @@ export const deleteIssueAction: Action = {
       } else {
         const prompt = deleteIssueTemplate.replace("{{userMessage}}", content);
 
-        const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-          prompt: prompt,
-        });
+        const response = await Promise.race([
+          runtime.useModel(ModelType.TEXT_LARGE, {
+            prompt: prompt,
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error("Linear issue extraction timeout")),
+              LINEAR_MODEL_TIMEOUT_MS
+            )
+          ),
+        ]);
 
         if (!response) {
           throw new Error("Failed to extract issue identifier");
@@ -152,13 +178,40 @@ export const deleteIssueAction: Action = {
         }
       }
 
-      const issue = await linearService.getIssue(issueId);
-      const issueTitle = issue.title;
+      const issue = await linearService.getIssue(issueId, accountId);
+      const issueTitle = issue.title.slice(0, LINEAR_ISSUE_TITLE_MAX_CHARS);
       const issueIdentifier = issue.identifier;
+
+      // Two-phase confirmation: archiving a Linear issue is irreversible
+      // from the agent's side, so always ask the user to confirm.
+      const decision = await requireConfirmation({
+        runtime,
+        message,
+        actionName: "DELETE_LINEAR_ISSUE",
+        pendingKey: `archive:${issue.id}`,
+        prompt: `Archive issue ${issueIdentifier}: "${issueTitle}"? This moves it out of active views. Reply "yes" to confirm.`,
+        callback,
+      });
+      if (decision.status === "pending") {
+        return {
+          text: `Awaiting confirmation to archive ${issueIdentifier}.`,
+          success: true,
+          data: { awaitingUserInput: true, issueId: issue.id, identifier: issueIdentifier },
+        };
+      }
+      if (decision.status === "cancelled") {
+        const cancelMessage = `Archive of ${issueIdentifier} cancelled.`;
+        await callback?.({ text: cancelMessage, source: message.content.source });
+        return {
+          text: cancelMessage,
+          success: true,
+          data: { cancelled: true, issueId: issue.id, identifier: issueIdentifier },
+        };
+      }
 
       logger.info(`Archiving issue ${issueIdentifier}: ${issueTitle}`);
 
-      await linearService.deleteIssue(issueId);
+      await linearService.deleteIssue(issueId, accountId);
 
       const successMessage = `✅ Successfully archived issue ${issueIdentifier}: "${issueTitle}"\n\nThe issue has been moved to the archived state and will no longer appear in active views.`;
       await callback?.({
@@ -174,6 +227,7 @@ export const deleteIssueAction: Action = {
           identifier: issueIdentifier,
           title: issueTitle,
           archived: true,
+          accountId,
         },
       };
     } catch (error) {

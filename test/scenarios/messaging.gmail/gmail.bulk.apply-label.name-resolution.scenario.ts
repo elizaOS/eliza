@@ -54,7 +54,7 @@ export default scenario({
   finalChecks: [
     {
       type: "gmailActionArguments",
-      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+      actionName: ["MESSAGE", "MESSAGE"],
       subaction: ["search", "read"],
       minCount: 1,
     },
@@ -66,7 +66,7 @@ export default scenario({
     },
     {
       type: "gmailActionArguments",
-      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+      actionName: ["MESSAGE", "MESSAGE"],
       subaction: "manage",
       operation: "apply_label",
       fields: {

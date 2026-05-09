@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { startApiServer } from "../../src/api/server";
 import { req } from "../helpers/http.ts";
 import { useIsolatedConfigEnv } from "../helpers/isolated-config.ts";
-import { createRealTestRuntime } from "../helpers/real-runtime";
+import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 
 describe("Cloud login persist real route coverage", () => {
   let configEnv: ReturnType<typeof useIsolatedConfigEnv> | null = null;
@@ -17,8 +17,12 @@ describe("Cloud login persist real route coverage", () => {
     configEnv = useIsolatedConfigEnv("cloud-login-persist-");
     delete process.env.ELIZAOS_CLOUD_API_KEY;
     delete process.env.ELIZAOS_CLOUD_ENABLED;
+    const { elizaCloudRoutePlugin } = await import(
+      "@elizaos/plugin-elizacloud"
+    );
     runtimeResult = await createRealTestRuntime({
       characterName: "CloudLoginPersistLive",
+      plugins: [elizaCloudRoutePlugin],
     });
     server = await startApiServer({
       port: 0,

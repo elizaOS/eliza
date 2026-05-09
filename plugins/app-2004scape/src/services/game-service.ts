@@ -1,7 +1,7 @@
 import {
   type IAgentRuntime,
   ModelType,
-  parseToonKeyValue,
+  parseJSONObjectFromText,
   Service,
   setTrajectoryPurpose,
   withStandaloneTrajectory,
@@ -355,10 +355,12 @@ ${providerContext}
 ${recentActions || "  (none yet)"}
 
 # Available Actions
-Choose exactly ONE action. Return only a TOON record:
-action: ROUTER_NAME
-subaction: router_operation
-param_name: value
+Choose exactly ONE action. Return only JSON:
+{
+  "action": "ROUTER_NAME",
+  "subaction": "router_operation",
+  "param_name": "value"
+}
 ${actionListStr}
 
 # Instructions
@@ -373,23 +375,23 @@ Your choice:`;
   private parseActionFromResponse(
     response: string,
   ): { actionType: string; params: Record<string, unknown> } | null {
-    const toonParsed = parseToonKeyValue<Record<string, unknown>>(response);
-    const toonAction = this.extractActionName(toonParsed);
-    if (!toonAction) return null;
+    const parsed = parseJSONObjectFromText(response) as Record<string, unknown> | null;
+    const action = this.extractActionName(parsed);
+    if (!action) return null;
 
-    // Solo WALK_TO action: not a router, dispatched directly.
-    if (toonAction === "WALK_TO") {
-      const params = this.extractParamsFromParsedResponse(toonParsed);
+    // Solo movement action: not a router, dispatched directly.
+    if (action === "RS_2004_WALK_TO") {
+      const params = this.extractParamsFromParsedResponse(parsed);
       this.mapParamAliases("walkTo", params);
       return { actionType: "walkTo", params };
     }
 
     const resolved = resolveRs2004RouterAction(
-      toonAction,
-      this.extractSubactionName(toonParsed),
+      action,
+      this.extractSubactionName(parsed),
     );
     if (!resolved) return null;
-    const params = this.extractParamsFromParsedResponse(toonParsed);
+    const params = this.extractParamsFromParsedResponse(parsed);
     this.mapParamAliases(resolved.dispatch, params);
     return { actionType: resolved.dispatch, params };
   }

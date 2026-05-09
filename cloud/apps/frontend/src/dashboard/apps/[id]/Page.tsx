@@ -6,10 +6,10 @@ import {
 import { Helmet } from "react-helmet-async";
 import { Navigate, useParams, useSearchParams } from "react-router-dom";
 import { isValidUUID } from "@/lib/utils";
-import { AppDetailsTabs } from "@/packages/ui/src/components/apps/app-details-tabs";
-import { AppPageWrapper } from "@/packages/ui/src/components/apps/single-app-page-wrapper";
 import { useRequireAuth } from "../../../lib/auth-hooks";
 import { useApp } from "../../../lib/data/apps";
+import { AppDetailsTabs } from "../_components/app-details-tabs";
+import { AppPageWrapper } from "../_components/single-app-page-wrapper";
 
 /** /dashboard/apps/:id */
 export default function AppDetailsPage() {

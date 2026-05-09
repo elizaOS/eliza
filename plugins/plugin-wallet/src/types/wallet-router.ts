@@ -6,7 +6,12 @@ import type {
 import { z } from "zod";
 import type { WalletBackend } from "../wallet/backend.js";
 
-export const WALLET_ROUTER_SUBACTIONS = ["transfer", "swap", "bridge"] as const;
+export const WALLET_ROUTER_SUBACTIONS = [
+  "transfer",
+  "swap",
+  "bridge",
+  "gov",
+] as const;
 
 export type WalletRouterSubaction = (typeof WALLET_ROUTER_SUBACTIONS)[number];
 
@@ -14,9 +19,14 @@ export const WALLET_ROUTER_MODES = ["prepare", "execute"] as const;
 
 export type WalletRouterMode = (typeof WALLET_ROUTER_MODES)[number];
 
+export const WALLET_GOV_OPS = ["propose", "vote", "queue", "execute"] as const;
+
+export type WalletGovOp = (typeof WALLET_GOV_OPS)[number];
+
 export interface WalletRouterParams {
   readonly subaction: WalletRouterSubaction;
   readonly chain?: string;
+  readonly toChain?: string;
   readonly fromToken?: string;
   readonly toToken?: string;
   readonly amount?: string;
@@ -24,6 +34,14 @@ export interface WalletRouterParams {
   readonly slippageBps?: number;
   readonly mode: WalletRouterMode;
   readonly dryRun: boolean;
+  readonly op?: WalletGovOp;
+  readonly governor?: string;
+  readonly proposalId?: string;
+  readonly support?: number;
+  readonly targets?: readonly string[];
+  readonly values?: readonly string[];
+  readonly calldatas?: readonly string[];
+  readonly description?: string;
 }
 
 export interface WalletTokenMetadata {
@@ -130,9 +148,26 @@ const optionalPositiveAmount = optionalString.refine(
   { message: "amount must be a positive number" },
 );
 
+const optionalStringArray = z.preprocess((value) => {
+  if (value === null || value === undefined) return undefined;
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item).trim())
+      .filter((item) => item.length > 0);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+  }
+  return undefined;
+}, z.array(z.string()).optional());
+
 export const WalletRouterParamsSchema = z.object({
   subaction: z.enum(WALLET_ROUTER_SUBACTIONS),
   chain: optionalString,
+  toChain: optionalString,
   fromToken: optionalString,
   toToken: optionalString,
   amount: optionalPositiveAmount,
@@ -161,6 +196,14 @@ export const WalletRouterParamsSchema = z.object({
       return value;
     }, z.boolean())
     .default(false),
+  op: z.enum(WALLET_GOV_OPS).optional(),
+  governor: optionalString,
+  proposalId: optionalString,
+  support: z.coerce.number().int().min(0).max(2).optional(),
+  targets: optionalStringArray,
+  values: optionalStringArray,
+  calldatas: optionalStringArray,
+  description: optionalString,
 });
 
 export function parseWalletRouterParams(input: unknown): WalletRouterParams {

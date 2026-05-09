@@ -12,7 +12,7 @@ export default buildConnectorCertificationScenario({
       name: "whatsapp-core",
       text: "Read the WhatsApp chat, draft a reply, and deliver it or tell me if WhatsApp is degraded.",
       responseIncludesAny: ["whatsapp", "reply", "deliver", "degraded"],
-      acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      acceptedActions: ["MESSAGE", "MESSAGE"],
       includesAny: ["whatsapp", "reply", "deliver", "degraded"],
     },
   ],

@@ -22,6 +22,12 @@ function getExampleMessages(example: MessageExampleGroup | MessageExample[]): Me
 export const characterProvider: Provider = {
   name: "CHARACTER",
   description: "Core character identity, personality, and behavioral directives",
+  contexts: ["general", "agent_internal"],
+  contextGate: { anyOf: ["general", "agent_internal"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
+
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     const character = runtime.character;
 

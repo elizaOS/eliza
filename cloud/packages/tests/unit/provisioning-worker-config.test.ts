@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readWorkerConfig } from "../../scripts/provisioning-worker";
+import { readWorkerConfig } from "../../scripts/daemons/provisioning-worker";
 
 describe("provisioning worker config", () => {
   test("parses daemon config without requiring legacy Neon worker env", () => {

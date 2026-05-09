@@ -15,6 +15,7 @@ import { incrementOAuthVersion } from "../cache-version";
 import { Errors } from "../errors";
 import { getProvider } from "../provider-registry";
 import { refreshOAuth2Token } from "../providers";
+import { formatOAuthConnectionRole } from "../types";
 import type { OAuthConnection, TokenResult } from "../types";
 import type { ConnectionAdapter } from "./types";
 
@@ -110,10 +111,11 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
           id: cred.id,
           userId: cred.user_id || undefined,
           connectionRole:
-            cred.source_context &&
-            typeof cred.source_context === "object" &&
-            (cred.source_context as Record<string, unknown>).agentGoogleSide === "agent"
-              ? "agent"
+            cred.source_context && typeof cred.source_context === "object"
+              ? formatOAuthConnectionRole(
+                  (cred.source_context as Record<string, unknown>).connectionRole ??
+                    (cred.source_context as Record<string, unknown>).agentGoogleSide,
+                )
               : "owner",
           platform,
           platformUserId: cred.platform_user_id,

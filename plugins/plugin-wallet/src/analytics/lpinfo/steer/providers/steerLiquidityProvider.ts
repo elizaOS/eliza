@@ -1,6 +1,12 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import type { SteerLiquidityService } from "../services/steerLiquidityService";
+import type {
+  SteerStakingPoolDetailInput,
+  SteerVaultDetailInput,
+} from "../steer-display-types.js";
+
+const STEER_LIQUIDITY_TEXT_LIMIT = 4000;
 
 /**
  * Steer Finance Liquidity Protocol Provider
@@ -13,6 +19,11 @@ export const steerLiquidityProvider: Provider = {
   descriptionCompressed:
     "provide information Steer Finance vault, stak pool, token-specific liquidity data across multiple chain",
   dynamic: true,
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     console.log("🚀 STEER_LIQUIDITY provider called");
     console.log("📝 Message content:", message.content.text);
@@ -165,7 +176,7 @@ export const steerLiquidityProvider: Provider = {
       steerLiquidity: liquidityInfo,
     };
 
-    const text = `${liquidityInfo}\n`;
+    const text = `${liquidityInfo}\n`.slice(0, STEER_LIQUIDITY_TEXT_LIMIT);
 
     return {
       data,
@@ -244,7 +255,7 @@ async function getSteerLiquidityStats(
 /**
  * Get detailed information about a specific vault
  */
-async function getVaultDetails(vault: any): Promise<string> {
+async function getVaultDetails(vault: SteerVaultDetailInput): Promise<string> {
   let details = `🏦 VAULT: ${vault.address}\n`;
   details += `   📈 Name: ${vault.name}\n`;
   details += `   🌐 Chain: ${getChainName(vault.chainId)}\n`;
@@ -324,7 +335,9 @@ async function getVaultDetails(vault: any): Promise<string> {
 /**
  * Get detailed information about a specific staking pool
  */
-async function getStakingPoolDetails(pool: any): Promise<string> {
+async function getStakingPoolDetails(
+  pool: SteerStakingPoolDetailInput,
+): Promise<string> {
   let details = `🔒 STAKING POOL: ${pool.address}\n`;
   details += `   📈 Name: ${pool.name}\n`;
   details += `   🌐 Chain: ${getChainName(pool.chainId)}\n`;

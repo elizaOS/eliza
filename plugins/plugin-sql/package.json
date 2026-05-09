@@ -8,29 +8,48 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./typescript/dist/index.d.ts",
+      "types": "./typescript/dist/index.node.d.ts",
+      "bun": {
+        "types": "./typescript/index.ts",
+        "default": "./typescript/index.ts"
+      },
+      "browser": {
+        "types": "./typescript/dist/index.d.ts",
+        "import": "./typescript/dist/browser/index.browser.js",
+        "default": "./typescript/dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./typescript/dist/index.d.ts",
+        "import": "./typescript/dist/node/index.node.js",
+        "default": "./typescript/dist/node/index.node.js"
+      },
       "import": "./typescript/dist/index.js",
       "default": "./typescript/dist/index.js"
     },
     "./schema": {
-      "types": "./typescript/schema/index.ts",
+      "types": "./typescript/dist/schema/index.d.ts",
+      "bun": {
+        "types": "./typescript/schema/index.ts",
+        "default": "./typescript/schema/index.ts"
+      },
       "import": "./typescript/schema/index.ts",
       "default": "./typescript/schema/index.ts"
     },
     "./drizzle": {
-      "types": "./typescript/drizzle/index.ts",
-      "import": "./typescript/drizzle/index.ts",
-      "default": "./typescript/drizzle/index.ts"
+      "types": "./typescript/dist/drizzle/index.d.ts",
+      "import": "./typescript/dist/drizzle/index.js",
+      "default": "./typescript/dist/drizzle/index.js"
     },
     "./types": {
-      "types": "./typescript/types.ts",
-      "import": "./typescript/types.ts",
-      "default": "./typescript/types.ts"
+      "types": "./typescript/dist/types.d.ts",
+      "import": "./typescript/dist/types.js",
+      "default": "./typescript/dist/types.js"
     }
   },
   "files": [
     "typescript/dist",
-    "README.md"
+    "README.md",
+    "dist"
   ],
   "keywords": [],
   "author": "elizaOS",
@@ -68,7 +87,7 @@
     "@types/ws": "^8.18.1",
     "dotenv": "^17.2.3",
     "drizzle-kit": "^0.31.8",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "peerDependencies": {

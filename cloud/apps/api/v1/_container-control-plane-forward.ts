@@ -43,6 +43,10 @@ async function forwardControlPlaneRequest(
 
   const internalToken = readStringEnv(c, ["CONTAINER_CONTROL_PLANE_TOKEN"]);
   if (internalToken) headers.set("x-container-control-plane-token", internalToken);
+
+  const databaseUrl = readStringEnv(c, ["DATABASE_URL"]);
+  if (databaseUrl) headers.set("x-eliza-cloud-database-url", databaseUrl);
+
   configureHeaders(headers);
 
   try {
@@ -69,7 +73,7 @@ async function forwardControlPlaneRequest(
         code: "CONTAINER_CONTROL_PLANE_UNREACHABLE",
         error: "Container control plane is unreachable",
       },
-      502,
+      503,
     );
   }
 }

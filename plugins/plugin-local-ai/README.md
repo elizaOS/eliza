@@ -40,6 +40,7 @@ Or in `.env` file:
 - `LOCAL_LARGE_MODEL` (Optional): Specifies the filename for the large text generation model (e.g., `DeepHermes-3-Llama-3-8B-q4.gguf`) located in the models directory.
 - `LOCAL_EMBEDDING_MODEL` (Optional): Specifies the filename for the text embedding model (e.g., `bge-small-en-v1.5.Q4_K_M.gguf`) located in the models directory.
 - `LOCAL_EMBEDDING_DIMENSIONS` (Optional): Defines the expected dimension size for text embeddings. This is primarily used as a fallback dimension if the embedding model fails to generate an embedding. If not set, it defaults to the embedding model's native dimension size (e.g., 384 for `bge-small-en-v1.5.Q4_K_M.gguf`).
+- `LOCAL_AI_TEST_MODEL_PATH` (Optional, tests only): Absolute path to a GGUF model file used by the gated integration tests in `__tests__/integration.test.ts`. The integration tests are skipped unless this is set.
 
 ## Features
 
@@ -51,6 +52,51 @@ The plugin provides these model classes:
 - `IMAGE_DESCRIPTION`: Local image analysis using Florence-2 vision model
 - `TEXT_TO_SPEECH`: Local text-to-speech synthesis
 - `TRANSCRIPTION`: Local audio transcription using Whisper
+
+### Native tool calling and structured output
+
+`TEXT_SMALL` and `TEXT_LARGE` route `tools`, `responseSchema`, and
+`responseFormat: { type: "json_object" }` through `node-llama-cpp`'s native
+function-calling and grammar-constrained-output APIs. When any of these are
+set the handler returns `{ text, toolCalls, finishReason? }` (matching the
+shape used by `plugin-openai` and `plugin-anthropic`) instead of a plain
+string.
+
+Tool calling works best on models with a known chat template. Verified
+families (in `node-llama-cpp` 3.x): Llama 3 / 3.1 / 3.2, Functionary, Hermes
+2 Pro / DeepHermes, Qwen 2.5, Mistral Nemo, DeepSeek, Gemma. Smaller base
+models without tool-call training may refuse to emit tool calls — pass a
+larger model or drop the `tools` field.
+
+```typescript
+const result = await runtime.useModel(ModelType.TEXT_LARGE, {
+  prompt: "What's the weather in Paris?",
+  tools: [
+    {
+      name: "get_weather",
+      description: "Look up weather for a city",
+      parameters: {
+        type: "object",
+        properties: { city: { type: "string" } },
+        required: ["city"],
+      },
+    },
+  ],
+});
+// result.toolCalls -> [{ id, name: "get_weather", arguments: { city: "Paris" }, type: "function" }]
+```
+
+### Prompt cache reuse
+
+The plugin keeps one long-lived `LlamaContext` + `LlamaChatSession` per
+model type (`TEXT_SMALL` / `TEXT_LARGE`). Successive `useModel` calls reuse
+the existing KV cache — there is no per-call context teardown, so the
+system-prompt prefix stays evaluated. The session is dropped only when the
+system prompt changes for that model type.
+
+This mirrors what `plugin-anthropic` does with `cache_control` and what
+`plugin-openai` does with stable system prompts: the prefix is paid for
+once, subsequent turns extend the cache instead of rebuilding it.
 
 ### Text Generation
 

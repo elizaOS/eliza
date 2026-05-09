@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import type { ComponentProps, JSX, ReactNode } from "react";
 import { isValidElement } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "../../lib/utils";
 import { Badge } from "../badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../collapsible";
 import { CodeBlock } from "./code-block";

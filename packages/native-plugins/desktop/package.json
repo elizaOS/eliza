@@ -22,7 +22,8 @@
   "unpkg": "dist/plugin.js",
   "files": [
     "dist/",
-    "electrobun/"
+    "electrobun/",
+    "dist"
   ],
   "author": "elizaOS",
   "license": "MIT",
@@ -34,9 +35,9 @@
     "url": "https://github.com/elizaOS/eliza"
   },
   "scripts": {
-    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
-    "clean": "rimraf ./dist",
-    "prepublishOnly": "npm run build",
+    "build": "bun run clean && tsc && bun --bun rollup -c rollup.config.mjs",
+    "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
+    "prepublishOnly": "bun run build",
     "watch": "tsc --watch"
   },
   "devDependencies": {
@@ -44,7 +45,7 @@
     "@rollup/plugin-node-resolve": "^16.0.0",
     "rimraf": "^6.0.0",
     "rollup": "^4.60.2",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

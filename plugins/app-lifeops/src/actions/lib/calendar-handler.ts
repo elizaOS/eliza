@@ -1,4 +1,4 @@
-import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
+import { renderGroundedActionReply } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -30,7 +30,6 @@ import {
   resolveCreateEventTravelIntent,
 } from "../../travel-time/calendar-create.js";
 import { TravelTimeUnavailableError } from "../../travel-time/service.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
 import {
   calendarReadUnavailableMessage,
   calendarWriteUnavailableMessage,
@@ -45,11 +44,12 @@ import {
   hasLifeOpsAccess,
   INTERNAL_URL,
   messageText,
-  parseLifeOpsToonRecord,
+  parseLifeOpsJsonRecord,
+  runLifeOpsJsonModel,
   runLifeOpsTextModel,
-  runLifeOpsToonModel,
   toActionData,
 } from "../lifeops-google-helpers.js";
+import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
 
 type CalendarSubaction =
   | "feed"
@@ -323,7 +323,7 @@ function buildCalendarPlanRepairPrompt(args: {
 }): string {
   return [
     "Your last reply for the calendar planner was invalid or used the wrong schema.",
-    "Return TOON only with exactly these fields:",
+    "Return JSON only as a single object with exactly these fields:",
     "  subaction: one of the allowed subactions below, or null when this should be reply-only/no-op",
     "  shouldAct: boolean",
     "  response: short natural-language reply when shouldAct is false, otherwise empty or null",
@@ -539,7 +539,7 @@ async function disambiguateCalendarReadPlanWithLlm(args: {
     "request: Can you help me with my calendar?",
     "subaction: null",
     "",
-    "Return TOON only with exactly these fields:",
+    "Return JSON only as a single object with exactly these fields:",
     "  subaction: feed, next_event, search_events, trip_window, or null",
     "  tripLocation: optional string",
     "",
@@ -549,7 +549,7 @@ async function disambiguateCalendarReadPlanWithLlm(args: {
     `Current planner candidate:\n${args.candidateSubaction ?? "null"}`,
   ].join("\n");
 
-  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+  const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime: args.runtime,
     prompt,
     actionType: "lifeops.calendar.resolve_read_intent",
@@ -585,7 +585,7 @@ async function resolveCalendarLookupBoundaryWithLlm(args: {
     "request: 帰りの便を探して",
     "subaction: search_events",
     "",
-    "Return TOON only with exactly this field:",
+    "Return JSON only as a single object with exactly this field:",
     "  subaction: next_event or search_events",
     "",
     `Current request:\n${args.currentMessage}`,
@@ -594,7 +594,7 @@ async function resolveCalendarLookupBoundaryWithLlm(args: {
     `Current candidate:\n${args.candidateSubaction}`,
   ].join("\n");
 
-  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+  const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime: args.runtime,
     prompt,
     actionType: "lifeops.calendar.resolve_lookup_boundary",
@@ -634,7 +634,7 @@ async function resolveCalendarMutationBoundaryWithLlm(args: {
     "request: 今日の予定は何ですか？",
     "subaction: null",
     "",
-    "Return TOON only with exactly this field:",
+    "Return JSON only as a single object with exactly this field:",
     "  subaction: create_event, update_event, delete_event, or null",
     "",
     `Current request:\n${args.currentMessage}`,
@@ -643,7 +643,7 @@ async function resolveCalendarMutationBoundaryWithLlm(args: {
     `Current candidate:\n${args.candidateSubaction ?? "null"}`,
   ].join("\n");
 
-  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+  const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime: args.runtime,
     prompt,
     actionType: "lifeops.calendar.resolve_mutation_boundary",
@@ -1887,7 +1887,7 @@ export async function extractCalendarPlanWithLlm(
     "Set shouldAct=false when the user is vague, only acknowledging, brainstorming, or asking for calendar help without enough specifics to safely act.",
     "When shouldAct=false, provide a short natural response that asks only for what is missing.",
     "",
-    "Return TOON only with exactly these fields:",
+    "Return JSON only as a single object with exactly these fields:",
     "  subaction: one of the allowed subactions below, or null when this should be reply-only/no-op",
     "  shouldAct: boolean",
     "  response: short natural-language reply when shouldAct is false, otherwise empty or null",
@@ -1925,48 +1925,15 @@ export async function extractCalendarPlanWithLlm(
     "For update_event or delete_event, use queries to identify the existing target event and title for the new title only when the user is renaming it.",
     "For requests like all events, full schedule, everything on my calendar, or a broad itinerary sweep, return a broad timeMin/timeMax window instead of relying on downstream heuristics.",
     "",
-    "Example TOON outputs:",
-    "request: what's on my calendar tomorrow",
-    "subaction: feed",
-    "shouldAct: true",
-    "response: null",
-    "",
-    "request: schedule a meeting with Alex at 3pm",
-    "subaction: create_event",
-    "shouldAct: true",
-    "response: null",
-    "title: Meeting with Alex",
-    "",
-    "request: can you search my calendar and tell me if i have any flights to denver?",
-    "subaction: search_events",
-    "shouldAct: true",
-    "response: null",
-    "queries: flight to denver || denver",
-    "",
-    "request: what do I have while I'm in Tokyo",
-    "subaction: trip_window",
-    "shouldAct: true",
-    "response: null",
-    "queries: tokyo",
-    "tripLocation: Tokyo",
-    "",
-    "request: rename my meeting to standup",
-    "subaction: update_event",
-    "shouldAct: true",
-    "response: null",
-    "queries: meeting",
-    "title: standup",
-    "",
-    "request: can you help me with my calendar?",
-    "subaction: null",
-    "shouldAct: false",
-    "response: What do you want to do on your calendar — check your schedule, find an event, or create one?",
-    "queries:",
+    'Example feed: {"subaction":"feed","shouldAct":true,"response":null,"queries":[],"title":null,"tripLocation":null,"timeMin":null,"timeMax":null,"windowLabel":"tomorrow"}',
+    'Example search: {"subaction":"search_events","shouldAct":true,"response":null,"queries":["flight to denver","denver"],"title":null,"tripLocation":null,"timeMin":null,"timeMax":null,"windowLabel":null}',
+    'Example update: {"subaction":"update_event","shouldAct":true,"response":null,"queries":["meeting"],"title":"standup","tripLocation":null,"timeMin":null,"timeMax":null,"windowLabel":null}',
+    'Example clarify: {"subaction":null,"shouldAct":false,"response":"What do you want to do on your calendar?","queries":[],"title":null,"tripLocation":null,"timeMin":null,"timeMax":null,"windowLabel":null}',
     "",
     "The user may speak any language. Detect the calendar intent regardless of language.",
     "When the user asks about what is happening in a specific location or during a trip, detect this as trip_window and extract the location, regardless of language.",
     "",
-    "Return TOON only. No prose. No markdown. No hidden reasoning.",
+    "Return JSON only as a single object. No prose. No markdown. No hidden reasoning.",
     "",
     `Current timezone: ${timeZone}`,
     `LOCAL DATE ANCHORS (authoritative — IGNORE UTC day for date arithmetic): ${localDateAnchors}.`,
@@ -1980,11 +1947,11 @@ export async function extractCalendarPlanWithLlm(
   ].join("\n");
 
   const parseResponse = (raw: string): CalendarLlmPlan | null => {
-    const parsed = parseLifeOpsToonRecord<Record<string, unknown>>(raw);
+    const parsed = parseLifeOpsJsonRecord<Record<string, unknown>>(raw);
     return parsed ? buildCalendarPlanFromParsed(parsed) : null;
   };
 
-  const plannerResult = await runLifeOpsToonModel<Record<string, unknown>>({
+  const plannerResult = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime,
     prompt,
     actionType: "lifeops.calendar.plan",
@@ -2067,22 +2034,14 @@ async function inferCalendarSearchQueriesWithLlm(args: {
   const prompt = [
     "Extract up to 3 short calendar search queries for a calendar lookup request.",
     "The user may speak in any language.",
-    "Return TOON only with exactly this field:",
+    "Return JSON only as a single object with exactly this field:",
     "  queries: array of up to 3 short strings",
     "Prefer noun phrases and exact dates that would help match calendar event titles, descriptions, locations, attendees, or travel itineraries.",
     "When the request is about a flight or travel itinerary, include the travel phrase and destination if present.",
     "When the request asks what event is on a specific date, include the date itself as a query, for example april 19 or 2026-04-19.",
     "If nothing usable can be extracted, return an empty array.",
     "",
-    "Examples:",
-    "request: can you search my calendar and tell me if i have any flights to denver?",
-    "queries: flight to denver || denver",
-    "",
-    "request: what event do i have on April 19",
-    "queries: april 19",
-    "",
-    "request: meetings with Alex next week",
-    "queries: alex || meeting",
+    'Example: {"queries":["flight to denver","denver"]}',
     "",
     `Current request:\n${currentMessage}`,
     `Resolved intent:\n${args.intent}`,
@@ -2090,7 +2049,7 @@ async function inferCalendarSearchQueriesWithLlm(args: {
     `Current planner output:\n${formatCalendarPromptValue(args.llmPlan ?? null)}`,
   ].join("\n");
 
-  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+  const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime: args.runtime,
     prompt,
     actionType: "lifeops.calendar.extract_search_queries",
@@ -2459,7 +2418,7 @@ async function inferCreateEventDetails(
     "If the current request is a follow-up, recover the event subject from recent conversation and apply new timing or location constraints from the current request.",
     "Use the calendar context below to ground any timing guess.",
     "Preserve names and places in their original language or script when useful.",
-    "Return TOON only. No prose. Leave fields empty when unknown.",
+    "Return JSON only as a single object. No prose. Leave fields empty when unknown.",
     "If a start time or window is implied but duration is not explicit, infer a reasonable positive duration.",
     "For short prep or reminder blocks, use at least 15 minutes instead of 0.",
     "Set isShortPreparation=true when the event is a brief prep/reminder/leave-for/get-ready block (any language) where 15 minutes is the right default.",
@@ -2490,7 +2449,7 @@ async function inferCreateEventDetails(
     `Calendar context:\n${formatCreateEventCalendarContext(calendarContext)}`,
   ].join("\n");
 
-  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+  const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime,
     prompt,
     actionType: "lifeops.calendar.extract_create_event",
@@ -2528,7 +2487,7 @@ async function inferUpdateEventDetails(
     "If the user gives a relative shift like later, earlier, push back, or move forward, apply it to the current event timing.",
     "Unless the user explicitly changes the timezone, preserve the current event timezone.",
     "If the user only renames the event, leave startAt, endAt, location, description, and timeZone empty.",
-    "Return TOON only. No prose.",
+    "Return JSON only as a single object. No prose.",
     "",
     "title: new event title if changed",
     "description: updated description if changed",
@@ -2547,7 +2506,7 @@ async function inferUpdateEventDetails(
     `Current event:\n${formatUpdateEventTargetContext(targetEvent)}`,
   ].join("\n");
 
-  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+  const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime,
     prompt,
     actionType: "lifeops.calendar.extract_update_event",
@@ -2588,7 +2547,7 @@ async function repairCreateEventDetails(
     "Use the calendar context below to ground any timing repair.",
     "Use the exact failure reason to correct only the broken fields.",
     "If the request includes travel time or commute language, preserve travelOriginAddress when it was recoverable.",
-    "Return TOON only. No prose. Leave fields empty when unchanged or unknown.",
+    "Return JSON only as a single object. No prose. Leave fields empty when unchanged or unknown.",
     "",
     "title: event title",
     "description: optional description",
@@ -2614,7 +2573,7 @@ async function repairCreateEventDetails(
     `Calendar context:\n${formatCreateEventCalendarContext(calendarContext)}`,
   ].join("\n");
 
-  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+  const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime,
     prompt,
     actionType: "lifeops.calendar.repair_create_event",
@@ -2761,7 +2720,7 @@ function extractCalendarGroundedMatchIds(
   rawResponse: string,
   allowedIds: Set<string>,
 ): string[] | null {
-  const parsed = parseLifeOpsToonRecord<Record<string, unknown>>(rawResponse);
+  const parsed = parseLifeOpsJsonRecord<Record<string, unknown>>(rawResponse);
   if (!parsed) {
     return null;
   }
@@ -2823,12 +2782,10 @@ async function groundCalendarSearchMatchesWithLlm(
     "Return NO matches when the candidate only shares a generic time window or vague travel context.",
     "If the request names a person, company, topic, or event name, only match candidates that explicitly mention that subject in the title, description, location, or attendees.",
     "Flights only count when the request is actually about flights/travel, or the flight text explicitly mentions the named subject.",
-    "Return TOON only. No prose. No hidden reasoning.",
-    "Use || to separate multiple ids.",
+    "Return JSON only as a single object. No prose. No hidden reasoning.",
+    "Return matchIds as an array of ids.",
     "",
-    "Example:",
-    "matchIds: evt_1 || evt_2",
-    "reason:",
+    'Example: {"matchIds":["evt_1","evt_2"],"reason":""}',
     "",
     `Resolved intent:\n${intent}`,
     `Search queries:\n${queries.join(" || ")}`,
@@ -3025,10 +2982,15 @@ function normalizeCalendarAttendees(
 export const calendarAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
-  name: "CALENDAR_ACTION",
+  name: "GOOGLE_CALENDAR",
   similes: [
-    "CALENDAR",
+    "CALENDAR_ACTION",
     "CHECK_CALENDAR",
+    "CALENDAR_READ",
+    "CALENDAR_FEED",
+    "CALENDAR_NEXT_EVENT",
+    "CALENDAR_CREATE_EVENT",
+    "CALENDAR_SEARCH_EVENTS",
     "SHOW_CALENDAR_TODAY",
     "TODAY_SCHEDULE",
     "WEEK_AHEAD",
@@ -3061,12 +3023,14 @@ export const calendarAction: Action & {
     "querying travel itineraries, flights, hotel stays, trip windows, reserving recurring time blocks, and rebooking or moving calendar-backed commitments. " +
     "These are live calendar reads and writes, so do not answer them from provider context alone and do not fall back to NONE or REPLY when this action is available. " +
     "DO NOT use this action when the user is only making an observation like 'my calendar has been crazy this quarter' unless they actually ask you to inspect or change calendar state. " +
-    "DO NOT use this action for email inbox work, drafting or sending emails — use OWNER_INBOX (channel=gmail for Gmail-specific work) instead. " +
-    "DO NOT use this action for personal habits, goals, routines, or reminders — use LIFE instead. " +
-    "DO NOT use this action to propose or suggest candidate meeting times to send to someone — use PROPOSE_MEETING_TIMES for requests like 'propose three times for a 30 min sync with X', 'suggest meeting slots', or 'find times that work next week'. CALENDAR_ACTION.create_event is only for booking a single known time on your own calendar. " +
+    "DO NOT use this action for email inbox work, drafting or sending emails — use MESSAGE with operation=triage, search_inbox, draft_reply, or send_draft (source=gmail for Gmail-specific work) instead. " +
+    "DO NOT use this action for personal habits, goals, routines, or reminders — use OWNER_LIFE instead. " +
+    "DO NOT use this action to propose or suggest candidate meeting times to send to someone — use OWNER_CALENDAR for requests like 'propose three times for a 30 min sync with X', 'suggest meeting slots', or 'find times that work next week'. The create_event subaction is only for booking a single known time on your own calendar. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",
   descriptionCompressed:
     "Google Calendar via LifeOps: view schedule, search events, create events, query travel. Not for email or habits.",
+  contexts: ["calendar", "contacts", "tasks"],
+  roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
     return hasLifeOpsAccess(runtime, message);
@@ -3310,13 +3274,19 @@ export const calendarAction: Action & {
                 missing: ["title"],
               },
             ),
+            data: {
+              actionName: "CALENDAR",
+              subaction: "create_event",
+              requiresInput: true,
+              missing: ["title"],
+            },
           });
         }
         // The LifeOps service throws a raw 400 when neither startAt nor a
         // window preset is supplied. Catch that case here so the user gets a
         // useful prompt instead of "startAt is required when windowPreset is
         // not provided" — and so the failure path doesn't re-trigger the
-        // action via post-action continuation.
+        // action through planner follow-up.
         if (!resolvedStartAt && !resolvedWindowPreset) {
           const suggestedStartAt = title
             ? suggestCreateEventStartAt({
@@ -3347,6 +3317,13 @@ export const calendarAction: Action & {
                 calendarContext?.calendarTimeZone ??
                 resolveCalendarTimeZone(details),
             }),
+            data: {
+              actionName: "CALENDAR",
+              subaction: "create_event",
+              requiresInput: true,
+              missing: ["startAt"],
+              title,
+            },
           });
         }
         let requestToCreate = request;

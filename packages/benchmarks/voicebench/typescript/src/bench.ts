@@ -264,8 +264,6 @@ const mockVoicebenchPlugin: Plugin = {
       mockTextHandler(params as unknown as Record<string, unknown>),
     [ModelType.TEXT_COMPLETION]: async (_runtime, params) =>
       mockTextHandler(params as unknown as Record<string, unknown>),
-    [ModelType.OBJECT_SMALL]: async () => ({ result: "voicebench_mock" }),
-    [ModelType.OBJECT_LARGE]: async () => ({ result: "voicebench_mock" }),
     [ModelType.TEXT_EMBEDDING]: async () => [...ZERO_EMBEDDING],
     [ModelType.TRANSCRIPTION]: async () => MOCK_TRANSCRIPT,
     [ModelType.TEXT_TO_SPEECH]: async (_runtime, input) => {

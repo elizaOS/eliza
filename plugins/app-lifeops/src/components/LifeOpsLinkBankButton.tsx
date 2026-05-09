@@ -16,7 +16,7 @@
  * The Plaid `link_token` is short-lived; if the user opens the modal but
  * cancels, we re-fetch on the next attempt. We do NOT persist link_tokens.
  */
-import { client, useApp } from "@elizaos/app-core";
+import { client, useApp } from "@elizaos/ui";
 import { Banknote, Loader2 } from "lucide-react";
 import { type JSX, useCallback, useEffect, useState } from "react";
 import { type PlaidLinkOnSuccess, usePlaidLink } from "react-plaid-link";

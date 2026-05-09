@@ -82,7 +82,21 @@ export type VideoConfig = {
   google?: VideoGoogleConfig;
 };
 
-export type AudioGenProvider = "cloud" | "suno" | "elevenlabs" | (string & {});
+export type AudioKind = "music" | "sfx" | "tts";
+
+export type AudioGenProvider =
+  | "cloud"
+  | "suno"
+  | "elevenlabs"
+  | "fal"
+  | (string & {});
+
+export type AudioProviderRoutingConfig = {
+  default?: AudioGenProvider;
+  music?: AudioGenProvider;
+  sfx?: AudioGenProvider;
+  tts?: AudioGenProvider;
+};
 
 export type AudioSunoConfig = {
   apiKey?: string;
@@ -90,17 +104,58 @@ export type AudioSunoConfig = {
   baseUrl?: string;
 };
 
-export type AudioElevenlabsSfxConfig = {
+export type AudioFalConfig = {
   apiKey?: string;
-  duration?: number;
+  model?: string;
+  baseUrl?: string;
+  secondsStart?: number;
+  secondsTotal?: number;
+  steps?: number;
+  timeoutMs?: number;
+  extraInput?: Record<string, unknown>;
 };
+
+export type AudioElevenlabsVoiceSettings = {
+  stability?: number;
+  similarityBoost?: number;
+  style?: number;
+  useSpeakerBoost?: boolean;
+  speed?: number;
+};
+
+export type AudioElevenlabsConfig = {
+  apiKey?: string;
+  baseUrl?: string;
+  modelId?: string;
+  musicModelId?: string;
+  sfxModelId?: string;
+  ttsModelId?: string;
+  voiceId?: string;
+  outputFormat?: string;
+  duration?: number;
+  promptInfluence?: number;
+  loop?: boolean;
+  seed?: number;
+  languageCode?: string;
+  applyTextNormalization?: "auto" | "on" | "off";
+  voiceSettings?: AudioElevenlabsVoiceSettings;
+  signWithC2pa?: boolean;
+  timeoutMs?: number;
+};
+
+export type AudioElevenlabsSfxConfig = AudioElevenlabsConfig;
 
 export type AudioGenConfig = {
   enabled?: boolean;
   mode?: MediaMode;
   provider?: AudioGenProvider;
+  providers?: AudioProviderRoutingConfig;
+  defaultKind?: AudioKind;
+  audioKind?: AudioKind;
+  kind?: AudioKind;
   suno?: AudioSunoConfig;
-  elevenlabs?: AudioElevenlabsSfxConfig;
+  elevenlabs?: AudioElevenlabsConfig;
+  fal?: AudioFalConfig;
 };
 
 export type VisionProvider =
@@ -152,6 +207,7 @@ export type VisionConfig = {
 };
 
 export type MediaConfig = {
+  preserveFilenames?: boolean;
   image?: ImageConfig;
   video?: VideoConfig;
   audio?: AudioGenConfig;
@@ -179,6 +235,8 @@ export type CustomActionDef = {
   parameters: Array<{ name: string; description: string; required: boolean }>;
   handler: CustomActionHandler;
   enabled: boolean;
+  /** Minimum elizaOS role required to invoke this action (OWNER > ADMIN > USER > GUEST). */
+  requiredRole?: "OWNER" | "ADMIN" | "USER" | "GUEST";
   createdAt: string;
   updatedAt: string;
 };

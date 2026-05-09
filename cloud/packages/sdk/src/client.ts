@@ -94,8 +94,11 @@ export class ElizaCloudClient {
       ...options,
       baseUrl: this.baseUrl,
     });
-    this.v1 = new CloudApiClient(this.apiBaseUrl, options.apiKey);
-    this.v1.setBearerToken(options.bearerToken);
+    this.v1 = new CloudApiClient(this.apiBaseUrl, options.apiKey, {
+      bearerToken: options.bearerToken,
+      defaultHeaders: options.defaultHeaders,
+      fetchImpl: options.fetchImpl,
+    });
     this.routes = new ElizaCloudPublicRoutesClient(this);
   }
 
@@ -423,6 +426,67 @@ export class ElizaCloudClient {
 
   regenerateApiKey(apiKeyId: string): Promise<ApiKeyCreateResponse> {
     return this.request("POST", `/api/v1/api-keys/${encodePathParam(apiKeyId)}/regenerate`);
+  }
+
+  /**
+   * Workflow proxy: routes are forwarded to the user's Railway-deployed
+   * agent (plugin-workflow). Responses are passed through unchanged; the
+   * shape is owned by the agent plugin, not the cloud, so we type as
+   * `unknown` here to avoid drift.
+   */
+  listWorkflows(agentId: string): Promise<unknown> {
+    return this.request("GET", `/api/v1/agents/${encodePathParam(agentId)}/workflows`);
+  }
+
+  createWorkflow(agentId: string, body: Record<string, unknown>): Promise<unknown> {
+    return this.request("POST", `/api/v1/agents/${encodePathParam(agentId)}/workflows`, {
+      json: body,
+    });
+  }
+
+  getWorkflow(agentId: string, workflowId: string): Promise<unknown> {
+    return this.request(
+      "GET",
+      `/api/v1/agents/${encodePathParam(agentId)}/workflows/${encodePathParam(workflowId)}`,
+    );
+  }
+
+  updateWorkflow(
+    agentId: string,
+    workflowId: string,
+    body: Record<string, unknown>,
+  ): Promise<unknown> {
+    return this.request(
+      "PUT",
+      `/api/v1/agents/${encodePathParam(agentId)}/workflows/${encodePathParam(workflowId)}`,
+      { json: body },
+    );
+  }
+
+  deleteWorkflow(agentId: string, workflowId: string): Promise<unknown> {
+    return this.request(
+      "DELETE",
+      `/api/v1/agents/${encodePathParam(agentId)}/workflows/${encodePathParam(workflowId)}`,
+    );
+  }
+
+  runWorkflow(
+    agentId: string,
+    workflowId: string,
+    body: Record<string, unknown> = {},
+  ): Promise<unknown> {
+    return this.request(
+      "POST",
+      `/api/v1/agents/${encodePathParam(agentId)}/workflows/${encodePathParam(workflowId)}/run`,
+      { json: body },
+    );
+  }
+
+  getWorkflowExecution(agentId: string, executionId: string): Promise<unknown> {
+    return this.request(
+      "GET",
+      `/api/v1/agents/${encodePathParam(agentId)}/workflows/executions/${encodePathParam(executionId)}`,
+    );
   }
 }
 

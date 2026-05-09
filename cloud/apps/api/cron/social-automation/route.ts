@@ -13,9 +13,9 @@
 import { eq, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { dbRead } from "@/db/client";
+import type { App } from "@/db/repositories/apps";
 import { apps } from "@/db/schemas";
 import { type AppConfig, appConfig } from "@/db/schemas/app-config";
-import type { App } from "@/db/schemas/apps";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
 import { discordAppAutomationService } from "@/lib/services/discord-automation/app-automation";

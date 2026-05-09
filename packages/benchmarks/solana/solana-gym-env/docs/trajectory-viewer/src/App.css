@@ -111,7 +111,7 @@
   margin-bottom: 20px;
 }
 
-.error a {
+.app .error a {
   color: #667eea;
   text-decoration: none;
   font-weight: 600;

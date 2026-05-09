@@ -30,12 +30,21 @@ const SYSTEM_LABELS: Record<ReadingSystem, string> = {
   astrology: "Astrology natal chart reading",
 };
 
+const MAX_REVEALED_CARDS = 10;
+const MAX_REVEALED_PLANETS = 10;
+const MAX_CHANGING_LINES = 6;
+const MAX_READING_TEXT_CHARS = 8000;
+
 export const readingContextProvider: Provider = {
   name: "READING_CONTEXT",
   description: "Provides context about the active mystical reading session",
   descriptionCompressed: "Provide active mysticism reading session context.",
 
   dynamic: true,
+  contexts: ["knowledge", "finance"],
+  contextGate: { anyOf: ["knowledge", "finance"] },
+  cacheStable: false,
+  cacheScope: "turn",
   relevanceKeywords: [
     "reading",
     "context",
@@ -99,7 +108,7 @@ export const readingContextProvider: Provider = {
         return emptyResult();
       }
 
-      const text = buildContextText(session);
+      const text = buildContextText(session).slice(0, MAX_READING_TEXT_CHARS);
       const values = buildValues(session);
 
       return {
@@ -194,7 +203,7 @@ function buildTarotContext(state: TarotReadingState): string {
 
   if (state.revealedIndex > 0) {
     lines.push("### Cards Revealed So Far");
-    for (let i = 0; i < state.revealedIndex; i++) {
+    for (let i = 0; i < Math.min(state.revealedIndex, MAX_REVEALED_CARDS); i++) {
       const drawn: DrawnCard = state.drawnCards[i];
       const position: SpreadPosition = state.spread.positions[i];
       const orientation = drawn.reversed ? "reversed" : "upright";
@@ -244,7 +253,10 @@ function buildIChingContext(state: IChingReadingState): string {
   if (changingCount > 0) {
     lines.push(`**Changing Lines:** ${revealedCount} of ${changingCount} revealed`);
     lines.push(
-      `**Changing positions:** ${state.castResult.changingLines.map((l) => `Line ${l}`).join(", ")}`
+      `**Changing positions:** ${state.castResult.changingLines
+        .slice(0, MAX_CHANGING_LINES)
+        .map((l) => `Line ${l}`)
+        .join(", ")}`
     );
   } else {
     lines.push("**No changing lines** — the reading is stable.");
@@ -303,7 +315,7 @@ function buildAstrologyContext(state: AstrologyReadingState): string {
 
   if (state.revealedPlanets.length > 0) {
     lines.push("### Placements Discussed");
-    for (const planet of state.revealedPlanets) {
+    for (const planet of state.revealedPlanets.slice(0, MAX_REVEALED_PLANETS)) {
       const key = planet as keyof typeof state.chart;
       const pos = state.chart[key];
       if (pos && typeof pos === "object" && "sign" in pos && "house" in pos) {

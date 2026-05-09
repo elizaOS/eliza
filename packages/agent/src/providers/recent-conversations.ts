@@ -19,7 +19,7 @@ import {
   formatRelativeTimestamp,
   formatSpeakerLabel,
   roomSourceTag,
-} from "./conversation-utils.js";
+} from "../shared/conversation-format.js";
 
 const MAX_RECENT_MESSAGES = 10;
 const MAX_ROOMS_TO_SCAN = 10;
@@ -38,6 +38,11 @@ export const recentConversationsProvider: Provider = {
       includeAllLocales: true,
     },
   ),
+  contexts: ["memory", "messaging"],
+  contextGate: { anyOf: ["memory", "messaging"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
 
   async get(
     runtime: IAgentRuntime,

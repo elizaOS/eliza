@@ -1,8 +1,8 @@
 import type { UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../actions/owner-website-block.js", () => ({
-  blockWebsitesAction: {
+vi.mock("../../../actions/website-block.js", () => ({
+  websiteBlockAction: {
     handler: vi.fn(async () => ({
       success: true,
       text: "Website block side effect mocked for block rule reconciler tests.",
@@ -126,7 +126,7 @@ describe("BlockRuleReconciler", () => {
     });
     const rule = await reader.getBlockRuleById(id);
     expect(rule).not.toBeNull();
-    const createdAt = rule!.createdAt;
+    const createdAt = rule?.createdAt;
 
     // Before the duration elapses: stays active
     await reconcileBlockRulesOnce(harness.runtime, createdAt + 500);

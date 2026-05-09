@@ -11,5 +11,6 @@
     "skipLibCheck": true,
     "noEmit": false
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "extends": "../../../../../tsconfig.dist-paths.json"
 }

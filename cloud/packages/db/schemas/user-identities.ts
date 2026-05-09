@@ -5,7 +5,7 @@ import { users } from "./users";
 /**
  * User identities table schema.
  *
- * Stores external authentication identities (Privy, Telegram, Discord, WhatsApp, phone)
+ * Stores external authentication identities (Steward, Telegram, Discord, WhatsApp, phone)
  * and anonymous session tracking. Split from the main users table to reduce row size
  * on the heavily-read core table.
  */
@@ -18,9 +18,8 @@ export const userIdentities = pgTable(
       .unique()
       .references(() => users.id, { onDelete: "cascade" }),
 
-    // Privy authentication
-    steward_user_id: text("steward_user_id").unique(),
-    privy_user_id: text("privy_user_id").unique(),
+    // Steward authentication
+    steward_user_id: text("steward_user_id").notNull().unique(),
 
     // Anonymous user support
     is_anonymous: boolean("is_anonymous").notNull().default(false),
@@ -54,7 +53,6 @@ export const userIdentities = pgTable(
   (table) => ({
     user_idx: index("user_identities_user_idx").on(table.user_id),
     steward_user_id_idx: index("user_identities_steward_user_id_idx").on(table.steward_user_id),
-    privy_user_id_idx: index("user_identities_privy_user_id_idx").on(table.privy_user_id),
     is_anonymous_idx: index("user_identities_is_anonymous_idx").on(table.is_anonymous),
     anonymous_session_idx: index("user_identities_anonymous_session_idx").on(
       table.anonymous_session_id,

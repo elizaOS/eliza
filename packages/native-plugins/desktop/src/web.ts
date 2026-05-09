@@ -22,9 +22,6 @@ type DesktopEventData =
   | NotificationEvent
   | undefined;
 
-// No-op for features unavailable on web; callers should check return values.
-const webUnavailable = (_feature: string) => {};
-
 export class DesktopWeb extends WebPlugin {
   private pluginListeners: Array<{
     eventName: string;
@@ -33,32 +30,19 @@ export class DesktopWeb extends WebPlugin {
   }> = [];
 
   // System Tray - Not available in browser
-  async createTray(_options: TrayOptions): Promise<void> {
-    webUnavailable("System tray");
-  }
-  async updateTray(_options: Partial<TrayOptions>): Promise<void> {
-    webUnavailable("System tray");
-  }
-  async destroyTray(): Promise<void> {
-    webUnavailable("System tray");
-  }
-  async setTrayMenu(_options: { menu: TrayMenuItem[] }): Promise<void> {
-    webUnavailable("System tray");
-  }
+  async createTray(_options: TrayOptions): Promise<void> {}
+  async updateTray(_options: Partial<TrayOptions>): Promise<void> {}
+  async destroyTray(): Promise<void> {}
+  async setTrayMenu(_options: { menu: TrayMenuItem[] }): Promise<void> {}
 
   // Global Shortcuts - Not available in browser
   async registerShortcut(
     _options: GlobalShortcut,
   ): Promise<{ success: boolean }> {
-    webUnavailable("Global shortcuts");
     return { success: false };
   }
-  async unregisterShortcut(_options: { id: string }): Promise<void> {
-    webUnavailable("Global shortcuts");
-  }
-  async unregisterAllShortcuts(): Promise<void> {
-    webUnavailable("Global shortcuts");
-  }
+  async unregisterShortcut(_options: { id: string }): Promise<void> {}
+  async unregisterAllShortcuts(): Promise<void> {}
   async isShortcutRegistered(_options: {
     accelerator: string;
   }): Promise<{ registered: boolean }> {
@@ -66,9 +50,7 @@ export class DesktopWeb extends WebPlugin {
   }
 
   // Auto Launch - Not available in browser
-  async setAutoLaunch(_options: AutoLaunchOptions): Promise<void> {
-    webUnavailable("Auto launch");
-  }
+  async setAutoLaunch(_options: AutoLaunchOptions): Promise<void> {}
   async getAutoLaunchStatus(): Promise<{
     enabled: boolean;
     openAsHidden: boolean;
@@ -77,9 +59,7 @@ export class DesktopWeb extends WebPlugin {
   }
 
   // Window Management - Limited in browser
-  async setWindowOptions(_options: WindowOptions): Promise<void> {
-    webUnavailable("Window options");
-  }
+  async setWindowOptions(_options: WindowOptions): Promise<void> {}
   async getWindowBounds(): Promise<WindowBounds> {
     return {
       x: window.screenX,
@@ -88,27 +68,17 @@ export class DesktopWeb extends WebPlugin {
       height: window.outerHeight,
     };
   }
-  async setWindowBounds(_options: WindowBounds): Promise<void> {
-    webUnavailable("Setting window bounds");
-  }
-  async minimizeWindow(): Promise<void> {
-    webUnavailable("Window minimize");
-  }
-  async maximizeWindow(): Promise<void> {
-    webUnavailable("Window maximize");
-  }
-  async unmaximizeWindow(): Promise<void> {
-    webUnavailable("Window unmaximize");
-  }
+  async setWindowBounds(_options: WindowBounds): Promise<void> {}
+  async minimizeWindow(): Promise<void> {}
+  async maximizeWindow(): Promise<void> {}
+  async unmaximizeWindow(): Promise<void> {}
   async closeWindow(): Promise<void> {
     window.close();
   }
   async showWindow(): Promise<void> {
     window.focus();
   }
-  async hideWindow(): Promise<void> {
-    webUnavailable("Window hide");
-  }
+  async hideWindow(): Promise<void> {}
   async focusWindow(): Promise<void> {
     window.focus();
   }
@@ -124,17 +94,13 @@ export class DesktopWeb extends WebPlugin {
   async isWindowFocused(): Promise<{ focused: boolean }> {
     return { focused: document.hasFocus() };
   }
-  async setAlwaysOnTop(_options: { flag: boolean }): Promise<void> {
-    webUnavailable("Always on top");
-  }
+  async setAlwaysOnTop(_options: { flag: boolean }): Promise<void> {}
   async setFullscreen(options: { flag: boolean }): Promise<void> {
     options.flag
       ? document.documentElement.requestFullscreen()
       : document.exitFullscreen();
   }
-  async setOpacity(_options: { opacity: number }): Promise<void> {
-    webUnavailable("Window opacity");
-  }
+  async setOpacity(_options: { opacity: number }): Promise<void> {}
 
   // Notifications - Using Web Notification API
   async showNotification(
@@ -274,9 +240,7 @@ export class DesktopWeb extends WebPlugin {
   async openExternal(options: { url: string }): Promise<void> {
     window.open(options.url, "_blank");
   }
-  async showItemInFolder(_options: { path: string }): Promise<void> {
-    webUnavailable("Show in folder");
-  }
+  async showItemInFolder(_options: { path: string }): Promise<void> {}
 
   async beep(): Promise<void> {
     const ctx = new AudioContext();

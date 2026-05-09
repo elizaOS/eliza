@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
+import { logger } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/shared";
 import {
   isElizaSettingsDebugEnabled,
+  isPlainObject,
   migrateLegacyRuntimeConfig,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
@@ -18,9 +21,8 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "./paths.js";
-import type { ElizaConfig } from "./types.js";
 
-export * from "./types.js";
+export type { ElizaConfig } from "@elizaos/shared";
 
 function resolveConfigWritePath(env: NodeJS.ProcessEnv = process.env): string {
   const persistPath = env.ELIZA_PERSIST_CONFIG_PATH?.trim();
@@ -56,10 +58,6 @@ function getConfigEnvString(
       : undefined;
   const value = nestedVars?.[key] ?? envConfig?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function mergeConfigRecords(base: unknown, overlay: unknown): unknown {
@@ -126,7 +124,7 @@ export function loadElizaConfig(): ElizaConfig {
         "utf-8",
       );
     } catch (err) {
-      console.warn(
+      logger.warn(
         `[eliza] Failed to auto-create ~/.eliza/skills.json: ${String(err)}`,
       );
     }
@@ -158,7 +156,7 @@ export function loadElizaConfig(): ElizaConfig {
         }
       }
     } catch (err) {
-      console.warn(
+      logger.warn(
         `[eliza] Failed to load ~/.eliza/skills.json: ${String(err)}`,
       );
     }
@@ -199,18 +197,21 @@ export function loadElizaConfig(): ElizaConfig {
 
   if (isElizaSettingsDebugEnabled()) {
     const cloud = resolved.cloud as Record<string, unknown> | undefined;
-    console.debug("[eliza][settings][loadElizaConfig]", {
-      path: configPath,
-      persistPath: persistPath !== configPath ? persistPath : undefined,
-      topLevelKeys: Object.keys(resolved as Record<string, unknown>).sort(),
-      cloud: settingsDebugCloudSummary(cloud),
-      envVarKeysHydrated: Object.keys({
-        ...persistedConfigEnv,
-        ...envVars,
-        ...connectorEnvVars,
-      }).sort(),
-      snapshot: sanitizeForSettingsDebug(resolved),
-    });
+    logger.debug(
+      {
+        path: configPath,
+        persistPath: persistPath !== configPath ? persistPath : undefined,
+        topLevelKeys: Object.keys(resolved as Record<string, unknown>).sort(),
+        cloud: settingsDebugCloudSummary(cloud),
+        envVarKeysHydrated: Object.keys({
+          ...persistedConfigEnv,
+          ...envVars,
+          ...connectorEnvVars,
+        }).sort(),
+        snapshot: sanitizeForSettingsDebug(resolved),
+      },
+      "[eliza][settings][loadElizaConfig]",
+    );
   }
 
   return resolved;
@@ -337,13 +338,16 @@ export function saveElizaConfig(config: ElizaConfig): void {
   if (isElizaSettingsDebugEnabled()) {
     const c = sanitized as Record<string, unknown>;
     const cloud = c.cloud as Record<string, unknown> | undefined;
-    console.debug("[eliza][settings][saveElizaConfig]", {
-      path: configPath,
-      bytes: stat.size,
-      topLevelKeys: Object.keys(c).sort(),
-      cloud: settingsDebugCloudSummary(cloud),
-      snapshot: sanitizeForSettingsDebug(sanitized),
-    });
+    logger.debug(
+      {
+        path: configPath,
+        bytes: stat.size,
+        topLevelKeys: Object.keys(c).sort(),
+        cloud: settingsDebugCloudSummary(cloud),
+        snapshot: sanitizeForSettingsDebug(sanitized),
+      },
+      "[eliza][settings][saveElizaConfig]",
+    );
   }
 }
 

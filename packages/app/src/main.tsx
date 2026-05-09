@@ -1,11 +1,11 @@
-import { ErrorBoundary } from "@elizaos/app-core";
-import "@elizaos/app-core/styles/styles.css";
-import "@elizaos/app-core/styles/brand-gold.css";
-import "@elizaos/app-core/platform/native-plugin-entrypoints";
+import { ErrorBoundary } from "@elizaos/ui";
+import "@elizaos/ui/styles/styles.css";
+import "@elizaos/ui/styles/brand-gold.css";
+import "@elizaos/app-core";
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
-import { Keyboard } from "@capacitor/keyboard";
+import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
 import {
   CompanionShell,
@@ -16,7 +16,11 @@ import {
   THREE,
   useCompanionSceneStatus,
 } from "@elizaos/app-companion";
-import type { BrandingConfig } from "@elizaos/app-core";
+import { PhoneCompanionApp } from "@elizaos/app-phone";
+import { Agent } from "@elizaos/capacitor-agent";
+import { Desktop } from "@elizaos/capacitor-desktop";
+import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
+import type { BrandingConfig } from "@elizaos/ui";
 import {
   AGENT_READY_EVENT,
   APP_PAUSE_EVENT,
@@ -65,56 +69,53 @@ import {
   subscribeDesktopBridgeEvent,
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
-} from "@elizaos/app-core";
-import { PhoneCompanionApp } from "@elizaos/app-phone/ui";
-import { Agent } from "@elizaos/capacitor-agent";
-import { Desktop } from "@elizaos/capacitor-desktop";
-import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
+} from "@elizaos/ui";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import "@elizaos/app-companion/register";
+import "@elizaos/app-companion";
 // Side-effect: register LifeOps sidebar widgets + client methods on ElizaClient.
-import "@elizaos/app-lifeops/widgets";
+import "@elizaos/app-lifeops";
 // Side-effect: register coding-agent (task-coordinator) slots so app-core
 // slot wrappers (CodingAgentControlChip, PtyConsoleBase, etc.) render the
 // real components instead of nulls.
-import "@elizaos/app-task-coordinator/register-slots";
+import "@elizaos/app-task-coordinator";
 // Side-effect: register game operator surfaces + detail extensions.
-import "@elizaos/app-babylon/ui";
-import "@elizaos/app-scape/ui";
-import "@elizaos/app-hyperscape/ui";
-import "@elizaos/app-2004scape/ui";
-import "@elizaos/app-defense-of-the-agents/ui";
+import "@elizaos/app-babylon";
+import "@elizaos/app-scape";
+import "@elizaos/app-hyperscape";
+import "@elizaos/app-2004scape";
+import "@elizaos/app-defense-of-the-agents";
 import "@clawville/app-clawville/ui";
 import {
   AppBlockerSettingsCard,
+  dispatchQueuedLifeOpsGithubCallbackFromUrl as dispatchQueuedLifeOpsGithubCallback,
   LifeOpsBrowserSetupPanel as BrowserBridgeSetupPanel,
-  dispatchQueuedLifeOpsGithubCallbackFromUrl,
   LifeOpsActivitySignalsEffect,
   LifeOpsPageView,
   WebsiteBlockerSettingsCard,
-} from "@elizaos/app-lifeops/ui";
+} from "@elizaos/app-lifeops";
 import {
   ApprovalQueue,
   StewardLogo,
   TransactionHistory,
-} from "@elizaos/app-steward/ui";
+} from "@elizaos/app-steward";
 import {
   CodingAgentControlChip,
   CodingAgentSettingsSection,
   CodingAgentTasksPanel,
   PtyConsoleDrawer,
 } from "@elizaos/app-task-coordinator";
-import { FineTuningView } from "@elizaos/app-training/ui";
-import "@elizaos/app-shopify/register";
-import "@elizaos/app-vincent/client";
+import { FineTuningView } from "@elizaos/app-training";
+import "@elizaos/app-trajectory-logger";
+import "@elizaos/app-shopify";
+import "@elizaos/app-vincent";
 import { useVincentState } from "@elizaos/app-vincent";
-import "@elizaos/app-vincent/register";
+import "@elizaos/app-vincent";
 // Side-effect: register the wallet UI plugin (route loader, /inventory shell
 // page, and chat sidebar wallet-status widget) with @elizaos/app-core
 // registries. Must precede the first shell render.
-import "@elizaos/app-wallet/register";
-import { shouldUseCloudOnlyBranding } from "@elizaos/app-core";
+import "@elizaos/app-wallet";
+import { shouldUseCloudOnlyBranding } from "@elizaos/ui";
 import {
   APP_BRANDING_BASE,
   APP_CONFIG,
@@ -200,13 +201,16 @@ const windowShellRoute = resolveWindowShellRoute();
 function hasRuntimePickerOverride(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    const search = window.location?.search ?? "";
-    const hashSearch = window.location?.hash?.split("?")[1] ?? "";
-    const params = new URLSearchParams(search || hashSearch);
-    return params.get("runtime") === "picker";
+    return getWindowUrlSearchParams().get("runtime") === "picker";
   } catch {
     return false;
   }
+}
+
+function getWindowUrlSearchParams(): URLSearchParams {
+  const search = window.location?.search ?? "";
+  const hashSearch = window.location?.hash?.split("?")[1] ?? "";
+  return new URLSearchParams(search || hashSearch);
 }
 
 /**
@@ -347,6 +351,7 @@ async function initializePlatform(): Promise<void> {
   initializeCapacitorBridge();
 
   if (isIOS || isAndroid) {
+    await initializeStatusBar();
     await initializeKeyboard();
     initializeAppLifecycle();
     initializeMobileRuntimeModeListener();
@@ -360,8 +365,31 @@ async function initializePlatform(): Promise<void> {
   }
 }
 
+async function initializeStatusBar(): Promise<void> {
+  if (!isNative) return;
+  // Make the status bar overlay the WebView so the app can render
+  // edge-to-edge and `env(safe-area-inset-top)` reports the real status-bar
+  // height on both platforms (iOS already does this via the
+  // `apple-mobile-web-app-status-bar-style: black-translucent` meta tag;
+  // Android needs an explicit opt-in via `setOverlaysWebView`). Imported
+  // dynamically so non-mobile bundles don't try to resolve the native
+  // plugin's named exports through the vite native stub.
+  try {
+    const { StatusBar, Style } = await import("@capacitor/status-bar");
+    await StatusBar.setStyle({ style: Style.Dark });
+    if (isAndroid) {
+      await StatusBar.setOverlaysWebView({ overlay: true });
+      await StatusBar.setBackgroundColor({ color: "#00000000" });
+    }
+  } catch (error) {
+    logNativePluginUnavailable("StatusBar", error);
+  }
+}
+
 async function initializeKeyboard(): Promise<void> {
   if (isIOS) {
+    await Keyboard.setResizeMode({ mode: KeyboardResize.None });
+    await Keyboard.setScroll({ isDisabled: true });
     await Keyboard.setAccessoryBarVisible({ isVisible: true });
   }
 
@@ -461,13 +489,20 @@ function handleDeepLink(url: string): void {
     case "contacts":
       setHashRoute("contacts", parsed.searchParams);
       break;
+    case "wallet":
+    case "inventory":
+      setHashRoute("wallet", parsed.searchParams);
+      break;
+    case "browser":
+      setHashRoute("browser", parsed.searchParams);
+      break;
     case "lifeops":
       window.location.hash = "#lifeops";
-      dispatchQueuedLifeOpsGithubCallbackFromUrl(url);
+      dispatchQueuedLifeOpsGithubCallback(url);
       break;
     case "settings":
       window.location.hash = "#settings";
-      dispatchQueuedLifeOpsGithubCallbackFromUrl(url);
+      dispatchQueuedLifeOpsGithubCallback(url);
       break;
     case "connect": {
       const gatewayUrl = parsed.searchParams.get("url");
@@ -614,10 +649,7 @@ function setupPlatformStyles(): void {
 
 function isPhoneCompanionMode(): boolean {
   if (typeof window === "undefined") return false;
-  const params = new URLSearchParams(
-    window.location.search || window.location.hash.split("?")[1] || "",
-  );
-  return params.get("mode") === "companion";
+  return getWindowUrlSearchParams().get("mode") === "companion";
 }
 
 function resolveAppWindowSlug(): string | null {
@@ -649,11 +681,11 @@ function mountReactApp(): void {
           {phoneCompanion ? (
             <PhoneCompanionApp />
           ) : detachedShell ? (
-            <div className="flex h-screen min-h-0 w-screen flex-col overflow-hidden">
+            <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
               <DetachedShellRoot route={windowShellRoute} />
             </div>
           ) : appWindowSlug ? (
-            <div className="flex h-screen min-h-0 w-screen flex-col overflow-hidden">
+            <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
               <AppWindowRenderer slug={appWindowSlug} />
             </div>
           ) : (
@@ -673,10 +705,7 @@ function mountReactApp(): void {
 
 function isPopoutWindow(): boolean {
   if (typeof window === "undefined") return false;
-  const params = new URLSearchParams(
-    window.location.search || window.location.hash.split("?")[1] || "",
-  );
-  return params.has("popout");
+  return getWindowUrlSearchParams().has("popout");
 }
 
 /**
@@ -720,15 +749,12 @@ function validateAndSetApiBase(apiBase: string): void {
 }
 
 function injectPopoutApiBase(): void {
-  const params = new URLSearchParams(
-    window.location.search || window.location.hash.split("?")[1] || "",
-  );
-  const apiBase = params.get("apiBase");
+  const apiBase = getWindowUrlSearchParams().get("apiBase");
   if (apiBase) validateAndSetApiBase(apiBase);
 }
 
 function injectDetachedShellApiBase(): void {
-  const apiBase = new URLSearchParams(window.location.search).get("apiBase");
+  const apiBase = getWindowUrlSearchParams().get("apiBase");
   if (apiBase) validateAndSetApiBase(apiBase);
 }
 

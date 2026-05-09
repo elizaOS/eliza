@@ -105,13 +105,20 @@ export class Client {
    */
   constructor(readonly _options?: Partial<ClientOptions>) {}
 
+  private requireAuth(): TwitterAuth {
+    if (!this.auth) {
+      throw new Error("Not authenticated");
+    }
+    return this.auth;
+  }
+
   /**
    * Fetches a Twitter profile.
    * @param username The Twitter username of the profile to fetch, without an `@` at the beginning.
    * @returns The requested {@link Profile}.
    */
   public async getProfile(username: string): Promise<Profile> {
-    const res = await getProfile(username, this.auth);
+    const res = await getProfile(username, this.requireAuth());
     return this.handleResponse(res);
   }
 
@@ -121,7 +128,7 @@ export class Client {
    * @returns The ID of the corresponding account.
    */
   public async getEntityIdByScreenName(screenName: string): Promise<string> {
-    const res = await getEntityIdByScreenName(screenName, this.auth);
+    const res = await getEntityIdByScreenName(screenName, this.requireAuth());
     return this.handleResponse(res);
   }
 
@@ -131,7 +138,7 @@ export class Client {
    * @returns The screen name of the corresponding account.
    */
   public async getScreenNameByUserId(userId: string): Promise<string> {
-    const response = await getScreenNameByUserId(userId, this.auth);
+    const response = await getScreenNameByUserId(userId, this.requireAuth());
     return this.handleResponse(response);
   }
 
@@ -148,7 +155,7 @@ export class Client {
     maxTweets: number,
     searchMode: SearchMode = SearchMode.Top,
   ): AsyncGenerator<Tweet, void> {
-    return searchTweets(query, maxTweets, searchMode, this.auth);
+    return searchTweets(query, maxTweets, searchMode, this.requireAuth());
   }
 
   /**
@@ -161,7 +168,7 @@ export class Client {
     query: string,
     maxProfiles: number,
   ): AsyncGenerator<Profile, void> {
-    return searchProfiles(query, maxProfiles, this.auth);
+    return searchProfiles(query, maxProfiles, this.requireAuth());
   }
 
   /**
@@ -181,7 +188,12 @@ export class Client {
   ): Promise<QueryTweetsResponse> {
     // Use the generator and collect results
     const tweets: Tweet[] = [];
-    const generator = searchTweets(query, maxTweets, searchMode, this.auth);
+    const generator = searchTweets(
+      query,
+      maxTweets,
+      searchMode,
+      this.requireAuth(),
+    );
 
     for await (const tweet of generator) {
       tweets.push(tweet);
@@ -208,7 +220,7 @@ export class Client {
   ): Promise<QueryProfilesResponse> {
     // Use the generator and collect results
     const profiles: Profile[] = [];
-    const generator = searchProfiles(query, maxProfiles, this.auth);
+    const generator = searchProfiles(query, maxProfiles, this.requireAuth());
 
     for await (const profile of generator) {
       profiles.push(profile);
@@ -233,7 +245,7 @@ export class Client {
     maxTweets: number,
     cursor?: string,
   ): Promise<QueryTweetsResponse> {
-    return fetchListTweets(listId, maxTweets, cursor, this.auth);
+    return fetchListTweets(listId, maxTweets, cursor, this.requireAuth());
   }
 
   /**
@@ -246,7 +258,7 @@ export class Client {
     userId: string,
     maxProfiles: number,
   ): AsyncGenerator<Profile, void> {
-    return getFollowing(userId, maxProfiles, this.auth);
+    return getFollowing(userId, maxProfiles, this.requireAuth());
   }
 
   /**
@@ -259,7 +271,7 @@ export class Client {
     userId: string,
     maxProfiles: number,
   ): AsyncGenerator<Profile, void> {
-    return getFollowers(userId, maxProfiles, this.auth);
+    return getFollowers(userId, maxProfiles, this.requireAuth());
   }
 
   /**
@@ -274,7 +286,12 @@ export class Client {
     maxProfiles: number,
     cursor?: string,
   ): Promise<QueryProfilesResponse> {
-    return fetchProfileFollowing(userId, maxProfiles, this.auth, cursor);
+    return fetchProfileFollowing(
+      userId,
+      maxProfiles,
+      this.requireAuth(),
+      cursor,
+    );
   }
 
   /**
@@ -289,7 +306,12 @@ export class Client {
     maxProfiles: number,
     cursor?: string,
   ): Promise<QueryProfilesResponse> {
-    return fetchProfileFollowers(userId, maxProfiles, this.auth, cursor);
+    return fetchProfileFollowers(
+      userId,
+      maxProfiles,
+      this.requireAuth(),
+      cursor,
+    );
   }
 
   /**
@@ -303,11 +325,7 @@ export class Client {
     count: number,
     _seenTweetIds: string[],
   ): Promise<Tweet[]> {
-    if (!this.auth) {
-      throw new Error("Not authenticated");
-    }
-
-    const client = await this.auth.getV2Client();
+    const client = await this.requireAuth().getV2Client();
 
     try {
       const timeline = await client.v2.homeTimeline({
@@ -366,11 +384,7 @@ export class Client {
     maxTweets = 200,
     cursor?: string,
   ): Promise<{ tweets: Tweet[]; next?: string }> {
-    if (!this.auth) {
-      throw new Error("Not authenticated");
-    }
-
-    const client = await this.auth.getV2Client();
+    const client = await this.requireAuth().getV2Client();
 
     try {
       const response = await client.v2.userTimeline(userId, {
@@ -459,7 +473,7 @@ export class Client {
    * @returns An {@link AsyncGenerator} of tweets from the provided user.
    */
   public getTweets(user: string, maxTweets = 200): AsyncGenerator<Tweet> {
-    return getTweets(user, maxTweets, this.auth);
+    return getTweets(user, maxTweets, this.requireAuth());
   }
 
   /**
@@ -472,7 +486,7 @@ export class Client {
     userId: string,
     maxTweets = 200,
   ): AsyncGenerator<Tweet, void> {
-    return getTweetsByUserId(userId, maxTweets, this.auth);
+    return getTweetsByUserId(userId, maxTweets, this.requireAuth());
   }
 
   /**
@@ -493,7 +507,7 @@ export class Client {
     mediaData: Buffer,
     options: { mimeType: string },
   ): Promise<string> {
-    const twitterApiClient = await this.auth.getV2Client();
+    const twitterApiClient = await this.requireAuth().getV2Client();
     return await twitterApiClient.v1.uploadMedia(mediaData, options);
   }
 
@@ -512,7 +526,7 @@ export class Client {
     }
     return await createCreateTweetRequest(
       text,
-      this.auth,
+      this.requireAuth(),
       replyToTweetId,
       mediaData,
       hideLinkPreview,
@@ -533,7 +547,7 @@ export class Client {
     }
     return await createCreateNoteTweetRequest(
       text,
-      this.auth,
+      this.requireAuth(),
       replyToTweetId,
       mediaData,
     );
@@ -553,7 +567,7 @@ export class Client {
   ) {
     return await createCreateLongTweetRequest(
       text,
-      this.auth,
+      this.requireAuth(),
       replyToTweetId,
       mediaData,
     );
@@ -576,7 +590,7 @@ export class Client {
   ) {
     return await createCreateTweetRequestV2(
       text,
-      this.auth,
+      this.requireAuth(),
       replyToTweetId,
       options,
     );
@@ -592,7 +606,7 @@ export class Client {
     user: string,
     maxTweets = 200,
   ): AsyncGenerator<Tweet> {
-    return getTweetsAndReplies(user, maxTweets, this.auth);
+    return getTweetsAndReplies(user, maxTweets, this.requireAuth());
   }
 
   /**
@@ -605,7 +619,7 @@ export class Client {
     userId: string,
     maxTweets = 200,
   ): AsyncGenerator<Tweet, void> {
-    return getTweetsAndRepliesByUserId(userId, maxTweets, this.auth);
+    return getTweetsAndRepliesByUserId(userId, maxTweets, this.requireAuth());
   }
 
   /**
@@ -665,7 +679,7 @@ export class Client {
     includeRetweets = false,
     max = 200,
   ): Promise<Tweet | null | undefined> {
-    return getLatestTweet(user, includeRetweets, max, this.auth);
+    return getLatestTweet(user, includeRetweets, max, this.requireAuth());
   }
 
   /**
@@ -674,7 +688,7 @@ export class Client {
    * @returns The {@link Tweet} object, or `null` if it couldn't be fetched.
    */
   public getTweet(id: string): Promise<Tweet | null> {
-    return getTweet(id, this.auth);
+    return getTweet(id, this.requireAuth());
   }
 
   /**
@@ -702,7 +716,7 @@ export class Client {
       placeFields?: TTweetv2PlaceField[];
     } = defaultOptions,
   ): Promise<Tweet | null> {
-    return await getTweetV2(id, this.auth, options);
+    return await getTweetV2(id, this.requireAuth(), options);
   }
 
   /**
@@ -730,7 +744,7 @@ export class Client {
       placeFields?: TTweetv2PlaceField[];
     } = defaultOptions,
   ): Promise<Tweet[]> {
-    return await getTweetsV2(ids, this.auth, options);
+    return await getTweetsV2(ids, this.requireAuth(), options);
   }
 
   /**
@@ -744,7 +758,9 @@ export class Client {
   public async authenticate(provider: TwitterAuthProvider): Promise<void> {
     this.auth = new TwitterAuth(provider);
     // Force initialization early to surface misconfiguration quickly
-    await this.auth.isLoggedIn().catch(() => false);
+    await this.requireAuth()
+      .isLoggedIn()
+      .catch(() => false);
   }
 
   /**
@@ -752,7 +768,7 @@ export class Client {
    * @returns {TwitterAuth | null} Current authentication or null if not authenticated
    */
   public getAuth(): TwitterAuth | null {
-    return this.auth;
+    return this.auth ?? null;
   }
 
   /**
@@ -769,7 +785,7 @@ export class Client {
    * @returns `true` if the client is logged in with a real user account; otherwise `false`.
    */
   public async isLoggedIn(): Promise<boolean> {
-    return await this.auth.isLoggedIn();
+    return await this.requireAuth().isLoggedIn();
   }
 
   /**
@@ -777,7 +793,7 @@ export class Client {
    * @returns The currently logged in user
    */
   public async me(): Promise<Profile | undefined> {
-    return this.auth.me();
+    return this.requireAuth().me();
   }
 
   /**
@@ -809,7 +825,6 @@ export class Client {
     const resolvedAccessToken = accessToken;
     const resolvedAccessSecret = accessSecret;
 
-    // Backward compatible path: build a fixed OAuth1 provider inline.
     const provider: TwitterOAuth1Provider = {
       mode: "env",
       getAccessToken: async () => resolvedAccessToken,
@@ -851,7 +866,7 @@ export class Client {
     return await createQuoteTweetRequest(
       text,
       quotedTweetId,
-      this.auth,
+      this.requireAuth(),
       options?.mediaData,
     );
   }
@@ -864,7 +879,7 @@ export class Client {
   public async deleteTweet(
     tweetId: string,
   ): Promise<Awaited<ReturnType<typeof deleteTweet>>> {
-    return await deleteTweet(tweetId, this.auth);
+    return await deleteTweet(tweetId, this.requireAuth());
   }
 
   /**
@@ -874,7 +889,7 @@ export class Client {
    */
   public async likeTweet(tweetId: string): Promise<void> {
     // Call the likeTweet function from tweets.ts
-    await likeTweet(tweetId, this.auth);
+    await likeTweet(tweetId, this.requireAuth());
   }
 
   /**
@@ -884,7 +899,7 @@ export class Client {
    */
   public async retweet(tweetId: string): Promise<void> {
     // Call the retweet function from tweets.ts
-    await retweet(tweetId, this.auth);
+    await retweet(tweetId, this.requireAuth());
   }
 
   /**
@@ -894,7 +909,7 @@ export class Client {
    */
   public async followUser(userName: string): Promise<void> {
     // Call the followUser function from relationships.ts
-    await followUser(userName, this.auth);
+    await followUser(userName, this.requireAuth());
   }
 
   /**
@@ -943,7 +958,7 @@ export class Client {
    * @returns An array of users (retweeters).
    */
   public async getRetweetersOfTweet(tweetId: string): Promise<Retweeter[]> {
-    return await getAllRetweeters(tweetId, this.auth);
+    return await getAllRetweeters(tweetId, this.requireAuth());
   }
 
   /**
@@ -994,7 +1009,7 @@ export class Client {
 
   /**
    * Fetches quoted tweets for a given tweet ID.
-   * This method now uses a generator function internally but maintains backward compatibility.
+   * This method collects quoted tweets from the generator-backed search API.
    * @param tweetId The ID of the tweet to fetch quotes for.
    * @param maxQuotes Maximum number of quotes to return.
    * @param cursor Optional cursor for pagination.
@@ -1005,7 +1020,6 @@ export class Client {
     maxQuotes: number = 40,
     _cursor?: string,
   ): Promise<QueryTweetsResponse> {
-    // For backward compatibility, collect quotes from the generator
     const quotes: Tweet[] = [];
     let count = 0;
 
@@ -1013,7 +1027,7 @@ export class Client {
     for await (const quote of searchQuotedTweets(
       tweetId,
       maxQuotes,
-      this.auth,
+      this.requireAuth(),
     )) {
       quotes.push(quote);
       count++;

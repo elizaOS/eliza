@@ -189,6 +189,11 @@ export function createEscalationTriggerProvider(): Provider {
       "monitor condition warrant escalat owner inject escalation context trigger detect",
     dynamic: true,
     position: 15,
+    contexts: ["general"],
+    contextGate: { anyOf: ["general"] },
+    cacheStable: false,
+    cacheScope: "turn",
+    roleGate: { minRole: "USER" },
 
     async get(
       runtime: IAgentRuntime,
@@ -215,7 +220,7 @@ export function createEscalationTriggerProvider(): Provider {
       const lines = triggers.map(
         (t) => `- [${t.urgency.toUpperCase()}] ${t.message}`,
       );
-      const text = `# Escalation Context\n${lines.join("\n")}\n\nIf any of these warrant owner attention, use SEND_ADMIN_MESSAGE (urgency: "urgent" for emergencies — this triggers multi-channel escalation).`;
+      const text = `# Escalation Context\n${lines.join("\n")}`;
 
       const highestUrgency = triggers.reduce<Urgency>((max, t) => {
         return (URGENCY_ORDER[t.urgency] ?? 0) > (URGENCY_ORDER[max] ?? 0)

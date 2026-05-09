@@ -1,8 +1,7 @@
-"""Local SFT on Qwen/Qwen3.5-2B using TRL + LoRA (peft).
+"""Local SFT on Qwen/Qwen3.5-2B using TRL + APOLLO.
 
 Single-GPU, bf16, completion-only loss (only the assistant turn contributes
-to the loss). Adapter checkpoints land under
-`training/checkpoints/<run_name>/`.
+to the loss). Checkpoints land under `training/checkpoints/<run_name>/`.
 
 Usage:
     # Smoke test
@@ -12,7 +11,7 @@ Usage:
     # Real run
     uv run --extra train python scripts/train_local.py \
         --epochs 3 --batch-size 4 --grad-accum 8 \
-        --run-name qwen35-eliza-toon-v1
+        --run-name qwen35-eliza-native-v1
 """
 
 from __future__ import annotations
@@ -29,6 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from format_for_training import format_record  # noqa: E402
+from lib.attn import select_attn_impl  # noqa: E402
 
 
 def _split_named(
@@ -87,14 +87,22 @@ def build_dataset(
     from datasets import Dataset
 
     def render(example):
-        text = tokenizer.apply_chat_template(
-            example["messages"],
-            tokenize=False,
-            add_generation_prompt=False,
-        )
+        kwargs = {
+            "conversation": example["messages"],
+            "tokenize": False,
+            "add_generation_prompt": False,
+        }
+        if "tools" in example and example["tools"] is not None:
+            kwargs["tools"] = example["tools"]
+        try:
+            text = tokenizer.apply_chat_template(**kwargs)
+        except TypeError:
+            kwargs.pop("tools", None)
+            text = tokenizer.apply_chat_template(**kwargs)
         return {"text": text}
 
-    ds = Dataset.from_list(formatted).map(render, remove_columns=["messages"])
+    ds = Dataset.from_list(formatted)
+    ds = ds.map(render, remove_columns=list(ds.column_names))
     if max_chars:
         before = len(ds)
         ds = ds.filter(lambda ex: len(ex["text"]) <= max_chars)
@@ -108,7 +116,7 @@ def main() -> int:
     ap.add_argument("--train-file", default=str(ROOT / "data" / "final" / "train.jsonl"))
     ap.add_argument("--val-file", default=str(ROOT / "data" / "final" / "val.jsonl"))
     ap.add_argument("--out-dir", default=str(ROOT / "checkpoints"))
-    ap.add_argument("--run-name", default="qwen35-eliza-toon")
+    ap.add_argument("--run-name", default="qwen35-eliza-native")
     ap.add_argument("--max-samples", type=int, default=0)
     ap.add_argument("--epochs", type=float, default=3.0)
     ap.add_argument("--batch-size", type=int, default=4)
@@ -121,13 +129,12 @@ def main() -> int:
     ap.add_argument("--full-finetune", action="store_true",
                     help="skip LoRA — full-parameter SFT")
     ap.add_argument("--qlora", action="store_true",
-                    help="load model in 4-bit (bitsandbytes nf4) for QLoRA")
+                    help="disabled; this entrypoint is full-parameter APOLLO only")
     ap.add_argument(
         "--optimizer",
-        choices=["apollo", "apollo_mini", "adamw"],
+        choices=["apollo", "apollo_mini"],
         default="apollo",
-        help="optimizer to use. APOLLO gives SGD-like memory at AdamW perf "
-             "(arXiv:2412.05270) and is the default for full-finetune runs.",
+        help="optimizer to use. This local training entrypoint is APOLLO-only.",
     )
     ap.add_argument("--apollo-rank", type=int, default=256)
     ap.add_argument("--apollo-scale", type=float, default=1.0)
@@ -136,8 +143,8 @@ def main() -> int:
         "--max-chars", type=int, default=0,
         help="Drop training records whose rendered chat-template text is "
              "longer than this many characters. 0 = no filter. Recommended "
-             "to use ~3.0 * max_seq_len at the local tier so long Claude "
-             "distill records don't get truncated through the system prompt.",
+             "to use ~3.0 * max_seq_len at the local tier for long native "
+             "trajectory rows.",
     )
     ap.add_argument(
         "--use-liger", default="auto", choices=("auto", "on", "off"),
@@ -180,17 +187,17 @@ def main() -> int:
                  entry.short_name, args.model, args.batch_size, args.grad_accum,
                  args.max_seq_len, args.optimizer, args.memory_budget_gb or 0)
 
-    if args.optimizer != "adamw" and not args.full_finetune:
+    if not args.full_finetune:
         log.warning(
             "--optimizer=%s is intended for full-parameter fine-tuning; "
-            "auto-enabling --full-finetune (use --optimizer adamw to keep LoRA)",
+            "auto-enabling --full-finetune",
             args.optimizer,
         )
         args.full_finetune = True
-    if args.optimizer != "adamw" and args.qlora:
+    if args.qlora:
         raise SystemExit(
-            "APOLLO is incompatible with --qlora (4-bit base + low-rank "
-            "projector both consume the same matrix space). Use --optimizer adamw."
+            "QLoRA is disabled in the APOLLO-only local training pipeline. "
+            "Use full-parameter APOLLO fine-tuning."
         )
 
     import torch
@@ -233,24 +240,7 @@ def main() -> int:
             bnb_4bit_compute_dtype=torch.bfloat16,
             bnb_4bit_use_double_quant=True,
         )
-    # Pick the most aggressive flash-attention impl the silicon supports:
-    # FA-3 lands sm_90 (H100/H200) only; sm_120 Blackwell consumer/Pro GPUs
-    # are not yet supported by FA-2 prebuilt wheels (FA #1665/#1810/#1987)
-    # and a source build takes ~1h. When `flash_attn` isn't installed at all
-    # we fall back to PyTorch SDPA, which has flash + memory-efficient
-    # backends and no compile prereq.
-    attn_impl = "sdpa"
-    if device == "cuda":
-        cap = torch.cuda.get_device_capability(0)
-        try:
-            import flash_attn  # noqa: F401
-            attn_impl = "flash_attention_2"
-            if cap == (9, 0):
-                if int(getattr(flash_attn, "__version__", "0").split(".")[0]) >= 3:
-                    attn_impl = "flash_attention_3"
-        except ImportError:
-            attn_impl = "sdpa"
-        log.info("attn_implementation=%s (compute_capability=%s)", attn_impl, cap)
+    attn_impl = select_attn_impl(device)
     # device_map='auto' is incompatible with FSDP / DDP — accelerate's
     # `prepare()` rejects models that already have a device map. When we
     # launch under `accelerate launch` (RANK env set), every rank loads
@@ -365,30 +355,15 @@ def main() -> int:
     out_dir = Path(args.out_dir) / args.run_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # When the script's APOLLO override path is unused (e.g. under FSDP, where
-    # APOLLO's 2-D-weight-only design clashes with FlatParameter), let the
-    # trainer build its own optimizer. MILADY_TRAINER_OPTIM lets the operator
-    # pick adafactor / adamw_8bit / paged_adamw_32bit etc. Default `adamw_torch`.
-    trainer_optim = os.environ.get("MILADY_TRAINER_OPTIM", "adamw_torch")
-
-    # Silent-downgrade guard: registry says APOLLO but operator exported
-    # MILADY_TRAINER_OPTIM= to a heavier optimizer (e.g. adamw_torch's fp32
-    # moments at 27B = 216 GB optimizer state, OOMs FSDP-2 on 96 GB cards).
-    # The branch below only triggers when MILADY_TRAINER_OPTIM was explicitly
-    # set (default value "adamw_torch" doesn't change trainer_optim and
-    # apollo_builder still wins at create_optimizer time).
-    if (
-        args.optimizer in ("apollo", "apollo_mini")
-        and trainer_optim != "adamw_torch"
-        and os.environ.get("MILADY_FORCE_OPTIM") != "1"
-    ):
+    if os.environ.get("MILADY_TRAINER_OPTIM"):
         raise SystemExit(
-            f"MILADY_TRAINER_OPTIM={trainer_optim} would silently downgrade "
-            f"registry-declared {args.optimizer} → {trainer_optim}. For 27B "
-            f"that costs ~216 GB optimizer state under FSDP-2 (OOMs 96 GB "
-            f"cards). Set MILADY_FORCE_OPTIM=1 to acknowledge, or pass "
-            f"`--optimizer adamw` to make the override explicit."
+            "MILADY_TRAINER_OPTIM is disabled. This entrypoint always builds "
+            "APOLLO/APOLLO-Mini through the trainer create_optimizer hook."
         )
+
+    # SFTConfig still requires a supported `optim` enum even though the custom
+    # Trainer below replaces optimizer creation before that enum is used.
+    trainer_optim = "adafactor"
     # TRL's SFTTrainer.tokenize is a single-process dataset.map by default,
     # which on a 1.06M-record corpus at seq_len=8192 takes ~30+ hours to walk
     # before the first training step. Fan out to all CPU cores; cap at 32 to
@@ -430,52 +405,50 @@ def main() -> int:
         run_name=args.run_name,
     )
 
-    apollo_builder = None
-    if args.optimizer != "adamw":
-        from training.optimizer import (
-            _NON_LOWRANK_NAME_HINTS,
-            build_apollo_mini_optimizer_from_groups,
-            build_apollo_optimizer_from_groups,
-        )
+    from training.optimizer import (
+        _NON_LOWRANK_NAME_HINTS,
+        build_apollo_mini_optimizer_from_groups,
+        build_apollo_optimizer_from_groups,
+    )
 
-        # Classify 2-D vs 1-D BEFORE FSDP wrap. Under FSDP1 (even with
-        # use_orig_params=True on this PyTorch build), `named_parameters()`
-        # post-wrap returns 1-D FlatParameters and APOLLO's shape-based
-        # routing fails. The unwrapped HF model exposes the real shapes,
-        # so we save the 2-D weight NAMES here and route by name suffix
-        # in create_optimizer.
-        lowrank_names: set[str] = set()
-        for name, p in model.named_parameters():
-            if not p.requires_grad:
-                continue
-            lname = name.lower()
-            if any(h in lname for h in _NON_LOWRANK_NAME_HINTS):
-                continue
-            if p.dim() == 2:
-                lowrank_names.add(name)
-        log.info(
-            "pre-FSDP APOLLO classification: %d lowrank (2-D) names of %d total",
-            len(lowrank_names),
-            sum(1 for _ in model.named_parameters()),
-        )
+    # Classify 2-D vs 1-D BEFORE FSDP wrap. Under FSDP1 (even with
+    # use_orig_params=True on this PyTorch build), `named_parameters()`
+    # post-wrap returns 1-D FlatParameters and APOLLO's shape-based
+    # routing fails. The unwrapped HF model exposes the real shapes,
+    # so we save the 2-D weight NAMES here and route by name suffix
+    # in create_optimizer.
+    lowrank_names: set[str] = set()
+    for name, p in model.named_parameters():
+        if not p.requires_grad:
+            continue
+        lname = name.lower()
+        if any(h in lname for h in _NON_LOWRANK_NAME_HINTS):
+            continue
+        if p.dim() == 2:
+            lowrank_names.add(name)
+    log.info(
+        "pre-FSDP APOLLO classification: %d lowrank (2-D) names of %d total",
+        len(lowrank_names),
+        sum(1 for _ in model.named_parameters()),
+    )
 
-        if args.optimizer == "apollo":
-            def apollo_builder(m):
-                # Walk wrapped or unwrapped model, route by name suffix.
-                lowrank, other = _split_named(m, lowrank_names)
-                return build_apollo_optimizer_from_groups(
-                    lowrank, other,
-                    lr=args.lr, weight_decay=sft_cfg.weight_decay,
-                    rank=args.apollo_rank, scale=args.apollo_scale,
-                    update_proj_gap=args.apollo_update_proj_gap,
-                )
-        else:
-            def apollo_builder(m):
-                lowrank, other = _split_named(m, lowrank_names)
-                return build_apollo_mini_optimizer_from_groups(
-                    lowrank, other,
-                    lr=args.lr, weight_decay=sft_cfg.weight_decay,
-                )
+    if args.optimizer == "apollo":
+        def apollo_builder(m):
+            # Walk wrapped or unwrapped model, route by name suffix.
+            lowrank, other = _split_named(m, lowrank_names)
+            return build_apollo_optimizer_from_groups(
+                lowrank, other,
+                lr=args.lr, weight_decay=sft_cfg.weight_decay,
+                rank=args.apollo_rank, scale=args.apollo_scale,
+                update_proj_gap=args.apollo_update_proj_gap,
+            )
+    else:
+        def apollo_builder(m):
+            lowrank, other = _split_named(m, lowrank_names)
+            return build_apollo_mini_optimizer_from_groups(
+                lowrank, other,
+                lr=args.lr, weight_decay=sft_cfg.weight_decay,
+            )
 
     # Optional Transformer Engine FP8 swap. No-op everywhere except H200 (sm_90)
     # unless MILADY_FP8_TRAIN=1 forces the swap. When enabled, every train_step
@@ -511,7 +484,7 @@ def main() -> int:
         def create_optimizer(self, model=None):
             # transformers 5.7 calls `create_optimizer(model)`; older releases
             # call `create_optimizer()` — accept both.
-            if apollo_builder is not None and self.optimizer is None:
+            if self.optimizer is None:
                 target = model or self.model
                 # Diagnostic: when use_orig_params is on FSDP keeps 2-D shapes
                 # in named_parameters(); when off, all params are 1-D
@@ -525,7 +498,7 @@ def main() -> int:
                          type(target).__name__, n_total, n2d, first_5)
                 self.optimizer = apollo_builder(target)
                 return self.optimizer
-            return super().create_optimizer() if model is None else super().create_optimizer(model)
+            return self.optimizer
 
     trainer_cls = _MiladySFTTrainer
 

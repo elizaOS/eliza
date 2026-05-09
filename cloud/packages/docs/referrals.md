@@ -8,7 +8,7 @@ This document describes the **referral program** (signup attribution, bonuses, 5
 
 ### Referral program
 
-- **What:** A referred user signs up with someone’s **referral code**. We store a `referral_signups` row linking referrer and referred user. On signup, both sides can receive **bonus credits** (minted as marketing spend, not taken from purchase revenue). When the referred user buys credits (Stripe checkout or x402), **100%** of that purchase is split **50% Eliza Cloud / 40% app owner / 10% creator** (with optional multi-tier rules for creator vs editor). See `REFERRAL_REVENUE_SPLITS` in [`packages/lib/services/referrals.ts`](../packages/lib/services/referrals.ts).
+- **What:** A referred user signs up with someone’s **referral code**. We store a `referral_signups` row linking referrer and referred user. On signup, both sides can receive **bonus credits** (minted as marketing spend, not taken from purchase revenue). When the referred user buys credits (Stripe checkout or x402), **100%** of that purchase is split **50% Eliza Cloud / 40% app owner / 10% creator** (with optional multi-tier rules for creator vs editor). See `REFERRAL_REVENUE_SPLITS` in [`packages/lib/services/referrals.ts`](../lib/services/referrals.ts).
 
 - **Why separate from affiliates:** Referrals attach to **purchase revenue** and one-time/qualified **bonuses**. Affiliates attach a **markup** on specific flows (auto top-up, MCP). Same transaction must not apply both (see README). **Why:** Predictable economics—referral splits always sum to 100% of the purchase; affiliate cost is passed through to the customer.
 
@@ -33,7 +33,7 @@ This document describes the **referral program** (signup attribution, bonuses, 5
 ### Where the link appears
 
 1. **Dashboard header — “Invite”**  
-   - Visible only when the user is **not** anonymous and **not** in `authGraceActive` (session still settling). **Why:** Avoids 401s and confusing errors during Privy grace; keeps anonymous users on sign-up CTAs only.
+   - Visible only when the user is **not** anonymous and **not** in `authGraceActive` (session still settling). **Why:** Avoids 401s and confusing errors during session grace; keeps anonymous users on sign-up CTAs only.
 
 2. **`/dashboard/affiliates` — “Invite friends” card**  
    - Placed **above** the affiliate link card, with a distinct visual treatment. **Why:** Both programs live under Monetization, but mixing orange “affiliate” styling with “invite friends” caused low-signal UIs to merge them mentally.
@@ -114,7 +114,7 @@ This document describes the **referral program** (signup attribution, bonuses, 5
 
 ## Signup codes (distinct)
 
-Campaign codes (`SIGNUP_CODES_JSON`, `POST /api/signup-code/redeem`) are **not** referral codes. **Why:** Signup codes are one-off org bonuses; referrals drive ongoing split + referral bonuses. See [signup-codes.md](./signup-codes.md).
+Campaign codes (`SIGNUP_CODES_JSON`, `POST /api/signup-code/redeem`) are **not** referral codes. **Why:** Signup codes are one-off org bonuses; referrals drive ongoing split + referral bonuses.
 
 ---
 

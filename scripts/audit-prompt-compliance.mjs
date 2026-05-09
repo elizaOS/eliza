@@ -33,7 +33,24 @@ const PROMPT_SCAN_FILES = [
   "packages/core/src/services/message.ts",
 ];
 
-const PROMPT_SCAN_DIRS = ["packages/prompts/prompts"];
+// Roots under which to look for TypeScript files that hold prompt templates.
+// Wave 1 migrated `.txt` prompts to TS template-literal exports; the scanner
+// now operates against those TS sources directly. We glob a defensive set of
+// locations so the audit works regardless of which agent has finished landing
+// its prompt module.
+const PROMPT_SCAN_TS_ROOTS = [
+  "packages/prompts/src",
+  "packages/core/src",
+  "plugins",
+];
+
+// File-name patterns that identify TS modules likely to contain LLM prompt
+// templates. The scanner will inspect any TS file matching these.
+const PROMPT_SCAN_FILE_PATTERNS = [
+  /(^|\/)prompts?\.ts$/,
+  /(^|\/)prompts\/[^/]+\.ts$/,
+  /(^|\/)templates?\.ts$/,
+];
 
 const STRUCTURED_FORMAT_ALLOWLIST = [];
 
@@ -122,7 +139,7 @@ const NEGATED_FORMAT_PATTERN =
 const ACTION_XML_PATTERNS = [
   {
     pattern: /\bparseKeyValueXml\b/,
-    reason: "actions must parse TOON with parseToonKeyValue",
+    reason: "actions must use native tool calling and JSON, not legacy XML helpers",
   },
   {
     pattern:
@@ -390,14 +407,154 @@ function auditSpecs() {
 
 function listPromptFiles() {
   const files = new Set(PROMPT_SCAN_FILES);
-  for (const dir of PROMPT_SCAN_DIRS) {
-    for (const file of listFiles(dir, (filePath) =>
-      filePath.endsWith(".txt"),
-    )) {
+  for (const root of PROMPT_SCAN_TS_ROOTS) {
+    for (const file of listFiles(root, (filePath) => {
+      const relativePath = path.relative(REPO_ROOT, filePath);
+      if (!relativePath.endsWith(".ts") && !relativePath.endsWith(".tsx")) {
+        return false;
+      }
+      if (TEST_SOURCE_PATH_PATTERN.test(relativePath)) return false;
+      // Skip generated mirror directories — Wave 1 lands canonical prompts
+      // under `src/prompts.ts` (or `src/**/prompts.ts`); generated copies are
+      // build artefacts.
+      if (/(^|\/)generated\//.test(relativePath)) return false;
+      return PROMPT_SCAN_FILE_PATTERNS.some((p) => p.test(relativePath));
+    })) {
       files.add(file);
     }
   }
   return [...files].sort((a, b) => a.localeCompare(b));
+}
+
+// Heuristic: extract template-literal and double/single-quoted string contents
+// that look like LLM-facing prompt copy. We treat anything inside a backtick
+// template literal as candidate prompt text (with a per-line position map),
+// plus quoted string literals that contain `{{`, `Return`, `Output`, or
+// `Respond` markers.
+function extractPromptSegments(source) {
+  const segments = [];
+  const len = source.length;
+  let i = 0;
+  let inSingleLineComment = false;
+  let inMultiLineComment = false;
+
+  while (i < len) {
+    const ch = source[i];
+    const next = source[i + 1];
+
+    if (inSingleLineComment) {
+      if (ch === "\n") inSingleLineComment = false;
+      i += 1;
+      continue;
+    }
+    if (inMultiLineComment) {
+      if (ch === "*" && next === "/") {
+        inMultiLineComment = false;
+        i += 2;
+        continue;
+      }
+      i += 1;
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      inSingleLineComment = true;
+      i += 2;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inMultiLineComment = true;
+      i += 2;
+      continue;
+    }
+
+    if (ch === "`") {
+      // Template literal — capture body verbatim and strip ${...} expressions
+      // so embedded JS does not produce false hits, while leaving the rest of
+      // the prompt text intact.
+      const start = i + 1;
+      let j = start;
+      let depth = 0;
+      while (j < len) {
+        const c = source[j];
+        if (c === "\\" && j + 1 < len) {
+          j += 2;
+          continue;
+        }
+        if (depth === 0 && c === "`") break;
+        if (c === "$" && source[j + 1] === "{") {
+          depth += 1;
+          j += 2;
+          continue;
+        }
+        if (depth > 0 && c === "}") {
+          depth -= 1;
+          j += 1;
+          continue;
+        }
+        if (depth > 0 && (c === "`" || c === "'" || c === '"')) {
+          // Skip nested string literals inside an interpolation.
+          const quote = c;
+          j += 1;
+          while (j < len) {
+            const cc = source[j];
+            if (cc === "\\" && j + 1 < len) {
+              j += 2;
+              continue;
+            }
+            if (cc === quote) {
+              j += 1;
+              break;
+            }
+            j += 1;
+          }
+          continue;
+        }
+        j += 1;
+      }
+      const rawBody = source.slice(start, j);
+      // Replace ${...} runs with whitespace of equal length so line numbers
+      // stay aligned with the source file.
+      const body = rawBody.replace(
+        /\$\{[\s\S]*?\}/g,
+        (m) => " ".repeat(m.length),
+      );
+      const startLine = source.slice(0, start).split(/\r?\n/).length;
+      segments.push({ text: body, startLine });
+      i = j + 1;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      const quote = ch;
+      const start = i + 1;
+      let j = start;
+      while (j < len) {
+        const c = source[j];
+        if (c === "\\" && j + 1 < len) {
+          j += 2;
+          continue;
+        }
+        if (c === quote) break;
+        if (c === "\n") break;
+        j += 1;
+      }
+      const body = source.slice(start, j);
+      if (
+        /\{\{|\bReturn\b|\bOutput\b|\bRespond\b/i.test(body) ||
+        /JSON|XML|<think>/i.test(body)
+      ) {
+        const startLine = source.slice(0, start).split(/\r?\n/).length;
+        segments.push({ text: body, startLine });
+      }
+      i = j + 1;
+      continue;
+    }
+
+    i += 1;
+  }
+
+  return segments;
 }
 
 function listActionSourceFiles() {
@@ -523,26 +680,33 @@ function auditPromptFormats() {
   for (const file of listPromptFiles()) {
     const absolutePath = path.join(REPO_ROOT, file);
     if (!fs.existsSync(absolutePath)) continue;
-    const lines = fs.readFileSync(absolutePath, "utf8").split(/\r?\n/);
-    lines.forEach((line, index) => {
-      scannedLineCount += 1;
-      if (NEGATED_FORMAT_PATTERN.test(line)) return;
-      if (!FORMAT_INSTRUCTION_PATTERNS.some((pattern) => pattern.test(line))) {
-        return;
-      }
+    const source = fs.readFileSync(absolutePath, "utf8");
+    const segments = extractPromptSegments(source);
+    for (const { text, startLine } of segments) {
+      const lines = text.split(/\r?\n/);
+      lines.forEach((line, offset) => {
+        scannedLineCount += 1;
+        if (NEGATED_FORMAT_PATTERN.test(line)) return;
+        if (
+          !FORMAT_INSTRUCTION_PATTERNS.some((pattern) => pattern.test(line))
+        ) {
+          return;
+        }
 
-      const allowlistIndex = STRUCTURED_FORMAT_ALLOWLIST.findIndex(
-        (entry) => entry.file === file && line.includes(entry.match),
-      );
-      if (allowlistIndex >= 0) {
-        usedAllowlist.add(allowlistIndex);
-        return;
-      }
+        const lineNumber = startLine + offset;
+        const allowlistIndex = STRUCTURED_FORMAT_ALLOWLIST.findIndex(
+          (entry) => entry.file === file && line.includes(entry.match),
+        );
+        if (allowlistIndex >= 0) {
+          usedAllowlist.add(allowlistIndex);
+          return;
+        }
 
-      violations.push(
-        `${file}:${index + 1}: model-facing JSON/XML instruction is not allowlisted: ${line.trim()}`,
-      );
-    });
+        violations.push(
+          `${file}:${lineNumber}: model-facing JSON/XML instruction is not allowlisted: ${line.trim()}`,
+        );
+      });
+    }
   }
 
   STRUCTURED_FORMAT_ALLOWLIST.forEach((entry, index) => {

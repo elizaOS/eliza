@@ -32,4 +32,4 @@ The `MCP_SERVERS` value should be a JSON string defining the MCP servers your ag
 
 ## Related
 
-- [Code Plugin](/plugin-registry/code) - Filesystem, shell, and git capabilities
+- [Coding Tools Plugin](/plugin-registry/coding-tools) - Filesystem, shell, and search tooling (READ, WRITE, BASH, GREP, …)

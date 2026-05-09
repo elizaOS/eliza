@@ -7,7 +7,5 @@
 import type { CameraPlugin } from "../../src/definitions";
 import { CameraWeb } from "../../src/web";
 
-export class CameraElectrobun extends CameraWeb implements CameraPlugin {}
-
 // Export the plugin instance
-export const Camera = new CameraElectrobun();
+export const Camera: CameraPlugin = new CameraWeb();

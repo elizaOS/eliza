@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
 import { LifeOpsCalendarSection } from "./LifeOpsCalendarSection.js";
+import { LifeOpsDocumentsSection } from "./LifeOpsDocumentsSection.js";
 import {
   LIFEOPS_MAIL_CHANNELS,
   LIFEOPS_MESSAGE_CHANNELS,
@@ -52,6 +53,8 @@ export function LifeOpsSectionContent({
       return <LifeOpsRemindersSection />;
     case "money":
       return <LifeOpsMoneySection />;
+    case "documents":
+      return <LifeOpsDocumentsSection />;
     case "setup":
       return setupContent;
   }

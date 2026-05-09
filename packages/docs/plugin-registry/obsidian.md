@@ -52,5 +52,5 @@ export OBSIDIAN_VAULT_PATH=/path/to/your/vault
 
 ## Related
 
-- [Knowledge Plugin](/plugin-registry/knowledge) — RAG-based knowledge retrieval
+- [Knowledge Plugin](/plugin-registry/documents) — RAG-based knowledge retrieval
 - [Browser Plugin](/plugin-registry/browser) — Web content access

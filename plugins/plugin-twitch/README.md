@@ -67,59 +67,20 @@ const agent = new Agent({
 
 ### Actions
 
-#### TWITCH_SEND_MESSAGE
+Twitch chat operations route through the canonical `MESSAGE` action using
+`source: "twitch"`.
 
-Send a message to a Twitch channel.
-
-```typescript
-// User: "Send a message saying 'Hello everyone!'"
-// Agent will send to the current channel
-```
-
-#### TWITCH_JOIN_CHANNEL
-
-Join a new Twitch channel.
-
-```typescript
-// User: "Join the channel xqc"
-// Agent will join #xqc
-```
-
-#### TWITCH_LEAVE_CHANNEL
-
-Leave a Twitch channel.
-
-```typescript
-// User: "Leave the channel xqc"
-// Agent will leave #xqc (cannot leave primary channel)
-```
-
-#### TWITCH_LIST_CHANNELS
-
-List all channels the bot is currently in.
-
-```typescript
-// User: "What channels are you in?"
-// Agent will list all joined channels
-```
+| Primary action | Operation | Description |
+|----------------|-----------|-------------|
+| `MESSAGE` | `send` | Send a message to a Twitch channel |
+| `MESSAGE` | `join_channel` | Join a Twitch channel |
+| `MESSAGE` | `leave_channel` | Leave a Twitch channel |
+| `MESSAGE` | `list_channels` | List joined Twitch channels |
 
 ### Providers
 
-#### twitchChannelState
-
-Provides context about the current Twitch channel:
-- Channel name
-- Whether it's the primary channel
-- List of all joined channels
-- Bot username
-
-#### twitchUserContext
-
-Provides context about the user in the conversation:
-- User ID and username
-- Display name
-- Roles (broadcaster, moderator, VIP, subscriber)
-- Chat color
+Twitch does not register standalone planner providers. Channel and user context
+is exposed through the Twitch message connector hooks.
 
 ### Events
 

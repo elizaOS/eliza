@@ -10,7 +10,7 @@
  * - Grouping by scenario for GRPO
  */
 
-import { encodeToonValue } from "../../utils/toon";
+import { textFromChatMessageContent } from "../../runtime/system-prompt";
 import type {
 	ARTTrajectory,
 	ChatMessage,
@@ -50,6 +50,16 @@ function buildSystemMessage(trajectory: Trajectory): ChatMessage | null {
 	const firstStep = trajectory.steps[0];
 	const firstLLMCall = firstStep?.llmCalls?.[0];
 
+	const firstMessage = firstLLMCall?.messages?.[0] as
+		| { role?: unknown; content?: unknown }
+		| undefined;
+	if (firstMessage?.role === "system") {
+		const content = textFromChatMessageContent(firstMessage.content);
+		if (content) {
+			return { role: "system", content };
+		}
+	}
+
 	if (firstLLMCall?.systemPrompt) {
 		return { role: "system", content: firstLLMCall.systemPrompt };
 	}
@@ -77,7 +87,7 @@ function buildUserMessage(step: TrajectoryStep): string | null {
 
 	for (const provider of step.providerAccesses) {
 		parts.push(`\n${provider.providerName} data:`);
-		parts.push(encodeToonValue({ data: provider.data }));
+		parts.push(JSON.stringify({ data: provider.data }, null, 2));
 	}
 
 	parts.push("\nWhat action should you take?");
@@ -98,7 +108,7 @@ function buildAssistantMessage(step: TrajectoryStep): string | null {
 		parts.push(`Reasoning: ${action.reasoning}`);
 	}
 	parts.push(
-		`Parameters:\n${encodeToonValue({ parameters: action.parameters })}`,
+		`Parameters:\n${JSON.stringify({ parameters: action.parameters }, null, 2)}`,
 	);
 
 	return parts.join("\n");

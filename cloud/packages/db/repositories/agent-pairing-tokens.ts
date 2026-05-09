@@ -1,4 +1,5 @@
 import { and, eq, gt, isNull, lt } from "drizzle-orm";
+import { ensureAgentSandboxSchema } from "@/db/ensure-agent-sandbox-schema";
 import { dbRead, dbWrite } from "@/db/helpers";
 import {
   type AgentPairingToken,
@@ -10,6 +11,8 @@ export type { AgentPairingToken, NewAgentPairingToken };
 
 export class AgentPairingTokensRepository {
   async create(data: NewAgentPairingToken): Promise<AgentPairingToken> {
+    await ensureAgentSandboxSchema();
+
     const [row] = await dbWrite.insert(agentPairingTokens).values(data).returning();
 
     if (!row) {
@@ -23,6 +26,8 @@ export class AgentPairingTokensRepository {
     tokenHash: string,
     expectedOrigin: string,
   ): Promise<AgentPairingToken | undefined> {
+    await ensureAgentSandboxSchema();
+
     const now = new Date();
 
     const [row] = await dbWrite
@@ -42,6 +47,8 @@ export class AgentPairingTokensRepository {
   }
 
   async deleteExpired(): Promise<number> {
+    await ensureAgentSandboxSchema();
+
     const now = new Date();
     const deleted = await dbWrite
       .delete(agentPairingTokens)
@@ -52,6 +59,8 @@ export class AgentPairingTokensRepository {
   }
 
   async findByTokenHash(tokenHash: string): Promise<AgentPairingToken | undefined> {
+    await ensureAgentSandboxSchema();
+
     const [row] = await dbRead
       .select()
       .from(agentPairingTokens)

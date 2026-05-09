@@ -14,7 +14,6 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 
 const WIFI_NETWORKS_LIMIT = 25;
 
@@ -34,6 +33,9 @@ export const wifiNetworksProvider: Provider = {
     "Wi-Fi networks: ssid, bssid, rssi, frequency, secured.",
   dynamic: true,
   contexts: ["system"],
+  contextGate: { anyOf: ["system"] },
+  cacheStable: false,
+  cacheScope: "turn",
 
   get: async (
     _runtime: IAgentRuntime,
@@ -53,7 +55,7 @@ export const wifiNetworksProvider: Provider = {
       }));
 
       return {
-        text: encode({
+        text: JSON.stringify({
           wifi_networks: {
             count: entries.length,
             items: entries,

@@ -21,7 +21,6 @@ import {
   LIFEOPS_GMAIL_DRAFT_TONES,
   LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES,
 } from "../contracts/index.js";
-import type { SyncedGoogleGmailMessageSummary } from "./google-gmail.js";
 import {
   GOOGLE_CALENDAR_CACHE_TTL_MS,
   GOOGLE_GMAIL_CACHE_TTL_MS,
@@ -33,6 +32,19 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
+
+export type SyncedGoogleGmailMessageSummary = Omit<
+  LifeOpsGmailMessageSummary,
+  | "id"
+  | "agentId"
+  | "provider"
+  | "side"
+  | "syncedAt"
+  | "updatedAt"
+  | "connectorAccountId"
+  | "grantId"
+  | "accountEmail"
+>;
 
 export function normalizeGmailSearchQuery(value: unknown): string {
   const query = requireNonEmptyString(value, "query");

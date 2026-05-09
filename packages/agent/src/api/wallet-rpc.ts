@@ -1,33 +1,26 @@
 import {
-  isElizaCloudServiceSelectedInConfig,
-  migrateLegacyRuntimeConfig,
-} from "@elizaos/shared";
-import {
-  type CloudApiKeyRuntimeLike,
-  DEFAULT_CLOUD_API_BASE_URL,
   normalizeCloudSecret as normalizeSecret,
   resolveCloudApiBaseUrl,
   resolveCloudApiKey,
-} from "../cloud/cloud-api-key.js";
-import type { ElizaConfig } from "../config/config.js";
+} from "@elizaos/plugin-elizacloud";
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
+  isElizaCloudServiceSelectedInConfig,
+  migrateLegacyRuntimeConfig,
   normalizeWalletRpcSelections,
   type WalletConfigUpdateRequest,
   type WalletRpcChain,
   type WalletRpcCredentialKey,
   type WalletRpcSelections,
-} from "../contracts/wallet.js";
+} from "@elizaos/shared";
+import type { ElizaConfig } from "../config/config.js";
 
-export type { CloudApiKeyRuntimeLike };
-// Re-exported for backwards compatibility — the canonical source is now
-// `../cloud/cloud-api-key.ts`. Consumers that imported these from here
-// continue to work; new code should import from the cloud module directly.
-export {
-  DEFAULT_CLOUD_API_BASE_URL,
-  resolveCloudApiBaseUrl,
-  resolveCloudApiKey,
-};
+// Cloud-auth helpers (`resolveCloudApiKey`, `resolveCloudApiBaseUrl`,
+// `DEFAULT_CLOUD_API_BASE_URL`, `CloudApiKeyRuntimeLike`) live in
+// `@elizaos/plugin-elizacloud/cloud/cloud-api-key`. They are imported above
+// for use within this module; consumers should import them from
+// `@elizaos/plugin-elizacloud/cloud/cloud-api-key` directly.
+
 // Multiple BSC public RPCs so we have working fallbacks when Eliza
 // Cloud's proxy returns 401 (plan/account issue) AND the primary
 // Binance dataseed endpoint is blocked/rate-limited. Order matters —
@@ -285,7 +278,9 @@ function buildCloudRpcProxyUrl(
     return null;
   }
 
-  const cloudBaseUrl = resolveCloudApiBaseUrl(options.cloudBaseUrl);
+  const cloudBaseUrl = resolveCloudApiBaseUrl(
+    options.cloudBaseUrl ?? undefined,
+  );
   if (!cloudBaseUrl) {
     return null;
   }

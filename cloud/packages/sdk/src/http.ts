@@ -277,8 +277,12 @@ export class ElizaCloudHttpClient {
 }
 
 export class CloudApiClient extends ElizaCloudHttpClient {
-  constructor(baseUrl: string = DEFAULT_ELIZA_CLOUD_API_BASE_URL, apiKey?: string) {
-    super({ baseUrl, apiKey });
+  constructor(
+    baseUrl: string = DEFAULT_ELIZA_CLOUD_API_BASE_URL,
+    apiKey?: string,
+    options: Omit<ElizaCloudClientOptions, "apiBaseUrl" | "apiKey" | "baseUrl"> = {},
+  ) {
+    super({ ...options, baseUrl, apiKey });
   }
 
   async postUnauthenticated<TResponse>(path: string, body: unknown): Promise<TResponse> {

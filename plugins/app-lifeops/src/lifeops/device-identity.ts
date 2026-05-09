@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { resolveStateDir } from "@elizaos/agent/config/paths";
+import { resolveStateDir } from "@elizaos/agent";
 
 const ENV_KEYS = ["MILADY_DEVICE_ID", "ELIZA_DEVICE_ID"] as const;
 const CACHE_FILE_NAME = "device-id";

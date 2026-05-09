@@ -1,11 +1,16 @@
 import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 
+interface SkillEnvironment {
+  getWallet(): { publicKey: string };
+  getRecentBlockhash(): string;
+}
+
 /**
  * Test fixture: Skill that creates a transaction with multiple instructions
  * Verifies that complex transactions can be built and serialized
  */
 export async function executeSkill(
-  env: any,
+  env: SkillEnvironment,
 ): Promise<[number, string, string | null]> {
   const wallet = env.getWallet();
   const tx = new Transaction();

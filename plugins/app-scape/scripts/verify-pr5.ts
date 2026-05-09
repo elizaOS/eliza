@@ -1,6 +1,6 @@
 /**
  * PR 5 live verification — exercises every action in the toolbelt
- * by sending raw TOON frames over the bot-SDK and asserting the
+ * by sending raw JSON frames over the bot-SDK and asserting the
  * expected side effects.
  *
  * Actions covered:

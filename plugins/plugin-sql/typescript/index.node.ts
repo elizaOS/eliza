@@ -1,6 +1,25 @@
 import { mkdirSync } from "node:fs";
 import type { IDatabaseAdapter, UUID } from "@elizaos/core";
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+
+export {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  ne,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
+
 import { PgDatabaseAdapter } from "./pg/adapter";
 import { PostgresConnectionManager } from "./pg/manager";
 import { PgliteDatabaseAdapter } from "./pglite/adapter";
@@ -10,6 +29,25 @@ import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage
 import { stringToUuid } from "./utils/string-to-uuid";
 import { resolvePgliteDir } from "./utils.node";
 
+export type {
+  AppendConnectorAccountAuditEventParams,
+  ConnectorAccountAuditEventRecord,
+  ConnectorAccountAuditOutcome,
+  ConnectorAccountCredentialRefRecord,
+  ConnectorAccountJsonObject,
+  ConnectorAccountRecord,
+  ConsumeOAuthFlowStateParams,
+  CreateOAuthFlowStateParams,
+  DeleteConnectorAccountParams,
+  GetConnectorAccountCredentialRefParams,
+  GetConnectorAccountParams,
+  ListConnectorAccountCredentialRefsParams,
+  ListConnectorAccountsParams,
+  OAuthFlowRecord,
+  SetConnectorAccountCredentialRefParams,
+  UpsertConnectorAccountParams,
+} from "@elizaos/core";
+export * from "./connector-credential-store";
 export * from "./pglite/errors";
 export * from "./schema";
 export type { DrizzleDatabase } from "./types";
@@ -98,7 +136,11 @@ export function createDatabaseAdapter(
   if (!shouldReusePgliteManager(globalSingletons.pgLiteClientManager)) {
     globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });
   }
-  return new PgliteDatabaseAdapter(agentId, globalSingletons.pgLiteClientManager);
+  const manager = globalSingletons.pgLiteClientManager;
+  if (!manager) {
+    throw new Error("[plugin-sql] pgLiteClientManager not initialized before adapter creation");
+  }
+  return new PgliteDatabaseAdapter(agentId, manager);
 }
 
 export const plugin: Plugin = {

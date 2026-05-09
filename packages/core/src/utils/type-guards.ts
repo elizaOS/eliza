@@ -80,3 +80,13 @@ export function isPlainObject(
 	// If it's a custom class instance, it's not a plain object
 	return false;
 }
+
+export function asRecord(value: unknown): Record<string, unknown> | null {
+	return isPlainObject(value) ? value : null;
+}
+
+export function asRecordOrUndefined(
+	value: unknown,
+): Record<string, unknown> | undefined {
+	return asRecord(value) ?? undefined;
+}

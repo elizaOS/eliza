@@ -1,4 +1,6 @@
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
+import { buildCanonicalSystemPrompt } from "../../../runtime/system-prompt.ts";
+import { getTrajectoryContext } from "../../../trajectory-context.ts";
 import type {
 	IAgentRuntime,
 	Memory,
@@ -65,6 +67,12 @@ function resolveCharacterList(
 export const characterProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
+	contexts: ["general", "agent_internal"],
+	contextGate: { anyOf: ["general", "agent_internal"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
 		const character = runtime.character;
 		const characterSeed = buildDeterministicSeed(
@@ -291,15 +299,18 @@ export const characterProvider: Provider = {
 		const adjectiveSentence = adjectiveString
 			? `${agentName} is ${adjectiveString}`
 			: "";
+		const identity = buildCanonicalSystemPrompt({
+			character,
+			userRole: getTrajectoryContext()?.userRole,
+		});
 		// Combine all text sections
 		const text = [
-			bio,
+			identity,
 			adjectiveSentence,
 			topicSentence,
 			topics,
 			directions,
 			examples,
-			system,
 		]
 			.filter(Boolean)
 			.join("\n\n");

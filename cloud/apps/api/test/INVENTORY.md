@@ -41,7 +41,6 @@ Generated router is in sync with the current generator and route tree.
 - `v1/admin/docker-nodes/[nodeId]/health-check/route.ts`
 - `v1/admin/infrastructure/containers/actions/route.ts`
 - `v1/admin/infrastructure/route.ts`
-- `v1/agents/[agentId]/n8n/[...path]/route.ts`
 - `v1/containers/[id]/logs/route.ts`
 - `v1/containers/[id]/metrics/route.ts`
 - `v1/containers/[id]/route.ts`
@@ -324,7 +323,6 @@ Generated router is in sync with the current generator and route tree.
 - `v1/chain/nfts/[chain]/[address]/route.ts`
 - `v1/chain/tokens/[chain]/[address]/route.ts`
 - `v1/chain/transfers/[chain]/[address]/route.ts`
-- `v1/character-assistant/route.ts`
 - `v1/chat/completions/route.ts`
 - `v1/chat/route.ts`
 - `v1/connections/[platform]/route.ts`
@@ -419,13 +417,13 @@ Generated router is in sync with the current generator and route tree.
 - `v1/generate-prompts/route.ts`
 - `v1/generate-video/route.ts`
 - `v1/jobs/[jobId]/route.ts`
-- `v1/knowledge/[id]/route.ts`
-- `v1/knowledge/check/route.ts`
-- `v1/knowledge/pre-upload/route.ts`
-- `v1/knowledge/query/route.ts`
-- `v1/knowledge/route.ts`
-- `v1/knowledge/submit/route.ts`
-- `v1/knowledge/upload-file/route.ts`
+- `v1/documents/[id]/route.ts`
+- `v1/documents/check/route.ts`
+- `v1/documents/pre-upload/route.ts`
+- `v1/documents/query/route.ts`
+- `v1/documents/route.ts`
+- `v1/documents/submit/route.ts`
+- `v1/documents/upload-file/route.ts`
 - `v1/market/candles/[chain]/[address]/route.ts`
 - `v1/market/portfolio/[chain]/[address]/route.ts`
 - `v1/market/preview/portfolio/[chain]/[address]/route.ts`

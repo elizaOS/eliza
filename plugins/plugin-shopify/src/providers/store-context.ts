@@ -11,6 +11,8 @@ import {
   type ShopifyService,
 } from "../services/ShopifyService.js";
 
+const MAX_SHOPIFY_DOMAIN_CHARS = 200;
+
 export const storeContextProvider: Provider = {
   name: "shopifyStoreContext",
   description:
@@ -18,6 +20,10 @@ export const storeContextProvider: Provider = {
   descriptionCompressed:
     "Shopify store: name, domain, plan, product/order counts.",
   dynamic: true,
+  contexts: ["connectors", "finance"],
+  contextGate: { anyOf: ["connectors", "finance"] },
+  cacheStable: false,
+  cacheScope: "turn",
 
   get: async (
     runtime: IAgentRuntime,
@@ -56,7 +62,7 @@ export const storeContextProvider: Provider = {
         values: {
           shopifyConnected: true,
           shopifyStoreName: shop.name,
-          shopifyDomain: shop.myshopifyDomain,
+          shopifyDomain: shop.myshopifyDomain.slice(0, MAX_SHOPIFY_DOMAIN_CHARS),
           shopifyPlan: shop.plan.displayName,
           shopifyCurrency: shop.currencyCode,
           shopifyProductCount: productCount ?? 0,
@@ -67,6 +73,7 @@ export const storeContextProvider: Provider = {
           shop,
           productCount: productCount ?? 0,
           orderCount: orderCount ?? 0,
+          truncated: false,
         },
       };
     } catch (err) {

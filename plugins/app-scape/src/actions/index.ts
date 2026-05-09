@@ -1,40 +1,16 @@
 /**
  * Action registry for `@elizaos/app-scape`.
  *
- * Five planner-facing actions:
- *   - WALK_TO       (standalone)
- *   - ATTACK_NPC    (standalone)
- *   - CHAT_PUBLIC   (standalone)
- *   - JOURNAL_OP    (router: set-goal | complete-goal | remember)
- *   - INVENTORY_OP  (router: eat | drop)
+ * Single planner-facing parent: SCAPE (Pattern C). Old leaves
+ * (SCAPE_WALK_TO, ATTACK_NPC, CHAT_PUBLIC, JOURNAL_OP, INVENTORY_OP,
+ * SET_GOAL, COMPLETE_GOAL, REMEMBER, EAT_FOOD, DROP_ITEM) live as
+ * similes on `SCAPE`.
  */
 
 import type { Action } from "@elizaos/core";
 
-import { attackNpc } from "./attack-npc.js";
-import { chatPublic } from "./chat-public.js";
-import { scapeInventoryAction, scapeJournalAction } from "./routers.js";
-import { walkTo } from "./walk-to.js";
+import { scapeAction } from "./scape.js";
 
-export { attackNpc } from "./attack-npc.js";
-export { chatPublic } from "./chat-public.js";
-export {
-  scapeInventoryAction,
-  scapeJournalAction,
-  scapeRouterActions,
-} from "./routers.js";
-export { walkTo } from "./walk-to.js";
-export {
-  SCAPE_ACTION_ROUTER_DEFINITIONS,
-  formatScapeRouterPrompt,
-  isScapeRouterActionName,
-  resolveScapeRouterAction,
-} from "./router-definitions.js";
+export { scapeAction } from "./scape.js";
 
-export const scapeActions: Action[] = [
-  walkTo,
-  attackNpc,
-  chatPublic,
-  scapeJournalAction,
-  scapeInventoryAction,
-];
+export const scapeActions: Action[] = [scapeAction];

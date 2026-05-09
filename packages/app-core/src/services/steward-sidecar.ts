@@ -50,6 +50,14 @@ import {
 } from "./steward-sidecar/types";
 import { ensureWalletSetup } from "./steward-sidecar/wallet-setup";
 
+// Re-export helpers for external consumers (used by @elizaos/app-steward).
+export {
+  allocateFirstFreeLoopbackPort,
+  fingerprintRandomToken,
+  generateApiKey,
+  generateMasterPassword,
+  resolveDataDir,
+} from "./steward-sidecar/helpers";
 // Re-export types for external consumers
 export type {
   StewardCredentials,

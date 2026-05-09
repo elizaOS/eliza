@@ -2,11 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import {
-  parseToonKeyValue,
-  type IAgentRuntime,
-  ModelType,
-} from "@elizaos/core";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import { parseJsonObjectResponse } from "./json-model-output.js";
 import type {
   TaskNodeRecord,
   TaskRegistry,
@@ -91,9 +88,7 @@ function normalizeAcceptanceEvaluation(
 }
 
 function parseAcceptanceEvaluation(raw: string): AcceptanceEvaluation | null {
-  return normalizeAcceptanceEvaluation(
-    parseToonKeyValue<Record<string, unknown>>(raw),
-  );
+  return normalizeAcceptanceEvaluation(parseJsonObjectResponse(raw));
 }
 
 function getVerifierRootDir(): string {
@@ -252,16 +247,31 @@ async function evaluateAcceptanceCriteria(
   const prompt = [
     "You are a strict task verifier for an agent coordinator.",
     "Decide whether the thread satisfies its acceptance criteria based only on the provided evidence.",
-    "Return TOON only with keys: verdict, summary, checklist.",
+    "Return JSON only with keys: verdict, summary, checklist.",
     'Set verdict to "pass" only if every criterion is satisfied by concrete evidence.',
     'Set verdict to "fail" if any criterion is missing, contradicted, or unsupported.',
     "Each checklist entry must contain criterion, status (pass|fail|partial), and evidence.",
-    "Use this TOON shape:",
-    "verdict: pass",
-    "summary: One sentence explaining the decision.",
-    "checklist[2]{criterion,status,evidence}:",
-    "  Acceptance criterion one,pass,Concrete evidence for criterion one",
-    "  Acceptance criterion two,fail,What evidence is missing or contradictory",
+    "Use this JSON shape:",
+    JSON.stringify(
+      {
+        verdict: "pass",
+        summary: "One sentence explaining the decision.",
+        checklist: [
+          {
+            criterion: "Acceptance criterion one",
+            status: "pass",
+            evidence: "Concrete evidence for criterion one",
+          },
+          {
+            criterion: "Acceptance criterion two",
+            status: "fail",
+            evidence: "What evidence is missing or contradictory",
+          },
+        ],
+      },
+      null,
+      2,
+    ),
     "",
     `Thread title: ${thread.title}`,
     `Original request: ${thread.originalRequest}`,
@@ -297,7 +307,7 @@ async function evaluateAcceptanceCriteria(
     checklist: thread.acceptanceCriteria.map((criterion) => ({
       criterion,
       status: "partial",
-      evidence: "Verifier response was invalid TOON.",
+      evidence: "Verifier response was invalid JSON.",
     })),
   };
 }

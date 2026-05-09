@@ -42,14 +42,14 @@ elizaOS Cloud supports multiple authentication methods:
   <Tabs.Tab>
 ```bash
 curl -X GET "https://elizacloud.ai/api/v1/dashboard" \
-  -H "Authorization: Bearer ek_live_xxxxxxxxxxxx"
+  -H "Authorization: Bearer eliza_xxxxxxxxxxxx"
 ```
   </Tabs.Tab>
   <Tabs.Tab>
 ```javascript
 const response = await fetch('https://elizacloud.ai/api/v1/dashboard', {
   headers: {
-    'Authorization': 'Bearer ek_live_xxxxxxxxxxxx',
+    'Authorization': 'Bearer eliza_xxxxxxxxxxxx',
   },
 });
 ```
@@ -60,19 +60,17 @@ import requests
 
 response = requests.get(
 'https://elizacloud.ai/api/v1/dashboard',
-headers={'Authorization': 'Bearer ek_live_xxxxxxxxxxxx'}
+headers={'Authorization': 'Bearer eliza_xxxxxxxxxxxx'}
 )
 
-````
+```
   </Tabs.Tab>
 </Tabs>
 
-### Key Types
+### Key Prefix
 
-| Prefix | Environment | Description |
-|--------|-------------|-------------|
-| `ek_live_` | Production | Live API access |
-| `ek_test_` | Testing | Sandbox environment |
+API keys use the `eliza_` prefix. The same header formats work for dashboard,
+server, CLI, and wallet-issued keys.
 
 ### Key Permissions
 
@@ -88,7 +86,7 @@ Restrict keys to specific endpoints:
   ],
   "rateLimit": 100
 }
-````
+```
 
 ### Available Permissions
 
@@ -117,21 +115,21 @@ Permissions can be used to restrict what operations an API key can perform.
 
 ```bash
 curl -X GET "https://elizacloud.ai/api/v1/api-keys" \
-  -H "Authorization: Bearer ek_live_xxxxxxxxxxxx"
+  -H "Authorization: Bearer eliza_xxxxxxxxxxxx"
 ```
 
 ### Regenerate Key
 
 ```bash
 curl -X POST "https://elizacloud.ai/api/v1/api-keys/{id}/regenerate" \
-  -H "Authorization: Bearer ek_live_xxxxxxxxxxxx"
+  -H "Authorization: Bearer eliza_xxxxxxxxxxxx"
 ```
 
 ### Revoke Key
 
 ```bash
 curl -X DELETE "https://elizacloud.ai/api/v1/api-keys/{id}" \
-  -H "Authorization: Bearer ek_live_xxxxxxxxxxxx"
+  -H "Authorization: Bearer eliza_xxxxxxxxxxxx"
 ```
 
 ## Session Authentication
@@ -222,7 +220,7 @@ curl -X POST "https://elizacloud.ai/api/v1/chat/completions" \
 
 ```bash
 # .env.local (never commit this file)
-ELIZA_API_KEY=ek_live_xxxxxxxxxxxx
+ELIZA_API_KEY=eliza_xxxxxxxxxxxx
 ```
 
 ```javascript
@@ -267,15 +265,9 @@ const apiKey = process.env.ELIZA_API_KEY;
 
 ## Rate Limiting
 
-API keys have rate limits based on your plan:
-
-| Plan       | Rate Limit  |
-| ---------- | ----------- |
-| Free       | 60 req/min  |
-| Pro        | 300 req/min |
-| Enterprise | Custom      |
-
-Rate limit headers:
+Rate limits are endpoint-specific. See [Rate Limits](/docs/rate-limits) for the
+current presets and retry guidance. Rate-limited responses include headers such
+as:
 
 ```
 X-RateLimit-Limit: 60

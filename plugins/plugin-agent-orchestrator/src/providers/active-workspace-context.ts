@@ -64,6 +64,10 @@ export const activeWorkspaceContextProvider: Provider = {
   descriptionCompressed:
     "Live status of workspaces, task agents, and progress.",
   position: 1,
+  contexts: ["code", "tasks", "agent_internal"],
+  contextGate: { anyOf: ["code", "tasks", "agent_internal"] },
+  cacheStable: false,
+  cacheScope: "turn",
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     const ptyService = runtime.getService("PTY_SERVICE") as unknown as
@@ -124,7 +128,7 @@ export const activeWorkspaceContextProvider: Provider = {
     ) {
       lines.push("guidance:");
       lines.push(
-        "  createTask: Use START_CODING_TASK when the user needs anything more involved than a simple direct reply.",
+        "  createTask: Use ACPX CREATE_AGENT_TASK when the user needs anything more involved than a simple direct reply.",
       );
     } else {
       if (workspaces.length > 0) {

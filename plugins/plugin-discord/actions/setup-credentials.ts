@@ -39,6 +39,8 @@ export interface CredentialField {
 
 const SAFE_PRESET_NAME_RE = /^[A-Za-z0-9_-]+$/;
 const SESSION_TIMEOUT_MS = 5 * 60 * 1000;
+const MAX_DISCORD_SETUP_TEXT_CHARS = 2_000;
+const DISCORD_SETUP_ACTION_TIMEOUT_MS = 30_000;
 const presets = new Map<string, CredentialPreset>();
 const activeSessions = new Map<string, SetupSession>();
 
@@ -443,12 +445,6 @@ function detectSetupIntent(text: string): string | null | undefined {
 	return undefined;
 }
 
-function isSetupTrigger(text: string): boolean {
-	return TRIGGER_PATTERNS.some((pattern) =>
-		pattern.test(text.toLowerCase().trim()),
-	);
-}
-
 function buildServiceListMessage(): string {
 	const services = listPresets()
 		.filter((presetName) => presetName !== "generic")
@@ -464,6 +460,10 @@ function buildServiceListMessage(): string {
 		"",
 		"Just tell me the name, for example `github` or `custom`.",
 	].join("\n");
+}
+
+function truncateActionText(text: string, maxChars: number): string {
+	return text.length > maxChars ? `${text.slice(0, maxChars - 3)}...` : text;
 }
 
 function resolveDeletionTarget(
@@ -506,14 +506,30 @@ export const setupCredentials: Action = {
 	description:
 		"Start Discord credential setup or account pairing. Guides the user through setting up API credentials for supported third-party services, validates them when possible, and stores them securely.",
 	descriptionCompressed: "Set up Discord credentials.",
+	contexts: ["messaging", "connectors", "settings"],
+	contextGate: { anyOf: ["messaging", "connectors", "settings"] },
+	roleGate: { minRole: "USER" },
+	parameters: [
+		{
+			name: "service",
+			description: "Third-party service to configure from Discord.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "credentials",
+			description: "Credential values supplied by the user, when present.",
+			required: false,
+			schema: { type: "object" },
+		},
+	],
 	...terminalActionInteractionSemantics,
 	validate: async (_runtime, message) => {
 		if (message.content.source !== "discord") {
 			return false;
 		}
-		const text = message.content.text?.trim() ?? "";
 		const userId = message.entityId as string;
-		return activeSessions.has(userId) || isSetupTrigger(text);
+		return activeSessions.has(userId) || Boolean(userId);
 	},
 	handler: async (
 		runtime: IAgentRuntime,
@@ -522,6 +538,7 @@ export const setupCredentials: Action = {
 		_options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
+		const timeoutMs = DISCORD_SETUP_ACTION_TIMEOUT_MS;
 		const discordService = runtime.getService(
 			DISCORD_SERVICE_NAME,
 		) as DiscordService | null;
@@ -570,7 +587,12 @@ export const setupCredentials: Action = {
 				if (detectedService && presets.has(detectedService)) {
 					const preset = presets.get(detectedService);
 					if (!preset) {
-						await dmChannel.send(buildServiceListMessage());
+						await dmChannel.send(
+							truncateActionText(
+								buildServiceListMessage(),
+								MAX_DISCORD_SETUP_TEXT_CHARS,
+							),
+						);
 						return {
 							success: false,
 							error: `Unsupported credential preset: ${detectedService}`,
@@ -599,7 +621,12 @@ export const setupCredentials: Action = {
 							.join("\n"),
 					);
 				} else {
-					await dmChannel.send(buildServiceListMessage());
+					await dmChannel.send(
+						truncateActionText(
+							buildServiceListMessage(),
+							MAX_DISCORD_SETUP_TEXT_CHARS,
+						),
+					);
 				}
 			} catch (error) {
 				logger.warn(
@@ -620,7 +647,7 @@ export const setupCredentials: Action = {
 			return {
 				success: true,
 				text: "Redirected credential setup to DMs",
-				data: terminalActionResultData(),
+				data: { ...terminalActionResultData(), timeoutMs },
 			};
 		}
 
@@ -668,7 +695,7 @@ export const setupCredentials: Action = {
 				return {
 					success: true,
 					text: "Collecting next credential field",
-					data: terminalActionResultData(),
+					data: { ...terminalActionResultData(), timeoutMs },
 				};
 			}
 
@@ -698,7 +725,7 @@ export const setupCredentials: Action = {
 				return {
 					success: true,
 					text: "Credentials stored",
-					data: terminalActionResultData(),
+					data: { ...terminalActionResultData(), timeoutMs },
 				};
 			}
 
@@ -753,7 +780,7 @@ export const setupCredentials: Action = {
 			return {
 				success: true,
 				text: `Started ${preset.displayName} setup`,
-				data: terminalActionResultData(),
+				data: { ...terminalActionResultData(), timeoutMs },
 			};
 		}
 
@@ -795,20 +822,23 @@ export const setupCredentials: Action = {
 			return {
 				success: true,
 				text: `Started ${preset.displayName} setup`,
-				data: terminalActionResultData(),
+				data: { ...terminalActionResultData(), timeoutMs },
 			};
 		}
 
 		if (callback) {
 			await callback({
-				text: buildServiceListMessage(),
+				text: truncateActionText(
+					buildServiceListMessage(),
+					MAX_DISCORD_SETUP_TEXT_CHARS,
+				),
 				source: "discord",
 			});
 		}
 		return {
 			success: true,
 			text: "Showed credential setup service list",
-			data: terminalActionResultData(),
+			data: { ...terminalActionResultData(), timeoutMs },
 		};
 	},
 	examples: [

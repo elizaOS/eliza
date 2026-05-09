@@ -310,10 +310,13 @@ function makeGenerateHandler(
 ): GenerateTextHandler {
   return async (_runtime, params) => {
     await lifecycle.ensureChatLoaded();
-    return loader.generate({
-      prompt: params.prompt,
-      stopSequences: params.stopSequences,
-    });
+    const args: Parameters<AospLoader["generate"]>[0] = {
+      prompt: params.prompt ?? "",
+    };
+    if (params.stopSequences !== undefined) {
+      args.stopSequences = params.stopSequences;
+    }
+    return loader.generate(args);
   };
 }
 

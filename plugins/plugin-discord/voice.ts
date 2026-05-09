@@ -275,6 +275,7 @@ export class VoiceManager extends EventEmitter {
 	private activeAudioPlayer: AudioPlayer | null = null;
 	private client: Client | null;
 	private runtime: ICompatRuntime;
+	private accountId: string;
 	private streams: Map<string, Readable> = new Map();
 	private connections: Map<string, VoiceConnection> = new Map();
 	private activeMonitors: Map<
@@ -293,6 +294,7 @@ export class VoiceManager extends EventEmitter {
 		super();
 		this.client = service.client;
 		this.runtime = runtime;
+		this.accountId = service.accountId ?? "default";
 		this.ready = false;
 
 		if (this.client) {
@@ -1170,6 +1172,9 @@ export class VoiceManager extends EventEmitter {
 				type,
 				worldId: createUniqueUuid(this.runtime, channel.guild.id) as UUID,
 				worldName: channel.guild.name,
+				metadata: {
+					accountId: this.accountId,
+				},
 			});
 
 			const memory: Memory = {
@@ -1188,6 +1193,9 @@ export class VoiceManager extends EventEmitter {
 					userName,
 					isVoiceMessage: true,
 					channelType: type,
+				},
+				metadata: {
+					accountId: this.accountId,
 				},
 				createdAt: Date.now(),
 			};
@@ -1214,6 +1222,9 @@ export class VoiceManager extends EventEmitter {
 							channelType: type,
 						},
 						roomId,
+						metadata: {
+							accountId: this.accountId,
+						},
 						createdAt: Date.now(),
 					};
 
@@ -1285,7 +1296,8 @@ export class VoiceManager extends EventEmitter {
 					message: memory,
 					callback,
 					source: "discord",
-				});
+					accountId: this.accountId,
+				} as any);
 			}
 		} catch (error) {
 			this.runtime.logger.error(

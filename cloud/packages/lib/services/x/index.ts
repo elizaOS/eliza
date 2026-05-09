@@ -1,3 +1,4 @@
+import { applyMarkup, DEFAULT_MARKUP_RATE, type MarkupBreakdown } from "@elizaos/billing";
 import {
   type SendTweetV2Params,
   type TTweetv2Expansion,
@@ -12,7 +13,6 @@ import { creditsService } from "@/lib/services/credits";
 import type { OAuthConnectionRole } from "@/lib/services/oauth/types";
 import { twitterAutomationService } from "@/lib/services/twitter-automation";
 import { logger } from "@/lib/utils/logger";
-import { DEFAULT_MARKUP_RATE, type MarkupBreakdown } from "../../../billing/src";
 
 export type XOperation = "status" | "post" | "dm.send" | "dm.digest" | "dm.curate" | "feed.read";
 
@@ -142,20 +142,7 @@ type XApiError = Error & {
   };
 };
 
-function roundUsd(value: number): number {
-  return Math.round(value * 1_000_000) / 1_000_000;
-}
-
-function applyXMarkup(cost: number, markupRate = DEFAULT_MARKUP_RATE): MarkupBreakdown {
-  const rawCost = roundUsd(cost);
-  const billedCost = roundUsd(rawCost * (1 + markupRate));
-  return {
-    rawCost,
-    markup: roundUsd(billedCost - rawCost),
-    billedCost,
-    markupRate,
-  };
-}
+const X_BILLING_USD_PRECISION = 6;
 
 const X_USER_FIELDS: TTweetv2UserField[] = [
   "description",
@@ -263,7 +250,7 @@ async function resolveXOperationCost(operation: XOperation): Promise<XOperationC
     throw new XServiceError(503, `Invalid X pricing for operation ${operation}`);
   }
 
-  const breakdown = applyXMarkup(rawCost);
+  const breakdown = applyMarkup(rawCost, DEFAULT_MARKUP_RATE, X_BILLING_USD_PRECISION);
   return {
     operation,
     service: "x",

@@ -11,9 +11,13 @@
  *   POST /api/wallet/production-defaults
  */
 import type http from "node:http";
-import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
-import { readCompatJsonBody } from "@elizaos/app-core/api/compat-route-shared";
-import { sendJson, sendJsonError } from "@elizaos/app-core/api/response";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent";
+import { readCompatJsonBody } from "@elizaos/app-core";
+import { sendJson, sendJsonError } from "@elizaos/app-core";
+import {
+  canUseLocalTradeExecution,
+  resolveTradePermissionMode,
+} from "@elizaos/plugin-wallet";
 import {
   buildBscTradePreflight,
   buildBscTradeQuote,
@@ -26,10 +30,6 @@ import {
   loadWalletTradingProfile,
   updateWalletTradeLedgerEntryStatus,
 } from "../api/wallet-trading-profile";
-import {
-  canUseLocalTradeExecution,
-  resolveTradePermissionMode,
-} from "./server-wallet-trade";
 
 function isAgentAutomationRequest(req: http.IncomingMessage): boolean {
   return req.headers["x-eliza-agent-automation"] === "1";

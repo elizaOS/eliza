@@ -32,7 +32,7 @@ export default scenario({
       room: "main",
       text: "In the morning brief, add a Pending Drafts section that lists which drafts still need my sign-off and who they are for.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_CHECKIN", "TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+        acceptedActions: ["CHECKIN", "MESSAGE", "MESSAGE"],
         description: "morning brief approval queue review",
         includesAny: [
           "draft",
@@ -59,11 +59,11 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["OWNER_CHECKIN", "TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+      actionName: ["CHECKIN", "MESSAGE", "MESSAGE"],
     },
     {
       type: "selectedActionArguments",
-      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+      actionName: ["MESSAGE", "MESSAGE"],
       includesAny: ["draft", "sign-off", "approval", "pending"],
     },
     {
@@ -79,7 +79,7 @@ export default scenario({
       type: "custom",
       name: "ea-daily-brief-drafts-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_CHECKIN", "TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+        acceptedActions: ["CHECKIN", "MESSAGE", "MESSAGE"],
         description: "morning brief approval queue review",
         includesAny: ["draft", "sign-off", "approval", "brief", "pending"],
       }),

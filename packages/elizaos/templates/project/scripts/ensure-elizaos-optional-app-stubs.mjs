@@ -17,7 +17,7 @@ const optionalPackages = [
   "@elizaos/app-companion",
   "@elizaos/app-elizamaker",
   "@elizaos/app-hyperliquid",
-  "@elizaos/app-knowledge",
+  "@elizaos/app-documents",
   "@elizaos/app-lifeops",
   "@elizaos/app-polymarket",
   "@elizaos/app-shopify",
@@ -38,7 +38,7 @@ export const LIFEOPS_CONNECTOR_DEGRADATION_AXES = Object.freeze([]);
 export const appPlugin = optionalStub;
 export const defaultPlugin = optionalStub;
 export const hyperliquidPlugin = optionalStub;
-export const knowledgePlugin = optionalStub;
+export const documentsPlugin = optionalStub;
 export const lifeopsPlugin = optionalStub;
 export const polymarketPlugin = optionalStub;
 export const plugin = optionalStub;
@@ -47,7 +47,7 @@ export const stewardPlugin = optionalStub;
 export const trainingPlugin = optionalStub;
 export const vincentPlugin = optionalStub;
 
-export const knowledgeRoutes = Object.freeze([]);
+export const documentsRoutes = Object.freeze([]);
 export const trainingRoutes = Object.freeze([]);
 
 export function clearBackendCache() {}
@@ -63,7 +63,7 @@ export function getSelfControlPermissionState() {
 export async function handleCloudFeaturesRoute() {
   return false;
 }
-export async function handleKnowledgeRoutes() {
+export async function handleDocumentsRoutes() {
   return false;
 }
 export async function handleTrainingRoutes() {

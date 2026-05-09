@@ -1,5 +1,5 @@
 import type { AgentContext } from "./components";
-import type { JsonValue } from "./proto.js";
+import type { JsonValue } from "./primitives";
 import type { ServiceTypeName } from "./service";
 
 export type SearchCategoryFilterType =

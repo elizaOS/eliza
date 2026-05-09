@@ -7,10 +7,10 @@ This document explains **why** Eliza Cloud splits cookie sessions, API keys, and
 ## Problem we were solving
 
 1. **Edge vs handler mismatch**  
-   The proxy historically let any request with `X-API-Key` or `Bearer eliza_…` skip Privy and reach the route. Many handlers used `requireAuth()` / `requireAuthWithOrg()`, which **only read cookies**. So API-key clients passed the edge, then got an opaque **401** from the handler. That is hard to debug and looks like a broken product.
+   The proxy historically let any request with `X-API-Key` or `Bearer eliza_...` skip session auth and reach the route. Many handlers used `requireAuth()` / `requireAuthWithOrg()`, which **only read cookies**. So API-key clients passed the edge, then got an opaque **401** from the handler. That is hard to debug and looks like a broken product.
 
 2. **Two audiences**  
-   - **Browsers**: cookie session after Privy login.  
+   - **Browsers**: cookie session after login.
    - **Scripts, CI, mobile backends**: API keys (and sometimes Bearer JWT).  
    The platform needs both without pretending they are the same security story.
 
@@ -31,10 +31,10 @@ This document explains **why** Eliza Cloud splits cookie sessions, API keys, and
 
 Choosing the wrong helper is a product bug, not just a style issue: it directly determines whether CLI and integrations work.
 
-### Layer 2 — Edge (`proxy.ts`): public paths, Privy, API-key bypass, session-only
+### Layer 2 — Edge (`proxy.ts`): public paths, session auth, API-key bypass, session-only
 
 **Why validate API keys only in handlers, not at the edge?**  
-Keys are looked up in the database with org and permission logic. The edge middleware is optimized for Privy JWT caching and routing. Duplicating full key validation at the edge would add latency, coupling, and deployment risk. **Tradeoff:** invalid keys still “pass” the edge but fail fast in the handler with a normal 401.
+Keys are looked up in the database with org and permission logic. The edge middleware is optimized for session JWT caching and routing. Duplicating full key validation at the edge would add latency, coupling, and deployment risk. **Tradeoff:** invalid keys still “pass” the edge but fail fast in the handler with a normal 401.
 
 **Why `sessionOnlyPaths` / `sessionOnlyPathPatterns`?**  
 For routes that **must** stay cookie-shaped, we fail **at the edge** with `session_auth_required` when the client sends API-key-style credentials. **Why:** Clear, consistent error for integrators (“use a browser session here”) instead of a generic handler 401 after a successful edge bypass.
@@ -48,7 +48,7 @@ Wallet-signed flows on specific prefixes are verified in handlers. Session-only 
 
 **Before:** `/api/auth/cli-session` as a prefix made **every** subpath “public” at the edge, including `POST .../:sessionId/complete`. The session-only regex for `complete` never ran.
 
-**Why that mattered:** `complete` is where the browser finishes Privy login and the server issues API key material. It should not be treated as an unauthenticated public route for the purpose of API-key bypass semantics.
+**Why that mattered:** `complete` is where the browser finishes login and the server issues API key material. It should not be treated as an unauthenticated public route for the purpose of API-key bypass semantics.
 
 **After:** Only these match as public (via patterns):
 

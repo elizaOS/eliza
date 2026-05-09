@@ -3,7 +3,7 @@ import type { AgentRuntime } from "@elizaos/core";
 /** Optional methods on some elizaOS AgentRuntime builds (not in all type versions). */
 type AgentRuntimeFeatureFlags = {
   isTrajectoriesEnabled?: () => boolean;
-  isKnowledgeEnabled?: () => boolean;
+  isDocumentsEnabled?: () => boolean;
 };
 
 export function runtimeTrajectoriesEnabled(runtime: AgentRuntime): boolean {
@@ -14,10 +14,10 @@ export function runtimeTrajectoriesEnabled(runtime: AgentRuntime): boolean {
   );
 }
 
-export function runtimeKnowledgeEnabled(runtime: AgentRuntime): boolean {
+export function runtimeDocumentsEnabled(runtime: AgentRuntime): boolean {
   const runtimeWithFlags = runtime as AgentRuntime & AgentRuntimeFeatureFlags;
   return (
-    typeof runtimeWithFlags.isKnowledgeEnabled === "function" &&
-    runtimeWithFlags.isKnowledgeEnabled()
+    typeof runtimeWithFlags.isDocumentsEnabled === "function" &&
+    runtimeWithFlags.isDocumentsEnabled()
   );
 }

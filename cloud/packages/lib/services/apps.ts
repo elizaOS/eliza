@@ -196,6 +196,16 @@ export class AppsService {
     return await appsRepository.listByOrganization(organizationId);
   }
 
+  async listByOrganizationWithDatabaseState(
+    organizationId: string,
+  ): Promise<App[]> {
+    return await appsRepository.listByOrganization(organizationId);
+  }
+
+  async withDatabaseState(app: App): Promise<App> {
+    return app;
+  }
+
   async listAll(filters?: { isActive?: boolean; isApproved?: boolean }): Promise<App[]> {
     return await appsRepository.listAll(filters);
   }
@@ -293,8 +303,9 @@ export class AppsService {
       await this.invalidateCache(id, app.api_key_id ?? undefined, app.slug ?? undefined);
     }
 
-    // Clean up user database if provisioned
-    if (app?.user_database_project_id) {
+    // Clean up app database state. The service reads canonical app_databases and
+    // no-ops for shared DB apps or apps without a provisioned project.
+    if (app) {
       try {
         const { userDatabaseService } = await import("./user-database");
         await userDatabaseService.cleanupDatabase(id);

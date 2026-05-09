@@ -49,6 +49,10 @@ export async function countAllocatedWorkloadsOnNode(nodeId: string): Promise<num
  *
  * Stopped user containers still count here because they may retain local host
  * volume data on the node even though they are not consuming an active slot.
+ *
+ * Warm-pool rows (pool_status = 'unclaimed') are stateless replicas — the
+ * node-autoscaler may evict them when draining, the pool replenisher will
+ * recreate them elsewhere — so they do NOT count as retained.
  */
 export async function countRetainedWorkloadsOnNode(nodeId: string): Promise<number> {
   const [containerCount, agentCount] = await Promise.all([
@@ -71,6 +75,7 @@ export async function countRetainedWorkloadsOnNode(nodeId: string): Promise<numb
           and(
             eq(agentSandboxes.node_id, nodeId),
             sql`${agentSandboxes.status} not in ('stopped','error')`,
+            sql`(${agentSandboxes.pool_status} is null or ${agentSandboxes.pool_status} <> 'unclaimed')`,
           ),
         ),
     ),

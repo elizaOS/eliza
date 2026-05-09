@@ -117,26 +117,27 @@ export const UNIVERSAL_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
 /**
  * Map intent categories → action names that get full params when detected.
  *
- * These names must match the registered action names in the runtime. If an
- * action is renamed or removed upstream, the compaction gracefully degrades
- * — the action simply won't appear in the prompt at all, so the stale name
- * in this map is harmless (it just won't match anything).
+ * Names must match registered Action.name strings. Verified live (2026-05-08):
+ *   TASKS         — plugins/plugin-agent-orchestrator/src/actions/tasks.ts:2029
+ *                   (polymorphic action that subsumes the old START_CODING_TASK
+ *                   / CREATE_TASK / SPAWN_AGENT / CREATE_WORKSPACE /
+ *                   SUBMIT_WORKSPACE / LIST_AGENTS / SEND_TO_AGENT /
+ *                   STOP_AGENT / MANAGE_ISSUES sub-ops)
+ *   RUNTIME       — packages/agent/src/actions/runtime.ts:405 (op:"restart"
+ *                   replaces the old RESTART_AGENT)
+ *   SHELL_COMMAND — packages/agent/src/actions/terminal.ts:261
+ *   PLAY_EMOTE    — plugins/app-companion/src/actions/emote.ts:22
+ *
+ * GitHub issue ops live under GITHUB_ISSUE in plugin-github but that plugin
+ * isn't loaded by default — kept out of the map to avoid validator noise; it
+ * still gets surfaced when present because action listing is dynamic.
  */
 export const INTENT_ACTION_MAP: Record<string, Set<string>> = {
-  coding: new Set([
-    "START_CODING_TASK",
-    "CREATE_TASK",
-    "SPAWN_AGENT",
-    "PROVISION_WORKSPACE",
-    "FINALIZE_WORKSPACE",
-    "LIST_AGENTS",
-    "SEND_TO_AGENT",
-    "STOP_AGENT",
-  ]),
-  terminal: new Set(["SHELL_COMMAND", "RESTART_AGENT"]),
-  issues: new Set(["MANAGE_ISSUES"]),
+  coding: new Set(["TASKS"]),
+  terminal: new Set(["SHELL_COMMAND", "RUNTIME"]),
+  issues: new Set(["TASKS"]),
   emote: new Set(["PLAY_EMOTE"]),
-  plugin_ui: new Set(["RESTART_AGENT"]),
+  plugin_ui: new Set(["RUNTIME"]),
   wallet: new Set(),
 };
 
@@ -293,7 +294,7 @@ export function compactCodingExamplesForIntent(prompt: string): string {
  * the prompt with a version where only intent-relevant actions keep full
  * parameter detail — the rest are stubs with just name + description.
  *
- * Supports the TOON prompt encoding emitted by the actions provider:
+ * Supports the legacy line-oriented prompt encoding emitted by older actions providers:
  *   actions[N]:
  *   - ACTION: description
  *     aliases[..]: ...
@@ -323,13 +324,13 @@ export function compactActionsForIntent(prompt: string): string {
   // stubs so the LLM knows they exist but doesn't waste context on params.
   const fullParamActions = buildFullParamActionSet(intentCategories);
 
-  return compactToonActionsBlock(prompt, fullParamActions) ?? prompt;
+  return compactStructuredActionsBlock(prompt, fullParamActions) ?? prompt;
 }
 
 /**
- * Locate and compact a TOON-formatted "Available Actions" block.
+ * Locate and compact a structured "Available Actions" block.
  */
-function compactToonActionsBlock(
+function compactStructuredActionsBlock(
   prompt: string,
   fullParamActions: Set<string>,
 ): string | null {
@@ -374,9 +375,9 @@ function compactToonActionsBlock(
   const bodyLines = lines.slice(0, consumed);
   const blockEnd = bodyStart + bodyLines.join("\n").length;
 
-  type ToonAction = { name: string; entryLines: string[] };
-  const entries: ToonAction[] = [];
-  let current: ToonAction | null = null;
+  type JsonAction = { name: string; entryLines: string[] };
+  const entries: JsonAction[] = [];
+  let current: JsonAction | null = null;
   for (const line of bodyLines) {
     if (line.startsWith("- ")) {
       if (current) entries.push(current);

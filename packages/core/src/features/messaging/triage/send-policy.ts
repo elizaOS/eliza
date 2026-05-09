@@ -1,6 +1,6 @@
 /**
  * SendPolicy hook — lets a host runtime gate outbound sends behind owner
- * approval (or any other policy). Triage's SEND_DRAFT consults the registered
+ * approval (or any other policy). Triage's MESSAGE consults the registered
  * policy before invoking the adapter.
  *
  * Registration uses a module-scoped WeakMap keyed by runtime instance so the

@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 import {
   parseAllowedHostEnv,
   toCapacitorAllowNavigation,
-} from "@elizaos/app-core/config/allowed-hosts";
+} from "@elizaos/shared";
 import appConfig from "./app.config";
 
 type CapacitorAllowNavigation = NonNullable<

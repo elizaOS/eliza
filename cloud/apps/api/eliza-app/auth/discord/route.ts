@@ -12,8 +12,8 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import type { Organization } from "@/db/schemas/organizations";
-import type { User } from "@/db/schemas/users";
+import type { Organization } from "@/db/repositories/organizations";
+import type { User } from "@/db/repositories/users";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {

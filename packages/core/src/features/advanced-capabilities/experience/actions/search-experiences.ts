@@ -9,6 +9,7 @@ import type {
 import type { Memory } from "../../../../types/memory.ts";
 import type { IAgentRuntime } from "../../../../types/runtime.ts";
 import type { State } from "../../../../types/state.ts";
+import { hasActionContextOrKeyword } from "../../../../utils/action-validation.ts";
 import type { ExperienceService } from "../service.ts";
 import { formatExperienceForPrompt } from "../utils/experienceFormatter.ts";
 
@@ -52,6 +53,8 @@ function readNumberParam(value: unknown): number | undefined {
 
 export const searchExperiencesAction: Action = {
 	name: SEARCH_EXPERIENCES,
+	contexts: ["memory", "documents", "agent_internal"],
+	roleGate: { minRole: "USER" },
 	similes: [
 		"FIND_EXPERIENCES",
 		"SEARCH_MEMORY_GRAPH",
@@ -112,12 +115,22 @@ export const searchExperiencesAction: Action = {
 			return false;
 		}
 		const params = getActionParams(_options);
-		if (readStringParam(params, "query", "q")) {
-			return true;
-		}
+		const hasStructuredQuery = Boolean(readStringParam(params, "query", "q"));
 		return (
-			/\b(experience|experiences|learned|learning|memory graph)\b/.test(text) &&
-			/\b(search|find|explore|what|show|recall|know)\b/.test(text)
+			hasStructuredQuery ||
+			(/\b(experience|experiences|learned|learning|memory graph)\b/.test(
+				text,
+			) &&
+				/\b(search|find|explore|what|show|recall|know)\b/.test(text)) ||
+			hasActionContextOrKeyword(message, _state, {
+				contexts: ["memory", "documents", "agent_internal"],
+				keywords: [
+					"search experiences",
+					"find experiences",
+					"memory graph",
+					"what have you learned",
+				],
+			})
 		);
 	},
 

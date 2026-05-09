@@ -1,10 +1,10 @@
-import { getExplorerTokenUrl } from "@elizaos/app-wallet/inventory/chainConfig";
 import {
   BSC_GAS_READY_THRESHOLD,
+  getExplorerTokenUrl,
   HEX_ADDRESS_RE,
   isAvaxChainName,
   isBscChainName,
-} from "@elizaos/app-wallet/inventory/constants";
+} from "@elizaos/app-wallet";
 import type { BscTradeTxStatusResponse } from "@elizaos/shared";
 
 export {

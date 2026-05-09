@@ -6,8 +6,8 @@
  */
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { LINE_MESSAGE_OP_ACTION, messageOp } from "./actions/index.js";
+import { getConnectorAccountManager, logger } from "@elizaos/core";
+import { createLineConnectorAccountProvider } from "./connector-account-provider.js";
 import { LineService } from "./service.js";
 
 // Account management exports
@@ -60,7 +60,7 @@ export {
 } from "./messaging.js";
 // Re-export types and service
 export * from "./types.js";
-export { LINE_MESSAGE_OP_ACTION, LineService, messageOp };
+export { LineService };
 
 /**
  * LINE plugin for ElizaOS agents.
@@ -70,12 +70,28 @@ const linePlugin: Plugin = {
   description: "LINE Messaging API plugin for ElizaOS agents",
 
   services: [LineService],
-  actions: [messageOp],
+  actions: [],
   providers: [],
   tests: [],
 
-  init: async (config: Record<string, string>, _runtime: IAgentRuntime): Promise<void> => {
+  init: async (config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
     logger.info("Initializing LINE plugin...");
+
+    // Register the LINE provider with the ConnectorAccountManager so the HTTP
+    // CRUD surface (packages/agent/src/api/connector-account-routes.ts) can
+    // list, create, patch, and delete LINE accounts.
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createLineConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:line",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register LINE provider with ConnectorAccountManager"
+      );
+    }
 
     const hasAccessToken = Boolean(
       config.LINE_CHANNEL_ACCESS_TOKEN || process.env.LINE_CHANNEL_ACCESS_TOKEN

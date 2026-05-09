@@ -31,7 +31,6 @@ export enum PluginStatus {
 export interface PluginComponents {
 	actions: Set<string>;
 	providers: Set<string>;
-	evaluators: Set<string>;
 	services: Set<string>;
 	eventHandlers: Map<
 		string,
@@ -45,12 +44,7 @@ export interface PluginComponents {
 
 export interface ComponentRegistration {
 	pluginId: string;
-	componentType:
-		| "action"
-		| "provider"
-		| "evaluator"
-		| "service"
-		| "eventHandler";
+	componentType: "action" | "provider" | "service" | "eventHandler";
 	componentName: string;
 	timestamp: number;
 }

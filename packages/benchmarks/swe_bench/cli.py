@@ -19,6 +19,8 @@ import re
 import sys
 import textwrap
 import time
+import urllib.error
+import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -46,6 +48,7 @@ _PATCH_FENCE_RE = re.compile(
     r"```(?:diff|patch)?\s*\n(?P<body>.*?)```", re.DOTALL | re.IGNORECASE
 )
 _DIFF_HEADER_RE = re.compile(r"^\s*diff --git ", re.MULTILINE)
+_SOURCE_CONTEXT_CACHE: dict[tuple[str, str, str], str | None] = {}
 
 
 def _normalize_patch_text(text: str) -> str:
@@ -83,18 +86,107 @@ def _extract_patch(text: str) -> str:
     return ""
 
 
-def _build_prompt(instance: SWEBenchInstance) -> str:
+def _candidate_context_paths(instance: SWEBenchInstance) -> list[str]:
+    """Infer likely source files from the problem statement.
+
+    This is intentionally lightweight: the benchmark runner is not a full
+    SWE-agent, but giving a single-shot model the directly mentioned source
+    files avoids the pathological "patch without repository context" failure.
+    """
+    repo_root = instance.repo.split("/")[-1].replace("-", "_")
+    text = instance.problem_statement
+    candidates: list[str] = []
+
+    def add(path: str) -> None:
+        normalized = path.strip().strip("`'\"")
+        if not normalized:
+            return
+        normalized = normalized.lstrip("./")
+        if normalized.endswith(".py") and normalized not in candidates:
+            candidates.append(normalized)
+
+    for match in re.finditer(r"\bfrom\s+([A-Za-z_][\w.]*)\s+import\b", text):
+        module = match.group(1)
+        if module.startswith(f"{repo_root}.") or module == repo_root:
+            add(f"{module.replace('.', '/')}.py")
+
+    for match in re.finditer(r"\bimport\s+([A-Za-z_][\w.]*)\b", text):
+        module = match.group(1)
+        if module.startswith(f"{repo_root}.") or module == repo_root:
+            add(f"{module.replace('.', '/')}.py")
+
+    for match in re.finditer(r"(?<![A-Za-z0-9_./-])([A-Za-z0-9_./-]+\.py)\b", text):
+        add(match.group(1))
+
+    # If a package-qualified module is mentioned without an import statement,
+    # include the corresponding source file as a final hint.
+    dotted_re = re.compile(rf"\b({re.escape(repo_root)}(?:\.[A-Za-z_]\w*)+)\b")
+    for match in dotted_re.finditer(text):
+        add(f"{match.group(1).replace('.', '/')}.py")
+
+    return candidates[:5]
+
+
+def _fetch_github_file(repo: str, commit: str, path: str) -> str | None:
+    if os.environ.get("SWE_BENCH_INCLUDE_SOURCE_CONTEXT", "1") in {"0", "false", "False"}:
+        return None
+
+    cache_key = (repo, commit, path)
+    if cache_key in _SOURCE_CONTEXT_CACHE:
+        return _SOURCE_CONTEXT_CACHE[cache_key]
+
+    url = f"https://raw.githubusercontent.com/{repo}/{commit}/{path}"
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "eliza-swe-bench-context/1.0"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            raw = resp.read(160_000)
+    except (urllib.error.URLError, TimeoutError, OSError):
+        _SOURCE_CONTEXT_CACHE[cache_key] = None
+        return None
+
+    text = raw.decode("utf-8", errors="replace")
+    if len(text) > 80_000:
+        text = text[:80_000] + "\n# ... truncated ...\n"
+    _SOURCE_CONTEXT_CACHE[cache_key] = text
+    return text
+
+
+def _build_source_context(instance: SWEBenchInstance) -> str:
+    sections: list[str] = []
+    for path in _candidate_context_paths(instance):
+        content = _fetch_github_file(instance.repo, instance.base_commit, path)
+        if not content:
+            continue
+        sections.append(f"### {path}\n```python\n{content}\n```")
+    if not sections:
+        return ""
+    return "Relevant repository file snapshots at the base commit:\n\n" + "\n\n".join(sections)
+
+
+def _build_prompt(instance: SWEBenchInstance, *, retry: bool = False) -> str:
     """Build a single prompt asking for a unified diff fix."""
+    source_context = _build_source_context(instance)
+    retry_prefix = (
+        "Your previous response did not contain an applicable unified diff. "
+        "This time return only the diff text, starting with `diff --git`.\n\n"
+        if retry
+        else ""
+    )
     return (
+        retry_prefix +
         "You are an expert software engineer fixing a real-world bug.\n\n"
         f"Repository: {instance.repo}\n"
         f"Base commit: {instance.base_commit}\n\n"
         "Problem statement:\n"
         f"{instance.problem_statement}\n\n"
         + (f"Hints:\n{instance.hints_text}\n\n" if instance.hints_text else "")
+        + (f"{source_context}\n\n" if source_context else "")
         + "Respond with a SINGLE unified diff that resolves the issue. "
-        "Wrap it in a ```diff fenced code block. Do not include commentary "
-        "outside the diff. The diff must be applicable with `git apply` from "
+        "Start the response with `diff --git`; a fenced ```diff block is also acceptable. "
+        "Do not include commentary outside the diff. The diff must be applicable with `git apply` from "
         "the repository root."
     )
 
@@ -124,6 +216,32 @@ async def _run_instance(
         )
         text = getattr(response, "text", "") or ""
         patch = _extract_patch(text)
+        if not patch:
+            params = getattr(response, "params", None)
+            if isinstance(params, dict) and params:
+                patch = _extract_patch(json.dumps(params))
+        if not patch:
+            retry_response = send_message(
+                text=_build_prompt(instance, retry=True),
+                context={
+                    "benchmark": "swe_bench",
+                    "task_id": task_id,
+                    "instance_id": instance.instance_id,
+                    "provider": provider_label,
+                    "repo": instance.repo,
+                    "base_commit": instance.base_commit,
+                    "phase": "patch_retry",
+                    "goal": "return_diff_only",
+                },
+            )
+            retry_text = getattr(retry_response, "text", "") or ""
+            patch = _extract_patch(retry_text)
+            if not patch:
+                retry_params = getattr(retry_response, "params", None)
+                if isinstance(retry_params, dict) and retry_params:
+                    patch = _extract_patch(json.dumps(retry_params))
+            if not patch:
+                text = retry_text or text
     except Exception as exc:  # noqa: BLE001 — surface any client failure
         return SWEBenchResult(
             instance_id=instance.instance_id,
@@ -138,6 +256,7 @@ async def _run_instance(
         )
 
     if not patch:
+        preview = textwrap.shorten(text.replace("\n", " "), width=500, placeholder="...")
         return SWEBenchResult(
             instance_id=instance.instance_id,
             generated_patch="",
@@ -147,7 +266,7 @@ async def _run_instance(
             success=False,
             duration_seconds=time.time() - started,
             tokens_used=0,
-            error="no patch in response",
+            error=f"no patch in response; preview={preview}",
         )
 
     result = await evaluator.evaluate_patch(instance, patch)

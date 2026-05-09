@@ -1,9 +1,0 @@
-node_modules/
-bun.lock
-.env
-dist/
-*.tsbuildinfo
-.parallax/
-.playwright-mcp/
-.tmp-live/
-.turbo/

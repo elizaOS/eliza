@@ -25,7 +25,8 @@
   "files": [
     "dist/**/*",
     "skills/**/*",
-    "README.md"
+    "README.md",
+    "dist"
   ],
   "keywords": [
     "elizaos",

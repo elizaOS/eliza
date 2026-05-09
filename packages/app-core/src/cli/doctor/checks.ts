@@ -18,11 +18,11 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { resolveConfigPath } from "@elizaos/agent";
+import { getCloudSecret } from "@elizaos/plugin-elizacloud";
 import {
   resolveApiSecurityConfig,
   resolveServerOnlyPort,
 } from "@elizaos/shared";
-import { getCloudSecret } from "../../api/cloud-secrets";
 
 export type CheckStatus = "pass" | "fail" | "warn" | "skip";
 export type CheckCategory = "system" | "config" | "network" | "storage";

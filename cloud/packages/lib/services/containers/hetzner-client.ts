@@ -42,6 +42,7 @@ import {
   getHetznerVolumeService,
   isHetznerVolumesAvailable,
 } from "@/lib/services/containers/hetzner-volumes";
+import { dockerNodeManager } from "@/lib/services/docker-node-manager";
 import { getUsedDockerHostPorts } from "@/lib/services/docker-port-allocation";
 import {
   allocatePort,
@@ -487,20 +488,21 @@ export class HetznerContainersClient {
       if (sticky) {
         if (hcloudVolumeLocation) {
           if (getDockerNodeLocation(sticky) === hcloudVolumeLocation) {
-            node = sticky;
+            node = (await dockerNodeManager.ensureNodeReady(sticky)) ? sticky : null;
           }
         } else {
-          node = sticky;
+          node = (await dockerNodeManager.ensureNodeReady(sticky)) ? sticky : null;
         }
       }
     }
 
     if (!node && hcloudVolumeLocation) {
-      node = await findNodeInLocation(hcloudVolumeLocation);
+      const located = await findNodeInLocation(hcloudVolumeLocation);
+      node = located && (await dockerNodeManager.ensureNodeReady(located)) ? located : null;
     }
 
     if (!node && !hcloudVolumeLocation) {
-      node = await dockerNodesRepository.findLeastLoaded();
+      node = await dockerNodeManager.getAvailableNode();
     }
 
     if (!node) {

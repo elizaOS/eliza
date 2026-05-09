@@ -152,7 +152,7 @@ const elizaPluginAliases = workspacePluginPackageNames.flatMap(
 );
 const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-agent-skills",
-  "plugin-browser-bridge",
+  "plugin-browser",
 ]);
 const pluginPdfSrc = path.join(elizaWorkspaceRoot, "plugins", "plugin-pdf");
 // Fall back to a stub when an optional plugin tarball has a broken entry point.
@@ -358,7 +358,7 @@ const vitestResolveAlias: ModuleAlias[] = [
     "app-shopify",
     "app-steward",
     "app-lifeops",
-    "app-knowledge",
+    "app-documents",
     "app-wallet",
   ]),
   ...getSharedSourceAliases(sharedSourceRoot, {
@@ -416,7 +416,7 @@ export default defineConfig({
       "eliza/packages/app-core/scripts/**/*.test.ts",
       "eliza/packages/native-plugins/llama/src/**/*.test.ts",
       "eliza/packages/shared/src/**/*.test.ts",
-      "eliza/plugins/plugin-browser-bridge/src/**/*.test.ts",
+      "eliza/plugins/plugin-browser/src/**/*.test.ts",
       "eliza/packages/app-core/src/**/*.test.tsx",
       "eliza/packages/agent/src/runtime/roles/test/**/*.test.ts",
       "eliza/plugins/app-lifeops/src/selfcontrol/**/*.test.ts",

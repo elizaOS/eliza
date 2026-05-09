@@ -18,8 +18,8 @@ LINE Messaging API plugin for ElizaOS agents. Enables chatbot integration with L
 # npm
 npm install @elizaos/plugin-line
 
-# pnpm
-pnpm add @elizaos/plugin-line
+# bun
+bun add @elizaos/plugin-line
 ```
 
 ## Configuration
@@ -62,48 +62,19 @@ pnpm add @elizaos/plugin-line
 
 ### Actions
 
-#### LINE_SEND_MESSAGE
+LINE messaging routes through the canonical `MESSAGE` action using
+`source: "line"`.
 
-Send a text message to a user, group, or room.
-
-```
-"Send them a message saying 'Hello!'"
-"Message the group saying 'Meeting in 5 minutes'"
-```
-
-#### LINE_SEND_FLEX_MESSAGE
-
-Send a rich flex message card.
-
-```
-"Send them an info card with title 'Update' and body 'New features available'"
-```
-
-#### LINE_SEND_LOCATION
-
-Send a location message with map pin.
-
-```
-"Send them the location of Tokyo Tower"
-```
+| Primary action | Operation | Description |
+|----------------|-----------|-------------|
+| `MESSAGE` | `send` | Send text, flex, or location content to a user, group, or room |
+| `MESSAGE` | `read_channel` | Read recent LINE conversation history when available |
+| `MESSAGE` | `list_channels` | List recent LINE targets when available |
 
 ### Providers
 
-#### lineChatContext
-
-Provides information about the current chat:
-- Chat type (user/group/room)
-- Chat ID
-- Group name and member count (for groups)
-
-#### lineUserContext
-
-Provides information about the current user:
-- User ID
-- Display name
-- Profile picture URL
-- Status message
-- Language preference
+LINE does not register standalone planner providers. Chat and user context is
+exposed through the LINE message connector hooks.
 
 ## LINE ID Formats
 

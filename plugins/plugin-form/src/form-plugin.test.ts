@@ -99,7 +99,7 @@ function makeRuntime(formService: unknown, modelResponse?: string) {
 }
 
 describe("plugin-form registration", () => {
-  it("registers the FORM service, context provider, evaluator, and restore action", async () => {
+  it("registers the FORM service, context provider, post-message hook, and restore action", async () => {
     expect(formPlugin.name).toBe("form");
     expect(formPlugin.services?.map((service) => service.serviceType)).toEqual([
       "FORM",
@@ -107,7 +107,7 @@ describe("plugin-form registration", () => {
     expect(formPlugin.providers?.map((provider) => provider.name)).toContain(
       "FORM_CONTEXT",
     );
-    expect(formPlugin.evaluators?.map((evaluator) => evaluator.name)).toContain(
+    expect(formPlugin.actions?.map((action) => action.name)).toContain(
       "form_evaluator",
     );
     expect(formPlugin.actions?.map((action) => action.name)).toContain(
@@ -124,7 +124,7 @@ describe("plugin-form registration", () => {
 });
 
 describe("FORM_CONTEXT provider", () => {
-  it("emits TOON form context for active and stashed forms", async () => {
+  it("emits JSON form context for active and stashed forms", async () => {
     const active = makeSession();
     const stashed = makeSession({
       id: "session-stashed",
@@ -168,13 +168,9 @@ describe("FORM_CONTEXT provider", () => {
       {},
     );
 
-    expect(result.text).toContain("form_context:");
-    expect(result.text).toContain(
-      "required_missing[1]{key,label,description,ask_prompt}:",
-    );
-    expect(result.text).toContain(
-      "stashed_forms[1]{form_id,form_name,progress}:",
-    );
+    expect(result.text).toContain("form_context_json:");
+    expect(result.text).toContain('"required_missing": [');
+    expect(result.text).toContain("stashed_forms_json:");
     expect(result.text).not.toContain("# Active Form");
     expect(result.text).not.toContain("- Email");
     expect(result.values?.formContext).toBe(result.text);
@@ -235,7 +231,7 @@ describe("FORM_RESTORE action", () => {
 });
 
 describe("form_evaluator", () => {
-  it("extracts values from TOON model output and updates the active session", async () => {
+  it("extracts values from JSON model output and updates the active session", async () => {
     const session = makeSession();
     const formService = {
       getActiveSession: vi.fn(async () => session),
@@ -246,11 +242,18 @@ describe("form_evaluator", () => {
     };
     const runtime = makeRuntime(
       formService,
-      [
-        "intent: fill_form",
-        "extractions[1]{key,value,confidence,reasoning,is_correction}:",
-        "  email,jane@example.com,0.95,user gave email,false",
-      ].join("\n"),
+      JSON.stringify({
+        intent: "fill_form",
+        extractions: [
+          {
+            key: "email",
+            value: "jane@example.com",
+            confidence: 0.95,
+            reasoning: "user gave email",
+            is_correction: false,
+          },
+        ],
+      }),
     );
     const message = makeMessage("my email is jane@example.com");
 
@@ -263,12 +266,12 @@ describe("form_evaluator", () => {
       expect.any(String),
       expect.objectContaining({
         prompt: expect.stringContaining(
-          "fields[3]{key,label,type,description,hints,options}:",
+          '"fields": [',
         ),
       }),
     );
     const prompt = runtime.useModel.mock.calls[0]?.[1]?.prompt as string;
-    expect(prompt).toContain("output_schema:");
+    expect(prompt).toContain("Return only a valid JSON object");
     expect(prompt).not.toContain("```json");
     expect(prompt).not.toContain("FIELDS TO EXTRACT");
     expect(formService.updateField).toHaveBeenCalledWith(

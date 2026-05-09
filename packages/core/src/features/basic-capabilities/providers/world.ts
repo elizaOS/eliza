@@ -21,6 +21,11 @@ export const worldProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	dynamic: spec.dynamic ?? true,
+	contexts: ["general"],
+	contextGate: { anyOf: ["general"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
 
 	get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
 		logger.debug(

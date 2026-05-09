@@ -5,9 +5,11 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  ScenarioContext,
-  ScenarioFinalCheck,
+import { isLoopbackUrl, toRecord } from "../utils.js";
+import {
+  FINAL_CHECK_KEYS,
+  type ScenarioContext,
+  type ScenarioFinalCheck,
 } from "@elizaos/scenario-schema";
 import type { FinalCheckReport, FinalCheckStatus } from "../types.ts";
 
@@ -27,20 +29,12 @@ export type FinalCheckHandler = (
 ) => Promise<FinalCheckOutcome> | FinalCheckOutcome;
 
 const HANDLERS = new Map<string, FinalCheckHandler>();
-const STRICT_FINAL_CHECK_KEYS = new Map<string, ReadonlySet<string>>();
 
 export function registerFinalCheckHandler(
   type: string,
   handler: FinalCheckHandler,
 ): void {
   HANDLERS.set(type, handler);
-}
-
-function registerStrictFinalCheckKeys(
-  type: string,
-  keys: readonly string[],
-): void {
-  STRICT_FINAL_CHECK_KEYS.set(type, new Set(["type", "name", ...keys]));
 }
 
 function toArray<T>(value: T | T[] | undefined): T[] {
@@ -86,12 +80,6 @@ function matchesChannel(
   return toArray(accepted).some(
     (candidate) => normalizeChannel(candidate) === normalizedValue,
   );
-}
-
-function toRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 function actionParameters(
@@ -150,22 +138,6 @@ function matchesExpectedFields(
   );
 }
 
-function isLoopbackUrl(value: string | undefined): boolean {
-  if (!value) {
-    return false;
-  }
-  try {
-    const url = new URL(value);
-    return (
-      url.hostname === "127.0.0.1" ||
-      url.hostname === "localhost" ||
-      url.hostname === "::1" ||
-      url.hostname === "[::1]"
-    );
-  } catch {
-    return false;
-  }
-}
 
 type GmailMockRequest = {
   environment?: string;
@@ -236,9 +208,9 @@ function hasConfirmedGmailSendAction(
   action: ScenarioContext["actionsCalled"][number],
 ): boolean {
   const acceptedNames = new Set([
-    "SEND_DRAFT",
-    "RESPOND_TO_MESSAGE",
-    "TRIAGE_MESSAGES",
+    "MESSAGE",
+    "MESSAGE",
+    "MESSAGE",
     "GMAIL_ACTION",
     "INBOX",
   ]);
@@ -385,12 +357,9 @@ function actionMatchesChannel(
   switch (channel) {
     case "gmail":
       return [
-        "SEND_DRAFT",
-        "RESPOND_TO_MESSAGE",
-        "TRIAGE_MESSAGES",
-        "GMAIL_ACTION",
-        "INBOX",
-        "CROSS_CHANNEL_SEND",
+        "MESSAGE",
+        "MESSAGE",
+        "MESSAGE",
       ].includes(action.actionName);
     case "discord":
     case "telegram":
@@ -399,32 +368,20 @@ function actionMatchesChannel(
     case "whatsapp":
     case "sms":
       return [
-        "SEND_DRAFT",
-        "RESPOND_TO_MESSAGE",
-        "TRIAGE_MESSAGES",
-        "INBOX",
-        "CROSS_CHANNEL_SEND",
+        "MESSAGE",
+        "MESSAGE",
+        "MESSAGE",
       ].includes(action.actionName);
     case "x-dm":
       return [
-        "OWNER_X",
-        "SEND_DRAFT",
-        "RESPOND_TO_MESSAGE",
-        "X_READ",
-        "INBOX",
-        "CROSS_CHANNEL_SEND",
+        "X",
+        "MESSAGE",
+        "MESSAGE",
       ].includes(action.actionName);
     case "desktop":
     case "mobile":
     case "phone_call":
-      return [
-        "OWNER_DEVICE_INTENT",
-        "OWNER_VOICE_CALL",
-        "PUBLISH_DEVICE_INTENT",
-        "INTENT_SYNC",
-        "CALL_USER",
-        "CALL_EXTERNAL",
-      ].includes(action.actionName);
+      return ["VOICE_CALL"].includes(action.actionName);
     default:
       return false;
   }
@@ -623,94 +580,6 @@ registerFinalCheckHandler("approvalStateTransition", (check, { ctx }) => {
   };
 });
 
-registerFinalCheckHandler("connectorDispatchOccurred", (check, { ctx }) => {
-  if (ctx.connectorDispatches === undefined) {
-    return {
-      status: "skipped-dependency-missing",
-      detail: "no connector dispatcher registered",
-    };
-  }
-  const { channel, actionName, minCount } = check as {
-    channel: string | string[];
-    actionName?: string | string[];
-    minCount?: number;
-  };
-  const channels = toArray(channel);
-  const matched = ctx.connectorDispatches.filter((dispatch) => {
-    if (channels.length > 0 && !channels.includes(dispatch.channel)) {
-      return false;
-    }
-    return matchesActionName(dispatch.actionName ?? "", actionName);
-  });
-  const min = typeof minCount === "number" ? minCount : 1;
-  if (matched.length < min) {
-    return {
-      status: "failed",
-      detail: `expected ${min} connector dispatch(es) on [${channels.join(",")}], saw ${matched.length} of ${ctx.connectorDispatches.length}`,
-    };
-  }
-  return {
-    status: "passed",
-    detail: `${matched.length} connector dispatch(es) on [${channels.join(",")}]`,
-  };
-});
-
-registerFinalCheckHandler("draftExists", (check, { ctx }) => {
-  const { channel, expected } = check as {
-    channel?: string | string[];
-    expected?: boolean;
-  };
-  const channels = toArray(channel);
-  const any = ctx.actionsCalled.some((action) => {
-    const blob = actionBlob(action);
-    const channelOk =
-      channels.length === 0 ||
-      channels.some((candidate) => actionMatchesChannel(action, candidate));
-    return channelOk && /draft/.test(blob);
-  });
-  const want = expected ?? true;
-  if (any === want) {
-    return { status: "passed", detail: `draftExists=${want}` };
-  }
-  return {
-    status: "failed",
-    detail: `expected draftExists=${want}, saw ${any}`,
-  };
-});
-
-registerFinalCheckHandler("messageDelivered", (check, { ctx }) => {
-  const { channel, expected } = check as {
-    channel?: string | string[];
-    expected?: boolean;
-  };
-  const channels = toArray(channel);
-  const anyDispatch = (ctx.connectorDispatches ?? []).some((dispatch) =>
-    channels.length === 0 ? true : channels.includes(dispatch.channel),
-  );
-  const anyAction = ctx.actionsCalled.some((action) => {
-    const channelOk =
-      channels.length === 0 ||
-      channels.some((candidate) => actionMatchesChannel(action, candidate));
-    if (!channelOk) {
-      return false;
-    }
-    const blob = actionBlob(action);
-    return (
-      action.result?.success === true &&
-      /(deliver|delivered|sent|send|placed|dial|reply|booking link)/.test(blob)
-    );
-  });
-  const any = anyDispatch || anyAction;
-  const want = expected ?? true;
-  if (any === want) {
-    return { status: "passed", detail: `messageDelivered=${want}` };
-  }
-  return {
-    status: "failed",
-    detail: `expected messageDelivered=${want}, saw ${any}`,
-  };
-});
-
 registerFinalCheckHandler("pushSent", (check, { ctx }) => {
   if (ctx.connectorDispatches === undefined) {
     return {
@@ -758,11 +627,7 @@ registerFinalCheckHandler("pushAcknowledgedSync", (check, { ctx }) => {
   const { expected } = check as { expected?: boolean };
   const any = ctx.actionsCalled.some((action) => {
     const blob = actionBlob(action);
-    return (
-      action.actionName === "OWNER_DEVICE_INTENT" ||
-      action.actionName === "INTENT_SYNC" ||
-      (/acknowledge/.test(blob) && /sync/.test(blob))
-    );
+    return /acknowledge/.test(blob) && /sync/.test(blob);
   });
   const want = expected ?? true;
   if (any === want) {
@@ -1027,10 +892,10 @@ registerFinalCheckHandler("gmailActionArguments", (check, { ctx }) => {
     minCount?: number;
   };
   const actionNames = actionName ?? [
-    "TRIAGE_MESSAGES",
-    "SEND_DRAFT",
-    "RESPOND_TO_MESSAGE",
-    "DRAFT_REPLY",
+    "MESSAGE",
+    "MESSAGE",
+    "MESSAGE",
+    "MESSAGE",
     "GMAIL_ACTION",
     "INBOX",
   ];
@@ -1201,9 +1066,9 @@ registerFinalCheckHandler("gmailApproval", async (check, { ctx }) => {
       (ctx.approvalRequests ?? []).some(
         (request) =>
           matchesActionName(request.actionName, [
-            "SEND_DRAFT",
-            "RESPOND_TO_MESSAGE",
-            "TRIAGE_MESSAGES",
+            "MESSAGE",
+            "MESSAGE",
+            "MESSAGE",
             "GMAIL_ACTION",
             "send_email",
           ]) && request.state === "pending",
@@ -1262,7 +1127,7 @@ registerFinalCheckHandler("gmailNoRealWrite", () => {
   };
 });
 
-registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
+registerFinalCheckHandler("workflowDispatchOccurred", (check, { ctx }) => {
   const { workflowId, expected, minCount } = check as {
     workflowId?: string;
     expected?: boolean;
@@ -1272,7 +1137,7 @@ registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
     hasRecursiveObjectMatch(
       action.result?.data ?? action.result?.raw,
       (record) => {
-        if (record.kind !== "dispatch_n8n_workflow") {
+        if (record.kind !== "dispatch_workflow") {
           return false;
         }
         return workflowId === undefined || record.workflowId === workflowId;
@@ -1281,7 +1146,7 @@ registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
   );
   const matchedWrites = (ctx.memoryWrites ?? []).filter((write) =>
     hasRecursiveObjectMatch(write.content, (record) => {
-      if (record.kind !== "dispatch_n8n_workflow") {
+      if (record.kind !== "dispatch_workflow") {
         return false;
       }
       return workflowId === undefined || record.workflowId === workflowId;
@@ -1291,87 +1156,24 @@ registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
   const want = expected ?? true;
   if (!want) {
     return total === 0
-      ? { status: "passed", detail: "no n8n dispatch observed" }
-      : { status: "failed", detail: `expected no n8n dispatch, saw ${total}` };
+      ? { status: "passed", detail: "no workflow dispatch observed" }
+      : {
+          status: "failed",
+          detail: `expected no workflow dispatch, saw ${total}`,
+        };
   }
   const min = typeof minCount === "number" ? minCount : 1;
   if (total < min) {
     return {
       status: "failed",
-      detail: `expected ${min} n8n dispatch record(s), saw ${total}`,
+      detail: `expected ${min} workflow dispatch record(s), saw ${total}`,
     };
   }
   return {
     status: "passed",
-    detail: `${total} n8n dispatch record(s) observed`,
+    detail: `${total} workflow dispatch record(s) observed`,
   };
 });
-
-registerStrictFinalCheckKeys("custom", ["predicate"]);
-registerStrictFinalCheckKeys("actionCalled", [
-  "actionName",
-  "status",
-  "minCount",
-]);
-registerStrictFinalCheckKeys("selectedAction", ["actionName"]);
-registerStrictFinalCheckKeys("selectedActionArguments", [
-  "actionName",
-  "includesAny",
-  "includesAll",
-]);
-registerStrictFinalCheckKeys("clarificationRequested", ["expected"]);
-registerStrictFinalCheckKeys("interventionRequestExists", ["expected"]);
-registerStrictFinalCheckKeys("pushSent", ["channel"]);
-registerStrictFinalCheckKeys("pushEscalationOrder", ["channelOrder"]);
-registerStrictFinalCheckKeys("pushAcknowledgedSync", ["expected"]);
-registerStrictFinalCheckKeys("approvalRequestExists", [
-  "expected",
-  "actionName",
-  "state",
-]);
-registerStrictFinalCheckKeys("approvalStateTransition", [
-  "from",
-  "to",
-  "actionName",
-]);
-registerStrictFinalCheckKeys("noSideEffectOnReject", ["actionName"]);
-registerStrictFinalCheckKeys("draftExists", ["channel", "expected"]);
-registerStrictFinalCheckKeys("messageDelivered", ["channel", "expected"]);
-registerStrictFinalCheckKeys("browserTaskCompleted", ["expected"]);
-registerStrictFinalCheckKeys("browserTaskNeedsHuman", ["expected"]);
-registerStrictFinalCheckKeys("uploadedAssetExists", ["expected"]);
-registerStrictFinalCheckKeys("connectorDispatchOccurred", [
-  "channel",
-  "actionName",
-  "minCount",
-]);
-registerStrictFinalCheckKeys("memoryWriteOccurred", ["table", "minCount"]);
-registerStrictFinalCheckKeys("judgeRubric", ["rubric", "minimumScore"]);
-registerStrictFinalCheckKeys("gmailActionArguments", [
-  "actionName",
-  "subaction",
-  "operation",
-  "fields",
-  "minCount",
-]);
-registerStrictFinalCheckKeys("gmailMockRequest", [
-  "method",
-  "path",
-  "body",
-  "expected",
-  "minCount",
-]);
-registerStrictFinalCheckKeys("gmailDraftCreated", ["expected"]);
-registerStrictFinalCheckKeys("gmailDraftDeleted", ["expected"]);
-registerStrictFinalCheckKeys("gmailMessageSent", ["expected"]);
-registerStrictFinalCheckKeys("gmailBatchModify", ["expected", "body"]);
-registerStrictFinalCheckKeys("gmailApproval", ["state"]);
-registerStrictFinalCheckKeys("gmailNoRealWrite", []);
-registerStrictFinalCheckKeys("n8nDispatchOccurred", [
-  "workflowId",
-  "expected",
-  "minCount",
-]);
 
 // judgeRubric is handled inline by the executor so it can reuse the live LLM
 // without threading the runtime through the generic handler registry.
@@ -1399,7 +1201,7 @@ export async function runFinalCheck(
       detail: `no handler registered for finalCheck type "${type}"`,
     };
   }
-  const strictKeys = STRICT_FINAL_CHECK_KEYS.get(type);
+  const strictKeys = FINAL_CHECK_KEYS.get(type);
   if (strictKeys) {
     const unknownKeys = Object.keys(check as Record<string, unknown>).filter(
       (key) => !strictKeys.has(key),

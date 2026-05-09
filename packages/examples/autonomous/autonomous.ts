@@ -10,7 +10,8 @@ import {
   createMessageMemory,
   logger,
   MemoryType,
-  parseToonKeyValue,
+  type Plugin,
+  parseJSONObjectFromText,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -90,7 +91,7 @@ function readStringField(
 }
 
 function parseDecision(raw: string): AgentDecision | null {
-  const parsed = parseToonKeyValue<Record<string, unknown>>(raw);
+  const parsed = parseJSONObjectFromText(raw);
   if (!parsed) return null;
 
   const actionRaw = readStringField(parsed, "action")?.toUpperCase();
@@ -165,11 +166,13 @@ SANDBOX:
 RECENT HISTORY (most recent last):
 ${params.recentSteps}
 
-Choose exactly ONE next step and output ONLY this TOON document (no extra text):
-action: RUN|SLEEP|STOP
-command: ...
-sleepMs: ...
-note: short reason
+Choose exactly ONE next step and output ONLY this JSON object (no extra text):
+{
+  "action": "RUN|SLEEP|STOP",
+  "command": "...",
+  "sleepMs": 1000,
+  "note": "short reason"
+}
 
 Rules:
 - If action is RUN, include command and omit sleepMs.
@@ -247,12 +250,12 @@ async function main(): Promise<void> {
 
   const runtime = new AgentRuntime({
     character,
-    plugins: [inmemorydbPlugin, shellPlugin, localAiPlugin],
+    plugins: [inmemorydbPlugin, shellPlugin, localAiPlugin] as Plugin[],
     logLevel: "info",
   });
   await runtime.initialize();
 
-  const shellService = runtime.getService<ShellService>("shell");
+  const shellService = runtime.getService("shell") as ShellService | null;
   if (!shellService) {
     throw new Error("Shell service not available (plugin-shell not loaded?)");
   }

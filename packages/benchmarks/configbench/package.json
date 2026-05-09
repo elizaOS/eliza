@@ -3,7 +3,7 @@
   "version": "2.0.0-beta.0",
   "type": "module",
   "description": "Configuration & Secrets Security Benchmark for @elizaos/core secrets and built-in plugin-manager",
-  "main": "src/index.ts",
+  "main": "./dist/index.js",
   "scripts": {
     "bench": "bun run src/index.ts",
     "bench:eliza": "bun run src/index.ts --eliza",
@@ -15,12 +15,16 @@
     "build": "bun run typecheck"
   },
   "dependencies": {
-    "@elizaos/core": "beta"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
     "bun-types": "latest",
     "vitest": "4.1.5",
-    "typescript": "6.0.3"
-  }
+    "typescript": "^6.0.3"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ]
 }

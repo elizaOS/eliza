@@ -1,13 +1,13 @@
 import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { MultiStepActionResult } from "../types";
+import type { NativePlannerActionResult } from "../types";
 
 /** Refreshes state after action execution to sync prompts with latest results. */
 export async function refreshStateAfterAction(
   runtime: IAgentRuntime,
   message: Memory,
   currentState: State,
-  actionResults: MultiStepActionResult[],
+  actionResults: NativePlannerActionResult[],
 ): Promise<State> {
   const refreshedState = await runtime.composeState(message, ["RECENT_MESSAGES", "ACTION_STATE"]);
 

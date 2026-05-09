@@ -2,9 +2,9 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import type {
   LifeOpsGoalDefinition,
   LifeOpsGoalReviewState,
@@ -141,23 +141,16 @@ function buildSemanticEvaluationPrompt(args: {
     "Do not rely only on linked support tasks. If the goal has direct evidence such as sleep data, use it.",
     "Do not bluff. If the evidence is too weak, say so clearly and lower confidence.",
     "",
-    "Return ONLY TOON with these fields:",
+    "Return ONLY a JSON object with these fields:",
     "reviewState: one of idle, needs_attention, on_track, at_risk",
     "- progressScore: number from 0 to 1 or null if not enough evidence",
     "- confidence: number from 0 to 1",
     "- explanation: short grounded explanation",
     "- evidenceSummary: short summary of the strongest evidence used",
-    "- missingEvidence: list of short evidence gaps; use missingEvidence[0], missingEvidence[1]",
-    "- suggestions: up to 3 entries; use suggestions[0]{kind,title,detail}. kind must be one of create_support, focus_now, resolve_overdue, review_progress, tighten_cadence",
+    "- missingEvidence: array of short evidence gaps",
+    "- suggestions: up to 3 objects with kind, title, and detail. kind must be one of create_support, focus_now, resolve_overdue, review_progress, tighten_cadence",
     "",
-    "TOON example:",
-    "reviewState: needs_attention",
-    "progressScore: 0.4",
-    "confidence: 0.65",
-    "explanation: Some supporting evidence exists, but the outcome evidence is thin.",
-    "evidenceSummary: One recent support task was completed.",
-    "missingEvidence[0]: Direct outcome measurement",
-    "suggestions[0]{kind,title,detail}: review_progress, Review goal evidence, Ask for the latest measurement before changing status.",
+    'Example: {"reviewState":"needs_attention","progressScore":0.4,"confidence":0.65,"explanation":"Some supporting evidence exists, but the outcome evidence is thin.","evidenceSummary":"One recent support task was completed.","missingEvidence":["Direct outcome measurement"],"suggestions":[{"kind":"review_progress","title":"Review goal evidence","detail":"Ask for the latest measurement before changing status."}]}',
     "",
     "Guidance:",
     "- Use on_track only when the available evidence supports progress.",
@@ -181,12 +174,12 @@ function buildSemanticRepairPrompt(args: {
 }): string {
   return [
     "Your last reply for the goal semantic evaluator was invalid.",
-    "Return ONLY TOON with exactly these fields:",
+    "Return ONLY JSON with exactly these fields:",
     "reviewState, progressScore, confidence, explanation, evidenceSummary, missingEvidence, suggestions",
     "",
     "reviewState must be one of idle, needs_attention, on_track, at_risk.",
-    "Use missingEvidence[0] for evidence gaps.",
-    "Use suggestions[0]{kind,title,detail} for suggestions.",
+    "Use a missingEvidence array for evidence gaps.",
+    "Use a suggestions array of {kind,title,detail} objects.",
     "",
     `Now: ${args.nowIso}`,
     "Goal:",
@@ -201,7 +194,7 @@ function buildSemanticRepairPrompt(args: {
 function parseSemanticEvaluationOutput(
   raw: string,
 ): Record<string, unknown> | null {
-  return parseToonKeyValue<Record<string, unknown>>(raw);
+  return parseJsonModelRecord<Record<string, unknown>>(raw);
 }
 
 function buildSemanticEvaluationResult(

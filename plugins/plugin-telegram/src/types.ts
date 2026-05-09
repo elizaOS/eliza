@@ -1,7 +1,7 @@
 import type {
   Content,
-  EventPayload,
   EntityPayload,
+  EventPayload,
   MessagePayload,
   WorldPayload,
 } from "@elizaos/core";

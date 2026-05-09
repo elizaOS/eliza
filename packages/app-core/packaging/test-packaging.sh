@@ -82,6 +82,9 @@ echo ""
 
 # ── 1. PyPI Package ──────────────────────────────────────────────────────────
 bold "1. PyPI Package (elizaos-app)"
+if [[ ! -d "$SCRIPT_DIR/pypi" ]]; then
+  skip "PyPI Package" "packaging/pypi/ directory not present in this branch"
+else
 check_file "pyproject.toml" "$SCRIPT_DIR/pypi/pyproject.toml"
 check_file "elizaos_app/__init__.py" "$SCRIPT_DIR/pypi/elizaos_app/__init__.py"
 check_file "elizaos_app/__main__.py" "$SCRIPT_DIR/pypi/elizaos_app/__main__.py"
@@ -141,6 +144,7 @@ assert ver and ver >= (22, 0, 0), f'Bad node version: {ver}'
 else
   skip "Python tests" "python3 not available"
 fi
+fi  # close: if [[ -d "$SCRIPT_DIR/pypi" ]]
 
 echo ""
 

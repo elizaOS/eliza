@@ -1,9 +1,5 @@
-import {
-  type IAgentRuntime,
-  logger,
-  ModelType,
-  parseToonKeyValue,
-} from "@elizaos/core";
+import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
+import { parseJsonObjectResponse } from "../utils/json";
 
 const MUSIC_ENTITY_DETECTION_SERVICE_NAME = "musicEntityDetection";
 
@@ -68,7 +64,7 @@ export class MusicEntityDetectionHelper {
 
 Text: "${text}"
 
-Return detected entities as TOON. Each entity should have:
+Return detected entities as JSON. Each entity should have:
 - type: "artist", "album", or "song"
 - name: the entity name (exact as mentioned)
 - confidence: a number between 0 and 1 indicating confidence
@@ -80,29 +76,33 @@ IMPORTANT RULES:
 - URLs should be completely ignored
 
 Example format:
-entities[0]{type,name,confidence,context}: artist,The Beatles,0.9,mentioned in conversation
-entities[1]{type,name,confidence}: song,Bohemian Rhapsody,0.8
+{
+  "entities": [
+    {"type": "artist", "name": "The Beatles", "confidence": 0.9, "context": "mentioned in conversation"},
+    {"type": "song", "name": "Bohemian Rhapsody", "confidence": 0.8}
+  ]
+}
 
 If no music entities are found, return:
-entities:
+{"entities": []}
 
-IMPORTANT: Only return TOON. Do not include explanation or extra text.`;
+IMPORTANT: Only return JSON. Do not include explanation or extra text.`;
 
       const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
         prompt,
         maxTokens: 500,
       });
 
-      // Parse TOON response
+      // Parse JSON response
       let entities: DetectedMusicEntity[] = [];
       try {
         const cleaned = String(response).trim();
         let parsedEntities: RawDetectedMusicEntity[] = [];
-        const parsedToon = parseToonKeyValue<{
+        const parsedJson = parseJsonObjectResponse<{
           entities?: RawDetectedMusicEntity[];
         }>(cleaned);
-        if (Array.isArray(parsedToon?.entities)) {
-          parsedEntities = parsedToon.entities;
+        if (Array.isArray(parsedJson?.entities)) {
+          parsedEntities = parsedJson.entities;
         }
 
         // Validate and filter entities

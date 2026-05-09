@@ -32,7 +32,7 @@ export default scenario({
       room: "main",
       text: "If you get stuck in a remote task or browser workflow, call me for help instead of looping.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_VOICE_CALL", "OWNER_COMPUTER_USE"],
+        acceptedActions: ["VOICE_CALL", "COMPUTER_USE"],
         description: "stuck remote-agent escalation",
         includesAny: ["call", "stuck", "remote", "browser", "help"],
       }),
@@ -47,7 +47,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["OWNER_VOICE_CALL", "OWNER_COMPUTER_USE"],
+      actionName: ["VOICE_CALL", "COMPUTER_USE"],
     },
     {
       type: "interventionRequestExists",
@@ -60,13 +60,13 @@ export default scenario({
     {
       type: "connectorDispatchOccurred",
       channel: "phone_call",
-      actionName: ["OWNER_VOICE_CALL"],
+      actionName: ["VOICE_CALL"],
     },
     {
       type: "custom",
       name: "remote-agent-calls-for-help-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_VOICE_CALL", "OWNER_COMPUTER_USE"],
+        acceptedActions: ["VOICE_CALL", "COMPUTER_USE"],
         description: "stuck remote-agent escalation",
         includesAny: ["call", "stuck", "remote", "browser", "help"],
       }),
@@ -76,7 +76,7 @@ export default scenario({
       name: "remote-agent-calls-for-help-dispatch",
       predicate: expectConnectorDispatch({
         channel: "phone_call",
-        actionName: ["OWNER_VOICE_CALL"],
+        actionName: ["VOICE_CALL"],
         description:
           "stuck-agent escalation reaches the phone dispatcher instead of staying as a silent internal note",
       }),

@@ -1,4 +1,4 @@
-import { parseCronExpression } from "@elizaos/agent/triggers/scheduling";
+import { parseCronExpression } from "@elizaos/agent";
 import {
   BROWSER_BRIDGE_KINDS,
   BROWSER_BRIDGE_SITE_ACCESS_MODES,
@@ -7,7 +7,7 @@ import {
   type BrowserBridgePermissionState,
   type BrowserBridgeSettings,
   type UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser-bridge";
+} from "@elizaos/plugin-browser";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,

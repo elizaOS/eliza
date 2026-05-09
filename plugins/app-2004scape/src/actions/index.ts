@@ -1,21 +1,18 @@
-export {
-  rs2004AllActions,
-  rs2004BankOpAction,
-  rs2004CombatOpAction,
-  rs2004InteractOpAction,
-  rs2004InventoryOpAction,
-  rs2004RouterActions,
-  rs2004ShopOpAction,
-  rs2004SkillOpAction,
-  rs2004WalkToAction,
-} from "./routers.js";
-export {
-  RS_2004_ACTION_ROUTER_DEFINITIONS,
-  formatRs2004RouterPrompt,
-  isRs2004RouterActionName,
-  resolveRs2004RouterAction,
-} from "./router-definitions.js";
+/**
+ * Action registry for `@elizaos/app-2004scape`.
+ *
+ * Single planner-facing parent: `RS_2004` (Pattern C). It absorbs the
+ * old `RS_2004_WALK_TO` standalone plus the six router actions
+ * (SKILL_OP / RS_2004_INVENTORY_OP / BANK_OP / SHOP_OP / COMBAT_OP /
+ * INTERACT_OP) and the legacy per-op verbs they routed (CHOP_TREE,
+ * MINE_ROCK, ATTACK_NPC, etc.). All of those names live as similes on
+ * `RS_2004` for trace continuity.
+ */
 
-import { rs2004AllActions } from "./routers.js";
+import type { Action } from "@elizaos/core";
 
-export const rsSdkActions = rs2004AllActions;
+import { rs2004Action } from "./rs2004.js";
+
+export { rs2004Action } from "./rs2004.js";
+
+export const rsSdkActions: Action[] = [rs2004Action];

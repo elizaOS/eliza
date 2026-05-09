@@ -2,7 +2,6 @@ import type {
   GenerateTextParams,
   IAgentRuntime,
   ImageDescriptionParams,
-  ObjectGenerationParams,
   Plugin,
   TestCase,
   TestSuite,
@@ -13,8 +12,6 @@ import { initializeAnthropic, type PluginConfig } from "./init";
 import {
   handleActionPlanner,
   handleImageDescription,
-  handleObjectLarge,
-  handleObjectSmall,
   handleReasoningLarge,
   handleReasoningSmall,
   handleResponseHandler,
@@ -27,9 +24,6 @@ import {
 import { getApiKeyOptional } from "./utils/config";
 
 export type { PluginConfig } from "./init";
-
-type JsonScalar = string | number | boolean | null;
-type JsonLike = JsonScalar | JsonLike[] | { [key: string]: JsonLike };
 
 const pluginTests = [
   {
@@ -97,60 +91,41 @@ const pluginTests = [
         },
       },
       {
-        name: "anthropic_test_object_small",
+        name: "anthropic_test_structured_output_via_text_small",
         fn: async (runtime: IAgentRuntime) => {
-          const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
+          const result = await runtime.useModel(ModelType.TEXT_SMALL, {
             prompt: "Create a simple JSON object with a message field saying hello",
-            schema: { type: "object" },
-          });
+            responseSchema: {
+              type: "object",
+              properties: { message: { type: "string" } },
+              required: ["message"],
+            },
+          } as unknown as GenerateTextParams);
 
-          if (!result || typeof result !== "object") {
-            throw new Error("Failed to generate object: invalid response");
+          if (!result || (typeof result !== "object" && typeof result !== "string")) {
+            throw new Error("Failed to generate structured output: invalid response");
           }
 
-          if ("error" in result) {
-            throw new Error(`Failed to generate object: ${String(result.error)}`);
-          }
-
-          logger.log({ result }, "Generated object with test_object_small");
+          logger.log({ result }, "Generated structured output via TEXT_SMALL");
         },
       },
       {
-        name: "anthropic_test_object_large",
+        name: "anthropic_test_structured_output_via_text_large",
         fn: async (runtime: IAgentRuntime) => {
-          const result = await runtime.useModel(ModelType.OBJECT_LARGE, {
+          const result = await runtime.useModel(ModelType.TEXT_LARGE, {
             prompt: "Create a simple JSON object with a message field saying hello",
-            schema: { type: "object" },
-          });
+            responseSchema: {
+              type: "object",
+              properties: { message: { type: "string" } },
+              required: ["message"],
+            },
+          } as unknown as GenerateTextParams);
 
-          if (!result || typeof result !== "object") {
-            throw new Error("Failed to generate object: invalid response");
+          if (!result || (typeof result !== "object" && typeof result !== "string")) {
+            throw new Error("Failed to generate structured output: invalid response");
           }
 
-          if ("error" in result) {
-            throw new Error(`Failed to generate object: ${String(result.error)}`);
-          }
-
-          logger.log({ result }, "Generated object with test_object_large");
-        },
-      },
-      {
-        name: "anthropic_test_object_with_code_blocks",
-        fn: async (runtime: IAgentRuntime) => {
-          const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
-            prompt: "Give me instructions to install Node.js",
-            schema: { type: "object" },
-          });
-
-          if (!result || typeof result !== "object") {
-            throw new Error("Failed to generate object with code blocks: invalid response");
-          }
-
-          if ("error" in result) {
-            throw new Error(`Failed to generate object: ${String(result.error)}`);
-          }
-
-          logger.log({ result }, "Generated object with code blocks");
+          logger.log({ result }, "Generated structured output via TEXT_LARGE");
         },
       },
     ] as TestCase[],
@@ -181,6 +156,9 @@ const TEXT_REASONING_LARGE_MODEL_TYPE = (ModelType.TEXT_REASONING_LARGE ??
 export const anthropicPlugin: Plugin = {
   name: "anthropic",
   description: "Anthropic plugin (supports text, object, and image description generation)",
+  autoEnable: {
+    envKeys: ["ANTHROPIC_API_KEY", "CLAUDE_API_KEY"],
+  },
 
   config: {
     ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? null,
@@ -286,22 +264,6 @@ export const anthropicPlugin: Plugin = {
       params: ImageDescriptionParams | string
     ): Promise<{ title: string; description: string }> => {
       return handleImageDescription(runtime, params);
-    },
-
-    [ModelType.OBJECT_SMALL]: async (
-      runtime: IAgentRuntime,
-      params: ObjectGenerationParams
-    ): Promise<Record<string, JsonLike>> => {
-      const result = await handleObjectSmall(runtime, params);
-      return result as Record<string, JsonLike>;
-    },
-
-    [ModelType.OBJECT_LARGE]: async (
-      runtime: IAgentRuntime,
-      params: ObjectGenerationParams
-    ): Promise<Record<string, JsonLike>> => {
-      const result = await handleObjectLarge(runtime, params);
-      return result as Record<string, JsonLike>;
     },
   },
 

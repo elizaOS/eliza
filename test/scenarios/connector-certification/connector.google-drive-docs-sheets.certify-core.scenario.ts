@@ -12,7 +12,7 @@ export default buildConnectorCertificationScenario({
       name: "google-docs-core",
       text: "Fetch the shared doc, upload the updated sheet, and give me the Drive provenance or tell me if auth is degraded.",
       responseIncludesAny: ["drive", "doc", "sheet", "upload", "auth"],
-      acceptedActions: ["OWNER_COMPUTER_USE"],
+      acceptedActions: ["COMPUTER_USE"],
       includesAny: ["drive", "doc", "sheet", "upload", "auth"],
     },
   ],

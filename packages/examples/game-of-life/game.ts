@@ -3,7 +3,7 @@
  *
  * Each entity is a REAL elizaOS AgentRuntime with:
  * - Its own character (DNA encoded in character settings)
- * - Custom actions: MOVE_TO_FOOD, FLEE, ATTACK, EAT, REPRODUCE
+ * - Custom actions: GAME_OF_LIFE (umbrella), MOVE_TOWARD_FOOD, FLEE, ATTACK, EAT, REPRODUCE
  * - Rule-based model handlers (no LLM)
  * - In-memory database adapter
  *
@@ -111,6 +111,8 @@ const sharedStorage = new MemoryStorage();
 const SIM_ROOM_ID = stringToUuid("game-of-life");
 const SIM_WORLD_ID = stringToUuid("game-of-life-world");
 const ENV_ENTITY_ID = stringToUuid("game-of-life-environment");
+const GAME_CONTEXTS = ["game"] as const;
+const GAME_CONTEXT_GATE = { anyOf: [...GAME_CONTEXTS] };
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -180,9 +182,21 @@ function mutateDNA(parent: DNA): DNA {
 // ACTIONS
 // ============================================================================
 
-const moveTowardFoodAction: Action = {
+const GAME_OF_LIFE_SUB_ACTIONS = [
+  "MOVE_TOWARD_FOOD",
+  "EAT",
+  "FLEE",
+  "ATTACK",
+  "REPRODUCE",
+  "WANDER",
+] as const;
+
+const _moveTowardFoodAction: Action = {
   name: "MOVE_TOWARD_FOOD",
   description: "Move toward the nearest visible food",
+  contexts: [...GAME_CONTEXTS],
+  contextGate: GAME_CONTEXT_GATE,
+  roleGate: { minRole: "USER" },
   similes: ["SEEK_FOOD", "HUNT_FOOD", "FORAGE"],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -252,9 +266,12 @@ const moveTowardFoodAction: Action = {
   examples: [],
 };
 
-const eatAction: Action = {
+const _eatAction: Action = {
   name: "EAT",
   description: "Eat food at current position",
+  contexts: [...GAME_CONTEXTS],
+  contextGate: GAME_CONTEXT_GATE,
+  roleGate: { minRole: "USER" },
   similes: ["CONSUME", "FEED"],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -293,9 +310,12 @@ const eatAction: Action = {
   examples: [],
 };
 
-const fleeAction: Action = {
+const _fleeAction: Action = {
   name: "FLEE",
   description: "Run away from nearby aggressive agents",
+  contexts: [...GAME_CONTEXTS],
+  contextGate: GAME_CONTEXT_GATE,
+  roleGate: { minRole: "USER" },
   similes: ["RUN", "ESCAPE", "EVADE"],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -369,9 +389,12 @@ const fleeAction: Action = {
   examples: [],
 };
 
-const attackAction: Action = {
+const _attackAction: Action = {
   name: "ATTACK",
   description: "Attack a nearby weaker agent to steal energy",
+  contexts: [...GAME_CONTEXTS],
+  contextGate: GAME_CONTEXT_GATE,
+  roleGate: { minRole: "USER" },
   similes: ["FIGHT", "HUNT_PREY", "ASSAULT"],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -447,9 +470,12 @@ const attackAction: Action = {
   examples: [],
 };
 
-const reproduceAction: Action = {
+const _reproduceAction: Action = {
   name: "REPRODUCE",
   description: "Create offspring when energy is high enough",
+  contexts: [...GAME_CONTEXTS],
+  contextGate: GAME_CONTEXT_GATE,
+  roleGate: { minRole: "USER" },
   similes: ["SPAWN", "BREED", "REPLICATE"],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -512,9 +538,12 @@ const reproduceAction: Action = {
   examples: [],
 };
 
-const wanderAction: Action = {
+const _wanderAction: Action = {
   name: "WANDER",
   description: "Move in a random direction when nothing else to do",
+  contexts: [...GAME_CONTEXTS],
+  contextGate: GAME_CONTEXT_GATE,
+  roleGate: { minRole: "USER" },
   similes: ["EXPLORE", "ROAM", "MOVE_RANDOM"],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -549,6 +578,39 @@ const wanderAction: Action = {
     return { success: true };
   },
 
+  examples: [],
+};
+
+const gameOfLifeAction: Action = {
+  name: "GAME_OF_LIFE",
+  description:
+    "Route game-simulation decisions to the appropriate movement, feeding, combat, or reproduction action.",
+  contexts: [...GAME_CONTEXTS],
+  contextGate: GAME_CONTEXT_GATE,
+  roleGate: { minRole: "USER" },
+  similes: ["GAME", "SIMULATION", "LIFE"],
+  subActions: [...GAME_OF_LIFE_SUB_ACTIONS],
+  subPlanner: {
+    name: "game_of_life_subplanner",
+    description:
+      "Select and execute one of MOVE_TOWARD_FOOD, EAT, FLEE, ATTACK, REPRODUCE, or WANDER.",
+  },
+
+  validate: async () => true,
+
+  // Handler is bypassed when subActions are present.
+  handler: async () => {
+    return {
+      success: true,
+      text: "Game-of-Life action routed to the selected operation.",
+      data: {
+        actionName: "GAME_OF_LIFE",
+        subActions: [...GAME_OF_LIFE_SUB_ACTIONS],
+      },
+    };
+  },
+
+  parameters: [],
   examples: [],
 };
 
@@ -701,14 +763,7 @@ const gameOfLifePlugin: Plugin = {
   name: "game-of-life-agent",
   description: "Actions for Game of Life agents",
 
-  actions: [
-    moveTowardFoodAction,
-    eatAction,
-    fleeAction,
-    attackAction,
-    reproduceAction,
-    wanderAction,
-  ],
+  actions: [gameOfLifeAction],
 
   models: {
     [ModelType.TEXT_SMALL]: decisionModelHandler,
@@ -948,7 +1003,7 @@ async function main(): Promise<void> {
 ╠════════════════════════════════════════════════════════════════════════╣
 ║  Each entity is a REAL elizaOS AgentRuntime with:                      ║
 ║  • Its own Character (DNA encoded in settings)                         ║
-║  • Actions: MOVE_TO_FOOD, FLEE, ATTACK, EAT, REPRODUCE, WANDER         ║
+║  • Actions: GAME_OF_LIFE, MOVE_TOWARD_FOOD, FLEE, ATTACK, EAT, REPRODUCE, WANDER      ║
 ║  • Rule-based model handlers (no LLM)                                  ║
 ║  • In-memory database adapter                                          ║
 ║                                                                        ║
@@ -1061,7 +1116,8 @@ async function main(): Promise<void> {
 
     // Process births - create new runtimes for children
     while (pendingBirths.length > 0) {
-      const childState = pendingBirths.shift()!;
+      const childState = pendingBirths.shift();
+      if (!childState) break;
       const liveAgent = await createAgentRuntime(childState);
       liveAgents.set(childState.id, liveAgent);
     }

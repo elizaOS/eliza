@@ -1,4 +1,4 @@
-import { client, openExternalUrl } from "@elizaos/app-core";
+import { client, openExternalUrl } from "@elizaos/ui";
 import { Button, SettingsControls } from "@elizaos/ui";
 import {
   CheckCircle2,

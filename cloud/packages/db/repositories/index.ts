@@ -31,6 +31,7 @@ export * from "./ad-campaigns";
 export * from "./ad-creatives";
 export * from "./ad-transactions";
 export * from "./affiliates";
+export * from "./agent-billing";
 export * from "./agent-events";
 // ============================================
 // Eliza Cloud Sandboxes
@@ -54,6 +55,7 @@ export * from "./ai-pricing";
 export * from "./anonymous-sessions";
 export * from "./api-keys";
 export * from "./app-credit-balances";
+export * from "./app-databases";
 export * from "./app-earnings";
 // ============================================
 // App Domain
@@ -64,6 +66,7 @@ export * from "./apps";
 // ============================================
 export * from "./characters";
 export * from "./cli-auth-sessions";
+export * from "./container-billing";
 // ============================================
 // Deployment Domain (Infrastructure)
 // ============================================
@@ -78,6 +81,7 @@ export * from "./credit-transactions";
 // Crypto Payments (CDP wallet payments)
 // ============================================
 export * from "./crypto-payments";
+export * from "./dashboard";
 export * from "./discord-channels";
 export * from "./discord-connections";
 // ============================================
@@ -119,5 +123,6 @@ export * from "./usage-records";
 // ============================================
 export * from "./user-mcps";
 export * from "./user-sessions";
+export * from "./user-voices";
 export * from "./users";
 export * from "./vendor-connections";

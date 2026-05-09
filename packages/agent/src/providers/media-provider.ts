@@ -14,6 +14,8 @@
 
 import type {
   AudioGenConfig,
+  AudioGenProvider,
+  AudioKind,
   ImageConfig,
   MediaConfig,
   VideoConfig,
@@ -52,6 +54,74 @@ async function withProviderErrorBoundary<T>(
   }
 }
 
+const DEFAULT_ELIZA_CLOUD_BASE_URL = "https://elizacloud.ai/api/v1";
+const DEFAULT_AUDIO_TIMEOUT_MS = 120_000;
+
+function normalizeAudioKind(value: unknown): AudioKind | undefined {
+  switch (value) {
+    case "music":
+      return "music";
+    case "sfx":
+    case "sound-effect":
+    case "sound_effect":
+      return "sfx";
+    case "tts":
+    case "speech":
+    case "text-to-speech":
+    case "text_to_speech":
+      return "tts";
+    default:
+      return undefined;
+  }
+}
+
+function getAudioKind(
+  options: AudioGenerationOptions,
+  config?: AudioGenConfig,
+): AudioKind {
+  return (
+    normalizeAudioKind(options.audioKind) ??
+    normalizeAudioKind(options.kind) ??
+    normalizeAudioKind(config?.audioKind) ??
+    normalizeAudioKind(config?.kind) ??
+    normalizeAudioKind(config?.defaultKind) ??
+    "music"
+  );
+}
+
+function createCloudAudioProvider(
+  options: MediaProviderFactoryOptions,
+): AudioGenerationProvider {
+  return new ElizaCloudAudioProvider(
+    options.elizaCloudBaseUrl ?? DEFAULT_ELIZA_CLOUD_BASE_URL,
+    options.elizaCloudApiKey,
+  );
+}
+
+async function responseToAudioResult(
+  response: Response,
+  title: string,
+  duration?: number,
+): Promise<AudioGenerationResult> {
+  const contentType =
+    response.headers.get("content-type")?.split(";")[0] || "audio/mpeg";
+  const arrayBuffer = await response.arrayBuffer();
+  const audioBase64 = Buffer.from(arrayBuffer).toString("base64");
+  return {
+    audioUrl: `data:${contentType};base64,${audioBase64}`,
+    audioBase64,
+    mimeType: contentType,
+    id: response.headers.get("song-id") ?? undefined,
+    title,
+    duration,
+  };
+}
+
+function buildOutputFormatQuery(outputFormat: string | undefined): string {
+  if (!outputFormat) return "";
+  return `?output_format=${encodeURIComponent(outputFormat)}`;
+}
+
 // ============================================================================
 // Result Types
 // ============================================================================
@@ -76,6 +146,10 @@ export interface VideoGenerationResult {
 
 export interface AudioGenerationResult {
   audioUrl?: string;
+  audioBase64?: string;
+  mimeType?: string;
+  id?: string;
+  fileName?: string;
   title?: string;
   duration?: number;
 }
@@ -108,9 +182,22 @@ export interface VideoGenerationOptions {
 
 export interface AudioGenerationOptions {
   prompt: string;
+  kind?: AudioKind;
+  audioKind?: AudioKind;
+  text?: string;
   duration?: number;
   instrumental?: boolean;
   genre?: string;
+  voiceId?: string;
+  modelId?: string;
+  outputFormat?: string;
+  loop?: boolean;
+  promptInfluence?: number;
+  seed?: number;
+  languageCode?: string;
+  voiceSettings?: NonNullable<
+    NonNullable<AudioGenConfig["elevenlabs"]>["voiceSettings"]
+  >;
 }
 
 export interface VisionAnalysisOptions {
@@ -281,9 +368,14 @@ class ElizaCloudAudioProvider implements AudioGenerationProvider {
         },
         body: JSON.stringify({
           prompt: options.prompt,
+          kind: options.kind,
+          audioKind: options.audioKind,
           duration: options.duration,
           instrumental: options.instrumental,
           genre: options.genre,
+          voiceId: options.voiceId,
+          modelId: options.modelId,
+          outputFormat: options.outputFormat,
         }),
       },
     );
@@ -1304,6 +1396,315 @@ export class AnthropicVisionProvider implements VisionAnalysisProvider {
 }
 
 // ============================================================================
+// FAL Audio Provider Implementation
+// ============================================================================
+
+export class FalAudioProvider implements AudioGenerationProvider {
+  name = "fal";
+  private apiKey: string;
+  private model: string;
+  private baseUrl: string;
+  private secondsStart?: number;
+  private secondsTotal?: number;
+  private steps?: number;
+  private timeoutMs: number;
+  private extraInput?: Record<string, unknown>;
+
+  constructor(config: NonNullable<AudioGenConfig["fal"]>) {
+    if (!config.apiKey) {
+      throw new Error(`${this.name} API key is required`);
+    }
+    this.apiKey = config.apiKey;
+    this.model = config.model ?? "fal-ai/stable-audio";
+    this.baseUrl = config.baseUrl ?? "https://fal.run";
+    this.secondsStart = config.secondsStart;
+    this.secondsTotal = config.secondsTotal;
+    this.steps = config.steps;
+    this.timeoutMs = config.timeoutMs ?? DEFAULT_AUDIO_TIMEOUT_MS;
+    this.extraInput = config.extraInput;
+  }
+
+  async generate(
+    options: AudioGenerationOptions,
+  ): Promise<MediaProviderResult<AudioGenerationResult>> {
+    return withProviderErrorBoundary(this.name, async () => {
+      const response = await fetchWithTimeout(
+        `${this.baseUrl}/${this.model}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Key ${this.apiKey}`,
+          },
+          body: JSON.stringify({
+            ...(this.extraInput ?? {}),
+            prompt: options.prompt,
+            ...(this.secondsStart !== undefined
+              ? { seconds_start: this.secondsStart }
+              : {}),
+            seconds_total:
+              options.duration ??
+              this.secondsTotal ??
+              this.extraInput?.duration,
+            ...(this.steps !== undefined ? { steps: this.steps } : {}),
+          }),
+        },
+        this.timeoutMs,
+      );
+
+      if (!response.ok) {
+        const text = await response.text();
+        return { success: false, error: `FAL audio error: ${text}` };
+      }
+
+      const data = (await response.json()) as {
+        audio?: { url?: string; content_type?: string; file_name?: string };
+        audio_file?: {
+          url?: string;
+          content_type?: string;
+          file_name?: string;
+        };
+        file?: { url?: string; content_type?: string; file_name?: string };
+        url?: string;
+        audio_url?: string;
+        duration?: number;
+      };
+      const file = data.audio_file ?? data.audio ?? data.file;
+      const audioUrl = file?.url ?? data.audio_url ?? data.url;
+      if (!audioUrl) {
+        return { success: false, error: "No audio returned from FAL" };
+      }
+
+      return {
+        success: true,
+        data: {
+          audioUrl,
+          mimeType: file?.content_type,
+          fileName: file?.file_name,
+          title: "Generated Audio",
+          duration: data.duration ?? options.duration,
+        },
+      };
+    });
+  }
+}
+
+// ============================================================================
+// ElevenLabs Audio Provider Implementation
+// ============================================================================
+
+export class ElevenLabsAudioProvider implements AudioGenerationProvider {
+  name = "elevenlabs";
+  private apiKey: string;
+  private baseUrl: string;
+  private config: NonNullable<AudioGenConfig["elevenlabs"]>;
+  private timeoutMs: number;
+
+  constructor(config: NonNullable<AudioGenConfig["elevenlabs"]>) {
+    if (!config.apiKey) {
+      throw new Error(`${this.name} API key is required`);
+    }
+    this.apiKey = config.apiKey;
+    this.baseUrl = config.baseUrl ?? "https://api.elevenlabs.io/v1";
+    this.config = config;
+    this.timeoutMs = config.timeoutMs ?? DEFAULT_AUDIO_TIMEOUT_MS;
+  }
+
+  async generate(
+    options: AudioGenerationOptions,
+  ): Promise<MediaProviderResult<AudioGenerationResult>> {
+    const kind = normalizeAudioKind(options.audioKind ?? options.kind) ?? "sfx";
+    switch (kind) {
+      case "tts":
+        return this.generateSpeech(options);
+      case "music":
+        return this.generateMusic(options);
+      default:
+        return this.generateSoundEffect(options);
+    }
+  }
+
+  private headers(): Record<string, string> {
+    return {
+      "Content-Type": "application/json",
+      "xi-api-key": this.apiKey,
+    };
+  }
+
+  private async generateSoundEffect(
+    options: AudioGenerationOptions,
+  ): Promise<MediaProviderResult<AudioGenerationResult>> {
+    return withProviderErrorBoundary(this.name, async () => {
+      const outputFormat = options.outputFormat ?? this.config.outputFormat;
+      const response = await fetchWithTimeout(
+        `${this.baseUrl}/sound-generation${buildOutputFormatQuery(outputFormat)}`,
+        {
+          method: "POST",
+          headers: this.headers(),
+          body: JSON.stringify({
+            text: options.prompt,
+            ...(options.duration !== undefined ||
+            this.config.duration !== undefined
+              ? { duration_seconds: options.duration ?? this.config.duration }
+              : {}),
+            ...(options.promptInfluence !== undefined ||
+            this.config.promptInfluence !== undefined
+              ? {
+                  prompt_influence:
+                    options.promptInfluence ?? this.config.promptInfluence,
+                }
+              : {}),
+            ...(options.loop !== undefined || this.config.loop !== undefined
+              ? { loop: options.loop ?? this.config.loop }
+              : {}),
+            ...(options.seed !== undefined || this.config.seed !== undefined
+              ? { seed: options.seed ?? this.config.seed }
+              : {}),
+            model_id:
+              options.modelId ??
+              this.config.sfxModelId ??
+              this.config.modelId ??
+              "eleven_text_to_sound_v2",
+          }),
+        },
+        this.timeoutMs,
+      );
+
+      if (!response.ok) {
+        const text = await response.text();
+        return { success: false, error: `ElevenLabs SFX error: ${text}` };
+      }
+
+      return {
+        success: true,
+        data: await responseToAudioResult(
+          response,
+          "Generated Sound Effect",
+          options.duration ?? this.config.duration,
+        ),
+      };
+    });
+  }
+
+  private async generateMusic(
+    options: AudioGenerationOptions,
+  ): Promise<MediaProviderResult<AudioGenerationResult>> {
+    return withProviderErrorBoundary(this.name, async () => {
+      const outputFormat = options.outputFormat ?? this.config.outputFormat;
+      const prompt = options.genre
+        ? `${options.prompt}\nGenre: ${options.genre}`
+        : options.prompt;
+      const response = await fetchWithTimeout(
+        `${this.baseUrl}/music${buildOutputFormatQuery(outputFormat)}`,
+        {
+          method: "POST",
+          headers: this.headers(),
+          body: JSON.stringify({
+            prompt,
+            ...(options.duration
+              ? { music_length_ms: Math.round(options.duration * 1000) }
+              : {}),
+            ...(options.instrumental !== undefined
+              ? { force_instrumental: options.instrumental }
+              : {}),
+            ...(options.seed !== undefined || this.config.seed !== undefined
+              ? { seed: options.seed ?? this.config.seed }
+              : {}),
+            ...(this.config.signWithC2pa !== undefined
+              ? { sign_with_c2pa: this.config.signWithC2pa }
+              : {}),
+            model_id:
+              options.modelId ??
+              this.config.musicModelId ??
+              this.config.modelId ??
+              "music_v1",
+          }),
+        },
+        this.timeoutMs,
+      );
+
+      if (!response.ok) {
+        const text = await response.text();
+        return { success: false, error: `ElevenLabs music error: ${text}` };
+      }
+
+      return {
+        success: true,
+        data: await responseToAudioResult(
+          response,
+          "Generated Music",
+          options.duration,
+        ),
+      };
+    });
+  }
+
+  private async generateSpeech(
+    options: AudioGenerationOptions,
+  ): Promise<MediaProviderResult<AudioGenerationResult>> {
+    const voiceId = options.voiceId ?? this.config.voiceId;
+    if (!voiceId) {
+      return {
+        success: false,
+        error: "ElevenLabs TTS requires a voiceId in config or request options",
+      };
+    }
+
+    return withProviderErrorBoundary(this.name, async () => {
+      const outputFormat = options.outputFormat ?? this.config.outputFormat;
+      const response = await fetchWithTimeout(
+        `${this.baseUrl}/text-to-speech/${encodeURIComponent(voiceId)}${buildOutputFormatQuery(outputFormat)}`,
+        {
+          method: "POST",
+          headers: this.headers(),
+          body: JSON.stringify({
+            text: options.text ?? options.prompt,
+            model_id:
+              options.modelId ??
+              this.config.ttsModelId ??
+              this.config.modelId ??
+              "eleven_multilingual_v2",
+            ...(options.languageCode !== undefined ||
+            this.config.languageCode !== undefined
+              ? {
+                  language_code:
+                    options.languageCode ?? this.config.languageCode,
+                }
+              : {}),
+            ...(options.voiceSettings !== undefined ||
+            this.config.voiceSettings !== undefined
+              ? {
+                  voice_settings:
+                    options.voiceSettings ?? this.config.voiceSettings,
+                }
+              : {}),
+            ...(options.seed !== undefined || this.config.seed !== undefined
+              ? { seed: options.seed ?? this.config.seed }
+              : {}),
+            ...(this.config.applyTextNormalization
+              ? {
+                  apply_text_normalization: this.config.applyTextNormalization,
+                }
+              : {}),
+          }),
+        },
+        this.timeoutMs,
+      );
+
+      if (!response.ok) {
+        const text = await response.text();
+        return { success: false, error: `ElevenLabs TTS error: ${text}` };
+      }
+
+      return {
+        success: true,
+        data: await responseToAudioResult(response, "Generated Speech"),
+      };
+    });
+  }
+}
+
+// ============================================================================
 // Suno Provider Implementation
 // ============================================================================
 
@@ -1454,27 +1855,147 @@ export function createVideoProvider(
   );
 }
 
+function hasUsableDirectAudioProvider(config: AudioGenConfig | undefined) {
+  return !!(
+    config?.suno?.apiKey ||
+    config?.elevenlabs?.apiKey ||
+    config?.fal?.apiKey
+  );
+}
+
+function getConfiguredAudioProvider(
+  config: AudioGenConfig | undefined,
+  kind: AudioKind,
+): AudioGenProvider | undefined {
+  return (
+    config?.providers?.[kind] ?? config?.providers?.default ?? config?.provider
+  );
+}
+
+function getAutoAudioProvider(
+  config: AudioGenConfig | undefined,
+  kind: AudioKind,
+): AudioGenProvider | undefined {
+  if (kind === "music") {
+    if (config?.suno?.apiKey) return "suno";
+    if (config?.elevenlabs?.apiKey) return "elevenlabs";
+    if (config?.fal?.apiKey) return "fal";
+    return undefined;
+  }
+
+  if (config?.elevenlabs?.apiKey) return "elevenlabs";
+  if (config?.fal?.apiKey) return "fal";
+  return undefined;
+}
+
+function missingAudioProviderError(kind: AudioKind): string {
+  return (
+    `No ${kind} audio provider configured and cloud media is disabled. ` +
+    "Configure a direct provider (suno, elevenlabs, fal) or enable cloud media."
+  );
+}
+
+class RoutedAudioProvider implements AudioGenerationProvider {
+  name = "audio-router";
+  private config?: AudioGenConfig;
+  private options: MediaProviderFactoryOptions;
+
+  constructor(
+    config: AudioGenConfig | undefined,
+    options: MediaProviderFactoryOptions,
+  ) {
+    this.config = config;
+    this.options = options;
+  }
+
+  async generate(
+    options: AudioGenerationOptions,
+  ): Promise<MediaProviderResult<AudioGenerationResult>> {
+    const kind = getAudioKind(options, this.config);
+    const providerName =
+      getConfiguredAudioProvider(this.config, kind) ??
+      getAutoAudioProvider(this.config, kind) ??
+      "cloud";
+
+    if (providerName === "cloud") {
+      if (this.options.cloudMediaDisabled) {
+        return { success: false, error: missingAudioProviderError(kind) };
+      }
+      return createCloudAudioProvider(this.options).generate({
+        ...options,
+        kind,
+      });
+    }
+
+    try {
+      switch (providerName) {
+        case "suno":
+          if (!this.config?.suno?.apiKey) break;
+          if (kind !== "music") {
+            return {
+              success: false,
+              error: "Suno audio generation only supports music requests",
+            };
+          }
+          return new SunoAudioProvider(this.config.suno).generate({
+            ...options,
+            kind,
+          });
+        case "elevenlabs":
+          if (!this.config?.elevenlabs?.apiKey) break;
+          return new ElevenLabsAudioProvider(this.config.elevenlabs).generate({
+            ...options,
+            kind,
+          });
+        case "fal":
+          if (!this.config?.fal?.apiKey) break;
+          return new FalAudioProvider(this.config.fal).generate({
+            ...options,
+            kind,
+          });
+      }
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+
+    if (this.options.cloudMediaDisabled) {
+      return { success: false, error: missingAudioProviderError(kind) };
+    }
+
+    return createCloudAudioProvider(this.options).generate({
+      ...options,
+      kind,
+    });
+  }
+}
+
 export function createAudioProvider(
   config: AudioGenConfig | undefined,
   options: MediaProviderFactoryOptions,
 ): AudioGenerationProvider {
-  const mode = config?.mode ?? (options.cloudMediaDisabled ? "local" : "cloud");
-  const provider = mode === "cloud" ? "cloud" : (config?.provider ?? "cloud");
+  const mode =
+    config?.mode ?? (options.cloudMediaDisabled ? "own-key" : "cloud");
 
-  if (provider === "suno" && config?.suno?.apiKey) {
-    return new SunoAudioProvider(config.suno);
+  if (mode === "cloud") {
+    if (options.cloudMediaDisabled) {
+      throw new Error(
+        "Audio media is configured for cloud mode but cloud media is disabled.",
+      );
+    }
+    return createCloudAudioProvider(options);
   }
 
-  if (options.cloudMediaDisabled) {
+  if (options.cloudMediaDisabled && !hasUsableDirectAudioProvider(config)) {
     throw new Error(
       "No audio provider configured and cloud media is disabled. " +
-        "Configure a direct provider (suno) or enable cloud media.",
+        "Configure a direct provider (suno, elevenlabs, fal) or enable cloud media.",
     );
   }
-  return new ElizaCloudAudioProvider(
-    options.elizaCloudBaseUrl ?? "https://elizacloud.ai/api/v1",
-    options.elizaCloudApiKey,
-  );
+
+  return new RoutedAudioProvider(config, options);
 }
 
 export function createVisionProvider(

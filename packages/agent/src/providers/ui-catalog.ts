@@ -34,6 +34,12 @@ export const uiCatalogProvider: Provider = {
   relevanceKeywords: getValidationKeywordTerms("provider.uiCatalog.relevance", {
     includeAllLocales: true,
   }),
+  contexts: ["general"],
+  contextGate: { anyOf: ["general"] },
+  cacheStable: true,
+  cacheScope: "agent",
+  roleGate: { minRole: "USER" },
+
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     const channelType = message.content?.channelType;
     const isAllowedChannel =

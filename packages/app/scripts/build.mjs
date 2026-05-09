@@ -7,6 +7,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { resolveElizaAssetBaseUrls } from "../../../packages/app-core/scripts/lib/asset-cdn.mjs";
+import { normalizeEnvPrefix } from "../src/env-prefix.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(__dirname, "..");
@@ -42,11 +43,11 @@ function readAppEnvPrefix() {
   const content = fs.readFileSync(appConfigPath, "utf8");
   const match = content.match(/envPrefix\s*:\s*["']([^"']+)["']/);
   const raw = match?.[1]?.trim() || fallback;
-  const normalized = raw
-    .replace(/[^A-Za-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .toUpperCase();
-  return normalized || fallback;
+  try {
+    return normalizeEnvPrefix(raw || fallback);
+  } catch {
+    return normalizeEnvPrefix(fallback);
+  }
 }
 
 const APP_ENV_PREFIX = readAppEnvPrefix();

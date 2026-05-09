@@ -1,32 +1,4 @@
 {
 	"version": "1.0.0",
-	"providers": [
-		{
-			"name": "channelState",
-			"description": "Provides information about the current Discord channel state, including whether it's a DM or group channel, channel name, and server name.",
-			"dynamic": true
-		},
-		{
-			"name": "guildInfo",
-			"description": "Provides information about the current Discord server/guild including member count, creation date, channels, roles, and bot permissions.",
-			"dynamic": true
-		},
-		{
-			"name": "voiceState",
-			"description": "Provides information about the voice state of the agent, including whether it is currently in a voice channel.",
-			"dynamic": true
-		},
-		{
-			"name": "discordChannels",
-			"description": "Lists Discord channels the bot is currently listening to, grouped by server. TOON-encoded.",
-			"descriptionCompressed": "Discord channels bot listens to (grouped by server).",
-			"dynamic": true
-		},
-		{
-			"name": "discordServerInfo",
-			"description": "Discord server overview: members, channels, roles, owner, premium tier. TOON-encoded.",
-			"descriptionCompressed": "Discord server overview (members, channels, roles).",
-			"dynamic": true
-		}
-	]
+	"providers": []
 }

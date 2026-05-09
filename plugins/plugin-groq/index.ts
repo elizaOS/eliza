@@ -3,18 +3,29 @@ import type {
   EventPayload,
   IAgentRuntime,
   ModelTypeName,
-  ObjectGenerationParams,
   Plugin,
   RecordLlmCallDetails,
 } from "@elizaos/core";
 import {
+  buildCanonicalSystemPrompt,
   EventType,
   type GenerateTextParams,
   logger,
   ModelType,
   recordLlmCall,
+  renderChatMessagesForPrompt,
+  resolveEffectiveSystemPrompt,
 } from "@elizaos/core";
-import { APICallError, generateObject, generateText } from "ai";
+import {
+  APICallError,
+  generateText,
+  type JSONSchema7,
+  jsonSchema,
+  type ModelMessage,
+  Output,
+  type ToolChoice,
+  type ToolSet,
+} from "ai";
 
 const _globalThis = globalThis as typeof globalThis & {
   AI_SDK_LOG_WARNINGS?: boolean;
@@ -27,6 +38,26 @@ const DEFAULT_TTS_VOICE = "autumn";
 const DEFAULT_TTS_RESPONSE_FORMAT = "wav";
 const DEFAULT_TRANSCRIPTION_MODEL = "whisper-large-v3-turbo";
 const DEFAULT_BASE_URL = "https://api.groq.com/openai/v1";
+
+function resolveGroqSystemPrompt(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams
+): string | undefined {
+  return resolveEffectiveSystemPrompt({
+    params,
+    fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
+  });
+}
+
+function resolveGroqPrompt(params: GenerateTextParams, systemPrompt: string | undefined): string {
+  return (
+    renderChatMessagesForPrompt(params.messages, {
+      omitDuplicateSystem: systemPrompt,
+    }) ??
+    params.prompt ??
+    ""
+  );
+}
 
 type ProviderUsage = {
   inputTokens?: number;
@@ -269,6 +300,68 @@ export function classifyRetryError(error: unknown): "rate-limit" | "transient" |
   return "fatal";
 }
 
+type NativeOutput = NonNullable<Parameters<typeof generateText<ToolSet>>[0]["output"]>;
+
+function buildGroqStructuredOutput(responseSchema: unknown): NativeOutput {
+  if (
+    responseSchema &&
+    typeof responseSchema === "object" &&
+    "responseFormat" in responseSchema &&
+    "parseCompleteOutput" in responseSchema
+  ) {
+    return responseSchema as NativeOutput;
+  }
+
+  const schemaOptions =
+    responseSchema && typeof responseSchema === "object" && "schema" in responseSchema
+      ? (responseSchema as { schema: unknown; name?: string; description?: string })
+      : { schema: responseSchema };
+
+  return Output.object({
+    schema: jsonSchema(schemaOptions.schema as JSONSchema7),
+    ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
+    ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
+  }) as NativeOutput;
+}
+
+type GroqUsage = {
+  inputTokens?: number;
+  outputTokens?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+};
+
+interface GroqNativeTextResult {
+  text: string;
+  toolCalls: unknown[];
+  finishReason?: string;
+  usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+}
+
+function buildGroqNativeTextResult(result: {
+  text: string;
+  toolCalls?: unknown[];
+  finishReason?: string;
+  usage?: GroqUsage;
+}): GroqNativeTextResult {
+  const inputTokens = result.usage?.inputTokens ?? result.usage?.promptTokens ?? 0;
+  const outputTokens = result.usage?.outputTokens ?? result.usage?.completionTokens ?? 0;
+  const usage = result.usage
+    ? {
+        promptTokens: inputTokens,
+        completionTokens: outputTokens,
+        totalTokens: result.usage.totalTokens ?? inputTokens + outputTokens,
+      }
+    : undefined;
+  return {
+    text: result.text,
+    toolCalls: result.toolCalls ?? [],
+    finishReason: result.finishReason,
+    ...(usage ? { usage } : {}),
+  };
+}
+
 async function generateWithRetry(
   runtime: IAgentRuntime,
   groq: ReturnType<typeof createGroq>,
@@ -282,8 +375,13 @@ async function generateWithRetry(
     frequencyPenalty: number;
     presencePenalty: number;
     stopSequences: string[];
+    messages?: ModelMessage[];
+    tools?: ToolSet;
+    toolChoice?: ToolChoice<ToolSet>;
+    responseSchema?: unknown;
+    returnNative?: boolean;
   }
-): Promise<string> {
+): Promise<string | GroqNativeTextResult> {
   const generate = () => {
     const details: RecordLlmCallDetails = {
       model,
@@ -296,16 +394,30 @@ async function generateWithRetry(
     };
 
     return recordLlmCall(runtime, details, async () => {
-      const result = await generateText({
+      // Native tool calling + structured output: when callers pass `tools`,
+      // `toolChoice`, `responseSchema`, or `messages`, route through the AI
+      // SDK's native shape (Groq's OpenAI-compatible chat.completions API
+      // accepts `tools`, `tool_choice`, and `response_format` for JSON mode).
+      // When only `prompt` is supplied, fall back to the simple generate-text
+      // shape — this keeps caching/cost flow untouched for the common path.
+      const sharedSettings = {
         model: groq.languageModel(model),
-        prompt: params.prompt,
         system: params.system,
         temperature: params.temperature,
         maxRetries: 3,
         frequencyPenalty: params.frequencyPenalty,
         presencePenalty: params.presencePenalty,
         stopSequences: params.stopSequences,
-      });
+        ...(params.tools ? { tools: params.tools } : {}),
+        ...(params.toolChoice ? { toolChoice: params.toolChoice } : {}),
+        ...(params.responseSchema
+          ? { output: buildGroqStructuredOutput(params.responseSchema) }
+          : {}),
+      };
+      const result =
+        params.messages && params.messages.length > 0
+          ? await generateText({ ...sharedSettings, messages: params.messages })
+          : await generateText({ ...sharedSettings, prompt: params.prompt });
       details.response = result.text;
       applyUsageToDetails(details, result.usage);
       return result;
@@ -322,6 +434,9 @@ async function generateWithRetry(
       const result = await generate();
       const usage = normalizeTokenUsage(result.usage) ?? estimateUsage(params.prompt, result.text);
       emitModelUsed(runtime, modelType, model, usage);
+      if (params.returnNative) {
+        return buildGroqNativeTextResult(result);
+      }
       const { text } = result;
       return text;
     } catch (error) {
@@ -360,6 +475,75 @@ async function generateWithRetry(
   }
 }
 
+function buildGroqGenerateParams(
+  params: GenerateTextParams,
+  systemPrompt: string | undefined,
+  promptText: string
+): {
+  prompt: string;
+  system?: string;
+  temperature: number;
+  maxTokens: number;
+  frequencyPenalty: number;
+  presencePenalty: number;
+  stopSequences: string[];
+  messages?: ModelMessage[];
+  tools?: ToolSet;
+  toolChoice?: ToolChoice<ToolSet>;
+  responseSchema?: unknown;
+  returnNative?: boolean;
+} {
+  const paramsWithNative = params as GenerateTextParams & {
+    messages?: ModelMessage[];
+    tools?: ToolSet;
+    toolChoice?: ToolChoice<ToolSet>;
+    responseSchema?: unknown;
+  };
+  const returnNative = Boolean(
+    paramsWithNative.messages ||
+      paramsWithNative.tools ||
+      paramsWithNative.toolChoice ||
+      paramsWithNative.responseSchema
+  );
+  return {
+    prompt: promptText,
+    system: systemPrompt,
+    temperature: params.temperature ?? 0.7,
+    maxTokens: params.maxTokens ?? 8192,
+    frequencyPenalty: params.frequencyPenalty ?? 0.7,
+    presencePenalty: params.presencePenalty ?? 0.7,
+    stopSequences: params.stopSequences || [],
+    ...(paramsWithNative.messages ? { messages: paramsWithNative.messages } : {}),
+    ...(paramsWithNative.tools ? { tools: paramsWithNative.tools } : {}),
+    ...(paramsWithNative.toolChoice ? { toolChoice: paramsWithNative.toolChoice } : {}),
+    ...(paramsWithNative.responseSchema ? { responseSchema: paramsWithNative.responseSchema } : {}),
+    ...(returnNative ? { returnNative } : {}),
+  };
+}
+
+async function handleTextModel(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams,
+  modelType: ModelTypeName
+): Promise<string> {
+  const groq = createGroqClient(runtime);
+  const model = getTextModelForType(runtime, modelType);
+  const system = resolveGroqSystemPrompt(runtime, params);
+  const result = await generateWithRetry(
+    runtime,
+    groq,
+    modelType,
+    model,
+    buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system))
+  );
+  // Native result (with toolCalls / usage / finishReason) is cast through the
+  // string return type because elizaOS's plugin Model handler signature is
+  // `(runtime, params) => Promise<string | TextStreamResult>`. The runtime
+  // unwraps the native shape via `useModel` consumers that pass `tools` /
+  // `messages` / `responseSchema` / `toolChoice`.
+  return result as unknown as string;
+}
+
 function getTextModelForType(runtime: IAgentRuntime, modelType: string): string {
   switch (modelType) {
     case ModelType.TEXT_NANO:
@@ -384,6 +568,9 @@ function getTextModelForType(runtime: IAgentRuntime, modelType: string): string 
 export const groqPlugin: Plugin = {
   name: "groq",
   description: "Groq LLM provider - fast inference with Llama and other models",
+  autoEnable: {
+    envKeys: ["GROQ_API_KEY"],
+  },
 
   config: {
     GROQ_API_KEY: typeof process !== "undefined" ? (process.env.GROQ_API_KEY ?? null) : null,
@@ -426,182 +613,26 @@ export const groqPlugin: Plugin = {
   },
 
   models: {
-    [ModelType.TEXT_NANO]: async (runtime, params: GenerateTextParams) => {
-      const groq = createGroqClient(runtime);
-      const model = getTextModelForType(runtime, ModelType.TEXT_NANO);
+    [ModelType.TEXT_NANO]: (runtime, params: GenerateTextParams) =>
+      handleTextModel(runtime, params, ModelType.TEXT_NANO),
 
-      return generateWithRetry(runtime, groq, ModelType.TEXT_NANO, model, {
-        prompt: params.prompt,
-        system: runtime.character.system,
-        temperature: params.temperature ?? 0.7,
-        maxTokens: params.maxTokens ?? 8192,
-        frequencyPenalty: params.frequencyPenalty ?? 0.7,
-        presencePenalty: params.presencePenalty ?? 0.7,
-        stopSequences: params.stopSequences || [],
-      });
-    },
+    [ModelType.TEXT_SMALL]: (runtime, params: GenerateTextParams) =>
+      handleTextModel(runtime, params, ModelType.TEXT_SMALL),
 
-    [ModelType.TEXT_SMALL]: async (runtime, params: GenerateTextParams) => {
-      const groq = createGroqClient(runtime);
-      const model = getTextModelForType(runtime, ModelType.TEXT_SMALL);
+    [ModelType.TEXT_MEDIUM]: (runtime, params: GenerateTextParams) =>
+      handleTextModel(runtime, params, ModelType.TEXT_MEDIUM),
 
-      return generateWithRetry(runtime, groq, ModelType.TEXT_SMALL, model, {
-        prompt: params.prompt,
-        system: runtime.character.system,
-        temperature: params.temperature ?? 0.7,
-        maxTokens: params.maxTokens ?? 8192,
-        frequencyPenalty: params.frequencyPenalty ?? 0.7,
-        presencePenalty: params.presencePenalty ?? 0.7,
-        stopSequences: params.stopSequences || [],
-      });
-    },
+    [ModelType.TEXT_LARGE]: (runtime, params: GenerateTextParams) =>
+      handleTextModel(runtime, params, ModelType.TEXT_LARGE),
 
-    [ModelType.TEXT_MEDIUM]: async (runtime, params: GenerateTextParams) => {
-      const groq = createGroqClient(runtime);
-      const model = getTextModelForType(runtime, ModelType.TEXT_MEDIUM);
+    [ModelType.TEXT_MEGA]: (runtime, params: GenerateTextParams) =>
+      handleTextModel(runtime, params, ModelType.TEXT_MEGA),
 
-      return generateWithRetry(runtime, groq, ModelType.TEXT_MEDIUM, model, {
-        prompt: params.prompt,
-        system: runtime.character.system,
-        temperature: params.temperature ?? 0.7,
-        maxTokens: params.maxTokens ?? 8192,
-        frequencyPenalty: params.frequencyPenalty ?? 0.7,
-        presencePenalty: params.presencePenalty ?? 0.7,
-        stopSequences: params.stopSequences || [],
-      });
-    },
+    [ModelType.RESPONSE_HANDLER]: (runtime, params: GenerateTextParams) =>
+      handleTextModel(runtime, params, ModelType.RESPONSE_HANDLER),
 
-    [ModelType.TEXT_LARGE]: async (runtime, params: GenerateTextParams) => {
-      const groq = createGroqClient(runtime);
-      const model = getTextModelForType(runtime, ModelType.TEXT_LARGE);
-
-      return generateWithRetry(runtime, groq, ModelType.TEXT_LARGE, model, {
-        prompt: params.prompt,
-        system: runtime.character.system,
-        temperature: params.temperature ?? 0.7,
-        maxTokens: params.maxTokens ?? 8192,
-        frequencyPenalty: params.frequencyPenalty ?? 0.7,
-        presencePenalty: params.presencePenalty ?? 0.7,
-        stopSequences: params.stopSequences || [],
-      });
-    },
-
-    [ModelType.TEXT_MEGA]: async (runtime, params: GenerateTextParams) => {
-      const groq = createGroqClient(runtime);
-      const model = getTextModelForType(runtime, ModelType.TEXT_MEGA);
-
-      return generateWithRetry(runtime, groq, ModelType.TEXT_MEGA, model, {
-        prompt: params.prompt,
-        system: runtime.character.system,
-        temperature: params.temperature ?? 0.7,
-        maxTokens: params.maxTokens ?? 8192,
-        frequencyPenalty: params.frequencyPenalty ?? 0.7,
-        presencePenalty: params.presencePenalty ?? 0.7,
-        stopSequences: params.stopSequences || [],
-      });
-    },
-
-    [ModelType.RESPONSE_HANDLER]: async (runtime, params: GenerateTextParams) => {
-      const groq = createGroqClient(runtime);
-      const model = getTextModelForType(runtime, ModelType.RESPONSE_HANDLER);
-
-      return generateWithRetry(runtime, groq, ModelType.RESPONSE_HANDLER, model, {
-        prompt: params.prompt,
-        system: runtime.character.system,
-        temperature: params.temperature ?? 0.7,
-        maxTokens: params.maxTokens ?? 8192,
-        frequencyPenalty: params.frequencyPenalty ?? 0.7,
-        presencePenalty: params.presencePenalty ?? 0.7,
-        stopSequences: params.stopSequences || [],
-      });
-    },
-
-    [ModelType.ACTION_PLANNER]: async (runtime, params: GenerateTextParams) => {
-      const groq = createGroqClient(runtime);
-      const model = getTextModelForType(runtime, ModelType.ACTION_PLANNER);
-
-      return generateWithRetry(runtime, groq, ModelType.ACTION_PLANNER, model, {
-        prompt: params.prompt,
-        system: runtime.character.system,
-        temperature: params.temperature ?? 0.7,
-        maxTokens: params.maxTokens ?? 8192,
-        frequencyPenalty: params.frequencyPenalty ?? 0.7,
-        presencePenalty: params.presencePenalty ?? 0.7,
-        stopSequences: params.stopSequences || [],
-      });
-    },
-
-    [ModelType.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
-      const groq = createGroqClient(runtime);
-      const model = getSmallModel(runtime);
-
-      const details: RecordLlmCallDetails = {
-        model,
-        systemPrompt: "",
-        userPrompt: params.prompt,
-        temperature: params.temperature ?? 0,
-        maxTokens: params.maxTokens ?? 8192,
-        purpose: "external_llm",
-        actionType: "ai.generateObject",
-      };
-      const { object, usage } = await recordLlmCall(runtime, details, async () => {
-        const result = await generateObject({
-          model: groq.languageModel(model),
-          output: "no-schema",
-          prompt: params.prompt,
-          temperature: params.temperature,
-        });
-        details.response = stringifyForUsage(result.object);
-        applyUsageToDetails(details, result.usage);
-        return result;
-      });
-      emitModelUsed(
-        runtime,
-        ModelType.OBJECT_SMALL,
-        model,
-        normalizeTokenUsage(usage) ?? estimateUsage(params.prompt, object)
-      );
-      return object as Record<
-        string,
-        string | number | boolean | null | Record<string, string | number | boolean | null>
-      >;
-    },
-
-    [ModelType.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
-      const groq = createGroqClient(runtime);
-      const model = getLargeModel(runtime);
-
-      const details: RecordLlmCallDetails = {
-        model,
-        systemPrompt: "",
-        userPrompt: params.prompt,
-        temperature: params.temperature ?? 0,
-        maxTokens: params.maxTokens ?? 8192,
-        purpose: "external_llm",
-        actionType: "ai.generateObject",
-      };
-      const { object, usage } = await recordLlmCall(runtime, details, async () => {
-        const result = await generateObject({
-          model: groq.languageModel(model),
-          output: "no-schema",
-          prompt: params.prompt,
-          temperature: params.temperature,
-        });
-        details.response = stringifyForUsage(result.object);
-        applyUsageToDetails(details, result.usage);
-        return result;
-      });
-      emitModelUsed(
-        runtime,
-        ModelType.OBJECT_LARGE,
-        model,
-        normalizeTokenUsage(usage) ?? estimateUsage(params.prompt, object)
-      );
-      return object as Record<
-        string,
-        string | number | boolean | null | Record<string, string | number | boolean | null>
-      >;
-    },
+    [ModelType.ACTION_PLANNER]: (runtime, params: GenerateTextParams) =>
+      handleTextModel(runtime, params, ModelType.ACTION_PLANNER),
 
     [ModelType.TRANSCRIPTION]: async (runtime, params) => {
       type AudioDataShape = { audioData: Uint8Array };
@@ -790,16 +821,6 @@ export const groqPlugin: Plugin = {
               throw new Error("Empty response from TEXT_LARGE");
             }
             logger.info("TEXT_LARGE:", text);
-          },
-        },
-        {
-          name: "object_generation",
-          fn: async (runtime) => {
-            const obj = await runtime.useModel(ModelType.OBJECT_SMALL, {
-              prompt: 'Return a JSON object with name="test" and value=42',
-              temperature: 0.5,
-            });
-            logger.info("OBJECT_SMALL:", JSON.stringify(obj));
           },
         },
       ],

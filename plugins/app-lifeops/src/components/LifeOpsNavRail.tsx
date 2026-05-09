@@ -1,4 +1,4 @@
-import { TooltipHint } from "@elizaos/app-core";
+import { TooltipHint } from "@elizaos/ui";
 import {
   Sidebar,
   SidebarContent,
@@ -10,6 +10,7 @@ import {
   BriefcaseBusiness,
   CalendarDays,
   CreditCard,
+  FileText,
   LayoutDashboard,
   Mail,
   MessageSquare,
@@ -91,6 +92,12 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Money",
         icon: <CreditCard className="h-4 w-4" aria-hidden />,
         dotColor: "bg-green-400",
+      },
+      {
+        id: "documents",
+        label: "Documents",
+        icon: <FileText className="h-4 w-4" aria-hidden />,
+        dotColor: "bg-cyan-400",
       },
     ],
   },

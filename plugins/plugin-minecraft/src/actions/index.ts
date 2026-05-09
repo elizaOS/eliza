@@ -1,7 +1,10 @@
-export { minecraftAttackAction } from "./attack.js";
-export { minecraftBlockOpAction } from "./block-op.js";
-export { minecraftChatAction } from "./chat.js";
-export { minecraftConnectAction } from "./connect.js";
-export { minecraftDisconnectAction } from "./disconnect.js";
-export { minecraftLocomoteOpAction } from "./locomote-op.js";
-export { minecraftWaypointOpAction } from "./waypoint-op.js";
+/**
+ * Action registry for `@elizaos/plugin-minecraft`.
+ *
+ * Single planner-facing parent: `MC` (Pattern C) — absorbs the seven
+ * old leaves (MC_ATTACK, MC_BLOCK, MC_CHAT, MC_CONNECT, MC_DISCONNECT,
+ * MC_LOCOMOTE, MC_WAYPOINT). Old names live as similes for trace
+ * continuity.
+ */
+
+export { minecraftAction } from "./mc.js";

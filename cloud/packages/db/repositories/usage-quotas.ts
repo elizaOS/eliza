@@ -9,7 +9,7 @@ export type { NewUsageQuota, UsageQuota };
  */
 export class UsageQuotasRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -121,7 +121,7 @@ export class UsageQuotasRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**

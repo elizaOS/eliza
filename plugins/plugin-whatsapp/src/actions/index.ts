@@ -1,1 +1,1 @@
-export { messageOpAction, WHATSAPP_MESSAGE_OP_ACTION } from "./messageOp";
+// WhatsApp messaging routes through MESSAGE connector hooks.

@@ -1,5 +1,5 @@
 /**
- * Cloud Bootstrap Plugin - Multi-step message execution for cloud.
+ * Cloud Bootstrap Plugin - Native planner message execution for cloud.
  * Replaces default message service with CloudBootstrapMessageService.
  */
 import {
@@ -10,19 +10,17 @@ import {
   type RunEventPayload,
   Service,
 } from "@elizaos/core";
-import { oauthConnectAction } from "../plugin-oauth/actions/oauth-connect";
-import { oauthGetAction } from "../plugin-oauth/actions/oauth-get";
-import { oauthListAction } from "../plugin-oauth/actions/oauth-list";
-import { oauthRevokeAction } from "../plugin-oauth/actions/oauth-revoke";
+import { oauthAction } from "../plugin-oauth/actions/oauth";
 import { userAuthStatusProvider } from "../plugin-oauth/providers/user-auth-status";
 import { appConfigProvider } from "../shared/providers/app-config";
 import { recentMessagesProvider } from "../shared/providers/recent-messages";
 import { finishAction } from "./actions/finish";
-import { generateImageAction } from "./actions/image-generation";
+import { generateMediaAction } from "./actions/media-generation";
 import { actionStateProvider } from "./providers/action-state";
 import { actionsProvider } from "./providers/actions";
 import { characterProvider } from "./providers/character";
 import { CloudBootstrapMessageService } from "./services/cloud-bootstrap-message-service";
+import { CloudMediaGenerationService } from "./services/cloud-media-generation-service";
 
 // Re-export for external use
 export { CloudBootstrapMessageService } from "./services/cloud-bootstrap-message-service";
@@ -162,14 +160,11 @@ const events = {
 
 export const cloudBootstrapPlugin: Plugin = {
   name: "cloud-bootstrap",
-  description: "Multi-step message execution with action params for cloud",
+  description: "Native planner message execution with action params for cloud",
   actions: [
-    generateImageAction,
+    generateMediaAction,
     finishAction,
-    oauthConnectAction,
-    oauthListAction,
-    oauthGetAction,
-    oauthRevokeAction,
+    oauthAction,
   ] as Plugin["actions"],
   providers: [
     actionStateProvider,
@@ -180,7 +175,7 @@ export const cloudBootstrapPlugin: Plugin = {
     appConfigProvider,
   ],
   events,
-  services: [MessageServiceInstaller],
+  services: [MessageServiceInstaller, CloudMediaGenerationService],
 };
 
 export default cloudBootstrapPlugin;

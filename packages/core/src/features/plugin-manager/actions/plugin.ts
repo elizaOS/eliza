@@ -22,6 +22,7 @@ import type {
 import type { Memory } from "../../../types/memory.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";
 import type { State } from "../../../types/state.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import { hasOwnerAccess as defaultOwnerAccessFn } from "../security.ts";
 import { runCoreStatus } from "./plugin-handlers/core-status.ts";
 import {
@@ -92,9 +93,6 @@ const EJECTED_NOUN = /\bejected\b/i;
 const CORE_NOUN = /\bcore\b/i;
 const STATUS_NOUN = /\bstatus\b/i;
 const MANAGE_VERBS = /\b(manage|build|create|build|fix|update|edit)\b/i;
-
-const KEYWORD_HEURISTIC =
-	/\b(install|eject|sync|reinject|search|find|create|build|make|scaffold|new|list|show|details?|info|status|enable|disable|activate|deactivate|load|unload|manage|fix|update|edit)\b.*\bplugins?\b|\bcore\s+status\b|\bplugin\b.*\b(install|eject|sync|reinject|search|find|create|build|make|scaffold|new|list|show|details?|info|status|enable|disable|activate|deactivate|load|unload)\b|(?:tell\s+me\s+more|more\s+about|describe)\s+@?[\w-]+\/?plugin-[\w.-]+/i;
 
 type OwnerAccessFn = (
 	runtime: IAgentRuntime,
@@ -316,6 +314,8 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 
 	return {
 		name: "MANAGE_PLUGINS",
+		contexts: ["admin", "settings", "connectors"],
+		roleGate: { minRole: "OWNER" },
 		suppressPostActionContinuation: true,
 		similes: [
 			"PLUGIN",
@@ -400,17 +400,33 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 		validate: async (
 			runtime: IAgentRuntime,
 			message: Memory,
+			state?: State,
+			options?: ActionOptions,
 		): Promise<boolean> => {
 			if (!(await canManagePlugins(runtime, message))) return false;
 			const text = message.content?.text ?? "";
+			const hasStructuredMode = Boolean(
+				readStringOption(options, "subaction") ||
+					readStringOption(options, "mode"),
+			);
 
+			let hasPendingCreateChoice = false;
 			if (isPluginCreateChoiceReply(text)) {
 				const roomId =
 					typeof message.roomId === "string" ? message.roomId : runtime.agentId;
-				if (await hasPendingPluginCreateIntent(runtime, roomId)) return true;
+				hasPendingCreateChoice = await hasPendingPluginCreateIntent(
+					runtime,
+					roomId,
+				);
 			}
 
-			return KEYWORD_HEURISTIC.test(text);
+			return (
+				hasStructuredMode ||
+				hasPendingCreateChoice ||
+				hasActionContextOrKeyword(message, state, {
+					contexts: ["admin", "settings", "connectors"],
+				})
+			);
 		},
 
 		handler: async (

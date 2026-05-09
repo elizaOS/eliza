@@ -1,8 +1,0 @@
-trained_models/
-trained_adapters/
-exports/
-checkpoints/
-__pycache__/
-*.pyc
-.pytest_cache/curriculum_state.json
-hf_dataset/

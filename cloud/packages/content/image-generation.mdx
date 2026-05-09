@@ -1,6 +1,6 @@
 ---
 title: Image Generation
-description: Generate images with AI on elizaOS Cloud using Google Gemini, OpenAI, and other models.
+description: Generate images with AI on elizaOS Cloud using the configured image model catalog.
 ---
 
 import { Callout, Tabs, Cards } from "@/docs/components";
@@ -13,11 +13,9 @@ Generate high-quality images from text prompts using state-of-the-art AI models.
 
 ## Overview
 
-elizaOS Cloud provides image generation through multiple providers:
-
-- **Google Gemini**: Fast, high-quality multimodal generation (default)
-- **OpenAI**: GPT-powered image generation
-- **BFL Flux Kontext**: Context-aware generation
+elizaOS Cloud provides image generation through the configured image provider
+catalog. See the [Images API reference](/docs/api/images) or API Explorer for
+current models and defaults.
 
 ## Quick Start
 
@@ -60,7 +58,7 @@ const response = await fetch('https://elizacloud.ai/api/v1/generate-image', {
 const result = await response.json();
 console.log(result.images[0].url);
 
-````
+```
   </Tabs.Tab>
   <Tabs.Tab>
 ```python
@@ -82,7 +80,7 @@ response = requests.post(
 
 result = response.json()
 print(result['images'][0]['url'])
-````
+```
 
   </Tabs.Tab>
 </Tabs>
@@ -105,53 +103,49 @@ print(result['images'][0]['url'])
 
 ## Available Models
 
-| Model                                     | Provider | Speed  | Best For                 |
-| ----------------------------------------- | -------- | ------ | ------------------------ |
-| \`google/gemini-2.5-flash-image\`         | Google   | Fast   | General use (default)    |
-| \`google/gemini-3.1-flash-image-preview\` | Google   | Fast   | Preview/testing          |
-| \`google/gemini-3-pro-image\`             | Google   | Medium | Higher quality           |
-| \`openai/gpt-5-nano\`                     | OpenAI   | Medium | OpenAI image generation  |
-| \`bfl/flux-kontext-max\`                  | BFL      | Medium | Context-aware generation |
+Model availability and defaults are documented in the canonical
+[Images API reference](/docs/api/images). Use that page or the API Explorer for
+the current model catalog and pricing-sensitive defaults.
 
 ## Request Parameters
 
 | Parameter       | Type    | Required | Description                                               |
 | --------------- | ------- | -------- | --------------------------------------------------------- |
-| \`prompt\`      | string  | ✓        | Text description of the image                             |
-| \`model\`       | string  |          | Model to use (default: \`google/gemini-2.5-flash-image\`) |
-| \`aspectRatio\` | string  |          | Output aspect ratio (default: \`1:1\`)                    |
-| \`numImages\`   | integer |          | Number of images (1-4, default: 1)                        |
-| \`stylePreset\` | string  |          | Style preset to apply                                     |
-| \`sourceImage\` | string  |          | Base64 data URL for image-to-image                        |
+| `prompt`      | string  | ✓        | Text description of the image                             |
+| `model`       | string  |          | Model to use (default: `google/gemini-2.5-flash-image`) |
+| `aspectRatio` | string  |          | Output aspect ratio (default: `1:1`)                    |
+| `numImages`   | integer |          | Number of images (1-4, default: 1)                        |
+| `stylePreset` | string  |          | Style preset to apply                                     |
+| `sourceImage` | string  |          | Base64 data URL for image-to-image                        |
 
 ### Available Aspect Ratios
 
 | Aspect Ratio | Description          |
 | ------------ | -------------------- |
-| \`1:1\`      | Square (default)     |
-| \`16:9\`     | Wide landscape       |
-| \`9:16\`     | Tall portrait        |
-| \`4:3\`      | Standard landscape   |
-| \`3:4\`      | Standard portrait    |
-| \`21:9\`     | Ultra-wide cinematic |
-| \`9:21\`     | Ultra-tall vertical  |
+| `1:1`      | Square (default)     |
+| `16:9`     | Wide landscape       |
+| `9:16`     | Tall portrait        |
+| `4:3`      | Standard landscape   |
+| `3:4`      | Standard portrait    |
+| `21:9`     | Ultra-wide cinematic |
+| `9:21`     | Ultra-tall vertical  |
 
 ### Style Presets
 
 | Preset           | Description                       |
 | ---------------- | --------------------------------- |
-| \`none\`         | No style modification (default)   |
-| \`photographic\` | Realistic lighting and details    |
-| \`digital-art\`  | Vibrant colors, modern aesthetics |
-| \`comic-book\`   | Bold lines, dramatic shading      |
-| \`fantasy-art\`  | Magical and ethereal elements     |
-| \`analog-film\`  | Film grain and vintage tones      |
-| \`neon-punk\`    | Cyberpunk style with neon colors  |
-| \`cinematic\`    | Dramatic lighting and composition |
+| `none`         | No style modification (default)   |
+| `photographic` | Realistic lighting and details    |
+| `digital-art`  | Vibrant colors, modern aesthetics |
+| `comic-book`   | Bold lines, dramatic shading      |
+| `fantasy-art`  | Magical and ethereal elements     |
+| `analog-film`  | Film grain and vintage tones      |
+| `neon-punk`    | Cyberpunk style with neon colors  |
+| `cinematic`    | Dramatic lighting and composition |
 
 ## Image-to-Image Generation
 
-Transform existing images by providing a \`sourceImage\` parameter:
+Transform existing images by providing a `sourceImage` parameter:
 
 ```javascript
 const response = await fetch("https://elizacloud.ai/api/v1/generate-image", {

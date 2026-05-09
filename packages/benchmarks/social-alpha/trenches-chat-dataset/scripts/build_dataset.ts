@@ -458,13 +458,6 @@ async function exportToJSON(data: any, filename: string): Promise<void> {
   logger.info(`✅ Exported ${filename}`);
 }
 
-async function exportToParquet(data: any, filename: string): Promise<void> {
-  // For now, we'll create a placeholder - in production you'd use parquet-wasm or similar
-  const filepath = path.join(DATA_DIR, filename);
-  await fs.writeFile(filepath, `Parquet export placeholder for ${filename}`);
-  logger.info(`✅ Created placeholder for ${filename}`);
-}
-
 async function createCompressedArchives(): Promise<void> {
   logger.info("📦 Creating compressed archives...");
 
@@ -516,16 +509,12 @@ async function main() {
     logger.info("\n📤 Exporting datasets...");
 
     await exportToJSON(messagesDataset, "messages.json");
-    await exportToParquet(messagesDataset, "messages.parquet");
 
     await exportToJSON(callsDataset, "calls.json");
-    await exportToParquet(callsDataset, "calls.parquet");
 
     await exportToJSON(tokenManifest, "tokens.json");
-    await exportToParquet(tokenManifest, "tokens.parquet");
 
     await exportToJSON(userManifest, "users.json");
-    await exportToParquet(userManifest, "users.parquet");
 
     // Step 4: Create compressed archives
     await createCompressedArchives();

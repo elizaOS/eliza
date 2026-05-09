@@ -6,9 +6,16 @@
  * Streaming context manager is auto-detected at runtime.
  */
 
-// Export core modules (all browser-compatible after refactoring)
 export * from "./actions";
+export * from "./api/http-helpers";
+export * from "./api/route-helpers";
+export * from "./app-registry";
+// Export core modules (all browser-compatible after refactoring)
+export * from "./app-route-plugin-registry";
 export * from "./character";
+export * from "./connectors";
+export * from "./connectors/account-manager";
+export * from "./connectors/privacy";
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
@@ -16,19 +23,26 @@ export * from "./features/advanced-memory";
 export { AutonomyService } from "./features/autonomy/index";
 export { createBasicCapabilitiesPlugin } from "./features/basic-capabilities/index";
 export {
-	__setKnowledgeUrlFetchImplForTests,
-	type FetchedKnowledgeUrl,
-	type FetchedKnowledgeUrlKind,
-	type FetchKnowledgeFromUrlOptions,
-	fetchKnowledgeFromUrl,
+	__setDocumentUrlFetchImplForTests,
+	type FetchDocumentFromUrlOptions,
+	type FetchedDocumentUrl,
+	type FetchedDocumentUrlKind,
+	fetchDocumentFromUrl,
 	isYouTubeUrl,
-} from "./features/knowledge/index";
+} from "./features/documents/index";
 export * from "./lifeops-passive-connectors";
 export * from "./logger";
 export * from "./memory";
 export * from "./prompts";
 export * from "./roles";
 export * from "./runtime";
+export * from "./runtime/context-gates";
+export * from "./runtime/context-registry";
+export * from "./runtime/execute-planned-tool-call";
+export * from "./runtime/schema-compat";
+export * from "./runtime/sub-planner";
+export * from "./runtime/system-prompt";
+export * from "./runtime-route-context";
 // Export schemas (including buildBaseTables for plugin-sql browser/PGLite builds)
 export * from "./schemas/character";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
@@ -45,18 +59,17 @@ export * from "./settings";
 export * from "./streaming-context";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
+export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
 // Export everything from types (type-only, safe for browser)
 export * from "./types";
-export * from "./types/message-service";
-// Keep proto JSON helpers as explicit runtime exports so browser plugin
-// bundles don't depend on Bun preserving the ./types barrel namespace export.
-export * as proto from "./types/proto";
 export {
-	fromJson,
-	type JsonObject,
-	type JsonValue,
-	toJson,
-} from "./types/proto";
+	ConnectorAccountHealth,
+	ConnectorAccountPurpose,
+	ConnectorAccountRole,
+	ConnectorAuthMethod,
+} from "./types";
+export * from "./types/message-service";
+export type { JsonObject, JsonValue } from "./types/primitives";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
 export { Semaphore } from "./utils/batch-queue/semaphore.js";

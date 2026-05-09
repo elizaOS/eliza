@@ -10,7 +10,7 @@ import {
   type ChatAvatarVoiceEventDetail,
   type CompanionHalfFramerateMode,
   type CompanionVrmPowerMode,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { getVrmCount, getVrmUrl } from "../../vrm-assets";
 import {
@@ -260,7 +260,8 @@ export function VrmViewer(props: VrmViewerProps) {
   });
 
   const syncDebugRegistry = useEffectEvent(() => {
-    if (!import.meta.env.DEV) return;
+    const meta = import.meta as ImportMeta & { env?: { DEV?: boolean } };
+    if (!meta.env?.DEV) return;
     if (typeof window === "undefined") return;
     const engine = engineRef.current;
     const registry = window.__ELIZA_VRM_ENGINES__ ?? [];

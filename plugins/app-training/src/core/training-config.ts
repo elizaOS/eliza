@@ -12,10 +12,9 @@ import { dirname, join } from "node:path";
 import { resolveStateDir } from "@elizaos/core";
 import type { TrajectoryTrainingTask } from "./trajectory-task-datasets.js";
 
-export type TrainingBackend = "vertex" | "atropos" | "tinker" | "native";
+export type TrainingBackend = "atropos" | "tinker" | "native";
 
 export const ALL_TRAINING_BACKENDS: readonly TrainingBackend[] = [
-  "vertex",
   "atropos",
   "tinker",
   "native",
@@ -60,8 +59,8 @@ export const DEFAULT_TRAINING_CONFIG: TrainingConfig = Object.freeze({
   triggerCooldownHours: 12,
   // Native is the default-on backend. It runs in-process against the
   // configured runtime model and writes optimized prompts into the
-  // OptimizedPromptService store. Operators can prepend other backends
-  // (vertex/atropos/tinker) when they want hosted training instead.
+  // OptimizedPromptService store. Operators can prepend other non-Google
+  // backends when they want hosted training instead.
   backends: ["native"],
 }) as TrainingConfig;
 

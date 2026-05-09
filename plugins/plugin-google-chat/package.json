@@ -14,8 +14,17 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "messaging"
+      ]
+    }
+  },
   "publishConfig": {
     "access": "public"
   },
@@ -31,7 +40,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@toon-format/toon": "2.1.0",
     "google-auth-library": "^10.0.0",
     "zod": "^4.4.3"
   },

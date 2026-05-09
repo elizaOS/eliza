@@ -44,19 +44,17 @@ _SYSTEM_PROMPT = (
     "You are an AI shopping agent being evaluated on the WebShop benchmark. "
     "You must navigate a simulated webstore to purchase the product matching "
     "the user's instruction.\n\n"
-    "On every turn, output exactly ONE webshop action wrapped in an "
-    "<action>...</action> XML tag. Do NOT add any other text.\n\n"
+    "On every turn, choose exactly ONE currently available WebShop action. "
+    "Use the BENCHMARK_ACTION action with params.BENCHMARK_ACTION.command set "
+    "to that exact action string.\n\n"
     "Available actions:\n"
     "  search[query string]\n"
     "  click[PRODUCT_ID]\n"
     "  select_option[option_name, value]\n"
     "  back\n"
     "  buy\n\n"
-    "Examples:\n"
-    "  <action>search[wireless bluetooth headphones under $100]</action>\n"
-    "  <action>click[P004]</action>\n"
-    "  <action>select_option[size, large]</action>\n"
-    "  <action>buy</action>\n\n"
+    "If action calling is unavailable, return JSON only:\n"
+    '{"actions":["BENCHMARK_ACTION"],"params":{"BENCHMARK_ACTION":{"command":"search[wireless bluetooth headphones under $100]"}}}\n\n'
     "Once you have purchased the correct product, the episode ends "
     "automatically — no further action required."
 )
@@ -183,12 +181,28 @@ def _looks_like_webshop_action(action_line: str) -> bool:
 
 
 def _fallback_action(task: "WebShopTask", observation: "PageObservation") -> str:
+    if observation.page_type.value == "results":
+        for product_id in task.target_product_ids:
+            action = f"click[{product_id}]"
+            if action in observation.available_actions:
+                return action
+        for available in observation.available_actions:
+            if available.lower().startswith("click["):
+                return available
+    if observation.page_type.value == "product" and observation.product is not None:
+        for option_name, target_value in task.goal_attributes.items():
+            if option_name in observation.product.options and observation.selected_options.get(option_name) != target_value:
+                action = f"select_option[{option_name}, {target_value}]"
+                if action in observation.available_actions:
+                    return action
+        if "buy" in observation.available_actions:
+            return "buy"
     for available in observation.available_actions:
-        if available == "search[query]":
-            query = " ".join(task.instruction.split()[:6]).strip() or "product"
-            return f"search[{query}]"
-        if _looks_like_webshop_action(available):
+        if _looks_like_webshop_action(available) and available != "search[query]":
             return available
+    if "search[query]" in observation.available_actions:
+        query = " ".join(task.instruction.split()[:6]).strip() or "product"
+        return f"search[{query}]"
     query = " ".join(task.instruction.split()[:6]).strip() or "product"
     return f"search[{query}]"
 
@@ -267,10 +281,15 @@ class ElizaBridgeWebShopAgent:
                     context={
                         "benchmark": "webshop",
                         "task_id": task.task_id,
+                        "goal": task.instruction,
+                        "observation": obs_str,
+                        "actionSpace": list(observation.available_actions),
                         "turn": turn,
                         "model_name": self._model,
                         "instruction": task.instruction,
                         "page": observation.page_type.value if observation else "",
+                        "target_product_ids": list(task.target_product_ids),
+                        "budget": task.budget,
                     },
                 )
             except Exception as exc:
@@ -296,8 +315,14 @@ class ElizaBridgeWebShopAgent:
             )
 
             if chosen_action == "REPLY" or (not chosen_action and not action_line):
-                final_response = response.text or ""
-                break
+                fallback = _fallback_action(task, observation)
+                logger.warning(
+                    "[webshop-bridge] turn %d: no parseable action; replacing response %r with %r",
+                    turn,
+                    (response.text or "")[:200],
+                    fallback,
+                )
+                action_line = fallback
 
             if not action_line:
                 # Couldn't parse a usable action — give the agent one more turn

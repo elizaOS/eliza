@@ -1,7 +1,7 @@
 import { DashboardLoadingState } from "@elizaos/cloud-ui";
 import { Helmet } from "react-helmet-async";
-import { GalleryPageClient } from "@/packages/ui/src/components/gallery/gallery-page-client";
 import { useRequireAuth } from "../../lib/auth-hooks";
+import { GalleryPageClient } from "./_components/gallery-page-client";
 
 /** /dashboard/gallery — GalleryPageClient self-fetches via /api/v1/gallery. */
 export default function GalleryPage() {

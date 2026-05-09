@@ -30,7 +30,7 @@ export class SessionEventQueue {
     if (!this.queues.has(sessionId)) {
       this.queues.set(sessionId, []);
     }
-    this.queues.get(sessionId)!.push(event);
+    this.queues.get(sessionId)?.push(event);
 
     if (!this.processing.has(sessionId)) {
       this.processLoop(sessionId);
@@ -63,7 +63,8 @@ export class SessionEventQueue {
           break;
         }
 
-        const event = queue.shift()!;
+        const event = queue.shift();
+        if (!event) break;
 
         try {
           await this.handler(event);

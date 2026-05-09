@@ -154,6 +154,7 @@ def parse_args() -> argparse.Namespace:
             "openai",
             "openrouter",
             "anthropic",
+            "cerebras",
             "auto",
             "eliza",
             "eliza-bridge",

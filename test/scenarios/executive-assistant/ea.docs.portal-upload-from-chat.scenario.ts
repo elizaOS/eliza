@@ -35,7 +35,7 @@ export default scenario({
       room: "main",
       text: "When I send over the deck, upload it to the portal for me.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_COMPUTER_USE"],
+        acceptedActions: ["COMPUTER_USE"],
         description: "portal upload task setup",
         includesAny: ["portal", "upload", "deck"],
       }),
@@ -48,7 +48,7 @@ export default scenario({
       text: "I sent the final deck. Upload it now, and if the speaker portal makes you wait for me to sign in, stop and tell me exactly what is blocking it.",
       assertTurn: expectTurnBrowserTask({
         description: "portal upload blocked on login after asset delivery",
-        actionName: "OWNER_COMPUTER_USE",
+        actionName: "COMPUTER_USE",
         approvalRequired: true,
         approvalSatisfied: true,
         needsHuman: true,
@@ -65,7 +65,7 @@ export default scenario({
       text: "I finished the portal sign-in. Resume the upload and send me the receipt link when it is done.",
       assertTurn: expectTurnBrowserTask({
         description: "portal upload resumed and completed with provenance",
-        actionName: "OWNER_COMPUTER_USE",
+        actionName: "COMPUTER_USE",
         completed: true,
         needsHuman: false,
         minArtifacts: 1,
@@ -78,7 +78,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "OWNER_COMPUTER_USE",
+      actionName: "COMPUTER_USE",
     },
     {
       type: "browserTaskCompleted",
@@ -92,7 +92,7 @@ export default scenario({
       type: "custom",
       name: "ea-portal-upload-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_COMPUTER_USE"],
+        acceptedActions: ["COMPUTER_USE"],
         description: "portal upload task setup",
         includesAny: ["portal", "upload", "deck"],
       }),
@@ -103,7 +103,7 @@ export default scenario({
       predicate: expectScenarioBrowserTask({
         description:
           "portal upload stayed approval-gated, paused for human help when login blocked the browser, then resumed and completed with provenance",
-        actionName: "OWNER_COMPUTER_USE",
+        actionName: "COMPUTER_USE",
         completed: true,
         approvalRequired: true,
         approvalSatisfied: true,

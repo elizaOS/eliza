@@ -81,7 +81,7 @@ export async function ensureTextToSpeechHandler(
 
   try {
     const nodeModule = (await import(
-      "@elizaos/plugin-edge-tts/node"
+      "@elizaos/plugin-edge-tts"
     )) as EdgeTtsPluginModule;
     const handler = readHandler(nodeModule.default);
 

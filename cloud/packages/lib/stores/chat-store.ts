@@ -17,7 +17,7 @@ export interface RoomItem {
   characterName?: string;
   title?: string; // AI-generated title from first user message
   isLocked?: boolean; // Whether the room is locked (character was created/saved)
-  isBuildRoom?: boolean; // Whether this is a BUILD/CREATOR room
+  isBuildRoom?: boolean; // Whether this is a legacy builder room
 }
 
 export interface Character {
@@ -242,7 +242,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ rooms: updatedRooms });
   },
 
-  // Update a character's avatar URL (used when avatar is generated in build mode)
+  // Update a character's avatar URL after avatar generation
   updateCharacterAvatar: (characterId, avatarUrl) => {
     const { availableCharacters } = get();
     const updatedCharacters = availableCharacters.map((char) =>

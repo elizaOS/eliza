@@ -1,12 +1,11 @@
 import {
   type Action,
   type Character,
+  documentsPluginCore,
   type Plugin,
   type Provider,
   parseCharacter,
 } from "@elizaos/core";
-import { elevenLabsPlugin } from "@elizaos/plugin-elevenlabs";
-import { elizaOSCloudPlugin } from "@elizaos/plugin-elizacloud";
 import { memoriesRepository } from "@/db/repositories/agents/memories";
 import { charactersService } from "@/lib/services/characters/characters";
 import type { ElizaCharacter } from "@/lib/types/eliza-character";
@@ -16,22 +15,16 @@ import {
   AGENT_MODE_PLUGINS,
   AgentMode,
   getConditionalPlugins,
-  hasAffiliateData,
-  requiresAssistantMode,
-  SETTINGS_PLUGIN_MAP,
+  isValidAgentMode,
 } from "./agent-mode-types";
+import { cloudModelProviderPlugin } from "./cloud-model-provider";
 import { buildElevenLabsSettings, getElizaCloudApiUrl } from "./config";
-import advancedMemoryPlugin from "./plugin-advanced-memory";
-import { affiliatePlugin } from "./plugin-affiliate";
-import { characterBuilderPlugin } from "./plugin-character-builder";
-import { chatPlaygroundPlugin } from "./plugin-chat-playground";
-import { cloudBootstrapPlugin } from "./plugin-cloud-bootstrap";
 import mcpPlugin from "./plugin-mcp";
-import { cloudN8nPlugin } from "./plugin-n8n";
 
 // Plugin cache - preloaded at module init to eliminate dynamic import latency
-let _knowledgePlugin: Plugin | null = null;
+let _documentsPlugin: Plugin | null = null;
 let _webSearchPlugin: Plugin | null = null;
+let _elevenLabsPlugin: Plugin | null = null;
 let _pluginsPreloading = false;
 
 async function preloadPlugins(): Promise<void> {
@@ -40,7 +33,7 @@ async function preloadPlugins(): Promise<void> {
 
   try {
     // Only preload web-search plugin (local version)
-    // Knowledge plugin is loaded on-demand when documents exist
+    // Documents plugin is loaded on-demand when documents exist
     const webSearchModule = await import("./plugin-web-search/src").catch((e) => {
       logger.warn("[AgentLoader] Failed to preload local web-search plugin:", e);
       return null;
@@ -58,7 +51,7 @@ async function preloadPlugins(): Promise<void> {
 
 preloadPlugins();
 
-export type ModeUpgradeReason = "settings_plugin" | "has_knowledge" | "none";
+export type ModeUpgradeReason = "none";
 
 export interface ModeResolution {
   mode: AgentMode;
@@ -67,66 +60,23 @@ export interface ModeResolution {
   documentCount?: number;
 }
 
-function hasExplicitSettingsPlugin(characterPlugins: string[]): boolean {
-  const settingsPluginNames: string[] = Object.values(SETTINGS_PLUGIN_MAP);
-  return characterPlugins.some((p) => settingsPluginNames.includes(p));
-}
-
-/** Determines effective agent mode, upgrading to ASSISTANT when advanced features needed. */
+/** Determines effective agent mode. Backend mode has collapsed to chat. */
 async function resolveEffectiveMode(
   requestedMode: AgentMode,
   characterId: string,
-  characterSettings: Record<string, unknown>,
-  characterPlugins: string[],
 ): Promise<ModeResolution> {
-  // BUILD mode is never upgraded - it's a specific workflow
-  if (requestedMode === AgentMode.BUILD) {
-    return { mode: requestedMode, upgradeReason: "none", documentCount: 0 };
-  }
-
   // Query document count once - needed for multiple checks and plugin resolution
   // Note: no roomId filter — we want agent-level document count across all rooms
   const documentCount = await memoriesRepository.countByType(characterId, "documents");
+  const mode = isValidAgentMode(requestedMode) ? requestedMode : AgentMode.CHAT;
 
-  // Already ASSISTANT mode - no upgrade needed
-  if (requestedMode === AgentMode.ASSISTANT) {
-    return { mode: requestedMode, upgradeReason: "none", documentCount };
-  }
-
-  if (requiresAssistantMode(characterSettings)) {
-    return {
-      mode: AgentMode.ASSISTANT,
-      upgradeReason: "settings_plugin",
-      documentCount,
-    };
-  }
-
-  if (hasExplicitSettingsPlugin(characterPlugins)) {
-    return {
-      mode: AgentMode.ASSISTANT,
-      upgradeReason: "settings_plugin",
-      documentCount,
-    };
-  }
-
-  if (documentCount > 0) {
-    return {
-      mode: AgentMode.ASSISTANT,
-      upgradeReason: "has_knowledge",
-      documentCount,
-    };
-  }
-
-  return { mode: requestedMode, upgradeReason: "none", documentCount };
+  return { mode, upgradeReason: "none", documentCount };
 }
 
-async function getKnowledgePlugin(): Promise<Plugin> {
-  if (_knowledgePlugin) return _knowledgePlugin;
-
-  // Fallback to dynamic import if preload hasn't completed
-  const { knowledgePluginCore } = await import("@elizaos/plugin-knowledge");
-  _knowledgePlugin = asPlugin(knowledgePluginCore);
-  return _knowledgePlugin;
+async function getDocumentsPlugin(): Promise<Plugin> {
+  if (_documentsPlugin) return _documentsPlugin;
+  _documentsPlugin = asPlugin(documentsPluginCore);
+  return _documentsPlugin;
 }
 
 async function getWebSearchPlugin(): Promise<Plugin> {
@@ -139,21 +89,24 @@ async function getWebSearchPlugin(): Promise<Plugin> {
   return _webSearchPlugin;
 }
 
+async function getElevenLabsPlugin(): Promise<Plugin> {
+  if (_elevenLabsPlugin) return _elevenLabsPlugin;
+
+  const { elevenLabsPlugin } = await import("@elizaos/plugin-elevenlabs");
+  _elevenLabsPlugin = asPlugin(elevenLabsPlugin);
+  return _elevenLabsPlugin;
+}
+
 /** Cast external plugin to local Plugin type for cross-version compatibility. */
 function asPlugin<T extends { name: string; description: string }>(plugin: T): Plugin {
   return plugin as Plugin;
 }
 
 const AVAILABLE_PLUGINS: Record<string, Plugin> = {
-  "@elizaos/plugin-elizacloud": asPlugin(elizaOSCloudPlugin),
-  "@elizaos/plugin-elevenlabs": asPlugin(elevenLabsPlugin),
-  "@eliza-cloud/plugin-advanced-memory": asPlugin(advancedMemoryPlugin),
+  "@elizaos/plugin-elizacloud": cloudModelProviderPlugin,
+  elizaOSCloud: cloudModelProviderPlugin,
+  "eliza-cloud-model-provider": cloudModelProviderPlugin,
   "@elizaos/plugin-mcp": asPlugin(mcpPlugin),
-  "@elizaos/plugin-n8n-workflow": cloudN8nPlugin,
-  "@eliza-cloud/plugin-assistant": cloudBootstrapPlugin,
-  "@eliza-cloud/plugin-affiliate": affiliatePlugin,
-  "@eliza-cloud/plugin-chat-playground": chatPlaygroundPlugin,
-  "@eliza-cloud/plugin-character-builder": characterBuilderPlugin,
 };
 
 export class AgentLoader {
@@ -180,20 +133,15 @@ export class AgentLoader {
       characterSettings.webSearch = { enabled: true };
     }
 
-    const modeResolution = await resolveEffectiveMode(
-      agentMode,
-      characterId,
-      characterSettings,
-      characterPlugins,
-    );
+    const modeResolution = await resolveEffectiveMode(agentMode, characterId);
 
-    const hasKnowledge = (modeResolution.documentCount ?? 0) > 0;
+    const hasDocuments = (modeResolution.documentCount ?? 0) > 0;
 
     const plugins = await this.resolvePlugins(
       modeResolution.mode,
       characterPlugins,
       characterSettings,
-      { hasKnowledge },
+      { hasDocuments },
     );
     return { character, plugins, modeResolution };
   }
@@ -213,12 +161,7 @@ export class AgentLoader {
     if (options?.webSearchEnabled) {
       characterSettings.webSearch = { enabled: true };
     }
-    const modeResolution = await resolveEffectiveMode(
-      agentMode,
-      defaultAgent.character.id!,
-      characterSettings,
-      [],
-    );
+    const modeResolution = await resolveEffectiveMode(agentMode, defaultAgent.character.id!);
     const plugins = await this.resolvePlugins(modeResolution.mode, [], characterSettings);
     const character = this.buildCharacter({
       ...(defaultAgent.character as unknown as ElizaCharacter),
@@ -233,6 +176,7 @@ export class AgentLoader {
 
   private buildCharacter(elizaCharacter: ElizaCharacter): Character {
     const characterId = elizaCharacter.id || "b850bc30-45f8-0041-a00a-83df46d8555d";
+    const documents = [...(elizaCharacter.documents ?? []), ...(elizaCharacter.knowledge ?? [])];
     const charSettings = (elizaCharacter.settings || {}) as Record<
       string,
       string | boolean | number | Record<string, unknown>
@@ -261,7 +205,7 @@ export class AgentLoader {
       postExamples: elizaCharacter.postExamples,
       topics: elizaCharacter.topics,
       adjectives: elizaCharacter.adjectives,
-      knowledge: elizaCharacter.knowledge,
+      documents,
       style: elizaCharacter.style,
       templates: elizaCharacter.templates,
     } as Record<string, unknown>);
@@ -271,39 +215,38 @@ export class AgentLoader {
     agentMode: AgentMode,
     characterPlugins: string[],
     characterSettings: Record<string, unknown>,
-    options?: { hasKnowledge?: boolean },
+    options?: { hasDocuments?: boolean },
   ): Promise<Plugin[]> {
-    const plugins: Plugin[] = [];
-    const isAffiliate = hasAffiliateData(characterSettings);
-
-    const conditionalPlugins = isAffiliate ? [] : getConditionalPlugins(characterSettings);
-
-    const modePlugins = AGENT_MODE_PLUGINS[agentMode].map((pluginName) => {
-      if (isAffiliate && pluginName === "@eliza-cloud/plugin-assistant") {
-        return "@eliza-cloud/plugin-affiliate";
-      }
-      return pluginName;
-    });
+    const plugins: Plugin[] = [cloudModelProviderPlugin];
+    const conditionalPlugins = getConditionalPlugins(characterSettings);
+    const modePlugins = isValidAgentMode(agentMode)
+      ? AGENT_MODE_PLUGINS[agentMode]
+      : AGENT_MODE_PLUGINS[AgentMode.CHAT];
 
     const allPluginNames = [...modePlugins, ...characterPlugins, ...conditionalPlugins];
 
-    // Only load knowledge plugin when documents actually exist
-    // Upload capability is handled separately — no need to init the full plugin
-    if (options?.hasKnowledge) {
-      allPluginNames.push("knowledge");
-      logger.info("[AgentLoader] Loading native knowledge plugin - documents found");
+    // Only load the documents plugin when documents actually exist.
+    if (options?.hasDocuments) {
+      allPluginNames.push("documents");
+      logger.info("[AgentLoader] Loading native documents plugin - documents found");
     }
 
     for (const pluginName of allPluginNames) {
-      if (pluginName === "knowledge") {
-        const knowledgePlugin = await getKnowledgePlugin();
-        if (!plugins.includes(knowledgePlugin)) plugins.push(knowledgePlugin);
+      if (pluginName === "documents") {
+        const documentsPlugin = await getDocumentsPlugin();
+        if (!plugins.includes(documentsPlugin)) plugins.push(documentsPlugin);
         continue;
       }
 
       if (pluginName === "@elizaos/plugin-web-search") {
         const webSearchPlugin = await getWebSearchPlugin();
         if (!plugins.includes(webSearchPlugin)) plugins.push(webSearchPlugin);
+        continue;
+      }
+
+      if (pluginName === "@elizaos/plugin-elevenlabs") {
+        const elevenLabsPlugin = await getElevenLabsPlugin();
+        if (!plugins.includes(elevenLabsPlugin)) plugins.push(elevenLabsPlugin);
         continue;
       }
 

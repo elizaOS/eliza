@@ -1,14 +1,16 @@
 /**
- * CloudBootstrapMessageService - Multi-step message execution for cloud.
+ * CloudBootstrapMessageService - Native planner message execution for cloud.
  */
 
 import {
+  type ActionResult,
   asUUID,
   ChannelType,
   type Content,
   composePromptFromState,
   createUniqueUuid,
   EventType,
+  executePlannedToolCall,
   type HandlerCallback,
   type IAgentRuntime,
   type IMessageService,
@@ -18,7 +20,7 @@ import {
   type MentionContext,
   ModelType,
   parseBooleanFromText,
-  parseKeyValueXml,
+  parseJSONObjectFromText,
   type Room,
   type State,
   truncateToCompleteSentence,
@@ -29,14 +31,13 @@ import { getRequestContext } from "@/lib/services/entity-settings/request-contex
 import { createPerfTrace } from "@/lib/utils/perf-trace";
 import { invalidateActionValidationCache } from "../providers/actions";
 import {
-  multiStepDecisionTemplate,
-  multiStepSummaryTemplate,
+  nativePlannerTemplate,
+  nativeResponseTemplate,
   shouldRespondTemplate,
-} from "../templates/multi-step";
+} from "../templates/native-planner";
 import {
   type CloudMessageOptions,
-  type MultiStepActionResult,
-  type ParsedMultiStepDecision,
+  type NativePlannerActionResult,
   type StrategyMode,
   type StrategyResult,
   TRANSPARENT_META_ACTIONS,
@@ -44,21 +45,35 @@ import {
 import {
   attachAvailableContexts,
   type ContextRoutingDecision,
+  getActiveRoutingContexts,
+  getContextRoutingFromMessage,
   parseContextRoutingMetadata,
   setContextRoutingMetadata,
 } from "../utils/context-routing";
 import {
   getAvailableActionNames,
-  type ValidatedMultiStepDecision,
-  validateMultiStepDecision,
-} from "../utils/multi-step-guards";
+  parseNativePlannerDecision,
+  toNativeActionParams,
+  type ValidatedNativePlannerDecision,
+  validateNativePlannerDecision,
+} from "../utils/native-planner-guards";
 import {
   cleanupLatestResponseId,
   getLatestResponseId,
   isLatestResponseId,
   setLatestResponseId,
 } from "../utils/race-tracking";
-import { getActionResultsFromCache, refreshStateAfterAction } from "../utils/state";
+import { refreshStateAfterAction } from "../utils/state";
+
+type RuntimeWithEvaluators = IAgentRuntime & {
+  evaluate?: (
+    message: Memory,
+    state: State,
+    didRespond: boolean,
+    callback: HandlerCallback,
+    responseMessages: Memory[],
+  ) => Promise<unknown>;
+};
 
 const RETRY_CONFIG = {
   baseDelayMs: 200,
@@ -192,25 +207,26 @@ async function withScopedTextModel<T>(
   return await withScopedSettings(overrides, operation);
 }
 
-const SINGLE_SHOT_TEMPLATE = `<task>Generate a response for the character {{agentName}}.</task>
+function parseStructuredModelObject(raw: string): Record<string, unknown> | null {
+  return parseJSONObjectFromText(raw);
+}
 
-<providers>
+const SINGLE_SHOT_TEMPLATE = `task: Generate a response for {{agentName}}.
+
+context:
 {{providers}}
-</providers>
 
-<instructions>
+instructions:
 Write a response for {{agentName}} based on the conversation.
-Available actions: {{actionNames}}
-</instructions>
+Use available native tools only when the runtime exposes them through the planner path.
 
-<output>
-Respond using XML format:
-<response>
-  <thought>Your reasoning here</thought>
-  <actions>ACTION1,ACTION2 (or empty)</actions>
-  <text>Your response text here</text>
-</response>
-</output>`;
+output:
+JSON only. Return exactly one object:
+{
+  "thought": "short internal rationale",
+  "actions": [],
+  "text": "user-visible response"
+}`;
 
 function getRetryDelay(attempt: number): number {
   const delay = RETRY_CONFIG.baseDelayMs * RETRY_CONFIG.backoffMultiplier ** (attempt - 1);
@@ -227,13 +243,16 @@ async function withRetry<T>(
     try {
       const result = await operation();
       if (validate(result)) {
-        logger.debug(`[MultiStep] ${label} succeeded on attempt ${attempt}`);
+        logger.debug(`[NativePlanner] ${label} succeeded on attempt ${attempt}`);
         return result;
       }
-      logger.warn(`[MultiStep] ${label} validation failed on attempt ${attempt}/${maxRetries}`);
+      logger.warn(`[NativePlanner] ${label} validation failed on attempt ${attempt}/${maxRetries}`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error(`[MultiStep] ${label} error on attempt ${attempt}/${maxRetries}:`, errorMessage);
+      logger.error(
+        `[NativePlanner] ${label} error on attempt ${attempt}/${maxRetries}:`,
+        errorMessage,
+      );
       if (attempt >= maxRetries) throw error;
     }
 
@@ -294,7 +313,7 @@ export class CloudBootstrapMessageService implements IMessageService {
 
     logger.info(`[LLM:shouldRespond] Response:\n${response}`);
 
-    const responseObject = parseKeyValueXml(String(response)) as Record<string, unknown> | null;
+    const responseObject = parseStructuredModelObject(String(response));
 
     return {
       responseObject,
@@ -551,26 +570,33 @@ export class CloudBootstrapMessageService implements IMessageService {
 
     perfTrace.mark("compose-state");
     // PERF: Compose initial state with minimal providers.
-    // runMultiStepCore fetches the full provider set (RECENT_MESSAGES, ACTIONS, etc.)
-    // at the start of its decision loop. runSingleShotCore fetches them before prompt
-    // composition. This avoids double-fetching in the multi-step path.
+    // runNativePlannerCore fetches the full provider set (RECENT_MESSAGES, ACTIONS, etc.)
+    // at the start of its decision loop. runNativeSinglePassCore fetches them before prompt
+    // composition. This avoids double-fetching in the native planner path.
     let state = await runtime.composeState(message, ["ENTITIES", "CHARACTER"], true);
     state = attachAvailableContexts(state, runtime as never);
 
-    // Determine processing mode - default to multi-step for cloud
-    const useMultiStep =
-      options?.useMultiStep ??
-      parseBooleanFromText(String(runtime.getSetting("USE_MULTI_STEP") ?? "true"));
+    // Determine processing mode - default to native-planner for cloud
+    const useNativePlanner =
+      options?.useNativePlanner ??
+      parseBooleanFromText(String(runtime.getSetting("USE_NATIVE_PLANNER") ?? "true"));
 
     perfTrace.mark("llm-processing");
     // Run appropriate processing strategy
     let result: StrategyResult;
-    if (useMultiStep) {
-      logger.debug("[CloudBootstrap] Using multi-step processing");
-      result = await this.runMultiStepCore(runtime, message, state, responseId, callback, options);
+    if (useNativePlanner) {
+      logger.debug("[CloudBootstrap] Using native-planner processing");
+      result = await this.runNativePlannerCore(
+        runtime,
+        message,
+        state,
+        responseId,
+        callback,
+        options,
+      );
     } else {
       logger.debug("[CloudBootstrap] Using single-shot processing");
-      result = await this.runSingleShotCore(runtime, message, state, callback, options);
+      result = await this.runNativeSinglePassCore(runtime, message, state, callback, options);
     }
 
     const responseContent = result.responseContent;
@@ -602,15 +628,6 @@ export class CloudBootstrapMessageService implements IMessageService {
         if (callback) {
           await callback(responseContent);
         }
-      } else if (mode === "actions") {
-        // Actions mode - run processActions (though in multi-step we already did this)
-        await runtime.processActions(message, responseMessages, state, async (content) => {
-          responseContent!.actionCallbacks = content;
-          if (callback) {
-            return callback(content);
-          }
-          return [];
-        });
       }
     }
 
@@ -621,12 +638,13 @@ export class CloudBootstrapMessageService implements IMessageService {
     const hasEvaluatorStorage = memoryService?.hasStorage?.() !== false;
 
     if (hasEvaluatorStorage) {
+      const runtimeWithEvaluators = runtime as RuntimeWithEvaluators;
       try {
-        await runtime.evaluate(
+        await runtimeWithEvaluators.evaluate?.(
           message,
           state,
           true,
-          async (content) => {
+          async (content: Content) => {
             if (responseContent) {
               responseContent.evalCallbacks = content;
             }
@@ -674,10 +692,10 @@ export class CloudBootstrapMessageService implements IMessageService {
   }
 
   /**
-   * Multi-step execution: ONE action at a time, LLM decides next step.
-   * Decision phase: functional system prompt. Summary phase: character personality.
+   * Native planner execution: ONE JSON planner tool call at a time.
+   * Decision phase selects the next action; summary phase writes the user-facing response.
    */
-  private async runMultiStepCore(
+  private async runNativePlannerCore(
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
@@ -685,14 +703,15 @@ export class CloudBootstrapMessageService implements IMessageService {
     callback?: HandlerCallback,
     options?: CloudMessageOptions,
   ): Promise<StrategyResult> {
-    const traceActionResult: MultiStepActionResult[] = [];
+    const traceActionResult: NativePlannerActionResult[] = [];
     const discoveredActions = new Set<string>();
     let totalActionsExecuted = 0;
     let lastActionKey = "";
     let accumulatedState: State = state;
     let finishResponse: string | null = null;
+    const activeContexts = getActiveRoutingContexts(getContextRoutingFromMessage(message));
 
-    // Save the original system prompt so we can restore it after the multi-step loop.
+    // Save the original system prompt so we can restore it after the native planner loop.
     // The decision phase uses a functional system prompt (embedded in the template),
     // but runtime.character.system is still passed to the LLM by the OpenAI plugin.
     // If the agent has no system prompt configured, the empty string causes OpenAI to
@@ -704,10 +723,10 @@ export class CloudBootstrapMessageService implements IMessageService {
     }
 
     const maxIterations =
-      options?.maxMultiStepIterations ??
-      parseInt(String(runtime.getSetting("MAX_MULTISTEP_ITERATIONS") ?? "6"));
+      options?.maxNativePlannerIterations ??
+      parseInt(String(runtime.getSetting("NATIVE_PLANNER_MAX_ITERATIONS") ?? "6"));
     const maxConsecutiveFailures = parseInt(
-      String(runtime.getSetting("MULTISTEP_MAX_CONSECUTIVE_FAILURES") ?? "2"),
+      String(runtime.getSetting("NATIVE_PLANNER_MAX_CONSECUTIVE_FAILURES") ?? "2"),
     );
     let iterationCount = 0;
     let consecutiveFailures = 0;
@@ -752,9 +771,8 @@ export class CloudBootstrapMessageService implements IMessageService {
         "recentMessages",
         "actions",
         "actionNames",
-        "actionExamples",
-        "actionsWithDescriptions",
         "actionsWithParams",
+        "nativeToolsJson",
         "userAuthStatus",
       ];
       for (const key of stableProviderKeys) {
@@ -781,13 +799,13 @@ export class CloudBootstrapMessageService implements IMessageService {
 
       while (iterationCount < maxIterations) {
         if (!(await isLatestResponseId(runtime.agentId, message.roomId, responseId))) {
-          logger.info("[MultiStep] Newer message detected, cancelling stale execution");
+          logger.info("[NativePlanner] Newer message detected, cancelling stale execution");
           wasCancelled = true;
           break;
         }
 
         iterationCount++;
-        logger.debug(`[MultiStep] Starting iteration ${iterationCount}/${maxIterations}`);
+        logger.debug(`[NativePlanner] Starting iteration ${iterationCount}/${maxIterations}`);
 
         await streamThinking("thinking", `\n--- Step ${iterationCount}/${maxIterations} ---\n`);
 
@@ -835,31 +853,30 @@ export class CloudBootstrapMessageService implements IMessageService {
 
         const prompt = composePromptFromState({
           state: stateWithIterationContext,
-          template:
-            runtime.character.templates?.multiStepDecisionTemplate || multiStepDecisionTemplate,
+          template: runtime.character.templates?.nativePlannerTemplate || nativePlannerTemplate,
         });
 
-        // === LLM CALL LOG: multiStepDecision ===
+        // === LLM CALL LOG: nativePlanner ===
         logger.info(
-          `========== LLM CALL: multiStepDecision (iteration ${iterationCount}/${maxIterations}) ==========`,
+          `========== LLM CALL: nativePlanner (iteration ${iterationCount}/${maxIterations}) ==========`,
         );
-        logger.info(`[LLM:multiStepDecision] System Prompt:\n${runtime.character.system}`);
-        logger.info(`[LLM:multiStepDecision] User Prompt:\n${prompt}`);
+        logger.info(`[LLM:nativePlanner] System Prompt:\n${runtime.character.system}`);
+        logger.info(`[LLM:nativePlanner] User Prompt:\n${prompt}`);
         logger.info("==============================================");
 
         // PERF: Reduced from 5 to 3 retries. Each retry adds 1-4s with exponential backoff.
-        // 3 balances latency (~6-12s max) vs. reliability for complex multi-step queries
-        // where LLMs occasionally produce malformed JSON. Override via MULTISTEP_PARSE_RETRIES.
+        // 3 balances latency (~6-12s max) vs. reliability for complex native-planner queries
+        // where LLMs occasionally produce malformed JSON. Override via NATIVE_PLANNER_PARSE_RETRIES.
         const maxParseRetries = parseInt(
-          String(runtime.getSetting("MULTISTEP_PARSE_RETRIES") ?? "2"),
+          String(runtime.getSetting("NATIVE_PLANNER_PARSE_RETRIES") ?? "2"),
         );
         let stepResultRaw = "";
-        let parsedStep: ValidatedMultiStepDecision | null = null;
+        let parsedStep: ValidatedNativePlannerDecision | null = null;
 
         for (let parseAttempt = 1; parseAttempt <= maxParseRetries; parseAttempt++) {
           try {
             logger.debug(
-              `[MultiStep] Decision model call attempt ${parseAttempt}/${maxParseRetries}`,
+              `[NativePlanner] Decision model call attempt ${parseAttempt}/${maxParseRetries}`,
             );
 
             stepResultRaw = await withScopedTextModel(
@@ -872,17 +889,17 @@ export class CloudBootstrapMessageService implements IMessageService {
             );
 
             logger.info(
-              `[LLM:multiStepDecision] Response (attempt ${parseAttempt}):\n${stepResultRaw}`,
+              `[LLM:nativePlanner] Response (attempt ${parseAttempt}):\n${stepResultRaw}`,
             );
-            const rawParsedStep = parseKeyValueXml(stepResultRaw) as ParsedMultiStepDecision | null;
+            const rawParsedStep = parseNativePlannerDecision(stepResultRaw);
             if (rawParsedStep) {
-              const validation = validateMultiStepDecision(
+              const validation = validateNativePlannerDecision(
                 rawParsedStep,
                 getAvailableActionNames(accumulatedState.data.actionsData),
               );
               if (validation.error) {
                 logger.warn(
-                  `[MultiStep] Invalid planner output on attempt ${parseAttempt}/${maxParseRetries}: ${validation.error}`,
+                  `[NativePlanner] Invalid planner output on attempt ${parseAttempt}/${maxParseRetries}: ${validation.error}`,
                 );
                 if (parseAttempt < maxParseRetries) {
                   const delay = getRetryDelay(parseAttempt);
@@ -894,7 +911,7 @@ export class CloudBootstrapMessageService implements IMessageService {
             }
 
             if (parsedStep) {
-              logger.debug(`[MultiStep] Successfully parsed on attempt ${parseAttempt}`);
+              logger.debug(`[NativePlanner] Successfully parsed on attempt ${parseAttempt}`);
 
               if (parsedStep.thought && options?.onReasoningChunk) {
                 await streamThinking("planning", parsedStep.thought);
@@ -902,7 +919,7 @@ export class CloudBootstrapMessageService implements IMessageService {
               break;
             } else {
               logger.warn(
-                `[MultiStep] Failed to parse XML on attempt ${parseAttempt}/${maxParseRetries}`,
+                `[NativePlanner] Failed to parse planner JSON on attempt ${parseAttempt}/${maxParseRetries}`,
               );
               if (parseAttempt < maxParseRetries) {
                 const delay = getRetryDelay(parseAttempt);
@@ -912,7 +929,7 @@ export class CloudBootstrapMessageService implements IMessageService {
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             logger.error(
-              `[MultiStep] Error during model call attempt ${parseAttempt}:`,
+              `[NativePlanner] Error during model call attempt ${parseAttempt}:`,
               errorMessage,
             );
             if (parseAttempt >= maxParseRetries) {
@@ -924,7 +941,9 @@ export class CloudBootstrapMessageService implements IMessageService {
         }
 
         if (!parsedStep) {
-          logger.warn(`[MultiStep] Failed to parse step result after ${maxParseRetries} attempts`);
+          logger.warn(
+            `[NativePlanner] Failed to parse step result after ${maxParseRetries} attempts`,
+          );
           incompleteReason = `The planner produced invalid output ${maxParseRetries} time(s) in a row.`;
           traceActionResult.push({
             data: { actionName: "parse_error" },
@@ -948,7 +967,7 @@ export class CloudBootstrapMessageService implements IMessageService {
         const dedupKey = action ? `${action}::${canonicalParams}` : "";
         if (action && dedupKey === lastActionKey) {
           logger.warn(
-            `[MultiStep] Duplicate action detected: ${action} with same params. Forcing completion.`,
+            `[NativePlanner] Duplicate action detected: ${action} with same params. Forcing completion.`,
           );
           traceActionResult.push({
             data: { actionName: action },
@@ -962,23 +981,27 @@ export class CloudBootstrapMessageService implements IMessageService {
         if (!action) {
           // Fallback: isFinish flag set without an explicit action
           if (isFinish) {
-            logger.info(`[MultiStep] Task complete (isFinish) at iteration ${iterationCount}`);
+            logger.info(`[NativePlanner] Task complete (isFinish) at iteration ${iterationCount}`);
             await streamThinking("response", "\n--- Completing task ---\n");
 
             break;
           }
-          logger.warn(`[MultiStep] No action at iteration ${iterationCount}, forcing completion`);
+          logger.warn(
+            `[NativePlanner] No action at iteration ${iterationCount}, forcing completion`,
+          );
           break;
         }
 
-        // Handle FINISH action — extract response param, skip normal action execution
+        // Terminal planner calls produce the user-facing response directly.
+        // FINISH is kept as a compatibility tool while v5 planners prefer
+        // toolCalls: [] plus messageToUser.
         if (action === "FINISH") {
           const actionParams = parameters || {};
           finishResponse = (actionParams.response as string) || "";
           logger.info(
-            `[MultiStep] FINISH called at iteration ${iterationCount}, response length: ${finishResponse.length}`,
+            `[NativePlanner] Terminal response returned at iteration ${iterationCount}, response length: ${finishResponse.length}`,
           );
-          await streamThinking("response", "\n--- FINISH ---\n");
+          await streamThinking("response", "\n--- Final response ---\n");
           break;
         }
 
@@ -996,10 +1019,10 @@ export class CloudBootstrapMessageService implements IMessageService {
           if (replyText) {
             finishResponse = replyText;
             logger.info(
-              `[MultiStep] ${action} treated as final response, length: ${replyText.length}`,
+              `[NativePlanner] ${action} treated as final response, length: ${replyText.length}`,
             );
           } else {
-            logger.info(`[MultiStep] ${action} requested response synthesis`);
+            logger.info(`[NativePlanner] ${action} requested response synthesis`);
           }
           await streamThinking("response", `\n--- ${action} ---\n`);
           break;
@@ -1007,7 +1030,9 @@ export class CloudBootstrapMessageService implements IMessageService {
 
         try {
           if (!(await isLatestResponseId(runtime.agentId, message.roomId, responseId))) {
-            logger.info("[MultiStep] Newer message detected before action execution, cancelling");
+            logger.info(
+              "[NativePlanner] Newer message detected before action execution, cancelling",
+            );
             wasCancelled = true;
             break;
           }
@@ -1017,21 +1042,22 @@ export class CloudBootstrapMessageService implements IMessageService {
 
           const actionParams = parameters || {};
           if (Object.keys(actionParams).length > 0) {
-            logger.debug(`[MultiStep] Parsed parameters: ${JSON.stringify(actionParams)}`);
+            logger.debug(`[NativePlanner] Parsed parameters: ${JSON.stringify(actionParams)}`);
           }
 
           const hasActionParams = Object.keys(actionParams).length > 0;
 
           if (action && hasActionParams) {
             accumulatedState.data.actionParams = actionParams;
+            accumulatedState.data.params = toNativeActionParams(action, actionParams);
             const actionKey = action.toLowerCase().replace(/_/g, "");
             accumulatedState.data[actionKey] = {
               ...actionParams,
-              _source: "multiStepDecisionTemplate",
+              _source: "nativePlanner",
               _timestamp: Date.now(),
             };
             logger.info(
-              `[MultiStep] Stored parameters for ${action}: ${JSON.stringify(actionParams)}`,
+              `[NativePlanner] Stored parameters for ${action}: ${JSON.stringify(actionParams)}`,
             );
           }
 
@@ -1040,61 +1066,59 @@ export class CloudBootstrapMessageService implements IMessageService {
             `\nExecuting action: ${action}${hasActionParams ? ` with params: ${JSON.stringify(actionParams)}` : ""}\n`,
           );
 
-          const actionContent: Content & {
-            actionParams?: Record<string, unknown>;
-            actionInput?: Record<string, unknown>;
-          } = {
-            text: `Executing action: ${action}`,
-            actions: [action],
-            thought: thought ?? "",
-          };
+          const actionMessage: Memory = hasActionParams
+            ? {
+                ...message,
+                content: {
+                  ...(message.content as Record<string, unknown>),
+                  params: toNativeActionParams(action, actionParams),
+                  actionParams,
+                  actionInput: actionParams,
+                } as Content,
+              }
+            : message;
 
-          if (hasActionParams) {
-            actionContent.actionParams = actionParams;
-            actionContent.actionInput = actionParams;
-          }
-
-          let capturedResult: {
-            text?: string;
-            success?: boolean;
-            values?: Record<string, unknown>;
-            data?: Record<string, unknown>;
-          } | null = null;
-
-          await runtime.processActions(
-            message,
-            [
-              {
-                id: v4() as UUID,
-                entityId: runtime.agentId,
-                roomId: message.roomId,
-                createdAt: Date.now(),
-                content: actionContent,
+          let capturedCallback: Content | undefined;
+          const result = await executePlannedToolCall(
+            runtime,
+            {
+              message: actionMessage,
+              state: accumulatedState,
+              activeContexts,
+              previousResults: traceActionResult as ActionResult[],
+              callback: async (content) => {
+                capturedCallback = content;
+                return [];
               },
-            ],
-            accumulatedState,
-            async (result) => {
-              capturedResult = result;
-              return [];
+              responses: [
+                {
+                  id: v4() as UUID,
+                  entityId: runtime.agentId,
+                  roomId: message.roomId,
+                  createdAt: Date.now(),
+                  content: {
+                    text: `Executing action: ${action}`,
+                    actions: [action],
+                    thought: thought ?? "",
+                  },
+                },
+              ],
             },
+            hasActionParams ? { name: action, params: actionParams } : { name: action },
+            options?.onStreamChunk ? { onStreamChunk: options.onStreamChunk } : undefined,
           );
-
-          const result =
-            capturedResult ||
-            (() => {
-              const actionResults = getActionResultsFromCache(runtime, message.id as string);
-              return actionResults.length > 0
-                ? (actionResults[0] as Record<string, unknown>)
-                : null;
-            })();
+          const resultText =
+            typeof result.text === "string" && result.text.length > 0
+              ? result.text
+              : capturedCallback?.text;
           const success = (result?.success as boolean) ?? false;
 
-          const actionResult: MultiStepActionResult = {
+          const actionResult: NativePlannerActionResult = {
             data: { actionName: action },
             success,
-            text: result?.text as string | undefined,
+            text: resultText,
             values: result?.values as Record<string, unknown> | undefined,
-            error: success ? undefined : (result?.text as string | undefined),
+            error: success ? undefined : resultText,
           };
 
           // Transparent meta-actions (e.g., SEARCH_ACTIONS) don't appear in
@@ -1110,16 +1134,14 @@ export class CloudBootstrapMessageService implements IMessageService {
 
           // Track newly discovered actions from SEARCH_ACTIONS for explicit visibility
           if (action === "SEARCH_ACTIONS" && actionResult.success && result) {
-            const data = (result as Record<string, unknown>).data as
-              | Record<string, unknown>
-              | undefined;
+            const data = result.data as Record<string, unknown> | undefined;
             const newlyRegistered = data?.newlyRegistered as string[] | undefined;
             if (newlyRegistered?.length) {
               newlyRegistered.forEach((name) => discoveredActions.add(name));
               if (message.id) {
                 invalidateActionValidationCache(String(message.id));
               }
-              logger.info(`[MultiStep] Discovered actions: ${newlyRegistered.join(", ")}`);
+              logger.info(`[NativePlanner] Discovered actions: ${newlyRegistered.join(", ")}`);
             }
           }
 
@@ -1138,12 +1160,12 @@ export class CloudBootstrapMessageService implements IMessageService {
           // Check if action requires user input before continuing
           const resultData = result?.data as Record<string, unknown> | undefined;
           if (resultData?.awaitingUserInput === true) {
-            logger.info(`[MultiStep] Action ${action} awaiting user input, pausing loop`);
+            logger.info(`[NativePlanner] Action ${action} awaiting user input, pausing loop`);
             break;
           }
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : String(err);
-          logger.error(`[MultiStep] Error executing action ${action}: ${errorMessage}`);
+          logger.error(`[NativePlanner] Error executing action ${action}: ${errorMessage}`);
           traceActionResult.push({
             data: { actionName: action || "unknown" },
             success: false,
@@ -1157,22 +1179,22 @@ export class CloudBootstrapMessageService implements IMessageService {
         if (consecutiveFailures >= maxConsecutiveFailures) {
           incompleteReason = `The last ${consecutiveFailures} action attempt(s) failed, so execution was stopped early.`;
           logger.warn(
-            `[MultiStep] Failure budget exhausted after ${consecutiveFailures} consecutive failures`,
+            `[NativePlanner] Failure budget exhausted after ${consecutiveFailures} consecutive failures`,
           );
           break;
         }
 
-        // Fallback: isFinish flag set without an explicit FINISH action
+        // Compatibility fallback for older planners that set isFinish separately.
         if (isFinish) {
           logger.info(
-            `[MultiStep] Task complete (isFinish fallback) at iteration ${iterationCount}`,
+            `[NativePlanner] Task complete (isFinish fallback) at iteration ${iterationCount}`,
           );
           break;
         }
       }
 
       if (iterationCount >= maxIterations) {
-        logger.warn(`[MultiStep] Reached maximum iterations (${maxIterations})`);
+        logger.warn(`[NativePlanner] Reached maximum iterations (${maxIterations})`);
         if (!finishResponse && !incompleteReason) {
           incompleteReason = `The task hit the ${maxIterations}-step limit before it finished.`;
         }
@@ -1187,14 +1209,14 @@ export class CloudBootstrapMessageService implements IMessageService {
         };
       }
 
-      // If FINISH was called, use its response directly — skip summary LLM call
+      // If a terminal response was returned, use it directly and skip summary generation.
       if (finishResponse !== null) {
-        logger.info("[MultiStep] Using FINISH response, skipping summary LLM call");
+        logger.info("[NativePlanner] Using terminal response, skipping summary LLM call");
 
         const responseContent: Content = {
           actions: ["FINISH"],
           text: finishResponse,
-          thought: "FINISH action called by decision LLM.",
+          thought: "Terminal response returned by planner.",
           simple: true,
         };
 
@@ -1221,7 +1243,7 @@ export class CloudBootstrapMessageService implements IMessageService {
         };
       }
 
-      // Fallback: summary LLM call (FINISH wasn't called — hit max iterations or isFinish fallback)
+      // Fallback: summary LLM call when the planner stopped without a terminal response.
       await streamThinking("response", "\n--- Generating final response ---\n");
 
       // Inject actionResults into message metadata BEFORE composeState
@@ -1271,24 +1293,24 @@ export class CloudBootstrapMessageService implements IMessageService {
 
       const summaryPrompt = composePromptFromState({
         state: accumulatedState,
-        template: runtime.character.templates?.multiStepSummaryTemplate || multiStepSummaryTemplate,
+        template: runtime.character.templates?.nativeResponseTemplate || nativeResponseTemplate,
       });
 
-      // === LLM CALL LOG: multiStepSummary ===
-      logger.info("========== LLM CALL: multiStepSummary ==========");
-      logger.info(`[LLM:multiStepSummary] System Prompt:\n${runtime.character.system || "(none)"}`);
-      logger.info(`[LLM:multiStepSummary] User Prompt:\n${summaryPrompt}`);
+      // === LLM CALL LOG: nativeResponse ===
+      logger.info("========== LLM CALL: nativeResponse ==========");
+      logger.info(`[LLM:nativeResponse] System Prompt:\n${runtime.character.system || "(none)"}`);
+      logger.info(`[LLM:nativeResponse] User Prompt:\n${summaryPrompt}`);
       logger.info("==============================================");
 
       const maxSummaryRetries = parseInt(
-        String(runtime.getSetting("MULTISTEP_SUMMARY_PARSE_RETRIES") ?? "2"),
+        String(runtime.getSetting("NATIVE_RESPONSE_PARSE_RETRIES") ?? "2"),
       );
       let finalOutput = "";
       let summary: Record<string, unknown> | null = null;
 
       for (let summaryAttempt = 1; summaryAttempt <= maxSummaryRetries; summaryAttempt++) {
         try {
-          logger.debug(`[MultiStep] Summary generation attempt ${summaryAttempt}`);
+          logger.debug(`[NativePlanner] Summary generation attempt ${summaryAttempt}`);
           finalOutput = await withScopedTextModel(
             "large",
             resolveResponseStepModel(runtime),
@@ -1298,17 +1320,15 @@ export class CloudBootstrapMessageService implements IMessageService {
               }),
           );
 
-          logger.info(
-            `[LLM:multiStepSummary] Response (attempt ${summaryAttempt}):\n${finalOutput}`,
-          );
-          summary = parseKeyValueXml(finalOutput);
+          logger.info(`[LLM:nativeResponse] Response (attempt ${summaryAttempt}):\n${finalOutput}`);
+          summary = parseStructuredModelObject(finalOutput);
 
           if (summary?.text) {
-            logger.debug(`[MultiStep] Parsed summary on attempt ${summaryAttempt}`);
+            logger.debug(`[NativePlanner] Parsed summary on attempt ${summaryAttempt}`);
             break;
           } else {
             logger.warn(
-              `[MultiStep] Failed to parse summary on attempt ${summaryAttempt}/${maxSummaryRetries}`,
+              `[NativePlanner] Failed to parse JSON summary on attempt ${summaryAttempt}/${maxSummaryRetries}`,
             );
             if (summaryAttempt < maxSummaryRetries) {
               const delay = getRetryDelay(summaryAttempt);
@@ -1318,11 +1338,11 @@ export class CloudBootstrapMessageService implements IMessageService {
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           logger.error(
-            `[MultiStep] Summary generation error on attempt ${summaryAttempt}:`,
+            `[NativePlanner] Summary generation error on attempt ${summaryAttempt}:`,
             errorMessage,
           );
           if (summaryAttempt >= maxSummaryRetries) {
-            logger.warn("[MultiStep] Failed to generate summary after all retries");
+            logger.warn("[NativePlanner] Failed to generate summary after all retries");
             break;
           }
           const delay = getRetryDelay(summaryAttempt);
@@ -1333,7 +1353,7 @@ export class CloudBootstrapMessageService implements IMessageService {
       let responseContent: Content | null = null;
       if (summary?.text) {
         responseContent = {
-          actions: ["MULTI_STEP_SUMMARY"],
+          actions: ["NATIVE_RESPONSE"],
           text: summary.text as string,
           thought:
             (summary.thought as string) || "Final user-facing message after task completion.",
@@ -1344,11 +1364,11 @@ export class CloudBootstrapMessageService implements IMessageService {
           await options.onStreamChunk(summary.text as string, message.id as UUID);
         }
       } else {
-        logger.warn(`[MultiStep] No valid summary generated, using fallback`);
+        logger.warn(`[NativePlanner] No valid summary generated, using fallback`);
         const fallbackText =
           "I completed the requested actions, but encountered an issue generating the summary.";
         responseContent = {
-          actions: ["MULTI_STEP_SUMMARY"],
+          actions: ["NATIVE_RESPONSE"],
           text: fallbackText,
           thought: "Summary generation failed after retries.",
           simple: true,
@@ -1386,7 +1406,7 @@ export class CloudBootstrapMessageService implements IMessageService {
     }
   }
 
-  private async runSingleShotCore(
+  private async runNativeSinglePassCore(
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
@@ -1429,7 +1449,7 @@ export class CloudBootstrapMessageService implements IMessageService {
             ),
           );
           logger.info(`[LLM:singleShot] Response:\n${response}`);
-          return parseKeyValueXml(response);
+          return parseStructuredModelObject(response);
         },
         (result) => !!(result?.text || result?.thought),
         maxRetries,
@@ -1446,12 +1466,16 @@ export class CloudBootstrapMessageService implements IMessageService {
         };
       }
 
-      const actions = parsedResponse.actions
-        ? String(parsedResponse.actions)
-            .split(",")
-            .map((a: string) => a.trim())
+      const actions = Array.isArray(parsedResponse.actions)
+        ? parsedResponse.actions
+            .map((action) => (typeof action === "string" ? action.trim() : ""))
             .filter(Boolean)
-        : [];
+        : parsedResponse.actions
+          ? String(parsedResponse.actions)
+              .split(",")
+              .map((action: string) => action.trim())
+              .filter(Boolean)
+          : [];
 
       const responseContent: Content = {
         text: String(parsedResponse.text || ""),

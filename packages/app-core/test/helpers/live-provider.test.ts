@@ -1,6 +1,26 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("selectLiveProvider", () => {
+  beforeEach(() => {
+    for (const key of [
+      "CEREBRAS_API_KEY",
+      "ELIZA_E2E_CEREBRAS_API_KEY",
+      "GROQ_API_KEY",
+      "ELIZA_E2E_GROQ_API_KEY",
+      "OPENAI_API_KEY",
+      "ELIZA_E2E_OPENAI_API_KEY",
+      "ANTHROPIC_API_KEY",
+      "ELIZA_E2E_ANTHROPIC_API_KEY",
+      "GOOGLE_API_KEY",
+      "GOOGLE_GENERATIVE_AI_API_KEY",
+      "ELIZA_E2E_GOOGLE_GENERATIVE_AI_API_KEY",
+      "OPENROUTER_API_KEY",
+      "ELIZA_E2E_OPENROUTER_API_KEY",
+    ]) {
+      vi.stubEnv(key, "");
+    }
+  });
+
   afterEach(() => {
     vi.resetModules();
     vi.unstubAllEnvs();
@@ -63,5 +83,39 @@ describe("selectLiveProvider", () => {
     const { selectLiveProvider } = await import("./live-provider.ts");
 
     expect(selectLiveProvider()?.apiKey).toBe("gsk_canonical");
+  });
+
+  it("selects cerebras when only CEREBRAS_API_KEY is set", async () => {
+    vi.stubEnv("CEREBRAS_API_KEY", "csk_test_cerebras_key");
+    vi.stubEnv("GROQ_API_KEY", "");
+    vi.stubEnv("OPENAI_API_KEY", "");
+
+    const { selectLiveProvider } = await import("./live-provider.ts");
+
+    const provider = selectLiveProvider();
+    expect(provider?.name).toBe("cerebras");
+    expect(provider?.baseUrl).toBe("https://api.cerebras.ai/v1");
+    expect(provider?.largeModel).toBe("gpt-oss-120b");
+    expect(provider?.smallModel).toBe("gpt-oss-120b");
+    expect(provider?.env.MILADY_PROVIDER).toBe("cerebras");
+  });
+
+  it("prefers cerebras over groq when both keys are set", async () => {
+    vi.stubEnv("CEREBRAS_API_KEY", "csk_test_cerebras_key");
+    vi.stubEnv("GROQ_API_KEY", "gsk_test_groq_key");
+
+    const { selectLiveProvider } = await import("./live-provider.ts");
+
+    expect(selectLiveProvider()?.name).toBe("cerebras");
+  });
+
+  it("rejects csk-prefixed keys for openai provider selection", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "csk_test_cerebras_key_in_wrong_slot");
+    vi.stubEnv("ELIZA_E2E_OPENAI_API_KEY", "");
+    vi.stubEnv("CEREBRAS_API_KEY", "");
+
+    const { selectLiveProvider } = await import("./live-provider.ts");
+
+    expect(selectLiveProvider("openai")).toBeNull();
   });
 });

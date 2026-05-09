@@ -14,4 +14,4 @@ export type {
   Platform,
   SystemPermissionDefinition,
   SystemPermissionId,
-} from "@elizaos/shared/contracts/permissions";
+} from "@elizaos/shared";

@@ -40,5 +40,5 @@ No environment variables or configuration parameters are required. Notes are per
 ## Related
 
 - [Memory Plugin](/plugin-registry/memory) — Conversation-level persistent memory
-- [Knowledge Plugin](/plugin-registry/knowledge) — Structured knowledge ingestion and retrieval
+- [Knowledge Plugin](/plugin-registry/documents) — Structured knowledge ingestion and retrieval
 - [Todo Plugin](/plugin-registry/todo) — Task list management

@@ -13,7 +13,11 @@
  */
 // x402 Client — automatic 402 payment handling for AgentWallet (v6: multi-asset)
 import type { Address, Hash } from "viem";
-import { agentTransferToken, checkBudget } from "../wallet-core.js";
+import {
+  type AgentWallet,
+  agentTransferToken,
+  checkBudget,
+} from "../wallet-core.js";
 import { X402BudgetTracker } from "./budget.js";
 import { resolveAssetAddress } from "./multi-asset.js";
 import type {
@@ -36,12 +40,12 @@ import { DEFAULT_SUPPORTED_NETWORKS } from "./types.js";
  * 5. Retries original request with payment proof
  */
 export class X402Client {
-  private wallet: any; // ReturnType<typeof createWallet> — avoid circular import
+  private wallet: AgentWallet;
   private config: X402ClientConfig;
   private budget: X402BudgetTracker;
   private supportedNetworks: Set<string>;
 
-  constructor(wallet: any, config: X402ClientConfig = {}) {
+  constructor(wallet: AgentWallet, config: X402ClientConfig = {}) {
     this.wallet = wallet;
     this.config = {
       autoPay: true,
@@ -85,7 +89,11 @@ export class X402Client {
     const service = new URL(urlStr).hostname;
     const budgetCheck = this.budget.checkBudget(service, amount);
     if (!budgetCheck.allowed) {
-      throw new X402BudgetExceededError(budgetCheck.reason!, urlStr, selected);
+      throw new X402BudgetExceededError(
+        budgetCheck.reason ?? "Budget check failed",
+        urlStr,
+        selected,
+      );
     }
 
     // Callback check

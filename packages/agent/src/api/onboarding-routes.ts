@@ -1,22 +1,20 @@
 import type http from "node:http";
 import { logger, stringToUuid, type UUID } from "@elizaos/core";
-import { asRecord } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
-import { configFileExists, loadElizaConfig } from "../config/config.js";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
+  asRecord,
+  type DeploymentTargetConfig,
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
-  normalizeOnboardingCredentialInputs,
-} from "../contracts/onboarding.js";
-import {
-  type DeploymentTargetConfig,
   normalizeDeploymentTargetConfig,
-  normalizeLinkedAccountsConfig,
+  normalizeLinkedAccountFlagsConfig,
+  normalizeOnboardingCredentialInputs,
   normalizeServiceRoutingConfig,
   type ServiceRoutingConfig,
-} from "../contracts/service-routing.js";
-import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
+} from "@elizaos/shared";
+import type { ElizaConfig } from "../config/config.js";
+import { configFileExists, loadElizaConfig } from "../config/config.js";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 import {
   applyCanonicalOnboardingConfig,
   applyOnboardingCredentialPersistence,
@@ -504,7 +502,7 @@ export async function handleOnboardingRoutes(
       "linkedAccounts",
     );
     const explicitLinkedAccounts = explicitLinkedAccountsRequested
-      ? normalizeLinkedAccountsConfig(body.linkedAccounts)
+      ? normalizeLinkedAccountFlagsConfig(body.linkedAccounts)
       : null;
     const explicitServiceRoutingRequested = Object.hasOwn(
       body,

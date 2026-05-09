@@ -299,25 +299,19 @@ function instrumentRuntime(
     return result;
   }) as typeof runtime.useModel;
 
-  // Wrap processActions
-  const origProcessActions = runtime.processActions.bind(runtime);
-  runtime.processActions = (async (
-    ...args: Parameters<typeof runtime.processActions>
-  ) => {
-    const start = performance.now();
-    const result = await origProcessActions(...args);
-    pipelineTimer.record("action_dispatch", performance.now() - start);
-    return result;
-  }) as typeof runtime.processActions;
-
-  // Wrap evaluate
-  const origEvaluate = runtime.evaluate.bind(runtime);
-  runtime.evaluate = (async (...args: Parameters<typeof runtime.evaluate>) => {
-    const start = performance.now();
-    const result = await origEvaluate(...args);
-    pipelineTimer.record("evaluator", performance.now() - start);
-    return result;
-  }) as typeof runtime.evaluate;
+  // Wrap evaluate (the legacy Evaluator plugin component was removed; older
+  // runtimes still expose runtime.evaluate, newer ones do not — skip if absent).
+  if (typeof (runtime as { evaluate?: unknown }).evaluate === "function") {
+    const origEvaluate = runtime.evaluate.bind(runtime);
+    runtime.evaluate = (async (
+      ...args: Parameters<typeof runtime.evaluate>
+    ) => {
+      const start = performance.now();
+      const result = await origEvaluate(...args);
+      pipelineTimer.record("evaluator", performance.now() - start);
+      return result;
+    }) as typeof runtime.evaluate;
+  }
 
   // Wrap runtime.createMemory. The current database adapter is batch-first;
   // runtime.createMemory is the supported single-message write path.

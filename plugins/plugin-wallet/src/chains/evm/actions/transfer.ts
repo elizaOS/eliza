@@ -6,7 +6,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseToonKeyValue,
+  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
 import { formatEther, type Hex, parseEther } from "viem";
@@ -96,7 +96,7 @@ export async function buildTransferDetails(
     modelType: ModelType.TEXT_SMALL,
   });
 
-  const parsedResponse = parseToonKeyValue(llmResponse);
+  const parsedResponse = parseJSONObjectFromText(llmResponse) as Record<string, unknown> | null;
 
   if (!parsedResponse) {
     throw new EVMError(
@@ -125,12 +125,48 @@ export async function buildTransferDetails(
   return transferDetails;
 }
 
-const spec = requireActionSpec("EVM_TRANSFER");
+const legacySpec = requireActionSpec("EVM_TRANSFER");
+const spec = { ...legacySpec, name: "WALLET" };
 
 export const transferAction: Action = {
   name: spec.name,
   description: spec.description,
   descriptionCompressed: spec.descriptionCompressed,
+  contexts: ["finance", "crypto", "wallet", "payments"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet", "payments"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "amount",
+      description: "Human-readable amount to transfer.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "toAddress",
+      description: "Recipient EVM address.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "fromChain",
+      description: "Source EVM chain.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "token",
+      description: "Native token or ERC-20 token symbol/address.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "confirmed",
+      description: "Set true after preview confirmation to submit.",
+      required: false,
+      schema: { type: "boolean", default: false },
+    },
+  ],
 
   handler: async (
     runtime: IAgentRuntime,

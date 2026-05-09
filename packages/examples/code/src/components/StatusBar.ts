@@ -7,7 +7,9 @@ export class StatusBar implements Component {
   private cwd = getCwd();
   private lastCwdCheck = Date.now();
 
-  render(width: number, _height: number): string[] {
+  invalidate(): void {}
+
+  render(width: number): string[] {
     this.width = width;
 
     // Periodically update CWD

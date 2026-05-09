@@ -424,7 +424,7 @@ resource "kubernetes_deployment" "redis_rest" {
           }
 
           env {
-            name = "SRH_CONNECTION_STRING"
+            name  = "SRH_CONNECTION_STRING"
             value = var.redis_config.auth_enabled && var.redis_config.auth_password != null ? "redis://:${var.redis_config.auth_password}@redis-master.eliza-infra.svc:6379" : "redis://redis-master.eliza-infra.svc:6379"
           }
 

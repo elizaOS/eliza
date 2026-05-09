@@ -3,10 +3,10 @@ import ReactMarkdown from "react-markdown";
 import { Link, useParams } from "react-router-dom";
 import remarkGfm from "remark-gfm";
 import { getPostBySlug, getPostsBySlugs } from "@/lib/blog";
-import BlogPost from "@/packages/ui/src/components/landing/BlogPost";
-import { BlogPage } from "@/packages/ui/src/components/landing/blog-page";
-import RelatedPosts from "@/packages/ui/src/components/landing/RelatedPosts";
-import Tweet from "@/packages/ui/src/components/landing/Tweet";
+import BlogPost from "../../../components/landing/BlogPost";
+import { BlogPage } from "../../../components/landing/blog-page";
+import RelatedPosts from "../../../components/landing/RelatedPosts";
+import Tweet from "../../../components/landing/Tweet";
 
 const BASE_URL = import.meta.env.VITE_APP_URL ?? "https://www.elizacloud.ai";
 

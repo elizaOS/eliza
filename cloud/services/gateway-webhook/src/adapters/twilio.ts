@@ -1,37 +1,22 @@
+import { calculateTwilioSmsBilling, resolveTwilioSmsCostPerSegment } from "@elizaos/billing";
 import crypto from "crypto";
 import { z } from "zod";
-import { applyMarkup } from "../billing";
 import { logger } from "../logger";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 
 const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";
 
-/**
- * Raw Twilio SMS cost per outbound segment (USD). Used as the passthrough
- * base that we mark up for user billing.
- *
- * Overridable via `TWILIO_SMS_COST_PER_SEGMENT_USD` when Twilio adjusts its
- * pricing or for per-region rates.
- */
-const DEFAULT_SMS_COST_PER_SEGMENT_USD = 0.0075;
-const SMS_SEGMENT_CHAR_LIMIT = 160;
-
 function resolveSmsCostPerSegment(): number {
   const raw = process.env.TWILIO_SMS_COST_PER_SEGMENT_USD;
-  if (!raw) return DEFAULT_SMS_COST_PER_SEGMENT_USD;
-  const parsed = Number.parseFloat(raw);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    logger.warn("Invalid TWILIO_SMS_COST_PER_SEGMENT_USD; falling back to default", {
-      raw,
-    });
-    return DEFAULT_SMS_COST_PER_SEGMENT_USD;
+  if (raw) {
+    const parsed = Number.parseFloat(raw);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      logger.warn("Invalid TWILIO_SMS_COST_PER_SEGMENT_USD; falling back to default", {
+        raw,
+      });
+    }
   }
-  return parsed;
-}
-
-function estimateSmsSegments(text: string): number {
-  if (text.length === 0) return 1;
-  return Math.ceil(text.length / SMS_SEGMENT_CHAR_LIMIT);
+  return resolveTwilioSmsCostPerSegment(raw);
 }
 
 const TwilioWebhookEventSchema = z
@@ -220,14 +205,12 @@ export const twilioAdapter: PlatformAdapter = {
     // Record the passthrough cost with the platform markup so downstream
     // billing persisters can read a single structured line and insert the
     // usage record. This is the integration point T9d unblocks.
-    const segments = estimateSmsSegments(text);
-    const rawCost = segments * resolveSmsCostPerSegment();
-    const breakdown = applyMarkup(rawCost);
+    const breakdown = calculateTwilioSmsBilling(text, resolveSmsCostPerSegment());
     logger.info("[TwilioAdapter] Outbound SMS cost recorded", {
       platform: "twilio",
       messageId: event.messageId,
       recipient: event.senderId,
-      segments,
+      segments: breakdown.segments,
       rawCost: breakdown.rawCost,
       markup: breakdown.markup,
       billedCost: breakdown.billedCost,

@@ -25,6 +25,11 @@ export function createUserNameProvider(): Provider {
     descriptionCompressed: "inject app user display name context (app chat)",
     position: 10,
     dynamic: true,
+    contexts: ["general"],
+    contextGate: { anyOf: ["general"] },
+    cacheStable: false,
+    cacheScope: "turn",
+    roleGate: { minRole: "USER" },
 
     async get(
       runtime: IAgentRuntime,
@@ -53,7 +58,7 @@ export function createUserNameProvider(): Provider {
         text:
           "No preferred user name is stored yet. The current fallback label is admin. " +
           "If it comes up naturally in conversation, you can ask what " +
-          "they'd like to be called and use the SET_USER_NAME action to remember it.",
+          "they'd like to be called and use the SETTINGS action with op=set_owner_name to remember it.",
         values: { userName: "admin", userNameFallback: true },
       };
     },

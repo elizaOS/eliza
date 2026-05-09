@@ -48,6 +48,38 @@ function extractParams(message: Memory, state?: State): Record<string, unknown> 
   );
 }
 
+const MCP_ACTION_CONTEXTS = ["connectors", "automation", "documents"];
+const MCP_TOOL_OUTPUT_MAX_CHARS = 8_000;
+
+function truncateMcpToolOutput(output: string): string {
+  if (output.length <= MCP_TOOL_OUTPUT_MAX_CHARS) return output;
+  return `${output.slice(0, MCP_TOOL_OUTPUT_MAX_CHARS)}\n\n[truncated MCP tool output at ${MCP_TOOL_OUTPUT_MAX_CHARS} chars]`;
+}
+
+function hasSelectedContext(state: State | undefined): boolean {
+  const selected = [
+    state?.data?.selectedContexts,
+    state?.data?.activeContexts,
+    state?.data?.contexts,
+    state?.values?.selectedContexts,
+    state?.values?.activeContexts,
+    state?.values?.contexts,
+  ].flatMap((value) => (Array.isArray(value) ? value : typeof value === "string" ? [value] : []));
+  return selected.some((context) => MCP_ACTION_CONTEXTS.includes(String(context).toLowerCase()));
+}
+
+function collectText(message: Memory, state?: State): string {
+  return [
+    message.content?.text,
+    state?.values?.conversationLog,
+    state?.values?.recentMessages,
+    state?.values?.mcp,
+  ]
+    .map((value) => (typeof value === "string" ? value : ""))
+    .join("\n")
+    .toLowerCase();
+}
+
 export function createMcpToolAction(
   serverName: string,
   tool: Tool,
@@ -60,9 +92,12 @@ export function createMcpToolAction(
     name: actionName,
     description,
     similes: generateSimiles(serverName, tool.name),
+    contexts: MCP_ACTION_CONTEXTS,
+    contextGate: { anyOf: MCP_ACTION_CONTEXTS },
+    roleGate: { minRole: "ADMIN" },
     parameters: convertJsonSchemaToActionParams(tool.inputSchema),
 
-    validate: async (runtime: IAgentRuntime) => {
+    validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
       const svc = runtime.getService(MCP_SERVICE_NAME) as McpToolActionService | null;
       if (!svc) return false;
 
@@ -71,6 +106,23 @@ export function createMcpToolAction(
       // RuntimeFactory.applyUserContext() based on the user's OAuth connections.
       // When not set (CLI, non-cloud contexts), filtering is skipped (fail-open by design).
       if (!checkMcpOAuthAccess(runtime, serverName)) return false;
+
+      const text = collectText(message, state);
+      const actionTerms = [
+        actionName,
+        serverName,
+        tool.name,
+        tool.description || "",
+        ...generateSimiles(serverName, tool.name),
+      ]
+        .flatMap((term) =>
+          String(term)
+            .toLowerCase()
+            .split(/[^a-z0-9_\-\p{L}\p{N}]+/u),
+        )
+        .filter((term) => term.length >= 3);
+      const relevant = actionTerms.some((term) => text.includes(term.toLowerCase()));
+      if (!hasSelectedContext(state) && !relevant) return false;
 
       if (svc.isLazyConnection(serverName)) return true;
 
@@ -113,7 +165,27 @@ export function createMcpToolAction(
         logger.warn({ warnings, params }, `[MCP] Type warnings for ${actionName}`);
       }
 
-      const result = await svc.callTool(serverName, tool.name, params);
+      let result: CallToolResult;
+      try {
+        result = await svc.callTool(serverName, tool.name, params);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error(
+          { serverName, toolName: tool.name, error: errorMessage },
+          "[MCP] Tool call failed",
+        );
+        return {
+          success: false,
+          error: errorMessage,
+          text: `Failed to execute ${serverName}/${tool.name}: ${errorMessage}`,
+          data: {
+            actionName,
+            serverName,
+            toolName: tool.name,
+            toolArguments: params,
+          },
+        };
+      }
       const { toolOutput, hasAttachments, attachments } = processToolResult(
         result,
         serverName,
@@ -121,19 +193,24 @@ export function createMcpToolAction(
         runtime,
         String(message.entityId ?? ""),
       );
+      const boundedToolOutput = truncateMcpToolOutput(toolOutput);
 
       if (result.isError) {
-        logger.error({ serverName, toolName: tool.name, output: toolOutput }, "[MCP] Tool error");
+        logger.error(
+          { serverName, toolName: tool.name, output: boundedToolOutput },
+          "[MCP] Tool error",
+        );
         return {
           success: false,
-          error: toolOutput || "Tool execution failed",
-          text: toolOutput,
+          error: boundedToolOutput || "Tool execution failed",
+          text: boundedToolOutput,
           data: {
             actionName,
             serverName,
             toolName: tool.name,
             toolArguments: params,
             isError: true,
+            outputTruncated: boundedToolOutput !== toolOutput,
           },
         };
       }
@@ -147,20 +224,22 @@ export function createMcpToolAction(
 
       return {
         success: true,
-        text: toolOutput,
+        text: boundedToolOutput,
         values: {
           success: true,
           serverName,
           toolName: tool.name,
           hasAttachments,
-          output: toolOutput,
+          output: boundedToolOutput,
+          outputTruncated: boundedToolOutput !== toolOutput,
         },
         data: {
           actionName,
           serverName,
           toolName: tool.name,
           toolArguments: params,
-          output: toolOutput,
+          output: boundedToolOutput,
+          outputTruncated: boundedToolOutput !== toolOutput,
           attachments: attachments.length > 0 ? attachments : undefined,
         },
       };

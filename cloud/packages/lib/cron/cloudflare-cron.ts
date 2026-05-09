@@ -34,8 +34,10 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/cron/cleanup-stuck-provisioning",
     "/api/v1/cron/node-autoscale",
     "/api/v1/cron/agent-hot-pool",
+    "/api/v1/cron/pool-drain-idle",
   ],
-  "*/10 * * * *": ["/api/cron/cleanup-expired-crypto-payments"],
+  "*/2 * * * *": ["/api/v1/cron/pool-health-check"],
+  "*/10 * * * *": ["/api/cron/cleanup-expired-crypto-payments", "/api/v1/cron/pool-image-rollout"],
   "*/15 * * * *": [
     "/api/cron/auto-top-up",
     "/api/cron/agent-budgets",
@@ -46,6 +48,7 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/v1/cron/health-check",
     "/api/v1/cron/process-provisioning-jobs",
     "/api/cron/process-stripe-queue",
+    "/api/v1/cron/pool-replenish",
   ],
   "0 */6 * * *": ["/api/cron/cleanup-anonymous-sessions"],
 };

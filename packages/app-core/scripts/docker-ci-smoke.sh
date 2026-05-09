@@ -123,7 +123,6 @@ else
 fi
 APP_CORE_SCRIPTS_DIR="$APP_CORE_DIR/scripts"
 AGENT_DIR="$PACKAGES_DIR/agent"
-SCHEMAS_DIR="$PACKAGES_DIR/schemas"
 # @elizaos/core source lives under packages/core (current) or packages/typescript
 # (legacy). Prefer the current name; fall back to the legacy path so older branches
 # still work.
@@ -208,7 +207,17 @@ trap cleanup EXIT
 log "Installing dependencies"
 node "$APP_CORE_SCRIPTS_DIR/init-submodules.mjs"
 ELIZA_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 node "$APP_CORE_SCRIPTS_DIR/disable-local-eliza-workspace.mjs"
-ELIZA_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 "$BUN_BIN" install --ignore-scripts --no-frozen-lockfile
+for attempt in 1 2 3; do
+  if ELIZA_SKIP_LOCAL_UPSTREAMS=1 "$BUN_BIN" install --ignore-scripts --no-frozen-lockfile; then
+    break
+  fi
+  if [[ "$attempt" -eq 3 ]]; then
+    log "bun install failed after 3 attempts"
+    exit 1
+  fi
+  log "bun install attempt $attempt failed; retrying in 30s..."
+  sleep 30
+done
 # --ignore-scripts avoids running the full repo postinstall during the package
 # install, but build tools still need their platform binaries materialized.
 node node_modules/esbuild/install.js 2>/dev/null || true
@@ -237,23 +246,6 @@ else
   node "$APP_CORE_SCRIPTS_DIR/ensure-type-package-aliases.mjs" || true
 fi
 node scripts/patch-tsup-dts.mjs || true
-
-# buf.gen.yaml outputs to packages/core (current name) or packages/typescript (legacy name)
-_proto_marker=""
-for _candidate in "$PACKAGES_DIR/core/src/types/generated/eliza/v1/agent_pb.ts" \
-                  "$PACKAGES_DIR/typescript/src/types/generated/eliza/v1/agent_pb.ts"; do
-  if [[ -f "$_candidate" ]]; then
-    _proto_marker="$_candidate"
-    break
-  fi
-done
-if [[ -z "$_proto_marker" ]]; then
-  log "Generating core protobuf sources"
-  pushd "$SCHEMAS_DIR" >/dev/null
-  bunx --package @bufbuild/buf@1.68.3 buf generate
-  popd >/dev/null
-fi
-unset _proto_marker _candidate
 
 if [[ -f "$TYPESCRIPT_DIR/package.json" ]]; then
   log "Building @elizaos/core source artifacts"

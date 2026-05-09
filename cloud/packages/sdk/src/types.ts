@@ -1,3 +1,23 @@
+export type {
+  AgentDatabaseStatus,
+  AgentDetailDto,
+  AgentDetailDto as Agent,
+  AgentListItemDto,
+  AgentResponse,
+  AgentSandboxStatus,
+  AgentsResponse as AgentListResponse,
+  AgentWalletStatus,
+  ApiSuccessEnvelope,
+  CreditBalanceResponse,
+  CurrentUserDto,
+  CurrentUserOrganizationDto,
+  CurrentUserResponse,
+  CurrentUserResponse as UserProfileResponse,
+  IsoDateString,
+  UpdatedUserDto,
+  UpdatedUserResponse,
+} from "./types.cloud-api.js";
+
 export const DEFAULT_ELIZA_CLOUD_BASE_URL = "https://www.elizacloud.ai";
 export const DEFAULT_ELIZA_CLOUD_API_BASE_URL = `${DEFAULT_ELIZA_CLOUD_BASE_URL}/api/v1`;
 
@@ -167,10 +187,6 @@ export interface GenerateImageResponse {
   numImages?: number;
 }
 
-export interface CreditBalanceResponse {
-  balance: number;
-}
-
 export interface CreditSummaryResponse extends Record<string, unknown> {
   success: true;
   organization: {
@@ -288,22 +304,6 @@ export interface ContainerCredentialsResponse extends Record<string, unknown> {
   success?: boolean;
 }
 
-export interface Agent {
-  id: string;
-  agentName: string;
-  status: string;
-  databaseStatus?: string | null;
-  lastBackupAt?: string | null;
-  lastHeartbeatAt?: string | null;
-  errorMessage?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-  token_address?: string | null;
-  token_chain?: string | null;
-  token_name?: string | null;
-  token_ticker?: string | null;
-}
-
 export interface CreateAgentRequest {
   agentName: string;
   characterId?: string;
@@ -315,20 +315,10 @@ export interface CreateAgentResponse {
   success: boolean;
   data: {
     id: string;
-    agentName: string;
-    status: string;
+    agentName: string | null;
+    status: import("./types.cloud-api.js").AgentSandboxStatus;
     createdAt?: string;
   };
-}
-
-export interface AgentListResponse {
-  success: boolean;
-  data: Agent[];
-}
-
-export interface AgentResponse {
-  success: boolean;
-  data: Agent;
 }
 
 export interface AgentLifecycleResponse extends Record<string, unknown> {
@@ -410,11 +400,6 @@ export interface JobStatus {
   status: "pending" | "in_progress" | "completed" | "failed" | string;
   result?: unknown;
   error?: string;
-}
-
-export interface UserProfileResponse extends Record<string, unknown> {
-  success: boolean;
-  data: Record<string, unknown>;
 }
 
 export interface ApiKeySummary {

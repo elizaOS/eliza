@@ -1,5 +1,10 @@
 import { isCloudConnected } from "@elizaos/cloud-routing";
 import { elizaLogger, type IAgentRuntime } from "@elizaos/core";
+import {
+  readTailscaleAccounts,
+  resolveTailscaleAccount,
+  resolveTailscaleAccountId,
+} from "../accounts";
 import type { TailscaleBackendMode } from "../types";
 import { CloudTailscaleService } from "./CloudTailscaleService";
 import { LocalTailscaleService } from "./LocalTailscaleService";
@@ -21,7 +26,11 @@ const ALLOWED_MODES: ReadonlySet<TailscaleBackendMode> = new Set([
 ]);
 
 export function readBackendMode(runtime: IAgentRuntime): TailscaleBackendMode {
-  const raw = runtime.getSetting("TAILSCALE_BACKEND");
+  const account = resolveTailscaleAccount(
+    readTailscaleAccounts(runtime),
+    resolveTailscaleAccountId(runtime),
+  );
+  const raw = account?.backend ?? runtime.getSetting("TAILSCALE_BACKEND");
   if (raw === null || raw === undefined) return "auto";
   const normalized = String(raw).trim().toLowerCase();
   if (ALLOWED_MODES.has(normalized as TailscaleBackendMode)) {

@@ -19,12 +19,12 @@ import crypto from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { API_KEY_PREFIX_LENGTH } from "@/lib/pricing";
 import { apiKeysService } from "@/lib/services/api-keys";
-import { getConnectionString } from "@/tests/helpers/local-database";
+import { getConnectionString } from "@/tests/infrastructure/local-database";
 import {
   cleanupTestData,
   createTestDataSet,
   type TestDataSet,
-} from "@/tests/helpers/test-data-factory";
+} from "@/tests/infrastructure/test-data-factory";
 
 describe("ApiKeysService", () => {
   let connectionString: string;

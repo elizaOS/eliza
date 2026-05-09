@@ -17,6 +17,11 @@ import type {
 import type { AgentSkillsService } from "../services/skills";
 import type { Skill, SkillCatalogEntry } from "../types";
 
+const MAX_SUMMARY_SKILLS = 50;
+const MAX_SCAN_NOTICES = 10;
+const MAX_CATALOG_CATEGORIES = 8;
+const MAX_CATALOG_SKILLS_PER_CATEGORY = 3;
+
 // ============================================================
 // LEVEL 1: SUMMARY PROVIDER
 // Installed skills with descriptions - good default
@@ -33,6 +38,10 @@ export const skillsSummaryProvider: Provider = {
 	description: "Medium-res list of installed Agent Skills with descriptions",
 	descriptionCompressed: "medium-re list install Agent Skills w/ description",
 	position: -10,
+	contexts: ["agent_internal", "settings"],
+	contextGate: { anyOf: ["agent_internal", "settings"] },
+	cacheStable: false,
+	cacheScope: "turn",
 
 	dynamic: true,
 	get: async (
@@ -40,63 +49,71 @@ export const skillsSummaryProvider: Provider = {
 		_message: Memory,
 		_state: State,
 	): Promise<ProviderResult> => {
-		const service = runtime.getService<AgentSkillsService>(
-			"AGENT_SKILLS_SERVICE",
-		);
-		if (!service) return { text: "" };
+		try {
+			const service = runtime.getService<AgentSkillsService>(
+				"AGENT_SKILLS_SERVICE",
+			);
+			if (!service) return { text: "" };
 
-		const skills = service.getLoadedSkills();
+			const skills = service.getLoadedSkills();
 
-		if (skills.length === 0) {
-			return {
-				text: "**Skills:** None installed. Use SEARCH_SKILLS to browse the catalog and INSTALL_SKILL to install one.",
-				values: { skillCount: 0 },
-				data: { skills: [] },
-			};
-		}
-
-		const skillsToon = service.generateSkillsPromptToon({
-			includeLocation: true,
-		});
-
-		// Build scan status annotations for skills that have been scanned
-		const scanAnnotations: string[] = [];
-		for (const skill of skills) {
-			const scanStatus = service.getSkillScanStatus(skill.slug);
-			if (scanStatus && scanStatus !== "clean") {
-				scanAnnotations.push(
-					`- \`${skill.slug}\`: security scan status = **${scanStatus}** (requires acknowledgment to enable)`,
-				);
+			if (skills.length === 0) {
+				return {
+					text: "**Skills:** None installed. Use SKILL op=search to browse the catalog and SKILL op=install to install one.",
+					values: { skillCount: 0 },
+					data: { skills: [] },
+				};
 			}
+
+			const listedSkills = skills.slice(0, MAX_SUMMARY_SKILLS);
+			const skillsJson = service.generateSkillsPromptJson({
+				includeLocation: true,
+			});
+
+			// Build scan status annotations for skills that have been scanned
+			const scanAnnotations: string[] = [];
+			for (const skill of listedSkills) {
+				const scanStatus = service.getSkillScanStatus(skill.slug);
+				if (scanStatus && scanStatus !== "clean") {
+					scanAnnotations.push(
+						`- \`${skill.slug}\`: security scan status = **${scanStatus}** (requires acknowledgment to enable)`,
+					);
+				}
+			}
+
+			const scanSection =
+				scanAnnotations.length > 0
+					? `\n\n### Security Notices\n${scanAnnotations
+							.slice(0, MAX_SCAN_NOTICES)
+							.join("\n")}`
+					: "";
+
+			const text = `## Installed Skills (${skills.length})
+
+${skillsJson}${scanSection}
+
+*Use SKILL op=toggle to enable/disable skills. Use SKILL op=install to add new skills. Use SKILL op=uninstall to remove installed skills.*`;
+
+			return {
+				text,
+				values: {
+					skillCount: skills.length,
+					installedSkills: listedSkills.map((s) => s.slug).join(", "),
+				},
+				data: {
+					skills: listedSkills.map((s: Skill) => ({
+						slug: s.slug,
+						name: s.name,
+						description: s.description,
+						version: s.version,
+						scanStatus: service.getSkillScanStatus(s.slug),
+					})),
+					truncated: skills.length > listedSkills.length,
+				},
+			};
+		} catch {
+			return { text: "", values: {}, data: {} };
 		}
-
-		const scanSection =
-			scanAnnotations.length > 0
-				? `\n\n### Security Notices\n${scanAnnotations.join("\n")}`
-				: "";
-
-		const text = `## Installed Skills (${skills.length})
-
-${skillsToon}${scanSection}
-
-*Use TOGGLE_SKILL to enable/disable skills. Use INSTALL_SKILL to add new skills. Use UNINSTALL_SKILL to remove installed skills.*`;
-
-		return {
-			text,
-			values: {
-				skillCount: skills.length,
-				installedSkills: skills.map((s) => s.slug).join(", "),
-			},
-			data: {
-				skills: skills.map((s: Skill) => ({
-					slug: s.slug,
-					name: s.name,
-					description: s.description,
-					version: s.version,
-					scanStatus: service.getSkillScanStatus(s.slug),
-				})),
-			},
-		};
 	},
 };
 
@@ -118,18 +135,23 @@ export const skillInstructionsProvider: Provider = {
 	position: 5,
 
 	dynamic: true,
+	contexts: ["agent_internal", "settings"],
+	contextGate: { anyOf: ["agent_internal", "settings"] },
+	cacheStable: false,
+	cacheScope: "turn",
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,
 		state: State,
 	): Promise<ProviderResult> => {
-		const service = runtime.getService<AgentSkillsService>(
-			"AGENT_SKILLS_SERVICE",
-		);
-		if (!service) return { text: "" };
+		try {
+			const service = runtime.getService<AgentSkillsService>(
+				"AGENT_SKILLS_SERVICE",
+			);
+			if (!service) return { text: "" };
 
-		const skills = service.getLoadedSkills();
-		if (skills.length === 0) return { text: "" };
+			const skills = service.getLoadedSkills();
+			if (skills.length === 0) return { text: "" };
 
 		// Build context from message and recent history
 		const messageText = (message.content?.text || "").toLowerCase();
@@ -166,26 +188,29 @@ export const skillInstructionsProvider: Provider = {
 
 ${truncatedBody}`;
 
-		return {
-			text,
-			values: {
-				activeSkill: topSkill.skill.slug,
-				skillName: topSkill.skill.name,
-				relevanceScore: topSkill.score,
-				estimatedTokens: instructions.estimatedTokens,
-			},
-			data: {
-				activeSkill: {
-					slug: topSkill.skill.slug,
-					name: topSkill.skill.name,
-					score: topSkill.score,
+			return {
+				text,
+				values: {
+					activeSkill: topSkill.skill.slug,
+					skillName: topSkill.skill.name,
+					relevanceScore: topSkill.score,
+					estimatedTokens: instructions.estimatedTokens,
 				},
-				otherMatches: scoredSkills.slice(1, 3).map((s) => ({
-					slug: s.skill.slug,
-					score: s.score,
-				})),
-			},
-		};
+				data: {
+					activeSkill: {
+						slug: topSkill.skill.slug,
+						name: topSkill.skill.name,
+						score: topSkill.score,
+					},
+					otherMatches: scoredSkills.slice(1, 3).map((s) => ({
+						slug: s.skill.slug,
+						score: s.score,
+					})),
+				},
+			};
+		} catch {
+			return { text: "", values: {}, data: {} };
+		}
 	},
 };
 
@@ -206,6 +231,10 @@ export const catalogAwarenessProvider: Provider = {
 	descriptionCompressed: "Available skills on registry.",
 	position: 10,
 	dynamic: true,
+	contexts: ["agent_internal", "settings"],
+	contextGate: { anyOf: ["agent_internal", "settings"] },
+	cacheStable: false,
+	cacheScope: "turn",
 	private: true,
 
 	get: async (
@@ -213,10 +242,11 @@ export const catalogAwarenessProvider: Provider = {
 		message: Memory,
 		_state: State,
 	): Promise<ProviderResult> => {
-		const service = runtime.getService<AgentSkillsService>(
-			"AGENT_SKILLS_SERVICE",
-		);
-		if (!service) return { text: "" };
+		try {
+			const service = runtime.getService<AgentSkillsService>(
+				"AGENT_SKILLS_SERVICE",
+			);
+			if (!service) return { text: "" };
 
 		const text = (message.content?.text || "").toLowerCase();
 		const capabilityKeywords = [
@@ -237,12 +267,18 @@ export const catalogAwarenessProvider: Provider = {
 		const categories = groupByCategory(catalog);
 
 		let categoryText = "";
-		for (const [category, skills] of Object.entries(categories).slice(0, 8)) {
+		for (const [category, skills] of Object.entries(categories).slice(
+			0,
+			MAX_CATALOG_CATEGORIES,
+		)) {
 			const skillNames = skills
-				.slice(0, 3)
+				.slice(0, MAX_CATALOG_SKILLS_PER_CATEGORY)
 				.map((s) => s.name)
 				.join(", ");
-			const more = skills.length > 3 ? ` +${skills.length - 3} more` : "";
+			const more =
+				skills.length > MAX_CATALOG_SKILLS_PER_CATEGORY
+					? ` +${skills.length - MAX_CATALOG_SKILLS_PER_CATEGORY} more`
+					: "";
 			categoryText += `- **${category}**: ${skillNames}${more}\n`;
 		}
 
@@ -250,9 +286,12 @@ export const catalogAwarenessProvider: Provider = {
 			text: `## Available Skill Categories
 
 ${categoryText}
-Use USE_SKILL to invoke an enabled skill, or SEARCH_SKILLS to find one.`,
+Use USE_SKILL to invoke an enabled skill, or SKILL op=search to find one.`,
 			data: { categories },
 		};
+		} catch {
+			return { text: "", values: {}, data: {} };
+		}
 	},
 };
 

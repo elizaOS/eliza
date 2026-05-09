@@ -2,7 +2,7 @@ import {
   hasAppInterface,
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
-} from "../contracts/apps.js";
+} from "@elizaos/shared";
 import type {
   RegistryAppInfo,
   RegistryPluginInfo,
@@ -192,6 +192,7 @@ export function toAppInfo(
     session: meta?.session,
     developerOnly: meta?.developerOnly,
     visibleInAppStore: meta?.visibleInAppStore,
+    mainTab: meta?.mainTab,
   };
 }
 

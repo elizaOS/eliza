@@ -38,12 +38,11 @@ export default scenario({
         if (
           names.has("REPLY") ||
           names.has("THINK") ||
-          names.has("BLOCK_UNTIL_TASK_COMPLETE") ||
           names.has("IGNORE")
         ) {
           return undefined;
         }
-        return `Expected Discord login flow to route through REPLY, THINK, BLOCK_UNTIL_TASK_COMPLETE, or IGNORE. Called: ${Array.from(names).join(",") || "(none)"}`;
+        return `Expected Discord login flow to route through REPLY, THINK, or IGNORE. Called: ${Array.from(names).join(",") || "(none)"}`;
       },
     },
   ],

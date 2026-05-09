@@ -1,51 +1,36 @@
-// Surviving owner-* action exports.
-
-export { intentSyncAction } from "./actions/intent-sync.ts";
-export { ownerAppBlockAction } from "./actions/owner-app-block.ts";
-export { ownerAutofillAction } from "./actions/owner-autofill.ts";
-export { bookTravelAction } from "./actions/owner-book-travel.ts";
-export { ownerCalendarAction } from "./actions/owner-calendar.ts";
-export { chatThreadControlAction } from "./actions/owner-chat-thread.ts";
-export { ownerCheckinAction } from "./actions/owner-checkin.ts";
-export { lifeOpsComputerUseAction } from "./actions/owner-computer-use.ts";
-export { lifeOpsConnectorAction } from "./actions/owner-connector.ts";
-export { ownerDigestAction } from "./actions/owner-digest.ts";
-export { dossierAction } from "./actions/owner-dossier.ts";
-export { healthAction } from "./actions/owner-health.ts";
-export { lifeAction } from "./actions/owner-life.ts";
-export { passwordManagerAction } from "./actions/owner-password-manager.ts";
-export { paymentsAction } from "./actions/owner-payments.ts";
-export { updateOwnerProfileAction } from "./actions/owner-profile.ts";
-export { relationshipAction } from "./actions/owner-relationship.ts";
-export { ownerRemoteDesktopAction } from "./actions/owner-remote-desktop.ts";
-export { ownerResolveRequestAction } from "./actions/owner-resolve-request.ts";
-export { ownerScheduleAction } from "./actions/owner-schedule.ts";
-export { ownerScreenTimeAction } from "./actions/owner-screen-time.ts";
-export { subscriptionsAction } from "./actions/owner-subscriptions.ts";
-export { toggleLifeOpsFeatureAction } from "./actions/owner-toggle-feature.ts";
-export { ownerVoiceCallAction } from "./actions/owner-voice-call.ts";
-export {
-  blockWebsitesAction,
-  getWebsiteBlockStatusAction,
-  ownerWebsiteBlockAction,
-  requestWebsiteBlockingPermissionAction,
-  unblockWebsitesAction,
-} from "./actions/owner-website-block.ts";
-export { xReadAction } from "./actions/owner-x.ts";
-export { getAppBlockerStatus } from "./app-blocker/engine.ts";
-export * from "./contracts/index.ts";
-export { detectHealthBackend } from "./lifeops/health-bridge.ts";
-// Messaging surface — owner send policy + first-party adapters.
-export * from "./lifeops/messaging/index.ts";
-export { detectPasswordManagerBackend } from "./lifeops/password-manager-bridge.ts";
-export { detectRemoteDesktopBackend } from "./lifeops/remote-desktop.ts";
-export { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.ts";
-export * from "./platform/index.ts";
+export { appBlockAction } from "./actions/app-block.js";
+export { autofillAction } from "./actions/autofill.js";
+export { bookTravelAction } from "./actions/book-travel.js";
+export { calendarAction } from "./actions/calendar.js";
+export { checkinAction } from "./actions/checkin.js";
+export { connectorAction } from "./actions/connector.js";
+export { deviceIntentAction } from "./actions/device-intent.js";
+export { healthAction } from "./actions/health.js";
+export { lifeAction } from "./actions/life.js";
+export { passwordManagerAction } from "./actions/password-manager.js";
+export { paymentsAction } from "./actions/payments.js";
+export { profileAction } from "./actions/profile.js";
+export { relationshipAction } from "./actions/relationship.js";
+export { remoteDesktopAction } from "./actions/remote-desktop.js";
+export { resolveRequestAction } from "./actions/resolve-request.js";
+export { scheduleAction } from "./actions/schedule.js";
+export { screenTimeAction } from "./actions/screen-time.js";
+export { subscriptionsAction } from "./actions/subscriptions.js";
+export { toggleFeatureAction } from "./actions/toggle-feature.js";
+export { voiceCallAction } from "./actions/voice-call.js";
+export { websiteBlockAction } from "./actions/website-block.js";
+export { getAppBlockerStatus } from "./app-blocker/engine.js";
+export * from "./contracts/index.js";
+export { detectHealthBackend } from "./lifeops/health-bridge.js";
+export * from "./lifeops/messaging/index.js";
+export { detectPasswordManagerBackend } from "./lifeops/password-manager-bridge.js";
+export { detectRemoteDesktopBackend } from "./lifeops/remote-desktop.js";
+export { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.js";
+export * from "./platform/index.js";
 export type {
   LifeOpsRouteContext,
   WebsiteBlockerRouteContext,
-} from "./plugin.ts";
-// Re-export the full plugin from plugin.ts
+} from "./plugin.js";
 export {
   appLifeOpsPlugin,
   BrowserBridgePluginService,
@@ -60,25 +45,25 @@ export {
   LIFEOPS_TASK_NAME,
   LIFEOPS_TASK_TAGS,
   lifeOpsProvider,
-  manageBrowserBridgeAction,
   registerLifeOpsTaskWorker,
   resolveLifeOpsTaskIntervalMs,
-} from "./plugin.ts";
+} from "./plugin.js";
 export {
   type CloudFeaturesRouteState,
   handleCloudFeaturesRoute,
-} from "./routes/cloud-features-routes.ts";
-export { lifeopsPlugin } from "./routes/plugin.ts";
+} from "./routes/cloud-features-routes.js";
+export { lifeopsPlugin } from "./routes/plugin.js";
 export {
   handleTravelProviderRelayRoute,
   type TravelProviderRelayRouteState,
-} from "./routes/travel-provider-relay-routes.ts";
+} from "./routes/travel-provider-relay-routes.js";
 export type {
   AppBlockerSettingsCardProps,
   AppBlockerSettingsMode,
   WebsiteBlockerSettingsCardProps,
   WebsiteBlockerSettingsMode,
-} from "./types/index.ts";
+} from "./types/index.js";
+export * from "./ui.js";
 export type {
   NativeWebsiteBlockerBackend,
   SelfControlBlockRequest,
@@ -86,7 +71,7 @@ export type {
   SelfControlPermissionState,
   SelfControlPluginConfig,
   SelfControlStatus,
-} from "./website-blocker/public.ts";
+} from "./website-blocker/public.js";
 export {
   clearWebsiteBlockerExpiryTasks,
   executeWebsiteBlockerExpiryTask,
@@ -109,4 +94,4 @@ export {
   WEBSITE_BLOCKER_UNBLOCK_TASK_TAGS,
   WebsiteBlockerService,
   websiteBlockerProvider,
-} from "./website-blocker/public.ts";
+} from "./website-blocker/public.js";

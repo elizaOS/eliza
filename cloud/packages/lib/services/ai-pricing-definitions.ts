@@ -11,6 +11,7 @@ export type PricingBillingSource =
   | "gateway"
   | "openrouter"
   | "groq"
+  | "vast"
   | "openai"
   | "anthropic"
   | "fal"

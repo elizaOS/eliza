@@ -22,7 +22,7 @@ export default buildConnectorCertificationScenario({
       name: "google-docs-missing-scope",
       text: "Fetch the shared doc and upload the updated sheet, but if Drive write scope is missing, tell me exactly that and ask for re-auth instead of claiming the upload finished.",
       responseIncludesAny: ["drive", "missing", "scope", "upload"],
-      acceptedActions: ["OWNER_COMPUTER_USE"],
+      acceptedActions: ["COMPUTER_USE"],
       includesAny: ["drive", "missing", "scope", "upload"],
     },
   ],

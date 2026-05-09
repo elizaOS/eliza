@@ -1,10 +1,6 @@
-import {
-  type IAgentRuntime,
-  logger,
-  ModelType,
-  parseToonKeyValue,
-} from "@elizaos/core";
+import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
 import type { AlbumInfo, ArtistInfo, TrackInfo } from "../types";
+import { parseJsonObjectResponse } from "../utils/json";
 import type { WikipediaClient } from "./wikipediaClient";
 
 const WIKIPEDIA_EXTRACTION_SERVICE_NAME = "wikipediaExtraction";
@@ -256,7 +252,7 @@ export class WikipediaExtractionHelper {
   ): string {
     const basePrompt = `Extract relevant music information from the following Wikipedia data based on the context.
 
-Wikipedia data (TOON):
+Wikipedia data:
 ${formatWikipediaDataForPrompt(wikiData)}
 
 Context: ${context.purpose}
@@ -280,16 +276,14 @@ ${context.currentAlbum ? `Current Album: ${context.currentAlbum}` : ""}
 - Chart positions or commercial success (if notable)
 - Cultural impact or significance
 
-Return TOON with these fields:
-interestingFacts[3]:
-  - most interesting fact
-genres[3]:
-  - genre
-relatedArtists[3]:
-  - artist
-influences[3]:
-  - influence
-year: number if available`
+Return JSON with this shape:
+{
+  "interestingFacts": ["most interesting fact"],
+  "genres": ["genre"],
+  "relatedArtists": ["artist"],
+  "influences": ["influence"],
+  "year": 2000
+}`
         );
 
       case "music_selection":
@@ -302,15 +296,13 @@ year: number if available`
 - Artists that influenced this artist
 - Artists that were influenced by this artist
 
-Return TOON with these fields:
-relatedArtists[3]:
-  - artist
-influences[3]:
-  - influence
-genres[3]:
-  - genre
-selectionSuggestions[3]:
-  - artist or song name`
+Return JSON with this shape:
+{
+  "relatedArtists": ["artist"],
+  "influences": ["influence"],
+  "genres": ["genre"],
+  "selectionSuggestions": ["artist or song name"]
+}`
         );
 
       case "related_artists":
@@ -322,13 +314,12 @@ selectionSuggestions[3]:
 - Similar artists or genre peers
 - Associated acts or collaborators
 
-Return TOON with these fields:
-influences[3]:
-  - influence
-relatedArtists[3]:
-  - artist
-similarArtists[3]:
-  - similar artist`
+Return JSON with this shape:
+{
+  "influences": ["influence"],
+  "relatedArtists": ["artist"],
+  "similarArtists": ["similar artist"]
+}`
         );
 
       default:
@@ -340,15 +331,13 @@ similarArtists[3]:
 - Influences
 - Interesting facts
 
-Return TOON with these fields:
-genres[3]:
-  - genre
-relatedArtists[3]:
-  - artist
-influences[3]:
-  - influence
-interestingFacts[3]:
-  - fact`
+Return JSON with this shape:
+{
+  "genres": ["genre"],
+  "relatedArtists": ["artist"],
+  "influences": ["influence"],
+  "interestingFacts": ["fact"]
+}`
         );
     }
   }
@@ -363,16 +352,17 @@ interestingFacts[3]:
     const extracted: ExtractedMusicInfo = {};
 
     try {
-      const parsedToon = parseToonKeyValue<Record<string, unknown>>(response);
-      if (parsedToon) {
+      const parsedJson =
+        parseJsonObjectResponse<Record<string, unknown>>(response);
+      if (parsedJson) {
         extracted.relatedArtists =
-          toStringList(parsedToon.relatedArtists) ||
-          toStringList(parsedToon.similarArtists);
-        extracted.influences = toStringList(parsedToon.influences);
-        extracted.genres = toStringList(parsedToon.genres);
-        extracted.interestingFacts = toStringList(parsedToon.interestingFacts);
+          toStringList(parsedJson.relatedArtists) ||
+          toStringList(parsedJson.similarArtists);
+        extracted.influences = toStringList(parsedJson.influences);
+        extracted.genres = toStringList(parsedJson.genres);
+        extracted.interestingFacts = toStringList(parsedJson.interestingFacts);
         extracted.selectionSuggestions = toStringList(
-          parsedToon.selectionSuggestions,
+          parsedJson.selectionSuggestions,
         );
         return extracted;
       }

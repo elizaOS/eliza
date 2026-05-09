@@ -15,5 +15,6 @@
     "lib": ["ES2022"]
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist"],
+  "extends": "../../../tsconfig.dist-paths.json"
 }

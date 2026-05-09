@@ -34,10 +34,10 @@ import {
 	resolveDisableAutoApiToken,
 	setApiToken,
 } from "@elizaos/shared";
-
 import { resolveDesktopRuntimeMode } from "../api-base";
 import { getBrandConfig } from "../brand-config";
 import { DEFAULT_API_PORT } from "../constants";
+import { logger } from "../logger";
 import { recordStartupPhase, resolveStartupBundlePath } from "../startup-trace";
 import type { SendToWebview } from "../types.js";
 import { findFirstAvailableLoopbackPort } from "./loopback-port";
@@ -1587,9 +1587,8 @@ export class AgentManager {
 		try {
 			await this.killChildProcess();
 		} catch (err) {
-			console.warn(
-				"[Agent] dispose error:",
-				err instanceof Error ? err.message : err,
+			logger.warn(
+				`[Agent] dispose error: ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
 	}
@@ -1608,7 +1607,9 @@ export class AgentManager {
 			try {
 				listener(statusSnapshot);
 			} catch (err) {
-				console.warn("[Agent] status listener failed:", err);
+				logger.warn(
+					`[Agent] status listener failed: ${err instanceof Error ? err.message : String(err)}`,
+				);
 			}
 		}
 	}

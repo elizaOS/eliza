@@ -1,10 +1,10 @@
 import type http from "node:http";
-import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
+import type { ReadJsonBodyOptions } from "@elizaos/core";
 import {
   checkRateLimit,
   type RateLimitConfig,
-} from "@elizaos/agent/api/rate-limiter";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+} from "@elizaos/agent";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import type {
   AcknowledgeLifeOpsReminderRequest,
@@ -19,7 +19,6 @@ import type {
   CreateLifeOpsGoalRequest,
   CreateLifeOpsWorkflowRequest,
   CreateLifeOpsXPostRequest,
-  DisconnectLifeOpsGoogleConnectorRequest,
   DisconnectLifeOpsHealthConnectorRequest,
   DisconnectLifeOpsMessagingConnectorRequest,
   GetLifeOpsCalendarFeedRequest,
@@ -43,7 +42,6 @@ import type {
   RelockLifeOpsWebsiteAccessRequest,
   ResolveLifeOpsWebsiteAccessCallbackRequest,
   RunLifeOpsWorkflowRequest,
-  SelectLifeOpsGoogleConnectorPreferenceRequest,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
@@ -51,7 +49,6 @@ import type {
   SetLifeOpsReminderPreferenceRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsDiscordConnectorRequest,
-  StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsHealthConnectorRequest,
   StartLifeOpsSignalPairingRequest,
   StartLifeOpsTelegramAuthRequest,
@@ -123,11 +120,10 @@ export interface LifeOpsRouteContext {
  * Ensure the request has the runtime context required to act on behalf of
  * the configured owner entity. Returns `false` (and writes a 503) when the
  * agent runtime is not available — this is the per-request analogue of an
- * auth guard. The framework-level token check
- * (`route.public !== true && !isAuthorized()` in
- * `tryHandleRuntimePluginRoute`) already rejects unauthenticated callers
- * before we get here; this helper is the second gate that confirms the
- * route can actually resolve a tenant.
+ * auth guard. The framework-level token check rejects unauthenticated
+ * callers and `routes/plugin.ts` applies OWNER/ADMIN role gating to private
+ * raw routes before they reach this handler; this helper confirms the route
+ * can actually resolve a tenant.
  */
 function requireAuthorizedRouteContext(ctx: LifeOpsRouteContext): boolean {
   if (!ctx.state.runtime) {
@@ -1010,38 +1006,6 @@ export async function handleLifeOpsRoutes(
     return true;
   }
 
-  if (
-    method === "GET" &&
-    pathname === "/api/lifeops/connectors/google/status"
-  ) {
-    if (rateLimitRequest(ctx, "google_api_read")) return true;
-    return runRoute(ctx, async (service) => {
-      const mode = parseConnectorModeQuery(url.searchParams.get("mode"));
-      const side = parseConnectorSideQuery(url.searchParams.get("side"));
-      const rawGrantId = url.searchParams.get("grantId");
-      json(
-        res,
-        await service.getGoogleConnectorStatus(
-          url,
-          mode,
-          side,
-          rawGrantId ?? undefined,
-        ),
-      );
-    });
-  }
-
-  if (
-    method === "GET" &&
-    pathname === "/api/lifeops/connectors/google/accounts"
-  ) {
-    if (rateLimitRequest(ctx, "google_api_read")) return true;
-    return runRoute(ctx, async (service) => {
-      const side = parseConnectorSideQuery(url.searchParams.get("side"));
-      json(res, await service.getGoogleConnectorAccounts(url, side));
-    });
-  }
-
   if (method === "GET" && pathname === "/api/lifeops/calendar/feed") {
     if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
@@ -1542,102 +1506,6 @@ export async function handleLifeOpsRoutes(
   }
 
   if (
-    method === "POST" &&
-    pathname === "/api/lifeops/connectors/google/start"
-  ) {
-    if (rateLimitRequest(ctx, "google_api_write")) return true;
-    const body = await readJsonBody<StartLifeOpsGoogleConnectorRequest>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(res, await service.startGoogleConnector(body, url));
-    });
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/connectors/google/preference"
-  ) {
-    if (rateLimitRequest(ctx, "google_api_write")) return true;
-    const body =
-      await readJsonBody<SelectLifeOpsGoogleConnectorPreferenceRequest>(
-        req,
-        res,
-      );
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.selectGoogleConnectorMode(url, body.mode, body.side),
-      );
-    });
-  }
-
-  if (
-    method === "GET" &&
-    pathname === "/api/lifeops/connectors/google/callback"
-  ) {
-    const service = getService(ctx);
-    if (!service) return true;
-    try {
-      const connectorStatus =
-        await service.completeGoogleConnectorCallback(url);
-      writeHtml(
-        res,
-        200,
-        "Google Connected",
-        "Google access is now available in Eliza. You can close this window.",
-        {
-          side: connectorStatus.side,
-          mode: connectorStatus.mode,
-        },
-      );
-      return true;
-    } catch (error) {
-      if (error instanceof LifeOpsServiceError) {
-        writeHtml(res, error.status, "Google Connection Failed", error.message);
-        return true;
-      }
-      throw error;
-    }
-  }
-
-  if (
-    method === "GET" &&
-    pathname === "/api/lifeops/connectors/google/success"
-  ) {
-    const refreshDetail = parseConnectorRefreshDetailFromQuery(ctx, {
-      side: "owner",
-      mode: "cloud_managed",
-    });
-    if (!refreshDetail) return true;
-    writeHtml(
-      res,
-      200,
-      "Google Connected",
-      "Google access is now available in Eliza. You can close this window.",
-      refreshDetail,
-    );
-    return true;
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/connectors/google/disconnect"
-  ) {
-    if (rateLimitRequest(ctx, "google_api_write")) return true;
-    const body = await readJsonBody<
-      DisconnectLifeOpsGoogleConnectorRequest & { grantId?: string }
-    >(req, res);
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(res, await service.disconnectGoogleConnector(body, url));
-    });
-  }
-
-  if (
     method === "GET" &&
     pathname === "/api/lifeops/connectors/health/status"
   ) {
@@ -1830,7 +1698,7 @@ export async function handleLifeOpsRoutes(
     if (
       !parseConnectorRefreshDetailFromQuery(ctx, {
         side: "owner",
-        mode: "cloud_managed",
+        mode: "local",
       })
     ) {
       return true;
@@ -1838,10 +1706,10 @@ export async function handleLifeOpsRoutes(
     writeHtml(
       res,
       connected && !error ? 200 : 400,
-      connected && !error ? "X Connected" : "X Connection Failed",
+      connected && !error ? "X Connector Refreshed" : "X Connection Failed",
       connected && !error
-        ? "X access is now available in Eliza. You can close this window."
-        : (error ?? "X authorization did not complete successfully."),
+        ? "X connector status was refreshed in Eliza. You can close this window."
+        : (error ?? "X connector setup did not complete successfully."),
     );
     return true;
   }
@@ -2042,7 +1910,18 @@ export async function handleLifeOpsRoutes(
     const body = await readJsonBody<StartLifeOpsTelegramAuthRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(res, await service.startTelegramAuth(body), 201);
+      const status = await service.getTelegramConnectorStatus(
+        parseConnectorSideFromRequest(url, body),
+      );
+      json(res, {
+        provider: "telegram",
+        side: status.side,
+        state: status.connected ? "connected" : "error",
+        error: status.connected
+          ? undefined
+          : "Telegram setup is managed by @elizaos/plugin-telegram. Configure the Telegram connector plugin, then check status again.",
+        status,
+      });
     });
   }
 
@@ -2054,7 +1933,18 @@ export async function handleLifeOpsRoutes(
     const body = await readJsonBody<SubmitLifeOpsTelegramAuthRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(res, await service.submitTelegramAuth(body));
+      const status = await service.getTelegramConnectorStatus(
+        parseConnectorSideFromRequest(url, body),
+      );
+      json(res, {
+        provider: "telegram",
+        side: status.side,
+        state: status.connected ? "connected" : "error",
+        error: status.connected
+          ? undefined
+          : "Telegram setup is managed by @elizaos/plugin-telegram. LifeOps code/password submission is disabled.",
+        status,
+      });
     });
   }
 
@@ -2066,12 +1956,7 @@ export async function handleLifeOpsRoutes(
     return runRoute(ctx, async (service) => {
       const side =
         parseConnectorSideQuery(url.searchParams.get("side")) ?? "owner";
-      const pending = await service.getTelegramConnectorStatus(side);
-      if (pending.authState !== "idle" && pending.authState !== "connected") {
-        json(res, await service.disconnectTelegram(side));
-      } else {
-        json(res, pending);
-      }
+      json(res, await service.getTelegramConnectorStatus(side));
     });
   }
 
@@ -2142,11 +2027,19 @@ export async function handleLifeOpsRoutes(
     const body = await readJsonBody<StartLifeOpsSignalPairingRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
+      const side = parseConnectorSideFromRequest(url, body);
+      const status = await service.getSignalConnectorStatus(side);
       json(
         res,
-        await service.startSignalPairing(
-          parseConnectorSideFromRequest(url, body),
-        ),
+        {
+          provider: "signal",
+          side: status.side,
+          sessionId: `plugin-managed:${status.side}`,
+          status,
+          message: status.connected
+            ? "Signal is connected through @elizaos/plugin-signal."
+            : "Signal pairing is managed by @elizaos/plugin-signal. Configure the Signal connector plugin, then check status again.",
+        },
         201,
       );
     });
@@ -2161,6 +2054,21 @@ export async function handleLifeOpsRoutes(
       if (!sessionId) {
         throw new LifeOpsServiceError(400, "sessionId is required");
       }
+      if (sessionId.startsWith("plugin-managed:")) {
+        const sideValue = sessionId.slice("plugin-managed:".length);
+        const side = parseConnectorSideQuery(sideValue) ?? "owner";
+        const status = await service.getSignalConnectorStatus(side);
+        json(res, {
+          sessionId,
+          state: status.connected ? "connected" : "failed",
+          qrDataUrl: null,
+          error: status.connected
+            ? null
+            : "Signal pairing is managed by @elizaos/plugin-signal.",
+          status,
+        });
+        return;
+      }
       json(res, await service.getSignalPairingStatus(sessionId));
     });
   }
@@ -2172,13 +2080,14 @@ export async function handleLifeOpsRoutes(
       res,
     );
     if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.stopSignalPairing(
-          parseConnectorSideFromRequest(url, body),
-        ),
-      );
+    return runRoute(ctx, async () => {
+      const side = parseConnectorSideFromRequest(url, body);
+      json(res, {
+        sessionId: `plugin-managed:${side}`,
+        state: "idle",
+        qrDataUrl: null,
+        error: null,
+      });
     });
   }
 
@@ -2355,7 +2264,7 @@ export async function handleLifeOpsRoutes(
         parsePositiveIntegerQuery(url.searchParams.get("limit"), "limit", {
           max: 500,
         }) ?? 25;
-      json(res, service.pullWhatsAppRecent(limit));
+      json(res, await service.pullWhatsAppRecent(limit));
     });
   }
 
@@ -2548,7 +2457,7 @@ export async function handleLifeOpsRoutes(
   }
 
   // Browser companion + package routes extracted to
-  // `@elizaos/plugin-browser-bridge/routes` (mounted under
+  // `@elizaos/plugin-browser/routes` (mounted under
   // `/api/browser-bridge/*`).
 
   if (method === "POST" && pathname === "/api/lifeops/schedule/observations") {
@@ -3275,7 +3184,7 @@ export async function handleLifeOpsRoutes(
   }
 
   // Browser session + companion progress/complete routes extracted to
-  // `@elizaos/plugin-browser-bridge/routes` (mounted under
+  // `@elizaos/plugin-browser/routes` (mounted under
   // `/api/browser-bridge/*`).
 
   const occurrenceExplanationMatch = pathname.match(

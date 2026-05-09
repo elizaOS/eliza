@@ -83,9 +83,9 @@ function generateStatusMessage(
 
 		const instructions = `Instructions for ${agentName}:
 - Only update settings if the user is clearly responding to a setting you are currently asking about.
-- If the user's reply clearly maps to a setting and a valid value, you **must** call the UPDATE_SETTINGS action with the correct key and value.
+- If the user's reply clearly maps to a secrets onboarding setting and a valid value, you **must** call the SECRETS_UPDATE_SETTINGS action with the correct key and value.
 - Never hallucinate settings or respond with values not listed above.
-- Do not call UPDATE_SETTINGS just because onboarding started. Only update when the user provides a specific value.
+- Do not call SECRETS_UPDATE_SETTINGS just because onboarding started. Only update when the user provides a specific value.
 - Answer setting-related questions using only the name, description, and value from the list.`;
 
 		if (requiredUnconfigured > 0) {
@@ -136,6 +136,12 @@ export const onboardingSettingsProvider: Provider = {
 	description: "Current onboarding settings status for secrets collection",
 
 	dynamic: true,
+	contexts: ["settings"],
+	contextGate: { anyOf: ["settings"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "OWNER" },
+
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,
@@ -224,6 +230,12 @@ export const missingSecretsProvider: Provider = {
 	description: "Lists secrets that still need to be configured",
 
 	dynamic: true,
+	contexts: ["settings"],
+	contextGate: { anyOf: ["settings"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "OWNER" },
+
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,

@@ -29,15 +29,11 @@
     "telegraf": "4.16.3",
     "telegram": "^2.26.22",
     "type-detect": "^4.1.0",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
     "@elizaos/config": "^1.7.2",
-    "@eslint/js": "^10.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.22.0",
-    "@typescript-eslint/parser": "^8.22.0",
-    "eslint": "^10.0.0",
-    "prettier": "^3.8.3",
     "tsup": "^8.5.1",
     "vitest": "^4.0.0"
   },
@@ -46,11 +42,11 @@
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "bunx @biomejs/biome lint --write --unsafe ./src && prettier --write ./src",
-    "lint:check": "bunx @biomejs/biome lint ./src",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
     "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
     "test:live": "bun run test:e2e"
   },

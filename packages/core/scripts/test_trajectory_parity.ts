@@ -1,63 +1,62 @@
 import { v4 } from "uuid";
-import { type IAgentRuntime, type Memory, ModelType } from "../src";
+import { type IAgentRuntime, type Memory, ModelType, type State } from "../src";
 import { TrajectoriesService } from "../src/services/trajectories";
 
 // Mock runtime setup
 async function runTest() {
 	console.log("Starting Trajectory Parity Test...");
 
-	const runtime = {
+	let trajectoriesService: TrajectoriesService | undefined;
+	const mockRuntime = {
 		agentId: v4(),
 		providers: [],
 		getService: (name: string) => {
-			if (name === "trajectories") return trajectoriesService;
+			if (name === "trajectories") return trajectoriesService ?? null;
 			return null;
 		},
 		composeState: async (
 			_msg: Memory,
-			_inc: any,
-			_only: any,
-			_skip: any,
-			phase: any,
-		) => {
-			// Simulate logging call inside composeState
-			if (trajectoriesService) {
-				trajectoriesService.logProviderAccess({
-					stepId: "test-step-id",
-					providerName: "test-provider",
-					data: { textLength: 10 },
-					purpose: phase ? `compose_state:${phase}` : "compose_state",
-				});
-			}
+			_includeList?: string[],
+			_onlyInclude?: boolean,
+			_skipCache?: boolean,
+			phase?: string,
+		): Promise<State> => {
+			trajectoriesService?.logProviderAccess({
+				stepId: "test-step-id",
+				providerName: "test-provider",
+				data: { textLength: 10 },
+				purpose: phase ? `compose_state:${phase}` : "compose_state",
+			});
 			return { values: {}, data: {}, text: "" };
 		},
-		useModel: async (model: any, _params: any) => {
-			// Simulate logging call inside useModel
-			if (trajectoriesService) {
-				trajectoriesService.logLlmCall({
-					stepId: "test-step-id",
-					model: String(model),
-					systemPrompt: "",
-					userPrompt: "",
-					response: String(model).includes("EMBEDDING")
-						? "[embedding vector]"
-						: "response",
-					temperature: 0,
-					maxTokens: 0,
-					purpose: "action",
-					actionType: "runtime.useModel",
-					latencyMs: 10,
-				});
-			}
+		useModel: async (
+			model: ModelType,
+			_params: { prompt?: string },
+		): Promise<string> => {
+			trajectoriesService?.logLlmCall({
+				stepId: "test-step-id",
+				model: String(model),
+				systemPrompt: "",
+				userPrompt: "",
+				response: String(model).includes("EMBEDDING")
+					? "[embedding vector]"
+					: "response",
+				temperature: 0,
+				maxTokens: 0,
+				purpose: "action",
+				actionType: "runtime.useModel",
+				latencyMs: 10,
+			});
 			return "response";
 		},
-	} as unknown as IAgentRuntime;
+	};
 
-	const trajectoriesService = new TrajectoriesService(runtime);
+	const runtime = mockRuntime as unknown as IAgentRuntime;
+	trajectoriesService = new TrajectoriesService(runtime);
 
 	// Test 1: Phase Labels
 	console.log("Test 1: Phase Labels");
-	await runtime.composeState({} as Memory, [], false, false, "generate");
+	await mockRuntime.composeState({} as Memory, [], false, false, "generate");
 	const accessLogs = trajectoriesService.getProviderAccessLogs();
 	const generateLog = accessLogs.find(
 		(l) => l.purpose === "compose_state:generate",

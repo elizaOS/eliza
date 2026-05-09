@@ -6,7 +6,7 @@ export type { NewWebhookEvent, WebhookEvent };
 
 export class WebhookEventsRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -27,7 +27,7 @@ export class WebhookEventsRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**

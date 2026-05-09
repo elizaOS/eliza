@@ -10,7 +10,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { resolveActionContexts } from "@elizaos/core";
-import { hasOwnerAccess } from "../security/access.js";
 
 type PageActionGroupConfig = {
   name: string;
@@ -34,7 +33,7 @@ const ACTION_GROUP_PARAMETER_SCHEMA = [
   {
     name: "action",
     description:
-      "The child action name to run, such as BROWSER_SESSION, CHECK_BALANCE, MODIFY_CHARACTER, UPDATE_AI_PROVIDER, or LIST_CONNECTORS.",
+      "The child action name to run, such as BROWSER, CHECK_BALANCE, MODIFY_CHARACTER, UPDATE_AI_PROVIDER, or LIST_CONNECTORS.",
     required: true,
     schema: { type: "string" as const },
   },
@@ -125,11 +124,10 @@ function createPageActionGroupAction(
     similes: config.similes ?? [],
     contexts: ["general", ...config.contexts],
     actionGroup: { contexts: config.contexts },
+    roleGate: { minRole: "OWNER" },
     description: `${config.description} Pass { action, parameters } to run one validated child action. Only the owner may use this parent action from main chat; page-scoped chats expose the child actions directly.`,
     descriptionCompressed: `${config.name}: owner-only parent action that delegates to page child actions.`,
-    validate: async (runtime: IAgentRuntime, message: Memory) => {
-      return hasOwnerAccess(runtime, message);
-    },
+    validate: async () => true,
     handler: async (
       runtime: IAgentRuntime,
       message: Memory,
@@ -137,13 +135,6 @@ function createPageActionGroupAction(
       options?: HandlerOptions,
       callback?: HandlerCallback,
     ): Promise<ActionResult> => {
-      if (!(await hasOwnerAccess(runtime, message))) {
-        return {
-          success: false,
-          text: `Permission denied: only the owner may use ${config.name}.`,
-        };
-      }
-
       const params = readParameters(options);
       const requestedAction = params.action?.trim();
       if (!requestedAction) {
@@ -251,7 +242,19 @@ export const phoneActionsGroupAction = createPageActionGroupAction({
 
 export const lifeOpsActionsGroupAction = createPageActionGroupAction({
   name: "LIFEOPS_ACTIONS",
-  contexts: ["lifeops"],
+  // Expanded from the legacy "lifeops" alias (see context-registry.ts) so this
+  // action is gated by the actual canonical contexts the LifeOps page covers.
+  contexts: [
+    "tasks",
+    "calendar",
+    "email",
+    "contacts",
+    "health",
+    "subscriptions",
+    "screen_time",
+    "automation",
+    "messaging",
+  ],
   similes: ["LIFEOPS_TOOLS", "LIFEOPS_PAGE_ACTIONS"],
   description:
     "Main-chat parent action for LifeOps page work including goals, reminders, inbox, calendar, browser workflows, health, subscriptions, travel, and approvals.",

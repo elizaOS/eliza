@@ -9,13 +9,13 @@
  * inline rather than retrying silently.
  */
 
-import { Button, type OverlayAppContext } from "@elizaos/app-core";
 import type {
   ConnectResult,
   WiFiNetwork,
   WifiStateResult,
 } from "@elizaos/capacitor-wifi";
 import { WiFi } from "@elizaos/capacitor-wifi";
+import { Button, type OverlayAppContext } from "@elizaos/ui";
 import {
   ChevronLeft,
   Lock,

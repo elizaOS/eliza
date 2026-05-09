@@ -6,14 +6,15 @@ import {
 	checkPairingAllowed,
 	createUniqueUuid,
 	EventType,
-	type FetchedKnowledgeUrl,
-	fetchKnowledgeFromUrl,
+	type FetchedDocumentUrl as FetchedKnowledgeUrl,
+	fetchDocumentFromUrl,
 	type HandlerCallback,
 	type IAgentRuntime,
 	isInAllowlist,
 	lifeOpsPassiveConnectorsEnabled,
 	type Media,
 	type Memory,
+	MemoryType,
 	type Service,
 	ServiceType,
 	stringToUuid,
@@ -36,13 +37,24 @@ import { createDraftStreamController } from "./draft-stream";
 import { getDiscordSettings } from "./environment";
 import { buildDiscordWorldMetadata } from "./identity";
 import { formatInboundEnvelope } from "./inbound-envelope";
+import { appendCoalescedDiscordMetadata } from "./message-coalesce";
 import { stripReasoningTags } from "./reasoning-tags";
+import {
+	applyDiscordStalenessGuard,
+	type DiscordStalenessConfig,
+	getDiscordChannelMessageSequence,
+	getDiscordStalenessConfig,
+} from "./staleness";
 import {
 	createStatusReactionController,
 	type StatusReactionScope,
 	shouldShowStatusReaction,
 } from "./status-reactions";
-import type { DiscordSettings, IDiscordService } from "./types";
+import {
+	DiscordEventTypes,
+	type DiscordSettings,
+	type IDiscordService,
+} from "./types";
 import { createTypingController } from "./typing";
 import {
 	canSendMessage,
@@ -53,6 +65,20 @@ import {
 	normalizeDiscordMessageText,
 	sendMessageInChunks,
 } from "./utils";
+
+export function resolveGenerationTimeoutMs(
+	timeoutSetting: unknown,
+	fallbackSetting: unknown,
+): number | null {
+	const parsed = Number.parseInt(
+		String(timeoutSetting ?? fallbackSetting ?? "120000"),
+		10,
+	);
+	if (!Number.isFinite(parsed)) {
+		return 120_000;
+	}
+	return parsed > 0 ? Math.max(30_000, parsed) : null;
+}
 
 function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -109,6 +135,57 @@ function webpageAttachmentId(url: string): string {
 	return `webpage-${createHash("sha256").update(url).digest("hex").slice(0, 24)}`;
 }
 
+const ACTIVE_TASK_AGENT_STATUSES = new Set([
+	"active",
+	"blocked",
+	"tool_running",
+]);
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: null;
+}
+
+function stringField(
+	record: Record<string, unknown> | null,
+	field: string,
+): string | undefined {
+	const value = record?.[field];
+	return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+export function hasActiveTaskAgentWorkForMessage(
+	runtime: Pick<IAgentRuntime, "getService">,
+	messageId: string,
+): boolean {
+	try {
+		const coordinator = asRecord(runtime.getService("SWARM_COORDINATOR"));
+		const tasks = coordinator?.tasks;
+		if (!(tasks instanceof Map)) {
+			return false;
+		}
+
+		for (const taskValue of tasks.values()) {
+			const task = asRecord(taskValue);
+			const status = stringField(task, "status");
+			if (!status || !ACTIVE_TASK_AGENT_STATUSES.has(status)) {
+				continue;
+			}
+
+			const metadata = asRecord(task?.originMetadata);
+			const originMessageId = stringField(metadata, "messageId");
+			if (originMessageId === messageId) {
+				return true;
+			}
+		}
+	} catch {
+		return false;
+	}
+
+	return false;
+}
+
 /**
  * Class representing a Message Manager for handling Discord messages.
  */
@@ -120,9 +197,11 @@ export class MessageManager {
 	private getChannelType: (channel: Channel) => Promise<ChannelType>;
 	private discordSettings: DiscordSettings;
 	private discordService: IDiscordService;
+	private accountId: string;
 	private statusReactionScope: StatusReactionScope;
 	private envelopeEnabled: boolean;
 	private draftStreamingEnabled: boolean;
+	private stalenessConfig: DiscordStalenessConfig;
 	private recentlyProcessedMessageIds = new Map<string, number>();
 	private static readonly PROCESSED_MESSAGE_TTL_MS = 2 * 60 * 1000;
 	/**
@@ -148,8 +227,10 @@ export class MessageManager {
 		this.attachmentManager = new AttachmentManager(this.runtime);
 		this.getChannelType = discordService.getChannelType;
 		this.discordService = discordService;
+		this.accountId = discordService.accountId ?? "default";
 		// Load Discord settings with proper priority (env vars > character settings > defaults)
-		this.discordSettings = getDiscordSettings(this.runtime);
+		this.discordSettings =
+			discordService.discordSettings ?? getDiscordSettings(this.runtime);
 		const reactionScopeSetting = this.runtime.getSetting(
 			"DISCORD_STATUS_REACTIONS",
 		) as string | undefined;
@@ -170,6 +251,9 @@ export class MessageManager {
 		) as string | undefined;
 		this.draftStreamingEnabled =
 			draftStreamSetting === "true" || draftStreamSetting === "1";
+		this.stalenessConfig = getDiscordStalenessConfig((key) =>
+			this.runtime.getSetting(key),
+		);
 	}
 
 	/**
@@ -513,7 +597,7 @@ export class MessageManager {
 										: "none",
 						},
 					},
-					extraMetadata: {
+					extraMetadata: appendCoalescedDiscordMetadata(message, {
 						// Reply attribution for cross-agent filtering
 						// WHY: When user replies to another bot's message, we need to know
 						// so other agents can ignore it (only the replied-to agent should respond)
@@ -536,7 +620,7 @@ export class MessageManager {
 							message.mentions.repliedUser?.globalName ??
 							message.mentions.repliedUser?.username,
 						replyToSenderUserName: message.mentions.repliedUser?.username,
-					},
+					}),
 				},
 			);
 
@@ -569,10 +653,13 @@ export class MessageManager {
 				worldName: message.guild?.name,
 				// Preserve the raw Discord user id in source metadata for role and allowlist checks.
 				userId: message.author.id as unknown as UUID,
-				metadata: buildDiscordWorldMetadata(
-					this.runtime,
-					message.guild?.ownerId ?? undefined,
-				),
+				metadata: {
+					...buildDiscordWorldMetadata(
+						this.runtime,
+						message.guild?.ownerId ?? undefined,
+					),
+					accountId: this.accountId,
+				},
 			});
 
 			if (
@@ -643,6 +730,10 @@ export class MessageManager {
 			}
 
 			const messageId = newMessage.id;
+			const stalenessStartSequence = getDiscordChannelMessageSequence(
+				this,
+				message.channel.id,
+			);
 			const channel = message.channel as TextChannel;
 			const typingController = createTypingController(channel);
 			const clientUserId = this.client.user?.id;
@@ -671,16 +762,11 @@ export class MessageManager {
 			let typingStarted = false;
 			let responseEmitted = false;
 			let generationTimedOut = false;
-			const generationTimeoutMs = Math.max(
-				30_000,
-				Number.parseInt(
-					String(
-						this.runtime.getSetting("DISCORD_GENERATION_TIMEOUT_MS") ??
-							this.runtime.getSetting("MESSAGE_TIMEOUT_MS") ??
-							"120000",
-					),
-					10,
-				) || 120_000,
+			const generationTimeoutMs = resolveGenerationTimeoutMs(
+				this.runtime.getSetting("DISCORD_GENERATION_TIMEOUT_MS") ??
+					process.env.DISCORD_GENERATION_TIMEOUT_MS,
+				this.runtime.getSetting("MESSAGE_TIMEOUT_MS") ??
+					process.env.MESSAGE_TIMEOUT_MS,
 			);
 
 			const finalizePendingDraft = async () => {
@@ -751,6 +837,35 @@ export class MessageManager {
 						return [];
 					}
 
+					const stalenessDecision = applyDiscordStalenessGuard({
+						config: this.stalenessConfig,
+						owner: this,
+						message,
+						startSequence: stalenessStartSequence,
+						content,
+					});
+					if (stalenessDecision.stale) {
+						this.runtime.logger.warn(
+							{
+								src: "plugin:discord",
+								agentId: this.runtime.agentId,
+								channelId: message.channel.id,
+								messageId: message.id,
+								messagesSinceTurnStart:
+									stalenessDecision.messagesSinceTurnStart,
+								threshold: this.stalenessConfig.threshold,
+								behavior: stalenessDecision.behavior,
+							},
+							"Discord response completed after newer channel messages arrived",
+						);
+					}
+					if (!stalenessDecision.shouldSend) {
+						typingController.stop();
+						statusReactions?.setDone();
+						await finalizePendingDraft();
+						return [];
+					}
+
 					if (message.id && !content.inReplyTo) {
 						content.inReplyTo = createUniqueUuid(this.runtime, message.id);
 					}
@@ -776,7 +891,7 @@ export class MessageManager {
 
 					// Dedup: error when the runtime emits identical text
 					// twice in response to the same inbound message (e.g.
-					// post-action continuation repeating action output).
+					// planner follow-up repeating action output).
 					if (hasText && content.inReplyTo) {
 						const dedupKey = `${content.inReplyTo}::${textContent.replace(/\s+/g, " ").trim()}`;
 						const callbackDedup = message as DiscordMessage & {
@@ -917,6 +1032,10 @@ export class MessageManager {
 										: undefined,
 							},
 							roomId,
+							metadata: {
+								type: MemoryType.MESSAGE,
+								accountId: this.accountId,
+							},
 							createdAt: m.createdTimestamp,
 						};
 						memories.push(memory);
@@ -983,35 +1102,50 @@ export class MessageManager {
 							{ src: "plugin:discord", agentId: this.runtime.agentId },
 							"Using event-based message handling",
 						);
-						await this.runtime.emitEvent([EventType.MESSAGE_RECEIVED], {
-							runtime: this.runtime,
-							message: newMessage,
-							callback,
-							source: "discord",
-						});
+						await this.runtime.emitEvent(
+							[
+								DiscordEventTypes.MESSAGE_RECEIVED,
+								EventType.MESSAGE_RECEIVED,
+							] as string[],
+							{
+								runtime: this.runtime,
+								message: newMessage,
+								callback,
+								source: "discord",
+								accountId: this.accountId,
+							} as any,
+						);
 					}
 				})();
 
-				const timeoutPromise = new Promise<never>((_, reject) => {
-					generationTimeoutHandle = setTimeout(() => {
-						generationTimedOut = true;
-						reject(
-							new Error(
-								`Discord generation timeout after ${generationTimeoutMs}ms`,
-							),
-						);
-					}, generationTimeoutMs);
-				});
-
 				generationPromise.catch(() => {});
-				await Promise.race([generationPromise, timeoutPromise]);
+				if (generationTimeoutMs === null) {
+					await generationPromise;
+				} else {
+					const timeoutPromise = new Promise<never>((_, reject) => {
+						generationTimeoutHandle = setTimeout(() => {
+							generationTimedOut = true;
+							reject(
+								new Error(
+									`Discord generation timeout after ${generationTimeoutMs}ms`,
+								),
+							);
+						}, generationTimeoutMs);
+					});
+
+					await Promise.race([generationPromise, timeoutPromise]);
+				}
 			} catch (generationError) {
+				const activeTaskAgentWork =
+					generationTimedOut &&
+					hasActiveTaskAgentWorkForMessage(this.runtime, messageId);
 				this.runtime.logger.error(
 					{
 						src: "plugin:discord",
 						agentId: this.runtime.agentId,
 						messageId: message.id,
 						timeoutMs: generationTimeoutMs,
+						activeTaskAgentWork,
 						error:
 							generationError instanceof Error
 								? generationError.message
@@ -1020,6 +1154,23 @@ export class MessageManager {
 					"Discord generation failed or timed out",
 				);
 				typingController.stop();
+				if (activeTaskAgentWork) {
+					statusReactions?.setDone();
+					await abortPendingDraft();
+					this.runtime.logger.warn(
+						{
+							src: "plugin:discord",
+							agentId: this.runtime.agentId,
+							messageId: message.id,
+							memoryId: messageId,
+							roomId,
+							timeoutMs: generationTimeoutMs,
+						},
+						"Suppressing Discord timeout reply while task-agent work is still active",
+					);
+					return;
+				}
+
 				statusReactions?.setError();
 				await abortPendingDraft();
 
@@ -1161,7 +1312,7 @@ export class MessageManager {
 				}
 			} else {
 				try {
-					const fetched = await fetchKnowledgeFromUrl(url);
+					const fetched = await fetchDocumentFromUrl(url);
 					attachments.push(fetchedUrlToAttachment(url, fetched));
 					continue;
 				} catch (error) {

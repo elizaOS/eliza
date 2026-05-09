@@ -37,6 +37,12 @@ const spec = requireProviderSpec("PROVIDERS");
 export const providersProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
+	contexts: ["general"],
+	contextGate: { anyOf: ["general"] },
+	cacheStable: true,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
 		const allProviders = [...runtime.providers].sort(
 			(left, right) =>
@@ -52,7 +58,7 @@ export const providersProvider: Provider = {
 			: contextFilteredProviders;
 		const selectionHints = [
 			"images, attachments, or visual content -> ATTACHMENTS",
-			"uploaded files, documents, or knowledge-base content -> AVAILABLE_DOCUMENTS, KNOWLEDGE",
+			"uploaded files or stored documents -> DOCUMENTS",
 			"specific people or agents -> ENTITIES",
 			"connections between people -> RELATIONSHIPS",
 			"current platform chat or user identity -> PLATFORM_CHAT_CONTEXT, PLATFORM_USER_CONTEXT",

@@ -1,0 +1,203 @@
+name: Deploy Eliza Provisioning Worker
+
+# SSHes to the Hetzner provisioning host, fetches the latest develop commit,
+# installs the systemd unit shipped at cloud/packages/scripts/eliza-provisioning-worker.service,
+# and restarts the eliza-provisioning-worker daemon.
+#
+# First-time setup:
+#   HCLOUD_TOKEN=... bun run --cwd cloud provisioning-worker:bootstrap
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/deploy-eliza-provisioning-worker.yml'
+      - 'cloud/packages/scripts/daemons/provisioning-worker.ts'
+      - 'cloud/packages/scripts/eliza-provisioning-worker.service'
+      - 'cloud/packages/lib/services/provisioning-jobs.ts'
+      - 'cloud/packages/lib/services/docker-sandbox-provider.ts'
+      - 'cloud/packages/lib/services/eliza-sandbox.ts'
+      - 'cloud/packages/db/repositories/agent-sandboxes.ts'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-eliza-provisioning-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy worker to Hetzner host
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    env:
+      SYSTEMD_UNIT: eliza-provisioning-worker.service
+      DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+      DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+      DEPLOY_BRANCH: develop
+    steps:
+      - name: Check deploy configuration
+        id: deploy_config
+        run: |
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Missing ELIZA_PROVISIONING_HOST or ELIZA_PROVISIONING_SSH_KEY; skipping provisioning-worker deploy."
+            {
+              echo "### Provisioning worker deploy skipped"
+              echo ""
+              echo "Missing \`ELIZA_PROVISIONING_HOST\` or \`ELIZA_PROVISIONING_SSH_KEY\` for GitHub environment \`production\`."
+              echo ""
+              echo "Bootstrap the Hetzner host and secrets with:"
+              echo ""
+              echo "\`\`\`bash"
+              echo "HCLOUD_TOKEN=... bun run --cwd cloud provisioning-worker:bootstrap"
+              echo "\`\`\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::error::Manual deployment requires ELIZA_PROVISIONING_HOST and ELIZA_PROVISIONING_SSH_KEY."
+              exit 1
+            fi
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy and restart worker
+        if: steps.deploy_config.outputs.configured == 'true'
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          script_stop: true
+          command_timeout: 10m
+          envs: DEPLOY_BRANCH,SYSTEMD_UNIT
+          script: |
+            set -euo pipefail
+            echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH) ==="
+
+            cd /opt/eliza
+            export GIT_CONFIG_COUNT=1
+            export GIT_CONFIG_KEY_0=safe.directory
+            export GIT_CONFIG_VALUE_0=/opt/eliza
+
+            rm -f .git/index.lock
+
+            # Discard local drift, preserve env files.
+            git clean -fdx -e .env -e .env.local -e .env.* -e node_modules || true
+            git checkout -- . 2>/dev/null || true
+
+            # Use a refspec so a single-branch / shallow clone still creates
+            # the remote-tracking ref for $DEPLOY_BRANCH on first deploy.
+            git fetch origin "+$DEPLOY_BRANCH:refs/remotes/origin/$DEPLOY_BRANCH"
+            git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
+
+            # Pin bun version on first install to narrow `curl | bash` blast radius.
+            if ! command -v bun >/dev/null 2>&1; then
+              curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.13"
+              export BUN_INSTALL="$HOME/.bun"
+              export PATH="$BUN_INSTALL/bin:$PATH"
+            fi
+
+            # cloud/ is a separate bun project (not a sub-workspace of the
+            # outer monorepo, whose `workspaces` is `packages/*`). Install from
+            # /opt/eliza/cloud so the worker's deps end up in cloud/node_modules.
+            #
+            # No --frozen-lockfile: cloud/bun.lock currently has a duplicate
+            # package path for @elizaos/plugin-workflow (workspace + registry
+            # entries for the same name) that bun rejects under frozen mode.
+            # Cloud-CF deploys hit the same upstream bug; until the lockfile is
+            # cleaned at source, allow bun to recompute the deps tree.
+            cd /opt/eliza/cloud
+            for attempt in 1 2 3; do
+              if bun install; then
+                break
+              fi
+              if [ "$attempt" -eq 3 ]; then exit 1; fi
+              echo "bun install attempt $attempt failed; retrying in 10s..."
+              sleep 10
+            done
+            cd /opt/eliza
+
+            # Install/refresh the systemd unit.
+            sudo install -m 0644 \
+              cloud/packages/scripts/eliza-provisioning-worker.service \
+              "/etc/systemd/system/$SYSTEMD_UNIT"
+            sudo systemctl daemon-reload
+            sudo systemctl enable "$SYSTEMD_UNIT"
+
+            sudo systemctl restart "$SYSTEMD_UNIT"
+            echo "=== Restart issued; waiting for first poll cycle ==="
+
+      - name: Health check
+        if: steps.deploy_config.outputs.configured == 'true'
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          script_stop: true
+          command_timeout: 5m
+          envs: SYSTEMD_UNIT
+          script: |
+            set -euo pipefail
+            # The worker logs to journald via systemd's stdout/stderr capture.
+            # Info-level logs are filtered unless VERBOSE_LOGGING=true, so we
+            # rely on systemd's own signals: process is active AND no fatal
+            # error / restart-loop in the journal since deploy.
+            SINCE_TS="$(date -u -d '30 seconds ago' '+%Y-%m-%d %H:%M:%S')"
+            STABLE_THRESHOLD_SEC=20
+            for attempt in $(seq 1 18); do
+              if sudo systemctl is-active --quiet "$SYSTEMD_UNIT"; then
+                JOURNAL=$(sudo journalctl -u "$SYSTEMD_UNIT" --since "$SINCE_TS" --no-pager 2>/dev/null || true)
+                if echo "$JOURNAL" | grep -qE "\[provisioning-worker\] (fatal|unhandled rejection)|node:internal/.*Error:|^[A-Za-z]+Error:"; then
+                  echo "::error::Worker logged a fatal error since deploy."
+                  echo "$JOURNAL" | tail -n 50
+                  exit 1
+                fi
+                # Active + uptime past the threshold = healthy. systemd's Restart=always
+                # means a crashing process would resurrect; an uptime > threshold
+                # therefore proves it stayed up across at least one poll cycle.
+                UPTIME_SEC=$(systemctl show "$SYSTEMD_UNIT" --property=ActiveEnterTimestampMonotonic --value | awk '{ print int($1 / 1e6) }')
+                NOW_SEC=$(awk '{print int($1)}' /proc/uptime)
+                AGE=$(( NOW_SEC - UPTIME_SEC ))
+                if [ "$AGE" -ge "$STABLE_THRESHOLD_SEC" ]; then
+                  echo "Worker active and stable for ${AGE}s (>= ${STABLE_THRESHOLD_SEC}s threshold) on attempt $attempt."
+                  exit 0
+                fi
+                echo "Health check attempt $attempt/18: active but only ${AGE}s old, waiting for stability..."
+              else
+                echo "Health check attempt $attempt/18: not active yet."
+              fi
+              sleep 5
+            done
+
+            echo "::error::$SYSTEMD_UNIT failed to become healthy within 90s."
+            sudo systemctl status "$SYSTEMD_UNIT" --no-pager || true
+            sudo journalctl -u "$SYSTEMD_UNIT" -n 200 --no-pager || true
+            exit 1
+
+      - name: Notify Discord (Success)
+        if: success() && steps.deploy_config.outputs.configured == 'true'
+        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708 # v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          ack_no_webhook: true
+          title: "🚀 Eliza Provisioning Worker Deployed"
+          nodetail: true
+          description: |
+            Branch: develop
+            Commit: ${{ github.sha }}
+          color: 0x00ff00
+
+      - name: Notify Discord (Failure)
+        if: failure() && steps.deploy_config.outputs.configured == 'true'
+        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708 # v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          ack_no_webhook: true
+          title: "❌ Eliza Provisioning Worker Deploy Failed"
+          nodetail: true
+          description: |
+            Branch: develop
+            Commit: ${{ github.sha }}
+          color: 0xff0000

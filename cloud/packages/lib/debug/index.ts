@@ -1,8 +1,7 @@
 /**
  * Debug Tracing Module for elizaOS
  *
- * Provides comprehensive execution tracing across all agent modes:
- * CHAT, ASSISTANT, BUILD, and MULTI_STEP
+ * Provides comprehensive execution tracing for cloud chat runs.
  *
  * Usage:
  *   1. Enable via environment variable: DEBUG_TRACING=true

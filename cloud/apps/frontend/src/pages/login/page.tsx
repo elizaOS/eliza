@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
-import LandingHeader from "@/packages/ui/src/components/layout/landing-header";
+import LandingHeader from "../../components/layout/landing-header";
 
 const StewardLoginSection = lazy(() => import("./steward-login-section"));
 

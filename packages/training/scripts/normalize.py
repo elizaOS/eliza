@@ -3,6 +3,9 @@
 Reads `datasets.yaml`, walks `data/raw/<slug>/`, dispatches to the named
 adapter in `lib/adapters.REGISTRY`, and writes
 `data/normalized/<slug>.jsonl` (+ `<slug>.errors.jsonl` for dropped rows).
+New outputs default to JSON expectedResponse payloads for native v5 tool
+calling. Pass `--expected-response-format legacy-toon` only when rebuilding
+legacy compatibility corpora.
 
 Source files are auto-discovered:
   - `*.parquet` (loaded via pyarrow)
@@ -34,7 +37,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib.adapters import REGISTRY  # noqa: E402
-from lib.toon import ToonEncoder  # noqa: E402
+from lib.expected_response import ExpectedResponseEncoder, make_expected_response_encoder  # noqa: E402
 
 RAW_DIR = ROOT / "data" / "raw"
 OUT_DIR = ROOT / "data" / "normalized"
@@ -160,7 +163,7 @@ def _tag_source(records: Iterator[dict[str, Any]], filename: str) -> Iterator[di
 
 
 def normalize_dataset(
-    entry: dict, *, max_records: int | None, encoder: ToonEncoder,
+    entry: dict, *, max_records: int | None, encoder: ExpectedResponseEncoder,
 ) -> tuple[int, int, int]:
     slug = entry["slug"]
     license = entry.get("license", "unknown")
@@ -222,6 +225,12 @@ def main() -> int:
     ap.add_argument("--skip", type=str, default="")
     ap.add_argument("--max-records", type=int, default=None,
                     help="cap output records per dataset (smoke testing)")
+    ap.add_argument(
+        "--expected-response-format",
+        choices=("json", "legacy-toon"),
+        default="json",
+        help="supervised target encoding for generated ElizaRecord rows",
+    )
     args = ap.parse_args()
 
     with args.registry.open() as f:
@@ -242,7 +251,7 @@ def main() -> int:
         log.warning("nothing to normalize")
         return 0
 
-    encoder = ToonEncoder()
+    encoder = make_expected_response_encoder(args.expected_response_format)
     try:
         manifest = []
         total_in = total_out = total_err = 0

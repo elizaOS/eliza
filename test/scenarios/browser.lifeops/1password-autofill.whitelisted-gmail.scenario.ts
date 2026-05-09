@@ -10,7 +10,7 @@ import {
   expectTurnToCallAction,
 } from "../_helpers/action-assertions.ts";
 
-const AUTOFILL_ACTIONS = ["AUTOFILL_FIELD", "OWNER_AUTOFILL"];
+const AUTOFILL_ACTIONS = ["AUTOFILL_FIELD", "AUTOFILL"];
 
 export default scenario({
   id: "1password-autofill.whitelisted-gmail",

@@ -50,6 +50,11 @@ export interface TrajectoryLlmCall {
   error?: string;
   /** Heuristic classification: "action_planner", "should_respond", "reply", "embedding", "other". */
   purpose: string;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
 }
 
 export interface TrajectoryProviderSnapshot {
@@ -133,8 +138,29 @@ export interface RecordingHarnessOptions extends ConversationHarnessOptions {
 export function isTrajectoryCaptureEnabled(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  const raw = env.ELIZA_DUMP_TRAJECTORIES?.trim().toLowerCase();
+  const raw = (env.ELIZA_DUMP_TRAJECTORIES ?? env.MILADY_TRAJECTORY_REVIEW_MODE)
+    ?.trim()
+    .toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+function isTrajectoryMarkdownReviewEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const raw = (
+    env.MILADY_TRAJECTORY_REVIEW_MODE ??
+    env.MILADY_TRAJECTORY_MARKDOWN ??
+    env.ELIZA_TRAJECTORY_MARKDOWN
+  )
+    ?.trim()
+    .toLowerCase();
+  return (
+    raw === "1" ||
+    raw === "true" ||
+    raw === "yes" ||
+    raw === "on" ||
+    Boolean(env.MILADY_TRAJECTORY_MARKDOWN_DIR?.trim())
+  );
 }
 
 function safeStringify(value: unknown, max = 64_000): string {
@@ -172,6 +198,235 @@ function stringifyTrajectoryRecord(value: unknown): string {
   );
 }
 
+function redactMarkdownSecrets(text: string): string {
+  const raw =
+    process.env.MILADY_TRAJECTORY_MARKDOWN_REDACT?.trim().toLowerCase();
+  if (raw === "0" || raw === "false" || raw === "no" || raw === "off") {
+    return text;
+  }
+  const explicitSecrets = [
+    process.env.CEREBRAS_API_KEY,
+    process.env.OPENAI_API_KEY,
+    process.env.ANTHROPIC_API_KEY,
+    process.env.GROQ_API_KEY,
+  ].filter((value): value is string => Boolean(value?.trim()));
+  let out = text;
+  for (const secret of explicitSecrets) {
+    out = out.split(secret).join("[REDACTED_SECRET]");
+  }
+  return out
+    .replace(/\bcsk-[A-Za-z0-9_-]{8,}\b/g, "[REDACTED_CEREBRAS_KEY]")
+    .replace(/\bsk-(?!test-)[A-Za-z0-9_-]{8,}\b/g, "[REDACTED_OPENAI_KEY]")
+    .replace(
+      /\bBearer\s+[A-Za-z0-9._~+/=-]{16,}\b/g,
+      "Bearer [REDACTED_TOKEN]",
+    );
+}
+
+function formatTimestamp(timestamp: number): string {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return "-";
+  return new Date(timestamp).toISOString();
+}
+
+function formatDuration(durationMs: number): string {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return "0ms";
+  if (durationMs < 1000) return `${Math.round(durationMs)}ms`;
+  return `${(durationMs / 1000).toFixed(2)}s`;
+}
+
+function markdownFence(value: string, language = ""): string[] {
+  const fence = value.includes("```") ? "````" : "```";
+  return [language ? `${fence}${language}` : fence, value, fence];
+}
+
+function summarizeEmbeddingResponse(response: string): string | null {
+  const trimmed = response.trim();
+  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (
+      !Array.isArray(parsed) ||
+      !parsed.every((value) => typeof value === "number")
+    ) {
+      return null;
+    }
+    const preview = parsed
+      .slice(0, 8)
+      .map((value) => Number(value).toFixed(4))
+      .join(", ");
+    return `Embedding vector (${parsed.length} dimensions). Preview: [${preview}${parsed.length > 8 ? ", ..." : ""}]`;
+  } catch {
+    return null;
+  }
+}
+
+function llmResponseForMarkdown(call: TrajectoryLlmCall): string {
+  if (call.purpose === "embedding" || call.modelType === "TEXT_EMBEDDING") {
+    const summary = summarizeEmbeddingResponse(call.response);
+    if (summary) return summary;
+  }
+  return call.response;
+}
+
+function formatUsageLine(call: TrajectoryLlmCall): string | null {
+  const parts: string[] = [];
+  if (call.promptTokens !== undefined) parts.push(`input ${call.promptTokens}`);
+  if (call.completionTokens !== undefined) {
+    parts.push(`output ${call.completionTokens}`);
+  }
+  if (call.totalTokens !== undefined) parts.push(`total ${call.totalTokens}`);
+  if (call.cacheReadInputTokens !== undefined) {
+    const pct =
+      call.promptTokens && call.promptTokens > 0
+        ? ` (${((call.cacheReadInputTokens / call.promptTokens) * 100).toFixed(1)}% input)`
+        : "";
+    parts.push(`cache read ${call.cacheReadInputTokens}${pct}`);
+  }
+  if (call.cacheCreationInputTokens !== undefined) {
+    const pct =
+      call.promptTokens && call.promptTokens > 0
+        ? ` (${((call.cacheCreationInputTokens / call.promptTokens) * 100).toFixed(1)}% input)`
+        : "";
+    parts.push(`cache write ${call.cacheCreationInputTokens}${pct}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function markdownTableCell(value: unknown): string {
+  return String(value ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .replace(/\r?\n/g, "<br>");
+}
+
+function renderTrajectoryRecordMarkdown(record: TrajectoryRecord): string {
+  const lines: string[] = [];
+  lines.push(
+    `# Recorded Test Trajectory ${record.caseId ?? record.scenarioId ?? ""}`.trim(),
+  );
+  lines.push("");
+  lines.push(`- case: \`${record.caseId ?? "-"}\``);
+  lines.push(`- scenario: \`${record.scenarioId ?? "-"}\``);
+  lines.push(`- room: \`${record.roomId}\``);
+  lines.push(`- user: \`${record.userId}\``);
+  lines.push(`- started: ${formatTimestamp(record.startedAt)}`);
+  lines.push(`- ended: ${formatTimestamp(record.endedAt)}`);
+  lines.push(`- duration: ${formatDuration(record.durationMs)}`);
+  lines.push(
+    `- llm calls: ${record.agentTrajectory.llmCalls.length} · actions: ${record.actions.length} · memories: ${record.memoriesWritten.length}`,
+  );
+
+  if (Object.keys(record.metadata).length > 0) {
+    lines.push("");
+    lines.push("## Metadata");
+    lines.push("");
+    lines.push(...markdownFence(safeStringify(record.metadata), "json"));
+  }
+
+  if (record.transcript.length > 0) {
+    lines.push("");
+    lines.push("## Transcript");
+    for (const entry of record.transcript) {
+      lines.push("");
+      lines.push(`### ${entry.role} (${formatTimestamp(entry.timestamp)})`);
+      if (entry.actions?.length) {
+        lines.push(
+          `- actions: ${entry.actions.map((a) => `\`${a}\``).join(", ")}`,
+        );
+        lines.push("");
+      }
+      lines.push(...markdownFence(entry.text));
+    }
+  }
+
+  if (record.agentTrajectory.llmCalls.length > 0) {
+    lines.push("");
+    lines.push("## LLM Calls");
+    for (const [index, call] of record.agentTrajectory.llmCalls.entries()) {
+      lines.push("");
+      lines.push(`### Call ${index + 1}: ${call.purpose} (${call.callId})`);
+      lines.push("");
+      lines.push(`- model type: \`${call.modelType}\``);
+      lines.push(`- latency: ${formatDuration(call.latencyMs)}`);
+      lines.push(`- timestamp: ${formatTimestamp(call.timestamp)}`);
+      const usage = formatUsageLine(call);
+      if (usage) lines.push(`- usage: ${usage}`);
+      if (call.error) lines.push(`- error: ${call.error}`);
+      if (call.systemPrompt) {
+        lines.push("");
+        lines.push("#### System Prompt");
+        lines.push("");
+        lines.push(...markdownFence(call.systemPrompt));
+      }
+      lines.push("");
+      lines.push("#### Prompt");
+      lines.push("");
+      lines.push(...markdownFence(call.prompt));
+      lines.push("");
+      lines.push("#### Response");
+      lines.push("");
+      lines.push(...markdownFence(llmResponseForMarkdown(call)));
+    }
+  }
+
+  if (record.actions.length > 0) {
+    lines.push("");
+    lines.push("## Actions");
+    lines.push("");
+    lines.push("| Time | Phase | Action | Status | Confirmation | Text |");
+    lines.push("| --- | --- | --- | --- | --- | --- |");
+    for (const action of record.actions) {
+      lines.push(
+        `| ${formatTimestamp(action.timestamp)} | ${markdownTableCell(action.phase)} | ${markdownTableCell(action.actionName)} | ${markdownTableCell(action.actionStatus)} | ${action.actionConfirmationPending ? "yes" : ""} | ${markdownTableCell(action.contentText)} |`,
+      );
+    }
+  }
+
+  if (record.agentTrajectory.providerSnapshots.length > 0) {
+    lines.push("");
+    lines.push("## Provider Snapshots");
+    for (const [
+      index,
+      snapshot,
+    ] of record.agentTrajectory.providerSnapshots.entries()) {
+      lines.push("");
+      lines.push(
+        `### Snapshot ${index + 1} (${formatTimestamp(snapshot.timestamp)})`,
+      );
+      lines.push("");
+      if (snapshot.includeList) {
+        lines.push(
+          `- include: ${snapshot.includeList.map((name) => `\`${name}\``).join(", ")}`,
+        );
+      }
+      lines.push(...markdownFence(safeStringify(snapshot), "json"));
+    }
+  }
+
+  if (record.memoriesWritten.length > 0) {
+    lines.push("");
+    lines.push("## Memory Writes");
+    lines.push("");
+    lines.push(...markdownFence(safeStringify(record.memoriesWritten), "json"));
+  }
+
+  if (record.events.length > 0) {
+    lines.push("");
+    lines.push("## Events");
+    lines.push("");
+    lines.push(...markdownFence(safeStringify(record.events), "json"));
+  }
+
+  return `${redactMarkdownSecrets(lines.join("\n")).trimEnd()}\n`;
+}
+
+function markdownPathForJson(filePath: string): string {
+  if (filePath.endsWith(".json")) {
+    return `${filePath.slice(0, -".json".length)}.md`;
+  }
+  return `${filePath}.md`;
+}
+
 function classifyLlmPurpose(
   prompt: string,
   response: string,
@@ -186,6 +441,8 @@ function classifyLlmPurpose(
     head.includes("actions:") ||
     head.includes("available actions") ||
     head.includes("action planner") ||
+    head.includes("planner_stage") ||
+    head.includes("plan the next native tool calls") ||
     /(^|\n)\s*action\s*:/i.test(response.slice(0, 200))
   ) {
     return "action_planner";
@@ -229,6 +486,85 @@ export function serializeLlmCallResult(result: unknown): {
 
   return {
     response: typeof result === "string" ? result : safeStringify(result),
+  };
+}
+
+function objectRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function firstFiniteNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return undefined;
+}
+
+function extractLlmTokenUsage(
+  result: unknown,
+): Pick<
+  TrajectoryLlmCall,
+  | "promptTokens"
+  | "completionTokens"
+  | "totalTokens"
+  | "cacheReadInputTokens"
+  | "cacheCreationInputTokens"
+> {
+  const resultRecord = objectRecord(result);
+  const usageRecord = objectRecord(resultRecord?.usage) ?? resultRecord;
+  const inputDetails =
+    objectRecord(usageRecord?.inputTokenDetails) ??
+    objectRecord(usageRecord?.input_tokens_details) ??
+    objectRecord(usageRecord?.prompt_tokens_details);
+
+  const promptTokens = firstFiniteNumber(
+    usageRecord?.promptTokens,
+    usageRecord?.inputTokens,
+    usageRecord?.prompt_tokens,
+  );
+  const completionTokens = firstFiniteNumber(
+    usageRecord?.completionTokens,
+    usageRecord?.outputTokens,
+    usageRecord?.completion_tokens,
+  );
+  const totalTokens =
+    firstFiniteNumber(usageRecord?.totalTokens, usageRecord?.total_tokens) ??
+    (promptTokens !== undefined || completionTokens !== undefined
+      ? (promptTokens ?? 0) + (completionTokens ?? 0)
+      : undefined);
+  const cacheReadInputTokens = firstFiniteNumber(
+    usageRecord?.cacheReadInputTokens,
+    usageRecord?.cachedPromptTokens,
+    usageRecord?.cachedInputTokens,
+    inputDetails?.cacheReadInputTokens,
+    inputDetails?.cacheReadTokens,
+    inputDetails?.cachedInputTokens,
+    inputDetails?.cached_tokens,
+    inputDetails?.cache_read_input_tokens,
+  );
+  const cacheCreationInputTokens = firstFiniteNumber(
+    usageRecord?.cacheCreationInputTokens,
+    usageRecord?.cacheWriteInputTokens,
+    inputDetails?.cacheCreationInputTokens,
+    inputDetails?.cacheCreationTokens,
+    inputDetails?.cacheWriteTokens,
+    inputDetails?.cache_creation_input_tokens,
+  );
+
+  return {
+    ...(promptTokens !== undefined ? { promptTokens } : {}),
+    ...(completionTokens !== undefined ? { completionTokens } : {}),
+    ...(totalTokens !== undefined ? { totalTokens } : {}),
+    ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
+    ...(cacheCreationInputTokens !== undefined
+      ? { cacheCreationInputTokens }
+      : {}),
   };
 }
 
@@ -456,6 +792,7 @@ export class RecordingHarness {
         ? paramsRecord.systemPrompt
         : undefined;
     const serializedResult = serializeLlmCallResult(result);
+    const usage = extractLlmTokenUsage(result);
     this.llmCalls.push({
       callId: id,
       timestamp: start,
@@ -466,6 +803,7 @@ export class RecordingHarness {
       response: serializedResult.response,
       error: serializedResult.error,
       purpose: classifyLlmPurpose(prompt, serializedResult.response, modelType),
+      ...usage,
     });
   }
 
@@ -555,6 +893,13 @@ export class RecordingHarness {
     const record = this.dumpTrajectory();
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, stringifyTrajectoryRecord(record), "utf8");
+    if (isTrajectoryMarkdownReviewEnabled()) {
+      await fs.writeFile(
+        markdownPathForJson(filePath),
+        renderTrajectoryRecordMarkdown(record),
+        "utf8",
+      );
+    }
   }
 
   async cleanup(): Promise<void> {

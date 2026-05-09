@@ -1,9 +1,4 @@
-import type {
-  DraftRequest,
-  IAgentRuntime,
-  MessageSource,
-  SendPolicy,
-} from "@elizaos/core";
+import type { DraftRequest, MessageSource, SendPolicy } from "@elizaos/core";
 
 const OWNER_APPROVAL_REQUIRED: ReadonlySet<MessageSource> =
   new Set<MessageSource>(["gmail"]);
@@ -69,7 +64,7 @@ export function createOwnerSendPolicy(): SendPolicy {
           },
         },
       });
-      // The execution callback is invoked by OWNER_RESOLVE_REQUEST after the
+      // The execution callback is invoked by RESOLVE_REQUEST after the
       // owner approves. The executor reference is held by the triage service
       // until that flow runs; nothing to do synchronously here.
       void executor;

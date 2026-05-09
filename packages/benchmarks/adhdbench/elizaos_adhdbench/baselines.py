@@ -59,7 +59,7 @@ def compute_always_reply_baseline(scenarios: list[Scenario]) -> float:
 
     This is the lazy-agent baseline.  Many conversational turns expect REPLY,
     so this scores higher than random -- but any turn requiring a non-REPLY
-    action (SEND_MESSAGE, ADD_CONTACT, etc.) will fail.
+    action (MESSAGE, ADD_CONTACT, etc.) will fail.
     """
     scenario_scores: list[float] = []
 
@@ -91,8 +91,8 @@ def compute_always_reply_baseline(scenarios: list[Scenario]) -> float:
 # Default bootstrap action names for baseline computation
 BOOTSTRAP_ACTION_NAMES: list[str] = [
     "REPLY", "IGNORE", "NONE", "COMPACT_SESSION", "CHOOSE_OPTION",
-    "SEND_MESSAGE", "ADD_CONTACT", "REMOVE_CONTACT", "UPDATE_CONTACT",
+    "MESSAGE", "ADD_CONTACT", "REMOVE_CONTACT", "UPDATE_CONTACT",
     "UPDATE_CONTACT_INFO", "SEARCH_CONTACTS", "FOLLOW_ROOM", "UNFOLLOW_ROOM",
     "MUTE_ROOM", "UNMUTE_ROOM", "RESET_SESSION", "STATUS", "UPDATE_SETTINGS",
-    "UPDATE_ROLE", "GENERATE_IMAGE", "SCHEDULE_FOLLOW_UP",
+    "UPDATE_ROLE", "GENERATE_MEDIA", "SCHEDULE_FOLLOW_UP",
 ]

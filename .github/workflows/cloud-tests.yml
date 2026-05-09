@@ -68,7 +68,7 @@ jobs:
             fi
           done
 
-  unit-db-tests:
+  integration-db-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -78,8 +78,8 @@ jobs:
       - uses: ./cloud/.github/actions/setup-test-env
         with:
           setup-db: "true"
-      - name: Run DB-backed unit tests
-        run: bun run test:repo-unit:db
+      - name: Run focused DB-backed integration tests
+        run: bun run test:integration:db
 
   integration-tests:
     runs-on: ubuntu-latest

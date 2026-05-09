@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import {
   ChannelType,
   type Content,
@@ -9,6 +10,7 @@ import {
   logger,
   type Media,
   type Memory,
+  type MessagePayload,
   ModelType,
   ServiceType,
   type UUID,
@@ -20,14 +22,13 @@ import type {
   ReactionType,
   Update,
 } from "@telegraf/types";
-import fs from "node:fs";
 import type { Context, NarrowedContext, Telegraf } from "telegraf";
 import { Markup } from "telegraf";
 import {
   type TelegramContent,
   TelegramEventTypes,
-  type TelegramReactionReceivedPayload,
   type TelegramMessageSentPayload,
+  type TelegramReactionReceivedPayload,
 } from "./types";
 import {
   cleanText,
@@ -96,6 +97,7 @@ const getChannelType = (chat: Chat): ChannelType => {
 export class MessageManager {
   public bot: Telegraf<Context>;
   protected runtime: IAgentRuntime;
+  protected accountId: string;
 
   /**
    * Constructor for creating a new instance of a BotAgent.
@@ -103,9 +105,18 @@ export class MessageManager {
    * @param {Telegraf<Context>} bot - The Telegraf instance used for interacting with the bot platform.
    * @param {IAgentRuntime} runtime - The runtime environment for the agent.
    */
-  constructor(bot: Telegraf<Context>, runtime: IAgentRuntime) {
+  constructor(
+    bot: Telegraf<Context>,
+    runtime: IAgentRuntime,
+    accountId = "default",
+  ) {
     this.bot = bot;
     this.runtime = runtime;
+    this.accountId = accountId;
+  }
+
+  private scopedTelegramKey(key: string): string {
+    return this.accountId === "default" ? key : `${this.accountId}:${key}`;
   }
 
   /**
@@ -715,7 +726,10 @@ export class MessageManager {
 
     try {
       const telegramUserId = ctx.from.id.toString();
-      const entityId = createUniqueUuid(this.runtime, telegramUserId) as UUID;
+      const entityId = createUniqueUuid(
+        this.runtime,
+        this.scopedTelegramKey(telegramUserId),
+      ) as UUID;
 
       const threadId =
         "is_topic_message" in message && message.is_topic_message
@@ -733,10 +747,15 @@ export class MessageManager {
         ? `${ctx.chat.id}-${threadId}`
         : ctx.chat.id.toString();
       const telegramChatId = ctx.chat.id.toString();
-      const roomId = createUniqueUuid(this.runtime, telegramRoomid) as UUID;
-      const worldId = createUniqueUuid(this.runtime, telegramChatId) as UUID;
+      const scopedRoomKey = this.scopedTelegramKey(telegramRoomid);
+      const scopedChatKey = this.scopedTelegramKey(telegramChatId);
+      const roomId = createUniqueUuid(this.runtime, scopedRoomKey) as UUID;
+      const worldId = createUniqueUuid(this.runtime, scopedChatKey) as UUID;
       const telegramMessageId = message.message_id.toString();
-      const messageId = createUniqueUuid(this.runtime, telegramMessageId);
+      const messageId = createUniqueUuid(
+        this.runtime,
+        this.scopedTelegramKey(telegramMessageId),
+      );
 
       // Process message content and attachments
       const { processedContent, attachments } =
@@ -791,18 +810,22 @@ export class MessageManager {
           text: cleanedContent || " ",
           attachments: cleanedAttachments,
           source: "telegram",
+          metadata: { accountId: this.accountId },
           channelType,
           inReplyTo:
             "reply_to_message" in message && message.reply_to_message
               ? createUniqueUuid(
                   this.runtime,
-                  message.reply_to_message.message_id.toString(),
+                  this.scopedTelegramKey(
+                    message.reply_to_message.message_id.toString(),
+                  ),
                 )
               : undefined,
         },
         metadata: {
           type: "message",
           source: "telegram",
+          accountId: this.accountId,
           provider: "telegram",
           timestamp: message.date * 1000,
           entityName: ctx.from.first_name,
@@ -818,13 +841,14 @@ export class MessageManager {
             username: ctx.from.username,
           },
           telegram: {
+            accountId: this.accountId,
             chatId: telegramChatId,
             messageId: telegramMessageId,
             threadId,
           },
           telegramUserId,
           telegramChatId,
-        },
+        } as unknown as Memory["metadata"],
         createdAt: message.date * 1000,
       };
 
@@ -870,7 +894,7 @@ export class MessageManager {
             const responseMemory: Memory = {
               id: createUniqueUuid(
                 this.runtime,
-                sentMessage.message_id.toString(),
+                this.scopedTelegramKey(sentMessage.message_id.toString()),
               ),
               entityId: this.runtime.agentId,
               agentId: this.runtime.agentId,
@@ -881,10 +905,12 @@ export class MessageManager {
                 text: sentMessage.text,
                 inReplyTo: messageId,
                 channelType,
+                metadata: { accountId: this.accountId },
               },
               metadata: {
                 type: "message",
                 source: "telegram",
+                accountId: this.accountId,
                 provider: "telegram",
                 timestamp: sentMessage.date * 1000,
                 fromBot: true,
@@ -893,11 +919,12 @@ export class MessageManager {
                 chatType: chat.type,
                 messageIdFull: sentMessage.message_id.toString(),
                 telegram: {
+                  accountId: this.accountId,
                   chatId: sentMessage.chat.id,
                   messageId: sentMessage.message_id.toString(),
                   threadId,
                 },
-              },
+              } as unknown as Memory["metadata"],
               createdAt: sentMessage.date * 1000,
             };
 
@@ -1009,13 +1036,18 @@ export class MessageManager {
     try {
       const entityId = createUniqueUuid(
         this.runtime,
-        ctx.from.id.toString(),
+        this.scopedTelegramKey(ctx.from.id.toString()),
       ) as UUID;
-      const roomId = createUniqueUuid(this.runtime, ctx.chat.id.toString());
+      const roomId = createUniqueUuid(
+        this.runtime,
+        this.scopedTelegramKey(ctx.chat.id.toString()),
+      );
 
       const reactionId = createUniqueUuid(
         this.runtime,
-        `${reaction.message_id}-${ctx.from.id}-${Date.now()}`,
+        this.scopedTelegramKey(
+          `${reaction.message_id}-${ctx.from.id}-${Date.now()}`,
+        ),
       );
 
       // Create reaction memory
@@ -1030,9 +1062,21 @@ export class MessageManager {
           source: "telegram",
           inReplyTo: createUniqueUuid(
             this.runtime,
-            reaction.message_id.toString(),
+            this.scopedTelegramKey(reaction.message_id.toString()),
           ),
+          metadata: { accountId: this.accountId },
         },
+        metadata: {
+          type: "reaction",
+          source: "telegram",
+          accountId: this.accountId,
+          provider: "telegram",
+          telegram: {
+            accountId: this.accountId,
+            chatId: reaction.chat.id.toString(),
+            messageId: reaction.message_id.toString(),
+          },
+        } as unknown as Memory["metadata"],
         createdAt: Date.now(),
       };
 
@@ -1045,7 +1089,7 @@ export class MessageManager {
           const responseMemory: Memory = {
             id: createUniqueUuid(
               this.runtime,
-              sentMessage.message_id.toString(),
+              this.scopedTelegramKey(sentMessage.message_id.toString()),
             ),
             entityId: this.runtime.agentId,
             agentId: this.runtime.agentId,
@@ -1053,7 +1097,14 @@ export class MessageManager {
             content: {
               ...content,
               inReplyTo: reactionId,
+              metadata: { accountId: this.accountId },
             },
+            metadata: {
+              type: "message",
+              source: "telegram",
+              accountId: this.accountId,
+              provider: "telegram",
+            } as unknown as Memory["metadata"],
             createdAt: sentMessage.date * 1000,
           };
           return [responseMemory];
@@ -1076,6 +1127,8 @@ export class MessageManager {
         message: memory,
         callback,
         source: "telegram",
+        accountId: this.accountId,
+        metadata: { accountId: this.accountId },
         ctx,
         originalMessage: originalMessagePlaceholder as Message, // Cast needed due to placeholder
         reactionString: reactionType === "emoji" ? reactionEmoji : reactionType,
@@ -1088,6 +1141,8 @@ export class MessageManager {
         message: memory,
         callback,
         source: "telegram",
+        accountId: this.accountId,
+        metadata: { accountId: this.accountId },
         ctx,
         originalMessage: originalMessagePlaceholder as Message, // Cast needed due to placeholder
         reactionString: reactionType === "emoji" ? reactionEmoji : reactionType,
@@ -1140,7 +1195,10 @@ export class MessageManager {
       const roomKey = messageThreadId
         ? `${chatId.toString()}-${messageThreadId}`
         : chatId.toString();
-      const roomId = createUniqueUuid(this.runtime, roomKey);
+      const roomId = createUniqueUuid(
+        this.runtime,
+        this.scopedTelegramKey(roomKey),
+      );
 
       // Create memories for the sent messages
       const memories: Memory[] = [];
@@ -1152,7 +1210,10 @@ export class MessageManager {
           : {};
       for (const sentMessage of sentMessages) {
         const memory: Memory = {
-          id: createUniqueUuid(this.runtime, sentMessage.message_id.toString()),
+          id: createUniqueUuid(
+            this.runtime,
+            this.scopedTelegramKey(sentMessage.message_id.toString()),
+          ),
           entityId: this.runtime.agentId,
           agentId: this.runtime.agentId,
           roomId,
@@ -1160,6 +1221,7 @@ export class MessageManager {
             ...content,
             text: sentMessage.text,
             source: "telegram",
+            metadata: { ...contentMetadata, accountId: this.accountId },
             channelType: getChannelType({
               id:
                 typeof chatId === "string"
@@ -1168,9 +1230,31 @@ export class MessageManager {
               type: "private", // Default to private, will be overridden if in context
             } as Chat),
             ...(messageThreadId
-              ? { metadata: { ...contentMetadata, threadId: messageThreadId } }
+              ? {
+                  metadata: {
+                    ...contentMetadata,
+                    accountId: this.accountId,
+                    threadId: messageThreadId,
+                  },
+                }
               : {}),
           },
+          metadata: {
+            type: "message",
+            source: "telegram",
+            accountId: this.accountId,
+            provider: "telegram",
+            fromBot: true,
+            fromId: this.runtime.agentId,
+            sourceId: this.runtime.agentId,
+            messageIdFull: sentMessage.message_id.toString(),
+            telegram: {
+              accountId: this.accountId,
+              chatId: sentMessage.chat.id.toString(),
+              messageId: sentMessage.message_id.toString(),
+              threadId: messageThreadId?.toString(),
+            },
+          } as unknown as Memory["metadata"],
           createdAt: sentMessage.date * 1000,
         };
 
@@ -1185,15 +1269,25 @@ export class MessageManager {
           runtime: this.runtime,
           message: firstMemory,
           source: "telegram",
+          accountId: this.accountId,
+          metadata: { accountId: this.accountId },
+        } as MessagePayload & {
+          accountId: string;
+          metadata: { accountId: string };
         });
 
         // Also emit platform-specific event
-        const telegramMessageSentPayload: TelegramMessageSentPayload = {
+        const telegramMessageSentPayload = {
           runtime: this.runtime,
           source: "telegram",
+          accountId: this.accountId,
+          metadata: { accountId: this.accountId },
           originalMessages: sentMessages,
           chatId,
           message: firstMemory,
+        } as TelegramMessageSentPayload & {
+          accountId: string;
+          metadata: { accountId: string };
         };
         this.runtime.emitEvent(
           TelegramEventTypes.MESSAGE_SENT as string,

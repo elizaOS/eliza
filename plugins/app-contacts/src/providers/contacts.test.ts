@@ -25,7 +25,7 @@ describe("androidContacts provider", () => {
     expect(contactsProvider.dynamic).toBe(true);
   });
 
-  it("returns bounded address-book context as a TOON document", async () => {
+  it("returns bounded address-book context as JSON context", async () => {
     const contacts = [
       {
         id: "1",

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { sidebarSections } from "../../ui/src/components/layout/sidebar-data";
+import { sidebarSections } from "../../../apps/frontend/src/components/layout/sidebar-data";
 
 describe("sidebarSections", () => {
   test("places Infrastructure directly under Dashboard with Instances first", () => {

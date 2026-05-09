@@ -18,7 +18,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { parseToonKeyValue } from "@elizaos/core";
+import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import { runExtractorPipeline } from "../extractor-pipeline.js";
 import { recentConversationTextsFromState } from "./recent-context.js";
 
@@ -39,7 +39,7 @@ export type SubactionsMap<TSubaction extends string = string> = {
   readonly [K in TSubaction]: SubactionSpec;
 };
 
-export interface ResolveActionArgsInput<TSubaction extends string, TParams> {
+export interface ResolveActionArgsInput<TSubaction extends string, _TParams> {
   runtime: IAgentRuntime;
   message: Memory;
   state?: State;
@@ -103,10 +103,7 @@ function isSubactionKey<TSubaction extends string>(
   value: unknown,
   subactions: SubactionsMap<TSubaction>,
 ): value is TSubaction {
-  return (
-    typeof value === "string" &&
-    Object.prototype.hasOwnProperty.call(subactions, value)
-  );
+  return typeof value === "string" && Object.hasOwn(subactions, value);
 }
 
 function missingRequiredKeys<TSubaction extends string>(
@@ -204,7 +201,7 @@ function buildExtractionPrompt<TSubaction extends string>(args: {
     );
   }
   lines.push(
-    "Return ONLY TOON with these fields:",
+    "Return ONLY a JSON object with these fields:",
     "  subaction: one of the subaction keys above, or null if the request does not match any subaction",
     "  params: record containing the required and any obvious optional parameter values you extracted",
     "  missing: list of required parameter keys you could NOT extract from the request or context",
@@ -224,15 +221,15 @@ function buildExtractionPrompt<TSubaction extends string>(args: {
     "Recent conversation (most recent last):",
     args.recentConversation.length > 0 ? args.recentConversation : "(none)",
     "",
-    "Return ONLY the TOON record. No prose, markdown, or code fences.",
+    'Return ONLY the JSON object. Example: {"subaction":null,"params":{},"missing":["subaction"],"confidence":0.0}. No prose, markdown, or code fences.',
   );
   return lines.join("\n");
 }
 
 function buildRepairPromptForExtraction(rawFirstPass: string): string {
   return [
-    "Your previous reply was not valid TOON for the action argument extractor.",
-    "Return ONLY TOON with exactly these fields: subaction, params, missing, confidence.",
+    "Your previous reply was not valid JSON for the action argument extractor.",
+    "Return ONLY a JSON object with exactly these fields: subaction, params, missing, confidence.",
     "subaction: string or null. params: record. missing: list of strings. confidence: number 0.0-1.0.",
     "No prose, no markdown, no code fences.",
     "",
@@ -248,7 +245,7 @@ function parseExtractionEnvelope<TSubaction extends string>(
   if (typeof raw !== "string" || raw.trim().length === 0) {
     return null;
   }
-  const parsed = parseToonKeyValue<Record<string, unknown>>(raw);
+  const parsed = parseJsonModelRecord<Record<string, unknown>>(raw);
   if (!parsed || typeof parsed !== "object") {
     return null;
   }
@@ -310,7 +307,7 @@ export async function resolveActionArgs<
   } = input;
 
   const plannerParams =
-    options && options.parameters && typeof options.parameters === "object"
+    options?.parameters && typeof options.parameters === "object"
       ? (options.parameters as Record<string, unknown>)
       : {};
 
@@ -332,7 +329,7 @@ export async function resolveActionArgs<
     }
   }
 
-  // 2. LLM extraction path.
+  // 2. LLM extraction path for natural-language umbrella actions.
   const intent = asTrimmedString(intentHint) || getMessageText(message);
   const recentConversation = recentConversationTextsFromState(
     state,

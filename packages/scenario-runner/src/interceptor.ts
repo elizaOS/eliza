@@ -16,6 +16,7 @@ import type {
   State,
   Task,
 } from "@elizaos/core";
+import { toRecord } from "./utils.js";
 import type {
   CapturedAction,
   CapturedApprovalRequest,
@@ -60,12 +61,6 @@ function isCallable(value: unknown): value is (...args: unknown[]) => unknown {
 function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
-}
-
-function toRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 function getRuntimeCaptureHooks(
@@ -366,7 +361,7 @@ function captureStateTransitionsFromValue(
 
   if (browserTask?.completed === true) {
     stateTransitions.push({
-      subject: "browser-task",
+      subject: "browser_task",
       to: "completed",
       actionName,
       at: new Date().toISOString(),
@@ -374,8 +369,8 @@ function captureStateTransitionsFromValue(
   }
   if (browserTask?.needsHuman === true) {
     stateTransitions.push({
-      subject: "browser-task",
-      to: "needs-human",
+      subject: "browser_task",
+      to: "needs_human",
       actionName,
       at: new Date().toISOString(),
     });
@@ -490,9 +485,8 @@ function captureConnectorDispatchesFromAction(
   };
 
   if (
-    actionName === "SEND_DRAFT" ||
-    actionName === "RESPOND_TO_MESSAGE" ||
-    actionName === "CROSS_CHANNEL_SEND"
+    actionName === "MESSAGE" ||
+    actionName === "MESSAGE"
   ) {
     const channels = [
       ...toStringArray(params?.channel),
@@ -505,33 +499,7 @@ function captureConnectorDispatchesFromAction(
     return;
   }
 
-  if (
-    actionName === "OWNER_DEVICE_INTENT" ||
-    actionName === "PUBLISH_DEVICE_INTENT" ||
-    actionName === "INTENT_SYNC"
-  ) {
-    const channels = [
-      ...toStringArray(params?.channel),
-      ...toStringArray(params?.channels),
-      ...toStringArray(resultData?.channel),
-      ...toStringArray(resultData?.channels),
-    ];
-    for (const inferred of ["desktop", "mobile", "phone_call", "sms"]) {
-      if (blob.includes(inferred)) {
-        channels.push(inferred);
-      }
-    }
-    for (const channel of new Set(channels)) {
-      push(channel, params ?? resultData ?? {});
-    }
-    return;
-  }
-
-  if (
-    actionName === "OWNER_VOICE_CALL" ||
-    actionName === "CALL_USER" ||
-    actionName === "CALL_EXTERNAL"
-  ) {
+  if (actionName === "VOICE_CALL") {
     const channel = blob.includes("sms") ? "sms" : "phone_call";
     push(channel, params ?? resultData ?? {});
   }

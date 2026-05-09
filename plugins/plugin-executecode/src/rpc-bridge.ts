@@ -14,17 +14,17 @@ import {
   type ActionParameters,
   type ActionResult,
   type Content,
+  logger as coreLogger,
   getActiveRoutingContexts,
   getContextRoutingFromMessage,
   getContextRoutingFromState,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
-  logger as coreLogger,
   type Memory,
   runWithTrajectoryContext,
-  shouldIncludeByContext,
   type State,
+  shouldIncludeByContext,
   type UUID,
   validateActionParams,
 } from "@elizaos/core";
@@ -294,7 +294,7 @@ export function buildToolsProxy({
               options.parameters = validation.params;
             } else {
               // Pass through raw args as parameters even if validation surfaced
-              // warnings — same posture as the runtime's processActions flow.
+              // warnings; handlers still receive parameterErrors below.
               options.parameters = argsAsParameters;
             }
             if (!validation.valid) {

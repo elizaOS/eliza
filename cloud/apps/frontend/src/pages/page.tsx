@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Helmet } from "react-helmet-async";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { generateOrganizationSchema, generateWebApplicationSchema } from "@/lib/seo";
-import { LandingPage } from "@/packages/ui/src/components/landing/landing-page-new";
+import { LandingPage } from "../components/landing/landing-page-new";
 
 /**
  * Landing Page.

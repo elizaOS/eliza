@@ -1,27 +1,31 @@
+import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { promises as fs } from "node:fs";
+import { AuditLog } from "./audit.js";
 import { decrypt, encrypt } from "./crypto.js";
+import { assertKey, optsCaller } from "./internal-utils.js";
 import { defaultMasterKey, type MasterKeyResolver } from "./master-key.js";
 import { resolveReference } from "./password-managers.js";
+import { PgliteVaultImpl } from "./pglite-vault.js";
 import {
-  emptyStore,
   readStore,
   removeEntry,
-  setEntry,
   type StoreData,
+  setEntry,
   writeStore,
 } from "./store.js";
-import { AuditLog } from "./audit.js";
-import { PgliteVaultImpl } from "./pglite-vault.js";
 import type {
   AuditRecord,
   PasswordManagerReference,
-  StoredEntry,
   VaultDescriptor,
   VaultLogger,
   VaultStats,
 } from "./types.js";
+import type { CreateVaultOptions, SetOptions, Vault } from "./vault-types.js";
+import { VaultMissError } from "./vault-types.js";
+
+export type { CreateVaultOptions, SetOptions, Vault } from "./vault-types.js";
+export { VaultMissError } from "./vault-types.js";
 
 /**
  * Simple secrets/config vault.
@@ -37,71 +41,6 @@ import type {
  * password managers (1Password, Proton Pass) are first-class — the
  * vault stores only the reference and resolves at use time.
  */
-export interface Vault {
-  /** Store a value. Sensitive values are encrypted at rest. */
-  set(key: string, value: string, opts?: SetOptions): Promise<void>;
-
-  /**
-   * Store a reference to a password-manager item. The actual value
-   * lives there, never copied to disk by this vault.
-   */
-  setReference(key: string, ref: PasswordManagerReference): Promise<void>;
-
-  /** Read a value. Resolves through the password manager if needed. */
-  get(key: string): Promise<string>;
-
-  /**
-   * Read with audit trail. Use this for "show / reveal" UI affordances
-   * — every reveal is recorded with the caller id so users can see who
-   * read what.
-   */
-  reveal(key: string, caller?: string): Promise<string>;
-
-  /** Existence check. Does NOT reveal the value. */
-  has(key: string): Promise<boolean>;
-
-  /** Remove. Idempotent. */
-  remove(key: string): Promise<void>;
-
-  /** List keys. Optional prefix filter. Does NOT reveal values. */
-  list(prefix?: string): Promise<readonly string[]>;
-
-  /** Describe a key without revealing it. */
-  describe(key: string): Promise<VaultDescriptor | null>;
-
-  /** Aggregate counts. */
-  stats(): Promise<VaultStats>;
-}
-
-export interface SetOptions {
-  /** True if the value is a credential. Sensitive values are encrypted. */
-  readonly sensitive?: boolean;
-  /** Optional caller id for the audit log. */
-  readonly caller?: string;
-}
-
-export interface CreateVaultOptions {
-  /**
-   * Working directory. Resolution order (first non-empty wins):
-   *
-   *   1. `opts.workDir` — explicit caller override (tests, embedded use).
-   *   2. `$ELIZA_STATE_DIR` — Eliza's state-dir override.
-   *   3. `$ELIZA_STATE_DIR` — elizaOS-compatible state-dir override.
-   *   4. `~/$ELIZA_NAMESPACE` with a leading dot (`~/.eliza` by default).
-   *
-   * The vault writes `vault.json` and `audit/vault.jsonl` inside the
-   * resolved directory.
-   */
-  readonly workDir?: string;
-  /**
-   * Master key resolver. Default: OS keychain via `@napi-rs/keyring`.
-   * Override with `inMemoryMasterKey(buffer)` for tests.
-   */
-  readonly masterKey?: MasterKeyResolver;
-  /** Optional logger for non-fatal warnings. */
-  readonly logger?: VaultLogger;
-}
-
 export function createVault(opts: CreateVaultOptions = {}): Vault {
   const root =
     opts.workDir ??
@@ -142,9 +81,9 @@ class VaultImpl implements Vault {
 
   constructor(
     private readonly storePath: string,
-    private readonly auditPath: string,
+    auditPath: string,
     private readonly masterKey: MasterKeyResolver,
-    private readonly logger?: VaultLogger,
+    logger?: VaultLogger,
   ) {
     this.audit = new AuditLog(auditPath, logger);
   }
@@ -331,26 +270,6 @@ class VaultImpl implements Vault {
   ): Promise<void> {
     await this.audit.record(entry);
   }
-}
-
-export class VaultMissError extends Error {
-  constructor(readonly key: string) {
-    super(`vault: no entry for ${JSON.stringify(key)}`);
-    this.name = "VaultMissError";
-  }
-}
-
-function assertKey(key: string): void {
-  if (typeof key !== "string" || key.length === 0) {
-    throw new TypeError("vault: key must be a non-empty string");
-  }
-  if (key.length > 256) {
-    throw new TypeError("vault: key must be 256 characters or fewer");
-  }
-}
-
-function optsCaller(opts: SetOptions): { caller?: string } {
-  return opts.caller ? { caller: opts.caller } : {};
 }
 
 // re-exports for ergonomic imports

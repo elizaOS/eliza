@@ -1,4 +1,5 @@
 import { formatActionNames, formatActions } from "../../../actions.ts";
+import { evaluateConnectorAccountPolicies } from "../../../connectors/account-manager.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import type {
 	Action,
@@ -32,7 +33,7 @@ import {
 const spec = requireProviderSpec("ACTIONS");
 const GENERIC_CHAT_ACTIONS = new Set(["REPLY", "IGNORE", "NONE"]);
 const RELATIONSHIP_FOLLOW_UP_ACTIONS = new Set([
-	"OWNER_RELATIONSHIP",
+	"RELATIONSHIP",
 	"REPLY",
 	"IGNORE",
 	"NONE",
@@ -355,6 +356,12 @@ export const actionsProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	position: spec.position ?? -1,
+	contexts: ["general"],
+	contextGate: { anyOf: ["general"] },
+	cacheStable: true,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
 		const activeContexts = getActiveRoutingContextsForTurn(state, message);
 
@@ -367,10 +374,15 @@ export const actionsProvider: Provider = {
 			}
 
 			const result = await action.validate(runtime, message, state);
-			if (result) {
-				return action;
+			if (!result) {
+				return null;
 			}
-			return null;
+			const accountPolicy = await evaluateConnectorAccountPolicies(
+				runtime,
+				action,
+				{ message },
+			);
+			return accountPolicy.allowed ? action : null;
 		});
 
 		const resolvedActions = await Promise.all(actionPromises);
@@ -380,7 +392,7 @@ export const actionsProvider: Provider = {
 			looksLikeRelationshipFollowUpReminder(message);
 		const availableActions = resolvedActions.filter(Boolean) as Action[];
 		const hasRelationshipAction = availableActions.some(
-			(action) => action.name === "OWNER_RELATIONSHIP",
+			(action) => action.name === "RELATIONSHIP",
 		);
 		const visibleActions = availableActions.filter((action) => {
 			if (nonActionableChatter && !GENERIC_CHAT_ACTIONS.has(action.name)) {

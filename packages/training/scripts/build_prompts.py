@@ -1,8 +1,8 @@
 """Build registry-v2.json (prompts) and actions-catalog.json from elizaOS sources.
 
 Produces three artifacts:
-- /home/shaw/milady/training/data/prompts/registry-v2.json
-- /home/shaw/milady/training/data/prompts/actions-catalog.json
+- packages/training/data/prompts/registry-v2.json
+- packages/training/data/prompts/actions-catalog.json
 - (coverage report is written separately by build_prompt_coverage.py)
 """
 
@@ -13,8 +13,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-ELIZA_ROOT = Path("/home/shaw/milady/eliza")
-TRAINING_ROOT = Path("/home/shaw/milady/training")
+ELIZA_ROOT = Path(__file__).parent.parent.parent.parent.resolve()
+TRAINING_ROOT = Path(__file__).parent.parent.resolve()
 
 V1_REGISTRY = TRAINING_ROOT / "data" / "prompts" / "registry.json"
 V2_REGISTRY = TRAINING_ROOT / "data" / "prompts" / "registry-v2.json"

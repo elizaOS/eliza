@@ -3497,7 +3497,7 @@ Each image in the batch is generated with the style preset applied.
 
 ## Knowledge
 
-URL: https://elizacloud.ai/docs/api/knowledge
+URL: https://elizacloud.ai/docs/api/documents
 
 Summary: Upload and query documents for RAG on elizaOS Cloud.
 
@@ -3511,7 +3511,7 @@ Upload documents and query your knowledge base for RAG applications.
 
 <div className="api-endpoint">
   <span className="method-badge method-badge-post">POST</span>
-  <span className="path">/api/v1/knowledge/upload-file</span>
+  <span className="path">/api/v1/documents/upload-file</span>
 </div>
 
 Upload one or more documents to your knowledge base using multipart form data.
@@ -3521,7 +3521,7 @@ Upload one or more documents to your knowledge base using multipart form data.
 Use `multipart/form-data` with the `files` field:
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/knowledge/upload-file" \
+curl -X POST "https://elizacloud.ai/api/v1/documents/upload-file" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -F "files=@document.pdf" \
   -F "characterId=optional_agent_id"
@@ -3581,7 +3581,7 @@ curl -X POST "https://elizacloud.ai/api/v1/knowledge/upload-file" \
 
 <div className="api-endpoint">
   <span className="method-badge method-badge-get">GET</span>
-  <span className="path">/api/v1/knowledge</span>
+  <span className="path">/api/v1/documents</span>
 </div>
 
 Get all documents in your knowledge base.
@@ -3609,7 +3609,7 @@ Get all documents in your knowledge base.
 
 <div className="api-endpoint">
   <span className="method-badge method-badge-post">POST</span>
-  <span className="path">/api/v1/knowledge/query</span>
+  <span className="path">/api/v1/documents/query</span>
 </div>
 
 Search your knowledge base.
@@ -3653,7 +3653,7 @@ Search your knowledge base.
 
 <div className="api-endpoint">
   <span className="method-badge method-badge-get">GET</span>
-  <span className="path">/api/v1/knowledge/{"{id}"}</span>
+  <span className="path">/api/v1/documents/{"{id}"}</span>
 </div>
 
 Get document details.
@@ -3664,7 +3664,7 @@ Get document details.
 
 <div className="api-endpoint">
   <span className="method-badge method-badge-delete">DELETE</span>
-  <span className="path">/api/v1/knowledge/{"{id}"}</span>
+  <span className="path">/api/v1/documents/{"{id}"}</span>
 </div>
 
 Remove a document from your knowledge base.
@@ -3675,7 +3675,7 @@ Remove a document from your knowledge base.
 
 <div className="api-endpoint">
   <span className="method-badge method-badge-post">POST</span>
-  <span className="path">/api/v1/knowledge/check</span>
+  <span className="path">/api/v1/documents/check</span>
 </div>
 
 Check if a document exists (by hash).
@@ -8186,7 +8186,7 @@ bun add @elizaos/core@latest @elizaos/plugin-elizacloud@latest
 
 ## Knowledge Base
 
-URL: https://elizacloud.ai/docs/knowledge
+URL: https://elizacloud.ai/docs/documents
 
 Summary: Add documents to your agents' knowledge base for RAG-powered responses on elizaOS Cloud.
 
@@ -8216,7 +8216,7 @@ Navigate to [Dashboard → Knowledge](/dashboard/knowledge) for the visual inter
   
 ```bash
 # Upload a document
-curl -X POST "https://elizacloud.ai/api/v1/knowledge/upload-file" \
+curl -X POST "https://elizacloud.ai/api/v1/documents/upload-file" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -F "file=@document.pdf" \
   -F "agentId=agent_abc123"
@@ -8228,7 +8228,7 @@ const formData = new FormData();
 formData.append('file', file);
 formData.append('agentId', 'agent_abc123');
 
-const response = await fetch('https://elizacloud.ai/api/v1/knowledge/upload-file', {
+const response = await fetch('https://elizacloud.ai/api/v1/documents/upload-file', {
 method: 'POST',
 headers: {
 'Authorization': 'Bearer YOUR_API_KEY',
@@ -8246,7 +8246,7 @@ console.log('Document uploaded:', result.id);
 
 with open('document.pdf', 'rb') as f:
     response = requests.post(
-        'https://elizacloud.ai/api/v1/knowledge/upload-file',
+        'https://elizacloud.ai/api/v1/documents/upload-file',
         headers={'Authorization': 'Bearer YOUR_API_KEY'},
         files={'file': f},
         data={'agentId': 'agent_abc123'},
@@ -8305,7 +8305,7 @@ Link the knowledge base to your agent for RAG.
 ### Check Processing Status
 
 ```bash
-curl -X GET "https://elizacloud.ai/api/v1/knowledge/check?documentId=doc_abc123" \
+curl -X GET "https://elizacloud.ai/api/v1/documents/check?documentId=doc_abc123" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -8323,7 +8323,7 @@ curl -X GET "https://elizacloud.ai/api/v1/knowledge/check?documentId=doc_abc123"
 Search your knowledge base semantically:
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/knowledge/query" \
+curl -X POST "https://elizacloud.ai/api/v1/documents/query" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -8365,21 +8365,21 @@ curl -X POST "https://elizacloud.ai/api/v1/knowledge/query" \
 ### List Documents
 
 ```bash
-curl -X GET "https://elizacloud.ai/api/v1/knowledge?agentId=agent_abc123" \
+curl -X GET "https://elizacloud.ai/api/v1/documents?agentId=agent_abc123" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 ### Get Document Details
 
 ```bash
-curl -X GET "https://elizacloud.ai/api/v1/knowledge/doc_abc123" \
+curl -X GET "https://elizacloud.ai/api/v1/documents/doc_abc123" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 ### Delete Document
 
 ```bash
-curl -X DELETE "https://elizacloud.ai/api/v1/knowledge/doc_abc123" \
+curl -X DELETE "https://elizacloud.ai/api/v1/documents/doc_abc123" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -8434,7 +8434,7 @@ Query knowledge and inject context manually:
 
 ```javascript
 // 1. Query knowledge
-const knowledge = await fetch("https://elizacloud.ai/api/v1/knowledge/query", {
+const knowledge = await fetch("https://elizacloud.ai/api/v1/documents/query", {
   method: "POST",
   headers: {
     Authorization: "Bearer YOUR_API_KEY",
@@ -8602,7 +8602,7 @@ curl -X POST "https://elizacloud.ai/api/mcp" \
         }
       },
       {
-        "name": "search_knowledge",
+        "name": "search_documents",
         "description": "Search the knowledge base",
         "inputSchema": {
           "type": "object",
@@ -8673,7 +8673,7 @@ curl -X POST "https://elizacloud.ai/api/mcp" \
   "jsonrpc": "2.0",
   "method": "resources/read",
   "params": {
-    "uri": "eliza://knowledge/doc_abc123"
+    "uri": "eliza://documents/doc_abc123"
   },
   "id": 5
 }
@@ -8740,7 +8740,7 @@ elizaOS Cloud provides these built-in MCP tools:
 | ------------------ | -------------------------- |
 | `generate_image`   | Create images from prompts |
 | `generate_video`   | Create videos from prompts |
-| `search_knowledge` | Query knowledge base       |
+| `search_documents` | Query knowledge base       |
 | `get_weather`      | Current weather data       |
 | `get_time`         | Time and timezone info     |
 | `get_crypto_price` | Cryptocurrency prices      |
@@ -9962,21 +9962,6 @@ console.log(data.video.url);
 ```
 
 ## Framework Integrations
-
-### LangChain
-
-```typescript
-
-const model = new ChatOpenAI({
-  openAIApiKey: process.env.ELIZA_API_KEY,
-  configuration: {
-    baseURL: "https://elizacloud.ai/api/v1",
-  },
-  modelName: "gpt-4o",
-});
-
-const response = await model.invoke("Hello!");
-```
 
 ### Vercel AI SDK
 

@@ -76,7 +76,7 @@ Eliza 在运行时自动从 `src/actions/` 注册以下内置操作。
 
 </div>
 
-**SEND_MESSAGE** -- 在特定平台/服务上向用户或房间发送消息。需要 `targetType`（`user` 或 `room`）、`source`（服务名称如 `telegram`）、`target`（实体/房间 ID）和 `text`。通过 `runtime.getService()` 查找服务并调用相应的发送方法。
+**MESSAGE** -- 在特定平台/服务上向用户或房间发送消息。需要 `targetType`（`user` 或 `room`）、`source`（服务名称如 `telegram`）、`target`（实体/房间 ID）和 `text`。通过 `runtime.getService()` 查找服务并调用相应的发送方法。
 
 <div id="media-generation">
 
@@ -86,9 +86,7 @@ Eliza 在运行时自动从 `src/actions/` 注册以下内置操作。
 
 | Action | 描述 | 必需参数 |
 |--------|------|---------|
-| `GENERATE_IMAGE` | 从文本提示生成图像。支持大小、质量（`standard`/`hd`）、风格（`natural`/`vivid`）和负面提示。 | `prompt` |
-| `GENERATE_VIDEO` | 从文本提示生成视频。支持时长、宽高比以及通过 `imageUrl` 的图像转视频。 | `prompt` |
-| `GENERATE_AUDIO` | 从文本提示生成音频/音乐。支持时长、纯音乐模式和流派。 | `prompt` |
+| `GENERATE_MEDIA` | 从文本提示生成图像、视频或音频。支持图像、视频和音频选项；使用 `mediaType` 强制指定 `image`、`video` 或 `audio`。 | `prompt` |
 | `ANALYZE_IMAGE` | 使用 AI 视觉分析图像。接受 `imageUrl` 或 `imageBase64` 以及可选的分析 `prompt`。 | `imageUrl` 或 `imageBase64` |
 
 所有媒体操作使用已配置的提供商（默认为 Eliza Cloud，或 FAL/OpenAI/Google/Anthropic）。

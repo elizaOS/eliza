@@ -1,6 +1,8 @@
 import {
+  Button,
   client,
   confirmDesktopAction,
+  ContentLayout,
   parsePositiveFloat,
   parsePositiveInteger,
   type StartTrainingOptions,
@@ -13,10 +15,6 @@ import {
   type TrainingTrajectoryDetail,
   type TrainingTrajectoryList,
   useApp,
-} from "@elizaos/app-core";
-import {
-  Button,
-  ContentLayout,
   useIntervalWhenDocumentVisible,
 } from "@elizaos/ui";
 import {

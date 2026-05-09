@@ -336,8 +336,6 @@ interface IAgentRuntime extends IDatabaseAdapter {
   evaluators: Evaluator[];
   services: Service[];
   
-  // Action processing
-  processActions(message: Memory, responses: Memory[], state?: State): Promise<void>;
   composeState(message: Memory, state?: State): Promise<State>;
   evaluate(message: Memory, state?: State): Promise<void>;
   
@@ -373,8 +371,6 @@ class AgentRuntime:
     evaluators: list[Evaluator]
     services: list[Service]
     
-    # Action processing
-    async def process_actions(self, message: Memory, responses: list[Memory], state: State = None) -> None: ...
     async def compose_state(self, message: Memory, state: State = None) -> State: ...
     async def evaluate(self, message: Memory, state: State = None) -> None: ...
     
@@ -406,8 +402,6 @@ pub struct AgentRuntime {
 }
 
 impl AgentRuntime {
-// Action processing
-pub async fn process_actions(&self, message: &Memory, responses: &[Memory], state: Option<&State>) -> Result<()>;
 pub async fn compose_state(&self, message: &Memory, state: Option<&State>) -> Result<State>;
 pub async fn evaluate(&self, message: &Memory, state: Option<&State>) -> Result<()>;
 
@@ -434,22 +428,18 @@ pub async fn evaluate(&self, message: &Memory, state: Option<&State>) -> Result<
 
 ### Key Responsibilities
 
-#### 1. Action Processing
+#### 1. Planned Tool Execution
 
-The runtime orchestrates action selection and execution:
+The message pipeline executes planned tool calls through the planned-tool executor:
 
 ```typescript
-async processActions(message: Memory, responses: Memory[], state?: State): Promise<void> {
-  // Select and execute actions based on context
-  const actions = await this.selectActions(message, state);
+import { executePlannedToolCall } from "@elizaos/core";
 
-  for (const action of actions) {
-    await action.handler(this, message, state);
-  }
-
-  // Run evaluators on results
-  await this.evaluate(message, state);
-}
+await executePlannedToolCall(
+  runtime,
+  { message, state, activeContexts, userRoles },
+  { name: "SEARCH", params: { query: "..." } },
+);
 ````
 
 #### 2. State Composition
@@ -658,7 +648,7 @@ The runtime implements comprehensive error handling:
 
 ```typescript
 try {
-  await runtime.processActions(message, responses, state);
+  await executePlannedToolCall(runtime, { message, state }, toolCall);
 } catch (error) {
   if (error instanceof ActionError) {
     // Handle action-specific errors
@@ -764,7 +754,7 @@ const runId = runtime.startRun(roomId);
 
 try {
   // Process messages, actions execute within this run
-  await runtime.processActions(message, responses, state);
+  await messageService.handleMessage(runtime, message, callback);
 
   // Get results from actions executed in this run
   const results = runtime.getActionResults(message.id);

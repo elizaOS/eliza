@@ -35,7 +35,7 @@ test("inventory cloud import uses the live wallet API", async ({ page }) => {
     }
   });
 
-  await openAppPath(page, "/inventory");
+  await openAppPath(page, "/wallet");
 
   const cloudStatusResponse = await page.request.get("/api/cloud/status");
   expect(cloudStatusResponse.ok()).toBe(true);
@@ -144,7 +144,7 @@ test("inventory cloud import refreshes cloud wallets after save", async ({
   await installDefaultAppRoutes(page);
   const api = await installCloudWalletImportApiOverrides(page);
 
-  await openAppPath(page, "/inventory");
+  await openAppPath(page, "/wallet");
 
   await openWalletRpcSettings(page);
 

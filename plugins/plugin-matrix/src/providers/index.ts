@@ -1,1 +1,1 @@
-export { matrixRoomsProvider } from "./matrixRooms.js";
+// Matrix rooms are exposed through MESSAGE list_channels.

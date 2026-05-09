@@ -22,12 +22,10 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AgentOrchestratorService = any;
-
 import { initializeAgent, shutdownAgent } from "../lib/agent.js";
 import { setCwd } from "../lib/cwd.js";
-import type { SubAgentType } from "../types.js";
+import { getCodeTaskService } from "../lib/get-code-task-service.js";
+import type { CodeTaskService, SubAgentType } from "../types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -374,7 +372,7 @@ function selectAgent(
 }
 
 async function runGameTest(
-  service: AgentOrchestratorService,
+  service: CodeTaskService,
   test: GameTest,
   agent: SubAgentType,
   workdir: string,
@@ -510,9 +508,7 @@ async function main(): Promise<void> {
 
       // Initialize agent for this test
       const runtime = await initializeAgent();
-      const service = runtime.getService(
-        "CODE_TASK",
-      ) as AgentOrchestratorService | null;
+      const service = getCodeTaskService(runtime);
 
       if (!service) {
         throw new Error("CodeTaskService not available");

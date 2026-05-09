@@ -56,6 +56,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        registerPlugin(AgentPlugin.class);
         super.onCreate(savedInstanceState);
 
         // The Capacitor WebView serves the renderer at https://localhost

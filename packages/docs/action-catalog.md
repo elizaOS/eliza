@@ -1,12 +1,12 @@
 ---
 title: "Action Catalog"
 sidebarTitle: "Action Catalog"
-description: "Complete reference of all 151 actions available across Eliza plugins."
+description: "Snapshot reference of actions available across Eliza plugins."
 ---
 
 # Action Catalog
 
-_Generated on: 2026-04-16. Total actions: 147._
+_Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ## Summary Statistics
 
@@ -458,10 +458,10 @@ _Generated on: 2026-04-16. Total actions: 147._
 - **Handler:** ✅ yes
 - **Examples:** ✅ yes
 
-### SEND_MESSAGE
+### MESSAGE
 
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/sendMessage.ts`
-- **Description:** _(not provided)_
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/message.ts`
+- **Description:** Primary addressed-message router. Subactions are selected with `operation`.
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
 - **Examples:** ✅ yes
@@ -1161,40 +1161,20 @@ _Generated on: 2026-04-16. Total actions: 147._
 - **Handler:** ✅ yes
 - **Examples:** ✅ yes
 
-## Plugin / @elizaos/signal
+## Core / @elizaos/core / connector-actions
 
-### SIGNAL_LIST_CONTACTS
+### MESSAGE
 
-- **File:** `eliza/plugins/plugin-signal/typescript/src/actions/listContacts.ts`
-- **Description:** List Signal contacts
-- **Similes:** `LIST_SIGNAL_CONTACTS`, `SHOW_CONTACTS`, `GET_CONTACTS`, `SIGNAL_CONTACTS`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/message.ts`
+- **Description:** Primary addressed-message router. Use `operation` for send, read, search, list_channels, list_servers, react, edit, delete, pin, join, leave, or get_user.
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
 - **Examples:** ✅ yes
 
-### SIGNAL_LIST_GROUPS
+### POST
 
-- **File:** `eliza/plugins/plugin-signal/typescript/src/actions/listGroups.ts`
-- **Description:** List Signal groups
-- **Similes:** `LIST_SIGNAL_GROUPS`, `SHOW_GROUPS`, `GET_GROUPS`, `SIGNAL_GROUPS`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### SIGNAL_SEND_MESSAGE
-
-- **File:** `eliza/plugins/plugin-signal/typescript/src/actions/sendMessage.ts`
-- **Description:** Send a message to a Signal contact or group
-- **Similes:** `SEND_SIGNAL_MESSAGE`, `TEXT_SIGNAL`, `MESSAGE_SIGNAL`, `SIGNAL_TEXT`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### SIGNAL_SEND_REACTION
-
-- **File:** `eliza/plugins/plugin-signal/typescript/src/actions/sendReaction.ts`
-- **Description:** React to a Signal message with an emoji
-- **Similes:** `REACT_SIGNAL`, `SIGNAL_REACT`, `ADD_SIGNAL_REACTION`, `SIGNAL_EMOJI`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/post.ts`
+- **Description:** Primary public-feed router. Use `operation` for send, read, or search.
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
 - **Examples:** ✅ yes
@@ -1302,37 +1282,6 @@ _Generated on: 2026-04-16. Total actions: 147._
 - **Handler:** ✅ yes
 - **Examples:** ✅ yes
 
-## Plugin / @elizaos/bluebubbles
-
-### BLUEBUBBLES_SEND_REACTION
-
-- **File:** `eliza/plugins/plugin-bluebubbles/typescript/src/actions/sendReaction.ts`
-- **Description:** Add or remove a reaction on a message via BlueBubbles
-- **Similes:** `BLUEBUBBLES_REACT`, `BB_REACTION`, `IMESSAGE_REACT`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### SEND_BLUEBUBBLES_MESSAGE
-
-- **File:** `eliza/plugins/plugin-bluebubbles/typescript/src/actions/sendMessage.ts`
-- **Description:** Send a message via iMessage through BlueBubbles
-- **Similes:** `SEND_IMESSAGE`, `TEXT_MESSAGE`, `IMESSAGE_REPLY`, `BLUEBUBBLES_SEND`, `APPLE_MESSAGE`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-## Plugin / @elizaos/imessage
-
-### IMESSAGE_SEND_MESSAGE
-
-- **File:** `eliza/plugins/plugin-imessage/typescript/src/actions/sendMessage.ts`
-- **Description:** Send a text message via iMessage (macOS only)
-- **Similes:** `SEND_IMESSAGE`, `IMESSAGE_TEXT`, `TEXT_IMESSAGE`, `SEND_IMSG`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
 ## App / app-companion
 
 ### PLAY_EMOTE
@@ -1343,17 +1292,6 @@ _Generated on: 2026-04-16. Total actions: 147._
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
 - **Examples:** ❌ no
-
-## Plugin / @elizaos/twitter
-
-### POST_TWEET
-
-- **File:** `eliza/plugins/plugin-twitter/src/actions/postTweet.ts`
-- **Description:** Post a tweet on Twitter
-- **Similes:** `TWEET`, `SEND_TWEET`, `TWITTER_POST`, `POST_ON_TWITTER`, `SHARE_ON_TWITTER`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
 
 ## Core / @elizaos/core / advanced-memory
 

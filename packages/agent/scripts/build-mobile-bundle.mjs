@@ -189,7 +189,7 @@ const optionalPluginStubs = {
   // browser, and the runtime's plugin filter strips browser-bridge from the
   // load set anyway, so a null stub prevents Chromium plumbing from entering
   // the bundle if that optional resolution path is reached.
-  "@elizaos/plugin-browser-bridge": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-browser": path.join(stubsDir, "null-plugin.cjs"),
   // Server-side connectors that app-lifeops dynamically imports inside
   // its service mixins. Mobile never reaches the runtime path that
   // calls `import("@elizaos/plugin-whatsapp")` or `plugin-signal`, but
@@ -312,24 +312,21 @@ const dedupePlugin = {
 const nativeCapacitorPlugin = {
   name: "eliza-mobile-native-capacitor-workspaces",
   setup(build) {
-    build.onResolve(
-      { filter: /^@elizaos\/capacitor-[^/]+$/ },
-      (args) => {
-        const packageName = args.path.replace("@elizaos/capacitor-", "");
-        const target = path.resolve(
-          repoRoot,
-          "packages",
-          "native-plugins",
-          packageName,
-          "src",
-          "index.ts",
-        );
-        if (!existsSync(target)) {
-          return undefined;
-        }
-        return { path: target, namespace: "file" };
-      },
-    );
+    build.onResolve({ filter: /^@elizaos\/capacitor-[^/]+$/ }, (args) => {
+      const packageName = args.path.replace("@elizaos/capacitor-", "");
+      const target = path.resolve(
+        repoRoot,
+        "packages",
+        "native-plugins",
+        packageName,
+        "src",
+        "index.ts",
+      );
+      if (!existsSync(target)) {
+        return undefined;
+      }
+      return { path: target, namespace: "file" };
+    });
   },
 };
 

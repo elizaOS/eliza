@@ -6,7 +6,7 @@ import {
   isApiError,
   isElectrobunRuntime,
   loadDesktopWorkspaceSnapshot,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import {
   MobileSignals,
   type MobileSignalsHealthSnapshot,

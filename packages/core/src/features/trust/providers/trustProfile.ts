@@ -8,12 +8,20 @@ import type {
 import type { TrustEngineServiceWrapper } from "../services/wrappers.ts";
 import type { TrustInteraction } from "../types/trust.ts";
 
+const MAX_TRUST_INTERACTIONS = 5;
+
 export const trustProfileProvider: Provider = {
 	name: "trustProfile",
 	description:
 		"Provides trust profile information for entities in the current context",
 
 	dynamic: true,
+	contexts: ["admin", "settings"],
+	contextGate: { anyOf: ["admin", "settings"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "ADMIN" },
+
 	get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
 		try {
 			const trustEngine = runtime.getService(
@@ -44,6 +52,10 @@ export const trustProfileProvider: Provider = {
 			const recentInteractions = await trustEngine.getRecentInteractions(
 				message.entityId,
 				7,
+			);
+			const visibleRecentInteractions = recentInteractions.slice(
+				0,
+				MAX_TRUST_INTERACTIONS,
 			);
 
 			const trustLevel =
@@ -85,7 +97,9 @@ export const trustProfileProvider: Provider = {
 				},
 				data: {
 					profile: senderProfile,
-					recentInteractions,
+					recentInteractions: visibleRecentInteractions,
+					truncated:
+						recentInteractions.length > visibleRecentInteractions.length,
 				},
 			};
 		} catch (error) {
@@ -96,6 +110,9 @@ export const trustProfileProvider: Provider = {
 			return {
 				text: "Unable to fetch trust profile",
 				values: {},
+				data: {
+					error: error instanceof Error ? error.message : String(error),
+				},
 			};
 		}
 	},

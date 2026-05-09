@@ -6,11 +6,7 @@
  */
 
 import { logger } from "@elizaos/core";
-import type {
-  EvmChainBalance,
-  EvmNft,
-  EvmTokenBalance,
-} from "../contracts/wallet.js";
+import type { EvmChainBalance, EvmNft, EvmTokenBalance } from "@elizaos/shared";
 import {
   computeValueUsd,
   type DexTokenMeta,

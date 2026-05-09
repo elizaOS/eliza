@@ -29,7 +29,7 @@ Remote desktop support is split. Legacy local desktop sessions can use Tailscale
 - iOS runtime/device bridge: `packages/app/src/ios-runtime.ts:1-95`, `packages/app/src/main.tsx:744-821`, `packages/app/test/ios-runtime.test.ts:1-64`.
 - Mobile runtime UX: `packages/app-core/src/onboarding/mobile-runtime-mode.ts:4-85`, `packages/app-core/src/components/shell/RuntimeGate.tsx` refs found by search.
 - Local inference/DeviceBridge refs: `packages/native-plugins/llama/src/index.ts:1-23`, `packages/app-core/src/runtime/mobile-local-inference-gate.test.ts`.
-- Remote session/control-plane refs: `plugins/app-lifeops/src/actions/start-remote-session.ts:1-201`, `plugins/app-lifeops/src/actions/owner-remote-desktop.ts:54-254`, `plugins/app-lifeops/src/remote/remote-session-service.ts:1-242`, `cloud/apps/api/v1/remote/pair/route.ts:1-103`, `cloud/apps/api/v1/remote/sessions/route.ts:1-55`, `cloud/packages/db/repositories/remote-sessions.ts:14-63`.
+- Remote session/control-plane refs: `plugins/app-lifeops/src/actions/start-remote-session.ts:1-201`, `plugins/app-lifeops/src/actions/remote-desktop.ts:54-254`, `plugins/app-lifeops/src/remote/remote-session-service.ts:1-242`, `cloud/apps/api/v1/remote/pair/route.ts:1-103`, `cloud/apps/api/v1/remote/sessions/route.ts:1-55`, `cloud/packages/db/repositories/remote-sessions.ts:14-63`.
 
 ## What I could validate
 

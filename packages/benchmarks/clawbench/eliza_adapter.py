@@ -150,7 +150,12 @@ class ElizaClawBenchRunner:
             }
             score_result = score_episode(scorable, scoring_config)
             result["score"] = score_result
-            result["success"] = score_result.get("failed", 1) == 0
+            # Success = score meets threshold (default 0.6). Old behavior
+            # required zero failed checks, which is unrealistic and tied
+            # success to perfection.
+            threshold = scoring_config.get("success_threshold", 0.6)
+            score_val = score_result.get("score") or 0.0
+            result["success"] = score_val >= threshold
 
         return result
 
@@ -195,7 +200,10 @@ def main() -> int:
         return 0
 
     mgr: ElizaServerManager | None = None
-    if args.start_server:
+    # Auto-spawn the eliza benchmark server when no external URL is configured.
+    # Matches the pattern used by swe_bench, gaia, rlm-bench, etc., so the
+    # orchestrator can run clawbench without manually starting a server.
+    if args.start_server or not os.environ.get("ELIZA_BENCH_URL"):
         mgr = ElizaServerManager()
         mgr.start()
         client = mgr.client

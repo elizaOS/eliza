@@ -19,7 +19,6 @@ import {
 	getExplicitRoutingContexts,
 	routingContextsOverlap,
 } from "../../../utils/context-routing.ts";
-import { encodeToonValue } from "../../../utils/toon.ts";
 
 export const PLATFORM_CHAT_CONTEXT_PROVIDER_NAME = "PLATFORM_CHAT_CONTEXT";
 export const PLATFORM_USER_CONTEXT_PROVIDER_NAME = "PLATFORM_USER_CONTEXT";
@@ -48,7 +47,7 @@ function cleanRecord<T extends Record<string, unknown>>(record: T): T {
 	) as T;
 }
 
-function toToonValue(value: unknown, depth = 0): ProviderValue {
+function toProviderValue(value: unknown, depth = 0): ProviderValue {
 	if (value === undefined) {
 		return undefined;
 	}
@@ -67,7 +66,7 @@ function toToonValue(value: unknown, depth = 0): ProviderValue {
 		return String(value);
 	}
 	if (Array.isArray(value)) {
-		return value.map((entry) => toToonValue(entry, depth + 1));
+		return value.map((entry) => toProviderValue(entry, depth + 1));
 	}
 	if (value instanceof Date) {
 		return value.toISOString();
@@ -78,7 +77,7 @@ function toToonValue(value: unknown, depth = 0): ProviderValue {
 			if (typeof entry === "function" || typeof entry === "symbol") {
 				continue;
 			}
-			const normalized = toToonValue(entry, depth + 1);
+			const normalized = toProviderValue(entry, depth + 1);
 			if (normalized !== undefined) {
 				out[key] = normalized;
 			}
@@ -214,7 +213,7 @@ function normalizeRecentMessage(
 		name: message.name,
 		text: message.text,
 		timestamp: message.timestamp,
-		metadata: toToonValue(message.metadata),
+		metadata: toProviderValue(message.metadata),
 	});
 }
 
@@ -227,11 +226,11 @@ function normalizeChatContext(
 		connector: connector.label,
 		label: context.label,
 		summary: context.summary,
-		target: toToonValue(context.target),
+		target: toProviderValue(context.target),
 		recentMessages: (context.recentMessages ?? [])
 			.slice(-MAX_RECENT_MESSAGES)
 			.map(normalizeRecentMessage),
-		metadata: toToonValue(context.metadata),
+		metadata: toProviderValue(context.metadata),
 	});
 }
 
@@ -245,14 +244,14 @@ function normalizeUserContext(
 		entityId: context.entityId,
 		label: context.label,
 		aliases: context.aliases,
-		handles: toToonValue(context.handles),
-		metadata: toToonValue(context.metadata),
+		handles: toProviderValue(context.handles),
+		metadata: toProviderValue(context.metadata),
 	});
 }
 
-function renderToon(payload: Record<string, ProviderValue>): string {
+function renderJson(payload: Record<string, ProviderValue>): string {
 	try {
-		return encodeToonValue(payload);
+		return JSON.stringify(payload, null, 2);
 	} catch {
 		return "";
 	}
@@ -275,6 +274,11 @@ export const platformChatContextProvider: Provider = {
 	dynamic: true,
 	position: 125,
 	contexts: PLATFORM_CONTEXTS,
+	contextGate: { anyOf: ["general"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,
@@ -351,7 +355,7 @@ export const platformChatContextProvider: Provider = {
 		};
 
 		return {
-			text: renderToon({ platform_chat_context: data }),
+			text: renderJson({ platform_chat_context: data }),
 			values: {
 				platformChatContextCount: contexts.length,
 			},
@@ -369,6 +373,11 @@ export const platformUserContextProvider: Provider = {
 	dynamic: true,
 	position: 126,
 	contexts: PLATFORM_CONTEXTS,
+	contextGate: { anyOf: ["general"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,
@@ -451,7 +460,7 @@ export const platformUserContextProvider: Provider = {
 		};
 
 		return {
-			text: renderToon({ platform_user_context: data }),
+			text: renderJson({ platform_user_context: data }),
 			values: {
 				platformUserContextCount: users.length,
 			},

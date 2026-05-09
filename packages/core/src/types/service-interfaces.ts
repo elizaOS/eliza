@@ -5,28 +5,102 @@
  * Data types are proto-generated; runtime classes remain TypeScript.
  */
 
-import type { Content, UUID } from "./primitives";
-import type {
-	JsonValue,
-	LpPositionDetails,
-	PoolInfo,
-	TokenBalance,
-	TokenData,
-	TransactionResult,
-	WalletAsset,
-	WalletPortfolio,
-} from "./proto.js";
+import type { Content, JsonObject, JsonValue, UUID } from "./primitives";
 import { Service, ServiceType } from "./service";
 
-export type {
-	LpPositionDetails,
-	PoolInfo,
-	TokenBalance,
-	TokenData,
-	TransactionResult,
-	WalletAsset,
-	WalletPortfolio,
-};
+// ============================================================================
+// Token & Wallet Types
+// ============================================================================
+
+export interface TokenBalance {
+	address: string;
+	balance: string;
+	decimals: number;
+	uiAmount?: number;
+	name?: string;
+	symbol?: string;
+	logoUri?: string;
+}
+
+export interface TokenData {
+	id: string;
+	symbol: string;
+	name: string;
+	address: string;
+	chain: string;
+	sourceProvider: string;
+	price?: number;
+	priceChange24hPercent?: number;
+	priceChange24hUsd?: number;
+	volume24hUsd?: number;
+	marketCapUsd?: number;
+	liquidity?: number;
+	holders?: number;
+	logoUri?: string;
+	decimals?: number;
+	lastUpdatedAt?: Date;
+	raw?: JsonObject;
+}
+
+export interface WalletAsset {
+	address: string;
+	balance: string;
+	decimals: number;
+	uiAmount?: number;
+	name?: string;
+	symbol?: string;
+	logoUri?: string;
+	priceUsd?: number;
+	valueUsd?: number;
+}
+
+export interface WalletPortfolio {
+	totalValueUsd: number;
+	assets: WalletAsset[];
+}
+
+// ============================================================================
+// Liquidity Pool Types
+// ============================================================================
+
+export interface PoolTokenInfo {
+	mint: string;
+	symbol?: string;
+	reserve?: string;
+	decimals?: number;
+}
+
+export interface PoolInfo {
+	id: string;
+	displayName?: string;
+	dex: string;
+	tokenA: PoolTokenInfo;
+	tokenB: PoolTokenInfo;
+	lpTokenMint?: string;
+	apr?: number;
+	apy?: number;
+	tvl?: number;
+	fee?: number;
+	metadata?: JsonObject;
+}
+
+export interface LpPositionDetails {
+	poolId: string;
+	dex: string;
+	lpTokenBalance: TokenBalance;
+	underlyingTokens: TokenBalance[];
+	valueUsd?: number;
+	accruedFees: TokenBalance[];
+	rewards: TokenBalance[];
+	metadata?: JsonObject;
+}
+
+export interface TransactionResult {
+	success: boolean;
+	transactionId?: string;
+	error?: string;
+	data?: JsonObject;
+}
 
 // ============================================================================
 // Message Bus Service Interface
@@ -216,6 +290,58 @@ export abstract class IVideoService extends Service {
 	): Promise<string>;
 
 	abstract getAvailableFormats(url: string): Promise<VideoFormat[]>;
+}
+
+// ============================================================================
+// Media Generation Interfaces
+// ============================================================================
+
+export type MediaGenerationMediaType = "image" | "video" | "audio";
+export type MediaGenerationAudioKind = "music" | "sfx" | "tts";
+
+export interface MediaGenerationRequest {
+	mediaType: MediaGenerationMediaType;
+	prompt: string;
+	audioKind?: MediaGenerationAudioKind;
+	size?: string;
+	quality?: "standard" | "hd";
+	style?: "natural" | "vivid";
+	negativePrompt?: string;
+	seed?: number;
+	duration?: number;
+	aspectRatio?: string;
+	imageUrl?: string;
+	instrumental?: boolean;
+	genre?: string;
+	voice?: string;
+}
+
+export interface MediaGenerationResponse {
+	mediaType: MediaGenerationMediaType;
+	audioKind?: MediaGenerationAudioKind;
+	url?: string;
+	imageUrl?: string;
+	imageBase64?: string;
+	videoUrl?: string;
+	audioUrl?: string;
+	thumbnailUrl?: string;
+	revisedPrompt?: string;
+	title?: string;
+	duration?: number;
+	mimeType?: string;
+	provider?: string;
+	raw?: Record<string, JsonValue>;
+}
+
+export abstract class IMediaGenerationService extends Service {
+	static override readonly serviceType = ServiceType.MEDIA_GENERATION;
+
+	public readonly capabilityDescription =
+		"Generates image, video, and audio media from prompts." as string;
+
+	abstract generateMedia(
+		request: MediaGenerationRequest,
+	): Promise<MediaGenerationResponse>;
 }
 
 // ============================================================================

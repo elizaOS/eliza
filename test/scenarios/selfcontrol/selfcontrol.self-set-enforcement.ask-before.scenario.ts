@@ -6,7 +6,7 @@ export default scenario({
   domain: "selfcontrol",
   tags: ["lifeops", "selfcontrol", "confirmation", "ambiguity"],
   description:
-    "Turn 1 — user makes a blocking request that is loose; agent must clarify and not immediately enforce the block. No BLOCK_WEBSITES fires on turn 1.",
+    "Turn 1 — user makes a blocking request that is loose; agent must clarify and not immediately enforce the block. No WEBSITE_BLOCK fires on turn 1.",
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
@@ -26,7 +26,7 @@ export default scenario({
       name: "loose-block-request",
       room: "main",
       text: "I think I need to block some distractions today.",
-      forbiddenActions: ["OWNER_WEBSITE_BLOCK"],
+      forbiddenActions: ["WEBSITE_BLOCK"],
       responseIncludesAny: [/which/i, /what/i, /how long/i, /confirm/i, /\?/],
     },
   ],

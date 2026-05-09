@@ -271,7 +271,7 @@ Health check failed: gateway closed (1006 abnormal closure (no close frame)): no
 │  https://docs.openclaw.ai/gateway/troubleshooting  │
 │                                                    │
 ├────────────────────────────────────────────────────╯
-Missing Control UI assets. Build them with `pnpm ui:build` (auto-installs UI deps).
+Missing Control UI assets. Build them with `bun run ui:build` (auto-installs UI deps).
 │
 ◇  Optional apps ────────────────────────╮
 │                                        │

@@ -6,7 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { verifyCronSecret } from "@/lib/api/cron-auth";
+import { verifyCronSecret } from "@/lib/auth/cron";
 
 const TEST_SECRET = "integration-test-cron-secret-abc123";
 

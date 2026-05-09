@@ -1,4 +1,3 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -41,7 +40,9 @@ export const setFollowupThresholdAction: Action = {
     "Set a recurring follow-up cadence threshold (in days) for a specific contact. " +
     "Use this for durable rules like 'every 14 days', not one-off reminders like 'next week'. " +
     "Requires a positive integer threshold and either contactId or an unambiguous contactName.",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  contexts: ["contacts", "tasks", "calendar", "settings"],
+  roleGate: { minRole: "OWNER" },
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     _message,

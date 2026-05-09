@@ -2,18 +2,16 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { colorizeDevSettingsStartupBanner } from "@elizaos/shared/dev-settings-banner-style";
-import { prependDevSubsystemFigletHeading } from "@elizaos/shared/dev-settings-figlet-heading";
 import {
+  colorizeDevSettingsStartupBanner,
   type DevSettingsRow,
   formatDevSettingsTable,
-} from "@elizaos/shared/dev-settings-table";
-import {
+  prependDevSubsystemFigletHeading,
   resolveDesktopApiPort,
   resolveDesktopApiPortPreference,
   resolveDesktopUiPort,
   resolveDesktopUiPortPreference,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig, type Plugin, transformWithEsbuild } from "vite";
@@ -744,6 +742,12 @@ function nativeModuleStubPlugin(): Plugin {
       ]);
       if (nodeBuiltins.has(id) || nodeBuiltins.has(id.split("/")[0]))
         return `${VIRTUAL_PREFIX}node:${id}`;
+      if (
+        /^@napi-rs\/keyring/.test(id) ||
+        id.replace(/\\/g, "/").includes("/@napi-rs/keyring")
+      ) {
+        return `${VIRTUAL_PREFIX}@napi-rs/keyring`;
+      }
       const bare = id.startsWith("@")
         ? id.split("/").slice(0, 2).join("/")
         : id.split("/")[0];
@@ -756,7 +760,22 @@ function nativeModuleStubPlugin(): Plugin {
     load(id) {
       if (!id.startsWith(VIRTUAL_PREFIX)) return null;
 
-      const modName = id.slice(VIRTUAL_PREFIX.length).split("/")[0];
+      const strippedFull = id.slice(VIRTUAL_PREFIX.length);
+      if (strippedFull === "@napi-rs/keyring") {
+        return [
+          "export class Entry {",
+          "  constructor(_service, _account) {}",
+          '  getPassword() { return ""; }',
+          "  setPassword() {",
+          "    throw new Error(",
+          '      "OS keychain is unavailable in the browser/renderer build."',
+          "    );",
+          "  }",
+          "}",
+        ].join("\n");
+      }
+
+      const modName = strippedFull.split("/")[0];
       // node-llama-cpp is the most import-heavy native module — its consumers
       // use many named exports (LlamaLogLevel, getLlama, etc.).  Return a
       // module whose default export is a Proxy that returns no-op stubs for
@@ -855,7 +874,7 @@ function nativeModuleStubPlugin(): Plugin {
       }
 
       // async_hooks — AsyncLocalStorage must be a real constructor because
-      // langsmith and @elizaos packages do `new AsyncLocalStorage()` at the
+      // @elizaos packages do `new AsyncLocalStorage()` at the
       // top level. Uses function-constructor syntax (not class expressions)
       // for maximum WebView compatibility. The renderChunk plugin
       // (asyncLocalStoragePatchPlugin) also patches the final bundle output
@@ -943,7 +962,7 @@ function nativeModuleStubPlugin(): Plugin {
 /**
  * Patch the final bundle output to fix AsyncLocalStorage stubs.
  *
- * langsmith imports `{ AsyncLocalStorage } from "node:async_hooks"` at the
+ * Some packages import `{ AsyncLocalStorage } from "node:async_hooks"` at the
  * top level. Vite's dep optimizer and Rollup inline the virtual-module stub
  * as `(()=>({}))`, making AsyncLocalStorage `undefined` and causing
  * `new undefined` → "xte is not a constructor" at runtime in mobile webviews.
@@ -1349,6 +1368,8 @@ export default defineConfig({
       "undici",
       // Native LLM embedding — uses node-llama-cpp, never runs in browser
       "@elizaos/plugin-local-embedding",
+      "@napi-rs/keyring",
+      "@elizaos/vault",
     ],
   },
   build: {
@@ -1381,6 +1402,7 @@ export default defineConfig({
         )
           return true;
         if (/^@node-llama-cpp\//.test(id)) return true;
+        if (/^@napi-rs\/keyring/.test(id)) return true;
         return false;
       },
       input: {

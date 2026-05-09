@@ -6,14 +6,22 @@
  * Streaming context manager is auto-detected at runtime.
  */
 
-// Export all core modules
 export * from "./actions";
+export * from "./api/http-helpers";
+export * from "./api/route-helpers";
+export * from "./app-registry";
+// Export all core modules
+export * from "./app-route-plugin-registry";
+export * from "./boot-env";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 // Export character utilities
 export * from "./character-utils";
 // Connection management (ensureConnection/ensureConnections) - standalone batch helpers
 export * from "./connection";
+export * from "./connectors";
+export * from "./connectors/account-manager";
+export * from "./connectors/privacy";
 // Export additional constants not re-exported by character-utils
 export {
 	CANONICAL_SECRET_KEYS,
@@ -27,20 +35,28 @@ export {
 	isSecretKeyAlias,
 	LOCAL_MODEL_PROVIDERS,
 } from "./constants";
+export { isElizaCloudServiceSelectedInConfig } from "./contracts/cloud-topology";
+export {
+	isCloudInferenceSelectedInConfig,
+	migrateLegacyRuntimeConfig,
+	type StylePreset,
+} from "./contracts/onboarding";
+export {
+	DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
+	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+	type DeploymentTargetConfig,
+	type LinkedAccountFlagsConfig,
+	type ServiceCapability,
+	type ServiceRoutingConfig,
+} from "./contracts/service-routing";
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
-// Keep evaluator runtime symbols explicit in the node entrypoint. Bun has
-// dropped some of these when they were only re-exported transitively through
-// the basic-capabilities barrel, which leaves dangling exports in dist.
-export {
-	factExtractorEvaluator,
-	skillExtractionEvaluator,
-	skillRefinementEvaluator,
-} from "./features/advanced-capabilities/evaluators/index";
+export * from "./env-utils";
 export * from "./features/advanced-memory";
 // Export capabilities and plugin creation
 export * from "./features/basic-capabilities/index";
+export * from "./features/documents/index";
 export type {
 	DraftRecord,
 	DraftRequest,
@@ -59,8 +75,8 @@ export type {
 	TriagePriority,
 	TriageScore,
 } from "./features/messaging/triage";
-// Cross-platform messaging triage (TRIAGE_MESSAGES, SEARCH_MESSAGES, MANAGE_MESSAGE,
-// SCHEDULE_DRAFT_SEND, RESPOND_TO_MESSAGE, adapters, SendPolicy, TriageService).
+// Cross-platform messaging triage (MESSAGE, MESSAGE, MESSAGE,
+// MESSAGE, MESSAGE, adapters, SendPolicy, TriageService).
 // Selective re-export — `MessageParticipant` collides with an unrelated type in
 // `types/service-interfaces.ts`; consumers that need the triage-side participant type
 // import it directly from "@elizaos/core/features/messaging/triage".
@@ -79,6 +95,7 @@ export {
 	listInboxAction,
 	MessageRefStore,
 	manageMessageAction,
+	messagingTriageActions,
 	NotYetImplementedError,
 	rankScored,
 	registerSendPolicy,
@@ -127,8 +144,18 @@ export * from "./providers/skill-eligibility";
 export * from "./provisioning";
 export * from "./roles";
 export * from "./runtime";
+export * from "./runtime/context-gates";
+export * from "./runtime/context-registry";
+export * from "./runtime/cost-table";
+export * from "./runtime/execute-planned-tool-call";
+export * from "./runtime/schema-compat";
+export * from "./runtime/sub-planner";
+export * from "./runtime/system-prompt";
+export * from "./runtime/trajectory-recorder";
 // Runtime composition (loadCharacters, createRuntimes, getBasicCapabilitiesSettings, mergeSettingsInto) - node only
 export * from "./runtime-composition";
+export * from "./runtime-env";
+export * from "./runtime-route-context";
 // Export character schemas
 export * from "./schemas/character";
 // Export base table schemas (abstract SchemaTable definitions + buildBaseTables factory)
@@ -141,6 +168,7 @@ export * from "./security";
 export * from "./services";
 export * from "./services/agentEvent";
 export * from "./services/approval";
+export * from "./services/evaluator";
 export * from "./services/hook";
 export * from "./services/message";
 export * from "./services/onboarding-cli";
@@ -152,6 +180,7 @@ export * from "./services/pairing";
 export * from "./services/pairing-integration";
 export * from "./services/pairing-migration";
 export * from "./services/plugin-hooks";
+export * from "./services/relationships-graph-builder";
 export {
 	getTaskSchedulerAdapter,
 	markTaskSchedulerDirty,
@@ -165,24 +194,28 @@ export * from "./services/trajectories";
 // Export sessions utilities
 export * from "./sessions";
 export * from "./settings";
+export {
+	isElizaSettingsDebugEnabled,
+	settingsDebugCloudSummary,
+} from "./settings-debug";
+export { sanitizeSpeechText } from "./spoken-text";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
+export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
 // Export everything from types
 export * from "./types";
+export {
+	ConnectorAccountHealth,
+	ConnectorAccountPurpose,
+	ConnectorAccountRole,
+	ConnectorAuthMethod,
+} from "./types";
 export * from "./types/agentEvent";
 export * from "./types/message-service";
 // Export onboarding types and utilities
 export * from "./types/onboarding";
 export * from "./types/plugin-manifest";
-// Bun can drop these runtime exports when they are only surfaced through the
-// ./types barrel, which breaks plugin imports of @elizaos/core.
-export * as proto from "./types/proto";
-export {
-	fromJson,
-	type JsonObject,
-	type JsonValue,
-	toJson,
-} from "./types/proto";
+export type { JsonObject, JsonValue } from "./types/primitives";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
 /** Single implementation — see `utils/batch-queue/semaphore.ts` (was duplicated on `runtime.ts`). */
@@ -190,6 +223,16 @@ export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 // Export channel utilities (room/world helpers)
 export * from "./utils/channel-utils";
+export type {
+	ConfirmationDecision,
+	ConfirmationStatus,
+	RequireConfirmationArgs,
+} from "./utils/confirmation";
+// Unified two-phase confirmation helper for destructive actions.
+export {
+	clearPendingConfirmation,
+	requireConfirmation,
+} from "./utils/confirmation";
 // Prompt description compression (parity with Python `compress_prompt_description`)
 export * from "./utils/description-compressed-lint";
 // Export browser-compatible utilities

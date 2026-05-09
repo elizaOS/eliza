@@ -5,57 +5,39 @@
  *   bun run eliza/plugins/app-training/src/core/cli.ts generate --variants 5 --output ./training-data
  *   bun run eliza/plugins/app-training/src/core/cli.ts validate --input ./training-data/raw_samples.json
  *   bun run eliza/plugins/app-training/src/core/cli.ts export-trajectories --output ./training-data/trajectories.jsonl
- *   bun run eliza/plugins/app-training/src/core/cli.ts tune --project my-gcp-project --bucket my-bucket --model flash-lite --data ./training-data/should_respond_training.jsonl
- *
  * Or: `cd eliza/packages/agent && bun run training:cli` (delegates to this file).
  */
 
-import { readFile } from "fs/promises";
+import { existsSync, readdirSync, readFileSync, statSync } from "fs";
+import { mkdir, readFile, writeFile } from "fs/promises";
+import { homedir } from "os";
+import { join } from "path";
 import { parseArgs } from "util";
 import { AGENT_CONTEXTS, type AgentContext } from "./context-types.js";
 import {
   createAnthropicTeacher,
   createOpenAITeacher,
-  exportToGeminiJSONL,
+  exportToElizaNativeJSONL,
   type GenerationConfig,
   generateDataset,
   type TeacherModel,
   type TrainingSample,
 } from "./dataset-generator.js";
+import {
+  type CompareMode,
+  comparePrompts,
+  formatComparisonSummary,
+  type ScorerKind,
+} from "./prompt-compare.js";
 import { formatQualityReport, validateDataset } from "./replay-validator.js";
 import {
   buildRoleplayEpisodes,
   exportRoleplayEpisodes,
 } from "./roleplay-trajectories.js";
 import { ALL_BLUEPRINTS, BLUEPRINT_STATS } from "./scenario-blueprints.js";
-import {
-  createTuningJob,
-  listTuningJobs,
-  normalizeVertexBaseModel,
-  orchestrateVertexTuning,
-  type VertexTuningConfig,
-  type VertexTuningScope,
-  type VertexTuningSlot,
-  waitForTuningJob,
-} from "./vertex-tuning.js";
-
+import type { TrajectoryTrainingTask } from "./trajectory-task-datasets.js";
 const AGENT_DECISIONS = ["RESPOND", "IGNORE", "STOP"] as const;
 type AgentDecision = (typeof AGENT_DECISIONS)[number];
-
-const VERTEX_TUNING_SLOTS: readonly VertexTuningSlot[] = [
-  "should_respond",
-  "response_handler",
-  "action_planner",
-  "planner",
-  "response",
-  "media_description",
-];
-
-const VERTEX_TUNING_SCOPES: readonly VertexTuningScope[] = [
-  "global",
-  "organization",
-  "user",
-];
 
 function parseAgentContexts(
   value: string | undefined,
@@ -83,24 +65,6 @@ function parseAgentDecisions(
     }
   }
   return out.length > 0 ? out : undefined;
-}
-
-function parseVertexTuningSlot(value: string): VertexTuningSlot {
-  if (!(VERTEX_TUNING_SLOTS as readonly string[]).includes(value)) {
-    throw new Error(
-      `Invalid slot "${value}". Expected one of: ${VERTEX_TUNING_SLOTS.join(", ")}`,
-    );
-  }
-  return value as VertexTuningSlot;
-}
-
-function parseVertexTuningScope(value: string): VertexTuningScope {
-  if (!(VERTEX_TUNING_SCOPES as readonly string[]).includes(value)) {
-    throw new Error(
-      `Invalid scope "${value}". Expected one of: ${VERTEX_TUNING_SCOPES.join(", ")}`,
-    );
-  }
-  return value as VertexTuningScope;
 }
 
 function getTeacherModel(): TeacherModel {
@@ -196,8 +160,8 @@ async function cmdGenerate(args: string[]) {
   console.log(formatQualityReport(report));
 
   // Export
-  console.log("\nExporting to Gemini JSONL format...");
-  const paths = await exportToGeminiJSONL(samples, outputDir);
+  console.log("\nExporting to eliza_native_v1 JSONL format...");
+  const paths = await exportToElizaNativeJSONL(samples, outputDir);
   console.log(`  Combined: ${paths.combinedPath}`);
   console.log(`  Should-respond only: ${paths.shouldRespondPath}`);
   console.log(`  Context routing: ${paths.contextRoutingPath}`);
@@ -209,6 +173,295 @@ async function cmdGenerate(args: string[]) {
   console.log(`  Roleplay episodes: ${roleplayPaths.episodesPath}`);
   console.log(`  Roleplay manifest: ${roleplayPaths.manifestPath}`);
   console.log("\nDone!");
+}
+
+async function cmdCompare(args: string[]) {
+  const { values } = parseArgs({
+    args,
+    options: {
+      baseline: { type: "string" },
+      variant: { type: "string" },
+      dataset: { type: "string" },
+      task: { type: "string" },
+      scorer: { type: "string" },
+      mode: { type: "string" },
+      "max-examples": { type: "string" },
+      tolerance: { type: "string" },
+      output: { type: "string", short: "o" },
+      temperature: { type: "string" },
+      "max-tokens": { type: "string" },
+    },
+  });
+
+  if (!values.baseline || !values.variant || !values.dataset) {
+    console.error(
+      "Usage: compare --baseline <prompt.txt> --variant <prompt.txt> --dataset <dataset.jsonl> [options]",
+    );
+    console.error("");
+    console.error("Options:");
+    console.error(
+      "  --task <task>          One of: should_respond, context_routing, action_planner, response, media_description",
+    );
+    console.error(
+      "  --scorer <kind>        agreement | planner_action (default: derived from --task)",
+    );
+    console.error(
+      "  --mode <mode>          vs_historical (default) | pairwise",
+    );
+    console.error("  --max-examples N       Cap evaluations (default: all)");
+    console.error("  --tolerance N          Pass threshold delta (default: 0.02)");
+    console.error("  --temperature N        Sampling temperature (default: 0)");
+    console.error("  --max-tokens N         Per-completion cap (default: 512)");
+    console.error("  -o, --output <path>    Write JSON result to file");
+    console.error("");
+    console.error(
+      "Requires ANTHROPIC_API_KEY or OPENAI_API_KEY for the model adapter.",
+    );
+    process.exit(1);
+  }
+
+  const [baselinePrompt, variantPrompt] = await Promise.all([
+    readFile(values.baseline, "utf-8"),
+    readFile(values.variant, "utf-8"),
+  ]);
+
+  const teacher = getTeacherModel();
+  const adapter = {
+    async complete(input: {
+      system?: string;
+      user: string;
+      temperature?: number;
+      maxTokens?: number;
+    }): Promise<string> {
+      // Teacher model fixes its own temperature/max_tokens, but the
+      // scorer asks for 0/512 by default. Re-using the teacher here
+      // keeps adapter wiring trivial; if you need stricter
+      // determinism, plug a different adapter via the API.
+      return await teacher.generate(input.system ?? "", input.user);
+    },
+  };
+
+  const task = values.task as TrajectoryTrainingTask | undefined;
+  const scorer = values.scorer as ScorerKind | undefined;
+  const mode = values.mode as CompareMode | undefined;
+  const maxExamples = values["max-examples"]
+    ? Number.parseInt(values["max-examples"], 10)
+    : undefined;
+  const temperature = values.temperature
+    ? Number.parseFloat(values.temperature)
+    : undefined;
+  const maxTokens = values["max-tokens"]
+    ? Number.parseInt(values["max-tokens"], 10)
+    : undefined;
+
+  console.log(
+    `[compare] baseline=${values.baseline} variant=${values.variant}`,
+  );
+  console.log(
+    `[compare] dataset=${values.dataset} task=${task ?? "(any)"} mode=${mode ?? "vs_historical"}`,
+  );
+  console.log(`[compare] adapter=${teacher.name}`);
+
+  const result = await comparePrompts({
+    baselinePrompt,
+    variantPrompt,
+    dataset: values.dataset,
+    task,
+    scorer,
+    mode,
+    maxExamples,
+    temperature,
+    maxTokens,
+    adapter,
+  });
+
+  console.log("");
+  console.log(formatComparisonSummary(result));
+
+  if (values.output) {
+    await writeFile(values.output, JSON.stringify(result, null, 2));
+    console.log(`[compare] wrote result to ${values.output}`);
+  }
+
+  if (!result.passed) {
+    process.exit(2);
+  }
+}
+
+interface RecordedMessage {
+  role: string;
+  content: string | unknown;
+}
+
+interface RecordedStage {
+  stageId?: string;
+  kind?: string;
+  startedAt?: number;
+  endedAt?: number;
+  model?: {
+    modelType?: string;
+    modelName?: string;
+    provider?: string;
+    messages?: RecordedMessage[];
+    response?: string | unknown;
+    toolCalls?: unknown[];
+  };
+}
+
+interface RecordedTrajectory {
+  trajectoryId: string;
+  agentId: string;
+  rootMessage?: { text?: string };
+  startedAt?: number;
+  status?: string;
+  stages?: RecordedStage[];
+}
+
+/**
+ * Map RecordedStage.kind / model.modelType to a TrajectoryTrainingTask bucket.
+ * Returns null if the stage doesn't fit a known eval task.
+ */
+function classifyStage(stage: RecordedStage): TrajectoryTrainingTask | null {
+  const kind = stage.kind?.toLowerCase() ?? "";
+  const modelType = stage.model?.modelType?.toLowerCase() ?? "";
+  if (kind === "messagehandler" || modelType.includes("response_handler")) {
+    return "should_respond";
+  }
+  if (kind === "planner" || modelType.includes("planner")) {
+    return "action_planner";
+  }
+  if (kind === "tool" || kind === "action") {
+    return "response";
+  }
+  if (modelType.includes("vision") || modelType.includes("image")) {
+    return "media_description";
+  }
+  return null;
+}
+
+function stringifyContent(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return "";
+  return JSON.stringify(value);
+}
+
+function stageToJsonlRow(
+  stage: RecordedStage,
+): Record<string, unknown> | null {
+  const messages = stage.model?.messages ?? [];
+  const response = stage.model?.response;
+  if (messages.length === 0) return null;
+  if (!response && !stage.model?.toolCalls) return null;
+  const normalizedMessages = messages.map((m) => ({
+    role: m.role,
+    content: stringifyContent(m.content),
+  }));
+  const systemMsg = normalizedMessages.find((m) => m.role === "system");
+  const responseText = stringifyContent(response);
+  const toolCalls = stage.model?.toolCalls;
+  return {
+    format: "eliza_native_v1",
+    boundary: "vercel_ai_sdk.generateText",
+    request: {
+      system: systemMsg?.content ?? "",
+      messages: normalizedMessages,
+    },
+    response: toolCalls
+      ? { text: responseText, toolCalls }
+      : { text: responseText },
+  };
+}
+
+async function cmdExportTrajectories(args: string[]) {
+  const { values } = parseArgs({
+    args,
+    options: {
+      input: { type: "string", short: "i" },
+      output: { type: "string", short: "o" },
+      "max-per-task": { type: "string" },
+    },
+  });
+  const inputDir =
+    values.input ??
+    process.env.MILADY_TRAJECTORY_DIR ??
+    join(
+      process.env.MILADY_STATE_DIR ??
+        process.env.ELIZA_STATE_DIR ??
+        join(homedir(), ".milady"),
+      "trajectories",
+    );
+  const outputDir = values.output ?? "./training-data";
+  const cap = values["max-per-task"]
+    ? Number.parseInt(values["max-per-task"], 10)
+    : Number.POSITIVE_INFINITY;
+
+  if (!existsSync(inputDir)) {
+    console.error(`[export-trajectories] input dir not found: ${inputDir}`);
+    process.exit(1);
+  }
+
+  await mkdir(outputDir, { recursive: true });
+  console.log(`[export-trajectories] reading from ${inputDir}`);
+  console.log(`[export-trajectories] writing to ${outputDir}`);
+
+  const buckets: Record<TrajectoryTrainingTask, Record<string, unknown>[]> = {
+    should_respond: [],
+    context_routing: [],
+    action_planner: [],
+    response: [],
+    media_description: [],
+  };
+
+  const agentDirs = readdirSync(inputDir).filter((name) => {
+    const full = join(inputDir, name);
+    return statSync(full).isDirectory();
+  });
+
+  let totalTrajectories = 0;
+  let totalStages = 0;
+  let droppedStages = 0;
+  for (const agentDir of agentDirs) {
+    const agentPath = join(inputDir, agentDir);
+    const files = readdirSync(agentPath).filter((f) => f.endsWith(".json"));
+    for (const file of files) {
+      let traj: RecordedTrajectory;
+      try {
+        traj = JSON.parse(
+          readFileSync(join(agentPath, file), "utf-8"),
+        ) as RecordedTrajectory;
+      } catch {
+        continue;
+      }
+      totalTrajectories += 1;
+      for (const stage of traj.stages ?? []) {
+        totalStages += 1;
+        const task = classifyStage(stage);
+        if (!task) {
+          droppedStages += 1;
+          continue;
+        }
+        if (buckets[task].length >= cap) continue;
+        const row = stageToJsonlRow(stage);
+        if (!row) {
+          droppedStages += 1;
+          continue;
+        }
+        buckets[task].push(row);
+      }
+    }
+  }
+
+  for (const task of Object.keys(buckets) as TrajectoryTrainingTask[]) {
+    const path = join(outputDir, `${task}_trajectories.jsonl`);
+    const lines = buckets[task].map((row) => JSON.stringify(row));
+    await writeFile(path, `${lines.join("\n")}\n`);
+    console.log(
+      `[export-trajectories] ${task}: wrote ${buckets[task].length} examples to ${path}`,
+    );
+  }
+  console.log(
+    `[export-trajectories] summary: ${totalTrajectories} trajectories, ${totalStages} stages (${droppedStages} unclassified)`,
+  );
 }
 
 async function cmdValidate(args: string[]) {
@@ -234,143 +487,6 @@ async function cmdValidate(args: string[]) {
   console.log(formatQualityReport(report));
 }
 
-async function cmdTune(args: string[]) {
-  const { values } = parseArgs({
-    args,
-    options: {
-      project: { type: "string" },
-      bucket: { type: "string" },
-      model: { type: "string", default: "gemini-2.5-flash-lite" },
-      data: { type: "string" },
-      validation: { type: "string" },
-      name: { type: "string", default: "eliza-should-respond" },
-      epochs: { type: "string", default: "3" },
-      region: { type: "string", default: "us-central1" },
-    },
-  });
-
-  if (!values.project || !values.bucket || !values.data) {
-    console.error(
-      "Usage: tune --project <gcp-project> --bucket <gcs-bucket> --data <path-to-jsonl> [--model flash-lite|flash] [--name <display-name>]",
-    );
-    process.exit(1);
-  }
-
-  const baseModel = normalizeVertexBaseModel(values.model, "should_respond");
-
-  const config: VertexTuningConfig = {
-    projectId: values.project,
-    region: values.region,
-    gcsBucket: values.bucket,
-    baseModel,
-    trainingDataPath: values.data,
-    validationDataPath: values.validation,
-    epochs: parseInt(values.epochs!, 10),
-    displayName: values.name!,
-  };
-
-  console.log(`\nCreating tuning job...`);
-  console.log(`  Project: ${config.projectId}`);
-  console.log(`  Region: ${config.region}`);
-  console.log(`  Base model: ${config.baseModel}`);
-  console.log(`  Training data: ${config.trainingDataPath}`);
-  console.log(`  Display name: ${config.displayName}`);
-  console.log("");
-
-  const job = await createTuningJob(config);
-  console.log(`Job created: ${job.name}`);
-  console.log(`State: ${job.state}`);
-
-  console.log("\nPolling for completion (this may take hours)...");
-  const final = await waitForTuningJob(job.name, {
-    onPoll: (j) => {
-      console.log(`  [${new Date().toISOString()}] ${j.state}`);
-    },
-  });
-
-  if (final.state === "JOB_STATE_SUCCEEDED") {
-    console.log(`\nTuning succeeded!`);
-    console.log(`Tuned model endpoint: ${final.tunedModelEndpointName}`);
-  } else {
-    console.log(`\nTuning failed: ${final.error?.message ?? "unknown error"}`);
-    process.exit(1);
-  }
-}
-
-async function cmdListJobs(args: string[]) {
-  const { values } = parseArgs({
-    args,
-    options: {
-      project: { type: "string" },
-      region: { type: "string", default: "us-central1" },
-    },
-  });
-
-  if (!values.project) {
-    console.error("Usage: list-jobs --project <gcp-project>");
-    process.exit(1);
-  }
-
-  const jobs = await listTuningJobs(values.project, values.region);
-  console.log(`\nTuning jobs for ${values.project}:\n`);
-  for (const job of jobs) {
-    console.log(`  ${job.name}`);
-    console.log(`    State: ${job.state}`);
-    console.log(`    Display name: ${job.tunedModelDisplayName}`);
-    console.log(`    Created: ${job.createTime}`);
-    if (job.tunedModelEndpointName) {
-      console.log(`    Endpoint: ${job.tunedModelEndpointName}`);
-    }
-    console.log("");
-  }
-}
-
-async function cmdOrchestrate(args: string[]) {
-  const { values } = parseArgs({
-    args,
-    options: {
-      project: { type: "string" },
-      bucket: { type: "string" },
-      data: { type: "string" },
-      slot: { type: "string", default: "should_respond" },
-      scope: { type: "string", default: "global" },
-      ownerId: { type: "string" },
-      model: { type: "string" },
-      name: { type: "string", default: "eliza-tuned-model" },
-      epochs: { type: "string", default: "3" },
-      region: { type: "string", default: "us-central1" },
-    },
-  });
-
-  if (!values.project || !values.bucket || !values.data) {
-    console.error(
-      "Usage: orchestrate --project <gcp-project> --bucket <gcs-bucket> --data <path-to-jsonl> [--slot should_respond|action_planner|response] [--scope global|organization|user]",
-    );
-    process.exit(1);
-  }
-
-  const slot = parseVertexTuningSlot(values.slot!);
-  const scope = parseVertexTuningScope(values.scope!);
-
-  const result = await orchestrateVertexTuning({
-    projectId: values.project,
-    region: values.region,
-    gcsBucket: values.bucket,
-    baseModel: normalizeVertexBaseModel(values.model, slot),
-    trainingDataPath: values.data,
-    epochs: parseInt(values.epochs!, 10),
-    displayName: values.name!,
-    slot,
-    scope,
-    ownerId: values.ownerId,
-  });
-
-  console.log(`\nJob created: ${result.job.name}`);
-  console.log(`Recommended model ID: ${result.recommendedModelId}`);
-  console.log("Model preference patch:");
-  console.log(JSON.stringify(result.modelPreferencePatch, null, 2));
-}
-
 // ==================== Main ====================
 
 async function main() {
@@ -385,14 +501,11 @@ async function main() {
     case "validate":
       await cmdValidate(restArgs);
       break;
-    case "tune":
-      await cmdTune(restArgs);
+    case "compare":
+      await cmdCompare(restArgs);
       break;
-    case "list-jobs":
-      await cmdListJobs(restArgs);
-      break;
-    case "orchestrate":
-      await cmdOrchestrate(restArgs);
+    case "export-trajectories":
+      await cmdExportTrajectories(restArgs);
       break;
     default:
       console.log(`Usage: cli.ts <command> [options]
@@ -408,24 +521,24 @@ Commands:
   validate          Validate a generated dataset
     --input PATH    Path to raw_samples.json
 
-  tune              Start a Vertex AI fine-tuning job
-    --project ID    GCP project ID
-    --bucket NAME   GCS bucket for training data
-    --data PATH     Path to training JSONL
-    --model TYPE    flash-lite or flash (default: flash-lite)
-    --name NAME     Display name (default: eliza-should-respond)
-    --epochs N      Training epochs (default: 3)
-    --region REG    GCP region (default: us-central1)
+  export-trajectories  Re-export raw recorded trajectories to per-task JSONL
+    -i, --input DIR    Trajectory dir (default: $MILADY_TRAJECTORY_DIR or ~/.milady/trajectories)
+    -o, --output DIR   Output dir (default: ./training-data)
+    --max-per-task N   Cap examples per task bucket
 
-  list-jobs         List Vertex AI tuning jobs
-    --project ID    GCP project ID
-
-  orchestrate       Submit a tuned-model job and emit the model preference patch
-    --project ID    GCP project ID
-    --bucket NAME   GCS bucket for training data
-    --data PATH     Path to training JSONL
-    --slot NAME     should_respond | action_planner | response | media_description
-    --scope NAME    global | organization | user
+  compare           A/B compare two prompts on a trajectory dataset
+    --baseline PATH    Path to baseline prompt (.txt)
+    --variant PATH     Path to variant prompt (.txt)
+    --dataset PATH     Path to JSONL dataset (eliza_native_v1)
+    --task NAME        should_respond | context_routing | action_planner | response | media_description
+    --scorer KIND      agreement | planner_action (default: from --task)
+    --mode MODE        vs_historical (default) | pairwise
+    --max-examples N   Cap evaluations
+    --tolerance F      Pass threshold delta (default: 0.02)
+    --temperature F    Sampling temperature (default: 0)
+    --max-tokens N     Per-completion cap (default: 512)
+    -o, --output PATH  Write JSON result to file
+    Exits with code 2 if variant regresses beyond --tolerance.
 
 Environment:
   ANTHROPIC_API_KEY   Use Claude as teacher model

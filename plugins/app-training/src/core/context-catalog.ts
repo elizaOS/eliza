@@ -3,7 +3,7 @@
  *
  * This catalog maps every known action and provider to one or more AgentContext
  * categories. It is used by:
- * 1. The shouldRespondAndRouteContext classifier prompt
+ * 1. The v5 messageHandler context-routing prompt
  * 2. The synthetic dataset generator (to scope scenarios per context)
  * 3. The planner (to filter actions/providers by active context)
  *
@@ -11,6 +11,17 @@
  */
 
 import { AGENT_CONTEXTS, type AgentContext } from "./context-types.js";
+
+const FINANCE_CRYPTO_WALLET_CONTEXTS: AgentContext[] = [
+  "finance",
+  "crypto",
+  "wallet",
+];
+
+const FINANCE_CRYPTO_WALLET_AUTOMATION_CONTEXTS: AgentContext[] = [
+  ...FINANCE_CRYPTO_WALLET_CONTEXTS,
+  "automation",
+];
 
 export type ContextResolutionSource =
   | "component"
@@ -30,64 +41,50 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   MODELS: ["general"],
   CONFIGURE: ["general", "system"],
   SET_USER_NAME: ["social"],
-  OWNER_PROFILE: ["social"],
-  TRIAGE_MESSAGES: ["social", "knowledge"],
-  LIST_INBOX: ["social", "knowledge"],
-  SEARCH_MESSAGES: ["social", "knowledge"],
-  DRAFT_REPLY: ["social"],
-  DRAFT_FOLLOWUP: ["social"],
-  SEND_DRAFT: ["social"],
-  RESPOND_TO_MESSAGE: ["social"],
-  MANAGE_MESSAGE: ["social"],
-  SCHEDULE_DRAFT_SEND: ["social", "automation"],
-  OWNER_DIGEST: ["social", "knowledge"],
-  OWNER_CALENDAR: ["automation", "social"],
-  OWNER_RELATIONSHIP: ["social"],
-  OWNER_CHECKIN: ["automation"],
+  PROFILE: ["social"],
+  CALENDAR: ["automation", "social"],
+  RELATIONSHIP: ["social"],
+  CHECKIN: ["automation"],
   MODIFY_CHARACTER: ["social", "system"],
   PLAY_EMOTE: ["social"],
   SHELL_COMMAND: ["code", "system"],
   RESTART_AGENT: ["system"],
-  SEND_ADMIN_MESSAGE: ["social", "system"],
-  OWNER_LIFE: ["automation"],
+  LIFE: ["automation"],
   GO_LIVE: ["media", "social"],
   GO_OFFLINE: ["media", "social"],
   SKILL_COMMAND: ["code", "general"],
-  CREATE_TRIGGER_TASK: ["automation"],
+  WORKFLOW: ["automation"],
 
   // --- Wallet / DeFi ---
-  SEND_TOKEN: ["wallet"],
-  TRANSFER: ["wallet"],
-  CHECK_BALANCE: ["wallet"],
-  GET_BALANCE: ["wallet"],
-  SWAP_TOKEN: ["wallet", "automation"],
-  BRIDGE_TOKEN: ["wallet"],
-  APPROVE_TOKEN: ["wallet"],
-  SIGN_MESSAGE: ["wallet"],
-  DEPLOY_CONTRACT: ["wallet", "code"],
-  CREATE_GOVERNANCE_PROPOSAL: ["wallet", "social"],
-  VOTE_ON_PROPOSAL: ["wallet", "social"],
-  STAKE: ["wallet"],
-  UNSTAKE: ["wallet"],
-  CLAIM_REWARDS: ["wallet"],
-  GET_TOKEN_PRICE: ["wallet", "knowledge"],
-  GET_PORTFOLIO: ["wallet"],
-  CREATE_WALLET: ["wallet"],
-  IMPORT_WALLET: ["wallet"],
+  SEND_TOKEN: [...FINANCE_CRYPTO_WALLET_CONTEXTS, "payments"],
+  TRANSFER: [...FINANCE_CRYPTO_WALLET_CONTEXTS, "payments"],
+  CHECK_BALANCE: FINANCE_CRYPTO_WALLET_CONTEXTS,
+  GET_BALANCE: FINANCE_CRYPTO_WALLET_CONTEXTS,
+  SWAP_TOKEN: FINANCE_CRYPTO_WALLET_AUTOMATION_CONTEXTS,
+  BRIDGE_TOKEN: FINANCE_CRYPTO_WALLET_AUTOMATION_CONTEXTS,
+  APPROVE_TOKEN: FINANCE_CRYPTO_WALLET_CONTEXTS,
+  SIGN_MESSAGE: FINANCE_CRYPTO_WALLET_CONTEXTS,
+  DEPLOY_CONTRACT: [...FINANCE_CRYPTO_WALLET_CONTEXTS, "code"],
+  CREATE_GOVERNANCE_PROPOSAL: [...FINANCE_CRYPTO_WALLET_CONTEXTS, "social"],
+  VOTE_ON_PROPOSAL: [...FINANCE_CRYPTO_WALLET_CONTEXTS, "social"],
+  STAKE: FINANCE_CRYPTO_WALLET_AUTOMATION_CONTEXTS,
+  UNSTAKE: FINANCE_CRYPTO_WALLET_AUTOMATION_CONTEXTS,
+  CLAIM_REWARDS: FINANCE_CRYPTO_WALLET_CONTEXTS,
+  GET_TOKEN_PRICE: [...FINANCE_CRYPTO_WALLET_CONTEXTS, "documents"],
+  GET_PORTFOLIO: FINANCE_CRYPTO_WALLET_CONTEXTS,
+  CREATE_WALLET: FINANCE_CRYPTO_WALLET_CONTEXTS,
+  IMPORT_WALLET: FINANCE_CRYPTO_WALLET_CONTEXTS,
 
-  // --- Knowledge / RAG ---
-  SEARCH_KNOWLEDGE: ["knowledge"],
-  ADD_KNOWLEDGE: ["knowledge"],
-  REMEMBER: ["knowledge"],
-  RECALL: ["knowledge"],
-  LEARN_FROM_EXPERIENCE: ["knowledge"],
-  SEARCH_WEB: ["knowledge", "browser"],
-  SUMMARIZE: ["knowledge"],
-  ANALYZE: ["knowledge"],
-  READ_CHANNEL: ["knowledge", "social"],
-  SEARCH_CONVERSATIONS: ["knowledge", "social"],
-  SEARCH_ENTITY: ["social", "knowledge"],
-  READ_ENTITY: ["social", "knowledge"],
+  // --- Documents / RAG ---
+  DOCUMENT: ["documents"],
+  REMEMBER: ["documents"],
+  RECALL: ["documents"],
+  LEARN_FROM_EXPERIENCE: ["documents"],
+  SEARCH_WEB: ["documents", "browser"],
+  SUMMARIZE: ["documents"],
+  ANALYZE: ["documents"],
+  SEARCH_ENTITY: ["social", "documents"],
+  READ_ENTITY: ["social", "documents"],
 
   // --- Browser ---
   BROWSE: ["browser"],
@@ -95,7 +92,7 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   NAVIGATE: ["browser"],
   CLICK: ["browser"],
   TYPE_TEXT: ["browser"],
-  EXTRACT_PAGE: ["browser", "knowledge"],
+  EXTRACT_PAGE: ["browser", "documents"],
 
   // --- Code ---
   SPAWN_AGENT: ["code", "automation"],
@@ -110,12 +107,12 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   CANCEL_TASK: ["code", "automation"],
 
   // --- Media ---
-  GENERATE_IMAGE: ["media"],
-  DESCRIBE_IMAGE: ["media", "knowledge"],
-  DESCRIBE_VIDEO: ["media", "knowledge"],
-  DESCRIBE_AUDIO: ["media", "knowledge"],
+  GENERATE_MEDIA: ["media"],
+  DESCRIBE_IMAGE: ["media", "documents"],
+  DESCRIBE_VIDEO: ["media", "documents"],
+  DESCRIBE_AUDIO: ["media", "documents"],
   TEXT_TO_SPEECH: ["media"],
-  TRANSCRIBE: ["media", "knowledge"],
+  TRANSCRIBE: ["media", "documents"],
   UPLOAD_FILE: ["media"],
 
   // --- Automation ---
@@ -128,7 +125,7 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   SCHEDULE: ["automation"],
 
   // --- Social ---
-  SEND_MESSAGE: ["social"],
+  MESSAGE: ["social", "documents", "automation"],
   ADD_CONTACT: ["social"],
   UPDATE_CONTACT: ["social"],
   GET_CONTACT: ["social"],
@@ -151,8 +148,8 @@ export const PROVIDER_CONTEXT_MAP: Record<string, AgentContext[]> = {
   // General providers
   time: ["general"],
   boredom: ["general"],
-  facts: ["general", "knowledge"],
-  knowledge: ["knowledge"],
+  facts: ["general", "documents"],
+  knowledge: ["documents"],
   entities: ["social"],
   relationships: ["social"],
   recentMessages: ["general"],
@@ -161,10 +158,10 @@ export const PROVIDER_CONTEXT_MAP: Record<string, AgentContext[]> = {
   settings: ["system"],
 
   // Wallet providers
-  walletBalance: ["wallet"],
-  walletPortfolio: ["wallet"],
-  tokenPrices: ["wallet", "knowledge"],
-  chainInfo: ["wallet"],
+  walletBalance: FINANCE_CRYPTO_WALLET_CONTEXTS,
+  walletPortfolio: FINANCE_CRYPTO_WALLET_CONTEXTS,
+  tokenPrices: [...FINANCE_CRYPTO_WALLET_CONTEXTS, "documents"],
+  chainInfo: FINANCE_CRYPTO_WALLET_CONTEXTS,
 
   // Social providers
   contacts: ["social"],
@@ -185,14 +182,14 @@ export const PROVIDER_CONTEXT_MAP: Record<string, AgentContext[]> = {
   elizaAdminTrust: ["social", "system"],
   escalationTrigger: ["system", "social"],
   uiCatalog: ["system"],
-  workspaceContext: ["code", "knowledge"],
+  workspaceContext: ["code", "documents"],
   userName: ["social"],
   adminPanel: ["social", "system"],
   elizaDynamicSkills: ["code", "general"],
   lifeops: ["automation"],
-  "recent-conversations": ["knowledge", "social"],
-  "relevant-conversations": ["knowledge", "social"],
-  rolodex: ["social", "knowledge"],
+  "recent-conversations": ["documents", "social"],
+  "relevant-conversations": ["documents", "social"],
+  rolodex: ["social", "documents"],
   userPersonalityPreferences: ["social"],
 };
 

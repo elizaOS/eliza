@@ -5,9 +5,9 @@
  * the agent wallet addresses and balances for dashboard context.
  */
 
-import { client } from "@elizaos/app-core";
 import type { WalletAddresses, WalletBalancesResponse } from "@elizaos/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { vincentClient } from "./client";
 import type {
   VincentStrategy,
   VincentTradingProfile,
@@ -53,7 +53,7 @@ export function useVincentDashboard(): VincentDashboardState {
   const fetchAll = useCallback(async () => {
     try {
       // Always check Vincent OAuth status first
-      const vincentStatusResult = await client.vincentStatus();
+      const vincentStatusResult = await vincentClient.vincentStatus();
       if (!mountedRef.current) return;
       setVincentConnected(vincentStatusResult.connected);
       setVincentConnectedAt(vincentStatusResult.connectedAt);
@@ -65,10 +65,10 @@ export function useVincentDashboard(): VincentDashboardState {
         strategyResult,
         tradingProfileResult,
       ] = await Promise.allSettled([
-        client.getWalletAddresses(),
-        client.getWalletBalances(),
-        client.vincentStrategy(),
-        client.vincentTradingProfile(),
+        vincentClient.getWalletAddresses(),
+        vincentClient.getWalletBalances(),
+        vincentClient.vincentStrategy(),
+        vincentClient.vincentTradingProfile(),
       ]);
 
       if (!mountedRef.current) return;

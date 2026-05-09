@@ -3,6 +3,8 @@ import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type { KaminoLiquidityService } from "../services/kaminoLiquidityService";
 
+const KAMINO_POOL_TEXT_LIMIT = 4000;
+
 /**
  * Kamino Pool-Specific Provider
  * Provides detailed information about specific Kamino pools by their address
@@ -14,6 +16,11 @@ export const kaminoPoolProvider: Provider = {
   descriptionCompressed:
     "provide detail information specific Kamino liquidity pool pool address",
   dynamic: true,
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     console.log("KAMINO_POOL provider called");
 
@@ -96,7 +103,7 @@ export const kaminoPoolProvider: Provider = {
       kaminoPool: poolInfo,
     };
 
-    const text = `${poolInfo}\n`;
+    const text = `${poolInfo}\n`.slice(0, KAMINO_POOL_TEXT_LIMIT);
 
     return {
       data,

@@ -1,3 +1,4 @@
+import type { JsonValue } from "@elizaos/core";
 import {
   type Address,
   type Chain,
@@ -19,7 +20,11 @@ import type {
   QueuedEvent,
   WalletHealth,
 } from "./types.js";
-import { NATIVE_TOKEN, type AgentWallet as Wallet } from "./wallet-core.js";
+import {
+  NATIVE_TOKEN,
+  requireWalletAccount,
+  type AgentWallet as Wallet,
+} from "./wallet-core.js";
 
 export { AgentAccountFactoryV2Abi, AgentAccountV2Abi } from "./abi.js";
 export type {
@@ -39,6 +44,7 @@ export {
   checkBudget,
   createWallet,
   NATIVE_TOKEN,
+  requireWalletAccount,
   setSpendPolicy,
 } from "./wallet-core.js";
 export type {
@@ -85,7 +91,11 @@ export async function agentExecute(
 
   const hash = await wallet.contract.write.agentExecute(
     [params.to, value, data],
-    { value, account: wallet.walletClient.account!, chain: wallet.chain },
+    {
+      value,
+      account: requireWalletAccount(wallet.walletClient),
+      chain: wallet.chain,
+    },
   );
 
   // Check the tx receipt for TransactionQueued vs TransactionExecuted events
@@ -151,7 +161,7 @@ export async function approveTransaction(
   txId: bigint,
 ): Promise<Hash> {
   return wallet.contract.write.approvePending([txId], {
-    account: wallet.walletClient.account!,
+    account: requireWalletAccount(wallet.walletClient),
     chain: wallet.chain,
   });
 }
@@ -164,7 +174,7 @@ export async function cancelTransaction(
   txId: bigint,
 ): Promise<Hash> {
   return wallet.contract.write.cancelPending([txId], {
-    account: wallet.walletClient.account!,
+    account: requireWalletAccount(wallet.walletClient),
     chain: wallet.chain,
   });
 }
@@ -178,7 +188,7 @@ export async function setOperator(
   authorized: boolean,
 ): Promise<Hash> {
   return wallet.contract.write.setOperator([operator, authorized], {
-    account: wallet.walletClient.account!,
+    account: requireWalletAccount(wallet.walletClient),
     chain: wallet.chain,
   });
 }
@@ -220,7 +230,7 @@ export async function deployWallet(config: {
   // Deploy
   const txHash = await factory.write.createAccount(
     [config.tokenContract, config.tokenId],
-    { account: config.walletClient.account!, chain },
+    { account: requireWalletAccount(config.walletClient), chain },
   );
 
   return { walletAddress, txHash };
@@ -323,15 +333,7 @@ export async function getWalletHealth(
   let pendingQueueDepth = 0;
   for (let i = 0n; i < pendingNonce; i++) {
     const [, , , , createdAt, executed, cancelled] =
-      (await wallet.contract.read.getPending([i])) as [
-        any,
-        any,
-        any,
-        any,
-        bigint,
-        boolean,
-        boolean,
-      ];
+      await wallet.contract.read.getPending([i]);
     if (!executed && !cancelled && createdAt > 0n) pendingQueueDepth++;
   }
 
@@ -365,7 +367,10 @@ export async function batchAgentTransfer(
   for (const t of transfers) {
     const hash = await wallet.contract.write.agentTransferToken(
       [t.token, t.to, t.amount],
-      { account: wallet.walletClient.account!, chain: wallet.chain },
+      {
+        account: requireWalletAccount(wallet.walletClient),
+        chain: wallet.chain,
+      },
     );
     hashes.push(hash);
   }
@@ -379,10 +384,10 @@ export async function batchAgentTransfer(
  */
 export async function getActivityHistory(
   wallet: Wallet,
-  options: { fromBlock?: bigint; toBlock?: bigint } = {},
+  options: { fromBlock?: bigint; toBlock?: bigint | "latest" } = {},
 ): Promise<ActivityEntry[]> {
   const fromBlock = options.fromBlock ?? 0n;
-  const toBlock = options.toBlock ?? ("latest" as any);
+  const toBlock = options.toBlock ?? ("latest" as const);
 
   const eventConfigs = [
     { eventName: "TransactionExecuted" as const, type: "execution" as const },
@@ -408,11 +413,15 @@ export async function getActivityHistory(
     });
 
     for (const log of logs) {
+      const rawArgs =
+        log && typeof log === "object" && "args" in log
+          ? (log as { args?: Record<string, JsonValue> }).args
+          : undefined;
       allEntries.push({
         type,
         blockNumber: log.blockNumber ?? 0n,
         transactionHash: log.transactionHash ?? ("0x" as Hash),
-        args: (log as any).args ?? {},
+        args: rawArgs ?? {},
       });
     }
   }
@@ -438,7 +447,31 @@ export function onTransactionQueued(
     eventName: "TransactionQueued",
     onLogs: (logs) => {
       for (const log of logs) {
-        const args = (log as any).args;
+        const args =
+          log && typeof log === "object" && "args" in log
+            ? (
+                log as {
+                  args?: {
+                    txId?: bigint;
+                    to?: Address;
+                    value?: bigint;
+                    token?: Address;
+                    amount?: bigint;
+                  };
+                }
+              ).args
+            : undefined;
+        if (
+          !args ||
+          args.txId === undefined ||
+          args.to === undefined ||
+          args.value === undefined ||
+          args.token === undefined ||
+          args.amount === undefined ||
+          !log.transactionHash
+        ) {
+          continue;
+        }
         callback({
           txId: args.txId,
           to: args.to,
@@ -471,12 +504,33 @@ export function onTransactionExecuted(
     eventName: "TransactionExecuted",
     onLogs: (logs) => {
       for (const log of logs) {
-        const args = (log as any).args;
+        const args =
+          log && typeof log === "object" && "args" in log
+            ? (
+                log as {
+                  args?: {
+                    target?: Address;
+                    value?: bigint;
+                    executor?: Address;
+                  };
+                }
+              ).args
+            : undefined;
+        const transactionHash = log.transactionHash;
+        if (
+          !args ||
+          args.target === undefined ||
+          args.value === undefined ||
+          args.executor === undefined ||
+          !transactionHash
+        ) {
+          continue;
+        }
         callback({
           target: args.target,
           value: args.value,
           executor: args.executor,
-          transactionHash: log.transactionHash!,
+          transactionHash,
         });
       }
     },
@@ -583,7 +637,6 @@ export {
   PROTOCOL_FEE_BPS,
   PROTOCOL_FEE_COLLECTOR,
   SwapModule,
-  UNISWAP_V3_BASE,
   UniswapV3QuoterV2Abi,
   UniswapV3RouterAbi,
 } from "./swap/index.js";

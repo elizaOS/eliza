@@ -1,5 +1,5 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
-import { parseToonKeyValue } from "@elizaos/core";
+import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import type {
   CreateLifeOpsGoalRequest,
   LifeOpsGoalDefinition,
@@ -125,7 +125,7 @@ function promptText(value: unknown): string {
 }
 
 function parseStructuredRecord(raw: string): Record<string, unknown> | null {
-  return parseToonKeyValue<Record<string, unknown>>(raw);
+  return parseJsonModelRecord<Record<string, unknown>>(raw);
 }
 
 function normalizeText(value: unknown): string | null {
@@ -333,7 +333,7 @@ export function buildGoalCreateExtractionPrompt(
     "- the evidence signals or metrics that can show progress",
     "- a concrete support strategy",
     "",
-    "Return ONLY valid TOON with these fields:",
+    "Return ONLY valid JSON with these fields:",
     '- mode: "create" when the goal is grounded enough to save now, otherwise "respond"',
     "- response: one focused clarifying question when mode=respond, otherwise null",
     "- title: concise goal title",
@@ -423,7 +423,7 @@ export function buildGoalCreateExtractionPrompt(
     "evaluationSummary: Progress means weekday bed and wake times stay near 11:30 pm and 7:30 am over the next month.",
     "targetDomain: sleep",
     "",
-    "Return ONLY valid TOON. No prose, markdown, code fences, or any other format.",
+    "Return ONLY valid JSON. No prose, markdown, code fences, or any other format.",
     "",
     `User request: ${promptText(intent)}`,
     "Recent conversation:",
@@ -438,7 +438,7 @@ function buildGoalCreateRepairPrompt(args: {
 }): string {
   return [
     "Your last reply for the goal-grounding extractor was invalid.",
-    "Return ONLY valid TOON with exactly these fields:",
+    "Return ONLY valid JSON with exactly these fields:",
     "mode, response, title, description, cadence, successCriteria, supportStrategy, groundingState, missingCriticalFields, confidence, evaluationSummary, targetDomain",
     "",
     'mode must be "create" or "respond".',
@@ -507,7 +507,7 @@ export function buildGoalUpdateExtractionPrompt(args: {
     "If the user clarifies how the goal should be evaluated, update successCriteria and supportStrategy.",
     "If the request is too vague to apply safely, choose mode=respond and ask one focused question.",
     "",
-    "Return ONLY valid TOON with these fields:",
+    "Return ONLY valid JSON with these fields:",
     '- mode: "update" or "respond"',
     "- response: short clarifying response when mode=respond, otherwise null",
     "- title: new title or null",
@@ -543,7 +543,7 @@ function buildGoalUpdateRepairPrompt(args: {
 }): string {
   return [
     "Your last reply for the goal-update extractor was invalid.",
-    "Return ONLY valid TOON with exactly these fields:",
+    "Return ONLY valid JSON with exactly these fields:",
     "mode, response, title, description, cadence, successCriteria, supportStrategy, groundingState, missingCriticalFields, confidence, evaluationSummary, targetDomain",
     "",
     'mode must be "update" or "respond".',

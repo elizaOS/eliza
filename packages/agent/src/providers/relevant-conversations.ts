@@ -17,7 +17,7 @@ import {
   formatRelativeTimestamp,
   formatSpeakerLabel,
   roomSourceTag,
-} from "./conversation-utils.js";
+} from "../shared/conversation-format.js";
 
 const MAX_RELEVANT_RESULTS = 10;
 const MATCH_THRESHOLD = 0.7;
@@ -36,6 +36,11 @@ export const relevantConversationsProvider: Provider = {
       includeAllLocales: true,
     },
   ),
+  contexts: ["memory", "messaging"],
+  contextGate: { anyOf: ["memory", "messaging"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
 
   async get(
     runtime: IAgentRuntime,

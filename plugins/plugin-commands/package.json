@@ -20,8 +20,17 @@
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"auto-enable.ts"
 	],
+	"elizaos": {
+		"plugin": {
+			"autoEnableModule": "./auto-enable.ts",
+			"capabilities": [
+				"chat-commands"
+			]
+		}
+	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*"
 	},
@@ -29,7 +38,7 @@
 		"@biomejs/biome": "^2.4.14",
 		"@types/bun": "^1.2.22",
 		"@types/node": "^24.5.2",
-		"typescript": "^6.0.0",
+		"typescript": "^6.0.3",
 		"vitest": "^4.0.18"
 	},
 	"scripts": {

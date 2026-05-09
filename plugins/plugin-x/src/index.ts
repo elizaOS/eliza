@@ -1,10 +1,13 @@
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import { searchXAction } from "./actions/searchX.js";
-import { sendXPostAction } from "./actions/sendXPost.js";
-import { summarizeFeedAction } from "./actions/summarizeFeed.js";
-import { xTimelineProvider } from "./providers/xTimeline.js";
-import { xUnreadDmsProvider } from "./providers/xUnreadDms.js";
-import { registerXSearchCategory } from "./search-category.js";
+import {
+  getConnectorAccountManager,
+  type IAgentRuntime,
+  logger,
+  type Plugin,
+} from "@elizaos/core";
+import {
+  createXConnectorAccountProvider,
+  materializeEnvAccountIfMissing,
+} from "./connector-account-provider.js";
 import { XService } from "./services/x.service.js";
 import { getSetting } from "./utils/settings";
 
@@ -12,11 +15,17 @@ export const XPlugin: Plugin = {
   name: "x",
   description:
     "X (formerly Twitter) connector with posting, interactions, and timeline actions",
-  actions: [sendXPostAction, searchXAction, summarizeFeedAction],
-  providers: [xTimelineProvider, xUnreadDmsProvider],
+  actions: [],
+  providers: [],
   services: [XService],
+  // Self-declared auto-enable: activate when the "x" connector (or the legacy
+  // "twitter" alias) is configured under config.connectors. The hardcoded
+  // CONNECTOR_PLUGINS map in plugin-auto-enable-engine.ts still serves as a
+  // fallback.
+  autoEnable: {
+    connectorKeys: ["x", "twitter"],
+  },
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-    registerXSearchCategory(runtime);
     logger.log("🔧 Initializing X plugin...");
 
     const mode = (
@@ -58,26 +67,31 @@ export const XPlugin: Plugin = {
       } else {
         logger.log("✅ X OAuth configuration found");
       }
-    } else if (mode === "broker") {
-      const token =
-        getSetting(runtime, "TWITTER_BROKER_TOKEN") ||
-        getSetting(runtime, "ELIZAOS_CLOUD_API_KEY");
-      if (!token) {
-        logger.warn(
-          "TWITTER_AUTH_MODE=broker needs TWITTER_BROKER_TOKEN or ELIZAOS_CLOUD_API_KEY. Connect your X account on the Eliza Cloud connectors page first.",
-        );
-      } else {
-        logger.log("✅ X broker mode configured (Eliza Cloud)");
-      }
     } else {
+      logger.warn(`Invalid TWITTER_AUTH_MODE=${mode}. Expected env|oauth.`);
+    }
+
+    // Register with the ConnectorAccountManager so the generic HTTP CRUD/OAuth
+    // surface can list, create, patch, delete, and start OAuth on X accounts.
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createXConnectorAccountProvider(runtime));
+    } catch (err) {
       logger.warn(
-        `Invalid TWITTER_AUTH_MODE=${mode}. Expected env|oauth|broker.`,
+        {
+          src: "plugin:x",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register X provider with ConnectorAccountManager",
       );
+    }
+
+    // In env mode, materialize a synthetic `default` account so the rest of
+    // the runtime can address it through the connector account interface.
+    if (mode === "env") {
+      await materializeEnvAccountIfMissing(runtime);
     }
   },
 };
-
-// Backward-compatible alias for users still importing { TwitterPlugin }.
-export const TwitterPlugin = XPlugin;
 
 export default XPlugin;

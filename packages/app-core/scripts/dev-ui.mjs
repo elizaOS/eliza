@@ -23,7 +23,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   resolveDesktopApiPort,
   resolveDesktopUiPort,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import * as JSON5Module from "json5";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
@@ -216,6 +216,12 @@ const devLogLevel =
     .toLowerCase() || "info";
 const quietApiLogs = process.env.ELIZA_DEV_QUIET_LOGS === "1";
 const verboseApiLogs = process.env.ELIZA_DEV_VERBOSE_LOGS !== "0";
+// Keep `bun --watch` opt-in for the API server. Concurrent package builds,
+// native plugin builds, and staged plugin copies rewrite workspace `dist/`
+// files; Bun follows imports into those files and can hot-reload while the
+// runtime is still bootstrapping, leaving PGlite locked by the previous
+// process. The supervisor still restarts the API on explicit restart exits.
+const skipBunWatch = process.env.ELIZA_DEV_NO_WATCH !== "0";
 const DEV_TEST_MOCK_ENV_KEYS = [
   "ELIZA_MOCK_GOOGLE_BASE",
   "ELIZA_MOCK_TWILIO_BASE",
@@ -589,6 +595,43 @@ function createStartupFilter(dest) {
 }
 
 // ---------------------------------------------------------------------------
+// Concurrent build detection — bun --watch follows imports into workspace
+// `dist/` files. If a turbo/tsup/tsc build is rewriting those files, --watch
+// hot-reloads on every write and prevents the agent from finishing
+// initialization. We detect that case here and auto-disable --watch.
+// ---------------------------------------------------------------------------
+
+function detectConcurrentBuilds() {
+  if (process.platform === "win32") return null;
+  let psOut;
+  try {
+    psOut = execSync("ps axo pid=,command=", {
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+      stdio: ["pipe", "pipe", "ignore"],
+    });
+  } catch {
+    return null;
+  }
+  const buildSignatures = [
+    /\bturbo\s+run\s+build\b/i,
+    /\bbun\s+run\s+build\b/i,
+    /\btsup\b.*\bbuild\b/i,
+    /\btsc\b.*\b(--noEmit|tsconfig\.build)\b/i,
+  ];
+  for (const line of psOut.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (buildSignatures.some((re) => re.test(trimmed))) {
+      const sp = trimmed.indexOf(" ");
+      const pidStr = sp > 0 ? trimmed.slice(0, sp).trim() : trimmed;
+      return Number.parseInt(pidStr, 10) || null;
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Port cleanup — force-kill zombie processes on our dev ports
 // ---------------------------------------------------------------------------
 
@@ -626,7 +669,7 @@ function killPort(port) {
 // Wait for a TCP port to accept connections
 // ---------------------------------------------------------------------------
 
-function waitForPort(port, { timeout = 120_000, interval = 500 } = {}) {
+function waitForPort(port, { timeout = 300_000, interval = 500 } = {}) {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeout;
     let activeSocket = null;
@@ -669,7 +712,7 @@ function waitForPort(port, { timeout = 120_000, interval = 500 } = {}) {
 
 async function waitForAgentReady(
   port,
-  { timeout = 120_000, interval = 1000 } = {},
+  { timeout = 300_000, interval = 1000 } = {},
 ) {
   const deadline = Date.now() + timeout;
   const url = `http://127.0.0.1:${port}/api/health`;
@@ -861,13 +904,17 @@ function startVite() {
     }
   }
 
-  const viteCmd = hasBun ? "bunx" : "npx";
+  const viteCmd = hasBun ? "bun" : "npx";
   const viteForce =
     process.env.ELIZA_VITE_FORCE === "1" ||
     process.env.ELIZA_VITE_FORCE === "1";
-  const viteArgs = viteForce
-    ? ["vite", "--force", "--port", String(UI_PORT)]
-    : ["vite", "--port", String(UI_PORT)];
+  const viteArgs = hasBun
+    ? viteForce
+      ? ["--bun", "vite", "--force", "--port", String(UI_PORT)]
+      : ["--bun", "vite", "--port", String(UI_PORT)]
+    : viteForce
+      ? ["vite", "--force", "--port", String(UI_PORT)]
+      : ["vite", "--port", String(UI_PORT)];
   if (viteForce) {
     console.log(
       `  ${green(logPrefix)} ${dim("Vite --force (ELIZA_VITE_FORCE=1): re-optimizing deps.")}`,
@@ -962,12 +1009,25 @@ if (uiOnly) {
 
   const devServerEntry = resolveDevServerEntryRelativePath(cwd);
 
+  let useWatch = !skipBunWatch;
+  if (useWatch) {
+    const buildPid = detectConcurrentBuilds();
+    if (buildPid) {
+      console.log(
+        `  ${green(logPrefix)} ${dim(
+          `Concurrent build detected (PID ${buildPid}) — disabling --watch to avoid hot-reload loop on dist/ writes. Set ELIZA_DEV_NO_WATCH=1 to silence this notice.`,
+        )}`,
+      );
+      useWatch = false;
+    }
+  }
+
   const apiCmd = hasBun
     ? [
         "bun",
         "--no-install",
         ...nodeStealthImports.flatMap((filePath) => ["--preload", filePath]),
-        "--watch",
+        ...(useWatch ? ["--watch"] : []),
         devServerEntry,
       ]
     : [
@@ -975,7 +1035,7 @@ if (uiOnly) {
         "--import",
         "tsx",
         ...nodeStealthImports.flatMap((filePath) => ["--import", filePath]),
-        "--watch",
+        ...(useWatch ? ["--watch"] : []),
         devServerEntry,
       ];
   const childEnv = createDevChildEnv(process.env);

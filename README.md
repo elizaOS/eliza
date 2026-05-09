@@ -29,7 +29,7 @@ elizaOS is a framework plus packages built on top of it. Knowing which layer
 you're working with keeps projects, plugins, and app surfaces from getting
 mixed together.
 
-**The framework** is the runtime: `@elizaos/core`, the agent loop, the plugin model (actions, providers, services, evaluators), the message/memory/state primitives, and the model-agnostic LLM layer. If you depend on `@elizaos/core` from your own code, you are using the framework.
+**The framework** is the runtime: `@elizaos/core`, the agent loop, the plugin model (actions, providers, services), the message/memory/state primitives, and the model-agnostic LLM layer. If you depend on `@elizaos/core` from your own code, you are using the framework.
 
 **A project** is a deployable product workspace built on the framework. A
 generated project owns its branded app shell, usually under `apps/app` inside
@@ -54,7 +54,7 @@ packages/        ← framework and shared packages
   benchmarks/    # evaluation suites (gaia, swe_bench, tau-bench, ...)
 
 plugins/         ← runtime plugins and app plugins
-  app-companion/ app-browser/ app-knowledge/ app-phone/
+  app-companion/ app-browser/ app-documents/ app-phone/
   app-task-coordinator/ app-training/ plugin-form/ ...
   plugin-discord/ plugin-openai/ plugin-sql/ ...
 
@@ -132,7 +132,7 @@ For first-party app plugin references, browse [`plugins/app-*`](plugins). A few 
 
 - [`app-companion`](plugins/app-companion) — chat-first companion with a custom React UI.
 - [`app-browser`](plugins/app-browser) — agent-driven browser automation.
-- [`app-knowledge`](plugins/app-knowledge) — RAG over user documents.
+- [`app-documents`](plugins/app-documents) — RAG over user documents (scoped global / owner-private / user-private / agent-private).
 - [`app-phone`](plugins/app-phone) — voice + telephony surface.
 - [`plugin-form`](plugins/plugin-form) — form-driven data collection.
 - [`app-task-coordinator`](plugins/app-task-coordinator) — multi-agent orchestration.
@@ -140,7 +140,7 @@ For first-party app plugin references, browse [`plugins/app-*`](plugins). A few 
 
 ## Create a new plugin
 
-A *plugin* extends the runtime with actions, providers, services, or evaluators — no UI required.
+A *plugin* extends the runtime with actions, providers, or services — no UI required.
 
 ```bash
 elizaos create my-plugin -t plugin

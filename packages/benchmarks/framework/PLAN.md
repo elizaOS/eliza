@@ -181,7 +181,7 @@ Before benchmarking, we pre-populate:
 | `provider_count` | Number of registered providers | Count at runtime |
 | `should_respond_avg_ms` | Average shouldRespond decision time | Instrument shouldRespond call |
 | `model_call_avg_ms` | Average model handler call time (should be ~0ms) | Instrument useModel |
-| `action_dispatch_avg_ms` | Average action processing time | Instrument processActions |
+| `action_dispatch_avg_ms` | Average action processing time | Instrument planned tool execution |
 | `evaluator_avg_ms` | Average evaluator execution time | Instrument evaluate |
 | `memory_create_avg_ms` | Average memory creation time | Instrument createMemory |
 | `memory_get_avg_ms` | Average memory retrieval time | Instrument getMemories |
@@ -293,9 +293,9 @@ Before benchmarking, we pre-populate:
 
 Rather than modifying the core framework code, each benchmark harness will:
 
-**TypeScript**: Use high-resolution `performance.now()` timers wrapping calls to `handleMessage`, and monkey-patch or wrap `composeState`, `useModel`, `processActions` on the runtime instance to add timing.
+**TypeScript**: Use high-resolution `performance.now()` timers wrapping calls to `handleMessage`, and monkey-patch or wrap `composeState` and `useModel` on the runtime instance to add timing.
 
-**Python**: Use `time.perf_counter_ns()` timers. Wrap runtime methods using decorator/wrapper pattern on the instance to add timing around `compose_state`, `use_model`, `process_actions`.
+**Python**: Use `time.perf_counter_ns()` timers. Wrap runtime methods using decorator/wrapper pattern on the instance to add timing around `compose_state`, `use_model`, and planned tool execution.
 
 **Rust**: Use `std::time::Instant` timers. Wrap the runtime's public methods or use the existing trajectory logging hooks to capture timing data. Alternatively, implement a thin wrapper struct around `AgentRuntime` that delegates and times.
 

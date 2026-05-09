@@ -7,7 +7,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  *
  * POST /api/v1/voice/tts
  * Converts text to speech using the voice synthesis service.
- * Supports both Privy session and API key authentication.
+ * Supports both session and API key authentication.
  *
  * WHY THIS EXISTS:
  * ----------------
@@ -26,10 +26,8 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * The legacy `/api/elevenlabs/tts` endpoint remains active for existing integrations.
  */
 
-import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { dbRead } from "@/db/client";
-import { userVoices } from "@/db/schemas/user-voices";
+import { userVoicesRepository } from "@/db/repositories/user-voices";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { CUSTOM_VOICE_TTS_MARKUP } from "@/lib/pricing-constants";
 import { billFlatUsage } from "@/lib/services/ai-billing";
@@ -41,7 +39,6 @@ import {
 } from "@/lib/services/credits";
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
 import { usageService } from "@/lib/services/usage";
-import { voiceCloningService } from "@/lib/services/voice-cloning";
 import { logger } from "@/lib/utils/logger";
 
 const MAX_TEXT_LENGTH = 5000;
@@ -101,22 +98,14 @@ async function __hono_POST(request: Request) {
     let isCustomVoice = false;
 
     if (voiceId) {
-      const [voice] = await dbRead
-        .select({
-          id: userVoices.id,
-          name: userVoices.name,
-          organizationId: userVoices.organizationId,
-        })
-        .from(userVoices)
-        .where(eq(userVoices.elevenlabsVoiceId, voiceId))
-        .limit(1);
+      const voice = await userVoicesRepository.findByElevenLabsVoiceId(voiceId);
 
       if (voice && voice.organizationId === user.organization_id) {
         userVoiceId = voice.id;
         voiceName = voice.name;
         isCustomVoice = true;
 
-        voiceCloningService.incrementUsageCount(voice.id).catch((err) =>
+        userVoicesRepository.incrementUsageCount(voice.id).catch((err) =>
           logger.error("[Voice TTS API] Failed to increment voice usage", {
             voiceId: voice.id,
             voiceName: voice.name,

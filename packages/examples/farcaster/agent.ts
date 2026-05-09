@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { AgentRuntime } from "@elizaos/core";
+import { AgentRuntime, type Plugin } from "@elizaos/core";
 import { config as loadDotEnv } from "dotenv";
 
 import { character } from "./character";
@@ -48,7 +48,7 @@ async function main(): Promise<void> {
 
   const runtime = new AgentRuntime({
     character,
-    plugins: [sqlPlugin, openaiPlugin, farcasterPlugin],
+    plugins: [sqlPlugin, openaiPlugin, farcasterPlugin] as Plugin[],
   });
 
   console.log("⏳ Initializing runtime...");

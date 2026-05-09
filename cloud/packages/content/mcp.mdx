@@ -114,7 +114,7 @@ curl -X POST "https://elizacloud.ai/api/mcp" \
         }
       },
       {
-        "name": "search_knowledge",
+        "name": "search_documents",
         "description": "Search the knowledge base",
         "inputSchema": {
           "type": "object",
@@ -185,7 +185,7 @@ curl -X POST "https://elizacloud.ai/api/mcp" \
   "jsonrpc": "2.0",
   "method": "resources/read",
   "params": {
-    "uri": "eliza://knowledge/doc_abc123"
+    "uri": "eliza://documents/doc_abc123"
   },
   "id": 5
 }
@@ -252,7 +252,7 @@ elizaOS Cloud provides these built-in MCP tools:
 | ------------------ | -------------------------- |
 | `generate_image`   | Create images from prompts |
 | `generate_video`   | Create videos from prompts |
-| `search_knowledge` | Query knowledge base       |
+| `search_documents` | Query knowledge base       |
 | `get_weather`      | Current weather data       |
 | `get_time`         | Time and timezone info     |
 | `get_crypto_price` | Cryptocurrency prices      |

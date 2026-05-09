@@ -1,4 +1,8 @@
-"""Synthesize supervised TOON targets for elizaOS prompt templates.
+"""Legacy prompt-template TOON synthesizer.
+
+This script is not a native v5 JSON export path. It remains only for old
+prompt-template compatibility coverage where `registry.json` still declares
+`output_format: toon`.
 
 For every entry in `data/prompts/registry.json` whose output format is `toon`,
 this script:
@@ -42,7 +46,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib.eliza_record import ElizaRecord, build, stable_id  # noqa: E402
-from lib.toon import ToonEncoder  # noqa: E402
+from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 REGISTRY_FILE = ROOT / "datasets.yaml"
 PROMPTS_REGISTRY = ROOT / "data" / "prompts" / "registry.json"
@@ -233,7 +237,7 @@ TOON syntax recap:
 
 def synthesize_for_task(
     *, prompt_entry: dict[str, Any], n: int, seed: int,
-    teacher: TeacherCfg, encoder: ToonEncoder, max_workers: int = 4,
+    teacher: TeacherCfg, encoder: ExpectedResponseEncoder, max_workers: int = 4,
     out_path: Path,
 ) -> tuple[int, int]:
     rng = random.Random(seed)
@@ -365,7 +369,7 @@ def main() -> int:
         provider=args.teacher_provider,
         model=args.teacher_model,
     )
-    encoder = ToonEncoder()
+    encoder = JsonExpectedResponseEncoder()
     try:
         total_ok = total_skipped = 0
         for tid, n in plan:

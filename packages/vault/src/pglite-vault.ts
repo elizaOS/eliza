@@ -1,26 +1,22 @@
+import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { promises as fs } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
+import { AuditLog } from "./audit.js";
 import { decrypt, encrypt } from "./crypto.js";
+import { assertKey, optsCaller } from "./internal-utils.js";
 import type { MasterKeyResolver } from "./master-key.js";
 import { resolveReference } from "./password-managers.js";
-import { AuditLog } from "./audit.js";
-import {
-  emptyStore,
-  readStore,
-  type StoreData,
-} from "./store.js";
-import type { Vault, SetOptions } from "./vault.js";
-import { VaultMissError } from "./vault.js";
+import { emptyStore, readStore, type StoreData } from "./store.js";
 import type {
-  AuditRecord,
   PasswordManagerReference,
   StoredEntry,
   VaultDescriptor,
   VaultLogger,
   VaultStats,
 } from "./types.js";
+import type { SetOptions, Vault } from "./vault-types.js";
+import { VaultMissError } from "./vault-types.js";
 
 /**
  * PGlite-backed Vault implementation.
@@ -236,9 +232,7 @@ export class PgliteVaultImpl implements Vault {
     }
     return {
       key,
-      source: (row.ref_source ?? "1password") as
-        | "1password"
-        | "protonpass",
+      source: (row.ref_source ?? "1password") as "1password" | "protonpass",
       sensitive: true,
       lastModified,
     };
@@ -287,7 +281,9 @@ export class PgliteVaultImpl implements Vault {
     if (!row) throw new VaultMissError(key);
     if (row.kind === "value") {
       if (row.value == null) {
-        throw new Error(`vault: corrupt entry ${key}: kind=value but value=null`);
+        throw new Error(
+          `vault: corrupt entry ${key}: kind=value but value=null`,
+        );
       }
       return row.value;
     }
@@ -464,19 +460,6 @@ export function defaultPgliteVaultDataDir(): string {
 function toMillis(value: string | number): number {
   if (typeof value === "number") return value;
   return Number.parseInt(value, 10);
-}
-
-function assertKey(key: string): void {
-  if (typeof key !== "string" || key.length === 0) {
-    throw new TypeError("vault: key must be a non-empty string");
-  }
-  if (key.length > 256) {
-    throw new TypeError("vault: key must be 256 characters or fewer");
-  }
-}
-
-function optsCaller(opts: SetOptions): { caller?: string } {
-  return opts.caller ? { caller: opts.caller } : {};
 }
 
 // Re-export emptyStore for callers that previously imported it via vault.ts.

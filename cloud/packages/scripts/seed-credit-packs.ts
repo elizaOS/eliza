@@ -1,8 +1,6 @@
-import { config } from "dotenv";
-import { db } from "../db/client";
-import { creditPacks as creditPacksTable } from "../db/schemas/credit-packs";
+import { loadEnvFiles } from "./local-dev-helpers";
 
-config({ path: ".env.local" });
+loadEnvFiles([".env", { path: ".env.local", override: true }]);
 
 const creditPacks = [
   {
@@ -35,6 +33,11 @@ const creditPacks = [
 ];
 
 async function seedCreditPacks() {
+  const [{ db }, { creditPacks: creditPacksTable }] = await Promise.all([
+    import("../db/client"),
+    import("../db/schemas/credit-packs"),
+  ]);
+
   console.log("🌱 Seeding credit packs...");
 
   for (const pack of creditPacks) {

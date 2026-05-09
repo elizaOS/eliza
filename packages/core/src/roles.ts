@@ -1,6 +1,8 @@
 import { createUniqueUuid } from "./entities";
 import { logger } from "./logger";
 import type { IAgentRuntime, Memory, Role, UUID, World } from "./types";
+import { formatError } from "./utils/format-error";
+import { asRecordOrUndefined as asRecord } from "./utils/type-guards";
 
 const DEFAULT_SERVER_ROLE: Role = "NONE";
 
@@ -89,17 +91,6 @@ function normalizeRoleGrantSource(
 		return raw;
 	}
 	return null;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		return undefined;
-	}
-	return value as Record<string, unknown>;
-}
-
-function formatError(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
 }
 
 function getRuntimeSettingString(
@@ -849,6 +840,94 @@ export async function checkSenderRole(
 		isAdmin: role === "OWNER" || role === "ADMIN",
 		canManageRoles: role === "OWNER" || role === "ADMIN",
 	};
+}
+
+type AccessContext = {
+	runtime: IAgentRuntime & { agentId: string };
+	message: Memory & { entityId: string };
+};
+
+function getAccessContext(
+	runtime: IAgentRuntime | undefined,
+	message: Memory | undefined,
+): AccessContext | null {
+	if (
+		!runtime ||
+		typeof runtime.agentId !== "string" ||
+		!message ||
+		typeof message.entityId !== "string" ||
+		message.entityId.length === 0
+	) {
+		return null;
+	}
+
+	return { runtime, message };
+}
+
+export function isAgentSelf(
+	runtime: IAgentRuntime | undefined,
+	message: Memory | undefined,
+): boolean {
+	const context = getAccessContext(runtime, message);
+	if (!context) {
+		return false;
+	}
+	return context.message.entityId === context.runtime.agentId;
+}
+
+async function isCanonicalOwner(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<boolean> {
+	try {
+		const ownerId = await resolveCanonicalOwnerIdForMessage(runtime, message);
+		return typeof ownerId === "string" && ownerId === message.entityId;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Check whether the sender has at least the given role in the elizaOS
+ * role hierarchy (OWNER > ADMIN > USER > GUEST).
+ *
+ * When there is no world context (for example local API calls), allow through
+ * so local-only usage follows the same lenient path as plugin role gating.
+ */
+export async function hasRoleAccess(
+	runtime: IAgentRuntime | undefined,
+	message: Memory | undefined,
+	requiredRole: RoleName,
+): Promise<boolean> {
+	if (requiredRole === "GUEST") {
+		return true;
+	}
+
+	const context = getAccessContext(runtime, message);
+	if (!context) {
+		return true;
+	}
+
+	if (isAgentSelf(context.runtime, context.message)) {
+		return true;
+	}
+
+	if (await isCanonicalOwner(context.runtime, context.message)) {
+		return true;
+	}
+
+	try {
+		const result = await checkSenderRole(context.runtime, context.message);
+		if (!result) {
+			return true;
+		}
+
+		const senderRank = ROLE_RANK[result.role] ?? 0;
+		const requiredRank = ROLE_RANK[requiredRole] ?? 0;
+		return senderRank >= requiredRank;
+	} catch {
+		return false;
+	}
 }
 
 export async function setEntityRole(

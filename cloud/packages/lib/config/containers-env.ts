@@ -11,9 +11,19 @@
 
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 
+function normalizeEnvValue(value: string): string {
+  return value
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\\n$/g, "")
+    .trim();
+}
+
 function pick(...candidates: (string | undefined)[]): string | undefined {
   for (const candidate of candidates) {
-    if (candidate && candidate.length > 0) return candidate;
+    if (!candidate) continue;
+    const normalized = normalizeEnvValue(candidate);
+    if (normalized.length > 0) return normalized;
   }
   return undefined;
 }
@@ -34,7 +44,7 @@ export const containersEnv = {
   /** SSH user for connecting to Docker nodes. Defaults to "root". */
   sshUser(): string {
     const env = getCloudAwareEnv();
-    return pick(env.CONTAINERS_SSH_USER, env.AGENT_SSH_USER) ?? "root";
+    return pick(env.CONTAINERS_SSH_USER, env.AGENT_SSH_USER, env.MILADY_SSH_USER) ?? "root";
   },
 
   /** Docker network name created on every node. Containers attach to this. */
@@ -79,10 +89,34 @@ export const containersEnv = {
    * without code changes.
    */
   defaultAgentImage(): string {
+    return this.defaultAgentImageOverride() ?? "ghcr.io/elizaos/eliza:latest";
+  },
+
+  /** Explicit operator-pinned agent image, without the hardcoded fallback. */
+  defaultAgentImageOverride(): string | undefined {
+    const env = getCloudAwareEnv();
+    return pick(
+      env.ELIZA_AGENT_IMAGE,
+      env.CONTAINERS_DEFAULT_IMAGE,
+      env.AGENT_DOCKER_IMAGE,
+      env.MILADY_DOCKER_IMAGE,
+    );
+  },
+
+  /**
+   * Platform for the canonical managed-agent image. The current production
+   * image is amd64-only, so autoscaled nodes must be x86 unless operators
+   * explicitly publish/configure a multi-arch image.
+   */
+  defaultAgentImagePlatform(): string | undefined {
     const env = getCloudAwareEnv();
     return (
-      pick(env.ELIZA_AGENT_IMAGE, env.CONTAINERS_DEFAULT_IMAGE, env.AGENT_DOCKER_IMAGE) ??
-      "ghcr.io/elizaos/eliza:latest"
+      pick(
+        env.ELIZA_AGENT_IMAGE_PLATFORM,
+        env.CONTAINERS_DEFAULT_IMAGE_PLATFORM,
+        env.AGENT_DOCKER_PLATFORM,
+        env.MILADY_DOCKER_PLATFORM,
+      ) ?? "linux/amd64"
     );
   },
 
@@ -99,13 +133,16 @@ export const containersEnv = {
   /** Application port baked into the canonical Eliza agent image. */
   agentPort(): string {
     const env = getCloudAwareEnv();
-    return pick(env.ELIZA_AGENT_PORT, env.AGENT_AGENT_PORT) ?? "2139";
+    return pick(env.ELIZA_AGENT_PORT, env.AGENT_AGENT_PORT, env.MILADY_AGENT_PORT) ?? "3000";
   },
 
   /** Bridge port the agent listens on inside the container (for agent-server bridge). */
   agentBridgePort(): string {
     const env = getCloudAwareEnv();
-    return pick(env.ELIZA_AGENT_BRIDGE_PORT, env.AGENT_BRIDGE_INTERNAL_PORT) ?? "31337";
+    return (
+      pick(env.ELIZA_AGENT_BRIDGE_PORT, env.AGENT_BRIDGE_INTERNAL_PORT, env.MILADY_BRIDGE_INTERNAL_PORT) ??
+      "31337"
+    );
   },
 
   /** Legacy "ELIZA_PORT" — kept as a transitional env var for the agent image. */
@@ -134,12 +171,57 @@ export const containersEnv = {
 
   /**
    * Default Hetzner Cloud location for provisioning nodes and volumes
-   * (e.g. "fsn1", "nbg1", "hel1"). Hetzner Cloud volumes are
-   * location-bound — the volume and the server it attaches to must be in
-   * the same location. Defaults to "fsn1" (Falkenstein, Germany).
+   * (e.g. "ash", "hil", "fsn1"). Hetzner volumes are location-bound, so
+   * the volume and the server it attaches to must share a location.
+   * Defaults to "ash" (Ashburn, Virginia, US).
    */
   defaultHcloudLocation(): string {
     const env = getCloudAwareEnv();
-    return pick(env.CONTAINERS_HCLOUD_LOCATION, env.HCLOUD_LOCATION) ?? "fsn1";
+    return pick(env.CONTAINERS_HCLOUD_LOCATION, env.HCLOUD_LOCATION) ?? "ash";
+  },
+
+  /**
+   * Default Hetzner Cloud server type for elastic Docker nodes. Keep this on
+   * x86 because the managed agent image defaults to linux/amd64.
+   */
+  defaultHcloudServerType(): string {
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_HCLOUD_SERVER_TYPE, env.HCLOUD_SERVER_TYPE) ?? "cpx32";
+  },
+
+  // ── Warm pool ───────────────────────────────────────────────────────────
+
+  /**
+   * Whether the agent warm pool is enabled. When false, claim flow always
+   * falls through to the cold-start async path; replenish/drain crons no-op.
+   * Default: false (opt-in).
+   */
+  warmPoolEnabled(): boolean {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.WARM_POOL_ENABLED);
+    return raw === "true" || raw === "1";
+  },
+
+  /**
+   * Maximum number of pool containers ever provisioned. The forecast may
+   * recommend more, but this is the hard ceiling on cost.
+   * Default: 10.
+   */
+  warmPoolMaxSize(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.WARM_POOL_MAX_SIZE);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 1 ? Math.min(50, Math.floor(parsed)) : 10;
+  },
+
+  /**
+   * Floor: the pool replenisher will keep at least this many containers
+   * ready when the pool is enabled. Default: 1.
+   */
+  warmPoolMinSize(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.WARM_POOL_MIN_SIZE);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 1;
   },
 };

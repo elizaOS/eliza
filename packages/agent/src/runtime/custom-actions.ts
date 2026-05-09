@@ -23,6 +23,7 @@ import {
   logger,
 } from "@elizaos/core";
 import { resolveApiToken, resolveServerOnlyPort } from "@elizaos/shared";
+import { hasSelectedContextOrSignalSync } from "../actions/context-signal.js";
 import { loadElizaConfig } from "../config/config.js";
 import type {
   CustomActionDef,
@@ -70,6 +71,12 @@ let vmRunner: VmRunner | null = null;
 
 const CUSTOM_ACTION_FETCH_TIMEOUT_MS = 15_000;
 const CUSTOM_ACTION_SHELL_TIMEOUT_MS = 30_000;
+const CUSTOM_ACTION_CONTEXTS = [
+  "general",
+  "automation",
+  "connectors",
+  "agent_internal",
+] as const;
 
 export class CustomActionTimeoutError extends Error {
   constructor(message: string) {
@@ -596,18 +603,29 @@ function buildHandler(
 
 function defToAction(def: CustomActionDef): Action {
   const handler = buildHandler(def.handler, def.parameters);
+  const validationTerms = [
+    def.name,
+    ...(def.similes ?? []),
+    ...def.name.split(/[_\s-]+/),
+    ...(def.description ?? "").split(/[\s,.;:()[\]{}'"`/\\-]+/),
+  ].filter((term) => term.trim().length > 2);
 
   return {
     name: def.name,
+    contexts: [...CUSTOM_ACTION_CONTEXTS],
+    roleGate:
+      def.requiredRole && def.requiredRole !== "GUEST"
+        ? { minRole: def.requiredRole }
+        : { minRole: "USER" },
     similes: def.similes ?? [],
     description: def.description,
-    validate: async (runtime, message) => {
-      if (def.requiredRole && def.requiredRole !== "GUEST") {
-        const { hasRoleAccess } = await import("../security/access.js");
-        const allowed = await hasRoleAccess(runtime, message, def.requiredRole);
-        if (!allowed) return false;
-      }
-      return true;
+    validate: async (_runtime, message, state) => {
+      return hasSelectedContextOrSignalSync(
+        message,
+        state,
+        CUSTOM_ACTION_CONTEXTS,
+        validationTerms,
+      );
     },
 
     handler: async (_runtime, _message, _state, options) => {

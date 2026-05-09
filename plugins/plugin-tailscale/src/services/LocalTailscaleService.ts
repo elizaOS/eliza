@@ -1,10 +1,10 @@
-import { Service, elizaLogger, type IAgentRuntime } from "@elizaos/core";
 import { spawn } from "node:child_process";
+import { elizaLogger, type IAgentRuntime, Service } from "@elizaos/core";
 import { z } from "zod";
 import { validateTailscaleConfig } from "../environment";
 import {
-  TAILSCALE_LOCAL_TUNNEL_SERVICE_TYPE,
   type ITunnelService,
+  TAILSCALE_LOCAL_TUNNEL_SERVICE_TYPE,
   type TunnelStatus,
 } from "../types";
 
@@ -79,10 +79,6 @@ export class LocalTailscaleService extends Service implements ITunnelService {
   private isShuttingDown = false;
   private useFunnel = false;
 
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
-  }
-
   static override async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new LocalTailscaleService(runtime);
     await service.start();
@@ -103,7 +99,10 @@ export class LocalTailscaleService extends Service implements ITunnelService {
     await this.stopTunnel();
   }
 
-  async startTunnel(port?: number): Promise<string | void> {
+  async startTunnel(
+    port?: number,
+    options: { accountId?: string } = {},
+  ): Promise<string | undefined> {
     if (this.isActive()) {
       elizaLogger.warn("[LocalTailscaleService] tunnel already running");
       return this.tunnelUrl ?? undefined;
@@ -120,7 +119,10 @@ export class LocalTailscaleService extends Service implements ITunnelService {
       throw new Error("Invalid port number");
     }
 
-    const config = await validateTailscaleConfig(this.runtime);
+    const config = await validateTailscaleConfig(
+      this.runtime,
+      options.accountId,
+    );
     this.useFunnel = config.TAILSCALE_FUNNEL;
 
     elizaLogger.info(
@@ -165,7 +167,7 @@ export class LocalTailscaleService extends Service implements ITunnelService {
     return this.tunnelUrl;
   }
 
-  async stopTunnel(): Promise<void> {
+  async stopTunnel(_options: { accountId?: string } = {}): Promise<void> {
     if (!this.isActive()) {
       elizaLogger.warn("[LocalTailscaleService] no active tunnel to stop");
       return;

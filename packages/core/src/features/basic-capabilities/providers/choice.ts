@@ -38,6 +38,12 @@ interface OptionObject {
 export const choiceProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
+	contexts: ["general"],
+	contextGate: { anyOf: ["general"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,

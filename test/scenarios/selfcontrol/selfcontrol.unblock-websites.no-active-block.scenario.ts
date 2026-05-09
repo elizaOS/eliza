@@ -26,14 +26,14 @@ export default scenario({
       name: "noop-unblock",
       room: "main",
       text: "Unblock x.com right now.",
-      expectedActions: ["OWNER_WEBSITE_BLOCK"],
+      expectedActions: ["WEBSITE_BLOCK"],
       responseIncludesAny: [/no website block is active right now/i],
     },
   ],
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "OWNER_WEBSITE_BLOCK",
+      actionName: "WEBSITE_BLOCK",
       minCount: 1,
     },
   ],

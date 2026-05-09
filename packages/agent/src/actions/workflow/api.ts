@@ -1,9 +1,9 @@
 /**
- * Shared HTTP helpers for n8n workflow actions.
+ * Shared HTTP helpers for workflow actions.
  *
- * Workflow CRUD lives in the app-core HTTP layer (n8n-routes.ts) and proxies
- * out to the local n8n sidecar or to Eliza Cloud. The agent runtime does not
- * own a workflow service, so these actions reach back into the local API
+ * Workflow CRUD lives in the app-core HTTP layer (workflow-routes.ts) which
+ * delegates to the in-process EmbeddedWorkflowService registered by
+ * @elizaos/plugin-workflow. The agent runtime calls back into the local API
  * server the same way app-control.ts does.
  */
 
@@ -14,7 +14,7 @@ export function getApiBase(): string {
   return `http://localhost:${port}`;
 }
 
-export interface N8nWorkflowResponse {
+export interface WorkflowDefinitionResponse {
   id: string;
   name: string;
   active: boolean;
@@ -47,10 +47,10 @@ export async function fetchJson<T>(
 
 export async function findWorkflowById(
   workflowId: string,
-): Promise<N8nWorkflowResponse | null> {
+): Promise<WorkflowDefinitionResponse | null> {
   const base = getApiBase();
-  const result = await fetchJson<N8nWorkflowResponse>(
-    `${base}/api/n8n/workflows/${encodeURIComponent(workflowId)}`,
+  const result = await fetchJson<WorkflowDefinitionResponse>(
+    `${base}/api/workflow/workflows/${encodeURIComponent(workflowId)}`,
     { method: "GET" },
   );
   if (result.status === 404) return null;

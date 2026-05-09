@@ -72,7 +72,7 @@ def test_expected_outcome_creation() -> None:
 def test_expected_outcome_list_value() -> None:
     o = ExpectedOutcome(
         outcome_type=OutcomeType.ACTION_MATCH,
-        value=["REPLY", "SEND_MESSAGE"],
+        value=["REPLY", "MESSAGE"],
     )
     assert isinstance(o.value, list)
     assert len(o.value) == 2

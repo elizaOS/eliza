@@ -19,19 +19,23 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "live-streaming"
+      ]
+    }
+  },
   "dependencies": {
     "@elizaos/cloud-routing": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@toon-format/toon": "2.1.0"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.22.0",
-    "@typescript-eslint/parser": "^8.22.0",
-    "eslint": "^10.0.0",
-    "prettier": "^3.8.3",
+    "@biomejs/biome": "^2.4.14",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"
@@ -40,12 +44,12 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "test": "vitest run",
-    "lint": "eslint ./src --fix && prettier --write ./src",
-    "lint:check": "eslint ./src",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo node_modules tsconfig.tsbuildinfo",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "publishConfig": {
     "access": "public"

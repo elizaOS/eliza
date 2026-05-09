@@ -25,7 +25,6 @@ function buildShouldRespondState(recentMessages: string): State {
 				recentMessages,
 			].join("\n"),
 			availableContexts: "general\ncode\nwallet",
-			dualPressureThreshold: 20,
 		},
 		data: {},
 		text: recentMessages,
@@ -47,18 +46,6 @@ function getClassifierSchema() {
 			streamField: false,
 		},
 		{
-			field: "speak_up",
-			description: "Integer 0-100 pressure TO engage",
-			validateField: false,
-			streamField: false,
-		},
-		{
-			field: "hold_back",
-			description: "Integer 0-100 pressure to STAY QUIET",
-			validateField: false,
-			streamField: false,
-		},
-		{
 			field: "action",
 			description:
 				"REPLY | RESPOND | IGNORE | STOP (REPLY and RESPOND both mean engage)",
@@ -74,13 +61,6 @@ function getClassifierSchema() {
 		{
 			field: "secondaryContexts",
 			description: "Optional comma-separated additional domain contexts",
-			validateField: false,
-			streamField: false,
-		},
-		{
-			field: "evidenceTurnIds",
-			description:
-				"Optional comma-separated message IDs supporting the decision",
 			validateField: false,
 			streamField: false,
 		},
@@ -149,7 +129,6 @@ liveDescribe("shouldRespond live", () => {
 			schema: getClassifierSchema(),
 			options: {
 				modelType: ModelType.TEXT_LARGE,
-				preferredEncapsulation: "toon",
 				contextCheckLevel: 0,
 				maxRetries: 1,
 			},
@@ -170,13 +149,8 @@ liveDescribe("shouldRespond live", () => {
 			const action = String(result?.action ?? "")
 				.trim()
 				.toUpperCase();
-			const speakUp = Number(result?.speak_up);
-			const holdBack = Number(result?.hold_back);
 
 			expect(["REPLY", "RESPOND"]).toContain(action);
-			expect(Number.isFinite(speakUp)).toBe(true);
-			expect(Number.isFinite(holdBack)).toBe(true);
-			expect(speakUp).toBeGreaterThan(holdBack);
 		},
 		LIVE_TEST_TIMEOUT_MS,
 	);
@@ -195,13 +169,8 @@ liveDescribe("shouldRespond live", () => {
 			const action = String(result?.action ?? "")
 				.trim()
 				.toUpperCase();
-			const speakUp = Number(result?.speak_up);
-			const holdBack = Number(result?.hold_back);
 
 			expect(action).toBe("IGNORE");
-			expect(Number.isFinite(speakUp)).toBe(true);
-			expect(Number.isFinite(holdBack)).toBe(true);
-			expect(holdBack).toBeGreaterThan(speakUp);
 		},
 		LIVE_TEST_TIMEOUT_MS,
 	);
@@ -219,13 +188,8 @@ liveDescribe("shouldRespond live", () => {
 			const action = String(result?.action ?? "")
 				.trim()
 				.toUpperCase();
-			const speakUp = Number(result?.speak_up);
-			const holdBack = Number(result?.hold_back);
 
 			expect(action).toBe("IGNORE");
-			expect(Number.isFinite(speakUp)).toBe(true);
-			expect(Number.isFinite(holdBack)).toBe(true);
-			expect(holdBack).toBeGreaterThan(speakUp);
 		},
 		LIVE_TEST_TIMEOUT_MS,
 	);

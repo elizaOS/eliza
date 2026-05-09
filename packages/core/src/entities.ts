@@ -66,22 +66,30 @@ function normalizeEntityMatches(value: unknown): EntityMatch[] {
 }
 
 function parseEntityResolutionResponse(
-	text: string,
+	response: unknown,
 ): (ParsedResolution & { type?: string; entityId?: string }) | null {
-	if (!text) return null;
+	if (!response) return null;
+	let parsedJson: unknown = response;
+	if (typeof response === "string") {
+		const trimmed = response.trim();
+		if (!trimmed) return null;
+		try {
+			parsedJson = JSON.parse(trimmed);
+		} catch {
+			return null;
+		}
+	}
 
-	const parsed = utils.parseToonKeyValue<Record<string, unknown>>(text);
-	const trimmed = text.trim();
-
-	if (parsed) {
-		const type = typeof parsed.type === "string" ? parsed.type : undefined;
+	if (parsedJson && typeof parsedJson === "object") {
+		const obj = parsedJson as Record<string, unknown>;
+		const type = typeof obj.type === "string" ? obj.type : undefined;
 		const entityId =
-			typeof parsed.entityId === "string"
-				? parsed.entityId
-				: typeof parsed.resolvedId === "string"
-					? parsed.resolvedId
+			typeof obj.entityId === "string"
+				? obj.entityId
+				: typeof obj.resolvedId === "string"
+					? obj.resolvedId
 					: undefined;
-		const matches = normalizeEntityMatches(parsed.matches);
+		const matches = normalizeEntityMatches(obj.matches);
 
 		if (type || entityId || matches.length > 0) {
 			return {
@@ -92,33 +100,36 @@ function parseEntityResolutionResponse(
 		}
 	}
 
-	try {
-		const parsedJson = JSON.parse(trimmed) as unknown;
-		if (parsedJson && typeof parsedJson === "object") {
-			const obj = parsedJson as Record<string, unknown>;
-			const type = typeof obj.type === "string" ? obj.type : undefined;
-			const entityId =
-				typeof obj.entityId === "string"
-					? obj.entityId
-					: typeof obj.resolvedId === "string"
-						? obj.resolvedId
-						: undefined;
-			const matches = normalizeEntityMatches(obj.matches);
-
-			if (type || entityId || matches.length > 0) {
-				return {
-					type,
-					entityId: entityId && entityId !== "null" ? entityId : undefined,
-					matches: matches.length > 0 ? { match: matches } : undefined,
-				};
-			}
-		}
-	} catch {
-		// ignore
-	}
-
 	return null;
 }
+
+const ENTITY_RESOLUTION_SCHEMA = {
+	type: "object",
+	properties: {
+		entityId: { type: "string" },
+		type: {
+			type: "string",
+			enum: [
+				"EXACT_MATCH",
+				"USERNAME_MATCH",
+				"NAME_MATCH",
+				"RELATIONSHIP_MATCH",
+				"AMBIGUOUS",
+				"UNKNOWN",
+			],
+		},
+		matches: {
+			type: "array",
+			items: {
+				type: "object",
+				properties: {
+					name: { type: "string" },
+					reason: { type: "string" },
+				},
+			},
+		},
+	},
+};
 
 const entityResolutionTemplate = `# Task: Resolve Entity Name
 Message Sender: {{senderName}} (ID: {{senderId}})
@@ -139,14 +150,12 @@ Agent: {{agentName}} (ID: {{agentId}})
 5. If multiple matches exist, use context to disambiguate
 6. Consider recent interactions and relationship strength when resolving ambiguity
 
-Return a TOON document with:
-entityId: exact-id-if-known-otherwise-null
-type: EXACT_MATCH | USERNAME_MATCH | NAME_MATCH | RELATIONSHIP_MATCH | AMBIGUOUS | UNKNOWN
-matches[0]:
-  name: matched-name
-  reason: why this entity matches
+Return a JSON object with:
+- entityId: exact ID if known, otherwise null
+- type: EXACT_MATCH | USERNAME_MATCH | NAME_MATCH | RELATIONSHIP_MATCH | AMBIGUOUS | UNKNOWN
+- matches: array of { "name": "matched-name", "reason": "why this entity matches" }
 
-IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
+IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any text, thinking, or reasoning before or after it.`;
 
 async function getRecentInteractions(
 	runtime: IAgentRuntime,
@@ -300,7 +309,8 @@ export async function findEntityByName(
 
 	const result = await runtime.useModel(ModelType.TEXT_SMALL, {
 		prompt,
-		stopSequences: [],
+		responseSchema: ENTITY_RESOLUTION_SCHEMA,
+		responseFormat: { type: "json_object" },
 	});
 
 	const resolution = parseEntityResolutionResponse(result);
@@ -434,7 +444,7 @@ export async function findEntityByName(
 
 	// Fallback: if parsing failed to produce a usable match list, try to detect
 	// usernames/handles mentioned in the raw model output.
-	const resultLower = result.toLowerCase();
+	const resultLower = JSON.stringify(result ?? "").toLowerCase();
 	const fallbackEntity = indexedEntities.find((entry) =>
 		entry.fallbackTokens.some((token) => resultLower.includes(token)),
 	)?.entity;

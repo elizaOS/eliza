@@ -320,10 +320,7 @@ export function loadSkills(options: LoadSkillsOptions = {}): LoadSkillsResult {
     for (const skill of result.skills) {
       // Skip skills without file paths (inline skills) - they can't be deduplicated
       if (!skill.filePath) {
-        const existing = skillMap.get(skill.name);
-        if (!existing) {
-          skillMap.set(skill.name, skill);
-        }
+        skillMap.set(skill.name, skill);
         continue;
       }
 
@@ -349,14 +346,13 @@ export function loadSkills(options: LoadSkillsOptions = {}): LoadSkillsResult {
           collision: {
             resourceType: "skill",
             name: skill.name,
-            winnerPath: existing.filePath ?? "(inline)",
-            loserPath: skill.filePath,
+            winnerPath: skill.filePath,
+            loserPath: existing.filePath ?? "(inline)",
           },
         });
-      } else {
-        skillMap.set(skill.name, skill);
-        realPathSet.add(realPath);
       }
+      skillMap.set(skill.name, skill);
+      realPathSet.add(realPath);
     }
   }
 

@@ -59,7 +59,7 @@ diff --git a/android/src/main/jni.cpp b/android/src/main/jni.cpp
 index 0000000..0000001 100644
 --- a/android/src/main/jni.cpp
 +++ b/android/src/main/jni.cpp
-@@ -1481,19 +1481,23 @@ Java_ai_annadata_plugin_capacitor_LlamaCpp_embeddingNative(
+@@ -1481,19 +1481,22 @@ Java_ai_annadata_plugin_capacitor_LlamaCpp_embeddingNative(
          if (params != nullptr) {
              jclass jsObjectClass = env->GetObjectClass(params);
              if (jsObjectClass != nullptr && !env->ExceptionCheck()) {
@@ -91,3 +91,100 @@ index 0000000..0000001 100644
                      }
                  }
              }
+diff --git a/ios/Sources/LlamaCppPlugin/LlamaCppPlugin.swift b/ios/Sources/LlamaCppPlugin/LlamaCppPlugin.swift
+index 0000000..0000001 100644
+--- a/ios/Sources/LlamaCppPlugin/LlamaCppPlugin.swift
++++ b/ios/Sources/LlamaCppPlugin/LlamaCppPlugin.swift
+@@ -1,5 +1,8 @@
+ import Foundation
+ import Capacitor
++import Darwin
++import Metal
++import UIKit
+ 
+ /**
+  * Please read the Capacitor iOS Plugin Development Guide
+@@ -17,6 +20,7 @@ public class LlamaCppPlugin: CAPPlugin, CAPBridgedPlugin {
+         CAPPluginMethod(name: "initContext", returnType: CAPPluginReturnPromise),
+         CAPPluginMethod(name: "releaseContext", returnType: CAPPluginReturnPromise),
+         CAPPluginMethod(name: "releaseAllContexts", returnType: CAPPluginReturnPromise),
++        CAPPluginMethod(name: "getHardwareInfo", returnType: CAPPluginReturnPromise),
+         
+         // Chat and completion
+         CAPPluginMethod(name: "getFormattedChat", returnType: CAPPluginReturnPromise),
+@@ -76,6 +80,74 @@ public class LlamaCppPlugin: CAPPlugin, CAPBridgedPlugin {
+     
+     private let implementation = LlamaCpp()
+ 
++    private func machineIdentifier() -> String {
++        var systemInfo = utsname()
++        uname(&systemInfo)
++        return withUnsafePointer(to: &systemInfo.machine) { ptr in
++            ptr.withMemoryRebound(to: CChar.self, capacity: 1) { cString in
++                String(cString: cString)
++            }
++        }
++    }
++
++    private func thermalStateString(_ state: ProcessInfo.ThermalState) -> String {
++        switch state {
++        case .nominal:
++            return "nominal"
++        case .fair:
++            return "fair"
++        case .serious:
++            return "serious"
++        case .critical:
++            return "critical"
++        @unknown default:
++            return "unknown"
++        }
++    }
++
++    private func freeStorageGb() -> Double? {
++        guard let attrs = try? FileManager.default.attributesOfFileSystem(
++            forPath: NSHomeDirectory()
++        ) else {
++            return nil
++        }
++        let free = attrs[.systemFreeSize] as? NSNumber
++        return free.map { $0.doubleValue / 1_073_741_824.0 }
++    }
++
+     // MARK: - Core initialization and management
++
++    @objc func getHardwareInfo(_ call: CAPPluginCall) {
++        let totalRamGb = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824.0
++        let gpuAvailable = MTLCreateSystemDefaultDevice() != nil
++        var result: [String: Any] = [
++            "platform": "ios",
++            "deviceModel": UIDevice.current.model,
++            "machineId": machineIdentifier(),
++            "osVersion": UIDevice.current.systemVersion,
++            "totalRamGb": totalRamGb,
++            "availableRamGb": NSNull(),
++            "cpuCores": ProcessInfo.processInfo.processorCount,
++            "gpu": [
++                "backend": "metal",
++                "available": gpuAvailable
++            ],
++            "gpuSupported": gpuAvailable,
++            "lowPowerMode": ProcessInfo.processInfo.isLowPowerModeEnabled,
++            "thermalState": thermalStateString(ProcessInfo.processInfo.thermalState),
++            "dflashSupported": false,
++            "dflashReason": "llama-cpp-capacitor 0.1.5 exposes draft_model parameters but iOS loadDraftModel is not implemented in the bundled native runtime.",
++            "source": "native"
++        ]
++        if let freeStorage = freeStorageGb() {
++            result["freeStorageGb"] = freeStorage
++        }
++        #if targetEnvironment(simulator)
++        result["isSimulator"] = true
++        #else
++        result["isSimulator"] = false
++        #endif
++        call.resolve(result)
++    }
+     
+     @objc func toggleNativeLog(_ call: CAPPluginCall) {
+         let enabled = call.getBool("enabled") ?? false

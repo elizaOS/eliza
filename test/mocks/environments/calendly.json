@@ -39,6 +39,37 @@
       "streamingInterval": 0
     },
     {
+      "uuid": "0000000b-0000-4000-8000-00000calendly",
+      "type": "http",
+      "documentation": "GET event_types/abc",
+      "method": "get",
+      "endpoint": "event_types/abc",
+      "responses": [
+        {
+          "uuid": "0000000c-0000-4000-8000-00000calendly",
+          "body": "{\"resource\":{\"uri\":\"https://api.calendly.com/event_types/abc\",\"name\":\"30 Minute Meeting\",\"slug\":\"30min\",\"scheduling_url\":\"https://calendly.com/test/30min\",\"duration\":30,\"active\":true}}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
       "uuid": "00000003-0000-4000-8000-00000calendly",
       "type": "http",
       "documentation": "GET available times",
@@ -165,6 +196,7 @@
   ],
   "rootChildren": [
     { "type": "route", "uuid": "00000001-0000-4000-8000-00000calendly" },
+    { "type": "route", "uuid": "0000000b-0000-4000-8000-00000calendly" },
     { "type": "route", "uuid": "00000003-0000-4000-8000-00000calendly" },
     { "type": "route", "uuid": "00000005-0000-4000-8000-00000calendly" },
     { "type": "route", "uuid": "00000007-0000-4000-8000-00000calendly" },

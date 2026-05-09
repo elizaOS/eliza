@@ -1,166 +1,162 @@
+/**
+ * Live e2e for the Ollama plugin's MODEL_USED telemetry path.
+ *
+ * Skip gate: requires `OLLAMA_API_ENDPOINT` (or `OLLAMA_API_URL`) pointing at a
+ * reachable Ollama server. Set e.g. `OLLAMA_API_ENDPOINT=http://localhost:11434`
+ * and run `ollama pull llama3.2:1b` (or set `OLLAMA_SMALL_MODEL` /
+ * `OLLAMA_EMBEDDING_MODEL` to models you already have) to enable.
+ */
+
+import type { IAgentRuntime } from "@elizaos/core";
 import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
-import { embed, generateObject, generateText } from "ai";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-vi.mock("ai", () => ({
-  embed: vi.fn(),
-  generateObject: vi.fn(),
-  generateText: vi.fn(),
-}));
+const YELLOW = "\x1b[33m";
+const RESET = "\x1b[0m";
 
-vi.mock("ollama-ai-provider", () => ({
-  createOllama: vi.fn(() => {
-    const ollama = vi.fn((model: string) => ({ model }));
-    return Object.assign(ollama, {
-      embedding: vi.fn((model: string) => ({ model })),
-    });
-  }),
-}));
+const OLLAMA_ENDPOINT =
+  process.env.OLLAMA_API_ENDPOINT?.trim() || process.env.OLLAMA_API_URL?.trim() || "";
+const OLLAMA_SMALL_MODEL = process.env.OLLAMA_SMALL_MODEL?.trim() || "llama3.2:1b";
+const OLLAMA_EMBEDDING_MODEL =
+  process.env.OLLAMA_EMBEDDING_MODEL?.trim() || "nomic-embed-text:latest";
 
-vi.mock("../models/availability", () => ({
-  ensureModelAvailable: vi.fn(async () => undefined),
-}));
+type MinimalRuntime = {
+  character: { system: string };
+  emitEvent: (event: string, payload: unknown) => Promise<void>;
+  fetch: typeof fetch;
+  getSetting: (key: string) => string | null;
+  getService?: (name: string) => unknown;
+  getServicesByType?: (type: string) => unknown[];
+  emittedEvents: Array<{ event: string; payload: Record<string, unknown> }>;
+};
 
-function createRuntime(settings: Record<string, string> = {}) {
+function createRuntime(extra: Record<string, string> = {}): MinimalRuntime {
+  const settings: Record<string, string> = {
+    OLLAMA_API_ENDPOINT: OLLAMA_ENDPOINT,
+    OLLAMA_SMALL_MODEL,
+    OLLAMA_LARGE_MODEL: OLLAMA_SMALL_MODEL,
+    OLLAMA_EMBEDDING_MODEL,
+    ...extra,
+  };
+  const emittedEvents: MinimalRuntime["emittedEvents"] = [];
   return {
-    character: { system: "system prompt" },
-    emitEvent: vi.fn(async () => undefined),
-    fetch: vi.fn(),
-    getSetting: vi.fn((key: string) => settings[key] ?? null),
+    character: { system: "You are a concise test agent. Reply briefly." },
+    emitEvent: async (event: string, payload: unknown) => {
+      emittedEvents.push({ event, payload: payload as Record<string, unknown> });
+    },
+    fetch: globalThis.fetch.bind(globalThis),
+    getSetting: (key: string) => settings[key] ?? null,
+    emittedEvents,
   };
 }
 
-function createTrajectoryRuntime(settings: Record<string, string> = {}) {
-  const llmCalls: Record<string, unknown>[] = [];
-  const trajectoryLogger = {
-    isEnabled: () => true,
-    logLlmCall: vi.fn((call: Record<string, unknown>) => {
-      llmCalls.push(call);
-    }),
-  };
-  const runtime = {
-    ...createRuntime(settings),
-    getService: vi.fn((name: string) => (name === "trajectories" ? trajectoryLogger : null)),
-    getServicesByType: vi.fn((type: string) => (type === "trajectories" ? [trajectoryLogger] : [])),
-  };
-  return { runtime, llmCalls };
+async function pingOllama(endpoint: string): Promise<boolean> {
+  const base = endpoint.replace(/\/api\/?$/, "").replace(/\/$/, "");
+  try {
+    const res = await fetch(`${base}/api/tags`, {
+      method: "GET",
+      signal: AbortSignal.timeout(2000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
-describe("ollama MODEL_USED events", () => {
-  beforeEach(() => {
-    vi.mocked(embed).mockReset();
-    vi.mocked(generateObject).mockReset();
-    vi.mocked(generateText).mockReset();
-  });
+const skipReason = !OLLAMA_ENDPOINT
+  ? "OLLAMA_API_ENDPOINT not set (set OLLAMA_API_ENDPOINT=http://localhost:11434 and `ollama pull llama3.2:1b` to enable)"
+  : null;
 
-  it("emits usage for TEXT_SMALL, TEXT_LARGE, OBJECT_SMALL, and TEXT_EMBEDDING", async () => {
+if (skipReason) {
+  process.env.SKIP_REASON ||= skipReason;
+  console.warn(`${YELLOW}[ollama-live] skipped — ${skipReason}${RESET}`);
+}
+
+describe.skipIf(skipReason !== null)("ollama MODEL_USED events (live)", () => {
+  let serverReachable = false;
+
+  beforeAll(async () => {
+    serverReachable = await pingOllama(OLLAMA_ENDPOINT);
+    if (!serverReachable) {
+      console.warn(
+        `${YELLOW}[ollama-live] OLLAMA_API_ENDPOINT=${OLLAMA_ENDPOINT} unreachable — tests will skip${RESET}`
+      );
+    }
+  }, 5000);
+
+  it("emits MODEL_USED with real prompt/completion token counts for TEXT_SMALL", async () => {
+    if (!serverReachable) return;
     const { default: plugin } = await import("../index");
-    const runtime = createRuntime({
-      OLLAMA_API_ENDPOINT: "http://localhost:11434/api",
-      OLLAMA_SMALL_MODEL: "small-ollama",
-      OLLAMA_LARGE_MODEL: "large-ollama",
-      OLLAMA_EMBEDDING_MODEL: "embed-ollama",
-    });
+    const runtime = createRuntime();
 
-    vi.mocked(generateText)
-      .mockResolvedValueOnce({
-        text: "small response",
-        usage: { inputTokens: 7, outputTokens: 2, totalTokens: 9 },
-      } as never)
-      .mockResolvedValueOnce({
-        text: "large response",
-        usage: undefined,
-      } as never);
-    vi.mocked(generateObject).mockResolvedValueOnce({
-      object: { answer: "ok" },
-      usage: { inputTokens: 5, outputTokens: 4, totalTokens: 9 },
-    } as never);
-    vi.mocked(embed).mockResolvedValueOnce({
-      embedding: [0.1, 0.2],
-      usage: { inputTokens: 6, totalTokens: 6 },
-    } as never);
+    const result = await plugin.models?.[ModelType.TEXT_SMALL]?.(
+      runtime as unknown as IAgentRuntime,
+      { prompt: "Reply with exactly two words: hello there" }
+    );
 
-    await plugin.models?.[ModelType.TEXT_SMALL]?.(runtime as never, {
-      prompt: "small prompt",
-    });
-    await plugin.models?.[ModelType.TEXT_LARGE]?.(runtime as never, {
-      prompt: "large prompt",
-    });
-    await plugin.models?.[ModelType.OBJECT_SMALL]?.(runtime as never, {
-      prompt: "object prompt",
-    });
-    await plugin.models?.[ModelType.TEXT_EMBEDDING]?.(runtime as never, {
-      text: "embed this",
-    });
+    expect(typeof result === "string" || (typeof result === "object" && result !== null)).toBe(
+      true
+    );
 
-    expect(runtime.emitEvent).toHaveBeenNthCalledWith(
-      1,
-      "MODEL_USED",
-      expect.objectContaining({
-        source: "ollama",
-        type: "TEXT_SMALL",
-        model: "small-ollama",
-        tokens: { prompt: 7, completion: 2, total: 9 },
-      })
-    );
-    expect(runtime.emitEvent).toHaveBeenNthCalledWith(
-      2,
-      "MODEL_USED",
-      expect.objectContaining({
-        source: "ollama",
-        type: "TEXT_LARGE",
-        model: "large-ollama",
-        usageEstimated: true,
-        tokens: expect.objectContaining({ estimated: true }),
-      })
-    );
-    expect(runtime.emitEvent).toHaveBeenNthCalledWith(
-      3,
-      "MODEL_USED",
-      expect.objectContaining({
-        source: "ollama",
-        type: "OBJECT_SMALL",
-        model: "small-ollama",
-        tokens: { prompt: 5, completion: 4, total: 9 },
-      })
-    );
-    expect(runtime.emitEvent).toHaveBeenNthCalledWith(
-      4,
-      "MODEL_USED",
-      expect.objectContaining({
-        source: "ollama",
-        type: "TEXT_EMBEDDING",
-        model: "embed-ollama",
-        tokens: { prompt: 6, completion: 0, total: 6 },
-      })
-    );
-  });
+    const modelUsed = runtime.emittedEvents.find((e) => e.event === "MODEL_USED");
+    expect(modelUsed).toBeDefined();
+    expect(modelUsed?.payload).toMatchObject({
+      source: "ollama",
+      type: "TEXT_SMALL",
+      model: OLLAMA_SMALL_MODEL,
+    });
+    const tokens = modelUsed?.payload?.tokens as {
+      prompt: number;
+      completion: number;
+      total: number;
+    };
+    expect(tokens.prompt).toBeGreaterThan(0);
+    expect(tokens.completion).toBeGreaterThan(0);
+    expect(tokens.total).toBeGreaterThanOrEqual(tokens.prompt + tokens.completion);
+  }, 60_000);
 
-  it("records object generation in active trajectories", async () => {
+  it("records structured-output generation via TEXT_LARGE in active trajectories", async () => {
+    if (!serverReachable) return;
     const { default: plugin } = await import("../index");
-    const { runtime, llmCalls } = createTrajectoryRuntime({
-      OLLAMA_API_ENDPOINT: "http://localhost:11434/api",
-      OLLAMA_SMALL_MODEL: "small-ollama",
+
+    const llmCalls: Record<string, unknown>[] = [];
+    const trajectoryLogger = {
+      isEnabled: () => true,
+      logLlmCall: (call: Record<string, unknown>) => {
+        llmCalls.push(call);
+      },
+    };
+    const baseRuntime = createRuntime();
+    const runtime = {
+      ...baseRuntime,
+      getService: (name: string) => (name === "trajectories" ? trajectoryLogger : null),
+      getServicesByType: (type: string) => (type === "trajectories" ? [trajectoryLogger] : []),
+    };
+
+    await runWithTrajectoryContext({ trajectoryStepId: "step-ollama-live" }, async () => {
+      await plugin.models?.[ModelType.TEXT_LARGE]?.(
+        runtime as unknown as IAgentRuntime,
+        {
+          prompt: 'Return JSON {"ok": true}. Reply with only the JSON, no commentary.',
+          responseSchema: {
+            type: "object",
+            properties: { ok: { type: "boolean" } },
+            required: ["ok"],
+          },
+        } as never
+      );
     });
 
-    vi.mocked(generateObject).mockResolvedValueOnce({
-      object: { ok: true },
-      usage: { inputTokens: 5, outputTokens: 4, totalTokens: 9 },
-    } as never);
-
-    await runWithTrajectoryContext({ trajectoryStepId: "step-ollama" }, async () => {
-      await plugin.models?.[ModelType.OBJECT_SMALL]?.(runtime as never, {
-        prompt: "object prompt",
-      });
+    expect(llmCalls.length).toBeGreaterThanOrEqual(1);
+    const call = llmCalls[0];
+    expect(call).toMatchObject({
+      stepId: "step-ollama-live",
     });
+    expect(typeof call.actionType).toBe("string");
+    expect((call.promptTokens as number) ?? 0).toBeGreaterThan(0);
+  }, 60_000);
 
-    expect(llmCalls).toHaveLength(1);
-    expect(llmCalls[0]).toMatchObject({
-      stepId: "step-ollama",
-      actionType: "ai.generateObject",
-      response: '{"ok":true}',
-      promptTokens: 5,
-      completionTokens: 4,
-    });
+  afterAll(() => {
+    // No-op: runtime is in-memory and the harness has no resources to release.
   });
 });

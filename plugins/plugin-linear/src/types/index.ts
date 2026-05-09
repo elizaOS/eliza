@@ -1,6 +1,9 @@
 export interface LinearConfig {
   LINEAR_API_KEY: string;
   LINEAR_WORKSPACE_ID?: string;
+  LINEAR_ACCOUNT_ID?: string;
+  LINEAR_DEFAULT_ACCOUNT_ID?: string;
+  LINEAR_ACCOUNTS?: string;
 }
 
 /** Primitive types allowed in activity details */
@@ -62,6 +65,20 @@ export interface LinearSearchFilters {
 export interface CreateCommentParameters {
   issueId?: string;
   body?: string;
+}
+
+export interface UpdateCommentParameters {
+  commentId?: string;
+  body?: string;
+}
+
+export interface DeleteCommentParameters {
+  commentId?: string;
+}
+
+export interface ListCommentsParameters {
+  issueId?: string;
+  limit?: number;
 }
 
 export interface CreateIssueParameters {

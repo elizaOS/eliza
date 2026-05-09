@@ -116,7 +116,6 @@ export const pluginManagerPlugin: Plugin = {
 		pluginStateProvider,
 		registryPluginsProvider,
 	],
-	evaluators: [],
 	services: [PluginManagerService, CoreManagerService],
 };
 

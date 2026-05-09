@@ -8,12 +8,15 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "./dist",
-    "rootDir": ".",
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@elizaos/core": ["../../core/dist/index.d.ts"],
+      "@elizaos/core/*": ["../../core/dist/*"]
+    }
   },
   "include": ["*.ts"],
   "exclude": ["node_modules", "dist"]

@@ -1,8 +1,8 @@
 import type http from "node:http";
+import type { ReadJsonBodyOptions } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import { CONNECTOR_ENV_MAP } from "../config/env-vars.js";
 import type { ConnectorConfig } from "../config/types.eliza.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,7 +32,7 @@ export interface ConnectorRouteContext {
   /**
    * Called when a connector is disconnected (POST `/api/connectors` with
    * `enabled: false`) or DELETE-d. Lets the host purge service-owned caches
-   * keyed off the connector — most importantly the n8n credential cache,
+   * keyed off the connector — most importantly the workflow credential cache,
    * which would otherwise return stale ids and silently bypass the
    * missing-credentials banner.
    */
@@ -181,7 +181,11 @@ export async function handleConnectorRoutes(
 
   // ── DELETE /api/connectors/:name ─────────────────────────────────────
   if (method === "DELETE" && pathname.startsWith("/api/connectors/")) {
-    const name = decodeURIComponent(pathname.slice("/api/connectors/".length));
+    const rawName = pathname.slice("/api/connectors/".length);
+    if (rawName.includes("/")) {
+      return false;
+    }
+    const name = decodeURIComponent(rawName);
     if (!name || isBlockedObjectKey(name)) {
       error(res, "Missing or invalid connector name", 400);
       return true;

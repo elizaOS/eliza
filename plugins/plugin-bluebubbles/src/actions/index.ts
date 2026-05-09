@@ -1,4 +1,1 @@
-/**
- * BlueBubbles actions export
- */
-export { bluebubblesMessageOp } from "./messageOp.js";
+// BlueBubbles messaging routes through MESSAGE connector hooks.

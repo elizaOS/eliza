@@ -81,6 +81,8 @@ describe("VastProvider", () => {
     };
     expect(body.object).toBe("list");
     expect(body.data.map((m) => m.id)).toContain("vast/qwen3.6-27b-neo-code");
+    expect(body.data.map((m) => m.id)).toContain("vast/qwen3.5-4b-dflash");
+    expect(body.data.map((m) => m.id)).toContain("vast/qwen3.6-27b-dflash");
   });
 
   test("getModel returns the entry when present, 404 otherwise", async () => {

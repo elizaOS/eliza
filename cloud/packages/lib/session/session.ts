@@ -149,7 +149,7 @@ export async function migrateAnonymousSession(
           and(
             eq(users.id, anonymousUserId),
             sql`${users.email} LIKE 'affiliate-%@anonymous.elizacloud.ai'`,
-            sql`${userIdentities.steward_user_id} IS NULL`,
+            eq(users.is_anonymous, true),
           ),
         )
         .limit(1)
@@ -227,6 +227,7 @@ export async function migrateAnonymousSession(
       await tx
         .update(users)
         .set({
+          steward_user_id: stewardUserId,
           organization_id: organization.id,
           role: "owner",
           updated_at: new Date(),

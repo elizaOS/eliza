@@ -48,7 +48,16 @@ export const MOCK_PROVIDER_ENVIRONMENTS = [
   "signal",
   "browser-workspace",
   "bluebubbles",
+  "imessage",
   "github",
+  "discord",
+  "slack",
+  "telegram",
+  "linear",
+  "shopify",
+  "anthropic",
+  "openai",
+  "vision",
 ] as const;
 
 export const MOCK_SCENARIO_ENVIRONMENTS = ["lifeops-samantha", "lifeops-presence"] as const;
@@ -234,9 +243,40 @@ function envVarsFor(
     out.ELIZA_BLUEBUBBLES_PASSWORD = MOCK_BLUEBUBBLES_PASSWORD;
     out.BLUEBUBBLES_PASSWORD = MOCK_BLUEBUBBLES_PASSWORD;
   }
+  if (envs.includes("imessage")) {
+    out.ELIZA_IMESSAGE_BACKEND = "bluebubbles";
+    out.ELIZA_BLUEBUBBLES_URL = baseUrls.imessage;
+    out.BLUEBUBBLES_SERVER_URL = baseUrls.imessage;
+    out.ELIZA_BLUEBUBBLES_PASSWORD = MOCK_BLUEBUBBLES_PASSWORD;
+    out.BLUEBUBBLES_PASSWORD = MOCK_BLUEBUBBLES_PASSWORD;
+  }
   if (envs.includes("github")) {
     out.ELIZA_MOCK_GITHUB_BASE = baseUrls.github;
     out.GITHUB_API_URL = baseUrls.github;
+  }
+  if (envs.includes("discord")) {
+    out.ELIZA_MOCK_DISCORD_BASE = baseUrls.discord;
+  }
+  if (envs.includes("slack")) {
+    out.ELIZA_MOCK_SLACK_BASE = baseUrls.slack;
+  }
+  if (envs.includes("telegram")) {
+    out.ELIZA_MOCK_TELEGRAM_BASE = baseUrls.telegram;
+  }
+  if (envs.includes("linear")) {
+    out.ELIZA_MOCK_LINEAR_BASE = baseUrls.linear;
+  }
+  if (envs.includes("shopify")) {
+    out.ELIZA_MOCK_SHOPIFY_BASE = baseUrls.shopify;
+  }
+  if (envs.includes("anthropic")) {
+    out.ELIZA_MOCK_ANTHROPIC_BASE = baseUrls.anthropic;
+  }
+  if (envs.includes("openai")) {
+    out.ELIZA_MOCK_OPENAI_BASE = baseUrls.openai;
+  }
+  if (envs.includes("vision")) {
+    out.ELIZA_MOCK_VISION_BASE = baseUrls.vision;
   }
   if (envs.includes("lifeops-samantha")) {
     out.ELIZA_MOCK_LIFEOPS_SAMANTHA_BASE = baseUrls["lifeops-samantha"];
@@ -1976,6 +2016,1111 @@ function githubDynamicFixture(
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Discord stateful mock
+// ---------------------------------------------------------------------------
+
+interface DiscordMessage {
+  id: string;
+  channel_id: string;
+  author: { id: string; username: string; bot: boolean };
+  content: string;
+  timestamp: string;
+}
+
+interface DiscordInboundMessage {
+  id: string;
+  channel_id: string;
+  author: { id: string; username: string };
+  content: string;
+  timestamp: string;
+}
+
+interface DiscordMockState {
+  sentMessages: Map<string, DiscordMessage[]>;
+  inboundMessages: Map<string, DiscordInboundMessage[]>;
+}
+
+function createDiscordMockState(): DiscordMockState {
+  return { sentMessages: new Map(), inboundMessages: new Map() };
+}
+
+function discordDynamicFixture(
+  state: DiscordMockState,
+  method: string,
+  pathname: string,
+  requestBody: RequestBody,
+  ledgerEntry: MockRequestLedgerEntry,
+): DynamicFixtureResponse | null {
+  const postMsgChannelId = routeParam(
+    pathname,
+    /^\/api\/v10\/channels\/([^/]+)\/messages\/?$/,
+  );
+
+  if (method === "POST" && postMsgChannelId) {
+    const content =
+      typeof requestBody.content === "string" ? requestBody.content : "";
+    const msg: DiscordMessage = {
+      id: randomFromAlphabet("0123456789", 18),
+      channel_id: postMsgChannelId,
+      author: { id: "111111111111111111", username: "mock-bot", bot: true },
+      content,
+      timestamp: new Date().toISOString(),
+    };
+    const existing = state.sentMessages.get(postMsgChannelId) ?? [];
+    existing.push(msg);
+    state.sentMessages.set(postMsgChannelId, existing);
+    return jsonFixture(msg);
+  }
+
+  if (method === "GET" && postMsgChannelId) {
+    const history = [
+      ...(state.inboundMessages.get(postMsgChannelId) ?? []),
+      ...(state.sentMessages.get(postMsgChannelId) ?? []),
+    ].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    return jsonFixture(history);
+  }
+
+  if (pathname === "/__mock/discord/sent") {
+    if (method === "GET") {
+      const all: DiscordMessage[] = [];
+      for (const msgs of state.sentMessages.values()) all.push(...msgs);
+      return jsonFixture({ messages: all });
+    }
+    if (method === "DELETE") {
+      state.sentMessages.clear();
+      return jsonFixture({ ok: true });
+    }
+  }
+
+  if (pathname === "/__mock/discord/inbound" && method === "POST") {
+    const channelId =
+      typeof requestBody.channel_id === "string"
+        ? requestBody.channel_id
+        : "000000000000000000";
+    const content =
+      typeof requestBody.content === "string" ? requestBody.content : "inbound";
+    const authorId =
+      typeof requestBody.author_id === "string"
+        ? requestBody.author_id
+        : "444444444444444444";
+    const authorName =
+      typeof requestBody.author_name === "string"
+        ? requestBody.author_name
+        : "mock-user";
+    const msg: DiscordInboundMessage = {
+      id: randomFromAlphabet("0123456789", 18),
+      channel_id: channelId,
+      author: { id: authorId, username: authorName },
+      content,
+      timestamp: new Date().toISOString(),
+    };
+    const existing = state.inboundMessages.get(channelId) ?? [];
+    existing.push(msg);
+    state.inboundMessages.set(channelId, existing);
+    return jsonFixture({ ok: true, message: msg });
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Slack stateful mock
+// ---------------------------------------------------------------------------
+
+interface SlackMessage {
+  type: "message";
+  ts: string;
+  user: string;
+  text: string;
+  channel: string;
+}
+
+interface SlackMockState {
+  sentMessages: Map<string, SlackMessage[]>;
+  inboundMessages: Map<string, SlackMessage[]>;
+}
+
+function createSlackMockState(): SlackMockState {
+  return { sentMessages: new Map(), inboundMessages: new Map() };
+}
+
+function slackTs(): string {
+  return `${Math.floor(Date.now() / 1000)}.${String(
+    Math.floor(Math.random() * 1_000_000),
+  ).padStart(6, "0")}`;
+}
+
+function slackDynamicFixture(
+  state: SlackMockState,
+  method: string,
+  pathname: string,
+  requestBody: RequestBody,
+  ledgerEntry: MockRequestLedgerEntry,
+): DynamicFixtureResponse | null {
+  if (method === "POST" && pathname === "/api/chat.postMessage") {
+    const channel =
+      typeof requestBody.channel === "string" ? requestBody.channel : "C00MOCK";
+    const text =
+      typeof requestBody.text === "string" ? requestBody.text : "";
+    const ts = slackTs();
+    const msg: SlackMessage = {
+      type: "message",
+      ts,
+      user: "U00MOCKBOT",
+      text,
+      channel,
+    };
+    const existing = state.sentMessages.get(channel) ?? [];
+    existing.push(msg);
+    state.sentMessages.set(channel, existing);
+    return jsonFixture({
+      ok: true,
+      channel,
+      ts,
+      message: { type: "message", text, user: "U00MOCKBOT", ts },
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/conversations.list") {
+    const channels: Array<{ id: string; name: string; is_member: boolean }> =
+      [];
+    for (const id of state.sentMessages.keys()) {
+      channels.push({ id, name: id.toLowerCase(), is_member: true });
+    }
+    return jsonFixture({ ok: true, channels, response_metadata: { next_cursor: "" } });
+  }
+
+  if (pathname === "/__mock/slack/sent") {
+    if (method === "GET") {
+      const all: SlackMessage[] = [];
+      for (const msgs of state.sentMessages.values()) all.push(...msgs);
+      return jsonFixture({ messages: all });
+    }
+    if (method === "DELETE") {
+      state.sentMessages.clear();
+      return jsonFixture({ ok: true });
+    }
+  }
+
+  if (
+    (pathname === "/__mock/slack/inbound" ||
+      pathname === "/__mock/slack/inbound-event") &&
+    method === "POST"
+  ) {
+    const channel =
+      typeof requestBody.channel === "string" ? requestBody.channel : "C00MOCK";
+    const text =
+      typeof requestBody.text === "string" ? requestBody.text : "inbound";
+    const user =
+      typeof requestBody.user === "string" ? requestBody.user : "U00EXTERNAL";
+    const msg: SlackMessage = {
+      type: "message",
+      ts: slackTs(),
+      user,
+      text,
+      channel,
+    };
+    const existing = state.inboundMessages.get(channel) ?? [];
+    existing.push(msg);
+    state.inboundMessages.set(channel, existing);
+    return jsonFixture({ ok: true, message: msg });
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Telegram stateful mock
+// ---------------------------------------------------------------------------
+
+interface TelegramUpdate {
+  update_id: number;
+  message: {
+    message_id: number;
+    from: { id: number; is_bot: boolean; first_name: string; username?: string };
+    chat: { id: number; type: string };
+    date: number;
+    text: string;
+  };
+}
+
+interface TelegramMockState {
+  nextUpdateId: number;
+  pendingUpdates: TelegramUpdate[];
+}
+
+function createTelegramMockState(): TelegramMockState {
+  return { nextUpdateId: 1, pendingUpdates: [] };
+}
+
+function telegramDynamicFixture(
+  state: TelegramMockState,
+  method: string,
+  pathname: string,
+  requestBody: RequestBody,
+  ledgerEntry: MockRequestLedgerEntry,
+): DynamicFixtureResponse | null {
+  // Match any `/bot<TOKEN>/<method>` path so callers can use either the
+  // literal `:token` placeholder or a real-looking token string.
+  const tokenMethodMatch = /^\/bot([^/]+)\/([A-Za-z]+)\/?$/.exec(pathname);
+  const tgMethod = tokenMethodMatch?.[2];
+
+  // getUpdates — consume pending queue (long-polling model)
+  if ((method === "GET" || method === "POST") && tgMethod === "getUpdates") {
+    const drained = state.pendingUpdates.splice(0, state.pendingUpdates.length);
+    return jsonFixture({ ok: true, result: drained });
+  }
+
+  if (method === "GET" && tgMethod === "getMe") {
+    return jsonFixture({
+      ok: true,
+      result: {
+        id: 123456789,
+        is_bot: true,
+        first_name: "MockBot",
+        username: "mock_eliza_bot",
+        can_join_groups: true,
+        can_read_all_group_messages: false,
+        supports_inline_queries: false,
+      },
+    });
+  }
+
+  if (method === "POST" && tgMethod === "sendMessage") {
+    const chatId =
+      typeof requestBody.chat_id === "number"
+        ? requestBody.chat_id
+        : typeof requestBody.chat_id === "string"
+          ? Number(requestBody.chat_id) || 0
+          : 0;
+    const text = typeof requestBody.text === "string" ? requestBody.text : "";
+    return jsonFixture({
+      ok: true,
+      result: {
+        message_id: Math.floor(Math.random() * 1000000),
+        from: {
+          id: 123456789,
+          is_bot: true,
+          first_name: "MockBot",
+          username: "mock_eliza_bot",
+        },
+        chat: { id: chatId, type: "private" },
+        date: Math.floor(Date.now() / 1000),
+        text,
+      },
+    });
+  }
+
+  if (method === "POST" && tgMethod === "editMessageText") {
+    const chatId =
+      typeof requestBody.chat_id === "number"
+        ? requestBody.chat_id
+        : typeof requestBody.chat_id === "string"
+          ? Number(requestBody.chat_id) || 0
+          : 0;
+    const messageId =
+      typeof requestBody.message_id === "number" ? requestBody.message_id : 0;
+    const text = typeof requestBody.text === "string" ? requestBody.text : "";
+    return jsonFixture({
+      ok: true,
+      result: {
+        message_id: messageId,
+        from: {
+          id: 123456789,
+          is_bot: true,
+          first_name: "MockBot",
+          username: "mock_eliza_bot",
+        },
+        chat: { id: chatId, type: "private" },
+        date: Math.floor(Date.now() / 1000),
+        edit_date: Math.floor(Date.now() / 1000),
+        text,
+      },
+    });
+  }
+
+  if (method === "POST" && tgMethod === "sendChatAction") {
+    return jsonFixture({ ok: true, result: true });
+  }
+
+  if (method === "POST" && tgMethod === "answerCallbackQuery") {
+    return jsonFixture({ ok: true, result: true });
+  }
+
+  if (method === "POST" && tgMethod === "answerInlineQuery") {
+    return jsonFixture({ ok: true, result: true });
+  }
+
+  if (method === "POST" && tgMethod === "setWebhook") {
+    return jsonFixture({ ok: true, result: true, description: "Webhook was set" });
+  }
+
+  if (method === "POST" && tgMethod === "deleteWebhook") {
+    return jsonFixture({
+      ok: true,
+      result: true,
+      description: "Webhook was deleted",
+    });
+  }
+
+  if (method === "GET" && tgMethod === "getFile") {
+    return jsonFixture({
+      ok: true,
+      result: {
+        file_id: "mock-file-id",
+        file_unique_id: "mock-unique-id",
+        file_size: 12345,
+        file_path: "photos/mock-file.jpg",
+      },
+    });
+  }
+
+  if (
+    (pathname === "/__mock/telegram/inbound" ||
+      pathname === "/__mock/telegram/inbound-update") &&
+    method === "POST"
+  ) {
+    const chatId =
+      typeof requestBody.chat_id === "number"
+        ? requestBody.chat_id
+        : typeof requestBody.chat_id === "string"
+          ? Number(requestBody.chat_id) || 100000
+          : 100000;
+    const text =
+      typeof requestBody.text === "string" ? requestBody.text : "inbound";
+    const fromId =
+      typeof requestBody.from_id === "number"
+        ? requestBody.from_id
+        : 200000;
+    const fromName =
+      typeof requestBody.from_name === "string"
+        ? requestBody.from_name
+        : "mock-user";
+    const update: TelegramUpdate = {
+      update_id: state.nextUpdateId++,
+      message: {
+        message_id: state.nextUpdateId * 10,
+        from: { id: fromId, is_bot: false, first_name: fromName },
+        chat: { id: chatId, type: "private" },
+        date: Math.floor(Date.now() / 1000),
+        text,
+      },
+    };
+    state.pendingUpdates.push(update);
+    return jsonFixture({ ok: true, update });
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Linear stateful mock (GraphQL query dispatch)
+// ---------------------------------------------------------------------------
+
+interface LinearMockState {
+  nextIssueId: number;
+  issues: Array<{ id: string; title: string; state: string; teamId: string }>;
+}
+
+function createLinearMockState(): LinearMockState {
+  return {
+    nextIssueId: 1,
+    issues: [
+      { id: "issue-fix-001", title: "Fix login bug", state: "Todo", teamId: "team-eng" },
+      { id: "issue-feat-001", title: "Add dark mode", state: "In Progress", teamId: "team-eng" },
+    ],
+  };
+}
+
+function linearDynamicFixture(
+  state: LinearMockState,
+  method: string,
+  pathname: string,
+  requestBody: RequestBody,
+  ledgerEntry: MockRequestLedgerEntry,
+): DynamicFixtureResponse | null {
+  if (method !== "POST" || pathname !== "/graphql") return null;
+
+  const query = typeof requestBody.query === "string" ? requestBody.query.trim() : "";
+
+  // viewer query
+  if (/^\s*(query\s+)?Viewer\b/i.test(query) || query.includes("viewer {") || query.includes("viewer{")) {
+    return jsonFixture({
+      data: {
+        viewer: {
+          id: "user-mock-linear",
+          name: "Mock User",
+          email: "mock@example.test",
+          displayName: "Mock User",
+          active: true,
+        },
+      },
+    });
+  }
+
+  // issues query
+  if (/issues\s*\(/.test(query) && !/mutation/.test(query)) {
+    return jsonFixture({
+      data: {
+        issues: {
+          nodes: state.issues,
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      },
+    });
+  }
+
+  // teams query
+  if (/teams\s*\(/.test(query) || /\{\s*teams\s*\{/.test(query)) {
+    return jsonFixture({
+      data: {
+        teams: {
+          nodes: [
+            { id: "team-eng", name: "Engineering", key: "ENG" },
+          ],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      },
+    });
+  }
+
+  // single team query
+  if (/\bteam\s*\(/.test(query) && !/teams\s*\(/.test(query)) {
+    return jsonFixture({
+      data: {
+        team: { id: "team-eng", name: "Engineering", key: "ENG" },
+      },
+    });
+  }
+
+  // createIssue mutation
+  if (/mutation\s+IssueCreate\b/i.test(query) || (/mutation/.test(query) && /issueCreate/.test(query))) {
+    const vars = requestBody.variables;
+    const input =
+      vars && typeof vars === "object" && !Array.isArray(vars) && vars.input
+        ? (vars.input as Record<string, string>)
+        : {};
+    const id = `issue-${randomFromAlphabet("0123456789abcdef", 8)}`;
+    const title = typeof input.title === "string" ? input.title : "New issue";
+    const teamId = typeof input.teamId === "string" ? input.teamId : "team-eng";
+    const issue = { id, title, state: "Todo", teamId };
+    state.issues.push(issue);
+    return jsonFixture({
+      data: {
+        issueCreate: {
+          success: true,
+          issue,
+        },
+      },
+    });
+  }
+
+  // updateIssue mutation
+  if (/mutation\s+IssueUpdate\b/i.test(query) || (/mutation/.test(query) && /issueUpdate/.test(query))) {
+    const vars = requestBody.variables;
+    const input =
+      vars && typeof vars === "object" && !Array.isArray(vars) && vars.input
+        ? (vars.input as Record<string, string>)
+        : {};
+    const issueId = typeof vars === "object" && vars && !Array.isArray(vars) && typeof vars.id === "string" ? vars.id : "";
+    const existing = state.issues.find((i) => i.id === issueId) ?? state.issues[0];
+    if (existing && typeof input.title === "string") existing.title = input.title;
+    if (existing && typeof input.state === "string") existing.state = input.state;
+    return jsonFixture({
+      data: {
+        issueUpdate: {
+          success: true,
+          issue: existing ?? null,
+        },
+      },
+    });
+  }
+
+  // deleteIssue mutation
+  if (/mutation\s+IssueDelete\b/i.test(query) || (/mutation/.test(query) && /issueDelete/.test(query))) {
+    const vars = requestBody.variables;
+    const issueId =
+      vars && typeof vars === "object" && !Array.isArray(vars) && typeof vars.id === "string"
+        ? vars.id
+        : "";
+    const before = state.issues.length;
+    state.issues = state.issues.filter((i) => i.id !== issueId);
+    return jsonFixture({
+      data: {
+        issueDelete: {
+          success: state.issues.length < before,
+        },
+      },
+    });
+  }
+
+  // users query
+  if (/^\s*(query\s+)?Users\b/i.test(query) || /\busers\s*\(/.test(query)) {
+    return jsonFixture({
+      data: {
+        users: {
+          nodes: [
+            { id: "user-mock-linear", name: "Mock User", email: "mock@example.test", displayName: "Mock User", active: true },
+            { id: "user-mock-linear-2", name: "Mock Reviewer", email: "reviewer@example.test", displayName: "Mock Reviewer", active: true },
+          ],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      },
+    });
+  }
+
+  // projects query
+  if (/^\s*(query\s+)?Projects\b/i.test(query) || /\bprojects\s*\(/.test(query)) {
+    return jsonFixture({
+      data: {
+        projects: {
+          nodes: [
+            { id: "project-mock-platform", name: "Platform", state: "started", progress: 0.42 },
+            { id: "project-mock-growth", name: "Growth", state: "planned", progress: 0.0 },
+          ],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      },
+    });
+  }
+
+  // baseline passthrough — let Mockoon static response handle it (returns null here)
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Anthropic stateful mock (tool-use / computer-use dispatch)
+// ---------------------------------------------------------------------------
+
+interface AnthropicMockState {
+  callCount: number;
+}
+
+function createAnthropicMockState(): AnthropicMockState {
+  return { callCount: 0 };
+}
+
+// Prefix-keyed canned text responses. Keep entries short and matched against
+// the first user message text (case-insensitive prefix). This is intentional:
+// tests can drive deterministic behavior by choosing the prompt prefix.
+const ANTHROPIC_PROMPT_RESPONSES: Array<{ prefix: string; text: string }> = [
+  {
+    prefix: "ping",
+    text: "pong",
+  },
+  {
+    prefix: "echo:",
+    text: "echo response",
+  },
+  {
+    prefix: "summarize",
+    text: "Mock summary: the input was acknowledged.",
+  },
+  {
+    prefix: "explain",
+    text: "Mock explanation: deterministic fixture response from anthropic mock.",
+  },
+];
+
+function firstUserMessageText(messages: unknown): string {
+  if (!Array.isArray(messages)) return "";
+  for (const msg of messages) {
+    if (
+      typeof msg === "object" &&
+      msg !== null &&
+      !Array.isArray(msg) &&
+      (msg as Record<string, unknown>).role === "user"
+    ) {
+      const content = (msg as Record<string, unknown>).content;
+      if (typeof content === "string") return content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (
+            typeof block === "object" &&
+            block !== null &&
+            !Array.isArray(block) &&
+            (block as Record<string, unknown>).type === "text" &&
+            typeof (block as Record<string, unknown>).text === "string"
+          ) {
+            return String((block as Record<string, unknown>).text);
+          }
+        }
+      }
+    }
+  }
+  return "";
+}
+
+function anthropicDynamicFixture(
+  state: AnthropicMockState,
+  method: string,
+  pathname: string,
+  requestBody: RequestBody,
+  ledgerEntry: MockRequestLedgerEntry,
+): DynamicFixtureResponse | null {
+  if (method !== "POST" || pathname !== "/v1/messages") return null;
+
+  state.callCount++;
+  const tools = Array.isArray(requestBody.tools) ? requestBody.tools : [];
+
+  // Detect computer-use tools
+  const hasComputerUseTool = tools.some(
+    (tool): boolean =>
+      typeof tool === "object" &&
+      tool !== null &&
+      !Array.isArray(tool) &&
+      typeof (tool as Record<string, unknown>).type === "string" &&
+      String((tool as Record<string, unknown>).type).startsWith("computer_"),
+  );
+
+  if (hasComputerUseTool) {
+    // Check if the last message is a tool_result (follow-up after screenshot)
+    const messages = Array.isArray(requestBody.messages) ? requestBody.messages : [];
+    const lastMessage = messages[messages.length - 1];
+    const isToolResult =
+      lastMessage &&
+      typeof lastMessage === "object" &&
+      !Array.isArray(lastMessage) &&
+      (lastMessage as Record<string, unknown>).role === "user" &&
+      Array.isArray((lastMessage as Record<string, unknown>).content) &&
+      ((lastMessage as Record<string, unknown[]>).content as unknown[]).some(
+        (block) =>
+          typeof block === "object" &&
+          block !== null &&
+          !Array.isArray(block) &&
+          (block as Record<string, unknown>).type === "tool_result",
+      );
+
+    if (isToolResult) {
+      // After tool_result, respond with final text
+      return jsonFixture({
+        id: `msg_${randomFromAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 24)}`,
+        type: "message",
+        role: "assistant",
+        content: [{ type: "text", text: "Task completed after reviewing screenshot." }],
+        model: requestBody.model ?? "claude-haiku-4-5-20251001",
+        stop_reason: "end_turn",
+        stop_sequence: null,
+        usage: { input_tokens: 50, output_tokens: 12 },
+      });
+    }
+
+    // First turn with computer-use: return screenshot tool_use
+    return jsonFixture({
+      id: `msg_${randomFromAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 24)}`,
+      type: "message",
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id: `toolu_${randomFromAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 24)}`,
+          name: "computer",
+          input: { action: "screenshot" },
+        },
+      ],
+      model: requestBody.model ?? "claude-haiku-4-5-20251001",
+      stop_reason: "tool_use",
+      stop_sequence: null,
+      usage: { input_tokens: 30, output_tokens: 15 },
+    });
+  }
+
+  // Detect regular tool-use (non-computer tools)
+  if (tools.length > 0) {
+    const firstTool = tools[0];
+    const toolName =
+      typeof firstTool === "object" &&
+      firstTool !== null &&
+      !Array.isArray(firstTool) &&
+      typeof (firstTool as Record<string, unknown>).name === "string"
+        ? String((firstTool as Record<string, unknown>).name)
+        : "mock_tool";
+
+    return jsonFixture({
+      id: `msg_${randomFromAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 24)}`,
+      type: "message",
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id: `toolu_${randomFromAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 24)}`,
+          name: toolName,
+          input: {},
+        },
+      ],
+      model: requestBody.model ?? "claude-haiku-4-5-20251001",
+      stop_reason: "tool_use",
+      stop_sequence: null,
+      usage: { input_tokens: 20, output_tokens: 10 },
+    });
+  }
+
+  // No tools — return a prompt-keyed text response (or fall through to the
+  // static Mockoon baseline if no prefix matches).
+  const userText = firstUserMessageText(requestBody.messages).trim().toLowerCase();
+  for (const entry of ANTHROPIC_PROMPT_RESPONSES) {
+    if (userText.startsWith(entry.prefix)) {
+      return jsonFixture({
+        id: `msg_${randomFromAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 24)}`,
+        type: "message",
+        role: "assistant",
+        content: [{ type: "text", text: entry.text }],
+        model: requestBody.model ?? "claude-haiku-4-5-20251001",
+        stop_reason: "end_turn",
+        stop_sequence: null,
+        usage: {
+          input_tokens: Math.max(5, Math.ceil(userText.length / 4)),
+          output_tokens: Math.ceil(entry.text.length / 4),
+        },
+      });
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Vision stateful mock (image_hint dispatch)
+// ---------------------------------------------------------------------------
+
+interface VisionFixture {
+  objects: Array<{ label: string; confidence: number; bbox: number[] }>;
+  description: string;
+  text: string;
+}
+
+const VISION_FIXTURES: Record<string, VisionFixture> = {
+  "cat-fixture": {
+    objects: [
+      { label: "cat", confidence: 0.95, bbox: [10, 10, 100, 100] },
+      { label: "sofa", confidence: 0.82, bbox: [0, 50, 400, 300] },
+      { label: "indoor plant", confidence: 0.71, bbox: [300, 20, 380, 150] },
+    ],
+    description: "A scene with a cat resting on a sofa near an indoor plant.",
+    text: "",
+  },
+  "document-fixture": {
+    objects: [
+      { label: "document", confidence: 0.97, bbox: [20, 30, 780, 1050] },
+      { label: "text block", confidence: 0.91, bbox: [50, 80, 750, 400] },
+    ],
+    description: "A printed document with text content.",
+    text: "Invoice #4831 — Amount Due: $1,234.56",
+  },
+  "street-fixture": {
+    objects: [
+      { label: "car", confidence: 0.93, bbox: [50, 100, 300, 250] },
+      { label: "pedestrian", confidence: 0.87, bbox: [320, 80, 380, 260] },
+      { label: "traffic light", confidence: 0.89, bbox: [450, 20, 480, 80] },
+    ],
+    description: "A city street with vehicles and pedestrians.",
+    text: "",
+  },
+};
+
+// Map image-bytes hashes to deterministic fixture keys. Tests can pin a
+// fixture by sending an image whose sha256 maps to the desired key, or by
+// passing image_hint in the request body.
+const VISION_HASH_TO_FIXTURE: Record<string, string> = {};
+
+const GENERIC_VISION_FIXTURE: VisionFixture = {
+  objects: [],
+  description: "No recognizable content (generic baseline response).",
+  text: "",
+};
+
+function pickVisionFixture(requestBody: RequestBody): VisionFixture {
+  const hint =
+    typeof requestBody.image_hint === "string" ? requestBody.image_hint : "";
+  if (hint && VISION_FIXTURES[hint]) return VISION_FIXTURES[hint];
+
+  const imageBytes =
+    typeof requestBody.image === "string"
+      ? requestBody.image
+      : typeof requestBody.image_base64 === "string"
+        ? requestBody.image_base64
+        : null;
+  if (imageBytes) {
+    const hash = crypto.createHash("sha256").update(imageBytes).digest("hex");
+    const fixtureKey = VISION_HASH_TO_FIXTURE[hash];
+    if (fixtureKey && VISION_FIXTURES[fixtureKey]) return VISION_FIXTURES[fixtureKey];
+    return GENERIC_VISION_FIXTURE;
+  }
+
+  // Legacy /v1/vision/analyze path defaults to cat-fixture for back-compat.
+  return VISION_FIXTURES["cat-fixture"];
+}
+
+interface VisionMockState {
+  callCount: number;
+}
+
+function createVisionMockState(): VisionMockState {
+  return { callCount: 0 };
+}
+
+function visionDynamicFixture(
+  state: VisionMockState,
+  method: string,
+  pathname: string,
+  requestBody: RequestBody,
+  ledgerEntry: MockRequestLedgerEntry,
+): DynamicFixtureResponse | null {
+  if (method !== "POST") return null;
+
+  if (pathname === "/v1/vision/analyze") {
+    state.callCount++;
+    const hint =
+      typeof requestBody.image_hint === "string"
+        ? requestBody.image_hint
+        : "cat-fixture";
+    const fixture = VISION_FIXTURES[hint] ?? VISION_FIXTURES["cat-fixture"];
+    return jsonFixture({
+      ...fixture,
+      request_id: `vis-${crypto.randomUUID()}`,
+    });
+  }
+
+  if (pathname === "/v1/analyze") {
+    state.callCount++;
+    const fixture = pickVisionFixture(requestBody);
+    return jsonFixture({
+      ...fixture,
+      request_id: `vis-${crypto.randomUUID()}`,
+    });
+  }
+
+  if (pathname === "/v1/describe") {
+    state.callCount++;
+    const fixture = pickVisionFixture(requestBody);
+    return jsonFixture({
+      description: fixture.description,
+      request_id: `vis-${crypto.randomUUID()}`,
+    });
+  }
+
+  if (pathname === "/v1/objects") {
+    state.callCount++;
+    const fixture = pickVisionFixture(requestBody);
+    return jsonFixture({
+      objects: fixture.objects,
+      request_id: `vis-${crypto.randomUUID()}`,
+    });
+  }
+
+  if (pathname === "/v1/text") {
+    state.callCount++;
+    const fixture = pickVisionFixture(requestBody);
+    return jsonFixture({
+      text: fixture.text,
+      blocks: fixture.text
+        ? [{ text: fixture.text, bbox: [0, 0, 800, 1080], confidence: 0.95 }]
+        : [],
+      request_id: `vis-${crypto.randomUUID()}`,
+    });
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Shopify stateful mock (single-record GETs by id; the static Mockoon route
+// compiler treats ":id.json" as one literal-ish param so we route those here)
+// ---------------------------------------------------------------------------
+
+interface ShopifyMockState {
+  callCount: number;
+}
+
+function createShopifyMockState(): ShopifyMockState {
+  return { callCount: 0 };
+}
+
+function shopifyDynamicFixture(
+  state: ShopifyMockState,
+  method: string,
+  pathname: string,
+  requestBody: RequestBody,
+  ledgerEntry: MockRequestLedgerEntry,
+): DynamicFixtureResponse | null {
+  if (method !== "GET") return null;
+
+  // /admin/api/2024-10/products/<id>.json
+  const productId = routeParam(
+    pathname,
+    /^\/admin\/api\/[^/]+\/products\/([^/]+?)\.json$/,
+  );
+  if (productId) {
+    state.callCount++;
+    return jsonFixture({
+      product: {
+        id: Number(productId) || productId,
+        title: "Mock Widget",
+        body_html: "<p>A great mock product.</p>",
+        vendor: "Mock Vendor",
+        product_type: "Widget",
+        handle: "mock-widget",
+        status: "active",
+        variants: [
+          {
+            id: 9876543210,
+            product_id: Number(productId) || productId,
+            title: "Default Title",
+            price: "19.99",
+            sku: "MOCK-001",
+            inventory_quantity: 100,
+            inventory_item_id: 7000000001,
+          },
+        ],
+        images: [],
+        tags: "mock,test",
+        created_at: "2026-01-01T00:00:00-05:00",
+        updated_at: "2026-01-01T00:00:00-05:00",
+      },
+    });
+  }
+
+  // /admin/api/2024-10/orders/<id>.json
+  const orderId = routeParam(
+    pathname,
+    /^\/admin\/api\/[^/]+\/orders\/([^/]+?)\.json$/,
+  );
+  if (orderId) {
+    state.callCount++;
+    return jsonFixture({
+      order: {
+        id: Number(orderId) || orderId,
+        order_number: 1001,
+        email: "customer@example.test",
+        created_at: "2026-04-01T10:00:00-05:00",
+        updated_at: "2026-04-01T10:05:00-05:00",
+        total_price: "59.98",
+        subtotal_price: "59.98",
+        total_tax: "0.00",
+        currency: "USD",
+        financial_status: "paid",
+        fulfillment_status: null,
+        line_items: [
+          { id: 1, title: "Mock Widget", quantity: 2, price: "19.99", sku: "MOCK-001" },
+        ],
+        customer: {
+          id: 9000000001,
+          email: "customer@example.test",
+          first_name: "Test",
+          last_name: "Customer",
+        },
+      },
+    });
+  }
+
+  // /admin/api/2024-10/customers/<id>.json
+  const customerId = routeParam(
+    pathname,
+    /^\/admin\/api\/[^/]+\/customers\/([^/]+?)\.json$/,
+  );
+  if (customerId) {
+    state.callCount++;
+    return jsonFixture({
+      customer: {
+        id: Number(customerId) || customerId,
+        email: "customer@example.test",
+        first_name: "Test",
+        last_name: "Customer",
+        phone: null,
+        verified_email: true,
+        tax_exempt: false,
+        tags: "",
+        currency: "USD",
+        orders_count: 1,
+        total_spent: "59.98",
+        state: "enabled",
+        created_at: "2026-01-15T00:00:00-05:00",
+        updated_at: "2026-04-01T10:05:00-05:00",
+      },
+    });
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI stateful mock (deterministic hash-seeded embeddings + image gen)
+// ---------------------------------------------------------------------------
+
+interface OpenAIMockState {
+  callCount: number;
+}
+
+function createOpenAIMockState(): OpenAIMockState {
+  return { callCount: 0 };
+}
+
+function deterministicEmbedding(input: string, dim = 1536): number[] {
+  // Seed a 1536-dim vector by hashing the input string. Each 4-byte slice of
+  // a chained sha256 stream produces one float in (-1, 1). Same input always
+  // yields the same vector; different inputs produce visibly different
+  // vectors but the magnitudes stay normalized-ish (range ~[-1, 1]).
+  const out = new Array<number>(dim);
+  let seed = crypto.createHash("sha256").update(input).digest();
+  let cursor = 0;
+  let block = 0;
+  for (let i = 0; i < dim; i++) {
+    if (cursor + 4 > seed.length) {
+      block++;
+      seed = crypto
+        .createHash("sha256")
+        .update(seed)
+        .update(String(block))
+        .digest();
+      cursor = 0;
+    }
+    const u = seed.readUInt32BE(cursor);
+    cursor += 4;
+    // Map 0..2^32-1 to (-1, 1).
+    out[i] = (u / 0xffffffff) * 2 - 1;
+  }
+  return out;
+}
+
+function openaiDynamicFixture(
+  state: OpenAIMockState,
+  method: string,
+  pathname: string,
+  requestBody: RequestBody,
+  ledgerEntry: MockRequestLedgerEntry,
+): DynamicFixtureResponse | null {
+  if (method !== "POST") return null;
+
+  if (pathname === "/v1/embeddings") {
+    state.callCount++;
+    const inputRaw = requestBody.input;
+    const inputs: string[] = Array.isArray(inputRaw)
+      ? inputRaw.map((v) => String(v))
+      : [String(inputRaw ?? "")];
+    const model =
+      typeof requestBody.model === "string"
+        ? requestBody.model
+        : "text-embedding-3-small";
+    const data = inputs.map((text, idx) => ({
+      object: "embedding",
+      index: idx,
+      embedding: deterministicEmbedding(text, 1536),
+    }));
+    const totalTokens = inputs.reduce(
+      (acc, s) => acc + Math.max(1, Math.ceil(s.length / 4)),
+      0,
+    );
+    return jsonFixture({
+      object: "list",
+      data,
+      model,
+      usage: { prompt_tokens: totalTokens, total_tokens: totalTokens },
+    });
+  }
+
+  return null;
+}
+
 type DynamicProviderState =
   | { kind: "google"; state: GoogleMockState }
   | { kind: "x-twitter"; state: XMockState }
@@ -1984,6 +3129,14 @@ type DynamicProviderState =
   | { kind: "browser-workspace"; state: BrowserWorkspaceMockState }
   | { kind: "bluebubbles"; state: BlueBubblesMockState }
   | { kind: "github"; state: GitHubMockState }
+  | { kind: "discord"; state: DiscordMockState }
+  | { kind: "slack"; state: SlackMockState }
+  | { kind: "telegram"; state: TelegramMockState }
+  | { kind: "linear"; state: LinearMockState }
+  | { kind: "anthropic"; state: AnthropicMockState }
+  | { kind: "vision"; state: VisionMockState }
+  | { kind: "openai"; state: OpenAIMockState }
+  | { kind: "shopify"; state: ShopifyMockState }
   | null;
 
 function createDynamicProviderState(
@@ -2008,11 +3161,35 @@ function createDynamicProviderState(
       state: createBrowserWorkspaceMockState(opts),
     };
   }
-  if (environmentName === "BlueBubbles") {
+  if (environmentName === "BlueBubbles" || environmentName === "iMessage") {
     return { kind: "bluebubbles", state: createBlueBubblesMockState(opts) };
   }
   if (environmentName === "GitHub REST") {
     return { kind: "github", state: createGitHubMockState() };
+  }
+  if (environmentName === "Discord REST") {
+    return { kind: "discord", state: createDiscordMockState() };
+  }
+  if (environmentName === "Slack Web API") {
+    return { kind: "slack", state: createSlackMockState() };
+  }
+  if (environmentName === "Telegram Bot API") {
+    return { kind: "telegram", state: createTelegramMockState() };
+  }
+  if (environmentName === "Linear GraphQL") {
+    return { kind: "linear", state: createLinearMockState() };
+  }
+  if (environmentName === "Anthropic Messages API") {
+    return { kind: "anthropic", state: createAnthropicMockState() };
+  }
+  if (environmentName === "Vision Analysis API") {
+    return { kind: "vision", state: createVisionMockState() };
+  }
+  if (environmentName === "OpenAI API") {
+    return { kind: "openai", state: createOpenAIMockState() };
+  }
+  if (environmentName === "Shopify Admin API") {
+    return { kind: "shopify", state: createShopifyMockState() };
   }
   return null;
 }
@@ -2087,6 +3264,70 @@ function dynamicProviderFixture(args: {
         args.method,
         args.pathname,
         args.searchParams,
+        args.requestBody,
+        args.ledgerEntry,
+      );
+    case "discord":
+      return discordDynamicFixture(
+        args.provider.state,
+        args.method,
+        args.pathname,
+        args.requestBody,
+        args.ledgerEntry,
+      );
+    case "slack":
+      return slackDynamicFixture(
+        args.provider.state,
+        args.method,
+        args.pathname,
+        args.requestBody,
+        args.ledgerEntry,
+      );
+    case "telegram":
+      return telegramDynamicFixture(
+        args.provider.state,
+        args.method,
+        args.pathname,
+        args.requestBody,
+        args.ledgerEntry,
+      );
+    case "linear":
+      return linearDynamicFixture(
+        args.provider.state,
+        args.method,
+        args.pathname,
+        args.requestBody,
+        args.ledgerEntry,
+      );
+    case "anthropic":
+      return anthropicDynamicFixture(
+        args.provider.state,
+        args.method,
+        args.pathname,
+        args.requestBody,
+        args.ledgerEntry,
+      );
+    case "vision":
+      return visionDynamicFixture(
+        args.provider.state,
+        args.method,
+        args.pathname,
+        args.requestBody,
+        args.ledgerEntry,
+      );
+    case "openai":
+      return openaiDynamicFixture(
+        args.provider.state,
+        args.method,
+        args.pathname,
+        args.requestBody,
+        args.ledgerEntry,
+      );
+    case "shopify":
+      return shopifyDynamicFixture(
+        args.provider.state,
+        args.method,
+        args.pathname,
         args.requestBody,
         args.ledgerEntry,
       );
@@ -2482,4 +3723,77 @@ export async function startMocks(opts?: {
       await Promise.all(servers.map((server) => server.stop()));
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// CLI entrypoint — `bunx tsx test/mocks/scripts/start-mocks.ts --envs a,b,c`
+// ---------------------------------------------------------------------------
+
+function parseCliArgs(argv: readonly string[]): {
+  envs: readonly MockEnvironmentName[] | undefined;
+  simulator: boolean;
+} {
+  let envs: readonly MockEnvironmentName[] | undefined;
+  let simulator = false;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--simulator" || arg === "--seed-simulator") {
+      simulator = true;
+      continue;
+    }
+    if (arg === "--envs" || arg === "-e") {
+      const value = argv[i + 1];
+      if (!value) throw new Error("--envs requires a comma-separated list");
+      envs = value
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean) as readonly MockEnvironmentName[];
+      i++;
+      continue;
+    }
+    if (arg.startsWith("--envs=")) {
+      envs = arg
+        .slice("--envs=".length)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean) as readonly MockEnvironmentName[];
+      continue;
+    }
+  }
+  return { envs, simulator };
+}
+
+const isCliInvocation =
+  typeof process !== "undefined" &&
+  Array.isArray(process.argv) &&
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+
+if (isCliInvocation) {
+  const { envs, simulator } = parseCliArgs(process.argv.slice(2));
+  startMocks({ envs, simulator })
+    .then((mocks) => {
+      const lines: string[] = [];
+      lines.push("Mock servers running. Press Ctrl+C to stop.");
+      for (const [name, baseUrl] of Object.entries(mocks.baseUrls)) {
+        lines.push(`  ${name.padEnd(20)} ${baseUrl}`);
+      }
+      lines.push("");
+      lines.push("Env vars:");
+      for (const [k, v] of Object.entries(mocks.envVars)) {
+        lines.push(`  ${k}=${v}`);
+      }
+      console.log(lines.join("\n"));
+
+      const shutdown = async (): Promise<void> => {
+        await mocks.stop();
+        process.exit(0);
+      };
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
+    })
+    .catch((err) => {
+      console.error("Failed to start mocks:", err);
+      process.exit(1);
+    });
 }

@@ -122,7 +122,6 @@ async function provisionStewardWallet({
           organization_id: organizationId,
           user_id: userId,
           character_id: characterId,
-          wallet_provider: "steward",
           steward_agent_id: agentId,
           steward_tenant_id: tenantId,
           address: walletAddress,
@@ -230,14 +229,6 @@ export async function executeServerWalletRpc({ clientAddress, payload, signature
     throw new ServerWalletNotFoundError();
   }
 
-  // Steward is the only supported provider. Legacy Privy wallets must be
-  // migrated to Steward before they can execute RPCs (see AUTH_MIGRATION_NOTES.md).
-  if (walletRecord.wallet_provider !== "steward") {
-    throw new Error(
-      `Wallet ${walletRecord.id} uses legacy provider "${walletRecord.wallet_provider}". ` +
-        `Migrate to Steward before executing RPCs.`,
-    );
-  }
   return executeStewardRpc(walletRecord, payload);
 }
 

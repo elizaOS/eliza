@@ -55,9 +55,11 @@ describe("prompt templates", () => {
   });
 
   it("known required templates exist", () => {
-    // Note: message_handler.txt was intentionally removed; the canonical
-    // messageHandlerTemplate lives in @elizaos/core (packages/core/src/prompts.ts).
-    const requiredTemplates = ["reply.txt", "should_respond.txt"];
+    const requiredTemplates = [
+      "message_handler.txt",
+      "reply.txt",
+      "should_respond.txt",
+    ];
     const files = readdirSync(PROMPTS_DIR);
     for (const required of requiredTemplates) {
       assert.ok(

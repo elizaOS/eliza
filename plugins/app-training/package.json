@@ -5,187 +5,182 @@
   "main": "./dist/index.js",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./ui": {
-      "types": "./src/ui/index.ts",
+      "types": "./dist/ui/index.d.ts",
       "import": "./dist/ui/index.js",
       "default": "./dist/ui/index.js"
     },
     "./ui/FineTuningView": {
-      "types": "./src/ui/FineTuningView.tsx",
+      "types": "./dist/ui/FineTuningView.d.ts",
       "import": "./dist/ui/FineTuningView.js",
       "default": "./dist/ui/FineTuningView.js"
     },
     "./ui/fine-tuning-panels": {
-      "types": "./src/ui/fine-tuning-panels.tsx",
+      "types": "./dist/ui/fine-tuning-panels.d.ts",
       "import": "./dist/ui/fine-tuning-panels.js",
       "default": "./dist/ui/fine-tuning-panels.js"
     },
     "./ui/*": {
-      "types": "./src/ui/*",
+      "types": "./dist/ui/*",
       "import": "./dist/ui/*",
       "default": "./dist/ui/*"
     },
     "./routes": {
-      "types": "./src/routes/index.ts",
+      "types": "./dist/routes/index.d.ts",
       "import": "./dist/routes/index.js",
       "default": "./dist/routes/index.js"
     },
     "./routes/training": {
-      "types": "./src/routes/training-routes.ts",
+      "types": "./dist/routes/training-routes.d.ts",
       "import": "./dist/routes/training-routes.js",
       "default": "./dist/routes/training-routes.js"
     },
     "./routes/trajectory": {
-      "types": "./src/routes/trajectory-routes.ts",
+      "types": "./dist/routes/trajectory-routes.d.ts",
       "import": "./dist/routes/trajectory-routes.js",
       "default": "./dist/routes/trajectory-routes.js"
     },
     "./services": {
-      "types": "./src/services/index.ts",
+      "types": "./dist/services/index.d.ts",
       "import": "./dist/services/index.js",
       "default": "./dist/services/index.js"
     },
     "./services/training-service-like": {
-      "types": "./src/services/training-service-like.ts",
+      "types": "./dist/services/training-service-like.d.ts",
       "import": "./dist/services/training-service-like.js",
       "default": "./dist/services/training-service-like.js"
     },
     "./services/training-service-registry": {
-      "types": "./src/services/training-service-registry.ts",
+      "types": "./dist/services/training-service-registry.d.ts",
       "import": "./dist/services/training-service-registry.js",
       "default": "./dist/services/training-service-registry.js"
     },
     "./setup-routes": {
-      "types": "./src/setup-routes.ts",
+      "types": "./dist/setup-routes.d.ts",
       "import": "./dist/setup-routes.js",
       "default": "./dist/setup-routes.js"
     },
     "./register-runtime": {
-      "types": "./src/register-runtime.ts",
+      "types": "./dist/register-runtime.d.ts",
       "import": "./dist/register-runtime.js",
       "default": "./dist/register-runtime.js"
     },
     "./core": {
-      "types": "./src/core/index.ts",
+      "types": "./dist/core/index.d.ts",
       "import": "./dist/core/index.js",
       "default": "./dist/core/index.js"
     },
     "./core/*": {
-      "types": "./src/core/*.ts",
+      "types": "./dist/core/*.d.ts",
       "import": "./dist/core/*.js",
       "default": "./dist/core/*.js"
     },
     "./core/context-types": {
-      "types": "./src/core/context-types.ts",
+      "types": "./dist/core/context-types.d.ts",
       "import": "./dist/core/context-types.js",
       "default": "./dist/core/context-types.js"
     },
     "./core/context-catalog": {
-      "types": "./src/core/context-catalog.ts",
+      "types": "./dist/core/context-catalog.d.ts",
       "import": "./dist/core/context-catalog.js",
       "default": "./dist/core/context-catalog.js"
     },
     "./core/context-audit": {
-      "types": "./src/core/context-audit.ts",
+      "types": "./dist/core/context-audit.d.ts",
       "import": "./dist/core/context-audit.js",
       "default": "./dist/core/context-audit.js"
     },
     "./core/dataset-generator": {
-      "types": "./src/core/dataset-generator.ts",
+      "types": "./dist/core/dataset-generator.d.ts",
       "import": "./dist/core/dataset-generator.js",
       "default": "./dist/core/dataset-generator.js"
     },
     "./core/replay-validator": {
-      "types": "./src/core/replay-validator.ts",
+      "types": "./dist/core/replay-validator.d.ts",
       "import": "./dist/core/replay-validator.js",
       "default": "./dist/core/replay-validator.js"
     },
     "./core/roleplay-executor": {
-      "types": "./src/core/roleplay-executor.ts",
+      "types": "./dist/core/roleplay-executor.d.ts",
       "import": "./dist/core/roleplay-executor.js",
       "default": "./dist/core/roleplay-executor.js"
     },
     "./core/roleplay-trajectories": {
-      "types": "./src/core/roleplay-trajectories.ts",
+      "types": "./dist/core/roleplay-trajectories.d.ts",
       "import": "./dist/core/roleplay-trajectories.js",
       "default": "./dist/core/roleplay-trajectories.js"
     },
     "./core/scenario-blueprints": {
-      "types": "./src/core/scenario-blueprints.ts",
+      "types": "./dist/core/scenario-blueprints.d.ts",
       "import": "./dist/core/scenario-blueprints.js",
       "default": "./dist/core/scenario-blueprints.js"
     },
     "./core/trajectory-task-datasets": {
-      "types": "./src/core/trajectory-task-datasets.ts",
+      "types": "./dist/core/trajectory-task-datasets.d.ts",
       "import": "./dist/core/trajectory-task-datasets.js",
       "default": "./dist/core/trajectory-task-datasets.js"
     },
-    "./core/vertex-tuning": {
-      "types": "./src/core/vertex-tuning.ts",
-      "import": "./dist/core/vertex-tuning.js",
-      "default": "./dist/core/vertex-tuning.js"
-    },
     "./core/cli": {
-      "types": "./src/core/cli.ts",
+      "types": "./dist/core/cli.d.ts",
       "import": "./dist/core/cli.js",
       "default": "./dist/core/cli.js"
     },
     "./core/privacy-filter": {
-      "types": "./src/core/privacy-filter.ts",
+      "types": "./dist/core/privacy-filter.d.ts",
       "import": "./dist/core/privacy-filter.js",
       "default": "./dist/core/privacy-filter.js"
     },
     "./core/skill-scoring-cron": {
-      "types": "./src/core/skill-scoring-cron.ts",
+      "types": "./dist/core/skill-scoring-cron.d.ts",
       "import": "./dist/core/skill-scoring-cron.js",
       "default": "./dist/core/skill-scoring-cron.js"
     },
     "./core/training-config": {
-      "types": "./src/core/training-config.ts",
+      "types": "./dist/core/training-config.d.ts",
       "import": "./dist/core/training-config.js",
       "default": "./dist/core/training-config.js"
     },
     "./core/training-orchestrator": {
-      "types": "./src/core/training-orchestrator.ts",
+      "types": "./dist/core/training-orchestrator.d.ts",
       "import": "./dist/core/training-orchestrator.js",
       "default": "./dist/core/training-orchestrator.js"
     },
     "./services/training-trigger": {
-      "types": "./src/services/training-trigger.ts",
+      "types": "./dist/services/training-trigger.d.ts",
       "import": "./dist/services/training-trigger.js",
       "default": "./dist/services/training-trigger.js"
     },
     "./cli/train": {
-      "types": "./src/cli/train.ts",
+      "types": "./dist/cli/train.d.ts",
       "import": "./dist/cli/train.js",
       "default": "./dist/cli/train.js"
     },
     "./backends/atropos": {
-      "types": "./src/backends/atropos.ts",
+      "types": "./dist/backends/atropos.d.ts",
       "import": "./dist/backends/atropos.js",
       "default": "./dist/backends/atropos.js"
     },
     "./backends/tinker": {
-      "types": "./src/backends/tinker.ts",
+      "types": "./dist/backends/tinker.d.ts",
       "import": "./dist/backends/tinker.js",
       "default": "./dist/backends/tinker.js"
     },
     "./backends/native": {
-      "types": "./src/backends/native.ts",
+      "types": "./dist/backends/native.d.ts",
       "import": "./dist/backends/native.js",
       "default": "./dist/backends/native.js"
     },
     "./optimizers": {
-      "types": "./src/optimizers/index.ts",
+      "types": "./dist/optimizers/index.d.ts",
       "import": "./dist/optimizers/index.js",
       "default": "./dist/optimizers/index.js"
     },
     "./optimizers/*": {
-      "types": "./src/optimizers/*.ts",
+      "types": "./dist/optimizers/*.d.ts",
       "import": "./dist/optimizers/*.js",
       "default": "./dist/optimizers/*.js"
     },
@@ -195,8 +190,10 @@
     "train": "bun run src/cli/train.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "clean": "rm -rf dist"
+    "build": "bun run build:js && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -217,7 +214,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],

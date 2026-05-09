@@ -5,15 +5,19 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { getSelfControlAccess } from "../website-blocker/access.ts";
-import { getCachedSelfControlStatus } from "../website-blocker/engine.ts";
+import { getSelfControlAccess } from "../website-blocker/access.js";
+import { getCachedSelfControlStatus } from "../website-blocker/engine.js";
 
 export const websiteBlockerProvider: Provider = {
   name: "websiteBlocker",
   description:
-    "Owner-only provider for the local hosts-file website blocker integration. Use OWNER_WEBSITE_BLOCK for timed or generic focus blocks, and BLOCK_UNTIL_TASK_COMPLETE only when the unblock condition is finishing a task.",
+    "Owner-only provider for the local hosts-file website blocker integration. Use WEBSITE_BLOCK for website blocking (timed focus blocks, generic distraction blocks, or fixed duration).",
   descriptionCompressed: "Owner: hosts-file website blocker.",
   dynamic: true,
+  contexts: ["screen_time", "settings"],
+  contextGate: { anyOf: ["screen_time", "settings"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "OWNER" },
   get: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -34,7 +38,27 @@ export const websiteBlockerProvider: Provider = {
       };
     }
 
-    const status = await getCachedSelfControlStatus();
+    let status;
+    try {
+      status = await getCachedSelfControlStatus();
+    } catch (error) {
+      return {
+        text: "Local website blocking status unavailable.",
+        values: {
+          websiteBlockerAuthorized: true,
+          websiteBlockerAvailable: false,
+          selfControlAuthorized: true,
+          selfControlAvailable: false,
+        },
+        data: {
+          websiteBlockerAuthorized: true,
+          websiteBlockerAvailable: false,
+          selfControlAuthorized: true,
+          selfControlAvailable: false,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      };
+    }
     if (!status.available) {
       return {
         text:

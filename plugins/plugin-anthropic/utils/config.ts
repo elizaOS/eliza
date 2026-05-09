@@ -3,7 +3,7 @@ import type { ModelName, ModelSize, ValidatedApiKey } from "../types";
 import { assertValidApiKey, createModelName } from "../types";
 
 const DEFAULT_SMALL_MODEL = "claude-haiku-4-5-20251001";
-const DEFAULT_LARGE_MODEL = "claude-sonnet-4-6";
+const DEFAULT_LARGE_MODEL = "claude-opus-4-7";
 const DEFAULT_BASE_URL = "https://api.anthropic.com/v1";
 
 export function isBrowser(): boolean {
@@ -106,7 +106,7 @@ export function getResponseHandlerModel(runtime: IAgentRuntime): ModelName {
     getRawSetting(runtime, "ANTHROPIC_SHOULD_RESPOND_MODEL") ??
     getRawSetting(runtime, "RESPONSE_HANDLER_MODEL") ??
     getRawSetting(runtime, "SHOULD_RESPOND_MODEL") ??
-    getNanoModel(runtime);
+    getSmallModel(runtime);
   return createModelName(model);
 }
 
@@ -116,7 +116,7 @@ export function getActionPlannerModel(runtime: IAgentRuntime): ModelName {
     getRawSetting(runtime, "ANTHROPIC_PLANNER_MODEL") ??
     getRawSetting(runtime, "ACTION_PLANNER_MODEL") ??
     getRawSetting(runtime, "PLANNER_MODEL") ??
-    getMediumModel(runtime);
+    getLargeModel(runtime);
   return createModelName(model);
 }
 

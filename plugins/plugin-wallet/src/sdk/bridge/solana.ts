@@ -12,6 +12,7 @@
 
 import {
   type Address,
+  type Chain,
   createPublicClient,
   getContract,
   type Hash,
@@ -82,7 +83,7 @@ export const SOLANA_DEFAULT_RPC =
 
 // ─── Viem chain definitions for EVM side ───
 
-const VIEM_CHAINS: Record<EVMBridgeChain, any> = {
+const VIEM_CHAINS: Record<EVMBridgeChain, Chain> = {
   base,
   ethereum: mainnet,
   optimism,

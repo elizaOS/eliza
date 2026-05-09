@@ -21,9 +21,9 @@ import {
   type Action,
   type ActionResult,
   annotateActiveTrajectoryStep,
+  logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
-  logger as coreLogger,
   type Memory,
   resolveTrajectoryLogger,
   type State,
@@ -40,9 +40,8 @@ import {
 const LOG_PREFIX = "[ExecuteCodePlugin]";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-
-const AsyncFunction = Object.getPrototypeOf(async function () {})
-  .constructor as new (
+const EXECUTE_CODE_CONTEXTS = ["code", "terminal", "automation"] as const;
+const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
   ...args: string[]
 ) => (...callArgs: unknown[]) => Promise<unknown>;
 
@@ -127,13 +126,45 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+function hasSelectedContext(
+  state: State | undefined,
+  contexts: readonly string[],
+): boolean {
+  const selected = new Set<string>();
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") selected.add(item);
+    }
+  };
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  const contextObject = (state?.data as Record<string, unknown> | undefined)
+    ?.contextObject as
+    | {
+        trajectoryPrefix?: { selectedContexts?: unknown };
+        metadata?: { selectedContexts?: unknown };
+      }
+    | undefined;
+  collect(contextObject?.trajectoryPrefix?.selectedContexts);
+  collect(contextObject?.metadata?.selectedContexts);
+  return contexts.some((context) => selected.has(context));
+}
+
 export const executeCodeAction: Action = {
   name: "EXECUTE_CODE",
+  contexts: [...EXECUTE_CODE_CONTEXTS],
+  contextGate: { anyOf: ["code", "terminal", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: ["RUN_SCRIPT", "EXECUTE_TOOL_SCRIPT"],
   description:
-    "Run a short JS-style script that calls multiple agent actions through `tools.<actionName>(args)` and reads runtime context via `context`. Use when the same turn needs three or more sequential tool calls with simple control flow or data passing between them. Not for single-call work.",
+    "Execute a short async JavaScript function body in the agent process. The script can orchestrate registered actions via `await tools.<actionName>(args)` and read runtime state through `context.{agentId,roomId,entityId,getMemories,searchMemories}`. The script return value is rendered as text and included as JSON-safe data. Optional allowedActions narrows callable actions; optional timeoutMs overrides the default 30s Promise.race timeout. Use when one turn needs three or more sequential action calls with simple control flow or data passed between them.",
   descriptionCompressed:
-    "Run multi-step JS script that calls actions sequentially via tools.<name>(args).",
+    "execute-code:async-js script with tools.<action>(args) + context; allowedActions + timeoutMs",
   parameters: [
     {
       name: "script",
@@ -157,7 +188,21 @@ export const executeCodeAction: Action = {
       schema: { type: "number" },
     },
   ],
-  validate: async () => true,
+  validate: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    state?: State,
+    options?: unknown,
+  ) => {
+    const disable = runtime.getSetting?.("EXECUTECODE_DISABLE");
+    if (disable === true || disable === "true" || disable === "1") {
+      return false;
+    }
+    return (
+      hasSelectedContext(state, EXECUTE_CODE_CONTEXTS) ||
+      "params" in readParams(options)
+    );
+  },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -167,10 +212,15 @@ export const executeCodeAction: Action = {
   ): Promise<ActionResult> => {
     const disable = runtime.getSetting?.("EXECUTECODE_DISABLE");
     if (disable === true || disable === "true" || disable === "1") {
+      const text = `${LOG_PREFIX} disabled via EXECUTECODE_DISABLE`;
       return {
         success: false,
-        text: `${LOG_PREFIX} disabled via EXECUTECODE_DISABLE`,
+        text,
         error: new Error("executeCode disabled"),
+        data: {
+          actionName: "EXECUTE_CODE",
+          reason: "disabled",
+        },
       };
     }
 
@@ -180,6 +230,10 @@ export const executeCodeAction: Action = {
         success: false,
         text: parsed.error,
         error: new Error(parsed.error),
+        data: {
+          actionName: "EXECUTE_CODE",
+          reason: "invalid_parameters",
+        },
       };
     }
     const { script, allowedActions, timeoutMs } = parsed.params;
@@ -189,6 +243,10 @@ export const executeCodeAction: Action = {
         success: false,
         text: "executeCode: message has no roomId; cannot dispatch tools",
         error: new Error("missing roomId"),
+        data: {
+          actionName: "EXECUTE_CODE",
+          reason: "missing_room_id",
+        },
       };
     }
     const roomId = message.roomId as UUID;
@@ -205,7 +263,7 @@ export const executeCodeAction: Action = {
       trajectoryLogger &&
       typeof trajectoryLogger.startTrajectory === "function"
     ) {
-      // Legacy signature: (stepId, { agentId, source, metadata }) returns stepId.
+      // Current trajectory logger signature: (stepId, { agentId, source, metadata }) returns stepId.
       await trajectoryLogger.startTrajectory(parentStepId, {
         agentId: runtime.agentId,
         source: "execute-code",
@@ -268,9 +326,12 @@ export const executeCodeAction: Action = {
     }
 
     const summary: Record<string, unknown> = {
+      actionName: "EXECUTE_CODE",
       parentStepId,
       childSteps,
       childCount: childSteps.length,
+      timeoutMs: effectiveTimeoutMs,
+      ...(allowedActions !== undefined ? { allowedActions } : {}),
     };
 
     if (scriptError) {

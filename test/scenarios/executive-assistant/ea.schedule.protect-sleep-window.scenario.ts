@@ -37,7 +37,7 @@ export default scenario({
       room: "main",
       text: "No calls between 11pm and 8am unless I explicitly say it's okay.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_CALENDAR", "OWNER_CALENDAR"],
+        acceptedActions: ["CALENDAR", "CALENDAR"],
         description: "sleep-window preference capture",
         includesAny: ["11pm", "8am", "sleep", "calls"],
       }),
@@ -54,7 +54,7 @@ export default scenario({
       room: "main",
       text: "Can you schedule a 7am call tomorrow, or should we move it?",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_CALENDAR", "OWNER_CALENDAR"],
+        acceptedActions: ["CALENDAR", "CALENDAR"],
         description: "sleep-window conflict resolution",
         includesAny: ["7am", "move", "sleep", "override"],
       }),
@@ -70,9 +70,9 @@ export default scenario({
     {
       type: "selectedAction",
       actionName: [
-        "OWNER_CALENDAR",
-        "OWNER_CALENDAR",
-        "OWNER_CALENDAR",
+        "CALENDAR",
+        "CALENDAR",
+        "CALENDAR",
       ],
     },
     {
@@ -84,9 +84,9 @@ export default scenario({
       name: "ea-protect-sleep-action-coverage",
       predicate: expectScenarioToCallAction({
         acceptedActions: [
-          "OWNER_CALENDAR",
-          "OWNER_CALENDAR",
-          "OWNER_CALENDAR",
+          "CALENDAR",
+          "CALENDAR",
+          "CALENDAR",
         ],
         description: "sleep-window preference capture and conflict resolution",
         includesAny: ["11pm", "8am", "sleep", "7am", "move"],

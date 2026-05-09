@@ -103,7 +103,7 @@ async function resolveServiceUser(
   const serviceId = serviceIdFromUserId(payload.userId);
 
   // 1. Try existing user by serviceId
-  const user = await usersService.getByPrivyId(serviceId);
+  const user = await usersService.getByStewardId(serviceId);
   if (user?.organization_id && user?.organization) {
     return user as WaifuBridgeAuthResult["user"];
   }
@@ -120,11 +120,11 @@ async function resolveServiceUser(
         .insert(userIdentities)
         .values({
           user_id: walletUser.id,
-          privy_user_id: serviceId,
+          steward_user_id: serviceId,
         })
         .onConflictDoUpdate({
           target: userIdentities.user_id,
-          set: { privy_user_id: serviceId, updated_at: new Date() },
+          set: { steward_user_id: serviceId, updated_at: new Date() },
         });
       return walletUser as WaifuBridgeAuthResult["user"];
     }
@@ -173,7 +173,7 @@ async function resolveServiceUser(
 
       // Another request won the race and may have created the user too —
       // re-check before falling through to user creation.
-      const retryUser = await usersService.getByPrivyId(serviceId);
+      const retryUser = await usersService.getByStewardId(serviceId);
       if (retryUser?.organization_id && retryUser?.organization) {
         return retryUser as WaifuBridgeAuthResult["user"];
       }
@@ -197,7 +197,7 @@ async function resolveServiceUser(
   let newUser;
   try {
     newUser = await usersService.create({
-      privy_user_id: serviceId,
+      steward_user_id: serviceId,
       email,
       organization_id: orgId,
       wallet_address: walletAddr,
@@ -206,7 +206,7 @@ async function resolveServiceUser(
     });
   } catch (err: unknown) {
     // Handle concurrent provisioning: if a parallel request already created
-    // this user (unique constraint on privy_user_id or wallet_address),
+    // this user (unique constraint on steward_user_id or wallet_address),
     // re-fetch instead of failing.
     const isConflict =
       err instanceof Error &&
@@ -219,7 +219,7 @@ async function resolveServiceUser(
       serviceId,
     });
 
-    const existing = await usersService.getByPrivyId(serviceId);
+    const existing = await usersService.getByStewardId(serviceId);
     if (existing?.organization_id && existing?.organization) {
       return existing as WaifuBridgeAuthResult["user"];
     }
@@ -238,7 +238,7 @@ async function resolveServiceUser(
   // Create identity record for this service user
   await dbWrite.insert(userIdentities).values({
     user_id: newUser.id,
-    privy_user_id: serviceId,
+    steward_user_id: serviceId,
   });
 
   const fullUser = await usersService.getWithOrganization(newUser.id);

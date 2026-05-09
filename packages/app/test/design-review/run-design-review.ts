@@ -13,7 +13,7 @@ import {
   type MockApiServer,
   startMockApiServer,
 } from "../electrobun-packaged/mock-api";
-import { getFreePort } from "../utils/get-free-port";
+import { getFreePort } from "../utils/get-free-port.mjs";
 
 type ShellMode = "companion" | "native";
 type ViewId =
@@ -221,11 +221,11 @@ const views: ViewSpec[] = [
     readyChecks: [{ selector: '[data-testid="wallets-sidebar"]' }],
   },
   {
-    id: "knowledge",
+    id: "documents",
     label: "Knowledge",
-    path: "/knowledge",
+    path: "/character/documents",
     shellMode: "native",
-    lastNativeTab: "knowledge",
+    lastNativeTab: "documents",
     readyChecks: [{ selector: '[aria-label="Knowledge upload controls"]' }],
   },
   {

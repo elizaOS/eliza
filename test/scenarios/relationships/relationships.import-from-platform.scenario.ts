@@ -45,7 +45,7 @@ export default scenario({
       name: "import-request-routing",
       predicate: async (ctx) => {
         const action = ctx.actionsCalled.find(
-          (entry) => entry.actionName === "OWNER_RELATIONSHIP",
+          (entry) => entry.actionName === "RELATIONSHIP",
         );
         const data =
           action?.result?.data && typeof action.result.data === "object"
@@ -55,7 +55,7 @@ export default scenario({
               })
             : null;
         if (!data) {
-          return "expected OWNER_RELATIONSHIP result data";
+          return "expected RELATIONSHIP result data";
         }
         if (data.subaction !== "list_contacts") {
           return `expected list_contacts fallback, got ${data.subaction ?? "(missing)"}`;

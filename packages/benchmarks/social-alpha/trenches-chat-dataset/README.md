@@ -11,7 +11,7 @@ A comprehensive dataset of Discord trading discussions from the ElizaOS Trenches
 - **Trading Calls**: 61,011
 - **Unique Tokens**: 3,481  
 - **Active Users**: 1,790
-- **File Formats**: JSON and Parquet (placeholder)
+- **File Formats**: JSON
 - **Compressed Size**: ~25MB (ZIP/TAR.GZ)
 
 ## 📁 Dataset Structure
@@ -20,13 +20,9 @@ A comprehensive dataset of Discord trading discussions from the ElizaOS Trenches
 trenches-chat-dataset/
 ├── data/
 │   ├── messages.json         # All Discord messages with call labels
-│   ├── messages.parquet      # Parquet format (placeholder)
 │   ├── calls.json           # Enriched trading calls with metrics
-│   ├── calls.parquet        # Parquet format (placeholder)
 │   ├── tokens.json          # Token manifest with statistics
-│   ├── tokens.parquet       # Parquet format (placeholder)
 │   ├── users.json           # User manifest with performance metrics
-│   ├── users.parquet        # Parquet format (placeholder)
 │   └── price_history/       # Historical OHLCV data per token
 │       ├── {token_address}.json
 │       └── ...

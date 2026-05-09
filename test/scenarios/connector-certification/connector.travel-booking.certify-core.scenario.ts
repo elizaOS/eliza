@@ -13,9 +13,9 @@ export default buildConnectorCertificationScenario({
       text: "Search the travel options, hold the best one, and only book it once I approve the itinerary.",
       responseIncludesAny: ["travel", "hold", "book", "approve", "itinerary"],
       acceptedActions: [
-        "OWNER_CALENDAR",
-        "SEND_DRAFT",
-        "OWNER_VOICE_CALL",
+        "CALENDAR",
+        "MESSAGE",
+        "VOICE_CALL",
       ],
       includesAny: ["travel", "hold", "book", "approve", "itinerary"],
     },

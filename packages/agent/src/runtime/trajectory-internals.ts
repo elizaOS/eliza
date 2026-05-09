@@ -14,9 +14,11 @@ import os from "node:os";
 import path from "node:path";
 import { createGzip } from "node:zlib";
 import {
+  composePrompt,
   logger as coreLogger,
   type IAgentRuntime,
   ModelType,
+  observationExtractionTemplate,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 
@@ -24,7 +26,10 @@ export { asRecord };
 
 import {
   TRAJECTORY_STEP_SCRIPT_MAX_CHARS,
+  type TrajectoryLlmCall,
+  type TrajectoryProviderAccess,
   type TrajectoryStatus,
+  type TrajectoryStep,
   type TrajectoryStepKind,
 } from "../types/trajectory.js";
 
@@ -49,7 +54,7 @@ export type TrajectoryLoggerLike = {
   providerAccess?: unknown[];
 };
 
-export type PersistedLlmCall = {
+export type PersistedLlmCall = TrajectoryLlmCall & {
   callId: string;
   timestamp: number;
   model: string;
@@ -60,24 +65,18 @@ export type PersistedLlmCall = {
   maxTokens: number;
   purpose: string;
   actionType: string;
-  stepType?: string;
-  tags?: string[];
   latencyMs: number;
-  promptTokens?: number;
-  completionTokens?: number;
-  tokenUsageEstimated?: boolean;
 };
 
-export type PersistedProviderAccess = {
+export type PersistedProviderAccess = TrajectoryProviderAccess & {
   providerId: string;
   providerName: string;
   timestamp: number;
   data: Record<string, unknown>;
-  query?: Record<string, unknown>;
   purpose: string;
 };
 
-export type PersistedStep = {
+export type PersistedStep = TrajectoryStep & {
   stepId: string;
   stepNumber: number;
   timestamp: number;
@@ -307,16 +306,13 @@ export function enrichTrajectoryLlmCall<T extends Record<string, unknown>>(
   };
 }
 
-export function hasEvaluatorNamed(
-  runtime: IAgentRuntime,
-  name: string,
-): boolean {
-  const evaluators = runtime.evaluators;
-  if (!Array.isArray(evaluators)) return false;
+export function hasActionNamed(runtime: IAgentRuntime, name: string): boolean {
+  const actions = runtime.actions;
+  if (!Array.isArray(actions)) return false;
   const target = name.trim().toUpperCase();
-  return evaluators.some((evaluator) => {
-    const evaluatorName = evaluator?.name?.trim().toUpperCase() ?? "";
-    return evaluatorName === target;
+  return actions.some((action) => {
+    const actionName = action?.name?.trim().toUpperCase() ?? "";
+    return actionName === target;
   });
 }
 
@@ -511,10 +507,7 @@ export function shouldRunObservationExtraction(
   const explicitValue = toOptionalBoolean(explicitSetting);
   if (explicitValue !== undefined) return explicitValue;
 
-  if (
-    hasEvaluatorNamed(runtime, "REFLECTION") ||
-    hasEvaluatorNamed(runtime, "RELATIONSHIP_EXTRACTION")
-  ) {
+  if (hasActionNamed(runtime, "REFLECTION")) {
     return false;
   }
   return true;
@@ -548,22 +541,6 @@ function getObservationBuffer(runtime: IAgentRuntime): BufferedExchange[] {
   }
   return buffer;
 }
-
-const OBSERVATION_EXTRACTION_PROMPT = `You are analyzing recent conversation exchanges between a user and an AI assistant.
-Extract any durable observations about the user that would be useful across future sessions.
-
-Categories to look for:
-- Preferences (tools, languages, workflows, communication style)
-- Facts (role, location, projects they work on, tech stack)
-- Standing instructions (things they always/never want)
-- Patterns (recurring topics, how they like to work)
-
-Return ONLY a JSON array of short observation strings (max 150 chars each).
-If nothing meaningful is found, return an empty array [].
-Do NOT include observations about the conversation itself, only about the user.
-
-Recent exchanges:
-`;
 
 export function pushChatExchange(
   runtime: IAgentRuntime,
@@ -623,7 +600,10 @@ export async function flushObservationBuffer(
     )
     .join("\n\n");
 
-  const prompt = OBSERVATION_EXTRACTION_PROMPT + exchangeText;
+  const prompt = composePrompt({
+    state: { exchanges: exchangeText },
+    template: observationExtractionTemplate,
+  });
 
   const runtimeRecord = runtime as unknown as Record<string, unknown>;
   try {
@@ -1314,6 +1294,62 @@ export function summarizeTrajectory(trajectory: PersistedTrajectory): {
   };
 }
 
+export function parsePersistedTrajectoryRow(
+  row: Record<string, unknown>,
+  fallbackId: string,
+): PersistedTrajectory {
+  const startTime = toNumber(
+    readRecordValue(row, ["start_time", "startTime"]),
+    Date.now(),
+  );
+  const endTime =
+    toOptionalNumber(readRecordValue(row, ["end_time", "endTime"])) ?? null;
+  const steps = parseSteps(
+    readRecordValue(row, ["steps_json", "stepsJson", "steps"]),
+  );
+  const normalizedMetadata = normalizeTrajectoryMetadata(
+    parseMetadata(
+      readRecordValue(row, [
+        "metadata_json",
+        "metadataJson",
+        "metadata",
+        "meta",
+      ]),
+    ),
+    {
+      scenarioId: readRecordValue(row, ["scenario_id", "scenarioId"]),
+      batchId: readRecordValue(row, ["batch_id", "batchId"]),
+    },
+  );
+
+  return {
+    id: toText(
+      readRecordValue(row, ["id", "trajectory_id", "trajectoryId"]),
+      fallbackId,
+    ),
+    source: toText(readRecordValue(row, ["source"]), "runtime"),
+    status: normalizeStatus(readRecordValue(row, ["status"]), "completed"),
+    startTime,
+    endTime,
+    scenarioId: normalizedMetadata.scenarioId,
+    batchId: normalizedMetadata.batchId,
+    steps,
+    metadata: normalizedMetadata.metadata,
+    totalReward: toNumber(
+      readRecordValue(row, ["total_reward", "totalReward"]),
+      0,
+    ),
+    createdAt: toText(
+      readRecordValue(row, ["created_at", "createdAt"]),
+      new Date(startTime).toISOString(),
+    ),
+    updatedAt: toText(
+      readRecordValue(row, ["updated_at", "updatedAt"]),
+      new Date(endTime ?? startTime).toISOString(),
+    ),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Core load/save (used by both storage and query modules)
 // ---------------------------------------------------------------------------
@@ -1322,62 +1358,6 @@ export async function loadTrajectoryById(
   runtime: IAgentRuntime,
   stepId: string,
 ): Promise<PersistedTrajectory | null> {
-  const parseTrajectoryRow = (
-    row: Record<string, unknown>,
-    fallbackId: string,
-  ): PersistedTrajectory => {
-    const startTime = toNumber(
-      readRecordValue(row, ["start_time", "startTime"]),
-      Date.now(),
-    );
-    const endTime =
-      toOptionalNumber(readRecordValue(row, ["end_time", "endTime"])) ?? null;
-    const steps = parseSteps(
-      readRecordValue(row, ["steps_json", "stepsJson", "steps"]),
-    );
-    const normalizedMetadata = normalizeTrajectoryMetadata(
-      parseMetadata(
-        readRecordValue(row, [
-          "metadata_json",
-          "metadataJson",
-          "metadata",
-          "meta",
-        ]),
-      ),
-      {
-        scenarioId: readRecordValue(row, ["scenario_id", "scenarioId"]),
-        batchId: readRecordValue(row, ["batch_id", "batchId"]),
-      },
-    );
-
-    return {
-      id: toText(
-        readRecordValue(row, ["id", "trajectory_id", "trajectoryId"]),
-        fallbackId,
-      ),
-      source: toText(readRecordValue(row, ["source"]), "runtime"),
-      status: normalizeStatus(readRecordValue(row, ["status"]), "completed"),
-      startTime,
-      endTime,
-      scenarioId: normalizedMetadata.scenarioId,
-      batchId: normalizedMetadata.batchId,
-      steps,
-      metadata: normalizedMetadata.metadata,
-      totalReward: toNumber(
-        readRecordValue(row, ["total_reward", "totalReward"]),
-        0,
-      ),
-      createdAt: toText(
-        readRecordValue(row, ["created_at", "createdAt"]),
-        new Date(startTime).toISOString(),
-      ),
-      updatedAt: toText(
-        readRecordValue(row, ["updated_at", "updatedAt"]),
-        new Date(endTime ?? startTime).toISOString(),
-      ),
-    };
-  };
-
   const safeId = sqlQuote(stepId);
   try {
     const result = await executeRawSql(
@@ -1388,7 +1368,7 @@ export async function loadTrajectoryById(
     if (rows.length === 0) return null;
     const row = asRecord(rows[0]);
     if (!row) return null;
-    return parseTrajectoryRow(row, stepId);
+    return parsePersistedTrajectoryRow(row, stepId);
   } catch {
     return null;
   }
@@ -1421,56 +1401,7 @@ export async function loadTrajectoryByStepId(
     if (rows.length === 0) return null;
     const row = asRecord(rows[0]);
     if (!row) return null;
-
-    const startTime = toNumber(
-      readRecordValue(row, ["start_time", "startTime"]),
-      Date.now(),
-    );
-    const endTime =
-      toOptionalNumber(readRecordValue(row, ["end_time", "endTime"])) ?? null;
-    const normalizedMetadata = normalizeTrajectoryMetadata(
-      parseMetadata(
-        readRecordValue(row, [
-          "metadata_json",
-          "metadataJson",
-          "metadata",
-          "meta",
-        ]),
-      ),
-      {
-        scenarioId: readRecordValue(row, ["scenario_id", "scenarioId"]),
-        batchId: readRecordValue(row, ["batch_id", "batchId"]),
-      },
-    );
-
-    return {
-      id: toText(
-        readRecordValue(row, ["id", "trajectory_id", "trajectoryId"]),
-        normalizedStepId,
-      ),
-      source: toText(readRecordValue(row, ["source"]), "runtime"),
-      status: normalizeStatus(readRecordValue(row, ["status"]), "completed"),
-      startTime,
-      endTime,
-      scenarioId: normalizedMetadata.scenarioId,
-      batchId: normalizedMetadata.batchId,
-      steps: parseSteps(
-        readRecordValue(row, ["steps_json", "stepsJson", "steps"]),
-      ),
-      metadata: normalizedMetadata.metadata,
-      totalReward: toNumber(
-        readRecordValue(row, ["total_reward", "totalReward"]),
-        0,
-      ),
-      createdAt: toText(
-        readRecordValue(row, ["created_at", "createdAt"]),
-        new Date(startTime).toISOString(),
-      ),
-      updatedAt: toText(
-        readRecordValue(row, ["updated_at", "updatedAt"]),
-        new Date(endTime ?? startTime).toISOString(),
-      ),
-    };
+    return parsePersistedTrajectoryRow(row, normalizedStepId);
   } catch {
     return null;
   }

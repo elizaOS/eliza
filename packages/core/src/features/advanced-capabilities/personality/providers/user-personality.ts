@@ -18,6 +18,11 @@ export const userPersonalityProvider: Provider = {
 	description:
 		"Injects per-user interaction preferences into the prompt when responding to a specific user",
 	dynamic: true,
+	contexts: ["general", "agent_internal"],
+	contextGate: { anyOf: ["general", "agent_internal"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
 
 	get: async (
 		runtime: IAgentRuntime,

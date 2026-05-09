@@ -2,12 +2,12 @@
  * PR 7 verification — operator steering, HTTP + in-game chat.
  *
  * Offline:
- *   1. POST /prompt with a TOON body → service.setOperatorGoal called
+ *   1. POST /prompt with a JSON body → service.setOperatorGoal called
  *   2. POST /prompt with a plain string body → same
  *   3. POST /prompt with no usable text → 400
  *   4. POST /prompt with no running service → 503
- *   5. GET /journal → TOON response contains memories
- *   6. GET /goals → TOON response contains goals
+ *   5. GET /journal → JSON response contains memories
+ *   6. GET /goals → JSON response contains goals
  *
  * Live (SCAPE_PR7_LIVE=1, requires xRSPS + BOT_SDK_TOKEN):
  *   7. Start a real BotSdk + listen for `operatorCommand` frames
@@ -26,7 +26,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BotSdk } from "@elizaos/app-scape";
 import type { IAgentRuntime } from "@elizaos/core";
-import { decode, encode } from "@toon-format/toon";
 import { handleAppRoutes } from "../src/routes.js";
 import { JournalService } from "../src/services/journal-service.js";
 
@@ -147,14 +146,14 @@ async function main(): Promise<void> {
     };
     const runtime = makeRuntimeWithService(fakeService);
 
-    // 1. POST /prompt with TOON body
-    console.log("\n[1] POST /prompt — TOON body");
-    const toonBody = encode({ text: "mine some copper ore" });
-    const r1 = await postPrompt(runtime, toonBody);
+    // 1. POST /prompt with JSON body
+    console.log("\n[1] POST /prompt — JSON body");
+    const jsonBody = JSON.stringify({ text: "mine some copper ore" });
+    const r1 = await postPrompt(runtime, jsonBody);
     assertTrue("status 200", r1.statusCode === 200);
     assertTrue(
-      "response content-type is text/toon",
-      (r1.getHeader("Content-Type") ?? "").includes("text/toon"),
+      "response content-type is application/json",
+      (r1.getHeader("Content-Type") ?? "").includes("application/json"),
     );
     assertTrue(
       "service.setOperatorGoal was called with the directive",
@@ -190,7 +189,7 @@ async function main(): Promise<void> {
     console.log("\n[5] GET /journal");
     const r5 = await getRoute(runtime, "/api/apps/scape/journal");
     assertTrue("status 200", r5.statusCode === 200);
-    const journalDecoded = decode(r5.body) as Record<string, unknown>;
+    const journalDecoded = JSON.parse(r5.body) as Record<string, unknown>;
     assertTrue(
       "journal body contains memories array",
       Array.isArray(journalDecoded.memories),
@@ -227,10 +226,10 @@ async function main(): Promise<void> {
         },
       },
     );
-    // Invoke the internal handler directly via TOON — we're
+    // Invoke the internal handler directly via JSON — we're
     // not actually opening a socket, just proving the codec
     // + callback path works.
-    const frame = encode({
+    const frame = JSON.stringify({
       kind: "operatorCommand",
       source: "chat",
       text: "direct test",
@@ -245,7 +244,7 @@ async function main(): Promise<void> {
       data: frame,
     });
     // If the SDK didn't expose handleMessage, we at least know the
-    // TOON encode succeeds and produces a valid operatorCommand
+    // JSON encode succeeds and produces a valid operatorCommand
     // shape.
     if (receivedFrame) {
       assertTrue(
@@ -254,7 +253,7 @@ async function main(): Promise<void> {
       );
     } else {
       assertTrue(
-        "operatorCommand frame TOON-encodes without error",
+        "operatorCommand frame JSON-encodes without error",
         frame.includes("operatorCommand") && frame.includes("direct test"),
       );
     }

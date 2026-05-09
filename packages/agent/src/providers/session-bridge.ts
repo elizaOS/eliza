@@ -96,6 +96,11 @@ export function createSessionKeyProvider(options?: {
     description: "Eliza session key (DM/group/thread isolation)",
     dynamic: true,
     position: 5,
+    contexts: ["general", "messaging"],
+    contextGate: { anyOf: ["general", "messaging"] },
+    cacheStable: false,
+    cacheScope: "turn",
+    roleGate: { minRole: "USER" },
 
     async get(
       runtime: IAgentRuntime,

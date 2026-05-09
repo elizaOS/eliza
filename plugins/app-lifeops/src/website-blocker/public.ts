@@ -3,15 +3,10 @@
  * `@elizaos/app-lifeops/selfcontrol` subpath imports.
  */
 
-export {
-  blockWebsitesAction,
-  getWebsiteBlockStatusAction,
-  requestWebsiteBlockingPermissionAction,
-  unblockWebsitesAction,
-} from "../actions/owner-website-block.ts";
+export { websiteBlockAction } from "../actions/website-block.js";
 
-export { websiteBlockerProvider } from "../providers/website-blocker.ts";
-export { getSelfControlAccess, SELFCONTROL_ACCESS_ERROR } from "./access.ts";
+export { websiteBlockerProvider } from "../providers/website-blocker.js";
+export { getSelfControlAccess, SELFCONTROL_ACCESS_ERROR } from "./access.js";
 export type {
   NativeWebsiteBlockerBackend,
   SelfControlBlockRequest,
@@ -19,7 +14,7 @@ export type {
   SelfControlPermissionState,
   SelfControlPluginConfig,
   SelfControlStatus,
-} from "./engine.ts";
+} from "./engine.js";
 export {
   getNativeWebsiteBlockerBackend,
   getSelfControlPermissionState,
@@ -31,10 +26,10 @@ export {
   setSelfControlPluginConfig,
   startSelfControlBlock,
   stopSelfControlBlock,
-} from "./engine.ts";
-export type { PermissionStatus } from "./permissions.ts";
+} from "./engine.js";
+export type { PermissionStatus } from "./permissions.js";
 
-export { checkSenderRole } from "./roles.ts";
+export { checkSenderRole } from "./roles.js";
 export {
   clearWebsiteBlockerExpiryTasks,
   executeWebsiteBlockerExpiryTask,
@@ -44,4 +39,4 @@ export {
   WEBSITE_BLOCKER_UNBLOCK_TASK_NAME,
   WEBSITE_BLOCKER_UNBLOCK_TASK_TAGS,
   WebsiteBlockerService,
-} from "./service.ts";
+} from "./service.js";

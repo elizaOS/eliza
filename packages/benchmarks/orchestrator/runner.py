@@ -43,11 +43,13 @@ PROVIDER_KEY_ENV: dict[str, str] = {
     "anthropic": "ANTHROPIC_API_KEY",
     "google": "GOOGLE_API_KEY",
     "vllm": "VLLM_API_KEY",
+    "cerebras": "CEREBRAS_API_KEY",
 }
 OPENAI_COMPAT_BASE_URL: dict[str, str] = {
     "groq": "https://api.groq.com/openai/v1",
     "openrouter": "https://openrouter.ai/api/v1",
     "vllm": "http://127.0.0.1:8001/v1",
+    "cerebras": "https://api.cerebras.ai/v1",
 }
 # Providers whose API key has no real secret value (self-hosted endpoints).
 PROVIDER_DUMMY_KEY: dict[str, str] = {
@@ -110,6 +112,8 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
     env = dict(os.environ)
     load_env_file(workspace_root / "eliza" / ".env")
     load_env_file(workspace_root / ".env")
+    load_env_file(workspace_root.parent / ".env")
+    load_env_file(workspace_root.parent.parent / ".env")
     env = dict(os.environ)
     python_bin = str(Path(sys.executable).parent)
     existing_path = env.get("PATH", "")

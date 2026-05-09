@@ -2,7 +2,7 @@
  * stewardReceiveAddress provider — wallet receive addresses for the planner.
  *
  * Replaces the legacy GET_RECEIVE_ADDRESS action. Fetches
- * `/api/wallet/addresses` and renders a TOON-encoded summary so the LLM can
+ * `/api/wallet/addresses` and renders a JSON-encoded summary so the LLM can
  * surface the user's deposit address without invoking a mutating action.
  *
  * @module providers/steward-receive-address
@@ -16,7 +16,6 @@ import type {
   State,
 } from "@elizaos/core";
 import type { WalletAddresses } from "@elizaos/shared";
-import { encode } from "@toon-format/toon";
 import {
   buildAuthHeaders,
   getWalletActionApiPort,
@@ -40,37 +39,45 @@ export const stewardReceiveAddressProvider: Provider = {
   descriptionCompressed: "Wallet receive addresses by chain.",
 
   dynamic: true,
+  contexts: ["finance", "wallet", "crypto"],
+  contextGate: { anyOf: ["finance", "wallet", "crypto"] },
+  cacheStable: false,
+  cacheScope: "turn",
 
   get: async (
     _runtime: IAgentRuntime,
     _message: Memory,
     _state: State,
   ): Promise<ProviderResult> => {
-    const response = await fetch(
-      `http://127.0.0.1:${getWalletActionApiPort()}/api/wallet/addresses`,
-      {
-        headers: { ...buildAuthHeaders() },
-        signal: AbortSignal.timeout(ADDRESSES_TIMEOUT_MS),
-      },
-    );
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:${getWalletActionApiPort()}/api/wallet/addresses`,
+        {
+          headers: { ...buildAuthHeaders() },
+          signal: AbortSignal.timeout(ADDRESSES_TIMEOUT_MS),
+        },
+      );
 
-    if (!response.ok) {
-      return { text: "" };
+      if (!response.ok) {
+        return { text: "" };
+      }
+
+      const addresses = (await response.json()) as WalletAddresses;
+      const snapshot: ReceiveAddressSnapshot = {
+        evm: addresses.evmAddress,
+        solana: addresses.solanaAddress,
+      };
+
+      if (!snapshot.evm && !snapshot.solana) {
+        return { text: "" };
+      }
+
+      return {
+        text: JSON.stringify({ steward_receive_address: snapshot }),
+        data: { snapshot },
+      };
+    } catch {
+      return { text: "", data: { snapshot: null } };
     }
-
-    const addresses = (await response.json()) as WalletAddresses;
-    const snapshot: ReceiveAddressSnapshot = {
-      evm: addresses.evmAddress,
-      solana: addresses.solanaAddress,
-    };
-
-    if (!snapshot.evm && !snapshot.solana) {
-      return { text: "" };
-    }
-
-    return {
-      text: encode({ steward_receive_address: snapshot }),
-      data: { snapshot },
-    };
   },
 };

@@ -690,4 +690,4 @@ Remove the local copy from `~/.eliza/plugins/custom/` to avoid loading both vers
 
 - [Plugin Development Guide](/plugins/development) -- Full plugin API reference
 - [Skills Documentation](/plugins/skills) -- Lighter-weight extensions
-- [Contributing Guide](/guides/contribution-guide) -- Contributing plugins upstream
+- [Contributing Guide](/guides/contributing) -- Contributing plugins upstream

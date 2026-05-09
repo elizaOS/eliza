@@ -7,24 +7,23 @@
  * - `enableSecretsManager: true` / `ENABLE_SECRETS_MANAGER` — encrypted secrets, plugin activation
  * - `enablePluginManager: true` / `ENABLE_PLUGIN_MANAGER` — plugin introspection, install/eject
  *
- * Actions, providers, and evaluators are populated eagerly from each capability's
- * index so they are registered with the runtime alongside the lazy-started services.
+ * Actions and providers are populated eagerly from each capability's index so
+ * they are registered with the runtime alongside the lazy-started services.
  */
 
-import type { Action, Evaluator, Provider } from "../types/index.ts";
+import type { Action, Provider } from "../types/index.ts";
 import type { ServiceClass } from "../types/plugin.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 
 // ─── Trust ────────────────────────────────────────────────────────────────────
 
 // Eagerly import trust components so they are available to the runtime's
-// action planner, provider composition, and evaluator loop.
+// action planner and provider composition.
 import {
 	evaluateTrustAction,
 	recordTrustInteractionAction,
 	requestElevationAction,
 	updateRoleAction as trustUpdateRoleAction,
-	updateSettingsAction as trustUpdateSettingsAction,
 } from "./trust/actions/index.ts";
 import {
 	adminTrustProvider,
@@ -44,12 +43,10 @@ const trustCapability = {
 	] as Provider[],
 	actions: [
 		trustUpdateRoleAction,
-		trustUpdateSettingsAction,
 		recordTrustInteractionAction,
 		evaluateTrustAction,
 		requestElevationAction,
 	] as Action[],
-	evaluators: [] as Evaluator[],
 	services: [
 		{
 			serviceType: "trust-engine",
@@ -175,26 +172,26 @@ const pluginManagerCapability = {
 	] as ServiceClass[],
 };
 
-// ─── Knowledge & trajectories (native RAG / run logging) ──────────────────────
+// ─── Documents & trajectories (native RAG / run logging) ──────────────────────
 
 export type {
-	FetchedKnowledgeUrl,
-	FetchedKnowledgeUrlKind,
-	FetchKnowledgeFromUrlOptions,
-	KnowledgePluginConfig,
-} from "./knowledge/index.ts";
+	DocumentsPluginConfig,
+	FetchDocumentFromUrlOptions,
+	FetchedDocumentUrl,
+	FetchedDocumentUrlKind,
+} from "./documents/index";
 export {
-	createKnowledgePlugin,
+	createDocumentsPlugin,
+	DocumentService,
+	documentAction,
+	documentActions,
+	documentsPlugin,
+	documentsPluginCore,
+	documentsPluginHeadless,
 	documentsProvider,
-	fetchKnowledgeFromUrl,
+	fetchDocumentFromUrl,
 	isYouTubeUrl,
-	KnowledgeService,
-	knowledgeActions,
-	knowledgePlugin,
-	knowledgePluginCore,
-	knowledgePluginHeadless,
-	knowledgeProvider,
-} from "./knowledge/index.ts";
+} from "./documents/index";
 export type {
 	TrajectoryExportOptions,
 	TrajectoryListItem,

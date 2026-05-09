@@ -3,7 +3,9 @@ import { createGatewayProvider, type GatewayProvider } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
 import {
   getGroqApiModelId,
+  getVastApiModelId,
   isGroqNativeModel,
+  isVastNativeModel,
   OPENROUTER_DEFAULT_FREE_MODEL,
   OPENROUTER_RECOMMENDED_TEXT_MODEL,
 } from "@/lib/models";
@@ -11,6 +13,7 @@ import { toOpenRouterModelId } from "./model-id-translation";
 import { getProviderKey } from "./provider-env";
 
 let groqClient: ReturnType<typeof createOpenAI> | null = null;
+let vastClient: ReturnType<typeof createOpenAI> | null = null;
 let openAIClient: ReturnType<typeof createOpenAI> | null = null;
 let openRouterClient: ReturnType<typeof createOpenAI> | null = null;
 let anthropicClient: ReturnType<typeof createAnthropic> | null = null;
@@ -30,6 +33,23 @@ function getGroqClient() {
   }
 
   return groqClient;
+}
+
+function getVastClient() {
+  if (!vastClient) {
+    const apiKey = getProviderKey("VAST_API_KEY");
+    const baseUrl = getProviderKey("VAST_BASE_URL");
+    if (!apiKey || !baseUrl) {
+      throw new Error("VAST_API_KEY and VAST_BASE_URL environment variables are required");
+    }
+    const trimmed = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+    vastClient = createOpenAI({
+      apiKey,
+      baseURL: `${trimmed}/v1`,
+    });
+  }
+
+  return vastClient;
 }
 
 function getOpenAIClient() {
@@ -148,6 +168,10 @@ export function hasLanguageModelProviderConfigured(model: string): boolean {
     return Boolean(getProviderKey("GROQ_API_KEY"));
   }
 
+  if (isVastNativeModel(model)) {
+    return Boolean(getProviderKey("VAST_API_KEY") && getProviderKey("VAST_BASE_URL"));
+  }
+
   if (getOpenRouterApiKey()) {
     return true;
   }
@@ -180,6 +204,10 @@ export function hasTextEmbeddingProviderConfigured(): boolean {
 export function getLanguageModel(model: string) {
   if (isGroqNativeModel(model)) {
     return getGroqClient().languageModel(getGroqApiModelId(model));
+  }
+
+  if (isVastNativeModel(model)) {
+    return getVastClient().languageModel(getVastApiModelId(model));
   }
 
   if (getOpenRouterApiKey()) {
@@ -239,9 +267,13 @@ export function hasGroqLanguageModelProviderConfigured(): boolean {
 
 export function resolveAiProviderSource(
   model: string,
-): "groq" | "openrouter" | "gateway" | "openai" | "anthropic" | null {
+): "groq" | "vast" | "openrouter" | "gateway" | "openai" | "anthropic" | null {
   if (isGroqNativeModel(model)) {
     return getProviderKey("GROQ_API_KEY") ? "groq" : null;
+  }
+
+  if (isVastNativeModel(model)) {
+    return getProviderKey("VAST_API_KEY") && getProviderKey("VAST_BASE_URL") ? "vast" : null;
   }
 
   if (getOpenRouterApiKey()) {
@@ -289,7 +321,8 @@ export function hasAnyAiProviderConfigured(): boolean {
       getVercelAIGatewayApiKey() ||
       getProviderKey("OPENAI_API_KEY") ||
       getProviderKey("ANTHROPIC_API_KEY") ||
-      getProviderKey("GROQ_API_KEY"),
+      getProviderKey("GROQ_API_KEY") ||
+      (getProviderKey("VAST_API_KEY") && getProviderKey("VAST_BASE_URL")),
   );
 }
 
@@ -300,6 +333,7 @@ export function getAiProviderConfigurationStatus() {
     openai: Boolean(getProviderKey("OPENAI_API_KEY")),
     anthropic: Boolean(getProviderKey("ANTHROPIC_API_KEY")),
     groq: Boolean(getProviderKey("GROQ_API_KEY")),
+    vast: Boolean(getProviderKey("VAST_API_KEY") && getProviderKey("VAST_BASE_URL")),
   };
 }
 

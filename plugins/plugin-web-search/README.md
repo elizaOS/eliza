@@ -15,7 +15,7 @@ This plugin provides functionality to:
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-web-search
+bun install @elizaos/plugin-web-search
 ```
 
 ## Configuration
@@ -97,19 +97,19 @@ const response = MaxTokens(searchResult, DEFAULT_MAX_WEB_SEARCH_TOKENS);
 ### Building
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 ### Testing
 
 ```bash
-pnpm run test
+bun run test
 ```
 
 ### Development Mode
 
 ```bash
-pnpm run dev
+bun run dev
 ```
 
 ## Dependencies

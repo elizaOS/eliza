@@ -395,7 +395,7 @@ export class CharactersService {
       postExamples: character.post_examples as string[] | undefined,
       topics: character.topics as string[] | undefined,
       adjectives: character.adjectives as string[] | undefined,
-      knowledge: character.knowledge as (string | { path: string; shared?: boolean })[] | undefined,
+      documents: character.knowledge as (string | { path: string; shared?: boolean })[] | undefined,
       plugins: character.plugins as string[] | undefined,
       settings: mergedSettings as
         | Record<string, string | number | boolean | Record<string, unknown>>
@@ -441,9 +441,8 @@ export class CharactersService {
     // Check if owned by an affiliate anonymous user
     const isAffiliateUser = owner.email?.includes("@anonymous.elizacloud.ai") || false;
     const isAnonymous = owner.is_anonymous === true;
-    const hasNoPrivyId = !owner.privy_user_id;
 
-    if (isAffiliateUser && (isAnonymous || hasNoPrivyId)) {
+    if (isAffiliateUser && isAnonymous) {
       return {
         claimable: true,
         ownerId: owner.id,

@@ -15,7 +15,7 @@
  *
  * Use this script before and after migration consolidation to verify state.
  *
- * Usage: DATABASE_URL=... bun run scripts/audit-migrations.ts
+ * Usage: DATABASE_URL=... bun run packages/scripts/audit-migrations.ts
  */
 
 import { readdir, readFile } from "node:fs/promises";

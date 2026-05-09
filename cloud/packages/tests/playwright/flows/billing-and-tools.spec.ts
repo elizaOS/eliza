@@ -51,7 +51,7 @@ test.describe("API Key Management Flow", () => {
   });
 });
 
-test.describe("App Builder Flow", () => {
+test.describe("App Chater Flow", () => {
   test("apps list page loads", async ({ page }) => {
     const response = await page.goto(`${BASE_URL}/dashboard/apps`);
     expect(response?.status()).not.toBe(500);
@@ -64,8 +64,8 @@ test.describe("App Builder Flow", () => {
 });
 
 test.describe("Knowledge & MCP Flow", () => {
-  test("knowledge page loads", async ({ page }) => {
-    const response = await page.goto(`${BASE_URL}/dashboard/knowledge`);
+  test("documents page loads", async ({ page }) => {
+    const response = await page.goto(`${BASE_URL}/dashboard/documents`);
     expect(response?.status()).not.toBe(500);
   });
 

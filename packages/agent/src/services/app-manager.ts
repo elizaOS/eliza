@@ -14,7 +14,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import {
   type AppLaunchDiagnostic,
   type AppLaunchPreparation,
@@ -35,7 +34,8 @@ import {
   normalizeElizaCuratedAppName,
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
-} from "../contracts/apps.js";
+} from "@elizaos/shared";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import { shouldRestoreAgentsListAfterAppLaunch } from "./app-manager-agents-list-guard.js";
 import {
   importAppPlugin,
@@ -68,7 +68,7 @@ export type {
   AppStopResult,
   AppViewerAuthMessage,
   InstalledAppInfo,
-} from "../contracts/apps.js";
+} from "@elizaos/shared";
 
 const DEFAULT_VIEWER_SANDBOX = "allow-scripts allow-same-origin allow-popups";
 const DEFAULT_RS_SDK_SERVER_URL = "https://rs-sdk-demo.fly.dev";

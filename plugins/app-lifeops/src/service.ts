@@ -3,6 +3,7 @@ import {
   BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
   type BrowserBridgeCompanionAutoPairResponse,
   type BrowserBridgeCompanionPairingResponse,
+  type BrowserBridgeCompanionRevokeResponse,
   type BrowserBridgeCompanionStatus,
   type BrowserBridgeCompanionSyncResponse,
   type BrowserBridgePageContext,
@@ -14,7 +15,7 @@ import {
   type SyncBrowserBridgeStateRequest,
   type UpdateBrowserBridgeSessionProgressRequest,
   type UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser-bridge";
+} from "@elizaos/plugin-browser";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,
@@ -101,6 +102,24 @@ export class BrowserBridgePluginService
     return this.lifeOps(ownerEntityId).autoPairBrowserCompanion(
       request,
       apiBaseUrl,
+    );
+  }
+
+  async revokeBrowserCompanion(
+    companionId: string,
+    ownerEntityId?: UUID | null,
+  ): Promise<BrowserBridgeCompanionRevokeResponse> {
+    return this.lifeOps(ownerEntityId).revokeBrowserCompanion(companionId);
+  }
+
+  async revokeBrowserCompanionFromCompanion(
+    companionId: string,
+    pairingToken: string,
+    ownerEntityId?: UUID | null,
+  ): Promise<BrowserBridgeCompanionRevokeResponse> {
+    return this.lifeOps(ownerEntityId).revokeBrowserCompanionFromCompanion(
+      companionId,
+      pairingToken,
     );
   }
 

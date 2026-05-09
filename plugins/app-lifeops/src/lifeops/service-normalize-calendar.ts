@@ -14,13 +14,11 @@ import {
 import {
   DEFAULT_GMAIL_TRIAGE_MAX_RESULTS,
   DEFAULT_NEXT_EVENT_LOOKAHEAD_DAYS,
-  GOOGLE_CALENDAR_CACHE_TTL_MS,
   GOOGLE_PRIMARY_CALENDAR_ID,
   MAX_GMAIL_TRIAGE_MAX_RESULTS,
 } from "./service-constants.js";
 import {
   fail,
-  normalizeEnumValue,
   normalizeFiniteNumber,
   normalizeIsoString,
   normalizeOptionalBoolean,

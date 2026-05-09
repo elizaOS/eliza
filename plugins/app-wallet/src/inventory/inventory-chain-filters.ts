@@ -1,4 +1,4 @@
-import type { InventoryChainFilters } from "@elizaos/app-core/state/types";
+import type { InventoryChainFilters } from "@elizaos/ui";
 import type { ChainKey } from "./chainConfig";
 import { resolveChainKey } from "./chainConfig";
 

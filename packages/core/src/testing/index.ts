@@ -112,14 +112,13 @@ export {
 } from "./pglite-runtime";
 // React test-renderer helpers
 export { findButtonByText, flush, text, textOf } from "./react-test";
-// Real connector helpers (Discord, Telegram, email)
+// Real connector helpers (Discord, Telegram)
 export {
 	createDiscordTestClient,
 	createTelegramTestBot,
 	type DiscordTestClient,
 	sendDiscordChannelMessage,
 	sendDiscordDM,
-	sendTestEmail,
 	type TelegramTestBot,
 	waitForDiscordMessage,
 } from "./real-connector";

@@ -115,6 +115,26 @@ export default defineConfig({
         ),
       },
       { find: /^telegram\/sessions$/, replacement: telegramSessionsEntry },
+      {
+        find: /^@elizaos\/plugin-calendly$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-calendly",
+          "src",
+          "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-google$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-google",
+          "src",
+          "index.ts",
+        ),
+      },
       ...(Array.isArray(baseConfig.resolve?.alias)
         ? baseConfig.resolve.alias
         : []),

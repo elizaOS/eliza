@@ -1,5 +1,4 @@
 import {
-  encodeToonValue,
   type IAgentRuntime,
   type Memory,
   type Provider,
@@ -9,35 +8,41 @@ import {
 import type { BotState } from "../sdk/types.js";
 
 function providerText(value: unknown): string {
-  return encodeToonValue({ rs_2004_bot_state: value });
+  return JSON.stringify({ rs_2004_bot_state: value }, null, 2);
 }
 
 export const botStateProvider: Provider = {
   name: "RS_SDK_BOT_STATE",
   description:
-    "Full TOON game state for the 2004scape bot: player, skills, inventory, equipment, nearby entities, messages, and combat.",
+    "Full JSON game state for the 2004scape bot: player, skills, inventory, equipment, nearby entities, messages, and combat.",
   descriptionCompressed:
-    "TOON game state: player, skills, inventory, equipment, nearby, combat.",
+    "JSON game state: player, skills, inventory, equipment, nearby, combat.",
+  contexts: ["game", "automation", "world", "state"],
+  contextGate: { anyOf: ["game", "automation", "world", "state"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "ADMIN" },
+  cacheStable: false,
 
   async get(
     runtime: IAgentRuntime,
     _message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    const service = runtime.getService("rs_2004scape") as unknown as {
-      getBotState(): BotState | null;
-    } | null;
-    const state = service?.getBotState?.();
-    if (!state || !state.connected) {
-      return { text: providerText({ status: "not_connected" }) };
-    }
-    if (!state.inGame || !state.player) {
-      return { text: providerText({ status: "connected_not_in_game" }) };
-    }
+    try {
+      const service = runtime.getService("rs_2004scape") as unknown as {
+        getBotState(): BotState | null;
+      } | null;
+      const state = service?.getBotState?.();
+      if (!state || !state.connected) {
+        return { text: providerText({ status: "not_connected" }) };
+      }
+      if (!state.inGame || !state.player) {
+        return { text: providerText({ status: "connected_not_in_game" }) };
+      }
 
-    const p = state.player;
-    return {
-      text: providerText({
+      const p = state.player;
+      return {
+        text: providerText({
         status: "in_game",
         player: {
           name: p.name,
@@ -150,7 +155,15 @@ export const botStateProvider: Provider = {
                   ?.name ?? `style ${state.combatStyle.currentStyle}`,
             }
           : null,
-      }),
-    };
+        }),
+      };
+    } catch (error) {
+      return {
+        text: providerText({
+          status: "error",
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      };
+    }
   },
 };

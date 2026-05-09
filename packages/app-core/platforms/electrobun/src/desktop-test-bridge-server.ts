@@ -8,6 +8,7 @@ import {
 import { getDesktopManager } from "./native/desktop";
 import { findFirstAvailableLoopbackPort } from "./native/loopback-port";
 import { getScreenCaptureManager } from "./native/screencapture";
+import type { WindowBounds } from "./rpc-schema";
 
 const DEFAULT_TEST_BRIDGE_PORT = 31_341;
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -15,6 +16,8 @@ const MAX_BODY_BYTES = 1024 * 1024;
 type EvalBody = {
 	script?: string;
 };
+
+type BoundsBody = Partial<WindowBounds>;
 
 type MenuActionBody = {
 	action?: string;
@@ -61,6 +64,20 @@ function isAuthorized(req: http.IncomingMessage, token: string): boolean {
 function isTruthyEnv(value: string | undefined): boolean {
 	const normalized = value?.trim().toLowerCase();
 	return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
+function pickFiniteNumber(
+	value: unknown,
+	fallback: number,
+	options: { min?: number } = {},
+): number {
+	if (typeof value !== "number" || !Number.isFinite(value)) {
+		return fallback;
+	}
+	if (typeof options.min === "number" && value < options.min) {
+		return fallback;
+	}
+	return value;
 }
 
 export async function startDesktopTestBridgeServer(): Promise<
@@ -130,6 +147,53 @@ export async function startDesktopTestBridgeServer(): Promise<
 					result: await evaluateInCurrentMainWindow(body.script),
 				});
 				return;
+			}
+
+			if (pathname === "/main-window/close" && method === "POST") {
+				const desktop = getDesktopManager();
+				const shellState = await desktop.getShellDiagnosticsState();
+				if (!shellState.mainWindowPresent) {
+					json(res, 503, { error: "main window is not available" });
+					return;
+				}
+				await desktop.closeWindow();
+				json(res, 200, { ok: true });
+				return;
+			}
+
+			if (pathname === "/main-window/bounds") {
+				const snapshot = getCurrentMainWindowSnapshot();
+				if (!snapshot.present) {
+					json(res, 503, { error: "main window is not available" });
+					return;
+				}
+
+				const desktop = getDesktopManager();
+				const currentBounds = await desktop.getWindowBounds();
+
+				if (method === "GET") {
+					json(res, 200, { bounds: currentBounds });
+					return;
+				}
+
+				if (method === "POST") {
+					const body = (await readJsonBody<BoundsBody>(req)) ?? {};
+					const nextBounds: WindowBounds = {
+						x: pickFiniteNumber(body.x, currentBounds.x),
+						y: pickFiniteNumber(body.y, currentBounds.y),
+						width: pickFiniteNumber(body.width, currentBounds.width, {
+							min: 1,
+						}),
+						height: pickFiniteNumber(body.height, currentBounds.height, {
+							min: 1,
+						}),
+					};
+					await desktop.setWindowBounds(nextBounds);
+					json(res, 200, {
+						bounds: await desktop.getWindowBounds(),
+					});
+					return;
+				}
 			}
 
 			if (pathname === "/main-window/screenshot" && method === "GET") {

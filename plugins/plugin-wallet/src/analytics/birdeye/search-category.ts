@@ -12,10 +12,10 @@ import type { BaseAddress } from "./types/shared";
 import {
   extractAddresses,
   extractSymbols,
+  formatJsonScalar,
+  formatJsonTable,
   formatPercentChange,
   formatPrice,
-  formatToonScalar,
-  formatToonTable,
   formatValue,
 } from "./utils";
 
@@ -373,7 +373,7 @@ async function searchTokensByAddress(
   );
 }
 
-function formatSymbolSearchToon(
+function formatSymbolSearchJson(
   query: string,
   results: BirdeyeTokenSymbolSearchResult[],
 ): string {
@@ -394,9 +394,9 @@ function formatSymbolSearchToon(
   return [
     "birdeye_token_search:",
     "  mode: symbol",
-    `  query: ${formatToonScalar(query)}`,
+    `  query: ${formatJsonScalar(query)}`,
     `  resultCount: ${rows.length}`,
-    formatToonTable("  results", rows, [
+    formatJsonTable("  results", rows, [
       "querySymbol",
       "symbol",
       "address",
@@ -412,7 +412,7 @@ function formatSymbolSearchToon(
     .join("\n");
 }
 
-function formatAddressSearchToon(
+function formatAddressSearchJson(
   query: string,
   results: BirdeyeTokenAddressSearchResult[],
 ): string {
@@ -439,9 +439,9 @@ function formatAddressSearchToon(
   return [
     "birdeye_token_search:",
     "  mode: address",
-    `  query: ${formatToonScalar(query)}`,
+    `  query: ${formatJsonScalar(query)}`,
     `  resultCount: ${rows.length}`,
-    formatToonTable("  results", rows, [
+    formatJsonTable("  results", rows, [
       "address",
       "chain",
       "name",
@@ -487,7 +487,7 @@ export async function searchBirdeyeTokens(
       mode,
       resultCount: results.length,
       results,
-      text: formatAddressSearchToon(query, results),
+      text: formatAddressSearchJson(query, results),
     };
   }
 
@@ -501,6 +501,6 @@ export async function searchBirdeyeTokens(
     mode,
     resultCount,
     results,
-    text: formatSymbolSearchToon(query, results),
+    text: formatSymbolSearchJson(query, results),
   };
 }

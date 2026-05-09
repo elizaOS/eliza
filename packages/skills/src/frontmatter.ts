@@ -76,7 +76,7 @@ export function stripFrontmatter(content: string): string {
 }
 
 /**
- * Resolve Otto-specific metadata from skill frontmatter
+ * Resolve skill metadata from skill frontmatter
  *
  * @param frontmatter - Parsed skill frontmatter
  * @returns Normalized metadata object

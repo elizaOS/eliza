@@ -1,7 +1,7 @@
 import type { Skill, SkillCommandSpec, SkillEntry } from "./types.js";
 
 /**
- * Compact a skill field for prompt-friendly TOON text.
+ * Compact a skill field for prompt-friendly structured text.
  *
  * @param str - String to compact
  * @returns Single-line prompt field
@@ -12,7 +12,7 @@ function compactPromptField(str: string): string {
 
 /**
  * Format skills for inclusion in a system prompt.
- * Uses compact TOON-style text.
+ * Uses compact structured text.
  *
  * Skills with disableModelInvocation=true are excluded from the prompt
  * (they can only be invoked explicitly via /skill:name commands).

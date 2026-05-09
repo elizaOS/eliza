@@ -7,4 +7,4 @@ export {
   tokenBalanceTemplate,
   transferTemplate,
   voteTemplate,
-} from "../generated/prompts/typescript/prompts";
+} from "../prompts";

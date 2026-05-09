@@ -155,6 +155,10 @@ export const phalaDeriveKeyProvider: Provider = {
   name: "phala-derive-key",
 
   dynamic: true,
+  contexts: ["secrets", "agent_internal"],
+  contextGate: { anyOf: ["secrets", "agent_internal"] },
+  cacheStable: false,
+  cacheScope: "turn",
   get: async (
     runtime: IAgentRuntime,
     _message?: Memory,

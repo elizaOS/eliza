@@ -669,7 +669,7 @@ ${validKeys}
 
 Instructions for ${agentName}:
 - Only update settings if the user is clearly responding to a setting you are currently asking about.
-- If the user's reply clearly maps to a setting and a valid value, you **must** call the UPDATE_SETTINGS action.
+- If the user's reply clearly maps to a secrets onboarding setting and a valid value, you **must** call the SECRETS_UPDATE_SETTINGS action.
 - Never hallucinate settings or respond with values not listed above.
 - Prioritize configuring required settings before optional ones.`;
 		}

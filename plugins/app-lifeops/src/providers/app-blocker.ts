@@ -5,8 +5,8 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { getAppBlockerAccess } from "../app-blocker/access.ts";
-import { getCachedAppBlockerStatus } from "../app-blocker/engine.ts";
+import { getAppBlockerAccess } from "../app-blocker/access.js";
+import { getCachedAppBlockerStatus } from "../app-blocker/engine.js";
 
 export const appBlockerProvider: Provider = {
   name: "appBlocker",
@@ -14,6 +14,10 @@ export const appBlockerProvider: Provider = {
     "Owner-only provider for the native mobile app blocker integration (Family Controls on iPhone, Usage Access overlay on Android)",
   descriptionCompressed: "Owner: mobile app blocker integration.",
   dynamic: true,
+  contexts: ["screen_time", "settings"],
+  contextGate: { anyOf: ["screen_time", "settings"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "OWNER" },
   get: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -63,41 +67,56 @@ export const appBlockerProvider: Provider = {
       };
     }
 
-    const statusLine = status.active
-      ? status.endsAt
-        ? `An app block is active (${status.blockedCount} apps) until ${status.endsAt}.`
-        : `An app block is active (${status.blockedCount} apps) until you remove it.`
-      : "No app block is active right now.";
+    try {
+      const statusLine = status.active
+        ? status.endsAt
+          ? `An app block is active (${status.blockedCount} apps) until ${status.endsAt}.`
+          : `An app block is active (${status.blockedCount} apps) until you remove it.`
+        : "No app block is active right now.";
 
-    const permissionLine =
-      status.permissionStatus === "granted"
-        ? "Eliza has permission to block apps on this device."
-        : (status.reason ??
-          "App blocking permissions have not been granted yet.");
+      const permissionLine =
+        status.permissionStatus === "granted"
+          ? "Eliza has permission to block apps on this device."
+          : (status.reason ??
+            "App blocking permissions have not been granted yet.");
 
-    return {
-      text: [statusLine, permissionLine].join(" "),
-      values: {
-        appBlockerAuthorized: true,
-        appBlockerAvailable: true,
-        appBlockerActive: status.active,
-        appBlockerBlockedCount: status.blockedCount,
-        appBlockerEndsAt: status.endsAt,
-        appBlockerEngine: status.engine,
-        appBlockerPlatform: status.platform,
-        appBlockerPermissionStatus: status.permissionStatus,
-      },
-      data: {
-        appBlockerAuthorized: true,
-        appBlockerAvailable: true,
-        appBlockerActive: status.active,
-        appBlockerBlockedCount: status.blockedCount,
-        appBlockerBlockedPackageNames: status.blockedPackageNames,
-        appBlockerEndsAt: status.endsAt,
-        appBlockerEngine: status.engine,
-        appBlockerPlatform: status.platform,
-        appBlockerPermissionStatus: status.permissionStatus,
-      },
-    };
+      return {
+        text: [statusLine, permissionLine].join(" "),
+        values: {
+          appBlockerAuthorized: true,
+          appBlockerAvailable: true,
+          appBlockerActive: status.active,
+          appBlockerBlockedCount: status.blockedCount,
+          appBlockerEndsAt: status.endsAt,
+          appBlockerEngine: status.engine,
+          appBlockerPlatform: status.platform,
+          appBlockerPermissionStatus: status.permissionStatus,
+        },
+        data: {
+          appBlockerAuthorized: true,
+          appBlockerAvailable: true,
+          appBlockerActive: status.active,
+          appBlockerBlockedCount: status.blockedCount,
+          appBlockerBlockedPackageNames: status.blockedPackageNames.slice(0, 25),
+          appBlockerEndsAt: status.endsAt,
+          appBlockerEngine: status.engine,
+          appBlockerPlatform: status.platform,
+          appBlockerPermissionStatus: status.permissionStatus,
+        },
+      };
+    } catch (error) {
+      return {
+        text: "App blocking status unavailable.",
+        values: {
+          appBlockerAuthorized: true,
+          appBlockerAvailable: false,
+        },
+        data: {
+          appBlockerAuthorized: true,
+          appBlockerAvailable: false,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      };
+    }
   },
 };

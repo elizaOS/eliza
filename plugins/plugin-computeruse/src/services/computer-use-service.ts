@@ -27,18 +27,20 @@ import {
   typeBrowser,
   waitBrowser,
 } from "../platform/browser.js";
+import { detectPlatformCapabilities } from "../platform/capabilities.js";
 import {
-  desktopClick,
-  desktopClickWithModifiers,
-  desktopDoubleClick,
-  desktopDrag,
-  desktopKeyCombo,
-  desktopKeyPress,
-  desktopMouseMove,
-  desktopRightClick,
-  desktopScroll,
-  desktopType,
-} from "../platform/desktop.js";
+  driverCaptureScreenshot,
+  driverClick,
+  driverClickWithModifiers,
+  driverDoubleClick,
+  driverDrag,
+  driverKeyCombo,
+  driverKeyPress,
+  driverMouseMove,
+  driverRightClick,
+  driverScroll,
+  driverType,
+} from "../platform/driver.js";
 import {
   appendFile,
   deleteDirectory,
@@ -51,7 +53,6 @@ import {
 } from "../platform/file-ops.js";
 import { commandExists, currentPlatform } from "../platform/helpers.js";
 import { classifyPermissionDeniedError } from "../platform/permissions.js";
-import { captureScreenshot } from "../platform/screenshot.js";
 import {
   clearTerminal,
   closeAllTerminalSessions,
@@ -311,15 +312,15 @@ export class ComputerUseService extends Service {
         case "screenshot":
           return this.succeedEntry(entry, {
             success: true,
-            screenshot: this.captureScreenshotBase64(),
+            screenshot: await this.captureScreenshotBase64(),
           });
         case "click":
           this.requireCoordinate(params.coordinate, "click");
-          desktopClick(params.coordinate[0], params.coordinate[1]);
+          await driverClick(params.coordinate[0], params.coordinate[1]);
           break;
         case "click_with_modifiers":
           this.requireCoordinate(params.coordinate, "click_with_modifiers");
-          desktopClickWithModifiers(
+          await driverClickWithModifiers(
             params.coordinate[0],
             params.coordinate[1],
             params.modifiers ?? [],
@@ -327,33 +328,33 @@ export class ComputerUseService extends Service {
           break;
         case "double_click":
           this.requireCoordinate(params.coordinate, "double_click");
-          desktopDoubleClick(params.coordinate[0], params.coordinate[1]);
+          await driverDoubleClick(params.coordinate[0], params.coordinate[1]);
           break;
         case "right_click":
           this.requireCoordinate(params.coordinate, "right_click");
-          desktopRightClick(params.coordinate[0], params.coordinate[1]);
+          await driverRightClick(params.coordinate[0], params.coordinate[1]);
           break;
         case "mouse_move":
           this.requireCoordinate(params.coordinate, "mouse_move");
-          desktopMouseMove(params.coordinate[0], params.coordinate[1]);
+          await driverMouseMove(params.coordinate[0], params.coordinate[1]);
           break;
         case "type":
           if (!params.text) throw new Error("text is required for type action");
-          desktopType(params.text);
+          await driverType(params.text);
           break;
         case "key":
           if (!params.key) throw new Error("key is required for key action");
-          desktopKeyPress(params.key);
+          await driverKeyPress(params.key);
           break;
         case "key_combo":
           if (!params.key) {
             throw new Error("key is required for key_combo action");
           }
-          desktopKeyCombo(params.key);
+          await driverKeyCombo(params.key);
           break;
         case "scroll":
           this.requireCoordinate(params.coordinate, "scroll");
-          desktopScroll(
+          await driverScroll(
             params.coordinate[0],
             params.coordinate[1],
             params.scrollDirection ?? "down",
@@ -367,7 +368,7 @@ export class ComputerUseService extends Service {
             "startCoordinate",
           );
           this.requireCoordinate(params.coordinate, "drag");
-          desktopDrag(
+          await driverDrag(
             params.startCoordinate[0],
             params.startCoordinate[1],
             params.coordinate[0],
@@ -384,7 +385,7 @@ export class ComputerUseService extends Service {
       const result: ComputerActionResult = { success: true };
       if (this.shouldCaptureAfterDesktopAction(params.action)) {
         try {
-          result.screenshot = this.captureScreenshotBase64();
+          result.screenshot = await this.captureScreenshotBase64();
         } catch (error) {
           logger.warn(
             `[computeruse] Post-action screenshot failed: ${errorMessage(error)}`,
@@ -922,7 +923,7 @@ export class ComputerUseService extends Service {
   }
 
   async captureScreen(): Promise<Buffer> {
-    return captureScreenshot();
+    return driverCaptureScreenshot();
   }
 
   getCapabilities(): PlatformCapabilities {
@@ -1313,8 +1314,9 @@ export class ComputerUseService extends Service {
       : `Computer-use approval rejected for "${command}".`;
   }
 
-  private captureScreenshotBase64(): string {
-    return captureScreenshot().toString("base64");
+  private async captureScreenshotBase64(): Promise<string> {
+    const buf = await driverCaptureScreenshot();
+    return buf.toString("base64");
   }
 
   private shouldCaptureAfterDesktopAction(
@@ -1514,73 +1516,11 @@ export class ComputerUseService extends Service {
   }
 
   private detectCapabilities(): PlatformCapabilities {
-    const osName = currentPlatform();
-    const caps: PlatformCapabilities = {
-      screenshot: { available: false, tool: "none" },
-      computerUse: { available: false, tool: "none" },
-      windowList: { available: false, tool: "none" },
-      browser: { available: false, tool: "none" },
-      terminal: { available: false, tool: "none" },
-      fileSystem: { available: true, tool: "node:fs" },
-    };
-
-    if (osName === "darwin") {
-      caps.screenshot = { available: true, tool: "screencapture (built-in)" };
-      caps.computerUse = commandExists("cliclick")
-        ? { available: true, tool: "cliclick" }
-        : {
-            available: true,
-            tool: "AppleScript / Swift fallbacks (mouse_move requires cliclick)",
-          };
-      caps.windowList = {
-        available: true,
-        tool: "AppleScript System Events",
-      };
-    } else if (osName === "linux") {
-      if (commandExists("import")) {
-        caps.screenshot = { available: true, tool: "ImageMagick import" };
-      } else if (commandExists("scrot")) {
-        caps.screenshot = { available: true, tool: "scrot" };
-      } else if (commandExists("gnome-screenshot")) {
-        caps.screenshot = { available: true, tool: "gnome-screenshot" };
-      } else {
-        caps.screenshot = {
-          available: false,
-          tool: "none (install ImageMagick, scrot, or gnome-screenshot)",
-        };
-      }
-
-      caps.computerUse = commandExists("xdotool")
-        ? { available: true, tool: "xdotool" }
-        : { available: false, tool: "none (install xdotool)" };
-
-      if (commandExists("wmctrl")) {
-        caps.windowList = { available: true, tool: "wmctrl" };
-      } else if (commandExists("xdotool")) {
-        caps.windowList = { available: true, tool: "xdotool" };
-      } else {
-        caps.windowList = {
-          available: false,
-          tool: "none (install wmctrl or xdotool)",
-        };
-      }
-    } else if (osName === "win32") {
-      caps.screenshot = { available: true, tool: "PowerShell System.Drawing" };
-      caps.computerUse = { available: true, tool: "PowerShell user32.dll" };
-      caps.windowList = { available: true, tool: "PowerShell Get-Process" };
-    }
-
-    caps.browser = isBrowserAvailable()
-      ? { available: true, tool: "puppeteer-core (Chromium detected)" }
-      : { available: false, tool: "none (no Chrome/Edge/Brave found)" };
-
-    caps.terminal =
-      osName === "win32"
-        ? { available: true, tool: "powershell.exe" }
-        : commandExists(process.env.SHELL ?? "/bin/bash")
-          ? { available: true, tool: process.env.SHELL ?? "/bin/bash" }
-          : { available: true, tool: process.env.SHELL ?? "/bin/sh" };
-
-    return caps;
+    return detectPlatformCapabilities({
+      osName: currentPlatform(),
+      commandExists,
+      isBrowserAvailable,
+      shell: process.env.SHELL,
+    });
   }
 }

@@ -1,28 +1,24 @@
 import type http from "node:http";
-import {
-  extractConversationMetadataFromRoom,
-  isAutomationConversationMetadata,
-} from "@elizaos/agent/api/conversation-metadata";
 import type {
   ConversationMetadata,
   ConversationScope,
-} from "@elizaos/agent/api/server-types";
-import { toWorkbenchTask } from "@elizaos/agent/api/workbench-helpers";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
+  TriggerSummary,
+} from "@elizaos/agent";
 import {
+  extractConversationMetadataFromRoom,
+  isAutomationConversationMetadata,
   listTriggerTasks,
+  loadElizaConfig,
   taskToTriggerSummary,
-} from "@elizaos/agent/triggers/runtime";
-import type { TriggerSummary } from "@elizaos/agent/triggers/types";
+  toWorkbenchTask,
+} from "@elizaos/agent";
 import {
   type AgentRuntime,
   type Room,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { ensureRouteAuthorized } from "./auth";
-import { listAutomationNodeContributors } from "./automation-node-contributors";
-import type { N8nStatusResponse, N8nWorkflow } from "./client-types-chat";
+import { asRecord } from "@elizaos/shared";
 import type {
   AutomationItem,
   AutomationNodeCatalogResponse,
@@ -30,7 +26,11 @@ import type {
   AutomationRoomBinding,
   AutomationSummary,
   WorkbenchTask,
-} from "./client-types-config";
+  WorkflowDefinition,
+  WorkflowStatusResponse,
+} from "@elizaos/ui";
+import { ensureRouteAuthorized } from "./auth";
+import { listAutomationNodeContributors } from "./automation-node-contributors";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import {
   sendJsonError as sendJsonErrorResponse,
@@ -40,7 +40,7 @@ import {
 interface AutomationListResponse {
   automations: AutomationItem[];
   summary: AutomationSummary;
-  n8nStatus: N8nStatusResponse | null;
+  workflowStatus: WorkflowStatusResponse | null;
   workflowFetchError: string | null;
 }
 
@@ -52,32 +52,34 @@ interface AutomationRoomRecord {
   updatedAt: string | null;
 }
 
-interface N8nRouteCapture<T> {
+interface WorkflowRouteCapture<T> {
   status: number;
   payload: T | null;
 }
 
-type N8nJsonResponder = (
+type WorkflowJsonResponder = (
   res: http.ServerResponse,
   body: unknown,
   status?: number,
 ) => void;
 
-interface N8nRouteContext {
+interface WorkflowRouteContext {
   req: http.IncomingMessage;
   res: http.ServerResponse;
   method: string;
   pathname: string;
   config: ReturnType<typeof loadElizaConfig>;
   runtime: AgentRuntime;
-  json: N8nJsonResponder;
+  json: WorkflowJsonResponder;
 }
 
-type N8nRouteHandler = (context: N8nRouteContext) => Promise<void> | void;
+type WorkflowRouteHandler = (
+  context: WorkflowRouteContext,
+) => Promise<void> | void;
 
 const WORKFLOW_DRAFT_TITLE = "New Workflow Draft";
-const N8N_ROUTES_MODULE: string =
-  "@elizaos/plugin-n8n-workflow/routes/n8n-routes";
+const WORKFLOW_ROUTES_MODULE: string =
+  "@elizaos/plugin-workflow/routes/workflow-routes";
 const SYSTEM_TASK_NAMES = new Set([
   "EMBEDDING_DRAIN",
   "PROACTIVE_AGENT",
@@ -213,13 +215,6 @@ const STATIC_AUTOMATION_NODE_SPECS: StaticAutomationNodeSpec[] = [
     disabledReason: "Load an order-event-capable runtime plugin.",
   },
 ];
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
-}
 
 function asString(value: unknown): string | undefined {
   if (typeof value !== "string") {
@@ -367,18 +362,20 @@ function readAutomationRoomRecord(
   };
 }
 
-let n8nRouteHandlerPromise: Promise<N8nRouteHandler | null> | null = null;
+let workflowRouteHandlerPromise: Promise<WorkflowRouteHandler | null> | null =
+  null;
 
-async function loadN8nRouteHandler(): Promise<N8nRouteHandler | null> {
-  n8nRouteHandlerPromise ??= import(N8N_ROUTES_MODULE)
+async function loadWorkflowRouteHandler(): Promise<WorkflowRouteHandler | null> {
+  workflowRouteHandlerPromise ??= import(WORKFLOW_ROUTES_MODULE)
     .then((mod: unknown) => {
-      const handler = (mod as { handleN8nRoutes?: unknown }).handleN8nRoutes;
+      const handler = (mod as { handleWorkflowRoutes?: unknown })
+        .handleWorkflowRoutes;
       return typeof handler === "function"
-        ? (handler as N8nRouteHandler)
+        ? (handler as WorkflowRouteHandler)
         : null;
     })
     .catch(() => null);
-  return n8nRouteHandlerPromise;
+  return workflowRouteHandlerPromise;
 }
 
 async function listAutomationRooms(
@@ -394,24 +391,24 @@ async function listAutomationRooms(
     .filter((room): room is AutomationRoomRecord => room !== null);
 }
 
-async function invokeN8nCompatRoute<T>(
+async function invokeWorkflowRoute<T>(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   runtime: AgentRuntime,
   pathname: string,
-): Promise<N8nRouteCapture<T>> {
-  const handleN8nRoutes = await loadN8nRouteHandler();
-  if (!handleN8nRoutes) {
+): Promise<WorkflowRouteCapture<T>> {
+  const handleWorkflowRoutes = await loadWorkflowRouteHandler();
+  if (!handleWorkflowRoutes) {
     return {
       status: 503,
-      payload: { error: "n8n workflow routes are unavailable" } as T,
+      payload: { error: "workflow routes are unavailable" } as T,
     };
   }
 
   let payload: T | null = null;
   let status = 200;
 
-  await handleN8nRoutes({
+  await handleWorkflowRoutes({
     req,
     res,
     method: "GET",
@@ -491,7 +488,7 @@ function buildWorkflowDraftItem(room: AutomationRoomRecord): AutomationItem {
     metadata.workflowName?.trim() || room.title.trim() || WORKFLOW_DRAFT_TITLE;
   return {
     id: `workflow-draft:${metadata.draftId}`,
-    type: "n8n_workflow",
+    type: "workflow",
     source: "workflow_draft",
     title,
     description: "",
@@ -533,7 +530,7 @@ function buildAutomationDraftItem(room: AutomationRoomRecord): AutomationItem {
 }
 
 function buildWorkflowItem(
-  workflow: N8nWorkflow | undefined,
+  workflow: WorkflowDefinition | undefined,
   room: AutomationRoomRecord | undefined,
   fallback: {
     workflowId: string;
@@ -557,8 +554,8 @@ function buildWorkflowItem(
 
   return {
     id: `workflow:${fallback.workflowId}`,
-    type: "n8n_workflow",
-    source: workflow ? "n8n_workflow" : "workflow_shadow",
+    type: "workflow",
+    source: workflow ? "workflow" : "workflow_shadow",
     title,
     description,
     status: missingBackingWorkflow ? "draft" : enabled ? "active" : "paused",
@@ -646,28 +643,29 @@ async function buildAutomationListResponse(
     .filter((task) => !triggerTaskIds.has(task.id))
     .map((task) => buildCoordinatorTaskItem(task, taskRooms.get(task.id)));
 
-  const n8nStatusResult = await invokeN8nCompatRoute<N8nStatusResponse>(
-    req,
-    res,
-    runtime,
-    "/api/n8n/status",
-  );
-  const n8nStatus =
-    n8nStatusResult.status === 200 ? n8nStatusResult.payload : null;
+  const workflowStatusResult =
+    await invokeWorkflowRoute<WorkflowStatusResponse>(
+      req,
+      res,
+      runtime,
+      "/api/workflow/status",
+    );
+  const workflowStatus =
+    workflowStatusResult.status === 200 ? workflowStatusResult.payload : null;
 
-  const n8nWorkflowsResult = await invokeN8nCompatRoute<{
-    workflows?: N8nWorkflow[];
+  const workflowWorkflowsResult = await invokeWorkflowRoute<{
+    workflows?: WorkflowDefinition[];
     error?: string;
-  }>(req, res, runtime, "/api/n8n/workflows");
+  }>(req, res, runtime, "/api/workflow/workflows");
   const workflowFetchError =
-    n8nWorkflowsResult.status === 200
+    workflowWorkflowsResult.status === 200
       ? null
-      : (extractErrorMessage(n8nWorkflowsResult.payload) ??
+      : (extractErrorMessage(workflowWorkflowsResult.payload) ??
         "Unable to load workflows");
   const workflowList =
-    n8nWorkflowsResult.status === 200 &&
-    Array.isArray(n8nWorkflowsResult.payload?.workflows)
-      ? n8nWorkflowsResult.payload.workflows
+    workflowWorkflowsResult.status === 200 &&
+    Array.isArray(workflowWorkflowsResult.payload?.workflows)
+      ? workflowWorkflowsResult.payload.workflows
       : [];
 
   const workflowItemsById = new Map<string, AutomationItem>();
@@ -703,17 +701,17 @@ async function buildAutomationListResponse(
     }
   }
 
-  // Only synthesize workflow items from rooms when n8n itself is offline
+  // Only synthesize workflow items from rooms when workflow runtime is offline
   // (`workflowFetchError` set) — in that case the room is the most-recent
-  // ground truth we have and should be surfaced. When n8n IS online and
+  // ground truth we have and should be surfaced. When workflow runtime is online and
   // returned a list, any workflowId in `workflowRooms` that isn't in the
-  // current n8n list is an ORPHAN: the workflow was deleted but the chat
+  // current workflow list is an ORPHAN: the workflow was deleted but the chat
   // room/conversation wasn't cleaned up. Surfacing those creates ghost
   // rows the user can't dismiss. Skip them; the UI's deleteWorkflow path
   // also deletes the conversation now, so future deletions won't leak
   // rooms.
-  const n8nOffline = workflowFetchError !== null;
-  if (n8nOffline) {
+  const workflowOffline = workflowFetchError !== null;
+  if (workflowOffline) {
     for (const [workflowId, room] of workflowRooms.entries()) {
       if (!workflowItemsById.has(workflowId)) {
         workflowItemsById.set(
@@ -747,7 +745,7 @@ async function buildAutomationListResponse(
       (automation) => automation.type === "coordinator_text",
     ).length,
     workflowCount: automations.filter(
-      (automation) => automation.type === "n8n_workflow",
+      (automation) => automation.type === "workflow",
     ).length,
     scheduledCount: automations.filter(
       (automation) => automation.schedules.length > 0,
@@ -758,7 +756,7 @@ async function buildAutomationListResponse(
   return {
     automations,
     summary,
-    n8nStatus,
+    workflowStatus,
     workflowFetchError,
   };
 }

@@ -97,7 +97,6 @@ function resolveSystemApkStagingDir() {
   };
 }
 const systemApkStaging = resolveSystemApkStagingDir();
-const elizaOsVendorDir = systemApkStaging.vendorDir;
 const elizaOsApkDir = systemApkStaging.apkDir;
 const elizaOsApkName = systemApkStaging.apkName;
 const platformsDir = path.join(appCoreRoot, "platforms");
@@ -202,6 +201,11 @@ function resolveExecutable(name) {
   return null;
 }
 
+function resolveBunExecutable() {
+  if (process.versions.bun) return process.execPath;
+  return resolveExecutable("bun");
+}
+
 function resolveAndroidSdkRoot() {
   return firstExisting([
     process.env.ANDROID_SDK_ROOT,
@@ -209,6 +213,19 @@ function resolveAndroidSdkRoot() {
     path.join(os.homedir(), "Library", "Android", "sdk"),
     path.join(os.homedir(), "Android", "Sdk"),
   ]);
+}
+
+function resolveViteCli() {
+  const viteCli = firstExisting([
+    path.join(appDir, "node_modules", ".bin", "vite"),
+    path.join(repoRoot, "node_modules", ".bin", "vite"),
+    path.join(appDir, "node_modules", "vite", "bin", "vite.js"),
+    path.join(repoRoot, "node_modules", "vite", "bin", "vite.js"),
+  ]);
+  if (!viteCli) {
+    throw new Error("vite CLI not found; run bun install");
+  }
+  return viteCli;
 }
 
 function resolveJavaHome() {
@@ -271,8 +288,8 @@ function ensurePlistArrayStrings(content, key, values) {
     const body = escapedValues
       .map((value) => `\t\t<string>${value}</string>`)
       .join("\n");
-    return content.replace(
-      "</dict>",
+    return insertBeforeRootPlistDictClose(
+      content,
       `\t<key>${key}</key>\n\t<array>\n${body}\n\t</array>\n</dict>`,
     );
   }
@@ -283,6 +300,17 @@ function ensurePlistArrayStrings(content, key, values) {
     }
   }
   return content.replace(arrayRe, `$1${body}$3`);
+}
+
+function insertBeforeRootPlistDictClose(content, insertion) {
+  const rootClose = "\n</dict>\n</plist>";
+  const index = content.lastIndexOf(rootClose);
+  if (index >= 0) {
+    return `${content.slice(0, index)}\n${insertion}${content.slice(index + "\n</dict>".length)}`;
+  }
+  const fallbackIndex = content.lastIndexOf("</dict>");
+  if (fallbackIndex < 0) return content;
+  return `${content.slice(0, fallbackIndex)}${insertion}${content.slice(fallbackIndex + "</dict>".length)}`;
 }
 
 function ensurePlistUrlScheme(content, urlScheme) {
@@ -300,8 +328,8 @@ function ensurePlistUrlScheme(content, urlScheme) {
 		</dict>`;
   const match = content.match(urlTypesRe);
   if (!match) {
-    return content.replace(
-      "</dict>",
+    return insertBeforeRootPlistDictClose(
+      content,
       `\t<key>CFBundleURLTypes</key>\n\t<array>${entry}\n\t</array>\n</dict>`,
     );
   }
@@ -511,18 +539,20 @@ async function buildWeb(platform) {
       : platform === "ios-overlay"
         ? "ios"
         : platform;
-  await run(
-    process.execPath,
-    [path.join(repoRoot, "scripts/run-app-web-build.mjs")],
-    {
-      cwd: repoRoot,
-      env: {
-        ...process.env,
-        ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
-        MILADY_CAPACITOR_BUILD_TARGET: capacitorTarget,
-      },
-    },
-  );
+  const env = {
+    ...process.env,
+    ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
+    MILADY_CAPACITOR_BUILD_TARGET: capacitorTarget,
+  };
+  const bun = resolveBunExecutable();
+  if (bun) {
+    await run(bun, ["run", "build:web"], { cwd: appDir, env });
+    return;
+  }
+  await run(process.execPath, [resolveViteCli(), "build"], {
+    cwd: appDir,
+    env,
+  });
 }
 
 // ── Phase 3: Capacitor sync ────────────────────────────────────────────
@@ -976,6 +1006,7 @@ function overlayAndroid() {
     fs.mkdirSync(dstJava, { recursive: true });
     for (const file of [
       "GatewayConnectionService.java",
+      "AgentPlugin.java",
       "MainActivity.java",
       "ElizaAgentService.java",
       "ElizaAssistActivity.java",
@@ -2362,20 +2393,62 @@ function hasSimulatorSlice(xcframeworkDir) {
   return false;
 }
 
-function patchLlamaCppCapacitorPodspecForXcframework(packageDir) {
+export function patchLlamaCppCapacitorPodspecForXcframework(
+  packageDir,
+  {
+    xcframeworkRelPath = "ios/Frameworks-xcframework/llama-cpp.xcframework",
+  } = {},
+) {
   const podspecPath = path.join(packageDir, "LlamaCppCapacitor.podspec");
   if (!fs.existsSync(podspecPath)) return;
   const current = fs.readFileSync(podspecPath, "utf8");
-  const patched = current.replace(
+  let patched = current.replace(
     "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.framework'",
+    `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+  );
+  patched = patched.replace(
     "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.xcframework'",
+    `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+  );
+  patched = patched.replace(
+    /\n\s*s\.pod_target_xcconfig\s*=\s*\{\s*\n\s*['"]FRAMEWORK_SEARCH_PATHS['"]\s*=>\s*['"]\$\(inherited\) "\$\(PODS_TARGET_SRCROOT\)\/ios\/Frameworks"['"]\s*\n\s*\}\s*/m,
+    "\n",
+  );
+  // The published podspec also injects `ios/Frameworks` into
+  // FRAMEWORK_SEARCH_PATHS, which contains the device-only
+  // `llama-cpp.framework` next to the xcframework. The linker scans
+  // -F paths in order and resolves `-framework llama-cpp` against the
+  // device-only slice first, producing
+  //   ld: building for 'iOS-simulator', but linking in dylib (...
+  //   /llama-cpp.framework/llama-cpp) built for 'iOS'
+  // on iphonesimulator builds. Drop the explicit search path so the
+  // xcframework's per-platform slice is picked up via the standard
+  // XCFrameworkIntermediates path the Xcode build system maintains.
+  patched = patched.replace(
+    /\s*s\.pod_target_xcconfig\s*=\s*\{[^}]*'FRAMEWORK_SEARCH_PATHS'\s*=>\s*'[^']*'[^}]*\}\s*/,
+    "\n",
   );
   if (patched !== current) {
     fs.writeFileSync(podspecPath, patched, "utf8");
     console.log(
-      "[mobile-build] Patched llama-cpp-capacitor podspec for xcframework.",
+      "[mobile-build] Patched llama-cpp-capacitor podspec for xcframework + dropped FRAMEWORK_SEARCH_PATHS device-only override.",
     );
   }
+}
+
+function moveDeviceOnlyLlamaCppFrameworkForSimulator(frameworksDir) {
+  const deviceFramework = path.join(frameworksDir, "llama-cpp.framework");
+  if (!fs.existsSync(deviceFramework)) return;
+
+  const archivedFramework = path.join(
+    frameworksDir,
+    "llama-cpp-device.framework",
+  );
+  fs.rmSync(archivedFramework, { recursive: true, force: true });
+  fs.renameSync(deviceFramework, archivedFramework);
+  console.log(
+    "[mobile-build] Moved device-only llama.cpp framework out of simulator framework search path.",
+  );
 }
 
 async function buildIosLlamaCppSimulatorFramework(packageDir) {
@@ -2437,10 +2510,16 @@ async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
   if (!packageDir) return;
 
   const frameworksDir = path.join(packageDir, "ios", "Frameworks");
-  const xcframeworkDir = path.join(frameworksDir, "llama-cpp.xcframework");
+  const xcframeworksDir = path.join(
+    packageDir,
+    "ios",
+    "Frameworks-xcframework",
+  );
+  const xcframeworkDir = path.join(xcframeworksDir, "llama-cpp.xcframework");
   patchLlamaCppCapacitorPodspecForXcframework(packageDir);
 
   if (hasSimulatorSlice(xcframeworkDir)) {
+    moveDeviceOnlyLlamaCppFrameworkForSimulator(frameworksDir);
     return;
   }
 
@@ -2458,12 +2537,31 @@ async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
     createArgs.push("-framework", deviceFramework);
   }
   createArgs.push("-framework", simulatorFramework);
+  fs.mkdirSync(xcframeworksDir, { recursive: true });
   fs.rmSync(xcframeworkDir, { recursive: true, force: true });
   await run("xcodebuild", [...createArgs, "-output", xcframeworkDir], {
     cwd: packageDir,
   });
+  // CocoaPods adds the parent directory of every `vendored_frameworks` entry
+  // to FRAMEWORK_SEARCH_PATHS. With both `llama-cpp.framework` (the original
+  // device-only one shipped in the npm tarball) and the freshly-created
+  // `llama-cpp.xcframework` sitting in the same parent dir, the linker's
+  // -F path resolves `-framework llama-cpp` to the device-only `.framework`
+  // first and fails simulator builds with:
+  //   ld: building for 'iOS-simulator', but linking in dylib (...) built for 'iOS'
+  // Move the device-only framework out of the search path so only the
+  // xcframework's per-platform slice can resolve.
+  if (fs.existsSync(deviceFramework)) {
+    const archivedDeviceFramework = path.join(
+      packageDir,
+      "ios",
+      ".llama-cpp-device-archive",
+    );
+    fs.rmSync(archivedDeviceFramework, { recursive: true, force: true });
+    fs.renameSync(deviceFramework, archivedDeviceFramework);
+  }
   console.log(
-    "[mobile-build] Prepared llama.cpp xcframework for iOS simulator.",
+    "[mobile-build] Prepared llama.cpp xcframework for iOS simulator (device-only .framework moved out of FRAMEWORK_SEARCH_PATHS).",
   );
 }
 

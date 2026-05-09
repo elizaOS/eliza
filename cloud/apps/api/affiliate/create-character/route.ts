@@ -195,9 +195,11 @@ app.post("/", async (c) => {
 
     const affiliateOrg = await getOrCreateAffiliateOrg();
 
+    const anonymousUserId = crypto.randomUUID();
     const anonymousUser = await usersService.create({
+      steward_user_id: `affiliate:${anonymousUserId}`,
       name: character.name,
-      email: `affiliate-${crypto.randomUUID()}@anonymous.elizacloud.ai`,
+      email: `affiliate-${anonymousUserId}@anonymous.elizacloud.ai`,
       organization_id: affiliateOrg.id,
       is_anonymous: true,
       expires_at: new Date(Date.now() + ANON_USER_TTL_MS),

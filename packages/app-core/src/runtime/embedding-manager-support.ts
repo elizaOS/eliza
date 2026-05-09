@@ -2,8 +2,7 @@ import fs from "node:fs";
 import https from "node:https";
 import os from "node:os";
 import path from "node:path";
-import { formatByteSize } from "../utils/format.js";
-import { getLogPrefix } from "../utils/log-prefix.js";
+import { formatByteSize, getLogPrefix } from "@elizaos/shared";
 import { EMBEDDING_PRESETS } from "./embedding-presets.js";
 
 /**

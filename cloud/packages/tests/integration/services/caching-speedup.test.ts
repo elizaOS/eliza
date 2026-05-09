@@ -4,12 +4,12 @@ import { cache } from "@/lib/cache/client";
 import { affiliatesService } from "@/lib/services/affiliates";
 import { userMcpsService } from "@/lib/services/user-mcps";
 import { usersService } from "@/lib/services/users";
-import { getConnectionString } from "@/tests/helpers/local-database";
+import { getConnectionString } from "@/tests/infrastructure/local-database";
 import {
   cleanupTestData,
   createTestDataSet,
   type TestDataSet,
-} from "@/tests/helpers/test-data-factory";
+} from "@/tests/infrastructure/test-data-factory";
 
 describe("Caching Speedup and Behavior End-to-End Tests", () => {
   let connectionString: string;

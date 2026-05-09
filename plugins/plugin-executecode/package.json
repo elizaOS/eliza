@@ -20,8 +20,17 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "code-execution"
+      ]
+    }
+  },
   "keywords": [
     "eliza",
     "plugin",
@@ -36,7 +45,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "scripts": {

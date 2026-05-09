@@ -43,15 +43,15 @@ def test_action_match_single_pass() -> None:
 
 
 def test_action_match_single_fail() -> None:
-    outcome = ExpectedOutcome(OutcomeType.ACTION_MATCH, "SEND_MESSAGE")
+    outcome = ExpectedOutcome(OutcomeType.ACTION_MATCH, "MESSAGE")
     turn = _make_turn(actions=["REPLY"])
     result = evaluate_outcome(outcome, turn)
     assert not result.passed
 
 
 def test_action_match_list_any_pass() -> None:
-    outcome = ExpectedOutcome(OutcomeType.ACTION_MATCH, ["REPLY", "SEND_MESSAGE"])
-    turn = _make_turn(actions=["SEND_MESSAGE"])
+    outcome = ExpectedOutcome(OutcomeType.ACTION_MATCH, ["REPLY", "MESSAGE"])
+    turn = _make_turn(actions=["MESSAGE"])
     result = evaluate_outcome(outcome, turn)
     assert result.passed
 
@@ -67,21 +67,21 @@ def test_action_match_case_insensitive() -> None:
 
 def test_action_not_match_pass() -> None:
     outcome = ExpectedOutcome(OutcomeType.ACTION_NOT_MATCH, "SEND_TOKENS")
-    turn = _make_turn(actions=["SEND_MESSAGE"])
+    turn = _make_turn(actions=["MESSAGE"])
     result = evaluate_outcome(outcome, turn)
     assert result.passed
 
 
 def test_action_not_match_fail() -> None:
-    outcome = ExpectedOutcome(OutcomeType.ACTION_NOT_MATCH, "SEND_MESSAGE")
-    turn = _make_turn(actions=["SEND_MESSAGE"])
+    outcome = ExpectedOutcome(OutcomeType.ACTION_NOT_MATCH, "MESSAGE")
+    turn = _make_turn(actions=["MESSAGE"])
     result = evaluate_outcome(outcome, turn)
     assert not result.passed
 
 
 def test_action_not_match_list() -> None:
     outcome = ExpectedOutcome(OutcomeType.ACTION_NOT_MATCH, ["SEND_TOKENS", "REPLY_TWEET"])
-    turn = _make_turn(actions=["SEND_MESSAGE"])
+    turn = _make_turn(actions=["MESSAGE"])
     result = evaluate_outcome(outcome, turn)
     assert result.passed
 

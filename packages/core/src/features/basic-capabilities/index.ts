@@ -16,10 +16,10 @@ import { createUniqueUuid } from "../../entities.ts";
 import { logger } from "../../logger.ts";
 import {
 	imageDescriptionTemplate,
-	messageHandlerTemplate,
 	postCreationTemplate,
 } from "../../prompts.ts";
 import { EmbeddingGenerationService } from "../../services/embedding.ts";
+import { EvaluatorService } from "../../services/evaluator.ts";
 import {
 	OPTIMIZED_PROMPT_SERVICE,
 	type OptimizedPromptService,
@@ -36,8 +36,6 @@ import type {
 	Content,
 	ControlMessagePayload,
 	EntityPayload,
-	Evaluator,
-	EvaluatorEventPayload,
 	IAgentRuntime,
 	IMessageBusService,
 	InvokePayload,
@@ -60,7 +58,7 @@ import { ChannelType, ContentType } from "../../types/primitives.ts";
 import {
 	composePromptFromState,
 	getLocalServerUrl,
-	parseToonKeyValue,
+	parseJSONObjectFromText,
 } from "../../utils.ts";
 import * as autonomy from "../autonomy/index.ts";
 
@@ -70,6 +68,7 @@ const ROLE_OWNER: Role = "OWNER";
 export * from "./actions/index.ts";
 export * from "./providers/index.ts";
 
+import { generateMediaAction } from "../advanced-capabilities/actions/generateMedia.ts";
 // Import advanced capabilities
 import {
 	advancedActions,
@@ -90,7 +89,6 @@ import * as providers from "./providers/index.ts";
 
 // Re-export advanced capability modules
 export * from "../advanced-capabilities/actions/index.ts";
-export * from "../advanced-capabilities/evaluators/index.ts";
 // Re-export advanced capabilities
 export {
 	advancedActions,
@@ -122,24 +120,16 @@ export {
 } from "../plugin-manager/index.ts";
 
 // ============================================================================
-// Structured TOON response interfaces.
+// Structured JSON response interfaces.
 // ============================================================================
 
-interface ImageDescriptionToon {
+interface ImageDescriptionJson {
 	description?: string;
 	title?: string;
 	text?: string;
 }
 
-interface MessageHandlerToon {
-	thought?: string;
-	actions?: string | string[];
-	providers?: string | string[];
-	text?: string;
-	simple?: boolean;
-}
-
-interface PostCreationToon {
+interface PostCreationJson {
 	post?: string;
 	thought?: string;
 }
@@ -297,13 +287,15 @@ export async function processAttachments(
 			}
 
 			if (typeof response === "string") {
-				const parsedToon = parseToonKeyValue<ImageDescriptionToon>(response);
+				const parsedJson = parseJSONObjectFromText(
+					response,
+				) as ImageDescriptionJson | null;
 
-				if (parsedToon && (parsedToon.description || parsedToon.text)) {
-					processedAttachment.description = parsedToon.description ?? "";
-					processedAttachment.title = parsedToon.title ?? "Image";
+				if (parsedJson && (parsedJson.description || parsedJson.text)) {
+					processedAttachment.description = parsedJson.description ?? "";
+					processedAttachment.title = parsedJson.title ?? "Image";
 					processedAttachment.text =
-						parsedToon.text ?? parsedToon.description ?? "";
+						parsedJson.text ?? parsedJson.description ?? "";
 
 					runtime.logger.debug(
 						{
@@ -317,7 +309,7 @@ export async function processAttachments(
 				} else {
 					runtime.logger.warn(
 						{ src: "basic-capabilities", agentId: runtime.agentId },
-						"Failed to parse TOON response for image description",
+						"Failed to parse JSON response for image description",
 					);
 				}
 			} else if (
@@ -584,10 +576,8 @@ const postGeneratedHandler = async ({
 		} as MessageMetadata & { entityName: string },
 	};
 
-	// generate thought of which providers to use using messageHandlerTemplate
-
 	// Compose state with relevant context for post generation
-	let state = await runtime.composeState(message, [
+	const state = await runtime.composeState(message, [
 		"PROVIDERS",
 		"CHARACTER",
 		"RECENT_MESSAGES",
@@ -609,84 +599,6 @@ const postGeneratedHandler = async ({
 			metadataX?.userName || metadata?.userName || undefined;
 	}
 
-	const optimizedResponseService = runtime.getService<OptimizedPromptService>(
-		OPTIMIZED_PROMPT_SERVICE,
-	);
-	const dynamicPrompt = await runtime.getCache<string>(
-		"core_prompt_messageHandlerTemplate",
-	);
-	const baselineResponseTemplate =
-		dynamicPrompt ||
-		runtime.character.templates?.messageHandlerTemplate ||
-		messageHandlerTemplate;
-	const prompt = composePromptFromState({
-		state,
-		template: resolveOptimizedPrompt(
-			optimizedResponseService,
-			"response",
-			baselineResponseTemplate,
-		),
-	});
-
-	let responseContent: Content | null = null;
-
-	let retries = 0;
-	const maxRetries = 3;
-	while (
-		retries < maxRetries &&
-		(!responseContent?.thought || !responseContent?.actions)
-	) {
-		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt,
-		});
-
-		const parsedToon = parseToonKeyValue<MessageHandlerToon>(response);
-		if (parsedToon) {
-			const actionsRaw = parsedToon.actions;
-			const providersRaw = parsedToon.providers;
-			const resolvedActions = Array.isArray(actionsRaw)
-				? actionsRaw
-				: actionsRaw
-					? actionsRaw
-							.split(",")
-							.map((action) => action.trim())
-							.filter(Boolean)
-					: ["IGNORE"];
-			responseContent = {
-				thought: parsedToon.thought ?? "",
-				actions: resolvedActions.length > 0 ? resolvedActions : ["IGNORE"],
-				providers: Array.isArray(providersRaw)
-					? providersRaw
-					: providersRaw
-						? [providersRaw]
-						: [],
-				text: parsedToon.text ?? "",
-				simple: parsedToon.simple ?? false,
-			};
-		} else {
-			responseContent = null;
-		}
-
-		retries++;
-		const responseContentThoughtAfter = responseContent?.thought;
-		const responseContentActionsAfter = responseContent?.actions;
-		if (!responseContentThoughtAfter || !responseContentActionsAfter) {
-			runtime.logger.warn(
-				{
-					src: "basic-capabilities",
-					agentId: runtime.agentId,
-					response,
-					parsedToon,
-					responseContent,
-				},
-				"Missing required fields, retrying",
-			);
-		}
-	}
-
-	const responseContentProviders = responseContent?.providers;
-	state = await runtime.composeState(message, responseContentProviders);
-
 	const postPrompt = composePromptFromState({
 		state,
 		template:
@@ -697,11 +609,11 @@ const postGeneratedHandler = async ({
 		prompt: postPrompt,
 	});
 
-	const parsedToonResponse = parseToonKeyValue<PostCreationToon>(
+	const parsedJsonResponse = parseJSONObjectFromText(
 		structuredResponseText,
-	);
+	) as PostCreationJson | null;
 
-	if (!parsedToonResponse) {
+	if (!parsedJsonResponse) {
 		runtime.logger.error(
 			{
 				src: "basic-capabilities",
@@ -720,7 +632,7 @@ const postGeneratedHandler = async ({
 		return cleanedText;
 	}
 
-	const cleanedText = cleanupPostText(parsedToonResponse.post ?? "");
+	const cleanedText = cleanupPostText(parsedJsonResponse.post ?? "");
 	const stateData = state.data;
 	const stateDataProviders = stateData?.providers;
 	const RM =
@@ -792,7 +704,7 @@ const postGeneratedHandler = async ({
 				text: cleanedText,
 				source,
 				channelType: ChannelType.FEED,
-				thought: parsedToonResponse.thought ?? "",
+				thought: parsedJsonResponse.thought ?? "",
 				type: "post",
 			},
 			roomId: message.roomId,
@@ -1191,37 +1103,6 @@ const events: PluginEvents = {
 		},
 	],
 
-	[EventType.EVALUATOR_STARTED]: [
-		async (payload: EvaluatorEventPayload) => {
-			logger.debug(
-				{
-					src: "basic-capabilities:evaluator",
-					agentId: payload.runtime.agentId,
-					evaluatorName: payload.evaluatorName,
-					evaluatorId: payload.evaluatorId,
-				},
-				"Evaluator started",
-			);
-		},
-	],
-
-	[EventType.EVALUATOR_COMPLETED]: [
-		async (payload: EvaluatorEventPayload) => {
-			const status = payload.error ? "failed" : "completed";
-			logger.debug(
-				{
-					src: "basic-capabilities:evaluator",
-					agentId: payload.runtime.agentId,
-					status,
-					evaluatorName: payload.evaluatorName,
-					evaluatorId: payload.evaluatorId,
-					error: payload.error?.message || undefined,
-				},
-				"Evaluator completed",
-			);
-		},
-	],
-
 	[EventType.RUN_STARTED]: [
 		async (payload: RunEventPayload) => {
 			await payload.runtime.createLogs([
@@ -1346,7 +1227,6 @@ export const basicProviders = [
 	providers.contextBenchProvider,
 	providers.currentTimeProvider,
 	providers.entitiesProvider,
-	providers.evaluatorsProvider,
 	providers.platformChatContextProvider,
 	providers.platformUserContextProvider,
 	providers.providersProvider,
@@ -1360,15 +1240,11 @@ export const basicProviders = [
  */
 export const basicActions = [
 	withCanonicalActionDocs(actions.choiceAction),
+	withCanonicalActionDocs(generateMediaAction),
 	withCanonicalActionDocs(actions.replyAction),
 	withCanonicalActionDocs(actions.ignoreAction),
 	withCanonicalActionDocs(actions.noneAction),
 ];
-
-/**
- * Basic evaluators - none by default (evaluators are typically advanced features)
- */
-export const basicEvaluators: never[] = [];
 
 /**
  * Basic services - essential infrastructure services
@@ -1376,6 +1252,7 @@ export const basicEvaluators: never[] = [];
 export const basicServices: ServiceClass[] = [
 	TaskService,
 	EmbeddingGenerationService,
+	EvaluatorService,
 ];
 
 /**
@@ -1384,7 +1261,6 @@ export const basicServices: ServiceClass[] = [
 export const basicCapabilities = {
 	providers: basicProviders,
 	actions: basicActions,
-	evaluators: basicEvaluators,
 	services: basicServices,
 };
 
@@ -1395,7 +1271,7 @@ export const basicCapabilities = {
 /**
  * Configuration for basic capabilities.
  * - Basic: Core functionality (reply, ignore, none actions; core providers; task/embedding services)
- * - Advanced/Extended: Additional features (choice, mute/follow room, roles, settings, image generation)
+ * - Advanced/Extended: Additional features (choice, mute/follow room, roles, settings)
  * - Autonomy: Autonomous operation (autonomy service, admin communication, status providers)
  *
  * @see basic-capabilities for basic capability definitions
@@ -1425,7 +1301,6 @@ export interface CapabilityConfig {
 const autonomyCapabilities = {
 	providers: [autonomy.adminChatProvider, autonomy.autonomyStatusProvider],
 	actions: [withCanonicalActionDocs(autonomy.sendToAdminAction)],
-	evaluators: [] as Evaluator[],
 	services: [autonomy.AutonomyService] as ServiceClass[],
 	routes: autonomy.autonomyRoutes,
 };
@@ -1455,7 +1330,7 @@ export function createBasicCapabilitiesPlugin(
 
 	return {
 		name: "basic-capabilities",
-		description: "Agent basic capabilities with core actions and evaluators",
+		description: "Agent basic capabilities with core actions",
 		actions: [
 			...(config.disableBasic ? [] : basicActions),
 			...(useAdvanced ? advancedActions : []),
@@ -1472,11 +1347,7 @@ export function createBasicCapabilitiesPlugin(
 			...(config.enableSecretsManager ? secretsCapability.providers : []),
 			...(config.enablePluginManager ? pluginManagerCapability.providers : []),
 		],
-		evaluators: [
-			...(config.disableBasic ? [] : basicEvaluators),
-			...(useAdvanced ? advancedEvaluators : []),
-			...(config.enableAutonomy ? autonomyCapabilities.evaluators : []),
-		],
+		evaluators: [...(useAdvanced ? advancedEvaluators : [])],
 		services: [
 			...(config.disableBasic ? [] : basicServices),
 			...(useAdvanced ? advancedServices : []),

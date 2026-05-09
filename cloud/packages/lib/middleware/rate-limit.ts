@@ -274,16 +274,6 @@ export function rateLimitExceededPayload(
   return { body, headers };
 }
 
-/** @deprecated Prefer `rateLimitExceededResponse` — identical native `Response`. */
-export function rateLimitExceededNextResponse(
-  result: RateLimitResult,
-  maxRequests: number,
-  windowMs: number,
-  policy: "redis" | "in-memory",
-): Response {
-  return rateLimitExceededResponse(result, maxRequests, windowMs, policy);
-}
-
 /** Native `Response` for handlers that avoid duplicated JSON serialization helpers. */
 export function rateLimitExceededResponse(
   result: RateLimitResult,
@@ -391,7 +381,7 @@ export function withRateLimit<T = Record<string, string>>(
       );
 
       const policy: "redis" | "in-memory" = useRedis ? "redis" : "in-memory";
-      return rateLimitExceededNextResponse(result, config.maxRequests, config.windowMs, policy);
+      return rateLimitExceededResponse(result, config.maxRequests, config.windowMs, policy);
     }
 
     // Call the actual handler

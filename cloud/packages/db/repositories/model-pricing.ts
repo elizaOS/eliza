@@ -9,7 +9,7 @@ export type { ModelPricing, NewModelPricing };
  */
 export class ModelPricingRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -44,7 +44,7 @@ export class ModelPricingRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**

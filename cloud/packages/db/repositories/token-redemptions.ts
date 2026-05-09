@@ -1,6 +1,7 @@
-import { and, desc, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { mutateRowCount } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
+import { apps } from "../schemas/apps";
 import {
   type ElizaTokenPrice,
   elizaTokenPrices,
@@ -12,6 +13,7 @@ import {
   type TokenRedemption,
   tokenRedemptions,
 } from "../schemas/token-redemptions";
+import { users } from "../schemas/users";
 
 export type {
   ElizaTokenPrice,
@@ -22,15 +24,48 @@ export type {
   TokenRedemption,
 };
 
+export type TokenRedemptionStatus = TokenRedemption["status"];
+
+export interface AdminTokenRedemptionListRow {
+  id: string;
+  user_id: string;
+  app_id: string | null;
+  points_amount: string;
+  usd_value: string;
+  eliza_amount: string;
+  eliza_price_usd: string;
+  network: string;
+  payout_address: string;
+  status: TokenRedemptionStatus;
+  requires_review: boolean;
+  tx_hash: string | null;
+  failure_reason: string | null;
+  retry_count: string;
+  reviewed_by: string | null;
+  reviewed_at: Date | null;
+  review_notes: string | null;
+  created_at: Date;
+  completed_at: Date | null;
+  metadata: unknown;
+  user_email: string | null;
+  app_name: string | null;
+}
+
+export interface AdminTokenRedemptionStatusCount {
+  status: TokenRedemptionStatus;
+  count: number;
+  total_usd: string;
+}
+
 /**
  * Repository for token redemption database operations.
  *
- * Read operations → dbRead (read replica)
- * Write operations → dbWrite (NA primary)
+ * Read operations → dbRead (read-intent connection)
+ * Write operations → dbWrite (primary)
  */
 export class TokenRedemptionsRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -113,8 +148,58 @@ export class TokenRedemptionsRepository {
     });
   }
 
+  async listForAdmin(
+    statuses: TokenRedemptionStatus[],
+    limit: number,
+  ): Promise<AdminTokenRedemptionListRow[]> {
+    if (statuses.length === 0) return [];
+
+    return await dbRead
+      .select({
+        id: tokenRedemptions.id,
+        user_id: tokenRedemptions.user_id,
+        app_id: tokenRedemptions.app_id,
+        points_amount: tokenRedemptions.points_amount,
+        usd_value: tokenRedemptions.usd_value,
+        eliza_amount: tokenRedemptions.eliza_amount,
+        eliza_price_usd: tokenRedemptions.eliza_price_usd,
+        network: tokenRedemptions.network,
+        payout_address: tokenRedemptions.payout_address,
+        status: tokenRedemptions.status,
+        requires_review: tokenRedemptions.requires_review,
+        tx_hash: tokenRedemptions.tx_hash,
+        failure_reason: tokenRedemptions.failure_reason,
+        retry_count: tokenRedemptions.retry_count,
+        reviewed_by: tokenRedemptions.reviewed_by,
+        reviewed_at: tokenRedemptions.reviewed_at,
+        review_notes: tokenRedemptions.review_notes,
+        created_at: tokenRedemptions.created_at,
+        completed_at: tokenRedemptions.completed_at,
+        metadata: tokenRedemptions.metadata,
+        user_email: users.email,
+        app_name: apps.name,
+      })
+      .from(tokenRedemptions)
+      .leftJoin(users, eq(tokenRedemptions.user_id, users.id))
+      .leftJoin(apps, eq(tokenRedemptions.app_id, apps.id))
+      .where(inArray(tokenRedemptions.status, statuses))
+      .orderBy(desc(tokenRedemptions.created_at))
+      .limit(limit);
+  }
+
+  async countByStatusForAdmin(): Promise<AdminTokenRedemptionStatusCount[]> {
+    return await dbRead
+      .select({
+        status: tokenRedemptions.status,
+        count: sql<number>`COUNT(*)`,
+        total_usd: sql<string>`COALESCE(SUM(CAST(${tokenRedemptions.usd_value} AS DECIMAL)), 0)`,
+      })
+      .from(tokenRedemptions)
+      .groupBy(tokenRedemptions.status);
+  }
+
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**
@@ -231,8 +316,8 @@ export class TokenRedemptionsRepository {
 /**
  * Repository for redemption limits (daily rate limiting).
  *
- * Read operations → dbRead (read replica)
- * Write operations → dbWrite (NA primary)
+ * Read operations → dbRead (read-intent connection)
+ * Write operations → dbWrite (primary)
  */
 export class RedemptionLimitsRepository {
   /**
@@ -260,7 +345,7 @@ export class RedemptionLimitsRepository {
       .returning();
 
     if (!created) {
-      // Race condition - another request created it, use write DB to avoid replication lag
+      // Race condition - another request created it, refetch from write DB.
       const refetched = await dbWrite.query.redemptionLimits.findFirst({
         where: and(eq(redemptionLimits.user_id, userId), gte(redemptionLimits.date, today)),
       });
@@ -302,12 +387,12 @@ export class RedemptionLimitsRepository {
 /**
  * Repository for elizaOS token price cache.
  *
- * Read operations → dbRead (read replica)
- * Write operations → dbWrite (NA primary)
+ * Read operations → dbRead (read-intent connection)
+ * Write operations → dbWrite (primary)
  */
 export class ElizaTokenPricesRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -326,7 +411,7 @@ export class ElizaTokenPricesRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**

@@ -1,7 +1,7 @@
 import { DashboardErrorState, DashboardLoadingState } from "@elizaos/cloud-ui";
 import { Helmet } from "react-helmet-async";
 import { useSearchParams } from "react-router-dom";
-import { BillingPageWrapper } from "@/packages/ui/src/components/billing/billing-page-wrapper";
+import { BillingPageWrapper } from "./_components/billing-page-wrapper";
 import { useUserProfile } from "../../lib/data/user";
 
 /** /dashboard/billing */

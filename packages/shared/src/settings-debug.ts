@@ -3,7 +3,7 @@
  * Enable with ELIZA_SETTINGS_DEBUG=1 (and Vite: same env at build time, or VITE_ELIZA_SETTINGS_DEBUG=1).
  */
 
-import { isTruthyEnvValue } from "./env-utils.impl.js";
+import { isTruthyEnvValue } from "./env-utils.js";
 
 /** Keys whose values are always redacted in debug dumps. */
 const SENSITIVE_KEY_RE =
@@ -47,6 +47,53 @@ function maskString(s: string): string {
   return `${t.slice(0, 4)}…${t.slice(-2)} (${t.length} chars)`;
 }
 
+function sanitizeDebugString(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return "";
+  if (trimmed.toUpperCase() === "[REDACTED]") return "[REDACTED]";
+  if (trimmed.length > 48 || /^(sk-|pk_|Bearer\s)/i.test(trimmed)) {
+    return maskString(trimmed);
+  }
+  if (trimmed.length > MAX_STRING) return `${trimmed.slice(0, MAX_STRING)}…`;
+  return trimmed;
+}
+
+function sanitizeDebugArray(
+  value: unknown[],
+  depth: number,
+  seen: WeakSet<object>,
+): unknown[] {
+  const out: unknown[] = [];
+  const cap = Math.min(value.length, MAX_ARRAY);
+  for (let i = 0; i < cap; i++) {
+    out.push(sanitizeForSettingsDebug(value[i], depth + 1, seen));
+  }
+  if (value.length > cap) {
+    out.push(`… +${value.length - cap} more`);
+  }
+  return out;
+}
+
+function sanitizeSensitiveDebugValue(value: unknown): unknown {
+  if (typeof value === "string" && value.trim()) return maskString(value);
+  if (value == null || value === "") return value;
+  return "[redacted]";
+}
+
+function sanitizeDebugObject(
+  value: Record<string, unknown>,
+  depth: number,
+  seen: WeakSet<object>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    out[key] = SENSITIVE_KEY_RE.test(key)
+      ? sanitizeSensitiveDebugValue(item)
+      : sanitizeForSettingsDebug(item, depth + 1, seen);
+  }
+  return out;
+}
+
 /**
  * Deep-clone-ish snapshot safe to log (secrets masked). Not for security boundaries — debug only.
  */
@@ -58,14 +105,7 @@ export function sanitizeForSettingsDebug(
   if (depth > MAX_DEPTH) return "[max-depth]";
   if (value === null || value === undefined) return value;
   if (typeof value === "boolean" || typeof value === "number") return value;
-  if (typeof value === "string") {
-    const t = value.trim();
-    if (t.length === 0) return "";
-    if (t.toUpperCase() === "[REDACTED]") return "[REDACTED]";
-    if (t.length > 48 || /^(sk-|pk_|Bearer\s)/i.test(t)) return maskString(t);
-    if (t.length > MAX_STRING) return `${t.slice(0, MAX_STRING)}…`;
-    return t;
-  }
+  if (typeof value === "string") return sanitizeDebugString(value);
   if (typeof value === "bigint") return String(value);
   if (typeof value === "function") return `[fn ${value.name || "anonymous"}]`;
   if (typeof value !== "object") return String(value);
@@ -74,32 +114,10 @@ export function sanitizeForSettingsDebug(
   seen.add(value as object);
 
   if (Array.isArray(value)) {
-    const out: unknown[] = [];
-    const cap = Math.min(value.length, MAX_ARRAY);
-    for (let i = 0; i < cap; i++) {
-      out.push(sanitizeForSettingsDebug(value[i], depth + 1, seen));
-    }
-    if (value.length > cap) {
-      out.push(`… +${value.length - cap} more`);
-    }
-    return out;
+    return sanitizeDebugArray(value, depth, seen);
   }
 
-  const o = value as Record<string, unknown>;
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(o)) {
-    if (SENSITIVE_KEY_RE.test(k)) {
-      out[k] =
-        typeof v === "string" && v.trim()
-          ? maskString(v)
-          : v == null || v === ""
-            ? v
-            : "[redacted]";
-    } else {
-      out[k] = sanitizeForSettingsDebug(v, depth + 1, seen);
-    }
-  }
-  return out;
+  return sanitizeDebugObject(value as Record<string, unknown>, depth, seen);
 }
 
 /** Compact cloud slice for logs (no raw secrets). */

@@ -151,6 +151,15 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Model name for direct OpenAI-compatible providers",
     )
+    parser.add_argument(
+        "--base-url",
+        type=str,
+        default=None,
+        help=(
+            "Override the OpenAI-compatible chat completions base URL "
+            "(defaults to provider env such as OPENAI_BASE_URL, then provider default)"
+        ),
+    )
 
     parser.add_argument(
         "--no-trajectory-logging",
@@ -205,15 +214,28 @@ class _TextResponse:
 class OpenAICompatibleRuntime:
     """Minimal runtime adapter for direct MINT model calls."""
 
-    def __init__(self, *, provider: str, model: str, api_key: str) -> None:
+    def __init__(
+        self,
+        *,
+        provider: str,
+        model: str,
+        api_key: str,
+        base_url: str | None = None,
+    ) -> None:
         self.provider = provider
         self.model = model
         self.api_key = api_key
-        self.base_url = {
+        env_base_url = {
+            "openai": os.environ.get("OPENAI_BASE_URL"),
+            "groq": os.environ.get("GROQ_BASE_URL") or os.environ.get("OPENAI_BASE_URL"),
+            "openrouter": os.environ.get("OPENROUTER_BASE_URL") or os.environ.get("OPENAI_BASE_URL"),
+        }.get(provider)
+        provider_default = {
             "openai": "https://api.openai.com/v1",
             "groq": "https://api.groq.com/openai/v1",
             "openrouter": "https://openrouter.ai/api/v1",
         }[provider]
+        self.base_url = (base_url or env_base_url or provider_default).rstrip("/")
 
     async def use_model(
         self,
@@ -302,6 +324,7 @@ async def run_benchmark(
     *,
     provider: str,
     model: str | None,
+    base_url: str | None,
     enable_trajectory_logging: bool,
     trajectory_dataset: str,
 ) -> int:
@@ -336,6 +359,7 @@ async def run_benchmark(
                 provider=runtime_provider,
                 model=model_name,
                 api_key=api_key,
+                base_url=base_url,
             )
 
         runner = MINTRunner(
@@ -468,6 +492,7 @@ def main() -> int:
             args.verbose,
             provider=str(args.provider),
             model=args.model,
+            base_url=args.base_url,
             enable_trajectory_logging=not bool(args.no_trajectory_logging),
             trajectory_dataset=str(args.trajectory_dataset),
         )

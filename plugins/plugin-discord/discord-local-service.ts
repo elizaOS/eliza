@@ -64,6 +64,10 @@ type DiscordLocalSession = {
 	scopes: string[];
 };
 
+// TODO(plugin-discord multi-account handoff): thread accountId through the
+// browser/CDP auth partition before enabling multiple Discord local bridge
+// accounts. This stream only adds bot-token account routing.
+
 type DiscordLocalUser = {
 	id: string;
 	username: string;

@@ -52,6 +52,7 @@ app.post("/", async (c) => {
     const [newUser] = await dbWrite
       .insert(users)
       .values({
+        steward_user_id: `anonymous:${crypto.randomUUID()}`,
         is_anonymous: true,
         anonymous_session_id: sessionToken,
         organization_id: null,

@@ -2,7 +2,7 @@
 # Wait for deslop PID then chain: caveman -> diversify.
 # Each step deletes the prior intermediate after success.
 set -euo pipefail
-cd /home/shaw/milady/training
+cd "$(dirname "$0")/.."
 
 DESLOP_PID="${1:-}"
 DATA="data/final"

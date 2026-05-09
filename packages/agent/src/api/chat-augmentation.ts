@@ -2,7 +2,7 @@
  * Chat message enhancement helpers extracted from server.ts.
  *
  * Functions for augmenting chat messages with language instructions,
- * knowledge context, wallet context, image attachments, and user message building.
+ * document context, wallet context, image attachments, and user message building.
  */
 
 import crypto from "node:crypto";
@@ -16,16 +16,23 @@ import {
   type Media,
   ModelType,
   parseJSONObjectFromText,
-  parseToonKeyValue,
   type UUID,
 } from "@elizaos/core";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
 import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.js";
-import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { extractCompatTextContent } from "./compat-utils.js";
-import { getKnowledgeService } from "./knowledge-service-loader.js";
+import {
+  type DocumentsServiceLike,
+  getDocumentsService,
+} from "./documents-service-loader.js";
 import { getWalletAddresses } from "./wallet.js";
 import { resolvePluginEvmLoaded } from "./wallet-capability.js";
+
+type DocumentMatch = Awaited<
+  ReturnType<DocumentsServiceLike["searchDocuments"]>
+>[number];
+type DocumentMatches = DocumentMatch[];
 
 // ---------------------------------------------------------------------------
 // Language augmentation
@@ -84,10 +91,10 @@ const AGENT_AWARENESS_INTENT_RE =
 
 const AGENT_AWARENESS_CLOUD_CREDITS_TIMEOUT_MS = 1_500;
 const MAX_EXPOSED_PLUGIN_NAMES = 12;
-const CHAT_KNOWLEDGE_THRESHOLD = 0.2;
-const CHAT_KNOWLEDGE_LIMIT = 4;
-const CHAT_KNOWLEDGE_SNIPPET_MAX_CHARS = 700;
-const CHAT_KNOWLEDGE_RECOVERY_QUERY_LIMIT = 3;
+const CHAT_DOCUMENTS_THRESHOLD = 0.2;
+const CHAT_DOCUMENTS_LIMIT = 4;
+const CHAT_DOCUMENTS_SNIPPET_MAX_CHARS = 700;
+const CHAT_DOCUMENTS_RECOVERY_QUERY_LIMIT = 3;
 
 interface CloudAuthAwarenessService {
   isAuthenticated?: () => boolean;
@@ -241,15 +248,15 @@ export async function maybeAugmentChatMessageWithAgentAwareness(
   };
 }
 
-export async function maybeAugmentChatMessageWithKnowledge(
+export async function maybeAugmentChatMessageWithDocuments(
   runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
 ): Promise<ReturnType<typeof createMessageMemory>> {
   const userPrompt = extractCompatTextContent(message.content)?.trim();
   if (!userPrompt || !runtime.agentId) return message;
 
-  const knowledge = await getKnowledgeService(runtime);
-  if (!knowledge.service) return message;
+  const documents = await getDocumentsService(runtime);
+  if (!documents.service) return message;
 
   const agentId = runtime.agentId as UUID;
   const roomId =
@@ -273,7 +280,7 @@ export async function maybeAugmentChatMessageWithKnowledge(
   };
 
   const loadMatches = async (scopeRoomId: UUID, queryText: string) =>
-    knowledge.service?.getKnowledge(
+    documents.service?.searchDocuments(
       {
         ...searchMessage,
         content: {
@@ -282,31 +289,31 @@ export async function maybeAugmentChatMessageWithKnowledge(
         },
       },
       { roomId: scopeRoomId },
-    );
+    ) ?? [];
 
-  const loadMatchesAcrossScopes = async (queryText: string) => {
-    let matches = (await loadMatches(roomId, queryText)) ?? [];
+  const loadMatchesAcrossScopes = async (
+    queryText: string,
+  ): Promise<DocumentMatches> => {
+    let matches = await loadMatches(roomId, queryText);
     if (matches.length === 0 && roomId !== agentId) {
-      matches = (await loadMatches(agentId, queryText)) ?? [];
+      matches = await loadMatches(agentId, queryText);
     }
     return matches;
   };
 
-  const selectRelevantMatches = (
-    matches: Awaited<ReturnType<typeof loadMatchesAcrossScopes>>,
-  ) =>
+  const selectRelevantMatches = (matches: DocumentMatches): DocumentMatches =>
     matches.filter((match) => {
       const text = match.content?.text?.trim();
       return (
         typeof text === "string" &&
         text.length > 0 &&
-        (match.similarity ?? 0) >= CHAT_KNOWLEDGE_THRESHOLD
+        (match.similarity ?? 0) >= CHAT_DOCUMENTS_THRESHOLD
       );
     });
 
-  const recoverKnowledgeSearchQueriesWithLlm = async (): Promise<string[]> => {
+  const recoverDocumentSearchQueriesWithLlm = async (): Promise<string[]> => {
     const prompt = [
-      "Extract up to 3 short semantic-search queries for retrieving knowledge that answers the user's request.",
+      "Extract up to 3 short semantic-search queries for retrieving documents that answer the user's request.",
       "Return only JSON with this shape:",
       '  {"queries":["query one","query two"]}',
       "",
@@ -327,9 +334,10 @@ export async function maybeAugmentChatMessageWithKnowledge(
     try {
       const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
       const raw = typeof result === "string" ? result : "";
-      const parsed =
-        parseToonKeyValue<Record<string, unknown>>(raw) ??
-        parseJSONObjectFromText(raw);
+      const parsed = parseJSONObjectFromText(raw) as Record<
+        string,
+        unknown
+      > | null;
       if (!parsed) {
         return [];
       }
@@ -344,7 +352,7 @@ export async function maybeAugmentChatMessageWithKnowledge(
             .filter((value): value is string => typeof value === "string")
             .map((value) => value.trim())
             .filter((value) => value.length > 0)
-            .slice(0, CHAT_KNOWLEDGE_RECOVERY_QUERY_LIMIT),
+            .slice(0, CHAT_DOCUMENTS_RECOVERY_QUERY_LIMIT),
         ),
       ];
     } catch (error) {
@@ -353,22 +361,22 @@ export async function maybeAugmentChatMessageWithKnowledge(
           src: "api:chat-augmentation",
           error: error instanceof Error ? error.message : String(error),
         },
-        "Knowledge query recovery model call failed",
+        "Document query recovery model call failed",
       );
       return [];
     }
   };
 
-  let relevantMatches: Awaited<ReturnType<typeof loadMatchesAcrossScopes>> = [];
+  let relevantMatches: DocumentMatches = [];
   try {
     relevantMatches = selectRelevantMatches(
       await loadMatchesAcrossScopes(userPrompt),
     )
       .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
-      .slice(0, CHAT_KNOWLEDGE_LIMIT);
+      .slice(0, CHAT_DOCUMENTS_LIMIT);
 
     if (relevantMatches.length === 0) {
-      const recoveredQueries = await recoverKnowledgeSearchQueriesWithLlm();
+      const recoveredQueries = await recoverDocumentSearchQueriesWithLlm();
       for (const query of recoveredQueries) {
         const recoveredMatches = selectRelevantMatches(
           await loadMatchesAcrossScopes(query),
@@ -376,7 +384,7 @@ export async function maybeAugmentChatMessageWithKnowledge(
           .sort(
             (left, right) => (right.similarity ?? 0) - (left.similarity ?? 0),
           )
-          .slice(0, CHAT_KNOWLEDGE_LIMIT);
+          .slice(0, CHAT_DOCUMENTS_LIMIT);
         if (recoveredMatches.length > 0) {
           relevantMatches = recoveredMatches;
           break;
@@ -389,16 +397,16 @@ export async function maybeAugmentChatMessageWithKnowledge(
         src: "api:chat-augmentation",
         agentId,
         roomId,
-        error: getErrorMessage(error, "knowledge lookup failed"),
+        error: getErrorMessage(error, "document lookup failed"),
       },
-      "Knowledge augmentation skipped after retrieval failure",
+      "Document augmentation skipped after retrieval failure",
     );
     return message;
   }
 
   if (relevantMatches.length === 0) return message;
 
-  const contextualKnowledge = relevantMatches
+  const contextualDocuments = relevantMatches
     .map((match, index) => {
       const metadata = match.metadata as Record<string, unknown> | undefined;
       const title =
@@ -411,8 +419,8 @@ export async function maybeAugmentChatMessageWithKnowledge(
             : `source-${index + 1}`;
       const text = (match.content?.text ?? "").trim();
       const snippet =
-        text.length > CHAT_KNOWLEDGE_SNIPPET_MAX_CHARS
-          ? `${text.slice(0, CHAT_KNOWLEDGE_SNIPPET_MAX_CHARS)}...`
+        text.length > CHAT_DOCUMENTS_SNIPPET_MAX_CHARS
+          ? `${text.slice(0, CHAT_DOCUMENTS_SNIPPET_MAX_CHARS)}...`
           : text;
       return [
         `<source title=${JSON.stringify(title)} similarity=${JSON.stringify(
@@ -429,13 +437,13 @@ export async function maybeAugmentChatMessageWithKnowledge(
     content: {
       ...(message.content as Content),
       text: [
-        "Answer the user request using the contextual knowledge below as the source of truth when it contains the answer.",
-        "If the answer appears verbatim in the contextual knowledge, repeat it exactly.",
-        "Do not ask follow-up questions or invoke tools/actions when the contextual knowledge already answers the request.",
+        "Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+        "If the answer appears verbatim in the contextual documents, repeat it exactly.",
+        "Do not ask follow-up questions or invoke tools/actions when the contextual documents already answer the request.",
         "",
-        "<contextual_knowledge>",
-        contextualKnowledge,
-        "</contextual_knowledge>",
+        "<contextual_documents>",
+        contextualDocuments,
+        "</contextual_documents>",
         "",
         "<user_request>",
         userPrompt,
@@ -507,7 +515,7 @@ export function validateChatImages(images: unknown): string | null {
 
 /**
  * Extension of the core Media attachment shape that carries raw image bytes for
- * action handlers (e.g. POST_TWEET) while the message is in-memory. The
+ * action handlers (e.g. POST) while the message is in-memory. The
  * extra fields are intentionally stripped before the message is persisted.
  *
  * Note: `_data`/`_mimeType` survive only because elizaOS passes the
@@ -538,7 +546,7 @@ export function buildChatAttachments(
     return { attachments: undefined, compactAttachments: undefined };
   // Compact placeholder URL (no base64) keeps the LLM context lean. The raw
   // image bytes are stashed in `_data`/`_mimeType` for action handlers (e.g.
-  // POST_TWEET) that need to upload them.
+  // POST) that need to upload them.
   const attachments: ChatAttachmentWithData[] = images.map((img, i) => ({
     id: `img-${i}`,
     url: `attachment:img-${i}`,

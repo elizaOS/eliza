@@ -38,16 +38,6 @@ describe("Local AI Plugin", () => {
       expect(typeof localAiPlugin.models?.TEXT_EMBEDDING).toBe("function");
     });
 
-    it("should have OBJECT_SMALL model handler", () => {
-      expect(localAiPlugin.models?.OBJECT_SMALL).toBeDefined();
-      expect(typeof localAiPlugin.models?.OBJECT_SMALL).toBe("function");
-    });
-
-    it("should have OBJECT_LARGE model handler", () => {
-      expect(localAiPlugin.models?.OBJECT_LARGE).toBeDefined();
-      expect(typeof localAiPlugin.models?.OBJECT_LARGE).toBe("function");
-    });
-
     it("should have TEXT_TOKENIZER_ENCODE model handler", () => {
       expect(localAiPlugin.models?.TEXT_TOKENIZER_ENCODE).toBeDefined();
       expect(typeof localAiPlugin.models?.TEXT_TOKENIZER_ENCODE).toBe("function");

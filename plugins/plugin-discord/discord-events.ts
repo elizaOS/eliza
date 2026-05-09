@@ -29,6 +29,10 @@ import {
 	type MessageDebouncer,
 } from "./debouncer";
 import {
+	getDiscordMessageCoalesceConfig,
+	makeCoalescedDiscordMessage,
+} from "./message-coalesce";
+import {
 	diffMemberRoles,
 	diffOverwrites,
 	diffRolePermissions,
@@ -39,6 +43,7 @@ import {
 	handleAutocomplete as handleBuiltinAutocomplete,
 	handleSlashCommand as handleBuiltinSlashCommand,
 } from "./slash-commands";
+import { recordDiscordChannelMessageSeen } from "./staleness";
 import {
 	DiscordEventTypes,
 	type DiscordListenChannelPayload,
@@ -52,6 +57,7 @@ import {
  * `this as unknown as DiscordServiceInternals`.
  */
 export interface DiscordServiceInternals {
+	accountId?: string;
 	client: NonNullable<DiscordService["client"]>;
 	runtime: DiscordService["runtime"];
 	character: DiscordService["character"];
@@ -61,6 +67,7 @@ export interface DiscordServiceInternals {
 	channelDebouncer: ChannelDebouncer | undefined;
 	discordSettings: { shouldIgnoreBotMessages: boolean };
 	allowedChannelIds: string[] | undefined;
+	listenChannelIds?: string[];
 	allowAllSlashCommands: Set<string>;
 	slashCommands: DiscordSlashCommand[];
 	timeouts: ReturnType<typeof setTimeout>[];
@@ -106,15 +113,19 @@ function parseEventListenerConfig(
 	const listenCidsRaw = service.runtime.getSetting(
 		"DISCORD_LISTEN_CHANNEL_IDS",
 	) as string | string[] | undefined;
-	const listenCids = Array.isArray(listenCidsRaw)
-		? listenCidsRaw
-		: listenCidsRaw && typeof listenCidsRaw === "string" && listenCidsRaw.trim()
+	const listenCids = service.listenChannelIds
+		? service.listenChannelIds
+		: Array.isArray(listenCidsRaw)
 			? listenCidsRaw
-					.trim()
-					.split(",")
-					.map((s) => s.trim())
-					.filter((s) => s.length > 0)
-			: [];
+			: listenCidsRaw &&
+					typeof listenCidsRaw === "string" &&
+					listenCidsRaw.trim()
+				? listenCidsRaw
+						.trim()
+						.split(",")
+						.map((s) => s.trim())
+						.filter((s) => s.length > 0)
+				: [];
 
 	const debounceMsSetting = service.runtime.getSetting("DISCORD_DEBOUNCE_MS") as
 		| string
@@ -162,27 +173,68 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 	messageDebouncer: MessageDebouncer;
 	channelDebouncer: ChannelDebouncer;
 } {
+	const accountId = service.accountId ?? "default";
 	const { listenCids, debounceMs, channelDebounceMs, responseCooldownMs } =
 		parseEventListenerConfig(service);
+	const messageCoalesce = getDiscordMessageCoalesceConfig((key) =>
+		service.runtime.getSetting(key),
+	);
+	const effectiveDebounceMs = messageCoalesce.enabled
+		? messageCoalesce.windowMs
+		: debounceMs;
+	const effectiveChannelDebounceMs = messageCoalesce.enabled
+		? messageCoalesce.windowMs
+		: channelDebounceMs;
 
 	// ── Message debouncer ──────────────────────────────────────────────
-	const messageDebouncer = createMessageDebouncer((messages) => {
-		if (!service.messageManager || messages.length === 0) {
-			return;
-		}
+	const messageDebouncer = createMessageDebouncer(
+		(messages) => {
+			if (!service.messageManager || messages.length === 0) {
+				return;
+			}
 
-		if (messages.length === 1) {
-			void service.messageManager.handleMessage(messages[0]);
-			return;
-		}
+			const anchor = messages[0];
+			if (messageCoalesce.enabled) {
+				const combined = makeCoalescedDiscordMessage(
+					messages,
+					anchor,
+					messageCoalesce,
+				);
+				if (messages.length > 1) {
+					service.runtime.logger.info(
+						{
+							src: "plugin:discord",
+							agentId: service.runtime.agentId,
+							channelId: messages[0]?.channel?.id,
+							messageIds: messages.map((message) => message.id),
+							count: messages.length,
+							path: "messageDebouncer",
+						},
+						"Coalesced inbound Discord messages",
+					);
+				}
+				void service.messageManager.handleMessage(combined as Message);
+				return;
+			}
 
-		const anchor = messages[0];
-		const combinedText = messages.map((message) => message.content).join("\n");
-		const combined = Object.create(anchor, {
-			content: { value: combinedText, writable: true, enumerable: true },
-		});
-		void service.messageManager.handleMessage(combined as Message);
-	}, debounceMs);
+			if (messages.length === 1) {
+				void service.messageManager.handleMessage(anchor);
+				return;
+			}
+
+			const combinedText = messages
+				.map((message) => message.content)
+				.join("\n");
+			const combined = Object.create(anchor, {
+				content: { value: combinedText, writable: true, enumerable: true },
+			});
+			void service.messageManager.handleMessage(combined as Message);
+		},
+		effectiveDebounceMs,
+		{
+			maxBatch: messageCoalesce.enabled ? messageCoalesce.maxBatch : undefined,
+		},
+	);
 
 	// ── Channel debouncer ──────────────────────────────────────────────
 	const channelDebouncer = createChannelDebouncer(
@@ -216,7 +268,27 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			}
 
 			anchor ??= messages[messages.length - 1];
-			if (messages.length === 1) {
+			if (messageCoalesce.enabled) {
+				const combined = makeCoalescedDiscordMessage(
+					messages,
+					anchor,
+					messageCoalesce,
+				);
+				if (messages.length > 1) {
+					service.runtime.logger.info(
+						{
+							src: "plugin:discord",
+							agentId: service.runtime.agentId,
+							channelId: messages[0]?.channel?.id,
+							messageIds: messages.map((message) => message.id),
+							count: messages.length,
+							path: "channelDebouncer",
+						},
+						"Coalesced inbound Discord messages",
+					);
+				}
+				void service.messageManager.handleMessage(combined as Message);
+			} else if (messages.length === 1) {
 				void service.messageManager.handleMessage(anchor);
 			} else {
 				const contextLines = messages
@@ -238,10 +310,12 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			channelDebouncer?.markResponded(messages[0].channel.id);
 		},
 		{
-			debounceMs: channelDebounceMs,
+			debounceMs: effectiveChannelDebounceMs,
 			responseCooldownMs,
 			getBotUserId: () => service.client?.user?.id,
 			botName: service.character?.name,
+			coalesceEnabled: messageCoalesce.enabled,
+			maxBatch: messageCoalesce.maxBatch,
 		},
 	);
 
@@ -267,6 +341,14 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			return;
 		}
 
+		if (service.messageManager) {
+			recordDiscordChannelMessageSeen(
+				service.messageManager,
+				message.channel.id,
+				message.id,
+			);
+		}
+
 		if (listenCids.includes(message.channel.id) && message) {
 			const newMessage = await service.buildMemoryFromMessage(message);
 
@@ -286,6 +368,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				runtime: service.runtime,
 				message: newMessage,
 				source: "discord",
+				accountId,
 			};
 			service.runtime.emitEvent(
 				DiscordEventTypes.LISTEN_CHANNEL_MESSAGE,
@@ -306,6 +389,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				runtime: service.runtime,
 				message: message,
 				source: "discord",
+				accountId,
 			};
 			service.runtime.emitEvent(
 				DiscordEventTypes.NOT_IN_CHANNELS_MESSAGE,

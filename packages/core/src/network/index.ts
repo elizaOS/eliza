@@ -2,9 +2,6 @@
  * Network utilities for Eliza.
  *
  * Provides SSRF protection and secure fetch utilities.
- *
- * Note: The dispatcher utilities (undici-based DNS pinning) are Node-specific
- * and should be imported directly from "./network/dispatcher.js" when needed.
  */
 
 export {

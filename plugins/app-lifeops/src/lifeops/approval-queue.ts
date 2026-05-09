@@ -74,6 +74,7 @@ const VALID_ACTIONS: ReadonlySet<ApprovalAction> = new Set([
   "cancel_event",
   "book_travel",
   "make_call",
+  "sign_document",
   "execute_workflow",
   "spend_money",
 ]);

@@ -1,0 +1,34 @@
+{
+  "name": "@elizaos/cloud-db",
+  "version": "0.1.0",
+  "description": "Database clients, schemas, and repository accessors for Eliza Cloud.",
+  "type": "module",
+  "private": true,
+  "exports": {
+    "./package.json": "./package.json",
+    "./client": "./client.ts",
+    "./database-url": "./database-url.ts",
+    "./execute-helpers": "./execute-helpers.ts",
+    "./helpers": "./helpers.ts",
+    "./worker-neon-http": "./worker-neon-http.ts",
+    "./repositories": "./repositories/index.ts",
+    "./repositories/*": "./repositories/*.ts",
+    "./repositories/agents/*": "./repositories/agents/*.ts",
+    "./schemas": "./schemas/index.ts",
+    "./schemas/*": "./schemas/*.ts"
+  },
+  "scripts": {
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "tsc --noEmit --project tsconfig.json"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.4.5",
+    "@neondatabase/serverless": "^1.1.0",
+    "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.17",
+    "typescript": "^6.0.3"
+  }
+}

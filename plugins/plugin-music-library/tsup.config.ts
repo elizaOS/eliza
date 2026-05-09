@@ -7,7 +7,8 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   format: ["esm"],
-  // Upstream sources are not strict against current @elizaos/core types; ship JS only.
+  // The tsup DTS plugin still emits deprecated TS 6 baseUrl options internally.
+  // This package does not publish a types entry, so keep the build JS-only.
   dts: false,
   external: ["dotenv", "fs", "path"],
 });

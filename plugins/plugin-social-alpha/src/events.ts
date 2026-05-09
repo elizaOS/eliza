@@ -6,7 +6,6 @@ import {
 	type Memory,
 	type MessageReceivedHandlerParams,
 	ModelType,
-	parseToonKeyValue,
 	withStandaloneTrajectory,
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
@@ -53,12 +52,12 @@ For each recommendation/criticism:
    recommendation/criticism.
 
 # Output
-Respond with TOON only. Use this shape:
-recommendations[0]{tokenMentioned,isTicker,sentiment,conviction,quote}: SOL,true,positive,HIGH,$SOL is going to moon
+Respond with JSON only. Use this shape:
+{"recommendations":[{"tokenMentioned":"SOL","isTicker":true,"sentiment":"positive","conviction":"HIGH","quote":"$SOL is going to moon"}]}
 
 If the message is NOT crypto-relevant, OR is relevant but contains no
 actionable recommendation or strong criticism, return an empty list:
-recommendations:
+{"recommendations":[]}
 
 An empty \`recommendations\` list means "not relevant or nothing to extract" —
 the caller treats both cases the same way.
@@ -70,6 +69,19 @@ const MAX_RECENT_MESSAGES_FOR_CONTEXT = 5;
 const MAX_RECOMMENDATIONS_IN_PROFILE = 50;
 const DEFAULT_CHAIN = SupportedChain.SOLANA;
 const RECENT_REC_DUPLICATION_TIMEFRAME_MS = 30 * 60 * 1000; // 30 minutes
+
+function parseJsonObject<T extends Record<string, unknown>>(
+	value: string,
+): T | null {
+	try {
+		const parsed: unknown = JSON.parse(value.trim());
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+			? (parsed as T)
+			: null;
+	} catch {
+		return null;
+	}
+}
 
 /**
  * Handles incoming messages and generates responses based on the provided runtime and message information.
@@ -246,11 +258,9 @@ const messageReceivedHandler = async ({
 					}),
 			);
 
-			const extractionResult = parseToonKeyValue<{
+			const extractionResult = parseJsonObject<{
 				recommendations?: ExtractedRec[];
-			}>(extractionResponseRaw) as {
-				recommendations?: ExtractedRec[];
-			} | null;
+			}>(extractionResponseRaw);
 
 			const extractedRecommendations = extractionResult?.recommendations ?? [];
 

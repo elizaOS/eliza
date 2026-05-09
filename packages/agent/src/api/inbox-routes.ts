@@ -36,11 +36,11 @@
 
 import type http from "node:http";
 import type { AgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
+import { cacheDiscordAvatarUrl } from "@elizaos/plugin-discord";
 import {
   expandConnectorSourceFilter,
   normalizeConnectorSource,
 } from "@elizaos/shared";
-import { cacheDiscordAvatarUrl } from "./discord-avatar-cache.js";
 import type { RouteHelpers } from "./route-helpers.js";
 
 /**

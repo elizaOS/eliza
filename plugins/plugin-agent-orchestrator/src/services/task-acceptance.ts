@@ -1,8 +1,5 @@
-import {
-  parseToonKeyValue,
-  type IAgentRuntime,
-  ModelType,
-} from "@elizaos/core";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import { parseJsonObjectResponse } from "./json-model-output.js";
 import type { CreateTaskThreadInput } from "./task-registry.js";
 
 export interface TaskAcceptanceCriteriaResult {
@@ -34,19 +31,15 @@ function uniqueCriteria(values: string[]): string[] {
 }
 
 function parseCriteriaResponse(raw: string): string[] {
-  const parsedToon = parseToonKeyValue<Record<string, unknown>>(raw);
-  if (parsedToon) {
-    const rawCriteria = parsedToon.criteria;
-    if (Array.isArray(rawCriteria)) {
-      return uniqueCriteria(
-        rawCriteria.filter(
-          (entry): entry is string => typeof entry === "string",
-        ),
-      );
-    }
-    if (typeof rawCriteria === "string") {
-      return uniqueCriteria(rawCriteria.split(/\r?\n|,/));
-    }
+  const parsedJson = parseJsonObjectResponse<Record<string, unknown>>(raw);
+  const rawCriteria = parsedJson?.criteria;
+  if (Array.isArray(rawCriteria)) {
+    return uniqueCriteria(
+      rawCriteria.filter((entry): entry is string => typeof entry === "string"),
+    );
+  }
+  if (typeof rawCriteria === "string") {
+    return uniqueCriteria(rawCriteria.split(/\r?\n|,/));
   }
 
   const trimmed = raw.trim();
@@ -105,14 +98,21 @@ function buildAcceptancePrompt(input: CreateTaskThreadInput): string {
       : "- none";
   return [
     "Generate task completion criteria for an orchestrated agent task.",
-    "Return TOON only with a criteria array of 3 to 7 measurable strings.",
+    "Return JSON only with a criteria array of 3 to 7 measurable strings.",
     "Each criterion must be observable and suitable for completion validation.",
     "Avoid generic wording like 'do a good job'.",
-    "Use this TOON shape:",
-    "criteria[3]:",
-    "  Complete the requested implementation.",
-    "  Run relevant checks or record exact blockers.",
-    "  Capture concrete completion evidence.",
+    "Use this JSON shape:",
+    JSON.stringify(
+      {
+        criteria: [
+          "Complete the requested implementation.",
+          "Run relevant checks or record exact blockers.",
+          "Capture concrete completion evidence.",
+        ],
+      },
+      null,
+      2,
+    ),
     "",
     `Title: ${input.title}`,
     `Kind: ${input.kind ?? "coding"}`,

@@ -1,19 +1,9 @@
 /**
- * Database Client with Multi-Region Support
- *
- * Multi-Region Setup:
- * - NA (North America): Primary database (read/write)
- * - EU (Europe): Logical replication read-only replica (pub/sub from NA)
- * - Writes ALWAYS go to NA primary regardless of request region
- * - EU reads go to EU replica for low latency
- * - NA/APAC reads go to NA primary
+ * Database Client
  *
  * Environment Variables:
- * - DATABASE_URL           : Primary database in NA (required) - handles all writes and NA reads
- * - DATABASE_URL_EU_READ   : EU region read replica (optional, for low-latency EU reads)
- * - DATABASE_REGION        : Explicit region override ("na" | "eu" | "apac"). On Cloudflare
- *                            Workers this is set per-environment via wrangler.toml.
- * - CF_REGION              : Auto-populated colo-derived region hint (Workers).
+ * - DATABASE_URL: Primary database URL. Use a Neon URL for cloud, pglite:// for
+ *   embedded local dev, or a vanilla postgresql:// URL.
  *
  * @module db/client
  */
@@ -43,76 +33,6 @@ type Database = NodePgDatabase<typeof schema>;
 
 /** Transaction handle for `writeTransaction` callbacks. */
 type DbTransaction = NodePgTransaction<typeof schema, SchemaTables>;
-
-type DatabaseRegion = "na" | "eu" | "apac";
-type DatabaseRole = "read" | "write";
-
-// ============================================================================
-// Region Detection
-// ============================================================================
-
-/**
- * Detect the current database region.
- *
- * On Cloudflare Workers the region is read from `DATABASE_REGION` (set per
- * environment in wrangler.toml) or `CF_REGION` (colo hint). Defaults to NA.
- */
-function detectRegion(): DatabaseRegion {
-  const env = getCloudAwareEnv();
-  const explicitRegion = (env.DATABASE_REGION || env.CF_REGION)?.toLowerCase();
-  if (explicitRegion === "eu" || explicitRegion === "na" || explicitRegion === "apac") {
-    return explicitRegion;
-  }
-
-  return "na";
-}
-
-/**
- * Get current region (cached for performance)
- */
-let _cachedRegion: DatabaseRegion | null = null;
-export function getCurrentRegion(): DatabaseRegion {
-  if (_cachedRegion === null) {
-    _cachedRegion = detectRegion();
-  }
-  return _cachedRegion;
-}
-
-// ============================================================================
-// Database URL Resolution
-// ============================================================================
-
-/**
- * Get the appropriate database URL for a given region and role.
- *
- * IMPORTANT: Write operations ALWAYS go to the primary NA database.
- * EU is a read-only logical replication, so writes must never be routed there.
- *
- * Read routing:
- * - EU requests → DATABASE_URL_EU_READ (if set) → DATABASE_URL (NA primary)
- * - NA/APAC requests → DATABASE_URL (NA primary)
- *
- * Write routing:
- * - ALL requests → DATABASE_URL (NA primary)
- */
-function getDatabaseUrl(region: DatabaseRegion, role: DatabaseRole): string {
-  // CRITICAL: Writes ALWAYS go to the primary database (NA)
-  // EU is read-only via logical replication, so we must never write there
-  if (role === "write") {
-    return getPrimaryDatabaseUrl();
-  }
-
-  // For EU reads, use EU replica if available
-  if (region === "eu") {
-    const euReadUrl = getCloudAwareEnv().DATABASE_URL_EU_READ;
-    if (euReadUrl) {
-      return euReadUrl;
-    }
-  }
-
-  // All other reads (NA, APAC, or EU without replica) go to NA primary
-  return getPrimaryDatabaseUrl();
-}
 
 /**
  * Get the primary database URL (always required)
@@ -308,36 +228,18 @@ class DatabaseConnectionManager {
   }
 
   /**
-   * Get write connection - ALWAYS routes to NA primary.
-   * EU is read-only via logical replication.
+   * Get write connection.
    */
   getWriteConnection(): Database {
-    // Writes always go to primary, regardless of detected region
     const url = getPrimaryDatabaseUrl();
     return this.getConnection(url);
   }
 
   /**
-   * Get read connection for current region
+   * Get read connection.
    */
   getReadConnection(): Database {
-    const region = getCurrentRegion();
-    const url = getDatabaseUrl(region, "read") || getPrimaryDatabaseUrl();
-    return this.getConnection(url);
-  }
-
-  /**
-   * Get connection for specific region and role.
-   * Note: Write operations are always routed to NA primary regardless of region.
-   */
-  getRegionalConnection(region: DatabaseRegion, role: DatabaseRole): Database {
-    // For writes, always use primary regardless of requested region
-    // EU is read-only via logical replication
-    if (role === "write") {
-      return this.getConnection(getPrimaryDatabaseUrl());
-    }
-
-    const url = getDatabaseUrl(region, role);
+    const url = getPrimaryDatabaseUrl();
     return this.getConnection(url);
   }
 
@@ -345,21 +247,11 @@ class DatabaseConnectionManager {
    * Get connection info for debugging
    */
   getConnectionInfo(): {
-    currentRegion: DatabaseRegion;
-    region: string | undefined;
-    hasEuReadReplica: boolean;
-    writesRouteTo: "na_primary";
-    readsRouteToEu: boolean;
+    databaseUrlConfigured: boolean;
   } {
-    const currentRegion = getCurrentRegion();
     const env = getCloudAwareEnv();
-    const hasEuReadReplica = !!env.DATABASE_URL_EU_READ;
     return {
-      currentRegion,
-      region: env.CF_REGION || env.DATABASE_REGION,
-      hasEuReadReplica,
-      writesRouteTo: "na_primary", // Writes always go to NA primary
-      readsRouteToEu: currentRegion === "eu" && hasEuReadReplica,
+      databaseUrlConfigured: !!applyDatabaseUrlFallback(env),
     };
   }
 }
@@ -371,7 +263,7 @@ const connectionManager = new DatabaseConnectionManager();
 // ============================================================================
 
 /**
- * Primary database - routes to the NA primary write connection.
+ * Primary database - routes to the primary write connection.
  * Equivalent to `dbWrite`; prefer `dbRead` / `dbWrite` for read/write intent clarity.
  */
 export const db = new Proxy({} as Database, {
@@ -383,11 +275,12 @@ export const db = new Proxy({} as Database, {
 });
 
 /**
- * Read database - Routes to read replica in current region
- * Use for SELECT queries, reports, analytics
+ * Read-intent database connection.
+ * Currently uses the primary DATABASE_URL; keep this alias for repository
+ * read/write intent clarity after regional replicas were removed.
  *
  * @example
- * // Read from replica
+ * // Read-intent query
  * const users = await dbRead.query.users.findMany();
  */
 export const dbRead = new Proxy({} as Database, {
@@ -399,7 +292,7 @@ export const dbRead = new Proxy({} as Database, {
 });
 
 /**
- * Write database - Routes to primary in current region
+ * Write database - routes to the primary connection.
  * Use for INSERT, UPDATE, DELETE operations
  *
  * @example
@@ -415,45 +308,6 @@ export const dbWrite = new Proxy({} as Database, {
 });
 
 // ============================================================================
-// Regional Database Accessors
-// ============================================================================
-
-/**
- * EU region database connections.
- * Note: EU is a read-only replica. write operations are routed to NA primary.
- */
-export const dbEU = {
-  /** EU read replica for low-latency reads in Europe */
-  read: new Proxy({} as Database, {
-    get: (_, prop) => {
-      const database = connectionManager.getRegionalConnection("eu", "read");
-      const value = database[prop as keyof typeof database];
-      return typeof value === "function" ? value.bind(database) : value;
-    },
-  }),
-};
-
-/**
- * NA region database connections
- */
-export const dbNA = {
-  read: new Proxy({} as Database, {
-    get: (_, prop) => {
-      const database = connectionManager.getRegionalConnection("na", "read");
-      const value = database[prop as keyof typeof database];
-      return typeof value === "function" ? value.bind(database) : value;
-    },
-  }),
-  write: new Proxy({} as Database, {
-    get: (_, prop) => {
-      const database = connectionManager.getRegionalConnection("na", "write");
-      const value = database[prop as keyof typeof database];
-      return typeof value === "function" ? value.bind(database) : value;
-    },
-  }),
-};
-
-// ============================================================================
 // Helper Functions
 // ============================================================================
 
@@ -465,7 +319,7 @@ export function getDbConnectionInfo() {
 }
 
 /**
- * Execute a read query (uses read replica)
+ * Execute a read-intent query.
  */
 export async function withReadDb<T>(fn: (db: Database) => Promise<T>): Promise<T> {
   return fn(connectionManager.getReadConnection());
@@ -478,19 +332,8 @@ export async function withWriteDb<T>(fn: (db: Database) => Promise<T>): Promise<
   return fn(connectionManager.getWriteConnection());
 }
 
-/**
- * Execute with explicit region selection
- */
-export async function withRegionalDb<T>(
-  region: DatabaseRegion,
-  role: DatabaseRole,
-  fn: (db: Database) => Promise<T>,
-): Promise<T> {
-  return fn(connectionManager.getRegionalConnection(region, role));
-}
-
 // ============================================================================
 // Type Exports
 // ============================================================================
 
-export type { Database, DatabaseRegion, DatabaseRole, DbTransaction };
+export type { Database, DbTransaction };

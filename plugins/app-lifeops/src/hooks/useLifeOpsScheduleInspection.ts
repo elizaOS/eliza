@@ -1,4 +1,4 @@
-import { client } from "@elizaos/app-core";
+import { client } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { LifeOpsScheduleSummary } from "../lifeops/schedule-insight.js";
 

@@ -7,13 +7,128 @@
  * so the handlers themselves stay flat.
  */
 
-import type { HandlerOptions } from "../../../../types/index.ts";
+import type {
+	ActionParameter,
+	AgentContext,
+	HandlerOptions,
+	Memory,
+	State,
+} from "../../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../../utils/action-validation.ts";
 import {
 	ALL_MESSAGE_SOURCES,
 	type ManageOperation,
 	type MessageSource,
 	type SearchMessagesFilters,
 } from "../types.ts";
+
+export const MESSAGE_ACTION_CONTEXTS = [
+	"messaging",
+	"email",
+	"contacts",
+] satisfies AgentContext[];
+
+export const MESSAGE_ACTION_KEYWORDS = [
+	"message",
+	"messages",
+	"email",
+	"inbox",
+	"mail",
+	"draft",
+	"reply",
+	"respond",
+	"send",
+	"schedule",
+	"triage",
+	"unread",
+	"archive",
+	"trash",
+	"spam",
+	"label",
+	"tag",
+	"follow up",
+	"check in",
+	"buscar mensaje",
+	"correo",
+	"bandeja de entrada",
+	"responder",
+	"enviar",
+	"mensagem",
+	"caixa de entrada",
+	"responder",
+	"enviar",
+	"邮件",
+	"消息",
+	"回复",
+	"发送",
+	"이메일",
+	"메시지",
+	"답장",
+	"보내",
+	"tin nhắn",
+	"email",
+	"trả lời",
+	"gửi",
+	"mensahe",
+	"koreo",
+	"sagot",
+	"ipadala",
+];
+
+export function validateMessageAction(
+	message: Memory,
+	state: State | undefined,
+	contexts: readonly AgentContext[] = MESSAGE_ACTION_CONTEXTS,
+	keywords: readonly string[] = MESSAGE_ACTION_KEYWORDS,
+): boolean {
+	return hasActionContextOrKeyword(message, state, { contexts, keywords });
+}
+
+export const messageSourceParameter: ActionParameter = {
+	name: "sources",
+	description:
+		"Optional message sources to include, such as email, slack, discord, imessage, signal, whatsapp, telegram, or x.",
+	required: false,
+	schema: {
+		type: "array" as const,
+		items: { type: "string" as const, enum: [...ALL_MESSAGE_SOURCES] },
+	},
+};
+
+export const messageIdParameter: ActionParameter = {
+	name: "messageId",
+	description: "Identifier of the message to act on.",
+	required: true,
+	schema: { type: "string" as const },
+};
+
+export const draftIdParameter: ActionParameter = {
+	name: "draftId",
+	description: "Identifier of the draft message.",
+	required: true,
+	schema: { type: "string" as const },
+};
+
+export const bodyParameter: ActionParameter = {
+	name: "body",
+	description: "Message body text.",
+	required: true,
+	schema: { type: "string" as const },
+};
+
+export const limitParameter: ActionParameter = {
+	name: "limit",
+	description: "Maximum messages to return.",
+	required: false,
+	schema: { type: "number" as const, minimum: 1, maximum: 100 },
+};
+
+export const sinceMsParameter: ActionParameter = {
+	name: "sinceMs",
+	description: "Only include messages received at or after this timestamp.",
+	required: false,
+	schema: { type: "number" as const },
+};
 
 function getParams(
 	options: HandlerOptions | undefined,
@@ -78,6 +193,42 @@ function asSourceList(value: unknown): MessageSource[] | undefined {
 	return out.length > 0 ? out : undefined;
 }
 
+function parseSenderParam(
+	value: unknown,
+): SearchMessagesFilters["sender"] | undefined {
+	if (value && typeof value === "object" && !Array.isArray(value)) {
+		const r = value as Record<string, unknown>;
+		return {
+			identifier: asString(r.identifier ?? r.handle),
+			displayName: asString(r.displayName ?? r.name),
+		};
+	}
+	if (typeof value === "string") {
+		const sender = asString(value);
+		if (!sender) return undefined;
+		return sender.includes("@")
+			? { identifier: sender }
+			: { displayName: sender };
+	}
+	return undefined;
+}
+
+export interface MessageLookupHints {
+	sources?: MessageSource[];
+	sender?: SearchMessagesFilters["sender"];
+	content?: string;
+}
+
+function parseMessageLookupHints(
+	params: Record<string, unknown>,
+): MessageLookupHints {
+	return {
+		sources: asSourceList(params.sources ?? params.source),
+		sender: parseSenderParam(params.sender ?? params.from),
+		content: asString(params.content ?? params.query ?? params.q),
+	};
+}
+
 function asTimestampMs(value: unknown): number | undefined {
 	if (typeof value === "number" && Number.isFinite(value)) return value;
 	if (typeof value === "string") {
@@ -101,7 +252,7 @@ export function parseTriageParams(
 ): TriageParams {
 	const params = getParams(options);
 	return {
-		sources: asSourceList(params.sources),
+		sources: asSourceList(params.sources ?? params.source),
 		worldIds: asStringList(params.worldIds),
 		channelIds: asStringList(params.channelIds),
 		sinceMs: asNumber(params.sinceMs),
@@ -121,7 +272,7 @@ export function parseListInboxParams(
 ): ListInboxParams {
 	const params = getParams(options);
 	return {
-		sources: asSourceList(params.sources),
+		sources: asSourceList(params.sources ?? params.source),
 		worldIds: asStringList(params.worldIds),
 		channelIds: asStringList(params.channelIds),
 		limit: asNumber(params.limit),
@@ -130,9 +281,40 @@ export function parseListInboxParams(
 }
 
 export interface DraftReplyParams {
-	messageId: string;
+	messageId?: string;
 	body: string;
+	lookup: MessageLookupHints;
 }
+
+function asReplyBody(params: Record<string, unknown>): string | undefined {
+	const body = asString(
+		params.body ??
+			params.reply ??
+			params.replyText ??
+			params.text ??
+			params.message ??
+			params.messageBody,
+	);
+	if (!body) return undefined;
+	if (
+		/^\[?\s*(?:please\s+provide|provide|insert|add)\s+(?:the\s+)?(?:reply|message|body|content)/i.test(
+			body,
+		) ||
+		/\b(?:reply|message|body)\s+content\s+(?:here|required|needed)\b/i.test(
+			body,
+		)
+	) {
+		return undefined;
+	}
+	return body
+		.replace(
+			/\n{0,2}(?:best|regards|sincerely|thanks),?\s*\n\s*\[(?:your\s+name|name|sender)\]\s*$/i,
+			"",
+		)
+		.replace(/\n{0,2}\[(?:your\s+name|name|sender)\]\s*$/i, "")
+		.trim();
+}
+
 export function parseDraftReplyParams(
 	options: HandlerOptions | undefined,
 ): DraftReplyParams | { error: string } {
@@ -140,10 +322,9 @@ export function parseDraftReplyParams(
 	const messageId = asString(
 		params.messageId ?? params.inReplyToId ?? params.id,
 	);
-	const body = asString(params.body ?? params.text ?? params.message);
-	if (!messageId) return { error: "messageId is required" };
+	const body = asReplyBody(params);
 	if (!body) return { error: "body is required" };
-	return { messageId, body };
+	return { messageId, body, lookup: parseMessageLookupHints(params) };
 }
 
 export interface DraftFollowupParams {
@@ -223,19 +404,9 @@ export function parseSearchMessagesParams(
 	options: HandlerOptions | undefined,
 ): SearchMessagesFilters {
 	const params = getParams(options);
-	const senderRaw = params.sender;
-	let sender: SearchMessagesFilters["sender"];
-	if (senderRaw && typeof senderRaw === "object" && !Array.isArray(senderRaw)) {
-		const r = senderRaw as Record<string, unknown>;
-		sender = {
-			identifier: asString(r.identifier ?? r.handle),
-			displayName: asString(r.displayName ?? r.name),
-		};
-	} else if (typeof senderRaw === "string") {
-		sender = { identifier: asString(senderRaw) };
-	}
+	const sender = parseSenderParam(params.sender);
 	return {
-		sources: asSourceList(params.sources),
+		sources: asSourceList(params.sources ?? params.source),
 		worldIds: asStringList(params.worldIds),
 		channelIds: asStringList(params.channelIds),
 		sender,
@@ -248,16 +419,16 @@ export function parseSearchMessagesParams(
 }
 
 export interface ManageMessageParams {
-	messageId: string;
+	messageId?: string;
 	source?: MessageSource;
 	operation: ManageOperation;
+	lookup: MessageLookupHints;
 }
 export function parseManageMessageParams(
 	options: HandlerOptions | undefined,
 ): ManageMessageParams | { error: string } {
 	const params = getParams(options);
 	const messageId = asString(params.messageId ?? params.id);
-	if (!messageId) return { error: "messageId is required" };
 
 	const sourceStr = asString(params.source)?.toLowerCase();
 	let source: MessageSource | undefined;
@@ -270,7 +441,11 @@ export function parseManageMessageParams(
 		source = sourceStr as MessageSource;
 	}
 
-	const opRaw = params.operation ?? params.op;
+	const opRaw =
+		params.manageOperation ??
+		params.messageOperation ??
+		(params.operation === "manage" ? undefined : params.operation) ??
+		params.op;
 	let operation: ManageOperation | undefined;
 	if (opRaw && typeof opRaw === "object" && !Array.isArray(opRaw)) {
 		const r = opRaw as Record<string, unknown>;
@@ -285,7 +460,12 @@ export function parseManageMessageParams(
 				"operation.kind is required (archive|trash|spam|mark_read|label_add|label_remove|tag_add|tag_remove|mute_thread|unsubscribe)",
 		};
 	}
-	return { messageId, source, operation };
+	return {
+		messageId,
+		source,
+		operation,
+		lookup: parseMessageLookupHints(params),
+	};
 }
 
 function parseOperation(
@@ -327,6 +507,9 @@ function parseOperation(
 			return { kind: "mute_thread" };
 		case "unsubscribe":
 			return { kind: "unsubscribe" };
+		case "block":
+		case "block_sender":
+			return { kind: "spam" };
 		default:
 			return undefined;
 	}
@@ -350,8 +533,9 @@ export function parseScheduleDraftSendParams(
 }
 
 export interface RespondToMessageParams {
-	messageId: string;
-	body: string;
+	messageId?: string;
+	body?: string;
+	lookup: MessageLookupHints;
 }
 export function parseRespondToMessageParams(
 	options: HandlerOptions | undefined,
@@ -360,8 +544,6 @@ export function parseRespondToMessageParams(
 	const messageId = asString(
 		params.messageId ?? params.inReplyToId ?? params.id,
 	);
-	const body = asString(params.body ?? params.text ?? params.message);
-	if (!messageId) return { error: "messageId is required" };
-	if (!body) return { error: "body is required" };
-	return { messageId, body };
+	const body = asReplyBody(params);
+	return { messageId, body, lookup: parseMessageLookupHints(params) };
 }

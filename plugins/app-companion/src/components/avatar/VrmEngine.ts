@@ -4,7 +4,7 @@ declare global {
   }
 }
 
-import { resolveAppAssetUrl } from "@elizaos/app-core";
+import { resolveAppAssetUrl } from "@elizaos/ui";
 import {
   MToonMaterialLoaderPlugin,
   type VRM,
@@ -1702,9 +1702,15 @@ export class VrmEngine {
         : null;
     loader.register((parser: VrmLoaderParser) => {
       if (webGpuNodes) {
-        const mtoonMaterialPlugin = new MToonMaterialLoaderPlugin(parser, {
-          materialType: webGpuNodes.MToonNodeMaterial,
-        });
+        const mtoonOptions = {
+          materialType: webGpuNodes.MToonNodeMaterial as unknown,
+        } as unknown as ConstructorParameters<
+          typeof MToonMaterialLoaderPlugin
+        >[1];
+        const mtoonMaterialPlugin = new MToonMaterialLoaderPlugin(
+          parser,
+          mtoonOptions,
+        );
         return new VRMLoaderPlugin(parser, { mtoonMaterialPlugin });
       }
       return new VRMLoaderPlugin(parser);

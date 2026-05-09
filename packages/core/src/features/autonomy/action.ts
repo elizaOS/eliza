@@ -5,10 +5,6 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
-import {
-	findKeywordTermMatch,
-	getValidationKeywordTerms,
-} from "../../i18n/validation-keywords.ts";
 import type {
 	Action,
 	ActionResult,
@@ -22,10 +18,6 @@ import type {
 import { stringToUuid } from "../../utils";
 import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service";
 
-const ADMIN_KEYWORDS = getValidationKeywordTerms("action.sendToAdmin.request", {
-	includeAllLocales: true,
-});
-
 /**
  * Send to Admin Action
  *
@@ -34,8 +26,18 @@ const ADMIN_KEYWORDS = getValidationKeywordTerms("action.sendToAdmin.request", {
  */
 export const sendToAdminAction: Action = {
 	name: "SEND_TO_ADMIN",
+	contexts: ["admin", "messaging", "agent_internal"],
+	roleGate: { minRole: "ADMIN" },
 	description:
 		"Send a message directly to the admin user from autonomous context",
+	parameters: [
+		{
+			name: "message",
+			description: "Optional message to send to the configured admin user.",
+			required: false,
+			schema: { type: "string" },
+		},
+	],
 
 	examples: [
 		[
@@ -93,12 +95,7 @@ export const sendToAdminAction: Action = {
 			return false;
 		}
 
-		// Check if message contains intention to communicate with admin
-		const text = message.content.text ?? "";
-		if (text.length === 0) {
-			return false;
-		}
-		return findKeywordTermMatch(text, ADMIN_KEYWORDS) !== undefined;
+		return true;
 	},
 
 	handler: async (

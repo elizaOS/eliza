@@ -1,10 +1,4 @@
-import { elevenLabsPlugin } from "@elizaos/plugin-elevenlabs";
-import { elizaOSCloudPlugin } from "@elizaos/plugin-elizacloud";
 import { getDefaultModels, getElizaCloudApiUrl } from "./config";
-import advancedMemoryPlugin from "./plugin-advanced-memory";
-import advancedMemoryStoragePlugin from "./plugin-advanced-memory-storage";
-import { cloudBillingPlugin } from "./plugin-cloud-billing";
-import { cloudBootstrapPlugin } from "./plugin-cloud-bootstrap";
 
 // messageExamples uses legacy MessageExample[][] format; createCharacter() normalizes it at
 // load time in agent-loader.ts. The type assertion below suppresses the structural mismatch.
@@ -59,9 +53,6 @@ const character = {
       getDefaultModels().large,
     // Note: ELIZAOS_API_KEY will be set at runtime with user's auto-generated key
     // ElevenLabs Voice Configuration
-    // n8n Workflow Configuration
-    N8N_API_KEY: process.env.N8N_API_KEY!,
-    N8N_HOST: process.env.N8N_HOST!,
     ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY!,
     ELEVENLABS_VOICE_ID: process.env.ELEVENLABS_VOICE_ID || "EXAVITQu4vr4xnSDxMaL", // Rachel voice (default)
     ELEVENLABS_MODEL_ID: process.env.ELEVENLABS_MODEL_ID || "eleven_multilingual_v2",
@@ -1238,20 +1229,9 @@ ALWAYS keep the conversation going. Every response should invite them to continu
 
 const agent = {
   character,
-  plugins: [
-    elizaOSCloudPlugin,
-    elevenLabsPlugin,
-    cloudBootstrapPlugin,
-    advancedMemoryStoragePlugin,
-    advancedMemoryPlugin,
-    cloudBillingPlugin,
-  ],
-  providers: [
-    ...(elevenLabsPlugin.providers || []),
-    ...(cloudBootstrapPlugin.providers || []),
-    ...(cloudBillingPlugin.providers || []),
-  ].flat(),
-  actions: [...(elevenLabsPlugin.actions || []), ...(cloudBootstrapPlugin.actions || [])].flat(),
+  plugins: [],
+  providers: [],
+  actions: [],
 };
 
 export default agent;

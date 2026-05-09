@@ -20,7 +20,7 @@ export default buildConnectorCertificationScenario({
       name: "calendly-disconnected",
       text: "Get me a fresh Calendly booking link for next week, but if Calendly is disconnected, tell me that explicitly and ask me to reconnect it instead of inventing a link.",
       responseIncludesAny: ["calendly", "disconnected", "reconnect", "link"],
-      acceptedActions: ["OWNER_CALENDAR", "OWNER_CALENDAR"],
+      acceptedActions: ["CALENDAR", "CALENDAR"],
       includesAny: ["calendly", "disconnected", "reconnect", "link"],
     },
   ],
