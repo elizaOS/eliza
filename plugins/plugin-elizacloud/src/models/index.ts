@@ -1,7 +1,6 @@
 export type { BatchEmbeddingResult } from "./embeddings";
 export { handleBatchTextEmbedding, handleTextEmbedding } from "./embeddings";
 export { handleImageDescription, handleImageGeneration } from "./image";
-export { handleObjectLarge, handleObjectSmall } from "./object";
 export { handleResearch } from "./research";
 export { fetchTextToSpeech, handleTextToSpeech } from "./speech";
 export {
