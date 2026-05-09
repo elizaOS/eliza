@@ -66,8 +66,22 @@
   "files": [
     "dist",
     "src",
-    "types"
+    "types",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "text-large",
+        "text-small",
+        "tool-use",
+        "embedding",
+        "text-to-speech",
+        "image-description"
+      ]
+    }
+  },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.9",
     "@elizaos/cloud-sdk": "workspace:*",

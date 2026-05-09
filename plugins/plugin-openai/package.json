@@ -30,8 +30,22 @@
   },
   "files": [
     "dist",
-    "rust"
+    "rust",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "text-large",
+        "text-small",
+        "tool-use",
+        "embedding",
+        "text-to-speech",
+        "image-description"
+      ]
+    }
+  },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.9",
     "ai": "^6.0.30",

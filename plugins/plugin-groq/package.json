@@ -36,8 +36,20 @@
   },
   "sideEffects": false,
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "text-large",
+        "text-small",
+        "tool-use",
+        "text-to-speech"
+      ]
+    }
+  },
   "dependencies": {
     "@ai-sdk/groq": "^3.0.4",
     "@elizaos/core": "workspace:*",
