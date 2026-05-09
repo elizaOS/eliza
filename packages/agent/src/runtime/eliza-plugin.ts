@@ -26,7 +26,6 @@ import { taskAction } from "../actions/task.js";
 import { terminalAction } from "../actions/terminal.js";
 import { queryTrajectoriesAction } from "../actions/trajectories.js";
 import { triggerAction } from "../actions/trigger.js";
-import { workflowAction } from "../actions/workflow/index.js";
 import { adminPanelProvider } from "../providers/admin-panel.js";
 import { adminTrustProvider } from "../providers/admin-trust.js";
 import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.js";
@@ -205,7 +204,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
     actions: [
       terminalAction,
-      workflowAction,
       taskAction,
       triggerAction,
       ...pageActionGroupActions,
