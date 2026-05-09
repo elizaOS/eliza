@@ -25,24 +25,25 @@ Message Sender: {{senderName}} (ID: {{senderId}})
 {{actionResults}}
 
 # Instructions:
-1. Generate a self-reflective thought on the conversation about your performance and interaction quality.
-2. Extract only durable new facts from the conversation.
-  - Prefer facts about the current user/sender that will still matter in a week: identity, stable preferences, recurring collaborators, durable setup, long-term projects, or ongoing constraints.
-  - Do NOT extract temporary status updates, current debugging/work items, one-off session metrics, isolated praise/complaints, or facts that are only true right now.
-  - If a fact would feel stale, irrelevant, or surprising to store a week from now, skip it.
-  - When in doubt, omit the fact.
-3. Identify and describe relationships between entities.
-  - The sourceEntityId is the UUID of the entity initiating the interaction.
-  - The targetEntityId is the UUID of the entity being interacted with.
-  - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
-4. It is normal to return no facts when nothing durable was learned.
-5. Always decide whether the user's task or request is actually complete right now.
-  - Set `task_completed: true` only if the user no longer needs additional action or follow-up from you in this turn.
-  - If you asked a clarifying question, an action failed, work is still pending, or you only partially completed the request, set `task_completed: false`.
-6. Always include a short `task_completion_reason` grounded in the conversation and action results.
+1. Generate self-reflective thought on performance and interaction quality.
+2. Extract durable new facts only.
+  - Prefer facts about current user/sender that matter in a week: identity, stable preferences, recurring collaborators, durable setup, long-term projects, ongoing constraints.
+  - Skip temporary status updates, current debugging items, one-off metrics, isolated praise/complaints, transient facts.
+  - Skip facts that would feel stale a week from now.
+  - When in doubt, omit.
+3. Identify relationships between entities.
+  - sourceEntityId: UUID initiating interaction.
+  - targetEntityId: UUID being interacted with.
+  - Relationships are one-direction; friendships need two entries.
+4. Returning no facts is normal when nothing durable was learned.
+5. Decide whether the user's task is complete now.
+  - `task_completed: true` only when no further action/follow-up needed this turn.
+  - `task_completed: false` if you asked a clarifying question, an action failed, work pending, or partially completed.
+6. Include short `task_completion_reason` grounded in conversation and action results.
 
 Output:
-Use JSON fields exactly like this:
+JSON only. Return one JSON object. No prose, no <think>, no fences, no XML.
+Use fields exactly:
 thought: "a self-reflective thought on the conversation"
 task_completed: false
 task_completion_reason: "The request is still incomplete because the needed action has not happened yet."
@@ -56,7 +57,7 @@ relationships[0]:
   targetEntityId: entity_being_interacted_with
   tags[0]: dm_interaction
 
-For additional entries, increment the index: facts[1], relationships[1], tags[1], etc.
+For more entries, increment index: facts[1], relationships[1], tags[1], etc.
 Always include `task_completed` and `task_completion_reason`.
-If there are no durable new facts, omit all facts[...] entries.
-If there are no relationships, omit all relationships[...] entries.
+Omit facts[...] entries when no durable facts.
+Omit relationships[...] entries when none.

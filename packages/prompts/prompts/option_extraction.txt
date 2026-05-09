@@ -7,11 +7,11 @@
 {{recentMessages}}
 
 # Instructions:
-1. Review the user's message and identify which task and option they are selecting
-2. Match against the available tasks and their options, including ABORT
-3. Return the task ID (shortened UUID) and selected option name exactly as listed above
-4. If no clear selection is made, return null for both fields
+1. Identify which task and option the user is selecting
+2. Match against available tasks and options, including ABORT
+3. Return task ID (shortened UUID) and option name exactly as listed
+4. If no clear selection, return null for both
 
-Return in JSON format:
+JSON:
 taskId: string_or_null
 selectedOption: OPTION_NAME_or_null

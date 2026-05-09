@@ -7,12 +7,15 @@ current_message:
 {{message}}
 
 instructions[6]:
-- identify the contact name to update
-- set operation to replace unless the user clearly says to add_to or remove_from
-- return categories and tags as comma-separated lists
-- return preferences and customFields as comma-separated key:value pairs
+- identify contact name to update
+- operation=replace unless user clearly says add_to or remove_from
+- categories and tags as comma-separated lists
+- preferences and customFields as comma-separated key:value pairs
 - include notes only when explicitly requested
-- omit fields that are not being changed
+- omit unchanged fields
+
+output:
+JSON only. One JSON object. No prose, no <think>.
 
 Example:
 contactName: Jane Doe

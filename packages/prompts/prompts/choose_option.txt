@@ -1,14 +1,13 @@
-# Task: Choose an option from the available choices.
+# Task: Choose an option from available choices.
 
 {{providers}}
 
 # Available Options:
 {{options}}
 
-# Instructions: 
-Analyze the options and select the most appropriate one based on the current context.
-Provide your reasoning and the selected option ID.
+# Instructions:
+Select the most appropriate option based on context. Provide reasoning and selected option ID.
 
-Respond using JSON like this:
+JSON:
 thought: Your reasoning for the selection
 selected_id: The ID of the selected option

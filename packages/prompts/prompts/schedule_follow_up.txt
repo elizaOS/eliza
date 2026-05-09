@@ -1,4 +1,4 @@
-task: Extract follow-up scheduling information from the request.
+task: Extract follow-up scheduling info from the request.
 
 context:
 {{providers}}
@@ -11,10 +11,13 @@ current_datetime:
 
 instructions[5]:
 - identify who to follow up with
-- include entityId only when it is explicitly known
-- convert requested timing into an ISO datetime in scheduledAt
+- entityId only when explicitly known
+- convert timing to ISO datetime in scheduledAt
 - normalize priority to high, medium, or low
-- include message only when the user asked for a specific note or reminder text
+- include message only when user asked for specific note or reminder text
+
+output:
+JSON only. One JSON object. No prose, no <think>.
 
 Example:
 contactName: Jane Doe

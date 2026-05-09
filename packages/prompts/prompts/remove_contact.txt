@@ -7,10 +7,13 @@ current_message:
 {{message}}
 
 instructions[4]:
-- identify the contact name to remove
-- set confirmed to yes only when the user explicitly confirms removal
-- set confirmed to no when confirmation is absent or ambiguous
+- identify contact name to remove
+- confirmed=yes only when user explicitly confirms
+- confirmed=no when ambiguous or absent
 - return only the requested contact
+
+output:
+JSON only. One JSON object. No prose, no <think>.
 
 Example:
 contactName: Jane Doe
