@@ -485,6 +485,49 @@ function buildRuntimeContextSections(ctx?: RuntimeContext): string {
   return lines.length ? `\n${lines.join('\n')}\n` : '';
 }
 
+/**
+ * Run the LLM and parse the response, retrying once on parse failure with a
+ * corrective nudge.
+ *
+ * The LLM occasionally drops required workflow fields ("nodes",
+ * "connections") or returns prose-wrapped JSON despite
+ * responseFormat: { type: 'json_object' }. Retrying once with an explicit
+ * corrective instruction recovers most of these without escalating to the
+ * user. Without this retry the user sees a raw "Invalid workflow: missing
+ * or invalid nodes array" banner from the Automations UI and has to manually
+ * re-click the same card; generation is 30-90 s of sequential LLM work
+ * upstream of this point, so failing closed on a single non-deterministic
+ * roll is a poor UX. If the retry also fails, the parse error from the
+ * second attempt propagates — no infinite loop.
+ */
+async function callLlmAndParseWorkflow(
+  runtime: IAgentRuntime,
+  prompt: string,
+  context: 'generateWorkflow' | 'modifyWorkflow'
+): Promise<WorkflowDefinition> {
+  const callOnce = async (extraInstruction?: string): Promise<string> =>
+    (await runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt: extraInstruction ? `${prompt}\n\n${extraInstruction}` : prompt,
+      temperature: 0,
+      responseFormat: { type: 'json_object' },
+    })) as string;
+
+  const firstResponse = await callOnce();
+  try {
+    return parseWorkflowResponse(firstResponse);
+  } catch (firstErr) {
+    const firstMsg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+    logger.warn(
+      { src: `plugin:workflow:generation:${context}`, err: firstMsg },
+      'parseWorkflowResponse failed on first attempt; retrying once'
+    );
+    const retryResponse = await callOnce(
+      'Your previous response was malformed and could not be parsed as a workflow. Return ONLY a single valid JSON object containing the required fields "nodes" (array) and "connections" (object) — no prose, no markdown fences, no explanations.'
+    );
+    return parseWorkflowResponse(retryResponse);
+  }
+}
+
 export async function generateWorkflow(
   runtime: IAgentRuntime,
   userPrompt: string,
@@ -510,13 +553,7 @@ ${userPrompt}
 
 Generate a valid workflow JSON that fulfills this request.`;
 
-  const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-    prompt: fullPrompt,
-    temperature: 0,
-    responseFormat: { type: 'json_object' },
-  });
-
-  const workflow = parseWorkflowResponse(response);
+  const workflow = await callLlmAndParseWorkflow(runtime, fullPrompt, 'generateWorkflow');
 
   if (!workflow.name) {
     workflow.name = `Workflow - ${userPrompt.slice(0, 50).trim()}`;
@@ -558,13 +595,7 @@ ${modificationRequest}
 Modify the existing workflow according to the request above. Return the COMPLETE modified workflow JSON.
 Keep all unchanged nodes and connections intact. Only add, remove, or change what the user asked for.`;
 
-  const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-    prompt: fullPrompt,
-    temperature: 0,
-    responseFormat: { type: 'json_object' },
-  });
-
-  const modified = parseWorkflowResponse(response);
+  const modified = await callLlmAndParseWorkflow(runtime, fullPrompt, 'modifyWorkflow');
 
   // Preserve the original workflow ID for updates (LLM doesn't return it)
   if (existingWorkflow.id) {
