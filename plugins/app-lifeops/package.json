@@ -24,6 +24,16 @@
       "import": "./dist/client.js",
       "default": "./dist/client.js"
     },
+    "./platform": {
+      "types": "./src/platform/index.ts",
+      "import": "./dist/platform/index.js",
+      "default": "./dist/platform/index.js"
+    },
+    "./components/*": {
+      "types": "./src/components/*.ts",
+      "import": "./dist/components/*.js",
+      "default": "./dist/components/*.js"
+    },
     "./inbox/types": {
       "types": "./src/inbox/types.ts",
       "import": "./dist/inbox/types.js",
