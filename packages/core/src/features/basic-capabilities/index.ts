@@ -60,7 +60,16 @@ import {
 	getLocalServerUrl,
 	parseJSONObjectFromText,
 } from "../../utils.ts";
-import * as autonomy from "../autonomy/index.ts";
+// Direct leaf imports — see comment in
+// ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
+// requires bypassing barrels here too.
+import { sendToAdminAction } from "../autonomy/action.ts";
+import {
+	adminChatProvider,
+	autonomyStatusProvider,
+} from "../autonomy/providers.ts";
+import { autonomyRoutes } from "../autonomy/routes.ts";
+import { AutonomyService } from "../autonomy/service.ts";
 
 const ROLE_OWNER: Role = "OWNER";
 
@@ -90,9 +99,31 @@ import {
 	secretsCapability,
 	trustCapability,
 } from "../index.ts";
-// Import for local use
-import * as actions from "./actions/index.ts";
-import * as providers from "./providers/index.ts";
+// Import for local use.
+//
+// Direct leaf imports — see comment in
+// ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
+// requires bypassing barrels here too.
+import { choiceAction } from "./actions/choice.ts";
+import { ignoreAction } from "./actions/ignore.ts";
+import { noneAction } from "./actions/none.ts";
+import { replyAction } from "./actions/reply.ts";
+import { actionsProvider } from "./providers/actions.ts";
+import { actionStateProvider } from "./providers/actionState.ts";
+import { attachmentsProvider } from "./providers/attachments.ts";
+import { characterProvider } from "./providers/character.ts";
+import { choiceProvider } from "./providers/choice.ts";
+import { contextBenchProvider } from "./providers/contextBench.ts";
+import { currentTimeProvider } from "./providers/currentTime.ts";
+import { entitiesProvider } from "./providers/entities.ts";
+import {
+	platformChatContextProvider,
+	platformUserContextProvider,
+} from "./providers/platformContext.ts";
+import { providersProvider } from "./providers/providers.ts";
+import { recentMessagesProvider } from "./providers/recentMessages.ts";
+import { uiContextProvider } from "./providers/uiContext.ts";
+import { worldProvider } from "./providers/world.ts";
 
 // Re-export advanced capability modules
 export * from "../advanced-capabilities/actions/index.ts";
@@ -1226,31 +1257,31 @@ const events: PluginEvents = {
  * Basic providers - core functionality for agent operation
  */
 export const basicProviders = [
-	providers.actionsProvider,
-	providers.actionStateProvider,
-	providers.attachmentsProvider,
-	providers.characterProvider,
-	providers.choiceProvider,
-	providers.contextBenchProvider,
-	providers.currentTimeProvider,
-	providers.entitiesProvider,
-	providers.platformChatContextProvider,
-	providers.platformUserContextProvider,
-	providers.providersProvider,
-	providers.recentMessagesProvider,
-	providers.uiContextProvider,
-	providers.worldProvider,
+	actionsProvider,
+	actionStateProvider,
+	attachmentsProvider,
+	characterProvider,
+	choiceProvider,
+	contextBenchProvider,
+	currentTimeProvider,
+	entitiesProvider,
+	platformChatContextProvider,
+	platformUserContextProvider,
+	providersProvider,
+	recentMessagesProvider,
+	uiContextProvider,
+	worldProvider,
 ];
 
 /**
  * Basic actions - fundamental response actions
  */
 export const basicActions = [
-	withCanonicalActionDocs(actions.choiceAction),
+	withCanonicalActionDocs(choiceAction),
 	withCanonicalActionDocs(generateMediaAction),
-	withCanonicalActionDocs(actions.replyAction),
-	withCanonicalActionDocs(actions.ignoreAction),
-	withCanonicalActionDocs(actions.noneAction),
+	withCanonicalActionDocs(replyAction),
+	withCanonicalActionDocs(ignoreAction),
+	withCanonicalActionDocs(noneAction),
 ];
 
 /**
@@ -1306,10 +1337,10 @@ export interface CapabilityConfig {
 // Autonomy capabilities - opt-in
 // Provides autonomous operation with continuous agent thinking loop
 const autonomyCapabilities = {
-	providers: [autonomy.adminChatProvider, autonomy.autonomyStatusProvider],
-	actions: [withCanonicalActionDocs(autonomy.sendToAdminAction)],
-	services: [autonomy.AutonomyService] as ServiceClass[],
-	routes: autonomy.autonomyRoutes,
+	providers: [adminChatProvider, autonomyStatusProvider],
+	actions: [withCanonicalActionDocs(sendToAdminAction)],
+	services: [AutonomyService] as ServiceClass[],
+	routes: autonomyRoutes,
 };
 
 // Legacy alias exports for backwards compatibility

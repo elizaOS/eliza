@@ -86,9 +86,12 @@ let cachedPoolPromise: Promise<PoolFacade> | null = null;
 
 async function getPool(): Promise<PoolFacade> {
   if (!cachedPoolPromise) {
-    const moduleId = "@elizaos/app-core";
     cachedPoolPromise = (async () => {
-      const mod = (await import(/* @vite-ignore */ moduleId)) as {
+      // String-literal dynamic import — see comment in
+      // ../runtime/eliza.ts#importAppCoreRuntime for the AOSP bundle issue.
+      const mod = (await import(
+        /* @vite-ignore */ "@elizaos/app-core/account-pool"
+      )) as {
         getDefaultAccountPool: () => PoolFacade;
       };
       return mod.getDefaultAccountPool();

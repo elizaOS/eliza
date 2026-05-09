@@ -16,28 +16,20 @@ import { withCanonicalActionDocs } from "../../action-docs.ts";
 import { createService } from "../../services.ts";
 import type { IAgentRuntime, RegisteredEvaluator } from "../../types/index.ts";
 import type { ServiceClass } from "../../types/plugin.ts";
-import {
-	experiencePatternEvaluator,
-	experienceProvider,
-	searchExperiencesAction,
-} from "./experience/index.ts";
-
-// Personality imports
-import {
-	characterAction,
-	userPersonalityProvider,
-} from "./personality/index.ts";
-
-// Todos imports
-import {
-	completeTodoAction,
-	createTodoAction,
-	deleteTodoAction,
-	editTodoAction,
-	listTodosAction,
-	todoAction,
-	todosProvider,
-} from "./todos/index.ts";
+// Direct leaf-file imports — see comment lower in this file for the
+// Bun.build mis-rewrite that requires bypassing barrels.
+import { searchExperiencesAction } from "./experience/actions/search-experiences.ts";
+import { experiencePatternEvaluator } from "./experience/evaluators/experience-items.ts";
+import { experienceProvider } from "./experience/providers/experienceProvider.ts";
+import { characterAction } from "./personality/actions/character.ts";
+import { userPersonalityProvider } from "./personality/providers/user-personality.ts";
+import { completeTodoAction } from "./todos/actions/complete-todo.ts";
+import { createTodoAction } from "./todos/actions/create-todo.ts";
+import { deleteTodoAction } from "./todos/actions/delete-todo.ts";
+import { editTodoAction } from "./todos/actions/edit-todo.ts";
+import { listTodosAction } from "./todos/actions/list-todos.ts";
+import { todoAction } from "./todos/actions/todo.ts";
+import { todosProvider } from "./todos/providers/todos.ts";
 
 // Re-export action, provider, and post-message-action modules
 export * from "./actions/index.ts";
@@ -48,21 +40,47 @@ export * from "./personality/index.ts";
 export * from "./providers/index.ts";
 export * from "./todos/index.ts";
 
-// Import for local use
-import * as actions from "./actions/index.ts";
-import * as postMessageActions from "./evaluators/index.ts";
-import * as providers from "./providers/index.ts";
+// Explicit named re-exports for symbols that are also referenced from
+// runtime capability lists below — this defeats Bun.build's tree-shaking
+// of the underlying module so the symbols stay defined when external
+// consumers import them via `@elizaos/core`.
+export { roleAction } from "./actions/role.ts";
+
+// Import for local use.
+//
+// We deliberately bypass the local barrels (`./actions/index.ts`,
+// `./evaluators/index.ts`, `./providers/index.ts`) and reach for each
+// concrete file. Bun.build (1.3.13) collapses re-export-only barrels to
+// empty `init_xxx = () => {}` shims AND simultaneously drops the underlying
+// `var advancedContactsProvider = ...` declarations from the bundle when
+// the only references to those symbols arrive through a `export * from` /
+// `export { x }` chain. The runtime then throws
+// `ReferenceError: advancedContactsProvider is not defined` the first time
+// `advancedProviders` is touched. Importing directly from the leaf file
+// gives Bun a real per-file consumer it cannot prune.
+import { messageAction } from "./actions/message.ts";
+import { postAction } from "./actions/post.ts";
+import { roomOpAction } from "./actions/room.ts";
+import { roleAction, updateRoleAction } from "./actions/role.ts";
+import { reflectionItems } from "./evaluators/reflection-items.ts";
+import { skillItems } from "./evaluators/skill-items.ts";
+import { advancedContactsProvider } from "./providers/contacts.ts";
+import { factsProvider } from "./providers/facts.ts";
+import { followUpsProvider } from "./providers/followUps.ts";
+import { relationshipsProvider } from "./providers/relationships.ts";
+import { roleProvider } from "./providers/roles.ts";
+import { settingsProvider } from "./providers/settings.ts";
 
 /**
  * Advanced providers - extended context and state management
  */
 export const advancedProviders = [
-	providers.contactsProvider,
-	providers.factsProvider,
-	providers.followUpsProvider,
-	providers.relationshipsProvider,
-	providers.roleProvider,
-	providers.settingsProvider,
+	advancedContactsProvider,
+	factsProvider,
+	followUpsProvider,
+	relationshipsProvider,
+	roleProvider,
+	settingsProvider,
 	experienceProvider,
 	todosProvider,
 	userPersonalityProvider,
@@ -75,11 +93,11 @@ export const advancedProviders = [
  * `advancedEvaluators` and run by the EvaluatorService in one model call.
  */
 export const advancedActions = [
-	withCanonicalActionDocs(actions.roomOpAction),
-	withCanonicalActionDocs(actions.updateRoleAction),
+	withCanonicalActionDocs(roomOpAction),
+	withCanonicalActionDocs(updateRoleAction),
 	withCanonicalActionDocs(searchExperiencesAction),
-	actions.messageAction,
-	actions.postAction,
+	messageAction,
+	postAction,
 	// Todo actions
 	todoAction,
 	createTodoAction,
@@ -92,8 +110,8 @@ export const advancedActions = [
 ];
 
 export const advancedEvaluators = [
-	...postMessageActions.reflectionItems,
-	...postMessageActions.skillItems,
+	...reflectionItems,
+	...skillItems,
 	experiencePatternEvaluator,
 ] satisfies readonly RegisteredEvaluator[];
 

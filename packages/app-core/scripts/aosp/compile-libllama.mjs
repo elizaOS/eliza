@@ -68,6 +68,7 @@
 //   apps/app/android/app/src/main/assets/agent/{abi}/libggml-cpu.so
 //   apps/app/android/app/src/main/assets/agent/{abi}/libggml-base.so
 //   apps/app/android/app/src/main/assets/agent/{abi}/libeliza-llama-shim.so
+//   apps/app/android/app/src/main/assets/agent/{abi}/llama-server          (DFlash spec-decode HTTP server)
 //
 // libllama.so has NEEDED entries on the entire libggml family (see
 // `readelf -d`); the dynamic linker resolves them from the per-ABI asset
@@ -591,7 +592,14 @@ export function buildLibllamaForAbi({
       "-DBUILD_SHARED_LIBS=ON",
       "-DLLAMA_BUILD_EXAMPLES=OFF",
       "-DLLAMA_BUILD_TESTS=OFF",
-      "-DLLAMA_BUILD_SERVER=OFF",
+      // llama-server is required for the AOSP DFlash speculative-decode path
+      // (target + drafter share one process; aosp-llama-adapter.ts spawns this
+      // binary and routes inference over the OpenAI-compatible HTTP API). The
+      // server target also pulls in the JSON/HTTP common-lib pieces, but adds
+      // ~1.5 MB stripped per ABI; small price relative to the spec-decode
+      // throughput win.
+      "-DLLAMA_BUILD_SERVER=ON",
+      "-DLLAMA_CURL=OFF",
       `-DCMAKE_C_COMPILER=${ccPath}`,
       `-DCMAKE_CXX_COMPILER=${cxxPath}`,
       // No launcher — the driver scripts do all the wrapping themselves.
@@ -621,6 +629,18 @@ export function buildLibllamaForAbi({
   spawn(
     "cmake",
     ["--build", buildDir, "--target", "llama", "-j", String(jobs)],
+    {},
+  );
+
+  // llama-server target. Built in a second --target invocation so a future
+  // operator can disable it via a flag without touching the libllama target.
+  // The target name is `llama-server` on the apothic fork (verified against
+  // the upstream b8198 examples/server/CMakeLists.txt: `add_executable(
+  // ${TARGET} server.cpp ...)` with `set(TARGET llama-server)`).
+  log(`[compile-libllama] Compiling llama-server for ${abi} with -j${jobs}`);
+  spawn(
+    "cmake",
+    ["--build", buildDir, "--target", "llama-server", "-j", String(jobs)],
     {},
   );
 
@@ -682,7 +702,33 @@ export function buildLibllamaForAbi({
     }
   }
 
-  for (const out of [...ggmlOuts, llamaOut, ...sonameAliases]) {
+  // Locate + stage the llama-server binary. cmake puts it under
+  // `<build>/bin/llama-server` for upstream b8198 (and the apothic fork
+  // inherits the same install layout). Some older pins drop it at
+  // `<build>/llama-server`; check both.
+  const llamaServerSrcCandidates = [
+    path.join(buildDir, "bin", "llama-server"),
+    path.join(buildDir, "llama-server"),
+  ];
+  const llamaServerSrc = llamaServerSrcCandidates.find((c) => fs.existsSync(c));
+  let llamaServerOut = null;
+  if (llamaServerSrc) {
+    llamaServerOut = path.join(abiAssetDir, "llama-server");
+    fs.copyFileSync(llamaServerSrc, llamaServerOut);
+    fs.chmodSync(llamaServerOut, 0o755);
+    log(
+      `[compile-libllama] Copied llama-server for ${abi} (${(fs.statSync(llamaServerOut).size / (1024 * 1024)).toFixed(2)} MB).`,
+    );
+  } else {
+    log(
+      `[compile-libllama] WARN: llama-server binary not found under ${buildDir}/bin/ or ${buildDir}/. ` +
+        `DFlash speculative decode on AOSP requires it; rebuild with -DLLAMA_BUILD_SERVER=ON.`,
+    );
+  }
+
+  const stripTargets = [...ggmlOuts, llamaOut, ...sonameAliases];
+  if (llamaServerOut) stripTargets.push(llamaServerOut);
+  for (const out of stripTargets) {
     const sizeBefore = fs.statSync(out).size;
     const stripped = stripBinary({ filePath: out, zigBin, log });
     if (stripped) {
@@ -699,7 +745,9 @@ export function buildLibllamaForAbi({
       );
     }
   }
-  return { llama: llamaOut, ggml: ggmlOuts };
+  // Re-chmod llama-server after strip — system strip may reset perms.
+  if (llamaServerOut) fs.chmodSync(llamaServerOut, 0o755);
+  return { llama: llamaOut, ggml: ggmlOuts, llamaServer: llamaServerOut };
 }
 
 /**
@@ -1100,7 +1148,13 @@ export async function main(argv = process.argv.slice(2)) {
       abi,
       "libeliza-llama-shim.so",
     );
-    if (!fs.existsSync(llama) || !fs.existsSync(ggml) || !fs.existsSync(shim)) {
+    const llamaServer = path.join(args.androidAssetsDir, abi, "llama-server");
+    if (
+      !fs.existsSync(llama) ||
+      !fs.existsSync(ggml) ||
+      !fs.existsSync(shim) ||
+      !fs.existsSync(llamaServer)
+    ) {
       allPresent = false;
       break;
     }
@@ -1155,7 +1209,7 @@ export async function main(argv = process.argv.slice(2)) {
   await compileShimMain(["--skip-if-present"]);
 
   console.log(
-    `[compile-libllama] Built libllama.so + libeliza-llama-shim.so for ` +
+    `[compile-libllama] Built libllama.so + libeliza-llama-shim.so + llama-server for ` +
       `${args.abis.join(", ")} (llama.cpp ${LLAMA_CPP_TAG} / ${LLAMA_CPP_COMMIT.slice(0, 12)}).`,
   );
 }
