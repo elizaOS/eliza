@@ -136,11 +136,6 @@ export type MessageHandlerAction = "RESPOND" | "IGNORE" | "STOP";
 export interface MessageHandlerPlan {
 	contexts: AgentContext[];
 	reply?: string;
-	requiresTool?: boolean;
-	simple?: boolean;
-	contextSlices?: string[];
-	candidateActions?: string[];
-	parentActionHints?: string[];
 	/**
 	 * When true, Stage 1 marks this turn as requiring a tool call. The router
 	 * upgrades empty / simple-only plans to planning against `general` and the
@@ -150,6 +145,9 @@ export interface MessageHandlerPlan {
 	requiresTool?: boolean;
 	/** Legacy flag (pre-`contexts: ["simple"]`); honored as a back-compat hint. */
 	simple?: boolean;
+	contextSlices?: string[];
+	candidateActions?: string[];
+	parentActionHints?: string[];
 	[key: string]: JsonValue | undefined;
 }
 

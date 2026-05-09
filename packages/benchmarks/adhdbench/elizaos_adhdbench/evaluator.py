@@ -13,6 +13,20 @@ from elizaos_adhdbench.types import (
 
 _EvalFn = Callable[[ExpectedOutcome, TurnResult], OutcomeResult]
 
+# Outcome types that only have meaning when the runtime can observe and
+# emit per-turn provider invocations (the eliza-bridge path). On OpenAI-
+# compatible providers, ``providers_requested`` is always empty so these
+# checks are noise — they're skipped at scoring time rather than guaranteed
+# to fail.
+_RUNTIME_ONLY_OUTCOMES = {OutcomeType.PROVIDERS_REQUESTED}
+
+
+def is_scoreable_outcome(outcome: ExpectedOutcome, *, has_runtime_signal: bool) -> bool:
+    """Whether an outcome contributes to scoring for this provider path."""
+    if outcome.outcome_type in _RUNTIME_ONLY_OUTCOMES and not has_runtime_signal:
+        return False
+    return True
+
 
 def evaluate_outcome(outcome: ExpectedOutcome, turn: TurnResult) -> OutcomeResult:
     """Evaluate a single expected outcome against a turn result."""

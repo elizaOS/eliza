@@ -87,8 +87,6 @@
     "vitest": "^4.1.4"
   },
   "peerDependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
     "zod": "^4.4.3"
   },
   "scripts": {

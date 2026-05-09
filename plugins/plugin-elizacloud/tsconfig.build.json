@@ -12,11 +12,7 @@
       "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
       "@elizaos/core/*": ["../../packages/core/dist/*"],
       "@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/dist/*"],
-      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
-      "@elizaos/agent/*": ["../../packages/agent/src/*"],
-      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../../packages/app-core/src/*"]
+      "@elizaos/shared/*": ["../../packages/shared/dist/*"]
     },
     "types": ["node", "bun-types"]
   },

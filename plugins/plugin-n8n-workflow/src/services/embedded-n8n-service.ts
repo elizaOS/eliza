@@ -1,9 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { createRequire } from 'node:module';
 import { type IAgentRuntime, logger, Service } from '@elizaos/core';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import type { IWorkflowExecuteAdditionalData } from 'n8n-workflow';
 import type {
   N8nCredential,
   N8nExecution,
@@ -22,14 +20,7 @@ import {
 
 export const N8N_EMBEDDED_SERVICE_TYPE = 'n8n_embedded_workflow';
 
-type N8nCoreRuntime = typeof import('n8n-core');
-type N8nWorkflowRuntime = typeof import('n8n-workflow');
 type WorkflowExecuteMode = N8nExecution['mode'];
-
-interface EmbeddedRuntimeModules {
-  core: N8nCoreRuntime;
-  workflow: N8nWorkflowRuntime;
-}
 
 interface INodeExecutionData {
   json: Record<string, unknown>;
@@ -94,44 +85,8 @@ interface IncomingConnection {
 
 const EMBEDDED_HOST = 'embedded://local';
 const DEFAULT_SCHEDULE_INTERVAL_MS = 60_000;
-const N8N_CORE_PACKAGE = 'n8n-core';
-const N8N_WORKFLOW_PACKAGE = 'n8n-workflow';
 
-let loadedModules: Promise<EmbeddedRuntimeModules> | null = null;
 let loadedQuickJs: Promise<typeof import('quickjs-emscripten')> | null = null;
-
-async function loadN8nRuntime(): Promise<EmbeddedRuntimeModules> {
-  if (!loadedModules) {
-    loadedModules = (async () => {
-      try {
-        const [core, workflow] = await Promise.all([
-          import(N8N_CORE_PACKAGE),
-          import(N8N_WORKFLOW_PACKAGE),
-        ]);
-        return { core, workflow };
-      } catch (importError) {
-        const require = createRequire(import.meta.url);
-        try {
-          return {
-            core: require(N8N_CORE_PACKAGE) as N8nCoreRuntime,
-            workflow: require(N8N_WORKFLOW_PACKAGE) as N8nWorkflowRuntime,
-          };
-        } catch (requireError) {
-          throw new Error(
-            `Failed to load embedded n8n runtime: ${
-              requireError instanceof Error
-                ? requireError.message
-                : importError instanceof Error
-                  ? importError.message
-                  : String(requireError)
-            }`
-          );
-        }
-      }
-    })();
-  }
-  return loadedModules;
-}
 
 async function loadQuickJs(): Promise<typeof import('quickjs-emscripten')> {
   loadedQuickJs ??= import('quickjs-emscripten');
@@ -248,7 +203,7 @@ function normalizeExecutionItem(
   pairedItem?: INodeExecutionData['pairedItem']
 ): INodeExecutionData {
   if (isRecord(item) && 'json' in item) {
-    return item as INodeExecutionData;
+    return item as unknown as INodeExecutionData;
   }
   return {
     json: (isRecord(item) ? item : { value: item }) as INodeExecutionData['json'],

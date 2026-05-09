@@ -7046,35 +7046,6 @@ export const coreEvaluatorsSpec = {
 				"Generate a self-reflective thought on the convo, then extract facts and relationships between entities in the convo. Reflects on agent behavior and provides...",
 		},
 		{
-			name: "RELATIONSHIP_EXTRACTION",
-			description:
-				"Passively extracts and updates relationship information from conversations. Identifies platform identities, relationship indicators, and mentioned third parties.",
-			similes: [
-				"RELATIONSHIP_ANALYZER",
-				"SOCIAL_GRAPH_BUILDER",
-				"CONTACT_EXTRACTOR",
-			],
-			alwaysRun: false,
-			examples: [
-				{
-					prompt: "User introduces themselves with social media",
-					messages: [
-						{
-							name: "{{name1}}",
-							content: {
-								type: "text",
-								text: "Hi, I'm Sarah Chen. You can find me on X @sarahchen_dev",
-							},
-						},
-					],
-					outcome:
-						"Extracts X handle and creates/updates the entity with a platform identity.",
-				},
-			],
-			descriptionCompressed:
-				"Passively extracts and updates relationship info from convos. Identifies platform identities, relationship indicators, and mentioned third parties.",
-		},
-		{
 			name: "MEMORY_SUMMARIZATION",
 			description:
 				"Automatically summarizes conversations to optimize context usage. Compresses conversation history while preserving important information.",
@@ -7217,35 +7188,6 @@ export const allEvaluatorsSpec = {
 			],
 			descriptionCompressed:
 				"Generate a self-reflective thought on the convo, then extract facts and relationships between entities in the convo. Reflects on agent behavior and provides...",
-		},
-		{
-			name: "RELATIONSHIP_EXTRACTION",
-			description:
-				"Passively extracts and updates relationship information from conversations. Identifies platform identities, relationship indicators, and mentioned third parties.",
-			similes: [
-				"RELATIONSHIP_ANALYZER",
-				"SOCIAL_GRAPH_BUILDER",
-				"CONTACT_EXTRACTOR",
-			],
-			alwaysRun: false,
-			examples: [
-				{
-					prompt: "User introduces themselves with social media",
-					messages: [
-						{
-							name: "{{name1}}",
-							content: {
-								type: "text",
-								text: "Hi, I'm Sarah Chen. You can find me on X @sarahchen_dev",
-							},
-						},
-					],
-					outcome:
-						"Extracts X handle and creates/updates the entity with a platform identity.",
-				},
-			],
-			descriptionCompressed:
-				"Passively extracts and updates relationship info from convos. Identifies platform identities, relationship indicators, and mentioned third parties.",
 		},
 		{
 			name: "MEMORY_SUMMARIZATION",

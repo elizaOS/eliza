@@ -3,21 +3,14 @@ import {
   type CloudRouteState as AutonomousCloudRouteState,
   handleCloudRoute as handleAutonomousCloudRoute,
 } from "./cloud-routes-autonomous.js";
-import { applyCanonicalOnboardingConfig } from "@elizaos/agent/api/provider-switch-config";
-import {
-  normalizeCloudSiteUrl,
-} from "../cloud/base-url.js";
+import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import type { CloudManager } from "../cloud/cloud-manager.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
-import { type ElizaConfig, saveElizaConfig } from "@elizaos/agent/config";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import {
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
 } from "@elizaos/shared";
-import { sendJson, sendJsonError } from "@elizaos/app-core/api/response";
-import { isTimeoutError } from "@elizaos/app-core/utils/errors";
 import {
   clearCloudAuthService,
   disconnectUnifiedCloudConnection,
@@ -28,21 +21,34 @@ import {
   clearCloudSecrets,
   scrubCloudSecretsFromEnv,
 } from "../lib/cloud-secrets";
+import {
+  applyCanonicalOnboardingConfig,
+  type ElizaConfig,
+  isTimeoutError,
+} from "../lib/config-like";
+import { sendJson, sendJsonError } from "../lib/http";
 
 export interface CloudRouteState {
   config: ElizaConfig;
   cloudManager: CloudManager | null;
   /** The running agent runtime — needed to persist cloud credentials to the DB. */
   runtime: AgentRuntime | null;
+  restartRuntime?: (reason: string) => Promise<boolean> | boolean;
   services?: Partial<CloudRouteServices>;
 }
 
+type CreateIntegrationTelemetrySpan = (meta: {
+  boundary: "cloud";
+  operation: string;
+  timeoutMs?: number;
+}) => TelemetrySpan | null | undefined;
+
 export interface CloudRouteServices {
   applyCanonicalOnboardingConfig: typeof applyCanonicalOnboardingConfig;
-  createIntegrationTelemetrySpan: typeof createIntegrationTelemetrySpan;
+  createIntegrationTelemetrySpan: CreateIntegrationTelemetrySpan;
   handleAutonomousCloudRoute: typeof handleAutonomousCloudRoute;
   normalizeCloudSiteUrl: typeof normalizeCloudSiteUrl;
-  saveElizaConfig: typeof saveElizaConfig;
+  saveElizaConfig: (config: ElizaConfig) => void;
   validateCloudBaseUrl: typeof validateCloudBaseUrl;
 }
 
@@ -68,10 +74,12 @@ type RelayStatusService = {
 const CLOUD_LOGIN_POLL_TIMEOUT_MS = 10_000;
 const DEFAULT_CLOUD_ROUTE_SERVICES: CloudRouteServices = {
   applyCanonicalOnboardingConfig,
-  createIntegrationTelemetrySpan,
+  createIntegrationTelemetrySpan: () => undefined,
   handleAutonomousCloudRoute,
   normalizeCloudSiteUrl,
-  saveElizaConfig,
+  saveElizaConfig: () => {
+    logger.warn("[cloud-routes] saveConfig unavailable - config not persisted");
+  },
   validateCloudBaseUrl,
 };
 
@@ -345,7 +353,7 @@ export async function handleCloudRoute(
       )) as RelayStatusService | null;
 
     if (typeof relayService?.getSessionInfo !== "function") {
-      sendJson(res, 200, {
+      sendJson(res, {
         available: false,
         status: "not_registered",
         reason:
@@ -355,12 +363,12 @@ export async function handleCloudRoute(
     }
 
     try {
-      sendJson(res, 200, {
+      sendJson(res, {
         available: true,
         ...relayService.getSessionInfo(),
       });
     } catch (error) {
-      sendJson(res, 200, {
+      sendJson(res, {
         available: false,
         status: "error",
         reason: error instanceof Error ? error.message : String(error),
@@ -382,10 +390,10 @@ export async function handleCloudRoute(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error(`[cloud/disconnect] failed: ${message}`);
-      sendJson(res, 500, { ok: false, error: message });
+      sendJson(res, { ok: false, error: message }, 500);
       return true;
     }
-    sendJson(res, 200, { ok: true, status: "disconnected" });
+    sendJson(res, { ok: true, status: "disconnected" });
     return true;
   }
 
@@ -396,7 +404,7 @@ export async function handleCloudRoute(
     try {
       const body = await readRouteJsonBody(req);
       if (typeof body.apiKey !== "string" || !body.apiKey.trim()) {
-        sendJson(res, 400, { ok: false, error: "apiKey is required" });
+        sendJson(res, { ok: false, error: "apiKey is required" }, 400);
         return true;
       }
       await persistCloudLoginStatus({
@@ -410,11 +418,11 @@ export async function handleCloudRoute(
         userId:
           typeof body.userId === "string" ? body.userId.trim() : undefined,
       });
-      sendJson(res, 200, { ok: true });
+      sendJson(res, { ok: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error(`[cloud/login/persist] Failed: ${msg}`);
-      sendJson(res, 500, { ok: false, error: msg });
+      sendJson(res, { ok: false, error: msg }, 500);
     }
     return true;
   }
@@ -426,14 +434,14 @@ export async function handleCloudRoute(
     );
     const sessionId = url.searchParams.get("sessionId");
     if (!sessionId) {
-      sendJsonError(res, 400, "sessionId query parameter is required");
+      sendJsonError(res, "sessionId query parameter is required", 400);
       return true;
     }
 
     const baseUrl = services.normalizeCloudSiteUrl(state.config.cloud?.baseUrl);
     const urlError = await services.validateCloudBaseUrl(baseUrl);
     if (urlError) {
-      sendJsonError(res, 400, urlError);
+      sendJsonError(res, urlError, 400);
       return true;
     }
 
@@ -452,18 +460,18 @@ export async function handleCloudRoute(
     } catch (fetchErr) {
       if (isTimeoutError(fetchErr)) {
         loginPollSpan.failure({ error: fetchErr, statusCode: 504 });
-        sendJson(res, 504, {
+        sendJson(res, {
           status: "error",
           error: "Eliza Cloud status request timed out",
-        });
+        }, 504);
         return true;
       }
 
       loginPollSpan.failure({ error: fetchErr, statusCode: 502 });
-      sendJson(res, 502, {
+      sendJson(res, {
         status: "error",
         error: "Failed to reach Eliza Cloud",
-      });
+      }, 502);
       return true;
     }
 
@@ -472,11 +480,11 @@ export async function handleCloudRoute(
         statusCode: pollRes.status,
         errorKind: "redirect_response",
       });
-      sendJson(res, 502, {
+      sendJson(res, {
         status: "error",
         error:
           "Eliza Cloud status request was redirected; redirects are not allowed",
-      });
+      }, 502);
       return true;
     }
 
@@ -487,7 +495,6 @@ export async function handleCloudRoute(
       });
       sendJson(
         res,
-        200,
         pollRes.status === 404
           ? { status: "expired", error: "Session not found or expired" }
           : {
@@ -515,10 +522,10 @@ export async function handleCloudRoute(
       };
     } catch (parseErr) {
       loginPollSpan.failure({ error: parseErr, statusCode: pollRes.status });
-      sendJson(res, 502, {
+      sendJson(res, {
         status: "error",
         error: "Eliza Cloud returned invalid JSON",
-      });
+      }, 502);
       return true;
     }
 
@@ -536,7 +543,7 @@ export async function handleCloudRoute(
         epochAtPollStart: epochBeforePoll,
         userId: typeof data.userId === "string" ? data.userId : undefined,
       });
-      sendJson(res, 200, {
+      sendJson(res, {
         status: "authenticated",
         keyPrefix:
           typeof data.keyPrefix === "string" ? data.keyPrefix : undefined,
@@ -549,7 +556,7 @@ export async function handleCloudRoute(
       return true;
     }
 
-    sendJson(res, 200, {
+    sendJson(res, {
       status: typeof data.status === "string" ? data.status : "error",
     });
     return true;

@@ -36,6 +36,11 @@
 #   LLAMA_DRAFT_CONTEXT — drafter context size (default: 256).
 #   LLAMA_DRAFT_MIN     — default: 1.
 #   LLAMA_DRAFT_MAX     — default: 16.
+#   DFLASH_REPAIR_DRAFTER — default: 1. Copies tokenizer merges from target
+#                           into DFlash drafters that were published without
+#                           tokenizer.ggml.merges metadata.
+#   GGUF_PYTHONPATH     — optional path to llama.cpp's gguf-py package when
+#                         it is not bundled next to LLAMA_SERVER_BIN.
 #   LLAMA_CACHE_TYPE_K/V — optional KV cache type for TurboQuant-capable forks.
 #   LLAMA_EXTRA_ARGS    — extra args appended verbatim.
 #
@@ -64,6 +69,8 @@ LLAMA_DRAFT_NGL="${LLAMA_DRAFT_NGL:-$LLAMA_NGL}"
 LLAMA_DRAFT_CONTEXT="${LLAMA_DRAFT_CONTEXT:-256}"
 LLAMA_DRAFT_MIN="${LLAMA_DRAFT_MIN:-1}"
 LLAMA_DRAFT_MAX="${LLAMA_DRAFT_MAX:-16}"
+DFLASH_REPAIR_DRAFTER="${DFLASH_REPAIR_DRAFTER:-1}"
+GGUF_PYTHONPATH="${GGUF_PYTHONPATH:-}"
 LLAMA_CACHE_TYPE_K="${LLAMA_CACHE_TYPE_K:-}"
 LLAMA_CACHE_TYPE_V="${LLAMA_CACHE_TYPE_V:-}"
 LLAMA_EXTRA_ARGS="${LLAMA_EXTRA_ARGS:-}"
@@ -121,6 +128,101 @@ hf_hub_download(
 )
 EOF
   fi
+fi
+
+resolve_llama_bin_dir() {
+  if [[ "$LLAMA_SERVER_BIN" == */* ]]; then
+    dirname "$LLAMA_SERVER_BIN"
+    return
+  fi
+  local resolved
+  resolved="$(command -v "$LLAMA_SERVER_BIN" || true)"
+  if [ -n "$resolved" ]; then
+    dirname "$resolved"
+  fi
+}
+
+repair_dflash_drafter_if_needed() {
+  local target_path="$1"
+  local drafter_path="$2"
+
+  if [ "$DFLASH_REPAIR_DRAFTER" = "0" ] || [ -z "$drafter_path" ]; then
+    printf '%s\n' "$drafter_path"
+    return
+  fi
+
+  local repaired_path="${drafter_path%.gguf}.repaired.gguf"
+  if [ "$repaired_path" = "$drafter_path" ]; then
+    printf '%s\n' "$drafter_path"
+    return
+  fi
+  if [ -f "$repaired_path" ]; then
+    printf '%s\n' "$repaired_path"
+    return
+  fi
+
+  local bin_dir=""
+  bin_dir="$(resolve_llama_bin_dir || true)"
+  local python_path="$GGUF_PYTHONPATH"
+  if [ -n "$bin_dir" ] && [ -d "$bin_dir/gguf-py" ]; then
+    python_path="${python_path:+$python_path:}$bin_dir/gguf-py"
+  fi
+  if [ -d "$PYWORKER_DIR/gguf-py" ]; then
+    python_path="${python_path:+$python_path:}$PYWORKER_DIR/gguf-py"
+  fi
+
+  echo "[onstart] checking DFlash drafter tokenizer metadata" >&2
+  local output_path=""
+  if output_path="$(PYTHONPATH="$python_path${PYTHONPATH:+:$PYTHONPATH}" python3 - "$target_path" "$drafter_path" "$repaired_path" <<'PY'
+import sys
+from pathlib import Path
+
+target = Path(sys.argv[1])
+drafter = Path(sys.argv[2])
+out = Path(sys.argv[3])
+
+import gguf
+from gguf.scripts.gguf_new_metadata import MetadataDetails, copy_with_new_metadata, get_field_data
+
+target_reader = gguf.GGUFReader(target, "r")
+draft_reader = gguf.GGUFReader(drafter, "r")
+
+if get_field_data(draft_reader, gguf.Keys.Tokenizer.MERGES):
+    print(drafter)
+    raise SystemExit(0)
+
+merges = get_field_data(target_reader, gguf.Keys.Tokenizer.MERGES)
+if not merges:
+    raise SystemExit("target GGUF has no tokenizer.ggml.merges metadata")
+
+arch = get_field_data(draft_reader, gguf.Keys.General.ARCHITECTURE)
+writer = gguf.GGUFWriter(out, arch=arch, endianess=draft_reader.endianess)
+alignment = get_field_data(draft_reader, gguf.Keys.General.ALIGNMENT)
+if alignment is not None:
+    writer.data_alignment = alignment
+copy_with_new_metadata(
+    draft_reader,
+    writer,
+    {gguf.Keys.Tokenizer.MERGES: MetadataDetails(gguf.GGUFValueType.ARRAY, merges, sub_type=gguf.GGUFValueType.STRING)},
+    [],
+)
+print(out)
+PY
+  )"; then
+    output_path="$(printf '%s\n' "$output_path" | tail -n 1)"
+    if [ -n "$output_path" ] && [ -f "$output_path" ]; then
+      printf '%s\n' "$output_path"
+    else
+      printf '%s\n' "$drafter_path"
+    fi
+  else
+    echo "[onstart] warning: could not repair DFlash drafter; continuing with original file. Bundle gguf-py next to llama-server or set GGUF_PYTHONPATH if llama-server fails with missing tokenizer merges." >&2
+    printf '%s\n' "$drafter_path"
+  fi
+}
+
+if [ -n "$DRAFTER_PATH" ]; then
+  DRAFTER_PATH="$(repair_dflash_drafter_if_needed "$MODEL_PATH" "$DRAFTER_PATH")"
 fi
 
 # 4. Launch llama-server in the background. If it's already running (e.g.

@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -35,4 +36,23 @@ export function resolveStateDir(
   const override = readEnvOverride(env, ["ELIZA_STATE_DIR"]);
   if (override) return resolveUserPath(override);
   return path.join(homedir(), `.${getElizaNamespace(env)}`);
+}
+
+export function resolveConfigPath(
+  env: NodeJS.ProcessEnv = process.env,
+  stateDirPath: string = resolveStateDir(env, os.homedir),
+): string {
+  const override = readEnvOverride(env, ["ELIZA_CONFIG_PATH"]);
+  if (override) return resolveUserPath(override);
+
+  const namespace = getElizaNamespace(env);
+  const primaryPath = path.join(stateDirPath, `${namespace}.json`);
+  if (fs.existsSync(primaryPath)) return primaryPath;
+
+  if (namespace !== "eliza") {
+    const legacyPath = path.join(stateDirPath, "eliza.json");
+    if (fs.existsSync(legacyPath)) return legacyPath;
+  }
+
+  return primaryPath;
 }
