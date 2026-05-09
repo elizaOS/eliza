@@ -1,6 +1,10 @@
 import crypto from "node:crypto";
 import type { Content, IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import type { TaskExecutor, TaskResult, TaskSpec } from "./task-executor.js";
+import type {
+  TaskExecutor,
+  TaskResult,
+  TaskSpec,
+} from "@elizaos/agent/services/task-executor";
 
 const CODING_PATTERNS =
   /\b(build|create|make|scaffold|generate|code|implement|develop|fix|debug|refactor|write)\b/i;
