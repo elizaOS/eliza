@@ -88,7 +88,7 @@ const relationshipExtractionHandler = async (
  * handles all of it. Only deterministic regex identity extraction remains
  * here.
  */
-export const relationshipExtractionAction: Action = {
+export const relationshipExtractionEvaluator: Action = {
 	name: "RELATIONSHIP_EXTRACTION",
 	description:
 		"Pre-message regex scrape for platform identity handles (twitter/github/telegram/discord) mentioned by the speaker. Records new identities to the entity_identities table via RelationshipsService.",

@@ -59,7 +59,7 @@ const PASSIVE_ACTIONS = new Set([
 	"WAIT",
 ]);
 
-export const experienceAction: Action = {
+export const experienceEvaluator: Action = {
 	name: "EXPERIENCE_EVALUATOR",
 	similes: ["experience recorder", "learning evaluator", "self-reflection"],
 	description:

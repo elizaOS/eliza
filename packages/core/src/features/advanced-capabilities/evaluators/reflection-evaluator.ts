@@ -473,7 +473,7 @@ function parseConsolidatedResponse(
 			} catch (error) {
 				runtime.logger.warn(
 					{
-						src: "plugin:advanced-capabilities:evaluator:consolidated-reflection",
+						src: "plugin:advanced-capabilities:evaluator:reflection",
 						agentId: runtime.agentId,
 						error: error instanceof Error ? error.message : String(error),
 					},
@@ -497,7 +497,7 @@ function parseConsolidatedResponse(
 	if (!factsValidated.success) {
 		runtime.logger.warn(
 			{
-				src: "plugin:advanced-capabilities:evaluator:consolidated-reflection",
+				src: "plugin:advanced-capabilities:evaluator:reflection",
 				agentId: runtime.agentId,
 				issues: factsValidated.error.issues,
 			},
@@ -511,7 +511,7 @@ function parseConsolidatedResponse(
 	if (!extrasValidated.success) {
 		runtime.logger.warn(
 			{
-				src: "plugin:advanced-capabilities:evaluator:consolidated-reflection",
+				src: "plugin:advanced-capabilities:evaluator:reflection",
 				agentId: runtime.agentId,
 				issues: extrasValidated.error.issues,
 			},
@@ -551,7 +551,7 @@ async function applyAddDurable(
 		if (dedupTarget) {
 			ctx.runtime.logger.debug(
 				{
-					src: "plugin:advanced-capabilities:evaluator:consolidated-reflection",
+					src: "plugin:advanced-capabilities:evaluator:reflection",
 					agentId: ctx.runtime.agentId,
 					factId: dedupTarget.memory.id,
 					similarity: dedupTarget.similarity,
@@ -598,7 +598,7 @@ async function applyAddCurrent(
 		if (dedupTarget) {
 			ctx.runtime.logger.debug(
 				{
-					src: "plugin:advanced-capabilities:evaluator:consolidated-reflection",
+					src: "plugin:advanced-capabilities:evaluator:reflection",
 					agentId: ctx.runtime.agentId,
 					factId: dedupTarget.memory.id,
 					similarity: dedupTarget.similarity,
@@ -1252,7 +1252,7 @@ async function handler(
 
 	runtime.logger.debug(
 		{
-			src: "plugin:advanced-capabilities:evaluator:consolidated-reflection",
+			src: "plugin:advanced-capabilities:evaluator:reflection",
 			agentId: runtime.agentId,
 			added,
 			strengthened,
@@ -1295,9 +1295,9 @@ async function handler(
  * Consolidated post-response reflection. One LLM call extracts facts,
  * relationship updates, and task completion in a single pass — replacing
  * the legacy factExtractorAction + reflectionAction + the LLM-style semantic
- * relationship analysis from relationshipExtractionAction.
+ * relationship analysis from relationshipExtractionEvaluator.
  */
-export const consolidatedReflectionAction: Action = {
+export const reflectionEvaluator: Action = {
 	name: "REFLECTION",
 	description:
 		"Post-response reflection: extracts facts, semantic relationship details, and task completion in a single LLM call. Runs only after the agent has actually responded.",

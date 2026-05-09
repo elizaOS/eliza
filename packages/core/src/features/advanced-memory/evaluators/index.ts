@@ -1,1 +1,1 @@
-export { consolidatedMemoryAction } from "./consolidated-memory.ts";
+export { memoryEvaluator } from "./memory-evaluator.ts";

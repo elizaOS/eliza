@@ -967,7 +967,7 @@ async function runRefinement(
 // Action
 // ---------------------------------------------------------------------------
 
-export const consolidatedSkillAction: Action = {
+export const skillEvaluator: Action = {
 	name: EVAL_NAME,
 	description: EVAL_DESCRIPTION,
 	similes: ["SKILL_EXTRACTION", "SKILL_REFINEMENT", "SKILL_LEARNING"],

@@ -10,7 +10,7 @@ import { evaluateTrustAction } from "./actions/evaluateTrust.ts";
 import { recordTrustInteractionAction } from "./actions/recordTrustInteraction.ts";
 import { requestElevationAction } from "./actions/requestElevation.ts";
 import { updateRoleAction } from "./actions/roles.ts";
-import { securityAction } from "./evaluators/securityEvaluator.ts";
+import { securityEvaluator } from "./evaluators/securityEvaluator.ts";
 import { adminTrustProvider } from "./providers/adminTrust.ts";
 import { roleProvider } from "./providers/roles.ts";
 import { securityStatusProvider } from "./providers/securityStatus.ts";
@@ -74,9 +74,9 @@ export {
 
 /**
  * Pre-message trust hook actions (formerly the trust evaluators).
- * `securityAction` runs `ALWAYS_BEFORE` to gate adversarial input.
+ * `securityEvaluator` runs `ALWAYS_BEFORE` to gate adversarial input.
  */
-export const trustHookActions: Action[] = [securityAction];
+export const trustHookActions: Action[] = [securityEvaluator];
 
 export interface TrustPluginOptions {
 	/** When true, register the security pre-gate as a runtime hook action. */
