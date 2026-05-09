@@ -121,8 +121,6 @@
     "./api/wallet-trading-profile": "./src/api/wallet-trading-profile.ts",
     "./api/database": "./src/api/database.ts",
     "./api/coordinator-wiring": "./src/api/coordinator-wiring.ts",
-    "./actions/restart": "./src/actions/restart.ts",
-    "./actions/send-message": "./src/actions/send-message.ts",
     "./runtime/release-plugin-policy": "./src/runtime/release-plugin-policy.ts",
     "./types": "./src/types/index.ts",
     "./types/*": "./src/types/*.ts",

@@ -57,7 +57,6 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import { quickIntentDetect } from "../intent";
 import type { FormService } from "../service";
 
 const RESTORE_FIELD_LIMIT = 12;
@@ -98,44 +97,27 @@ export const formRestoreAction: Action = {
   ],
 
   /**
-   * Validate: Only trigger for restore intent with stashed sessions.
-   *
-   * Fast path: Uses quickIntentDetect for English keywords.
-   * The ALWAYS_AFTER form hook handles non-English via LLM.
-   *
-   * @returns true if action should run
+   * Validate: action is selectable whenever the user has stashed sessions
+   * and no active form in the current room. The planner picks it via the
+   * action description/similes when the user actually wants to resume.
    */
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
   ): Promise<boolean> => {
-    try {
-      const text = message.content?.text || "";
+    const formService = runtime.getService("FORM") as FormService;
+    if (!formService) return false;
 
-      // Quick check for restore intent
-      // WHY quick path: Avoid LLM call for simple English phrases
-      const intent = quickIntentDetect(text);
-      if (intent !== "restore") {
-        return false;
-      }
+    const entityId = message.entityId as UUID;
+    const roomId = message.roomId as UUID;
+    if (!entityId || !roomId) return false;
 
-      const formService = runtime.getService("FORM") as FormService;
-      if (!formService) {
-        return false;
-      }
+    const stashed = await formService.getStashedSessions(entityId);
+    if (stashed.length === 0) return false;
 
-      // Check for stashed sessions
-      // WHY check stashed: No point restoring if nothing to restore
-      const entityId = message.entityId as UUID;
-      if (!entityId) return false;
-      const stashed = await formService.getStashedSessions(entityId);
-
-      return stashed.length > 0;
-    } catch (error) {
-      logger.error("[FormRestoreAction] Validation error:", String(error));
-      return false;
-    }
+    const active = await formService.getActiveSession(entityId, roomId);
+    return active === null;
   },
 
   /**

@@ -93,6 +93,7 @@ function isVaultConfigRef(value: string): boolean {
   return value.startsWith("vault://") && value.length > "vault://".length;
 }
 
+import { handleComputerUseRoutes } from "@elizaos/plugin-computeruse";
 import {
   handleCloudStatusRoutes,
   isCloudProvisionedContainer,
@@ -101,6 +102,11 @@ import {
 // resolveBlueBubblesWebhookPath stays in @elizaos/plugin-imessage so the auth gate can compute
 // the webhook path before the runtime plugin route dispatcher runs.
 import { resolveBlueBubblesWebhookPath } from "@elizaos/plugin-imessage";
+// signal-routes: handleSignalRoute dispatch and applySignalQrOverride extracted to @elizaos/plugin-signal (setup-routes.ts)
+import { applySignalQrOverride } from "@elizaos/plugin-signal";
+// WhatsApp route dispatch extracted to @elizaos/plugin-whatsapp setup-routes.ts (Plugin.routes).
+// applyWhatsAppQrOverride remains for plugin-discovery's QR override flow.
+import { applyWhatsAppQrOverride } from "@elizaos/plugin-whatsapp";
 import { isStreamingDestinationConfigured } from "@elizaos/shared";
 import {
   type ElizaConfig,
@@ -190,19 +196,12 @@ import { handleAppPackageRoutes } from "./app-package-routes.js";
 import { handleAppsRoutes } from "./apps-routes.js";
 import { handleAuthRoutes } from "./auth-routes.js";
 import { handleAvatarRoutes } from "./avatar-routes.js";
-// BlueBubbles routes extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
-// resolveBlueBubblesWebhookPath stays in @elizaos/plugin-imessage so the auth gate can compute
-// the webhook path before the runtime plugin route dispatcher runs.
-import { resolveBlueBubblesWebhookPath } from "@elizaos/plugin-imessage";
 import { handleBugReportRoutes } from "./bug-report-routes.js";
 import { handleCharacterRoutes } from "./character-routes.js";
 import {
   initSse as initSseFromChatRoutes,
   writeSseJson as writeSseJsonFromChatRoutes,
 } from "./chat-routes.js";
-import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
-import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
-import { handleComputerUseRoutes } from "@elizaos/plugin-computeruse";
 import { handleConfigRoutes } from "./config-routes.js";
 import { handleConnectorAccountRoutes } from "./connector-account-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
@@ -255,8 +254,6 @@ import {
   handleLifeOpsRuntimePluginRoute,
   handleSandboxRouteGroup,
 } from "./server-route-dispatch.js";
-// signal-routes: handleSignalRoute dispatch and applySignalQrOverride extracted to @elizaos/plugin-signal (setup-routes.ts)
-import { applySignalQrOverride } from "@elizaos/plugin-signal";
 import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
@@ -279,9 +276,6 @@ import {
 } from "./wallet-capability.js";
 import { handleWalletRoutes } from "./wallet-routes.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
-// WhatsApp route dispatch extracted to @elizaos/plugin-whatsapp setup-routes.ts (Plugin.routes).
-// applyWhatsAppQrOverride remains for plugin-discovery's QR override flow.
-import { applyWhatsAppQrOverride } from "@elizaos/plugin-whatsapp";
 import { handleWorkbenchRoutes } from "./workbench-routes.js";
 
 export {

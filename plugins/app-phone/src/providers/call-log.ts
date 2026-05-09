@@ -47,15 +47,17 @@ export const phoneCallLogProvider: Provider = {
   ): Promise<ProviderResult> => {
     try {
       const { calls } = await Phone.listRecentCalls({ limit: CALL_LOG_LIMIT });
-      const entries: PhoneCallLogEntry[] = calls.map((call: PhoneCallLogEntry) => ({
-        id: call.id,
-        number: call.number,
-        cachedName: call.cachedName ?? "",
-        date: call.date,
-        durationSeconds: call.durationSeconds,
-        type: call.type,
-        isNew: call.isNew,
-      }));
+      const entries: PhoneCallLogEntry[] = calls.map(
+        (call: PhoneCallLogEntry) => ({
+          id: call.id,
+          number: call.number,
+          cachedName: call.cachedName ?? "",
+          date: call.date,
+          durationSeconds: call.durationSeconds,
+          type: call.type,
+          isNew: call.isNew,
+        }),
+      );
 
       return {
         text: JSON.stringify({

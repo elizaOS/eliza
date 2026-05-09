@@ -189,7 +189,8 @@
     "@pixiv/three-vrm@3.5.2": "packages/app-core/patches/@pixiv%2Fthree-vrm@3.5.2.patch",
     "telegraf@4.16.3": "patches/telegraf@4.16.3.patch",
     "tsup@8.5.1": "patches/tsup@8.5.1.patch",
-    "@capacitor/barcode-scanner@3.0.2": "patches/@capacitor%2Fbarcode-scanner@3.0.2.patch"
+    "@capacitor/barcode-scanner@3.0.2": "patches/@capacitor%2Fbarcode-scanner@3.0.2.patch",
+    "llama-cpp-capacitor@0.1.5": "packages/app-core/patches/llama-cpp-capacitor@0.1.5.patch"
   },
   "trustedDependencies": [
     "@biomejs/biome",

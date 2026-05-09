@@ -41,14 +41,6 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      - name: Generate protobuf types
-        run: |
-          if [ -d packages/schemas ] && [ -f packages/schemas/buf.gen.yaml ] && [ ! -d packages/core/src/types/generated ]; then
-            cd packages/schemas
-            node node_modules/@bufbuild/buf/install.js 2>/dev/null || true
-            bunx @bufbuild/buf@1.67.0 generate
-          fi
-
       - name: Build iOS simulator app
         run: node --max-old-space-size=8192 packages/app-core/scripts/run-mobile-build.mjs ios
         env:
@@ -161,14 +153,6 @@ jobs:
           run-postinstall: "true"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-
-      - name: Generate protobuf types
-        run: |
-          if [ -d packages/schemas ] && [ -f packages/schemas/buf.gen.yaml ] && [ ! -d packages/core/src/types/generated ]; then
-            cd packages/schemas
-            node node_modules/@bufbuild/buf/install.js 2>/dev/null || true
-            bunx @bufbuild/buf@1.67.0 generate
-          fi
 
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses >/dev/null 2>&1 || true

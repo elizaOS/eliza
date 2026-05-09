@@ -354,15 +354,6 @@ parts:
         mv /tmp/tw_extract/package "$APP_CORE_DIR/node_modules/tailwindcss"
       fi
 
-      # Fresh CI checkouts do not track generated protobuf JS output.
-      if [ -d "$PACKAGES_DIR/schemas" ] && [ -f "$PACKAGES_DIR/schemas/buf.gen.yaml" ] && [ ! -f "$PACKAGES_DIR/typescript/src/types/generated/eliza/v1/agent_pb.js" ]; then
-        (
-          cd "$PACKAGES_DIR/schemas"
-          node node_modules/@bufbuild/buf/install.js 2>/dev/null || true
-          bunx @bufbuild/buf@1.67.0 generate
-        )
-      fi
-
       # Fresh snap builds also need generated i18n keyword data; the
       # production build imports the generated TypeScript module directly.
       node "$APP_CORE_SCRIPTS_DIR/ensure-shared-i18n-data.mjs"

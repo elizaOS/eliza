@@ -10,19 +10,10 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./src/index.ts"
-    },
-    "./dist/typescript": {
-      "types": "./dist/typescript/index.ts",
-      "import": "./dist/typescript/index.ts"
-    },
-    "./python": "./dist/python/prompts.py",
-    "./rust": "./dist/rust/prompts.rs"
+    }
   },
   "scripts": {
-    "build": "node scripts/generate.js && node scripts/generate-plugin-action-spec.js && bunx @biomejs/biome format --write specs/actions/plugins.generated.json && node scripts/generate-action-docs.js",
-    "build:typescript": "node scripts/generate.js --target typescript",
-    "build:python": "node scripts/generate.js --target python",
-    "build:rust": "node scripts/generate.js --target rust",
+    "build": "node scripts/generate-plugin-action-spec.js && bunx @biomejs/biome format --write specs/actions/plugins.generated.json && node scripts/generate-action-docs.js",
     "build:action-docs": "node scripts/generate-action-docs.js",
     "build:plugin-action-spec": "node scripts/generate-plugin-action-spec.js && bunx @biomejs/biome format --write specs/actions/plugins.generated.json",
     "check:secrets": "node scripts/check-secrets.js",

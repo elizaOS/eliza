@@ -18,11 +18,14 @@ import { pathToFileURL } from "node:url";
 
 import { logger, type Plugin } from "@elizaos/core";
 import {
+  applyAppManifestDefaults,
   applyPluginManifestVerdicts,
   evaluatePluginManifests,
+  filterCandidatesByAppManifest,
   formatError,
   isMobilePlatform,
   type PluginManifestCandidate,
+  readAppManifest,
 } from "@elizaos/shared";
 
 import { type ElizaConfig, saveElizaConfig } from "../config/config.js";
@@ -1276,9 +1279,35 @@ export async function resolvePlugins(
   // @elizaos/* package.json on disk and run each plugin's
   // autoEnableModule.shouldEnable(ctx). Each plugin owns its own enable
   // conditions in auto-enable.ts — no central map exists.
+  //
+  // App-level manifest (host app's package.json `elizaos.app` block) can:
+  //   - restrict the candidate list to a curated subset
+  //   - prepopulate config.plugins.entries with default { enabled } flags
+  //     (user config still wins; defaults only fill keys the user hasn't set)
   const changes: string[] = [];
   try {
-    const candidates = await discoverPluginCandidates();
+    const appManifest = await readAppManifest(process.cwd()).catch(
+      () => null,
+    );
+    const defaultedEntries = applyAppManifestDefaults(config, appManifest);
+    if (defaultedEntries.length > 0) {
+      logger.info(
+        `[eliza] App manifest defaults applied to entries: ${defaultedEntries.join(", ")}`,
+      );
+    }
+    const allCandidates = await discoverPluginCandidates();
+    const candidates = filterCandidatesByAppManifest(
+      allCandidates,
+      appManifest,
+    );
+    if (
+      appManifest?.candidates &&
+      candidates.length < allCandidates.length
+    ) {
+      logger.info(
+        `[eliza] App manifest restricted candidate set: ${candidates.length}/${allCandidates.length} plugins considered`,
+      );
+    }
     const verdicts = await evaluatePluginManifests(candidates, {
       env: process.env,
       config,

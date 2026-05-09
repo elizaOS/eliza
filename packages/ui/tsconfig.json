@@ -36,19 +36,25 @@
       "@elizaos/plugin-lifeops-browser/*": [
         "../../plugins/plugin-lifeops-browser/src/*"
       ],
-      "@elizaos/plugin-browser": [
-        "../../plugins/plugin-browser/src/index.ts"
-      ],
-      "@elizaos/plugin-browser/*": [
-        "../../plugins/plugin-browser/src/*"
-      ],
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
+      "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
       ],
-      "@elizaos/plugin-elizacloud/*": [
-        "../../plugins/plugin-elizacloud/src/*"
+      "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
+      "@elizaos/plugin-computeruse": [
+        "../../plugins/plugin-computeruse/src/index.ts"
       ],
+      "@elizaos/plugin-computeruse/*": [
+        "../../plugins/plugin-computeruse/src/*"
+      ],
+      "@elizaos/plugin-whatsapp": [
+        "../../plugins/plugin-whatsapp/src/index.ts"
+      ],
+      "@elizaos/plugin-whatsapp/*": ["../../plugins/plugin-whatsapp/src/*"],
+      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+      "@elizaos/plugin-signal/*": ["../../plugins/plugin-signal/src/*"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../app-core/src/*"],
       "@elizaos/agent": ["../agent/src/index.ts"],

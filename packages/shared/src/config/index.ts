@@ -9,6 +9,7 @@ export * from "./branding";
 export * from "./cloud-only";
 export * from "./config-catalog";
 export * from "./plugin-auto-enable";
+export * from "./app-manifest";
 export * from "./plugin-manifest";
 export {
   buildPluginConfigUiSpec,

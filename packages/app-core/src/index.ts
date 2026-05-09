@@ -3,6 +3,7 @@
 
 export * from "./account-pool";
 export * from "./api/auth";
+export * from "./api/automation-node-contributors";
 export * from "./api/compat-route-shared";
 export * from "./api/response";
 export * from "./api/secrets-inventory-routes";

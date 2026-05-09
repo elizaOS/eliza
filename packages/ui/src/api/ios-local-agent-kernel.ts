@@ -4,6 +4,10 @@ import {
   findCatalogModel,
   MODEL_CATALOG,
 } from "../services/local-inference/catalog";
+import {
+  assessCatalogModelFit,
+  catalogDownloadSizeGb,
+} from "../services/local-inference/recommendation";
 import type { ProviderStatus } from "../services/local-inference/providers";
 import type { RoutingPreferences } from "../services/local-inference/routing-preferences";
 import type {
@@ -126,14 +130,24 @@ const EMPTY_WALLET_RPC_SELECTIONS = {
 type CapacitorLlamaAdapter = {
   getHardwareInfo?: () => Promise<{
     platform?: "ios" | "android" | "web";
+    deviceModel?: string;
+    machineId?: string;
+    osVersion?: string;
+    isSimulator?: boolean;
     totalRamGb?: number;
     availableRamGb?: number | null;
+    freeStorageGb?: number | null;
     cpuCores?: number;
     gpu?: {
       backend?: "metal" | "vulkan" | "gpu-delegate";
       available?: boolean;
     } | null;
     gpuSupported?: boolean;
+    lowPowerMode?: boolean;
+    thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
+    dflashSupported?: boolean;
+    dflashReason?: string;
+    source?: "native" | "adapter-fallback";
   }>;
   isLoaded?: () => Promise<{ loaded: boolean; modelPath: string | null }>;
   currentModelPath?: () => string | null;
@@ -141,6 +155,16 @@ type CapacitorLlamaAdapter = {
     modelPath: string;
     contextSize?: number;
     useGpu?: boolean;
+    maxThreads?: number;
+    draftModelPath?: string;
+    draftContextSize?: number;
+    draftMin?: number;
+    draftMax?: number;
+    speculativeSamples?: number;
+    mobileSpeculative?: boolean;
+    cacheTypeK?: string;
+    cacheTypeV?: string;
+    disableThinking?: boolean;
   }) => Promise<void>;
   generate?: (options: {
     prompt: string;
@@ -160,6 +184,10 @@ type CapacitorLlamaModule = {
   capacitorLlama?: CapacitorLlamaAdapter;
 };
 
+type CapacitorLlamaLoadOptions = Parameters<
+  NonNullable<CapacitorLlamaAdapter["load"]>
+>[0];
+
 type LlamaCppModule = {
   downloadModel?: (
     url: string,
@@ -177,6 +205,7 @@ let activeState: ActiveModelState = readActiveModelState();
 const downloads = new Map<string, DownloadJob>();
 let llamaAdapterPromise: Promise<CapacitorLlamaAdapter | null> | null = null;
 let llamaCppPromise: Promise<LlamaCppModule | null> | null = null;
+let loadedRuntimeSignature: string | null = null;
 
 function storage(): Storage | null {
   try {
@@ -975,6 +1004,49 @@ function catalogForAvailableModel(model: {
   });
 }
 
+function mobileRecommendedBucket(totalRamGb: number): HardwareProbe["recommendedBucket"] {
+  if (totalRamGb >= 32) return "xl";
+  if (totalRamGb >= 16) return "large";
+  if (totalRamGb >= 12) return "mid";
+  return "small";
+}
+
+function normalizeMobilePlatform(
+  platform: "ios" | "android" | "web" | undefined,
+): "ios" | "android" {
+  return platform === "android" ? "android" : "ios";
+}
+
+function gpuBackendForMobile(
+  platform: "ios" | "android",
+  backend?: "metal" | "vulkan" | "gpu-delegate",
+): "metal" | "vulkan" {
+  if (backend === "vulkan") return "vulkan";
+  return platform === "android" ? "vulkan" : "metal";
+}
+
+function mobileContextSize(
+  hardware: HardwareProbe,
+  catalog: CatalogModel | undefined,
+): number {
+  const target = catalog?.runtime?.dflash?.contextSize ?? 4096;
+  if (hardware.totalRamGb >= 12) return Math.min(target, 8192);
+  if (hardware.totalRamGb >= 8) return Math.min(target, 6144);
+  return Math.min(target, 4096);
+}
+
+function mobileThreadCount(hardware: HardwareProbe): number {
+  if (!Number.isFinite(hardware.cpuCores) || hardware.cpuCores <= 0) return 0;
+  return Math.max(2, Math.min(Math.floor(hardware.cpuCores) - 1, 6));
+}
+
+function companionInstalled(
+  installed: InstalledModel[],
+  modelId: string,
+): InstalledModel | undefined {
+  return installed.find((entry) => entry.id === modelId);
+}
+
 async function listInstalledModels(): Promise<InstalledModel[]> {
   const llama = await loadLlamaCpp();
   const result = await llama?.getAvailableModels?.().catch(() => []);
@@ -996,6 +1068,10 @@ async function listInstalledModels(): Promise<InstalledModel[]> {
         installedAt,
         lastUsedAt: activeState.modelId === id ? activeState.loadedAt : null,
         source: catalog ? "eliza-download" : "external-scan",
+        ...(catalog?.runtimeRole ? { runtimeRole: catalog.runtimeRole } : {}),
+        ...(catalog?.companionForModelId
+          ? { companionFor: catalog.companionForModelId }
+          : {}),
       };
     });
 }
@@ -1005,9 +1081,10 @@ async function hardwareProbe(): Promise<HardwareProbe> {
   const hardware = await llama?.getHardwareInfo?.().catch(() => null);
   const totalRamGb = hardware?.totalRamGb ?? 0;
   const cpuCores = hardware?.cpuCores ?? navigator.hardwareConcurrency ?? 0;
-  const metal = hardware?.gpu?.available
+  const platform = normalizeMobilePlatform(hardware?.platform);
+  const gpu = hardware?.gpu?.available && hardware.gpuSupported !== false
     ? {
-        backend: "metal" as const,
+        backend: gpuBackendForMobile(platform, hardware.gpu.backend),
         totalVramGb: 0,
         freeVramGb: 0,
       }
@@ -1015,14 +1092,100 @@ async function hardwareProbe(): Promise<HardwareProbe> {
   return {
     totalRamGb,
     freeRamGb: hardware?.availableRamGb ?? totalRamGb,
-    gpu: metal,
+    gpu,
     cpuCores,
-    platform: "darwin" as NodeJS.Platform,
+    platform: platform as NodeJS.Platform,
     arch: "arm64" as NodeJS.Architecture,
     appleSilicon: true,
-    recommendedBucket: totalRamGb >= 12 ? "mid" : "small",
+    recommendedBucket: mobileRecommendedBucket(totalRamGb),
     source: "os-fallback",
+    mobile: {
+      platform,
+      ...(hardware?.deviceModel ? { deviceModel: hardware.deviceModel } : {}),
+      ...(hardware?.machineId ? { machineId: hardware.machineId } : {}),
+      ...(hardware?.osVersion ? { osVersion: hardware.osVersion } : {}),
+      ...(typeof hardware?.isSimulator === "boolean"
+        ? { isSimulator: hardware.isSimulator }
+        : {}),
+      availableRamGb: hardware?.availableRamGb ?? null,
+      ...(typeof hardware?.freeStorageGb === "number"
+        ? { freeStorageGb: hardware.freeStorageGb }
+        : {}),
+      ...(typeof hardware?.lowPowerMode === "boolean"
+        ? { lowPowerMode: hardware.lowPowerMode }
+        : {}),
+      ...(hardware?.thermalState ? { thermalState: hardware.thermalState } : {}),
+      gpuSupported: hardware?.gpuSupported ?? Boolean(gpu),
+      dflashSupported: hardware?.dflashSupported ?? false,
+      dflashReason:
+        hardware?.dflashReason ??
+        "native runtime has not reported DFlash drafter support",
+      source: hardware?.source ?? "adapter-fallback",
+    },
   };
+}
+
+function buildMobileLoadOptions(
+  model: InstalledModel,
+  installed: InstalledModel[],
+  hardware: HardwareProbe,
+): CapacitorLlamaLoadOptions {
+  const catalog = findCatalogModel(model.id);
+  const options: CapacitorLlamaLoadOptions = {
+    modelPath: model.path,
+    contextSize: mobileContextSize(hardware, catalog),
+    useGpu: hardware.mobile?.gpuSupported !== false,
+    maxThreads: mobileThreadCount(hardware),
+  };
+  const dflash = catalog?.runtime?.dflash;
+  if (!dflash) return options;
+
+  const drafter = companionInstalled(installed, dflash.drafterModelId);
+  if (!drafter) return options;
+
+  return {
+    ...options,
+    draftModelPath: drafter.path,
+    draftContextSize: dflash.draftContextSize,
+    draftMin: dflash.draftMin,
+    draftMax: dflash.draftMax,
+    speculativeSamples: Math.min(dflash.draftMax, 4),
+    mobileSpeculative: true,
+    cacheTypeK: catalog.runtime?.kvCache?.typeK,
+    cacheTypeV: catalog.runtime?.kvCache?.typeV,
+    disableThinking: dflash.disableThinking,
+  };
+}
+
+function runtimeSignature(options: CapacitorLlamaLoadOptions): string {
+  return [
+    options.modelPath,
+    options.contextSize ?? "",
+    options.draftModelPath ?? "",
+    options.draftContextSize ?? "",
+    options.speculativeSamples ?? "",
+    options.cacheTypeK ?? "",
+    options.cacheTypeV ?? "",
+  ].join("|");
+}
+
+async function validateMobileModelFit(model: CatalogModel): Promise<string | null> {
+  if (model.runtimeRole === "dflash-drafter") return null;
+  const hardware = await hardwareProbe();
+  const fit = assessCatalogModelFit(hardware, model, MODEL_CATALOG);
+  if (fit === "wontfit") {
+    return `${model.displayName} is above this device's local inference minspec. Switch to a smaller model.`;
+  }
+  const freeStorageGb = hardware.mobile?.freeStorageGb;
+  if (typeof freeStorageGb === "number" && freeStorageGb > 0) {
+    const requiredGb = catalogDownloadSizeGb(model, MODEL_CATALOG);
+    if (requiredGb > freeStorageGb * 0.9) {
+      return `Not enough free storage for ${model.displayName}: needs about ${requiredGb.toFixed(
+        1,
+      )} GB including companions, ${freeStorageGb.toFixed(1)} GB available.`;
+    }
+  }
+  return null;
 }
 
 async function ensureActiveModelLoaded(): Promise<void> {
@@ -1047,9 +1210,19 @@ async function ensureActiveModelLoaded(): Promise<void> {
   if (!llama?.load || !llama.generate) {
     throw new Error("Capacitor llama runtime is not available on this build.");
   }
+  const hardware = await hardwareProbe();
+  const loadOptions = buildMobileLoadOptions(model, installed, hardware);
+  const signature = runtimeSignature(loadOptions);
   const loaded = await llama.isLoaded?.().catch(() => null);
-  if (loaded?.loaded && loaded.modelPath === model.path) return;
-  await llama.load({ modelPath: model.path, contextSize: 4096, useGpu: true });
+  if (
+    loaded?.loaded &&
+    loaded.modelPath === model.path &&
+    loadedRuntimeSignature === signature
+  ) {
+    return;
+  }
+  await llama.load(loadOptions);
+  loadedRuntimeSignature = signature;
 }
 
 function buildPrompt(messages: LocalMessage[], latestText: string): string {
@@ -1144,6 +1317,21 @@ function updateDownload(job: DownloadJob, patch: Partial<DownloadJob>): void {
   downloads.set(job.modelId, { ...job });
 }
 
+async function queueCompanionDownloads(model: CatalogModel): Promise<void> {
+  if (!model.companionModelIds?.length) return;
+  const installed = await listInstalledModels().catch(() => []);
+  for (const companionId of model.companionModelIds) {
+    const companion = findCatalogModel(companionId);
+    if (!companion) continue;
+    if (installed.some((entry) => entry.id === companionId)) continue;
+    const existing = downloads.get(companionId);
+    if (existing && existing.state !== "failed" && existing.state !== "cancelled") {
+      continue;
+    }
+    startDownload(companion);
+  }
+}
+
 function startDownload(model: CatalogModel): DownloadJob {
   const existing = downloads.get(model.id);
   if (existing && ["queued", "downloading"].includes(existing.state)) {
@@ -1164,6 +1352,9 @@ function startDownload(model: CatalogModel): DownloadJob {
 
   void (async () => {
     try {
+      if (model.runtimeRole !== "dflash-drafter") {
+        void queueCompanionDownloads(model);
+      }
       updateDownload(job, { state: "downloading" });
       const llama = await loadLlamaCpp();
       if (!llama?.downloadModel) {
@@ -1182,6 +1373,15 @@ function startDownload(model: CatalogModel): DownloadJob {
         received: job.total,
         etaMs: 0,
       });
+      if (model.runtimeRole === "dflash-drafter") {
+        if (
+          model.companionForModelId &&
+          activeState.modelId === model.companionForModelId
+        ) {
+          await activateModel(model.companionForModelId).catch(() => undefined);
+        }
+        return;
+      }
       if (activeState.status === "idle" || !activeState.modelId) {
         await activateModel(model.id, path).catch(() => undefined);
       }
@@ -1200,6 +1400,17 @@ async function activateModel(
   modelId: string,
   knownPath?: string,
 ): Promise<ActiveModelState> {
+  const catalog = findCatalogModel(modelId);
+  if (catalog?.runtimeRole === "dflash-drafter") {
+    const state: ActiveModelState = {
+      modelId,
+      loadedAt: null,
+      status: "error",
+      error: `${catalog.displayName} is a DFlash drafter companion, not a standalone chat model.`,
+    };
+    writeActiveModelState(state);
+    return state;
+  }
   const installed = await listInstalledModels();
   const model =
     installed.find((entry) => entry.id === modelId) ??
@@ -1212,6 +1423,7 @@ async function activateModel(
           installedAt: nowIso(),
           lastUsedAt: null,
           source: "eliza-download" as const,
+          ...(catalog?.runtimeRole ? { runtimeRole: catalog.runtimeRole } : {}),
         } satisfies InstalledModel)
       : null);
   if (!model) {
@@ -1233,11 +1445,18 @@ async function activateModel(
         "Capacitor llama runtime is not available on this build.",
       );
     }
-    await llama.load({
-      modelPath: model.path,
-      contextSize: 4096,
-      useGpu: true,
-    });
+    const hardware = await hardwareProbe();
+    if (catalog) {
+      const fit = assessCatalogModelFit(hardware, catalog, MODEL_CATALOG);
+      if (fit === "wontfit") {
+        throw new Error(
+          `${catalog.displayName} is above this device's local inference minspec. Switch to a smaller model.`,
+        );
+      }
+    }
+    const loadOptions = buildMobileLoadOptions(model, installed, hardware);
+    await llama.load(loadOptions);
+    loadedRuntimeSignature = runtimeSignature(loadOptions);
     const state: ActiveModelState = {
       modelId,
       loadedAt: nowIso(),
@@ -1497,6 +1716,8 @@ export async function handleIosLocalAgentRequest(
           : "";
     const catalog = findCatalogModel(modelId);
     if (!catalog) return json({ error: `Unknown model id: ${modelId}` }, 404);
+    const validationError = await validateMobileModelFit(catalog);
+    if (validationError) return json({ error: validationError }, 409);
     return json({ job: startDownload(catalog) });
   }
 
@@ -1530,6 +1751,7 @@ export async function handleIosLocalAgentRequest(
 
   if (method === "DELETE" && pathname === "/api/local-inference/active") {
     writeActiveModelState({ modelId: null, loadedAt: null, status: "idle" });
+    loadedRuntimeSignature = null;
     return json(activeState);
   }
 
