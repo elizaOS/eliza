@@ -3,7 +3,7 @@ import {
   type OverlayAppContext,
   useApp,
   useRenderGuard,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import { PtyConsoleSidePanel } from "@elizaos/app-task-coordinator";
 // Static import: CharacterEditor is statically re-exported by app-core's
 // browser entry, so the previous lazy() was eagerly merged back into the

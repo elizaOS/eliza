@@ -256,7 +256,7 @@ export interface TrainingTriggerServiceOptions {
 }
 
 /**
- * Lightweight, function-based service. We follow the n8n-dispatch pattern
+ * Lightweight, function-based service. We follow the workflow-dispatch pattern
  * already used in `runtime/eliza.ts` (services map insertion) rather than
  * subclassing `Service`, because the trigger has no `start()` lifecycle —
  * it is created once at runtime boot and lives for the runtime's lifetime.
@@ -471,7 +471,7 @@ export interface RegisteredTrainingTriggerEntry {
 
 /**
  * Register the service against a runtime's services map. Mirrors the
- * n8n-dispatch pattern in `packages/app-core/src/runtime/eliza.ts`: we
+ * workflow-dispatch pattern in `packages/app-core/src/runtime/eliza.ts`: we
  * insert a function-shaped service entry directly rather than going through
  * the `Service.start()` lifecycle, which expects a class.
  *

@@ -37,7 +37,7 @@ coverage/
 tmp/
 temp/
 
-# Credential IDs (created by create-credentials.ts, contains n8n instance-specific IDs)
+# Credential IDs (workflow instance-specific)
 .credentials-map.json
 
 # Script cache

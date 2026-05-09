@@ -1,4 +1,4 @@
-import { type AgentPreflightResult, client, useApp } from "@elizaos/app-core";
+import { type AgentPreflightResult, client, useApp } from "@elizaos/ui";
 import { ExternalLink, Terminal } from "lucide-react";
 import {
   type ReactNode,

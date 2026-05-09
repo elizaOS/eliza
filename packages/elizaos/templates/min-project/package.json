@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "type": "module",
   "description": "TODO: replace with a one-line description of __APP_DISPLAY_NAME__",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -13,9 +14,20 @@
   },
   "exports": {
     "./package.json": "./package.json",
-    ".": "./src/index.ts",
-    "./plugin": "./src/plugin.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js",
+      "default": "./dist/plugin.js"
+    }
   },
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "@elizaos/core": "workspace:*"
   },

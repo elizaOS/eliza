@@ -1,4 +1,4 @@
-import { ChatModalView, useApp, useRenderGuard } from "@elizaos/app-core";
+import { ChatModalView, useApp, useRenderGuard } from "@elizaos/ui";
 import { PtyConsoleSidePanel } from "@elizaos/app-task-coordinator";
 // Static import: CharacterEditor is statically re-exported by app-core's
 // browser entry, so the previous lazy() was eagerly merged back into the

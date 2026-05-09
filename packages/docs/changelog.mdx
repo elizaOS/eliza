@@ -97,7 +97,7 @@ The runtime now respects per-plugin role declarations on startup. Plugins that d
 ## Updates
 
 - **Direct life-ops launch** — Opening [life-ops](/rest/lifeops) from the dashboard now goes straight to the section you tapped instead of routing through an intermediate landing screen.
-- **n8n empty-state translations** — The [automations](/guides/cloud) empty state for n8n workflows is now fully localized (Spanish, French, and Chinese) so first-time setup reads cleanly in every supported language.
+- **n8n empty-state translations** — The [automations](/guides/cloud) empty state for workflows is now fully localized (Spanish, French, and Chinese) so first-time setup reads cleanly in every supported language.
 - **Eliza Cloud TTS polish** — Cloud-hosted text-to-speech has been refreshed for cleaner audio output and more reliable streaming when your agent speaks back through Discord or the desktop voice surface.
 - **Default assistant name sync** — The assistant name shown across the desktop app, chat, and connector greetings now stays in sync with your agent configuration on first run, so renaming your agent applies everywhere immediately.
 - **Inbox routing reliability** — Inbox route handling has been hardened with deeper test coverage, so cross-channel messages land in the [unified inbox](/rest/inbox) consistently across Gmail, Discord, Telegram, Signal, and iMessage.
@@ -301,13 +301,13 @@ Your agent now picks the right action more reliably when you give it natural-lan
 
 </Update>
 
-<Update label="2026-04-19" description="Week of April 19; dashboard redesign, n8n workflow automations, life-ops connector UI, mobile responsiveness" tags={["Feature", "Update", "Fix"]}>
+<Update label="2026-04-19" description="Week of April 19; dashboard redesign, workflow automations, life-ops connector UI, mobile responsiveness" tags={["Feature", "Update", "Fix"]}>
 
 ## Dashboard redesign
 
 The [cloud dashboard](/guides/cloud) homepage has been completely redesigned. Agent cards now use a data-first layout with cleaner instance grids and filter chips for quick browsing. A new persistent sidebar with vertical tabs replaces the previous navigation, and the hero section is now typography-focused for a quieter, more readable landing experience. You can provision new cloud agents directly from the dashboard with an inline modal — no more navigating away to create an agent. Deleting cloud agents and managing card actions are also restored.
 
-## n8n workflow automations
+## workflow automations
 
 Your agent now supports [n8n](https://n8n.io) workflow automations through a new plugin. A dedicated Workflows pane in the Automations view lets you browse, activate, deactivate, and delete workflows. The n8n sidecar starts automatically when the plugin is enabled, and status updates poll in real time. The legacy n8n plugin has been retired in favor of this new integration.
 

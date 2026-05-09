@@ -30,6 +30,7 @@
     "typecheck": "tsc --noEmit --project tsconfig.json"
   },
   "dependencies": {
+    "@elizaos/billing": "workspace:*",
     "@elizaos/cloud-db": "workspace:*",
     "@elizaos/cloud-types": "workspace:*"
   },

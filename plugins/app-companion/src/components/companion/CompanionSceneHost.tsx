@@ -8,7 +8,7 @@ import {
   useTranslation,
   VRM_COUNT,
   VRM_TELEPORT_COMPLETE_EVENT,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import {
   memo,
   type ReactNode,

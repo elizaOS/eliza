@@ -4,7 +4,7 @@ declare global {
   }
 }
 
-import { resolveAppAssetUrl } from "@elizaos/app-core";
+import { resolveAppAssetUrl } from "@elizaos/ui";
 import {
   MToonMaterialLoaderPlugin,
   type VRM,

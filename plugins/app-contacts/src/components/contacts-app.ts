@@ -6,7 +6,7 @@
  * `registerContactsApp` is ever invoked.
  */
 
-import { type OverlayApp, registerOverlayApp } from "@elizaos/app-core";
+import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
 import { ContactsAppView } from "./ContactsAppView";
 
 export const CONTACTS_APP_NAME = "@elizaos/app-contacts";

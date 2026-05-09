@@ -649,8 +649,14 @@ async function linkMissingPackagesFromNodeModules(params: {
         if (!scopedEntry.isDirectory() && !scopedEntry.isSymbolicLink()) {
           continue;
         }
+        const linkTarget = scopedEntry.isSymbolicLink()
+          ? await resolveSymlinkTargetIfPresent(scopedSourcePath)
+          : scopedSourcePath;
+        if (!linkTarget) {
+          continue;
+        }
         try {
-          await fs.symlink(scopedSourcePath, scopedTargetPath, "dir");
+          await fs.symlink(linkTarget, scopedTargetPath, "dir");
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
             throw error;
@@ -667,13 +673,32 @@ async function linkMissingPackagesFromNodeModules(params: {
       continue;
     }
 
+    const linkTarget = entry.isSymbolicLink()
+      ? await resolveSymlinkTargetIfPresent(sourcePath)
+      : sourcePath;
+    if (!linkTarget) {
+      continue;
+    }
     try {
-      await fs.symlink(sourcePath, targetPath, "dir");
+      await fs.symlink(linkTarget, targetPath, "dir");
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
         throw error;
       }
     }
+  }
+}
+
+async function resolveSymlinkTargetIfPresent(
+  sourcePath: string,
+): Promise<string | null> {
+  try {
+    return await fs.realpath(sourcePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw error;
   }
 }
 
@@ -708,10 +733,9 @@ async function stageNodeModulesEntries(params: {
           continue;
         }
         if (scopedEntry.isSymbolicLink()) {
-          await fs.symlink(
-            await fs.realpath(scopedSourcePath),
-            scopedTargetPath,
-          );
+          const linkTarget = await resolveSymlinkTargetIfPresent(scopedSourcePath);
+          if (!linkTarget) continue;
+          await fs.symlink(linkTarget, scopedTargetPath);
           continue;
         }
         if (!scopedEntry.isDirectory()) {
@@ -730,7 +754,9 @@ async function stageNodeModulesEntries(params: {
       continue;
     }
     if (entry.isSymbolicLink()) {
-      await fs.symlink(await fs.realpath(sourcePath), targetPath);
+      const linkTarget = await resolveSymlinkTargetIfPresent(sourcePath);
+      if (!linkTarget) continue;
+      await fs.symlink(linkTarget, targetPath);
       continue;
     }
     if (!entry.isDirectory()) {

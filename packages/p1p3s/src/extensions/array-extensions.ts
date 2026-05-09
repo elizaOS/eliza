@@ -158,9 +158,10 @@ function smartJoin(value: unknown[], extraArgs: string[]): object {
 			'smartJoin(): expected two string args, e.g. .smartJoin("name", "value")'
 		);
 	}
-	return value.reduce<any>((o, v) => {
+	return value.reduce<Record<PropertyKey, unknown>>((o, v) => {
 		if (typeof v === 'object' && v !== null && keyField in v && valueField in v) {
-			o[(v as any)[keyField]] = (v as any)[valueField];
+			const keyedValue = v as Record<string, unknown>;
+			o[keyedValue[keyField] as PropertyKey] = keyedValue[valueField];
 		}
 		return o;
 	}, {});
@@ -190,7 +191,7 @@ function renameKeys(value: unknown[], extraArgs: string[]): unknown[] {
 		if (typeof v !== 'object' || v === null) {
 			return v;
 		}
-		const newObj = { ...(v as any) };
+		const newObj = { ...(v as Record<string, unknown>) };
 		const chunkedArgs = chunk(extraArgs, [2]) as string[][];
 		chunkedArgs.forEach(([from, to]) => {
 			if (from in newObj) {

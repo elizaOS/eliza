@@ -194,7 +194,9 @@ describe("inventory — listVaultInventory", () => {
       sensitive: true,
     });
     await vault.set("EVM_PRIVATE_KEY", "0xNEVERLEAK2", { sensitive: true });
-    await vault.set("WORKFLOW_API_KEY", "n8n-NEVERLEAK-3", { sensitive: true });
+    await vault.set("WORKFLOW_API_KEY", "workflow-NEVERLEAK-3", {
+      sensitive: true,
+    });
     await vault.set("creds.github.com.alice", "PASSWORD-NEVERLEAK-4", {
       sensitive: true,
     });

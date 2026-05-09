@@ -1127,7 +1127,7 @@ registerFinalCheckHandler("gmailNoRealWrite", () => {
   };
 });
 
-registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
+registerFinalCheckHandler("workflowDispatchOccurred", (check, { ctx }) => {
   const { workflowId, expected, minCount } = check as {
     workflowId?: string;
     expected?: boolean;

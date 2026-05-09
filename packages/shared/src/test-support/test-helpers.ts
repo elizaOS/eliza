@@ -565,7 +565,7 @@ export async function tryOptionalDynamicImport<T>(
   markers?: readonly string[],
 ): Promise<T | null> {
   try {
-    return (await import(moduleName)) as T;
+    return (await import(/* @vite-ignore */ moduleName)) as T;
   } catch (error) {
     if (isOptionalImportError(error, markers)) return null;
     throw error;

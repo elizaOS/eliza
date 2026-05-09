@@ -439,6 +439,12 @@ function summarizeProbe(probe) {
   return `ui=${probe.uiReady ? "ready" : "not-ready"} (${uiHttp}), api=${probe.apiReady ? "ready" : "not-ready"} (${apiHealth})`;
 }
 
+function probeHasTimeout(probe) {
+  return [probe.uiTcp, probe.apiTcp, probe.uiHttp, probe.apiHealth].some(
+    (result) => result?.error === "timeout",
+  );
+}
+
 async function terminateProcessTree(child) {
   if (!child.pid) return;
 
@@ -577,6 +583,10 @@ async function run() {
   const logAnalysis = analyzeLogs(logText);
   const uiEverReady = probes.some((probe) => probe.uiReady);
   const apiEverReady = probes.some((probe) => probe.apiReady);
+  const firstReadyProbe = probes.find((probe) => probe.uiReady && probe.apiReady);
+  const probeTimeoutsAfterReady = firstReadyProbe
+    ? probes.filter((probe) => probe.at >= firstReadyProbe.at && probeHasTimeout(probe))
+    : [];
   const exitedEarly = Boolean(
     childExit && childExit.at && childExit.at - startedAt < durationMs - 1000,
   );
@@ -606,6 +616,11 @@ async function run() {
   if (finalProbe.apiProblem) {
     failures.push(`API health reports a runtime problem: ${finalProbe.apiProblem}`);
   }
+  if (probeTimeoutsAfterReady.length > 0) {
+    failures.push(
+      `${probeTimeoutsAfterReady.length} probe timeout(s) after UI and API first became ready`,
+    );
+  }
   if (logAnalysis.suspectLines.length > 0) {
     failures.push(`${logAnalysis.suspectLines.length} suspicious log line(s) found`);
   }
@@ -623,6 +638,13 @@ async function run() {
     finalProbe,
     uiEverReady,
     apiEverReady,
+    firstReadyAt: firstReadyProbe
+      ? new Date(firstReadyProbe.at).toISOString()
+      : null,
+    probeTimeoutsAfterReady: probeTimeoutsAfterReady.map((probe) => ({
+      at: new Date(probe.at).toISOString(),
+      summary: summarizeProbe(probe),
+    })),
     log: {
       lineCount: logAnalysis.lineCount,
       readinessLines: logAnalysis.readinessLines.slice(-20),

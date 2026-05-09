@@ -7,6 +7,7 @@ export * from "./capacitor-shell";
 export * from "./character-catalog";
 export * from "./chat";
 export * from "./components";
+export * from "./components/pages/vector-browser-utils";
 export * from "./components/composites";
 export * from "./components/primitives";
 export * from "./config";

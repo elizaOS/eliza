@@ -2,9 +2,6 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "composite": false,
-    "declaration": false,
-    "declarationMap": false,
     "paths": {
       "@elizaos/ui": [
         "./packages/ui/dist/index.d.ts"
@@ -384,6 +381,12 @@
       "@elizaos/example-rest-api-hono/*": [
         "./packages/examples/rest-api/hono/dist/*"
       ],
+      "@elizaos/p1p3s": [
+        "./packages/p1p3s/dist/index.d.ts"
+      ],
+      "@elizaos/p1p3s/*": [
+        "./packages/p1p3s/dist/*"
+      ],
       "@elizaos/benchmark-framework": [
         "./packages/benchmarks/framework/typescript/dist/index.d.ts"
       ],
@@ -593,12 +596,6 @@
       ],
       "@elizaos/app-wallet/*": [
         "./plugins/app-wallet/dist/*"
-      ],
-      "@elizaos/plugin-workflow": [
-        "./plugins/plugin-workflow/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-workflow/*": [
-        "./plugins/plugin-workflow/dist/*"
       ],
       "@elizaos/plugin-inmemorydb": [
         "./plugins/plugin-inmemorydb/dist/index.d.ts"
@@ -846,6 +843,12 @@
       "@elizaos/plugin-shopify/*": [
         "./plugins/plugin-shopify/dist/*"
       ],
+      "@elizaos/plugin-workflow": [
+        "./plugins/plugin-workflow/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-workflow/*": [
+        "./plugins/plugin-workflow/dist/*"
+      ],
       "@elizaos/plugin-tee": [
         "./plugins/plugin-tee/dist/index.d.ts"
       ],
@@ -961,5 +964,24 @@
         "./cloud/packages/sdk/dist/*"
       ]
     }
-  }
+  },
+  "include": [
+    "packages/*/src/**/*",
+    "packages/native-plugins/*/src/**/*",
+    "plugins/*/*.ts",
+    "plugins/*/src/**/*",
+    "plugins/*/typescript/**/*.ts",
+    "cloud/packages/*/src/**/*"
+  ],
+  "exclude": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "**/*.stories.ts",
+    "**/*.stories.tsx",
+    "**/__tests__/**"
+  ]
 }

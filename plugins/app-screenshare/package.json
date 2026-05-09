@@ -54,7 +54,7 @@
       ],
       "runtimePlugin": "@elizaos/app-screenshare",
       "bridgeExport": {
-        "types": "./src/index.ts",
+        "types": "./dist/index.d.ts",
         "import": "./dist/index.js",
         "default": "./dist/index.js"
       },

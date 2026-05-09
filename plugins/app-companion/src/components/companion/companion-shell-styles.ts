@@ -1,4 +1,4 @@
-import type { Tab } from "@elizaos/app-core";
+import type { Tab } from "@elizaos/ui";
 import type React from "react";
 
 /* ── Overlay tab set ───────────────────────────────────────────────── */

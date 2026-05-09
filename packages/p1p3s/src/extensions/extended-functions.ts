@@ -50,10 +50,11 @@ const not = (value: unknown): boolean => {
 	return !value;
 };
 
-function ifEmpty<T, V>(value: V, defaultValue: T) {
-	if (arguments.length !== 2) {
+function ifEmpty<T, V>(...args: [V, T]) {
+	if (args.length !== 2) {
 		throw new ExpressionError('expected two arguments (value, defaultValue) for this function');
 	}
+	const [value, defaultValue] = args;
 	if (value === undefined || value === null || value === '') {
 		return defaultValue;
 	}

@@ -70,8 +70,7 @@
   "peerDependencies": {
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/p1p3s": "workspace:*"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
@@ -92,9 +91,6 @@
     "node": ">=24.0.0"
   },
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
-    "@elizaos/core": "workspace:*",
     "@elizaos/p1p3s": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "quickjs-emscripten": "0.32.0"

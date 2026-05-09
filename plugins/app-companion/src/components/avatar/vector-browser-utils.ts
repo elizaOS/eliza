@@ -1,1 +1,1 @@
-export * from "@elizaos/ui";
+export * from "@elizaos/ui/components/pages/vector-browser-utils";

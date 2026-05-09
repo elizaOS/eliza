@@ -1,4 +1,4 @@
-import { APP_EMOTE_EVENT, type AppEmoteEventDetail } from "@elizaos/app-core";
+import { APP_EMOTE_EVENT, type AppEmoteEventDetail } from "@elizaos/ui";
 import { Z_GLOBAL_EMOTE } from "@elizaos/ui";
 import { useEffect, useRef, useState } from "react";
 

@@ -2,6 +2,8 @@
 type CallbackManagerPlaceholder = { handlers?: unknown[] } & Record<string, unknown>;
 // LogScope: inlined from former @workflows/config to keep this package dependency-free
 type LogScope = string;
+type OpenString = string & Record<never, never>;
+type NonNullish = NonNullable<unknown>;
 
 import type { PathLike } from 'node:fs';
 import type { IncomingHttpHeaders } from 'node:http';
@@ -310,7 +312,7 @@ export interface IAuthenticateRuleResponseSuccessBody extends IAuthenticateRuleB
 	properties: {
 		message: string;
 		key: string;
-		value: any;
+		value: string | number;
 	};
 }
 
@@ -468,7 +470,7 @@ export interface IExecuteData {
 }
 
 export type IContextObject = {
-	[key: string]: any;
+	[key: string]: unknown;
 };
 
 export interface IExecuteContextData {
@@ -550,7 +552,7 @@ export interface IRequestOptions {
 		password: string;
 		pass: string;
 	}>;
-	body?: any;
+	body?: unknown;
 	formData?: IDataObject | FormData;
 	form?: IDataObject | FormData;
 	json?: boolean;
@@ -721,7 +723,7 @@ namespace ExecuteFunctions {
 		getNodeParameter(
 			parameterName: string,
 			itemIndex: number,
-			fallbackValue?: any,
+			fallbackValue?: unknown,
 			options?: IGetNodeParameterOptions
 		): NodeParameterValueType | object;
 	};
@@ -740,7 +742,7 @@ export type ICredentialTestFunction = (
 export interface ICredentialTestFunctions {
 	logger: Logger;
 	helpers: SSHTunnelFunctions & {
-		request: (uriOrObject: string | object, options?: object) => Promise<any>;
+		request: (uriOrObject: string | object, options?: object) => Promise<unknown>;
 	};
 }
 
@@ -854,13 +856,13 @@ interface NodeHelperFunctions {
 }
 
 export interface RequestHelperFunctions {
-	httpRequest(requestOptions: IHttpRequestOptions): Promise<any>;
+	httpRequest(requestOptions: IHttpRequestOptions): Promise<unknown>;
 	httpRequestWithAuthentication(
 		this: IAllExecuteFunctions,
 		credentialsType: string,
 		requestOptions: IHttpRequestOptions,
 		additionalCredentialOptions?: IAdditionalCredentialOptions
-	): Promise<any>;
+	): Promise<unknown>;
 	requestWithAuthenticationPaginated(
 		this: IAllExecuteFunctions,
 		requestOptions: IRequestOptions,
@@ -868,13 +870,13 @@ export interface RequestHelperFunctions {
 		paginationOptions: PaginationOptions,
 		credentialsType?: string,
 		additionalCredentialOptions?: IAdditionalCredentialOptions
-	): Promise<any[]>;
+	): Promise<unknown[]>;
 
 	/**
 	 * @retired Use .httpRequest instead
 	 * @see RequestHelperFunctions.httpRequest
 	 */
-	request(uriOrObject: string | IRequestOptions, options?: IRequestOptions): Promise<any>;
+	request(uriOrObject: string | IRequestOptions, options?: IRequestOptions): Promise<unknown>;
 	/**
 	 * @retired Use .httpRequestWithAuthentication instead
 	 * @see RequestHelperFunctions.requestWithAuthentication
@@ -885,7 +887,7 @@ export interface RequestHelperFunctions {
 		requestOptions: IRequestOptions,
 		additionalCredentialOptions?: IAdditionalCredentialOptions,
 		itemIndex?: number
-	): Promise<any>;
+	): Promise<unknown>;
 	/**
 	 * @retired Use .httpRequestWithAuthentication instead
 	 * @see RequestHelperFunctions.requestWithAuthentication
@@ -894,7 +896,7 @@ export interface RequestHelperFunctions {
 		this: IAllExecuteFunctions,
 		credentialsType: string,
 		requestOptions: IRequestOptions
-	): Promise<any>;
+	): Promise<unknown>;
 	/**
 	 * @retired Use .httpRequestWithAuthentication instead
 	 * @see RequestHelperFunctions.requestWithAuthentication
@@ -904,12 +906,12 @@ export interface RequestHelperFunctions {
 		credentialsType: string,
 		requestOptions: IRequestOptions,
 		oAuth2Options?: IOAuth2Options
-	): Promise<any>;
+	): Promise<unknown>;
 	refreshOAuth2Token(
 		this: IAllExecuteFunctions,
 		credentialsType: string,
 		oAuth2Options?: IOAuth2Options
-	): Promise<any>;
+	): Promise<unknown>;
 }
 
 export type SSHCredentials = {
@@ -1116,7 +1118,7 @@ export type IExecuteFunctions = ExecuteFunctions.GetNodeParameterFn &
 		getNodeInputs(): INodeInputConfiguration[];
 		getNodeOutputs(): INodeOutputConfiguration[];
 		putExecutionToWait(waitTill: Date): Promise<void>;
-		sendMessageToUI(message: any): void;
+		sendMessageToUI(message: unknown): void;
 		sendResponse(response: IExecuteResponsePromiseData): void;
 		sendChunk(type: ChunkType, itemIndex: number, content?: IDataObject | string): void;
 		isStreaming(): boolean;
@@ -1178,7 +1180,7 @@ export interface IExecuteSingleFunctions extends BaseExecutionFunctions {
 	getItemIndex(): number;
 	getNodeParameter(
 		parameterName: string,
-		fallbackValue?: any,
+		fallbackValue?: unknown,
 		options?: IGetNodeParameterOptions
 	): NodeParameterValueType | object;
 
@@ -1230,7 +1232,7 @@ export interface IExecutePaginationFunctions extends IExecuteSingleFunctions {
 export interface ILoadOptionsFunctions extends FunctionsBase {
 	getNodeParameter(
 		parameterName: string,
-		fallbackValue?: any,
+		fallbackValue?: unknown,
 		options?: IGetNodeParameterOptions
 	): NodeParameterValueType | object;
 	getCurrentNodeParameter(
@@ -1268,7 +1270,7 @@ export interface IPollFunctions
 	__emitError(error: Error, responsePromise?: IDeferredPromise<IExecuteResponsePromiseData>): void;
 	getNodeParameter(
 		parameterName: string,
-		fallbackValue?: any,
+		fallbackValue?: unknown,
 		options?: IGetNodeParameterOptions
 	): NodeParameterValueType | object;
 	helpers: RequestHelperFunctions &
@@ -1305,7 +1307,7 @@ export interface ITriggerFunctions
 	emitError(error: Error, responsePromise?: IDeferredPromise<IExecuteResponsePromiseData>): void;
 	getNodeParameter(
 		parameterName: string,
-		fallbackValue?: any,
+		fallbackValue?: unknown,
 		options?: IGetNodeParameterOptions
 	): NodeParameterValueType | object;
 	helpers: RequestHelperFunctions &
@@ -1322,7 +1324,7 @@ export interface IHookFunctions
 	getNodeWebhookUrl: (name: WebhookType) => string | undefined;
 	getNodeParameter(
 		parameterName: string,
-		fallbackValue?: any,
+		fallbackValue?: unknown,
 		options?: IGetNodeParameterOptions
 	): NodeParameterValueType | object;
 	helpers: RequestHelperFunctions;
@@ -1338,7 +1340,7 @@ export interface IWebhookFunctions extends FunctionsBaseWithRequiredKeys<'getMod
 	): Promise<unknown>;
 	getNodeParameter(
 		parameterName: string,
-		fallbackValue?: any,
+		fallbackValue?: unknown,
 		options?: IGetNodeParameterOptions
 	): NodeParameterValueType | object;
 	getNodeWebhookUrl: (name: WebhookType) => string | undefined;
@@ -1409,7 +1411,7 @@ export interface INodes {
 }
 
 export interface IObservableObject {
-	[key: string]: any;
+	[key: string]: unknown;
 	__dataChanged: boolean;
 }
 
@@ -1674,7 +1676,7 @@ export interface INodePropertyTypeOptions {
 	showEvenWhenOptional?: boolean; // Supported by: fixedCollection with hideOptionalFields
 	calloutAction?: CalloutAction; // Supported by: callout
 	binaryDataProperty?: boolean; // Indicate that the property expects binary data
-	[key: string]: any;
+	[key: string]: unknown;
 }
 
 export interface ResourceMapperTypeOptionsBase {
@@ -1717,12 +1719,12 @@ type NonEmptyArray<T> = [T, ...T[]];
 export type FilterTypeCombinator = 'and' | 'or';
 
 export type FilterTypeOptions = {
-	version: 1 | 2 | 3 | {}; // required so nodes are pinned on a version
+	version: 1 | 2 | 3 | NonNullish; // required so nodes are pinned on a version
 	caseSensitive?: boolean | string; // default = true
 	leftValue?: string; // when set, user can't edit left side of condition
 	allowedCombinators?: NonEmptyArray<FilterTypeCombinator>; // default = ['and', 'or']
 	maxConditions?: number; // default = 10
-	typeValidation?: 'strict' | 'loose' | {}; // default = strict, `| {}` is a TypeScript trick to allow custom strings (expressions), but still give autocomplete
+	typeValidation?: 'strict' | 'loose' | OpenString; // default = strict; open string keeps autocomplete for known values
 };
 
 export type AssignmentTypeOptions = Partial<{
@@ -1869,7 +1871,7 @@ export interface INodePropertyMode {
 
 export interface INodePropertyModeValidation {
 	type: string;
-	properties: {};
+	properties: Record<string, unknown>;
 }
 
 export interface INodePropertyRegexValidation extends INodePropertyModeValidation {
@@ -1888,7 +1890,7 @@ export interface INodePropertyOptions {
 	builderHint?: IParameterBuilderHint;
 	routing?: INodePropertyRouting;
 	outputConnectionType?: NodeConnectionType;
-	inputSchema?: any;
+	inputSchema?: unknown;
 	displayOptions?: IDisplayOptions;
 	// disabledOptions added for compatibility with INodeProperties and INodeCredentialDescription types
 	// it needs to be implemented, if needed
@@ -2018,8 +2020,8 @@ export namespace MultiPartFormData {
 	}
 
 	export type Request = express.Request<
-		{},
-		{},
+		Record<string, never>,
+		Record<string, never>,
 		{
 			data: Record<string, string | string[]>;
 			files: Record<string, File | File[]>;
@@ -2662,7 +2664,7 @@ export interface IWebhookDescription {
 
 export interface ProxyInput {
 	all: () => INodeExecutionData[];
-	context: any;
+	context: unknown;
 	first: () => INodeExecutionData | undefined;
 	item: INodeExecutionData | undefined;
 	last: () => INodeExecutionData | undefined;
@@ -2670,31 +2672,31 @@ export interface ProxyInput {
 }
 
 export interface IWorkflowDataProxyData {
-	[key: string]: any;
+	[key: string]: unknown;
 	$binary: INodeExecutionData['binary'];
-	$data: any;
-	$env: any;
+	$data: unknown;
+	$env: unknown;
 	$evaluateExpression: (expression: string, itemIndex?: number) => NodeParameterValueType;
 	$item: (itemIndex: number, runIndex?: number) => IWorkflowDataProxyData;
 	$items: (nodeName?: string, outputIndex?: number, runIndex?: number) => INodeExecutionData[];
 	$json: INodeExecutionData['json'];
-	$node: any;
+	$node: unknown;
 	$parameter: INodeParameters;
 	$position: number;
-	$workflow: any;
-	$: any;
+	$workflow: unknown;
+	$: unknown;
 	$input: ProxyInput;
-	$thisItem: any;
+	$thisItem: unknown;
 	$thisRunIndex: number;
 	$thisItemIndex: number;
-	$now: any;
-	$today: any;
+	$now: unknown;
+	$today: unknown;
 	$getPairedItem: (
 		destinationNodeName: string,
 		incomingSourceData: ISourceData | null,
 		pairedItem: IPairedItemData
 	) => INodeExecutionData | null;
-	constructor: any;
+	constructor: unknown;
 }
 
 export type IWorkflowExecutionCustomData = {
@@ -2730,7 +2732,7 @@ export interface IWorkflowMetadata {
 
 export interface IWebhookResponseData {
 	workflowData?: INodeExecutionData[][];
-	webhookResponse?: any;
+	webhookResponse?: unknown;
 	noWebhookResponse?: boolean;
 }
 
@@ -3295,7 +3297,7 @@ export interface WorkflowTestData {
 		nodeExecutionStack?: IExecuteData[];
 		testAllOutputs?: boolean;
 		nodeData: {
-			[key: string]: any[][];
+			[key: string]: unknown[][];
 		};
 		error?: string;
 	};
@@ -3577,7 +3579,7 @@ export type FieldTypeMap = {
 	time: string;
 	array: unknown[];
 	object: object;
-	options: any;
+	options: unknown;
 	url: string;
 	jwt: string;
 	'form-fields': FormFieldsParameter;

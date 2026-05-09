@@ -267,7 +267,7 @@ function createHardenedExportGuard(
     }
 
     const nonceResult = validateExportNonce(body.exportNonce, ip);
-    if (!nonceResult.valid) {
+    if (nonceResult.valid === false) {
       recordWalletExportAudit({
         timestamp: new Date().toISOString(),
         ip,

@@ -104,7 +104,7 @@ function workflowFixture(id: string, name: string, active = true): Workflow {
       {
         id: `${id}-trigger`,
         name: "Message event",
-        type: "n8n-nodes-base.webhook",
+        type: "workflows-nodes-base.webhook",
         typeVersion: 1,
         position: [0, 0],
         parameters: { path: "message.received" },
@@ -114,7 +114,7 @@ function workflowFixture(id: string, name: string, active = true): Workflow {
       {
         id: `${id}-summarize`,
         name: "Summarize",
-        type: "@elizaos/n8n-nodes-agent.agent",
+        type: "workflows-nodes-base.code",
         typeVersion: 1,
         position: [320, 0],
         parameters: { prompt: "Summarize the message." },
@@ -124,7 +124,7 @@ function workflowFixture(id: string, name: string, active = true): Workflow {
       {
         id: `${id}-send`,
         name: "Send digest",
-        type: "n8n-nodes-base.discord",
+        type: "workflows-nodes-base.httpRequest",
         typeVersion: 1,
         position: [640, 0],
         parameters: { channel: "inbox" },
@@ -247,10 +247,12 @@ function draftWorkflowItem(
 function automationSummary(automations: AutomationItem[]) {
   return {
     total: automations.length,
-    coordinatorCount: automations.filter((item) => item.type !== "workflow_service")
-      .length,
-    workflowCount: automations.filter((item) => item.type === "workflow_service")
-      .length,
+    coordinatorCount: automations.filter(
+      (item) => item.type !== "workflow_service",
+    ).length,
+    workflowCount: automations.filter(
+      (item) => item.type === "workflow_service",
+    ).length,
     scheduledCount: automations.reduce(
       (count, item) => count + item.schedules.length,
       0,
@@ -440,7 +442,10 @@ async function installAutomationsApi(
       return;
     }
 
-    if (request.method() === "POST" && path === "/api/workflow/workflows/generate") {
+    if (
+      request.method() === "POST" &&
+      path === "/api/workflow/workflows/generate"
+    ) {
       generatedWorkflow = request.postDataJSON() as Record<string, unknown>;
       const workflow = workflowFixture(
         "workflow-generated",

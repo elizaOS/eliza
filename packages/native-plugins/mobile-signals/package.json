@@ -37,7 +37,7 @@
     "url": "https://github.com/elizaOS/eliza"
   },
   "scripts": {
-    "build": "bun run clean && bunx tsc -p tsconfig.json && rollup -c rollup.config.mjs",
+    "build": "bun run clean && bunx tsc -p tsconfig.json && bun --bun rollup -c rollup.config.mjs",
     "clean": "rimraf ./dist",
     "prepublishOnly": "bun run build",
     "test": "vitest run",

@@ -10,7 +10,7 @@ import {
   type ChatAvatarVoiceEventDetail,
   type CompanionHalfFramerateMode,
   type CompanionVrmPowerMode,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { getVrmCount, getVrmUrl } from "../../vrm-assets";
 import {
