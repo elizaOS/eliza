@@ -300,6 +300,13 @@ export const elizaOSCloudPlugin: Plugin = {
 export default elizaOSCloudPlugin;
 
 export { isCloudProvisionedContainer } from "./routes/cloud-provisioning";
+export { handleCloudBillingRoute } from "./routes/cloud-billing-routes";
+export { handleCloudCompatRoute } from "./routes/cloud-compat-routes";
+export { handleCloudRelayRoute } from "./routes/cloud-relay-routes";
+export { type CloudRouteState, handleCloudRoute } from "./routes/cloud-routes";
+export type { CloudConfigLike } from "./routes/cloud-routes-autonomous";
+export { handleCloudStatusRoutes } from "./routes/cloud-status-routes";
+export type { CloudOnboardingResult } from "./onboarding";
 export {
   type CloudWalletDescriptor,
   type CloudWalletProvider,
@@ -309,6 +316,11 @@ export {
   normalizeCloudSecret,
   resolveCloudApiKey,
 } from "./cloud/cloud-api-key";
+export {
+  clearCloudSecrets,
+  getCloudSecret,
+  scrubCloudSecretsFromEnv,
+} from "./lib/cloud-secrets";
 export {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
