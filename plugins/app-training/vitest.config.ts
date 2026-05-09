@@ -11,6 +11,7 @@ const pluginElizaCloudSrc = path.join(
   "plugin-elizacloud",
   "src",
 );
+const vaultSrc = path.join(repoRoot, "packages", "vault", "src");
 const baseAliases = Array.isArray(baseConfig.resolve?.alias)
   ? baseConfig.resolve.alias
   : [];
@@ -39,6 +40,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-elizacloud\/(.+)$/,
         replacement: path.join(pluginElizaCloudSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/vault$/,
+        replacement: path.join(vaultSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/vault\/(.+)$/,
+        replacement: path.join(vaultSrc, "$1"),
       },
       ...baseAliases,
     ],
