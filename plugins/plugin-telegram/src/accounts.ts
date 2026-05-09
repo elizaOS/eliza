@@ -1,6 +1,6 @@
-import type { IAgentRuntime } from '@elizaos/core';
+import type { IAgentRuntime } from "@elizaos/core";
 
-export const DEFAULT_ACCOUNT_ID = 'default';
+export const DEFAULT_ACCOUNT_ID = "default";
 
 export interface TelegramAccountConfig {
   name?: string;
@@ -35,7 +35,7 @@ export interface ResolvedTelegramAccount {
 }
 
 function readNonEmptyString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 export function normalizeTelegramAccountId(accountId?: string | null): string {
@@ -59,7 +59,7 @@ export function getTelegramMultiAccountConfig(
 
 export function listTelegramAccountIds(runtime: IAgentRuntime): string[] {
   const accounts = getTelegramMultiAccountConfig(runtime).accounts;
-  if (!accounts || typeof accounts !== 'object') {
+  if (!accounts || typeof accounts !== "object") {
     return [DEFAULT_ACCOUNT_ID];
   }
   const ids = Object.keys(accounts).filter(Boolean);
@@ -82,7 +82,7 @@ function getAccountConfig(
   accountId: string,
 ): TelegramAccountConfig | undefined {
   const accounts = getTelegramMultiAccountConfig(runtime).accounts;
-  return accounts && typeof accounts === 'object'
+  return accounts && typeof accounts === "object"
     ? accounts[accountId]
     : undefined;
 }
@@ -100,7 +100,7 @@ function resolveTelegramBotToken(
     return undefined;
   }
   return (
-    readNonEmptyString(runtime.getSetting('TELEGRAM_BOT_TOKEN')) ??
+    readNonEmptyString(runtime.getSetting("TELEGRAM_BOT_TOKEN")) ??
     readNonEmptyString(process.env.TELEGRAM_BOT_TOKEN)
   );
 }
@@ -120,9 +120,9 @@ export function resolveTelegramAccount(
   };
   const apiRoot =
     readNonEmptyString(merged.apiRoot) ??
-    readNonEmptyString(runtime.getSetting('TELEGRAM_API_ROOT')) ??
+    readNonEmptyString(runtime.getSetting("TELEGRAM_API_ROOT")) ??
     readNonEmptyString(process.env.TELEGRAM_API_ROOT) ??
-    'https://api.telegram.org';
+    "https://api.telegram.org";
 
   return {
     accountId: normalizedAccountId,

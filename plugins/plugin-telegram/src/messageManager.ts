@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import {
   ChannelType,
   type Content,
@@ -13,28 +14,27 @@ import {
   ModelType,
   ServiceType,
   type UUID,
-} from '@elizaos/core';
+} from "@elizaos/core";
 import type {
   Chat,
   Document,
   Message,
   ReactionType,
   Update,
-} from '@telegraf/types';
-import fs from 'node:fs';
-import type { Context, NarrowedContext, Telegraf } from 'telegraf';
-import { Markup } from 'telegraf';
+} from "@telegraf/types";
+import type { Context, NarrowedContext, Telegraf } from "telegraf";
+import { Markup } from "telegraf";
 import {
   type TelegramContent,
   TelegramEventTypes,
-  type TelegramReactionReceivedPayload,
   type TelegramMessageSentPayload,
-} from './types';
+  type TelegramReactionReceivedPayload,
+} from "./types";
 import {
   cleanText,
   convertMarkdownToTelegram,
   convertToTelegramButtons,
-} from './utils';
+} from "./utils";
 
 /**
  * Interface for structured document processing results.
@@ -55,11 +55,11 @@ interface DocumentProcessingResult {
  * @readonly
  */
 export enum MediaType {
-  PHOTO = 'photo',
-  VIDEO = 'video',
-  DOCUMENT = 'document',
-  AUDIO = 'audio',
-  ANIMATION = 'animation',
+  PHOTO = "photo",
+  VIDEO = "video",
+  DOCUMENT = "document",
+  AUDIO = "audio",
+  ANIMATION = "animation",
 }
 
 const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
@@ -79,11 +79,11 @@ const getChannelType = (chat: Chat): ChannelType => {
 
   // Use a switch statement for clarity and exhaustive checks
   switch (chatType) {
-    case 'private':
+    case "private":
       return ChannelType.DM;
-    case 'group':
-    case 'supergroup':
-    case 'channel':
+    case "group":
+    case "supergroup":
+    case "channel":
       return ChannelType.GROUP;
     default:
       throw new Error(`Unrecognized Telegram chat type: ${String(chatType)}`);
@@ -108,7 +108,7 @@ export class MessageManager {
   constructor(
     bot: Telegraf<Context>,
     runtime: IAgentRuntime,
-    accountId = 'default',
+    accountId = "default",
   ) {
     this.bot = bot;
     this.runtime = runtime;
@@ -116,7 +116,7 @@ export class MessageManager {
   }
 
   private scopedTelegramKey(key: string): string {
-    return this.accountId === 'default' ? key : `${this.accountId}:${key}`;
+    return this.accountId === "default" ? key : `${this.accountId}:${key}`;
   }
 
   /**
@@ -133,21 +133,21 @@ export class MessageManager {
 
       logger.debug(
         {
-          src: 'plugin:telegram',
+          src: "plugin:telegram",
           agentId: this.runtime.agentId,
           messageId: message.message_id,
         },
-        'Processing image from message',
+        "Processing image from message",
       );
 
-      if ('photo' in message && message.photo?.length > 0) {
+      if ("photo" in message && message.photo?.length > 0) {
         const photo = message.photo[message.photo.length - 1];
         const fileLink = await this.bot.telegram.getFileLink(photo.file_id);
         imageUrl = fileLink.toString();
       } else if (
-        'document' in message &&
-        message.document?.mime_type?.startsWith('image/') &&
-        !message.document?.mime_type?.startsWith('application/pdf')
+        "document" in message &&
+        message.document?.mime_type?.startsWith("image/") &&
+        !message.document?.mime_type?.startsWith("application/pdf")
       ) {
         const fileLink = await this.bot.telegram.getFileLink(
           message.document.file_id,
@@ -165,11 +165,11 @@ export class MessageManager {
     } catch (error) {
       logger.error(
         {
-          src: 'plugin:telegram',
+          src: "plugin:telegram",
           agentId: this.runtime.agentId,
           error: error instanceof Error ? error.message : String(error),
         },
-        'Error processing image',
+        "Error processing image",
       );
     }
 
@@ -187,7 +187,7 @@ export class MessageManager {
     message: Message,
   ): Promise<DocumentProcessingResult | null> {
     try {
-      if (!('document' in message) || !message.document) {
+      if (!("document" in message) || !message.document) {
         return null;
       }
 
@@ -197,13 +197,13 @@ export class MessageManager {
 
       logger.debug(
         {
-          src: 'plugin:telegram',
+          src: "plugin:telegram",
           agentId: this.runtime.agentId,
           fileName: document.file_name,
           mimeType: document.mime_type,
           fileSize: document.file_size,
         },
-        'Processing document',
+        "Processing document",
       );
 
       // Centralized document processing based on MIME type
@@ -214,21 +214,21 @@ export class MessageManager {
 
       // Generic fallback for unsupported types
       return {
-        title: `Document: ${document.file_name || 'Unknown Document'}`,
-        fullText: '',
-        formattedDescription: `[Document: ${document.file_name || 'Unknown Document'}\nType: ${document.mime_type || 'unknown'}\nSize: ${document.file_size || 0} bytes]`,
-        fileName: document.file_name || 'Unknown Document',
+        title: `Document: ${document.file_name || "Unknown Document"}`,
+        fullText: "",
+        formattedDescription: `[Document: ${document.file_name || "Unknown Document"}\nType: ${document.mime_type || "unknown"}\nSize: ${document.file_size || 0} bytes]`,
+        fileName: document.file_name || "Unknown Document",
         mimeType: document.mime_type,
         fileSize: document.file_size,
       };
     } catch (error) {
       logger.error(
         {
-          src: 'plugin:telegram',
+          src: "plugin:telegram",
           agentId: this.runtime.agentId,
           error: error instanceof Error ? error.message : String(error),
         },
-        'Error processing document',
+        "Error processing document",
       );
       return null;
     }
@@ -247,9 +247,9 @@ export class MessageManager {
     }
 
     const processors = {
-      'application/pdf': this.processPdfDocument.bind(this),
-      'text/': this.processTextDocument.bind(this), // covers text/plain, text/csv, text/markdown, etc.
-      'application/json': this.processTextDocument.bind(this),
+      "application/pdf": this.processPdfDocument.bind(this),
+      "text/": this.processTextDocument.bind(this), // covers text/plain, text/csv, text/markdown, etc.
+      "application/json": this.processTextDocument.bind(this),
     };
 
     for (const [pattern, processor] of Object.entries(processors)) {
@@ -274,14 +274,14 @@ export class MessageManager {
       ) as PdfTextService | null;
       if (!pdfService) {
         logger.warn(
-          { src: 'plugin:telegram', agentId: this.runtime.agentId },
-          'PDF service not available, using fallback',
+          { src: "plugin:telegram", agentId: this.runtime.agentId },
+          "PDF service not available, using fallback",
         );
         return {
-          title: `PDF Document: ${document.file_name || 'Unknown Document'}`,
-          fullText: '',
-          formattedDescription: `[PDF Document: ${document.file_name || 'Unknown Document'}\nSize: ${document.file_size || 0} bytes\nUnable to extract text content]`,
-          fileName: document.file_name || 'Unknown Document',
+          title: `PDF Document: ${document.file_name || "Unknown Document"}`,
+          fullText: "",
+          formattedDescription: `[PDF Document: ${document.file_name || "Unknown Document"}\nSize: ${document.file_size || 0} bytes\nUnable to extract text content]`,
+          fileName: document.file_name || "Unknown Document",
           mimeType: document.mime_type,
           fileSize: document.file_size,
         };
@@ -297,36 +297,36 @@ export class MessageManager {
 
       logger.debug(
         {
-          src: 'plugin:telegram',
+          src: "plugin:telegram",
           agentId: this.runtime.agentId,
           fileName: document.file_name,
           charactersExtracted: text.length,
         },
-        'PDF processed successfully',
+        "PDF processed successfully",
       );
       return {
-        title: document.file_name || 'Unknown Document',
+        title: document.file_name || "Unknown Document",
         fullText: text,
-        formattedDescription: `[PDF Document: ${document.file_name || 'Unknown Document'}\nSize: ${document.file_size || 0} bytes\nText extracted successfully: ${text.length} characters]`,
-        fileName: document.file_name || 'Unknown Document',
+        formattedDescription: `[PDF Document: ${document.file_name || "Unknown Document"}\nSize: ${document.file_size || 0} bytes\nText extracted successfully: ${text.length} characters]`,
+        fileName: document.file_name || "Unknown Document",
         mimeType: document.mime_type,
         fileSize: document.file_size,
       };
     } catch (error) {
       logger.error(
         {
-          src: 'plugin:telegram',
+          src: "plugin:telegram",
           agentId: this.runtime.agentId,
           fileName: document.file_name,
           error: error instanceof Error ? error.message : String(error),
         },
-        'Error processing PDF document',
+        "Error processing PDF document",
       );
       return {
-        title: `PDF Document: ${document.file_name || 'Unknown Document'}`,
-        fullText: '',
-        formattedDescription: `[PDF Document: ${document.file_name || 'Unknown Document'}\nSize: ${document.file_size || 0} bytes\nError: Unable to extract text content]`,
-        fileName: document.file_name || 'Unknown Document',
+        title: `PDF Document: ${document.file_name || "Unknown Document"}`,
+        fullText: "",
+        formattedDescription: `[PDF Document: ${document.file_name || "Unknown Document"}\nSize: ${document.file_size || 0} bytes\nError: Unable to extract text content]`,
+        fileName: document.file_name || "Unknown Document",
         mimeType: document.mime_type,
         fileSize: document.file_size,
       };
@@ -350,36 +350,36 @@ export class MessageManager {
 
       logger.debug(
         {
-          src: 'plugin:telegram',
+          src: "plugin:telegram",
           agentId: this.runtime.agentId,
           fileName: document.file_name,
           charactersExtracted: text.length,
         },
-        'Text document processed successfully',
+        "Text document processed successfully",
       );
       return {
-        title: document.file_name || 'Unknown Document',
+        title: document.file_name || "Unknown Document",
         fullText: text,
-        formattedDescription: `[Text Document: ${document.file_name || 'Unknown Document'}\nSize: ${document.file_size || 0} bytes\nText extracted successfully: ${text.length} characters]`,
-        fileName: document.file_name || 'Unknown Document',
+        formattedDescription: `[Text Document: ${document.file_name || "Unknown Document"}\nSize: ${document.file_size || 0} bytes\nText extracted successfully: ${text.length} characters]`,
+        fileName: document.file_name || "Unknown Document",
         mimeType: document.mime_type,
         fileSize: document.file_size,
       };
     } catch (error) {
       logger.error(
         {
-          src: 'plugin:telegram',
+          src: "plugin:telegram",
           agentId: this.runtime.agentId,
           fileName: document.file_name,
           error: error instanceof Error ? error.message : String(error),
         },
-        'Error processing text document',
+        "Error processing text document",
       );
       return {
-        title: `Text Document: ${document.file_name || 'Unknown Document'}`,
-        fullText: '',
-        formattedDescription: `[Text Document: ${document.file_name || 'Unknown Document'}\nSize: ${document.file_size || 0} bytes\nError: Unable to read content]`,
-        fileName: document.file_name || 'Unknown Document',
+        title: `Text Document: ${document.file_name || "Unknown Document"}`,
+        fullText: "",
+        formattedDescription: `[Text Document: ${document.file_name || "Unknown Document"}\nSize: ${document.file_size || 0} bytes\nError: Unable to read content]`,
+        fileName: document.file_name || "Unknown Document",
         mimeType: document.mime_type,
         fileSize: document.file_size,
       };
@@ -396,18 +396,18 @@ export class MessageManager {
   async processMessage(
     message: Message,
   ): Promise<{ processedContent: string; attachments: Media[] }> {
-    let processedContent = '';
+    let processedContent = "";
     const attachments: Media[] = [];
 
     // Get message text
-    if ('text' in message && message.text) {
+    if ("text" in message && message.text) {
       processedContent = message.text;
-    } else if ('caption' in message && message.caption) {
+    } else if ("caption" in message && message.caption) {
       processedContent = message.caption as string;
     }
 
     // Process documents
-    if ('document' in message && message.document) {
+    if ("document" in message && message.document) {
       const document = message.document;
       const documentInfo = await this.processDocument(message);
 
@@ -431,55 +431,55 @@ export class MessageManager {
             id: document.file_id,
             url: fileLink.toString(),
             title,
-            source: document.mime_type?.startsWith('application/pdf')
-              ? 'PDF'
-              : 'Document',
+            source: document.mime_type?.startsWith("application/pdf")
+              ? "PDF"
+              : "Document",
             description: documentInfo.formattedDescription,
             text: fullText,
           });
           logger.debug(
             {
-              src: 'plugin:telegram',
+              src: "plugin:telegram",
               agentId: this.runtime.agentId,
               fileName: documentInfo.fileName,
             },
-            'Document processed successfully',
+            "Document processed successfully",
           );
         } catch (error) {
           logger.error(
             {
-              src: 'plugin:telegram',
+              src: "plugin:telegram",
               agentId: this.runtime.agentId,
               fileName: documentInfo.fileName,
               error: error instanceof Error ? error.message : String(error),
             },
-            'Error processing document',
+            "Error processing document",
           );
           // Add a fallback attachment even if processing failed
           attachments.push({
             id: document.file_id,
-            url: '',
+            url: "",
             title: `Document: ${documentInfo.fileName}`,
-            source: 'Document',
+            source: "Document",
             description: `Document processing failed: ${documentInfo.fileName}`,
-            text: `Document: ${documentInfo.fileName}\nSize: ${documentInfo.fileSize || 0} bytes\nType: ${documentInfo.mimeType || 'unknown'}`,
+            text: `Document: ${documentInfo.fileName}\nSize: ${documentInfo.fileSize || 0} bytes\nType: ${documentInfo.mimeType || "unknown"}`,
           });
         }
       } else {
         // Add a basic attachment even if documentInfo is null
         attachments.push({
           id: document.file_id,
-          url: '',
-          title: `Document: ${document.file_name || 'Unknown Document'}`,
-          source: 'Document',
-          description: `Document: ${document.file_name || 'Unknown Document'}`,
-          text: `Document: ${document.file_name || 'Unknown Document'}\nSize: ${document.file_size || 0} bytes\nType: ${document.mime_type || 'unknown'}`,
+          url: "",
+          title: `Document: ${document.file_name || "Unknown Document"}`,
+          source: "Document",
+          description: `Document: ${document.file_name || "Unknown Document"}`,
+          text: `Document: ${document.file_name || "Unknown Document"}\nSize: ${document.file_size || 0} bytes\nType: ${document.mime_type || "unknown"}`,
         });
       }
     }
 
     // Process images
-    if ('photo' in message && message.photo?.length > 0) {
+    if ("photo" in message && message.photo?.length > 0) {
       const imageInfo = await this.processImage(message);
       if (imageInfo) {
         const photo = message.photo[message.photo.length - 1];
@@ -487,8 +487,8 @@ export class MessageManager {
         attachments.push({
           id: photo.file_id,
           url: fileLink.toString(),
-          title: 'Image Attachment',
-          source: 'Image',
+          title: "Image Attachment",
+          source: "Image",
           description: imageInfo.description,
           text: imageInfo.description,
         });
@@ -497,12 +497,12 @@ export class MessageManager {
 
     logger.debug(
       {
-        src: 'plugin:telegram',
+        src: "plugin:telegram",
         agentId: this.runtime.agentId,
         hasContent: !!processedContent,
         attachmentsCount: attachments.length,
       },
-      'Message processed',
+      "Message processed",
     );
 
     return { processedContent, attachments };
@@ -525,7 +525,7 @@ export class MessageManager {
     if (content.attachments && content.attachments.length > 0) {
       content.attachments.map(async (attachment: Media) => {
         const typeMap: { [key: string]: MediaType } = {
-          'image/gif': MediaType.ANIMATION,
+          "image/gif": MediaType.ANIMATION,
           image: MediaType.PHOTO,
           doc: MediaType.DOCUMENT,
           video: MediaType.VIDEO,
@@ -556,26 +556,26 @@ export class MessageManager {
       });
       return [];
     } else {
-      const chunks = this.splitMessage(content.text ?? '');
+      const chunks = this.splitMessage(content.text ?? "");
       const sentMessages: Message.TextMessage[] = [];
 
       const telegramButtons = convertToTelegramButtons(content.buttons ?? []);
 
       if (!ctx.chat) {
         logger.error(
-          { src: 'plugin:telegram', agentId: this.runtime.agentId },
-          'sendMessageInChunks: ctx.chat is undefined',
+          { src: "plugin:telegram", agentId: this.runtime.agentId },
+          "sendMessageInChunks: ctx.chat is undefined",
         );
         return [];
       }
-      await ctx.telegram.sendChatAction(ctx.chat.id, 'typing');
+      await ctx.telegram.sendChatAction(ctx.chat.id, "typing");
 
       for (let i = 0; i < chunks.length; i++) {
         const chunk = convertMarkdownToTelegram(chunks[i]);
         if (!ctx.chat) {
           logger.error(
-            { src: 'plugin:telegram', agentId: this.runtime.agentId },
-            'sendMessageInChunks loop: ctx.chat is undefined',
+            { src: "plugin:telegram", agentId: this.runtime.agentId },
+            "sendMessageInChunks loop: ctx.chat is undefined",
           );
           continue;
         }
@@ -588,7 +588,7 @@ export class MessageManager {
                 ? { message_id: replyToMessageId }
                 : undefined,
             message_thread_id: messageThreadId,
-            parse_mode: 'MarkdownV2',
+            parse_mode: "MarkdownV2",
             ...Markup.inlineKeyboard(telegramButtons),
           },
         )) as Message.TextMessage;
@@ -633,7 +633,7 @@ export class MessageManager {
       }
 
       if (!ctx.chat) {
-        throw new Error('sendMedia: ctx.chat is undefined');
+        throw new Error("sendMedia: ctx.chat is undefined");
       }
 
       if (isUrl) {
@@ -649,7 +649,7 @@ export class MessageManager {
 
         try {
           if (!ctx.chat) {
-            throw new Error('sendMedia (file): ctx.chat is undefined');
+            throw new Error("sendMedia (file): ctx.chat is undefined");
           }
           await sendFunction(ctx.chat.id, { source: fileStream }, { caption });
         } finally {
@@ -659,23 +659,23 @@ export class MessageManager {
 
       logger.debug(
         {
-          src: 'plugin:telegram',
+          src: "plugin:telegram",
           agentId: this.runtime.agentId,
           mediaType: type,
           mediaPath,
         },
-        'Media sent successfully',
+        "Media sent successfully",
       );
     } catch (error) {
       logger.error(
         {
-          src: 'plugin:telegram',
+          src: "plugin:telegram",
           agentId: this.runtime.agentId,
           mediaType: type,
           mediaPath,
           error: error instanceof Error ? error.message : String(error),
         },
-        'Failed to send media',
+        "Failed to send media",
       );
       throw error;
     }
@@ -692,12 +692,12 @@ export class MessageManager {
     if (!text) {
       return chunks;
     }
-    let currentChunk = '';
+    let currentChunk = "";
 
-    const lines = text.split('\n');
+    const lines = text.split("\n");
     for (const line of lines) {
       if (currentChunk.length + line.length + 1 <= MAX_MESSAGE_LENGTH) {
-        currentChunk += (currentChunk ? '\n' : '') + line;
+        currentChunk += (currentChunk ? "\n" : "") + line;
       } else {
         if (currentChunk) {
           chunks.push(currentChunk);
@@ -732,14 +732,14 @@ export class MessageManager {
       ) as UUID;
 
       const threadId =
-        'is_topic_message' in message && message.is_topic_message
+        "is_topic_message" in message && message.is_topic_message
           ? message.message_thread_id?.toString()
           : undefined;
 
       if (!ctx.chat) {
         logger.error(
-          { src: 'plugin:telegram', agentId: this.runtime.agentId },
-          'handleMessage: ctx.chat is undefined',
+          { src: "plugin:telegram", agentId: this.runtime.agentId },
+          "handleMessage: ctx.chat is undefined",
         );
         return;
       }
@@ -782,18 +782,18 @@ export class MessageManager {
         entityId,
         roomId,
         roomName:
-          ('title' in chat && typeof chat.title === 'string' && chat.title) ||
-          ('first_name' in chat &&
-            typeof chat.first_name === 'string' &&
+          ("title" in chat && typeof chat.title === "string" && chat.title) ||
+          ("first_name" in chat &&
+            typeof chat.first_name === "string" &&
             chat.first_name) ||
-          ('username' in chat &&
-            typeof chat.username === 'string' &&
+          ("username" in chat &&
+            typeof chat.username === "string" &&
             chat.username) ||
           telegramRoomid,
         userName: ctx.from.username,
         name: ctx.from.first_name,
         userId: telegramUserId as UUID,
-        source: 'telegram',
+        source: "telegram",
         channelId: telegramRoomid,
         type: channelType,
         worldId,
@@ -807,13 +807,13 @@ export class MessageManager {
         agentId: this.runtime.agentId,
         roomId,
         content: {
-          text: cleanedContent || ' ',
+          text: cleanedContent || " ",
           attachments: cleanedAttachments,
-          source: 'telegram',
+          source: "telegram",
           metadata: { accountId: this.accountId },
           channelType,
           inReplyTo:
-            'reply_to_message' in message && message.reply_to_message
+            "reply_to_message" in message && message.reply_to_message
               ? createUniqueUuid(
                   this.runtime,
                   this.scopedTelegramKey(
@@ -823,10 +823,10 @@ export class MessageManager {
               : undefined,
         },
         metadata: {
-          type: 'message',
-          source: 'telegram',
+          type: "message",
+          source: "telegram",
           accountId: this.accountId,
-          provider: 'telegram',
+          provider: "telegram",
           timestamp: message.date * 1000,
           entityName: ctx.from.first_name,
           entityUserName: ctx.from.username,
@@ -848,7 +848,7 @@ export class MessageManager {
           },
           telegramUserId,
           telegramChatId,
-        } as unknown as Memory['metadata'],
+        } as unknown as Memory["metadata"],
         createdAt: message.date * 1000,
       };
 
@@ -865,7 +865,7 @@ export class MessageManager {
 
           let sentMessages: boolean | Message.TextMessage[] = false;
           // channelType target === 'telegram'
-          if (content?.channelType === 'DM') {
+          if (content?.channelType === "DM") {
             sentMessages = [];
             if (ctx.from) {
               // FIXME split on 4096 chars
@@ -901,17 +901,17 @@ export class MessageManager {
               roomId,
               content: {
                 ...content,
-                source: 'telegram',
+                source: "telegram",
                 text: sentMessage.text,
                 inReplyTo: messageId,
                 channelType,
                 metadata: { accountId: this.accountId },
               },
               metadata: {
-                type: 'message',
-                source: 'telegram',
+                type: "message",
+                source: "telegram",
                 accountId: this.accountId,
-                provider: 'telegram',
+                provider: "telegram",
                 timestamp: sentMessage.date * 1000,
                 fromBot: true,
                 fromId: this.runtime.agentId,
@@ -924,11 +924,11 @@ export class MessageManager {
                   messageId: sentMessage.message_id.toString(),
                   threadId,
                 },
-              } as unknown as Memory['metadata'],
+              } as unknown as Memory["metadata"],
               createdAt: sentMessage.date * 1000,
             };
 
-            await this.runtime.createMemory(responseMemory, 'messages');
+            await this.runtime.createMemory(responseMemory, "messages");
             memories.push(responseMemory);
           }
 
@@ -936,11 +936,11 @@ export class MessageManager {
         } catch (error) {
           logger.error(
             {
-              src: 'plugin:telegram',
+              src: "plugin:telegram",
               agentId: this.runtime.agentId,
               error: error instanceof Error ? error.message : String(error),
             },
-            'Error in message callback',
+            "Error in message callback",
           );
           return [];
         }
@@ -950,31 +950,31 @@ export class MessageManager {
       // auto-generates a reply when TELEGRAM_AUTO_REPLY is explicitly enabled —
       // default-off prevents the runtime from speaking on the user's behalf.
       const telegramAutoReplyRaw = this.runtime.getSetting(
-        'TELEGRAM_AUTO_REPLY',
+        "TELEGRAM_AUTO_REPLY",
       );
       const telegramAutoReply =
         !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
-        (telegramAutoReplyRaw === true || telegramAutoReplyRaw === 'true');
+        (telegramAutoReplyRaw === true || telegramAutoReplyRaw === "true");
 
       if (!telegramAutoReply) {
         try {
-          await this.runtime.createMemory(memory, 'messages');
+          await this.runtime.createMemory(memory, "messages");
         } catch (persistError) {
           logger.warn(
             {
-              src: 'plugin:telegram',
+              src: "plugin:telegram",
               agentId: this.runtime.agentId,
               error:
                 persistError instanceof Error
                   ? persistError.message
                   : String(persistError),
             },
-            'Failed to persist inbound memory while auto-reply is disabled',
+            "Failed to persist inbound memory while auto-reply is disabled",
           );
         }
         logger.debug(
-          { src: 'plugin:telegram', agentId: this.runtime.agentId },
-          'Auto-reply disabled (TELEGRAM_AUTO_REPLY=false); message ingested without response',
+          { src: "plugin:telegram", agentId: this.runtime.agentId },
+          "Auto-reply disabled (TELEGRAM_AUTO_REPLY=false); message ingested without response",
         );
       } else if (this.runtime.messageService) {
         await this.runtime.messageService.handleMessage(
@@ -984,24 +984,24 @@ export class MessageManager {
         );
       } else {
         logger.error(
-          { src: 'plugin:telegram', agentId: this.runtime.agentId },
-          'Message service is not available',
+          { src: "plugin:telegram", agentId: this.runtime.agentId },
+          "Message service is not available",
         );
         throw new Error(
-          'Message service is not initialized. Ensure the message service is properly configured.',
+          "Message service is not initialized. Ensure the message service is properly configured.",
         );
       }
     } catch (error) {
       logger.error(
         {
-          src: 'plugin:telegram',
+          src: "plugin:telegram",
           agentId: this.runtime.agentId,
           chatId: ctx.chat?.id,
           messageId: ctx.message?.message_id,
           from: ctx.from?.username || ctx.from?.id,
           error: error instanceof Error ? error.message : String(error),
         },
-        'Error handling Telegram message',
+        "Error handling Telegram message",
       );
       throw error;
     }
@@ -1058,8 +1058,8 @@ export class MessageManager {
         roomId,
         content: {
           channelType: getChannelType(reaction.chat as Chat),
-          text: `Reacted with: ${reactionType === 'emoji' ? reactionEmoji : reactionType}`,
-          source: 'telegram',
+          text: `Reacted with: ${reactionType === "emoji" ? reactionEmoji : reactionType}`,
+          source: "telegram",
           inReplyTo: createUniqueUuid(
             this.runtime,
             this.scopedTelegramKey(reaction.message_id.toString()),
@@ -1067,16 +1067,16 @@ export class MessageManager {
           metadata: { accountId: this.accountId },
         },
         metadata: {
-          type: 'reaction',
-          source: 'telegram',
+          type: "reaction",
+          source: "telegram",
           accountId: this.accountId,
-          provider: 'telegram',
+          provider: "telegram",
           telegram: {
             accountId: this.accountId,
             chatId: reaction.chat.id.toString(),
             messageId: reaction.message_id.toString(),
           },
-        } as unknown as Memory['metadata'],
+        } as unknown as Memory["metadata"],
         createdAt: Date.now(),
       };
 
@@ -1084,7 +1084,7 @@ export class MessageManager {
       const callback: HandlerCallback = async (content: Content) => {
         try {
           // Add null check for content.text
-          const replyText = content.text ?? '';
+          const replyText = content.text ?? "";
           const sentMessage = await ctx.reply(replyText);
           const responseMemory: Memory = {
             id: createUniqueUuid(
@@ -1100,22 +1100,22 @@ export class MessageManager {
               metadata: { accountId: this.accountId },
             },
             metadata: {
-              type: 'message',
-              source: 'telegram',
+              type: "message",
+              source: "telegram",
               accountId: this.accountId,
-              provider: 'telegram',
-            } as unknown as Memory['metadata'],
+              provider: "telegram",
+            } as unknown as Memory["metadata"],
             createdAt: sentMessage.date * 1000,
           };
           return [responseMemory];
         } catch (error) {
           logger.error(
             {
-              src: 'plugin:telegram',
+              src: "plugin:telegram",
               agentId: this.runtime.agentId,
               error: error instanceof Error ? error.message : String(error),
             },
-            'Error in reaction callback',
+            "Error in reaction callback",
           );
           return [];
         }
@@ -1126,12 +1126,12 @@ export class MessageManager {
         runtime: this.runtime,
         message: memory,
         callback,
-        source: 'telegram',
+        source: "telegram",
         accountId: this.accountId,
         metadata: { accountId: this.accountId },
         ctx,
         originalMessage: originalMessagePlaceholder as Message, // Cast needed due to placeholder
-        reactionString: reactionType === 'emoji' ? reactionEmoji : reactionType,
+        reactionString: reactionType === "emoji" ? reactionEmoji : reactionType,
         originalReaction: reaction.new_reaction[0] as ReactionType,
       } as TelegramReactionReceivedPayload);
 
@@ -1140,22 +1140,22 @@ export class MessageManager {
         runtime: this.runtime,
         message: memory,
         callback,
-        source: 'telegram',
+        source: "telegram",
         accountId: this.accountId,
         metadata: { accountId: this.accountId },
         ctx,
         originalMessage: originalMessagePlaceholder as Message, // Cast needed due to placeholder
-        reactionString: reactionType === 'emoji' ? reactionEmoji : reactionType,
+        reactionString: reactionType === "emoji" ? reactionEmoji : reactionType,
         originalReaction: reaction.new_reaction[0] as ReactionType,
       } as TelegramReactionReceivedPayload);
     } catch (error) {
       logger.error(
         {
-          src: 'plugin:telegram',
+          src: "plugin:telegram",
           agentId: this.runtime.agentId,
           error: error instanceof Error ? error.message : String(error),
         },
-        'Error handling reaction',
+        "Error handling reaction",
       );
     }
   }
@@ -1204,7 +1204,7 @@ export class MessageManager {
       const memories: Memory[] = [];
       const contentMetadata =
         content.metadata &&
-        typeof content.metadata === 'object' &&
+        typeof content.metadata === "object" &&
         !Array.isArray(content.metadata)
           ? content.metadata
           : {};
@@ -1220,14 +1220,14 @@ export class MessageManager {
           content: {
             ...content,
             text: sentMessage.text,
-            source: 'telegram',
+            source: "telegram",
             metadata: { ...contentMetadata, accountId: this.accountId },
             channelType: getChannelType({
               id:
-                typeof chatId === 'string'
+                typeof chatId === "string"
                   ? Number.parseInt(chatId, 10)
                   : chatId,
-              type: 'private', // Default to private, will be overridden if in context
+              type: "private", // Default to private, will be overridden if in context
             } as Chat),
             ...(messageThreadId
               ? {
@@ -1240,10 +1240,10 @@ export class MessageManager {
               : {}),
           },
           metadata: {
-            type: 'message',
-            source: 'telegram',
+            type: "message",
+            source: "telegram",
             accountId: this.accountId,
-            provider: 'telegram',
+            provider: "telegram",
             fromBot: true,
             fromId: this.runtime.agentId,
             sourceId: this.runtime.agentId,
@@ -1254,11 +1254,11 @@ export class MessageManager {
               messageId: sentMessage.message_id.toString(),
               threadId: messageThreadId?.toString(),
             },
-          } as unknown as Memory['metadata'],
+          } as unknown as Memory["metadata"],
           createdAt: sentMessage.date * 1000,
         };
 
-        await this.runtime.createMemory(memory, 'messages');
+        await this.runtime.createMemory(memory, "messages");
         memories.push(memory);
       }
 
@@ -1268,7 +1268,7 @@ export class MessageManager {
         this.runtime.emitEvent(EventType.MESSAGE_SENT, {
           runtime: this.runtime,
           message: firstMemory,
-          source: 'telegram',
+          source: "telegram",
           accountId: this.accountId,
           metadata: { accountId: this.accountId },
         } as MessagePayload & {
@@ -1279,7 +1279,7 @@ export class MessageManager {
         // Also emit platform-specific event
         const telegramMessageSentPayload = {
           runtime: this.runtime,
-          source: 'telegram',
+          source: "telegram",
           accountId: this.accountId,
           metadata: { accountId: this.accountId },
           originalMessages: sentMessages,
@@ -1299,12 +1299,12 @@ export class MessageManager {
     } catch (error) {
       logger.error(
         {
-          src: 'plugin:telegram',
+          src: "plugin:telegram",
           agentId: this.runtime.agentId,
           chatId,
           error: error instanceof Error ? error.message : String(error),
         },
-        'Error sending message to Telegram',
+        "Error sending message to Telegram",
       );
       return [];
     }
