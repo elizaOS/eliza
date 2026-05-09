@@ -14,7 +14,6 @@ import {
 
 type RuntimeAction = NonNullable<Plugin["actions"]>[number];
 type RuntimeProvider = NonNullable<Plugin["providers"]>[number];
-type RuntimeEvaluator = NonNullable<Plugin["evaluators"]>[number];
 type RuntimeRoute = NonNullable<Plugin["routes"]>[number];
 type RuntimeServiceClass = NonNullable<Plugin["services"]>[number];
 type RuntimeEventHandler = PluginEventRegistration["handler"];
@@ -351,7 +350,6 @@ function createEmptyOwnership(plugin: Plugin): PluginOwnership {
 		registeredPlugin: null,
 		actions: [],
 		providers: [],
-		evaluators: [],
 		routes: [],
 		events: [],
 		models: [],
@@ -555,7 +553,6 @@ function removeOwnedComponents(
 ): void {
 	removeArrayItemsByReference(runtime.actions, ownership.actions);
 	removeArrayItemsByReference(runtime.providers, ownership.providers);
-	removeArrayItemsByReference(runtime.evaluators, ownership.evaluators);
 }
 
 async function restoreAdapterIfNeeded(
@@ -683,8 +680,6 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		runtimeWithLifecycle.registerAction.bind(runtimeWithLifecycle);
 	const originalRegisterProvider =
 		runtimeWithLifecycle.registerProvider.bind(runtimeWithLifecycle);
-	const originalRegisterEvaluator =
-		runtimeWithLifecycle.registerEvaluator.bind(runtimeWithLifecycle);
 	const originalRegisterModel =
 		runtimeWithLifecycle.registerModel.bind(runtimeWithLifecycle);
 	const originalRegisterEvent =
@@ -734,19 +729,6 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 			pushUniqueRef(capture.ownership.providers, registeredProvider);
 		}
 	}) as typeof runtimeWithLifecycle.registerProvider;
-
-	runtimeWithLifecycle.registerEvaluator = ((evaluator: RuntimeEvaluator) => {
-		const capture = pluginRegistrationContext.getStore();
-		const evaluatorsBefore = runtimeWithLifecycle.evaluators.length;
-		originalRegisterEvaluator(evaluator);
-		if (!capture || runtimeWithLifecycle.evaluators.length <= evaluatorsBefore)
-			return;
-		for (const registeredEvaluator of runtimeWithLifecycle.evaluators.slice(
-			evaluatorsBefore,
-		)) {
-			pushUniqueRef(capture.ownership.evaluators, registeredEvaluator);
-		}
-	}) as typeof runtimeWithLifecycle.registerEvaluator;
 
 	runtimeWithLifecycle.registerModel = ((
 		modelType,
@@ -882,7 +864,6 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 				capture.ownership.registeredPlugin ||
 				capture.ownership.actions.length > 0 ||
 				capture.ownership.providers.length > 0 ||
-				capture.ownership.evaluators.length > 0 ||
 				capture.ownership.routes.length > 0 ||
 				capture.ownership.events.length > 0 ||
 				capture.ownership.models.length > 0 ||

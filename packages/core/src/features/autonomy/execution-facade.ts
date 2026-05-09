@@ -202,7 +202,8 @@ export async function runAutonomyPostResponse(
 		}
 	}
 
-	// WHY: didRespond gates some evaluators; autonomy "responded" when there is text or non-IGNORE actions.
+	// WHY: didRespond gates ALWAYS_AFTER hook actions; autonomy "responded"
+	// when there is text or non-IGNORE actions.
 	const didRespond =
 		(typeof responseContent.text === "string" &&
 			responseContent.text.trim().length > 0) ||
@@ -211,29 +212,10 @@ export async function runAutonomyPostResponse(
 			responseContent.actions[0]?.toUpperCase() !== "IGNORE" &&
 			responseContent.actions[0]?.toUpperCase() !== "STOP");
 
-	await runtime.evaluate(
-		autonomousMessage,
-		state,
+	await runtime.runActionsByMode("ALWAYS_AFTER", autonomousMessage, state, {
 		didRespond,
-		async (content) => {
-			runtime.logger.debug(
-				{ src: "autonomy:facade", content },
-				"Autonomy evaluate callback",
-			);
-			if (callback) {
-				await runtime.applyPipelineHooks(
-					"outgoing_before_deliver",
-					outgoingPipelineHookContext(content, {
-						source: "autonomy_evaluate",
-						roomId: autonomousMessage.roomId,
-						message: autonomousMessage,
-						responseId: content.responseId,
-					}),
-				);
-				return callback(content);
-			}
-			return [];
-		},
-		responseMessages,
-	);
+		responses: responseMessages,
+	});
+	void callback;
+	void outgoingPipelineHookContext;
 }

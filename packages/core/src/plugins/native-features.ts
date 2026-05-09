@@ -6,6 +6,8 @@ import {
 	factExtractorAction,
 	reflectionAction,
 	relationshipExtractionAction,
+	skillExtractionAction,
+	skillRefinementAction,
 } from "../features/advanced-capabilities/evaluators/index";
 import {
 	contactsProvider,
@@ -52,6 +54,8 @@ export const relationshipsPlugin: Plugin = {
 		// ALWAYS_AFTER actions (post-message work; replaces legacy evaluators).
 		factExtractorAction,
 		reflectionAction,
+		skillExtractionAction,
+		skillRefinementAction,
 		// ALWAYS_BEFORE actions (pre-Stage 1 heuristics; runs even on IGNORE/STOP).
 		relationshipExtractionAction,
 	],
@@ -61,7 +65,6 @@ export const relationshipsPlugin: Plugin = {
 		followUpsProvider,
 		relationshipsProvider,
 	],
-	evaluators: [],
 	services: [RelationshipsService, FollowUpService],
 };
 

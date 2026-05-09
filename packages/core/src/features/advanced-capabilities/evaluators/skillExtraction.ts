@@ -21,13 +21,12 @@ import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { logger } from "../../../logger.ts";
 import type {
+	Action,
 	ActionResult,
-	EvaluationExample,
-	Evaluator,
 	IAgentRuntime,
 	Memory,
 } from "../../../types/index.ts";
-import { ModelType } from "../../../types/index.ts";
+import { ActionMode, ModelType } from "../../../types/index.ts";
 import { MemoryType } from "../../../types/memory.ts";
 import { resolveStateDir } from "../../../utils/state-dir.ts";
 import {
@@ -213,12 +212,13 @@ async function emitSkillNotice(
 	}
 }
 
-export const skillExtractionEvaluator: Evaluator = {
+export const skillExtractionAction: Action = {
 	name: EVAL_NAME,
 	description: EVAL_DESCRIPTION,
 	similes: [],
-	alwaysRun: false,
-	examples: [] as EvaluationExample[],
+	mode: ActionMode.ALWAYS_AFTER,
+	modePriority: 200,
+	examples: [],
 
 	validate: async (
 		runtime: IAgentRuntime,

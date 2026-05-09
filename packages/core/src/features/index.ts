@@ -7,18 +7,18 @@
  * - `enableSecretsManager: true` / `ENABLE_SECRETS_MANAGER` — encrypted secrets, plugin activation
  * - `enablePluginManager: true` / `ENABLE_PLUGIN_MANAGER` — plugin introspection, install/eject
  *
- * Actions, providers, and evaluators are populated eagerly from each capability's
- * index so they are registered with the runtime alongside the lazy-started services.
+ * Actions and providers are populated eagerly from each capability's index so
+ * they are registered with the runtime alongside the lazy-started services.
  */
 
-import type { Action, Evaluator, Provider } from "../types/index.ts";
+import type { Action, Provider } from "../types/index.ts";
 import type { ServiceClass } from "../types/plugin.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 
 // ─── Trust ────────────────────────────────────────────────────────────────────
 
 // Eagerly import trust components so they are available to the runtime's
-// action planner, provider composition, and evaluator loop.
+// action planner and provider composition.
 import {
 	evaluateTrustAction,
 	recordTrustInteractionAction,
@@ -47,7 +47,6 @@ const trustCapability = {
 		evaluateTrustAction,
 		requestElevationAction,
 	] as Action[],
-	evaluators: [] as Evaluator[],
 	services: [
 		{
 			serviceType: "trust-engine",

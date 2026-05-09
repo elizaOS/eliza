@@ -1,15 +1,11 @@
 import {
 	allActionDocs,
-	allEvaluatorDocs,
 	allProviderDocs,
 } from "./generated/action-docs.ts";
 import type {
 	Action,
-	ActionExample,
 	ActionParameter,
 	ActionParameterSchema,
-	EvaluationExample,
-	Evaluator,
 	JsonValue,
 	Provider,
 } from "./types/index.ts";
@@ -195,77 +191,3 @@ export function withCanonicalProviderDocsAll(
 	return providers.map(withCanonicalProviderDocs);
 }
 
-type EvaluatorDocByName = Record<string, (typeof allEvaluatorDocs)[number]>;
-
-const coreEvaluatorDocByName: EvaluatorDocByName =
-	allEvaluatorDocs.reduce<EvaluatorDocByName>((acc, doc) => {
-		acc[doc.name] = doc;
-		return acc;
-	}, {});
-
-function toEvaluationExample(
-	ex: NonNullable<(typeof allEvaluatorDocs)[number]["examples"]>[number],
-): EvaluationExample {
-	const messages: ActionExample[] = (ex.messages ?? []).map((m) => ({
-		name: m.name,
-		content: {
-			text: m.content.text,
-			type: m.content.type,
-		},
-	}));
-
-	return {
-		prompt: ex.prompt,
-		messages,
-		outcome: ex.outcome,
-	};
-}
-
-/**
- * Merge canonical docs (description/similes/examples) into an evaluator definition.
- *
- * This is additive and intentionally conservative:
- * - does not overwrite an existing evaluator.description
- * - does not overwrite existing evaluator.similes
- * - does not overwrite existing evaluator.examples (when non-empty)
- */
-export function withCanonicalEvaluatorDocs(evaluator: Evaluator): Evaluator {
-	const doc = coreEvaluatorDocByName[evaluator.name];
-	const description = evaluator.description || doc?.description || "";
-	const descriptionCompressed = resolveCompressedDescription(
-		evaluator,
-		description,
-		doc,
-	);
-
-	if (!doc) {
-		return {
-			...evaluator,
-			descriptionCompressed,
-		};
-	}
-
-	const examples =
-		evaluator.examples && evaluator.examples.length > 0
-			? evaluator.examples
-			: (doc.examples ?? []).map(toEvaluationExample);
-
-	return {
-		...evaluator,
-		description: evaluator.description || doc.description,
-		descriptionCompressed,
-		similes:
-			evaluator.similes && evaluator.similes.length > 0
-				? evaluator.similes
-				: doc.similes
-					? [...doc.similes]
-					: undefined,
-		examples,
-	};
-}
-
-export function withCanonicalEvaluatorDocsAll(
-	evaluators: readonly Evaluator[],
-): Evaluator[] {
-	return evaluators.map(withCanonicalEvaluatorDocs);
-}

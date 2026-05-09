@@ -1,8 +1,8 @@
 import { requireEvaluatorSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import {
-	type EvaluationExample,
-	type Evaluator,
+	type Action,
+	ActionMode,
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
@@ -109,12 +109,13 @@ function parseSummaryResponse(text: string): SummaryResult {
 	};
 }
 
-export const summarizationEvaluator: Evaluator = {
+export const summarizationAction: Action = {
 	name: spec.name,
 	description: spec.description,
 	similes: spec.similes ? [...spec.similes] : [],
-	alwaysRun: spec.alwaysRun ?? true,
-	examples: (spec.examples ?? []) as EvaluationExample[],
+	mode: ActionMode.ALWAYS_AFTER,
+	modePriority: 400,
+	examples: [],
 
 	validate: async (
 		runtime: IAgentRuntime,

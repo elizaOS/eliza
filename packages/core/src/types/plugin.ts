@@ -1,5 +1,5 @@
 import type { Character } from "./agent";
-import type { Action, AgentContext, Evaluator, Provider } from "./components";
+import type { Action, AgentContext, Provider } from "./components";
 import type { IDatabaseAdapter } from "./database";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { ModelParamsMap, PluginModelResult } from "./model";
@@ -444,7 +444,6 @@ export interface PluginOwnership {
 	registeredPlugin: Plugin | null;
 	actions: Action[];
 	providers: Provider[];
-	evaluators: Evaluator[];
 	routes: Route[];
 	events: PluginEventRegistration[];
 	models: PluginModelRegistration[];
@@ -495,7 +494,6 @@ export interface Plugin {
 	// Optional plugin features
 	actions?: Action[];
 	providers?: Provider[];
-	evaluators?: Evaluator[];
 
 	/**
 	 * Database adapter factory. When set, this plugin provides the database

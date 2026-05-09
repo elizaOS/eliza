@@ -23,7 +23,6 @@ import { v4 } from "uuid";
 import type {
 	Action,
 	ActionResult,
-	Evaluator,
 	IAgentRuntime,
 	Memory,
 	MemoryMetadata,
@@ -911,18 +910,4 @@ export const factExtractorAction: Action = {
 	examples: [],
 	validate: validate as Action["validate"],
 	handler: handler as Action["handler"],
-};
-
-/**
- * Compatibility evaluator export for registrations that still consume the
- * evaluator shape. New code should register `factExtractorAction`.
- */
-export const factExtractorEvaluator: Evaluator = {
-	name: "FACT_EXTRACTOR",
-	description: factExtractorAction.description,
-	similes: ["EXTRACT_FACTS", "FACT_CLASSIFIER", "FACT_OPS"],
-	alwaysRun: false,
-	examples: [],
-	validate,
-	handler,
 };

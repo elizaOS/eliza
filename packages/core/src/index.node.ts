@@ -32,16 +32,15 @@ export {
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
-// Keep evaluator runtime symbols explicit in the node entrypoint. Bun has
+// Keep post-message hook actions explicit in the node entrypoint. Bun has
 // dropped some of these when they were only re-exported transitively through
 // the basic-capabilities barrel, which leaves dangling exports in dist.
 export {
 	factExtractorAction,
-	factExtractorEvaluator,
 	reflectionAction,
 	relationshipExtractionAction,
-	skillExtractionEvaluator,
-	skillRefinementEvaluator,
+	skillExtractionAction,
+	skillRefinementAction,
 } from "./features/advanced-capabilities/evaluators/index";
 export * from "./features/advanced-memory";
 // Export capabilities and plugin creation

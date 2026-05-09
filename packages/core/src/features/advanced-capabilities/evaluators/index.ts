@@ -1,14 +1,14 @@
 /**
- * Advanced Evaluators
+ * Advanced post-message actions (`mode: ALWAYS_AFTER`).
  *
- * Evaluators for memory and relationship management.
+ * Each one runs after the message pipeline completes — fact extraction,
+ * reflection / task-completion, skill draft + refinement. They were
+ * previously the `Evaluator` plugin component; that type was removed in
+ * favor of `Action` with `mode: ActionMode.ALWAYS_AFTER`.
  */
 
-export {
-	factExtractorAction,
-	factExtractorEvaluator,
-} from "./factExtractor.ts";
+export { factExtractorAction } from "./factExtractor.ts";
 export { reflectionAction } from "./reflection.ts";
 export { relationshipExtractionAction } from "./relationshipExtraction.ts";
-export { skillExtractionEvaluator } from "./skillExtraction.ts";
-export { skillRefinementEvaluator } from "./skillRefinement.ts";
+export { skillExtractionAction } from "./skillExtraction.ts";
+export { skillRefinementAction } from "./skillRefinement.ts";

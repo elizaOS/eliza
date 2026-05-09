@@ -702,9 +702,9 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
 /**
  * Provider names that must NEVER be rendered as text blocks in the v5
  * ContextObject because they're already conveyed through another channel:
- *   - ACTIONS / EVALUATORS / PROVIDERS / ACTION_STATE: meta-listings — the
- *     planner sees actions as native function tools, so a parallel text block
- *     is duplicative and confusing.
+ *   - ACTIONS / PROVIDERS / ACTION_STATE: meta-listings — the planner sees
+ *     actions as native function tools, so a parallel text block is
+ *     duplicative and confusing.
  *   - CHARACTER: already rendered via `staticPrefix.systemPrompt` (which
  *     includes system + bio + role) so the text-block CHARACTER provider
  *     would duplicate the same content.
@@ -717,7 +717,6 @@ const V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS = [
 	"ACTIONS",
 	"ACTION_STATE",
 	"CHARACTER",
-	"EVALUATORS",
 	"PROVIDERS",
 ] as const;
 
@@ -6922,52 +6921,19 @@ export class DefaultMessageService implements IMessageService {
 		// Clean up the response ID
 		clearLatestResponseId(runtime.agentId, message.roomId, responseId);
 
-		// ALWAYS_AFTER (blocking): replaces the legacy evaluator path. Fires
-		// after the response is delivered (or the routing decision is final
-		// for IGNORE/STOP). The legacy `runtime.evaluate()` runs alongside
-		// during the migration; once all evaluators are ported to actions,
-		// the evaluator subsystem will be deleted.
+		// ALWAYS_AFTER (blocking): post-message hook actions fire here, after
+		// the response is delivered (or the routing decision is final for
+		// IGNORE/STOP). This is the canonical way to do post-turn work — the
+		// legacy `Evaluator` plugin component was removed in favor of
+		// `Action` with `mode: ActionMode.ALWAYS_AFTER`.
 		const didRespondGate =
 			shouldRespondToMessage && !isStopResponse(responseContent);
-		const runAlwaysAfterActions = () =>
-			runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
-				didRespond: didRespondGate,
-				responses: responseMessages,
-			});
+		await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
+			didRespond: didRespondGate,
+			responses: responseMessages,
+		});
 
-		const runEvaluate = () =>
-			runtime.evaluate(
-				message,
-				state,
-				didRespondGate,
-				async (content) => {
-					runtime.logger.debug(
-						{ src: "service:message", content },
-						"Evaluate callback",
-					);
-					if (responseContent) {
-						responseContent.evalCallbacks = content;
-					}
-					if (callback) {
-						await runtime.applyPipelineHooks(
-							"outgoing_before_deliver",
-							outgoingPipelineHookContext(content, {
-								source: "evaluate",
-								roomId: message.roomId,
-								message,
-								responseId: content.responseId,
-							}),
-						);
-						return callback(content);
-					}
-					return [];
-				},
-				responseMessages,
-			);
-
-		await Promise.all([runEvaluate(), runAlwaysAfterActions()]);
-
-		// Flush the deferred simple-mode reply after evaluators have had a chance
+		// Flush the deferred simple-mode reply after hooks have had a chance
 		// to attach callbacks. Chaining is handled inside the v5 planner loop.
 		if (pendingSimpleEmit && callback) {
 			await callback(pendingSimpleEmit);
