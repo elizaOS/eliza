@@ -35,8 +35,18 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "workflow",
+        "automation"
+      ]
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc --watch",
@@ -94,6 +104,7 @@
     "node": ">=24.0.0"
   },
   "dependencies": {
+    "@elizaos/shared": "workspace:*",
     "@elizaos/workflows": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "quickjs-emscripten": "0.32.0"

@@ -4,7 +4,7 @@
 // `elizaos.plugin.autoEnableModule`. Keep this module light: env reads only,
 // no service init, no transitive imports of the full plugin runtime. The
 // auto-enable engine loads dozens of these per boot.
-import type { PluginAutoEnableContext } from "@elizaos/shared";
+import type { PluginAutoEnableContext } from "@elizaos/core";
 
 /** Enable when an Anthropic / Claude API key is present in the environment. */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {

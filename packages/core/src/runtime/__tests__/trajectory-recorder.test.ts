@@ -219,7 +219,7 @@ describe("JsonFileTrajectoryRecorder", () => {
 		expect(trajectory?.metrics.toolCallFailures).toBe(1);
 	});
 
-	it("counts terminal unsuccessful evaluations as evaluator failures", async () => {
+	it("does not count terminal task failure as evaluator failure", async () => {
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
 		const id = recorder.startTrajectory({
 			agentId: "agent-terminal-fail",
@@ -244,8 +244,38 @@ describe("JsonFileTrajectoryRecorder", () => {
 
 		const trajectory = await recorder.load(id);
 		expect(trajectory).not.toBeNull();
-		expect(trajectory?.metrics.evaluatorFailures).toBe(1);
+		expect(trajectory?.metrics.evaluatorFailures).toBe(0);
 		expect(trajectory?.metrics.finalDecision).toBe("FINISH");
+	});
+
+	it("counts evaluator parse errors as evaluator failures", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-eval-parse-fail",
+			rootMessage: { id: "msg-eval-parse-fail", text: "bad eval output" },
+		});
+
+		await recorder.recordStage(id, {
+			stageId: "stage-eval-parse-fail",
+			kind: "evaluation",
+			iteration: 1,
+			startedAt: 1,
+			endedAt: 2,
+			latencyMs: 1,
+			evaluation: {
+				success: false,
+				decision: "CONTINUE",
+				thought: "Invalid evaluator output: response is not JSON.",
+				parseError: "response is not JSON",
+			},
+		});
+
+		await recorder.endTrajectory(id, "finished");
+
+		const trajectory = await recorder.load(id);
+		expect(trajectory).not.toBeNull();
+		expect(trajectory?.metrics.evaluatorFailures).toBe(1);
+		expect(trajectory?.metrics.finalDecision).toBe("CONTINUE");
 	});
 
 	it("computes costUsd via the price table when usage and modelName are set", async () => {

@@ -612,7 +612,7 @@ describe("v5 stress path — long build, compaction, gates, trajectory export", 
 		expect(trajectory.status).toBe("finished");
 		expect(trajectory.metrics.toolCallsExecuted).toBe(7);
 		expect(trajectory.metrics.toolCallFailures).toBe(1);
-		expect(trajectory.metrics.evaluatorFailures).toBe(1);
+		expect(trajectory.metrics.evaluatorFailures).toBe(0);
 		expect(trajectory.metrics.finalDecision).toBe("FINISH");
 		expect(trajectory.stages.map((stage) => stage.kind)).toContain(
 			"compaction",

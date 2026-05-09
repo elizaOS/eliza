@@ -904,8 +904,8 @@ export function rollupTrajectory(
     if (stage.kind === "evaluation") {
       rollup.evaluatorStages += 1;
       if (
-        stage.evaluation?.success === false &&
-        stage.evaluation.decision === "FINISH"
+        typeof stage.evaluation?.parseError === "string" &&
+        stage.evaluation.parseError.trim().length > 0
       ) {
         rollup.evaluatorFailures += 1;
       }

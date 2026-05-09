@@ -681,7 +681,7 @@ export const elizaHandler: Handler = {
         `[configbench-debug] scenario=${scenario.id} channelType=${room.type} userId=${userId} worldRoles=${JSON.stringify(
           (world as unknown as { metadata?: { roles?: Record<string, string> } })
             .metadata?.roles ?? {},
-        )} actions.count=${actions.length} SET_SECRET=${setSecretPresent}`,
+        )} actions.count=${actions.length} SET_SECRET=${setSecretPresent} actions=${actions.join(",")}`,
       );
       try {
         const rolesMod = (await import("@elizaos/core")) as {

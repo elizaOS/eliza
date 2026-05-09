@@ -1077,25 +1077,6 @@ function createCodeNode(): INodeType {
   };
 }
 
-/**
- * One-way input rewrite: when an upstream n8n workflow JSON is imported, rewrite
- * legacy `n8n-nodes-base.*` node-type strings to canonical `workflows-nodes-base.*`
- * so the persisted form is always our internal shape. No round-trip portability
- * back to upstream n8n — disk holds workflows-nodes-base.* only. langchain nodes
- * are intentionally NOT rewritten.
- */
-function rewriteN8nNodeTypes(workflow: WorkflowDefinition): WorkflowDefinition {
-  if (!workflow.nodes.some((n) => n.type.startsWith('n8n-nodes-base.'))) return workflow;
-  return {
-    ...workflow,
-    nodes: workflow.nodes.map((n) =>
-      n.type.startsWith('n8n-nodes-base.')
-        ? { ...n, type: `workflows-nodes-base.${n.type.slice('n8n-nodes-base.'.length)}` }
-        : n
-    ),
-  };
-}
-
 class EmbeddedNodeTypes implements INodeTypes {
   private readonly nodes = new Map<string, INodeType>();
 
@@ -1316,7 +1297,6 @@ export class EmbeddedWorkflowService extends Service {
   }
 
   async createWorkflow(workflow: WorkflowDefinition): Promise<WorkflowDefinitionResponse> {
-    workflow = rewriteN8nNodeTypes(workflow);
     this.assertRegisteredNodes(workflow);
     await this.ensureSchema();
     const db = this.getDb();
@@ -1340,7 +1320,6 @@ export class EmbeddedWorkflowService extends Service {
     id: string,
     workflow: WorkflowDefinition
   ): Promise<WorkflowDefinitionResponse> {
-    workflow = rewriteN8nNodeTypes(workflow);
     this.assertRegisteredNodes(workflow);
     const existing = await this.getStoredWorkflow(id);
     const db = this.getDb();
