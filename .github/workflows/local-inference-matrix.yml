@@ -72,6 +72,18 @@ jobs:
             target: linux-x64-cpu
             timeout: 90
             continue-on-error: false
+            build_only: false
+            run_if: true
+          - label: "ubuntu-latest vulkan (build-only)"
+            runs-on: ubuntu-latest
+            backend: vulkan
+            target: linux-x64-vulkan
+            timeout: 90
+            continue-on-error: true
+            # GitHub-hosted ubuntu runners have libvulkan1 from mesa but no
+            # Vulkan-capable GPU, so we verify the cross-compile end-to-end
+            # without attempting an ablation run.
+            build_only: true
             run_if: true
           - label: "ubuntu-latest cuda (self-hosted)"
             runs-on: [self-hosted, gpu, cuda]
@@ -79,6 +91,7 @@ jobs:
             target: linux-x64-cuda
             timeout: 120
             continue-on-error: true
+            build_only: false
             run_if: ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'gpu')) || (github.event_name == 'workflow_dispatch' && inputs.run_cuda == true) }}
           - label: "macos-14 metal"
             runs-on: macos-14
@@ -86,6 +99,7 @@ jobs:
             target: darwin-arm64-metal
             timeout: 120
             continue-on-error: true
+            build_only: false
             run_if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_metal == true }}
     steps:
       - name: Checkout
@@ -170,6 +184,7 @@ jobs:
           bun ./scripts/local-inference-smoke.mjs
 
       - name: Download smoke GGUF (cached)
+        if: ${{ !matrix.build_only }}
         run: |
           set -euo pipefail
           MODEL_DIR="${ELIZA_STATE_DIR}/local-inference/models"
@@ -185,6 +200,7 @@ jobs:
           ls -lh "$MODEL_DIR/${SMOKE_MODEL_FILE}"
 
       - name: Run ablation (--quick, gated)
+        if: ${{ !matrix.build_only }}
         env:
           ELIZA_DFLASH_BACKEND: ${{ matrix.backend }}
         run: |
@@ -196,6 +212,25 @@ jobs:
             --quick \
             --gate scripts/local-inference-thresholds.json \
             --out-dir artifacts/local-inference-ablation
+
+      - name: Verify CAPABILITIES.json (build-only)
+        if: ${{ matrix.build_only }}
+        run: |
+          set -euo pipefail
+          CAPS="${ELIZA_STATE_DIR}/local-inference/bin/dflash/${{ matrix.target }}/CAPABILITIES.json"
+          test -f "$CAPS" || { echo "missing CAPABILITIES.json: $CAPS"; exit 1; }
+          cat "$CAPS"
+          # Sanity: make sure the build emitted at least dflash and the
+          # platform-default cache type kernels are reported truthfully.
+          node -e "
+            const c = require(process.argv[1]);
+            const required = ['dflash', 'lookahead', 'ngramDraft'];
+            const missing = required.filter(k => c.kernels[k] !== true);
+            if (missing.length) {
+              console.error('CAPABILITIES.json missing kernels:', missing.join(', '));
+              process.exit(1);
+            }
+          " "$CAPS"
 
       - name: Upload ablation artifact
         if: ${{ always() }}
