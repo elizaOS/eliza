@@ -289,9 +289,10 @@ export async function evaluatePluginManifest(
     enabled,
     force,
     capabilities,
-    reason: enabled
-      ? `manifest: ${candidate.packageName}/${block.autoEnableModule}`
-      : null,
+    reason:
+      enabled || force
+        ? `manifest: ${candidate.packageName}/${block.autoEnableModule}`
+        : null,
     error: null,
   };
 }
@@ -351,7 +352,7 @@ export function applyPluginManifestVerdicts(
       );
       continue;
     }
-    if (!verdict.enabled) continue;
+    if (!verdict.enabled && !verdict.force) continue;
 
     const explicitlyDisabled =
       pluginsConfig.entries[verdict.shortId]?.enabled === false;

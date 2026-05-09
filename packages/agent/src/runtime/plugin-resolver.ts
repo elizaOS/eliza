@@ -28,18 +28,18 @@ import {
   readAppManifest,
 } from "@elizaos/shared";
 
-import { type ElizaConfig, saveElizaConfig } from "../config/config.js";
-import { resolveStateDir, resolveUserPath } from "../config/paths.js";
-import type { PluginInstallRecord } from "../config/types.eliza.js";
-import { diagnoseNoAIProvider } from "../services/version-compat.js";
-import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
+import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
+import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
+import type { PluginInstallRecord } from "../config/types.eliza.ts";
+import { diagnoseNoAIProvider } from "../services/version-compat.ts";
+import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.ts";
 import {
   CHANNEL_PLUGIN_MAP,
   collectPluginNames,
   OPTIONAL_PLUGIN_MAP,
   type PluginLoadReasons,
   resolvePluginPackageAlias,
-} from "./plugin-collector.js";
+} from "./plugin-collector.ts";
 import {
   CUSTOM_PLUGINS_DIRNAME,
   EJECTED_PLUGINS_DIRNAME,
@@ -53,7 +53,7 @@ import {
   resolvePackageEntry,
   STATIC_ELIZA_PLUGINS,
   scanDropInPlugins,
-} from "./plugin-types.js";
+} from "./plugin-types.ts";
 
 const LAST_FAILED_PLUGIN_NAMES = Symbol.for(
   "@elizaos/plugin-resolver/last-failed-plugin-names",
@@ -129,22 +129,22 @@ const SOURCE_STAGED_ROOT_ENTRYPOINTS: Record<
 > = {
   "@elizaos/agent": {
     path: "./src/staged-runtime-index.ts",
-    source: `export { extractActionParamsViaLlm } from "./actions/extract-params.js";
-export { renderGroundedActionReply } from "./actions/grounded-action-reply.js";
-export { extractConversationMetadataFromRoom, isPageScopedConversationMetadata } from "./api/conversation-metadata.js";
-export { handleConnectorAccountRoutes } from "./api/connector-account-routes.js";
-export { checkRateLimit } from "./api/rate-limiter.js";
-export { loadElizaConfig, saveElizaConfig } from "./config/config.js";
-export { loadOwnerContactRoutingHints, loadOwnerContactsConfig, resolveOwnerContactWithFallback } from "./config/owner-contacts.js";
-export { resolveOAuthDir, resolveStateDir } from "./config/paths.js";
-export { createIntegrationTelemetrySpan } from "./diagnostics/integration-observability.js";
-export { getAgentEventService } from "./runtime/agent-event-service.js";
-export { resolveOwnerEntityId } from "./runtime/owner-entity.js";
-export { hasOwnerAccess } from "./security/access.js";
-export { gatePluginSessionForHostedApp } from "./services/app-session-gate.js";
-export { registerEscalationChannel } from "./services/escalation.js";
-export { buildTriggerConfig, buildTriggerMetadata, computeNextCronRunAtMs, normalizeTriggerDraft, parseCronExpression } from "./triggers/scheduling.js";
-export { getTriggerLimit, listTriggerTasks, readTriggerConfig, taskToTriggerSummary, triggersFeatureEnabled, TRIGGER_TASK_NAME, TRIGGER_TASK_TAGS } from "./triggers/runtime.js";
+    source: `export { extractActionParamsViaLlm } from "./actions/extract-params.ts";
+export { renderGroundedActionReply } from "./actions/grounded-action-reply.ts";
+export { extractConversationMetadataFromRoom, isPageScopedConversationMetadata } from "./api/conversation-metadata.ts";
+export { handleConnectorAccountRoutes } from "./api/connector-account-routes.ts";
+export { checkRateLimit } from "./api/rate-limiter.ts";
+export { loadElizaConfig, saveElizaConfig } from "./config/config.ts";
+export { loadOwnerContactRoutingHints, loadOwnerContactsConfig, resolveOwnerContactWithFallback } from "./config/owner-contacts.ts";
+export { resolveOAuthDir, resolveStateDir } from "./config/paths.ts";
+export { createIntegrationTelemetrySpan } from "./diagnostics/integration-observability.ts";
+export { getAgentEventService } from "./runtime/agent-event-service.ts";
+export { resolveOwnerEntityId } from "./runtime/owner-entity.ts";
+export { hasOwnerAccess } from "./security/access.ts";
+export { gatePluginSessionForHostedApp } from "./services/app-session-gate.ts";
+export { registerEscalationChannel } from "./services/escalation.ts";
+export { buildTriggerConfig, buildTriggerMetadata, computeNextCronRunAtMs, normalizeTriggerDraft, parseCronExpression } from "./triggers/scheduling.ts";
+export { getTriggerLimit, listTriggerTasks, readTriggerConfig, taskToTriggerSummary, triggersFeatureEnabled, TRIGGER_TASK_NAME, TRIGGER_TASK_TAGS } from "./triggers/runtime.ts";
 `,
   },
 };
@@ -1124,7 +1124,10 @@ async function stagePluginImportRoot(params: {
     packageRoot: params.packageRoot,
     stagedPackageRoot,
   });
-  if (stageAllHoistedNodeModulesEnabled()) {
+  const shouldLinkHoistedWorkspaceDeps =
+    stageAllHoistedNodeModulesEnabled() ||
+    params.packageName.startsWith("@elizaos/app-");
+  if (shouldLinkHoistedWorkspaceDeps) {
     await linkAncestorNodeModulesIfNeeded({
       installRoot: params.installRoot,
       packageRoot: params.packageRoot,
@@ -1464,7 +1467,8 @@ export async function resolvePlugins(
         // registry is the normal fast path, but use a literal import fallback
         // so Bun can still inline the required SQL plugin if module init order
         // leaves the registry empty.
-        mod = await import("@elizaos/plugin-sql");
+        const sqlPluginModule = await import("@elizaos/plugin-sql");
+        mod = Object.fromEntries(Object.entries(sqlPluginModule));
       } else if (workspaceOverridePath) {
         const shouldPreferRepoNodeModules =
           isOfficialElizaPlugin &&

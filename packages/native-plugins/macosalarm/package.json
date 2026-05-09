@@ -41,7 +41,7 @@
   "scripts": {
     "prepublishOnly": "bun run build",
     "build": "tsc -p tsconfig.json && node scripts/build-helper.mjs",
-    "build:ts": "tsc -p tsconfig.json",
+    "build:ts": "tsc --noCheck -p tsconfig.json",
     "build:helper": "node scripts/build-helper.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",

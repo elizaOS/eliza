@@ -27,13 +27,11 @@
 	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
-		"@elizaos/plugin-capacitor-bridge": "workspace:*",
-		"@elizaos/shared": "workspace:*"
+		"@elizaos/plugin-capacitor-bridge": "workspace:*"
 	},
 	"peerDependencies": {
 		"@elizaos/core": "workspace:*",
-		"@elizaos/plugin-capacitor-bridge": "workspace:*",
-		"@elizaos/shared": "workspace:*"
+		"@elizaos/plugin-capacitor-bridge": "workspace:*"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.14",

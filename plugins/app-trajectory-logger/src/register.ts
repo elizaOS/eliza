@@ -1,8 +1,7 @@
 /**
  * Side-effect entry — registers the Trajectory Logger overlay app.
  *
- * Usage:
- *   import "@elizaos/app-trajectory-logger/register";
+ * Load once during app startup to register the app.
  */
 
 import { registerTrajectoryLoggerApp } from "./components/trajectory-logger-app";

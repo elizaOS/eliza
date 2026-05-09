@@ -42,14 +42,18 @@
   "scripts": {
     "clean": "rm -rf dist",
     "prepublishOnly": "bun run build",
-    "build": "tsc -p tsconfig.build.json",
-    "test": "vitest run",
+    "build": "tsc --noCheck -p tsconfig.build.json",
+    "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@elizaos/app-lifeops": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-agent-skills": "workspace:*",
+    "@elizaos/plugin-local-embedding": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/scenario-schema": "workspace:*"
+    "@elizaos/scenario-schema": "workspace:*",
+    "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

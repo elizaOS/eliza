@@ -10,6 +10,7 @@ import {
   createVectorBrowserRenderer,
   GlobalEmoteOverlay,
   InferenceCloudAlertButton,
+  registerCompanionApp,
   resolveCompanionInferenceNotice,
   THREE,
   useCompanionSceneStatus,
@@ -70,7 +71,6 @@ import {
 } from "@elizaos/ui";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import "@elizaos/app-companion";
 // Side-effect: register LifeOps sidebar widgets + client methods on ElizaClient.
 import "@elizaos/app-lifeops";
 // Side-effect: register coding-agent (task-coordinator) slots so app-core
@@ -110,8 +110,8 @@ import "@elizaos/app-vincent";
 import { useVincentState } from "@elizaos/app-vincent";
 import "@elizaos/app-vincent";
 // Side-effect: register the wallet UI plugin (route loader, /inventory shell
-// page, and chat sidebar wallet-status widget) with @elizaos/app-core
-// registries. Must precede the first shell render.
+// page, and chat sidebar wallet-status widget) with the app shell registries.
+// Must precede the first shell render.
 import "@elizaos/app-wallet";
 import { shouldUseCloudOnlyBranding } from "@elizaos/ui";
 import {
@@ -170,6 +170,8 @@ const APP_BRANDING: Partial<BrandingConfig> = {
     isNativePlatform: Capacitor.isNativePlatform(),
   }),
 };
+
+registerCompanionApp();
 
 /**
  * Platform detection utilities
@@ -353,7 +355,7 @@ async function initializePlatform(): Promise<void> {
 
   if (isDesktopPlatform()) {
     await initializeDesktopShell();
-  } else {
+  } else if (isNative) {
     await initializeAgent();
   }
 }

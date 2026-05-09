@@ -133,7 +133,7 @@ Verification uses public RPC defaults; override per network via runtime settings
 Plugins can register extra presets (e.g. ai16z, BSC) in `init()`:
 
 ```typescript
-import { registerX402Config } from "@elizaos/agent/middleware/x402";
+import { registerX402Config } from "@elizaos/plugin-x402";
 
 registerX402Config("my_token_base", {
   network: "BASE",

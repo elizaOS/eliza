@@ -7,14 +7,14 @@ import {
   handleCloudRelayRoute,
   handleCloudRoute,
 } from "@elizaos/plugin-elizacloud";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
-import { handleChatRoutes } from "./chat-routes.js";
-import { handleConversationRoutes } from "./conversation-routes.js";
-import { handleDatabaseRoute } from "./database.js";
-import { handleInboxRoute } from "./inbox-routes.js";
-import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes.js";
-import type { ServerState } from "./server-types.js";
-import { handleXRelayRoute } from "./x-relay-routes.js";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
+import { handleChatRoutes } from "./chat-routes.ts";
+import { handleConversationRoutes } from "./conversation-routes.ts";
+import { handleDatabaseRoute } from "./database.ts";
+import { handleInboxRoute } from "./inbox-routes.ts";
+import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes.ts";
+import type { ServerState } from "./server-types.ts";
+import { handleXRelayRoute } from "./x-relay-routes.ts";
 
 type ChatRouteArg = Parameters<typeof handleChatRoutes>[0];
 type ConversationRouteArg = Parameters<typeof handleConversationRoutes>[0];

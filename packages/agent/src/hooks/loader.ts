@@ -11,11 +11,11 @@ import { homedir } from "node:os";
 import { resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { logger } from "@elizaos/core";
-import type { InternalHooksConfig } from "../config/types.hooks.js";
-import { type DiscoveryOptions, discoverHooks } from "./discovery.js";
-import { checkEligibility, resolveHookConfig } from "./eligibility.js";
-import { clearHooks, registerHook } from "./registry.js";
-import type { HookHandler } from "./types.js";
+import type { InternalHooksConfig } from "../config/types.hooks.ts";
+import { type DiscoveryOptions, discoverHooks } from "./discovery.ts";
+import { checkEligibility, resolveHookConfig } from "./eligibility.ts";
+import { clearHooks, registerHook } from "./registry.ts";
+import type { HookHandler } from "./types.ts";
 
 // ---------- Path Safety ----------
 

@@ -383,7 +383,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
-		expect(validateAllowed).toHaveBeenCalledTimes(1);
+		expect(validateAllowed).toHaveBeenCalledTimes(2);
 		expect(validateDenied).toHaveBeenCalledTimes(1);
 		const firstPlannerParams = useModelCalls(runtime)[1]?.[1] as {
 			tools?: Array<{ name?: string }>;

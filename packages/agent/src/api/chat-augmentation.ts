@@ -20,14 +20,14 @@ import {
 } from "@elizaos/core";
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
 import { normalizeCharacterLanguage } from "@elizaos/shared";
-import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.js";
-import { extractCompatTextContent } from "./compat-utils.js";
+import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
+import { extractCompatTextContent } from "./compat-utils.ts";
 import {
   type DocumentsServiceLike,
   getDocumentsService,
-} from "./documents-service-loader.js";
-import { getWalletAddresses } from "./wallet.js";
-import { resolvePluginEvmLoaded } from "./wallet-capability.js";
+} from "./documents-service-loader.ts";
+import { getWalletAddresses } from "./wallet.ts";
+import { resolvePluginEvmLoaded } from "./wallet-capability.ts";
 
 type DocumentMatch = Awaited<
   ReturnType<DocumentsServiceLike["searchDocuments"]>

@@ -24,7 +24,7 @@
     "capabilities": [],
     "curatedSlug": "shopify",
     "routePlugin": {
-      "specifier": "@elizaos/app-shopify/plugin",
+      "specifier": "@elizaos/app-shopify",
       "exportName": "shopifyPlugin"
     }
   }

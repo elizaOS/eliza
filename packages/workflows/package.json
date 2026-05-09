@@ -17,7 +17,7 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc --noCheck -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "bun test __tests__",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

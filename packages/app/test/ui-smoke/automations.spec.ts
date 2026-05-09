@@ -48,10 +48,25 @@ type Workflow = {
   >;
 };
 
+type WorkbenchTask = {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  isCompleted: boolean;
+  updatedAt?: number;
+};
+
 type AutomationItem = {
   id: string;
-  type: "coordinator_text" | "workflow_service" | "automation_draft";
-  source: "trigger" | "workflow" | "workflow_shadow";
+  type: "coordinator_text" | "workflow" | "automation_draft";
+  source:
+    | "workbench_task"
+    | "trigger"
+    | "workflow"
+    | "workflow_draft"
+    | "workflow_shadow"
+    | "automation_draft";
   title: string;
   description: string;
   status: "active" | "paused" | "draft";
@@ -60,9 +75,11 @@ type AutomationItem = {
   isDraft: boolean;
   hasBackingWorkflow: boolean;
   updatedAt: string | null;
+  taskId?: string;
   triggerId?: string;
   workflowId?: string;
   draftId?: string;
+  task?: WorkbenchTask;
   trigger?: TriggerSummary;
   workflow?: Workflow;
   schedules: TriggerSummary[];
@@ -85,7 +102,7 @@ type Conversation = {
 };
 
 type AutomationsMockApi = {
-  getCreatedTrigger: () => Record<string, unknown> | null;
+  getCreatedTask: () => Record<string, unknown> | null;
   getCreatedWorkflow: () => Record<string, unknown> | null;
   getGeneratedWorkflow: () => Record<string, unknown> | null;
   getDeletedConversationIds: () => string[];
@@ -144,9 +161,17 @@ function workflowFixture(id: string, name: string, active = true): Workflow {
 }
 
 function eventTaskItem(): AutomationItem {
+  const task: WorkbenchTask = {
+    id: "task-event-message",
+    name: "Message triage",
+    description: "Summarize each inbound message.",
+    tags: ["event:message.received"],
+    isCompleted: false,
+    updatedAt: Date.parse(NOW_ISO),
+  };
   const trigger: TriggerSummary = {
     id: "trigger-event-message",
-    taskId: "task-event-message",
+    taskId: task.id,
     displayName: "Message triage",
     instructions: "Summarize each inbound message.",
     triggerType: "event",
@@ -170,7 +195,9 @@ function eventTaskItem(): AutomationItem {
     isDraft: false,
     hasBackingWorkflow: false,
     updatedAt: NOW_ISO,
+    taskId: task.id,
     triggerId: trigger.id,
+    task,
     trigger,
     schedules: [trigger],
   };
@@ -196,7 +223,7 @@ function workflowItem(workflow: Workflow): AutomationItem {
   };
   return {
     id: `workflow:${workflow.id}`,
-    type: "workflow_service",
+    type: "workflow",
     source: "workflow",
     title: workflow.name,
     description: "",
@@ -223,8 +250,8 @@ function draftWorkflowItem(
 ): AutomationItem {
   return {
     id: `workflow-draft:${draftId}`,
-    type: "workflow_service",
-    source: "workflow_shadow",
+    type: "automation_draft",
+    source: "workflow_draft",
     title: "Draft",
     description: "",
     status: "draft",
@@ -251,7 +278,7 @@ function automationSummary(automations: AutomationItem[]) {
       (item) => item.type !== "workflow_service",
     ).length,
     workflowCount: automations.filter(
-      (item) => item.type === "workflow_service",
+      (item) => item.type === "workflow",
     ).length,
     scheduledCount: automations.reduce(
       (count, item) => count + item.schedules.length,
@@ -268,7 +295,7 @@ async function installAutomationsApi(
   let automations = [...initialAutomations];
   const workflows = new Map<string, Workflow>();
   const conversations = new Map<string, Conversation>();
-  let createdTrigger: Record<string, unknown> | null = null;
+  let createdTask: Record<string, unknown> | null = null;
   let createdWorkflow: Record<string, unknown> | null = null;
   let generatedWorkflow: Record<string, unknown> | null = null;
   const deletedConversationIds: string[] = [];
@@ -306,6 +333,88 @@ async function installAutomationsApi(
       body: JSON.stringify(body),
     });
   };
+
+  await page.route("**/api/workbench/tasks**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname;
+
+    if (request.method() === "GET" && path === "/api/workbench/tasks") {
+      await fulfillJson(route, {
+        tasks: automations.map((item) => item.task).filter(Boolean),
+      });
+      return;
+    }
+
+    if (request.method() === "POST" && path === "/api/workbench/tasks") {
+      createdTask = request.postDataJSON() as Record<string, unknown>;
+      const task: WorkbenchTask = {
+        id: "task-created",
+        name: String(createdTask.name ?? "Created task"),
+        description: String(createdTask.description ?? ""),
+        tags: Array.isArray(createdTask.tags)
+          ? createdTask.tags.map(String)
+          : [],
+        isCompleted: false,
+        updatedAt: Date.parse(NOW_ISO),
+      };
+      automations = [
+        ...automations,
+        {
+          id: `task:${task.id}`,
+          type: "coordinator_text",
+          source: "workbench_task",
+          title: task.name,
+          description: task.description,
+          status: "active",
+          enabled: true,
+          system: false,
+          isDraft: false,
+          hasBackingWorkflow: false,
+          updatedAt: NOW_ISO,
+          taskId: task.id,
+          task,
+          schedules: [],
+        },
+      ];
+      await fulfillJson(route, { task });
+      return;
+    }
+
+    if (request.method() === "PUT") {
+      const taskId = decodeURIComponent(path.split("/").pop() ?? "");
+      const body = request.postDataJSON() as Record<string, unknown>;
+      let updatedTask: WorkbenchTask | null = null;
+      automations = automations.map((item) => {
+        if (item.task?.id !== taskId) return item;
+        const nextTask = {
+          ...item.task,
+          name: String(body.name ?? item.task.name),
+          description: String(body.description ?? item.task.description),
+          tags: Array.isArray(body.tags)
+            ? body.tags.map(String)
+            : item.task.tags,
+          updatedAt: Date.parse(NOW_ISO),
+        };
+        updatedTask = nextTask;
+        return {
+          ...item,
+          title: nextTask.name,
+          description: nextTask.description,
+          updatedAt: NOW_ISO,
+          task: nextTask,
+        };
+      });
+      if (updatedTask) {
+        await fulfillJson(route, { task: updatedTask });
+        return;
+      }
+      await fulfillJson(route, { error: "not found" }, 404);
+      return;
+    }
+
+    await fulfillJson(route, { ok: true });
+  });
 
   await page.route("**/api/automations", async (route) => {
     if (route.request().method() !== "GET") {
@@ -538,7 +647,7 @@ async function installAutomationsApi(
   });
 
   return {
-    getCreatedTrigger: () => createdTrigger,
+    getCreatedTask: () => createdTask,
     getCreatedWorkflow: () => createdWorkflow,
     getGeneratedWorkflow: () => generatedWorkflow,
     getDeletedConversationIds: () => [...deletedConversationIds],
@@ -558,27 +667,23 @@ test("automations overview empty state encourages creating tasks and workflows",
   await openAppPath(page, "/automations");
 
   await expect(page.getByTestId("automations-shell")).toBeVisible();
-  await expect(
-    page.getByPlaceholder("Describe a task or workflow…"),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Daily inbox digest" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "GitHub issue triage" }),
-  ).toBeVisible();
-  await expect(page.getByLabel("Create task")).toBeVisible();
-  await expect(page.getByLabel("Create workflow")).toBeVisible();
-  await expect(page.getByTestId("automations-sidebar")).toContainText(
-    "No tasks",
-  );
-  await expect(page.getByTestId("automations-sidebar")).toContainText(
-    "No workflows",
-  );
-  await expect(page.getByText("Drafts in progress")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Automations" })).toBeVisible();
+  await expect(page.getByText("0 tasks · 0 workflows")).toBeVisible();
+  await expect(page.getByText("No automations yet.")).toBeVisible();
+
+  await page.getByRole("button", { name: "New" }).click();
+  await expect(page.getByText("What do you want to create?")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Task \(simple prompt\)/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Workflow \(node graph\)/ })).toBeVisible();
+
+  await page.getByRole("button", { name: /Task \(simple prompt\)/ }).click();
+  await expect(page.getByRole("heading", { name: "New task" })).toBeVisible();
+  await expect(page.getByTestId("task-editor-name")).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByTestId("automations-shell")).toBeVisible();
 });
 
-test("automations can create event tasks and inspect workflow data flow", async ({
+test("automations can list tasks, create a task, and inspect workflow JSON", async ({
   page,
 }) => {
   const workflow = workflowFixture(
@@ -587,86 +692,52 @@ test("automations can create event tasks and inspect workflow data flow", async 
   );
   const api = await installAutomationsApi(page, [
     eventTaskItem(),
-    draftWorkflowItem(),
     workflowItem(workflow),
   ]);
 
   await openAppPath(page, "/automations");
 
-  const sidebar = page.getByTestId("automations-sidebar");
-  await expect(sidebar.getByText("Tasks")).toBeVisible();
-  await expect(sidebar.getByText("Workflows")).toBeVisible();
-  await expect(
-    sidebar.getByRole("button", { name: "Message triage" }),
-  ).toBeVisible();
-  await expect(sidebar.getByRole("button", { name: "Draft" })).toBeVisible();
-  await expect(
-    sidebar.getByRole("button", { name: "Message pipeline" }),
-  ).toBeVisible();
-  await expect(page.getByText("Drafts in progress")).toBeVisible();
+  await expect(page.getByText("1 task · 1 workflow")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Message triage" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Message pipeline" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Message pipeline" }).first().click();
-  await expect(page.getByText("Workflow graph")).toBeVisible();
-  await expect(page.getByText("Data flow")).toBeVisible();
-  await expect(page.getByText("Input")).toBeVisible();
-  await expect(page.getByText("Message event").first()).toBeVisible();
-  await expect(page.getByText("Summarize").first()).toBeVisible();
-  await expect(page.getByText("Send digest").first()).toBeVisible();
-  await expect(page.getByText("Output")).toBeVisible();
+  await page.getByRole("button", { name: "Message pipeline" }).click();
+  await expect(page.getByRole("heading", { name: "Message pipeline" })).toBeVisible();
+  await expect(page.getByTestId("workflow-editor-json")).toHaveValue(
+    /Message pipeline/,
+  );
+  await expect(page.getByText("Graph")).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
 
-  await page.getByLabel("Duplicate workflow").click();
-  await expect
-    .poll(() => api.getCreatedWorkflow())
-    .toMatchObject({
-      name: "Message pipeline Copy",
-    });
-  await expect(
-    page.getByRole("heading", { name: "Message pipeline Copy" }),
-  ).toBeVisible();
-
-  await page.getByLabel("Create task").click();
-  const editor = page.getByTestId("heartbeats-editor-panel");
-  await editor.locator("input").first().fill("Escalate inbound messages");
-  await editor
-    .locator("textarea")
-    .fill(
-      "When a normalized message arrives, summarize it and flag urgent ones.",
-    );
-  await editor.getByRole("combobox").first().click();
-  await page.getByRole("option", { name: "Event" }).click();
-  await expect(editor.getByText("Waiting for Message Received.")).toBeVisible();
+  await page.getByRole("button", { name: "New" }).click();
+  await page.getByRole("button", { name: /Task \(simple prompt\)/ }).click();
+  await page.getByTestId("task-editor-name").fill("Escalate inbound messages");
   await page
-    .locator("main")
-    .getByRole("button", { name: "Create task" })
-    .click();
+    .getByTestId("task-editor-prompt")
+    .fill("Summarize inbound messages and flag urgent ones.");
+  await page.getByTestId("task-editor-save").click();
   await expect
-    .poll(() => api.getCreatedTrigger())
+    .poll(() => api.getCreatedTask())
     .toMatchObject({
-      displayName: "Escalate inbound messages",
-      triggerType: "event",
-      eventKind: "message.received",
-      kind: "text",
+      name: "Escalate inbound messages",
+      description: "Summarize inbound messages and flag urgent ones.",
     });
+  await expect(page.getByText("Escalate inbound messages")).toBeVisible();
 });
 
-test("workflow drafts generate from a prompt and drafts can be deleted", async ({
+test("workflow editor generates a workflow from a prompt", async ({
   page,
 }) => {
-  const api = await installAutomationsApi(page, [draftWorkflowItem()]);
-  page.on("dialog", (dialog) => void dialog.accept());
+  const api = await installAutomationsApi(page, []);
 
   await openAppPath(page, "/automations");
 
-  await page.getByRole("button", { name: "Draft" }).first().click();
-  await expect(page.getByText("Create workflow")).toBeVisible();
-  await page.getByLabel("Delete draft").click();
-  await expect
-    .poll(() => api.getDeletedConversationIds())
-    .toContain("conversation-draft-existing");
-
-  await page.getByLabel("Create workflow").click();
-  const workflowPrompt = page.locator("[data-workflow-prompt-input='true']");
-  await expect(workflowPrompt).toBeVisible();
+  await page.getByRole("button", { name: "New" }).click();
+  await page.getByRole("button", { name: /Workflow \(node graph\)/ }).click();
+  await page.getByRole("button", { name: "Generate from prompt" }).first().click();
+  const workflowPrompt = page.getByPlaceholder(
+    "When a new starred email arrives in Gmail, post a summary in #ops on Slack.",
+  );
   await workflowPrompt.fill(
     "When a generic message event arrives, summarize it and send a digest.",
   );
@@ -681,5 +752,7 @@ test("workflow drafts generate from a prompt and drafts can be deleted", async (
   await expect(
     page.getByRole("heading", { name: "Generated workflow" }),
   ).toBeVisible();
-  await expect(page.getByText("Data flow")).toBeVisible();
+  await expect(page.getByTestId("workflow-editor-json")).toHaveValue(
+    /Generated workflow/,
+  );
 });

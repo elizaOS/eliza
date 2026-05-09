@@ -41,6 +41,7 @@ export function getBenchmarkContext(): BenchmarkContext | null {
 
 // Captured action from the last agent response
 export interface CapturedAction {
+  params?: Record<string, unknown>;
   command?: string;
   toolName?: string;
   arguments?: Record<string, unknown>;
@@ -78,6 +79,7 @@ reply-based benchmarks: use REPLY with text payload:
 - hyperliquid_bench: {"steps":[...]}
 - vending-bench: {"action":"PLACE_ORDER","supplier_id":"beverage_dist","items":{"water":12}}
 - swe_bench: a single unified diff
+- woobench payments: BENCHMARK_ACTION with command CREATE_APP_CHARGE or CHECK_PAYMENT
 
 experience-learning turns: BENCHMARK_ACTION with command RECORD_EXPERIENCE.
 
@@ -126,6 +128,7 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     "orchestrator_lifecycle",
     "orchestrator-lifecycle",
   ]).has(benchmark);
+  const isWooBench = benchmark === "woobench" || benchmark === "woo-bench";
 
   sections.push(`# Benchmark Task`);
   sections.push(`**Benchmark:** ${ctx.benchmark}`);
@@ -150,6 +153,15 @@ function formatContextAsText(ctx: BenchmarkContext): string {
 
   if (ctx.actionSpace && ctx.actionSpace.length > 0) {
     sections.push(`\n## Available Actions\n${ctx.actionSpace.join(", ")}`);
+  }
+
+  if (isWooBench && ctx.payment_actions) {
+    sections.push(
+      `\n## Payment Actions\nUse BENCHMARK_ACTION for money movement. Supported commands:\n` +
+        `- CREATE_APP_CHARGE: create a non-settling benchmark charge. Params: amount_usd, provider ("oxapay" or "stripe"), description.\n` +
+        `- CHECK_PAYMENT: check the latest benchmark charge status before delivering paid content.\n` +
+        `These mirror Eliza Cloud app charge flows but execute against the WooBench mock provider during tests.`,
+    );
   }
 
   // Tau-bench: tools
@@ -243,6 +255,7 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     "elements",
     "passages",
     "question",
+    "payment_actions",
   ]);
   const extras = Object.entries(ctx).filter(([k]) => !knownKeys.has(k));
   if (extras.length > 0) {
@@ -286,9 +299,18 @@ function formatContextAsText(ctx: BenchmarkContext): string {
       `Respond with actions: REPLY and include <decision>, <reason>, and <confidence> in text. Do not call BENCHMARK_ACTION.`,
     );
   } else if (isConversationalBenchmark) {
-    sections.push(
-      `Respond with actions: REPLY and put only the next conversational message in text. Do not call BENCHMARK_ACTION.`,
-    );
+    if (isWooBench && ctx.payment_actions) {
+      sections.push(
+        `For ordinary conversation, respond with actions: REPLY and put only the next conversational message in text.`,
+      );
+      sections.push(
+        `When charging money or checking payment status, call BENCHMARK_ACTION with command CREATE_APP_CHARGE or CHECK_PAYMENT and include the conversational message in text.`,
+      );
+    } else {
+      sections.push(
+        `Respond with actions: REPLY and put only the next conversational message in text. Do not call BENCHMARK_ACTION.`,
+      );
+    }
   } else if (isExperienceBenchmark) {
     sections.push(
       `If the phase is learning, call BENCHMARK_ACTION with command RECORD_EXPERIENCE and acknowledge it in text.`,
@@ -375,6 +397,10 @@ export function createBenchmarkPlugin(): Plugin {
           "WEB_ACTION",
           "TYPE",
           "SELECT",
+          "CREATE_APP_CHARGE",
+          "CREATE_PAYMENT_REQUEST",
+          "CHECK_PAYMENT",
+          "CHARGE_USER",
         ],
         description:
           "Execute a benchmark action. Put your command/tool/operation in the params. " +
@@ -408,6 +434,7 @@ export function createBenchmarkPlugin(): Plugin {
           console.log("[BENCHMARK_ACTION] params:", JSON.stringify(params));
 
           _capturedAction = {
+            params,
             command:
               typeof params.command === "string" ? params.command : undefined,
             toolName:
@@ -486,6 +513,30 @@ export function createBenchmarkPlugin(): Plugin {
           {
             name: "value",
             description: "Mind2Web text to type or option to select",
+            required: false,
+            schema: { type: "string" as const },
+          },
+          {
+            name: "amount_usd",
+            description: "WooBench payment amount in USD.",
+            required: false,
+            schema: { type: "number" as const },
+          },
+          {
+            name: "provider",
+            description: "WooBench payment provider, usually oxapay or stripe.",
+            required: false,
+            schema: { type: "string" as const },
+          },
+          {
+            name: "description",
+            description: "WooBench payment description.",
+            required: false,
+            schema: { type: "string" as const },
+          },
+          {
+            name: "app_id",
+            description: "WooBench mock app id.",
             required: false,
             schema: { type: "string" as const },
           },

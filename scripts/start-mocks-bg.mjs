@@ -43,6 +43,7 @@ const ENV_LIST = [
   "browser-workspace",
   "bluebubbles",
   "github",
+  "payments",
   "cloud-managed",
   "lifeops-presence",
   "lifeops-presence-active",
@@ -130,7 +131,7 @@ if (reuse) {
     console.log(`  ${env}: ${url}`);
   }
   // Refresh derived files so any new shells see the latest values.
-  writeArtifacts({ baseUrls: reuse.env, vars: reuse.vars ?? {} });
+  writeArtifacts({ baseUrls: reuse.env, envVars: reuse.vars ?? {} });
   process.exit(0);
 }
 
@@ -148,10 +149,19 @@ const startMocksTsPath = path.join(
   "scripts",
   "start-mocks.ts",
 );
-const startMocksPath = fs.existsSync(startMocksJsPath)
-  ? startMocksJsPath
-  : startMocksTsPath;
-const { startMocks } = await import(startMocksPath);
+async function importStartMocks() {
+  try {
+    const { tsImport } = await import("tsx/esm/api");
+    return await tsImport(startMocksTsPath, import.meta.url);
+  } catch (err) {
+    if (fs.existsSync(startMocksJsPath)) {
+      return import(startMocksJsPath);
+    }
+    throw err;
+  }
+}
+
+const { startMocks } = await importStartMocks();
 
 console.log("[start-mocks-bg] Starting mock servers...");
 
@@ -204,4 +214,4 @@ async function shutdown() {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-await new Promise(() => {});
+setInterval(() => {}, 60_000);

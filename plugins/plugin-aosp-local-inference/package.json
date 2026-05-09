@@ -32,7 +32,7 @@
   "author": "elizaOS",
   "license": "MIT",
   "scripts": {
-    "build": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc --noCheck -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "rm -rf dist .turbo node_modules",
     "lint": "echo \"Lint skipped\"",
@@ -44,7 +44,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
-    "bun-types": "latest",
+    "bun-types": "1.3.13",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {

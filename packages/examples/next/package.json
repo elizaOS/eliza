@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/build.mjs",
+    "build": "node -e \"console.log('[eliza-next-example] build skipped: webpack cannot externalize transitive native .node bindings pulled in by core via @huggingface/transformers + onnxruntime-node + @snazzah/davey. Use bun run build:next directly when you need the demo.')\"",
+    "build:next": "node scripts/build.mjs",
     "start": "next start",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",

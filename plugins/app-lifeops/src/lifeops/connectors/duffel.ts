@@ -80,7 +80,7 @@ export function createDuffelConnectorContribution(
           "duffel.read requires { origin, destination, departureDate, passengers, cabinClass }",
         );
       }
-      return searchFlights(readDuffelConfigFromEnv(), params as SearchFlightsRequest);
+      return searchFlights(params as SearchFlightsRequest, readDuffelConfigFromEnv());
     },
   };
 }

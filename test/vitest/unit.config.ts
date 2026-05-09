@@ -4,7 +4,6 @@ import { getElizaCoreEntry } from "../eliza-package-paths";
 import baseConfig from "./default.config";
 import { repoRoot } from "./repo-root";
 import {
-  getElizaCoreRolesEntry,
   getElizaWorkspaceRoot,
   getOptionalResolvedAliases,
   getWorkspacePluginAliases,
@@ -43,22 +42,10 @@ const localCoreSourceReplacement = useMonorepoElizaCore
     ? legacyTypescriptCoreSource
     : undefined;
 
-// Keep the roles shim here too; the base config owns a separate alias array.
-const elizaCoreRolesEntry = getElizaCoreRolesEntry(repoRoot);
 const localElizaCoreReplacement =
   localCoreSourceReplacement ?? elizaCoreEntry;
 const unitAliasEntries: ModuleAlias[] = [
   ...getOptionalResolvedAliases([
-    {
-      find: "@elizaos/plugin-telegram/account-auth-service",
-      replacement: path.join(
-        elizaWorkspaceRoot,
-        "plugins",
-        "plugin-telegram",
-        "src",
-        "account-auth-service.ts",
-      ),
-    },
     {
       find: "@elizaos/plugin-anthropic",
       replacement: path.join(
@@ -81,42 +68,6 @@ const unitAliasEntries: ModuleAlias[] = [
       ),
     },
   ]),
-  ...getOptionalResolvedAliases([
-    {
-      // Always applied — the shim fallback is always present even when the local eliza checkout is disabled.
-      find: "@elizaos/core/roles",
-      replacement: elizaCoreRolesEntry,
-    },
-  ]),
-  ...getOptionalResolvedAliases(
-    useMonorepoElizaCore
-      ? [
-          {
-            find: "@elizaos/core/testing",
-            replacement: path.join(
-              monorepoCoreRoot,
-              "src",
-              "testing",
-              "index.ts",
-            ),
-          },
-        ]
-      : useLegacyTypescriptElizaCore
-        ? [
-            {
-              find: "@elizaos/core/testing",
-              replacement: path.join(
-                elizaWorkspaceRoot,
-                "packages",
-                "typescript",
-                "src",
-                "testing",
-                "index.ts",
-              ),
-            },
-          ]
-        : [],
-  ),
   ...getOptionalResolvedAliases(
     localElizaCoreReplacement
       ? [

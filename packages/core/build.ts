@@ -124,9 +124,6 @@ export async function createElizaBuildConfig(
 	// Filter out the package being built to avoid self-referential imports
 	const elizaExternals = [
 		"@elizaos/core",
-		"@elizaos/server",
-		"@elizaos/client",
-		"@elizaos/api-client",
 		"@elizaos/shared",
 		"@elizaos/plugin-*",
 	].filter((pkg) => pkg !== selfPackageName);
@@ -653,10 +650,7 @@ async function buildNode() {
 	const runNode = createBuildRunner({
 		...sharedConfig,
 		buildOptions: {
-			entrypoints: [
-				`${TS_SRC}/index.node.ts`,
-				`${TS_SRC}/roles.ts`,
-			],
+			entrypoints: [`${TS_SRC}/index.node.ts`, `${TS_SRC}/roles.ts`],
 			outdir: "dist/node",
 			target: "node",
 			format: "esm",
@@ -765,7 +759,10 @@ async function buildNodeOnly() {
 	console.log("🚀 Starting Node-only build process for @elizaos/core");
 	const totalStart = Date.now();
 
-	await Promise.all([buildNode(), buildTesting()]);
+	const skipTesting = process.argv.includes("--skip-testing");
+	const tasks: Array<Promise<void>> = [buildNode()];
+	if (!skipTesting) tasks.push(buildTesting());
+	await Promise.all(tasks);
 	await generateTypeScriptDeclarations();
 
 	const totalDuration = ((Date.now() - totalStart) / 1000).toFixed(2);

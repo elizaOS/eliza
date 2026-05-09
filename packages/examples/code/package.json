@@ -10,7 +10,7 @@
   "scripts": {
     "start": "bun src/index.ts",
     "dev": "bun --watch src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target bun --external @elizaos/core --external @elizaos/plugin-* --external @elizaos/sweagent-root",
+    "build": "bun build src/index.ts --outdir dist --target bun --external @elizaos/core --external \"@elizaos/plugin-*\" --external @elizaos/sweagent-root",
     "build:deps": "echo 'No local dependency build required'",
     "test": "bun run build:deps && vitest run --passWithNoTests",
     "e2e:subagents": "bun src/e2e/subagents.ts",

@@ -44,6 +44,7 @@ const {
     provisionCloudCompatAgent: vi.fn(),
     getCloudCompatJobStatus: vi.fn(),
     getCloudCompatAgentStatus: vi.fn(),
+    launchCloudCompatAgent: vi.fn(),
     getRestAuthToken: vi.fn(() => null),
     switchProvider: vi.fn(),
     setBaseUrl: vi.fn(),
@@ -63,6 +64,18 @@ const {
   startupDispatchMock: vi.fn(),
   useAppMock: vi.fn(),
 }));
+
+vi.mock("react", async () => {
+  const { createRequire } = await import("node:module");
+  const require = createRequire(import.meta.url);
+  return require("react") as typeof import("react");
+});
+
+vi.mock("react/jsx-runtime", async () => {
+  const { createRequire } = await import("node:module");
+  const require = createRequire(import.meta.url);
+  return require("react/jsx-runtime") as typeof import("react/jsx-runtime");
+});
 
 vi.mock("../../api", () => ({
   client: clientMock,
@@ -86,18 +99,24 @@ vi.mock("../../onboarding/mobile-runtime-mode", () => ({
   ANDROID_LOCAL_AGENT_SERVER_ID: "local:android",
   MOBILE_LOCAL_AGENT_API_BASE: "http://127.0.0.1:31337",
   MOBILE_LOCAL_AGENT_LABEL: "On-device agent",
+  MOBILE_RUNTIME_MODE_STORAGE_KEY: "eliza:mobile-runtime-mode",
   MOBILE_LOCAL_AGENT_SERVER_ID: "local:mobile",
   persistMobileRuntimeModeForServerTarget:
     persistMobileRuntimeModeForServerTargetMock,
 }));
 
 vi.mock("@capacitor/core", () => ({
+  registerPlugin: vi.fn(() => ({
+    start: agentStartMock,
+  })),
   Capacitor: {
     Plugins: {
       Agent: {
         start: agentStartMock,
       },
     },
+    getPlatform: vi.fn(() => "web"),
+    isNativePlatform: vi.fn(() => false),
     registerPlugin: vi.fn(() => ({
       start: agentStartMock,
     })),
@@ -132,6 +151,76 @@ vi.mock("../shared/LanguageDropdown", () => ({
   LanguageDropdown: () => null,
 }));
 
+vi.mock("@elizaos/app-wallet", () => {
+  const noop = vi.fn();
+  return {
+    InventoryView: () => null,
+    TokenLogo: () => null,
+    buildWalletRpcUpdateRequest: vi.fn((value: unknown) => value),
+    resolveInitialWalletRpcSelections: vi.fn(() => ({})),
+    useInventoryData: vi.fn(() => ({ rows: [], loading: false })),
+    useWalletState: vi.fn(() => ({
+      state: {
+        browserEnabled: false,
+        computerUseEnabled: false,
+        walletEnabled: false,
+        walletAddresses: {},
+        walletConfig: null,
+        walletBalances: null,
+        walletNfts: [],
+        walletLoading: false,
+        walletNftsLoading: false,
+        inventoryView: "tokens",
+        walletExportData: null,
+        walletExportVisible: false,
+        walletApiKeySaving: false,
+        inventorySort: "value",
+        inventorySortDirection: "desc",
+        inventoryChainFilters: [],
+        walletError: null,
+        registryStatus: null,
+        registryLoading: false,
+        registryRegistering: false,
+        registryError: null,
+        dropStatus: null,
+        dropLoading: false,
+        mintInProgress: false,
+        mintResult: null,
+        mintError: null,
+        mintShiny: false,
+        whitelistStatus: null,
+        whitelistLoading: false,
+        wallets: [],
+        walletPrimary: null,
+        walletPrimaryRestarting: false,
+        walletPrimaryPending: false,
+        cloudRefreshing: false,
+      },
+      setBrowserEnabled: noop,
+      setComputerUseEnabled: noop,
+      setWalletEnabled: noop,
+      setWalletAddresses: noop,
+      setInventoryView: noop,
+      setInventorySort: noop,
+      setInventorySortDirection: noop,
+      setInventoryChainFilters: noop,
+      loadWalletConfig: noop,
+      loadBalances: noop,
+      loadNfts: noop,
+      handleWalletApiKeySave: noop,
+      handleExportKeys: noop,
+      loadRegistryStatus: noop,
+      registerOnChain: noop,
+      syncRegistryProfile: noop,
+      loadDropStatus: noop,
+      mintFromDrop: noop,
+      loadWhitelistStatus: noop,
+      setPrimary: noop,
+      refreshCloud: noop,
+    })),
+  };
+});
+
 import { RuntimeGate, resolveRuntimeChoices } from "./RuntimeGate";
 
 const RUNNING_AGENT = {
@@ -156,6 +245,24 @@ const STOPPED_AGENT = {
   bridge_url: null,
   web_ui_url: null,
   webUiUrl: null,
+};
+
+const FAILED_AGENT = {
+  ...RUNNING_AGENT,
+  agent_id: "agent-failed",
+  agent_name: "Failed Agent",
+  status: "failed",
+  bridge_url: null,
+  web_ui_url: null,
+  webUiUrl: null,
+  error_message: "Last startup failed",
+};
+
+const SECOND_RUNNING_AGENT = {
+  ...RUNNING_AGENT,
+  agent_id: "agent-2",
+  agent_name: "Second Agent",
+  bridge_url: "https://agent-2.elizacloud.ai",
 };
 
 function setupApp(
@@ -254,12 +361,23 @@ describe("RuntimeGate onboarding choices", () => {
     resetPlatformState();
     setupApp();
     shouldShowLocalOptionMock.mockResolvedValue(false);
+    clientMock.getRestAuthToken.mockReturnValue(null);
+    delete (
+      globalThis as typeof globalThis & {
+        __ELIZA_CLOUD_AUTH_TOKEN__?: unknown;
+      }
+    ).__ELIZA_CLOUD_AUTH_TOKEN__;
   });
 
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
     resetPlatformState();
+    delete (
+      globalThis as typeof globalThis & {
+        __ELIZA_CLOUD_AUTH_TOKEN__?: unknown;
+      }
+    ).__ELIZA_CLOUD_AUTH_TOKEN__;
   });
 
   it("offers Local on iOS through the in-process local agent", async () => {
@@ -379,6 +497,12 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
   beforeEach(() => {
     resetPlatformState();
     setupApp();
+    clientMock.getRestAuthToken.mockReturnValue(null);
+    delete (
+      globalThis as typeof globalThis & {
+        __ELIZA_CLOUD_AUTH_TOKEN__?: unknown;
+      }
+    ).__ELIZA_CLOUD_AUTH_TOKEN__;
     clientMock.getCloudCompatAgents.mockResolvedValue({
       success: true,
       data: [STOPPED_AGENT],
@@ -436,6 +560,21 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
         suspendedReason: null,
       },
     });
+    clientMock.launchCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: {
+        agentId: "agent-1",
+        agentName: "My Agent",
+        appUrl:
+          "https://app.elizacloud.ai/?cloudLaunchSession=launch-1&cloudLaunchBase=https%3A%2F%2Fapi.elizacloud.ai",
+        launchSessionId: "launch-1",
+        issuedAt: "2026-01-01T00:00:02.000Z",
+        connection: {
+          apiBase: "https://agent-1.elizacloud.ai",
+          token: "agent-token",
+        },
+      },
+    });
     clientMock.switchProvider.mockResolvedValue({
       success: true,
       provider: "elizacloud",
@@ -447,6 +586,11 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     vi.useRealTimers();
     vi.clearAllMocks();
     resetPlatformState();
+    delete (
+      globalThis as typeof globalThis & {
+        __ELIZA_CLOUD_AUTH_TOKEN__?: unknown;
+      }
+    ).__ELIZA_CLOUD_AUTH_TOKEN__;
   });
 
   it.skip("polls an async provisioning job, connects to the running agent, and completes startup", async () => {
@@ -483,12 +627,14 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
       kind: "cloud",
       label: "My Agent",
       apiBase: "https://agent-1.elizacloud.ai",
+      accessToken: "agent-token",
     });
     expect(addAgentProfileMock).toHaveBeenCalledWith({
       kind: "cloud",
       label: "My Agent",
       cloudAgentId: "agent-1",
       apiBase: "https://agent-1.elizacloud.ai",
+      accessToken: "agent-token",
     });
     expect(persistMobileRuntimeModeForServerTargetMock).toHaveBeenCalledWith(
       "elizacloud",
@@ -530,6 +676,20 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
       success: true,
       data: { ...RUNNING_AGENT, bridge_url: null, containerUrl: "" },
     });
+    clientMock.launchCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: {
+        agentId: "agent-1",
+        agentName: "My Agent",
+        appUrl: "https://app.elizacloud.ai/",
+        launchSessionId: "launch-1",
+        issuedAt: "2026-01-01T00:00:02.000Z",
+        connection: {
+          apiBase: "https://job-result-agent.elizacloud.ai",
+          token: "agent-token",
+        },
+      },
+    });
 
     render(<RuntimeGate />);
     await startCloudFromWelcome();
@@ -554,6 +714,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
       kind: "cloud",
       label: "My Agent",
       apiBase: "https://job-result-agent.elizacloud.ai",
+      accessToken: "agent-token",
     });
     expect(completeOnboardingMock).toHaveBeenCalledTimes(1);
   });
@@ -607,8 +768,86 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
       kind: "cloud",
       label: "My Agent",
       apiBase: "https://agent-1.elizacloud.ai",
+      accessToken: "agent-token",
     });
     expect(completeOnboardingMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the managed launch token when connecting to a provisioned agent", async () => {
+    (
+      globalThis as typeof globalThis & {
+        __ELIZA_CLOUD_AUTH_TOKEN__?: unknown;
+      }
+    ).__ELIZA_CLOUD_AUTH_TOKEN__ = "cloud-token";
+    clientMock.getRestAuthToken.mockReturnValue(null);
+
+    render(<RuntimeGate />);
+    await startCloudFromWelcome();
+
+    await waitFor(() =>
+      expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
+        "https://agent-1.elizacloud.ai",
+      ),
+    );
+    expect(clientMock.launchCloudCompatAgent).toHaveBeenCalledWith("agent-1");
+    expect(clientMock.setToken).toHaveBeenCalledWith("agent-token");
+    expect(savePersistedActiveServerMock).toHaveBeenCalledWith({
+      id: "cloud:agent-1",
+      kind: "cloud",
+      label: "My Agent",
+      apiBase: "https://agent-1.elizacloud.ai",
+      accessToken: "agent-token",
+    });
+    expect(addAgentProfileMock).toHaveBeenCalledWith({
+      kind: "cloud",
+      label: "My Agent",
+      cloudAgentId: "agent-1",
+      apiBase: "https://agent-1.elizacloud.ai",
+      accessToken: "agent-token",
+    });
+    expect(completeOnboardingMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("auto-connects a usable existing agent instead of showing a connect list", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true })),
+    );
+    clientMock.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [FAILED_AGENT, SECOND_RUNNING_AGENT],
+    });
+    clientMock.launchCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: {
+        agentId: "agent-2",
+        agentName: "Second Agent",
+        appUrl: "https://app.elizacloud.ai/",
+        launchSessionId: "launch-2",
+        issuedAt: "2026-01-01T00:00:02.000Z",
+        connection: {
+          apiBase: "https://agent-2.elizacloud.ai",
+          token: "agent-2-token",
+        },
+      },
+    });
+
+    render(<RuntimeGate />);
+    await startCloudFromWelcome();
+
+    await waitFor(() =>
+      expect(clientMock.launchCloudCompatAgent).toHaveBeenCalledWith(
+        "agent-2",
+      ),
+    );
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
+      "https://agent-2.elizacloud.ai",
+    );
+    expect(clientMock.setToken).toHaveBeenCalledWith("agent-2-token");
+    expect(screen.queryByText("Your cloud agents")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^connect$/i })).toBeNull();
+
+    vi.unstubAllGlobals();
   });
 
   it("surfaces provisioning API failures without completing onboarding", async () => {
@@ -628,6 +867,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(clientMock.getCloudCompatJobStatus).not.toHaveBeenCalled();
     expect(clientMock.setBaseUrl).not.toHaveBeenCalled();
     expect(completeOnboardingMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /^connect$/i })).toBeNull();
   });
 
   it("times out before the first provisioning response instead of hanging on startup", async () => {
@@ -752,7 +992,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(completeOnboardingMock).not.toHaveBeenCalled();
   });
 
-  it("surfaces 'hosting unavailable' when create returns nodeId=null and skips provision", async () => {
+  it("provisions an async-created agent before a node is assigned", async () => {
     clientMock.getCloudCompatAgents.mockResolvedValue({
       success: true,
       data: [],
@@ -766,14 +1006,16 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     await startCloudFromWelcome();
 
     await waitFor(() =>
-      expect(
-        screen.getByText(
-          "Cloud agent hosting isn't available on this instance. Try a local or remote agent.",
-        ),
-      ).toBeTruthy(),
+      expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
+        "agent-1",
+      ),
     );
-    expect(clientMock.provisionCloudCompatAgent).not.toHaveBeenCalled();
-    expect(completeOnboardingMock).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
+        "https://agent-1.elizacloud.ai",
+      ),
+    );
+    expect(completeOnboardingMock).toHaveBeenCalledTimes(1);
   });
 
   it("times out async provisioning that stays queued past PROVISION_JOB_DEADLINE_MS", async () => {

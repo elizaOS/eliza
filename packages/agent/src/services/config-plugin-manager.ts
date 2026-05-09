@@ -1,4 +1,4 @@
-import type { ElizaConfig } from "../config/types.eliza.js";
+import type { ElizaConfig } from "../config/types.eliza.ts";
 import type {
   EjectResult,
   InstalledPluginInfo,
@@ -9,12 +9,12 @@ import type {
   RegistrySearchResult,
   ReinjectResult,
   SyncResult,
-} from "./plugin-manager-types.js";
+} from "./plugin-manager-types.ts";
 import {
   getPluginInfo,
   refreshRegistry,
   searchPlugins,
-} from "./registry-client.js";
+} from "./registry-client.ts";
 
 type ConfigGetter = () => ElizaConfig;
 

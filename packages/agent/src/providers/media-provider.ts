@@ -20,7 +20,7 @@ import type {
   MediaConfig,
   VideoConfig,
   VisionConfig,
-} from "../config/types.eliza.js";
+} from "../config/types.eliza.ts";
 
 // ============================================================================
 // Fetch Utilities

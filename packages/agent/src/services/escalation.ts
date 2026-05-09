@@ -1,22 +1,22 @@
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   loadOwnerContactRoutingHints,
   loadOwnerContactsConfig,
   type OwnerContactRoutingHint,
   resolveOwnerContactWithFallback,
-} from "../config/owner-contacts.js";
+} from "../config/owner-contacts.ts";
 import type {
   EscalationConfig,
   OwnerContactEntry,
   OwnerContactsConfig,
-} from "../config/types.agent-defaults.js";
-import { resolveOwnerEntityId } from "../runtime/owner-entity.js";
+} from "../config/types.agent-defaults.ts";
+import { resolveOwnerEntityId } from "../runtime/owner-entity.ts";
 import {
   hasRuntimeSendHandler,
   logMissingSendHandlerOnce,
-} from "./send-handler-availability.js";
+} from "./send-handler-availability.ts";
 
 export interface EscalationState {
   id: string;

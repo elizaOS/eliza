@@ -1,4 +1,4 @@
-import type { CustomActionDef } from "@elizaos/agent";
+import type { CustomActionDef } from "../../api/agent-client-type-shim";
 import { Button, Input, Switch } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api/client";

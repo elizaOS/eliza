@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 
 const execFileAsync = promisify(execFile);
 

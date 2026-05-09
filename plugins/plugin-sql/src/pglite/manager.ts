@@ -207,6 +207,27 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     if (error instanceof Error) {
       return error.message;
     }
+    if (typeof error === "string") {
+      return error;
+    }
+    if (error && typeof error === "object") {
+      const obj = error as { message?: unknown; toString?: unknown };
+      if (typeof obj.message === "string" && obj.message.length > 0) {
+        return obj.message;
+      }
+      try {
+        const json = JSON.stringify(error);
+        if (json && json !== "{}") {
+          return json;
+        }
+      } catch {}
+      if (typeof obj.toString === "function") {
+        const stringified = obj.toString.call(error);
+        if (stringified && stringified !== "[object Object]") {
+          return stringified;
+        }
+      }
+    }
     return String(error);
   }
 

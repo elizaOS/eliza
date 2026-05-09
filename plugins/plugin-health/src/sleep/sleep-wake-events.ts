@@ -5,7 +5,7 @@ import type {
   LifeOpsScheduleInsight,
   LifeOpsScheduleSleepStatus,
   LifeOpsUnclearReason,
-} from "@elizaos/shared";
+} from "../contracts/health.js";
 import { parseIsoMs } from "../util/time-util.js";
 
 /**

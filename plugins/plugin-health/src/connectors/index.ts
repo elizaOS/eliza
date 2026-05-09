@@ -32,6 +32,8 @@ import type {
 
 export * from "./contract-stubs.js";
 
+type RuntimeHealthRegistryHost = object & RuntimeWithHealthRegistries;
+
 export const HEALTH_CONNECTOR_KINDS = [
   "apple_health",
   "google_fit",
@@ -61,7 +63,7 @@ export const HEALTH_BUS_FAMILIES = [
 
 /**
  * Capability strings published by plugin-health connectors. Matches the
- * `LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES` set in `@elizaos/shared` so a
+ * `LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES` set in `../contracts/health.js` so a
  * planner querying `connectorRegistry.byCapability("health.sleep.read")`
  * resolves the correct contributors.
  */
@@ -183,25 +185,25 @@ function buildBusFamilyContribution(family: string): BusFamilyContribution {
 }
 
 function getConnectorRegistry(
-  runtime: RuntimeWithHealthRegistries,
+  runtime: RuntimeHealthRegistryHost,
 ): ConnectorRegistry | undefined {
   return runtime.connectorRegistry;
 }
 
 function getAnchorRegistry(
-  runtime: RuntimeWithHealthRegistries,
+  runtime: RuntimeHealthRegistryHost,
 ): AnchorRegistry | undefined {
   return runtime.anchorRegistry;
 }
 
 function getBusFamilyRegistry(
-  runtime: RuntimeWithHealthRegistries,
+  runtime: RuntimeHealthRegistryHost,
 ): BusFamilyRegistry | undefined {
   return runtime.busFamilyRegistry;
 }
 
 export function registerHealthConnectors(
-  runtime: RuntimeWithHealthRegistries,
+  runtime: RuntimeHealthRegistryHost,
 ): void {
   const registry = getConnectorRegistry(runtime);
   if (!registry) {
@@ -224,7 +226,9 @@ export function registerHealthConnectors(
   );
 }
 
-export function registerHealthAnchors(runtime: RuntimeWithHealthRegistries): void {
+export function registerHealthAnchors(
+  runtime: RuntimeHealthRegistryHost,
+): void {
   const registry = getAnchorRegistry(runtime);
   if (!registry) {
     logger.info(
@@ -247,7 +251,7 @@ export function registerHealthAnchors(runtime: RuntimeWithHealthRegistries): voi
 }
 
 export function registerHealthBusFamilies(
-  runtime: RuntimeWithHealthRegistries,
+  runtime: RuntimeHealthRegistryHost,
 ): void {
   const registry = getBusFamilyRegistry(runtime);
   if (!registry) {

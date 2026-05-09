@@ -152,8 +152,22 @@ export async function runHydrating(
   dispatch: (event: StartupEvent) => void,
   cancelled: { current: boolean },
 ): Promise<void> {
-  const warn = (scope: string, err: unknown) =>
+  const isTransientOptionalFetchFailure = (err: unknown): boolean => {
+    if (!(err instanceof Error)) return false;
+    const maybeApiError = err as Error & {
+      kind?: string;
+      path?: string;
+    };
+    return (
+      err.name === "ApiError" &&
+      maybeApiError.kind === "network" &&
+      /^(Failed to fetch|Request aborted)$/i.test(err.message)
+    );
+  };
+  const warn = (scope: string, err: unknown) => {
+    if (isTransientOptionalFetchFailure(err)) return;
     console.warn(`[eliza][startup:init] ${scope}`, err);
+  };
 
   deps.setStartupError(null);
   // Start the WS bridge before history hydration finishes so restored-session

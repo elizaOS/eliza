@@ -7,7 +7,7 @@ import {
   type TriggerTaskMetadata,
   type TriggerType,
   type TriggerWakeMode,
-} from "./types.js";
+} from "./types.ts";
 
 export const MIN_TRIGGER_INTERVAL_MS = 60_000;
 export const MAX_TRIGGER_INTERVAL_MS = 31 * 24 * 60 * 60 * 1000;

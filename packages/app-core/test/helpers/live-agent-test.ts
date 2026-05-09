@@ -13,8 +13,8 @@
  * from `packages/core/e2e/setup/global-setup.ts`. The Cerebras alias mirrors
  * the logic in `scripts/test-env.mjs`.
  */
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, it } from "vitest";
-import { v4 as uuidv4 } from "uuid";
 
 import {
 	AgentRuntime,
@@ -490,7 +490,7 @@ export async function buildLiveHarness(
 		plugins.push(extra);
 	}
 
-	const agentId = uuidv4() as UUID;
+	const agentId = randomUUID() as UUID;
 	const character: Character = {
 		id: agentId,
 		name: "LiveTestAgent",
@@ -522,9 +522,9 @@ export async function buildLiveHarness(
 	applyProviderSettings(runtime, provider);
 	await runtime.initialize();
 
-	const worldId = uuidv4() as UUID;
+	const worldId = randomUUID() as UUID;
 	await runtime.createWorld({ id: worldId, name: "live-world", agentId });
-	const roomId = uuidv4() as UUID;
+	const roomId = randomUUID() as UUID;
 	await runtime.ensureRoomExists({
 		id: roomId,
 		name: "live-chat",
@@ -534,7 +534,7 @@ export async function buildLiveHarness(
 	});
 	await runtime.ensureParticipantInRoom(agentId, roomId);
 
-	const userEntityId = uuidv4() as UUID;
+	const userEntityId = randomUUID() as UUID;
 	await runtime.createEntity({
 		id: userEntityId,
 		names: ["LiveTester"],
@@ -547,7 +547,7 @@ export async function buildLiveHarness(
 			throw new Error("[live-agent-test] runtime.messageService is null");
 		}
 		const message: Memory = {
-			id: uuidv4() as UUID,
+			id: randomUUID() as UUID,
 			entityId: userEntityId,
 			roomId,
 			content: { text, source: "live-test" },

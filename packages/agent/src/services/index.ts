@@ -24,16 +24,16 @@ export {
   whatsappAuthExists,
   whatsappLogout,
 } from "@elizaos/plugin-whatsapp";
-export * from "./agent-export.js";
-export * from "./app-manager.js";
-export * from "./app-session-gate.js";
+export * from "./agent-export.ts";
+export * from "./app-manager.ts";
+export * from "./app-session-gate.ts";
 export {
   EscalationService,
   type EscalationState,
   registerEscalationChannel,
-} from "./escalation.js";
-export * from "./mcp-marketplace.js";
-export * from "./overlay-app-presence.js";
+} from "./escalation.ts";
+export * from "./mcp-marketplace.ts";
+export * from "./overlay-app-presence.ts";
 // `plugin-manager-types` re-exports `RegistryPluginInfo` and
 // `RegistrySearchResult` from `./registry-client-types.js`, which collide with
 // the same names exported from `./registry-client.js`. Re-export the
@@ -61,15 +61,15 @@ export {
   type RegistryVersionSupport,
   type ReinjectResult,
   type SyncResult,
-} from "./plugin-manager-types.js";
-export * from "./registry-client.js";
-export { resolveAppHeroImage } from "./registry-client-queries.js";
-export * from "./remote-signing-service.js";
-export { ResearchTaskExecutor } from "./research-task-executor.js";
-export * from "./sandbox-engine.js";
-export * from "./sandbox-manager.js";
-export * from "./self-updater.js";
-export * from "./signing-policy.js";
-export * from "./task-executor.js";
-export * from "./update-checker.js";
-export * from "./version-compat.js";
+} from "./plugin-manager-types.ts";
+export * from "./registry-client.ts";
+export { resolveAppHeroImage } from "./registry-client-queries.ts";
+export * from "./remote-signing-service.ts";
+export { ResearchTaskExecutor } from "./research-task-executor.ts";
+export * from "./sandbox-engine.ts";
+export * from "./sandbox-manager.ts";
+export * from "./self-updater.ts";
+export * from "./signing-policy.ts";
+export * from "./task-executor.ts";
+export * from "./update-checker.ts";
+export * from "./version-compat.ts";

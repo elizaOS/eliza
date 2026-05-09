@@ -1,4 +1,5 @@
 import type { Message as DiscordMessage } from "discord.js";
+import { isDiscordUserAddressed } from "./addressing";
 
 export type DebouncerFlushCallback = (messages: DiscordMessage[]) => void;
 
@@ -17,10 +18,6 @@ interface PendingEntry {
 const DEFAULT_DEBOUNCE_MS = 400;
 const DEFAULT_CHANNEL_DEBOUNCE_MS = 3_000;
 
-function escapeRegex(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function runSafely(callback: () => void): void {
 	try {
 		callback();
@@ -34,7 +31,6 @@ export interface ChannelDebouncerOptions {
 	responseCooldownMs?: number;
 	botUserId?: string;
 	getBotUserId?: () => string | undefined;
-	botName?: string;
 	coalesceEnabled?: boolean;
 	maxBatch?: number;
 }
@@ -60,30 +56,17 @@ export function createChannelDebouncer(
 	const responseCooldownMs = options.responseCooldownMs ?? 30_000;
 	const coalesceEnabled = options.coalesceEnabled === true;
 	const maxBatch = Math.max(1, options.maxBatch ?? Number.POSITIVE_INFINITY);
-	const botName = options.botName?.trim();
-	const botNameRegex =
-		botName && botName.length >= 2
-			? new RegExp(
-					`(^|[^\\p{L}\\p{N}])${escapeRegex(botName)}(?=$|[^\\p{L}\\p{N}])`,
-					"iu",
-				)
-			: null;
 	const pending = new Map<string, ChannelPendingEntry>();
 	const lastResponseTime = new Map<string, number>();
 
 	const isBotTargeted = (message: DiscordMessage): boolean => {
 		const botId = options.getBotUserId?.() ?? options.botUserId;
-		if (botId && message.mentions?.users?.has(botId)) {
-			return true;
-		}
-		if (
-			botId &&
-			message.reference?.messageId &&
-			message.mentions?.repliedUser?.id === botId
-		) {
-			return true;
-		}
-		return Boolean(botNameRegex?.test(message.content ?? ""));
+		return isDiscordUserAddressed({
+			text: message.content,
+			userId: botId,
+			hasMessageReference: Boolean(message.reference?.messageId),
+			repliedUserId: message.mentions?.repliedUser?.id,
+		});
 	};
 
 	const isInCooldown = (channelId: string): boolean => {

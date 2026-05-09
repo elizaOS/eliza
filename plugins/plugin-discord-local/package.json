@@ -22,10 +22,9 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "import": {
-        "types": "./dist/src/index.d.ts",
-        "default": "./dist/index.js"
-      }
+      "import": "./dist/index.js",
+      "default": "./dist/index.js",
+      "types": "./dist/src/index.d.ts"
     }
   },
   "files": [
@@ -38,9 +37,6 @@
         "messaging"
       ]
     }
-  },
-  "dependencies": {
-    "@elizaos/agent": "workspace:*"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

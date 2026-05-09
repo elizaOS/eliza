@@ -1,7 +1,5 @@
 import type http from "node:http";
-import type { ReadJsonBodyOptions } from "@elizaos/core";
-import type { ElizaConfig } from "@elizaos/shared";
-import { sanitizeSpeechText } from "@elizaos/shared";
+import { type ReadJsonBodyOptions, sanitizeSpeechText } from "@elizaos/core";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -12,7 +10,7 @@ export interface TtsRouteContext {
   res: http.ServerResponse;
   method: string;
   pathname: string;
-  state: { config: ElizaConfig };
+  state: { config: Record<string, unknown> };
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
   error: (res: http.ServerResponse, message: string, status?: number) => void;
   readJsonBody: <T extends object>(

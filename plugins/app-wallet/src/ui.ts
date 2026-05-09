@@ -1,6 +1,5 @@
-export { InventoryView } from "./InventoryView";
-export { ChainIcon } from "./inventory/ChainIcon";
-export { TokenLogo } from "./inventory/TokenLogo";
+export { InventoryView } from "./InventoryView.tsx";
+export { ChainIcon } from "./inventory/ChainIcon.tsx";
 export {
   CHAIN_CONFIGS,
   type ChainConfig,
@@ -14,7 +13,7 @@ export {
   getStablecoinAddress,
   PRIMARY_CHAIN_KEYS,
   resolveChainKey,
-} from "./inventory/chainConfig";
+} from "./inventory/chainConfig.ts";
 export {
   BSC_GAS_READY_THRESHOLD,
   BSC_GAS_THRESHOLD,
@@ -24,14 +23,15 @@ export {
   type NftItem,
   type TokenRow,
   toNormalizedAddress,
-} from "./inventory/constants";
-export { useInventoryData } from "./inventory/useInventoryData";
-export { useWalletState } from "./state/useWalletState";
+} from "./inventory/constants.ts";
+export { TokenLogo } from "./inventory/TokenLogo.tsx";
+export { useInventoryData } from "./inventory/useInventoryData.ts";
+export { useWalletState } from "@elizaos/ui";
 export {
   buildWalletRpcUpdateRequest,
   resolveInitialWalletRpcSelections,
-} from "./wallet-rpc";
+} from "./wallet-rpc.ts";
 export {
-  WalletStatusSidebarWidget,
   WALLET_STATUS_WIDGET,
-} from "./widgets/wallet-status";
+  WalletStatusSidebarWidget,
+} from "./widgets/wallet-status.tsx";

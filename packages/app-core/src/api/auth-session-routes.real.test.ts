@@ -182,12 +182,14 @@ describe("P1 session routes (real pglite)", () => {
     _resetAuthSessionRoutesLimiter();
     delete process.env.ELIZA_API_TOKEN;
     delete process.env.ELIZA_CLOUD_PROVISIONED;
+    delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
   }, HARNESS_HOOK_TIMEOUT_MS);
 
   afterEach(async () => {
     await harness.cleanup();
     delete process.env.ELIZA_API_TOKEN;
     delete process.env.ELIZA_CLOUD_PROVISIONED;
+    delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
   });
 
   it("setup -> me -> logout flow", async () => {
@@ -469,6 +471,22 @@ describe("P1 session routes (real pglite)", () => {
     );
     expect(cloudLocalOk).toBe(false);
     expect(cloudLocal.status()).toBe(401);
+
+    delete process.env.ELIZA_CLOUD_PROVISIONED;
+    process.env.ELIZA_REQUIRE_LOCAL_AUTH = "1";
+    reset();
+    const requiredLocalAuth = fakeRes();
+    const requiredLocalAuthOk = await ensureCompatApiAuthorizedAsync(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/secure",
+        headers: { host: "localhost:31337" },
+      }),
+      requiredLocalAuth.res,
+      { store: harness.store },
+    );
+    expect(requiredLocalAuthOk).toBe(false);
+    expect(requiredLocalAuth.status()).toBe(401);
   });
 
   it("route auth rejects localhost trust when proxy headers report remote clients", async () => {

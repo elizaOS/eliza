@@ -20,19 +20,19 @@ import type { IAgentRuntime } from "../types/runtime.ts";
 
 // Eagerly import trust components so they are available to the runtime's
 // action planner and provider composition.
-import {
-	evaluateTrustAction,
-	recordTrustInteractionAction,
-	requestElevationAction,
-	updateRoleAction as trustUpdateRoleAction,
-} from "./trust/actions/index.ts";
-import {
-	adminTrustProvider,
-	securityStatusProvider,
-	trustProfileProvider,
-	roleProvider as trustRoleProvider,
-	settingsProvider as trustSettingsProvider,
-} from "./trust/providers/index.ts";
+//
+// Direct leaf-file imports — see comment in
+// ./advanced-capabilities/index.ts for the Bun.build mis-rewrite that
+// requires bypassing barrels here too.
+import { evaluateTrustAction } from "./trust/actions/evaluateTrust.ts";
+import { recordTrustInteractionAction } from "./trust/actions/recordTrustInteraction.ts";
+import { requestElevationAction } from "./trust/actions/requestElevation.ts";
+import { updateRoleAction as trustUpdateRoleAction } from "./trust/actions/roles.ts";
+import { adminTrustProvider } from "./trust/providers/adminTrust.ts";
+import { roleProvider as trustRoleProvider } from "./trust/providers/roles.ts";
+import { securityStatusProvider } from "./trust/providers/securityStatus.ts";
+import { settingsProvider as trustSettingsProvider } from "./trust/providers/settings.ts";
+import { trustProfileProvider } from "./trust/providers/trustProfile.ts";
 
 const trustCapability = {
 	providers: [
@@ -86,21 +86,22 @@ const trustCapability = {
 
 // ─── Secrets Manager ──────────────────────────────────────────────────────────
 
-import {
-	manageSecretAction,
-	requestSecretAction,
-	setSecretAction,
-} from "./secrets/actions/index.ts";
+// Direct leaf-file imports — see comment in
+// ./advanced-capabilities/index.ts for the Bun.build mis-rewrite that
+// requires bypassing barrels.
+import { manageSecretAction } from "./secrets/actions/manage-secret.ts";
+import { requestSecretAction } from "./secrets/actions/request-secret.ts";
+import { setSecretAction } from "./secrets/actions/set-secret.ts";
+import { updateSettingsAction as onboardingUpdateSettingsAction } from "./secrets/onboarding/action.ts";
 import {
 	missingSecretsProvider,
 	onboardingSettingsProvider,
-	updateSettingsAction as onboardingUpdateSettingsAction,
-} from "./secrets/onboarding/index.ts";
+} from "./secrets/onboarding/provider.ts";
 import { OnboardingService } from "./secrets/onboarding/service.ts";
 import {
 	secretsInfoProvider,
 	secretsStatusProvider,
-} from "./secrets/providers/index.ts";
+} from "./secrets/providers/secrets-status.ts";
 import { PluginActivatorService } from "./secrets/services/plugin-activator.ts";
 import { SecretsService } from "./secrets/services/secrets.ts";
 
@@ -141,14 +142,13 @@ const secretsCapability = {
 
 // ─── Plugin Manager ───────────────────────────────────────────────────────────
 
-import {
-	CoreManagerService,
-	PluginManagerService,
-	pluginAction,
-	pluginConfigurationStatusProvider,
-	pluginStateProvider,
-	registryPluginsProvider,
-} from "./plugin-manager/index.ts";
+// Direct leaf imports — see comment in ./advanced-capabilities/index.ts.
+import { pluginAction } from "./plugin-manager/actions/plugin.ts";
+import { pluginConfigurationStatusProvider } from "./plugin-manager/providers/pluginConfigurationStatus.ts";
+import { pluginStateProvider } from "./plugin-manager/providers/pluginStateProvider.ts";
+import { registryPluginsProvider } from "./plugin-manager/providers/registryPluginsProvider.ts";
+import { CoreManagerService } from "./plugin-manager/services/coreManagerService.ts";
+import { PluginManagerService } from "./plugin-manager/services/pluginManagerService.ts";
 
 const pluginManagerCapability = {
 	providers: [

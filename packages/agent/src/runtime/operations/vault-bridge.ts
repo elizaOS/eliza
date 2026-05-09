@@ -15,7 +15,7 @@
  */
 
 import { createManager, type SecretsManager, type Vault } from "@elizaos/vault";
-import type { OperationErrorCode } from "./types.js";
+import type { OperationErrorCode } from "./types.ts";
 
 export class VaultResolveError extends Error {
   readonly code: OperationErrorCode = "vault-resolve-failed";

@@ -159,6 +159,12 @@ export function nativeModuleStubPlugin(
     "@elizaos/plugin-telegram",
     "@elizaos/plugin-whatsapp",
     "@protobufjs/inquire",
+    // Node-only ANSI colour helpers used by terminal/theme. The shared
+    // barrel re-exports terminal/theme so any browser consumer that
+    // imports from `@elizaos/shared` indirectly pulls chalk's bare ESM
+    // specifier into the output bundle.
+    "chalk",
+    "drizzle-orm",
   ]);
   if (!isCapacitorMobileBuild) {
     // Mobile-only Capacitor llama.cpp runtime. Web/Electrobun builds stub it,
@@ -415,7 +421,7 @@ export function nativeModuleStubPlugin(
         ].join("\n");
       }
 
-      if (strippedId === "@elizaos/plugin-sql/schema") {
+      if (strippedId === "@elizaos/plugin-sql") {
         return [
           "const handler = { get: () => table, apply: () => table };",
           "const table = new Proxy(function table() {}, handler);",
@@ -455,14 +461,6 @@ export function nativeModuleStubPlugin(
             "taskTable",
             "worldTable",
           ].map((name) => `export const ${name} = table;`),
-          "export default table;",
-        ].join("\n");
-      }
-
-      if (strippedId === "@elizaos/plugin-sql/drizzle") {
-        return [
-          "const handler = { get: () => expr, apply: () => expr };",
-          "const expr = new Proxy(function expr() { return expr; }, handler);",
           ...[
             "and",
             "asc",
@@ -478,8 +476,9 @@ export function nativeModuleStubPlugin(
             "ne",
             "or",
             "sql",
-          ].map((name) => `export const ${name} = expr;`),
-          "export default expr;",
+          ].map((name) => `export const ${name} = table;`),
+          "export const schema = table;",
+          "export default table;",
         ].join("\n");
       }
 
@@ -491,9 +490,9 @@ export function nativeModuleStubPlugin(
         ].join("\n");
       }
 
-      if (strippedId === "@elizaos/plugin-telegram/account-auth-service") {
+      if (strippedId === "@elizaos/plugin-telegram") {
         return [
-          "function serverOnly() { throw new Error('@elizaos/plugin-telegram/account-auth-service is server-only'); }",
+          "function serverOnly() { throw new Error('Telegram account auth is server-only'); }",
           "export function defaultTelegramAccountDeviceModel() { return 'Eliza Desktop'; }",
           "export function defaultTelegramAccountSystemVersion() { return 'browser'; }",
           "export function loadTelegramAccountSessionString() { return serverOnly(); }",
@@ -556,6 +555,68 @@ export function nativeModuleStubPlugin(
         return [
           "const noop = () => {};const stub = new Proxy({}, { get: () => noop });",
           "export default stub;",
+        ].join("\n");
+      }
+
+      // chalk: ANSI helpers used only by terminal/theme.ts which the
+      // renderer pulls in via the @elizaos/shared barrel. The real
+      // chalk supports arbitrary chained accessors and call patterns
+      // (`chalk.red("x")`, `chalk.bold.hex("#fff")("text")`, etc.), so
+      // the stub must:
+      //   1. Be callable (return its argument unchanged when used as
+      //      a string transformer).
+      //   2. Return another callable proxy on every property access
+      //      so `chalk.bold.hex` chains keep working.
+      //   3. Expose a named `Chalk` class so destructuring imports
+      //      resolve at bundle time.
+      if (modName === "chalk") {
+        return [
+          // Recursive callable proxy: every `.foo` returns the same
+          // proxy, every call returns its first argument as-is.
+          "function makeChalkStub() {",
+          "  const callable = function (...args) {",
+          "    return args.length > 0 ? String(args[0]) : '';",
+          "  };",
+          "  const handler = {",
+          "    get(_, prop) {",
+          "      if (prop === Symbol.toPrimitive) return () => '';",
+          "      if (prop === 'level') return 0;",
+          "      if (prop === Symbol.iterator) return undefined;",
+          "      return proxy;",
+          "    },",
+          "    apply(_, __, args) {",
+          "      return args.length > 0 ? String(args[0]) : '';",
+          "    },",
+          "  };",
+          "  const proxy = new Proxy(callable, handler);",
+          "  return proxy;",
+          "}",
+          "const chalk = makeChalkStub();",
+          "export class Chalk { constructor() { return makeChalkStub(); } }",
+          "export const supportsColor = false;",
+          "export const chalkStderr = chalk;",
+          "export const supportsColorStderr = false;",
+          "export default chalk;",
+        ].join("\n");
+      }
+
+      // drizzle-orm and its sub-modules: Node-only ORM with many named
+      // exports (column builders like `boolean`, `integer`, `index`, `text`,
+      // `pgTable`, etc.). Return a Proxy that yields a no-op for any name so
+      // static `import { boolean } from "drizzle-orm/pg-core"` succeeds.
+      if (
+        modName === "drizzle-orm" ||
+        strippedId === "drizzle-orm" ||
+        strippedId.startsWith("drizzle-orm/")
+      ) {
+        return [
+          "const noop = () => {};",
+          "const stubProxy = new Proxy(noop, { get: () => stubProxy, apply: () => stubProxy });",
+          "export default stubProxy;",
+          // Re-export the proxy under every name a static `import { X }`
+          // statement might use. Rolldown wires the named import to this
+          // single binding, so a loose getter still resolves at build time.
+          "export { stubProxy as boolean, stubProxy as integer, stubProxy as bigint, stubProxy as text, stubProxy as varchar, stubProxy as char, stubProxy as serial, stubProxy as bigserial, stubProxy as smallint, stubProxy as smallserial, stubProxy as decimal, stubProxy as numeric, stubProxy as real, stubProxy as doublePrecision, stubProxy as date, stubProxy as time, stubProxy as timestamp, stubProxy as interval, stubProxy as uuid, stubProxy as json, stubProxy as jsonb, stubProxy as pgTable, stubProxy as pgEnum, stubProxy as pgSchema, stubProxy as pgView, stubProxy as pgMaterializedView, stubProxy as pgSequence, stubProxy as foreignKey, stubProxy as primaryKey, stubProxy as uniqueIndex, stubProxy as unique, stubProxy as index, stubProxy as check, stubProxy as customType, stubProxy as relations, stubProxy as one, stubProxy as many, stubProxy as eq, stubProxy as ne, stubProxy as gt, stubProxy as gte, stubProxy as lt, stubProxy as lte, stubProxy as and, stubProxy as or, stubProxy as not, stubProxy as inArray, stubProxy as notInArray, stubProxy as isNull, stubProxy as isNotNull, stubProxy as like, stubProxy as ilike, stubProxy as notLike, stubProxy as between, stubProxy as exists, stubProxy as notExists, stubProxy as sql, stubProxy as desc, stubProxy as asc, stubProxy as count, stubProxy as sum, stubProxy as avg, stubProxy as min, stubProxy as max, stubProxy as drizzle, stubProxy as getTableConfig, stubProxy as getTableName, stubProxy as is, stubProxy as alias, stubProxy as except, stubProxy as union, stubProxy as unionAll, stubProxy as intersect, stubProxy as raw, stubProxy as placeholder, stubProxy as param, stubProxy as Column, stubProxy as Table, stubProxy as TableAliasProxy };",
         ].join("\n");
       }
 

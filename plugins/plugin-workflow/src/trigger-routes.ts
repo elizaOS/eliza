@@ -1,14 +1,4 @@
 import crypto from 'node:crypto';
-import type {
-  DeployedTriggerWorkflow,
-  NormalizedTriggerDraft,
-  TextTriggerWorkflowDraft,
-  TriggerExecutionOptions,
-  TriggerExecutionResult,
-  TriggerHealthSnapshot,
-  TriggerSummary,
-  TriggerTaskMetadata,
-} from '@elizaos/agent';
 import {
   type TriggerRunRecord as CoreTriggerRunRecord,
   type IAgentRuntime,
@@ -18,12 +8,115 @@ import {
   type Task,
   type TriggerConfig,
   type TriggerKind,
+  type TriggerLastStatus,
   type TriggerType,
   type TriggerWakeMode,
   type UUID,
 } from '@elizaos/core';
 
 export type TriggerRouteHelpers = RouteHelpers;
+
+export interface TriggerTaskMetadata {
+  updatedAt?: number;
+  updateInterval?: number;
+  blocking?: boolean;
+  trigger?: TriggerConfig;
+  triggerRuns?: CoreTriggerRunRecord[];
+  [key: string]:
+    | string
+    | number
+    | boolean
+    | string[]
+    | number[]
+    | Record<string, string | number | boolean>
+    | undefined
+    | TriggerConfig
+    | CoreTriggerRunRecord[];
+}
+
+export interface TriggerSummary {
+  id: UUID;
+  taskId: UUID;
+  displayName: string;
+  instructions: string;
+  triggerType: TriggerType;
+  enabled: boolean;
+  wakeMode: TriggerWakeMode;
+  createdBy: string;
+  timezone?: string;
+  intervalMs?: number;
+  scheduledAtIso?: string;
+  cronExpression?: string;
+  eventKind?: string;
+  maxRuns?: number;
+  runCount: number;
+  nextRunAtMs?: number;
+  lastRunAtIso?: string;
+  lastStatus?: TriggerLastStatus;
+  lastError?: string;
+  updatedAt?: number;
+  updateInterval?: number;
+  kind?: TriggerKind;
+  workflowId?: string;
+  workflowName?: string;
+}
+
+export interface TriggerHealthSnapshot {
+  triggersEnabled: boolean;
+  activeTriggers: number;
+  disabledTriggers: number;
+  totalExecutions: number;
+  totalFailures: number;
+  totalSkipped: number;
+  lastExecutionAt?: number;
+}
+
+export interface NormalizedTriggerDraft {
+  displayName: string;
+  instructions: string;
+  triggerType: TriggerType;
+  wakeMode: TriggerWakeMode;
+  enabled: boolean;
+  createdBy: string;
+  timezone?: string;
+  intervalMs?: number;
+  scheduledAtIso?: string;
+  cronExpression?: string;
+  eventKind?: string;
+  maxRuns?: number;
+  kind?: TriggerKind;
+  workflowId?: string;
+  workflowName?: string;
+}
+
+export interface TriggerExecutionOptions {
+  source: 'scheduler' | 'manual' | 'event';
+  force?: boolean;
+  event?: {
+    kind: string;
+    payload?: Record<string, unknown>;
+  };
+}
+
+export interface TriggerExecutionResult {
+  status: 'success' | 'error' | 'skipped';
+  error?: string;
+  taskDeleted: boolean;
+  runRecord?: CoreTriggerRunRecord;
+  trigger?: TriggerSummary | null;
+  executionId?: string;
+}
+
+export interface TextTriggerWorkflowDraft {
+  displayName: string;
+  instructions: string;
+  wakeMode: TriggerWakeMode;
+}
+
+export interface DeployedTriggerWorkflow {
+  id: string;
+  name: string;
+}
 
 interface TriggerDraftInput {
   displayName?: string;

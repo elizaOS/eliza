@@ -50,7 +50,6 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
-import { documentsFromDb, messageExamplesFromDb } from "./agent-mapping";
 
 function agentBioRowsFromDb(bio: unknown): string[] {
   if (bio == null) return [];
@@ -354,7 +353,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     const messageServerId = mappedWorld.messageServerId || mappedWorld.serverId;
     return {
       ...mappedWorld,
-      ...(typeof messageServerId === "string" ? { messageServerId: messageServerId as UUID } : {}),
+      ...(typeof messageServerId === "string"
+        ? {
+            messageServerId: messageServerId as UUID,
+            serverId: messageServerId as UUID,
+          }
+        : {}),
     } as World;
   }
 
@@ -3025,8 +3029,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         metadata: params.metadata || {},
       };
       try {
-        await this.db.insert(relationshipTable).values(saveParams);
-        return true;
+        const inserted = await this.db
+          .insert(relationshipTable)
+          .values(saveParams)
+          .onConflictDoNothing()
+          .returning();
+        return inserted.length > 0;
       } catch (error) {
         logger.error(
           {

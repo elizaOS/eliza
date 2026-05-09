@@ -17,7 +17,7 @@ import {
   setApiToken,
   stripOptionalHostPort,
 } from "@elizaos/shared";
-import { sweepExpiredEntries } from "./memory-bounds.js";
+import { sweepExpiredEntries } from "./memory-bounds.ts";
 
 // ---------------------------------------------------------------------------
 // CORS

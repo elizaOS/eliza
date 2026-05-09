@@ -3,7 +3,7 @@ import {
   deployTextTriggerWorkflow,
   getWorkflowService,
   type WorkflowServiceRuntime,
-} from "./text-to-workflow.js";
+} from "./text-to-workflow.ts";
 
 interface DeployCall {
   workflow: {

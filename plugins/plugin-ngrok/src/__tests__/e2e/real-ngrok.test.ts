@@ -242,8 +242,11 @@ describe('Real ngrok API E2E Tests', () => {
               console.log('⏳ Waiting for ngrok to fully clean up...');
               await ngrokSafeDelay(testConfig.ngrok.minIntervalBetweenStarts + 2000);
             }
-          } catch (error: any) {
-            console.error(`❌ Cycle ${i + 1} failed:`, error.message);
+          } catch (error) {
+            console.error(
+              `❌ Cycle ${i + 1} failed:`,
+              error instanceof Error ? error.message : String(error)
+            );
             // If we get an error, wait extra time before continuing
             if (i < 2) {
               console.log('⏳ Extra wait after error...');

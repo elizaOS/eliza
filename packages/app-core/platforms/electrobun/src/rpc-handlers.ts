@@ -48,6 +48,7 @@ import {
 } from "./native/steward";
 import { getSwabbleManager } from "./native/swabble";
 import { getTalkModeManager } from "./native/talkmode";
+import type { ElizaDesktopRPCSchema, StewardRpcStatus } from "./rpc-schema";
 import {
 	buildRuntimePermissionUnavailableState,
 	fetchRuntimePermissionState,
@@ -63,6 +64,20 @@ function normalizeRendererRoutePath(path: string): string {
 		throw new Error("desktopOpenAppWindow path must be a renderer route.");
 	}
 	return trimmed;
+}
+
+function createStewardStoppedStatus(error: string): StewardRpcStatus {
+	return {
+		state: "stopped",
+		port: null,
+		pid: null,
+		error,
+		restartCount: 0,
+		walletAddress: null,
+		agentId: null,
+		tenantId: null,
+		startedAt: null,
+	};
 }
 
 /** Push current OS permission states to the agent REST API in-process. */
@@ -111,21 +126,18 @@ export {
 } from "./diagnostic-format";
 
 /**
- * Register all RPC request handlers on the given rpc instance.
+ * Wire bun → renderer request proxy onto the BrowserWorkspaceManager.
  *
- * Each handler receives typed params and must return the typed response
- * matching ElizaDesktopRPCSchema.bun.requests[method].
+ * Browser workspace tabs need to call back into the renderer (e.g. to
+ * evaluate JS in a tab or read its bounds). Those calls go through
+ * `rpc.request.<method>(...)` — the typed bun→webview side of the RPC.
+ *
+ * Must be called once per RPC instance, after the RPC is created. Passing
+ * `null` clears the caller (used when tearing down a window).
  */
-export function registerRpcHandlers(
+export function wireBrowserWorkspaceCaller(
 	rpc: ElectrobunRpcWithHandlers | null | undefined,
-	sendToWebview: SendToWebview,
 ): void {
-	if (!rpc) {
-		logger.error("[RPC] No RPC instance provided");
-		return;
-	}
-
-	const agent = getAgentManager();
 	const browserWorkspace = getBrowserWorkspaceManager();
 	const rendererRequest = rpc?.request;
 	if (rendererRequest) {
@@ -138,6 +150,39 @@ export function registerRpcHandlers(
 	} else {
 		browserWorkspace.setRendererCaller(null);
 	}
+}
+
+/**
+ * Build the bun-side RPC request handlers map.
+ *
+ * Pure factory — produces the handlers object that can be passed to either:
+ *   - `BrowserView.defineRPC<ElizaDesktopRPCSchema>({ handlers: { requests } })`
+ *     (preferred; type-checked against the schema at compile time)
+ *   - `rpc.setRequestHandler(...)` (legacy; required only until all call
+ *     sites are migrated to constructor-time RPC injection)
+ *
+ * Each handler receives typed params and must return the typed response
+ * matching `ElizaDesktopRPCSchema.bun.requests[method]`.
+ */
+/**
+ * Required-keys map: every method in `ElizaDesktopRPCSchema.bun.requests`
+ * must have a handler whose `params` and return type match the schema.
+ *
+ * Adding/removing a schema method without a corresponding handler change
+ * is now a compile error.
+ */
+type BunRpcHandlers = {
+	[K in keyof ElizaDesktopRPCSchema["bun"]["requests"]]: (
+		params: ElizaDesktopRPCSchema["bun"]["requests"][K]["params"],
+	) => Promise<ElizaDesktopRPCSchema["bun"]["requests"][K]["response"]>;
+};
+
+export function buildBunRpcHandlers({
+	sendToWebview,
+}: {
+	sendToWebview: SendToWebview;
+}): BunRpcHandlers {
+	const agent = getAgentManager();
 	const camera = getCameraManager();
 	const canvas = getCanvasManager();
 	const desktop = getDesktopManager();
@@ -152,8 +197,9 @@ export function registerRpcHandlers(
 	const swabble = getSwabbleManager();
 	const talkmode = getTalkModeManager();
 	const musicPlayer = getMusicPlayerManager();
+	const browserWorkspace = getBrowserWorkspaceManager();
 
-	rpc?.setRequestHandler?.({
+	return {
 		// ---- Agent ----
 		agentStart: async () => {
 			const status = await agent.start();
@@ -905,28 +951,19 @@ export function registerRpcHandlers(
 		stewardIsLocalEnabled: async () => ({ enabled: isStewardLocalEnabled() }),
 		stewardStart: async () => {
 			if (!isStewardLocalEnabled()) {
-				return {
-					state: "stopped" as const,
-					error: "STEWARD_LOCAL not enabled",
-				};
+				return createStewardStoppedStatus("STEWARD_LOCAL not enabled");
 			}
 			return startSteward();
 		},
 		stewardRestart: async () => {
 			if (!isStewardLocalEnabled()) {
-				return {
-					state: "stopped" as const,
-					error: "STEWARD_LOCAL not enabled",
-				};
+				return createStewardStoppedStatus("STEWARD_LOCAL not enabled");
 			}
 			return restartSteward();
 		},
 		stewardReset: async () => {
 			if (!isStewardLocalEnabled()) {
-				return {
-					state: "stopped" as const,
-					error: "STEWARD_LOCAL not enabled",
-				};
+				return createStewardStoppedStatus("STEWARD_LOCAL not enabled");
 			}
 			return resetSteward();
 		},
@@ -992,7 +1029,33 @@ export function registerRpcHandlers(
 			return floatingChat.getStatus();
 		},
 		floatingChatGetStatus: async () => floatingChat.getStatus(),
-	});
+	};
+}
+
+/**
+ * Legacy: register all RPC request handlers post-hoc on an existing rpc
+ * instance via `setRequestHandler`. Kept for call sites that haven't yet
+ * migrated to constructor-time `BrowserView.defineRPC<Schema>` injection.
+ *
+ * New code should prefer:
+ *
+ *   const rpc = BrowserView.defineRPC<ElizaDesktopRPCSchema>({
+ *     handlers: { requests: buildBunRpcHandlers({ sendToWebview }) },
+ *   });
+ *   const win = new BrowserWindow({ rpc, ... });
+ *   wireBrowserWorkspaceCaller(rpc);
+ */
+export function registerRpcHandlers(
+	rpc: ElectrobunRpcWithHandlers | null | undefined,
+	sendToWebview: SendToWebview,
+): void {
+	if (!rpc) {
+		logger.error("[RPC] No RPC instance provided");
+		return;
+	}
+
+	wireBrowserWorkspaceCaller(rpc);
+	rpc?.setRequestHandler?.(buildBunRpcHandlers({ sendToWebview }));
 
 	logger.info("[RPC] All handlers registered");
 }

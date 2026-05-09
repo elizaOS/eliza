@@ -19,7 +19,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger, resolveCanonicalOwnerIdForMessage } from "@elizaos/core";
-import { hasAdminAccess } from "../security/access.js";
+import { hasAdminAccess } from "../security/access.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -101,7 +101,7 @@ async function findLastOwnerMessageTimestamp(
 
 async function checkActiveEscalation(triggers: Trigger[]): Promise<void> {
   try {
-    const { EscalationService } = await import("../services/escalation.js");
+    const { EscalationService } = await import("../services/escalation.ts");
     const active = EscalationService.getActiveEscalationSync();
     if (active && !active.resolved) {
       triggers.push({

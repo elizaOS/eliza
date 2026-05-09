@@ -1,0 +1,28 @@
+{
+  // Bundler-only tsconfig — used by `Bun.build` in scripts/build-mobile-bundle.mjs.
+  //
+  // The agent's main `tsconfig.json` aliases `react`, `react/jsx-runtime`,
+  // `react/jsx-dev-runtime`, and `react-dom` to `@types/*` `.d.ts` files so
+  // that `tsc --noEmit` can typecheck React JSX inside agent source. Bun.build
+  // also reads `tsconfig.json#paths` by default, then tries to load those
+  // `.d.ts` files as JavaScript — which fails on `export as namespace React`.
+  //
+  // Bun.build is pointed at this file via the `tsconfig` option so the React
+  // aliases stay invisible to the bundler. We deliberately do NOT extend the
+  // main tsconfig — `tsc` merges `paths` from extends-chains in surprising
+  // ways and the only contract we care about here is "no React aliases visible
+  // to Bun.build". Workspace `@elizaos/*` resolution is handled by the
+  // dedupe / capacitor / src-fallback plugins in build-mobile-bundle.mjs,
+  // not via paths.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": false,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "paths": {}
+  }
+}

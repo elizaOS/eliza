@@ -663,7 +663,7 @@ const myPlugin: Plugin = {
 // my-plugin.test.ts
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createMessageMemory, stringToUuid, type Memory } from "@elizaos/core";
-import { createTestRuntime, type TestRuntimeResult } from "@elizaos/core/testing";
+import { createTestRuntime, type TestRuntimeResult } from "@elizaos/core";
 import myPlugin from "./index";
 
 function createTestMessage(text: string): Memory {

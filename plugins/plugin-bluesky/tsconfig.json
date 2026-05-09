@@ -27,9 +27,6 @@
     "paths": {
       "@elizaos/core": [
         "../../../packages/core/dist/node"
-      ],
-      "@elizaos/core/*": [
-        "../../../packages/core/dist/*"
       ]
     }
   },

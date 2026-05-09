@@ -88,7 +88,7 @@ async function exchangeCloudLaunchSession(
 ): Promise<{ apiBase: string; token: string }> {
   const sessionPath = encodeURIComponent(sessionId);
   const launchSessionUrls = [
-    `${cloudBaseUrl}/api/v1/app/launch-sessions/${sessionPath}`,
+    `${cloudBaseUrl}/api/v1/eliza/launch-sessions/${sessionPath}`,
     `${cloudBaseUrl}/api/v1/app/launch-sessions/${sessionPath}`,
   ];
 

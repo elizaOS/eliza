@@ -317,6 +317,34 @@ describe("applyPluginManifestVerdicts", () => {
     expect(config.plugins?.entries?.test?.enabled).toBe(true);
   });
 
+  it("force adds a plugin even when the enable predicate is false", () => {
+    const config: {
+      plugins?: {
+        allow?: string[];
+        entries?: Record<string, { enabled?: boolean }>;
+      };
+    } = {};
+    const changes: string[] = [];
+
+    applyPluginManifestVerdicts(
+      config,
+      [
+        makeVerdict({
+          packageName: "@x/forced-provider",
+          shortId: "forced-provider",
+          enabled: false,
+          force: true,
+          reason: "manifest: @x/forced-provider/auto-enable.js",
+        }),
+      ],
+      changes,
+    );
+
+    expect(config.plugins?.allow).toContain("forced-provider");
+    expect(config.plugins?.allow).toContain("@x/forced-provider");
+    expect(changes[0]).toMatch(/Auto-enabled plugin: @x\/forced-provider/);
+  });
+
   it("dedupes when called twice with the same verdict", () => {
     const config: { plugins?: { allow?: string[] } } = {};
     const changes: string[] = [];
