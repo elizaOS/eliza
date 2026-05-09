@@ -64,7 +64,6 @@ export {
 export * from "./registry-client.js";
 export { resolveAppHeroImage } from "./registry-client-queries.js";
 export * from "./remote-signing-service.js";
-export { ResearchTaskExecutor } from "./research-task-executor.js";
 export * from "./sandbox-engine.js";
 export * from "./sandbox-manager.js";
 export * from "./self-updater.js";
@@ -85,8 +84,6 @@ export {
   signalLogout,
 } from "./signal-pairing.js";
 export * from "./signing-policy.js";
-export * from "./skill-catalog-client.js";
-export * from "./skill-marketplace.js";
 export * from "./stream-manager.js";
 export * from "./task-executor.js";
 export * from "./tts-stream-bridge.js";

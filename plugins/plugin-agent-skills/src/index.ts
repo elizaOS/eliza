@@ -107,3 +107,11 @@ export {
 	SKILL_NAME_PATTERN,
 	SKILL_SOURCE_PRECEDENCE,
 } from "./types";
+// Migrated server-side surfaces (skills routes, marketplace, helpers)
+export * from "./api/binance-skill-helpers";
+export * from "./api/curated-skills-routes";
+export * from "./api/skill-discovery-helpers";
+export * from "./api/skills-routes";
+export * from "./services/research-task-executor";
+export * from "./services/skill-catalog-client";
+export * from "./services/skill-marketplace";

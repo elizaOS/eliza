@@ -23,9 +23,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { logger } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/shared";
-import { resolveStateDir } from "../config/paths.js";
+import { resolveStateDir } from "@elizaos/agent";
+import { logger, type RouteRequestContext } from "@elizaos/core";
 
 const CURATED_SKILL_NAME_RE = /^[a-z0-9-]+$/;
 
