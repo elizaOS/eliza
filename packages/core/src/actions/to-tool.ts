@@ -106,7 +106,7 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 				requiresTool: {
 					type: "boolean",
 					description:
-						"True when this turn needs an action/tool/provider/subagent, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification before the user can be answered.",
+						"True when this turn needs an action/tool/provider/subagent, filesystem/runtime inspection, browser or network lookup, live/current/external data, side effects, long-running work, or verification before the user can be answered. The router upgrades empty or simple-only plans to planning against `general` and the planner loop will retry if it returns terminal output before any non-terminal tool has run.",
 				},
 				simple: {
 					type: "boolean",

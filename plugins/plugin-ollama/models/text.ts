@@ -253,7 +253,7 @@ function buildNativeResultCast(
     finishReason: String(result.finishReason ?? ""),
     usage,
     providerMetadata: { modelName },
-  };
+  } as unknown as GenerateTextResult;
   return payload as unknown as string;
 }
 

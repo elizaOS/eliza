@@ -141,6 +141,15 @@ export interface MessageHandlerPlan {
 	contextSlices?: string[];
 	candidateActions?: string[];
 	parentActionHints?: string[];
+	/**
+	 * When true, Stage 1 marks this turn as requiring a tool call. The router
+	 * upgrades empty / simple-only plans to planning against `general` and the
+	 * planner loop will retry if the planner returns terminal output before any
+	 * non-terminal tool has executed.
+	 */
+	requiresTool?: boolean;
+	/** Legacy flag (pre-`contexts: ["simple"]`); honored as a back-compat hint. */
+	simple?: boolean;
 	[key: string]: JsonValue | undefined;
 }
 
