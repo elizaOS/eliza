@@ -20,6 +20,7 @@ import { createTwitchConnectorAccountProvider } from "./connector-account-provid
 
 // Import service for plugin
 import { TwitchService } from "./service.js";
+import { TwitchWorkflowCredentialProvider } from "./workflow-credential-provider.js";
 
 /**
  * Twitch plugin definition.
@@ -29,7 +30,7 @@ const twitchPlugin: Plugin = {
   description:
     "Twitch chat integration plugin for ElizaOS with real-time messaging",
 
-  services: [TwitchService],
+  services: [TwitchService, TwitchWorkflowCredentialProvider],
 
   actions: [],
 

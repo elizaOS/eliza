@@ -36,6 +36,7 @@ import {
   autoAssignAtBoot,
   readEffectiveAssignments,
 } from "../services/local-inference/assignments";
+import { extractPromptCacheKey } from "../services/local-inference/cache-bridge";
 import { deviceBridge } from "../services/local-inference/device-bridge";
 import { localInferenceEngine } from "../services/local-inference/engine";
 import { handlerRegistry } from "../services/local-inference/handler-registry";
@@ -163,6 +164,16 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
     // expensive; the user is expected to assign a small number of models.
     await ensureAssignedModelLoaded(loader, slot);
 
+    // Forward the runtime-emitted prompt cache key to the local backend
+    // so the engine / llama-server can pin to a stable slot and reuse
+    // its prefix KV. Cloud providers consume the same key from
+    // `providerOptions.{provider}.promptCacheKey`; here we read the
+    // canonical form from `providerOptions.eliza.promptCacheKey`.
+    const cacheKey =
+      extractPromptCacheKey(
+        (params as { providerOptions?: unknown }).providerOptions,
+      ) ?? undefined;
+
     // Prefer a runtime-registered loader that implements `generate` — that's
     // the mobile / device-bridge path. On desktop we fall back to the
     // standalone engine.
@@ -170,6 +181,7 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
       return loader.generate({
         prompt: params.prompt ?? "",
         stopSequences: params.stopSequences,
+        cacheKey,
       });
     }
     if (!(await localInferenceEngine.available())) {
@@ -185,6 +197,7 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
     return localInferenceEngine.generate({
       prompt: params.prompt ?? "",
       stopSequences: params.stopSequences,
+      cacheKey,
     });
   };
 }

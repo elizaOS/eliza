@@ -9,11 +9,12 @@ import { signalSetupRoutes } from "./setup-routes";
 
 // Types
 import { normalizeE164 } from "./types";
+import { SignalWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 const signalPlugin: Plugin = {
   name: "signal",
   description: "Signal messaging integration plugin for ElizaOS with end-to-end encryption",
-  services: [SignalService],
+  services: [SignalService, SignalWorkflowCredentialProvider],
   actions: [],
   providers: [],
   routes: signalSetupRoutes,

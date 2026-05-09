@@ -18,12 +18,72 @@ export type ModelCategory =
 
 export type LocalRuntimeBackend = "node-llama-cpp" | "llama-server";
 
+/**
+ * Specialised llama.cpp kernels shipped by the buun-llama-cpp / DFlash fork.
+ * Models that declare a `requiresKernel` advertise that they only run
+ * correctly under llama-server when the matching kernel is present.
+ */
+export type LocalRuntimeKernel =
+  | "dflash"
+  | "turbo3"
+  | "turbo4"
+  | "turbo3_tcq"
+  | "qjl_full";
+
+/**
+ * llama.cpp optimization knobs that the dispatcher can wire into a
+ * `llama-server` spawn. Values come from catalog metadata (per-model) and
+ * environment overrides (per-process). The catalog is the source of truth
+ * for which knobs are *safe* on a given quant; env vars are the operator's
+ * escape hatch and override the catalog when set.
+ */
+export interface LocalRuntimeOptimizations {
+  /** Lookahead decoding window. Maps to `--lookahead N` on llama-server. */
+  lookahead?: number;
+  /**
+   * Built-in n-gram drafter (no separate drafter model). Maps to
+   * `--draft-min` / `--draft-max` / `--draft-min-prob`. Mutually exclusive
+   * with DFlash speculative decoding.
+   */
+  ngramDraft?: { min: number; max: number; minProb: number };
+  /**
+   * `--parallel N` for continuous batching. The Cache Bridge agent may bump
+   * this default at runtime; the dispatcher reads but does not override.
+   */
+  parallel?: number;
+  /**
+   * Mixture-of-experts expert-tensor offload target. `"cpu"` maps to
+   * `-ot ".*=CPU"` so expert tensors stay in CPU memory and only the
+   * shared layers occupy VRAM.
+   */
+  moeOffload?: "cpu" | "none";
+  /** `--mlock` — pin model pages in RAM. */
+  mlock?: boolean;
+  /** Inverse of `--mmap`; maps to `--no-mmap`. */
+  noMmap?: boolean;
+  /** Multimodal projector path; maps to `--mmproj <path>`. */
+  mmproj?: string;
+  /** `--alias <name>` for the OpenAI-compatible model id. */
+  alias?: string;
+  /** `-fa on` (flash attention). Always on for DFlash. */
+  flashAttention?: boolean;
+  /**
+   * Specialised kernels this model requires from the llama-server fork.
+   * The dispatcher uses this to pick `llama-server` over `node-llama-cpp`
+   * regardless of `preferredBackend`, since the in-process binding cannot
+   * provide these kernels.
+   */
+  requiresKernel?: LocalRuntimeKernel[];
+}
+
 export interface LocalRuntimeAcceleration {
   /**
    * Prefer out-of-process llama-server over the node binding when the
    * required binary and companion files are available.
    */
   preferredBackend?: LocalRuntimeBackend;
+  /** Optimization knobs declared per-model. See `LocalRuntimeOptimizations`. */
+  optimizations?: LocalRuntimeOptimizations;
   dflash?: {
     /** Catalog id of the hidden drafter GGUF companion. */
     drafterModelId: string;

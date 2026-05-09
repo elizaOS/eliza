@@ -2,12 +2,13 @@ import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } f
 import { createWhatsAppConnectorAccountProvider } from "./connector-account-provider";
 import { WhatsAppConnectorService } from "./runtime-service";
 import { whatsappSetupRoutes } from "./setup-routes";
+import { WhatsAppWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 const whatsappPlugin: Plugin = {
   name: "whatsapp",
   description: "WhatsApp integration for ElizaOS (Cloud API + Baileys)",
   actions: [],
-  services: [WhatsAppConnectorService],
+  services: [WhatsAppConnectorService, WhatsAppWorkflowCredentialProvider],
   routes: whatsappSetupRoutes,
   // Self-declared auto-enable: activate when the "whatsapp" connector is
   // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map

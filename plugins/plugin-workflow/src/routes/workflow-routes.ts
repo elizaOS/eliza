@@ -381,6 +381,18 @@ async function handleToggle(
   sendJson(ctx, 200, await service.getWorkflow(id));
 }
 
+async function handleListExecutions(
+  ctx: WorkflowRouteContext,
+  service: WorkflowService,
+  id: string
+): Promise<void> {
+  const url = new URL(`http://x${ctx.req.url ?? ''}`);
+  const rawLimit = url.searchParams.get('limit');
+  const limit = Math.min(Math.max(1, Number(rawLimit) || 10), 50);
+  const response = await service.listExecutions({ workflowId: id, limit });
+  sendJson(ctx, 200, { executions: response.data });
+}
+
 export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<void> {
   const path = normalizePath(ctx.pathname);
   const method = ctx.method.toUpperCase();
@@ -442,6 +454,10 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
     }
     if (id && method === 'POST' && path === `/workflows/${encodeURIComponent(id)}/deactivate`) {
       await handleToggle(ctx, service, id, false);
+      return;
+    }
+    if (id && method === 'GET' && path === `/workflows/${encodeURIComponent(id)}/executions`) {
+      await handleListExecutions(ctx, service, id);
       return;
     }
 

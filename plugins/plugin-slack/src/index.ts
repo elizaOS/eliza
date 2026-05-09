@@ -7,11 +7,12 @@ import {
 import { createSlackConnectorAccountProvider } from "./connector-account-provider";
 
 import { SlackService } from "./service";
+import { SlackWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 const slackPlugin: Plugin = {
   name: "slack",
   description: "Slack integration plugin for ElizaOS with Socket Mode support",
-  services: [SlackService],
+  services: [SlackService, SlackWorkflowCredentialProvider],
   actions: [],
   providers: [],
   // Self-declared auto-enable: activate when the "slack" connector is
