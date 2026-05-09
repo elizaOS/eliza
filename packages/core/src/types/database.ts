@@ -1481,7 +1481,7 @@ export interface EmbeddingSearchResult {
 }
 
 /** Base shape for memory retrieval options (string IDs before UUID substitution) */
-interface ProtoMemoryRetrievalOptions {
+interface MemoryRetrievalOptionsBase {
 	roomId?: string;
 	agentId?: string;
 	start?: number;
@@ -1496,7 +1496,7 @@ interface ProtoMemoryRetrievalOptions {
  */
 export interface MemoryRetrievalOptions
 	extends Omit<
-		ProtoMemoryRetrievalOptions,
+		MemoryRetrievalOptionsBase,
 		"roomId" | "agentId" | "start" | "end"
 	> {
 	roomId: UUID;
@@ -1506,7 +1506,7 @@ export interface MemoryRetrievalOptions
 }
 
 /** Base shape for memory search options */
-interface ProtoMemorySearchOptions {
+interface MemorySearchOptionsBase {
 	roomId?: string;
 	agentId?: string;
 	metadata?: unknown;
@@ -1520,7 +1520,7 @@ interface ProtoMemorySearchOptions {
  */
 export interface MemorySearchOptions
 	extends Omit<
-		ProtoMemorySearchOptions,
+		MemorySearchOptionsBase,
 		"roomId" | "agentId" | "metadata" | "matchThreshold"
 	> {
 	roomId: UUID;
@@ -1530,7 +1530,7 @@ export interface MemorySearchOptions
 }
 
 /** Base shape for multi-room memory options */
-interface ProtoMultiRoomMemoryOptions {
+interface MultiRoomMemoryOptionsBase {
 	roomIds?: string[];
 	agentId?: string;
 	limit?: number;
@@ -1541,7 +1541,7 @@ interface ProtoMultiRoomMemoryOptions {
  * Options for multi-room memory retrieval
  */
 export interface MultiRoomMemoryOptions
-	extends Omit<ProtoMultiRoomMemoryOptions, "roomIds" | "agentId"> {
+	extends Omit<MultiRoomMemoryOptionsBase, "roomIds" | "agentId"> {
 	roomIds: UUID[];
 	agentId?: UUID;
 }

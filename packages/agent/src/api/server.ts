@@ -209,7 +209,7 @@ import { handleMemoryRoutes } from "./memory-routes.js";
 import { handleMiscRoutes } from "./misc-routes.js";
 import { handleMobileOptionalRoutes } from "./mobile-optional-routes.js";
 import { handleModelsRoutes } from "./models-routes.js";
-import { tryHandleMusicPlayerStatusFallback } from "@elizaos/plugin-music-player";
+import { tryHandleMusicPlayerStatusFallback } from "@elizaos/plugin-music";
 import { handleOnboardingRoutes } from "./onboarding-routes.js";
 import { handlePermissionRoutes } from "./permissions-routes.js";
 import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.js";
@@ -239,7 +239,6 @@ import {
   handleSandboxRouteGroup,
 } from "./server-route-dispatch.js";
 // signal-routes: handleSignalRoute dispatch extracted to @elizaos/plugin-signal (setup-routes.ts)
-import { applySignalQrOverride } from "./signal-routes.js";
 import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
@@ -629,16 +628,6 @@ function error(res: http.ServerResponse, message: string, status = 400): void {
   sendJsonError(res, message, status);
 }
 
-const BROWSER_BRIDGE_KINDS = new Set(["chrome", "safari"]);
-const BROWSER_BRIDGE_PACKAGE_PATH_TARGETS = new Set([
-  "extension_root",
-  "chrome_build",
-  "chrome_package",
-  "safari_web_extension",
-  "safari_app",
-  "safari_package",
-]);
-
 function emptyTrainingTaskCounters(): Record<string, number> {
   return {
     should_respond: 0,
@@ -701,7 +690,7 @@ function parseBrowserBridgeKind(
 ): BrowserBridgeKind | null {
   if (!value) return null;
   const decoded = decodeURIComponent(value);
-  return BROWSER_BRIDGE_KINDS.has(decoded)
+  return (BROWSER_BRIDGE_KINDS as readonly string[]).includes(decoded)
     ? (decoded as BrowserBridgeKind)
     : null;
 }
@@ -710,7 +699,7 @@ function parseBrowserBridgePackageTarget(
   value: unknown,
 ): BrowserBridgePackagePathTarget | null {
   return typeof value === "string" &&
-    BROWSER_BRIDGE_PACKAGE_PATH_TARGETS.has(value)
+    (BROWSER_BRIDGE_PACKAGE_PATH_TARGETS as readonly string[]).includes(value)
     ? (value as BrowserBridgePackagePathTarget)
     : null;
 }

@@ -10,7 +10,7 @@
  * Gated on ELIZA_LIVE_TEST=1.
  */
 import path from "node:path";
-import { trainingPlugin } from "@elizaos/app-training/setup-routes";
+import { trainingPlugin } from "@elizaos/app-training";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import {
   type RuntimeHarness as Runtime,

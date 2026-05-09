@@ -1063,8 +1063,7 @@ async function seedBenchmarkCaseFixtures(
   //    call even when the runtime already ran plugin migrations at boot.
   try {
     const { LifeOpsRepository } = (await import(
-      // @ts-expect-error — workspace package resolved at runtime
-      "@elizaos/app-lifeops/lifeops/repository"
+      "@elizaos/app-lifeops"
     )) as {
       LifeOpsRepository: {
         bootstrapSchema?: (r: AgentRuntime) => Promise<void>;
@@ -1084,8 +1083,7 @@ async function seedBenchmarkCaseFixtures(
   try {
     const now = new Date().toISOString();
     const { LifeOpsRepository } = await import(
-      // @ts-expect-error — workspace package resolved at runtime
-      "@elizaos/app-lifeops/lifeops/repository"
+      "@elizaos/app-lifeops"
     );
     const repo = new LifeOpsRepository(runtime);
     const relationshipRepo = repo as typeof repo & {
@@ -1307,8 +1305,7 @@ async function seedBenchmarkCaseFixtures(
     for (let attempt = 0; attempt < 20 && !seeded; attempt += 1) {
       try {
         const approvalModule = await import(
-          // @ts-expect-error — workspace package resolved at runtime
-          "@elizaos/app-lifeops/lifeops/approval-queue"
+          "@elizaos/app-lifeops"
         );
         const createApprovalQueue =
           (approvalModule as { createApprovalQueue?: unknown })

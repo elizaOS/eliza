@@ -85,7 +85,7 @@ import "@elizaos/app-scape";
 import "@elizaos/app-hyperscape";
 import "@elizaos/app-2004scape";
 import "@elizaos/app-defense-of-the-agents";
-import "@clawville/app-clawville/ui";
+import "@clawville/app-clawville";
 import {
   AppBlockerSettingsCard,
   LifeOpsBrowserSetupPanel as BrowserBridgeSetupPanel,

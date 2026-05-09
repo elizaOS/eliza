@@ -34,4 +34,5 @@ export * from "./components/companion/shared-companion-scene-context";
 export * from "./components/companion/VrmStage";
 export * from "./components/companion/walletUtils";
 export * from "./emotes";
+export * from "./plugin";
 export * from "./vrm-assets";
