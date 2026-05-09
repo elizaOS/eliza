@@ -251,10 +251,14 @@ function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
 }
 
 function readDirectCloudToken(client: ElizaClient): string | null {
-  const token =
-    ((globalThis as Record<string, unknown>)
-      .__ELIZA_CLOUD_AUTH_TOKEN__ as unknown) ?? client.getRestAuthToken();
-  return typeof token === "string" && token.trim() ? token.trim() : null;
+  const globalToken = (globalThis as Record<string, unknown>)
+    .__ELIZA_CLOUD_AUTH_TOKEN__;
+  if (typeof globalToken === "string" && globalToken.trim()) {
+    return globalToken.trim();
+  }
+
+  const clientToken = client.getRestAuthToken()?.trim();
+  return clientToken || null;
 }
 
 function isNativeDirectCloudAuthMissing(client: ElizaClient): boolean {
