@@ -210,6 +210,10 @@ describe("payments mock provider", () => {
     const appCharges = ledger.body.appCharges as Array<Record<string, unknown>>;
     expect(appCharges).toHaveLength(1);
     expect(appCharges[0]?.status).toBe("confirmed");
+    const callbacks = ledger.body.callbacks as Array<Record<string, unknown>>;
+    expect(callbacks).toHaveLength(1);
+    expect(callbacks[0]?.delivered).toBe(true);
+    expect(callbacks[0]?.url).toBe("channel://room-1");
   });
 
   it("delivers signed paid callbacks", async () => {

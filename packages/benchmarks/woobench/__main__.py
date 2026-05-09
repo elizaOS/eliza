@@ -103,10 +103,22 @@ def _build_parser() -> argparse.ArgumentParser:
         default="eliza",
         help=(
             "Agent under test. 'dummy' returns a fixed string (smoke test only). "
-            "'dummy-charge' calls the WooBench charge action for a $1 payment. "
+            "'dummy-charge' calls the WooBench charge action for a configurable payment. "
             "'eliza' (default) routes through the elizaOS TS benchmark server "
             "(ELIZA_BENCH_URL / ELIZA_BENCH_TOKEN, auto-spawned if unset)."
         ),
+    )
+    parser.add_argument(
+        "--dummy-charge-amount",
+        type=float,
+        default=1.0,
+        help="USD amount requested by --agent dummy-charge. Defaults to 1.00.",
+    )
+    parser.add_argument(
+        "--dummy-charge-provider",
+        choices=["oxapay", "stripe"],
+        default="oxapay",
+        help="Payment provider requested by --agent dummy-charge. Defaults to oxapay.",
     )
     parser.add_argument(
         "--evaluator",
@@ -173,34 +185,43 @@ async def _create_dummy_agent(
     )
 
 
-async def _create_dummy_charge_agent(
-    conversation_history: list[dict[str, str]],
-) -> dict[str, object] | str:
-    """Smoke-test agent that calls the charge action before giving a reading."""
-    user_text = "\n".join(
-        turn["content"] for turn in conversation_history if turn.get("role") == "user"
-    ).lower()
-    if "payment sent" not in user_text and "went through" not in user_text:
-        return {
-            "text": (
-                "I can do a focused reading for $1.00. Once that crypto "
-                "charge goes through, I will continue with the full interpretation."
-            ),
-            "actions": ["BENCHMARK_ACTION"],
-            "params": {
-                "BENCHMARK_ACTION": {
-                    "command": "CREATE_APP_CHARGE",
-                    "amount_usd": 1,
-                    "provider": "oxapay",
-                    "description": "WooBench one dollar reading",
-                }
-            },
-        }
-    return (
-        "Payment went through. I see a reading about growth, money, practical "
-        "planning, and courage. The guidance is to honor the vision while "
-        "building the concrete plan underneath it."
-    )
+def _create_dummy_charge_agent(
+    *,
+    amount_usd: float,
+    provider: str,
+):
+    """Build a smoke-test agent that calls the charge action before reading."""
+
+    normalized_amount = round(max(amount_usd, 0.01), 2)
+
+    async def agent(conversation_history: list[dict[str, str]]) -> dict[str, object] | str:
+        user_text = "\n".join(
+            turn["content"] for turn in conversation_history if turn.get("role") == "user"
+        ).lower()
+        if "payment sent" not in user_text and "went through" not in user_text:
+            return {
+                "text": (
+                    f"I can do a focused reading for ${normalized_amount:.2f}. "
+                    "Once that crypto charge goes through, I will continue with "
+                    "the full interpretation."
+                ),
+                "actions": ["BENCHMARK_ACTION"],
+                "params": {
+                    "BENCHMARK_ACTION": {
+                        "command": "CREATE_APP_CHARGE",
+                        "amount_usd": normalized_amount,
+                        "provider": provider,
+                        "description": f"WooBench ${normalized_amount:.2f} reading",
+                    }
+                },
+            }
+        return (
+            "Payment went through. I see a reading about growth, money, practical "
+            "planning, and courage. The guidance is to honor the vision while "
+            "building the concrete plan underneath it."
+        )
+
+    return agent
 
 
 
@@ -256,7 +277,10 @@ async def _run(args: argparse.Namespace) -> None:
 
         agent_fn = build_eliza_bridge_agent_fn(client=client, model_name=args.model)
     elif args.agent == "dummy-charge":
-        agent_fn = _create_dummy_charge_agent
+        agent_fn = _create_dummy_charge_agent(
+            amount_usd=args.dummy_charge_amount,
+            provider=args.dummy_charge_provider,
+        )
     else:
         agent_fn = _create_dummy_agent
     payment_client = None
