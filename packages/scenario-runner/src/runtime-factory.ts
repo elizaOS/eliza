@@ -20,7 +20,7 @@ import {
   type LiveProviderConfig,
   type LiveProviderName,
   selectLiveProvider,
-} from "@elizaos/core/testing";
+} from "../../core/src/testing/live-provider.ts";
 
 // Test helpers loaded lazily so the build rootDir stays within src/.
 async function loadTestMocks() {

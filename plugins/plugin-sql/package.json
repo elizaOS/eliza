@@ -65,7 +65,7 @@
     "typecheck": "tsc --noEmit -p src/tsconfig.json",
     "lint": "cd src && bun run lint",
     "lint:check": "cd src && bun run lint:check",
-    "clean": "rm -rf src/dist .turbo node_modules",
+    "clean": "rm -rf src/dist .turbo",
     "format": "cd src && bun run format",
     "format:check": "cd src && bun run format:check",
     "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",

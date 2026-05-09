@@ -19,7 +19,7 @@
 		"build": "tsup src/index.ts --format esm --dts --clean",
 		"dev": "tsup src/index.ts --format esm --dts --watch",
 		"test": "vitest run",
-		"clean": "rm -rf dist .turbo node_modules",
+		"clean": "rm -rf dist .turbo",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"lint:check": "bunx @biomejs/biome check .",
 		"format": "bunx @biomejs/biome format --write .",

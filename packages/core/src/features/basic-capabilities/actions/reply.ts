@@ -12,7 +12,7 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { ModelType } from "../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 import {
 	composePromptFromState,
 	parseJSONObjectFromText,
@@ -218,7 +218,7 @@ export const replyAction = {
 		},
 	],
 	validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) =>
-		hasActionContextOrKeyword(message, state, {
+		hasActionContext(message, state, {
 			contexts: ["general", "messaging"],
 			keywords: ["reply", "respond", "answer", "say", "tell me", "explain"],
 		}),

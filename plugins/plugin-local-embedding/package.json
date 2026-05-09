@@ -19,7 +19,7 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "test": "vitest run",
-    "clean": "rm -rf dist .turbo node_modules",
+    "clean": "rm -rf dist .turbo",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
