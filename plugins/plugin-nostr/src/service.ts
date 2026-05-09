@@ -412,18 +412,14 @@ export class NostrService extends Service implements INostrService {
 
     // Subscribe to DMs (kind:4)
     const filter: Filter = { kinds: [4], "#p": [pk], since };
-    pool.subscribeMany(
-      settings.relays,
-      [filter],
-      {
-        onevent: async (event: Event) => {
-          await this.handleEvent(event);
-        },
-        oneose: () => {
-          logger.debug("Nostr EOSE received - initial sync complete");
-        },
-      }
-    );
+    pool.subscribeMany(settings.relays, filter, {
+      onevent: async (event: Event) => {
+        await this.handleEvent(event);
+      },
+      oneose: () => {
+        logger.debug("Nostr EOSE received - initial sync complete");
+      },
+    });
 
     logger.info(`Subscribed to ${settings.relays.length} relay(s)`);
   }

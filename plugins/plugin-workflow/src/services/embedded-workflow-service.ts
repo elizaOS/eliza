@@ -1,11 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import {
-  type IAgentRuntime,
-  logger,
-  Service,
-  type Task,
-  type UUID,
-} from '@elizaos/core';
+import { type IAgentRuntime, logger, Service, type Task, type UUID } from '@elizaos/core';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import {
@@ -226,7 +220,9 @@ function normalizeExecutionItem(
   if (isRecord(item) && 'json' in item) {
     return {
       json: item.json as INodeExecutionData['json'],
-      ...(item.pairedItem ? { pairedItem: item.pairedItem as INodeExecutionData['pairedItem'] } : {}),
+      ...(item.pairedItem
+        ? { pairedItem: item.pairedItem as INodeExecutionData['pairedItem'] }
+        : {}),
     };
   }
   return {
@@ -1199,9 +1195,7 @@ export class EmbeddedWorkflowService extends Service {
         name: WORKFLOW_RUN_TASK_WORKER_NAME,
         execute: async (_rt, _opts, task: Task) => {
           const workflowId =
-            typeof task.metadata?.workflowId === 'string'
-              ? task.metadata.workflowId
-              : null;
+            typeof task.metadata?.workflowId === 'string' ? task.metadata.workflowId : null;
           if (!workflowId) {
             throw new Error(
               `${WORKFLOW_RUN_TASK_WORKER_NAME} task ${task.id ?? '?'} missing metadata.workflowId`
@@ -1768,8 +1762,7 @@ export class EmbeddedWorkflowService extends Service {
     for (const task of tasks) {
       if (
         task.id &&
-        (task.metadata as Record<string, unknown> | undefined)?.workflowId ===
-          workflowId
+        (task.metadata as Record<string, unknown> | undefined)?.workflowId === workflowId
       ) {
         await this.runtime.deleteTask(task.id as UUID);
       }

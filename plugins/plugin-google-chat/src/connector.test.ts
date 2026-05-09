@@ -87,8 +87,7 @@ describe("Google Chat message connector", () => {
       ],
     ]);
     (service as { states: typeof states; defaultAccountId: string }).states = states;
-    (service as { states: typeof states; defaultAccountId: string }).defaultAccountId =
-      "workspace";
+    (service as { states: typeof states; defaultAccountId: string }).defaultAccountId = "workspace";
     const sendMessageSpy = vi
       .spyOn(service, "sendMessage")
       .mockResolvedValue({ success: true, space: "spaces/PARTNER" });

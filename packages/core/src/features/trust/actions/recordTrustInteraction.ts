@@ -157,7 +157,7 @@ export const recordTrustInteractionAction: ElizaAction = {
 		};
 
 		try {
-		await trustEngineService.trustEngine.recordInteraction(interaction);
+			await trustEngineService.trustEngine.recordInteraction(interaction);
 
 			logger.info(
 				{

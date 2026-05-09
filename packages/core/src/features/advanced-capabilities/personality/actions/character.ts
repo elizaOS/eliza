@@ -13,6 +13,7 @@ import type {
 import { MemoryType } from "../../../../types/memory.ts";
 import { ModelType } from "../../../../types/model.ts";
 import { hasActionContextOrKeyword } from "../../../../utils/action-validation.ts";
+import { getCharacterPersistenceService } from "../character-persistence.ts";
 import type { CharacterFileManager } from "../services/character-file-manager.ts";
 import {
 	MAX_PREFS_PER_USER,
@@ -24,7 +25,6 @@ import { persistCharacterPatch } from "./shared/persist-character-patch.ts";
 const CHARACTER_OPS = ["modify", "persist", "update_identity"] as const;
 type CharacterOp = (typeof CHARACTER_OPS)[number];
 
-const CHARACTER_PERSISTENCE_SERVICE = "eliza_character_persistence";
 const IDENTITY_NAME_MAX_LENGTH = 120;
 const IDENTITY_SYSTEM_MAX_LENGTH = 100_000;
 
@@ -43,13 +43,6 @@ const SAVEABLE_CHARACTER_FIELDS: ReadonlyArray<keyof Character> = [
 	"plugins",
 	"documents",
 ] as const;
-
-interface CharacterPersistenceServiceLike {
-	persistCharacter(input: {
-		previousName?: string;
-		source: "manual" | "agent" | "restore";
-	}): Promise<{ success: boolean; error?: string }>;
-}
 
 type ModifyScope = "auto" | "global" | "user";
 
@@ -363,9 +356,7 @@ async function runUpdateIdentity(
 	if (name) character.name = name;
 	if (systemPrompt) character.system = systemPrompt;
 
-	const persistence = runtime.getService(
-		CHARACTER_PERSISTENCE_SERVICE,
-	) as unknown as CharacterPersistenceServiceLike | null;
+	const persistence = getCharacterPersistenceService(runtime);
 
 	if (!persistence) {
 		if (name) character.name = previousName;

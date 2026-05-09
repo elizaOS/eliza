@@ -49,10 +49,7 @@ export function validateConfig(): Config {
 
     const validatedConfig = configSchema.parse(configToParse);
 
-    logger.info(
-      validatedConfig as Record<string, unknown>,
-      "Using local AI configuration:"
-    );
+    logger.info(validatedConfig as Record<string, unknown>, "Using local AI configuration:");
 
     return validatedConfig;
   } catch (error) {

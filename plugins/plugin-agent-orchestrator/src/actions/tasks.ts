@@ -528,8 +528,7 @@ async function runStopAgent(
             codingSessions?: unknown;
           }
         ).codingSession = undefined;
-      if (state)
-        (state as { codingSessions?: unknown }).codingSessions = [];
+      if (state) (state as { codingSessions?: unknown }).codingSessions = [];
       const text = `Stopped ${sessions.length} sessions`;
       await callbackText(callback, text);
       return { success: true, text, data: { stoppedCount: sessions.length } };
@@ -537,8 +536,8 @@ async function runStopAgent(
 
     const requestedId =
       pickString(params, content, "sessionId") ??
-      (state as { codingSession?: { id?: string } } | undefined)
-        ?.codingSession?.id;
+      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
+        ?.id;
     const target = requestedId
       ? await Promise.resolve(service.getSession(requestedId))
       : newestSession(sessions);
@@ -555,11 +554,10 @@ async function runStopAgent(
 
     await service.stopSession(target.id);
     if (
-      (state as { codingSession?: { id?: string } } | undefined)
-        ?.codingSession?.id === target.id
+      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
+        ?.id === target.id
     ) {
-      (state as { codingSession?: unknown }).codingSession =
-        undefined;
+      (state as { codingSession?: unknown }).codingSession = undefined;
     }
     await callbackText(callback, `Stopped task-agent session ${target.id}.`);
     return {
@@ -663,8 +661,8 @@ async function runCancel(
     const threadId = pickString(params, content, "threadId");
     const sessionId =
       pickString(params, content, "sessionId") ??
-      (state as { codingSession?: { id?: string } } | undefined)
-        ?.codingSession?.id;
+      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
+        ?.id;
     const search = pickString(params, content, "search")?.toLowerCase();
     const sessions = await Promise.resolve(service.listSessions());
 

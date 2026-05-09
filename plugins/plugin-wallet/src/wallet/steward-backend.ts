@@ -62,9 +62,7 @@ export class StewardBackend implements WalletBackend {
     void _runtime;
     let steward: StewardEvmAccountModule;
     try {
-      steward = (await import(
-        STEWARD_MODULE_ID
-      )) as StewardEvmAccountModule;
+      steward = (await import(STEWARD_MODULE_ID)) as StewardEvmAccountModule;
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       throw new StewardUnavailableError(

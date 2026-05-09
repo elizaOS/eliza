@@ -25,7 +25,7 @@ function createRuntime(): IAgentRuntime {
     logger,
   };
 
-  return runtime as IAgentRuntime;
+  return runtime as unknown as IAgentRuntime;
 }
 
 function createService(): {

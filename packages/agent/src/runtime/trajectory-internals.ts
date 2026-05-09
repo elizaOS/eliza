@@ -720,9 +720,11 @@ export async function getSqlRaw(): Promise<
 export function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb | null {
   const adapterDb = runtime.adapter?.db as RuntimeDb | undefined;
   // Legacy runtimes may expose `databaseAdapter` instead of `adapter`
-  const fallbackDb = (runtime as IAgentRuntime & {
-    databaseAdapter?: { db?: RuntimeDb };
-  }).databaseAdapter?.db;
+  const fallbackDb = (
+    runtime as IAgentRuntime & {
+      databaseAdapter?: { db?: RuntimeDb };
+    }
+  ).databaseAdapter?.db;
   const db = adapterDb || fallbackDb;
   if (!db || typeof db.execute !== "function") return null;
   return db;

@@ -9,7 +9,7 @@ export function describeIf(condition: boolean): DescribeFn {
 		return describe;
 	}
 
-	return describe.skip;
+	return describe.skip as DescribeFn;
 }
 
 export function itIf(condition: boolean): ItFn {
@@ -17,7 +17,7 @@ export function itIf(condition: boolean): ItFn {
 		return it;
 	}
 
-	return it.skip;
+	return it.skip as ItFn;
 }
 
 export function testIf(condition: boolean): TestFn {
@@ -25,5 +25,5 @@ export function testIf(condition: boolean): TestFn {
 		return test;
 	}
 
-	return test.skip;
+	return test.skip as TestFn;
 }

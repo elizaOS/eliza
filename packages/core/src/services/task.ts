@@ -1,9 +1,9 @@
 // registered to runtime through plugin
 
+import { promptRunnerTaskWorker } from "../features/basic-capabilities/prompt-runner-task";
 import type { JsonValue } from "../types";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
-import { promptRunnerTaskWorker } from "../features/basic-capabilities/prompt-runner-task";
 import { Service, ServiceType } from "../types/service";
 import type { Task, TaskMetadata, TaskRunStatus } from "../types/task";
 import {

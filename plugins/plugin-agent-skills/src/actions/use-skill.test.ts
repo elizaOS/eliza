@@ -40,7 +40,7 @@ describe("useSkillAction", () => {
 			getService: vi.fn((name: string) =>
 				name === "AGENT_SKILLS_SERVICE" ? service : undefined,
 			),
-		} as IAgentRuntime;
+		} as unknown as IAgentRuntime;
 		const callback = vi.fn();
 
 		const result = await useSkillAction.handler(

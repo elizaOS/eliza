@@ -18,6 +18,7 @@ import type {
   BrowserWorkspaceDomElementSummary,
   BrowserWorkspaceSnapshotRecord,
   BrowserWorkspaceTab,
+  EvaluateBrowserWorkspaceTabRequest,
 } from "./browser-workspace-types.js";
 
 async function assertDesktopBrowserWorkspaceCanAccessProfileSecrets(
@@ -104,7 +105,7 @@ export async function requestBrowserWorkspace<T>(
 }
 
 export async function evaluateBrowserWorkspaceTab(
-  request: { id: string; script: string },
+  request: EvaluateBrowserWorkspaceTabRequest,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<unknown> {
   if (!isBrowserWorkspaceBridgeConfigured(env)) {
@@ -113,11 +114,18 @@ export async function evaluateBrowserWorkspaceTab(
     );
   }
 
+  const evalBody: { script: string; partition?: string } = {
+    script: request.script,
+  };
+  if (request.partition !== undefined) {
+    evalBody.partition = request.partition;
+  }
+
   const payload = await requestBrowserWorkspace<{ result: unknown }>(
     `/tabs/${encodeURIComponent(request.id)}/eval`,
     {
       method: "POST",
-      body: JSON.stringify({ script: request.script }),
+      body: JSON.stringify(evalBody),
     },
     env,
   );

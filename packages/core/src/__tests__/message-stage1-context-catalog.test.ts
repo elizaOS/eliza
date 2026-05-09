@@ -11,8 +11,7 @@ import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 
 function useModelCalls(runtime: IAgentRuntime): unknown[][] {
-	return (runtime.useModel as { mock: { calls: unknown[][] } }).mock
-		.calls;
+	return (runtime.useModel as { mock: { calls: unknown[][] } }).mock.calls;
 }
 
 function makeMessage(): Memory {

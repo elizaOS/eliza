@@ -69,9 +69,9 @@ function makeRuntime(modelResponse: unknown): FactsRuntime {
 			info: vi.fn(),
 			warn: vi.fn(),
 			error: vi.fn(),
-				trace: vi.fn(),
-			},
-		};
+			trace: vi.fn(),
+		},
+	};
 	return runtime as FactsRuntime;
 }
 
@@ -176,13 +176,13 @@ describe("runFactsAndRelationshipsStage", () => {
 			expect.objectContaining({
 				entityIds: expect.any(Array),
 			}),
-			);
+		);
 
-			// Validation model call uses messages, not prompt
-			const validationCall = runtime.useModel.mock.calls.find(
-				(call) =>
-					typeof call[0] === "string" &&
-					(call[0] === ModelType.TEXT_LARGE || call[0] === "TEXT_LARGE"),
+		// Validation model call uses messages, not prompt
+		const validationCall = runtime.useModel.mock.calls.find(
+			(call) =>
+				typeof call[0] === "string" &&
+				(call[0] === ModelType.TEXT_LARGE || call[0] === "TEXT_LARGE"),
 		);
 		expect(validationCall).toBeDefined();
 		const params = validationCall?.[1] as {

@@ -226,17 +226,14 @@ export function setCurrentSession(
   state: State | undefined,
   session: SpawnResult | SessionInfo,
 ): void {
-  if (state)
-    (state as { codingSession?: unknown }).codingSession = session;
+  if (state) (state as { codingSession?: unknown }).codingSession = session;
 }
 
 export function setCurrentSessions(
   state: State | undefined,
   sessions: SpawnResult[],
 ): void {
-  if (state)
-    (state as { codingSessions?: unknown }).codingSessions =
-      sessions;
+  if (state) (state as { codingSessions?: unknown }).codingSessions = sessions;
 }
 
 export function emitSessionEvent(

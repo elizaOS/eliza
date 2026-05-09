@@ -27,15 +27,15 @@ type CerebrasRecordedToolCall = NonNullable<
 const RECORDED_CEREBRAS_RESPONSE: GenerateTextResult = {
 	text: "",
 	finishReason: "tool-calls",
-		toolCalls: [
-			{
-				id: "call_recorded_abc123",
-				// AI SDK v6 Cerebras adapter returns `toolName` and `input`
-				// normalizeToolCall in planner-loop handles both shapes.
-				toolName: "DOCUMENT",
-				input: { query: "elizaOS architecture" },
-			} as CerebrasRecordedToolCall,
-		],
+	toolCalls: [
+		{
+			id: "call_recorded_abc123",
+			// AI SDK v6 Cerebras adapter returns `toolName` and `input`
+			// normalizeToolCall in planner-loop handles both shapes.
+			toolName: "DOCUMENT",
+			input: { query: "elizaOS architecture" },
+		} as CerebrasRecordedToolCall,
+	],
 	usage: {
 		promptTokens: 526,
 		completionTokens: 42,

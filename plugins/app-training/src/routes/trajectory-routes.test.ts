@@ -42,7 +42,7 @@ function createRuntime(logger: unknown): AgentRuntime {
   return {
     getServicesByType: () => [logger],
     getService: () => logger,
-  } as AgentRuntime;
+  } as unknown as AgentRuntime;
 }
 
 function createLogger(overrides: Partial<Record<string, unknown>> = {}) {

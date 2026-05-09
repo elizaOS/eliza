@@ -10,7 +10,9 @@ export class TailscaleTestSuite implements TestSuite {
     {
       name: "LocalTailscaleService claims canonical tunnel service-type",
       fn: (_runtime: IAgentRuntime) => {
-        if (LocalTailscaleService.serviceType !== CANONICAL_TUNNEL_SERVICE_TYPE) {
+        if (
+          LocalTailscaleService.serviceType !== CANONICAL_TUNNEL_SERVICE_TYPE
+        ) {
           throw new Error(
             `LocalTailscaleService.serviceType must be "${CANONICAL_TUNNEL_SERVICE_TYPE}"`,
           );
@@ -20,7 +22,9 @@ export class TailscaleTestSuite implements TestSuite {
     {
       name: "CloudTailscaleService claims canonical tunnel service-type",
       fn: (_runtime: IAgentRuntime) => {
-        if (CloudTailscaleService.serviceType !== CANONICAL_TUNNEL_SERVICE_TYPE) {
+        if (
+          CloudTailscaleService.serviceType !== CANONICAL_TUNNEL_SERVICE_TYPE
+        ) {
           throw new Error(
             `CloudTailscaleService.serviceType must be "${CANONICAL_TUNNEL_SERVICE_TYPE}"`,
           );

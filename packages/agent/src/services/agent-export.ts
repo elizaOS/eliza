@@ -177,7 +177,11 @@ function toAgentExportPayload(
     memories: payload.memories as unknown as Memory[],
     components: payload.components as unknown as Component[],
     rooms: payload.rooms as unknown as Room[],
-    participants: payload.participants as { entityId: string; roomId: string; userState: string }[],
+    participants: payload.participants as {
+      entityId: string;
+      roomId: string;
+      userState: string;
+    }[],
     relationships: payload.relationships as unknown as Relationship[],
     worlds: payload.worlds as unknown as World[],
     tasks: payload.tasks as unknown as Task[],

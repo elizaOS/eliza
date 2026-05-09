@@ -228,8 +228,7 @@ export function createPinnedLookup(params: {
 			throw new Error("DNS Context restricted: fallback missing.");
 		}
 
-		const opts =
-			typeof options === "object" && options !== null ? options : {};
+		const opts = typeof options === "object" && options !== null ? options : {};
 		const requestedFamily =
 			typeof options === "number"
 				? options

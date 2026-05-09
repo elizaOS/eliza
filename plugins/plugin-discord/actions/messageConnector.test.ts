@@ -146,8 +146,7 @@ describe("Discord message connector adapter", () => {
 			});
 		expect(userTargets.some((target) => target.kind === "user")).toBe(true);
 		expect(
-			userTargets.find((target) => target.kind === "user")?.target
-				.entityId,
+			userTargets.find((target) => target.kind === "user")?.target.entityId,
 		).toBe("333333333333333333");
 	});
 

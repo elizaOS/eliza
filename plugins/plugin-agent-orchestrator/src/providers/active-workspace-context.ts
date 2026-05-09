@@ -79,9 +79,9 @@ export const activeWorkspaceContextProvider: Provider = {
     const ptyService = runtime.getService("PTY_SERVICE") as
       | (Service & PTYService)
       | undefined;
-    const wsService = runtime.getService(
-      "CODING_WORKSPACE_SERVICE",
-    ) as (Service & CodingWorkspaceService) | undefined;
+    const wsService = runtime.getService("CODING_WORKSPACE_SERVICE") as
+      | (Service & CodingWorkspaceService)
+      | undefined;
     const coordinator = getCoordinator(runtime);
     let frameworkState = FALLBACK_FRAMEWORK_STATE;
     try {

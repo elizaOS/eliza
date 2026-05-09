@@ -366,9 +366,7 @@ export class DiscordTestSuite implements TestSuite {
 					"MessageManager is not available on the Discord client.",
 				);
 			}
-			await this.discordClient.messageManager.handleMessage(
-				fakeMessage,
-			);
+			await this.discordClient.messageManager.handleMessage(fakeMessage);
 		} catch (error) {
 			throw new Error(`Error in handling message test: ${error}`);
 		}

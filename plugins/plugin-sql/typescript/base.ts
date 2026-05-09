@@ -281,13 +281,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return worldData;
   }
 
-	private mapWorldResult(world: unknown): World {
-		const mappedWorld = world as Record<string, unknown>;
-		return {
-			...mappedWorld,
-			serverId: (mappedWorld.messageServerId || mappedWorld.serverId) as UUID,
-		} as unknown as World;
-	}
+  private mapWorldResult(world: unknown): World {
+    const mappedWorld = world as Record<string, unknown>;
+    return {
+      ...mappedWorld,
+      serverId: (mappedWorld.messageServerId || mappedWorld.serverId) as UUID,
+    } as unknown as World;
+  }
 
   /**
    * Executes the given operation with retry logic.
@@ -408,11 +408,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         username: row.username || "",
         id: row.id as UUID,
         system: !row.system ? undefined : row.system,
-			bio: bioValue as string | string[],
-			createdAt: row.createdAt.getTime(),
-			updatedAt: row.updatedAt.getTime(),
-		} as unknown as Agent;
-	});
+        bio: bioValue as string | string[],
+        createdAt: row.createdAt.getTime(),
+        updatedAt: row.updatedAt.getTime(),
+      } as unknown as Agent;
+    });
   }
 
   /**
@@ -455,11 +455,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           username: row.username || "",
           id: row.id as UUID,
           system: !row.system ? undefined : row.system,
-			bio: bioValue as string | string[],
-			createdAt: row.createdAt.getTime(),
-			updatedAt: row.updatedAt.getTime(),
-		} as unknown as Agent;
-	});
+          bio: bioValue as string | string[],
+          createdAt: row.createdAt.getTime(),
+          updatedAt: row.updatedAt.getTime(),
+        } as unknown as Agent;
+      });
     });
   }
 

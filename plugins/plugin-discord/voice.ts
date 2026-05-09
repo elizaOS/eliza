@@ -1306,7 +1306,10 @@ export class VoiceManager extends EventEmitter {
 					source: "discord",
 					accountId: this.accountId,
 				};
-				await this.runtime.emitEvent([EventType.VOICE_MESSAGE_RECEIVED], payload);
+				await this.runtime.emitEvent(
+					[EventType.VOICE_MESSAGE_RECEIVED],
+					payload,
+				);
 			}
 		} catch (error) {
 			this.runtime.logger.error(

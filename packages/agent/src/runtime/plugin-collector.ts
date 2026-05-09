@@ -182,7 +182,7 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   /** Unified wallet (canonical actions + providers — incremental migration). */
   agent_wallet: "@elizaos/plugin-wallet",
   "agent-wallet": "@elizaos/plugin-wallet",
-  /** Browser plugin: workspace browser + Chrome/Safari companion bridge. Replaces `@elizaos/app-browser` and `@elizaos/plugin-browser-bridge`; aliases here so short IDs in plugins.allow and config.features still resolve. */
+  /** Browser plugin: workspace browser + companion bridge. Aliases here so short IDs in plugins.allow and config.features resolve to the canonical package. */
   browser: "@elizaos/plugin-browser",
   "app-browser": "@elizaos/plugin-browser",
   appBrowser: "@elizaos/plugin-browser",

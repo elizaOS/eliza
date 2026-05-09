@@ -268,8 +268,12 @@ export interface MessageMetadata {
 	};
 
 	slack?: {
+		accountId?: string;
 		teamId?: string;
 		channelId?: string;
+		userId?: string;
+		/** Slack message timestamp (event `ts`). */
+		messageId?: string;
 		messageTs?: string;
 		threadTs?: string;
 	};

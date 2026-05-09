@@ -16,6 +16,9 @@ for (const envPath of [
 process.env.NODE_ENV = "test";
 process.env.TEST_BLOCK_ANONYMOUS = "true";
 process.env.AGENT_TEST_BOOTSTRAP_ADMIN ??= "true";
+process.env.PLAYWRIGHT_TEST_AUTH ??= "true";
+process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH ??= process.env.PLAYWRIGHT_TEST_AUTH;
+process.env.VITE_PLAYWRIGHT_TEST_AUTH ??= process.env.PLAYWRIGHT_TEST_AUTH;
 
 if (process.env.SKIP_DB_DEPENDENT === "1") {
   delete process.env.DATABASE_URL;
@@ -70,6 +73,7 @@ module.exports = defineConfig({
       REDIS_RATE_LIMITING: "true",
       PLAYWRIGHT_TEST_AUTH: process.env.PLAYWRIGHT_TEST_AUTH ?? "true",
       NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH: process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH ?? "true",
+      VITE_PLAYWRIGHT_TEST_AUTH: process.env.VITE_PLAYWRIGHT_TEST_AUTH ?? "true",
       PLAYWRIGHT_TEST_AUTH_SECRET:
         process.env.PLAYWRIGHT_TEST_AUTH_SECRET ?? "playwright-local-auth-secret",
       AGENT_TEST_BOOTSTRAP_ADMIN: process.env.AGENT_TEST_BOOTSTRAP_ADMIN,

@@ -64,11 +64,11 @@ function errorMessage(err: unknown): string {
 }
 
 function getRuntimeCaptureHooks(
-  runtime: IAgentRuntime,
+	runtime: IAgentRuntime,
 ): RuntimeCaptureHooks | null {
-  const hooks = (runtime as unknown as Record<PropertyKey, unknown>)[
-    RUNTIME_CAPTURE_HOOK
-  ];
+	const hooks = (runtime as { [RUNTIME_CAPTURE_HOOK]?: unknown })[
+		RUNTIME_CAPTURE_HOOK
+	];
   if (!hooks || typeof hooks !== "object") {
     return null;
   }
@@ -516,7 +516,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
   // Wrap actions registered on this runtime.
   const restoreFns: Array<() => void> = [];
 
-  (runtime as unknown as Record<PropertyKey, unknown>)[RUNTIME_CAPTURE_HOOK] = {
+  (runtime as { [RUNTIME_CAPTURE_HOOK]?: RuntimeCaptureHooks })[RUNTIME_CAPTURE_HOOK] = {
     approvalRequests,
     connectorDispatches,
     stateTransitions,
@@ -603,7 +603,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
     };
     wrapped[INTERCEPTOR_MARKER] = true;
 
-    action.handler = wrapped as unknown as Action["handler"];
+    action.handler = wrapped as Action["handler"];
     restoreFns.push(() => {
       action.handler = original;
     });
@@ -616,7 +616,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
     unique?: boolean,
   ) => Promise<unknown>;
 
-  const rt = runtime as unknown as {
+  const rt = runtime as {
     createMemory?: CreateMemoryFn;
     [k: string]: unknown;
   };
@@ -698,7 +698,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
       artifacts.length = 0;
     },
     detach(): void {
-      delete (runtime as unknown as Record<PropertyKey, unknown>)[
+      delete (runtime as { [RUNTIME_CAPTURE_HOOK]?: RuntimeCaptureHooks })[
         RUNTIME_CAPTURE_HOOK
       ];
       for (const restore of restoreFns) restore();

@@ -134,7 +134,8 @@ function normalizeViewerConfig(value: unknown): AppViewerConfig | null {
       ? { postMessageAuth: value.postMessageAuth }
       : {}),
     ...(typeof value.sandbox === "string" ? { sandbox: value.sandbox } : {}),
-    ...(isRecord(value.authMessage) && typeof value.authMessage.type === "string"
+    ...(isRecord(value.authMessage) &&
+    typeof value.authMessage.type === "string"
       ? {
           authMessage: {
             type: value.authMessage.type,

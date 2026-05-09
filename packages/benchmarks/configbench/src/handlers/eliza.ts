@@ -267,6 +267,7 @@ async function loadSqlPlugin(): Promise<Plugin | null> {
 function addLegacyAdapterMethods(
   adapter: Record<string, unknown>,
 ): Record<string, unknown> {
+  // biome-ignore lint/suspicious/noExplicitAny: adapter is dynamically patched with legacy DB methods; DatabaseAdapter has no stable structural type here.
   const a = adapter as Record<string, any>;
 
   a.getAgent ??= async (agentId: string) =>
@@ -727,15 +728,14 @@ export const elizaHandler: Handler = {
       const actions = runtime.actions
         .map((a) => a?.name ?? "")
         .filter((n) => n.length > 0);
-      const setSecretPresent = actions.some(
+      const _setSecretPresent = actions.some(
         (n) => n.toUpperCase() === "SET_SECRET",
       );
       // eslint-disable-next-line no-console
       console.error(
         `[configbench-debug] scenario=${scenario.id} channelType=${room.type} userId=${userId} worldRoles=${JSON.stringify(
-          (
-            world.metadata?.roles ?? {},
-        )} actions.count=${actions.length} SET_SECRET=${setSecretPresent} actions=${actions.join(",")}`,
+          world.metadata?.roles ?? {},
+        )} actions.count=${actions.length} SET_SECRET=${_setSecretPresent} actions=${actions.join(",")}`,
       );
       try {
         const rolesMod = (await import("@elizaos/core")) as {

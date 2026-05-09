@@ -40,25 +40,25 @@ export class PromptDispatcher {
 					const mergedExecOptions = this._mergeExecOptions(
 						callPlan.sections.map((item) => item.execOptions),
 					);
-						const state = createMinimalState(
-							callPlan.sections
-								.map(
-									(item) =>
-										`[${item.section.id}]\n${item.resolvedContext || "[context unavailable]"}`,
-								)
-								.join("\n\n"),
-						);
-						const modelSize = callPlan.model;
-						const params = {
-							prompt,
-							...mergedExecOptions,
-						} satisfies Omit<GenerateTextParams, "prompt"> & {
-							prompt: string;
-						};
-						const response = await runtime.dynamicPromptExecFromState({
-							state,
-							params,
-							schema,
+					const state = createMinimalState(
+						callPlan.sections
+							.map(
+								(item) =>
+									`[${item.section.id}]\n${item.resolvedContext || "[context unavailable]"}`,
+							)
+							.join("\n\n"),
+					);
+					const modelSize = callPlan.model;
+					const params = {
+						prompt,
+						...mergedExecOptions,
+					} satisfies Omit<GenerateTextParams, "prompt"> & {
+						prompt: string;
+					};
+					const response = await runtime.dynamicPromptExecFromState({
+						state,
+						params,
+						schema,
 						options: {
 							modelSize,
 							key: `prompt-batcher:${callPlan.sections.map((item) => item.section.id).join(",")}`,

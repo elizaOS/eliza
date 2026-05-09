@@ -98,9 +98,8 @@ test.describe("Authentication Routing", () => {
       await page.getByRole("link", { name: "Go Home" }).click();
 
       await expectPath(page, "/");
-      await expect(
-        page.getByText("Eliza Cloud is everything you need", { exact: false }),
-      ).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Monetize your agents" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Get Started Free" })).toBeVisible();
     });
 
     test("/auth/cli-login Sign In link encodes the original CLI auth URL", async ({ page }) => {

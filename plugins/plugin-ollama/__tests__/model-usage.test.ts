@@ -89,10 +89,9 @@ describe.skipIf(skipReason !== null)("ollama MODEL_USED events (live)", () => {
     const { default: plugin } = await import("../index");
     const runtime = createRuntime();
 
-    const result = await plugin.models?.[ModelType.TEXT_SMALL]?.(
-      runtime as IAgentRuntime,
-      { prompt: "Reply with exactly two words: hello there" }
-    );
+    const result = await plugin.models?.[ModelType.TEXT_SMALL]?.(runtime as IAgentRuntime, {
+      prompt: "Reply with exactly two words: hello there",
+    });
 
     expect(typeof result === "string" || (typeof result === "object" && result !== null)).toBe(
       true

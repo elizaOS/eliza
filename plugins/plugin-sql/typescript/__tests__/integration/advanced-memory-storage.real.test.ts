@@ -220,9 +220,7 @@ describe("plugin-sql advanced memory storage", () => {
     StubEntityResolutionService.links.set(entityA, [entityB]);
     StubEntityResolutionService.links.set(entityB, [entityA]);
 
-    const memoryService = (await runtime.getServiceLoadPromise(
-      "memory"
-    )) as RuntimeMemoryService;
+    const memoryService = (await runtime.getServiceLoadPromise("memory")) as RuntimeMemoryService;
 
     const stored = await memoryService.storeLongTermMemory({
       agentId: runtime.agentId,
@@ -255,9 +253,7 @@ describe("plugin-sql advanced memory storage", () => {
     await createEntities(runtime, [entityId]);
     const { roomId } = await createConversationRoom(runtime);
 
-    const memoryService = (await runtime.getServiceLoadPromise(
-      "memory"
-    )) as RuntimeMemoryService;
+    const memoryService = (await runtime.getServiceLoadPromise("memory")) as RuntimeMemoryService;
 
     await memoryService.storeSessionSummary({
       agentId: runtime.agentId,

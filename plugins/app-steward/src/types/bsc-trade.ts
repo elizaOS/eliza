@@ -1,9 +1,8 @@
 /**
  * BSC trade types specific to steward execution flow.
  *
- * The base BSC trade types (request/quote/preflight/etc.) live in
- * `@elizaos/shared/contracts/wallet`. This file holds the steward-specific
- * variants that include policy results and approval pending states.
+ * This file holds the steward-specific variants that include policy results
+ * and approval pending states.
  */
 
 import type { StewardPolicyResult } from "./steward";

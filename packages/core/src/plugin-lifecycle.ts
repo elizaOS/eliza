@@ -83,12 +83,12 @@ type RuntimeWithPluginLifecycle = IAgentRuntime &
 		__elizaPluginLifecycleInstalled?: boolean;
 		__elizaPluginOwnership?: Map<string, PluginOwnership>;
 		registerDatabaseAdapter: (adapter: IAgentRuntime["adapter"]) => void;
-	unloadPlugin?: (pluginName: string) => Promise<PluginOwnership | null>;
-	reloadPlugin?: (plugin: Plugin) => Promise<void>;
-	applyPluginConfig?: (
-		pluginName: string,
-		config: Record<string, string>,
-	) => Promise<boolean>;
+		unloadPlugin?: (pluginName: string) => Promise<PluginOwnership | null>;
+		reloadPlugin?: (plugin: Plugin) => Promise<void>;
+		applyPluginConfig?: (
+			pluginName: string,
+			config: Record<string, string>,
+		) => Promise<boolean>;
 		getPluginOwnership?: (pluginName: string) => PluginOwnership | null;
 		getAllPluginOwnership?: () => PluginOwnership[];
 	};
@@ -555,10 +555,10 @@ function removeOwnedEvents(
 	for (const [eventName, ownedHandlers] of eventGroups) {
 		const currentHandlers = runtime.events[eventName];
 		if (!currentHandlers || currentHandlers.length === 0) continue;
-			const ownedSet = new Set(ownedHandlers);
-			const remainingHandlers = currentHandlers.filter(
-				(handler) => !ownedSet.has(handler),
-			);
+		const ownedSet = new Set(ownedHandlers);
+		const remainingHandlers = currentHandlers.filter(
+			(handler) => !ownedSet.has(handler),
+		);
 		if (remainingHandlers.length > 0) {
 			runtime.events[eventName] = remainingHandlers;
 		} else {
@@ -834,12 +834,12 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		originalRegisterEvent(event as never, handler as never);
 		if (!capture) return;
 		const nextHandlers = runtimeWithLifecycle.events[event] ?? [];
-			for (const registeredHandler of nextHandlers.slice(handlersBefore)) {
-				pushUniqueEvent(capture.ownership.events, {
-					eventName: event,
-					handler: registeredHandler,
-				});
-			}
+		for (const registeredHandler of nextHandlers.slice(handlersBefore)) {
+			pushUniqueEvent(capture.ownership.events, {
+				eventName: event,
+				handler: registeredHandler,
+			});
+		}
 	}) as typeof runtimeWithLifecycle.registerEvent;
 
 	runtimeWithLifecycle.registerService = (async (

@@ -139,10 +139,7 @@ function isExpectedRuntimeStateBootstrapError(err: unknown): boolean {
   );
 }
 
-function logRuntimeStateBootstrapDeferral(
-  label: string,
-  err: unknown,
-): void {
+function logRuntimeStateBootstrapDeferral(label: string, err: unknown): void {
   if (isExpectedRuntimeStateBootstrapError(err)) {
     logger.info(
       `[roles] Deferring ${label} bootstrap until runtime worlds are available`,

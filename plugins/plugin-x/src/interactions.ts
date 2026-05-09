@@ -9,7 +9,6 @@ import {
   type Memory,
   type MessagePayload,
   ModelType,
-  type UUID,
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import { SearchMode } from "./client/index";

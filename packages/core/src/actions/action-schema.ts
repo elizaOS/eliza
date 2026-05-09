@@ -44,25 +44,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function readSchemaRecord(
-	schema: ActionParameterSchema,
-): Record<string, unknown> {
-	return schema as unknown as Record<string, unknown>;
-}
+type LegacyActionParameterSchema = Omit<
+	ActionParameterSchema,
+	"enum" | "enumValues" | "required"
+> & {
+	enum?: unknown;
+	enumValues?: unknown;
+	options?: unknown;
+	required?: boolean | string[];
+	defaultValue?: unknown;
+};
 
 function readEnumValues(
 	source: ActionParameter | ActionParameterSchema,
 ): Array<string | number | boolean> | undefined {
-	const record = source as unknown as Record<string, unknown>;
-	const schema =
-		"schema" in record && isRecord(record.schema)
-			? (record.schema as Record<string, unknown>)
-			: record;
+	const schema: LegacyActionParameterSchema =
+		"schema" in source ? source.schema : source;
 	const candidates = [
 		schema.enumValues,
 		schema.enum,
 		schema.options,
-		record.options,
+		"options" in source ? source.options : undefined,
 	];
 
 	for (const candidate of candidates) {
@@ -104,7 +106,7 @@ function readEnumValues(
 }
 
 function readRequiredPropertyNames(schema: ActionParameterSchema): Set<string> {
-	const required = readSchemaRecord(schema).required;
+	const required = (schema as LegacyActionParameterSchema).required;
 	if (!Array.isArray(required)) {
 		return new Set();
 	}
@@ -114,7 +116,7 @@ function readRequiredPropertyNames(schema: ActionParameterSchema): Set<string> {
 }
 
 function isSchemaRequired(schema: ActionParameterSchema): boolean {
-	return readSchemaRecord(schema).required === true;
+	return (schema as LegacyActionParameterSchema).required === true;
 }
 
 function getSchemaDescription(
@@ -125,12 +127,12 @@ function getSchemaDescription(
 }
 
 function getSchemaDefault(schema: ActionParameterSchema): unknown {
-	const record = readSchemaRecord(schema);
-	if ("default" in record) {
-		return record.default;
+	if ("default" in schema) {
+		return schema.default;
 	}
-	if ("defaultValue" in record) {
-		return record.defaultValue;
+	const legacy = schema as LegacyActionParameterSchema;
+	if ("defaultValue" in legacy) {
+		return legacy.defaultValue;
 	}
 	return undefined;
 }

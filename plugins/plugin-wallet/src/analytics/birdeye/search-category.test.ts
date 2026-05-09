@@ -37,7 +37,7 @@ function createRuntime() {
       getSearchCategory,
       registerSearchCategory,
       logger: { warn: vi.fn() },
-    } as IAgentRuntime,
+    } as unknown as IAgentRuntime,
   };
 }
 
@@ -114,7 +114,7 @@ describe("Birdeye search categories", () => {
         filters: { mode: "symbol", chain: "all" },
         limit: 3,
       },
-      provider as BirdeyeTokenSearchProvider,
+      provider as unknown as BirdeyeTokenSearchProvider,
     );
 
     expect(provider.fetchSearchTokenMarketData).toHaveBeenCalledWith(
@@ -176,7 +176,7 @@ describe("Birdeye search categories", () => {
           includeSecurity: false,
         },
       },
-      provider as BirdeyeTokenSearchProvider,
+      provider as unknown as BirdeyeTokenSearchProvider,
     );
 
     expect(provider.fetchTokenOverview).toHaveBeenCalledWith(

@@ -99,9 +99,9 @@ describe('validateWorkflow', () => {
     expect(validateWorkflow({ name: 'Empty', nodes: [], connections: {} }).errors).toContain(
       'Workflow must have at least one node'
     );
-    expect(
-      validateWorkflow(malformedWorkflow({ nodes: null, connections: {} })).errors
-    ).toContain('Missing or invalid nodes array');
+    expect(validateWorkflow(malformedWorkflow({ nodes: null, connections: {} })).errors).toContain(
+      'Missing or invalid nodes array'
+    );
     expect(
       validateWorkflow(malformedWorkflow({ nodes: [schedule()], connections: null })).errors
     ).toContain('Missing or invalid connections object');
@@ -378,9 +378,12 @@ describe('ensureExpressionPrefix', () => {
     });
     const count = ensureExpressionPrefix(workflow);
     expect(count).toBe(2);
-    const assignments = (workflow.nodes[0].parameters.assignments as any).assignments;
-    expect(assignments[0].value).toBe('={{ $json.a }}');
-    expect(assignments[1].value).toBe('={{ $json.b }}');
-    expect((workflow.nodes[0].parameters.options as any).values[0]).toBe('={{ $json.c }}');
+    const assignmentBlock = workflow.nodes[0].parameters.assignments as {
+      assignments: Array<{ name: string; value: string; type: string }>;
+    };
+    expect(assignmentBlock.assignments[0].value).toBe('={{ $json.a }}');
+    expect(assignmentBlock.assignments[1].value).toBe('={{ $json.b }}');
+    const optionsBlock = workflow.nodes[0].parameters.options as { values: string[] };
+    expect(optionsBlock.values[0]).toBe('={{ $json.c }}');
   });
 });

@@ -14,6 +14,7 @@ import type {
 	JSONSchema,
 	Memory,
 } from "../../../types/index.ts";
+import type { Plugin } from "../../../types/plugin.ts";
 import { MemoryType } from "../../../types/memory.ts";
 import { resolveStateDir } from "../../../utils/state-dir.ts";
 import {
@@ -575,10 +576,10 @@ ${prepared.trajectoryDigest}`;
 	],
 };
 
-export const skillItems = [
+export const skillItems: NonNullable<Plugin["evaluators"]> = [
 	skillProposalEvaluator,
 	skillRefinementEvaluator,
-] as unknown as Evaluator[];
+];
 
 export function _countProposedSkills(): number {
 	const dir = getProposedSkillsDir();

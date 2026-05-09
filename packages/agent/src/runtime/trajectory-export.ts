@@ -96,7 +96,9 @@ function toPublicTrajectoryStep(
         toText(step.stepId, trajectoryId),
       ),
     ),
-    providerAccesses: ((step.providerAccesses ?? []) as PersistedProviderAccess[]).map((access) =>
+    providerAccesses: (
+      (step.providerAccesses ?? []) as PersistedProviderAccess[]
+    ).map((access) =>
       toPublicTrajectoryProviderAccess(
         access,
         trajectoryId,

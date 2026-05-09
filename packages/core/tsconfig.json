@@ -30,7 +30,9 @@
 			"@elizaos/app-core": ["../app-core/src/index.ts"],
 			"@elizaos/app-core/*": ["../app-core/src/*"],
 			"@elizaos/shared": ["../shared/src/index.ts"],
-			"@elizaos/shared/*": ["../shared/src/*"]
+			"@elizaos/shared/*": ["../shared/src/*"],
+			"@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+			"@elizaos/plugin-signal/*": ["../../plugins/plugin-signal/src/*"]
 		}
 	},
 	"include": [
