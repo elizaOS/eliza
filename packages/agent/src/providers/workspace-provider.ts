@@ -16,8 +16,8 @@ import {
   type ProviderResult,
   type State,
 } from "@elizaos/core";
-import { hasAdminAccess } from "../security/access.js";
 import type { CodingAgentContext } from "@elizaos/plugin-coding-tools";
+import { hasAdminAccess } from "../security/access.js";
 import {
   filterInitFilesForSession,
   isDefaultBoilerplate,

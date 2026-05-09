@@ -1,4 +1,14 @@
-import crypto from "node:crypto";
+import crypto from 'node:crypto';
+import type {
+  DeployedTriggerWorkflow,
+  NormalizedTriggerDraft,
+  TextTriggerWorkflowDraft,
+  TriggerExecutionOptions,
+  TriggerExecutionResult,
+  TriggerHealthSnapshot,
+  TriggerSummary,
+  TriggerTaskMetadata,
+} from '@elizaos/agent';
 import {
   type TriggerRunRecord as CoreTriggerRunRecord,
   type IAgentRuntime,
@@ -11,17 +21,7 @@ import {
   type TriggerType,
   type TriggerWakeMode,
   type UUID,
-} from "@elizaos/core";
-import type {
-  DeployedTriggerWorkflow,
-  NormalizedTriggerDraft,
-  TriggerExecutionOptions,
-  TriggerExecutionResult,
-  TextTriggerWorkflowDraft,
-  TriggerHealthSnapshot,
-  TriggerSummary,
-  TriggerTaskMetadata,
-} from "@elizaos/agent";
+} from '@elizaos/core';
 
 export type TriggerRouteHelpers = RouteHelpers;
 
@@ -57,11 +57,9 @@ export interface TriggerRouteContext extends RouteRequestContext {
   executeTriggerTask: (
     runtime: IAgentRuntime,
     task: Task,
-    options: TriggerExecutionOptions,
+    options: TriggerExecutionOptions
   ) => Promise<TriggerExecutionResult>;
-  getTriggerHealthSnapshot: (
-    runtime: IAgentRuntime,
-  ) => Promise<TriggerHealthSnapshot>;
+  getTriggerHealthSnapshot: (runtime: IAgentRuntime) => Promise<TriggerHealthSnapshot>;
   getTriggerLimit: (runtime: IAgentRuntime) => number;
   listTriggerTasks: (runtime: IAgentRuntime) => Promise<Task[]>;
   readTriggerConfig: (task: Task) => TriggerConfig | null;
@@ -91,7 +89,7 @@ export interface TriggerRouteContext extends RouteRequestContext {
   deployTextTriggerWorkflow: (
     runtime: IAgentRuntime,
     draft: TextTriggerWorkflowDraft,
-    ownerId: string,
+    ownerId: string
   ) => Promise<DeployedTriggerWorkflow | null>;
   DISABLED_TRIGGER_INTERVAL_MS: number;
   TRIGGER_TASK_NAME: string;
@@ -99,33 +97,30 @@ export interface TriggerRouteContext extends RouteRequestContext {
 }
 
 function trim(value: string): string {
-  return value.trim().replace(/\s+/g, " ");
+  return value.trim().replace(/\s+/g, ' ');
 }
 
 function parseTriggerKind(value: unknown): TriggerKind | undefined {
-  if (value === "text" || value === "workflow") return value;
+  if (value === 'text' || value === 'workflow') return value;
   return undefined;
 }
 
-type ParsedTriggerKind =
-  | { ok: true; kind: TriggerKind }
-  | { ok: false; error: string };
+type ParsedTriggerKind = { ok: true; kind: TriggerKind } | { ok: false; error: string };
 
 function parseTriggerKindStrict(value: unknown): ParsedTriggerKind | undefined {
   if (value === undefined) return undefined;
-  if (value === "text" || value === "workflow")
-    return { ok: true, kind: value };
+  if (value === 'text' || value === 'workflow') return { ok: true, kind: value };
   return { ok: false, error: "kind must be 'text' or 'workflow'" };
 }
 
 function parseNonEmptyString(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
+  if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function parseEventPayload(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
+  return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
 }
@@ -134,15 +129,15 @@ function normalizeTriggerPath(pathname: string): {
   normalizedPathname: string;
   usingHeartbeatsAlias: boolean;
 } {
-  if (pathname === "/api/heartbeats") {
+  if (pathname === '/api/heartbeats') {
     return {
-      normalizedPathname: "/api/triggers",
+      normalizedPathname: '/api/triggers',
       usingHeartbeatsAlias: true,
     };
   }
-  if (pathname.startsWith("/api/heartbeats/")) {
+  if (pathname.startsWith('/api/heartbeats/')) {
     return {
-      normalizedPathname: pathname.replace("/api/heartbeats", "/api/triggers"),
+      normalizedPathname: pathname.replace('/api/heartbeats', '/api/triggers'),
       usingHeartbeatsAlias: true,
     };
   }
@@ -156,7 +151,7 @@ async function findTask(
   runtime: IAgentRuntime,
   id: string,
   listTriggerTasks: (runtime: IAgentRuntime) => Promise<Task[]>,
-  readTriggerConfig: (task: Task) => TriggerConfig | null,
+  readTriggerConfig: (task: Task) => TriggerConfig | null
 ): Promise<Task | null> {
   const tasks = await listTriggerTasks(runtime);
   return (
@@ -167,9 +162,7 @@ async function findTask(
   );
 }
 
-export async function handleTriggerRoutes(
-  ctx: TriggerRouteContext,
-): Promise<boolean> {
+export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boolean> {
   const {
     method,
     pathname,
@@ -196,78 +189,58 @@ export async function handleTriggerRoutes(
     TRIGGER_TASK_TAGS,
   } = ctx;
 
-  const { normalizedPathname, usingHeartbeatsAlias } =
-    normalizeTriggerPath(pathname);
+  const { normalizedPathname, usingHeartbeatsAlias } = normalizeTriggerPath(pathname);
   const listResponse = (triggers: TriggerSummary[], status = 200): void => {
-    json(
-      res,
-      usingHeartbeatsAlias ? { triggers, heartbeats: triggers } : { triggers },
-      status,
-    );
+    json(res, usingHeartbeatsAlias ? { triggers, heartbeats: triggers } : { triggers }, status);
   };
   const itemResponse = (summary: TriggerSummary, status = 200): void => {
     json(
       res,
-      usingHeartbeatsAlias
-        ? { trigger: summary, heartbeat: summary }
-        : { trigger: summary },
-      status,
+      usingHeartbeatsAlias ? { trigger: summary, heartbeat: summary } : { trigger: summary },
+      status
     );
   };
 
-  if (
-    !normalizedPathname.startsWith("/api/triggers") &&
-    !pathname.startsWith("/api/heartbeats")
-  )
+  if (!normalizedPathname.startsWith('/api/triggers') && !pathname.startsWith('/api/heartbeats'))
     return false;
   if (!runtime) {
-    error(res, "Agent is not running", 503);
+    error(res, 'Agent is not running', 503);
     return true;
   }
-  if (
-    !triggersFeatureEnabled(runtime) &&
-    normalizedPathname !== "/api/triggers/health"
-  ) {
-    error(res, "Triggers are disabled by configuration", 503);
+  if (!triggersFeatureEnabled(runtime) && normalizedPathname !== '/api/triggers/health') {
+    error(res, 'Triggers are disabled by configuration', 503);
     return true;
   }
 
-  if (method === "GET" && normalizedPathname === "/api/triggers/health") {
+  if (method === 'GET' && normalizedPathname === '/api/triggers/health') {
     json(res, await getTriggerHealthSnapshot(runtime));
     return true;
   }
 
-  if (method === "GET" && normalizedPathname === "/api/triggers") {
+  if (method === 'GET' && normalizedPathname === '/api/triggers') {
     const tasks = await listTriggerTasks(runtime);
     const triggers = tasks
       .map(taskToTriggerSummary)
       .filter((summary): summary is TriggerSummary => summary !== null)
-      .sort((a, b) =>
-        String(a.displayName ?? "").localeCompare(String(b.displayName ?? "")),
-      );
+      .sort((a, b) => String(a.displayName ?? '').localeCompare(String(b.displayName ?? '')));
     listResponse(triggers);
     return true;
   }
 
-  if (method === "POST" && normalizedPathname === "/api/triggers") {
+  if (method === 'POST' && normalizedPathname === '/api/triggers') {
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
 
-    const creator =
-      typeof body.createdBy === "string"
-        ? trim(body.createdBy) || "api"
-        : "api";
+    const creator = typeof body.createdBy === 'string' ? trim(body.createdBy) || 'api' : 'api';
     const kindParsed = parseTriggerKindStrict(body.kind);
     if (kindParsed !== undefined && kindParsed.ok === false) {
       error(res, kindParsed.error, 400);
       return true;
     }
-    const requestedKind: TriggerKind | undefined = kindParsed?.ok
-      ? kindParsed.kind
-      : undefined;
+    const requestedKind: TriggerKind | undefined = kindParsed?.ok ? kindParsed.kind : undefined;
     let workflowId = parseNonEmptyString(body.workflowId);
     let workflowName = parseNonEmptyString(body.workflowName);
-    if (requestedKind === "workflow" && !workflowId) {
+    if (requestedKind === 'workflow' && !workflowId) {
       error(res, "workflowId is required when kind is 'workflow'", 400);
       return true;
     }
@@ -275,22 +248,20 @@ export async function handleTriggerRoutes(
     // Phase 2E: when the client submits `kind: "text"` or omits `kind`,
     // materialize a single-node `respondToEvent` workflow up front so the
     // persisted trigger is always `kind: "workflow"`.
-    if (requestedKind !== "workflow") {
+    if (requestedKind !== 'workflow') {
       const rawDisplayName =
-        typeof body.displayName === "string" && trim(body.displayName)
+        typeof body.displayName === 'string' && trim(body.displayName)
           ? trim(body.displayName)
-          : "New Trigger";
-      const rawInstructions =
-        typeof body.instructions === "string" ? trim(body.instructions) : "";
+          : 'New Trigger';
+      const rawInstructions = typeof body.instructions === 'string' ? trim(body.instructions) : '';
       if (!rawInstructions) {
-        error(res, "instructions is required", 400);
+        error(res, 'instructions is required', 400);
         return true;
       }
       const wakeModeForWorkflow: TriggerWakeMode =
-        typeof body.wakeMode === "string" &&
-        body.wakeMode === "next_autonomy_cycle"
-          ? "next_autonomy_cycle"
-          : "inject_now";
+        typeof body.wakeMode === 'string' && body.wakeMode === 'next_autonomy_cycle'
+          ? 'next_autonomy_cycle'
+          : 'inject_now';
       const deployed = await deployTextTriggerWorkflow(
         runtime,
         {
@@ -298,50 +269,31 @@ export async function handleTriggerRoutes(
           instructions: rawInstructions,
           wakeMode: wakeModeForWorkflow,
         },
-        creator,
+        creator
       );
       if (!deployed) {
-        error(
-          res,
-          "Workflow plugin is not loaded; cannot create text triggers.",
-          503,
-        );
+        error(res, 'Workflow plugin is not loaded; cannot create text triggers.', 503);
         return true;
       }
       workflowId = deployed.id;
       workflowName = deployed.name;
     }
 
-    const kind: TriggerKind = "workflow";
+    const kind: TriggerKind = 'workflow';
     const inputDraft: TriggerDraftInput = {
-      displayName:
-        typeof body.displayName === "string" ? body.displayName : undefined,
-      instructions:
-        typeof body.instructions === "string" ? body.instructions : undefined,
+      displayName: typeof body.displayName === 'string' ? body.displayName : undefined,
+      instructions: typeof body.instructions === 'string' ? body.instructions : undefined,
       triggerType:
-        typeof body.triggerType === "string"
-          ? (body.triggerType as TriggerType)
-          : undefined,
-      wakeMode:
-        typeof body.wakeMode === "string"
-          ? (body.wakeMode as TriggerWakeMode)
-          : undefined,
+        typeof body.triggerType === 'string' ? (body.triggerType as TriggerType) : undefined,
+      wakeMode: typeof body.wakeMode === 'string' ? (body.wakeMode as TriggerWakeMode) : undefined,
       enabled: !!(body.enabled ?? true),
       createdBy: creator,
-      timezone: typeof body.timezone === "string" ? body.timezone : undefined,
-      intervalMs:
-        typeof body.intervalMs === "number" ? body.intervalMs : undefined,
-      scheduledAtIso:
-        typeof body.scheduledAtIso === "string"
-          ? body.scheduledAtIso
-          : undefined,
-      cronExpression:
-        typeof body.cronExpression === "string"
-          ? body.cronExpression
-          : undefined,
-      eventKind:
-        typeof body.eventKind === "string" ? body.eventKind : undefined,
-      maxRuns: typeof body.maxRuns === "number" ? body.maxRuns : undefined,
+      timezone: typeof body.timezone === 'string' ? body.timezone : undefined,
+      intervalMs: typeof body.intervalMs === 'number' ? body.intervalMs : undefined,
+      scheduledAtIso: typeof body.scheduledAtIso === 'string' ? body.scheduledAtIso : undefined,
+      cronExpression: typeof body.cronExpression === 'string' ? body.cronExpression : undefined,
+      eventKind: typeof body.eventKind === 'string' ? body.eventKind : undefined,
+      maxRuns: typeof body.maxRuns === 'number' ? body.maxRuns : undefined,
       kind,
       workflowId,
       workflowName,
@@ -350,25 +302,20 @@ export async function handleTriggerRoutes(
       input: inputDraft,
       fallback: {
         displayName:
-          typeof body.displayName === "string" && trim(body.displayName)
+          typeof body.displayName === 'string' && trim(body.displayName)
             ? trim(body.displayName)
-            : "New Trigger",
-        instructions:
-          typeof body.instructions === "string" ? trim(body.instructions) : "",
+            : 'New Trigger',
+        instructions: typeof body.instructions === 'string' ? trim(body.instructions) : '',
         triggerType:
-          typeof body.triggerType === "string"
-            ? (body.triggerType as TriggerType)
-            : "interval",
+          typeof body.triggerType === 'string' ? (body.triggerType as TriggerType) : 'interval',
         wakeMode:
-          typeof body.wakeMode === "string"
-            ? (body.wakeMode as TriggerWakeMode)
-            : "inject_now",
+          typeof body.wakeMode === 'string' ? (body.wakeMode as TriggerWakeMode) : 'inject_now',
         enabled: body.enabled === undefined ? true : body.enabled === true,
         createdBy: creator,
       },
     });
     if (!normalized.draft) {
-      error(res, normalized.error ?? "Invalid trigger request", 400);
+      error(res, normalized.error ?? 'Invalid trigger request', 400);
       return true;
     }
 
@@ -395,7 +342,7 @@ export async function handleTriggerRoutes(
       );
     });
     if (duplicate?.id) {
-      error(res, "Equivalent trigger already exists", 409);
+      error(res, 'Equivalent trigger already exists', 409);
       return true;
     }
 
@@ -411,24 +358,24 @@ export async function handleTriggerRoutes(
           },
         } as TriggerTaskMetadata);
     if (!metadata) {
-      error(res, "Unable to compute trigger schedule", 400);
+      error(res, 'Unable to compute trigger schedule', 400);
       return true;
     }
 
     const roomId = (
-      runtime.getService("AUTONOMY") as { getAutonomousRoomId?(): UUID } | null
+      runtime.getService('AUTONOMY') as { getAutonomousRoomId?(): UUID } | null
     )?.getAutonomousRoomId?.();
     const taskId = await runtime.createTask({
       name: TRIGGER_TASK_NAME,
       description: trigger.displayName,
       roomId,
       tags: [...TRIGGER_TASK_TAGS],
-      metadata: metadata as Task["metadata"],
+      metadata: metadata as Task['metadata'],
     });
     const created = await runtime.getTask(taskId);
     const summary = created ? taskToTriggerSummary(created) : null;
     if (!summary) {
-      error(res, "Trigger created but summary could not be generated", 500);
+      error(res, 'Trigger created but summary could not be generated', 500);
       return true;
     }
     itemResponse(summary, 201);
@@ -436,63 +383,53 @@ export async function handleTriggerRoutes(
   }
 
   const runsMatch = /^\/api\/triggers\/([^/]+)\/runs$/.exec(normalizedPathname);
-  if (method === "GET" && runsMatch) {
+  if (method === 'GET' && runsMatch) {
     const task = await findTask(
       runtime,
       decodeURIComponent(runsMatch[1]),
       listTriggerTasks,
-      readTriggerConfig,
+      readTriggerConfig
     );
     if (!task) {
-      error(res, "Trigger not found", 404);
+      error(res, 'Trigger not found', 404);
       return true;
     }
     json(res, { runs: readTriggerRuns(task) });
     return true;
   }
 
-  const execMatch = /^\/api\/triggers\/([^/]+)\/execute$/.exec(
-    normalizedPathname,
-  );
-  if (method === "POST" && execMatch) {
+  const execMatch = /^\/api\/triggers\/([^/]+)\/execute$/.exec(normalizedPathname);
+  if (method === 'POST' && execMatch) {
     const task = await findTask(
       runtime,
       decodeURIComponent(execMatch[1]),
       listTriggerTasks,
-      readTriggerConfig,
+      readTriggerConfig
     );
     if (!task) {
-      error(res, "Trigger not found", 404);
+      error(res, 'Trigger not found', 404);
       return true;
     }
-    const result: TriggerExecutionResult = await executeTriggerTask(
-      runtime,
-      task,
-      {
-        source: "manual",
-        force: true,
-      },
-    );
+    const result: TriggerExecutionResult = await executeTriggerTask(runtime, task, {
+      source: 'manual',
+      force: true,
+    });
     const refreshed = task.id ? await runtime.getTask(task.id) : null;
-    const summary = refreshed
-      ? taskToTriggerSummary(refreshed)
-      : (result.trigger ?? null);
+    const summary = refreshed ? taskToTriggerSummary(refreshed) : (result.trigger ?? null);
     json(
       res,
       usingHeartbeatsAlias
         ? { ok: true, result, trigger: summary, heartbeat: summary }
-        : { ok: true, result, trigger: summary },
+        : { ok: true, result, trigger: summary }
     );
     return true;
   }
 
-  const eventMatch = /^\/api\/triggers\/events\/([^/]+)$/.exec(
-    normalizedPathname,
-  );
-  if (method === "POST" && eventMatch) {
-    const eventKind = decodeURIComponent(eventMatch[1] ?? "").trim();
+  const eventMatch = /^\/api\/triggers\/events\/([^/]+)$/.exec(normalizedPathname);
+  if (method === 'POST' && eventMatch) {
+    const eventKind = decodeURIComponent(eventMatch[1] ?? '').trim();
     if (!eventKind) {
-      error(res, "event kind is required", 400);
+      error(res, 'event kind is required', 400);
       return true;
     }
 
@@ -504,7 +441,7 @@ export async function handleTriggerRoutes(
       const trigger = readTriggerConfig(task);
       return (
         trigger?.enabled === true &&
-        trigger.triggerType === "event" &&
+        trigger.triggerType === 'event' &&
         trigger.eventKind === eventKind
       );
     });
@@ -515,16 +452,14 @@ export async function handleTriggerRoutes(
     }> = [];
     for (const task of matchingTasks) {
       const result = await executeTriggerTask(runtime, task, {
-        source: "event",
+        source: 'event',
         event: { kind: eventKind, payload },
       });
       const refreshed = task.id ? await runtime.getTask(task.id) : null;
       results.push({
         taskId: task.id,
         result,
-        trigger: refreshed
-          ? taskToTriggerSummary(refreshed)
-          : (result.trigger ?? null),
+        trigger: refreshed ? taskToTriggerSummary(refreshed) : (result.trigger ?? null),
       });
     }
     json(res, {
@@ -540,35 +475,25 @@ export async function handleTriggerRoutes(
   if (!itemMatch) return false;
   const triggerId = decodeURIComponent(itemMatch[1]);
 
-  if (method === "GET") {
-    const task = await findTask(
-      runtime,
-      triggerId,
-      listTriggerTasks,
-      readTriggerConfig,
-    );
+  if (method === 'GET') {
+    const task = await findTask(runtime, triggerId, listTriggerTasks, readTriggerConfig);
     if (!task) {
-      error(res, "Trigger not found", 404);
+      error(res, 'Trigger not found', 404);
       return true;
     }
     const summary = taskToTriggerSummary(task);
     if (!summary) {
-      error(res, "Trigger metadata is invalid", 500);
+      error(res, 'Trigger metadata is invalid', 500);
       return true;
     }
     itemResponse(summary);
     return true;
   }
 
-  if (method === "DELETE") {
-    const task = await findTask(
-      runtime,
-      triggerId,
-      listTriggerTasks,
-      readTriggerConfig,
-    );
+  if (method === 'DELETE') {
+    const task = await findTask(runtime, triggerId, listTriggerTasks, readTriggerConfig);
     if (!task?.id) {
-      error(res, "Trigger not found", 404);
+      error(res, 'Trigger not found', 404);
       return true;
     }
     await runtime.deleteTask(task.id);
@@ -576,20 +501,15 @@ export async function handleTriggerRoutes(
     return true;
   }
 
-  if (method === "PUT") {
-    const task = await findTask(
-      runtime,
-      triggerId,
-      listTriggerTasks,
-      readTriggerConfig,
-    );
+  if (method === 'PUT') {
+    const task = await findTask(runtime, triggerId, listTriggerTasks, readTriggerConfig);
     if (!task?.id) {
-      error(res, "Trigger not found", 404);
+      error(res, 'Trigger not found', 404);
       return true;
     }
     const current = readTriggerConfig(task);
     if (!current) {
-      error(res, "Trigger metadata is invalid", 500);
+      error(res, 'Trigger metadata is invalid', 500);
       return true;
     }
 
@@ -601,53 +521,31 @@ export async function handleTriggerRoutes(
       error(res, kindParsed.error, 400);
       return true;
     }
-    const parsedKind: TriggerKind | undefined = kindParsed?.ok
-      ? kindParsed.kind
-      : undefined;
-    const nextKind: TriggerKind | undefined =
-      parsedKind ?? parseTriggerKind(current.kind);
-    const nextWorkflowId =
-      parseNonEmptyString(body.workflowId) ?? current.workflowId;
-    const nextWorkflowName =
-      parseNonEmptyString(body.workflowName) ?? current.workflowName;
-    if (nextKind === "workflow" && !nextWorkflowId) {
+    const parsedKind: TriggerKind | undefined = kindParsed?.ok ? kindParsed.kind : undefined;
+    const nextKind: TriggerKind | undefined = parsedKind ?? parseTriggerKind(current.kind);
+    const nextWorkflowId = parseNonEmptyString(body.workflowId) ?? current.workflowId;
+    const nextWorkflowName = parseNonEmptyString(body.workflowName) ?? current.workflowName;
+    if (nextKind === 'workflow' && !nextWorkflowId) {
       error(res, "workflowId is required when kind is 'workflow'", 400);
       return true;
     }
 
     const mergedInput: TriggerDraftInput = {
-      displayName:
-        typeof body.displayName === "string" ? body.displayName : undefined,
-      instructions:
-        typeof body.instructions === "string" ? body.instructions : undefined,
+      displayName: typeof body.displayName === 'string' ? body.displayName : undefined,
+      instructions: typeof body.instructions === 'string' ? body.instructions : undefined,
       triggerType:
-        typeof body.triggerType === "string"
-          ? (body.triggerType as TriggerType)
-          : undefined,
-      wakeMode:
-        typeof body.wakeMode === "string"
-          ? (body.wakeMode as TriggerWakeMode)
-          : undefined,
-      enabled:
-        body.enabled === undefined ? current.enabled : body.enabled === true,
+        typeof body.triggerType === 'string' ? (body.triggerType as TriggerType) : undefined,
+      wakeMode: typeof body.wakeMode === 'string' ? (body.wakeMode as TriggerWakeMode) : undefined,
+      enabled: body.enabled === undefined ? current.enabled : body.enabled === true,
       createdBy: current.createdBy,
-      timezone: typeof body.timezone === "string" ? body.timezone : undefined,
-      intervalMs:
-        typeof body.intervalMs === "number"
-          ? body.intervalMs
-          : current.intervalMs,
+      timezone: typeof body.timezone === 'string' ? body.timezone : undefined,
+      intervalMs: typeof body.intervalMs === 'number' ? body.intervalMs : current.intervalMs,
       scheduledAtIso:
-        typeof body.scheduledAtIso === "string"
-          ? body.scheduledAtIso
-          : current.scheduledAtIso,
+        typeof body.scheduledAtIso === 'string' ? body.scheduledAtIso : current.scheduledAtIso,
       cronExpression:
-        typeof body.cronExpression === "string"
-          ? body.cronExpression
-          : current.cronExpression,
-      eventKind:
-        typeof body.eventKind === "string" ? body.eventKind : current.eventKind,
-      maxRuns:
-        typeof body.maxRuns === "number" ? body.maxRuns : current.maxRuns,
+        typeof body.cronExpression === 'string' ? body.cronExpression : current.cronExpression,
+      eventKind: typeof body.eventKind === 'string' ? body.eventKind : current.eventKind,
+      maxRuns: typeof body.maxRuns === 'number' ? body.maxRuns : current.maxRuns,
       kind: nextKind,
       workflowId: nextWorkflowId,
       workflowName: nextWorkflowName,
@@ -659,13 +557,12 @@ export async function handleTriggerRoutes(
         instructions: current.instructions,
         triggerType: current.triggerType,
         wakeMode: current.wakeMode,
-        enabled:
-          body.enabled === undefined ? current.enabled : body.enabled === true,
+        enabled: body.enabled === undefined ? current.enabled : body.enabled === true,
         createdBy: current.createdBy,
       },
     });
     if (!normalized.draft) {
-      error(res, normalized.error ?? "Invalid update", 400);
+      error(res, normalized.error ?? 'Invalid update', 400);
       return true;
     }
 
@@ -696,7 +593,7 @@ export async function handleTriggerRoutes(
         nowMs: Date.now(),
       });
       if (!built) {
-        error(res, "Unable to compute trigger schedule", 400);
+        error(res, 'Unable to compute trigger schedule', 400);
         return true;
       }
       nextMeta = built;
@@ -704,16 +601,16 @@ export async function handleTriggerRoutes(
 
     await runtime.updateTask(task.id, {
       description: nextTrigger.displayName,
-      metadata: nextMeta as Task["metadata"],
+      metadata: nextMeta as Task['metadata'],
     });
     const refreshed = await runtime.getTask(task.id);
     if (!refreshed) {
-      error(res, "Trigger updated but no longer available", 500);
+      error(res, 'Trigger updated but no longer available', 500);
       return true;
     }
     const summary = taskToTriggerSummary(refreshed);
     if (!summary) {
-      error(res, "Trigger metadata is invalid", 500);
+      error(res, 'Trigger metadata is invalid', 500);
       return true;
     }
     itemResponse(summary);

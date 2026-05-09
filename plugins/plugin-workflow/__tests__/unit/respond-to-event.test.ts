@@ -5,8 +5,8 @@ import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
 import { drizzle } from 'drizzle-orm/pglite';
-import * as dbSchema from '../../src/db/schema';
 import defaultNodes from '../../src/data/defaultNodes.json';
+import * as dbSchema from '../../src/db/schema';
 import { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
 
 interface CapturedMemory {
@@ -86,9 +86,7 @@ interface PersistentHarness {
   close(): Promise<void>;
 }
 
-async function persistentRuntime(
-  options: RuntimeMockOptions = {}
-): Promise<PersistentHarness> {
+async function persistentRuntime(options: RuntimeMockOptions = {}): Promise<PersistentHarness> {
   const dir = await mkdtemp(join(tmpdir(), 'respond-to-event-'));
   const client = new PGlite({ dataDir: join(dir, 'pglite') });
   const db = drizzle(client, { schema: dbSchema });
@@ -221,9 +219,9 @@ describe('workflows-nodes-base.respondToEvent', () => {
       const json = firstRunJson(execution, 'Respond');
       expect(json?.instructionInjected).toBe(false);
       expect(json?.reason).toBe('autonomy_service_unavailable');
-      expect(harness.warnings.some((w) => w.message.includes('Autonomy service not registered'))).toBe(
-        true
-      );
+      expect(
+        harness.warnings.some((w) => w.message.includes('Autonomy service not registered'))
+      ).toBe(true);
     } finally {
       await service.stop();
       await harness.close();
@@ -243,9 +241,9 @@ describe('workflows-nodes-base.respondToEvent', () => {
       const json = firstRunJson(execution, 'Respond');
       expect(json?.instructionInjected).toBe(false);
       expect(json?.reason).toBe('no_autonomy_room');
-      expect(
-        harness.warnings.some((w) => w.message.includes('No autonomy room resolvable'))
-      ).toBe(true);
+      expect(harness.warnings.some((w) => w.message.includes('No autonomy room resolvable'))).toBe(
+        true
+      );
     } finally {
       await service.stop();
       await harness.close();
@@ -293,7 +291,13 @@ describe('workflows-nodes-base.respondToEvent', () => {
       version: number | number[];
       inputs: unknown;
       outputs: unknown;
-      properties: Array<{ name: string; type: string; required?: boolean; default?: unknown; options?: unknown }>;
+      properties: Array<{
+        name: string;
+        type: string;
+        required?: boolean;
+        default?: unknown;
+        options?: unknown;
+      }>;
     }>;
     const entry = entries.find((node) => node.name === 'workflows-nodes-base.respondToEvent');
     expect(entry).toBeDefined();
