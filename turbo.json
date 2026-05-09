@@ -204,6 +204,17 @@
         "dist/**"
       ]
     },
+    "@elizaos/plugin-browser#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/vault#build",
+        "^build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
+    },
     "@elizaos/plugin-edge-tts#build": {
       "dependsOn": [
         "@elizaos/core#build",

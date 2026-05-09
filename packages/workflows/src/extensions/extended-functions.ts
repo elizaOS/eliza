@@ -1,9 +1,3 @@
-// NOTE: This file is intentionally mirrored in @workflows/expression-runtime/src/extensions/
-// for use inside the isolated VM. Changes here must be reflected there and vice versa.
-// TODO: Eliminate the duplication. The blocker is that @workflows/expression-runtime is
-// Vite-stubbed for browser builds (to exclude isolated-vm), which prevents workflows-workflow
-// from importing these extension utilities directly from the runtime package.
-
 import { ExpressionError } from '../errors/expression.error.js';
 import { ExpressionExtensionError } from '../errors/expression-extension.error.js';
 import { average as aAverage } from './array-extensions.js';
