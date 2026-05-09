@@ -562,8 +562,8 @@ function applyMetricsForStage(
 	}
 	if (
 		stage.kind === "evaluation" &&
-		stage.evaluation?.success === false &&
-		stage.evaluation.decision === "FINISH"
+		typeof stage.evaluation?.parseError === "string" &&
+		stage.evaluation.parseError.trim().length > 0
 	) {
 		metrics.evaluatorFailures += 1;
 	}

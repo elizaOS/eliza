@@ -260,16 +260,28 @@ template <typename type4x4>
 void dequantize_turbo4_0`,
   );
 
-  source = source.replace(
-    /template \[\[host_name\("kernel_set_rows_turbo4_i64"\)\]\] kernel set_rows_turbo_t kernel_set_rows_turbo<int64_t, block_turbo4_0, QK_TURBO4, quantize_turbo4_0>;\ntemplate \[\[host_name\("kernel_set_rows_turbo4_i32"\)\]\] kernel set_rows_turbo_t kernel_set_rows_turbo<int32_t, block_turbo4_0, QK_TURBO4, quantize_turbo4_0>;/,
-    `// Disabled for Metal until the fork's Turbo4 set_rows path is updated for the
+  const turbo4Instantiations = `typedef decltype(kernel_set_rows_turbo<int64_t, block_turbo4_0, QK_TURBO4, quantize_turbo4_0>) set_rows_turbo4_t;
+
+template [[host_name("kernel_set_rows_turbo4_i64")]] kernel set_rows_turbo4_t kernel_set_rows_turbo<int64_t, block_turbo4_0, QK_TURBO4, quantize_turbo4_0>;
+template [[host_name("kernel_set_rows_turbo4_i32")]] kernel set_rows_turbo4_t kernel_set_rows_turbo<int32_t, block_turbo4_0, QK_TURBO4, quantize_turbo4_0>;`;
+
+  if (!source.includes('host_name("kernel_set_rows_turbo4_i64")')) {
+    const disabledTurbo4Comment = `// Disabled for Metal until the fork's Turbo4 set_rows path is updated for the
 // current block_turbo4_0 layout (norm + packed 4-bit indices, no residual signs).
-// The stale specialization prevents the whole Metal library from compiling.`,
-  );
+// The stale specialization prevents the whole Metal library from compiling.`;
+    if (source.includes(disabledTurbo4Comment)) {
+      source = source.replace(disabledTurbo4Comment, turbo4Instantiations);
+    } else {
+      source = source.replace(
+        /template \[\[host_name\("kernel_set_rows_turbo3_i32"\)\]\] kernel set_rows_turbo_t kernel_set_rows_turbo<int32_t, block_turbo3_0, QK_TURBO3, quantize_turbo3_0>;/,
+        (match) => `${match}\n${turbo4Instantiations}`,
+      );
+    }
+  }
 
   if (source !== original) {
     fs.writeFileSync(metalPath, source);
-    console.log("[dflash-build] patched Metal Turbo4 shader layout mismatch");
+    console.log("[dflash-build] patched Metal Turbo4 shader support");
   }
 }
 

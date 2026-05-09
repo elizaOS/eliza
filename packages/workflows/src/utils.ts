@@ -46,7 +46,7 @@ export const isObjectEmpty = (obj: object | null | undefined): boolean => {
 	return true;
 };
 
-export type Primitives = string | number | boolean | bigint | symbol | null | undefined;
+type Primitives = string | number | boolean | bigint | symbol | null | undefined;
 
 export const deepCopy = <T extends ((object | Date) & { toJSON?: () => string }) | Primitives>(
 	source: T,

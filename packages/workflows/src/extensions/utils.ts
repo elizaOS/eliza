@@ -1,10 +1,3 @@
-// NOTE: This file is intentionally mirrored in @workflows/expression-runtime/src/extensions/
-// for use inside the isolated VM. Changes here must be reflected there and vice versa.
-// TODO: Eliminate the duplication. The blocker is that @workflows/expression-runtime is
-// Vite-stubbed for browser builds (to exclude isolated-vm), which prevents workflows-workflow
-// from importing these extension utilities directly from the runtime package. Fix by
-// splitting @workflows/expression-runtime into a browser-safe extensions subpath (not stubbed)
-// and a node-only VM entry (stubbed).
 import { DateTime } from 'luxon';
 
 import { ExpressionExtensionError } from '../errors/expression-extension.error.js';

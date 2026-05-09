@@ -275,7 +275,7 @@ export const ollamaPlugin: Plugin = {
                   },
                   required: ["name", "age", "hobbies"],
                 },
-              } as Parameters<typeof runModel>[1]);
+              });
               logger.log({ result }, "Generated structured output via TEXT_SMALL");
             } catch (error) {
               logger.error({ error }, "Error in test_structured_output_via_text_small");
@@ -292,7 +292,7 @@ export const ollamaPlugin: Plugin = {
                   "Generate a detailed JSON object representing a restaurant with name, cuisine type, menu items with prices, and customer reviews",
                 temperature: 0.7,
                 responseSchema: { type: "object" },
-              } as Parameters<typeof runModel>[1]);
+              });
               logger.log({ result }, "Generated structured output via TEXT_LARGE");
             } catch (error) {
               logger.error({ error }, "Error in test_structured_output_via_text_large");

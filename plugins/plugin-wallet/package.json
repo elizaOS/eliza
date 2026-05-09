@@ -50,8 +50,19 @@
   "files": [
     "dist",
     "src",
+    "auto-enable.ts",
     "SDK-LICENSE"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "wallet",
+        "evm",
+        "solana"
+      ]
+    }
+  },
   "scripts": {
     "build": "tsdown --no-config src/index.ts --format esm --dts --clean -d dist && tsdown --no-config src/sdk/index.ts --format esm --dts --no-clean -d dist/sdk && mv dist/index-*.d.ts dist/index.d.ts 2>/dev/null || true && mv dist/sdk/index-*.d.ts dist/sdk/index.d.ts 2>/dev/null || true",
     "check": "tsc --noEmit",

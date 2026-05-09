@@ -20,3 +20,17 @@ export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
     return (p as Record<string, unknown>).provider === "codex-cli";
   });
 }
+
+/**
+ * Force-enable when the user picked the openai-codex subscription, even if
+ * the plugin entry has been explicitly disabled. The user deliberately
+ * connected the subscription, so the runtime needs the codex-cli plugin to
+ * resolve their chosen provider.
+ */
+export function shouldForce(ctx: PluginAutoEnableContext): boolean {
+  const agents = (ctx.config as Record<string, unknown> | undefined)?.agents as
+    | Record<string, unknown>
+    | undefined;
+  const defaults = agents?.defaults as Record<string, unknown> | undefined;
+  return defaults?.subscriptionProvider === "openai-codex";
+}

@@ -49,6 +49,7 @@ export interface EvaluatorEffects {
 
 export type EvaluatorOutput = EvaluationResult & {
 	nextTool?: PlannerToolCall;
+	parseError?: string;
 	raw?: Record<string, unknown>;
 };
 

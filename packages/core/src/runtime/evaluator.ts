@@ -59,6 +59,11 @@ interface RawEvaluatorOutput {
 	recommendedToolCallId?: unknown;
 }
 
+interface ParsedEvaluatorObject {
+	object: RawEvaluatorOutput | null;
+	parseError?: string;
+}
+
 export async function runEvaluator(
 	params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
@@ -185,6 +190,7 @@ async function recordEvaluationStage(args: {
 				messageToUser: args.output.messageToUser,
 				copyToClipboard: args.output.copyToClipboard,
 				recommendedToolCallId: args.output.recommendedToolCallId,
+				parseError: args.output.parseError,
 			},
 			cache: {
 				segmentHashes: args.segmentHashes,
@@ -280,7 +286,18 @@ function renderEvaluatorModelInput(params: {
 export function parseEvaluatorOutput(
 	raw: string | { text?: string; object?: unknown },
 ): EvaluatorOutput {
-	const parsed = getStructuredEvaluatorObject(raw) ?? {};
+	const parsedResult = getStructuredEvaluatorObject(raw);
+	if (parsedResult.parseError) {
+		return {
+			success: false,
+			decision: "CONTINUE",
+			thought: `Invalid evaluator output: ${parsedResult.parseError}. Replanning from recorded tool results.`,
+			parseError: parsedResult.parseError,
+			raw: {},
+		};
+	}
+
+	const parsed = parsedResult.object ?? {};
 	const decision = normalizeEvaluatorRoute(parsed.decision ?? parsed.route);
 	return {
 		success: parsed.success === true,
@@ -357,54 +374,9 @@ function isEvaluatorShapedObject(value: unknown): value is RawEvaluatorOutput {
 	return "success" in record || "decision" in record || "route" in record;
 }
 
-function parseJsonObjects<T extends object>(raw: string): T[] {
-	const objects: T[] = [];
-	let depth = 0;
-	let start = -1;
-	let inString = false;
-	let escaped = false;
-
-	for (let index = 0; index < raw.length; index++) {
-		const char = raw[index];
-		if (inString) {
-			if (escaped) {
-				escaped = false;
-			} else if (char === "\\") {
-				escaped = true;
-			} else if (char === '"') {
-				inString = false;
-			}
-			continue;
-		}
-		if (char === '"') {
-			inString = true;
-			continue;
-		}
-		if (char === "{") {
-			if (depth === 0) start = index;
-			depth++;
-			continue;
-		}
-		if (char !== "}") continue;
-		depth--;
-		if (depth !== 0 || start < 0) continue;
-		try {
-			const parsed = JSON.parse(raw.slice(start, index + 1));
-			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-				objects.push(parsed as T);
-			}
-		} catch {
-			// Ignore malformed embedded JSON and keep scanning for later objects.
-		}
-		start = -1;
-	}
-
-	return objects;
-}
-
 function getStructuredEvaluatorObject(
 	raw: string | { text?: string; object?: unknown },
-): RawEvaluatorOutput | null {
+): ParsedEvaluatorObject {
 	if (typeof raw === "string") {
 		return parseEvaluatorText(raw);
 	}
@@ -413,41 +385,43 @@ function getStructuredEvaluatorObject(
 		typeof raw.object === "object" &&
 		!Array.isArray(raw.object)
 	) {
-		return raw.object as RawEvaluatorOutput;
+		return { object: raw.object as RawEvaluatorOutput };
 	}
 	if (typeof raw.text === "string") {
 		return parseEvaluatorText(raw.text);
 	}
-	return null;
+	return { object: null, parseError: "missing evaluator text/object" };
 }
 
-function parseEvaluatorText(text: string): RawEvaluatorOutput | null {
-	const direct = parseJsonObject<RawEvaluatorOutput>(text);
-	if (isEvaluatorShapedObject(direct)) return direct;
-
-	const objects = parseJsonObjects<RawEvaluatorOutput>(text);
-	for (let index = objects.length - 1; index >= 0; index--) {
-		const object = objects[index];
-		if (!isEvaluatorShapedObject(object)) continue;
-		const hasEarlierNonEvaluatorJson = objects
-			.slice(0, index)
-			.some((candidate) => !isEvaluatorShapedObject(candidate));
-		const decision = normalizeEvaluatorRoute(object.decision ?? object.route);
-		if (
-			hasEarlierNonEvaluatorJson &&
-			object.success === true &&
-			decision === "FINISH"
-		) {
+function parseEvaluatorText(text: string): ParsedEvaluatorObject {
+	const candidate = unwrapJsonFence(text.trim());
+	if (!candidate) {
+		return { object: null, parseError: "empty response" };
+	}
+	try {
+		const parsed = JSON.parse(candidate);
+		if (!isEvaluatorShapedObject(parsed)) {
+			return { object: null, parseError: "JSON object is not evaluator-shaped" };
+		}
+		return { object: parsed };
+	} catch {
+		const tolerant = parseJsonObject<RawEvaluatorOutput>(candidate);
+		if (isEvaluatorShapedObject(tolerant)) {
 			return {
-				success: false,
-				decision: "CONTINUE",
-				thought:
-					"Evaluator emitted non-evaluator JSON before claiming completion; ignore the claimed finish and replan from recorded tool results.",
+				object: null,
+				parseError:
+					"response contains extra text or multiple JSON objects around evaluator JSON",
 			};
 		}
-		return object;
+		return { object: null, parseError: "response is not a single JSON object" };
 	}
-	return direct;
+}
+
+function unwrapJsonFence(text: string): string {
+	if (!text.startsWith("```")) return text;
+	const firstLineEnd = text.indexOf("\n");
+	if (firstLineEnd < 0 || !text.endsWith("```")) return text;
+	return text.slice(firstLineEnd + 1, -3).trim();
 }
 
 function normalizeNextTool(value: unknown): PlannerToolCall | undefined {
