@@ -123,10 +123,20 @@ jobs:
         run: |
           set -euo pipefail
           APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30)
+          # Vulkan target additionally needs libvulkan-dev (loader headers
+          # path) and glslang-tools (provides glslc for the
+          # Vulkan_GLSLC_EXECUTABLE flag the build script passes).
+          # The build script's prepareVulkanHeaders() fetches Khronos
+          # vulkan.hpp + spirv.hpp regardless, so the only "extra" packages
+          # CI needs from apt are libvulkan-dev + glslang-tools.
+          EXTRA_PKGS=""
+          if [[ "${{ matrix.backend }}" == "vulkan" ]]; then
+            EXTRA_PKGS="libvulkan-dev glslang-tools"
+          fi
           for attempt in 1 2 3; do
             if sudo apt-get "${APT_ARGS[@]}" update && \
                sudo apt-get "${APT_ARGS[@]}" install -y --fix-missing \
-                 cmake ninja-build build-essential ccache git python3 python3-pip; then
+                 cmake ninja-build build-essential ccache git python3 python3-pip $EXTRA_PKGS; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
@@ -136,6 +146,9 @@ jobs:
             sleep $((attempt * 10))
           done
           cmake --version
+          if [[ "${{ matrix.backend }}" == "vulkan" ]]; then
+            glslc --version || true
+          fi
 
       - name: Install macOS build deps
         if: ${{ runner.os == 'macOS' }}
