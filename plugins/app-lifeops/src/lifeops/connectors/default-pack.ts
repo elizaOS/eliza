@@ -1,36 +1,78 @@
 /**
- * W1-F — Default connector pack entry point.
+ * W2-B — Default connector pack.
  *
- * Wave 1 ships an EMPTY pack: this file exists so the registration entry point
- * is stable and Wave 2 (W2-B) can populate the 12 connector contributions
- * without further repo restructuring.
+ * Registers the 10 LifeOps connector contributions with the W1-F
+ * `ConnectorRegistry`. `plugin-health` registers its own 6 health connectors
+ * directly; this pack does not touch them.
  *
- * W1-B (`plugin-health`) registers its own connector contributions
- * (`apple_health`, `google_fit`, `strava`, `fitbit`, `withings`, `oura`)
- * directly via {@link import("./contract.js").ConnectorRegistry.register}; it
- * does NOT go through this default-pack entry point.
+ * Channels (in_app, push, imessage, telegram, …) are registered separately
+ * by `../channels/default-pack.ts`.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
+import { createCalendlyConnectorContribution } from "./calendly.js";
+import { createDiscordConnectorContribution } from "./discord.js";
+import { createDuffelConnectorContribution } from "./duffel.js";
+import { createGoogleConnectorContribution } from "./google.js";
+import { createIMessageConnectorContribution } from "./imessage.js";
+import { createSignalConnectorContribution } from "./signal.js";
+import { createTelegramConnectorContribution } from "./telegram.js";
+import { createTwilioConnectorContribution } from "./twilio.js";
+import { createWhatsAppConnectorContribution } from "./whatsapp.js";
+import { createXConnectorContribution } from "./x.js";
 import type {
   ConnectorContribution,
   ConnectorRegistry,
 } from "./contract.js";
 
+export type ConnectorContributionFactory = (
+  runtime: IAgentRuntime,
+) => ConnectorContribution;
+
 /**
- * Empty in Wave 1 — Wave 2 W2-B populates this list with the migrated
- * connector contributions.
+ * The 10 W2-B connector contributions, ordered by usage frequency for
+ * deterministic registration logs. plugin-health registers
+ * apple_health/google_fit/strava/fitbit/withings/oura on its own; they
+ * are not part of this pack.
+ */
+export const DEFAULT_CONNECTOR_CONTRIBUTIONS: ReadonlyArray<ConnectorContributionFactory> = [
+  createGoogleConnectorContribution,
+  createTelegramConnectorContribution,
+  createDiscordConnectorContribution,
+  createSignalConnectorContribution,
+  createWhatsAppConnectorContribution,
+  createIMessageConnectorContribution,
+  createXConnectorContribution,
+  createTwilioConnectorContribution,
+  createCalendlyConnectorContribution,
+  createDuffelConnectorContribution,
+];
+
+/**
+ * Wave-1 export retained for caller compatibility; populated against a
+ * synthetic runtime would require constructing `LifeOpsService` without a
+ * real runtime, so the array is empty at module load. Callers that want a
+ * concrete list should call {@link registerDefaultConnectorPack}.
  */
 export const DEFAULT_CONNECTOR_PACK: readonly ConnectorContribution[] = [];
 
 /**
  * Register every connector in the default pack against the supplied registry.
  *
- * Wave 1: no-op (the pack is empty). Wave 2: registers the 12 migrated
- * connectors. Idempotency is the registry's responsibility — re-registering
- * the same `kind` is a programming error and surfaces as a thrown `Error`.
+ * Each contribution is constructed lazily via its factory so the wrapper
+ * captures the runtime reference. Re-registering the same `kind` is a
+ * programming error and surfaces as a thrown `Error` from the registry.
  */
-export function registerDefaultConnectorPack(registry: ConnectorRegistry): void {
-  for (const contribution of DEFAULT_CONNECTOR_PACK) {
-    registry.register(contribution);
+export function registerDefaultConnectorPack(
+  registry: ConnectorRegistry,
+  runtime?: IAgentRuntime,
+): void {
+  if (!runtime) {
+    // Wave-1 callsites passed only the registry; preserve that path so the
+    // plugin doesn't fail-fast before the rest of the boot sequence runs.
+    return;
+  }
+  for (const factory of DEFAULT_CONNECTOR_CONTRIBUTIONS) {
+    registry.register(factory(runtime));
   }
 }
