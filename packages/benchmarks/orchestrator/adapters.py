@@ -1200,7 +1200,10 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             description="ADHDBench attention/context scaling benchmark",
             cwd=str((benchmarks_root / "adhdbench").resolve()),
             command_builder=_command_adhdbench,
-            result_patterns=["adhdbench_summary_*.json", "*.json"],
+            # Only match the summary file. The traces JSON is bigger
+            # and tends to be the last-written, so a generic `*.json`
+            # fallback was picking traces and the scorer returned None.
+            result_patterns=["adhdbench_summary_*.json"],
             score_extractor=_score_from_adhd,
         ),
         _make_extra_adapter(
