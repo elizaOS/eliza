@@ -47,6 +47,13 @@ export interface GenerateOptions {
   stopSequences?: string[];
   /** When true, token events fire on the "token" listener. */
   stream?: boolean;
+  /**
+   * Forwarded promptCacheKey from `ProviderCachePlan`. Native plugins
+   * that support prefix caching should derive a slot id from this and
+   * keep KV warm for repeated calls with the same key. Plugins without
+   * cache support ignore the field; behavior is unchanged.
+   */
+  cacheKey?: string;
 }
 
 export interface GenerateResult {

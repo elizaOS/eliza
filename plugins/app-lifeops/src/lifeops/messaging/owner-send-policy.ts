@@ -102,7 +102,7 @@ export function createOwnerSendPolicy(): SendPolicy {
       // until that flow runs; nothing to do synchronously here.
       void executor;
       return {
-        requestId: requestId as unknown as string,
+        requestId: String(requestId),
         preview: previewDraft(draft),
       };
     },

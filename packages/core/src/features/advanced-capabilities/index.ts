@@ -14,7 +14,7 @@
 
 import { withCanonicalActionDocs } from "../../action-docs.ts";
 import { createService } from "../../services.ts";
-import type { Evaluator, IAgentRuntime } from "../../types/index.ts";
+import type { IAgentRuntime, RegisteredEvaluator } from "../../types/index.ts";
 import type { ServiceClass } from "../../types/plugin.ts";
 import {
 	experiencePatternEvaluator,
@@ -95,7 +95,7 @@ export const advancedEvaluators = [
 	...postMessageActions.reflectionItems,
 	...postMessageActions.skillItems,
 	experiencePatternEvaluator,
-] as Evaluator[];
+] satisfies readonly RegisteredEvaluator[];
 
 /**
  * Advanced services - extended service infrastructure

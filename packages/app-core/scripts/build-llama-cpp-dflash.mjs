@@ -185,6 +185,103 @@ function findGlslc(ndk) {
   return null;
 }
 
+// The fork's `ggml-vulkan.cpp` includes <vulkan/vulkan.hpp> (Vulkan-Headers)
+// and <spirv/unified1/spirv.hpp> (SPIRV-Headers). The Android NDK ships only
+// the C-level vulkan.h and no SPIRV headers, so a cross-compile against the
+// NDK alone fails at ~38–47% of the build with these headers missing.
+//
+// Fetch stable tagged checkouts of both Khronos header repos into the cache
+// and return both include paths so callers can add them via -isystem.
+const VULKAN_HEADERS_REPO = "https://github.com/KhronosGroup/Vulkan-Headers.git";
+const VULKAN_HEADERS_REF = process.env.ELIZA_DFLASH_VULKAN_HEADERS_REF || "v1.3.295";
+const SPIRV_HEADERS_REPO = "https://github.com/KhronosGroup/SPIRV-Headers.git";
+const SPIRV_HEADERS_REF = process.env.ELIZA_DFLASH_SPIRV_HEADERS_REF || "vulkan-sdk-1.3.296.0";
+
+function fetchHeadersRepo({ name, repo, ref, sentinelRel }) {
+  const cacheRoot = path.join(os.homedir(), ".cache", "eliza-dflash", name);
+  const includeDir = path.join(cacheRoot, "include");
+  if (fs.existsSync(path.join(includeDir, sentinelRel))) return includeDir;
+  if (!has("git")) {
+    throw new Error(
+      `Vulkan target requires ${name}; install git so I can fetch from ${repo} or set ELIZA_DFLASH_${name.toUpperCase().replace(/-/g, "_")}_DIR`,
+    );
+  }
+  fs.mkdirSync(path.dirname(cacheRoot), { recursive: true });
+  if (fs.existsSync(path.join(cacheRoot, ".git"))) {
+    run("git", ["fetch", "--depth=1", "origin", ref], { cwd: cacheRoot });
+    run("git", ["checkout", "FETCH_HEAD"], { cwd: cacheRoot });
+  } else {
+    run("git", ["clone", "--depth=1", "--branch", ref, repo, cacheRoot]);
+  }
+  if (!fs.existsSync(path.join(includeDir, sentinelRel))) {
+    throw new Error(
+      `${name} checkout at ${cacheRoot} is missing include/${sentinelRel}`,
+    );
+  }
+  console.log(`[dflash-build] ${name} ${ref} ready at ${includeDir}`);
+  return includeDir;
+}
+
+function prepareVulkanHeaders() {
+  let vulkanInclude;
+  const explicitVulkan = process.env.ELIZA_DFLASH_VULKAN_HEADERS_DIR?.trim();
+  if (explicitVulkan && fs.existsSync(path.join(explicitVulkan, "vulkan", "vulkan.hpp"))) {
+    vulkanInclude = explicitVulkan;
+  } else {
+    vulkanInclude = fetchHeadersRepo({
+      name: "vulkan-headers",
+      repo: VULKAN_HEADERS_REPO,
+      ref: VULKAN_HEADERS_REF,
+      sentinelRel: path.join("vulkan", "vulkan.hpp"),
+    });
+  }
+  let spirvInclude;
+  const explicitSpirv = process.env.ELIZA_DFLASH_SPIRV_HEADERS_DIR?.trim();
+  if (
+    explicitSpirv &&
+    fs.existsSync(path.join(explicitSpirv, "spirv", "unified1", "spirv.hpp"))
+  ) {
+    spirvInclude = explicitSpirv;
+  } else {
+    spirvInclude = fetchHeadersRepo({
+      name: "spirv-headers",
+      repo: SPIRV_HEADERS_REPO,
+      ref: SPIRV_HEADERS_REF,
+      sentinelRel: path.join("spirv", "unified1", "spirv.hpp"),
+    });
+  }
+  return { vulkanInclude, spirvInclude };
+}
+
+// Resolve the system libvulkan.so.1 on Linux when libvulkan-dev isn't
+// installed. CMake's FindVulkan looks for libvulkan.so by name, but distro
+// runtime packages ship only libvulkan.so.1; passing the resolved versioned
+// path via -DVulkan_LIBRARY satisfies the package check.
+function findLinuxLibVulkan() {
+  const candidates = [
+    "/usr/lib/x86_64-linux-gnu/libvulkan.so.1",
+    "/usr/lib64/libvulkan.so.1",
+    "/usr/lib/libvulkan.so.1",
+    "/usr/lib/x86_64-linux-gnu/libvulkan.so",
+    "/usr/lib64/libvulkan.so",
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function safelyPrepareVulkanHeaders() {
+  try {
+    return prepareVulkanHeaders();
+  } catch (err) {
+    console.warn(
+      `[dflash-build] Vulkan-Headers / SPIRV-Headers fetch failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+}
+
 // Map a target triple to cmake configure flags.
 //
 // Notes / quirks:
@@ -213,6 +310,30 @@ function cmakeFlagsForTarget(target, ctx) {
   } else if (backend === "vulkan") {
     flags[flags.indexOf("-DGGML_VULKAN=OFF")] = "-DGGML_VULKAN=ON";
     if (ctx.glslc) flags.push(`-DVulkan_GLSLC_EXECUTABLE=${ctx.glslc}`);
+    // The fork includes vulkan.hpp + spirv/unified1/spirv.hpp, neither of
+    // which ships in the NDK *or* in Linux libvulkan-runtime-only installs.
+    // ctx.vulkanHpp is the result of safelyPrepareVulkanHeaders() —
+    // { vulkanInclude, spirvInclude } pointing at fetched Khronos checkouts.
+    if (ctx.vulkanHpp) {
+      const isystem = [ctx.vulkanHpp.vulkanInclude, ctx.vulkanHpp.spirvInclude]
+        .filter(Boolean)
+        .map((p) => `-isystem ${p}`)
+        .join(" ");
+      if (isystem) flags.push(`-DCMAKE_CXX_FLAGS=${isystem}`);
+      // CMake's FindVulkan also needs Vulkan_INCLUDE_DIR / Vulkan_LIBRARY
+      // for its package check. On Linux without libvulkan-dev installed,
+      // we still have:
+      //   - libvulkan.so.1 from the runtime package (Mesa / NVIDIA driver)
+      //   - vulkan/vulkan.h in the fetched Khronos headers
+      // Wire those manually so the build doesn't need the SDK.
+      if (platform === "linux") {
+        const libVulkan = findLinuxLibVulkan();
+        if (libVulkan) {
+          flags.push(`-DVulkan_INCLUDE_DIR=${ctx.vulkanHpp.vulkanInclude}`);
+          flags.push(`-DVulkan_LIBRARY=${libVulkan}`);
+        }
+      }
+    }
   }
 
   if (platform === "android") {
@@ -888,10 +1009,17 @@ function build(args) {
 
   // Build host context once for compatibility checks and toolchain wiring.
   const androidNdk = resolveAndroidNdk();
+  // Decide whether any Vulkan target is in scope. We only fetch the
+  // Khronos header repos when needed — cheap, but pointless otherwise.
+  const willBuildVulkan =
+    args.all ||
+    (args.targets && args.targets.some((t) => t.endsWith("-vulkan"))) ||
+    (!args.targets && (args.backend ?? detectBackend()) === "vulkan");
   const ctx = {
     androidNdk,
     androidVulkanInclude: findAndroidVulkanInclude(androidNdk),
     glslc: findGlslc(androidNdk),
+    vulkanHpp: willBuildVulkan ? safelyPrepareVulkanHeaders() : null,
     forkCommit: "",
   };
 

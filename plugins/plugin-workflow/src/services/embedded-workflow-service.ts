@@ -17,6 +17,7 @@ import type {
   WorkflowTag,
 } from '../types/index';
 import { WorkflowApiError } from '../types/index';
+import { detectHostCapabilities } from '../utils/host-capabilities';
 
 export const EMBEDDED_WORKFLOW_SERVICE_TYPE = 'embedded_workflow_service';
 
@@ -47,6 +48,22 @@ interface INodeExecutionData {
 interface IExecuteFunctions {
   getInputData(inputIndex?: number): INodeExecutionData[];
   getNode(): WorkflowNode;
+  /** Agent runtime, present when the workflow runs inside an EmbeddedWorkflowService.
+   *  Nodes that need to interact with the agent (e.g. respondToEvent injecting a
+   *  memory into the autonomy room) read it from here. Optional because some
+   *  nodes are pure data transforms and never touch the runtime. */
+  getRuntime?(): IAgentRuntime | null;
+  /** Identifier of the in-progress workflow execution, used by nodes that emit
+   *  audit metadata (e.g. respondToEvent records it on the injected memory). */
+  getExecutionId?(): string | null;
+}
+
+interface NodeCapabilities {
+  requiresFs?: boolean;
+  requiresInbound?: boolean;
+  requiresLongRunning?: boolean;
+  requiresChildProcess?: boolean;
+  requiresNet?: boolean;
 }
 
 interface INodeTypeDescription {
@@ -59,6 +76,7 @@ interface INodeTypeDescription {
   inputs: unknown[];
   outputs: unknown[];
   properties: unknown[];
+  capabilities?: NodeCapabilities;
 }
 
 interface INodeType {
@@ -405,6 +423,7 @@ function createScheduleTriggerNode(): INodeType {
       inputs: [],
       outputs: ['main'] as never,
       properties: [],
+      capabilities: { requiresLongRunning: true },
     },
     async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
       return [
@@ -702,6 +721,7 @@ function createWebhookNode(): INodeType {
         { displayName: 'HTTP Method', name: 'httpMethod', type: 'string', default: 'POST' },
         { displayName: 'Embedded Payload', name: '__embeddedPayload', type: 'json', default: {} },
       ] as never,
+      capabilities: { requiresInbound: true },
     },
     async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
       const parameters = this.getNode().parameters as Record<string, unknown>;
@@ -730,6 +750,7 @@ function createRespondToWebhookNode(): INodeType {
       properties: [
         { displayName: 'Response Body', name: 'responseBody', type: 'json', default: {} },
       ] as never,
+      capabilities: { requiresInbound: true },
     },
     async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
       const inputItems = this.getInputData();
@@ -1049,6 +1070,145 @@ async function runQuickJsCode(jsCode: string, inputItems: INodeExecutionData[]):
   });
 }
 
+type AutonomyServiceLike = Service & {
+  getAutonomousRoomId?(): UUID | undefined;
+  getTargetRoomId?(): UUID | undefined;
+};
+
+function resolveAutonomyService(runtime: IAgentRuntime): AutonomyServiceLike | null {
+  const svc =
+    runtime.getService<AutonomyServiceLike>('AUTONOMY') ??
+    runtime.getService<AutonomyServiceLike>('autonomy');
+  return svc ?? null;
+}
+
+function resolveAutonomyRoomId(svc: AutonomyServiceLike): UUID | null {
+  const fromAutonomous =
+    typeof svc.getAutonomousRoomId === 'function' ? svc.getAutonomousRoomId() : undefined;
+  if (fromAutonomous) return fromAutonomous;
+  const fromTarget = typeof svc.getTargetRoomId === 'function' ? svc.getTargetRoomId() : undefined;
+  return fromTarget ?? null;
+}
+
+function extractEventFromInputItems(inputItems: INodeExecutionData[]): {
+  kind?: string;
+  payload?: Record<string, unknown>;
+} | null {
+  for (const item of inputItems) {
+    const json = item.json;
+    if (!isRecord(json)) continue;
+    const kind = typeof json.eventKind === 'string' ? json.eventKind : undefined;
+    const payload = isRecord(json.eventPayload) ? json.eventPayload : undefined;
+    if (kind || payload) return { kind, payload };
+  }
+  return null;
+}
+
+function createRespondToEventNode(): INodeType {
+  return {
+    description: {
+      displayName: 'Respond to Event',
+      name: 'workflows-nodes-base.respondToEvent',
+      group: ['transform'],
+      version: [1],
+      description: "Inject an instruction into the agent's autonomy room.",
+      defaults: { name: 'Respond to Event' },
+      inputs: ['main'] as never,
+      outputs: ['main'] as never,
+      properties: [
+        { displayName: 'Instructions', name: 'instructions', type: 'string', default: '' },
+        { displayName: 'Display Name', name: 'displayName', type: 'string', default: '' },
+        { displayName: 'Wake Mode', name: 'wakeMode', type: 'string', default: 'inject_now' },
+      ] as never,
+    },
+    async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
+      const node = this.getNode();
+      const inputItems = this.getInputData();
+      const parameters = node.parameters as Record<string, unknown>;
+      const instructions = readString(parameters.instructions, '');
+      const displayName = readString(parameters.displayName, node.name);
+      const wakeMode = readString(parameters.wakeMode, 'inject_now');
+      const runtime = this.getRuntime?.() ?? null;
+      const executionId = this.getExecutionId?.() ?? null;
+
+      const failure = (reason: string): INodeExecutionData[][] => [
+        [
+          {
+            json: {
+              instructionInjected: false,
+              reason,
+              nodeName: node.name,
+            } as INodeExecutionData['json'],
+          },
+        ],
+      ];
+
+      if (!runtime) {
+        logger.warn(
+          { src: 'plugin:workflow:respondToEvent', nodeName: node.name },
+          '[respondToEvent] No agent runtime available in execution context — skipping injection'
+        );
+        return failure('runtime_unavailable');
+      }
+
+      const autonomyService = resolveAutonomyService(runtime);
+      if (!autonomyService) {
+        runtime.logger?.warn?.(
+          { src: 'plugin:workflow:respondToEvent', nodeName: node.name, executionId },
+          '[respondToEvent] Autonomy service not registered — skipping injection'
+        );
+        return failure('autonomy_service_unavailable');
+      }
+
+      const roomId = resolveAutonomyRoomId(autonomyService);
+      if (!roomId) {
+        runtime.logger?.warn?.(
+          { src: 'plugin:workflow:respondToEvent', nodeName: node.name, executionId },
+          '[respondToEvent] No autonomy room resolvable — skipping injection'
+        );
+        return failure('no_autonomy_room');
+      }
+
+      const event = extractEventFromInputItems(inputItems);
+      const eventText = event
+        ? `\n\nEvent: ${event.kind ?? 'unknown'}\nPayload: ${JSON.stringify(event.payload ?? {})}`
+        : '';
+      const instructionText = `[${displayName}]\n${instructions}${eventText}`;
+
+      await runtime.createMemory(
+        {
+          entityId: runtime.agentId,
+          roomId,
+          content: {
+            text: instructionText,
+            source: 'workflow:respondToEvent',
+            metadata: {
+              workflowExecutionId: executionId,
+              nodeName: node.name,
+              wakeMode,
+              isAutonomousInstruction: true,
+            },
+          },
+        },
+        'messages'
+      );
+
+      return [
+        [
+          {
+            json: {
+              instructionInjected: true,
+              roomId,
+              nodeName: node.name,
+              wakeMode,
+            } as INodeExecutionData['json'],
+          },
+        ],
+      ];
+    },
+  };
+}
+
 function createCodeNode(): INodeType {
   return {
     description: {
@@ -1099,6 +1259,7 @@ class EmbeddedNodeTypes implements INodeTypes {
       createManualTriggerNode(),
       createWebhookNode(),
       createRespondToWebhookNode(),
+      createRespondToEventNode(),
       createSetNode(),
       createHttpRequestNode(),
       createNoOpNode(),
@@ -1164,6 +1325,7 @@ export class EmbeddedWorkflowService extends Service {
     'Feature-flagged embedded workflow runtime for local plugin-owned workflow execution.';
 
   private readonly nodeTypes = new EmbeddedNodeTypes();
+  private readonly hostCapabilities = detectHostCapabilities();
   private schemaReady: Promise<void> | null = null;
 
   static async start(runtime: IAgentRuntime): Promise<EmbeddedWorkflowService> {
@@ -1352,6 +1514,7 @@ export class EmbeddedWorkflowService extends Service {
 
   async createWorkflow(workflow: WorkflowDefinition): Promise<WorkflowDefinitionResponse> {
     this.assertRegisteredNodes(workflow);
+    this.assertHostSupports(workflow);
     await this.ensureSchema();
     const db = this.getDb();
     const id = workflow.id || randomUUID();
@@ -1443,6 +1606,7 @@ export class EmbeddedWorkflowService extends Service {
 
   async activateWorkflow(id: string): Promise<WorkflowDefinitionResponse> {
     const entry = await this.getStoredWorkflow(id);
+    this.assertHostSupports(entry.workflow);
     const db = this.getDb();
     entry.workflow.active = true;
     entry.updatedAt = nowIso();
@@ -1706,6 +1870,54 @@ export class EmbeddedWorkflowService extends Service {
     }
   }
 
+  /**
+   * Verify the host can host every active node's capability requirements
+   * (fs, inbound, longRunning, childProcess, net). On failure, throw a
+   * 400 with one actionable line per offending node.
+   */
+  private assertHostSupports(workflow: WorkflowDefinition): void {
+    const host = this.hostCapabilities;
+    const issues: string[] = [];
+    for (const node of workflow.nodes) {
+      if (node.disabled) continue;
+      if (!this.nodeTypes.has(node.type)) continue;
+      const nodeType = this.nodeTypes.getByNameAndVersion(node.type);
+      const caps = (nodeType.description as { capabilities?: NodeCapabilities }).capabilities;
+      if (!caps) continue;
+      if (caps.requiresFs && !host.fs) {
+        issues.push(
+          `${node.name} (${node.type}) needs filesystem access; host '${host.label}' has no fs — run on a server agent`
+        );
+      }
+      if (caps.requiresInbound && !host.inbound) {
+        issues.push(
+          `${node.name} needs an inbound public webhook; host '${host.label}' can't receive — pair Eliza Cloud or enable plugin-tunnel`
+        );
+      }
+      if (caps.requiresLongRunning && !host.longRunning) {
+        issues.push(
+          `${node.name} needs a long-running process; host '${host.label}' is short-lived — schedule via the cloud cron handler`
+        );
+      }
+      if (caps.requiresChildProcess && !host.childProcess) {
+        issues.push(
+          `${node.name} spawns a child process; not allowed on '${host.label}' — run on a server agent`
+        );
+      }
+      if (caps.requiresNet && !host.net) {
+        issues.push(
+          `${node.name} needs raw sockets; not available on '${host.label}' — use the HTTP Request node or run on a server agent`
+        );
+      }
+    }
+    if (issues.length > 0) {
+      throw new WorkflowApiError(
+        `Workflow incompatible with host '${host.label}':\n  - ${issues.join('\n  - ')}`,
+        400
+      );
+    }
+  }
+
   /** Re-create core Tasks for every active workflow on service start.
    *  Tasks themselves persist across restart; this is a reconcile step that
    *  ensures workflows whose schedule changed (or whose tasks were never
@@ -1879,12 +2091,15 @@ export class EmbeddedWorkflowService extends Service {
 
   private async executeNode(
     node: WorkflowNode,
-    inputData: INodeExecutionData[][]
+    inputData: INodeExecutionData[][],
+    executionId: string
   ): Promise<INodeExecutionData[][]> {
     const nodeType = this.nodeTypes.getByNameAndVersion(node.type);
     const context: IExecuteFunctions = {
       getNode: () => node,
       getInputData: (inputIndex = 0) => inputData[inputIndex] ?? [],
+      getRuntime: () => this.runtime,
+      getExecutionId: () => executionId,
     };
     const output = await nodeType.execute.call(context);
     return output.length > 0 ? output : [[]];
@@ -1942,7 +2157,7 @@ export class EmbeddedWorkflowService extends Service {
           const outputData =
             !isStartNode && incomingConnections.length > 0 && !hasInputItems
               ? [[]]
-              : await this.executeNode(node, inputData);
+              : await this.executeNode(node, inputData, executionId);
 
           nodeOutputs.set(node.name, outputData);
           runData[node.name] = [

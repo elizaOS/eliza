@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { WORKFLOW_GENERATION_SYSTEM_PROMPT } from '../../src/prompts/workflowGeneration';
+import { WORKFLOW_GENERATION_SYSTEM_PROMPT } from '../../src/utils/workflow-prompts/workflowGeneration';
 
 describe('WORKFLOW_GENERATION_SYSTEM_PROMPT — name→id resolution rules', () => {
   test('declares display-name → id resolution as mandatory', () => {

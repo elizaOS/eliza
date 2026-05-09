@@ -861,6 +861,8 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
 
   const config = getConfig(ctx);
   const subroute = parseSessionSubroute(path);
+  const commandSubroute: ClawvilleSubroute | null =
+    subroute && subroute !== "message" ? subroute : null;
 
   // GET /api/apps/clawville/session/:id — state poll
   if (ctx.method === "GET" && !subroute) {
@@ -913,23 +915,23 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
     return true;
   }
 
-  if (ctx.method === "POST" && subroute) {
+  if (ctx.method === "POST" && commandSubroute) {
     try {
       const body = await ctx.readJsonBody();
       const needsPerception =
-        subroute === "move" || subroute === "visit-building";
+        commandSubroute === "move" || commandSubroute === "visit-building";
       const perception = needsPerception
         ? await clawvillePerception(config, sessionId)
         : null;
       const commandBody = normalizeDirectCommandBody(
-        subroute,
+        commandSubroute,
         body,
         perception,
       );
       const result = await buildCommandResult(
         config,
         sessionId,
-        subroute,
+        commandSubroute,
         commandBody,
       );
       ctx.json(ctx.res, result, result.success ? 200 : 400);

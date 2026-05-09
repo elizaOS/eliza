@@ -290,6 +290,12 @@ export function TwoThousandFourScapeOperatorSurface({
     session?.telemetry && typeof session.telemetry === "object"
       ? session.telemetry
       : null;
+  const suggestedPrompts: string[] = Array.isArray(session?.suggestedPrompts)
+    ? session.suggestedPrompts.filter(
+        (prompt: unknown): prompt is string =>
+          typeof prompt === "string" && prompt.trim().length > 0,
+      )
+    : [];
   const recentActivity = extractRecentActivity(telemetry);
   const tutorial = asRecord(telemetry?.tutorial);
   const player = asRecord(telemetry?.player);
@@ -683,9 +689,9 @@ export function TwoThousandFourScapeOperatorSurface({
 
       {showChat ? (
         <SurfaceSection title="Steering">
-          {session?.suggestedPrompts?.length ? (
+          {suggestedPrompts.length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              {session.suggestedPrompts.slice(0, 4).map((prompt) => (
+              {suggestedPrompts.slice(0, 4).map((prompt) => (
                 <Button
                   key={prompt}
                   type="button"

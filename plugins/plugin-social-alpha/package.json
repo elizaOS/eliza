@@ -19,7 +19,7 @@
     "build": "bunx vite build",
     "dev": "vite",
     "test": "vitest run --passWithNoTests",
-    "clean": "rm -rf dist .turbo node_modules",
+    "clean": "rm -rf dist .turbo",
     "lint": "echo \"Lint skipped for release\"",
     "lint:check": "bun run lint",
     "format": "echo \"Format skipped (source is gitignored vendor code)\"",

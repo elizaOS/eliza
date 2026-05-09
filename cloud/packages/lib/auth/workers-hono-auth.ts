@@ -419,18 +419,16 @@ export async function requireAdmin(c: AppContext): Promise<{
   role: string | null;
 }> {
   const user = await requireUserOrApiKeyWithOrg(c);
-  if (!user.wallet_address) {
-    throw AuthenticationError("Wallet connection required for admin access");
-  }
   const { adminService } = await import("@/lib/services/admin");
   try {
-    const status = await adminService.getAdminStatus(user.wallet_address);
+    const status = await adminService.getAdminStatusForUser(user);
     if (!status.isAdmin) throw ForbiddenError("Admin access required");
     return { user, role: status.role };
   } catch (error) {
     if (error instanceof ApiError) throw error;
     logger.warn("[Auth] Admin lookup failed; denying admin access", {
       userId: user.id,
+      email: user.email,
       walletAddress: user.wallet_address,
       error: error instanceof Error ? error.message : String(error),
     });

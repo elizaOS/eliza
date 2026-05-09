@@ -13,7 +13,7 @@
  * - packages/prompts/src/**\/*.ts
  * - packages/core/src/prompts.ts and packages/core/src/services/message.ts
  * - plugins/* TS modules whose path matches `prompts.ts`,
- *   `prompts/<name>.ts`, or `templates.ts`
+ *   `prompts/<name>.ts`, `workflow-prompts/<name>.ts`, or `templates.ts`
  *
  * Generated mirrors and test files are skipped.
  */
@@ -40,11 +40,13 @@ const PROMPT_SCAN_TS_ROOTS = [
 const PROMPT_SCAN_FILES = [
   "packages/core/src/prompts.ts",
   "packages/core/src/services/message.ts",
+  "plugins/plugin-music/src/actions/music-player-action-docs.ts",
 ];
 
 const PROMPT_SCAN_FILE_PATTERNS = [
   /(^|\/)prompts?\.ts$/,
   /(^|\/)prompts\/[^/]+\.ts$/,
+  /(^|\/)workflow-prompts\/[^/]+\.ts$/,
   /(^|\/)templates?\.ts$/,
 ];
 

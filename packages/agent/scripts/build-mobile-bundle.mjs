@@ -37,6 +37,7 @@ import {
   copyFile,
   mkdir,
   readdir,
+  rename,
   rm,
   stat,
   writeFile,
@@ -150,6 +151,12 @@ console.log("[build-mobile] pglite dist:", pgliteDist);
 // because its on-device inference goes through llama-cpp-capacitor in the
 // WebView, not node-llama-cpp.
 const nativeStubs = {
+  react: path.join(stubsDir, "null-plugin.cjs"),
+  "react/jsx-runtime": path.join(stubsDir, "null-plugin.cjs"),
+  "react/jsx-dev-runtime": path.join(stubsDir, "null-plugin.cjs"),
+  "@types/react": path.join(stubsDir, "null-plugin.cjs"),
+  "@types/react/jsx-runtime": path.join(stubsDir, "null-plugin.cjs"),
+  "@types/react/jsx-dev-runtime": path.join(stubsDir, "null-plugin.cjs"),
   "node-llama-cpp": path.join(stubsDir, "node-llama-cpp.cjs"),
   "@node-llama-cpp/linux-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
   "@node-llama-cpp/linux-arm64": path.join(stubsDir, "node-llama-cpp.cjs"),
@@ -334,7 +341,7 @@ console.log("[build-mobile] starting Bun.build...");
 const buildResult = await Bun.build({
   entrypoints: [entry],
   outdir: outDir,
-  naming: "agent-bundle.js",
+  naming: "[dir]/[name].[ext]",
   target: "bun",
   format: "esm",
   // Don't minify. Bundling is already significant — this is a debugging step
@@ -364,6 +371,10 @@ if (!buildResult.success) {
 }
 
 const bundlePath = path.join(outDir, "agent-bundle.js");
+const defaultEntryPath = path.join(outDir, "bin.js");
+if (!existsSync(bundlePath) && existsSync(defaultEntryPath)) {
+  await rename(defaultEntryPath, bundlePath);
+}
 if (!existsSync(bundlePath)) {
   console.error(
     "[build-mobile] FATAL: agent-bundle.js not produced at",

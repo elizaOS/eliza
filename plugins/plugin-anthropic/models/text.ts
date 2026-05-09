@@ -15,6 +15,7 @@ import {
 import {
   generateText,
   type JSONSchema7,
+  jsonSchema,
   type ModelMessage,
   streamText,
   type ToolChoice,
@@ -181,11 +182,99 @@ function readProviderOptions(value: unknown): ProviderOptions | undefined {
   return Object.fromEntries(entries) as ProviderOptions;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isModelMessage(value: unknown): value is ModelMessage {
+  if (!isRecord(value) || typeof value.role !== "string") {
+    return false;
+  }
+  switch (value.role) {
+    case "system":
+      return typeof value.content === "string";
+    case "user":
+    case "assistant":
+    case "tool":
+      // Accept string or array content. Eliza runtime synthesizes tool / assistant
+      // messages with string content (see buildStageChatMessages); the AI SDK
+      // accepts these and the underlying provider normalizes them.
+      return typeof value.content === "string" || Array.isArray(value.content);
+    default:
+      return false;
+  }
+}
+
+function readModelMessages(value: GenerateTextParams["messages"]): ModelMessage[] | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const messages: ModelMessage[] = [];
+  for (const message of value) {
+    if (!isModelMessage(message)) {
+      return undefined;
+    }
+    messages.push(message as ModelMessage);
+  }
+  return messages;
+}
+
+function readToolSet(value: GenerateTextParams["tools"]): ToolSet | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    return isRecord(value) ? (value as ToolSet) : undefined;
+  }
+
+  const tools: Record<string, unknown> = {};
+  for (const rawTool of value) {
+    if (!isRecord(rawTool) || typeof rawTool.name !== "string") {
+      continue;
+    }
+    const schema = isRecord(rawTool.parameters)
+      ? (rawTool.parameters as JSONSchema7)
+      : ({ type: "object" } satisfies JSONSchema7);
+    tools[rawTool.name] = {
+      ...(typeof rawTool.description === "string" ? { description: rawTool.description } : {}),
+      inputSchema: jsonSchema(schema),
+    };
+  }
+
+  return Object.keys(tools).length > 0 ? (tools as ToolSet) : undefined;
+}
+
+function readToolChoice(value: GenerateTextParams["toolChoice"]): ToolChoice<ToolSet> | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (typeof value === "string" && (value === "auto" || value === "none" || value === "required")) {
+    return value;
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const choice = value as Record<string, unknown>;
+  if (choice.type === "tool" && typeof choice.name === "string") {
+    return { type: "tool", toolName: choice.name };
+  }
+  if (choice.type === "function" && isRecord(choice.function)) {
+    const name = choice.function.name;
+    return typeof name === "string" ? { type: "tool", toolName: name } : undefined;
+  }
+  return typeof choice.name === "string" ? { type: "tool", toolName: choice.name } : undefined;
+}
+
 function toAnthropicTextParams(params: GenerateTextParams): GenerateTextParamsWithProviderOptions {
-  return {
-    ...params,
-    providerOptions: readProviderOptions(params.providerOptions),
-  } as GenerateTextParamsWithProviderOptions;
+  const { messages, providerOptions, tools, toolChoice, ...rest } = params;
+  const normalized: GenerateTextParamsWithProviderOptions = {
+    ...rest,
+    messages: readModelMessages(messages),
+    tools: readToolSet(tools),
+    toolChoice: readToolChoice(toolChoice),
+    providerOptions: readProviderOptions(providerOptions),
+  };
+  return normalized;
 }
 
 function isOpus4Model(modelName: ModelName): boolean {
@@ -523,10 +612,14 @@ function resolveTextParams(
   );
 
   const rawProviderOptions = params.providerOptions;
+  const rawAnthropicOptions = rawProviderOptions?.anthropic;
   const baseProviderOptions: ProviderOptions = rawProviderOptions
     ? {
         ...rawProviderOptions,
-        anthropic: rawProviderOptions.anthropic ? { ...rawProviderOptions.anthropic } : undefined,
+        anthropic:
+          rawAnthropicOptions && typeof rawAnthropicOptions === "object"
+            ? { ...(rawAnthropicOptions as Record<string, ProviderOptionValue | undefined>) }
+            : undefined,
       }
     : {};
 

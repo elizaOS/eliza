@@ -1,3 +1,4 @@
+import type { EventPayload } from '@elizaos/core';
 import type {
   INode,
   INodeCredentialsDetails,
@@ -202,19 +203,31 @@ export interface NodeDefinition
   triggerPanel?: unknown;
 }
 
+export interface NodePropertyOption {
+  name: string;
+  value?: string | number | boolean;
+  displayName?: string;
+  description?: string;
+  [key: string]: unknown;
+}
+
+export interface NodePropertyCollection {
+  name: string;
+  displayName?: string;
+  values: NodeProperty[];
+  [key: string]: unknown;
+}
+
 export interface NodeProperty
   extends Omit<INodeProperties, 'default' | 'displayOptions' | 'options' | 'routing' | 'type'> {
   type: string;
   default: unknown;
-  options?: Array<{
-    name: string;
-    value: string | number | boolean;
-    description?: string;
-  }>;
+  options?: Array<NodePropertyOption | NodePropertyCollection>;
   displayOptions?: unknown;
   placeholder?: string;
   hint?: string;
   routing?: unknown;
+  [key: string]: unknown;
 }
 
 export interface NodeSearchResult {
@@ -393,6 +406,32 @@ export function isRuntimeContextProvider(service: unknown): service is RuntimeCo
 // Credential store types
 
 export const WORKFLOW_CREDENTIAL_STORE_TYPE = 'workflow_credential_store';
+
+/**
+ * Runtime event emitted by the host (e.g. agent connector routes) when a
+ * connector is disconnected. WorkflowCredentialStore subscribes to this in
+ * `start()` and purges its cached credential ids for the supplied credTypes,
+ * so the next workflow generation surfaces `needs_auth` instead of returning
+ * a stale id.
+ *
+ * Payload shape kept minimal and serializable so any host can emit without
+ * pulling in plugin-workflow types — `userId` + `credTypes` is enough for
+ * the store to do its job. `connectorName` is informational for subscribers
+ * that want richer context.
+ */
+export const CONNECTOR_DISCONNECTED_EVENT = 'connector_disconnected';
+
+export interface ConnectorDisconnectedPayload extends EventPayload {
+  /** Owner of the credentials to purge — typically `runtime.agentId`. */
+  userId: string;
+  /**
+   * Workflow credential type ids tied to the disconnected connector
+   * (e.g. `['gmailOAuth2', 'gmailOAuth2Api']`). Empty list ⇒ no-op.
+   */
+  credTypes: readonly string[];
+  /** Connector name (e.g. `'gmail'`). Informational. */
+  connectorName?: string;
+}
 
 export interface CredentialMapping {
   credType: string;

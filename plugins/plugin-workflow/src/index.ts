@@ -1,6 +1,7 @@
 import { type IAgentRuntime, logger, type Plugin } from '@elizaos/core';
 import { workflowAction } from './actions/index';
 import * as dbSchema from './db/index';
+import { migrateLegacyTextTriggers, migrateLegacyWorkbenchTasks } from './lib/index';
 import {
   activeWorkflowsProvider,
   pendingDraftProvider,
@@ -10,6 +11,7 @@ import { workflowRoutes } from './routes/index';
 import {
   EmbeddedWorkflowService,
   registerWorkflowDispatchService,
+  WORKFLOW_SERVICE_TYPE,
   WorkflowCredentialStore,
   WorkflowService,
 } from './services/index';
@@ -81,6 +83,13 @@ export const workflowPlugin: Plugin = {
     // runtime.getService("WORKFLOW_DISPATCH").execute(workflowId).
     registerWorkflowDispatchService(runtime);
 
+    // Schedule one-shot legacy migrations off the init critical path. Service
+    // start-order is not guaranteed at init: WorkflowService may not be in
+    // the registry yet. Poll up to 10 times (1s spacing) and bail quietly
+    // if it never appears. Each migration is idempotent so a duplicate run
+    // on a future boot is harmless.
+    scheduleLegacyMigrations(runtime);
+
     logger.info(
       { src: 'plugin:workflow:plugin:init' },
       'Workflow Plugin initialized successfully (in-process runtime)'
@@ -88,4 +97,80 @@ export const workflowPlugin: Plugin = {
   },
 };
 
+const MIGRATION_RETRY_LIMIT = 10;
+const MIGRATION_RETRY_INTERVAL_MS = 1000;
+
+function scheduleLegacyMigrations(runtime: IAgentRuntime): void {
+  let attempts = 0;
+  const tick = (): void => {
+    attempts += 1;
+    const ready = runtime.getService(WORKFLOW_SERVICE_TYPE);
+    if (!ready) {
+      if (attempts >= MIGRATION_RETRY_LIMIT) {
+        logger.warn(
+          { src: 'plugin:workflow:plugin:migration' },
+          `WorkflowService still not registered after ${MIGRATION_RETRY_LIMIT} retries; legacy migrations will run on next boot`
+        );
+        return;
+      }
+      setTimeout(tick, MIGRATION_RETRY_INTERVAL_MS);
+      return;
+    }
+    void runLegacyMigrations(runtime);
+  };
+  // Defer the first attempt off the init stack so the host runtime can
+  // finish wiring before we probe the service registry.
+  setImmediate(tick);
+}
+
+async function runLegacyMigrations(runtime: IAgentRuntime): Promise<void> {
+  try {
+    const summary = await migrateLegacyWorkbenchTasks(runtime);
+    logger.info(
+      {
+        src: 'plugin:workflow:plugin:migration',
+        migrated: summary.migrated,
+        skipped: summary.skipped,
+        failed: summary.failed,
+      },
+      `Workbench-task migration: ${summary.migrated} migrated, ${summary.skipped} skipped, ${summary.failed} failed`
+    );
+  } catch (err) {
+    logger.warn(
+      {
+        src: 'plugin:workflow:plugin:migration',
+        err: err instanceof Error ? err.message : String(err),
+      },
+      'Workbench-task migration threw; continuing'
+    );
+  }
+
+  try {
+    const summary = await migrateLegacyTextTriggers(runtime);
+    logger.info(
+      {
+        src: 'plugin:workflow:plugin:migration',
+        migrated: summary.migrated,
+        skipped: summary.skipped,
+        failed: summary.failed,
+      },
+      `Text-trigger migration: ${summary.migrated} migrated, ${summary.skipped} skipped, ${summary.failed} failed`
+    );
+  } catch (err) {
+    logger.warn(
+      {
+        src: 'plugin:workflow:plugin:migration',
+        err: err instanceof Error ? err.message : String(err),
+      },
+      'Text-trigger migration threw; continuing'
+    );
+  }
+}
+
 export default workflowPlugin;
+
+export {
+  handleTriggerRoutes,
+  type TriggerRouteContext,
+  type TriggerRouteHelpers,
+} from "./trigger-routes.js";

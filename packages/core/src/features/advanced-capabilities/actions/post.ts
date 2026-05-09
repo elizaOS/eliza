@@ -14,7 +14,7 @@ import type {
 	UUID,
 } from "../../../types/index.ts";
 import { ChannelType } from "../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 import { stringToUuid } from "../../../utils.ts";
 import {
 	boolParam,
@@ -654,7 +654,7 @@ export const postAction: Action = {
 	roleGate: { minRole: "ADMIN" },
 	validate: async (runtime, message, state) => {
 		refreshDescriptions(postAction, runtime);
-		return hasActionContextOrKeyword(message, state, {
+		return hasActionContext(message, state, {
 			contexts: POST_CONTEXTS,
 			keywords: [
 				"post",

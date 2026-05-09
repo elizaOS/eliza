@@ -24,9 +24,15 @@ export { websiteBlockAction } from "./actions/website-block.js";
 export { getAppBlockerStatus } from "./app-blocker/engine.js";
 export * from "./contracts/index.js";
 export { detectHealthBackend } from "@elizaos/plugin-health";
+export {
+  createApprovalQueue,
+  PgApprovalQueue,
+  type ApprovalQueueOptions,
+} from "./lifeops/approval-queue.js";
 export * from "./lifeops/messaging/index.js";
 export { detectPasswordManagerBackend } from "./lifeops/password-manager-bridge.js";
 export { detectRemoteDesktopBackend } from "./lifeops/remote-desktop.js";
+export { LifeOpsRepository } from "./lifeops/repository.js";
 export { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.js";
 export * from "./platform/index.js";
 export type {

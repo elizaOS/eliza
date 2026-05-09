@@ -25,7 +25,7 @@ export {
 export * from "./agent-export.js";
 export * from "./app-manager.js";
 export * from "./app-session-gate.js";
-export { CodingTaskExecutor } from "./coding-task-executor.js";
+export { CodingTaskExecutor } from "@elizaos/plugin-coding-tools";
 export {
   EscalationService,
   type EscalationState,
@@ -62,16 +62,13 @@ export {
 } from "./plugin-manager-types.js";
 export * from "./registry-client.js";
 export { resolveAppHeroImage } from "./registry-client-queries.js";
+export * from "./mcp-marketplace.js";
 export * from "./remote-signing-service.js";
 export { ResearchTaskExecutor } from "./research-task-executor.js";
 export * from "./sandbox-engine.js";
 export * from "./sandbox-manager.js";
 export * from "./self-updater.js";
 export * from "./signing-policy.js";
-export * from "./skill-catalog-client.js";
-export * from "./skill-marketplace.js";
-export * from "./stream-manager.js";
 export * from "./task-executor.js";
-export * from "./tts-stream-bridge.js";
 export * from "./update-checker.js";
 export * from "./version-compat.js";

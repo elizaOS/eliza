@@ -15,6 +15,9 @@
       "@elizaos/core": [
         "./packages/core/dist/index.d.ts"
       ],
+      "@elizaos/core/testing": [
+        "./packages/core/dist/testing/index.d.ts"
+      ],
       "@elizaos/core/*": [
         "./packages/core/dist/*"
       ],
@@ -517,10 +520,10 @@
         "./plugins/plugin-suno/dist/*"
       ],
       "@elizaos/plugin-sql": [
-        "./plugins/plugin-sql/typescript/dist/index.d.ts"
+        "./plugins/plugin-sql/src/dist/index.d.ts"
       ],
       "@elizaos/plugin-sql/*": [
-        "./plugins/plugin-sql/typescript/dist/*"
+        "./plugins/plugin-sql/src/dist/*"
       ],
       "@elizaos/plugin-tailscale": [
         "./plugins/plugin-tailscale/dist/index.d.ts"
@@ -660,11 +663,17 @@
       "@elizaos/plugin-instagram/*": [
         "./plugins/plugin-instagram/dist/*"
       ],
+      "@elizaos/plugin-music": [
+        "./plugins/plugin-music/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-music/*": [
+        "./plugins/plugin-music/dist/*"
+      ],
       "@elizaos/plugin-music-player": [
-        "./plugins/plugin-music-player/dist/index.d.ts"
+        "./plugins/plugin-music/dist/index.d.ts"
       ],
       "@elizaos/plugin-music-player/*": [
-        "./plugins/plugin-music-player/dist/*"
+        "./plugins/plugin-music/dist/*"
       ],
       "@elizaos/plugin-minecraft": [
         "./plugins/plugin-minecraft/dist/index.d.ts"
@@ -739,10 +748,10 @@
         "./plugins/plugin-mysticism/dist/*"
       ],
       "@elizaos/plugin-groq": [
-        "./plugins/plugin-groq/dist/index.d.ts"
+        "./plugins/plugin-groq/index.ts"
       ],
       "@elizaos/plugin-groq/*": [
-        "./plugins/plugin-groq/dist/*"
+        "./plugins/plugin-groq/*"
       ],
       "@elizaos/plugin-openai": [
         "./plugins/plugin-openai/dist/index.d.ts"
@@ -775,10 +784,10 @@
         "./plugins/plugin-imessage/dist/*"
       ],
       "@elizaos/plugin-music-library": [
-        "./plugins/plugin-music-library/dist/index.d.ts"
+        "./plugins/plugin-music/dist/index.d.ts"
       ],
       "@elizaos/plugin-music-library/*": [
-        "./plugins/plugin-music-library/dist/*"
+        "./plugins/plugin-music/dist/*"
       ],
       "@elizaos/plugin-calendly": [
         "./plugins/plugin-calendly/dist/index.d.ts"
@@ -947,12 +956,6 @@
       ],
       "@elizaos/app-training/*": [
         "./plugins/app-training/dist/*"
-      ],
-      "@elizaos/plugin-executecode": [
-        "./plugins/plugin-executecode/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-executecode/*": [
-        "./plugins/plugin-executecode/dist/*"
       ],
       "@elizaos/plugin-local-embedding": [
         "./plugins/plugin-local-embedding/dist/index.d.ts"

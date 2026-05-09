@@ -2,7 +2,7 @@ import path from "node:path";
 import { defineConfig } from "vitest/config";
 
 const elizaRoot = path.resolve(import.meta.dirname, "../..");
-const pluginSqlRoot = path.join(elizaRoot, "plugins", "plugin-sql", "typescript");
+const pluginSqlRoot = path.join(elizaRoot, "plugins", "plugin-sql", "src");
 const coreSrc = path.join(elizaRoot, "packages", "core", "src");
 
 export default defineConfig({

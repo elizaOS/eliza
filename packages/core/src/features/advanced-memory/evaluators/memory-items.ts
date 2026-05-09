@@ -1,13 +1,13 @@
 import { logger } from "../../../logger.ts";
+import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import type {
 	Evaluator,
 	IAgentRuntime,
 	JSONSchema,
 	Memory,
-	State,
+	RegisteredEvaluator,
 	UUID,
 } from "../../../types/index.ts";
-import type { Plugin } from "../../../types/plugin.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 import { LongTermMemoryCategory, type MemoryExtraction } from "../types.ts";
@@ -280,7 +280,7 @@ async function prepareLongTermMemory(
 export const summaryEvaluator: Evaluator<SummaryOutput, SummaryPrepared> = {
 	name: "summary",
 	description: "Rolls forward the room's compact conversation summary.",
-	priority: 300,
+	priority: EvaluatorPriority.MEMORY_SUMMARY,
 	schema: summarySchema,
 	async shouldRun({ runtime, message }) {
 		if (!message.content?.text || !message.roomId) return false;
@@ -410,7 +410,7 @@ export const longTermMemoryEvaluator: Evaluator<
 	name: "longTermMemory",
 	description:
 		"Extracts high-confidence persistent memories about the user from conversation context.",
-	priority: 310,
+	priority: EvaluatorPriority.MEMORY_LONG_TERM,
 	schema: longTermMemorySchema,
 	async shouldRun({ runtime, message }) {
 		if (!message.content?.text || !message.roomId || !message.entityId) {
@@ -506,7 +506,7 @@ ${formatMessages(runtime, prepared.recentMessages)}`;
 	],
 };
 
-export const memoryItems: NonNullable<Plugin["evaluators"]> = [
+export const memoryItems: RegisteredEvaluator[] = [
 	summaryEvaluator,
 	longTermMemoryEvaluator,
 ];

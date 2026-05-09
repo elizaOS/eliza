@@ -10,8 +10,8 @@ import {
   PARAM_CORRECTION_SYSTEM_PROMPT,
   PARAM_CORRECTION_USER_PROMPT,
   WORKFLOW_GENERATION_SYSTEM_PROMPT,
-} from '../prompts/index';
-import { WORKFLOW_MATCHING_SYSTEM_PROMPT } from '../prompts/workflowMatching';
+} from './workflow-prompts/index';
+import { WORKFLOW_MATCHING_SYSTEM_PROMPT } from './workflow-prompts/workflowMatching';
 import {
   draftIntentSchema,
   feasibilitySchema,

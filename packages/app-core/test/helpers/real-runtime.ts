@@ -109,7 +109,7 @@ async function importPluginSql(): Promise<Plugin> {
   } catch (packageError) {
     const fallbackPath = path.resolve(
       helperDir,
-      "../../../../plugins/plugin-sql/typescript/index.node.ts",
+      "../../../../plugins/plugin-sql/src/index.node.ts",
     );
     try {
       const { default: pluginSql } = await import(

@@ -114,6 +114,14 @@ type AgentOutbound =
       stopSequences?: string[];
       maxTokens?: number;
       temperature?: number;
+      /**
+       * Forwarded promptCacheKey from `ProviderCachePlan`. The receiving
+       * device's local-inference layer can use this to derive a stable
+       * slot_id (llama-server) or to look up a session in its session
+       * pool (node-llama-cpp). Old clients ignore the field; new clients
+       * get prefix-cache reuse across calls with the same key.
+       */
+      cacheKey?: string;
     }
   | { type: "embed"; correlationId: string; input: string }
   | { type: "ping"; at: number };
@@ -903,6 +911,7 @@ export class DeviceBridge {
     stopSequences?: string[];
     maxTokens?: number;
     temperature?: number;
+    cacheKey?: string;
   }): Promise<string> {
     const envTimeout = Number.parseInt(
       process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS?.trim() ?? "",
@@ -921,6 +930,7 @@ export class DeviceBridge {
       stopSequences: args.stopSequences,
       maxTokens: args.maxTokens,
       temperature: args.temperature,
+      cacheKey: args.cacheKey,
     };
 
     const best = this.pickBestDevice();

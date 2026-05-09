@@ -1991,8 +1991,8 @@ export class AppManager {
           // installer which writes to ~/.eliza/plugins/installed and can be
           // picked up by the app-package-modules resolver without restart.
           const { installPlugin: installPluginDirect } = (await import(
-            /* webpackIgnore: true */ "@elizaos/app-core/services/plugin-installer"
-          )) as {
+            /* webpackIgnore: true */ "@elizaos/app-core"
+          )) as unknown as {
             installPlugin: (
               name: string,
               onProgress?: (progress: InstallProgressLike) => void,

@@ -39,5 +39,16 @@
     "dflash_only": 30,
     "dflash_turbo4_polar": 25,
     "all_dflash_qjl_tcq": 20
+  },
+  "vulkan": {
+    "_comment": "Vulkan thresholds depend heavily on the device — discrete dGPU vs Mali/Adreno mobile chips have orders-of-magnitude different floors. Floors here target a low-end discrete GPU baseline; tighten per-device when concrete runners come online. Mobile-class Adreno/Mali should be benched separately under android-vulkan and given their own threshold block once we have data.",
+    "default": 25,
+    "baseline_f16_kv": 40,
+    "turbo4_polar_kv": 35,
+    "turbo3_polar_kv": 35,
+    "qjl_tcq_forced": 25,
+    "dflash_only": 40,
+    "dflash_turbo4_polar": 35,
+    "all_dflash_qjl_tcq": 25
   }
 }

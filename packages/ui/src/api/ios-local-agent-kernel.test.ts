@@ -190,7 +190,7 @@ describe("handleIosLocalAgentRequest", () => {
     });
     await expect(getJson("/api/status")).resolves.toMatchObject({
       state: "running",
-      model: undefined,
+      model: null,
     });
   });
 });

@@ -20,7 +20,7 @@ import type {
 	Room,
 	World,
 } from "./environment";
-import type { Evaluator } from "./evaluator";
+import type { RegisteredEvaluator } from "./evaluator";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { Memory, MemoryMetadata } from "./memory";
 import type { IMessageService } from "./message-service";
@@ -446,7 +446,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	messageService: IMessageService | null;
 	providers: Provider[];
 	actions: Action[];
-	evaluators: Evaluator[];
+	evaluators: RegisteredEvaluator[];
 	plugins: Plugin[];
 	services: Map<ServiceTypeName, Service[]>;
 	events: RuntimeEventStorage;
@@ -587,7 +587,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
 	registerAction(action: Action): void;
 	unregisterAction(name: string): boolean;
-	registerEvaluator(evaluator: Evaluator): void;
+	registerEvaluator(evaluator: RegisteredEvaluator): void;
 	unregisterEvaluator(name: string): boolean;
 
 	/**
