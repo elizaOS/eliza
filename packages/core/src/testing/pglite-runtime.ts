@@ -21,8 +21,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { Plugin } from "@elizaos/core";
-import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
+import type { Plugin } from "../types";
+import { createCharacter } from "../character";
+import { logger } from "../logger";
+import { AgentRuntime } from "../runtime";
 
 export interface TestRuntimeOptions {
 	/** Name for the test agent character. Defaults to "TestAgent". */
