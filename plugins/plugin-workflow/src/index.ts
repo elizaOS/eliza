@@ -8,6 +8,7 @@ import {
 import { workflowRoutes } from './routes/index';
 import {
   EmbeddedWorkflowService,
+  registerWorkflowDispatchService,
   WorkflowCredentialStore,
   WorkflowService,
 } from './services/index';
@@ -74,6 +75,10 @@ export const workflowPlugin: Plugin = {
         `Pre-configured credentials: ${credCount} credential types`
       );
     }
+
+    // Register WORKFLOW_DISPATCH so trigger-kind=workflow tasks can call
+    // runtime.getService("WORKFLOW_DISPATCH").execute(workflowId).
+    registerWorkflowDispatchService(runtime);
 
     logger.info(
       { src: 'plugin:workflow:plugin:init' },

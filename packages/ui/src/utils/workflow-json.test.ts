@@ -11,8 +11,8 @@ const VALID = JSON.stringify(
     name: "Test workflow",
     active: false,
     nodes: [
-      { id: "n1", name: "Trigger", type: "n8n-nodes-base.manualTrigger" },
-      { id: "n2", name: "Step", type: "n8n-nodes-base.set" },
+      { id: "n1", name: "Trigger", type: "workflows-nodes-base.manualTrigger" },
+      { id: "n2", name: "Step", type: "workflows-nodes-base.set" },
     ],
     connections: {
       Trigger: { main: [[{ node: "Step", type: "main", index: 0 }]] },
