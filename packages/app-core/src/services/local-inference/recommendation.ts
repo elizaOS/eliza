@@ -209,6 +209,26 @@ function canFit(
   return assessCatalogModelFit(hardware, model, catalog) !== "wontfit";
 }
 
+/**
+ * True when every kernel listed in `model.runtime.optimizations.requiresKernel`
+ * is advertised as `true` in the binary's CAPABILITIES.json kernels map.
+ *
+ * `binaryKernels === null` means we have no probe (older binary, or
+ * llama-server isn't installed). In that case we trust the catalog —
+ * filtering would hide every kernel-required model and the dispatcher's
+ * load-time check will surface the real error if/when the user tries to
+ * activate it.
+ */
+function kernelRequirementsSatisfied(
+  model: CatalogModel,
+  binaryKernels: Partial<Record<string, boolean>> | null,
+): boolean {
+  const required = model.runtime?.optimizations?.requiresKernel ?? [];
+  if (required.length === 0) return true;
+  if (!binaryKernels) return true;
+  return required.every((k) => binaryKernels[k] === true);
+}
+
 function modelsFromLadder(
   ids: string[],
   catalog: CatalogModel[],
@@ -239,18 +259,38 @@ function fallbackCandidates(
   });
 }
 
+export interface RecommendationOptions {
+  /**
+   * Kernels actually advertised by the installed llama-server binary
+   * (parsed from CAPABILITIES.json next to it). When provided, models
+   * declaring `requiresKernel` not satisfied by this map are filtered
+   * out so we don't recommend a model the user can't actually run on
+   * this binary. Pass null/omit when no probe is available — recommender
+   * trusts the catalog and the dispatcher's load-time check.
+   */
+  binaryKernels?: Partial<Record<string, boolean>> | null;
+}
+
 export function selectRecommendedModelForSlot(
   slot: TextGenerationSlot,
   hardware: HardwareProbe,
   catalog: CatalogModel[] = MODEL_CATALOG,
+  options: RecommendationOptions = {},
 ): RecommendedModelSelection {
   const platformClass = classifyRecommendationPlatform(hardware);
   const ladder = modelsFromLadder(SLOT_LADDERS[platformClass][slot], catalog);
-  const ladderFits = ladder.filter((model) => canFit(hardware, model, catalog));
+  const binaryKernels = options.binaryKernels ?? null;
+  const eligible = ladder.filter(
+    (model) =>
+      canFit(hardware, model, catalog) &&
+      kernelRequirementsSatisfied(model, binaryKernels),
+  );
   const alternatives =
-    ladderFits.length > 0
-      ? ladderFits
-      : fallbackCandidates(slot, hardware, catalog);
+    eligible.length > 0
+      ? eligible
+      : fallbackCandidates(slot, hardware, catalog).filter((model) =>
+          kernelRequirementsSatisfied(model, binaryKernels),
+        );
   const model = alternatives[0] ?? null;
   const fit = model ? assessCatalogModelFit(hardware, model, catalog) : null;
   return {
@@ -268,10 +308,21 @@ export function selectRecommendedModelForSlot(
 export function selectRecommendedModels(
   hardware: HardwareProbe,
   catalog: CatalogModel[] = MODEL_CATALOG,
+  options: RecommendationOptions = {},
 ): Record<TextGenerationSlot, RecommendedModelSelection> {
   return {
-    TEXT_SMALL: selectRecommendedModelForSlot("TEXT_SMALL", hardware, catalog),
-    TEXT_LARGE: selectRecommendedModelForSlot("TEXT_LARGE", hardware, catalog),
+    TEXT_SMALL: selectRecommendedModelForSlot(
+      "TEXT_SMALL",
+      hardware,
+      catalog,
+      options,
+    ),
+    TEXT_LARGE: selectRecommendedModelForSlot(
+      "TEXT_LARGE",
+      hardware,
+      catalog,
+      options,
+    ),
   };
 }
 

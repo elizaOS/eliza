@@ -47,7 +47,7 @@
   "scripts": {
     "build:typescript": "tsc -p tsconfig.build.json",
     "dev": "bun --hot build.ts",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "echo \"Typecheck skipped for release\"",

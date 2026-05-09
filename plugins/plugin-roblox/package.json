@@ -38,7 +38,7 @@
     "test:integration": "echo 'Integration tests require elizaos CLI - skipping'",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bun run lint",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "build": "bun run build.ts",

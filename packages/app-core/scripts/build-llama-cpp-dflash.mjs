@@ -253,6 +253,24 @@ function prepareVulkanHeaders() {
   return { vulkanInclude, spirvInclude };
 }
 
+// Resolve the system libvulkan.so.1 on Linux when libvulkan-dev isn't
+// installed. CMake's FindVulkan looks for libvulkan.so by name, but distro
+// runtime packages ship only libvulkan.so.1; passing the resolved versioned
+// path via -DVulkan_LIBRARY satisfies the package check.
+function findLinuxLibVulkan() {
+  const candidates = [
+    "/usr/lib/x86_64-linux-gnu/libvulkan.so.1",
+    "/usr/lib64/libvulkan.so.1",
+    "/usr/lib/libvulkan.so.1",
+    "/usr/lib/x86_64-linux-gnu/libvulkan.so",
+    "/usr/lib64/libvulkan.so",
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
 function safelyPrepareVulkanHeaders() {
   try {
     return prepareVulkanHeaders();
@@ -293,16 +311,28 @@ function cmakeFlagsForTarget(target, ctx) {
     flags[flags.indexOf("-DGGML_VULKAN=OFF")] = "-DGGML_VULKAN=ON";
     if (ctx.glslc) flags.push(`-DVulkan_GLSLC_EXECUTABLE=${ctx.glslc}`);
     // The fork includes vulkan.hpp + spirv/unified1/spirv.hpp, neither of
-    // which ships in the NDK. ctx.vulkanHpp is the result of
-    // safelyPrepareVulkanHeaders() — { vulkanInclude, spirvInclude } pointing
-    // at fetched Khronos checkouts. Pass via -isystem so they don't shadow
-    // the NDK's vulkan.h.
+    // which ships in the NDK *or* in Linux libvulkan-runtime-only installs.
+    // ctx.vulkanHpp is the result of safelyPrepareVulkanHeaders() —
+    // { vulkanInclude, spirvInclude } pointing at fetched Khronos checkouts.
     if (ctx.vulkanHpp) {
       const isystem = [ctx.vulkanHpp.vulkanInclude, ctx.vulkanHpp.spirvInclude]
         .filter(Boolean)
         .map((p) => `-isystem ${p}`)
         .join(" ");
       if (isystem) flags.push(`-DCMAKE_CXX_FLAGS=${isystem}`);
+      // CMake's FindVulkan also needs Vulkan_INCLUDE_DIR / Vulkan_LIBRARY
+      // for its package check. On Linux without libvulkan-dev installed,
+      // we still have:
+      //   - libvulkan.so.1 from the runtime package (Mesa / NVIDIA driver)
+      //   - vulkan/vulkan.h in the fetched Khronos headers
+      // Wire those manually so the build doesn't need the SDK.
+      if (platform === "linux") {
+        const libVulkan = findLinuxLibVulkan();
+        if (libVulkan) {
+          flags.push(`-DVulkan_INCLUDE_DIR=${ctx.vulkanHpp.vulkanInclude}`);
+          flags.push(`-DVulkan_LIBRARY=${libVulkan}`);
+        }
+      }
     }
   }
 

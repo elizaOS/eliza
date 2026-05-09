@@ -147,6 +147,8 @@ for (const rollupPath of targets) {
   }
 }
 
-if (patched === 0) {
+// Idempotent: silence when nothing to do (already patched or no tsup@8.5.1).
+// Set VERBOSE=1 to confirm the script ran with no targets needing patches.
+if (patched === 0 && process.env.VERBOSE) {
   console.log("[patch-tsup-dts] No unpatched tsup@8.5.1 DTS builds found.");
 }

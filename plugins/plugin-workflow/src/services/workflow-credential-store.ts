@@ -7,10 +7,7 @@ import type {
   CredentialMapping,
   WorkflowCredentialStoreApi,
 } from '../types/index';
-import {
-  CONNECTOR_DISCONNECTED_EVENT,
-  WORKFLOW_CREDENTIAL_STORE_TYPE,
-} from '../types/index';
+import { CONNECTOR_DISCONNECTED_EVENT, WORKFLOW_CREDENTIAL_STORE_TYPE } from '../types/index';
 
 /**
  * Default DB-backed credential store.
@@ -33,7 +30,7 @@ export class WorkflowCredentialStore extends Service implements WorkflowCredenti
   private readonly connectorDisconnectedHandler = async (
     payload: ConnectorDisconnectedPayload
   ): Promise<void> => {
-    if (!payload || !payload.userId || !Array.isArray(payload.credTypes)) {
+    if (!payload?.userId || !Array.isArray(payload.credTypes)) {
       return;
     }
     if (payload.credTypes.length === 0) {

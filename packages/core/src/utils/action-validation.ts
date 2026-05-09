@@ -4,46 +4,17 @@ import {
 	routingContextsOverlap,
 } from "./context-routing.ts";
 
-export interface ContextKeywordValidationOptions {
+export interface ActionContextValidationOptions {
 	contexts: readonly AgentContext[];
-	/** @deprecated Keyword routing belongs to action retrieval, not validate(). */
+	/** Search / i18n metadata; ignored by `hasActionContext` routing logic. */
 	keywords?: readonly string[];
-	/** @deprecated Keyword routing belongs to action retrieval, not validate(). */
 	keywordKeys?: readonly string[];
 }
 
-function getStringValue(value: unknown): string | undefined {
-	return typeof value === "string" && value.trim().length > 0
-		? value
-		: undefined;
-}
-
-export function getActionValidationText(
-	message: Memory,
-	state?: State,
-): string {
-	const values = state?.values ?? {};
-	return [
-		getStringValue(message.content.text),
-		getStringValue(values.recentMessages),
-		getStringValue(values.recentPosts),
-		getStringValue(values.recentInteractions),
-	]
-		.filter((value): value is string => Boolean(value))
-		.join("\n");
-}
-
-export function getAllValidationKeywordTerms(
-	keys: readonly string[] = [],
-): string[] {
-	void keys;
-	return [];
-}
-
-export function hasActionContextOrKeyword(
+export function hasActionContext(
 	message: Memory,
 	state: State | undefined,
-	options: ContextKeywordValidationOptions,
+	options: ActionContextValidationOptions,
 ): boolean {
 	const activeContexts = getActiveRoutingContextsForTurn(state, message);
 	return routingContextsOverlap(options.contexts, activeContexts);

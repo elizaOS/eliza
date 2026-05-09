@@ -7,7 +7,7 @@ import type {
 	State,
 	UUID,
 } from "../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 import { parseJSONObjectFromText } from "../../../utils.ts";
 import type { TrustEngineServiceWrapper } from "../services/wrappers.ts";
 import type { TrustProfile } from "../types/trust.ts";
@@ -59,7 +59,7 @@ export const evaluateTrustAction: ElizaAction = {
 				params.entityId.trim().length > 0;
 			return (
 				hasStructuredEntity ||
-				hasActionContextOrKeyword(message, state, {
+				hasActionContext(message, state, {
 					contexts: ["admin", "settings", "agent_internal"],
 					keywords: ["evaluate trust", "trust score", "trust profile"],
 				})
