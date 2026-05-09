@@ -3,6 +3,17 @@
   "version": "2.0.0-beta.0",
   "module": "index.ts",
   "type": "module",
+  "elizaos": {
+    "app": {
+      "defaults": {},
+      "capabilities": {
+        "text-large": "required",
+        "messaging": "optional",
+        "wallet": "optional",
+        "browser-automation": "optional"
+      }
+    }
+  },
   "engines": {
     "node": "24.15.0"
   },
