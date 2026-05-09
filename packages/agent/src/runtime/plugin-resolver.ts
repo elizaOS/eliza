@@ -20,8 +20,11 @@ import { logger, type Plugin } from "@elizaos/core";
 import {
   type ApplyPluginAutoEnableParams,
   applyPluginAutoEnable,
+  applyPluginManifestVerdicts,
+  evaluatePluginManifests,
   formatError,
   isMobilePlatform,
+  type PluginCandidate,
 } from "@elizaos/shared";
 
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types.js";
@@ -920,6 +923,101 @@ function resolveStaticElizaPlugin(pluginName: string): unknown | null {
   return STATIC_ELIZA_PLUGINS[pluginName] ?? null;
 }
 
+/**
+ * Walk the @elizaos scope in node_modules + workspace `plugins/` dirs and
+ * return every package that has a `package.json`. The manifest evaluator
+ * filters these down to the ones that actually declare an `elizaos.plugin`
+ * block — this discovery step is intentionally cheap (a single readdir + stat
+ * per candidate, no module imports).
+ */
+async function discoverPluginCandidates(): Promise<PluginCandidate[]> {
+  const seen = new Set<string>();
+  const candidates: PluginCandidate[] = [];
+
+  const tryAdd = async (pkgRoot: string, pkgName: string): Promise<void> => {
+    if (seen.has(pkgName)) return;
+    if (!(await pathEntryExists(path.join(pkgRoot, "package.json")))) return;
+    seen.add(pkgName);
+    candidates.push({ packageName: pkgName, packageRoot: pkgRoot });
+  };
+
+  // 1. node_modules/@elizaos/* — covers npm-installed plugins and dev symlinks
+  //    pointing at workspace packages.
+  for (const root of resolveWorkspaceRoots()) {
+    const elizaScope = path.join(root, "node_modules", "@elizaos");
+    let entries: import("node:fs").Dirent[];
+    try {
+      entries = (await fs.readdir(elizaScope, { withFileTypes: true })) as
+        import("node:fs").Dirent[];
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw err;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+      if (entry.name.startsWith(".")) continue;
+      // Only plugin/app packages — skip core, shared, agent, ui, etc. (those
+      // aren't auto-enable participants and reading their package.json is
+      // wasted work).
+      if (!entry.name.startsWith("plugin-") && !entry.name.startsWith("app-")) {
+        continue;
+      }
+      const pkgRoot = path.join(elizaScope, entry.name);
+      await tryAdd(pkgRoot, `@elizaos/${entry.name}`);
+    }
+  }
+
+  // 2. workspace `plugins/` dir — covers cases where the plugin is in the
+  //    repo but not yet symlinked into node_modules. Cheap fall-through.
+  for (const root of resolveWorkspaceRoots()) {
+    const pluginsDir = path.join(root, "plugins");
+    let entries: import("node:fs").Dirent[];
+    try {
+      entries = (await fs.readdir(pluginsDir, { withFileTypes: true })) as
+        import("node:fs").Dirent[];
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw err;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (
+        !entry.name.startsWith("plugin-") &&
+        !entry.name.startsWith("app-")
+      ) {
+        continue;
+      }
+      // Some workspace plugins keep their package at `<name>/typescript`; try
+      // the typescript subdir first, fall back to the dir itself.
+      const tsRoot = path.join(pluginsDir, entry.name, "typescript");
+      const tsManifest = path.join(tsRoot, "package.json");
+      if (await pathEntryExists(tsManifest)) {
+        try {
+          const raw = await fs.readFile(tsManifest, "utf8");
+          const parsed = JSON.parse(raw) as { name?: string };
+          if (parsed.name) await tryAdd(tsRoot, parsed.name);
+        } catch {
+          // ignore unreadable / malformed
+        }
+        continue;
+      }
+      const flatRoot = path.join(pluginsDir, entry.name);
+      const flatManifest = path.join(flatRoot, "package.json");
+      if (await pathEntryExists(flatManifest)) {
+        try {
+          const raw = await fs.readFile(flatManifest, "utf8");
+          const parsed = JSON.parse(raw) as { name?: string };
+          if (parsed.name) await tryAdd(flatRoot, parsed.name);
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+
+  return candidates;
+}
+
 // ---------------------------------------------------------------------------
 // Main function
 // ---------------------------------------------------------------------------
@@ -952,6 +1050,38 @@ export async function resolvePlugins(
   // which meant every env-gated plugin (plugin-wallet, etc.) was
   // silently dropped. Capture the result and assign back so both the allow
   // list and any downstream config reads see the mutation.
+  //
+  // Two-pass auto-enable:
+  // 1. Manifest pre-pass: walk every @elizaos/* package.json on disk, run
+  //    each plugin's autoEnableModule.shouldEnable(ctx). Plugins that have
+  //    migrated to the manifest pattern register themselves here without
+  //    appearing in the central maps.
+  // 2. Central-map fallback: applyPluginAutoEnable handles plugins that
+  //    haven't migrated yet (still listed in CONNECTOR_PLUGINS,
+  //    AUTH_PROVIDER_PLUGINS, FEATURE_PLUGINS, etc.). Both passes are
+  //    additive and `addToAllowlist` dedupes.
+  const manifestChanges: string[] = [];
+  try {
+    const candidates = await discoverPluginCandidates();
+    const verdicts = await evaluatePluginManifests(candidates, {
+      env: process.env,
+      config,
+      isNativePlatform: isMobilePlatform(),
+    });
+    applyPluginManifestVerdicts(config, verdicts, manifestChanges);
+  } catch (err) {
+    logger.warn(
+      `[eliza] Plugin manifest pre-pass failed (continuing with central-map fallback): ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  if (manifestChanges.length > 0) {
+    logger.info(
+      `[eliza] Plugin manifest auto-enable: ${manifestChanges.join("; ")}`,
+    );
+  }
+
   const autoEnableResult = applyPluginAutoEnable({
     config,
     env: process.env,
