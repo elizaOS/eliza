@@ -489,9 +489,7 @@ export default function ConnectedPage() {
                 className="w-full h-[72px] rounded-2xl bg-[#34C759]/10 hover:bg-[#34C759]/20 text-white border border-[#34C759]/30 flex items-center gap-4 px-5 cursor-pointer transition-colors"
                 onClick={() => setShowPhoneInput((v) => !v)}
                 onKeyDown={(event) =>
-                  handleActivationKey(event, () =>
-                    setShowPhoneInput((v) => !v),
-                  )
+                  handleActivationKey(event, () => setShowPhoneInput((v) => !v))
                 }
                 role="button"
                 tabIndex={0}

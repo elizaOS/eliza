@@ -57,9 +57,8 @@ export default function BlobButton({
   });
 
   return (
-    <div
-      className="relative z-30 inline-flex items-center"
-      role="group"
+    <fieldset
+      className="relative z-30 m-0 inline-flex min-w-0 items-center border-0 p-0"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onFocus={() => setHovered(true)}
@@ -108,6 +107,6 @@ export default function BlobButton({
       >
         {children}
       </a>
-    </div>
+    </fieldset>
   );
 }

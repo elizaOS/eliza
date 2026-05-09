@@ -1049,6 +1049,10 @@ export default defineConfig({
         find: /^@elizaos\/ui\/lib\/(.*)$/,
         replacement: `${uiPkgRoot}/src/lib/$1.ts`,
       },
+      {
+        find: /^@elizaos\/ui\/styles\/(.*)$/,
+        replacement: path.join(uiPkgRoot, "src/styles/$1"),
+      },
       // Dynamic aliases for local app plugin packages.
       ...createWorkspacePackageAliases([path.resolve(elizaRoot, "plugins")]),
       ...(() => {

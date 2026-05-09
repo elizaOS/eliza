@@ -59,6 +59,8 @@ export const checkinAction: Action = {
     "Owner-only. Run a LifeOps morning or night check-in now by assembling the owner's todos, habits, goals, inbox, calendar, and recent signals into a briefing.",
   descriptionCompressed:
     "run owner LifeOps check-in now: kind morning|night; returns briefing summary",
+  routingHint:
+    "morning/night/daily check-in requests -> CHECKIN; never invent AUTOMATION_RUN",
   contexts: ["tasks", "health", "automation", "calendar", "email"],
   roleGate: { minRole: "OWNER" },
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),

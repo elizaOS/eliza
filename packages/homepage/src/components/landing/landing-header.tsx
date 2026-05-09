@@ -33,9 +33,8 @@ export function LandingHeader() {
         </Link>
 
         {/* Get Started button with QR code hover */}
-        <div
-          className="relative"
-          role="group"
+        <fieldset
+          className="relative m-0 min-w-0 border-0 p-0"
           onMouseEnter={() => setShowQR(true)}
           onMouseLeave={() => setShowQR(false)}
           onFocus={() => setShowQR(true)}
@@ -81,7 +80,7 @@ export function LandingHeader() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
+        </fieldset>
       </div>
     </motion.header>
   );

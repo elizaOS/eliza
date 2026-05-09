@@ -179,6 +179,8 @@ export interface NodeDefinition
     | 'outputs'
     | 'polling'
     | 'properties'
+    | 'triggerPanel'
+    | 'webhooks'
   > {
   icon?: string;
   iconUrl?: string;
@@ -195,7 +197,7 @@ export interface NodeDefinition
     displayOptions?: unknown;
   }>;
   properties: NodeProperty[];
-  webhooks?: unknown[];
+  webhooks?: Array<Record<string, unknown>>;
   polling?: boolean;
   triggerPanel?: unknown;
 }

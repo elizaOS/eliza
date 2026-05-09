@@ -1037,6 +1037,7 @@ export default function Leaderboard() {
               />
             </div>
             <button
+              type="button"
               onClick={() => {
                 if (tryInput.trim() && !waiting) {
                   if (listening) recognitionRef.current?.stop();
@@ -1048,6 +1049,9 @@ export default function Leaderboard() {
                   toggleVoiceInput();
                 }
               }}
+              aria-label={
+                tryInput.trim() ? "Send message" : "Start voice input"
+              }
               className={`shrink-0 flex items-center justify-center rounded-full cursor-pointer ${tryInput.trim() ? (waiting ? "size-12 bg-neutral-300 text-white" : tryPlatform === "discord" ? "size-12 text-[#5865F2]" : "size-12 text-[#2AABEE]") : listening ? (tryPlatform === "discord" ? "size-12 bg-[#5865F2] text-white" : "size-12 bg-[#2AABEE] text-white") : "size-12 text-neutral-400"}`}
             >
               {tryInput.trim() ? (
@@ -1057,6 +1061,7 @@ export default function Leaderboard() {
                     fill="currentColor"
                     className="size-12"
                   >
+                    <title>Telegram</title>
                     <path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0a12 12 0 00-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.479.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
                   </svg>
                 ) : (
@@ -1065,6 +1070,7 @@ export default function Leaderboard() {
                     fill="currentColor"
                     className="size-5"
                   >
+                    <title>Send message</title>
                     <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
                   </svg>
                 )
@@ -1078,6 +1084,7 @@ export default function Leaderboard() {
                   strokeLinejoin="round"
                   className="size-6"
                 >
+                  <title>Voice input</title>
                   <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
                   <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                   <path d="M12 19v4M8 23h8" />
@@ -1117,6 +1124,7 @@ export default function Leaderboard() {
               className="flex-1 bg-transparent text-black placeholder-black/40 font-light text-lg outline-none resize-none py-1.5 max-h-80 leading-snug caret-blue-500 scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none]"
             />
             <button
+              type="button"
               onClick={() => {
                 if (tryInput.trim() && !waiting) {
                   if (listening) recognitionRef.current?.stop();
@@ -1128,6 +1136,9 @@ export default function Leaderboard() {
                   toggleVoiceInput();
                 }
               }}
+              aria-label={
+                tryInput.trim() ? "Send message" : "Start voice input"
+              }
               className={`shrink-0 flex items-center justify-center rounded-full mb-0.5 cursor-pointer ${tryInput.trim() ? (waiting ? "w-12 h-9 bg-neutral-300 text-white" : "w-12 h-9 bg-blue-500 text-white") : listening ? "w-12 h-9 bg-blue-500 text-white" : "w-9 h-9 text-black/40"}`}
             >
               {tryInput.trim() ? (
@@ -1140,6 +1151,7 @@ export default function Leaderboard() {
                   strokeLinejoin="round"
                   className="size-5"
                 >
+                  <title>Send message</title>
                   <path d="M12 22V4M5 11l7-7 7 7" />
                 </svg>
               ) : listening ? (
@@ -1152,6 +1164,7 @@ export default function Leaderboard() {
                   strokeLinejoin="round"
                   className="size-5"
                 >
+                  <title>Voice input</title>
                   <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
                   <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                   <path d="M12 19v4M8 23h8" />
@@ -1166,6 +1179,7 @@ export default function Leaderboard() {
                   strokeLinejoin="round"
                   className="size-5"
                 >
+                  <title>Voice input</title>
                   <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
                   <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                   <path d="M12 19v4M8 23h8" />
@@ -1202,6 +1216,7 @@ export default function Leaderboard() {
               strokeLinejoin="round"
               className="size-4"
             >
+              <title>Select country</title>
               <path d="M6 9l6 6 6-6" />
             </svg>
             <span className="text-3xl leading-none">{country.flag}</span>
@@ -1234,6 +1249,7 @@ export default function Leaderboard() {
           />
         </div>
         <button
+          type="button"
           disabled={
             phoneDigits.length !== country.placeholder.replace(/\D/g, "").length
           }
@@ -1276,54 +1292,58 @@ export default function Leaderboard() {
         }}
       >
         <div className="flex items-center gap-2">
-          {verifyCode.map((digit, i) => (
-            <input
-              key={i}
-              ref={(el) => {
-                verifyInputsRef.current[i] = el;
-              }}
-              type="text"
-              inputMode="numeric"
-              maxLength={1}
-              value={digit}
-              onChange={(e) => {
-                const val = e.target.value.replace(/\D/g, "");
-                if (!val && !digit) return;
-                const newCode = [...verifyCode];
-                newCode[i] = val.slice(-1);
-                setVerifyCode(newCode);
-                if (val && i < 5) {
-                  verifyInputsRef.current[i + 1]?.focus();
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Backspace" && !digit && i > 0) {
+          {VERIFY_CODE_INPUT_KEYS.map((key, i) => {
+            const digit = verifyCode[i] ?? "";
+            return (
+              <input
+                key={key}
+                ref={(el) => {
+                  verifyInputsRef.current[i] = el;
+                }}
+                type="text"
+                inputMode="numeric"
+                maxLength={1}
+                value={digit}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, "");
+                  if (!val && !digit) return;
                   const newCode = [...verifyCode];
-                  newCode[i - 1] = "";
+                  newCode[i] = val.slice(-1);
                   setVerifyCode(newCode);
-                  verifyInputsRef.current[i - 1]?.focus();
-                }
-              }}
-              onPaste={(e) => {
-                e.preventDefault();
-                const pasted = e.clipboardData
-                  .getData("text")
-                  .replace(/\D/g, "")
-                  .slice(0, 6);
-                if (!pasted) return;
-                const newCode = [...verifyCode];
-                for (let j = 0; j < pasted.length && i + j < 6; j++) {
-                  newCode[i + j] = pasted[j];
-                }
-                setVerifyCode(newCode);
-                const focusIdx = Math.min(i + pasted.length, 5);
-                verifyInputsRef.current[focusIdx]?.focus();
-              }}
-              className="flex-1 min-w-0 aspect-square bg-neutral-200/50 rounded-xl text-center text-3xl font-semibold text-black outline-none focus:ring-2 focus:ring-neutral-400"
-            />
-          ))}
+                  if (val && i < 5) {
+                    verifyInputsRef.current[i + 1]?.focus();
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Backspace" && !digit && i > 0) {
+                    const newCode = [...verifyCode];
+                    newCode[i - 1] = "";
+                    setVerifyCode(newCode);
+                    verifyInputsRef.current[i - 1]?.focus();
+                  }
+                }}
+                onPaste={(e) => {
+                  e.preventDefault();
+                  const pasted = e.clipboardData
+                    .getData("text")
+                    .replace(/\D/g, "")
+                    .slice(0, 6);
+                  if (!pasted) return;
+                  const newCode = [...verifyCode];
+                  for (let j = 0; j < pasted.length && i + j < 6; j++) {
+                    newCode[i + j] = pasted[j];
+                  }
+                  setVerifyCode(newCode);
+                  const focusIdx = Math.min(i + pasted.length, 5);
+                  verifyInputsRef.current[focusIdx]?.focus();
+                }}
+                className="flex-1 min-w-0 aspect-square bg-neutral-200/50 rounded-xl text-center text-3xl font-semibold text-black outline-none focus:ring-2 focus:ring-neutral-400"
+              />
+            );
+          })}
         </div>
         <button
+          type="button"
           disabled={verifyCode.some((d) => !d)}
           className={`w-full rounded-3xl py-4 text-[17px] font-semibold transition-colors ${
             verifyCode.every((d) => d)
@@ -1345,6 +1365,7 @@ export default function Leaderboard() {
             <>
               Didn&apos;t receive a code?{" "}
               <button
+                type="button"
                 onClick={startResendCountdown}
                 className="text-neutral-900 font-medium underline cursor-pointer"
               >

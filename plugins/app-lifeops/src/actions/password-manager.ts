@@ -139,6 +139,8 @@ export const passwordManagerAction: Action & {
     "Subactions: search, list, inject_username, inject_password. Credentials are NEVER displayed in chat — injection only copies to the OS clipboard briefly.",
   descriptionCompressed:
     "password manager 1Password|ProtonPass: search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+  routingHint:
+    "credential search/list/copy/inject -> PASSWORD_MANAGER; AUTOFILL handles login/password/form fill on a site",
   contexts: ["secrets", "browser", "automation"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
