@@ -22,8 +22,15 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": ["messaging"]
+    }
+  },
   "scripts": {
     "build": "tsdown && mv dist/index-*.d.ts dist/index.d.ts 2>/dev/null || true",
     "check": "tsc --noEmit",
