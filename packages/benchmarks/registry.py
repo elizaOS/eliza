@@ -1330,6 +1330,20 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--seed", str(seed)])
         if extra.get("strict") is True:
             args.append("--strict")
+        # Default to bridge mode (real eliza TS agent) for any LLM-backed
+        # provider; explicit `--extra '{"mode":"simulate"}'` opts into the
+        # deterministic simulator for offline smoke-testing only.
+        provider_name = (model.provider or "").strip().lower()
+        mode_override = extra.get("mode")
+        if isinstance(mode_override, str) and mode_override.strip() in {
+            "bridge",
+            "simulate",
+        }:
+            args.extend(["--mode", mode_override.strip()])
+        elif provider_name in {"cerebras", "openai", "groq", "openrouter", "vllm", "anthropic", "google", "eliza"}:
+            args.extend(["--mode", "bridge"])
+        else:
+            args.extend(["--mode", "simulate"])
         return args
 
     def _orchestrator_lifecycle_result(output_dir: Path) -> Path:
