@@ -16,5 +16,5 @@
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "test-client.ts"],
-  "extends": "../../../tsconfig.workspace-paths.json"
+  "extends": "../../../tsconfig.dist-paths.json"
 }

@@ -12,5 +12,5 @@
     "types": ["node", "bun-types"]
   },
   "include": ["server.ts", "action-scanner.ts"],
-  "extends": "../../../tsconfig.workspace-paths.json"
+  "extends": "../../../tsconfig.dist-paths.json"
 }

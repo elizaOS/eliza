@@ -15,5 +15,5 @@
   },
   "include": ["*.ts"],
   "exclude": ["node_modules"],
-  "extends": "../../../tsconfig.workspace-paths.json"
+  "extends": "../../../tsconfig.dist-paths.json"
 }

@@ -13,7 +13,7 @@
 //   - Per-package tsconfig.build.json files (they already point at dist; will
 //     be audited separately).
 
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   REPO_ROOT,
@@ -47,7 +47,10 @@ async function main() {
     log.note(`${OLD_PATHS} not found; will create ${NEW_PATHS} fresh`);
   }
 
-  log.section("2. Build comprehensive dist-paths config");
+  log.section("2. Rewrite tsconfig extends that referenced workspace-paths");
+  rewriteWorkspacePathReferences(flags, log, stats);
+
+  log.section("3. Build comprehensive dist-paths config");
   const distPaths = buildDistPaths();
   log.info(`generating paths for ${Object.keys(distPaths).length / 2} packages`);
   const distConfig = {
@@ -65,7 +68,7 @@ async function main() {
   );
   stats.incr("dist-paths entries", Object.keys(distPaths).length);
 
-  log.section("3. Add typecheck:dist npm script + turbo task");
+  log.section("4. Add typecheck:dist npm script + turbo task");
   const rootPkgPath = join(REPO_ROOT, "package.json");
   const rootPkg = readJson(rootPkgPath);
   rootPkg.scripts = rootPkg.scripts ?? {};
@@ -77,7 +80,7 @@ async function main() {
     stats.incr("root scripts added");
   }
 
-  log.section("4. Note: per-package tsconfigs keep src paths");
+  log.section("5. Note: per-package tsconfigs keep src paths");
   log.note(
     "Root tsconfig.json keeps `paths` pointing at src/ for fast in-repo dev.",
   );
@@ -108,6 +111,34 @@ function buildDistPaths() {
 
 function relativeRepoPath(absDir) {
   return absDir.replace(`${REPO_ROOT}/`, "").replace(/\\/g, "/");
+}
+
+function rewriteWorkspacePathReferences(flags, log, stats) {
+  const files = walkJsonFiles(REPO_ROOT);
+  let changed = 0;
+  for (const file of files) {
+    const before = readFileSync(file, "utf8");
+    if (!before.includes(OLD_PATHS)) continue;
+    const after = before.replaceAll(OLD_PATHS, NEW_PATHS);
+    writeFileIfChanged(file, after, flags, log);
+    changed++;
+  }
+  stats.incr("tsconfig references rewritten", changed);
+}
+
+function walkJsonFiles(dir, out = []) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === "node_modules" || entry.name === "dist" || entry.name.startsWith(".")) {
+      continue;
+    }
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      walkJsonFiles(full, out);
+    } else if (entry.isFile() && entry.name.endsWith(".json")) {
+      out.push(full);
+    }
+  }
+  return out;
 }
 
 main().catch((err) => {

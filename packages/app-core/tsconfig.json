@@ -45,6 +45,12 @@
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/agent/*": ["../agent/src/*"],
+      "@elizaos/plugin-elizacloud": [
+        "../../plugins/plugin-elizacloud/src/index.node.ts"
+      ],
+      "@elizaos/plugin-elizacloud/*": [
+        "../../plugins/plugin-elizacloud/src/*"
+      ],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/skills": ["../skills/src/index.ts"],
