@@ -34,7 +34,6 @@ export const buildConfig: BuildConfig = {
     "@tensorflow-models/posenet",
     "@tensorflow/tfjs-node",
     "@tensorflow-models/mobilenet",
-    "axios",
     "canvas",
     "face-api.js",
     "sharp",

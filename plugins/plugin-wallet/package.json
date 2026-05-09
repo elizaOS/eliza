@@ -46,9 +46,7 @@
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-elizacloud": "workspace:*",
-    "form-data": "4.0.5",
-    "whatwg-url": "^16.0.0"
+    "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",

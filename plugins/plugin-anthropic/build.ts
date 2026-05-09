@@ -26,7 +26,7 @@ async function build() {
     format: "esm",
     sourcemap: "external",
     minify: false,
-    external: [...externalDeps, "undici"],
+    external: externalDeps,
   });
   if (!nodeResult.success) {
     console.error("Node build failed:", nodeResult.logs);
@@ -45,7 +45,7 @@ async function build() {
     sourcemap: "external",
     minify: false,
     // Match Node externals (including jsonrepair); bundling jsonrepair for browser was flaky in CI.
-    external: [...externalDeps, "undici"],
+    external: externalDeps,
   });
   if (!browserResult.success) {
     console.error("Browser build failed:", browserResult.logs);
@@ -63,7 +63,7 @@ async function build() {
     format: "cjs",
     sourcemap: "external",
     minify: false,
-    external: [...externalDeps, "undici"],
+    external: externalDeps,
   });
   if (!cjsResult.success) {
     console.error("CJS build failed:", cjsResult.logs);

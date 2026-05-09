@@ -6,10 +6,7 @@
 // auto-enable engine loads dozens of these per boot.
 import type { PluginAutoEnableContext } from "@elizaos/core";
 
-function isFeatureEnabled(
-  config: PluginAutoEnableContext["config"],
-  key: string,
-): boolean {
+function isFeatureEnabled(config: PluginAutoEnableContext["config"], key: string): boolean {
   const f = (config?.features as Record<string, unknown> | undefined)?.[key];
   if (f === true) return true;
   if (f && typeof f === "object" && f !== null) {

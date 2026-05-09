@@ -48,9 +48,6 @@
     "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
     "test:live": "bun run test:e2e"
   },
-  "peerDependencies": {
-    "whatwg-url": "^16.0.0"
-  },
   "publishConfig": {
     "access": "public"
   },

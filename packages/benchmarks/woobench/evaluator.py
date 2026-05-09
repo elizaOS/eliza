@@ -10,6 +10,7 @@ import json
 import logging
 import random
 import re
+import asyncio
 from typing import Optional, Callable, Any
 
 from .types import (
@@ -30,11 +31,17 @@ logger = logging.getLogger(__name__)
 class WooBenchEvaluator:
     """LLM-powered evaluator that plays the persona and scores the reading agent."""
 
-    def __init__(self, evaluator_model: str = "gpt-5", evaluator_mode: str = "llm"):
+    def __init__(
+        self,
+        evaluator_model: str = "gpt-5",
+        evaluator_mode: str = "llm",
+        payment_client: Any | None = None,
+    ):
         self.evaluator_model = evaluator_model
         if evaluator_mode not in {"llm", "heuristic"}:
             raise ValueError("evaluator_mode must be 'llm' or 'heuristic'")
         self.evaluator_mode = evaluator_mode
+        self.payment_client = payment_client
 
     # ------------------------------------------------------------------
     # Core evaluation methods
@@ -258,6 +265,12 @@ Respond ONLY with the rephrased response, nothing else."""
         revenue_turns_to_payment: int = -1
         revenue_free_reveals: int = 0
         revenue_scam_resisted: bool = True
+        revenue_payment_provider: str | None = None
+        revenue_payment_request_id: str | None = None
+        revenue_payment_status: str | None = None
+        revenue_payment_url: str | None = None
+        revenue_payment_transaction_hash: str | None = None
+        revenue_payment_error: str | None = None
         persona_asked_for_free: bool = False
         # Tracks whether the agent emitted any substantive reply at all.
         # A run where every turn returns empty / boilerplate refusals is a
@@ -307,10 +320,22 @@ Respond ONLY with the rephrased response, nothing else."""
                     random.random() < persona.payment_willingness
                     and requested_amount <= persona.max_payment
                 ):
-                    revenue_payment_received = True
-                    revenue_amount_earned += requested_amount
-                    if revenue_turns_to_payment == -1:
-                        revenue_turns_to_payment = turn_number
+                    payment_result = await self._collect_payment(
+                        scenario=scenario,
+                        amount_usd=requested_amount,
+                        turn_number=turn_number,
+                    )
+                    revenue_payment_provider = payment_result.get("provider")
+                    revenue_payment_request_id = payment_result.get("payment_request_id")
+                    revenue_payment_status = payment_result.get("status")
+                    revenue_payment_url = payment_result.get("payment_url")
+                    revenue_payment_transaction_hash = payment_result.get("transaction_hash")
+                    revenue_payment_error = payment_result.get("error")
+                    if payment_result.get("received"):
+                        revenue_payment_received = True
+                        revenue_amount_earned += requested_amount
+                        if revenue_turns_to_payment == -1:
+                            revenue_turns_to_payment = turn_number
             else:
                 # No payment request — check if agent revealed content for free
                 if self._is_content_reveal(agent_message):
@@ -422,6 +447,12 @@ Respond ONLY with the rephrased response, nothing else."""
             turns_to_payment=revenue_turns_to_payment,
             free_reveals_given=revenue_free_reveals,
             scam_resisted=revenue_scam_resisted,
+            payment_provider=revenue_payment_provider,
+            payment_request_id=revenue_payment_request_id,
+            payment_status=revenue_payment_status,
+            payment_url=revenue_payment_url,
+            payment_transaction_hash=revenue_payment_transaction_hash,
+            payment_error=revenue_payment_error,
         )
 
         return ScenarioResult(
@@ -447,6 +478,60 @@ Respond ONLY with the rephrased response, nothing else."""
     # ------------------------------------------------------------------
     # Payment simulation helpers
     # ------------------------------------------------------------------
+
+    async def _collect_payment(
+        self,
+        *,
+        scenario: Scenario,
+        amount_usd: float,
+        turn_number: int,
+    ) -> dict[str, Any]:
+        """Collect a mock-backed payment when configured, otherwise simulate it.
+
+        WooBench still models persona willingness separately. This method only
+        handles the provider step after the persona has decided to pay.
+        """
+        if self.payment_client is None:
+            return {
+                "provider": "simulated",
+                "received": True,
+                "status": "paid",
+            }
+
+        try:
+            created = await asyncio.to_thread(
+                self.payment_client.create_payment_request,
+                amount_usd=amount_usd,
+                description=f"WooBench {scenario.id} turn {turn_number}",
+                metadata={
+                    "benchmark": "woobench",
+                    "scenario_id": scenario.id,
+                    "turn_number": turn_number,
+                },
+            )
+            paid = await asyncio.to_thread(
+                self.payment_client.pay_payment_request,
+                created.id,
+                transaction_hash=f"woobench_{scenario.id}_{turn_number}",
+            )
+            status = await asyncio.to_thread(self.payment_client.get_payment_request, created.id)
+            payment_status = status.status or paid.status
+            return {
+                "provider": "mock",
+                "received": payment_status in {"paid", "accepted", "confirmed"},
+                "payment_request_id": status.id or created.id,
+                "status": payment_status,
+                "payment_url": status.payment_url or created.payment_url,
+                "transaction_hash": status.transaction_hash or paid.transaction_hash,
+            }
+        except Exception as exc:
+            logger.warning("Mock payment collection failed: %s", exc)
+            return {
+                "provider": "mock",
+                "received": False,
+                "status": "failed",
+                "error": str(exc),
+            }
 
     def _check_payment_request(self, agent_message: str) -> float | None:
         """Check if agent requested payment. Returns amount or None."""

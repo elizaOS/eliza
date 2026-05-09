@@ -124,9 +124,6 @@ export async function createElizaBuildConfig(
 	// Filter out the package being built to avoid self-referential imports
 	const elizaExternals = [
 		"@elizaos/core",
-		"@elizaos/server",
-		"@elizaos/client",
-		"@elizaos/api-client",
 		"@elizaos/shared",
 		"@elizaos/plugin-*",
 	].filter((pkg) => pkg !== selfPackageName);

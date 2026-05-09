@@ -16,6 +16,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import type { RouteRequestContext } from "@elizaos/core";
 import {
   type AgentRuntime,
   ChannelType,
@@ -57,7 +58,6 @@ import {
   sanitizeConversationMetadata,
 } from "./conversation-metadata.ts";
 import { evictOldestConversation } from "./memory-bounds.ts";
-import type { RouteRequestContext } from "./route-helpers.ts";
 import {
   buildUserMessages,
   getErrorMessage,

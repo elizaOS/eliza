@@ -57,12 +57,21 @@ const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
 const sharedSourceRoot = getSharedSourceRoot(repoRoot);
 const uiSourceRoot = getUiSourceRoot(repoRoot);
+const cloudRoutingSourceRoot = path.join(
+  elizaWorkspaceRoot,
+  "packages/cloud-routing/src",
+);
+const cloudSdkSourceRoot = path.join(
+  elizaWorkspaceRoot,
+  "cloud/packages/sdk/src",
+);
 const packageManifest: RootPackageManifest = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
 );
 
 function resolveInstalledPackageRoot(packageName: string): string {
   const manifestCandidates = [
+    path.join(elizaWorkspaceRoot, "packages", "core", "package.json"),
     path.join(repoRoot, "package.json"),
     path.join(elizaWorkspaceRoot, "package.json"),
     path.join(elizaWorkspaceRoot, "packages", "app", "package.json"),
@@ -91,6 +100,7 @@ const workspaceReactDomDir = resolveInstalledPackageRoot("react-dom");
 const workspaceReactTestRendererDir = resolveInstalledPackageRoot(
   "react-test-renderer",
 );
+const workspaceAdzeDir = resolveInstalledPackageRoot("adze");
 const workspaceReactEntry = path.join(workspaceReactDir, "index.js");
 const workspaceReactJsxRuntimeEntry = path.join(
   workspaceReactDir,
@@ -117,6 +127,7 @@ const workspaceReactTestRendererEntry = path.join(
   workspaceReactTestRendererDir,
   "index.js",
 );
+const workspaceAdzeEntry = path.join(workspaceAdzeDir, "dist", "index.js");
 const asViteFsPath = (targetPath: string) => `/@fs${targetPath}`;
 const workspacePluginPackageNames = Object.keys({
   ...(packageManifest.dependencies ?? {}),
@@ -151,6 +162,15 @@ const elizaPluginAliases = workspacePluginPackageNames.flatMap(
 const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-agent-skills",
   "plugin-browser",
+  "plugin-capacitor-bridge",
+  "plugin-computeruse",
+  "plugin-local-inference",
+  "plugin-mcp",
+  "plugin-signal",
+  "plugin-streaming",
+  "plugin-whatsapp",
+  "plugin-workflow",
+  "plugin-x402",
 ]);
 const pluginPdfSrc = path.join(elizaWorkspaceRoot, "plugins", "plugin-pdf");
 // Fall back to a stub when an optional plugin tarball has a broken entry point.
@@ -229,11 +249,27 @@ const vitestResolveAlias: ModuleAlias[] = [
     replacement: asViteFsPath(path.join(workspaceReactTestRendererDir, "$1")),
   },
   {
+    find: /^adze$/,
+    replacement: asViteFsPath(workspaceAdzeEntry),
+  },
+  {
+    find: /^adze\/(.*)$/,
+    replacement: asViteFsPath(path.join(workspaceAdzeDir, "$1")),
+  },
+  {
     find: /^@elizaos\/plugin-sql$/,
     replacement: path.join(
       elizaWorkspaceRoot,
       "plugins/plugin-sql/src/index.node.ts",
     ),
+  },
+  {
+    find: /^@elizaos\/cloud-routing$/,
+    replacement: path.join(cloudRoutingSourceRoot, "index.ts"),
+  },
+  {
+    find: /^@elizaos\/cloud-sdk$/,
+    replacement: path.join(cloudSdkSourceRoot, "index.ts"),
   },
   {
     // App-core tests mock this plugin, but Vitest still has to resolve the specifier.

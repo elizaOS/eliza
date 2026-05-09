@@ -1,15 +1,103 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-type KernelModule = typeof import("./ios-local-agent-kernel");
+type KernelModule = Pick<
+  typeof import("./ios-local-agent-kernel"),
+  "handleIosLocalAgentRequest"
+>;
+
+type DownloadModelFn = (
+  _url: string,
+  filename: string,
+) => Promise<{ path: string }>;
+type GetDownloadProgressFn = (_url: string) => Promise<{
+  downloaded: number;
+  total: number;
+  percentage: number;
+  bytesPerSec: number;
+  etaMs: null;
+}>;
+type LoadFn = (_options: Record<string, unknown>) => Promise<undefined>;
+type GenerateFn = (_options: Record<string, unknown>) => Promise<{
+  text: string;
+  promptTokens: number;
+  outputTokens: number;
+  durationMs: number;
+}>;
 
 type MockOptions = {
   hardware?: Record<string, unknown>;
   availableModels?: Array<{ name?: string; path?: string; size?: number }>;
-  downloadModel?: ReturnType<typeof vi.fn>;
-  getDownloadProgress?: ReturnType<typeof vi.fn>;
-  load?: ReturnType<typeof vi.fn>;
-  generate?: ReturnType<typeof vi.fn>;
+  downloadModel?: DownloadModelFn;
+  getDownloadProgress?: GetDownloadProgressFn;
+  load?: LoadFn;
+  generate?: GenerateFn;
 };
+
+const mockState = vi.hoisted(
+  (): {
+    hardware: Record<string, unknown>;
+    availableModels: Array<{ name?: string; path?: string; size?: number }>;
+    downloadModel: DownloadModelFn;
+    getDownloadProgress: GetDownloadProgressFn;
+    load: LoadFn;
+    generate: GenerateFn;
+  } => ({
+    hardware: {},
+    availableModels: [],
+    downloadModel: vi.fn(async (_url: string, filename: string) => ({
+      path: `/models/${filename}`,
+    })),
+    getDownloadProgress: vi.fn(async (_url: string) => ({
+      downloaded: 0,
+      total: 0,
+      percentage: 0,
+      bytesPerSec: 0,
+      etaMs: null,
+    })),
+    load: vi.fn(async (_options: Record<string, unknown>) => undefined),
+    generate: vi.fn(async (_options: Record<string, unknown>) => ({
+      text: "native answer",
+      promptTokens: 4,
+      outputTokens: 2,
+      durationMs: 10,
+    })),
+  }),
+);
+
+vi.mock("@elizaos/capacitor-llama", () => ({
+  capacitorLlama: {
+    getHardwareInfo: vi.fn(async () => ({
+      platform: "ios",
+      deviceModel: "iPhone16,1",
+      machineId: "iPhone16,1",
+      osVersion: "26.3.1",
+      isSimulator: false,
+      totalRamGb: 8,
+      availableRamGb: 5,
+      freeStorageGb: 64,
+      cpuCores: 8,
+      gpu: { backend: "metal", available: true },
+      gpuSupported: true,
+      dflashSupported: true,
+      source: "native",
+      ...mockState.hardware,
+    })),
+    isLoaded: vi.fn(async () => ({ loaded: false, modelPath: null })),
+    currentModelPath: vi.fn(() => null),
+    load: (options: Record<string, unknown>) => mockState.load(options),
+    generate: (options: Record<string, unknown>) => mockState.generate(options),
+  },
+}));
+
+vi.mock("llama-cpp-capacitor", () => ({
+  downloadModel: (url: string, filename: string) =>
+    mockState.downloadModel(url, filename),
+  getDownloadProgress: (url: string) => mockState.getDownloadProgress(url),
+  cancelDownload: vi.fn(async () => true),
+  getAvailableModels: vi.fn(async () => mockState.availableModels),
+}));
+
+import { handleIosLocalAgentRequest } from "./ios-local-agent-kernel";
 
 function stubLocalStorage(): Storage {
   const items = new Map<string, string>();
@@ -32,68 +120,45 @@ function stubLocalStorage(): Storage {
 }
 
 async function loadKernel(options: MockOptions = {}): Promise<KernelModule> {
-  vi.resetModules();
-  const localStorage = stubLocalStorage();
-  vi.stubGlobal("window", { localStorage });
-  vi.stubGlobal("navigator", { hardwareConcurrency: 8 });
-
-  const load =
+  mockState.hardware = options.hardware ?? {};
+  mockState.availableModels = options.availableModels ?? [];
+  mockState.downloadModel =
+    options.downloadModel ??
+    vi.fn(async (_url: string, filename: string) => ({
+      path: `/models/${filename}`,
+    }));
+  mockState.getDownloadProgress =
+    options.getDownloadProgress ??
+    vi.fn(async (_url: string) => ({
+      downloaded: 0,
+      total: 0,
+      percentage: 0,
+      bytesPerSec: 0,
+      etaMs: null,
+    }));
+  mockState.load =
     options.load ??
     vi.fn(async (_options: Record<string, unknown>) => undefined);
-  const generate =
+  mockState.generate =
     options.generate ??
-    vi.fn(async () => ({
+    vi.fn(async (_options: Record<string, unknown>) => ({
       text: "native answer",
       promptTokens: 4,
       outputTokens: 2,
       durationMs: 10,
     }));
 
-  vi.doMock("@elizaos/capacitor-llama", () => ({
-    capacitorLlama: {
-      getHardwareInfo: vi.fn(async () => ({
-        platform: "ios",
-        deviceModel: "iPhone16,1",
-        machineId: "iPhone16,1",
-        osVersion: "26.3.1",
-        isSimulator: false,
-        totalRamGb: 8,
-        availableRamGb: 5,
-        freeStorageGb: 64,
-        cpuCores: 8,
-        gpu: { backend: "metal", available: true },
-        gpuSupported: true,
-        dflashSupported: true,
-        source: "native",
-        ...options.hardware,
-      })),
-      isLoaded: vi.fn(async () => ({ loaded: false, modelPath: null })),
-      currentModelPath: vi.fn(() => null),
-      load,
-      generate,
-    },
-  }));
+  const localStorage = stubLocalStorage();
+  vi.stubGlobal("window", { localStorage });
+  vi.stubGlobal("navigator", { hardwareConcurrency: 8 });
 
-  vi.doMock("llama-cpp-capacitor", () => ({
-    downloadModel:
-      options.downloadModel ??
-      vi.fn(async (_url: string, filename: string) => ({
-        path: `/models/${filename}`,
-      })),
-    getDownloadProgress:
-      options.getDownloadProgress ??
-      vi.fn(async () => ({
-        downloaded: 0,
-        total: 0,
-        percentage: 0,
-        bytesPerSec: 0,
-        etaMs: null,
-      })),
-    cancelDownload: vi.fn(async () => true),
-    getAvailableModels: vi.fn(async () => options.availableModels ?? []),
-  }));
-
-  return import("./ios-local-agent-kernel");
+  await handleIosLocalAgentRequest(
+    new Request("http://127.0.0.1:31337/api/agent/reset", {
+      method: "POST",
+      body: "{}",
+    }),
+  );
+  return { handleIosLocalAgentRequest };
 }
 
 async function jsonRequest(
@@ -127,10 +192,15 @@ async function eventually(assertion: () => void): Promise<void> {
 }
 
 describe("iOS local-agent local inference flow", () => {
-  afterEach(() => {
-    vi.doUnmock("@elizaos/capacitor-llama");
-    vi.doUnmock("llama-cpp-capacitor");
+  afterEach(async () => {
+    await handleIosLocalAgentRequest(
+      new Request("http://127.0.0.1:31337/api/agent/reset", {
+        method: "POST",
+        body: "{}",
+      }),
+    ).catch(() => undefined);
     vi.unstubAllGlobals();
+    vi.clearAllMocks();
   });
 
   it("answers with local model download status while queueing target and DFlash drafter", async () => {

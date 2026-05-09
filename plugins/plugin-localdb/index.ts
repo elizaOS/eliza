@@ -7,8 +7,10 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "../plugin-inmemorydb/adapter";
-import type { IStorage } from "../plugin-inmemorydb/types";
+import {
+  InMemoryDatabaseAdapter,
+  type IStorage,
+} from "@elizaos/plugin-inmemorydb";
 
 type RuntimeWithDatabase = IAgentRuntime & {
   registerDatabaseAdapter?: (adapter: IDatabaseAdapter) => void;

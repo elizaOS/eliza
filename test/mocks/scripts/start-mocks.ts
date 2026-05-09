@@ -55,6 +55,7 @@ export const MOCK_PROVIDER_ENVIRONMENTS = [
   "telegram",
   "linear",
   "shopify",
+  "payments",
   "anthropic",
   "openai",
   "vision",
@@ -131,6 +132,7 @@ export interface MockRequestLedgerEntry {
   browserWorkspace?: BrowserWorkspaceRequestLedgerMetadata;
   bluebubbles?: BlueBubblesRequestLedgerMetadata;
   github?: GitHubRequestLedgerMetadata;
+  payment?: PaymentRequestLedgerMetadata;
   lifeopsPresenceActive?: LifeOpsPresenceActiveRequestLedgerMetadata;
 }
 
@@ -185,6 +187,15 @@ interface GitHubRequestLedgerMetadata {
   repo?: string;
   number?: number;
   query?: string;
+  runId?: string;
+}
+
+interface PaymentRequestLedgerMetadata {
+  action: string;
+  paymentRequestId?: string;
+  status?: string;
+  amountUsd?: number;
+  callbackDelivered?: boolean;
   runId?: string;
 }
 
@@ -268,6 +279,10 @@ function envVarsFor(
   }
   if (envs.includes("shopify")) {
     out.ELIZA_MOCK_SHOPIFY_BASE = baseUrls.shopify;
+  }
+  if (envs.includes("payments")) {
+    out.ELIZA_MOCK_PAYMENT_BASE = baseUrls.payments;
+    out.ELIZA_MOCK_PAYMENTS_BASE = baseUrls.payments;
   }
   if (envs.includes("anthropic")) {
     out.ELIZA_MOCK_ANTHROPIC_BASE = baseUrls.anthropic;
@@ -2924,6 +2939,378 @@ function visionDynamicFixture(
 }
 
 // ---------------------------------------------------------------------------
+// Payments stateful mock (generic request/link/status/callback provider)
+// ---------------------------------------------------------------------------
+
+type PaymentMockStatus = "requested" | "paid" | "failed" | "expired";
+
+interface PaymentMockRequest {
+  id: string;
+  amountUsd: number;
+  currency: string;
+  status: PaymentMockStatus;
+  accepted: boolean;
+  provider: string;
+  network: string;
+  description: string;
+  paymentUrl: string;
+  checkoutUrl: string;
+  callbackUrl?: string;
+  callbackSecret?: string;
+  channel?: Record<string, JsonValue>;
+  metadata?: Record<string, JsonValue>;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+  paidAt?: string;
+  failedAt?: string;
+  transactionHash?: string;
+  failureReason?: string;
+}
+
+interface PaymentMockCallbackDelivery {
+  paymentRequestId: string;
+  event: string;
+  url: string;
+  delivered: boolean;
+  statusCode?: number;
+  error?: string;
+  createdAt: string;
+  completedAt?: string;
+}
+
+interface PaymentMockState {
+  requests: Map<string, PaymentMockRequest>;
+  callbacks: PaymentMockCallbackDelivery[];
+}
+
+function createPaymentMockState(): PaymentMockState {
+  return { requests: new Map(), callbacks: [] };
+}
+
+function readMoney(body: RequestBody, ...keys: string[]): number | null {
+  for (const key of keys) {
+    const value = body[key];
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return Math.round(value * 100) / 100;
+    }
+    if (typeof value === "string" && value.trim().length > 0) {
+      const parsed = Number.parseFloat(value);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return Math.round(parsed * 100) / 100;
+      }
+    }
+  }
+  return null;
+}
+
+function jsonRecordValue(value: JsonValue | undefined): Record<string, JsonValue> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, JsonValue>)
+    : undefined;
+}
+
+function paymentMockOrigin(headers: http.IncomingHttpHeaders): string {
+  const host = headerValue(headers, "host") ?? "127.0.0.1";
+  const proto = headerValue(headers, "x-forwarded-proto") ?? "http";
+  return `${proto}://${host}`;
+}
+
+function paymentMockView(request: PaymentMockRequest): Record<string, JsonValue> {
+  return {
+    id: request.id,
+    amountUsd: request.amountUsd,
+    currency: request.currency,
+    status: request.status,
+    paid: request.status === "paid",
+    accepted: request.accepted,
+    provider: request.provider,
+    network: request.network,
+    description: request.description,
+    paymentUrl: request.paymentUrl,
+    checkoutUrl: request.checkoutUrl,
+    callbackUrl: request.callbackUrl ?? null,
+    callbackSecretSet: Boolean(request.callbackSecret),
+    channel: request.channel ?? null,
+    metadata: request.metadata ?? null,
+    createdAt: request.createdAt,
+    updatedAt: request.updatedAt,
+    expiresAt: request.expiresAt,
+    paidAt: request.paidAt ?? null,
+    failedAt: request.failedAt ?? null,
+    transactionHash: request.transactionHash ?? null,
+    failureReason: request.failureReason ?? null,
+  };
+}
+
+function setPaymentLedger(
+  ledgerEntry: MockRequestLedgerEntry,
+  metadata: Omit<PaymentRequestLedgerMetadata, "runId">,
+): void {
+  ledgerEntry.payment = withRunId<PaymentRequestLedgerMetadata>(ledgerEntry, metadata);
+}
+
+async function paymentCallbackSignature(
+  secret: string,
+  timestamp: string,
+  body: string,
+): Promise<string> {
+  return `sha256=${crypto
+    .createHmac("sha256", secret)
+    .update(`${timestamp}.${body}`)
+    .digest("hex")}`;
+}
+
+async function dispatchPaymentMockCallback(
+  state: PaymentMockState,
+  request: PaymentMockRequest,
+  event: "payment_request.paid" | "payment_request.failed",
+): Promise<boolean> {
+  if (!request.callbackUrl) return false;
+
+  const createdAt = new Date().toISOString();
+  const payload = {
+    event,
+    createdAt,
+    paymentRequest: paymentMockView(request),
+    payment: {
+      provider: request.provider,
+      providerPaymentId: request.id,
+      amountUsd: request.amountUsd,
+      status: request.status,
+      transactionHash: request.transactionHash ?? null,
+      failureReason: request.failureReason ?? null,
+    },
+    channel: request.channel ?? undefined,
+    metadata: request.metadata ?? undefined,
+  };
+  const body = JSON.stringify(payload);
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "User-Agent": "Eliza-Mock-Payments/1.0",
+    "X-Eliza-Event": event,
+    "X-Eliza-Timestamp": createdAt,
+    "X-Eliza-Delivery": crypto.randomUUID(),
+  };
+  if (request.callbackSecret) {
+    headers["X-Eliza-Signature"] = await paymentCallbackSignature(
+      request.callbackSecret,
+      createdAt,
+      body,
+    );
+  }
+
+  const delivery: PaymentMockCallbackDelivery = {
+    paymentRequestId: request.id,
+    event,
+    url: request.callbackUrl,
+    delivered: false,
+    createdAt,
+  };
+  state.callbacks.push(delivery);
+
+  try {
+    const response = await fetch(request.callbackUrl, {
+      method: "POST",
+      headers,
+      body,
+      signal: AbortSignal.timeout(5_000),
+    });
+    delivery.statusCode = response.status;
+    delivery.delivered = response.ok;
+    delivery.completedAt = new Date().toISOString();
+    return response.ok;
+  } catch (error) {
+    delivery.error = error instanceof Error ? error.message : String(error);
+    delivery.completedAt = new Date().toISOString();
+    return false;
+  }
+}
+
+function paymentRequestByPath(
+  state: PaymentMockState,
+  pathname: string,
+  pattern: RegExp,
+): PaymentMockRequest | null {
+  const id = routeParam(pathname, pattern);
+  return id ? state.requests.get(id) ?? null : null;
+}
+
+async function paymentDynamicFixture(
+  state: PaymentMockState,
+  method: string,
+  pathname: string,
+  requestBody: RequestBody,
+  headers: http.IncomingHttpHeaders,
+  ledgerEntry: MockRequestLedgerEntry,
+): Promise<DynamicFixtureResponse | null> {
+  if (method === "GET" && pathname === "/__mock/payments/requests") {
+    setPaymentLedger(ledgerEntry, { action: "payment_requests.mock_list" });
+    return jsonFixture({
+      paymentRequests: Array.from(state.requests.values()).map(paymentMockView),
+      callbacks: state.callbacks,
+    });
+  }
+
+  if (
+    (method === "POST" && pathname === "/__mock/payments/reset") ||
+    (method === "DELETE" && pathname === "/__mock/payments/requests")
+  ) {
+    state.requests.clear();
+    state.callbacks.splice(0, state.callbacks.length);
+    setPaymentLedger(ledgerEntry, { action: "payment_requests.reset" });
+    return jsonFixture({ ok: true });
+  }
+
+  if (method === "POST" && pathname === "/v1/payment-requests") {
+    const amountUsd = readMoney(requestBody, "amountUsd", "amount_usd", "amount");
+    if (amountUsd === null) {
+      throw new MockHttpError(400, "amountUsd must be a positive number");
+    }
+
+    const origin = paymentMockOrigin(headers);
+    const id = `payreq_${crypto.randomUUID()}`;
+    const now = new Date();
+    const expiresInSeconds =
+      typeof requestBody.expiresInSeconds === "number" &&
+      Number.isFinite(requestBody.expiresInSeconds)
+        ? Math.max(60, Math.floor(requestBody.expiresInSeconds))
+        : 900;
+    const request: PaymentMockRequest = {
+      id,
+      amountUsd,
+      currency: readOptionalString(requestBody, "currency") ?? "USD",
+      status: "requested",
+      accepted: false,
+      provider: readOptionalString(requestBody, "provider") ?? "mock",
+      network: readOptionalString(requestBody, "network") ?? "mock",
+      description: readOptionalString(requestBody, "description") ?? "Mock payment request",
+      paymentUrl: `${origin}/checkout/${encodeURIComponent(id)}`,
+      checkoutUrl: `${origin}/checkout/${encodeURIComponent(id)}`,
+      callbackUrl:
+        readOptionalString(requestBody, "callbackUrl") ??
+        readOptionalString(requestBody, "callback_url") ??
+        undefined,
+      callbackSecret:
+        readOptionalString(requestBody, "callbackSecret") ??
+        readOptionalString(requestBody, "callback_secret") ??
+        undefined,
+      channel:
+        jsonRecordValue(requestBody.channel) ??
+        jsonRecordValue(requestBody.callbackChannel) ??
+        jsonRecordValue(requestBody.callback_channel),
+      metadata: jsonRecordValue(requestBody.metadata),
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + expiresInSeconds * 1000).toISOString(),
+    };
+    state.requests.set(id, request);
+    setPaymentLedger(ledgerEntry, {
+      action: "payment_requests.create",
+      paymentRequestId: id,
+      status: request.status,
+      amountUsd,
+    });
+    return jsonFixture({ success: true, paymentRequest: paymentMockView(request) }, 201);
+  }
+
+  if (method === "GET") {
+    const request =
+      paymentRequestByPath(state, pathname, /^\/v1\/payment-requests\/([^/]+)\/?$/) ??
+      paymentRequestByPath(state, pathname, /^\/checkout\/([^/]+)\/?$/);
+    if (request) {
+      setPaymentLedger(ledgerEntry, {
+        action: pathname.startsWith("/checkout/")
+          ? "payment_requests.checkout"
+          : "payment_requests.get",
+        paymentRequestId: request.id,
+        status: request.status,
+        amountUsd: request.amountUsd,
+      });
+      return jsonFixture({ success: true, paymentRequest: paymentMockView(request) });
+    }
+  }
+
+  const payId =
+    method === "POST"
+      ? routeParam(pathname, /^\/v1\/payment-requests\/([^/]+)\/(?:pay|confirm|settle)\/?$/) ??
+        routeParam(pathname, /^\/__mock\/payments\/([^/]+)\/(?:pay|confirm|settle)\/?$/)
+      : null;
+  if (payId) {
+    const request = state.requests.get(payId);
+    if (!request) return mockJsonError(404, "payment_request_not_found");
+    const now = new Date().toISOString();
+    request.status = "paid";
+    request.accepted = true;
+    request.updatedAt = now;
+    request.paidAt = request.paidAt ?? now;
+    request.transactionHash =
+      readOptionalString(requestBody, "transactionHash") ??
+      readOptionalString(requestBody, "transaction_hash") ??
+      request.transactionHash ??
+      `mock_tx_${crypto.randomUUID()}`;
+    const callbackDelivered = await dispatchPaymentMockCallback(
+      state,
+      request,
+      "payment_request.paid",
+    );
+    setPaymentLedger(ledgerEntry, {
+      action: "payment_requests.pay",
+      paymentRequestId: request.id,
+      status: request.status,
+      amountUsd: request.amountUsd,
+      callbackDelivered,
+    });
+    return jsonFixture({
+      success: true,
+      accepted: true,
+      paymentRequest: paymentMockView(request),
+    });
+  }
+
+  const failId =
+    method === "POST"
+      ? routeParam(pathname, /^\/v1\/payment-requests\/([^/]+)\/fail\/?$/) ??
+        routeParam(pathname, /^\/__mock\/payments\/([^/]+)\/fail\/?$/)
+      : null;
+  if (failId) {
+    const request = state.requests.get(failId);
+    if (!request) return mockJsonError(404, "payment_request_not_found");
+    if (request.status === "paid") {
+      return mockJsonError(409, "payment_request_already_paid");
+    }
+    const now = new Date().toISOString();
+    request.status = "failed";
+    request.accepted = false;
+    request.updatedAt = now;
+    request.failedAt = now;
+    request.failureReason =
+      readOptionalString(requestBody, "reason") ??
+      readOptionalString(requestBody, "failureReason") ??
+      "mock_failure";
+    const callbackDelivered = await dispatchPaymentMockCallback(
+      state,
+      request,
+      "payment_request.failed",
+    );
+    setPaymentLedger(ledgerEntry, {
+      action: "payment_requests.fail",
+      paymentRequestId: request.id,
+      status: request.status,
+      amountUsd: request.amountUsd,
+      callbackDelivered,
+    });
+    return jsonFixture({
+      success: true,
+      accepted: false,
+      paymentRequest: paymentMockView(request),
+    });
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Shopify stateful mock (single-record GETs by id; the static Mockoon route
 // compiler treats ":id.json" as one literal-ish param so we route those here)
 // ---------------------------------------------------------------------------
@@ -3137,6 +3524,7 @@ type DynamicProviderState =
   | { kind: "vision"; state: VisionMockState }
   | { kind: "openai"; state: OpenAIMockState }
   | { kind: "shopify"; state: ShopifyMockState }
+  | { kind: "payments"; state: PaymentMockState }
   | null;
 
 function createDynamicProviderState(
@@ -3191,10 +3579,13 @@ function createDynamicProviderState(
   if (environmentName === "Shopify Admin API") {
     return { kind: "shopify", state: createShopifyMockState() };
   }
+  if (environmentName === "Payments API") {
+    return { kind: "payments", state: createPaymentMockState() };
+  }
   return null;
 }
 
-function dynamicProviderFixture(args: {
+async function dynamicProviderFixture(args: {
   provider: DynamicProviderState;
   method: string;
   pathname: string;
@@ -3202,7 +3593,7 @@ function dynamicProviderFixture(args: {
   requestBody: RequestBody;
   headers: http.IncomingHttpHeaders;
   ledgerEntry: MockRequestLedgerEntry;
-}): DynamicFixtureResponse | null {
+}): Promise<DynamicFixtureResponse | null> {
   if (!args.provider) return null;
   switch (args.provider.kind) {
     case "google":
@@ -3329,6 +3720,15 @@ function dynamicProviderFixture(args: {
         args.method,
         args.pathname,
         args.requestBody,
+        args.ledgerEntry,
+      );
+    case "payments":
+      return paymentDynamicFixture(
+        args.provider.state,
+        args.method,
+        args.pathname,
+        args.requestBody,
+        args.headers,
         args.ledgerEntry,
       );
   }
@@ -3593,7 +3993,7 @@ async function startFixtureServer(
         );
         return;
       }
-      const dynamicResponse = dynamicProviderFixture({
+      const dynamicResponse = await dynamicProviderFixture({
         provider: dynamicProvider,
         method,
         pathname: requestUrl.pathname,

@@ -59,7 +59,7 @@ export * from "./todos/index.ts";
 // gives Bun a real per-file consumer it cannot prune.
 import { messageAction } from "./actions/message.ts";
 import { postAction } from "./actions/post.ts";
-import { roleAction, updateRoleAction } from "./actions/role.ts";
+import { updateRoleAction } from "./actions/role.ts";
 import { roomOpAction } from "./actions/room.ts";
 import { reflectionItems } from "./evaluators/reflection-items.ts";
 import { skillItems } from "./evaluators/skill-items.ts";

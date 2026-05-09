@@ -5,28 +5,16 @@
     "declaration": true,
     "declarationMap": true,
     "allowImportingTsExtensions": false,
-    "types": [
-      "bun-types",
-      "node"
-    ],
+    "types": ["bun-types", "node"],
     "outDir": "../dist",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "resolvePackageJsonExports": true,
     "resolvePackageJsonImports": true,
     "paths": {
-      "@elizaos/core": [
-        "../../../packages/core/dist"
-      ]
+      "@elizaos/core": ["../../../packages/core/dist"]
     }
   },
-  "include": [
-    "**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "__tests__",
-    "**/*.test.ts",
-    "**/*.spec.ts"
-  ]
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "__tests__", "**/*.test.ts", "**/*.spec.ts"]
 }

@@ -343,6 +343,10 @@ export class Readable {
   static from<T>(iterable: Iterable<T> | AsyncIterable<T>): typeof iterable {
     return iterable;
   }
+
+  pipe(): never {
+    return unavailable("stream.Readable.pipe");
+  }
 }
 export class Writable {}
 export class PassThrough {}

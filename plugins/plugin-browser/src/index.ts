@@ -29,5 +29,11 @@ export { browserPlugin } from "./plugin.js";
 export * from "./routes/bridge.js";
 export * from "./schema.js";
 export * from "./service.js";
+export {
+  FRAME_FILE,
+  startBrowserCapture,
+  stopBrowserCapture,
+  type BrowserCaptureConfig,
+} from "./workspace/browser-capture.js";
 export * from "./workspace/index.js";
 export * from "./workspace.js";
