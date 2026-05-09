@@ -53,6 +53,9 @@ export const elizaOSCloudPlugin: Plugin = {
   name: "elizaOSCloud",
   description:
     "ElizaOS Cloud plugin — Multi-model AI generation, container provisioning, agent bridge, and billing management",
+  autoEnable: {
+    envKeys: ["ELIZAOS_CLOUD_API_KEY", "ELIZAOS_CLOUD_ENABLED"],
+  },
 
   config: {
     ELIZAOS_CLOUD_API_KEY: env.ELIZAOS_CLOUD_API_KEY ?? null,
@@ -303,10 +306,14 @@ export { isCloudProvisionedContainer } from "./routes/cloud-provisioning";
 export { handleCloudBillingRoute } from "./routes/cloud-billing-routes";
 export { handleCloudCompatRoute } from "./routes/cloud-compat-routes";
 export { handleCloudRelayRoute } from "./routes/cloud-relay-routes";
-export { type CloudRouteState, handleCloudRoute } from "./routes/cloud-routes";
+export {
+  type CloudRouteState,
+  handleCloudRoute,
+} from "./routes/cloud-routes-autonomous";
 export type { CloudConfigLike } from "./routes/cloud-routes-autonomous";
 export { handleCloudStatusRoutes } from "./routes/cloud-status-routes";
-export type { CloudOnboardingResult } from "./onboarding";
+export { runCloudOnboarding, type CloudOnboardingResult } from "./onboarding";
+export { CloudManager, type CloudManagerCallbacks } from "./cloud/cloud-manager";
 export {
   type CloudWalletDescriptor,
   type CloudWalletProvider,
@@ -321,6 +328,14 @@ export {
   getCloudSecret,
   scrubCloudSecretsFromEnv,
 } from "./lib/cloud-secrets";
+export {
+  __resetCloudBaseUrlCache,
+  ensureCloudTtsApiKeyAlias,
+  handleCloudTtsPreviewRoute,
+  mirrorCompatHeaders,
+  resolveCloudTtsBaseUrl,
+  resolveElevenLabsApiKeyForCloudMode,
+} from "./lib/server-cloud-tts";
 export {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,

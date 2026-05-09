@@ -79,6 +79,9 @@ const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER")
 export const ollamaPlugin: Plugin = {
   name: "ollama",
   description: "Ollama plugin for local LLM inference",
+  autoEnable: {
+    envKeys: ["OLLAMA_BASE_URL"],
+  },
 
   config: {
     OLLAMA_API_ENDPOINT: env.OLLAMA_API_ENDPOINT ?? null,

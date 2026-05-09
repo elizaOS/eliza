@@ -14,6 +14,9 @@ import {
 export const XAIPlugin: Plugin = {
   name: "xai",
   description: "xAI Grok models for text generation and embeddings",
+  autoEnable: {
+    envKeys: ["XAI_API_KEY", "GROK_API_KEY"],
+  },
 
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     logger.log("Initializing xAI plugin...");

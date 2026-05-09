@@ -212,6 +212,22 @@ const codexModels = {
 export const codexCliPlugin: Plugin = {
   name: "codex-cli",
   description: "ChatGPT Codex model provider using the codex CLI OAuth token cache",
+  autoEnable: {
+    // No env-key auto-enable; activated when an auth profile selects codex-cli
+    // as its provider (e.g. via subscription onboarding).
+    shouldEnable: (_env, config) => {
+      const auth = (config as { auth?: { profiles?: Record<string, unknown> } })
+        .auth;
+      const profiles = auth?.profiles;
+      if (!profiles || typeof profiles !== "object") return false;
+      return Object.values(profiles).some((profile) => {
+        if (!profile || typeof profile !== "object") return false;
+        return (
+          (profile as { provider?: unknown }).provider === "codex-cli"
+        );
+      });
+    },
+  },
   config: {
     CODEX_AUTH_PATH: readEnv("CODEX_AUTH_PATH") ?? null,
     CODEX_BASE_URL: readEnv("CODEX_BASE_URL") ?? null,
