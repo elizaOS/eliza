@@ -38,6 +38,10 @@ app.get("/", async (c) => {
       .map((n) => n.network);
 
     const canRedeem = availableNetworks.length > 0;
+    const evmNetwork = status.networks.find(
+      (n) => n.network === "base" || n.network === "bnb" || n.network === "ethereum",
+    );
+    const solanaNetwork = status.networks.find((n) => n.network === "solana");
 
     let message: string;
     if (!canRedeem) {
@@ -51,15 +55,27 @@ app.get("/", async (c) => {
 
     return c.json({
       success: true,
+      operational: status.operational,
       canRedeem,
       message,
       availableNetworks,
       unavailableNetworks,
+      wallets: {
+        evm: {
+          configured: Boolean(evmNetwork?.configured),
+          address: evmNetwork?.walletAddress ?? undefined,
+        },
+        solana: {
+          configured: Boolean(solanaNetwork?.configured),
+          address: solanaNetwork?.walletAddress ?? undefined,
+        },
+      },
       networks: status.networks.map((n) => ({
         network: n.network,
         available: n.status === "operational" || n.status === "low_balance",
         status: n.status,
         message: n.message,
+        balance: n.balance,
         ...(n.hasBalance && { balanceAvailable: n.balance > 0 }),
       })),
       warnings: status.warnings.filter((w) => !w.includes("balance")),

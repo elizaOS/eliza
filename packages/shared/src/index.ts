@@ -19,8 +19,6 @@ export * from "./config/app-config";
 export * from "./config/boot-config";
 // boot-config-react.tsx and branding-react.tsx are not barrel-exported
 // from the package root because they pull in React at module load time.
-// Import them via "@elizaos/shared/config/boot-config-react" or
-// "@elizaos/shared/config/branding-react" from React-using consumers.
 // This keeps node-side benchmark / agent boot paths React-free.
 export * from "./config/boot-config-store";
 export * from "./config/branding";

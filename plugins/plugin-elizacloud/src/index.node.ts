@@ -1,6 +1,6 @@
-import pluginDefault from "./index";
+import pluginDefault from "./index.js";
 
-export * from "./index";
+export * from "./index.js";
 export default pluginDefault;
 
 // Node-only route handlers (depend on node:os and other node built-ins).
@@ -20,3 +20,20 @@ export {
   persistCloudWalletCache,
   provisionCloudWalletsBestEffort,
 } from "./cloud/cloud-wallet";
+export {
+  normalizeCloudSecret,
+  resolveCloudApiKey,
+} from "./cloud/cloud-api-key";
+export {
+  clearCloudSecrets,
+  getCloudSecret,
+  scrubCloudSecretsFromEnv,
+} from "./lib/cloud-secrets";
+export {
+  __resetCloudBaseUrlCache,
+  ensureCloudTtsApiKeyAlias,
+  handleCloudTtsPreviewRoute,
+  mirrorCompatHeaders,
+  resolveCloudTtsBaseUrl,
+  resolveElevenLabsApiKeyForCloudMode,
+} from "./lib/server-cloud-tts";

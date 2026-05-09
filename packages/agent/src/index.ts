@@ -165,6 +165,7 @@ export * from "./test-support/index.js";
 export * from "./test-utils/sqlite-compat.js";
 export * from "./triggers/runtime.js";
 export * from "./triggers/scheduling.js";
+export * from "./triggers/text-to-workflow.js";
 export * from "./triggers/types.js";
 // `types/index.js` aggregates `agent-skills`, `config-like`, and `trajectory`.
 export * from "./types/index.js";

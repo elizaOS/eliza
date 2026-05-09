@@ -1,6 +1,7 @@
 import type { Dirent } from "node:fs";
 import { promises as fs } from "node:fs";
 import type http from "node:http";
+import { ServerResponse } from "node:http";
 import path from "node:path";
 import type { IAgentRuntime, RouteRequestMeta } from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";
@@ -625,13 +626,17 @@ async function proxyRunSteeringRequest(
   }
 
   const captured = createCapturedResponse();
+  const syntheticResponse = Object.assign(
+    Object.create(ServerResponse.prototype) as http.ServerResponse,
+    captured,
+  );
   const syntheticUrl = new URL(ctx.url.toString());
   syntheticUrl.pathname = target.pathname;
   const syntheticCtx: AppsRouteContext = {
     ...ctx,
     pathname: target.pathname,
     url: syntheticUrl,
-    res: captured as unknown as http.ServerResponse,
+    res: syntheticResponse,
     readJsonBody: async <T extends object>() => body as T | null,
     json: (
       response: http.ServerResponse,
@@ -1061,7 +1066,7 @@ export async function handleAppsRoutes(
         // ~/.eliza/plugins/installed without depending on a plugin-manager
         // service. The runtime plugin resolver already searches that dir.
         const { installPlugin: installPluginDirect } = (await import(
-          /* webpackIgnore: true */ "@elizaos/app-core/services/plugin-installer"
+          /* webpackIgnore: true */ "@elizaos/app-core"
         )) as {
           installPlugin: (
             name: string,

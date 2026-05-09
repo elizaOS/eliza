@@ -105,7 +105,7 @@ import {
   CreditDisplay,
   LowBalanceWarning,
   useElizaCredits,
-} from "@elizaos/cloud-ui/components/eliza";
+} from "@elizaos/cloud-ui";
 \`\`\`
 
 ### Usage Examples

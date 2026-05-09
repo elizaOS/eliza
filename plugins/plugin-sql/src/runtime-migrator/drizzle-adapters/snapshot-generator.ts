@@ -21,20 +21,6 @@ type DrizzleSchema = Record<string, unknown>;
 type ArrayElement = number | bigint | boolean | string | Date | object | ArrayElement[];
 
 /**
- * Internal Drizzle types for working with SQL expressions and indexes.
- * These types aren't exported from drizzle-orm but are needed for snapshot generation.
- *
- * Note: Drizzle's SQL.toQuery() accepts a config object with specific properties.
- * Since these are internal to Drizzle, we define compatible types here.
- */
-interface SqlToQueryConfig {
-  escapeName: () => never;
-  escapeParam: () => never;
-  escapeString: () => never;
-  casing?: undefined; // We don't use casing transformation
-}
-
-/**
  * Internal Drizzle column config interface.
  * PgColumn has internal properties not exposed in the public type definition.
  */
@@ -99,30 +85,11 @@ function buildArrayString(array: ArrayElement[], sqlType: string): string {
   return `{${values}}`;
 }
 
-/**
- * Convert a Drizzle SQL expression to a string.
- * This is used for extracting default values from column definitions.
- *
- * Note: We use a type assertion here because SQL.toQuery() expects internal
- * Drizzle types that aren't publicly exported. Our config is compatible
- * at runtime but TypeScript can't verify this.
- */
+/** Convert a Drizzle SQL expression to a string for extracting default values. */
+const DEFAULT_PG_DIALECT = new PgDialect({ casing: undefined });
+
 const sqlToStr = (sql: SQL, _casing: string | undefined) => {
-  const config: SqlToQueryConfig = {
-    escapeName: () => {
-      throw new Error("we don't support params for `sql` default values");
-    },
-    escapeParam: () => {
-      throw new Error("we don't support params for `sql` default values");
-    },
-    escapeString: () => {
-      throw new Error("we don't support params for `sql` default values");
-    },
-    casing: undefined, // We don't use casing transformation in this context
-  };
-  // Type assertion needed: SQL.toQuery expects internal Drizzle types
-  type ToQueryParam = Parameters<SQL["toQuery"]>[0];
-  return sql.toQuery(config as unknown as ToQueryParam).sql;
+  return DEFAULT_PG_DIALECT.sqlToQuery(sql).sql;
 };
 
 /**

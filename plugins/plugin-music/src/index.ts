@@ -113,6 +113,7 @@ export type {
   MusicInfoResult,
   TrackInfo,
 } from "./types";
+export { tryHandleMusicPlayerStatusFallback } from "./route-fallback";
 export type {
   AudioFeatureSeed,
   AudioFeatures,

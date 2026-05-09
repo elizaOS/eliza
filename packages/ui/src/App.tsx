@@ -130,9 +130,9 @@ const AppsPageView = lazyNamedView(
   () => import("./components/pages/AppsPageView"),
   "AppsPageView",
 );
-const AutomationsDesktopShell = lazyNamedView(
-  () => import("./components/pages/AutomationsView"),
-  "AutomationsDesktopShell",
+const AutomationsFeed = lazyNamedView(
+  () => import("./components/pages/AutomationsFeed"),
+  "AutomationsFeed",
 );
 const BrowserWorkspaceView = lazyNamedView(
   () => import("./components/pages/BrowserWorkspaceView"),
@@ -548,7 +548,7 @@ function ViewRouter({
         );
       case "automations":
       case "triggers":
-        return <AutomationsDesktopShell />;
+        return <AutomationsFeed />;
       case "voice":
         return (
           <TabContentView>
@@ -1024,7 +1024,7 @@ export function App() {
             className={`flex flex-1 min-h-0 min-w-0 overflow-hidden ${MOBILE_NAV_PADDING_CLASS}`}
           >
             <LazyViewBoundary>
-              <AutomationsDesktopShell key="automations-view-desktop" />
+              <AutomationsFeed key="automations-view-desktop" />
             </LazyViewBoundary>
           </div>
         </div>

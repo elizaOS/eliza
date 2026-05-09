@@ -6,7 +6,7 @@
  */
 import path from "node:path";
 import { createElizaPlugin } from "@elizaos/agent";
-import { documentsPlugin } from "@elizaos/app-documents/setup-routes";
+import { documentsPlugin } from "@elizaos/app-documents";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../test/helpers/conditional-tests.ts";
 import {

@@ -32,3 +32,5 @@ const mcpPlugin: Plugin = {
 };
 
 export default mcpPlugin;
+
+export { handleMcpRoutes, type McpRouteContext } from "./routes-mcp.js";

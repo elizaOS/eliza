@@ -12,7 +12,7 @@ function runtime(): IAgentRuntime {
     getService: vi.fn(() => null),
     getSetting: vi.fn(() => undefined),
     setSetting: vi.fn(),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 describe("LifeOps Google plugin delegation", () => {

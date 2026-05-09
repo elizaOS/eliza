@@ -8,6 +8,7 @@
 
 import type {
 	SkillFrontmatter,
+	SkillMetadata,
 	SkillValidationError,
 	SkillValidationResult,
 	SkillValidationWarning,
@@ -47,11 +48,61 @@ export function parseFrontmatter(content: string): {
 	const body = content.slice(match[0].length).trim();
 
 	try {
-		const frontmatter = parseYamlSubset(raw) as unknown as SkillFrontmatter;
+		const parsed = parseYamlSubset(raw);
+		const frontmatter = toSkillFrontmatter(parsed);
 		return { frontmatter, body, raw };
 	} catch {
 		return { frontmatter: null, body, raw };
 	}
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isSkillMetadata(value: unknown): value is SkillMetadata {
+	if (!isRecord(value)) {
+		return false;
+	}
+	return Object.values(value).every(
+		(item) =>
+			item === undefined ||
+			typeof item === "string" ||
+			typeof item === "number" ||
+			typeof item === "boolean" ||
+			isRecord(item),
+	);
+}
+
+function toSkillFrontmatter(
+	value: Record<string, unknown>,
+): SkillFrontmatter | null {
+	if (
+		typeof value.name !== "string" ||
+		typeof value.description !== "string"
+	) {
+		return null;
+	}
+	const frontmatter: SkillFrontmatter = {
+		name: value.name,
+		description: value.description,
+	};
+	if (typeof value.license === "string") {
+		frontmatter.license = value.license;
+	}
+	if (typeof value.compatibility === "string") {
+		frontmatter.compatibility = value.compatibility;
+	}
+	if (isSkillMetadata(value.metadata)) {
+		frontmatter.metadata = value.metadata;
+	}
+	if (typeof value["allowed-tools"] === "string") {
+		frontmatter["allowed-tools"] = value["allowed-tools"];
+	}
+	if (typeof value.homepage === "string") {
+		frontmatter.homepage = value.homepage;
+	}
+	return frontmatter;
 }
 
 /**

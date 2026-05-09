@@ -12,7 +12,7 @@ import { handleConversationRoutes } from "./conversation-routes.js";
 import { handleDatabaseRoute } from "./database.js";
 import { handleInboxRoute } from "./inbox-routes.js";
 import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes.js";
-import { handleSandboxRoute } from "./sandbox-routes.js";
+import { handleSandboxRoute } from "@elizaos/plugin-computeruse";
 import type { ServerState } from "./server-types.js";
 import { handleXRelayRoute } from "./x-relay-routes.js";
 

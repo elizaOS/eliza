@@ -2,7 +2,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 function createRuntime() {
-  return {
+  return Object.assign(Object.create(null) as IAgentRuntime, {
     character: { system: "system prompt" },
     emitEvent: vi.fn(async () => undefined),
     getSetting: vi.fn((key: string) => {
@@ -12,7 +12,7 @@ function createRuntime() {
       };
       return settings[key] ?? null;
     }),
-  } as unknown as IAgentRuntime;
+  });
 }
 
 afterEach(() => {
@@ -24,7 +24,7 @@ afterEach(() => {
 
 describe("Groq native text plumbing", () => {
   it("forwards tools and returns native shape with toolCalls when caller passes tools", async () => {
-    const generateText = vi.fn(async () => ({
+    const generateText = vi.fn(async (_options: Record<string, unknown>) => ({
       text: "ok",
       toolCalls: [{ toolName: "lookup", input: { q: "x" } }],
       finishReason: "tool-calls",
@@ -51,8 +51,10 @@ describe("Groq native text plumbing", () => {
       tools,
     })) as Record<string, unknown>;
 
-    const firstCall = generateText.mock.calls[0] as unknown as [Record<string, unknown>];
-    const call = firstCall[0];
+    const call = generateText.mock.calls[0]?.[0];
+    if (!call) {
+      throw new Error("Expected generateText to be called");
+    }
     expect(call.tools).toBe(tools);
     expect(result).toMatchObject({
       text: "ok",

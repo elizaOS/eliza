@@ -53,6 +53,8 @@
       "@elizaos/plugin-telegram/account-auth-service": [
         "../../plugins/plugin-telegram/src/account-auth-service.ts"
       ],
+      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+      "@elizaos/plugin-signal/*": ["../../plugins/plugin-signal/src/*"],
       "@elizaos/plugin-streaming": [
         "../../plugins/plugin-streaming/dist/index.d.ts"
       ],

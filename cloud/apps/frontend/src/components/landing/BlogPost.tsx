@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "@elizaos/cloud-ui/runtime/image";
+import { Image } from "@elizaos/cloud-ui";
 import { ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 

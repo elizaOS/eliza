@@ -45,36 +45,6 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./api/automation-node-contributors": {
-      "types": "./dist/api/automation-node-contributors.d.ts",
-      "import": "./dist/api/automation-node-contributors.js",
-      "default": "./dist/api/automation-node-contributors.js"
-    },
-    "./api/client-base": {
-      "types": "./dist/api/client-base.d.ts",
-      "import": "./dist/api/client-base.js",
-      "default": "./dist/api/client-base.js"
-    },
-    "./api/response": {
-      "types": "./dist/api/response.d.ts",
-      "import": "./dist/api/response.js",
-      "default": "./dist/api/response.js"
-    },
-    "./runtime/app-route-plugin-registry": {
-      "types": "./dist/runtime/app-route-plugin-registry.d.ts",
-      "import": "./dist/runtime/app-route-plugin-registry.js",
-      "default": "./dist/runtime/app-route-plugin-registry.js"
-    },
-    "./services/steward-sidecar": {
-      "types": "./dist/services/steward-sidecar.d.ts",
-      "import": "./dist/services/steward-sidecar.js",
-      "default": "./dist/services/steward-sidecar.js"
-    },
-    "./services/steward-sidecar/helpers": {
-      "types": "./dist/services/steward-sidecar/helpers.d.ts",
-      "import": "./dist/services/steward-sidecar/helpers.js",
-      "default": "./dist/services/steward-sidecar/helpers.js"
-    },
     "./package.json": "./package.json"
   },
   "peerDependencies": {

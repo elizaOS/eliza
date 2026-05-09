@@ -24,12 +24,17 @@ import {
 } from "../plugins/index.js";
 import type { Handler, Scenario, ScenarioOutcome } from "../types.js";
 
-let AgentRuntimeCtor:
-  | (new (
-      opts: Record<string, unknown>,
-    ) => IAgentRuntime)
-  | null = null;
-let InMemoryDatabaseAdapterCtor: (new () => Record<string, unknown>) | null =
+type Constructor<TInstance, TArgs extends unknown[] = unknown[]> = new (
+  ...args: TArgs
+) => TInstance;
+type AgentRuntimeConstructor = Constructor<
+  IAgentRuntime,
+  [Record<string, unknown>]
+>;
+type InMemoryDatabaseAdapterConstructor = Constructor<Record<string, unknown>>;
+
+let AgentRuntimeCtor: AgentRuntimeConstructor | null = null;
+let InMemoryDatabaseAdapterCtor: InMemoryDatabaseAdapterConstructor | null =
   null;
 let secretsManagerPlugin: Plugin | null = null;
 let pluginManagerPlugin: Plugin | null = null;
@@ -39,6 +44,29 @@ let depsAvailable = false;
 const HANDLER_DIR = dirname(fileURLToPath(import.meta.url));
 const WORKSPACE_ROOT = resolve(HANDLER_DIR, "../../../..");
 const REPO_ROOT = resolve(WORKSPACE_ROOT, "..");
+
+function hasConstructSignature(value: unknown): value is Constructor<unknown> {
+  if (typeof value !== "function") return false;
+
+  try {
+    Reflect.construct(Object, [], value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isAgentRuntimeConstructor(
+  value: unknown,
+): value is AgentRuntimeConstructor {
+  return hasConstructSignature(value);
+}
+
+function isInMemoryDatabaseAdapterConstructor(
+  value: unknown,
+): value is InMemoryDatabaseAdapterConstructor {
+  return hasConstructSignature(value);
+}
 
 interface SecretsServiceApi {
   getGlobal(key: string): Promise<string | null>;
@@ -79,16 +107,22 @@ async function collectSecrets(
 async function tryImportDeps(): Promise<boolean> {
   const core = await import("@elizaos/core");
   // AgentRuntime may or may not be exported — it is on the default package
-  if (!("AgentRuntime" in core) || typeof core.AgentRuntime !== "function") {
+  const agentRuntimeExport = Reflect.get(core, "AgentRuntime");
+  if (!isAgentRuntimeConstructor(agentRuntimeExport)) {
     console.error("[ElizaHandler] @elizaos/core does not export AgentRuntime");
     return false;
   }
-  AgentRuntimeCtor = core.AgentRuntime as typeof AgentRuntimeCtor;
-  InMemoryDatabaseAdapterCtor =
-    "InMemoryDatabaseAdapter" in core &&
-    typeof core.InMemoryDatabaseAdapter === "function"
-      ? (core.InMemoryDatabaseAdapter as typeof InMemoryDatabaseAdapterCtor)
-      : null;
+  AgentRuntimeCtor = agentRuntimeExport;
+
+  const inMemoryDatabaseAdapterExport = Reflect.get(
+    core,
+    "InMemoryDatabaseAdapter",
+  );
+  InMemoryDatabaseAdapterCtor = isInMemoryDatabaseAdapterConstructor(
+    inMemoryDatabaseAdapterExport,
+  )
+    ? inMemoryDatabaseAdapterExport
+    : null;
   if (!InMemoryDatabaseAdapterCtor) {
     try {
       const mod = (await import(
@@ -96,12 +130,12 @@ async function tryImportDeps(): Promise<boolean> {
           resolve(WORKSPACE_ROOT, "core/src/database/inMemoryAdapter.ts"),
         ).href
       )) as Record<string, unknown>;
-      if (
-        "InMemoryDatabaseAdapter" in mod &&
-        typeof mod.InMemoryDatabaseAdapter === "function"
-      ) {
-        InMemoryDatabaseAdapterCtor =
-          mod.InMemoryDatabaseAdapter as typeof InMemoryDatabaseAdapterCtor;
+      const workspaceAdapterExport = Reflect.get(
+        mod,
+        "InMemoryDatabaseAdapter",
+      );
+      if (isInMemoryDatabaseAdapterConstructor(workspaceAdapterExport)) {
+        InMemoryDatabaseAdapterCtor = workspaceAdapterExport;
         console.log(
           "[ElizaHandler] Loaded in-memory database adapter from workspace source",
         );

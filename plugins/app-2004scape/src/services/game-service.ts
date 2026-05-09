@@ -1,16 +1,18 @@
 import {
   type IAgentRuntime,
+  type Memory,
   ModelType,
   parseJSONObjectFromText,
   Service,
   setTrajectoryPurpose,
+  type State,
   type TextGenerationModelType,
   withStandaloneTrajectory,
 } from "@elizaos/core";
 import {
   formatRs2004RouterPrompt,
   resolveRs2004RouterAction,
-} from "../actions/router-definitions.js";
+} from "./autonomous-loop-prompt.js";
 import { type GatewayHandle, startGateway } from "../gateway/index.js";
 import { botStateProvider } from "../providers/bot-state.js";
 import { goalsProvider } from "../providers/goals.js";
@@ -285,12 +287,12 @@ export class RsSdkGameService extends Service {
   private async gatherProviderContext(): Promise<string> {
     const dummyMemory = {
       content: { text: "" },
-    } as unknown as import("@elizaos/core").Memory;
+    } as Memory;
     const dummyState = {
       values: {},
       data: {},
       text: "",
-    } as unknown as import("@elizaos/core").State;
+    } as State;
     const sections: string[] = [];
 
     try {

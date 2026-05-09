@@ -6,67 +6,1014 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		AC0FA5DD2FAF4A7F007DDEDC /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0FA5DC2FAF4A7F007DDEDC /* AppDelegate.swift */; };
+		AC0FA5DF2FAF4A7F007DDEDC /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0FA5DE2FAF4A7F007DDEDC /* SceneDelegate.swift */; };
+		AC0FA5E22FAF4A7F007DDEDC /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA5E02FAF4A7F007DDEDC /* LaunchScreen.storyboard */; };
+		AC0FA5E52FAF4A7F007DDEDC /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA5E32FAF4A7F007DDEDC /* Main.storyboard */; };
+		AC0FA5EE2FAF4A7F007DDEDC /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0FA5ED2FAF4A7F007DDEDC /* AppDelegate.swift */; };
+		AC0FA5F12FAF4A7F007DDEDC /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA5EF2FAF4A7F007DDEDC /* Main.storyboard */; };
+		AC0FA5F82FAF4A7F007DDEDC /* Chat with Webpage Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AC0FA5F72FAF4A7F007DDEDC /* Chat with Webpage Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AC0FA6022FAF4A7F007DDEDC /* Chat with Webpage Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AC0FA6012FAF4A7F007DDEDC /* Chat with Webpage Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AC0FA6072FAF4A7F007DDEDC /* Main.html in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA5CC2FAF4A72007DDEDC /* Main.html */; };
+		AC0FA6082FAF4A7F007DDEDC /* Main.html in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA5CC2FAF4A72007DDEDC /* Main.html */; };
+		AC0FA6092FAF4A7F007DDEDC /* Icon.png in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA5CE2FAF4A72007DDEDC /* Icon.png */; };
+		AC0FA60A2FAF4A7F007DDEDC /* Icon.png in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA5CE2FAF4A72007DDEDC /* Icon.png */; };
+		AC0FA60B2FAF4A7F007DDEDC /* Style.css in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA5CF2FAF4A72007DDEDC /* Style.css */; };
+		AC0FA60C2FAF4A7F007DDEDC /* Style.css in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA5CF2FAF4A72007DDEDC /* Style.css */; };
+		AC0FA60D2FAF4A7F007DDEDC /* Script.js in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA5D02FAF4A72007DDEDC /* Script.js */; };
+		AC0FA60E2FAF4A7F007DDEDC /* Script.js in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA5D02FAF4A72007DDEDC /* Script.js */; };
+		AC0FA60F2FAF4A7F007DDEDC /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0FA5D12FAF4A72007DDEDC /* ViewController.swift */; };
+		AC0FA6102FAF4A7F007DDEDC /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0FA5D12FAF4A72007DDEDC /* ViewController.swift */; };
+		AC0FA6112FAF4A7F007DDEDC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA5D22FAF4A7F007DDEDC /* Assets.xcassets */; };
+		AC0FA6122FAF4A7F007DDEDC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA5D22FAF4A7F007DDEDC /* Assets.xcassets */; };
+		AC0FA6132FAF4A7F007DDEDC /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0FA5D42FAF4A7F007DDEDC /* SafariWebExtensionHandler.swift */; };
+		AC0FA6142FAF4A7F007DDEDC /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0FA5D42FAF4A7F007DDEDC /* SafariWebExtensionHandler.swift */; };
+		AC0FA6312FAF4A80007DDEDC /* offscreen.html in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA6262FAF4A80007DDEDC /* offscreen.html */; };
+		AC0FA6322FAF4A80007DDEDC /* dist in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA6272FAF4A80007DDEDC /* dist */; };
+		AC0FA6332FAF4A80007DDEDC /* popup.html in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA6282FAF4A80007DDEDC /* popup.html */; };
+		AC0FA6342FAF4A80007DDEDC /* node_modules in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA6292FAF4A80007DDEDC /* node_modules */; };
+		AC0FA6352FAF4A80007DDEDC /* package.json in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA62A2FAF4A80007DDEDC /* package.json */; };
+		AC0FA6362FAF4A80007DDEDC /* icons in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA62C2FAF4A80007DDEDC /* icons */; };
+		AC0FA6372FAF4A80007DDEDC /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA62D2FAF4A80007DDEDC /* manifest.json */; };
+		AC0FA6382FAF4A80007DDEDC /* tsconfig.json in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA62E2FAF4A80007DDEDC /* tsconfig.json */; };
+		AC0FA6392FAF4A80007DDEDC /* popup.css in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA62F2FAF4A80007DDEDC /* popup.css */; };
+		AC0FA63A2FAF4A80007DDEDC /* src in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA6302FAF4A80007DDEDC /* src */; };
+		AC0FA63B2FAF4A80007DDEDC /* offscreen.html in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA6262FAF4A80007DDEDC /* offscreen.html */; };
+		AC0FA63C2FAF4A80007DDEDC /* dist in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA6272FAF4A80007DDEDC /* dist */; };
+		AC0FA63D2FAF4A80007DDEDC /* popup.html in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA6282FAF4A80007DDEDC /* popup.html */; };
+		AC0FA63E2FAF4A80007DDEDC /* node_modules in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA6292FAF4A80007DDEDC /* node_modules */; };
+		AC0FA63F2FAF4A80007DDEDC /* package.json in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA62A2FAF4A80007DDEDC /* package.json */; };
+		AC0FA6402FAF4A80007DDEDC /* icons in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA62C2FAF4A80007DDEDC /* icons */; };
+		AC0FA6412FAF4A80007DDEDC /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA62D2FAF4A80007DDEDC /* manifest.json */; };
+		AC0FA6422FAF4A80007DDEDC /* tsconfig.json in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA62E2FAF4A80007DDEDC /* tsconfig.json */; };
+		AC0FA6432FAF4A80007DDEDC /* popup.css in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA62F2FAF4A80007DDEDC /* popup.css */; };
+		AC0FA6442FAF4A80007DDEDC /* src in Resources */ = {isa = PBXBuildFile; fileRef = AC0FA6302FAF4A80007DDEDC /* src */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		AC0FA5F92FAF4A7F007DDEDC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AC0FA5C62FAF4A70007DDEDC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AC0FA5F62FAF4A7F007DDEDC;
+			remoteInfo = "Chat with Webpage Extension (iOS)";
+		};
+		AC0FA6032FAF4A7F007DDEDC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AC0FA5C62FAF4A70007DDEDC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AC0FA6002FAF4A7F007DDEDC;
+			remoteInfo = "Chat with Webpage Extension (macOS)";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		AC0FA61A2FAF4A7F007DDEDC /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				AC0FA5F82FAF4A7F007DDEDC /* Chat with Webpage Extension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AC0FA6212FAF4A7F007DDEDC /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				AC0FA6022FAF4A7F007DDEDC /* Chat with Webpage Extension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		AC0FA5CD2FAF4A72007DDEDC /* Base */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = Base; path = Base.lproj/Main.html; sourceTree = "<group>"; };
+		AC0FA5CE2FAF4A72007DDEDC /* Icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Icon.png; sourceTree = "<group>"; };
+		AC0FA5CF2FAF4A72007DDEDC /* Style.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = Style.css; sourceTree = "<group>"; };
+		AC0FA5D02FAF4A72007DDEDC /* Script.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = Script.js; sourceTree = "<group>"; };
+		AC0FA5D12FAF4A72007DDEDC /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
+		AC0FA5D22FAF4A7F007DDEDC /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		AC0FA5D42FAF4A7F007DDEDC /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
+		AC0FA5D92FAF4A7F007DDEDC /* Chat with Webpage.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Chat with Webpage.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AC0FA5DC2FAF4A7F007DDEDC /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		AC0FA5DE2FAF4A7F007DDEDC /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		AC0FA5E12FAF4A7F007DDEDC /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		AC0FA5E42FAF4A7F007DDEDC /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		AC0FA5E62FAF4A7F007DDEDC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AC0FA5EB2FAF4A7F007DDEDC /* Chat with Webpage.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Chat with Webpage.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AC0FA5ED2FAF4A7F007DDEDC /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		AC0FA5F02FAF4A7F007DDEDC /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		AC0FA5F22FAF4A7F007DDEDC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AC0FA5F72FAF4A7F007DDEDC /* Chat with Webpage Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Chat with Webpage Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AC0FA5FC2FAF4A7F007DDEDC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AC0FA6012FAF4A7F007DDEDC /* Chat with Webpage Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Chat with Webpage Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AC0FA6062FAF4A7F007DDEDC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AC0FA6262FAF4A80007DDEDC /* offscreen.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = offscreen.html; path = ../../../chrome/offscreen.html; sourceTree = "<group>"; };
+		AC0FA6272FAF4A80007DDEDC /* dist */ = {isa = PBXFileReference; lastKnownFileType = folder; name = dist; path = ../../../chrome/dist; sourceTree = "<group>"; };
+		AC0FA6282FAF4A80007DDEDC /* popup.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = popup.html; path = ../../../chrome/popup.html; sourceTree = "<group>"; };
+		AC0FA6292FAF4A80007DDEDC /* node_modules */ = {isa = PBXFileReference; lastKnownFileType = folder; name = node_modules; path = ../../../chrome/node_modules; sourceTree = "<group>"; };
+		AC0FA62A2FAF4A80007DDEDC /* package.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = package.json; path = ../../../chrome/package.json; sourceTree = "<group>"; };
+		AC0FA62B2FAF4A80007DDEDC /* tsup.config.ts */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.typescript; name = tsup.config.ts; path = ../../../chrome/tsup.config.ts; sourceTree = "<group>"; };
+		AC0FA62C2FAF4A80007DDEDC /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = icons; path = ../../../chrome/icons; sourceTree = "<group>"; };
+		AC0FA62D2FAF4A80007DDEDC /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = ../../../chrome/manifest.json; sourceTree = "<group>"; };
+		AC0FA62E2FAF4A80007DDEDC /* tsconfig.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = tsconfig.json; path = ../../../chrome/tsconfig.json; sourceTree = "<group>"; };
+		AC0FA62F2FAF4A80007DDEDC /* popup.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; name = popup.css; path = ../../../chrome/popup.css; sourceTree = "<group>"; };
+		AC0FA6302FAF4A80007DDEDC /* src */ = {isa = PBXFileReference; lastKnownFileType = folder; name = src; path = ../../../chrome/src; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AC0FA5D62FAF4A7F007DDEDC /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AC0FA5E82FAF4A7F007DDEDC /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AC0FA5F42FAF4A7F007DDEDC /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AC0FA5FE2FAF4A7F007DDEDC /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
 /* Begin PBXGroup section */
-		ACB983482FAF278E002380EC = {
+		AC0FA5C52FAF4A70007DDEDC = {
 			isa = PBXGroup;
 			children = (
+				AC0FA5CA2FAF4A72007DDEDC /* Shared (App) */,
+				AC0FA5D32FAF4A7F007DDEDC /* Shared (Extension) */,
+				AC0FA5DB2FAF4A7F007DDEDC /* iOS (App) */,
+				AC0FA5EC2FAF4A7F007DDEDC /* macOS (App) */,
+				AC0FA5FB2FAF4A7F007DDEDC /* iOS (Extension) */,
+				AC0FA6052FAF4A7F007DDEDC /* macOS (Extension) */,
+				AC0FA5DA2FAF4A7F007DDEDC /* Products */,
 			);
 			sourceTree = "<group>";
 		};
+		AC0FA5CA2FAF4A72007DDEDC /* Shared (App) */ = {
+			isa = PBXGroup;
+			children = (
+				AC0FA5D12FAF4A72007DDEDC /* ViewController.swift */,
+				AC0FA5D22FAF4A7F007DDEDC /* Assets.xcassets */,
+				AC0FA5CB2FAF4A72007DDEDC /* Resources */,
+			);
+			path = "Shared (App)";
+			sourceTree = "<group>";
+		};
+		AC0FA5CB2FAF4A72007DDEDC /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				AC0FA5CC2FAF4A72007DDEDC /* Main.html */,
+				AC0FA5CE2FAF4A72007DDEDC /* Icon.png */,
+				AC0FA5CF2FAF4A72007DDEDC /* Style.css */,
+				AC0FA5D02FAF4A72007DDEDC /* Script.js */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		AC0FA5D32FAF4A7F007DDEDC /* Shared (Extension) */ = {
+			isa = PBXGroup;
+			children = (
+				AC0FA6252FAF4A80007DDEDC /* Resources */,
+				AC0FA5D42FAF4A7F007DDEDC /* SafariWebExtensionHandler.swift */,
+			);
+			path = "Shared (Extension)";
+			sourceTree = "<group>";
+		};
+		AC0FA5DA2FAF4A7F007DDEDC /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AC0FA5D92FAF4A7F007DDEDC /* Chat with Webpage.app */,
+				AC0FA5EB2FAF4A7F007DDEDC /* Chat with Webpage.app */,
+				AC0FA5F72FAF4A7F007DDEDC /* Chat with Webpage Extension.appex */,
+				AC0FA6012FAF4A7F007DDEDC /* Chat with Webpage Extension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		AC0FA5DB2FAF4A7F007DDEDC /* iOS (App) */ = {
+			isa = PBXGroup;
+			children = (
+				AC0FA5DC2FAF4A7F007DDEDC /* AppDelegate.swift */,
+				AC0FA5DE2FAF4A7F007DDEDC /* SceneDelegate.swift */,
+				AC0FA5E02FAF4A7F007DDEDC /* LaunchScreen.storyboard */,
+				AC0FA5E32FAF4A7F007DDEDC /* Main.storyboard */,
+				AC0FA5E62FAF4A7F007DDEDC /* Info.plist */,
+			);
+			path = "iOS (App)";
+			sourceTree = "<group>";
+		};
+		AC0FA5EC2FAF4A7F007DDEDC /* macOS (App) */ = {
+			isa = PBXGroup;
+			children = (
+				AC0FA5ED2FAF4A7F007DDEDC /* AppDelegate.swift */,
+				AC0FA5EF2FAF4A7F007DDEDC /* Main.storyboard */,
+				AC0FA5F22FAF4A7F007DDEDC /* Info.plist */,
+			);
+			path = "macOS (App)";
+			sourceTree = "<group>";
+		};
+		AC0FA5FB2FAF4A7F007DDEDC /* iOS (Extension) */ = {
+			isa = PBXGroup;
+			children = (
+				AC0FA5FC2FAF4A7F007DDEDC /* Info.plist */,
+			);
+			path = "iOS (Extension)";
+			sourceTree = "<group>";
+		};
+		AC0FA6052FAF4A7F007DDEDC /* macOS (Extension) */ = {
+			isa = PBXGroup;
+			children = (
+				AC0FA6062FAF4A7F007DDEDC /* Info.plist */,
+			);
+			path = "macOS (Extension)";
+			sourceTree = "<group>";
+		};
+		AC0FA6252FAF4A80007DDEDC /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				AC0FA6262FAF4A80007DDEDC /* offscreen.html */,
+				AC0FA6272FAF4A80007DDEDC /* dist */,
+				AC0FA6282FAF4A80007DDEDC /* popup.html */,
+				AC0FA6292FAF4A80007DDEDC /* node_modules */,
+				AC0FA62A2FAF4A80007DDEDC /* package.json */,
+				AC0FA62B2FAF4A80007DDEDC /* tsup.config.ts */,
+				AC0FA62C2FAF4A80007DDEDC /* icons */,
+				AC0FA62D2FAF4A80007DDEDC /* manifest.json */,
+				AC0FA62E2FAF4A80007DDEDC /* tsconfig.json */,
+				AC0FA62F2FAF4A80007DDEDC /* popup.css */,
+				AC0FA6302FAF4A80007DDEDC /* src */,
+			);
+			name = Resources;
+			path = "Shared (Extension)";
+			sourceTree = SOURCE_ROOT;
+		};
 /* End PBXGroup section */
 
+/* Begin PBXNativeTarget section */
+		AC0FA5D82FAF4A7F007DDEDC /* Chat with Webpage (iOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AC0FA61B2FAF4A7F007DDEDC /* Build configuration list for PBXNativeTarget "Chat with Webpage (iOS)" */;
+			buildPhases = (
+				AC0FA5D52FAF4A7F007DDEDC /* Sources */,
+				AC0FA5D62FAF4A7F007DDEDC /* Frameworks */,
+				AC0FA5D72FAF4A7F007DDEDC /* Resources */,
+				AC0FA61A2FAF4A7F007DDEDC /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AC0FA5FA2FAF4A7F007DDEDC /* PBXTargetDependency */,
+			);
+			name = "Chat with Webpage (iOS)";
+			packageProductDependencies = (
+			);
+			productName = "Chat with Webpage (iOS)";
+			productReference = AC0FA5D92FAF4A7F007DDEDC /* Chat with Webpage.app */;
+			productType = "com.apple.product-type.application";
+		};
+		AC0FA5EA2FAF4A7F007DDEDC /* Chat with Webpage (macOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AC0FA6222FAF4A7F007DDEDC /* Build configuration list for PBXNativeTarget "Chat with Webpage (macOS)" */;
+			buildPhases = (
+				AC0FA5E72FAF4A7F007DDEDC /* Sources */,
+				AC0FA5E82FAF4A7F007DDEDC /* Frameworks */,
+				AC0FA5E92FAF4A7F007DDEDC /* Resources */,
+				AC0FA6212FAF4A7F007DDEDC /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AC0FA6042FAF4A7F007DDEDC /* PBXTargetDependency */,
+			);
+			name = "Chat with Webpage (macOS)";
+			packageProductDependencies = (
+			);
+			productName = "Chat with Webpage (macOS)";
+			productReference = AC0FA5EB2FAF4A7F007DDEDC /* Chat with Webpage.app */;
+			productType = "com.apple.product-type.application";
+		};
+		AC0FA5F62FAF4A7F007DDEDC /* Chat with Webpage Extension (iOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AC0FA6172FAF4A7F007DDEDC /* Build configuration list for PBXNativeTarget "Chat with Webpage Extension (iOS)" */;
+			buildPhases = (
+				AC0FA5F32FAF4A7F007DDEDC /* Sources */,
+				AC0FA5F42FAF4A7F007DDEDC /* Frameworks */,
+				AC0FA5F52FAF4A7F007DDEDC /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Chat with Webpage Extension (iOS)";
+			packageProductDependencies = (
+			);
+			productName = "Chat with Webpage Extension (iOS)";
+			productReference = AC0FA5F72FAF4A7F007DDEDC /* Chat with Webpage Extension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		AC0FA6002FAF4A7F007DDEDC /* Chat with Webpage Extension (macOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AC0FA61E2FAF4A7F007DDEDC /* Build configuration list for PBXNativeTarget "Chat with Webpage Extension (macOS)" */;
+			buildPhases = (
+				AC0FA5FD2FAF4A7F007DDEDC /* Sources */,
+				AC0FA5FE2FAF4A7F007DDEDC /* Frameworks */,
+				AC0FA5FF2FAF4A7F007DDEDC /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Chat with Webpage Extension (macOS)";
+			packageProductDependencies = (
+			);
+			productName = "Chat with Webpage Extension (macOS)";
+			productReference = AC0FA6012FAF4A7F007DDEDC /* Chat with Webpage Extension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
 /* Begin PBXProject section */
-		ACB983492FAF278E002380EC /* Project object */ = {
+		AC0FA5C62FAF4A70007DDEDC /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2640;
 				LastUpgradeCheck = 2640;
+				TargetAttributes = {
+					AC0FA5D82FAF4A7F007DDEDC = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
+					AC0FA5EA2FAF4A7F007DDEDC = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
+					AC0FA5F62FAF4A7F007DDEDC = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
+					AC0FA6002FAF4A7F007DDEDC = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
+				};
 			};
-			buildConfigurationList = ACB9834C2FAF278E002380EC /* Build configuration list for PBXProject "Chat with Webpage" */;
+			buildConfigurationList = AC0FA5C92FAF4A70007DDEDC /* Build configuration list for PBXProject "Chat with Webpage" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
 			);
-			mainGroup = ACB983482FAF278E002380EC;
+			mainGroup = AC0FA5C52FAF4A70007DDEDC;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
+			productRefGroup = AC0FA5DA2FAF4A7F007DDEDC /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				AC0FA5D82FAF4A7F007DDEDC /* Chat with Webpage (iOS) */,
+				AC0FA5EA2FAF4A7F007DDEDC /* Chat with Webpage (macOS) */,
+				AC0FA5F62FAF4A7F007DDEDC /* Chat with Webpage Extension (iOS) */,
+				AC0FA6002FAF4A7F007DDEDC /* Chat with Webpage Extension (macOS) */,
 			);
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		AC0FA5D72FAF4A7F007DDEDC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AC0FA6092FAF4A7F007DDEDC /* Icon.png in Resources */,
+				AC0FA5E22FAF4A7F007DDEDC /* LaunchScreen.storyboard in Resources */,
+				AC0FA6072FAF4A7F007DDEDC /* Main.html in Resources */,
+				AC0FA60D2FAF4A7F007DDEDC /* Script.js in Resources */,
+				AC0FA6112FAF4A7F007DDEDC /* Assets.xcassets in Resources */,
+				AC0FA5E52FAF4A7F007DDEDC /* Main.storyboard in Resources */,
+				AC0FA60B2FAF4A7F007DDEDC /* Style.css in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AC0FA5E92FAF4A7F007DDEDC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AC0FA60A2FAF4A7F007DDEDC /* Icon.png in Resources */,
+				AC0FA60C2FAF4A7F007DDEDC /* Style.css in Resources */,
+				AC0FA5F12FAF4A7F007DDEDC /* Main.storyboard in Resources */,
+				AC0FA60E2FAF4A7F007DDEDC /* Script.js in Resources */,
+				AC0FA6122FAF4A7F007DDEDC /* Assets.xcassets in Resources */,
+				AC0FA6082FAF4A7F007DDEDC /* Main.html in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AC0FA5F52FAF4A7F007DDEDC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AC0FA63C2FAF4A80007DDEDC /* dist in Resources */,
+				AC0FA6412FAF4A80007DDEDC /* manifest.json in Resources */,
+				AC0FA6422FAF4A80007DDEDC /* tsconfig.json in Resources */,
+				AC0FA63D2FAF4A80007DDEDC /* popup.html in Resources */,
+				AC0FA63E2FAF4A80007DDEDC /* node_modules in Resources */,
+				AC0FA6432FAF4A80007DDEDC /* popup.css in Resources */,
+				AC0FA6402FAF4A80007DDEDC /* icons in Resources */,
+				AC0FA63B2FAF4A80007DDEDC /* offscreen.html in Resources */,
+				AC0FA63F2FAF4A80007DDEDC /* package.json in Resources */,
+				AC0FA6442FAF4A80007DDEDC /* src in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AC0FA5FF2FAF4A7F007DDEDC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AC0FA6322FAF4A80007DDEDC /* dist in Resources */,
+				AC0FA6372FAF4A80007DDEDC /* manifest.json in Resources */,
+				AC0FA6382FAF4A80007DDEDC /* tsconfig.json in Resources */,
+				AC0FA6332FAF4A80007DDEDC /* popup.html in Resources */,
+				AC0FA6342FAF4A80007DDEDC /* node_modules in Resources */,
+				AC0FA6392FAF4A80007DDEDC /* popup.css in Resources */,
+				AC0FA6362FAF4A80007DDEDC /* icons in Resources */,
+				AC0FA6312FAF4A80007DDEDC /* offscreen.html in Resources */,
+				AC0FA6352FAF4A80007DDEDC /* package.json in Resources */,
+				AC0FA63A2FAF4A80007DDEDC /* src in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AC0FA5D52FAF4A7F007DDEDC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AC0FA60F2FAF4A7F007DDEDC /* ViewController.swift in Sources */,
+				AC0FA5DD2FAF4A7F007DDEDC /* AppDelegate.swift in Sources */,
+				AC0FA5DF2FAF4A7F007DDEDC /* SceneDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AC0FA5E72FAF4A7F007DDEDC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AC0FA6102FAF4A7F007DDEDC /* ViewController.swift in Sources */,
+				AC0FA5EE2FAF4A7F007DDEDC /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AC0FA5F32FAF4A7F007DDEDC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AC0FA6132FAF4A7F007DDEDC /* SafariWebExtensionHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AC0FA5FD2FAF4A7F007DDEDC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AC0FA6142FAF4A7F007DDEDC /* SafariWebExtensionHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		AC0FA5FA2FAF4A7F007DDEDC /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AC0FA5F62FAF4A7F007DDEDC /* Chat with Webpage Extension (iOS) */;
+			targetProxy = AC0FA5F92FAF4A7F007DDEDC /* PBXContainerItemProxy */;
+		};
+		AC0FA6042FAF4A7F007DDEDC /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AC0FA6002FAF4A7F007DDEDC /* Chat with Webpage Extension (macOS) */;
+			targetProxy = AC0FA6032FAF4A7F007DDEDC /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		AC0FA5CC2FAF4A72007DDEDC /* Main.html */ = {
+			isa = PBXVariantGroup;
+			children = (
+				AC0FA5CD2FAF4A72007DDEDC /* Base */,
+			);
+			name = Main.html;
+			sourceTree = "<group>";
+		};
+		AC0FA5E02FAF4A7F007DDEDC /* LaunchScreen.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				AC0FA5E12FAF4A7F007DDEDC /* Base */,
+			);
+			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+		AC0FA5E32FAF4A7F007DDEDC /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				AC0FA5E42FAF4A7F007DDEDC /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+		AC0FA5EF2FAF4A7F007DDEDC /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				AC0FA5F02FAF4A7F007DDEDC /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
 /* Begin XCBuildConfiguration section */
-		ACB9834A2FAF278E002380EC /* Debug */ = {
+		AC0FA6152FAF4A7F007DDEDC /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
 		};
-		ACB9834B2FAF278E002380EC /* Release */ = {
+		AC0FA6162FAF4A7F007DDEDC /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				COPY_PHASE_STRIP = YES;
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		AC0FA6182FAF4A7F007DDEDC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "iOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Chat with Webpage Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.elizaos.chatwithwebpage.Extension;
+				PRODUCT_NAME = "Chat with Webpage Extension";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AC0FA6192FAF4A7F007DDEDC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "iOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Chat with Webpage Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.elizaos.chatwithwebpage.Extension;
+				PRODUCT_NAME = "Chat with Webpage Extension";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		AC0FA61C2FAF4A7F007DDEDC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "iOS (App)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Chat with Webpage";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.elizaos.chatwithwebpage;
+				PRODUCT_NAME = "Chat with Webpage";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AC0FA61D2FAF4A7F007DDEDC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "iOS (App)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Chat with Webpage";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.elizaos.chatwithwebpage;
+				PRODUCT_NAME = "Chat with Webpage";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		AC0FA61F2FAF4A7F007DDEDC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "macOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Chat with Webpage Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.elizaos.chatwithwebpage.Extension;
+				PRODUCT_NAME = "Chat with Webpage Extension";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		AC0FA6202FAF4A7F007DDEDC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "macOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Chat with Webpage Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.elizaos.chatwithwebpage.Extension;
+				PRODUCT_NAME = "Chat with Webpage Extension";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		AC0FA6232FAF4A7F007DDEDC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "macOS (App)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Chat with Webpage";
+				INFOPLIST_KEY_NSMainStoryboardFile = Main;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.elizaos.chatwithwebpage;
+				PRODUCT_NAME = "Chat with Webpage";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		AC0FA6242FAF4A7F007DDEDC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "macOS (App)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Chat with Webpage";
+				INFOPLIST_KEY_NSMainStoryboardFile = Main;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.elizaos.chatwithwebpage;
+				PRODUCT_NAME = "Chat with Webpage";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		ACB9834C2FAF278E002380EC /* Build configuration list for PBXProject "Chat with Webpage" */ = {
+		AC0FA5C92FAF4A70007DDEDC /* Build configuration list for PBXProject "Chat with Webpage" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				ACB9834A2FAF278E002380EC /* Debug */,
-				ACB9834B2FAF278E002380EC /* Release */,
+				AC0FA6152FAF4A7F007DDEDC /* Debug */,
+				AC0FA6162FAF4A7F007DDEDC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AC0FA6172FAF4A7F007DDEDC /* Build configuration list for PBXNativeTarget "Chat with Webpage Extension (iOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AC0FA6182FAF4A7F007DDEDC /* Debug */,
+				AC0FA6192FAF4A7F007DDEDC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AC0FA61B2FAF4A7F007DDEDC /* Build configuration list for PBXNativeTarget "Chat with Webpage (iOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AC0FA61C2FAF4A7F007DDEDC /* Debug */,
+				AC0FA61D2FAF4A7F007DDEDC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AC0FA61E2FAF4A7F007DDEDC /* Build configuration list for PBXNativeTarget "Chat with Webpage Extension (macOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AC0FA61F2FAF4A7F007DDEDC /* Debug */,
+				AC0FA6202FAF4A7F007DDEDC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AC0FA6222FAF4A7F007DDEDC /* Build configuration list for PBXNativeTarget "Chat with Webpage (macOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AC0FA6232FAF4A7F007DDEDC /* Debug */,
+				AC0FA6242FAF4A7F007DDEDC /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = ACB983492FAF278E002380EC /* Project object */;
+	rootObject = AC0FA5C62FAF4A70007DDEDC /* Project object */;
 }

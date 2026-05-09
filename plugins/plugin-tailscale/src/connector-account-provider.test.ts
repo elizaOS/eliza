@@ -6,10 +6,17 @@ import {
 } from "./connector-account-provider";
 
 function runtime(settings: Record<string, unknown>): IAgentRuntime {
-  return {
+  return Object.assign(Object.create(null) as IAgentRuntime, {
     character: {},
-    getSetting: vi.fn((key: string) => settings[key]),
-  } as IAgentRuntime;
+    getSetting: vi.fn((key: string) => {
+      const value = settings[key];
+      return typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean"
+        ? value
+        : null;
+    }),
+  });
 }
 
 describe("Tailscale ConnectorAccountManager provider", () => {

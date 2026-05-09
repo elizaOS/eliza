@@ -47,7 +47,7 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
       createMemory: vi.fn(),
       getEntityById: vi.fn().mockResolvedValue(null),
       updateEntity: vi.fn(),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
 
     // Initialize client with real credentials
     const state = {
