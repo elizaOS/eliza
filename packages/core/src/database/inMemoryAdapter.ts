@@ -1414,7 +1414,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				return false;
 			if (params.tags && params.tags.length > 0) {
 				for (const tag of params.tags) {
-					if (!t.tags.includes(tag)) return false;
+					if (!t.tags?.includes(tag)) return false;
 				}
 			}
 			return true;

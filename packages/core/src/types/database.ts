@@ -13,25 +13,18 @@ import type {
 	PairingChannel,
 	PairingRequest,
 } from "./pairing";
-import type { Metadata, UUID } from "./primitives";
-import type {
-	JsonValue,
-	ActionLogBody as ProtoActionLogBody,
-	ActionLogPrompt as ProtoActionLogPrompt,
-	ActionLogResult as ProtoActionLogResult,
-	AgentRunCounts as ProtoAgentRunCounts,
-	AgentRunSummary as ProtoAgentRunSummary,
-	AgentRunSummaryResult as ProtoAgentRunSummaryResult,
-	BaseLogBody as ProtoBaseLogBody,
-	DbRunStatus as ProtoDbRunStatus,
-	EmbeddingLogBody as ProtoEmbeddingLogBody,
-	EmbeddingSearchResult as ProtoEmbeddingSearchResult,
-	EvaluatorLogBody as ProtoEvaluatorLogBody,
-	Log as ProtoLog,
-	ModelActionContext as ProtoModelActionContext,
-	ModelLogBody as ProtoModelLogBody,
-} from "./proto.js";
+import type { JsonValue, Metadata, UUID } from "./primitives";
 import type { Task } from "./task";
+
+/** Run status enumeration (database). */
+export const DbRunStatus = {
+	UNSPECIFIED: "UNSPECIFIED",
+	STARTED: "STARTED",
+	COMPLETED: "COMPLETED",
+	TIMEOUT: "TIMEOUT",
+	ERROR: "ERROR",
+} as const;
+export type DbRunStatus = (typeof DbRunStatus)[keyof typeof DbRunStatus];
 
 /**
  * Allowed value types for log body fields
@@ -50,10 +43,10 @@ export type LogBodyValue =
 /**
  * Base log body type with common properties
  */
-export interface BaseLogBody
-	extends Omit<ProtoBaseLogBody, "$typeName" | "$unknown" | "metadata"> {
+export interface BaseLogBody {
 	runId?: string | UUID;
 	parentRunId?: string | UUID;
+	status?: string;
 	messageId?: UUID;
 	roomId?: UUID;
 	entityId?: UUID;
@@ -76,11 +69,9 @@ export interface ActionLogContent {
 /**
  * Action result structure for logging
  */
-export interface ActionLogResult
-	extends Omit<
-		ProtoActionLogResult,
-		"$typeName" | "$unknown" | "data" | "error"
-	> {
+export interface ActionLogResult {
+	success?: boolean;
+	text?: string;
 	data?: Record<string, LogBodyValue>;
 	error?: string | Error;
 }
@@ -88,27 +79,17 @@ export interface ActionLogResult
 /**
  * Prompt tracking for action logs
  */
-export interface ActionLogPrompt
-	extends Omit<ProtoActionLogPrompt, "$typeName" | "$unknown" | "timestamp"> {
+export interface ActionLogPrompt {
+	modelType: string;
+	prompt: string;
 	timestamp: number | bigint;
 }
 
 /**
  * Log body for action logs
  */
-export interface ActionLogBody
-	extends Omit<
-			ProtoActionLogBody,
-			| "$typeName"
-			| "$unknown"
-			| "base"
-			| "state"
-			| "responses"
-			| "content"
-			| "result"
-			| "prompts"
-		>,
-		BaseLogBody {
+export interface ActionLogBody extends BaseLogBody {
+	base?: BaseLogBody;
 	action?: string;
 	actionName?: string;
 	actionId?: UUID | string;
@@ -128,13 +109,10 @@ export interface ActionLogBody
 /**
  * Log body for evaluator logs
  */
-export interface EvaluatorLogBody
-	extends Omit<
-			ProtoEvaluatorLogBody,
-			"$typeName" | "$unknown" | "base" | "state"
-		>,
-		BaseLogBody {
-	messageId?: UUID;
+export interface EvaluatorLogBody extends BaseLogBody {
+	base?: BaseLogBody;
+	evaluator?: string;
+	message?: string;
 	state?: Record<string, LogBodyValue>;
 }
 

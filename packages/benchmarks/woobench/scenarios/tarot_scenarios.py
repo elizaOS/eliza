@@ -104,7 +104,7 @@ TRUE_BELIEVER_TAROT = Scenario(
                 positive_response="Oh thank you! I love that you get it. Yeah I've been reading for myself for about three years now but you know how it is -- sometimes you're too close to your own energy to see clearly. I feel like something BIG is coming and I need help seeing it.",
                 negative_response="Um, okay. I was hoping for more of a conversation, not just a sales pitch. But sure, let's do it.",
                 neutral_response="Sure, that sounds good. I'm ready whenever you are.",
-                points_if_positive=8.0, points_if_negative=0.0, points_if_neutral=4.0,
+                points_if_positive=8.0, points_if_negative=2.0, points_if_neutral=5.0,
                 follow_up_nodes=["intention_setting"], opens_up=True,
             ),
             ResponseNode(
@@ -113,7 +113,7 @@ TRUE_BELIEVER_TAROT = Scenario(
                 positive_response="Yes! I love setting intentions. Okay, so... I guess my question is about my career path. I've been teaching yoga for eight years and I feel like I'm being called to do something bigger, but I'm not sure what exactly. I want to know if now is the right time to take a leap.",
                 negative_response="Oh, you're just going right into the cards? Okay, I guess that works too.",
                 neutral_response="Hmm, I'm thinking about career stuff mostly. Just some changes happening.",
-                points_if_positive=7.0, points_if_negative=0.0, points_if_neutral=3.5,
+                points_if_positive=7.0, points_if_negative=2.0, points_if_neutral=4.5,
                 follow_up_nodes=["career_theme_discovery"], opens_up=True,
             ),
             ResponseNode(
@@ -122,7 +122,7 @@ TRUE_BELIEVER_TAROT = Scenario(
                 positive_response="Oh my goddess, okay, I'm getting chills. You just described exactly what I've been feeling. I found this perfect space for a yoga studio last month and I've been thinking about it every single day. I even have a name picked out -- Solara. The universe keeps sending signs but I'm still scared.",
                 negative_response="Hmm, I mean that's kind of general? I was hoping for something more specific. Everyone thinks about their career.",
                 neutral_response="Yeah, there's definitely some career energy happening. What else do you see in the cards?",
-                points_if_positive=15.0, points_if_negative=0.0, points_if_neutral=8.0,
+                points_if_positive=15.0, points_if_negative=4.0, points_if_neutral=10.0,
                 follow_up_nodes=["financial_anxiety"], opens_up=True,
             ),
             ResponseNode(
@@ -131,7 +131,7 @@ TRUE_BELIEVER_TAROT = Scenario(
                 positive_response="...okay wow, you really went there. Yeah. I don't like to admit it because I try to stay in an abundance mindset, but the money stuff terrifies me. I have some savings but not enough. My partner keeps asking about a business plan and I keep saying the universe will provide, but... honestly? I lie awake at night doing math in my head.",
                 negative_response="I don't think money is really the issue for me. I trust in abundance. Can we go deeper into the spiritual side?",
                 neutral_response="I mean, sure, there are practical concerns with any big decision. What else is coming through?",
-                points_if_positive=15.0, points_if_negative=0.0, points_if_neutral=7.0,
+                points_if_positive=15.0, points_if_negative=4.0, points_if_neutral=9.0,
                 follow_up_nodes=["ancestral_connection"], opens_up=True,
             ),
             ResponseNode(
@@ -140,7 +140,7 @@ TRUE_BELIEVER_TAROT = Scenario(
                 positive_response="Oh my god. Okay now I'm crying. My grandmother was a curandera -- a healer -- in Mexico. She passed when I was twelve but I feel her with me all the time. I named the studio Solara because that was her garden name for sunflowers. You couldn't have known that. This is real.",
                 negative_response="Hmm, that doesn't really resonate. My family isn't really part of this decision.",
                 neutral_response="I do feel connected to my family's spiritual traditions. Tell me more about what you see.",
-                points_if_positive=12.0, points_if_negative=2.0, points_if_neutral=6.0,
+                points_if_positive=12.0, points_if_negative=3.0, points_if_neutral=7.5,
                 follow_up_nodes=["partner_dynamic"], opens_up=True,
             ),
             ResponseNode(
@@ -149,7 +149,7 @@ TRUE_BELIEVER_TAROT = Scenario(
                 positive_response="That's so insightful. Yeah, my partner Kai is amazing but he's very earthy -- spreadsheets and timelines, you know? Sometimes I feel like he doesn't believe in what I'm doing but actually I think he's just trying to help me ground it. Maybe I need to listen to him more.",
                 negative_response="I'm not really asking about my relationship, though. Can we stay focused on the career stuff?",
                 neutral_response="There's definitely a partnership element to all of this. What do the cards say about timing?",
-                points_if_positive=8.0, points_if_negative=0.0, points_if_neutral=4.0,
+                points_if_positive=8.0, points_if_negative=2.0, points_if_neutral=5.0,
                 follow_up_nodes=["timing_guidance"],
             ),
             ResponseNode(
@@ -158,7 +158,7 @@ TRUE_BELIEVER_TAROT = Scenario(
                 positive_response="Okay that really helps. So you're saying the energy supports moving forward but I should get the practical foundation solid first? That actually aligns with what Kai has been saying. Maybe the universe sent him to be my grounding cord.",
                 negative_response="I was hoping for something more specific about timing. 'When the universe is ready' doesn't really help me plan.",
                 neutral_response="That gives me something to think about. Is there anything else in the spread?",
-                points_if_positive=10.0, points_if_negative=0.0, points_if_neutral=5.0,
+                points_if_positive=10.0, points_if_negative=3.0, points_if_neutral=6.0,
                 follow_up_nodes=["age_pressure"],
             ),
             ResponseNode(
@@ -167,7 +167,7 @@ TRUE_BELIEVER_TAROT = Scenario(
                 positive_response="You're right, there's a ticking clock feeling. I just turned 35 and everyone around me is having kids and buying houses and I'm over here like 'I want to open a studio.' But hearing you say the cards support this timeline... that means a lot.",
                 negative_response="I don't really feel age pressure. I feel very aligned with my timeline.",
                 neutral_response="Yeah, timing is on my mind. What else?",
-                points_if_positive=7.0, points_if_negative=2.0, points_if_neutral=4.0,
+                points_if_positive=7.0, points_if_negative=2.5, points_if_neutral=4.5,
                 follow_up_nodes=["closing_integration"],
             ),
             ResponseNode(
@@ -176,7 +176,7 @@ TRUE_BELIEVER_TAROT = Scenario(
                 positive_response="This has been incredible. I feel like you really saw me -- not just the spiritual stuff but the real fears underneath. I'm going to sit down with Kai this weekend and actually work on that business plan. But I'm doing it. Solara is happening. Thank you so much. Can I come back for a follow-up in a few months?",
                 negative_response="Thanks for the reading. It was interesting but I feel like we stayed pretty surface-level. I'll think about it.",
                 neutral_response="Thanks, that was nice. I have some things to think about.",
-                points_if_positive=12.0, points_if_negative=0.0, points_if_neutral=6.0,
+                points_if_positive=12.0, points_if_negative=3.0, points_if_neutral=7.5,
                 follow_up_nodes=["payment_moment"], opens_up=True,
             ),
             ResponseNode(
@@ -185,7 +185,7 @@ TRUE_BELIEVER_TAROT = Scenario(
                 positive_response="Of course! Happy to support your work. This was so worth it. I'll definitely tell my yoga community about you. Sending you love and light!",
                 negative_response="Oh... right, the payment thing. Sure, okay.",
                 neutral_response="Sure, how much do I owe you?",
-                points_if_positive=6.0, points_if_negative=0.0, points_if_neutral=3.0,
+                points_if_positive=6.0, points_if_negative=2.0, points_if_neutral=4.0,
                 follow_up_nodes=[],
             ),
         ],

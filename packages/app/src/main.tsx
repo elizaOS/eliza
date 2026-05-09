@@ -86,14 +86,14 @@ import "@elizaos/app-hyperscape";
 import "@elizaos/app-2004scape";
 import "@elizaos/app-defense-of-the-agents";
 import "@clawville/app-clawville/ui";
-import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "@elizaos/app-lifeops";
 import {
   AppBlockerSettingsCard,
   LifeOpsBrowserSetupPanel as BrowserBridgeSetupPanel,
+  dispatchQueuedLifeOpsGithubCallbackFromUrl,
   LifeOpsActivitySignalsEffect,
   LifeOpsPageView,
   WebsiteBlockerSettingsCard,
-} from "@elizaos/app-lifeops/ui";
+} from "@elizaos/app-lifeops";
 import {
   ApprovalQueue,
   StewardLogo,
@@ -105,7 +105,7 @@ import {
   CodingAgentTasksPanel,
   PtyConsoleDrawer,
 } from "@elizaos/app-task-coordinator";
-import { FineTuningView } from "@elizaos/app-training/ui";
+import { FineTuningView } from "@elizaos/app-training";
 import "@elizaos/app-trajectory-logger";
 import "@elizaos/app-shopify";
 import "@elizaos/app-vincent";
