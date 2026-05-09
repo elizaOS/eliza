@@ -54,10 +54,11 @@ describe('filterNodesByIntegrationSupport', () => {
   test('removes credentialed nodes when credentials are unsupported', () => {
     const httpNode = getNodeDefinition('workflows-nodes-base.httpRequest');
     expect(httpNode).toBeDefined();
+    if (!httpNode) throw new Error('expected http node');
 
     const credentialed = {
       node: {
-        ...httpNode!,
+        ...httpNode,
         credentials: [{ name: 'httpHeaderAuth', required: true }],
       },
       score: 1,
@@ -76,7 +77,8 @@ describe('simplifyNodeForLLM', () => {
     expect(code).toBeDefined();
     expect(code?.properties.some((p) => p.type === 'notice' || p.type === 'hidden')).toBe(true);
 
-    const simplified = simplifyNodeForLLM(code!);
+    if (!code) throw new Error('expected code node');
+    const simplified = simplifyNodeForLLM(code);
     expect(simplified.properties.every((p) => p.type !== 'notice')).toBe(true);
     expect(simplified.properties.every((p) => p.type !== 'hidden')).toBe(true);
   });
@@ -84,8 +86,9 @@ describe('simplifyNodeForLLM', () => {
   test('removes transport/UI-only catalog metadata from properties', () => {
     const http = getNodeDefinition('workflows-nodes-base.httpRequest');
     expect(http).toBeDefined();
+    if (!http) throw new Error('expected http node');
 
-    const simplified = simplifyNodeForLLM(http!);
+    const simplified = simplifyNodeForLLM(http);
     for (const prop of simplified.properties) {
       expect('routing' in prop ? prop.routing : undefined).toBeUndefined();
       expect('displayOptions' in prop ? prop.displayOptions : undefined).toBeUndefined();
@@ -97,8 +100,9 @@ describe('simplifyNodeForLLM', () => {
   test('preserves the node identity and usable fields', () => {
     const setNode = getNodeDefinition('workflows-nodes-base.set');
     expect(setNode).toBeDefined();
+    if (!setNode) throw new Error('expected set node');
 
-    const simplified = simplifyNodeForLLM(setNode!);
+    const simplified = simplifyNodeForLLM(setNode);
     expect(simplified.name).toBe(setNode?.name);
     expect(simplified.properties.length).toBeGreaterThan(0);
     expect(simplified.properties.every((p) => p.name && p.displayName && p.type)).toBe(true);

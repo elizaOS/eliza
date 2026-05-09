@@ -43,8 +43,9 @@ function createRouteResponse(): {
 }
 
 // Routes: [0]=GET /executions, [1]=GET /executions/:id
-const listHandler = executionRoutes[0].handler!;
-const getHandler = executionRoutes[1].handler!;
+const listHandler = executionRoutes[0].handler;
+const getHandler = executionRoutes[1].handler;
+if (!listHandler || !getHandler) throw new Error('expected execution route handlers');
 
 function runtimeWithService(serviceOverrides?: Record<string, unknown>) {
   const service = createMockService(serviceOverrides);

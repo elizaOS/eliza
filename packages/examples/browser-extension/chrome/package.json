@@ -22,6 +22,7 @@
     "uuid": "^14.0.0"
   },
   "devDependencies": {
+    "@types/node": "^25.0.3",
     "@types/chrome": "^0.1.33",
     "@types/uuid": "^11.0.0",
     "tsup": "^8.5.1",

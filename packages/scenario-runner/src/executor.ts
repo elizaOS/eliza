@@ -1197,7 +1197,7 @@ async function executeTickTurn(args: {
   );
   const result = await withTimeout(
     executeLifeOpsSchedulerTask(args.runtime, {
-      ...toRecord(options),
+      ...(toRecord(options) ?? {}),
       ...(now ? { now } : {}),
     }),
     typeof args.turn.timeoutMs === "number"

@@ -68,7 +68,8 @@ function isStdioMcpServerConfig(value: unknown): value is StdioMcpServerConfig {
     (value.args === undefined ||
       (Array.isArray(value.args) && value.args.every((arg) => typeof arg === "string"))) &&
     (value.env === undefined ||
-      (isRecord(value.env) && Object.values(value.env).every((entry) => typeof entry === "string"))) &&
+      (isRecord(value.env) &&
+        Object.values(value.env).every((entry) => typeof entry === "string"))) &&
     (value.cwd === undefined || typeof value.cwd === "string") &&
     (value.timeoutInMillis === undefined || typeof value.timeoutInMillis === "number")
   );

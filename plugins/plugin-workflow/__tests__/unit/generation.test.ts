@@ -372,8 +372,10 @@ describe('generateWorkflow', () => {
     await generateWorkflow(runtime, 'test', []);
 
     expect(callCount).toBe(2);
-    const retryArgs = useModel.mock.calls[1] as any[];
-    const retryParams = retryArgs[1] as { prompt: string };
+    const retryCall = useModel.mock.calls[1];
+    expect(retryCall).toBeDefined();
+    if (!retryCall) throw new Error('expected second useModel call');
+    const retryParams = retryCall[1] as { prompt: string };
     expect(retryParams.prompt).toContain('malformed');
     expect(retryParams.prompt).toContain('"nodes"');
     expect(retryParams.prompt).toContain('"connections"');
@@ -385,10 +387,18 @@ describe('generateWorkflow', () => {
 // ============================================================================
 
 describe('modifyWorkflow', () => {
-  const baseWorkflow = {
+  const baseWorkflow: WorkflowDefinition = {
     id: 'wf-1',
     name: 'Existing',
-    nodes: [{ name: 'A', type: 't', position: [0, 0] as [number, number] }],
+    nodes: [
+      {
+        name: 'A',
+        type: 't',
+        typeVersion: 1,
+        position: [0, 0],
+        parameters: {},
+      },
+    ],
     connections: {},
   };
 
@@ -409,7 +419,7 @@ describe('modifyWorkflow', () => {
     });
     const runtime = createMockRuntime({ useModel });
 
-    const result = await modifyWorkflow(runtime, baseWorkflow as any, 'tweak', []);
+    const result = await modifyWorkflow(runtime, baseWorkflow, 'tweak', []);
     expect(result.name).toBe('Modified');
     expect(result.id).toBe('wf-1');
     expect(callCount).toBe(2);

@@ -11,9 +11,7 @@
       "./node_modules/@types",
       "../app-core/node_modules/@types",
       "../ui/node_modules/@types",
-      "../../node_modules/@types",
-      "../../../node_modules/@types",
-      "../../../node_modules/.bun/node_modules/@types"
+      "../../node_modules/@types"
     ],
     "declaration": false,
     "allowImportingTsExtensions": true,

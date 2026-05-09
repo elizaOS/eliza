@@ -14,8 +14,8 @@ import type {
 	JSONSchema,
 	Memory,
 } from "../../../types/index.ts";
-import type { Plugin } from "../../../types/plugin.ts";
 import { MemoryType } from "../../../types/memory.ts";
+import type { Plugin } from "../../../types/plugin.ts";
 import { resolveStateDir } from "../../../utils/state-dir.ts";
 import {
 	formatTrajectoryForPrompt,

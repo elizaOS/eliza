@@ -311,16 +311,16 @@ async function tryRegisterCapacitorLoader(
     | { isNativePlatform?: () => boolean }
     | undefined;
   if (!cap?.isNativePlatform?.()) return false;
-	try {
-		const { registerCapacitorLlamaLoader } = await import(
-			"@elizaos/capacitor-llama"
-		);
-		registerCapacitorLlamaLoader(
-			runtime as unknown as Parameters<typeof registerCapacitorLlamaLoader>[0],
-		);
-		logger.info(
-			"[local-inference] Registered capacitor-llama loader for mobile on-device inference",
-		);
+  try {
+    const { registerCapacitorLlamaLoader } = await import(
+      "@elizaos/capacitor-llama"
+    );
+    registerCapacitorLlamaLoader(
+      runtime as unknown as Parameters<typeof registerCapacitorLlamaLoader>[0],
+    );
+    logger.info(
+      "[local-inference] Registered capacitor-llama loader for mobile on-device inference",
+    );
     return true;
   } catch (err) {
     logger.debug(

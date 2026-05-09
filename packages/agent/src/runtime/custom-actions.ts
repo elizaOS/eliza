@@ -264,10 +264,10 @@ function responseFromIncomingMessage(response: IncomingMessage): Response {
   }
 
   const status = response.statusCode ?? 500;
-	const body =
-		status === 204 || status === 205 || status === 304
-			? null
-			: (Readable.toWeb(response) as unknown as ReadableStream<Uint8Array>);
+  const body =
+    status === 204 || status === 205 || status === 304
+      ? null
+      : (Readable.toWeb(response) as unknown as ReadableStream<Uint8Array>);
 
   return new Response(body, {
     status,

@@ -185,9 +185,7 @@ export function validateNodeParameters(workflow: WorkflowDefinition): string[] {
         // clarification surfaces in plain-text contexts cleanly.
         const description = prop.description?.replace(/<[^>]*>/g, '').trim();
         const detail = description ? ` (${description})` : '';
-        warnings.push(
-          `Node "${node.name}": missing required parameter "${label}"${detail}`
-        );
+        warnings.push(`Node "${node.name}": missing required parameter "${label}"${detail}`);
       }
     }
   }

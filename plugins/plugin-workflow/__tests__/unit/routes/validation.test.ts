@@ -45,7 +45,8 @@ function createRouteResponse(): {
   return { res, getResult: () => ({ status, body }) };
 }
 
-const handler = validationRoutes[0].handler!;
+const handler = validationRoutes[0].handler;
+if (!handler) throw new Error('expected validation route handler');
 const runtime = createMockRuntime();
 
 describe('POST /workflows/validate', () => {

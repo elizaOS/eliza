@@ -322,8 +322,7 @@ function appendUserNote(draft: Record<string, unknown>, value: string): void {
   if (Array.isArray(meta.userNotes)) {
     notes = meta.userNotes as string[];
   } else {
-    notes =
-      meta.userNotes !== null && meta.userNotes !== undefined ? [String(meta.userNotes)] : [];
+    notes = meta.userNotes !== null && meta.userNotes !== undefined ? [String(meta.userNotes)] : [];
     meta.userNotes = notes;
   }
   notes.push(value);
@@ -386,7 +385,6 @@ export function applyResolutions(
         `setByDotPath failed for paramPath "${r.paramPath}"; recording "${r.value}" as a free-form note instead`
       );
       appendUserNote(draft, r.value);
-      continue;
     }
   }
   return { ok: true };

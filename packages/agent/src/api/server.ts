@@ -697,8 +697,7 @@ type OptionalTrainingConfigApi = {
   saveTrainingConfig: (config: OptionalTrainingConfig) => void;
 };
 
-const TRAINING_CONFIG_MODULE =
-  "@elizaos/app-training/core/training-config";
+const TRAINING_CONFIG_MODULE = "@elizaos/app-training/core/training-config";
 
 function defaultTrainingConfig(): OptionalTrainingConfig {
   return {

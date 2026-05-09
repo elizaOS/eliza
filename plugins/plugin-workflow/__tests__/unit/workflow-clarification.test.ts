@@ -5,6 +5,34 @@ import {
   setByDotPath,
 } from '../../src/lib/workflow-clarification';
 
+type ClarificationNode = {
+  name?: string;
+  id?: string;
+  parameters: Record<string, unknown>;
+};
+
+function nodesOf(obj: Record<string, unknown>): ClarificationNode[] {
+  const raw = obj.nodes;
+  return Array.isArray(raw) ? (raw as ClarificationNode[]) : [];
+}
+
+type DraftTest = Record<string, unknown> & {
+  nodes: ClarificationNode[];
+  connections?: Record<string, unknown>;
+  _meta?: { userNotes?: string[] };
+};
+
+function draftUserNotes(draft: Record<string, unknown>): string[] | undefined {
+  const meta = draft._meta;
+  if (!meta || typeof meta !== 'object') return undefined;
+  const candidate = meta as { userNotes?: unknown };
+  const notes = candidate.userNotes;
+  if (!Array.isArray(notes) || !notes.every((item): item is string => typeof item === 'string')) {
+    return undefined;
+  }
+  return notes;
+}
+
 describe('setByDotPath', () => {
   test('writes through a numeric array index (existing behavior)', () => {
     const obj: Record<string, unknown> = {
@@ -14,8 +42,8 @@ describe('setByDotPath', () => {
       ],
     };
     setByDotPath(obj, 'nodes[1].parameters.channelId', 'C-123');
-    expect((obj.nodes as any)[1].parameters.channelId).toBe('C-123');
-    expect((obj.nodes as any)[0].parameters).toEqual({});
+    expect(nodesOf(obj)[1].parameters.channelId).toBe('C-123');
+    expect(nodesOf(obj)[0].parameters).toEqual({});
   });
 
   test('resolves a string array segment by entry .name (workflow nodes)', () => {
@@ -26,8 +54,8 @@ describe('setByDotPath', () => {
       ],
     };
     setByDotPath(obj, 'nodes["Post to Slack"].parameters.channelId', 'C-42');
-    expect((obj.nodes as any)[1].parameters.channelId).toBe('C-42');
-    expect((obj.nodes as any)[0].parameters.path).toBe('/in');
+    expect(nodesOf(obj)[1].parameters.channelId).toBe('C-42');
+    expect(nodesOf(obj)[0].parameters.path).toBe('/in');
   });
 
   test('resolves a string array segment by entry .id when name does not match', () => {
@@ -35,22 +63,23 @@ describe('setByDotPath', () => {
       nodes: [{ id: 'uuid-slack', name: 'Post to Slack', parameters: {} }],
     };
     setByDotPath(obj, 'nodes["uuid-slack"].parameters.channelId', 'C-99');
-    expect((obj.nodes as any)[0].parameters.channelId).toBe('C-99');
+    expect(nodesOf(obj)[0].parameters.channelId).toBe('C-99');
   });
 
   test('throws when string segment matches no element by name or id', () => {
     const obj: Record<string, unknown> = {
       nodes: [{ name: 'Webhook', parameters: {} }],
     };
-    expect(() =>
-      setByDotPath(obj, 'nodes["Placeholder Notification"].parameters.x', 'y')
-    ).toThrow(/did not match any element by name\/id/);
+    expect(() => setByDotPath(obj, 'nodes["Placeholder Notification"].parameters.x', 'y')).toThrow(
+      /did not match any element by name\/id/
+    );
   });
 
   test('dot identifiers still work end-to-end', () => {
     const obj: Record<string, unknown> = { a: { b: { c: 1 } } };
     setByDotPath(obj, 'a.b.c', 42);
-    expect((obj.a as any).b.c).toBe(42);
+    const a = obj.a as { b: { c: number } };
+    expect(a.b.c).toBe(42);
   });
 
   test('refuses to overwrite an object with a non-object value (object case)', () => {
@@ -64,7 +93,7 @@ describe('setByDotPath', () => {
     expect(() => setByDotPath(obj, 'nodes["Trigger"].parameters', 'discord')).toThrow(
       /refusing to overwrite with non-object value/
     );
-    expect((obj.nodes as any)[0].parameters).toEqual({ existing: 'field' });
+    expect(nodesOf(obj)[0].parameters).toEqual({ existing: 'field' });
   });
 
   test('refuses to overwrite an object inside an array (array case)', () => {
@@ -81,7 +110,7 @@ describe('setByDotPath', () => {
       nodes: [{ name: 'T', parameters: { hour: 9 } }],
     };
     setByDotPath(obj, 'nodes["T"].parameters.hour', 10);
-    expect((obj.nodes as any)[0].parameters.hour).toBe(10);
+    expect(nodesOf(obj)[0].parameters.hour).toBe(10);
   });
 
   test('allows replacing an object with another object', () => {
@@ -89,13 +118,13 @@ describe('setByDotPath', () => {
       nodes: [{ name: 'T', parameters: { old: 'x' } }],
     };
     setByDotPath(obj, 'nodes["T"].parameters', { new: 'y' });
-    expect((obj.nodes as any)[0].parameters).toEqual({ new: 'y' });
+    expect(nodesOf(obj)[0].parameters).toEqual({ new: 'y' });
   });
 });
 
 describe('applyResolutions', () => {
   test('applies a name-keyed paramPath to the matching node', () => {
-    const draft: Record<string, unknown> = {
+    const draft: DraftTest = {
       nodes: [
         { name: 'Hourly Trigger', parameters: { rule: 'everyHour' } },
         { name: 'Notify', parameters: {} },
@@ -105,22 +134,20 @@ describe('applyResolutions', () => {
       { paramPath: 'nodes["Notify"].parameters.channelId', value: 'discord-channel-1' },
     ]);
     expect(result.ok).toBe(true);
-    expect((draft.nodes as any)[1].parameters.channelId).toBe('discord-channel-1');
+    expect(draft.nodes[1].parameters.channelId).toBe('discord-channel-1');
   });
 
   test('falls back to userNotes when paramPath references a non-existent node', () => {
-    const draft: Record<string, unknown> = {
+    const draft: DraftTest = {
       nodes: [{ name: 'Hourly Trigger', parameters: {} }],
     };
     const result = applyResolutions(draft, [
       { paramPath: 'nodes["Placeholder Notification"].parameters', value: 'discord' },
     ]);
     expect(result.ok).toBe(true);
-    const meta = (draft as any)._meta;
-    expect(meta).toBeDefined();
-    expect(meta.userNotes).toEqual(['discord']);
-    expect((draft.nodes as any).length).toBe(1);
-    expect((draft.nodes as any)[0].name).toBe('Hourly Trigger');
+    expect(draftUserNotes(draft)).toEqual(['discord']);
+    expect(draft.nodes.length).toBe(1);
+    expect(draft.nodes[0].name).toBe('Hourly Trigger');
   });
 
   test('falls back to userNotes when paramPath points at a parent object scope', () => {
@@ -128,37 +155,37 @@ describe('applyResolutions', () => {
     // but paramPath was `nodes["Trigger"].parameters` — the parameters object
     // itself, not a leaf field. Old behavior overwrote parameters with the
     // string "discord" and broke deploy.
-    const draft: Record<string, unknown> = {
+    const draft: DraftTest = {
       nodes: [{ name: 'Hourly Trigger', parameters: { mode: 'everyHour' } }],
     };
     const result = applyResolutions(draft, [
       { paramPath: 'nodes["Hourly Trigger"].parameters', value: 'discord' },
     ]);
     expect(result.ok).toBe(true);
-    expect((draft as any)._meta.userNotes).toEqual(['discord']);
-    expect((draft.nodes as any)[0].parameters).toEqual({ mode: 'everyHour' });
+    expect(draftUserNotes(draft)).toEqual(['discord']);
+    expect(draft.nodes[0].parameters).toEqual({ mode: 'everyHour' });
   });
 
   test('falls back to userNotes when paramPath descends into a non-object', () => {
-    const draft: Record<string, unknown> = {
+    const draft = {
       nodes: [{ name: 'X', parameters: 'this is a string not an object' }],
-    };
+    } as Record<string, unknown>;
     const result = applyResolutions(draft, [
       { paramPath: 'nodes["X"].parameters.channelId', value: 'C-1' },
     ]);
     expect(result.ok).toBe(true);
-    expect((draft as any)._meta.userNotes).toEqual(['C-1']);
+    expect(draftUserNotes(draft)).toEqual(['C-1']);
   });
 
   test('empty paramPath stores answer as userNote (existing behavior)', () => {
-    const draft: Record<string, unknown> = { nodes: [], connections: {} };
+    const draft: DraftTest = { nodes: [], connections: {} };
     const result = applyResolutions(draft, [{ paramPath: '', value: 'use email' }]);
     expect(result.ok).toBe(true);
-    expect((draft as any)._meta.userNotes).toEqual(['use email']);
+    expect(draftUserNotes(draft)).toEqual(['use email']);
   });
 
   test('multiple resolutions can mix successful path writes and userNote fallbacks', () => {
-    const draft: Record<string, unknown> = {
+    const draft: DraftTest = {
       nodes: [{ name: 'Real Node', parameters: {} }],
     };
     const result = applyResolutions(draft, [
@@ -167,8 +194,8 @@ describe('applyResolutions', () => {
       { paramPath: '', value: 'free-form note' },
     ]);
     expect(result.ok).toBe(true);
-    expect((draft.nodes as any)[0].parameters.target).toBe('ok');
-    expect((draft as any)._meta.userNotes).toEqual(['fallback', 'free-form note']);
+    expect(draft.nodes[0].parameters.target).toBe('ok');
+    expect(draftUserNotes(draft)).toEqual(['fallback', 'free-form note']);
   });
 
   test('non-string value still rejects the batch (validation, not path failure)', () => {
@@ -191,7 +218,7 @@ describe('applyResolutions', () => {
       expect(result.error).toContain('structurally invalid');
       expect(result.paramPath).toBe('nodes["Unclosed');
     }
-    expect((draft as any)._meta).toBeUndefined();
+    expect(draft._meta).toBeUndefined();
   });
 });
 
