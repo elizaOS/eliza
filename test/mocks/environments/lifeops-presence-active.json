@@ -1,21 +1,21 @@
 {
-  "uuid": "00000000-0000-4000-8000-lifeopssamantha",
+  "uuid": "00000000-0000-4000-8000-lifeopspresact",
   "lastMigration": 33,
-  "name": "LifeOps Samantha Scenarios",
+  "name": "LifeOps Presence Active Scenarios",
   "endpointPrefix": "",
   "latency": 0,
   "port": 3010,
   "hostname": "127.0.0.1",
   "routes": [
     {
-      "uuid": "00000001-0000-4000-8000-lifeopssamantha",
+      "uuid": "00000001-0000-4000-8000-lifeopspresact",
       "type": "http",
       "documentation": "Scenario catalog summaries",
       "method": "get",
-      "endpoint": "__mock/lifeops/samantha/scenarios",
+      "endpoint": "__mock/lifeops/presence-active/scenarios",
       "responses": [
         {
-          "uuid": "00000002-0000-4000-8000-lifeopssamantha",
+          "uuid": "00000002-0000-4000-8000-lifeopspresact",
           "body": "{\"version\":\"2026-05-03\",\"scenarioCount\":7,\"scenarios\":[{\"id\":\"move-01-intake-voice-affect\",\"move\":1,\"useCases\":[\"common\",\"edge\"]},{\"id\":\"move-02-identity-and-explanation\",\"move\":2,\"useCases\":[\"common\",\"edge\"]},{\"id\":\"move-03-permissioned-context-scan\",\"move\":3,\"useCases\":[\"organizational\",\"multi-hop\",\"edge\"]},{\"id\":\"move-04-email-bulk-curation\",\"move\":4,\"useCases\":[\"common\",\"organizational\",\"edge\"]},{\"id\":\"move-05-contact-resolution\",\"move\":5,\"useCases\":[\"common\",\"organizational\",\"edge\"]},{\"id\":\"move-06-document-review-preserve-voice\",\"move\":6,\"useCases\":[\"common\",\"edge\"]},{\"id\":\"move-07-proactive-multihop-and-long-running\",\"move\":7,\"useCases\":[\"common\",\"multi-hop\",\"organizational\",\"long-running\",\"edge\"]}]}",
           "latency": 0,
           "statusCode": 200,
@@ -39,14 +39,14 @@
       "streamingInterval": 0
     },
     {
-      "uuid": "00000003-0000-4000-8000-lifeopssamantha",
+      "uuid": "00000003-0000-4000-8000-lifeopspresact",
       "type": "http",
       "documentation": "Onboarding affect endpoint mock",
       "method": "post",
       "endpoint": "api/lifeops/intake/utterance",
       "responses": [
         {
-          "uuid": "00000004-0000-4000-8000-lifeopssamantha",
+          "uuid": "00000004-0000-4000-8000-lifeopspresact",
           "body": "{\"affect\":{\"observation\":\"hesitation\",\"confidence\":0.79,\"basis\":[\"pause\",\"filler\",\"rising_intonation\"]},\"persistence\":{\"allowed\":false,\"reason\":\"ephemeral affect only\"},\"clarifyingQuestion\":\"I may be hearing some hesitation. Would you agree with that?\",\"sourceText\":\"{{body 'text'}}\"}",
           "latency": 0,
           "statusCode": 200,
@@ -70,14 +70,14 @@
       "streamingInterval": 0
     },
     {
-      "uuid": "0000001b-0000-4000-8000-lifeopssamantha",
+      "uuid": "0000001b-0000-4000-8000-lifeopspresact",
       "type": "http",
       "documentation": "User-approved assistant preference memory mock",
       "method": "post",
       "endpoint": "api/lifeops/memory/preferences",
       "responses": [
         {
-          "uuid": "0000001c-0000-4000-8000-lifeopssamantha",
+          "uuid": "0000001c-0000-4000-8000-lifeopspresact",
           "body": "{\"id\":\"pref-{{faker 'string.uuid'}}\",\"key\":\"{{body 'key'}}\",\"value\":\"{{body 'value'}}\",\"source\":\"{{body 'source'}}\",\"createdAt\":\"2026-05-03T12:00:00.000Z\",\"mutable\":true}",
           "latency": 0,
           "statusCode": 201,
@@ -101,14 +101,14 @@
       "streamingInterval": 0
     },
     {
-      "uuid": "00000005-0000-4000-8000-lifeopssamantha",
+      "uuid": "00000005-0000-4000-8000-lifeopspresact",
       "type": "http",
       "documentation": "Permissioned organization scan mock",
       "method": "post",
       "endpoint": "api/lifeops/context/scan",
       "responses": [
         {
-          "uuid": "00000006-0000-4000-8000-lifeopssamantha",
+          "uuid": "00000006-0000-4000-8000-lifeopspresact",
           "body": "{\"scanId\":\"scan-{{faker 'string.uuid'}}\",\"scope\":\"{{body 'scope'}}\",\"buckets\":{\"urgent\":[{\"source\":\"gmail\",\"id\":\"msg-unresponded-inbound\",\"reason\":\"direct request with deadline\"},{\"source\":\"github\",\"id\":\"thread-review-requested\",\"reason\":\"open LifeOps connector mock review\"}],\"soon\":[{\"source\":\"calendar\",\"id\":\"sim-cal-investor-diligence\",\"reason\":\"meeting in four hours\"}],\"waiting\":[{\"source\":\"gmail\",\"id\":\"thr-unresponded\",\"reason\":\"waiting on signed packet\"}],\"ignore\":[{\"source\":\"gmail\",\"id\":\"msg-newsletter\",\"reason\":\"bulk newsletter\"}]},\"requiresApproval\":[\"bulk archive\",\"external send\"]}",
           "latency": 0,
           "statusCode": 200,
@@ -132,14 +132,14 @@
       "streamingInterval": 0
     },
     {
-      "uuid": "00000007-0000-4000-8000-lifeopssamantha",
+      "uuid": "00000007-0000-4000-8000-lifeopspresact",
       "type": "http",
       "documentation": "Bulk email curation preview mock",
       "method": "post",
       "endpoint": "api/lifeops/email/curation-preview",
       "responses": [
         {
-          "uuid": "00000008-0000-4000-8000-lifeopssamantha",
+          "uuid": "00000008-0000-4000-8000-lifeopspresact",
           "body": "{\"previewId\":\"curation-{{faker 'string.uuid'}}\",\"criteria\":{\"keep\":[\"specific voice\",\"direct relationship context\",\"explicit user value\"],\"archive\":[\"bulk sender\",\"stale status\",\"no direct ask\"],\"delete\":[\"approved spam only\"]},\"counts\":{\"sampled\":42,\"keep\":6,\"archive\":35,\"deleteNeedsApproval\":1},\"examples\":{\"keep\":[{\"id\":\"msg-sarah\",\"reason\":\"personal creative voice\"}],\"archive\":[{\"id\":\"msg-newsletter\",\"reason\":\"bulk digest\"}],\"needsReview\":[{\"id\":\"msg-home-lease\",\"reason\":\"legal or finance adjacent\"}]},\"undoPlan\":\"restore removed labels from recorded history ids\"}",
           "latency": 0,
           "statusCode": 200,
@@ -163,14 +163,14 @@
       "streamingInterval": 0
     },
     {
-      "uuid": "00000009-0000-4000-8000-lifeopssamantha",
+      "uuid": "00000009-0000-4000-8000-lifeopspresact",
       "type": "http",
       "documentation": "Contact resolution mock",
       "method": "post",
       "endpoint": "api/lifeops/contacts/resolve",
       "responses": [
         {
-          "uuid": "0000000a-0000-4000-8000-lifeopssamantha",
+          "uuid": "0000000a-0000-4000-8000-lifeopspresact",
           "body": "{\"resolutionId\":\"contact-{{faker 'string.uuid'}}\",\"query\":\"{{body 'query'}}\",\"candidates\":[{\"id\":\"contact-alice-nguyen-work\",\"confidence\":0.86,\"evidence\":[\"email mentions Atlas\",\"iMessage mentions launch checklist\"],\"safeToSend\":true},{\"id\":\"contact-alice-n-family\",\"confidence\":0.41,\"evidence\":[\"same first name only\"],\"safeToSend\":false}],\"decision\":\"ask_if_message_contains_private_content\",\"preferredChannel\":{\"provider\":\"signal\",\"confidence\":0.74,\"source\":\"recent explicit mention\"}}",
           "latency": 0,
           "statusCode": 200,
@@ -194,14 +194,14 @@
       "streamingInterval": 0
     },
     {
-      "uuid": "0000000b-0000-4000-8000-lifeopssamantha",
+      "uuid": "0000000b-0000-4000-8000-lifeopspresact",
       "type": "http",
       "documentation": "Document proofread preserving voice mock",
       "method": "post",
       "endpoint": "api/lifeops/documents/proofread",
       "responses": [
         {
-          "uuid": "0000000c-0000-4000-8000-lifeopssamantha",
+          "uuid": "0000000c-0000-4000-8000-lifeopspresact",
           "body": "{\"reviewId\":\"proofread-{{faker 'string.uuid'}}\",\"mechanicalCorrections\":[{\"from\":\"its\",\"to\":\"it's\",\"reason\":\"contraction\"}],\"stylePreserved\":[\"comic intensity\",\"specific affectionate detail\"],\"styleRisk\":[{\"segment\":\"fight its face\",\"risk\":\"could flatten the author's voice if rewritten\"}],\"recommendedAction\":\"create_draft_after_user_review\"}",
           "latency": 0,
           "statusCode": 200,
@@ -225,15 +225,15 @@
       "streamingInterval": 0
     },
     {
-      "uuid": "0000000d-0000-4000-8000-lifeopssamantha",
+      "uuid": "0000000d-0000-4000-8000-lifeopspresact",
       "type": "http",
       "documentation": "Long-running multi-hop task create mock",
       "method": "post",
-      "endpoint": "__mock/lifeops/samantha/tasks",
+      "endpoint": "__mock/lifeops/presence-active/tasks",
       "responses": [
         {
-          "uuid": "0000000e-0000-4000-8000-lifeopssamantha",
-          "body": "{\"task\":{\"taskId\":\"task-vendor-packet-watch-001\",\"scenarioId\":\"{{body 'scenarioId'}}\",\"status\":\"queued\",\"step\":\"Waiting for first Gmail history check.\",\"percentComplete\":0,\"nextPollMs\":900000},\"taskId\":\"task-vendor-packet-watch-001\",\"pollUrl\":\"/__mock/lifeops/samantha/tasks/task-vendor-packet-watch-001\"}",
+          "uuid": "0000000e-0000-4000-8000-lifeopspresact",
+          "body": "{\"task\":{\"taskId\":\"task-vendor-packet-watch-001\",\"scenarioId\":\"{{body 'scenarioId'}}\",\"status\":\"queued\",\"step\":\"Waiting for first Gmail history check.\",\"percentComplete\":0,\"nextPollMs\":900000},\"taskId\":\"task-vendor-packet-watch-001\",\"pollUrl\":\"/__mock/lifeops/presence-active/tasks/task-vendor-packet-watch-001\"}",
           "latency": 0,
           "statusCode": 202,
           "label": "Accepted",
@@ -256,14 +256,14 @@
       "streamingInterval": 0
     },
     {
-      "uuid": "0000000f-0000-4000-8000-lifeopssamantha",
+      "uuid": "0000000f-0000-4000-8000-lifeopspresact",
       "type": "http",
       "documentation": "Long-running multi-hop task status mock",
       "method": "get",
-      "endpoint": "__mock/lifeops/samantha/tasks/:id",
+      "endpoint": "__mock/lifeops/presence-active/tasks/:id",
       "responses": [
         {
-          "uuid": "00000010-0000-4000-8000-lifeopssamantha",
+          "uuid": "00000010-0000-4000-8000-lifeopspresact",
           "body": "{\"task\":{\"taskId\":\"{{urlParam 'id'}}\",\"scenarioId\":\"move-07-proactive-multihop-and-long-running\",\"status\":\"running\",\"step\":\"Checked Gmail and GitHub; packet is still missing.\",\"percentComplete\":45,\"nextPollMs\":900000,\"idempotencyKey\":\"vendor-packet-priya-update\"}}",
           "latency": 0,
           "statusCode": 200,
@@ -287,14 +287,14 @@
       "streamingInterval": 0
     },
     {
-      "uuid": "00000011-0000-4000-8000-lifeopssamantha",
+      "uuid": "00000011-0000-4000-8000-lifeopspresact",
       "type": "http",
       "documentation": "Long-running multi-hop task advance mock",
       "method": "post",
-      "endpoint": "__mock/lifeops/samantha/tasks/:id/advance",
+      "endpoint": "__mock/lifeops/presence-active/tasks/:id/advance",
       "responses": [
         {
-          "uuid": "00000012-0000-4000-8000-lifeopssamantha",
+          "uuid": "00000012-0000-4000-8000-lifeopspresact",
           "body": "{\"task\":{\"taskId\":\"{{urlParam 'id'}}\",\"scenarioId\":\"move-07-proactive-multihop-and-long-running\",\"status\":\"waiting_for_input\",\"step\":\"Two possible packet threads were found; user confirmation is required.\",\"percentComplete\":70,\"nextPollMs\":0}}",
           "latency": 0,
           "statusCode": 200,
@@ -318,14 +318,14 @@
       "streamingInterval": 0
     },
     {
-      "uuid": "00000013-0000-4000-8000-lifeopssamantha",
+      "uuid": "00000013-0000-4000-8000-lifeopspresact",
       "type": "http",
       "documentation": "Provider unavailable edge case",
       "method": "post",
       "endpoint": "api/lifeops/context/scan/provider-down",
       "responses": [
         {
-          "uuid": "00000014-0000-4000-8000-lifeopssamantha",
+          "uuid": "00000014-0000-4000-8000-lifeopspresact",
           "body": "{\"error\":\"provider_unavailable\",\"provider\":\"gmail\",\"retryAfterMs\":30000,\"partialResults\":{\"github\":\"available\",\"browser-workspace\":\"available\"}}",
           "latency": 0,
           "statusCode": 503,
@@ -349,14 +349,14 @@
       "streamingInterval": 0
     },
     {
-      "uuid": "00000015-0000-4000-8000-lifeopssamantha",
+      "uuid": "00000015-0000-4000-8000-lifeopspresact",
       "type": "http",
       "documentation": "Ambiguous contact edge case",
       "method": "post",
       "endpoint": "api/lifeops/contacts/resolve/ambiguous",
       "responses": [
         {
-          "uuid": "00000016-0000-4000-8000-lifeopssamantha",
+          "uuid": "00000016-0000-4000-8000-lifeopspresact",
           "body": "{\"error\":\"ambiguous_recipient\",\"candidates\":[{\"id\":\"contact-alice-nguyen-work\",\"confidence\":0.56},{\"id\":\"contact-alice-n-family\",\"confidence\":0.52}],\"safeToSend\":false,\"requiredInput\":\"which Alice?\"}",
           "latency": 0,
           "statusCode": 409,
@@ -380,14 +380,14 @@
       "streamingInterval": 0
     },
     {
-      "uuid": "00000017-0000-4000-8000-lifeopssamantha",
+      "uuid": "00000017-0000-4000-8000-lifeopspresact",
       "type": "http",
       "documentation": "Too broad destructive email request edge case",
       "method": "post",
       "endpoint": "api/lifeops/email/curation-preview/too-broad",
       "responses": [
         {
-          "uuid": "00000018-0000-4000-8000-lifeopssamantha",
+          "uuid": "00000018-0000-4000-8000-lifeopspresact",
           "body": "{\"error\":\"bulk_request_too_broad\",\"maxAllowed\":500,\"matched\":12450,\"safeDefault\":\"preview_only\",\"requiredInput\":\"narrow by sender, date, label, or project\"}",
           "latency": 0,
           "statusCode": 400,
@@ -411,14 +411,14 @@
       "streamingInterval": 0
     },
     {
-      "uuid": "00000019-0000-4000-8000-lifeopssamantha",
+      "uuid": "00000019-0000-4000-8000-lifeopspresact",
       "type": "http",
       "documentation": "Rate-limited long-running task edge case",
       "method": "get",
-      "endpoint": "__mock/lifeops/samantha/tasks/:id/rate-limited",
+      "endpoint": "__mock/lifeops/presence-active/tasks/:id/rate-limited",
       "responses": [
         {
-          "uuid": "0000001a-0000-4000-8000-lifeopssamantha",
+          "uuid": "0000001a-0000-4000-8000-lifeopspresact",
           "body": "{\"error\":\"rate_limited\",\"provider\":\"gmail\",\"retryAfterMs\":60000,\"taskId\":\"{{urlParam 'id'}}\"}",
           "latency": 0,
           "statusCode": 429,

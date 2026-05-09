@@ -1,11 +1,11 @@
-export type LifeOpsSamanthaUseCase =
+export type LifeOpsPresenceActiveUseCase =
   | "common"
   | "edge"
   | "organizational"
   | "multi-hop"
   | "long-running";
 
-export type LifeOpsSamanthaProvider =
+export type LifeOpsPresenceActiveProvider =
   | "lifeops-local"
   | "google"
   | "github"
@@ -18,26 +18,26 @@ export type LifeOpsSamanthaProvider =
   | "calendly";
 
 type JsonPrimitive = string | number | boolean | null;
-export type LifeOpsSamanthaJson =
+export type LifeOpsPresenceActiveJson =
   | JsonPrimitive
-  | LifeOpsSamanthaJson[]
-  | { [key: string]: LifeOpsSamanthaJson };
+  | LifeOpsPresenceActiveJson[]
+  | { [key: string]: LifeOpsPresenceActiveJson };
 
-export interface LifeOpsSamanthaApiExample {
+export interface LifeOpsPresenceActiveApiExample {
   name: string;
-  provider: LifeOpsSamanthaProvider;
+  provider: LifeOpsPresenceActiveProvider;
   method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   path: string;
   query?: string;
-  requestBody?: LifeOpsSamanthaJson;
+  requestBody?: LifeOpsPresenceActiveJson;
   expectedStatus: number;
   expectedLedgerAction?: string;
   responseShape: string[];
 }
 
-export interface LifeOpsSamanthaMockRecord {
+export interface LifeOpsPresenceActiveMockRecord {
   id: string;
-  provider: LifeOpsSamanthaProvider;
+  provider: LifeOpsPresenceActiveProvider;
   kind:
     | "utterance"
     | "memory"
@@ -51,26 +51,26 @@ export interface LifeOpsSamanthaMockRecord {
     | "browser-page"
     | "repository";
   title: string;
-  payload: Record<string, LifeOpsSamanthaJson>;
+  payload: Record<string, LifeOpsPresenceActiveJson>;
 }
 
-export interface LifeOpsSamanthaScenario {
+export interface LifeOpsPresenceActiveScenario {
   id: string;
   move: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   title: string;
   sceneInteraction: string;
-  useCases: LifeOpsSamanthaUseCase[];
+  useCases: LifeOpsPresenceActiveUseCase[];
   userRequest: string;
-  providers: LifeOpsSamanthaProvider[];
-  mockRecords: LifeOpsSamanthaMockRecord[];
-  apiExamples: LifeOpsSamanthaApiExample[];
+  providers: LifeOpsPresenceActiveProvider[];
+  mockRecords: LifeOpsPresenceActiveMockRecord[];
+  apiExamples: LifeOpsPresenceActiveApiExample[];
   expectedWorkflow: string[];
   expectedAssertions: string[];
   safetyGates: string[];
   edgeCases: string[];
 }
 
-export interface LifeOpsSamanthaTaskSnapshot {
+export interface LifeOpsPresenceActiveTaskSnapshot {
   taskId: string;
   scenarioId: string;
   status: "queued" | "running" | "waiting_for_input" | "completed";
@@ -79,9 +79,9 @@ export interface LifeOpsSamanthaTaskSnapshot {
   nextPollMs: number;
 }
 
-export const LIFEOPS_SAMANTHA_FIXTURE_VERSION = "2026-05-03" as const;
+export const LIFEOPS_PRESENCE_ACTIVE_FIXTURE_VERSION = "2026-05-03" as const;
 
-export const LIFEOPS_SAMANTHA_SUPPORTED_PROVIDERS = [
+export const LIFEOPS_PRESENCE_ACTIVE_SUPPORTED_PROVIDERS = [
   "lifeops-local",
   "google",
   "github",
@@ -92,9 +92,9 @@ export const LIFEOPS_SAMANTHA_SUPPORTED_PROVIDERS = [
   "x-twitter",
   "twilio",
   "calendly",
-] as const satisfies readonly LifeOpsSamanthaProvider[];
+] as const satisfies readonly LifeOpsPresenceActiveProvider[];
 
-export const LIFEOPS_SAMANTHA_SCENARIOS: readonly LifeOpsSamanthaScenario[] = [
+export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveScenario[] = [
   {
     id: "move-01-intake-voice-affect",
     move: 1,
@@ -812,7 +812,7 @@ export const LIFEOPS_SAMANTHA_SCENARIOS: readonly LifeOpsSamanthaScenario[] = [
   },
 ];
 
-export const LIFEOPS_SAMANTHA_TASK_SNAPSHOTS: readonly LifeOpsSamanthaTaskSnapshot[] =
+export const LIFEOPS_PRESENCE_ACTIVE_TASK_SNAPSHOTS: readonly LifeOpsPresenceActiveTaskSnapshot[] =
   [
     {
       taskId: "task-vendor-packet-watch-001",
@@ -848,16 +848,16 @@ export const LIFEOPS_SAMANTHA_TASK_SNAPSHOTS: readonly LifeOpsSamanthaTaskSnapsh
     },
   ];
 
-export const LIFEOPS_SAMANTHA_FIXTURE_CATALOG = {
-  version: LIFEOPS_SAMANTHA_FIXTURE_VERSION,
-  scenarioCount: LIFEOPS_SAMANTHA_SCENARIOS.length,
-  providers: LIFEOPS_SAMANTHA_SUPPORTED_PROVIDERS,
-  scenarios: LIFEOPS_SAMANTHA_SCENARIOS,
-  taskSnapshots: LIFEOPS_SAMANTHA_TASK_SNAPSHOTS,
+export const LIFEOPS_PRESENCE_ACTIVE_FIXTURE_CATALOG = {
+  version: LIFEOPS_PRESENCE_ACTIVE_FIXTURE_VERSION,
+  scenarioCount: LIFEOPS_PRESENCE_ACTIVE_SCENARIOS.length,
+  providers: LIFEOPS_PRESENCE_ACTIVE_SUPPORTED_PROVIDERS,
+  scenarios: LIFEOPS_PRESENCE_ACTIVE_SCENARIOS,
+  taskSnapshots: LIFEOPS_PRESENCE_ACTIVE_TASK_SNAPSHOTS,
 } as const;
 
-export function lifeOpsSamanthaScenarioSummaries() {
-  return LIFEOPS_SAMANTHA_SCENARIOS.map((scenario) => ({
+export function lifeOpsPresenceActiveScenarioSummaries() {
+  return LIFEOPS_PRESENCE_ACTIVE_SCENARIOS.map((scenario) => ({
     id: scenario.id,
     move: scenario.move,
     title: scenario.title,
@@ -868,12 +868,12 @@ export function lifeOpsSamanthaScenarioSummaries() {
   }));
 }
 
-export function findLifeOpsSamanthaScenario(id: string) {
-  return LIFEOPS_SAMANTHA_SCENARIOS.find((scenario) => scenario.id === id);
+export function findLifeOpsPresenceActiveScenario(id: string) {
+  return LIFEOPS_PRESENCE_ACTIVE_SCENARIOS.find((scenario) => scenario.id === id);
 }
 
-export function lifeOpsSamanthaTaskSnapshots(scenarioId: string) {
-  return LIFEOPS_SAMANTHA_TASK_SNAPSHOTS.filter(
+export function lifeOpsPresenceActiveTaskSnapshots(scenarioId: string) {
+  return LIFEOPS_PRESENCE_ACTIVE_TASK_SNAPSHOTS.filter(
     (snapshot) => snapshot.scenarioId === scenarioId,
   );
 }
