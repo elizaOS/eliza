@@ -40,8 +40,15 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": ["text-to-speech"]
+    }
+  },
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "node-edge-tts": "^1.0.7"

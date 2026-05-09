@@ -1077,6 +1077,28 @@ function createCodeNode(): INodeType {
   };
 }
 
+/**
+ * n8n compatibility shim. Upstream n8n workflows reference nodes via
+ *   n8n-nodes-base.*
+ *   @n8n/n8n-nodes-langchain.*
+ *   @elizaos/n8n-nodes-agent.*
+ * Our embedded registry registers them under matching `workflow*` prefixes.
+ * Each node is registered under BOTH its canonical and legacy n8n alias so
+ * upstream workflow JSON loads as-is. Disk format is never rewritten —
+ * workflows remain portable back to upstream n8n.
+ */
+const N8N_PREFIX_MAP: Array<readonly [string, string]> = [
+  ['workflows-nodes-base.', 'n8n-nodes-base.'],
+  ['@workflow/workflow-nodes-langchain.', '@n8n/n8n-nodes-langchain.'],
+  ['@elizaos/workflow-nodes-agent.', '@elizaos/n8n-nodes-agent.'],
+];
+function legacyN8nAlias(canonical: string): string | null {
+  for (const [from, to] of N8N_PREFIX_MAP) {
+    if (canonical.startsWith(from)) return to + canonical.slice(from.length);
+  }
+  return null;
+}
+
 class EmbeddedNodeTypes implements INodeTypes {
   private readonly nodes = new Map<string, INodeType>();
 
@@ -1100,7 +1122,10 @@ class EmbeddedNodeTypes implements INodeTypes {
       createItemListsNode(),
       createCodeNode(),
     ]) {
-      this.nodes.set(node.description.name, node);
+      const canonical = node.description.name;
+      this.nodes.set(canonical, node);
+      const alias = legacyN8nAlias(canonical);
+      if (alias) this.nodes.set(alias, node);
     }
   }
 

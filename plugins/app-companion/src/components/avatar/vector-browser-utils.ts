@@ -1,3 +1,9 @@
+export type {
+  MemoryRecord,
+  VectorGraph2DBounds,
+  VectorGraph2DLayout,
+  ViewMode,
+} from "@elizaos/ui";
 export {
   buildVectorGraph2DLayout,
   DIM_COLUMNS,
@@ -11,10 +17,4 @@ export {
   toVectorGraph2DScreenX,
   toVectorGraph2DScreenY,
   VECTOR_GRAPH_2D_PALETTE,
-} from "@elizaos/ui";
-export type {
-  MemoryRecord,
-  VectorGraph2DBounds,
-  VectorGraph2DLayout,
-  ViewMode,
 } from "@elizaos/ui";

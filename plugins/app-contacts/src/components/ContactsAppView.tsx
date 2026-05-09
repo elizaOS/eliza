@@ -12,12 +12,12 @@
  * an existing row.
  */
 
-import type { OverlayAppContext } from "@elizaos/ui";
 import {
   type ContactSummary,
   Contacts,
   type CreateContactOptions,
 } from "@elizaos/capacitor-contacts";
+import type { OverlayAppContext } from "@elizaos/ui";
 import { Button, Input } from "@elizaos/ui";
 import {
   ArrowLeft,

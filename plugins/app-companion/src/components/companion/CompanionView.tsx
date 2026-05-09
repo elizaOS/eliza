@@ -1,10 +1,15 @@
-import { ChatModalView, useApp, useRenderGuard } from "@elizaos/ui";
 import { PtyConsoleSidePanel } from "@elizaos/app-task-coordinator";
 // Static import: CharacterEditor is statically re-exported by app-core's
 // browser entry, so the previous lazy() was eagerly merged back into the
 // main chunk. Drop the wrapper to silence the dynamic↔static collision
 // warning and remove the unnecessary Suspense boundary overhead.
-import { CharacterEditor, usePtySessions } from "@elizaos/ui";
+import {
+  CharacterEditor,
+  ChatModalView,
+  useApp,
+  usePtySessions,
+  useRenderGuard,
+} from "@elizaos/ui";
 import {
   memo,
   Suspense,

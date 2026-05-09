@@ -20,8 +20,15 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": ["coding-tools"]
+    }
+  },
   "keywords": [
     "eliza",
     "plugin",
