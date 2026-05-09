@@ -174,8 +174,18 @@ class BenchmarkRunner:
         self.tool_calls.append(result)
         return result["result"]
 
-    def run_scenario(self, scenario_name: str) -> dict:
-        """Run a single scenario with actual code execution."""
+    def run_scenario(
+        self,
+        scenario_name: str,
+        sandbox: Optional["SandboxExecutor"] = None,
+    ) -> dict:
+        """Run a single scenario with actual code execution.
+
+        If ``sandbox`` is supplied the scenario runs inside that pre-existing
+        sandbox so prerequisite scenarios can leave files for downstream
+        scenarios. Otherwise a fresh sandbox is created for this scenario
+        only and torn down on exit.
+        """
         print(f"\n{'='*60}")
         print(f"SCENARIO: {scenario_name} | MODEL: {self.model}")
         print(f"{'='*60}")
@@ -200,7 +210,11 @@ class BenchmarkRunner:
 
         all_responses = []
 
-        with SandboxExecutor(self.sandbox_config) as sandbox:
+        owns_sandbox = sandbox is None
+        sandbox_cm = SandboxExecutor(self.sandbox_config) if owns_sandbox else None
+        sandbox = sandbox_cm.__enter__() if owns_sandbox else sandbox
+
+        try:
             step = 0
             while step < MAX_STEPS:
                 step += 1
@@ -266,6 +280,9 @@ class BenchmarkRunner:
                 score_result = score_episode(result, scoring_config, sandbox.get_workspace())
             else:
                 score_result = {"score": None, "reason": "No scoring config"}
+        finally:
+            if owns_sandbox and sandbox_cm is not None:
+                sandbox_cm.__exit__(None, None, None)
 
         duration_ms = (time.time() - start_time) * 1000
 
@@ -291,22 +308,59 @@ class BenchmarkRunner:
             "response": final_response,
         }
 
+    def _ordered_scenarios(self) -> list[str]:
+        """Return scenarios in topological order based on declared
+        ``prerequisites`` so downstream tasks see files created by their
+        prerequisites in the shared sandbox."""
+        scenarios = self.list_scenarios()
+        deps: dict[str, list[str]] = {}
+        for name in scenarios:
+            try:
+                cfg = self.load_scenario(name)
+            except Exception:
+                deps[name] = []
+                continue
+            prereqs = cfg.get("prerequisites") or []
+            deps[name] = [p for p in prereqs if p in scenarios]
+
+        ordered: list[str] = []
+        visited: set[str] = set()
+        visiting: set[str] = set()
+
+        def visit(name: str) -> None:
+            if name in visited or name in visiting:
+                return
+            visiting.add(name)
+            for dep in deps.get(name, []):
+                visit(dep)
+            visiting.discard(name)
+            visited.add(name)
+            ordered.append(name)
+
+        for name in scenarios:
+            visit(name)
+        return ordered
+
     def run_all(self) -> dict:
-        """Run all scenarios."""
-        results = {}
-        total_score = 0
+        """Run all scenarios in dependency order, sharing one sandbox so
+        downstream scenarios can read files left by their prerequisites."""
+        results: dict[str, dict] = {}
+        total_score = 0.0
         task_count = 0
 
-        for scenario in self.list_scenarios():
-            try:
-                result = self.run_scenario(scenario)
-                results[scenario] = result
-                if result.get("score", {}).get("score") is not None:
-                    total_score += result["score"]["score"]
-                    task_count += 1
-            except Exception as e:
-                print(f"Error running {scenario}: {e}")
-                results[scenario] = {"error": str(e)}
+        ordered = self._ordered_scenarios()
+
+        with SandboxExecutor(self.sandbox_config) as sandbox:
+            for scenario in ordered:
+                try:
+                    result = self.run_scenario(scenario, sandbox=sandbox)
+                    results[scenario] = result
+                    if result.get("score", {}).get("score") is not None:
+                        total_score += result["score"]["score"]
+                        task_count += 1
+                except Exception as e:
+                    print(f"Error running {scenario}: {e}")
+                    results[scenario] = {"error": str(e)}
 
         return {
             "benchmark": "openclaw",
