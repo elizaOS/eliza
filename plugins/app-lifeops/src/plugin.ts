@@ -13,8 +13,10 @@ import { calendarAction } from "./actions/calendar.js";
 import { checkinAction } from "./actions/checkin.js";
 import { connectorAction } from "./actions/connector.js";
 import { deviceIntentAction } from "./actions/device-intent.js";
+import { firstRunAction } from "./actions/first-run.js";
 import { healthAction } from "./actions/health.js";
 import { lifeAction } from "./actions/life.js";
+import { lifeOpsPauseAction } from "./actions/lifeops-pause.js";
 import { passwordManagerAction } from "./actions/password-manager.js";
 import { paymentsAction } from "./actions/payments.js";
 import { profileAction } from "./actions/profile.js";
@@ -73,9 +75,12 @@ import { appBlockerProvider } from "./providers/app-blocker.js";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.js";
 
 // LifeOps core providers
+import { firstRunProvider } from "./providers/first-run.js";
 import { healthProvider } from "./providers/health.js";
 import { inboxTriageProvider } from "./providers/inbox-triage.js";
 import { lifeOpsProvider } from "./providers/lifeops.js";
+import { pendingPromptsProvider } from "./providers/pending-prompts.js";
+import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
 import { websiteBlockerProvider } from "./providers/website-blocker.js";
 import { BrowserBridgePluginService } from "./service.js";
 import {
@@ -289,7 +294,9 @@ const rawAppLifeOpsPlugin: Plugin = {
     checkinAction,
     resolveRequestAction,
     deviceIntentAction,
+    firstRunAction,
     lifeAction,
+    lifeOpsPauseAction,
     bookTravelAction,
     profileAction,
     relationshipAction,
@@ -310,7 +317,10 @@ const rawAppLifeOpsPlugin: Plugin = {
     browserBridgeProvider,
     websiteBlockerProvider,
     appBlockerProvider,
+    firstRunProvider,
     lifeOpsProvider,
+    pendingPromptsProvider,
+    recentTaskStatesProvider,
     healthProvider,
     inboxTriageProvider,
     crossChannelContextProvider,
@@ -543,9 +553,54 @@ export {
   resolveLifeOpsTaskIntervalMs,
 } from "./lifeops/runtime.js";
 export { appBlockerProvider } from "./providers/app-blocker.js";
+export { firstRunProvider } from "./providers/first-run.js";
+export type { FirstRunAffordance } from "./providers/first-run.js";
 export { healthProvider } from "./providers/health.js";
 export { inboxTriageProvider } from "./providers/inbox-triage.js";
 export { lifeOpsProvider } from "./providers/lifeops.js";
+export {
+  createPendingPromptsProvider,
+  pendingPromptsProvider,
+} from "./providers/pending-prompts.js";
+export type {
+  PendingPrompt,
+  PendingPromptsProvider,
+} from "./providers/pending-prompts.js";
+export {
+  createRecentTaskStatesProvider,
+  recentTaskStatesProvider,
+} from "./providers/recent-task-states.js";
+export type {
+  RecentTaskStatesProvider,
+  RecentTaskStatesSummary,
+} from "./providers/recent-task-states.js";
+export { firstRunAction } from "./actions/first-run.js";
+export { lifeOpsPauseAction } from "./actions/lifeops-pause.js";
+export {
+  createGlobalPauseStore,
+  type GlobalPauseStore,
+  type GlobalPauseStatus,
+  type GlobalPauseWindow,
+} from "./lifeops/global-pause/store.js";
+export {
+  createPendingPromptsStore,
+  type PendingPromptsStore,
+  type PendingPromptRecordInput,
+} from "./lifeops/pending-prompts/store.js";
+export {
+  FirstRunService,
+  setScheduledTaskRunner,
+  type ScheduledTaskRunnerLike,
+} from "./lifeops/first-run/service.js";
+export {
+  createOwnerFactStore,
+  createFirstRunStateStore,
+  type FirstRunRecord,
+  type FirstRunStateStore,
+  type OwnerFactStore,
+  type OwnerFacts,
+  type OwnerFactsPatch,
+} from "./lifeops/first-run/state.js";
 export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
 export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
 export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
