@@ -836,9 +836,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     await startCloudFromWelcome();
 
     await waitFor(() =>
-      expect(clientMock.launchCloudCompatAgent).toHaveBeenCalledWith(
-        "agent-2",
-      ),
+      expect(clientMock.launchCloudCompatAgent).toHaveBeenCalledWith("agent-2"),
     );
     expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
       "https://agent-2.elizacloud.ai",

@@ -17,13 +17,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { listAppShellPages } from "../app-shell-registry";
 import {
   type AppLaunchResult,
   type AppRunSummary,
   client,
   type RegistryAppInfo,
 } from "../api";
+import { listAppShellPages } from "../app-shell-registry";
 import { findAppBySlug, getAppSlug } from "../components/apps/helpers";
 import {
   getInternalToolAppDescriptors,

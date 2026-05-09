@@ -523,6 +523,12 @@
       "dependsOn": [],
       "outputs": []
     },
+    "@elizaos/app#typecheck": {
+      "dependsOn": [
+        "@elizaos/app-lifeops#build"
+      ],
+      "outputs": []
+    },
     "@elizaos/example-farcaster#build": {
       "dependsOn": [
         "@elizaos/core#build",

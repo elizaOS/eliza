@@ -170,11 +170,17 @@ export function wireBrowserWorkspaceCaller(
  *
  * Adding/removing a schema method without a corresponding handler change
  * is now a compile error.
+ *
+ * Async helpers returning `Promise<void>` are assignable here: schema `response:
+ * undefined` means “no payload”, which we model as `void` at the handler boundary
+ * (distinct from `undefined` in TypeScript’s type system).
  */
+type RpcMethodReturn<R> = [R] extends [undefined] ? void : R;
+
 type BunRpcHandlers = {
 	[K in keyof ElizaDesktopRPCSchema["bun"]["requests"]]: (
 		params: ElizaDesktopRPCSchema["bun"]["requests"][K]["params"],
-	) => Promise<ElizaDesktopRPCSchema["bun"]["requests"][K]["response"]>;
+	) => Promise<RpcMethodReturn<ElizaDesktopRPCSchema["bun"]["requests"][K]["response"]>>;
 };
 
 export function buildBunRpcHandlers({

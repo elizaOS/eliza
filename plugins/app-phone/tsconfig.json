@@ -51,6 +51,9 @@
       "@elizaos/plugin-signal": [
         "../plugin-signal/src/index.ts"
       ],
+      "@elizaos/plugin-browser": [
+        "../plugin-browser/src/index.ts"
+      ],
       "react": [
         "../../packages/app-core/node_modules/@types/react/index.d.ts"
       ],
