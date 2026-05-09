@@ -3,6 +3,8 @@ export { appBlockAction } from "./actions/app-block.js";
 export { autofillAction } from "./actions/autofill.js";
 export { bookTravelAction } from "./actions/book-travel.js";
 export { calendarAction } from "./actions/calendar.js";
+// Wave-2 W2-A: `checkinAction` was deleted; the morning check-in is now
+// driven from the `daily-rhythm` default pack's `ScheduledTask` record.
 export { connectorAction } from "./actions/connector.js";
 export { deviceIntentAction } from "./actions/device-intent.js";
 export { healthAction } from "./actions/health.js";
