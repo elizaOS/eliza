@@ -446,7 +446,7 @@ export interface PluginOwnership {
 	registeredPlugin: Plugin | null;
 	actions: Action[];
 	providers: Provider[];
-	evaluators: Evaluator[];
+	evaluators: Evaluator<any, any>[];
 	routes: Route[];
 	events: PluginEventRegistration[];
 	models: PluginModelRegistration[];
@@ -497,7 +497,7 @@ export interface Plugin {
 	// Optional plugin features
 	actions?: Action[];
 	providers?: Provider[];
-	evaluators?: Evaluator[];
+	evaluators?: Evaluator<any, any>[];
 
 	/**
 	 * Database adapter factory. When set, this plugin provides the database
