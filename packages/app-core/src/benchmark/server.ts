@@ -540,6 +540,45 @@ export async function startBenchmarkServer() {
     }
   }
 
+  // Load plugin-social-alpha when the bench session targets the social-alpha
+  // benchmark. The plugin exposes CommunityInvestorService (TrustScoreService),
+  // socialAlphaProvider, and balancedTrustScoreCalculator — i.e. the actual
+  // TS implementation that the Python harness used to port. Loading it here
+  // makes the eliza TS agent the surface under test.
+  const benchName =
+    process.env.ELIZA_BENCH_NAME?.trim().toLowerCase() ?? "";
+  const enableSocialAlphaPlugin =
+    process.env.ELIZA_BENCH_LOAD_SOCIAL_ALPHA === "true" ||
+    benchName === "social_alpha" ||
+    benchName === "social-alpha";
+  if (enableSocialAlphaPlugin) {
+    try {
+      const socialAlphaSrcPath = path.resolve(
+        process.cwd(),
+        "../../plugins/plugin-social-alpha/src/index.ts",
+      );
+      const socialAlphaModule = (await import(
+        pathToFileURL(socialAlphaSrcPath).href
+      )) as Record<string, unknown>;
+      const socialAlphaPlugin =
+        socialAlphaModule.socialAlphaPlugin ?? socialAlphaModule.default;
+      if (socialAlphaPlugin) {
+        plugins.push(toPlugin(socialAlphaPlugin, "@elizaos/plugin-social-alpha"));
+        elizaLogger.info(
+          "[bench] Loaded LLM plugin: @elizaos/plugin-social-alpha (services=CommunityInvestorService; providers=socialAlphaProvider)",
+        );
+      } else {
+        elizaLogger.warn(
+          "[bench] @elizaos/plugin-social-alpha module did not expose socialAlphaPlugin",
+        );
+      }
+    } catch (error: unknown) {
+      elizaLogger.warn(
+        `[bench] @elizaos/plugin-social-alpha not loaded: ${formatUnknownError(error)}`,
+      );
+    }
+  }
+
   // Build settings object from environment variables
   // These are needed by plugins like Groq that use runtime.getSetting()
   const settings: Record<string, string> = {

@@ -30,11 +30,7 @@ export interface WorkflowStatusResponse {
   errorMessage?: string | null;
 }
 
-type WorkflowJsonResponder = (
-  res: http.ServerResponse,
-  body: unknown,
-  status?: number
-) => void;
+type WorkflowJsonResponder = (res: http.ServerResponse, body: unknown, status?: number) => void;
 
 export interface WorkflowRouteContext {
   req: http.IncomingMessage;
@@ -47,7 +43,11 @@ export interface WorkflowRouteContext {
   json: WorkflowJsonResponder;
 }
 
-function sendJson(ctx: Pick<WorkflowRouteContext, 'res' | 'json'>, status: number, body: unknown): void {
+function sendJson(
+  ctx: Pick<WorkflowRouteContext, 'res' | 'json'>,
+  status: number,
+  body: unknown
+): void {
   ctx.json(ctx.res, body, status);
 }
 
