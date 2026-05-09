@@ -13,7 +13,7 @@ schemas/
 │   ├── memory.proto      # Memory, MemoryMetadata
 │   ├── state.proto       # State, ActionPlan, WorkingMemory
 │   ├── environment.proto # Entity, Room, World, Relationship
-│   ├── components.proto  # Action, Provider, Evaluator
+│   ├── components.proto  # Action, Provider
 │   ├── agent.proto       # Character, Agent
 │   ├── service.proto     # Service types
 │   ├── model.proto       # Model types, generation params
