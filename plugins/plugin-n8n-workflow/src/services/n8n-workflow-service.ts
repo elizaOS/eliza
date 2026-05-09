@@ -115,11 +115,17 @@ export async function resolveN8nApiKey(
   if (!envKey && sidecarKey) return sidecarKey;
   if (!sidecarKey && envKey) return envKey;
 
-  // Both present. Prefer the sidecar key, but fall through to env if it
-  // does not validate (e.g. sidecar still provisioning, or its host
-  // differs from the configured N8N_HOST so the cached key doesn't apply).
-  if (sidecarKey && (await probe(host, sidecarKey))) {
-    if (envKey && envKey !== sidecarKey) {
+  // Both present. Probe both candidates concurrently to bound the
+  // worst-case startup wait at one probe interval (5 s) instead of two
+  // (10 s) when n8n is slow or unreachable. Preference order is unchanged
+  // — sidecar wins when it validates; env wins otherwise; both-fail falls
+  // through to the sidecar canonical-source rule below.
+  const [sidecarOk, envOk] = await Promise.all([
+    probe(host, sidecarKey),
+    probe(host, envKey),
+  ]);
+  if (sidecarOk) {
+    if (envKey !== sidecarKey) {
       logger.info(
         { src: 'plugin:n8n-workflow:service:main' },
         'Using sidecar-provisioned N8N_API_KEY; the env-configured key did not match',
@@ -127,13 +133,35 @@ export async function resolveN8nApiKey(
     }
     return sidecarKey;
   }
-  if (envKey && (await probe(host, envKey))) {
+  if (envOk) {
     return envKey;
   }
-  // Neither validated. Return the sidecar key if we have it (it is the
-  // canonical source); otherwise fall back to env so the upstream error
-  // has *something* to report.
-  return sidecarKey ?? envKey;
+  // Neither validated. Return the sidecar key (canonical source); the
+  // upstream error path produces a real diagnostic instead of a missing-
+  // config error.
+  return sidecarKey;
+}
+
+/**
+ * Choose the next sidecar key to apply to the apiClient.
+ *
+ * Returns the new key when the sidecar has rotated to a value different
+ * from the one that was already known to fail at start-time. Returns null
+ * when the apiClient should keep its current key — either because there
+ * is no sidecar key right now, or because the sidecar still holds the
+ * exact key that lost the start-time probe (e.g. n8n was reset and the
+ * sidecar's cached key is now revoked, but the env key is known to work).
+ *
+ * Without this guard, `getClient()` would unconditionally clobber the
+ * probe-selected env key with the stale sidecar key on every request.
+ */
+export function pickRotatedSidecarKey(
+  currentSidecarKey: string | null,
+  staleSidecarKey: string | null,
+): string | null {
+  if (!currentSidecarKey) return null;
+  if (currentSidecarKey === staleSidecarKey) return null;
+  return currentSidecarKey;
 }
 
 /**
@@ -151,6 +179,9 @@ export class N8nWorkflowService extends Service {
 
   private apiClient: N8nApiClient | null = null;
   private serviceConfig: N8nWorkflowServiceConfig | null = null;
+  // The sidecar key that lost the start-time probe (if any). getClient()
+  // refuses to auto-rotate back to this exact value — see pickRotatedSidecarKey.
+  private staleSidecarKey: string | null = null;
 
   static async start(runtime: IAgentRuntime): Promise<N8nWorkflowService> {
     logger.info({ src: 'plugin:n8n-workflow:service:main' }, 'Starting N8n Workflow Service...');
@@ -168,6 +199,12 @@ export class N8nWorkflowService extends Service {
     if (!apiKey) {
       throw new Error('N8N_API_KEY is required in settings');
     }
+    // If the start-time resolver fell back to env because the sidecar's
+    // current key failed its probe, remember that exact sidecar value so
+    // getClient() does not auto-rotate back to it on every request.
+    const startSidecarKey = peekN8nSidecar()?.getApiKey() ?? null;
+    const staleSidecarKey =
+      startSidecarKey && startSidecarKey !== apiKey ? startSidecarKey : null;
 
     // Get optional pre-configured credentials from character.settings.workflows
     // Note: runtime.getSetting() only returns primitives — nested objects must be read directly
@@ -185,6 +222,7 @@ export class N8nWorkflowService extends Service {
 
     // Initialize API client
     service.apiClient = new N8nApiClient(host, apiKey);
+    service.staleSidecarKey = staleSidecarKey;
 
     logger.info(
       { src: 'plugin:n8n-workflow:service:main' },
@@ -209,6 +247,7 @@ export class N8nWorkflowService extends Service {
     logger.info({ src: 'plugin:n8n-workflow:service:main' }, 'Stopping N8n Workflow Service...');
     this.apiClient = null;
     this.serviceConfig = null;
+    this.staleSidecarKey = null;
     logger.info({ src: 'plugin:n8n-workflow:service:main' }, 'N8n Workflow Service stopped');
   }
 
@@ -247,14 +286,19 @@ export class N8nWorkflowService extends Service {
     }
     // Live-refresh from the sidecar. The plugin's service typically starts
     // BEFORE the n8n autostart provisions its API key, so the start-time
-    // resolver may have fallen back to the env value when no sidecar key
-    // was registered yet. Once the sidecar is ready, prefer its key — it
-    // is the freshest and is rotated by the sidecar itself. peekN8nSidecar
-    // is O(1); getApiKey returns a cached string, so this is microsecond
-    // overhead per request.
-    const sidecarKey = peekN8nSidecar()?.getApiKey();
-    if (sidecarKey) {
-      this.apiClient.setApiKey(sidecarKey);
+    // resolver may have fallen back to the env value when the sidecar was
+    // not yet ready or its cached key failed the probe. Once the sidecar
+    // rotates to a different key, prefer its value — it is the freshest
+    // and is rotated by the sidecar itself. pickRotatedSidecarKey skips
+    // the override when the sidecar still holds the exact stale key that
+    // lost the start-time probe (avoids clobbering a known-working env
+    // key with a known-broken sidecar key on every request).
+    const next = pickRotatedSidecarKey(
+      peekN8nSidecar()?.getApiKey() ?? null,
+      this.staleSidecarKey,
+    );
+    if (next) {
+      this.apiClient.setApiKey(next);
     }
     return this.apiClient;
   }
