@@ -3,8 +3,8 @@ import type {
   LifeOpsScheduleRegularity,
   LifeOpsSleepCycleType,
 } from "@elizaos/shared";
-import { getZonedDateParts } from "./time.js";
-import { parseIsoMs } from "./time-util.js";
+import { getZonedDateParts } from "../util/time.js";
+import { parseIsoMs } from "../util/time-util.js";
 
 export interface SleepRegularityEpisodeLike {
   startAt: string;

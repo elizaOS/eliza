@@ -5,13 +5,13 @@ import type {
   LifeOpsHealthSleepEpisode,
   LifeOpsHealthSleepStage,
   LifeOpsHealthWorkout,
-} from "../contracts/index.js";
-import type { StoredHealthConnectorToken } from "./health-oauth.js";
+} from "../contracts/health.js";
 import {
   createLifeOpsHealthMetricSample,
   createLifeOpsHealthSleepEpisode,
   createLifeOpsHealthWorkout,
-} from "./repository.js";
+} from "./health-records.js";
+import type { StoredHealthConnectorToken } from "./health-oauth.js";
 
 const HEALTH_CONNECTOR_TIMEOUT_MS = 15_000;
 const MAX_PAGINATION_PAGES = 5;

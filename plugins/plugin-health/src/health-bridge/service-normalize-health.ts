@@ -1,5 +1,5 @@
-import type { LifeOpsHealthSignal } from "../contracts/index.js";
-import { LIFEOPS_HEALTH_SIGNAL_SOURCES } from "../contracts/index.js";
+import type { LifeOpsHealthSignal } from "../contracts/health.js";
+import { LIFEOPS_HEALTH_SIGNAL_SOURCES } from "../contracts/health.js";
 import {
   fail,
   normalizeOptionalBoolean,
@@ -7,7 +7,7 @@ import {
   normalizeOptionalIsoString,
   normalizeOptionalString,
   requireNonEmptyString,
-} from "./service-normalize.js";
+} from "../util/normalize.js";
 
 function requireRecord(value: unknown, field: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {

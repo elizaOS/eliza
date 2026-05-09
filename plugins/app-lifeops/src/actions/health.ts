@@ -21,7 +21,7 @@ import type {
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type { LifeOpsHealthSummaryResponse } from "../contracts/index.js";
-import type { HealthDataPoint } from "../lifeops/health-bridge.js";
+import type { HealthDataPoint } from "@elizaos/plugin-health";
 import { LifeOpsService } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 import {

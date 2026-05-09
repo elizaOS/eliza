@@ -11,7 +11,19 @@ export * from "./engine.js";
 export * from "./goal-grounding.js";
 export * from "./goal-semantic-evaluator.js";
 export * from "./google-plugin-delegates.js";
-export * from "./health-bridge.js";
+// `health-bridge` was moved to `@elizaos/plugin-health` in Wave-1 (W1-B).
+// Re-export the surface so existing `from "./lifeops"` callers keep working.
+export {
+  detectHealthBackend,
+  getDailySummary,
+  getDataPoints,
+  getRecentSummaries,
+  HealthBridgeError,
+  type HealthBackend,
+  type HealthBridgeConfig,
+  type HealthDailySummary,
+  type HealthDataPoint,
+} from "@elizaos/plugin-health";
 export * from "./identity-observations.js";
 export * from "./intent-sync.js";
 export * from "./owner-profile.js";

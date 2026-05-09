@@ -4,9 +4,9 @@ import type {
 } from "@elizaos/shared";
 import {
   createLifeOpsSleepEpisode,
-  type LifeOpsRepository,
   type LifeOpsSleepEpisodeRecord,
-} from "./repository.js";
+  type SleepEpisodeRepository,
+} from "./sleep-episode-types.js";
 import {
   classifyLifeOpsSleepCycleType,
   type LifeOpsSleepEpisode,
@@ -15,7 +15,7 @@ import {
 const EPISODE_SEAL_DELAY_MS = 2 * 60 * 60 * 1_000;
 
 export interface PersistSleepEpisodesArgs {
-  repository: LifeOpsRepository;
+  repository: SleepEpisodeRepository;
   agentId: string;
   episodes: readonly LifeOpsSleepEpisode[];
   nowMs: number;
@@ -75,7 +75,7 @@ export async function persistSleepEpisodes(
 }
 
 export async function listHistoricalSleepEpisodes(args: {
-  repository: LifeOpsRepository;
+  repository: SleepEpisodeRepository;
   agentId: string;
   nowMs: number;
   windowDays?: number;
