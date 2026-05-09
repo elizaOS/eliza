@@ -9,6 +9,7 @@
 
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { formRestoreAction } from "./actions/restore";
+import { formEvaluator } from "./evaluators/extractor";
 
 // ============================================================================
 // TYPE EXPORTS
@@ -123,13 +124,14 @@ export { FormService } from "./service";
 
 // ============================================================================
 // COMPONENT EXPORTS
-// Provider, Evaluator, Action, Tasks
+// Provider, Action, Tasks
 // ============================================================================
 
 // Action - fast-path restore for stashed forms
 export { formRestoreAction } from "./actions/restore";
 
-// Evaluator - extracts fields and handles intents
+// Post-message hook - extracts fields and handles intents
+// (Action with mode: ActionMode.ALWAYS_AFTER)
 export { formEvaluator } from "./evaluators/extractor";
 // Provider - injects form context into agent state
 export { formContextProvider } from "./providers/context";
@@ -172,27 +174,9 @@ export const formPlugin = {
     },
   ],
 
-  // Action for restoring stashed forms before normal reply generation
-  actions: [formRestoreAction],
-
-  // Evaluator for field extraction
-  evaluators: [
-    {
-      name: "form_evaluator",
-      description: "Extracts form fields and handles form intents",
-      descriptionCompressed: "Extract form fields and handle form intents.",
-      similes: ["FORM_EXTRACTION", "FORM_HANDLER"],
-      examples: [],
-      validate: async (runtime, message, state) => {
-        const { formEvaluator } = await import("./evaluators/extractor");
-        return formEvaluator.validate(runtime, message, state);
-      },
-      handler: async (runtime, message, state) => {
-        const { formEvaluator } = await import("./evaluators/extractor");
-        return formEvaluator.handler(runtime, message, state);
-      },
-    },
-  ],
+  // Action for restoring stashed forms before normal reply generation,
+  // plus the form-extraction post-message hook (mode: ALWAYS_AFTER).
+  actions: [formRestoreAction, formEvaluator],
 } as Plugin & { descriptionCompressed?: string };
 
 export default formPlugin;

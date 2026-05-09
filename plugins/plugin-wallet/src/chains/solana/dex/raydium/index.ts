@@ -11,7 +11,6 @@ export const raydiumPlugin: Plugin = {
   name: "@elizaos/plugin-lp-manager/raydium",
   description: "Raydium CLMM LP management plugin for Solana",
   actions: [],
-  evaluators: [],
   providers: [raydiumPositionProvider],
   services: [RaydiumService],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
