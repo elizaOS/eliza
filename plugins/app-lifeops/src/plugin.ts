@@ -11,7 +11,6 @@ import { autofillAction } from "./actions/autofill.js";
 import { bookTravelAction } from "./actions/book-travel.js";
 import { calendarAction } from "./actions/calendar.js";
 import { calendlyAction } from "./actions/lib/calendly-handler.js";
-import { checkinAction } from "./actions/checkin.js";
 import { connectorAction } from "./actions/connector.js";
 import { deviceIntentAction } from "./actions/device-intent.js";
 import { firstRunAction } from "./actions/first-run.js";
@@ -22,7 +21,7 @@ import { messageHandoffAction } from "./actions/message-handoff.js";
 import { passwordManagerAction } from "./actions/password-manager.js";
 import { paymentsAction } from "./actions/payments.js";
 import { profileAction } from "./actions/profile.js";
-import { relationshipAction } from "./actions/relationship.js";
+import { entityAction } from "./actions/entity.js";
 import { remoteDesktopAction } from "./actions/remote-desktop.js";
 import { resolveRequestAction } from "./actions/resolve-request.js";
 import { scheduleAction } from "./actions/schedule.js";
@@ -297,7 +296,10 @@ const rawAppLifeOpsPlugin: Plugin = {
     calendarAction,
     calendlyAction,
     schedulingNegotiationAction,
-    checkinAction,
+    // Wave-2 W2-A removed `CHECKIN` as a discrete action. The
+    // morning-checkin assembly is now driven from the
+    // `daily-rhythm` default pack's `ScheduledTask` record (W1-D),
+    // which delegates to `CheckinService.runMorningCheckin`.
     resolveRequestAction,
     deviceIntentAction,
     firstRunAction,
@@ -306,7 +308,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     messageHandoffAction,
     bookTravelAction,
     profileAction,
-    relationshipAction,
+    entityAction,
     screenTimeAction,
     voiceCallAction,
     remoteDesktopAction,

@@ -34,7 +34,6 @@ export * from "./repository.js";
 export * from "./runtime.js";
 export * from "./schema.js";
 export * from "./screen-context.js";
-export * from "./seed-routines.js";
 export * from "./service.js";
 export * from "./sql.js";
 export * from "./time.js";

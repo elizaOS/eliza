@@ -26,7 +26,6 @@ import { resolveDefinitionFromIntent } from "./life.js";
 
 type ProfileSubaction =
   | "save"
-  | "set"
   | "capture_phone"
   | "set_reminder_preference"
   | "configure_escalation";
@@ -71,27 +70,16 @@ type ProfileParams = {
   ProfileSetReminderPreferenceParams &
   ProfileConfigureEscalationParams;
 
+// Wave-2 W2-A collapsed PROFILE.save ≡ PROFILE.set into a single
+// canonical `save` subaction. The legacy `set` spelling is normalized
+// onto `save` in `normalizePlannerProfileParams` so old callers keep
+// resolving while the planner converges on a single name.
 const SUBACTIONS = {
   save: {
     description:
-      "Persist stable owner facts: name, location, gender, age, relationship status, travel-booking preferences.",
+      "Persist stable owner facts: name, location, gender, age, relationship status, travel-booking preferences. Also accepts the legacy planner alias `set` (canonicalized to `save`).",
     descriptionCompressed:
       "persist stable owner fact: name location gender age relationship-status travel-booking-prefs",
-    required: [],
-    optional: [
-      "name",
-      "location",
-      "gender",
-      "age",
-      "relationshipStatus",
-      "travelBookingPreferences",
-    ],
-  },
-  set: {
-    description:
-      "Compatibility alias for save. Persist stable owner facts or reusable preferences.",
-    descriptionCompressed:
-      "alias save owner profile fact/preference; normalize key/value when present",
     required: [],
     optional: [
       "key",
@@ -191,7 +179,9 @@ function normalizePlannerProfileParams(
   message: Memory,
 ): ProfileParams {
   const normalized: ProfileParams = { ...params };
-  if (normalized.subaction === "set") {
+  // Wave-2 W2-A: collapse the legacy `set` alias onto the canonical
+  // `save` subaction.
+  if ((normalized.subaction as unknown) === "set") {
     normalized.subaction = "save";
   }
 
@@ -480,7 +470,6 @@ export const profileAction: Action & {
 
     switch (resolved.subaction) {
       case "save":
-      case "set":
         return handleSave(runtime, { ...normalizedRawParams, ...params });
       case "capture_phone":
         return handleCapturePhone(params, runtime);
@@ -495,13 +484,12 @@ export const profileAction: Action & {
     {
       name: "subaction",
       description:
-        "Which profile operation to perform: save, set, capture_phone, set_reminder_preference, or configure_escalation.",
+        "Which profile operation to perform: save, capture_phone, set_reminder_preference, or configure_escalation. The legacy `set` alias is canonicalized to `save`.",
       required: false,
       schema: {
         type: "string" as const,
         enum: [
           "save",
-          "set",
           "capture_phone",
           "set_reminder_preference",
           "configure_escalation",
