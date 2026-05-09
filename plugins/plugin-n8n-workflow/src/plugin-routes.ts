@@ -14,9 +14,9 @@
  */
 
 import { loadElizaConfig } from '@elizaos/agent/config';
-import { ensureRouteAuthorized } from '@elizaos/app-core/api/auth';
-import type { CompatRuntimeState } from '@elizaos/app-core/api/compat-route-shared';
-import { sendJson } from '@elizaos/app-core/api/response';
+import { ensureRouteAuthorized } from '@elizaos/app-core';
+import type { CompatRuntimeState } from '@elizaos/app-core';
+import { sendJson } from '@elizaos/app-core';
 import type { Plugin, Route } from '@elizaos/core';
 import type http from 'node:http';
 import { handleN8nRoutes, type N8nRouteContext } from './routes/n8n-routes';

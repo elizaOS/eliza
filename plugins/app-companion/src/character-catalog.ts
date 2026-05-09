@@ -1,1 +1,1 @@
-export * from "@elizaos/app-core/character-catalog";
+export * from "@elizaos/app-core";

@@ -52,7 +52,7 @@ async function loadSidecarModule(): Promise<SidecarModule> {
   // close the cycle). Same pattern is used elsewhere in this file for vault
   // services.
   const mod = (await import(
-    "@elizaos/app-core/services/n8n-sidecar"
+    "@elizaos/app-core"
   )) as SidecarModule;
   return mod;
 }

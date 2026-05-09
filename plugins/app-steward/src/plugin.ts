@@ -18,7 +18,7 @@
  */
 
 import type http from "node:http";
-import type { CompatRuntimeState } from "@elizaos/app-core/api/compat-route-shared";
+import type { CompatRuntimeState } from "@elizaos/app-core";
 import type { Plugin, Route } from "@elizaos/core";
 import { walletRouterAction } from "@elizaos/plugin-wallet";
 import { transferTokenAction } from "./actions/transfer-token";

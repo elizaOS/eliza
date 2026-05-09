@@ -194,7 +194,7 @@ export async function handleAgentAdminRoutes(
       // logged in even though they just hit "Reset".
       try {
         const { sharedVault } = await import(
-          "@elizaos/app-core/services/vault-mirror"
+          "@elizaos/app-core"
         );
         const vault = sharedVault();
         const cloudKeys = [

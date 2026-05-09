@@ -15,7 +15,7 @@
 // app-core/api/client.ts imports this file (LifeOps extension) as a
 // side-effect before re-exporting `ElizaClient` from its barrel, so a
 // barrel import here would resolve to `undefined` at module-init time.
-import { ElizaClient } from "@elizaos/app-core/api/client-base";
+import { ElizaClient } from "@elizaos/app-core";
 import type {
   BrowserBridgeCompanionAutoPairResponse,
   BrowserBridgeCompanionPackageStatus,

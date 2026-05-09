@@ -19,7 +19,7 @@
 import type {
 	StewardSidecar,
 	StewardSidecarStatus,
-} from "@elizaos/app-core/services/steward-sidecar";
+} from "@elizaos/app-core";
 import { getBrandConfig } from "../brand-config";
 import { logger } from "../logger";
 
@@ -35,9 +35,9 @@ type SendToWebviewFn = (message: string, payload?: unknown) => void;
 // ---------------------------------------------------------------------------
 
 type StewardSidecarModule =
-	typeof import("@elizaos/app-core/services/steward-sidecar");
+	typeof import("@elizaos/app-core");
 type StewardCredentialsModule =
-	typeof import("@elizaos/app-core/services/steward-credentials");
+	typeof import("@elizaos/app-core");
 
 let stewardSidecarModulePromise: Promise<StewardSidecarModule> | null = null;
 let stewardCredentialsModulePromise: Promise<StewardCredentialsModule> | null =
@@ -45,14 +45,14 @@ let stewardCredentialsModulePromise: Promise<StewardCredentialsModule> | null =
 
 function loadStewardSidecarModule(): Promise<StewardSidecarModule> {
 	stewardSidecarModulePromise ??= import(
-		"@elizaos/app-core/services/steward-sidecar"
+		"@elizaos/app-core"
 	);
 	return stewardSidecarModulePromise;
 }
 
 function loadStewardCredentialsModule(): Promise<StewardCredentialsModule> {
 	stewardCredentialsModulePromise ??= import(
-		"@elizaos/app-core/services/steward-credentials"
+		"@elizaos/app-core"
 	);
 	return stewardCredentialsModulePromise;
 }

@@ -12,8 +12,8 @@
  */
 import type http from "node:http";
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
-import { readCompatJsonBody } from "@elizaos/app-core/api/compat-route-shared";
-import { sendJson, sendJsonError } from "@elizaos/app-core/api/response";
+import { readCompatJsonBody } from "@elizaos/app-core";
+import { sendJson, sendJsonError } from "@elizaos/app-core";
 import {
   canUseLocalTradeExecution,
   resolveTradePermissionMode,

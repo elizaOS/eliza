@@ -1,4 +1,4 @@
-import { client } from "@elizaos/app-core/api";
+import { client } from "@elizaos/app-core";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,

@@ -20,15 +20,15 @@ import {
   getCompatApiToken,
   getProvidedApiToken,
   tokenMatches,
-} from "@elizaos/app-core/api/auth";
+} from "@elizaos/app-core";
 import {
   type CompatRuntimeState,
   readCompatJsonBody,
-} from "@elizaos/app-core/api/compat-route-shared";
+} from "@elizaos/app-core";
 import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
-} from "@elizaos/app-core/api/response";
+} from "@elizaos/app-core";
 
 type ComputerUseApprovalMode =
   | "full_control"

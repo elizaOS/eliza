@@ -1,8 +1,8 @@
-import { client } from "@elizaos/app-core/api";
-import { isApiError } from "@elizaos/app-core/api/client-types-core";
-import { APP_RESUME_EVENT } from "@elizaos/app-core/events";
-import { dispatchFocusConnector } from "@elizaos/app-core/state/connector-deeplink";
-import { useApp } from "@elizaos/app-core/state";
+import { client } from "@elizaos/app-core";
+import { isApiError } from "@elizaos/app-core";
+import { APP_RESUME_EVENT } from "@elizaos/shared";
+import { dispatchFocusConnector } from "@elizaos/ui";
+import { useApp } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   LifeOpsConnectorGrant,

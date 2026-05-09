@@ -1,4 +1,4 @@
-import { registerOperatorSurface } from "@elizaos/app-core/components/apps/surfaces/registry";
+import { registerOperatorSurface } from "@elizaos/ui";
 import { ScreenshareOperatorSurface } from "./ScreenshareOperatorSurface";
 
 registerOperatorSurface("@elizaos/app-screenshare", ScreenshareOperatorSurface);

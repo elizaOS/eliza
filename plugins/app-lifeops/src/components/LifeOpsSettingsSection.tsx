@@ -1,5 +1,5 @@
 import { Button, SegmentedControl, useApp } from "@elizaos/app-core";
-import { client } from "@elizaos/app-core/api";
+import { client } from "@elizaos/app-core";
 import type { ModelOption } from "@elizaos/shared/contracts/onboarding";
 import {
   Activity,

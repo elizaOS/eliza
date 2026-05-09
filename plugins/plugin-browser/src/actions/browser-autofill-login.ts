@@ -208,7 +208,7 @@ export async function executeBrowserAutofillLogin(
     };
   }
 
-  const { sharedVault } = await import("@elizaos/app-core/services/vault-mirror");
+  const { sharedVault } = await import("@elizaos/app-core");
   const vault = sharedVault();
 
   const allowed = await getAutofillAllowed(vault, domain);
