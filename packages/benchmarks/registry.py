@@ -860,10 +860,16 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if extra.get("mock") is True or provider_name == "mock":
             args.append("--mock")
         # Route the planning loop through the TS benchmark server when the
-        # caller asks for the eliza agent (either via model.provider or the
-        # explicit "agent": "eliza" extra).
+        # caller asks for the eliza agent or any LLM-backed provider.
         agent = extra.get("agent")
-        if agent == "eliza" or provider_name == "eliza":
+        if agent == "eliza" or provider_name in {
+            "eliza",
+            "cerebras",
+            "openai",
+            "groq",
+            "openrouter",
+            "vllm",
+        }:
             args.extend(["--provider", "eliza"])
         return args
 
@@ -967,11 +973,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 provider_name = provider.strip().lower()
             elif model.provider:
                 provider_name = model.provider.strip().lower()
+            # Route all OpenAI-compatible LLM providers (including cerebras)
+            # through the eliza TS bridge instead of falling back to mock.
             provider_map: dict[str, str] = {
-                "openai": "eliza-openai",
-                "groq": "eliza-openai",
-                "openrouter": "eliza-openai",
-                "vllm": "eliza-openai",
+                "openai": "eliza",
+                "groq": "eliza",
+                "openrouter": "eliza",
+                "vllm": "eliza",
+                "cerebras": "eliza",
+                "eliza": "eliza",
                 "anthropic": "anthropic",
             }
             provider_str = provider_map.get(provider_name, "mock")
