@@ -1,12 +1,12 @@
 # Action Selection Benchmark
 
 **Selection Accuracy:** 100.0% (7/7)
-**Latency:** avg 3719ms · p50 3615ms · p95 4931ms
+**Latency:** avg 3653ms · p50 3213ms · p95 6482ms
 **Planner Accuracy:** 100.0% (7/7)
 **Execution Accuracy:** 100.0% (7/7)
-**LLM Token Usage:** input 101649 · output 7779 · total 109428 (23/37 calls reported usage)
-**Cache Read:** 43.2% (43904/101649 input tokens)
-**Cache Write:** 0.0% (0/101649 input tokens)
+**LLM Token Usage:** input 101954 · output 7563 · total 109517 (24/39 calls reported usage)
+**Cache Read:** 40.4% (41216/101954 input tokens)
+**Cache Write:** 0.0% (0/101954 input tokens)
 
 ## By tag
 

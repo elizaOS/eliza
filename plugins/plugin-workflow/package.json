@@ -67,10 +67,15 @@
     "url": "https://github.com/elizaos-plugins/plugin-workflow/issues"
   },
   "homepage": "https://github.com/elizaos-plugins/plugin-workflow#readme",
-  "peerDependencies": {},
+  "peerDependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/p1p3s": "workspace:*"
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
-    "@elizaos/config": "^1.7.2",
+    "@electric-sql/pglite": "^0.2.17",
     "@types/bun": "^1.3.8",
     "@types/node": "^25.1.0",
     "bun-types": "^1.3.8",

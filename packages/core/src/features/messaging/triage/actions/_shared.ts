@@ -306,7 +306,13 @@ function asReplyBody(params: Record<string, unknown>): string | undefined {
 	) {
 		return undefined;
 	}
-	return body;
+	return body
+		.replace(
+			/\n{0,2}(?:best|regards|sincerely|thanks),?\s*\n\s*\[(?:your\s+name|name|sender)\]\s*$/i,
+			"",
+		)
+		.replace(/\n{0,2}\[(?:your\s+name|name|sender)\]\s*$/i, "")
+		.trim();
 }
 
 export function parseDraftReplyParams(
