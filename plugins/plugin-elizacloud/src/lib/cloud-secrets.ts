@@ -6,7 +6,7 @@
  * or /proc/self/environ.
  *
  * This module has NO external dependencies so it can be imported by
- * any module without pulling in @elizaos/agent or @elizaos/core.
+ * any module without pulling in host-layer packages.
  */
 
 const _cloudSecrets: Record<string, string | undefined> = Object.create(null);

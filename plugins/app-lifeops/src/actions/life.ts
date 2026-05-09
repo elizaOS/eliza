@@ -2017,6 +2017,7 @@ export const lifeAction: Action & {
     if (await isForeignPageScope(runtime, message)) {
       return false;
     }
+    return true;
   },
   handler: async (runtime, message, state, options) => {
     // Defense-in-depth: validate() excludes LIFE from planner candidates on
