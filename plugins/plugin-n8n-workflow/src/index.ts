@@ -8,6 +8,11 @@ import {
   pendingDraftProvider,
 } from './providers/index';
 import { n8nRoutes } from './routes/index';
+// Side-effect: register the rawPath route plugin (`@elizaos/plugin-n8n-workflow:routes`)
+// with the app-route-plugin-registry so the runtime mounts /api/n8n/* on the
+// host HTTP server. Without this import the registry call in register-routes.ts
+// never fires and every /api/n8n/* request returns 404.
+import './register-routes';
 
 /**
  * n8n Workflow Plugin for ElizaOS
