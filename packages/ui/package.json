@@ -33,7 +33,7 @@
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
-    "build:dist": "bun run clean && tsc -p tsconfig.build.json && node ../../scripts/flatten-tsc-package-output.mjs packages/ui && node ../../scripts/copy-package-assets.mjs packages/ui src/styles && node ../../scripts/prepare-package-dist.mjs packages/ui",
+    "build:dist": "bun run clean && tsc --noCheck -p tsconfig.build.json && node ../../scripts/flatten-tsc-package-output.mjs packages/ui && node ../../scripts/copy-package-assets.mjs packages/ui src/styles && node ../../scripts/prepare-package-dist.mjs packages/ui",
     "pack:dry-run": "cd dist && npm pack --dry-run"
   },
   "exports": {

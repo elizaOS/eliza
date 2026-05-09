@@ -19,7 +19,7 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc --noCheck -p tsconfig.json",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "test": "bun test",

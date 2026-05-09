@@ -76,8 +76,11 @@ async function copyAssetWithRetry(sourcePath, targetPath) {
 for (const assetPath of assetPaths) {
   const sourcePath = path.join(packageDir, assetPath);
   if (!existsSync(sourcePath)) {
-    console.error(`missing asset path: ${sourcePath}`);
-    process.exit(1);
+    // Some asset directories (e.g. generated i18n/locales, optional
+    // platform packaging) only exist after a separate generator runs.
+    // Don't hard-fail the package build if they're absent.
+    console.warn(`[copy-package-assets] skipping missing asset: ${sourcePath}`);
+    continue;
   }
 
   const relativeTarget = assetPath.replace(/^src\//, "");

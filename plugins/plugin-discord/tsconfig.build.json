@@ -6,6 +6,7 @@
 		"declarationMap": true,
 		"emitDeclarationOnly": true,
 		"outDir": "dist",
+		"rootDir": ".",
 		"types": ["node", "bun-types"]
 	},
 	"include": ["**/*.ts"],

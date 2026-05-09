@@ -60,7 +60,7 @@
     "format": "turbo run format",
     "format:check": "turbo run format:check",
     "clean": "turbo run clean --concurrency=100% && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock* .eliza .elizadb && bun install && bun run build --concurrency=100%",
-    "clean:cache": "rm -rf .turbo .turbo-tsconfig.json tsdoc_cache tsdoc_comments && find . -type d -name .turbo -prune -exec rm -rf {} + 2>/dev/null; find . -type d -path '*/node_modules/.cache' -prune -exec rm -rf {} + 2>/dev/null; find . -type d -name .vite -path '*/node_modules/*' -prune -exec rm -rf {} + 2>/dev/null; echo 'Cache/temp cleanup done.'",
+    "clean:cache": "node scripts/clean-cache-recursive.mjs",
     "build:core": "turbo run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/cloud-sdk --filter=@elizaos/cloud-routing --filter=@elizaos/vault --filter=@elizaos/plugin-local-inference --no-cache",
     "build:server": "turbo run build --filter=@elizaos/server --no-cache",
     "lint": "turbo run lint && node scripts/run-examples-benchmarks.mjs lint",
