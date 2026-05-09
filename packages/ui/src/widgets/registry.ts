@@ -10,12 +10,13 @@
  */
 
 import type { PluginInfo } from "../api/client-types-config";
-import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
 import {
   getWidgetComponent,
   registerWidgetComponent,
   seedLegacyWidgets,
 } from "./registry-store";
+import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
+
 export {
   getWidgetComponent,
   registerBuiltinWidgets,
@@ -29,6 +30,7 @@ import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/ag
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status";
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
+
 // -- Seed bundled widgets into the registry ----------------------------------
 
 seedLegacyWidgets(AGENT_ORCHESTRATOR_PLUGIN_WIDGETS);

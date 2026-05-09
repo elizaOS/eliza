@@ -436,7 +436,7 @@ async function generateWithRetry(
 function buildGroqGenerateParams(
   params: GenerateTextParams,
   systemPrompt: string | undefined,
-  promptText: string,
+  promptText: string
 ): {
   prompt: string;
   system?: string;
@@ -467,9 +467,7 @@ function buildGroqGenerateParams(
     ...(paramsWithNative.messages ? { messages: paramsWithNative.messages } : {}),
     ...(paramsWithNative.tools ? { tools: paramsWithNative.tools } : {}),
     ...(paramsWithNative.toolChoice ? { toolChoice: paramsWithNative.toolChoice } : {}),
-    ...(paramsWithNative.responseSchema
-      ? { responseSchema: paramsWithNative.responseSchema }
-      : {}),
+    ...(paramsWithNative.responseSchema ? { responseSchema: paramsWithNative.responseSchema } : {}),
   };
 }
 
@@ -552,7 +550,7 @@ export const groqPlugin: Plugin = {
         groq,
         ModelType.TEXT_NANO,
         model,
-        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system)),
+        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system))
       );
     },
 
@@ -566,7 +564,7 @@ export const groqPlugin: Plugin = {
         groq,
         ModelType.TEXT_SMALL,
         model,
-        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system)),
+        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system))
       );
     },
 
@@ -580,7 +578,7 @@ export const groqPlugin: Plugin = {
         groq,
         ModelType.TEXT_MEDIUM,
         model,
-        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system)),
+        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system))
       );
     },
 
@@ -594,7 +592,7 @@ export const groqPlugin: Plugin = {
         groq,
         ModelType.TEXT_LARGE,
         model,
-        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system)),
+        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system))
       );
     },
 
@@ -608,7 +606,7 @@ export const groqPlugin: Plugin = {
         groq,
         ModelType.TEXT_MEGA,
         model,
-        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system)),
+        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system))
       );
     },
 
@@ -622,7 +620,7 @@ export const groqPlugin: Plugin = {
         groq,
         ModelType.RESPONSE_HANDLER,
         model,
-        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system)),
+        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system))
       );
     },
 
@@ -636,7 +634,7 @@ export const groqPlugin: Plugin = {
         groq,
         ModelType.ACTION_PLANNER,
         model,
-        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system)),
+        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system))
       );
     },
 

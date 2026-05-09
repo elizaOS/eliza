@@ -134,14 +134,17 @@ describe.skipIf(skipReason !== null)("ollama MODEL_USED events (live)", () => {
     };
 
     await runWithTrajectoryContext({ trajectoryStepId: "step-ollama-live" }, async () => {
-      await plugin.models?.[ModelType.TEXT_LARGE]?.(runtime as unknown as IAgentRuntime, {
-        prompt: 'Return JSON {"ok": true}. Reply with only the JSON, no commentary.',
-        responseSchema: {
-          type: "object",
-          properties: { ok: { type: "boolean" } },
-          required: ["ok"],
-        },
-      } as never);
+      await plugin.models?.[ModelType.TEXT_LARGE]?.(
+        runtime as unknown as IAgentRuntime,
+        {
+          prompt: 'Return JSON {"ok": true}. Reply with only the JSON, no commentary.',
+          responseSchema: {
+            type: "object",
+            properties: { ok: { type: "boolean" } },
+            required: ["ok"],
+          },
+        } as never
+      );
     });
 
     expect(llmCalls.length).toBeGreaterThanOrEqual(1);

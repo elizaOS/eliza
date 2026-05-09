@@ -59,6 +59,25 @@ async function main() {
     compilerOptions: {
       paths: distPaths,
     },
+    include: [
+      "packages/*/src/**/*",
+      "packages/native-plugins/*/src/**/*",
+      "plugins/*/*.ts",
+      "plugins/*/src/**/*",
+      "plugins/*/typescript/**/*.ts",
+      "cloud/packages/*/src/**/*",
+    ],
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/*.spec.ts",
+      "**/*.spec.tsx",
+      "**/*.stories.ts",
+      "**/*.stories.tsx",
+      "**/__tests__/**",
+    ],
   };
   writeFileIfChanged(
     newAbs,

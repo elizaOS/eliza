@@ -10,7 +10,7 @@ import { ActionMode } from "../../../types/index.ts";
 import { resolveAdminContext } from "../services/adminContext.ts";
 
 const invisibleCharsPattern =
-	/[\u200B-\u200F\uFEFF\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180E\u2000-\u200A\u202F\u205F\u3000\u202A-\u202F\u2060-\u2064\u2066-\u206F\u3164\uFE00-\uFE0F\uFFA0]/g;
+	/[\u200B-\u200F\uFEFF\u00AD\u061C\u115F\u1160\u180E\u2000-\u200A\u202F\u205F\u3000\u202A-\u202F\u2060-\u2064\u2066-\u206F\u3164\uFFA0]|\u034F|[\u17B4-\u17B5]|[\u180B-\u180D]|[\uFE00-\uFE0F]/g;
 
 function stripInvisible(text: string): string {
 	return text.replace(invisibleCharsPattern, "");

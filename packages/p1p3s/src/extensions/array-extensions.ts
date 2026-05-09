@@ -338,7 +338,8 @@ average.doc = {
 		'Returns the average of the numbers in the array. Throws an error if there are any non-numbers.',
 	examples: [{ example: '[12, 1, 5].average()', evaluated: '6' }],
 	returnType: 'number',
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-average',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-average',
 };
 
 compact.doc = {
@@ -348,7 +349,8 @@ compact.doc = {
 		'Removes any empty values from the array. <code>null</code>, <code>""</code> and <code>undefined</code> count as empty.',
 	examples: [{ example: '[2, null, 1, ""].compact()', evaluated: '[2, 1]' }],
 	returnType: 'Array',
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-compact',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-compact',
 };
 
 isEmpty.doc = {
@@ -359,7 +361,8 @@ isEmpty.doc = {
 		{ example: "['quick', 'brown', 'fox'].isEmpty()", evaluated: 'false' },
 	],
 	returnType: 'boolean',
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-isEmpty',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-isEmpty',
 };
 
 isNotEmpty.doc = {
@@ -380,7 +383,8 @@ first.doc = {
 	description: 'Returns the first element of the array',
 	examples: [{ example: "['quick', 'brown', 'fox'].first()", evaluated: "'quick'" }],
 	returnType: 'any',
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-first',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-first',
 };
 
 last.doc = {
@@ -444,7 +448,8 @@ chunk.doc = {
 			type: 'number',
 		},
 	],
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-chunk',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-chunk',
 };
 
 difference.doc = {
@@ -503,7 +508,8 @@ merge.doc = {
 			type: 'Array',
 		},
 	],
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-merge',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-merge',
 };
 
 pluck.doc = {
@@ -530,7 +536,8 @@ pluck.doc = {
 			type: 'string',
 		},
 	],
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-pluck',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-pluck',
 };
 
 renameKeys.doc = {
@@ -600,7 +607,8 @@ union.doc = {
 			type: 'Array',
 		},
 	],
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-union',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-union',
 };
 
 unique.doc = {
@@ -619,7 +627,8 @@ unique.doc = {
 	],
 	returnType: 'any',
 	aliases: ['removeDuplicates'],
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-unique',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-unique',
 	args: [
 		{
 			name: 'fieldNames',
@@ -660,7 +669,8 @@ append.doc = {
 			description: 'Consider using spread syntax instead',
 		},
 	],
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-append',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-append',
 	returnType: 'Array',
 	args: [
 		{

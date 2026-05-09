@@ -379,7 +379,8 @@ export function validateOutputReferences(workflow: WorkflowDefinition): OutputRe
 
   function getSourceSchema(sourceName: string) {
     if (schemaCache.has(sourceName)) {
-      return schemaCache.get(sourceName)!;
+      const cached = schemaCache.get(sourceName);
+      return cached === undefined ? null : cached;
     }
     const sourceNode = nodeMap.get(sourceName);
     if (!sourceNode) {
@@ -616,7 +617,11 @@ function positionByLevels(
   }
 
   while (queue.length > 0) {
-    const { name, level } = queue.shift()!;
+    const next = queue.shift();
+    if (!next) {
+      continue;
+    }
+    const { name, level } = next;
 
     if (visited.has(name)) {
       continue;

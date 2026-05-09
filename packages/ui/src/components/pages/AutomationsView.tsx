@@ -69,15 +69,15 @@ import {
   type Conversation,
   isMissingCredentialsResponse,
   isNeedsClarificationResponse,
+  type TriggerSummary,
+  type WorkbenchTask,
   type WorkflowClarificationRequest,
   type WorkflowClarificationTargetGroup,
-  type WorkflowStatusResponse,
   type WorkflowDefinition,
   type WorkflowDefinitionMissingCredential,
   type WorkflowDefinitionNeedsClarificationResponse,
   type WorkflowDefinitionWriteRequest,
-  type TriggerSummary,
-  type WorkbenchTask,
+  type WorkflowStatusResponse,
 } from "../../api/client";
 import { useWorkflowGenerationState } from "../../hooks/useWorkflowGenerationState";
 import {
@@ -608,7 +608,8 @@ function useAutomationsViewController() {
   const [automationsLoading, setAutomationsLoading] = useState(false);
   const [automationsLoaded, setAutomationsLoaded] = useState(false);
   const [automationsError, setAutomationsError] = useState<string | null>(null);
-  const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatusResponse | null>(null);
+  const [workflowStatus, setWorkflowStatus] =
+    useState<WorkflowStatusResponse | null>(null);
   const [workflowFetchError, setWorkflowFetchError] = useState<string | null>(
     null,
   );
@@ -1917,7 +1918,9 @@ function WorkflowRuntimeNotice({
       <div className="mb-2 flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-danger/25 bg-danger/5 px-3 py-1.5 text-xs-tight">
         <div className="flex min-w-0 items-center gap-2">
           <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />
-          <span className="text-danger/90">Workflow runtime is unavailable.</span>
+          <span className="text-danger/90">
+            Workflow runtime is unavailable.
+          </span>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -3458,7 +3461,11 @@ function getWorkflowFlowNodes(workflow: WorkflowDefinition | null): Array<{
     }));
 }
 
-function WorkflowDataFlowStrip({ workflow }: { workflow: WorkflowDefinition | null }) {
+function WorkflowDataFlowStrip({
+  workflow,
+}: {
+  workflow: WorkflowDefinition | null;
+}) {
   const flowNodes = getWorkflowFlowNodes(workflow);
   if (flowNodes.length === 0) {
     return (

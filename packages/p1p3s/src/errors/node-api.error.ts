@@ -14,8 +14,8 @@ import type {
 	JsonObject,
 	RelatedExecution,
 } from '../interfaces.js';
-import type { ErrorLevel } from '../workflows-errors/index.js';
 import { removeCircularRefs, sanitizeXmlName } from '../utils.js';
+import type { ErrorLevel } from '../workflows-errors/index.js';
 import { NodeError } from './abstract/node.error.js';
 
 export interface NodeOperationErrorOptions {

@@ -466,7 +466,8 @@ toDate.doc = {
 	section: 'cast',
 	returnType: 'Date',
 	hidden: true,
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/strings/#string-toDate',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/strings/#string-toDate',
 };
 
 toDateTime.doc = {
@@ -530,7 +531,8 @@ toInt.doc = {
 	args: [{ name: 'radix?', type: 'number' }],
 	aliases: ['toWholeNumber'],
 	hidden: true,
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/strings/#string-toInt',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/strings/#string-toInt',
 };
 
 toSentenceCase.doc = {
@@ -680,7 +682,8 @@ isUrl.doc = {
 	description: 'Returns <code>true</code> if a string is a valid URL',
 	section: 'validation',
 	returnType: 'boolean',
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/strings/#string-isUrl',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/strings/#string-isUrl',
 	examples: [
 		{ example: '"https://workflows.io".isUrl()', evaluated: 'true' },
 		{ example: '"workflows.io".isUrl()', evaluated: 'false' },
@@ -808,7 +811,8 @@ hash.doc = {
 			type: 'string',
 		},
 	],
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/strings/#string-hash',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/strings/#string-hash',
 	examples: [{ example: '"hello".hash()', evaluated: "'5d41402abc4b2a76b9719d911017c592'" }],
 };
 
@@ -827,7 +831,8 @@ quote.doc = {
 			type: 'string',
 		},
 	],
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/strings/#string-quote',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/strings/#string-quote',
 	examples: [{ example: '\'Nathan says "hi"\'.quote()', evaluated: '\'"Nathan says \\"hi\\""\'' }],
 };
 

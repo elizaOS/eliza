@@ -110,7 +110,9 @@ describe('validateAndRepair — typeVersion clamp', () => {
         },
       ],
     });
-    const runtimeVersions = new Map<string, number[]>([['workflows-nodes-base.gmail', [1, 2, 2.1]]]);
+    const runtimeVersions = new Map<string, number[]>([
+      ['workflows-nodes-base.gmail', [1, 2, 2.1]],
+    ]);
     const r = validateAndRepair(wf, [def], NO_CTX, runtimeVersions);
     expect(wf.nodes[0].typeVersion).toBe(2.1);
     expect(r.repairs[0].kind).toBe('typeVersionClamp');
@@ -133,7 +135,9 @@ describe('validateAndRepair — typeVersion clamp', () => {
         },
       ],
     });
-    const runtimeVersions = new Map<string, number[]>([['workflows-nodes-base.gmail', [1, 2, 2.1]]]);
+    const runtimeVersions = new Map<string, number[]>([
+      ['workflows-nodes-base.gmail', [1, 2, 2.1]],
+    ]);
     const r = validateAndRepair(wf, [def], NO_CTX, runtimeVersions);
     // No catalog ∩ runtime overlap — trust runtime, clamp to highest ≤ 3
     expect(wf.nodes[0].typeVersion).toBe(2.1);

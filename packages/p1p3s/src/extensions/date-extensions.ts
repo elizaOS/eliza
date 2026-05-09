@@ -300,7 +300,8 @@ endOfMonth.doc = {
 	hidden: true,
 	description: 'Transforms a date to the last possible moment that lies within the month.',
 	section: 'edit',
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/dates/#date-endOfMonth',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/dates/#date-endOfMonth',
 };
 
 isDst.doc = {
@@ -318,7 +319,8 @@ isWeekend.doc = {
 	hidden: true,
 	description: 'Checks if the Date falls on a Saturday or Sunday.',
 	section: 'query',
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/dates/#date-isWeekend',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/dates/#date-isWeekend',
 };
 
 beginningOf.doc = {
@@ -352,7 +354,8 @@ extract.doc = {
 			type: 'string',
 		},
 	],
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/dates/#date-extract',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/dates/#date-extract',
 };
 
 format.doc = {
@@ -420,7 +423,8 @@ isBetween.doc = {
 			type: 'string | DateTime',
 		},
 	],
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/dates/#date-isBetween',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/dates/#date-isBetween',
 };
 
 isInLast.doc = {
@@ -433,7 +437,8 @@ isInLast.doc = {
 		{ name: 'n', type: 'number' },
 		{ name: 'unit?', type: 'DurationUnit' },
 	],
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/dates/#date-isInLast',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/dates/#date-isInLast',
 };
 
 toDateTime.doc = {
@@ -448,7 +453,8 @@ toDateTime.doc = {
 	],
 	returnType: 'DateTime',
 	hidden: true,
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/dates/#date-toDateTime',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/dates/#date-toDateTime',
 };
 
 minus.doc = {
@@ -579,7 +585,8 @@ diffToNow.doc = {
 			type: 'string | string[]',
 		},
 	],
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/dates/#date-diffToNow',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/dates/#date-diffToNow',
 };
 
 isEmpty.doc = {
@@ -591,7 +598,8 @@ isEmpty.doc = {
 		{ example: 'dt = null\ndt.isEmpty()', evaluated: 'true' },
 	],
 	returnType: 'boolean',
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-isEmpty',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/arrays/#array-isEmpty',
 };
 
 isNotEmpty.doc = {

@@ -924,7 +924,10 @@ export class BirdeyeService extends Service {
           | { registerDataProvder?: (provider: unknown) => void }
           | undefined;
 
-        if (!infoService || typeof infoService.registerDataProvder !== "function") {
+        if (
+          !infoService ||
+          typeof infoService.registerDataProvder !== "function"
+        ) {
           runtime.logger?.debug(
             "INTEL_DATAPROVIDER service not available, skipping Birdeye data provider registration",
           );

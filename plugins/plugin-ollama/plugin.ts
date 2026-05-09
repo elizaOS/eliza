@@ -187,7 +187,6 @@ export const ollamaPlugin: Plugin = {
     ): Promise<string | TextStreamResult> => {
       return handleActionPlanner(runtime, params);
     },
-
   },
 
   tests: [

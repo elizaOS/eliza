@@ -101,7 +101,8 @@ ceil.doc = {
 	description: 'Rounds the number up to the next whole number',
 	examples: [{ example: '(1.234).ceil()', evaluated: '2' }],
 	returnType: 'number',
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/numbers/#number-ceil',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/numbers/#number-ceil',
 };
 
 floor.doc = {
@@ -109,7 +110,8 @@ floor.doc = {
 	description: 'Rounds the number down to the nearest whole number',
 	examples: [{ example: '(1.234).floor()', evaluated: '1' }],
 	returnType: 'number',
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/numbers/#number-floor',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/numbers/#number-floor',
 };
 
 isEven.doc = {
@@ -121,7 +123,8 @@ isEven.doc = {
 		{ example: '(42).isEven()', evaluated: 'true' },
 	],
 	returnType: 'boolean',
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/numbers/#number-isEven',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/numbers/#number-isEven',
 };
 
 isOdd.doc = {
@@ -133,7 +136,8 @@ isOdd.doc = {
 		{ example: '(42).isOdd()', evaluated: 'false' },
 	],
 	returnType: 'boolean',
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/numbers/#number-isOdd',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/numbers/#number-isOdd',
 };
 
 format.doc = {
@@ -165,7 +169,8 @@ format.doc = {
 			type: 'object',
 		},
 	],
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/numbers/#number-format',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/numbers/#number-format',
 };
 
 round.doc = {
@@ -186,7 +191,8 @@ round.doc = {
 			type: 'number',
 		},
 	],
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/numbers/#number-round',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/numbers/#number-round',
 };
 
 toBoolean.doc = {
@@ -238,7 +244,8 @@ abs.doc = {
 		{ example: '(1.7).abs()', evaluated: '1.7' },
 	],
 	returnType: 'number',
-	docURL: 'https://docs.workflows.io/code/builtin/data-transformation-functions/numbers/#number-abs',
+	docURL:
+		'https://docs.workflows.io/code/builtin/data-transformation-functions/numbers/#number-abs',
 };
 
 isInteger.doc = {

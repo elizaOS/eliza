@@ -274,7 +274,11 @@ async function handleTextEmbedding(
 /**
  * Union type of all model parameter types for Ollama handlers
  */
-type OllamaModelParams = GenerateTextParams | TextEmbeddingParams | string | null;
+type OllamaModelParams =
+	| GenerateTextParams
+	| TextEmbeddingParams
+	| string
+	| null;
 
 /**
  * Union type of all model result types for Ollama handlers

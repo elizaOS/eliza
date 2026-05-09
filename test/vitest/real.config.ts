@@ -120,6 +120,14 @@ const elizaCoreSourceRoot = path.join(elizaWorkspaceRoot, "packages", "core", "s
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
 const sharedSourceRoot = getSharedSourceRoot(repoRoot);
+const vaultSourceRoot = path.join(elizaWorkspaceRoot, "packages", "vault", "src");
+const cloudSdkSourceRoot = path.join(
+  elizaWorkspaceRoot,
+  "cloud",
+  "packages",
+  "sdk",
+  "src",
+);
 const workspaceUiSourceRoot = path.join(
   elizaWorkspaceRoot,
   "packages",
@@ -194,6 +202,22 @@ const realResolveAlias: ModuleAlias[] = [
   }),
   ...getAppCoreSourceAliases(appCoreSourceRoot),
   ...getUiSourceAliases(uiSourceRoot),
+  {
+    find: /^@elizaos\/vault\/(.+)/,
+    replacement: path.join(vaultSourceRoot, "$1"),
+  },
+  {
+    find: "@elizaos/vault",
+    replacement: path.join(vaultSourceRoot, "index.ts"),
+  },
+  {
+    find: /^@elizaos\/cloud-sdk\/(.+)/,
+    replacement: path.join(cloudSdkSourceRoot, "$1"),
+  },
+  {
+    find: "@elizaos/cloud-sdk",
+    replacement: path.join(cloudSdkSourceRoot, "index.ts"),
+  },
   {
     find: "@elizaos/app-lifeops/plugin",
     replacement: path.join(

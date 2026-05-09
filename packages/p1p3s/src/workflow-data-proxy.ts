@@ -20,7 +20,6 @@ import type {
 } from './interfaces.js';
 import { NodeConnectionTypes } from './interfaces.js';
 import * as NodeHelpers from './node-helpers.js';
-import { ApplicationError } from './workflows-errors/index.js';
 import { createResultError, createResultOk } from './result.js';
 import type { IRunExecutionData } from './run-execution-data/run-execution-data.js';
 import { isResourceLocatorValue } from './type-guards.js';
@@ -29,6 +28,7 @@ import type { Workflow } from './workflow.js';
 import type { EnvProviderState } from './workflow-data-proxy-env-provider.js';
 import { createEnvProvider, createEnvProviderState } from './workflow-data-proxy-env-provider.js';
 import { getPinDataIfManualExecution } from './workflow-data-proxy-helpers.js';
+import { ApplicationError } from './workflows-errors/index.js';
 
 const isScriptingNode = (nodeName: string, workflow: Workflow) => {
 	const node = workflow.getNode(nodeName);

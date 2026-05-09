@@ -37,7 +37,6 @@ import type {
 } from './interfaces.js';
 import { NodeConnectionTypes } from './interfaces.js';
 import { validateFilterParameter } from './node-parameters/filter-parameter.js';
-import { ApplicationError } from './workflows-errors/index.js';
 import type { IRunExecutionData } from './run-execution-data/run-execution-data.js';
 import {
 	isFilterValue,
@@ -48,6 +47,7 @@ import {
 } from './type-guards.js';
 import { validateFieldType } from './type-validation.js';
 import { deepCopy } from './utils.js';
+import { ApplicationError } from './workflows-errors/index.js';
 
 // To facilitate frontend refactoring, make some helper functions work without full workflow object
 type WorkflowForNodeHelpers = Pick<Workflow, 'expression'>;

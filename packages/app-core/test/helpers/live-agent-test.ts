@@ -204,8 +204,17 @@ function applyProviderSettings(
 			if (process.env.OPENAI_LARGE_MODEL) {
 				runtime.setSetting("OPENAI_LARGE_MODEL", process.env.OPENAI_LARGE_MODEL);
 			}
+			if (process.env.OPENAI_MEDIUM_MODEL) {
+				runtime.setSetting("OPENAI_MEDIUM_MODEL", process.env.OPENAI_MEDIUM_MODEL);
+			}
 			if (process.env.OPENAI_SMALL_MODEL) {
 				runtime.setSetting("OPENAI_SMALL_MODEL", process.env.OPENAI_SMALL_MODEL);
+			}
+			if (process.env.OPENAI_ACTION_PLANNER_MODEL) {
+				runtime.setSetting(
+					"OPENAI_ACTION_PLANNER_MODEL",
+					process.env.OPENAI_ACTION_PLANNER_MODEL,
+				);
 			}
 			break;
 		case "anthropic":
@@ -346,8 +355,27 @@ function applyProviderSettings(
 				process.env.OPENAI_LARGE_MODEL || "gpt-oss-120b",
 			);
 			runtime.setSetting(
+				"OPENAI_MEDIUM_MODEL",
+				process.env.OPENAI_MEDIUM_MODEL ||
+					process.env.OPENAI_LARGE_MODEL ||
+					"gpt-oss-120b",
+			);
+			runtime.setSetting(
 				"OPENAI_SMALL_MODEL",
 				process.env.OPENAI_SMALL_MODEL || "gpt-oss-120b",
+			);
+			runtime.setSetting(
+				"OPENAI_ACTION_PLANNER_MODEL",
+				process.env.OPENAI_ACTION_PLANNER_MODEL ||
+					process.env.OPENAI_LARGE_MODEL ||
+					"gpt-oss-120b",
+			);
+			runtime.setSetting(
+				"OPENAI_PLANNER_MODEL",
+				process.env.OPENAI_PLANNER_MODEL ||
+					process.env.OPENAI_ACTION_PLANNER_MODEL ||
+					process.env.OPENAI_LARGE_MODEL ||
+					"gpt-oss-120b",
 			);
 			break;
 		}
@@ -371,13 +399,19 @@ function maybeApplyCerebrasAlias(provider: LiveProviderId): () => void {
 		OPENAI_API_KEY: process.env.OPENAI_API_KEY,
 		OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
 		OPENAI_LARGE_MODEL: process.env.OPENAI_LARGE_MODEL,
+		OPENAI_MEDIUM_MODEL: process.env.OPENAI_MEDIUM_MODEL,
 		OPENAI_SMALL_MODEL: process.env.OPENAI_SMALL_MODEL,
+		OPENAI_ACTION_PLANNER_MODEL: process.env.OPENAI_ACTION_PLANNER_MODEL,
+		OPENAI_PLANNER_MODEL: process.env.OPENAI_PLANNER_MODEL,
 	};
 
 	process.env.OPENAI_API_KEY = cerebras;
 	process.env.OPENAI_BASE_URL ||= "https://api.cerebras.ai/v1";
 	process.env.OPENAI_LARGE_MODEL ||= "gpt-oss-120b";
+	process.env.OPENAI_MEDIUM_MODEL ||= process.env.OPENAI_LARGE_MODEL;
 	process.env.OPENAI_SMALL_MODEL ||= "gpt-oss-120b";
+	process.env.OPENAI_ACTION_PLANNER_MODEL ||= process.env.OPENAI_LARGE_MODEL;
+	process.env.OPENAI_PLANNER_MODEL ||= process.env.OPENAI_ACTION_PLANNER_MODEL;
 
 	return () => {
 		for (const [k, v] of Object.entries(previous)) {

@@ -197,7 +197,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   const capabilityHints: string[] = [];
   const workflowMasterEnabled = config.workflow?.enabled !== false;
   const workflowExplicitlyDisabled =
-    config.plugins?.entries?.["workflow"]?.enabled === false;
+    config.plugins?.entries?.workflow?.enabled === false;
   if (workflowMasterEnabled && !workflowExplicitlyDisabled) {
     capabilityHints.push(
       "You can create, activate, deactivate, and delete workflows via natural language using the workflow actions.",

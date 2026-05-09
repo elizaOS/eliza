@@ -156,7 +156,6 @@ body {
   flex-direction: column;
   width: 100%;
   max-width: 100%;
-  height: 100vh;
   height: 100dvh;
   overflow: hidden;
   font-family: var(--font-body);
@@ -386,9 +385,15 @@ kbd {
  * so it doesn't shift layout.
  */
 @keyframes connector-flash {
-  0%   { box-shadow: 0 0 0 0 transparent; }
-  20%  { box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 60%, transparent); }
-  100% { box-shadow: 0 0 0 0 transparent; }
+  0% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  20% {
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 60%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 .connector-flash {
   animation: connector-flash 1.6s ease-out;

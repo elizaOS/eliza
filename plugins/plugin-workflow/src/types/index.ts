@@ -4,7 +4,7 @@ import type {
   INodeProperties,
   INodeTypeDescription,
   IWorkflowSettings,
-} from '@elizaos/workflows';
+} from '@elizaos/p1p3s';
 
 // Core workflow types
 

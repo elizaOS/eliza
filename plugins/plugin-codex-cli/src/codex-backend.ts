@@ -43,7 +43,10 @@ export interface CodexGenerateParams {
   maxTokens?: number;
   abortSignal?: AbortSignal;
   onTextDelta?: (delta: string) => void;
-  responseFormat?: { type: "json_object" | "text" } | string;
+  responseFormat?:
+    | { type: "json_object" | "text" }
+    | { type: "json_schema"; schema: Record<string, unknown> }
+    | string;
 }
 
 export interface CodexGenerateResult {

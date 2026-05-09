@@ -15,16 +15,16 @@
     "emitDeclarationOnly": true,
     "noEmit": false,
     "paths": {
-      "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
-      "@elizaos/core/*": ["../../packages/core/dist/*"],
-      "@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/dist/*"],
-      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
-      "@elizaos/ui/*": ["../../packages/ui/dist/*"],
-      "@elizaos/app-core": ["../../packages/app-core/dist/index.d.ts"],
-      "@elizaos/agent": ["../../packages/agent/dist/index.d.ts"],
-      "@elizaos/cloud-sdk": ["../../cloud/packages/sdk/dist/index.d.ts"],
-      "@elizaos/scenario-runner": ["../../packages/scenario-runner/dist/index.d.ts"]
+      "@elizaos/core": ["../packages/core/dist/index.d.ts"],
+      "@elizaos/core/*": ["../packages/core/dist/*"],
+      "@elizaos/shared": ["../packages/shared/dist/index.d.ts"],
+      "@elizaos/shared/*": ["../packages/shared/dist/*"],
+      "@elizaos/ui": ["../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui/*": ["../packages/ui/dist/*"],
+      "@elizaos/app-core": ["../packages/app-core/dist/index.d.ts"],
+      "@elizaos/agent": ["../packages/agent/dist/index.d.ts"],
+      "@elizaos/cloud-sdk": ["../cloud/packages/sdk/dist/index.d.ts"],
+      "@elizaos/scenario-runner": ["../packages/scenario-runner/dist/index.d.ts"]
     }
   }
 }

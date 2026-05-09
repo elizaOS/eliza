@@ -482,12 +482,7 @@ interface NodeDetailDrawerProps {
   labelId: string;
 }
 
-function NodeDetailDrawer({
-  node,
-  workflow,
-  onClose,
-  labelId,
-}: NodeDetailDrawerProps) {
+function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
   const { t } = useApp();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -599,7 +594,6 @@ function NodeDetailDrawer({
           </>
         )}
       </div>
-
     </div>
   );
 }
@@ -676,9 +670,8 @@ export function WorkflowGraphViewer({
 }: WorkflowGraphViewerProps) {
   const { uiTheme } = useApp();
   const [fullScreen, setFullScreen] = useState(false);
-  const [selectedNode, setSelectedNode] = useState<WorkflowDefinitionNode | null>(
-    null,
-  );
+  const [selectedNode, setSelectedNode] =
+    useState<WorkflowDefinitionNode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const drawerLabelId = useId();
 

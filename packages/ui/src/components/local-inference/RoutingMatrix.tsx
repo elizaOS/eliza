@@ -9,11 +9,7 @@ import type {
 
 const DEFAULT_POLICY: RoutingPolicy = "prefer-local";
 
-const SLOTS: AgentModelSlot[] = [
-  "TEXT_SMALL",
-  "TEXT_LARGE",
-  "TEXT_EMBEDDING",
-];
+const SLOTS: AgentModelSlot[] = ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"];
 
 const POLICIES: Array<{ value: RoutingPolicy; label: string; hint: string }> = [
   {

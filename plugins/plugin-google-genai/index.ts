@@ -174,7 +174,7 @@ const pluginTests = [
             const result = await runtime.useModel(ModelType.TEXT_LARGE, {
               prompt: "Generate a person profile with name, age, and hobbies.",
               responseSchema: schema,
-            } as unknown as Parameters<typeof runtime.useModel>[1]);
+            } as unknown as GenerateTextParams);
 
             logger.log("Generated structured output:", JSON.stringify(result));
 

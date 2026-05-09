@@ -97,7 +97,13 @@ export type LiveProviderConfig = {
 export const LIVE_PROVIDER_ENV_KEYS = new Set<string>([
   "MILADY_PROVIDER",
   "SMALL_MODEL",
+  "MEDIUM_MODEL",
   "LARGE_MODEL",
+  "ACTION_PLANNER_MODEL",
+  "PLANNER_MODEL",
+  "OPENAI_MEDIUM_MODEL",
+  "OPENAI_ACTION_PLANNER_MODEL",
+  "OPENAI_PLANNER_MODEL",
   "ELIZAOS_CLOUD_API_KEY",
   "ELIZA_CLOUD_API_KEY",
   "ELIZA_DISABLE_SUBSCRIPTION_CREDENTIALS",
@@ -256,6 +262,12 @@ export function selectLiveProvider(
     if (def.name === "cerebras") {
       env.MILADY_PROVIDER = "cerebras";
       env.OPENAI_API_KEY = apiKey;
+      env.OPENAI_MEDIUM_MODEL = largeModel;
+      env.OPENAI_ACTION_PLANNER_MODEL = largeModel;
+      env.OPENAI_PLANNER_MODEL = largeModel;
+      env.MEDIUM_MODEL = largeModel;
+      env.ACTION_PLANNER_MODEL = largeModel;
+      env.PLANNER_MODEL = largeModel;
     }
     env[def.smallModelEnvVar] = smallModel;
     env[def.largeModelEnvVar] = largeModel;

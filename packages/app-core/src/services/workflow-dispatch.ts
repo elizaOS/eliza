@@ -43,10 +43,9 @@ export interface CreateWorkflowDispatchServiceOptions {
 function resolveEmbeddedService(
   runtime: AgentRuntime,
 ): EmbeddedWorkflowServiceLike | null {
-  const service = runtime.getService?.(EMBEDDED_WORKFLOW_SERVICE_TYPE) as
-    | EmbeddedWorkflowServiceLike
-    | null
-    | undefined;
+  const service = runtime.getService?.(
+    EMBEDDED_WORKFLOW_SERVICE_TYPE,
+  ) as unknown as EmbeddedWorkflowServiceLike | null | undefined;
   if (service && typeof service.executeWorkflow === "function") {
     return service;
   }

@@ -76,14 +76,18 @@ export const deepCopy = <T extends ((object | Date) & { toJSON?: () => string })
 		return clone as T;
 	}
 	// Object
-	const clone = Object.create(Object.getPrototypeOf({}));
+	const clone: Record<string, unknown> = Object.create(Object.getPrototypeOf({}));
 	hash.set(source, clone);
-	for (const i in source) {
+	const sourceRecord = source as Record<
+		string,
+		((object | Date) & { toJSON?: () => string }) | Primitives
+	>;
+	for (const i in sourceRecord) {
 		if (hasOwnProp(i)) {
-			clone[i] = deepCopy((source as any)[i], hash, `${path}.${i}`);
+			clone[i] = deepCopy(sourceRecord[i], hash, `${path}.${i}`);
 		}
 	}
-	return clone;
+	return clone as T;
 };
 
 function syntaxNodeToValue(expression?: SyntaxNode | null): unknown {
@@ -190,19 +194,8 @@ type JSONStringifyOptions = {
  * @returns The decoded UTF-8 string
  */
 export const base64DecodeUTF8 = (str: string): string => {
-	try {
-		// Use modern TextDecoder for proper UTF-8 handling
-		const bytes = new Uint8Array(
-			atob(str)
-				.split('')
-				.map((char) => char.charCodeAt(0))
-		);
-		return new TextDecoder('utf-8').decode(bytes);
-	} catch (_error) {
-		// Fallback method for older browsers
-		console.warn('TextDecoder not available, using fallback method');
-		return atob(str);
-	}
+	const bytes = Uint8Array.from(atob(str), (char) => char.charCodeAt(0));
+	return new TextDecoder('utf-8').decode(bytes);
 };
 
 export const replaceCircularReferences = <T>(value: T, knownObjects = new WeakSet()): T => {
@@ -273,19 +266,15 @@ export function assert<T>(condition: T, msg?: string): asserts condition {
 		if (Object.hasOwn(Error, 'captureStackTrace')) {
 			// V8 only - https://nodejs.org/api/errors.html#errors_error_capturestacktrace_targetobject_constructoropt
 			Error.captureStackTrace(error, assert);
-		} else if (error.stack) {
-			// fallback for IE and Firefox
-			error.stack = error.stack
-				.split('\n')
-				.slice(1) // skip assert function from stack frames
-				.join('\n');
 		}
 		throw error;
 	}
 }
 
-export const isTraversableObject = (value: any): value is JsonObject => {
-	return value && typeof value === 'object' && !Array.isArray(value) && !!Object.keys(value).length;
+export const isTraversableObject = (value: unknown): value is JsonObject => {
+	return (
+		!!value && typeof value === 'object' && !Array.isArray(value) && !!Object.keys(value).length
+	);
 };
 
 export const removeCircularRefs = (obj: JsonObject, seen = new Set()) => {
@@ -493,7 +482,8 @@ export function getCredentialAllowedDomains(
 	return trimmed === '' ? undefined : trimmed;
 }
 
-const COMMUNITY_PACKAGE_NAME_REGEX = /^(?!@workflows\/)(@[\w.-]+\/)?workflows-nodes-(?!base\b)\b\w+/g;
+const COMMUNITY_PACKAGE_NAME_REGEX =
+	/^(?!@workflows\/)(@[\w.-]+\/)?workflows-nodes-(?!base\b)\b\w+/g;
 
 export function isCommunityPackageName(packageName: string): boolean {
 	COMMUNITY_PACKAGE_NAME_REGEX.lastIndex = 0;

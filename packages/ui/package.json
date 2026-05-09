@@ -53,6 +53,7 @@
     "./layouts": "./dist/layouts/index.js",
     "./layouts/*": "./dist/layouts/*",
     "./widgets": "./dist/widgets/index.js",
+    "./widgets/registry-store": "./dist/widgets/registry-store.js",
     "./widgets/*": "./dist/widgets/*",
     "./bridge/*": "./dist/bridge/*.js",
     "./lib/*": "./dist/lib/*",

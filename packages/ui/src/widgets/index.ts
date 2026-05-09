@@ -9,6 +9,7 @@ export {
   resolveChatSidebarWidgets,
   resolveWidgetsForSlot,
 } from "./registry";
+export { seedLegacyWidgets } from "./registry-store";
 export type {
   PluginWidgetDeclaration,
   WidgetProps,

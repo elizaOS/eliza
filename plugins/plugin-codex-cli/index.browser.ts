@@ -15,8 +15,6 @@ export const codexCliPlugin: Plugin = {
   models: {
     [ModelType.TEXT_SMALL]: unsupported,
     [ModelType.TEXT_LARGE]: unsupported,
-    [ModelType.OBJECT_SMALL]: unsupported,
-    [ModelType.OBJECT_LARGE]: unsupported,
   },
 };
 

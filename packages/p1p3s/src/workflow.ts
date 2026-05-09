@@ -36,9 +36,9 @@ import * as NodeHelpers from './node-helpers.js';
 import { renameFormFields } from './node-parameters/rename-node-utils.js';
 import { applyAccessPatterns } from './node-reference-parser-utils.js';
 import * as ObservableObject from './observable-object.js';
-import { ApplicationError } from './workflows-errors/index.js';
 import { dedupe } from './utils.js';
 import { WorkflowExpression } from './workflow-expression.js';
+import { ApplicationError } from './workflows-errors/index.js';
 
 export interface WorkflowParameters {
 	id?: string;

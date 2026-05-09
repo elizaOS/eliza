@@ -1,10 +1,11 @@
+import type { ComponentType } from "react";
 import type { ChatSidebarWidgetDefinition } from "../components/chat/widgets/types";
 import type { WidgetProps } from "./types";
 
-var COMPONENT_REGISTRY: Map<string, React.ComponentType<WidgetProps>> | undefined;
+var COMPONENT_REGISTRY: Map<string, ComponentType<WidgetProps>> | undefined;
 
-function getComponentRegistry(): Map<string, React.ComponentType<WidgetProps>> {
-  COMPONENT_REGISTRY ??= new Map<string, React.ComponentType<WidgetProps>>();
+function getComponentRegistry(): Map<string, ComponentType<WidgetProps>> {
+  COMPONENT_REGISTRY ??= new Map<string, ComponentType<WidgetProps>>();
   return COMPONENT_REGISTRY;
 }
 
@@ -15,7 +16,7 @@ function getComponentRegistry(): Map<string, React.ComponentType<WidgetProps>> {
 export function registerWidgetComponent(
   pluginId: string,
   declarationId: string,
-  Component: React.ComponentType<WidgetProps>,
+  Component: ComponentType<WidgetProps>,
 ): void {
   getComponentRegistry().set(`${pluginId}/${declarationId}`, Component);
 }
@@ -24,7 +25,7 @@ export function registerWidgetComponent(
 export function getWidgetComponent(
   pluginId: string,
   declarationId: string,
-): React.ComponentType<WidgetProps> | undefined {
+): ComponentType<WidgetProps> | undefined {
   return getComponentRegistry().get(`${pluginId}/${declarationId}`);
 }
 
@@ -40,7 +41,7 @@ export function seedLegacyWidgets(
     registerWidgetComponent(
       def.pluginId,
       def.id,
-      def.Component as React.ComponentType<WidgetProps>,
+      def.Component as ComponentType<WidgetProps>,
     );
   }
 }
