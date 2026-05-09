@@ -197,7 +197,6 @@ import {
 } from "../shared/workspace-resolution.js";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
 import { seedBundledDocuments } from "./default-documents.js";
-import discordLocalPlugin from "./discord-local-plugin.js";
 import { createElizaPlugin } from "./eliza-plugin.js";
 import { detectEmbeddingPreset } from "./embedding-presets.js";
 import {
@@ -380,7 +379,6 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       // `@elizaos/app-lifeops` and `@elizaos/app-companion` are intentionally
       // omitted from the static map — see the comment near the top of this file.
       // They resolve via headless dynamic-import entrypoints in plugin-resolver.ts.
-      "@elizaos/plugin-discord-local": discordLocalPlugin,
       // personality: now built-in advanced capability (advancedCapabilities: true)
     });
     _coreStaticPluginsRegistered = true;
