@@ -80,8 +80,6 @@ const IDENTITY_CONFIDENCE_THRESHOLD = 0.5;
 
 const UUID_PATTERN =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const PLACEHOLDER_ENTITY_REFERENCE_PATTERN =
-	/^(entity_(initiating|being)_interaction|user(?:-\d+)?|scenarioagent(?:-agent)?|[a-z]+-agent|clinic|sms-message)$/i;
 
 const CONSOLIDATED_REFLECTION_TEMPLATE = `# Task: Post-response reflection
 
@@ -838,14 +836,6 @@ function normalizeEntityReference(entityId: string): string {
 	return unwrapped.replace(/^["'`]+|["'`]+$/g, "").trim();
 }
 
-function isPlaceholderEntityReference(entityId: string): boolean {
-	const normalized = normalizeEntityReference(entityId);
-	return (
-		normalized.length === 0 ||
-		PLACEHOLDER_ENTITY_REFERENCE_PATTERN.test(normalized)
-	);
-}
-
 function resolveEntity(entityId: string, entities: Entity[]): UUID {
 	const normalizedId = normalizeEntityReference(entityId);
 	if (UUID_PATTERN.test(normalizedId)) {
@@ -1033,12 +1023,6 @@ async function applyRelationshipUpdates(
 	let applied = 0;
 	for (const relationship of relationships) {
 		if (!relationship.sourceEntityId || !relationship.targetEntityId) continue;
-		if (
-			isPlaceholderEntityReference(relationship.sourceEntityId) ||
-			isPlaceholderEntityReference(relationship.targetEntityId)
-		) {
-			continue;
-		}
 
 		let sourceId: UUID;
 		let target: UUID;
