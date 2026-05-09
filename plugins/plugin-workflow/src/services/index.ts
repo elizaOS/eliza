@@ -1,9 +1,10 @@
 export {
-  WorkflowService,
+  EMBEDDED_WORKFLOW_SERVICE_TYPE,
+  EmbeddedWorkflowService,
+} from './embedded-workflow-service';
+export { WorkflowCredentialStore } from './workflow-credential-store';
+export {
   WORKFLOW_SERVICE_TYPE,
+  WorkflowService,
   type WorkflowServiceConfig,
 } from './workflow-service';
-
-export { EmbeddedWorkflowService, EMBEDDED_WORKFLOW_SERVICE_TYPE } from './embedded-workflow-service';
-
-export { WorkflowCredentialStore } from './workflow-credential-store';

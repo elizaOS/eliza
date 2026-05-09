@@ -2,9 +2,10 @@
  * Output schema utilities for validating expressions between nodes.
  * Uses pre-crawled schemaIndex.json with full schema content.
  */
-import type { ExpressionRef, SchemaContent } from '../types/index';
+
 import schemaIndex from '../data/schemaIndex.json' with { type: 'json' };
 import triggerSchemaIndex from '../data/triggerSchemaIndex.json' with { type: 'json' };
+import type { ExpressionRef, SchemaContent } from '../types/index';
 
 type SchemasByResource = Record<string, Record<string, SchemaContent>>;
 
@@ -20,11 +21,12 @@ interface SchemaIndex {
 }
 
 const SCHEMA_INDEX = schemaIndex as unknown as SchemaIndex;
-const TRIGGER_SCHEMAS = (
-  triggerSchemaIndex as unknown as {
-    triggers: Record<string, { outputSchema: SchemaContent }>;
-  }
-).triggers ?? {};
+const TRIGGER_SCHEMAS =
+  (
+    triggerSchemaIndex as unknown as {
+      triggers: Record<string, { outputSchema: SchemaContent }>;
+    }
+  ).triggers ?? {};
 
 const NODE_SCHEMAS = SCHEMA_INDEX.nodeTypes ?? {};
 
@@ -180,7 +182,7 @@ function extractExpressionsFromString(str: string, paramPath: string): Expressio
   const refs: ExpressionRef[] = [];
 
   // Match every $json.field reference, even inside compound expressions like {{ $json.a || $json.b }}
-  const simplePattern = /\$json\.([a-zA-Z0-9_.\[\]'"-]{1,200})/g;
+  const simplePattern = /\$json\.([a-zA-Z0-9_.[\]'"-]{1,200})/g;
   // Bracket-notation variant: $json["someField"] or $json['someField'] (Session 21
   // follow-up). The LLM occasionally emits this when the field name has chars
   // that wouldn't survive dot notation, OR when it's just "trying to be safe".
@@ -188,7 +190,7 @@ function extractExpressionsFromString(str: string, paramPath: string): Expressio
   // {{ $json["concatenate_subject"] }} silently — the typo never gets caught.
   const bracketPattern = /\$json\[\s*(['"])([^'"]{1,200})\1\s*\]/g;
   const namedNodePattern =
-    /\$\(['"]([^'"]{1,100})['"]\)\.item\.json\.([a-zA-Z0-9_.\[\]'"-]{1,200})/g;
+    /\$\(['"]([^'"]{1,100})['"]\)\.item\.json\.([a-zA-Z0-9_.[\]'"-]{1,200})/g;
 
   let match;
 

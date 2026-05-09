@@ -1,10 +1,10 @@
-import {
+import defaultNodesData from '../data/defaultNodes.json' with { type: 'json' };
+import type {
+  IntegrationFilterResult,
   NodeDefinition,
   NodeProperty,
   NodeSearchResult,
-  IntegrationFilterResult,
 } from '../types/index';
-import defaultNodesData from '../data/defaultNodes.json' with { type: 'json' };
 
 /**
  * p1p3s node catalog with keyword-based search

@@ -1,12 +1,16 @@
 import { type IAgentRuntime, logger, type Plugin } from '@elizaos/core';
-import { WorkflowService, WorkflowCredentialStore, EmbeddedWorkflowService } from './services/index';
 import * as dbSchema from './db/index';
 import {
-  workflowStatusProvider,
   activeWorkflowsProvider,
   pendingDraftProvider,
+  workflowStatusProvider,
 } from './providers/index';
 import { workflowRoutes } from './routes/index';
+import {
+  EmbeddedWorkflowService,
+  WorkflowCredentialStore,
+  WorkflowService,
+} from './services/index';
 
 /**
  * Workflow Plugin for ElizaOS
@@ -57,7 +61,7 @@ export const workflowPlugin: Plugin = {
       | undefined;
     if (workflowSettings?.credentials) {
       const credCount = Object.keys(workflowSettings.credentials).filter(
-        (k) => workflowSettings.credentials![k]
+        (k) => workflowSettings.credentials?.[k]
       ).length;
       logger.info(
         { src: 'plugin:workflow:plugin:init' },

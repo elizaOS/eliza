@@ -8,10 +8,7 @@ import {
   coerceClarifications,
   pruneResolvedClarifications,
 } from '../lib/workflow-clarification';
-import {
-  WORKFLOW_SERVICE_TYPE,
-  type WorkflowService,
-} from '../services/workflow-service';
+import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
 import type {
   TriggerContext,
   WorkflowCreationResult,
@@ -42,13 +39,13 @@ export interface WorkflowRouteContext extends RouteRequestMeta, Pick<RouteHelper
 type WorkflowJsonResponder = (
   res: WorkflowRouteContext['res'],
   body: unknown,
-  status?: number,
+  status?: number
 ) => void;
 
 function sendJson(
   ctx: Pick<WorkflowRouteContext, 'res' | 'json'>,
   status: number,
-  body: unknown,
+  body: unknown
 ): void {
   (ctx.json as unknown as WorkflowJsonResponder)(ctx.res, body, status);
 }
@@ -79,7 +76,9 @@ function getWorkflowService(ctx: WorkflowRouteContext): WorkflowService | null {
 }
 
 function getConnectorTargetCatalog(ctx: WorkflowRouteContext): CatalogLike | null {
-  const candidate = ctx.runtime?.getService?.('connector_target_catalog') as CatalogLike | undefined;
+  const candidate = ctx.runtime?.getService?.('connector_target_catalog') as
+    | CatalogLike
+    | undefined;
   return candidate && typeof candidate.listGroups === 'function' ? candidate : null;
 }
 
@@ -102,7 +101,7 @@ function asWorkflow(value: unknown): WorkflowDefinition | null {
 }
 
 async function readWorkflowPayload(
-  ctx: WorkflowRouteContext,
+  ctx: WorkflowRouteContext
 ): Promise<{ workflow: WorkflowDefinition; activate?: boolean } | null> {
   const body = await readCompatJsonBody(ctx.req, ctx.res);
   if (!body) {
@@ -121,9 +120,10 @@ async function readWorkflowPayload(
   };
 }
 
-function toWorkflowResponse(
-  result: WorkflowCreationResult,
-): Pick<WorkflowDefinitionResponse, 'id' | 'name' | 'active'> & {
+function toWorkflowResponse(result: WorkflowCreationResult): Pick<
+  WorkflowDefinitionResponse,
+  'id' | 'name' | 'active'
+> & {
   nodeCount: number;
   missingCredentials: WorkflowCreationResult['missingCredentials'];
 } {
@@ -140,7 +140,7 @@ async function deployWorkflow(
   ctx: WorkflowRouteContext,
   service: WorkflowService,
   workflow: WorkflowDefinition,
-  activate?: boolean,
+  activate?: boolean
 ): Promise<void> {
   const deployed = await service.deployWorkflow(workflow, resolveAgentId(ctx));
   if (deployed.missingCredentials.length > 0 && !deployed.id) {
@@ -162,7 +162,7 @@ async function deployWorkflow(
 
 async function buildTriggerContextFromConversation(
   runtime: AgentRuntime | null,
-  conversationId: string,
+  conversationId: string
 ): Promise<TriggerContext | undefined> {
   const anyRuntime = runtime as unknown as {
     getRoom?: (id: string) => Promise<{ metadata?: unknown } | null>;
@@ -207,7 +207,7 @@ async function handleList(ctx: WorkflowRouteContext, service: WorkflowService): 
 async function handleGet(
   ctx: WorkflowRouteContext,
   service: WorkflowService,
-  id: string,
+  id: string
 ): Promise<void> {
   sendJson(ctx, 200, await service.getWorkflow(id));
 }
@@ -232,7 +232,7 @@ async function handleGenerate(ctx: WorkflowRouteContext, service: WorkflowServic
 
   const draft = await service.generateWorkflowDraft(
     prompt,
-    triggerContext ? { triggerContext } : undefined,
+    triggerContext ? { triggerContext } : undefined
   );
   if (typeof body.name === 'string' && body.name.trim()) {
     draft.name = body.name.trim();
@@ -258,7 +258,7 @@ async function handleGenerate(ctx: WorkflowRouteContext, service: WorkflowServic
 
 async function handleResolveClarification(
   ctx: WorkflowRouteContext,
-  service: WorkflowService,
+  service: WorkflowService
 ): Promise<void> {
   const body = await readCompatJsonBody(ctx.req, ctx.res);
   if (!isRecord(body) || !isRecord(body.draft) || !Array.isArray(body.resolutions)) {
@@ -269,7 +269,7 @@ async function handleResolveClarification(
   const draft = body.draft as unknown as WorkflowDefinition;
   const result = applyResolutions(
     draft as unknown as Record<string, unknown>,
-    body.resolutions as Array<{ paramPath: string; value: string }>,
+    body.resolutions as Array<{ paramPath: string; value: string }>
   );
   if (!result.ok) {
     sendJson(ctx, 400, { error: result.error, paramPath: result.paramPath });
@@ -279,12 +279,16 @@ async function handleResolveClarification(
   const resolvedPaths = new Set(
     body.resolutions
       .map((resolution) => (isRecord(resolution) ? resolution.paramPath : undefined))
-      .filter((path): path is string => typeof path === 'string' && path.length > 0),
+      .filter((path): path is string => typeof path === 'string' && path.length > 0)
   );
   const freeFormCount = body.resolutions.filter(
-    (resolution) => !isRecord(resolution) || typeof resolution.paramPath !== 'string',
+    (resolution) => !isRecord(resolution) || typeof resolution.paramPath !== 'string'
   ).length;
-  pruneResolvedClarifications(draft as unknown as Record<string, unknown>, resolvedPaths, freeFormCount);
+  pruneResolvedClarifications(
+    draft as unknown as Record<string, unknown>,
+    resolvedPaths,
+    freeFormCount
+  );
 
   if (typeof body.name === 'string' && body.name.trim()) {
     draft.name = body.name.trim();
@@ -311,7 +315,7 @@ async function handleResolveClarification(
 async function handleWrite(
   ctx: WorkflowRouteContext,
   service: WorkflowService,
-  id?: string,
+  id?: string
 ): Promise<void> {
   const payload = await readWorkflowPayload(ctx);
   if (!payload) {
@@ -325,7 +329,7 @@ async function handleToggle(
   ctx: WorkflowRouteContext,
   service: WorkflowService,
   id: string,
-  active: boolean,
+  active: boolean
 ): Promise<void> {
   if (active) {
     await service.activateWorkflow(id);

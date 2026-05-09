@@ -26,7 +26,10 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "clean": "rm -rf dist coverage",
-    "lint": "prettier --check ."
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
     "@elizaos/cloud-routing": "workspace:*",
@@ -35,8 +38,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
     "@types/node": "^25.6.0",
-    "prettier": "^3.8.3",
     "tsup": "^8.5.1",
     "typescript": "^6.0.0",
     "vitest": "^4.0.17"

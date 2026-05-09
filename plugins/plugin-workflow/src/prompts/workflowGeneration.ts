@@ -425,7 +425,7 @@ When the user prompt lacks specific details:
   "platform": "discord" | "slack" | "telegram" | "gmail" | "...",
   "scope": { "guildId": "<numeric id>" },
   "question": "Short user-facing question.",
-  "paramPath": "nodes[\"Discord Send\"].parameters.channelId"
+  "paramPath": "nodes["Discord Send"].parameters.channelId"
 }
 \`\`\`
 
@@ -457,7 +457,7 @@ Prompt: "post a daily reminder to Cozy Devs" (Runtime Facts has Cozy Devs guild 
   "platform": "discord",
   "scope": { "guildId": "1234567890" },
   "question": "Which channel in Cozy Devs?",
-  "paramPath": "nodes[\"Discord Send\"].parameters.channelId"
+  "paramPath": "nodes["Discord Send"].parameters.channelId"
 }
 \`\`\`
 
@@ -469,7 +469,7 @@ Prompt: "send me a daily reminder on Discord" (Runtime Facts lists user's Discor
   "kind": "target_server",
   "platform": "discord",
   "question": "Which Discord server should I post to?",
-  "paramPath": "nodes[\"Discord Send\"].parameters.guildId"
+  "paramPath": "nodes["Discord Send"].parameters.guildId"
 }
 \`\`\`
 

@@ -1,4 +1,4 @@
-import { type IAgentRuntime, type Memory, type State, type UUID } from '@elizaos/core';
+import type { IAgentRuntime, Memory, State, UUID } from '@elizaos/core';
 
 export function buildConversationContext(message: Memory, state: State | undefined): string {
   const raw = state?.values?.recentMessages;

@@ -3,11 +3,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
+import type { IAgentRuntime } from '@elizaos/core';
 import { drizzle } from 'drizzle-orm/pglite';
+import * as dbSchema from '../../src/db/schema';
 import { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
 import { WorkflowService } from '../../src/services/workflow-service';
-import * as dbSchema from '../../src/db/schema';
-import type { IAgentRuntime } from '@elizaos/core';
 
 function runtime(
   settings: Record<string, unknown> = {},
@@ -141,10 +141,7 @@ describe('EmbeddedWorkflowService', () => {
       stdout: 'ignore',
       stderr: 'pipe',
     });
-    const [stderr, exitCode] = await Promise.all([
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
+    const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
 
     expect(stderr).not.toContain('HTTP Request node requires');
     expect(exitCode).toBe(0);

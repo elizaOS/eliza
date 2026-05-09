@@ -1,20 +1,20 @@
 import { logger } from '@elizaos/core';
 import type {
-  WorkflowDefinition,
   NodeDefinition,
   NodeProperty,
-  WorkflowValidationResult,
   OutputRefValidation,
-  SchemaContent,
   RuntimeContext,
+  SchemaContent,
+  WorkflowDefinition,
+  WorkflowValidationResult,
 } from '../types/index';
 import { getNodeDefinition, simplifyNodeForLLM } from './catalog';
 import {
+  fieldExistsInSchema,
+  getAllFieldPathsTyped,
   loadOutputSchema,
   loadTriggerOutputSchema,
   parseExpressions,
-  fieldExistsInSchema,
-  getAllFieldPathsTyped,
 } from './outputSchema';
 
 function isTriggerNode(type: string): boolean {
@@ -517,7 +517,7 @@ function fixOptionValue(node: WorkflowDefinition['nodes'][0], prop: NodeProperty
     return 0;
   }
 
-  const allowedValues = prop.options!.map((o) => o.value);
+  const allowedValues = prop.options?.map((o) => o.value) ?? [];
   if (allowedValues.includes(currentValue as string | number | boolean)) {
     return 0;
   }
@@ -781,7 +781,7 @@ export function injectMissingCredentialBlocks(
       if (!supportedByNodeType.has(nodeType)) {
         supportedByNodeType.set(nodeType, new Map());
       }
-      supportedByNodeType.get(nodeType)!.set(sc.credType, sc.friendlyName);
+      supportedByNodeType.get(nodeType)?.set(sc.credType, sc.friendlyName);
     }
   }
   if (supportedByNodeType.size === 0) {

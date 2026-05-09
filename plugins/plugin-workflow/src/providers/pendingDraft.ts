@@ -1,4 +1,4 @@
-import { type IAgentRuntime, type Memory, type Provider, type State } from '@elizaos/core';
+import type { IAgentRuntime, Memory, Provider, State } from '@elizaos/core';
 import type { WorkflowDraft } from '../types/index';
 
 const DRAFT_TTL_MS = 30 * 60 * 1000;

@@ -2,21 +2,21 @@ import { createHash, randomUUID } from 'node:crypto';
 import { type IAgentRuntime, logger, Service } from '@elizaos/core';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import type {
-  WorkflowCredential,
-  WorkflowExecution,
-  WorkflowNode,
-  WorkflowTag,
-  WorkflowDefinition,
-  WorkflowDefinitionResponse,
-} from '../types/index';
-import { WorkflowApiError } from '../types/index';
 import {
   embeddedCredentials,
   embeddedExecutions,
   embeddedTags,
   embeddedWorkflows,
 } from '../db/schema';
+import type {
+  WorkflowCredential,
+  WorkflowDefinition,
+  WorkflowDefinitionResponse,
+  WorkflowExecution,
+  WorkflowNode,
+  WorkflowTag,
+} from '../types/index';
+import { WorkflowApiError } from '../types/index';
 
 export const EMBEDDED_WORKFLOW_SERVICE_TYPE = 'embedded_workflow_service';
 
@@ -105,7 +105,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
-function normalizeWorkflowPayload(workflow: WorkflowDefinition, id: string, active: boolean): WorkflowDefinition {
+function normalizeWorkflowPayload(
+  workflow: WorkflowDefinition,
+  id: string,
+  active: boolean
+): WorkflowDefinition {
   return {
     ...cloneJson(workflow),
     id,
@@ -211,7 +215,10 @@ function normalizeExecutionItem(
   };
 }
 
-function normalizeExecutionItems(value: unknown, fallback: INodeExecutionData[]): INodeExecutionData[] {
+function normalizeExecutionItems(
+  value: unknown,
+  fallback: INodeExecutionData[]
+): INodeExecutionData[] {
   if (typeof value === 'undefined') return fallback.map((item) => normalizeExecutionItem(item));
   if (Array.isArray(value)) {
     return value.map((item, index) => normalizeExecutionItem(item, { item: index }));
@@ -239,13 +246,14 @@ function readPath(source: unknown, path: string): unknown {
 function resolveParameterValue(value: unknown, item: INodeExecutionData): unknown {
   if (typeof value !== 'string') return value;
   const trimmed = value.trim();
-  const expression = trimmed.startsWith('={{') && trimmed.endsWith('}}')
-    ? trimmed.slice(3, -2).trim()
-    : trimmed.startsWith('{{') && trimmed.endsWith('}}')
-      ? trimmed.slice(2, -2).trim()
-      : trimmed.startsWith('=')
-        ? trimmed.slice(1).trim()
-        : trimmed;
+  const expression =
+    trimmed.startsWith('={{') && trimmed.endsWith('}}')
+      ? trimmed.slice(3, -2).trim()
+      : trimmed.startsWith('{{') && trimmed.endsWith('}}')
+        ? trimmed.slice(2, -2).trim()
+        : trimmed.startsWith('=')
+          ? trimmed.slice(1).trim()
+          : trimmed;
   const jsonPath = expression.match(/^\$json(?:\.|\[['"]?)(.+?)(?:['"]?\])?$/);
   if (jsonPath?.[1]) {
     return readPath(item.json, jsonPath[1]);
@@ -284,8 +292,10 @@ function compareCondition(
   if (op === 'true') return resolvedLeft === true || resolvedLeft === 'true';
   if (op === 'false') return resolvedLeft === false || resolvedLeft === 'false';
   if (op === 'contains') return String(resolvedLeft ?? '').includes(String(resolvedRight ?? ''));
-  if (op === 'notcontains') return !String(resolvedLeft ?? '').includes(String(resolvedRight ?? ''));
-  if (op === 'startswith') return String(resolvedLeft ?? '').startsWith(String(resolvedRight ?? ''));
+  if (op === 'notcontains')
+    return !String(resolvedLeft ?? '').includes(String(resolvedRight ?? ''));
+  if (op === 'startswith')
+    return String(resolvedLeft ?? '').startsWith(String(resolvedRight ?? ''));
   if (op === 'endswith') return String(resolvedLeft ?? '').endsWith(String(resolvedRight ?? ''));
   if (op === 'larger' || op === 'largerorequal' || op === 'gt' || op === 'gte') {
     return op.includes('equal') || op === 'gte'
@@ -298,7 +308,9 @@ function compareCondition(
       : Number(resolvedLeft) < Number(resolvedRight);
   }
   if (op === 'notequal' || op === 'notequals') return resolvedLeft !== resolvedRight;
-  return resolvedLeft === resolvedRight || String(resolvedLeft ?? '') === String(resolvedRight ?? '');
+  return (
+    resolvedLeft === resolvedRight || String(resolvedLeft ?? '') === String(resolvedRight ?? '')
+  );
 }
 
 function collectConditionEntries(parameters: Record<string, unknown>): Array<{
@@ -335,7 +347,10 @@ function collectConditionEntries(parameters: Record<string, unknown>): Array<{
   return out;
 }
 
-function evaluateConditions(parameters: Record<string, unknown>, item: INodeExecutionData): boolean {
+function evaluateConditions(
+  parameters: Record<string, unknown>,
+  item: INodeExecutionData
+): boolean {
   const conditions = collectConditionEntries(parameters);
   if (conditions.length === 0) return true;
   const combinator = readString(
@@ -825,10 +840,14 @@ function createMergeNode(): INodeType {
       defaults: { name: 'Merge' },
       inputs: ['main', 'main'] as never,
       outputs: ['main'] as never,
-      properties: [{ displayName: 'Mode', name: 'mode', type: 'string', default: 'append' }] as never,
+      properties: [
+        { displayName: 'Mode', name: 'mode', type: 'string', default: 'append' },
+      ] as never,
     },
     async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
-      const getInput = this.getInputData as unknown as (inputIndex?: number) => INodeExecutionData[];
+      const getInput = this.getInputData as unknown as (
+        inputIndex?: number
+      ) => INodeExecutionData[];
       const first = getInput(0) ?? [];
       const second = getInput(1) ?? [];
       return [[...first, ...second]];
@@ -847,11 +866,16 @@ function createSplitInBatchesNode(): INodeType {
       defaults: { name: 'Split In Batches' },
       inputs: ['main'] as never,
       outputs: ['main', 'main'] as never,
-      properties: [{ displayName: 'Batch Size', name: 'batchSize', type: 'number', default: 1 }] as never,
+      properties: [
+        { displayName: 'Batch Size', name: 'batchSize', type: 'number', default: 1 },
+      ] as never,
     },
     async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
       const inputItems = this.getInputData();
-      const batchSize = Math.max(1, readNumber(this.getNode().parameters.batchSize, inputItems.length));
+      const batchSize = Math.max(
+        1,
+        readNumber(this.getNode().parameters.batchSize, inputItems.length)
+      );
       return [inputItems.slice(0, batchSize), inputItems.slice(batchSize)];
     },
   };
@@ -878,7 +902,13 @@ function createWaitNode(): INodeType {
       const amount = Math.max(0, readNumber(parameters.amount, 1));
       const unit = readString(parameters.unit, 'seconds');
       const multiplier =
-        unit === 'milliseconds' ? 1 : unit === 'minutes' ? 60_000 : unit === 'hours' ? 3_600_000 : 1000;
+        unit === 'milliseconds'
+          ? 1
+          : unit === 'minutes'
+            ? 60_000
+            : unit === 'hours'
+              ? 3_600_000
+              : 1000;
       await new Promise((resolve) => setTimeout(resolve, amount * multiplier));
       return [this.getInputData()];
     },
@@ -938,7 +968,8 @@ function createCryptoNode(): INodeType {
       return [
         this.getInputData().map((item, index) => {
           const raw = resolveParameterValue(parameters.value, item);
-          const source = raw === '' || typeof raw === 'undefined' ? JSON.stringify(item.json) : String(raw);
+          const source =
+            raw === '' || typeof raw === 'undefined' ? JSON.stringify(item.json) : String(raw);
           return {
             json: {
               ...(item.json ?? {}),
@@ -981,10 +1012,7 @@ function createItemListsNode(): INodeType {
   };
 }
 
-async function runQuickJsCode(
-  jsCode: string,
-  inputItems: INodeExecutionData[]
-): Promise<unknown> {
+async function runQuickJsCode(jsCode: string, inputItems: INodeExecutionData[]): Promise<unknown> {
   const { getQuickJS, shouldInterruptAfterDeadline } = await loadQuickJs();
   const QuickJS = await getQuickJS();
   const embeddedInput = JSON.stringify(inputItems.map((item) => normalizeExecutionItem(item)));
@@ -1020,7 +1048,12 @@ function createCodeNode(): INodeType {
       inputs: ['main'] as never,
       outputs: ['main'] as never,
       properties: [
-        { displayName: 'JavaScript Code', name: 'jsCode', type: 'string', default: 'return items;' },
+        {
+          displayName: 'JavaScript Code',
+          name: 'jsCode',
+          type: 'string',
+          default: 'return items;',
+        },
         { displayName: 'Mode', name: 'mode', type: 'string', default: 'runOnceForAllItems' },
       ] as never,
     },
@@ -1282,7 +1315,10 @@ export class EmbeddedWorkflowService extends Service {
     return responseFromWorkflow(stored, createdAt, createdAt, versionId);
   }
 
-  async updateWorkflow(id: string, workflow: WorkflowDefinition): Promise<WorkflowDefinitionResponse> {
+  async updateWorkflow(
+    id: string,
+    workflow: WorkflowDefinition
+  ): Promise<WorkflowDefinitionResponse> {
     this.assertRegisteredNodes(workflow);
     const existing = await this.getStoredWorkflow(id);
     const db = this.getDb();
@@ -1311,7 +1347,10 @@ export class EmbeddedWorkflowService extends Service {
   }): Promise<{ data: WorkflowDefinitionResponse[]; nextCursor?: string }> {
     await this.ensureSchema();
     const db = this.getDb();
-    const rows = await db.select().from(embeddedWorkflows).orderBy(desc(embeddedWorkflows.updatedAt));
+    const rows = await db
+      .select()
+      .from(embeddedWorkflows)
+      .orderBy(desc(embeddedWorkflows.updatedAt));
     const data = rows
       .map((row) => ({
         workflow: cloneJson(row.workflow),
@@ -1498,7 +1537,11 @@ export class EmbeddedWorkflowService extends Service {
   async createTag(name: string): Promise<WorkflowTag> {
     await this.ensureSchema();
     const db = this.getDb();
-    const existingRows = await db.select().from(embeddedTags).where(eq(embeddedTags.name, name)).limit(1);
+    const existingRows = await db
+      .select()
+      .from(embeddedTags)
+      .where(eq(embeddedTags.name, name))
+      .limit(1);
     const existing = existingRows[0];
     if (existing) return cloneJson(existing);
     const timestamp = nowIso();
@@ -1625,13 +1668,13 @@ export class EmbeddedWorkflowService extends Service {
             await this.runWorkflow(latest.workflow, 'trigger');
           }
         })().catch((error: unknown) => {
-            logger.warn(
-              { src: 'plugin:workflow:embedded' },
-              `Scheduled workflow ${workflowId} failed: ${
-                error instanceof Error ? error.message : String(error)
-              }`
-            );
-          });
+          logger.warn(
+            { src: 'plugin:workflow:embedded' },
+            `Scheduled workflow ${workflowId} failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        });
       }, intervalMs);
       timer.unref?.();
       handles.push({ workflowId, timer });
@@ -1676,7 +1719,9 @@ export class EmbeddedWorkflowService extends Service {
       });
   }
 
-  private buildIncomingConnections(workflowData: WorkflowDefinition): Map<string, IncomingConnection[]> {
+  private buildIncomingConnections(
+    workflowData: WorkflowDefinition
+  ): Map<string, IncomingConnection[]> {
     const incoming = new Map<string, IncomingConnection[]>();
     for (const [source, outputsByType] of Object.entries(workflowData.connections ?? {})) {
       const mainOutputs = outputsByType.main ?? [];
@@ -1799,9 +1844,9 @@ export class EmbeddedWorkflowService extends Service {
         for (const node of enabledNodes) {
           if (executed.has(node.name)) continue;
 
-          const incomingConnections = incoming
-            .get(node.name)
-            ?.filter((connection) => nodeByName.has(connection.source)) ?? [];
+          const incomingConnections =
+            incoming.get(node.name)?.filter((connection) => nodeByName.has(connection.source)) ??
+            [];
           const isStartNode = startNodes.has(node.name);
           const dependenciesComplete = incomingConnections.every((connection) =>
             executed.has(connection.source)

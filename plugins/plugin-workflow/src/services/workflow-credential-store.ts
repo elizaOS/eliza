@@ -1,9 +1,9 @@
 import { type IAgentRuntime, logger, Service } from '@elizaos/core';
-import { eq, and, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { credentialMappings } from '../db/schema';
+import type { CredentialMapping, WorkflowCredentialStoreApi } from '../types/index';
 import { WORKFLOW_CREDENTIAL_STORE_TYPE } from '../types/index';
-import type { WorkflowCredentialStoreApi, CredentialMapping } from '../types/index';
 
 /**
  * Default DB-backed credential store.

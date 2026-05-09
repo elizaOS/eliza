@@ -1,7 +1,7 @@
-import { describe, test, expect } from "bun:test";
-import { nodeRoutes } from "../../../src/routes/nodes";
-import { createMockRuntime } from "../../helpers/mockRuntime";
-import type { RouteRequest, RouteResponse } from "@elizaos/core";
+import { describe, expect, test } from 'bun:test';
+import type { RouteRequest, RouteResponse } from '@elizaos/core';
+import { nodeRoutes } from '../../../src/routes/nodes';
+import { createMockRuntime } from '../../helpers/mockRuntime';
 
 function createRouteRequest(overrides?: Partial<RouteRequest>): RouteRequest {
   return {
@@ -9,7 +9,7 @@ function createRouteRequest(overrides?: Partial<RouteRequest>): RouteRequest {
     params: {},
     query: {},
     headers: {},
-    method: "GET",
+    method: 'GET',
     ...overrides,
   };
 }
@@ -47,8 +47,8 @@ const searchHandler = nodeRoutes[2].handler!;
 
 const runtime = createMockRuntime();
 
-describe("GET /nodes", () => {
-  test("returns 400 when q parameter is missing", async () => {
+describe('GET /nodes', () => {
+  test('returns 400 when q parameter is missing', async () => {
     const req = createRouteRequest({ query: {} });
     const { res, getResult } = createRouteResponse();
 
@@ -57,8 +57,8 @@ describe("GET /nodes", () => {
     expect(getResult().status).toBe(400);
   });
 
-  test("returns search results for supported HTTP keyword", async () => {
-    const req = createRouteRequest({ query: { q: "http" } });
+  test('returns search results for supported HTTP keyword', async () => {
+    const req = createRouteRequest({ query: { q: 'http' } });
     const { res, getResult } = createRouteResponse();
 
     await searchHandler(req, res, runtime);
@@ -71,14 +71,14 @@ describe("GET /nodes", () => {
     };
     expect(data.success).toBe(true);
     expect(data.data.length).toBeGreaterThan(0);
-    expect(data.data[0].name).toBe("p1p3s-nodes-base.httpRequest");
+    expect(data.data[0].name).toBe('p1p3s-nodes-base.httpRequest');
     // Search results include score and matchReason
-    expect(typeof data.data[0].score).toBe("number");
-    expect(typeof data.data[0].matchReason).toBe("string");
+    expect(typeof data.data[0].score).toBe('number');
+    expect(typeof data.data[0].matchReason).toBe('string');
   });
 
-  test("respects limit parameter", async () => {
-    const req = createRouteRequest({ query: { q: "send", limit: "3" } });
+  test('respects limit parameter', async () => {
+    const req = createRouteRequest({ query: { q: 'send', limit: '3' } });
     const { res, getResult } = createRouteResponse();
 
     await searchHandler(req, res, runtime);
@@ -87,8 +87,8 @@ describe("GET /nodes", () => {
     expect(data.data.length).toBeLessThanOrEqual(3);
   });
 
-  test("handles comma-separated keywords", async () => {
-    const req = createRouteRequest({ query: { q: "http,set" } });
+  test('handles comma-separated keywords', async () => {
+    const req = createRouteRequest({ query: { q: 'http,set' } });
     const { res, getResult } = createRouteResponse();
 
     await searchHandler(req, res, runtime);
@@ -99,10 +99,10 @@ describe("GET /nodes", () => {
   });
 });
 
-describe("GET /nodes/:type", () => {
-  test("returns node definition for valid type", async () => {
+describe('GET /nodes/:type', () => {
+  test('returns node definition for valid type', async () => {
     const req = createRouteRequest({
-      params: { type: "p1p3s-nodes-base.httpRequest" },
+      params: { type: 'p1p3s-nodes-base.httpRequest' },
     });
     const { res, getResult } = createRouteResponse();
 
@@ -115,13 +115,13 @@ describe("GET /nodes/:type", () => {
       data: { name: string; properties: unknown[] };
     };
     expect(data.success).toBe(true);
-    expect(data.data.name).toBe("p1p3s-nodes-base.httpRequest");
+    expect(data.data.name).toBe('p1p3s-nodes-base.httpRequest');
     expect(data.data.properties.length).toBeGreaterThan(0);
   });
 
-  test("returns 404 for unknown node type", async () => {
+  test('returns 404 for unknown node type', async () => {
     const req = createRouteRequest({
-      params: { type: "p1p3s-nodes-base.nonexistentNode12345" },
+      params: { type: 'p1p3s-nodes-base.nonexistentNode12345' },
     });
     const { res, getResult } = createRouteResponse();
 
@@ -130,7 +130,7 @@ describe("GET /nodes/:type", () => {
     expect(getResult().status).toBe(404);
   });
 
-  test("returns 400 when type param is missing", async () => {
+  test('returns 400 when type param is missing', async () => {
     const req = createRouteRequest({ params: {} });
     const { res, getResult } = createRouteResponse();
 
@@ -140,8 +140,8 @@ describe("GET /nodes/:type", () => {
   });
 });
 
-describe("GET /nodes/available", () => {
-  test("returns categorized nodes without credential bridge", async () => {
+describe('GET /nodes/available', () => {
+  test('returns categorized nodes without credential bridge', async () => {
     const req = createRouteRequest();
     const { res, getResult } = createRouteResponse();
 
@@ -166,7 +166,7 @@ describe("GET /nodes/available", () => {
     expect(first.matchReason).toBeUndefined();
   });
 
-  test("credential bridge path keeps utility-only embedded catalog available", async () => {
+  test('credential bridge path keeps utility-only embedded catalog available', async () => {
     const runtimeWithBridge = createMockRuntime({
       services: {
         workflow_credential_provider: {
