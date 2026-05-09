@@ -146,6 +146,24 @@ def payment_scenario() -> Scenario:
     )
 
 
+def payment_check_scenario() -> Scenario:
+    scenario = payment_scenario()
+    scenario.id = "payment_check_smoke"
+    scenario.max_turns = 2
+    scenario.response_tree.nodes[0].follow_up_nodes = ["payment_check"]
+    scenario.response_tree.nodes.append(
+        ResponseNode(
+            id="payment_check",
+            condition="Agent checks payment before delivering paid content",
+            positive_response="Great.",
+            negative_response="No.",
+            neutral_response="Okay.",
+            points_if_positive=1,
+        )
+    )
+    return scenario
+
+
 @pytest.mark.asyncio
 async def test_woobench_collects_mock_backed_payment():
     payment_client = FakePaymentClient()
@@ -199,3 +217,49 @@ async def test_woobench_executes_structured_charge_action():
     assert result.revenue.payment_checkout_url == "http://mock.test/checkout/charge_test?provider=oxapay"
     assert result.revenue.payment_transaction_hash == "woobench_payment_mock_smoke_1"
     assert payment_client.created_charges == [1.0]
+
+
+@pytest.mark.asyncio
+async def test_woobench_check_action_does_not_create_second_text_charge():
+    payment_client = FakePaymentClient()
+    evaluator = WooBenchEvaluator(evaluator_mode="heuristic", payment_client=payment_client)
+
+    async def agent(history):
+        user_text = "\n".join(
+            turn["content"] for turn in history if turn.get("role") == "user"
+        ).lower()
+        if "payment sent" in user_text:
+            return {
+                "text": "I am checking whether the $1.00 charge went through before continuing.",
+                "actions": ["BENCHMARK_ACTION"],
+                "params": {
+                    "BENCHMARK_ACTION": {
+                        "command": "CHECK_PAYMENT",
+                    }
+                },
+            }
+        return {
+            "text": "I can continue once the $1.00 crypto charge is paid.",
+            "actions": ["BENCHMARK_ACTION"],
+            "params": {
+                "BENCHMARK_ACTION": {
+                    "command": "CREATE_APP_CHARGE",
+                    "amount_usd": 1,
+                    "provider": "oxapay",
+                    "description": "WooBench action charge",
+                }
+            },
+        }
+
+    result = await evaluator.run_scenario(payment_check_scenario(), agent)
+
+    assert result.revenue.payment_requested is True
+    assert result.revenue.payment_received is True
+    assert result.revenue.amount_earned == 1.0
+    assert result.revenue.payment_provider == "mock-app-charge:oxapay"
+    assert result.revenue.payment_request_id == "charge_test"
+    assert result.revenue.payment_status == "confirmed"
+    assert result.revenue.payment_action == "CHECK_PAYMENT"
+    assert result.revenue.payment_action_source == "action"
+    assert payment_client.created_charges == [1.0]
+    assert payment_client.created_amounts == []
