@@ -1524,6 +1524,24 @@ export const LIFEOPS_TELEMETRY_FAMILIES: readonly LifeOpsTelemetryFamily[] = [
   "manual_override_event",
 ];
 
+/**
+ * Open-string bus-family identifier (W2-D).
+ *
+ * The closed `LifeOpsTelemetryFamily` union above retains the schema
+ * discriminant for the 11 built-in telemetry payloads. The bus layer surfaces
+ * additional namespaced families contributed by other plugins (e.g.
+ * `health.sleep.detected` from `@elizaos/plugin-health`,
+ * `calendar.meeting.ended` from app-lifeops calendar). Those families are
+ * validated at runtime via the FamilyRegistry rather than statically through
+ * a closed union — the union would otherwise need to grow every time a
+ * plugin contributes a new event family.
+ *
+ * Convention:
+ *   - built-ins: lower-snake-case (`device_presence_event`).
+ *   - namespaced contributions: dotted, lower-case (`health.sleep.detected`).
+ */
+export type LifeOpsBusFamily = LifeOpsTelemetryFamily | string;
+
 export interface LifeOpsTelemetryEnvelope {
   id: string;
   agentId: string;
