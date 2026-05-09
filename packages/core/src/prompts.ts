@@ -1,14 +1,14 @@
 /**
  * Auto-generated prompt templates for elizaOS
  * DO NOT EDIT - Generated from packages/prompts/prompts/*.txt
- *
+ * 
  * These prompts use Handlebars-style template syntax:
  * - {{variableName}} for simple substitution
  * - {{#each items}}...{{/each}} for iteration
  * - {{#if condition}}...{{/if}} for conditionals
  */
 
-export const addContactTemplate = `task: Extract contact information to add to the relationships.
+export const addContactTemplate = `task: Extract contact information to add to relationships.
 
 context:
 {{providers}}
@@ -21,10 +21,13 @@ current_message:
 
 instructions[5]:
 - identify the contact name being added
-- include entityId only if it is explicitly known from context
-- return categories as a comma-separated list
-- include notes, timezone, and language only when clearly present
-- include a short reason for why this contact should be saved
+- include entityId only when explicitly known from context
+- return categories as comma-separated list
+- include notes, timezone, language only when clearly present
+- include short reason for saving this contact
+
+output:
+JSON only. One JSON object. No prose, no <think>.
 
 Example:
 contactName: Jane Doe
@@ -33,196 +36,121 @@ categories: vip,colleague
 notes: Met at the design summit
 timezone: America/New_York
 language: English
-reason: Important collaborator to remember
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+reason: Important collaborator to remember`;
 
 export const ADD_CONTACT_TEMPLATE = addContactTemplate;
 
-export const autonomyContinuousContinueTemplate = `Your job: reflect on context, decide what you want to do next, and act if appropriate.
-- Use available actions/tools when they can advance the goal.
-- Use thinking to think about and plan what you want to do.
-- Do NOT speak out loud. This loop is internal-only.
-- Output structure: a JSON object with a thought field plus an optional actions list.
-- If you don't need to make a change this round, take no action and output only the thought field with an empty actions value.
-- If you cannot act, explain what is missing inside thought and take no action.
-- Keep the response concise, focused on the next action.
+export const autonomyContinuousContinueTemplate = `Your job: reflect on context, decide what to do next, act if appropriate.
+- Use available actions/tools when they advance the goal.
+- Use thinking to plan.
+- Do NOT speak out loud. Internal-only loop.
+- Output: JSON object with thought field plus optional actions list. No other text. No XML or markdown fences.
+- If no change needed this round, output only thought with empty actions.
+- If you cannot act, explain what is missing in thought and take no action.
+- Keep response concise, focused on next action.
 
 USER CONTEXT (most recent last):
 {{targetRoomContext}}
 
 Your last autonomous note: "{{lastThought}}"
 
-Continue from that note. Output a JSON thought and take action if needed.
+Continue from that note. Output JSON thought and act if needed.
 
 Example (no action this round):
 thought: Continuing from prior note; nothing new to act on.
-actions:
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+actions:`;
 
 export const AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE = autonomyContinuousContinueTemplate;
 
-export const autonomyContinuousFirstTemplate = `Your job: reflect on context, decide what you want to do next, and act if appropriate.
-- Use available actions/tools when they can advance the goal.
-- Use thinking to think about and plan what you want to do.
-- Do NOT speak out loud. This loop is internal-only.
-- Output structure: a JSON object with a thought field plus an optional actions list.
-- If you don't need to make a change this round, take no action and output only the thought field with an empty actions value.
-- If you cannot act, explain what is missing inside thought and take no action.
-- Keep the response concise, focused on the next action.
+export const autonomyContinuousFirstTemplate = `Your job: reflect on context, decide what to do next, act if appropriate.
+- Use available actions/tools when they advance the goal.
+- Use thinking to plan.
+- Do NOT speak out loud. Internal-only loop.
+- Output: JSON object with thought field plus optional actions list. No other text. No XML or markdown fences.
+- If no change needed this round, output only thought with empty actions.
+- If you cannot act, explain what is missing in thought and take no action.
+- Keep response concise, focused on next action.
 
 USER CONTEXT (most recent last):
 {{targetRoomContext}}
 
-Think briefly, then output a JSON thought and take action if needed.
+Think briefly, then output JSON thought and act if needed.
 
 Example (no action this round):
 thought: Inspecting current state; nothing to act on this round.
-actions:
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+actions:`;
 
 export const AUTONOMY_CONTINUOUS_FIRST_TEMPLATE = autonomyContinuousFirstTemplate;
 
 export const autonomyTaskContinueTemplate = `You are running in AUTONOMOUS TASK MODE.
 
-Your job: continue helping the user and make progress toward the task.
-- Use available actions/tools when they can advance the goal.
-- Use thinking to think about and plan what you want to do.
-- Do NOT speak out loud. This loop is internal-only.
-- Output structure: a JSON object with a thought field plus an optional actions list.
-- If you don't need to make a change this round, take no action and output only the thought field with an empty actions value.
-- If you cannot act, explain what is missing inside thought and take no action.
-- Keep the response concise, focused on the next action.
+Your job: continue helping user, make progress on the task.
+- Use available actions/tools to gather info or execute steps.
+- Use thinking to plan.
+- Do NOT speak out loud. Internal-only loop.
+- Output: JSON object with thought field plus optional actions list. No other text. No XML or markdown fences.
+- If no change needed this round, output only thought with empty actions.
+- If you cannot act, explain what is missing in thought and take no action.
+- Keep response concise, focused on next action.
 
 USER CHAT CONTEXT (most recent last):
 {{targetRoomContext}}
 
 Your last autonomous note: "{{lastThought}}"
 
-Continue the task. Output a JSON thought and take action now.
+Continue the task. Output JSON thought and act now.
 
 Example (no action this round):
 thought: Waiting on prior step to complete; nothing to do this round.
-actions:
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+actions:`;
 
 export const AUTONOMY_TASK_CONTINUE_TEMPLATE = autonomyTaskContinueTemplate;
 
 export const autonomyTaskFirstTemplate = `You are running in AUTONOMOUS TASK MODE.
 
-Your job: continue helping the user and make progress toward the task.
-- Use available actions/tools when they can advance the goal.
-- Use thinking to think about and plan what you want to do.
-- Do NOT speak out loud. This loop is internal-only.
-- Output structure: a JSON object with a thought field plus an optional actions list.
-- If you don't need to make a change this round, take no action and output only the thought field with an empty actions value.
-- If you cannot act, explain what is missing inside thought and take no action.
-- Keep the response concise, focused on the next action.
+Your job: continue helping user, make progress on the task.
+- Use available actions/tools to gather info or execute steps.
+- For UI control, use ComputerUse actions.
+- In MCP mode, selector-based actions need a process scope (pass process=... or prefix selector with "process:<name> >> ...").
+- Prefer safe, incremental steps; gather more UI context when unsure.
+- Do NOT speak out loud. Internal-only loop.
+- Output: JSON object with thought field plus optional actions list. No other text. No XML or markdown fences.
 
 USER CHAT CONTEXT (most recent last):
 {{targetRoomContext}}
 
-Decide what to do next. Output a JSON thought, then take the most useful action.
+Decide next step. Output JSON thought, then take the most useful action.
 
 Example:
 thought: Need to gather UI state before acting.
 actions[1]:
-  - name: COMPUTER_USE_INSPECT
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+  - name: COMPUTER_USE_INSPECT`;
 
 export const AUTONOMY_TASK_FIRST_TEMPLATE = autonomyTaskFirstTemplate;
 
-export const chooseOptionTemplate = `# Task: Choose an option from the available choices.
+export const chooseOptionTemplate = `# Task: Choose an option from available choices.
 
 {{providers}}
 
 # Available Options:
 {{options}}
 
-# Instructions: 
-Analyze the options and select the most appropriate one based on the current context.
-Provide your reasoning and the selected option ID.
+# Instructions:
+Select the most appropriate option based on context. Provide reasoning and selected option ID.
 
-Respond using JSON like this:
+JSON:
 thought: Your reasoning for the selection
-selected_id: The ID of the selected option
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+selected_id: The ID of the selected option`;
 
 export const CHOOSE_OPTION_TEMPLATE = chooseOptionTemplate;
 
-export const customActionGenerateTemplate = `You generate custom action definitions from natural language descriptions.
-Given the user's description, return a JSON object with these fields:
+export const extractSecretOperationTemplate = `Manage secrets for an AI agent.
 
-- name: string (UPPER_SNAKE_CASE action name)
-- description: string (clear description of what the action does)
-- similes: optional string[] of alternative action names and phrases
-- handlerType: "http" | "shell" | "code"
-- handler: object with type-specific fields:
-  http  -> { type: "http", method: "GET"|"POST"|etc, url: string, headers?: object, bodyTemplate?: string }
-  shell -> { type: "shell", command: string }
-  code  -> { type: "code", code: string }
-- parameters: array of { name: string, description: string, required: boolean }
-
-Use double-brace placeholders such as \\{{paramName}} in URLs, body templates, and shell commands.
-For code handlers, parameters are available via params.paramName and fetch() is available.
-
-User request: {{request}}
-
-Respond with the JSON object only.
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
-
-export const CUSTOM_ACTION_GENERATE_TEMPLATE = customActionGenerateTemplate;
-
-export const defaultCharacterSystemTemplate = `You are {{name}}, an autonomous AI agent powered by elizaOS.
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
-
-export const DEFAULT_CHARACTER_SYSTEM_TEMPLATE = defaultCharacterSystemTemplate;
-
-export const extractActionParamsTemplate = `You are filling in missing parameters for the {{actionName}} action.
-Action description: {{actionDescription}}
-
-Parameter schema:
-{{schemaLines}}
-
-Already-supplied parameters: {{existingJson}}
-
-Missing required fields you must extract: {{missingFields}}
-
-{{recentConversationBlock}}
-
-Current user message: {{currentMessageText}}
-
-Return a JSON object containing values for the MISSING fields.
-If a value is genuinely indeterminable from the conversation, return null for that field.
-Example: {"subaction": "search", "query": "github"}
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
-
-export const EXTRACT_ACTION_PARAMS_TEMPLATE = extractActionParamsTemplate;
-
-export const extractSecretOperationTemplate = `You are helping manage secrets for an AI agent.
-
-Determine what operation the user wants to perform:
+Determine the operation:
 - get: Retrieve a secret value
 - set: Store a new secret
 - delete: Remove a secret
-- list: Show all available secrets (without values)
+- list: Show all secrets (without values)
 - check: Check if a secret exists
 
 Common patterns:
@@ -235,8 +163,9 @@ Common patterns:
 
 {{recentMessages}}
 
-Extract the operation, key (if applicable), value (if applicable), level, description, and type from the user's message.
+Extract operation, key (if applicable), value (if applicable), level, description, and type.
 
+Output JSON only. One JSON object, no prose or fences.
 Use only these fields:
 operation: get|set|delete|list|check
 key: OPENAI_API_KEY
@@ -245,15 +174,12 @@ level: global|world|user
 description: short_description
 type: api_key|secret|credential|url|config
 
-Omit unknown optional fields.
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+Omit unknown optional fields. No XML or JSON.`;
 
 export const EXTRACT_SECRET_OPERATION_TEMPLATE = extractSecretOperationTemplate;
 
-export const extractSecretRequestTemplate = `You are helping an AI agent request a missing secret.
-Determine what secret the agent needs and why based on the recent conversation.
+export const extractSecretRequestTemplate = `An AI agent is requesting a missing secret.
+Determine which secret and why from recent conversation.
 
 Common patterns:
 - "I need an API key for OpenAI" -> key: OPENAI_API_KEY
@@ -263,24 +189,22 @@ Common patterns:
 Recent Messages:
 {{recentMessages}}
 
+Output JSON only. One JSON object, no prose or fences.
 Use:
 key: OPENAI_API_KEY
 reason: why it is needed
 
-If no specific secret is requested, leave key empty.
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+If no specific secret requested, leave key empty. No XML or JSON.`;
 
 export const EXTRACT_SECRET_REQUEST_TEMPLATE = extractSecretRequestTemplate;
 
-export const extractSecretsTemplate = `You are extracting secret/configuration values from the user's message.
+export const extractSecretsTemplate = `Extract secret/configuration values from user's message.
 
-The user wants to set one or more secrets. Extract:
-1. The secret key (should be UPPERCASE_WITH_UNDERSCORES format)
-2. The secret value
+User wants to set one or more secrets. Extract:
+1. Secret key (UPPERCASE_WITH_UNDERSCORES)
+2. Secret value
 3. Optional description
-4. Secret type (api_key, secret, credential, url, or config)
+4. Type (api_key, secret, credential, url, or config)
 
 Common patterns:
 - "Set my OpenAI key to sk-..." -> key: OPENAI_API_KEY, value: sk-...
@@ -290,33 +214,31 @@ Common patterns:
 
 {{recentMessages}}
 
-Extract the secrets from the user's message. If the key name isn't explicitly specified, infer an appropriate UPPERCASE_WITH_UNDERSCORES name based on the context.
+Extract the secrets. If key name not specified, infer an UPPERCASE_WITH_UNDERSCORES name from context.
 
+Output JSON only. One JSON object, no prose or fences.
 Use:
 secrets[n]{key,value,description,type}:
 level: global|world|user
 
-Omit description/type/level when unknown.
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+Omit description/type/level when unknown. No XML or JSON.`;
 
 export const EXTRACT_SECRETS_TEMPLATE = extractSecretsTemplate;
 
 export const factExtractionTemplate = `# Task: Classify and extract facts from this message
 
-You maintain two fact stores for an AI assistant. Decide what to insert, strengthen, decay, or contradict. Return JSON ops only.
+You maintain two fact stores. Decide what to insert, strengthen, decay, or contradict. Return JSON ops only.
 
 Stores:
 - durable: stable identity-level claims that matter in a year.
   Categories: identity, health, relationship, life_event, business_role, preference, goal.
-- current: time-bound state about right now or the near term.
+- current: time-bound state about now or near term.
   Categories: feeling, physical_state, working_on, going_through, schedule_context.
 
 Rules:
 - If a claim feels stale or surprising to retrieve in a year, use current.
-- Empty output is right for small talk or questions with no new claim.
-- Before add_durable/add_current, scan known facts. If meaning already exists, emit strengthen with that factId.
+- Empty output is right for small talk or claim-free questions.
+- Before add_durable/add_current, scan known facts. If meaning exists, emit strengthen with that factId.
 - Paraphrases count as duplicates. Match meaning, not surface form.
 
 Ops:
@@ -411,93 +333,78 @@ Latest message:
 {{message}}
 
 Output:
+JSON only. One JSON object. No prose, fences, XML, or <think>.
 If nothing should change, return:
-{"ops":[]}
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+{"ops":[]}`;
 
 export const FACT_EXTRACTION_TEMPLATE = factExtractionTemplate;
 
-export const imageDescriptionTemplate = `Task: Analyze the provided image and generate a comprehensive description with multiple levels of detail.
+export const imageDescriptionTemplate = `Task: Analyze image and generate description with multiple detail levels.
 
-Instructions:
-Carefully examine the image and provide:
-1. A concise, descriptive title that captures the main subject or scene
-2. A brief summary description (1-2 sentences) highlighting the key elements
-3. An extensive, detailed description that covers all visible elements, composition, lighting, colors, mood, and any other relevant details
+Provide:
+1. Concise descriptive title capturing main subject/scene
+2. Brief summary (1-2 sentences) of key elements
+3. Extensive description: visible elements, composition, lighting, colors, mood, etc.
 
-Be objective and descriptive. Focus on what you can actually see in the image rather than making assumptions about context or meaning.
+Be objective. Describe what you see; don't assume context or meaning.
 
-Output:
-
-Respond using JSON like this:
+JSON:
 title: A concise, descriptive title for the image
 description: A brief 1-2 sentence summary of the key elements in the image
-text: An extensive, detailed description covering all visible elements, composition, lighting, colors, mood, setting, objects, people, activities, and any other relevant details you can observe in the image
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+text: An extensive, detailed description covering all visible elements, composition, lighting, colors, mood, setting, objects, people, activities, and any other relevant details you can observe in the image`;
 
 export const IMAGE_DESCRIPTION_TEMPLATE = imageDescriptionTemplate;
 
-export const imageGenerationTemplate = `# Task: Generate an image prompt for {{agentName}}.
+export const imageGenerationTemplate = `# Task: Generate image prompt for {{agentName}}.
 
 {{providers}}
 
 # Instructions:
-Based on the conversation, create a detailed prompt for image generation.
-The prompt should be specific, descriptive, and suitable for AI image generation.
+Create a specific, descriptive image-generation prompt based on the conversation.
 
 # Recent conversation:
 {{recentMessages}}
 
-Respond using JSON like this:
+JSON:
 thought: Your reasoning for the image prompt
-prompt: Detailed image generation prompt
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+prompt: Detailed image generation prompt`;
 
 export const IMAGE_GENERATION_TEMPLATE = imageGenerationTemplate;
 
 export const initialSummarizationTemplate = `# Task: Summarize Conversation
 
-You are analyzing a conversation to create a concise summary that captures the key points, topics, and important details.
+Create a concise summary capturing key points, topics, and details.
 
 # Recent Messages
 {{recentMessages}}
 
 # Instructions
 Generate a summary that:
-1. Captures the main topics discussed
-2. Highlights key information shared
-3. Notes any decisions made or questions asked
+1. Captures main topics
+2. Highlights key information
+3. Notes decisions and questions
 4. Maintains context for future reference
-5. Is concise but comprehensive
+5. Concise but comprehensive
 
-**IMPORTANT**: Keep the summary under 2500 tokens. Be comprehensive but concise.
+**Keep summary under 2500 tokens.**
 
 Also extract:
-- **Topics**: List of main topics discussed (comma-separated)
-- **Key Points**: Important facts or decisions (bullet points)
+- **Topics**: main topics (comma-separated)
+- **Key Points**: important facts or decisions (bullets)
 
-Respond in JSON:
+JSON:
 text: Your comprehensive summary here
 topics[0]: topic1
 topics[1]: topic2
 topics[2]: topic3
 keyPoints[0]: First key point
-keyPoints[1]: Second key point
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+keyPoints[1]: Second key point`;
 
 export const INITIAL_SUMMARIZATION_TEMPLATE = initialSummarizationTemplate;
 
-export const longTermExtractionTemplate = `# Task: Extract Long-Term Memory (Strict Criteria)
+export const longTermExtractionTemplate = `# Task: Extract Long-Term Memory (Strict)
 
-Analyze the conversation and extract ONLY the most critical, persistent information about the user.
+Extract ONLY critical, persistent user info using cognitive memory categories.
 
 # Recent Messages
 {{recentMessages}}
@@ -507,63 +414,107 @@ Analyze the conversation and extract ONLY the most critical, persistent informat
 
 # Memory Categories
 
-Categories: episodic (events tied to a specific time/place), semantic (general knowledge), procedural (how-to).
-
-**Episodic examples:**
+## 1. EPISODIC
+Specific events with temporal/spatial context.
+**Examples:**
 - "User completed migration project from MongoDB to PostgreSQL in Q2 2024"
 - "User encountered authentication bug in production on March 15th"
+- "User had a negative experience with Docker networking in previous job"
 
-**Semantic examples:**
+**Requirements:**
+- WHO did WHAT, WHEN/WHERE
+- Specific concrete event (not pattern)
+- Significant impact on future work
+
+## 2. SEMANTIC
+Stable facts and identity about the user.
+**Examples:**
 - "User is a senior backend engineer with 8 years experience"
 - "User specializes in distributed systems and microservices architecture"
+- "User's primary programming language is TypeScript"
+- "User works at Acme Corp as technical lead"
 
-**Procedural examples:**
+**Requirements:**
+- Factual, timeless
+- Explicitly stated or conclusively demonstrated
+- No speculation from single instances
+- Core identity, expertise, knowledge only
+
+## 3. PROCEDURAL
+Skills, workflows, methodologies, how-to.
+**Examples:**
 - "User follows strict TDD workflow: write tests first, then implementation"
 - "User prefers git rebase over merge to maintain linear history"
+- "User's debugging process: check logs → reproduce locally → binary search"
+- "User always writes JSDoc comments before implementing functions"
 
-# Extraction Criteria
+**Requirements:**
+- HOW user does something
+- Repeated pattern (3+ times) or stated as standard practice
+- Workflow, methodology, or skill
+- Not one-off preferences
 
-## DO EXTRACT (Only These):
+# ULTRA-STRICT CRITERIA
+
+## DO EXTRACT:
 
 **EPISODIC:**
-- Significant completed projects or milestones
-- Important bugs, incidents, or problems encountered
-- Major decisions made with lasting impact
-- Formative experiences that shape future work
+- Significant completed projects/milestones
+- Important bugs, incidents, problems
+- Major decisions with lasting impact
+- Formative experiences shaping future work
 
 **SEMANTIC:**
 - Professional identity (role, title, company)
-- Core expertise and specializations (stated explicitly or demonstrated conclusively)
-- Primary languages, frameworks, or tools (not exploratory use)
-- Established facts about their work context
+- Core expertise (explicit or conclusively demonstrated)
+- Primary languages, frameworks, tools (not exploratory)
+- Established work-context facts
 
 **PROCEDURAL:**
-- Consistent workflows demonstrated 3+ times or explicitly stated
+- Workflows demonstrated 3+ times or stated
 - Standard practices user always follows
-- Methodology preferences with clear rationale
+- Methodology preferences with rationale
+- Debugging, testing, dev processes
 
 ## NEVER EXTRACT:
 
-Skip ephemeral state, one-time requests, social pleasantries, and exploratory Q&A.
-This includes temporary context, single-occurrence preferences, generic patterns, and opinions without persistence.
+- One-time requests/tasks
+- Casual conversations
+- Exploratory questions
+- Temporary context (current bug, today's task)
+- Single-occurrence preferences
+- Social pleasantries
+- Testing/experimentation
+- Common patterns everyone has
+- Situational info (working on feature X today)
+- Single-instance opinions
+- General knowledge (not user-specific)
 
 # Quality Gates (ALL Must Pass)
 
-1. **Significance Test**: Will this matter in 3+ months?
-2. **Specificity Test**: Is this concrete and actionable?
-3. **Evidence Test**: Is there strong evidence (3+ instances OR explicit self-identification)?
-4. **Uniqueness Test**: Is this specific to THIS user (not generic)?
-5. **Confidence Test**: Confidence must be >= 0.85.
-6. **Non-Redundancy Test**: Does this add NEW information not in existing memories?
+1. **Significance**: Matters in 3+ months?
+2. **Specificity**: Concrete and actionable?
+3. **Evidence**: 3+ instances OR explicit self-identification?
+4. **Uniqueness**: Specific to THIS user?
+5. **Confidence**: >= 0.85
+6. **Non-Redundancy**: New info not in existing memories?
 
 # Confidence Scoring
 
-- **0.95-1.0**: User explicitly stated as core identity/practice AND demonstrated multiple times
-- **0.85-0.94**: User explicitly stated OR consistently demonstrated 5+ times
-- **0.75-0.84**: Strong pattern (3-4 instances) with supporting context
-- **Below 0.75**: DO NOT EXTRACT (insufficient evidence)
+- **0.95-1.0**: Explicitly stated AND demonstrated multiple times
+- **0.85-0.94**: Explicitly stated OR consistently demonstrated 5+ times
+- **0.75-0.84**: Strong pattern (3-4 instances) with context
+- **Below 0.75**: DO NOT EXTRACT
 
-Default to NOT extracting. Maximum 2-3 extractions per run. If there are no qualifying facts (which is common), return no memories entries.
+# Critical Rules
+
+1. Default to NOT extracting
+2. Require overwhelming evidence
+3. Focus on PERSISTENT facts
+4. Verify against existing memories
+5. Max 2-3 extractions per run
+
+If no qualifying facts (common), return no memories entries.
 
 # Response Format
 
@@ -578,29 +529,9 @@ memories[1]:
 memories[2]:
   category: episodic
   content: User led database migration from MongoDB to PostgreSQL for payment system in Q2 2024
-  confidence: 0.92
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+  confidence: 0.92`;
 
 export const LONG_TERM_EXTRACTION_TEMPLATE = longTermExtractionTemplate;
-
-export const memoryContextQaTemplate = `You are a concise context assistant.
-Answer only from the provided context. If context is insufficient, say so explicitly.
-Keep the answer under 120 words.
-
-Query: {{query}}
-
-Saved memory notes:
-{{memorySection}}
-
-Knowledge snippets:
-{{knowledgeSection}}
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
-
-export const MEMORY_CONTEXT_QA_TEMPLATE = memoryContextQaTemplate;
 
 export const messageHandlerTemplate = `task: Decide whether {{agentName}} should respond and which contexts are needed.
 
@@ -608,16 +539,16 @@ context:
 {{providers}}
 
 rules:
-- choose action=RESPOND only when {{agentName}} should answer or perform work for this message
-- choose action=IGNORE when the message should be ignored
-- choose action=STOP when the user asks {{agentName}} to stop or disengage
-- contexts is a list of registered context ids, such as calendar, email, wallet, browser, code, or automation
-- never invent context ids that are not registered
-- only choose contexts when tools or context providers may be needed
-- simple=true only means reply can be sent directly when contexts is empty
-- if contexts is non-empty, planning will run and simple will be ignored
-- include reply only for a direct user-visible response
-- thought is internal routing rationale and is not shown to the user
+- action=RESPOND only when {{agentName}} should answer or perform work
+- action=IGNORE when message should be ignored
+- action=STOP when user asks {{agentName}} to stop or disengage
+- contexts: registered context ids (calendar, email, wallet, browser, code, automation, etc.)
+- never invent unregistered context ids
+- only choose contexts when tools or providers may be needed
+- simple=true means reply can send directly when contexts is empty
+- if contexts non-empty, planning runs and simple is ignored
+- include reply only for direct user-visible response
+- thought is internal, not shown to user
 
 fields:
 - action: RESPOND, IGNORE, or STOP
@@ -627,6 +558,8 @@ fields:
 - reply: optional direct response for simple turns with no contexts
 
 output:
+JSON only. One JSON object with the keys above. No prose, no <think>, no XML, no fences.
+
 Example:
 {
   "action": "RESPOND",
@@ -634,46 +567,9 @@ Example:
   "contexts": [],
   "thought": "The user asked a direct conversational question that needs no tools.",
   "reply": "Your message here"
-}
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+}`;
 
 export const MESSAGE_HANDLER_TEMPLATE = messageHandlerTemplate;
-
-export const mobileDirectReplyTemplate = `{{system}}
-
-Answer the user directly. Do not select actions, do not return structured control output, and do not explain internal reasoning.
-If the user asks for exact words, output exactly those words and nothing else.
-
-User: {{userText}}
-{{agentName}}:
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
-
-export const MOBILE_DIRECT_REPLY_TEMPLATE = mobileDirectReplyTemplate;
-
-export const observationExtractionTemplate = `You are analyzing recent conversation exchanges between a user and an AI assistant.
-Extract any durable observations about the user that would be useful across future sessions.
-
-Categories to look for:
-- Preferences (tools, languages, workflows, communication style)
-- Facts (role, location, projects they work on, tech stack)
-- Standing instructions (things they always/never want)
-- Patterns (recurring topics, how they like to work)
-
-Return a JSON array of short observation strings (max 150 chars each).
-If nothing meaningful is found, return an empty array [].
-Do NOT include observations about the conversation itself, only about the user.
-
-Recent exchanges:
-{{exchanges}}
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
-
-export const OBSERVATION_EXTRACTION_TEMPLATE = observationExtractionTemplate;
 
 export const optionExtractionTemplate = `# Task: Extract selected task and option from user message
 
@@ -684,17 +580,14 @@ export const optionExtractionTemplate = `# Task: Extract selected task and optio
 {{recentMessages}}
 
 # Instructions:
-1. Review the user's message and identify which task and option they are selecting
-2. Match against the available tasks and their options, including ABORT
-3. Return the task ID (shortened UUID) and selected option name exactly as listed above
-4. If no clear selection is made, return null for both fields
+1. Identify which task and option the user is selecting
+2. Match against available tasks and options, including ABORT
+3. Return task ID (shortened UUID) and option name exactly as listed
+4. If no clear selection, return null for both
 
-Return in JSON format:
+JSON:
 taskId: string_or_null
-selectedOption: OPTION_NAME_or_null
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+selectedOption: OPTION_NAME_or_null`;
 
 export const OPTION_EXTRACTION_TEMPLATE = optionExtractionTemplate;
 
@@ -708,17 +601,17 @@ trajectory:
 
 rules:
 - use only tools exposed in the current context object
-- plan the smallest grounded queue of useful tool calls
-- include arguments only when grounded in the user request or prior tool results
-- if the task is complete or the only next step is speaking to the user, return no toolCalls and set messageToUser
+- plan smallest grounded queue of useful tool calls
+- include arguments only when grounded in user request or prior tool results
+- if task is complete or only next step is speaking to user, return no toolCalls and set messageToUser
 - do not invent tool names, connector names, providers, ids, or benchmark ids
 
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+return:
+JSON object only. No markdown, prose, XML, or legacy formats.`;
 
 export const PLANNER_TEMPLATE = plannerTemplate;
 
-export const postCreationTemplate = `# Task: Create a post in the voice and style and perspective of {{agentName}} @{{xUserName}}.
+export const postCreationTemplate = `# Task: Create a post in the voice/style/perspective of {{agentName}} @{{xUserName}}.
 
 Example task outputs:
 1. A post about the importance of AI in our lives
@@ -738,21 +631,18 @@ imagePrompt: A person looking at a computer screen with a job search website
 
 {{providers}}
 
-Write a post that is {{adjective}} about {{topic}} (without mentioning {{topic}} directly), from the perspective of {{agentName}}. Do not add commentary or acknowledge this request, just write the post.
-Your response should be 1, 2, or 3 sentences (choose the length at random).
-Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than 280. No emojis. Use \\n\\n (double spaces) between statements if there are multiple statements in your response.
+Write a post that is {{adjective}} about {{topic}} (without mentioning {{topic}} directly), from {{agentName}}'s perspective. No commentary, no acknowledgement, just the post.
+1, 2, or 3 sentences (random length).
+No questions. Brief, concise statements only. Total character count MUST be less than 280. No emojis. Use \\n\\n (double spaces) between statements.
 
-Your output should be formatted as JSON like this:
+Output JSON:
 thought: Your thought here
 post: Your post text here
 imagePrompt: Optional image prompt here
 
-The "post" field should be the post you want to send. Do not including any thinking or internal reflection in the "post" field.
-The "imagePrompt" field is optional and should be a prompt for an image that is relevant to the post. It should be a single sentence that captures the essence of the post. ONLY USE THIS FIELD if it makes sense that the post would benefit from an image.
-The "thought" field should be a short description of what the agent is thinking about before responding, including a brief justification for the response. Includate an explanation how the post is relevant to the topic but unique and different than other posts.
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+"post": the post you want to send. No thinking or reflection.
+"imagePrompt": optional, single sentence capturing the post's essence. Only use if the post benefits from an image.
+"thought": short description of what the agent is thinking, with brief justification. Explain how the post is relevant but unique vs other posts.`;
 
 export const POST_CREATION_TEMPLATE = postCreationTemplate;
 
@@ -783,24 +673,25 @@ Message Sender: {{senderName}} (ID: {{senderId}})
 {{actionResults}}
 
 # Instructions:
-1. Generate a self-reflective thought on the conversation about your performance and interaction quality.
-2. Extract only durable new facts from the conversation.
-  - Prefer facts about the current user/sender that will still matter in a week: identity, stable preferences, recurring collaborators, durable setup, long-term projects, or ongoing constraints.
-  - Do NOT extract temporary status updates, current debugging/work items, one-off session metrics, isolated praise/complaints, or facts that are only true right now.
-  - If a fact would feel stale, irrelevant, or surprising to store a week from now, skip it.
-  - When in doubt, omit the fact.
-3. Identify and describe relationships between entities.
-  - The sourceEntityId is the UUID of the entity initiating the interaction.
-  - The targetEntityId is the UUID of the entity being interacted with.
-  - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
-4. It is normal to return no facts when nothing durable was learned.
-5. Always decide whether the user's task or request is actually complete right now.
-  - Set \`task_completed: true\` only if the user no longer needs additional action or follow-up from you in this turn.
-  - If you asked a clarifying question, an action failed, work is still pending, or you only partially completed the request, set \`task_completed: false\`.
-6. Always include a short \`task_completion_reason\` grounded in the conversation and action results.
+1. Generate self-reflective thought on performance and interaction quality.
+2. Extract durable new facts only.
+  - Prefer facts about current user/sender that matter in a week: identity, stable preferences, recurring collaborators, durable setup, long-term projects, ongoing constraints.
+  - Skip temporary status updates, current debugging items, one-off metrics, isolated praise/complaints, transient facts.
+  - Skip facts that would feel stale a week from now.
+  - When in doubt, omit.
+3. Identify relationships between entities.
+  - sourceEntityId: UUID initiating interaction.
+  - targetEntityId: UUID being interacted with.
+  - Relationships are one-direction; friendships need two entries.
+4. Returning no facts is normal when nothing durable was learned.
+5. Decide whether the user's task is complete now.
+  - \`task_completed: true\` only when no further action/follow-up needed this turn.
+  - \`task_completed: false\` if you asked a clarifying question, an action failed, work pending, or partially completed.
+6. Include short \`task_completion_reason\` grounded in conversation and action results.
 
 Output:
-Use JSON fields exactly like this:
+JSON only. Return one JSON object. No prose, no <think>, no fences, no XML.
+Use fields exactly:
 thought: "a self-reflective thought on the conversation"
 task_completed: false
 task_completion_reason: "The request is still incomplete because the needed action has not happened yet."
@@ -814,13 +705,10 @@ relationships[0]:
   targetEntityId: entity_being_interacted_with
   tags[0]: dm_interaction
 
-For additional entries, increment the index: facts[1], relationships[1], tags[1], etc.
+For more entries, increment index: facts[1], relationships[1], tags[1], etc.
 Always include \`task_completed\` and \`task_completion_reason\`.
-If there are no durable new facts, omit all facts[...] entries.
-If there are no relationships, omit all relationships[...] entries.
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+Omit facts[...] entries when no durable facts.
+Omit relationships[...] entries when none.`;
 
 export const REFLECTION_EVALUATOR_TEMPLATE = reflectionEvaluatorTemplate;
 
@@ -832,21 +720,18 @@ export const reflectionTemplate = `# Task: Reflect on recent agent behavior and 
 {{recentInteractions}}
 
 # Instructions:
-Analyze the agent's recent behavior and interactions. Consider:
-1. Was the communication clear and helpful?
-2. Were responses appropriate for the context?
-3. Were any mistakes made?
-4. What could be improved?
+Analyze recent behavior. Consider:
+1. Communication clarity and helpfulness
+2. Context appropriateness
+3. Mistakes
+4. Improvements
 
-Respond using JSON like this:
+JSON:
 thought: Your detailed analysis
 quality_score: Score 0-100 for overall quality
 strengths: What went well
 improvements: What could be improved
-learnings: Key takeaways for future interactions
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+learnings: Key takeaways for future interactions`;
 
 export const REFLECTION_TEMPLATE = reflectionTemplate;
 
@@ -859,47 +744,43 @@ current_message:
 {{message}}
 
 instructions[4]:
-- identify the contact name to remove
-- set confirmed to yes only when the user explicitly confirms removal
-- set confirmed to no when confirmation is absent or ambiguous
+- identify contact name to remove
+- confirmed=yes only when user explicitly confirms
+- confirmed=no when ambiguous or absent
 - return only the requested contact
+
+output:
+JSON only. One JSON object. No prose, no <think>.
 
 Example:
 contactName: Jane Doe
-confirmed: yes
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+confirmed: yes`;
 
 export const REMOVE_CONTACT_TEMPLATE = removeContactTemplate;
 
-export const replyTemplate = `# Task: Generate dialog for the character {{agentName}}.
+export const replyTemplate = `# Task: Generate dialog for character {{agentName}}.
 
 {{providers}}
 
 # Instructions: Write the next message for {{agentName}}.
-"thought" should be a short description of what the agent is thinking about and planning.
-"text" should be the next message for {{agentName}} which they will send to the conversation.
+"thought": short description of what the agent is thinking and planning.
+"text": next message {{agentName}} will send.
 
-IMPORTANT CODE BLOCK FORMATTING RULES:
-- If {{agentName}} includes code examples, snippets, or multi-line code in the response, ALWAYS wrap the code with \`\`\` fenced code blocks (specify the language if known, e.g., \`\`\`python).
-- ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
-- If including inline code (short single words or function names), use single backticks (\`) as appropriate.
-- This ensures the user sees clearly formatted and copyable code when relevant.
+CODE BLOCK FORMATTING:
+- For code examples, snippets, or multi-line code, ALWAYS wrap with \`\`\` fenced code blocks (specify language if known, e.g., \`\`\`python).
+- ONLY use fenced blocks for actual code. Do NOT wrap non-code text in fences.
+- For inline code (short single words or function names), use single backticks (\`).
+- This ensures clean, copyable code formatting.
 
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the JSON response format without any preamble or explanation.
+No <think> sections, no preamble.
 
-Respond using JSON like this:
+JSON:
 thought: Your thought here
-text: Your message here
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+text: Your message here`;
 
 export const REPLY_TEMPLATE = replyTemplate;
 
-export const scheduleFollowUpTemplate = `task: Extract follow-up scheduling information from the request.
+export const scheduleFollowUpTemplate = `task: Extract follow-up scheduling info from the request.
 
 context:
 {{providers}}
@@ -912,10 +793,13 @@ current_datetime:
 
 instructions[5]:
 - identify who to follow up with
-- include entityId only when it is explicitly known
-- convert requested timing into an ISO datetime in scheduledAt
+- entityId only when explicitly known
+- convert timing to ISO datetime in scheduledAt
 - normalize priority to high, medium, or low
-- include message only when the user asked for a specific note or reminder text
+- include message only when user asked for specific note or reminder text
+
+output:
+JSON only. One JSON object. No prose, no <think>.
 
 Example:
 contactName: Jane Doe
@@ -923,10 +807,7 @@ entityId:
 scheduledAt: 2026-04-06T14:00:00.000Z
 reason: Check in on the proposal
 priority: medium
-message: Send the latest deck before the call
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+message: Send the latest deck before the call`;
 
 export const SCHEDULE_FOLLOW_UP_TEMPLATE = scheduleFollowUpTemplate;
 
@@ -939,20 +820,20 @@ current_message:
 {{message}}
 
 instructions[5]:
-- return categories as a comma-separated list when the user filters by category
-- return tags as a comma-separated list when the user filters by tags
-- return searchTerm for any name or free-text lookup
-- set intent to count when the user only wants a count, otherwise list
-- omit fields that are not clearly requested
+- categories: comma-separated list when user filters by category
+- tags: comma-separated list when user filters by tags
+- searchTerm: name or free-text lookup
+- intent=count when user wants a count, else list
+- omit fields not clearly requested
+
+output:
+JSON only. One JSON object. No prose, no <think>.
 
 Example:
 categories: vip,colleague
 searchTerm: Jane
 tags: ai,design
-intent: list
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+intent: list`;
 
 export const SEARCH_CONTACTS_TEMPLATE = searchContactsTemplate;
 
@@ -965,9 +846,12 @@ current_message:
 {{message}}
 
 instructions[3]:
-- return true only when the user clearly asks {{agentName}} to follow this room
-- return false when the request is ambiguous or unrelated
-- default to false when uncertain
+- true only when user clearly asks {{agentName}} to follow, join, listen to, or stay engaged
+- false when ambiguous or unrelated
+- default false when uncertain
+
+output:
+JSON only. One JSON object. No prose, no <think>.
 
 Example:
 decision: true`;
@@ -983,9 +867,12 @@ current_message:
 {{message}}
 
 instructions[3]:
-- return true only when the user clearly asks {{agentName}} to mute this room
-- return false when the request is ambiguous or unrelated
-- default to false when uncertain
+- true only when user clearly asks {{agentName}} to mute, silence, or ignore this room
+- false when ambiguous or unrelated
+- default false when uncertain
+
+output:
+JSON only. One JSON object. No prose, no <think>.
 
 Example:
 decision: true`;
@@ -1000,67 +887,85 @@ context:
 rules[7]:
 - direct mention of {{agentName}} -> RESPOND
 - different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
-- prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
+- prior participation alone is not enough; newest message must clearly expect {{agentName}} -> otherwise IGNORE
 - request to stop or be quiet directed at {{agentName}} -> STOP
-- if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
-- in group conversations, if the latest message is addressed to someone else and not to {{agentName}}, IGNORE
-- when uncertain whether the speaker is talking to {{agentName}}, default to IGNORE
+- if multiple people mentioned and {{agentName}} is one of the addressees -> RESPOND
+- in groups, if latest message is addressed to someone else, IGNORE
+- when unsure, default IGNORE
 
 available_contexts:
 {{availableContexts}}
 
 context_routing:
-- contexts: list zero or more context ids from available_contexts
+- contexts: zero or more context ids from available_contexts
 - use [] when no tool or context provider is needed
-- if contexts is non-empty, planning will run and simple will be ignored
+- if contexts non-empty, planning runs and simple is ignored
 
-Example JSON output:
+decision_note:
+- respond only when latest message is talking TO {{agentName}}
+- talking TO {{agentName}}: name mention, reply chain, or clear follow-up
+- mentions of others don't cancel direct address
+- casual conversation between others is not enough
+- if another assistant answered and nobody re-addressed, IGNORE
+- if {{agentName}} replied recently and nobody re-addressed, IGNORE
+- talking ABOUT {{agentName}} is not enough
+
+output:
+JSON only. One JSON object. No prose, no <think>.
+
+Example:
 {
   "action": "RESPOND",
   "simple": true,
   "contexts": [],
   "thought": "Direct mention and clear follow-up.",
   "reply": "Short direct reply when no context is needed."
-}
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+}`;
 
 export const SHOULD_RESPOND_TEMPLATE = shouldRespondTemplate;
 
-export const shouldRespondWithContextTemplate = `task: Decide whether {{agentName}} should respond, ignore, or stop.
+export const shouldRespondWithContextTemplate = `task: Decide whether {{agentName}} should respond and which domain context applies.
 
 context:
 {{providers}}
 
-rules[7]:
-- direct mention of {{agentName}} -> RESPOND
-- different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
-- prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
-- request to stop or be quiet directed at {{agentName}} -> STOP
-- if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
-- in group conversations, if the latest message is addressed to someone else and not to {{agentName}}, IGNORE
-- when uncertain whether the speaker is talking to {{agentName}}, default to IGNORE
-
 available_contexts:
 {{availableContexts}}
 
+rules[7]:
+- direct mention of {{agentName}} -> RESPOND
+- different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
+- prior participation by {{agentName}} alone is not enough; newest message must clearly expect {{agentName}} -> otherwise IGNORE
+- request to stop or be quiet directed at {{agentName}} -> STOP
+- if multiple people mentioned and {{agentName}} is one of the addressees -> RESPOND
+- in groups, if latest message is addressed to someone else not {{agentName}}, IGNORE
+- when unsure, default IGNORE
+
 context_routing:
-- contexts: list zero or more context ids from available_contexts
-- use [] when no tool or context provider is needed
-- if contexts is non-empty, planning will run and simple will be ignored
+- primaryContext: best-matching domain from available_contexts
+- secondaryContexts: zero or more relevant additional domains
+- action intent comes from full recent conversation, not just last message
+- if no specific domain, use "general"
 
-Example JSON output:
-{
-  "action": "RESPOND",
-  "simple": true,
-  "contexts": [],
-  "thought": "Direct mention and clear follow-up.",
-  "reply": "Short direct reply when no context is needed."
-}
+decision_note:
+- respond only when latest message is talking TO {{agentName}}
+- talking TO {{agentName}}: name mention, reply chain, or clear follow-up expecting {{agentName}}
+- mentions of others don't cancel a direct address to {{agentName}}
+- casual conversation between others is not enough
+- if another assistant answered and nobody re-addressed {{agentName}}, IGNORE
+- if {{agentName}} replied recently and nobody re-addressed, IGNORE
+- talking ABOUT {{agentName}} or continuing room conversation around them is not enough
+- context routing always applies, even for IGNORE/STOP
 
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+output:
+JSON only. One JSON object. No prose, no <think>.
+
+Example:
+name: {{agentName}}
+reasoning: Direct mention asking about token balance.
+action: RESPOND
+primaryContext: wallet
+secondaryContexts: []`;
 
 export const SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE = shouldRespondWithContextTemplate;
 
@@ -1073,9 +978,12 @@ current_message:
 {{message}}
 
 instructions[3]:
-- return true only when the user clearly asks {{agentName}} to unfollow this room
-- return false when the request is ambiguous or unrelated
-- default to false when uncertain
+- true only when user clearly asks {{agentName}} to stop following or leave
+- false when ambiguous or unrelated
+- default false when uncertain
+
+output:
+JSON only. One JSON object. No prose, no <think>.
 
 Example:
 decision: true`;
@@ -1091,9 +999,12 @@ current_message:
 {{message}}
 
 instructions[3]:
-- return true only when the user clearly asks {{agentName}} to unmute this room
-- return false when the request is ambiguous or unrelated
-- default to false when uncertain
+- true only when user clearly asks {{agentName}} to unmute or resume listening
+- false when ambiguous or unrelated
+- default false when uncertain
+
+output:
+JSON only. One JSON object. No prose, no <think>.
 
 Example:
 decision: true`;
@@ -1109,12 +1020,15 @@ current_message:
 {{message}}
 
 instructions[6]:
-- identify the contact name to update
-- set operation to replace unless the user clearly says to add_to or remove_from
-- return categories and tags as comma-separated lists
-- return preferences and customFields as comma-separated key:value pairs
+- identify contact name to update
+- operation=replace unless user clearly says add_to or remove_from
+- categories and tags as comma-separated lists
+- preferences and customFields as comma-separated key:value pairs
 - include notes only when explicitly requested
-- omit fields that are not being changed
+- omit unchanged fields
+
+output:
+JSON only. One JSON object. No prose, no <think>.
 
 Example:
 contactName: Jane Doe
@@ -1123,10 +1037,7 @@ categories: vip
 tags: ai,friend
 preferences: timezone:America/New_York,language:English
 customFields: company:Acme,title:Designer
-notes: Prefers async communication
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+notes: Prefers async communication`;
 
 export const UPDATE_CONTACT_TEMPLATE = updateContactTemplate;
 
@@ -1138,17 +1049,13 @@ export const updateEntityTemplate = `# Task: Update entity information.
 {{entityInfo}}
 
 # Instructions:
-Based on the request, determine what information about the entity should be updated.
-Only update fields that the user has explicitly requested to change.
+Determine what to update. Only update fields user explicitly requested.
 
-Example output:
-thought: User asked to change Sarah's email address.
-entity_id: 9b1d6a40-7c0e-4f6c-8f8b-1234abcd5678
+JSON:
+thought: Your reasoning for the entity update
+entity_id: The entity ID to update
 updates[1]{name,value}:
-  email,sarah@acme.com
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+  field_name,new_value`;
 
 export const UPDATE_ENTITY_TEMPLATE = updateEntityTemplate;
 
@@ -1167,20 +1074,20 @@ current_message:
 {{message}}
 
 instructions[6]:
-- identify the single entity whose role should be updated
-- return entity_id only when the UUID is explicit in context
-- normalize new_role to one of OWNER, ADMIN, MEMBER, GUEST, or NONE
-- if the user is removing elevated access without naming a new role, use NONE
+- identify single entity whose role changes
+- entity_id only when UUID is explicit in context
+- normalize new_role to OWNER, ADMIN, MEMBER, GUEST, or NONE
+- if removing elevated access without naming a new role, use NONE
 - do not invent entity ids or roles
-- include a short thought describing the change
+- include short thought describing the change
+
+output:
+JSON only. One JSON object. No prose, no <think>.
 
 Example:
 thought: Sarah should become an admin.
 entity_id: 00000000-0000-0000-0000-000000000000
-new_role: ADMIN
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+new_role: ADMIN`;
 
 export const UPDATE_ROLE_TEMPLATE = updateRoleTemplate;
 
@@ -1192,22 +1099,18 @@ export const updateSettingsTemplate = `# Task: Update settings based on the requ
 {{settings}}
 
 # Instructions:
-Based on the request, determine which settings to update.
-Only update settings that the user has explicitly requested.
+Determine which settings to update. Only update what user explicitly requested.
 
-Example output:
-thought: User asked to switch the default model to gpt-5.5.
+JSON:
+thought: Your reasoning for the settings changes
 updates[1]{key,value}:
-  default_model,gpt-5.5
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+  setting_key,new_value`;
 
 export const UPDATE_SETTINGS_TEMPLATE = updateSettingsTemplate;
 
 export const updateSummarizationTemplate = `# Task: Update and Condense Conversation Summary
 
-You are updating an existing conversation summary with new messages, while keeping the total summary concise.
+Update an existing summary with new messages, keeping it concise.
 
 # Existing Summary
 {{existingSummary}}
@@ -1219,25 +1122,22 @@ You are updating an existing conversation summary with new messages, while keepi
 {{newMessages}}
 
 # Instructions
-Update the summary by:
-1. Merging the existing summary with insights from the new messages
-2. Removing redundant or less important details to stay under the token limit
+Update by:
+1. Merging existing summary with new-message insights
+2. Removing redundant or less important details
 3. Keeping the most important context and decisions
-4. Adding new topics if they emerge
-5. **CRITICAL**: Keep the ENTIRE updated summary under 2500 tokens
+4. Adding new topics as they emerge
+5. **Keep ENTIRE updated summary under 2500 tokens**
 
-The goal is a rolling summary that captures the essence of the conversation without growing indefinitely.
+Goal: rolling summary that captures conversation essence without growing indefinitely.
 
-Respond in JSON:
+JSON:
 text: Your updated and condensed summary here
 topics[0]: topic1
 topics[1]: topic2
 topics[2]: topic3
 keyPoints[0]: First key point
-keyPoints[1]: Second key point
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
+keyPoints[1]: Second key point`;
 
 export const UPDATE_SUMMARIZATION_TEMPLATE = updateSummarizationTemplate;
 

@@ -1,4 +1,4 @@
-task: Extract contact information to add to the relationships.
+task: Extract contact information to add to relationships.
 
 context:
 {{providers}}
@@ -11,10 +11,13 @@ current_message:
 
 instructions[5]:
 - identify the contact name being added
-- include entityId only if it is explicitly known from context
-- return categories as a comma-separated list
-- include notes, timezone, and language only when clearly present
-- include a short reason for why this contact should be saved
+- include entityId only when explicitly known from context
+- return categories as comma-separated list
+- include notes, timezone, language only when clearly present
+- include short reason for saving this contact
+
+output:
+JSON only. One JSON object. No prose, no <think>.
 
 Example:
 contactName: Jane Doe

@@ -7,11 +7,14 @@ current_message:
 {{message}}
 
 instructions[5]:
-- return categories as a comma-separated list when the user filters by category
-- return tags as a comma-separated list when the user filters by tags
-- return searchTerm for any name or free-text lookup
-- set intent to count when the user only wants a count, otherwise list
-- omit fields that are not clearly requested
+- categories: comma-separated list when user filters by category
+- tags: comma-separated list when user filters by tags
+- searchTerm: name or free-text lookup
+- intent=count when user wants a count, else list
+- omit fields not clearly requested
+
+output:
+JSON only. One JSON object. No prose, no <think>.
 
 Example:
 categories: vip,colleague

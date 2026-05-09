@@ -8,7 +8,10 @@ trajectory:
 
 rules:
 - use only tools exposed in the current context object
-- plan the smallest grounded queue of useful tool calls
-- include arguments only when grounded in the user request or prior tool results
-- if the task is complete or the only next step is speaking to the user, return no toolCalls and set messageToUser
+- plan smallest grounded queue of useful tool calls
+- include arguments only when grounded in user request or prior tool results
+- if task is complete or only next step is speaking to user, return no toolCalls and set messageToUser
 - do not invent tool names, connector names, providers, ids, or benchmark ids
+
+return:
+JSON object only. No markdown, prose, XML, or legacy formats.

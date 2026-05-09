@@ -6,11 +6,10 @@
 {{entityInfo}}
 
 # Instructions:
-Based on the request, determine what information about the entity should be updated.
-Only update fields that the user has explicitly requested to change.
+Determine what to update. Only update fields user explicitly requested.
 
 Example output:
-thought: User asked to change Sarah's email address.
-entity_id: 9b1d6a40-7c0e-4f6c-8f8b-1234abcd5678
+thought: User asked to update Alice's email.
+entity_id: ent_123
 updates[1]{name,value}:
-  email,sarah@acme.com
+  email,alice@acme.com

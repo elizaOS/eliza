@@ -6,21 +6,33 @@ context:
 rules[7]:
 - direct mention of {{agentName}} -> RESPOND
 - different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
-- prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
+- prior participation alone is not enough; newest message must clearly expect {{agentName}} -> otherwise IGNORE
 - request to stop or be quiet directed at {{agentName}} -> STOP
-- if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
-- in group conversations, if the latest message is addressed to someone else and not to {{agentName}}, IGNORE
-- when uncertain whether the speaker is talking to {{agentName}}, default to IGNORE
+- if multiple people mentioned and {{agentName}} is one of the addressees -> RESPOND
+- in groups, if latest message is addressed to someone else, IGNORE
+- when unsure, default IGNORE
 
 available_contexts:
 {{availableContexts}}
 
 context_routing:
-- contexts: list zero or more context ids from available_contexts
+- contexts: zero or more context ids from available_contexts
 - use [] when no tool or context provider is needed
-- if contexts is non-empty, planning will run and simple will be ignored
+- if contexts non-empty, planning runs and simple is ignored
 
-Example JSON output:
+decision_note:
+- respond only when latest message is talking TO {{agentName}}
+- talking TO {{agentName}}: name mention, reply chain, or clear follow-up
+- mentions of others don't cancel direct address
+- casual conversation between others is not enough
+- if another assistant answered and nobody re-addressed, IGNORE
+- if {{agentName}} replied recently and nobody re-addressed, IGNORE
+- talking ABOUT {{agentName}} is not enough
+
+output:
+JSON only. One JSON object. No prose, no <think>.
+
+Example:
 {
   "action": "RESPOND",
   "simple": true,

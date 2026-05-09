@@ -6,8 +6,7 @@
 {{settings}}
 
 # Instructions:
-Based on the request, determine which settings to update.
-Only update settings that the user has explicitly requested.
+Determine which settings to update. Only update what user explicitly requested.
 
 Example output:
 thought: User asked to switch the default model to gpt-5.5.

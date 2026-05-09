@@ -1,14 +1,13 @@
-# Task: Generate an image prompt for {{agentName}}.
+# Task: Generate image prompt for {{agentName}}.
 
 {{providers}}
 
 # Instructions:
-Based on the conversation, create a detailed prompt for image generation.
-The prompt should be specific, descriptive, and suitable for AI image generation.
+Create a specific, descriptive image-generation prompt based on the conversation.
 
 # Recent conversation:
 {{recentMessages}}
 
-Respond using JSON like this:
+JSON:
 thought: Your reasoning for the image prompt
 prompt: Detailed image generation prompt

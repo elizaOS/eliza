@@ -1,17 +1,17 @@
 # Task: Classify and extract facts from this message
 
-You maintain two fact stores for an AI assistant. Decide what to insert, strengthen, decay, or contradict. Return JSON ops only.
+You maintain two fact stores. Decide what to insert, strengthen, decay, or contradict. Return JSON ops only.
 
 Stores:
 - durable: stable identity-level claims that matter in a year.
   Categories: identity, health, relationship, life_event, business_role, preference, goal.
-- current: time-bound state about right now or the near term.
+- current: time-bound state about now or near term.
   Categories: feeling, physical_state, working_on, going_through, schedule_context.
 
 Rules:
 - If a claim feels stale or surprising to retrieve in a year, use current.
-- Empty output is right for small talk or questions with no new claim.
-- Before add_durable/add_current, scan known facts. If meaning already exists, emit strengthen with that factId.
+- Empty output is right for small talk or claim-free questions.
+- Before add_durable/add_current, scan known facts. If meaning exists, emit strengthen with that factId.
 - Paraphrases count as duplicates. Match meaning, not surface form.
 
 Ops:
@@ -106,5 +106,6 @@ Latest message:
 {{message}}
 
 Output:
+JSON only. One JSON object. No prose, fences, XML, or <think>.
 If nothing should change, return:
 {"ops":[]}
