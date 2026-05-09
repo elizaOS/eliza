@@ -1,0 +1,70 @@
+/**
+ * First-run replay semantics (per `GAP_ASSESSMENT.md` §8.14).
+ *
+ * Replay = re-run the first-run flow without destroying anything:
+ *   - Existing `ScheduledTask` records are NOT touched. The runner sees the
+ *     same `idempotencyKey` and upserts in place (W1-A guarantee).
+ *   - `OwnerFactStore` facts that the questions touch ARE updated. New
+ *     answers append; previously-answered fields show their current value as
+ *     the "default" for the user to confirm or change.
+ *   - `partialAnswers` for the in-progress lifecycle is reset on entry —
+ *     replay always starts a fresh answer slate (the user can still skip
+ *     unchanged questions).
+ *
+ * Wipe = the destructive sibling (`LIFEOPS.wipe`). Wipe deletes every
+ * lifeops-owned `ScheduledTask`, clears `OwnerFactStore`, and resets the
+ * first-run state machine. Implemented in `actions/lifeops-pause.ts`.
+ *
+ * This module exposes the read-only helpers replay uses to surface current
+ * facts as defaults.
+ */
+
+import type { CustomizeAnswers, RelationshipAnswerEntry } from "./questions.js";
+import type { OwnerFactStore, OwnerFacts } from "./state.js";
+
+export interface ReplayContext {
+  currentFacts: OwnerFacts;
+}
+
+/**
+ * Build the planner-visible "defaults to confirm" payload for the customize
+ * path. The action serializes this into the prompt so the user sees their
+ * current values as pre-filled options.
+ */
+export async function buildReplayContext(
+  store: OwnerFactStore,
+): Promise<ReplayContext> {
+  const currentFacts = await store.read();
+  return { currentFacts };
+}
+
+/**
+ * Project the current facts into a partial `CustomizeAnswers` so the planner
+ * can pre-fill the questionnaire. Missing values stay missing — the user has
+ * to provide them this round.
+ */
+export function partialAnswersFromFacts(
+  facts: OwnerFacts,
+): Partial<CustomizeAnswers> {
+  const partial: Partial<CustomizeAnswers> = {};
+  if (facts.preferredName) partial.preferredName = facts.preferredName;
+  if (facts.timezone) partial.timezone = facts.timezone;
+  if (facts.morningWindow) partial.morningWindow = facts.morningWindow;
+  if (facts.eveningWindow) partial.eveningWindow = facts.eveningWindow;
+  if (facts.preferredNotificationChannel) {
+    partial.channel = facts.preferredNotificationChannel;
+  }
+  return partial;
+}
+
+/**
+ * Per the contract, replay never wipes existing relationship answers — but
+ * replay also has no way of reading back into the question slate which
+ * relationships the user previously named. Until the W1-E `RelationshipStore`
+ * is wired in, replay treats the relationships question as a fresh round
+ * (the user lists them again or skips). When the W1-E store lands, this
+ * helper changes to read it.
+ */
+export function relationshipsFallbackForReplay(): RelationshipAnswerEntry[] {
+  return [];
+}
