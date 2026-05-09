@@ -1,17 +1,22 @@
-import type { Route, RouteRequest, RouteResponse, IAgentRuntime } from '@elizaos/core';
+import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from '@elizaos/core';
 import {
-  searchNodes,
-  getNodeDefinition,
-  getAllNodes,
-  filterNodesByIntegrationSupport,
-} from '../utils/catalog';
+  EMBEDDED_WORKFLOW_SERVICE_TYPE,
+  type EmbeddedWorkflowService,
+} from '../services/embedded-workflow-service';
 import type { NodeSearchResult } from '../types/index';
-import { WORKFLOW_CREDENTIAL_PROVIDER_TYPE, isCredentialProvider } from '../types/index';
+import { isCredentialProvider, WORKFLOW_CREDENTIAL_PROVIDER_TYPE } from '../types/index';
+import {
+  filterNodesByIntegrationSupport,
+  getAllNodes,
+  getNodeDefinition,
+  searchNodes,
+} from '../utils/catalog';
 import { validateLimit } from './_helpers';
-import { EMBEDDED_WORKFLOW_SERVICE_TYPE, type EmbeddedWorkflowService } from '../services/embedded-workflow-service';
 
 function getRegisteredEmbeddedNodes(runtime: IAgentRuntime): Set<string> | null {
-  const service = runtime.getService(EMBEDDED_WORKFLOW_SERVICE_TYPE) as EmbeddedWorkflowService | null;
+  const service = runtime.getService(
+    EMBEDDED_WORKFLOW_SERVICE_TYPE
+  ) as EmbeddedWorkflowService | null;
   const names = service?.getRegisteredNodeTypes?.();
   return names?.length ? new Set(names) : null;
 }

@@ -1,4 +1,4 @@
-import type { Route, RouteRequest, RouteResponse, IAgentRuntime } from '@elizaos/core';
+import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from '@elizaos/core';
 import { getService, validateLimit } from './_helpers';
 
 /**

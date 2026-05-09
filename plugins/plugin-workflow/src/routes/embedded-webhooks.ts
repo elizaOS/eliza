@@ -1,12 +1,14 @@
-import type { Route, RouteRequest, RouteResponse, IAgentRuntime } from '@elizaos/core';
+import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from '@elizaos/core';
 import {
-  EmbeddedWorkflowService,
   EMBEDDED_WORKFLOW_SERVICE_TYPE,
+  type EmbeddedWorkflowService,
 } from '../services/embedded-workflow-service';
 import { WorkflowApiError } from '../types/index';
 
 function getEmbeddedService(runtime: IAgentRuntime): EmbeddedWorkflowService {
-  const service = runtime.getService(EMBEDDED_WORKFLOW_SERVICE_TYPE) as EmbeddedWorkflowService | null;
+  const service = runtime.getService(
+    EMBEDDED_WORKFLOW_SERVICE_TYPE
+  ) as EmbeddedWorkflowService | null;
   if (!service) {
     throw new Error('EmbeddedWorkflowService not available in runtime');
   }

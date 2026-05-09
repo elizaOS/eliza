@@ -4,12 +4,11 @@
  * plugin-workflow services; there is no external workflow server or sidecar.
  */
 
-import { loadElizaConfig } from '@elizaos/agent/config';
-import { ensureRouteAuthorized } from '@elizaos/app-core';
-import type { CompatRuntimeState } from '@elizaos/app-core';
-import { sendJson } from '@elizaos/app-core';
-import type { Plugin, Route } from '@elizaos/core';
 import type http from 'node:http';
+import { loadElizaConfig } from '@elizaos/agent/config';
+import type { CompatRuntimeState } from '@elizaos/app-core';
+import { ensureRouteAuthorized, sendJson } from '@elizaos/app-core';
+import type { Plugin, Route } from '@elizaos/core';
 import { handleWorkflowRoutes, type WorkflowRouteContext } from './routes/workflow-routes';
 
 type AnyRuntime = WorkflowRouteContext['runtime'];
@@ -124,8 +123,7 @@ const workflowRouteList: Route[] = [
 
 export const workflowRoutePlugin: Plugin = {
   name: '@elizaos/plugin-workflow:routes',
-  description:
-    'Workflow routes — in-process status, generation, CRUD, and lifecycle handlers.',
+  description: 'Workflow routes — in-process status, generation, CRUD, and lifecycle handlers.',
   routes: workflowRouteList,
 };
 

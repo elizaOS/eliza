@@ -1,51 +1,54 @@
 import { type IAgentRuntime, logger, Service } from '@elizaos/core';
-import { EmbeddedWorkflowService, EMBEDDED_WORKFLOW_SERVICE_TYPE } from './embedded-workflow-service';
-import { searchNodes, filterNodesByIntegrationSupport } from '../utils/catalog';
-import { getUserTagName } from '../utils/context';
+import type {
+  NodeDefinition,
+  RuntimeContext,
+  TriggerContext,
+  WorkflowCreationResult,
+  WorkflowCredentialStoreApi,
+  WorkflowDefinition,
+  WorkflowDefinitionResponse,
+  WorkflowExecution,
+} from '../types/index';
 import {
-  extractKeywords,
-  generateWorkflow,
-  modifyWorkflow,
-  collectExistingNodeDefinitions,
+  isCredentialProvider,
+  isRuntimeContextProvider,
+  UnsupportedIntegrationError,
+  WORKFLOW_CREDENTIAL_PROVIDER_TYPE,
+  WORKFLOW_CREDENTIAL_STORE_TYPE,
+  WORKFLOW_RUNTIME_CONTEXT_PROVIDER_TYPE,
+  WorkflowApiError,
+} from '../types/index';
+import { filterNodesByIntegrationSupport, searchNodes } from '../utils/catalog';
+import { CATALOG_CLARIFICATION_SUFFIX, isCatalogClarification } from '../utils/clarification';
+import { getUserTagName } from '../utils/context';
+import { resolveCredentials } from '../utils/credentialResolver';
+import {
   assessFeasibility,
+  collectExistingNodeDefinitions,
   correctFieldReferences,
   correctParameterNames,
+  extractKeywords,
+  fixWorkflowErrors,
+  generateWorkflow,
+  modifyWorkflow,
 } from '../utils/generation';
+import { validateAndRepair } from '../utils/validateAndRepair';
 import {
-  positionNodes,
-  validateWorkflow,
-  validateNodeParameters,
-  validateNodeInputs,
-  validateOutputReferences,
-  normalizeTriggerSimpleParam,
   correctOptionParameters,
   detectUnknownParameters,
   ensureExpressionPrefix,
   injectMissingCredentialBlocks,
+  normalizeTriggerSimpleParam,
+  positionNodes,
+  validateNodeInputs,
+  validateNodeParameters,
+  validateOutputReferences,
+  validateWorkflow,
 } from '../utils/workflow';
-import { resolveCredentials } from '../utils/credentialResolver';
-import { validateAndRepair } from '../utils/validateAndRepair';
-import { fixWorkflowErrors } from '../utils/generation';
-import { CATALOG_CLARIFICATION_SUFFIX, isCatalogClarification } from '../utils/clarification';
-import type {
-  WorkflowDefinition,
-  WorkflowDefinitionResponse,
-  WorkflowExecution,
-  WorkflowCreationResult,
-  WorkflowCredentialStoreApi,
-  NodeDefinition,
-  RuntimeContext,
-  TriggerContext,
-} from '../types/index';
 import {
-  WORKFLOW_CREDENTIAL_STORE_TYPE,
-  WORKFLOW_CREDENTIAL_PROVIDER_TYPE,
-  WORKFLOW_RUNTIME_CONTEXT_PROVIDER_TYPE,
-  WorkflowApiError,
-  isCredentialProvider,
-  isRuntimeContextProvider,
-  UnsupportedIntegrationError,
-} from '../types/index';
+  EMBEDDED_WORKFLOW_SERVICE_TYPE,
+  EmbeddedWorkflowService,
+} from './embedded-workflow-service';
 
 export const WORKFLOW_SERVICE_TYPE = 'workflow';
 
@@ -74,7 +77,10 @@ type WorkflowDefinitionClient = Pick<
   | 'createTag'
   | 'getOrCreateTag'
 > & {
-  getRuntimeNodeTypeVersions(): Promise<Map<string, number[]> | null> | Map<string, number[]> | null;
+  getRuntimeNodeTypeVersions():
+    | Promise<Map<string, number[]> | null>
+    | Map<string, number[]>
+    | null;
   getRegisteredNodeTypes?(): string[];
   supportsWorkflow?(workflow: WorkflowDefinition): { supported: boolean; missing: string[] };
 };
@@ -264,10 +270,7 @@ export class WorkflowService extends Service {
     prompt: string,
     opts?: { userId?: string; triggerContext?: TriggerContext }
   ): Promise<WorkflowDefinition> {
-    logger.info(
-      { src: 'plugin:workflow:service:main' },
-      'Generating workflow draft from prompt'
-    );
+    logger.info({ src: 'plugin:workflow:service:main' }, 'Generating workflow draft from prompt');
 
     // Fetch host-supplied bias hints early (before keyword extraction) so the
     // LLM is told which providers the host already knows it can satisfy.
@@ -651,7 +654,10 @@ export class WorkflowService extends Service {
     return positionNodes(workflow);
   }
 
-  async deployWorkflow(workflow: WorkflowDefinition, userId: string): Promise<WorkflowCreationResult> {
+  async deployWorkflow(
+    workflow: WorkflowDefinition,
+    userId: string
+  ): Promise<WorkflowCreationResult> {
     logger.info(
       { src: 'plugin:workflow:service:main' },
       `Deploying workflow "${workflow.name}" for user ${userId}`

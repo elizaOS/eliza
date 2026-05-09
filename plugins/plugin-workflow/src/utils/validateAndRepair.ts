@@ -17,10 +17,15 @@
  */
 
 import { logger } from '@elizaos/core';
-import type { WorkflowNode, WorkflowDefinition, NodeDefinition, RuntimeContext } from '../types/index';
-import { loadOutputSchema, loadTriggerOutputSchema, parseExpressions } from './outputSchema';
+import type {
+  NodeDefinition,
+  RuntimeContext,
+  WorkflowDefinition,
+  WorkflowNode,
+} from '../types/index';
+import { CATALOG_CLARIFICATION_SUFFIX, isCatalogClarification } from './clarification';
 import { inferSyntheticOutputSchema } from './inferSyntheticOutputSchema';
-import { isCatalogClarification, CATALOG_CLARIFICATION_SUFFIX } from './clarification';
+import { loadOutputSchema, loadTriggerOutputSchema, parseExpressions } from './outputSchema';
 
 export type RepairKind =
   | 'typeVersionClamp'
@@ -131,7 +136,11 @@ interface CredentialDef {
  *  shows it gates on a single authentication value (and node.parameters
  *  doesn't already set one), back-fill it. Closes the Gmail-missing-auth
  *  bug surfaced in Session 20 dogfood. */
-function applyAuthenticationBackfill(node: WorkflowNode, def: NodeDefinition, repairs: Repair[]): void {
+function applyAuthenticationBackfill(
+  node: WorkflowNode,
+  def: NodeDefinition,
+  repairs: Repair[]
+): void {
   if (!node.credentials) {
     return;
   }
@@ -396,7 +405,7 @@ function applyAggregationSourceFieldFix(
       if (fields.includes(entry.field)) {
         continue;
       } // exact match
-      const ciMatch = fields.find((f) => f.toLowerCase() === entry.field!.toLowerCase());
+      const ciMatch = fields.find((f) => f.toLowerCase() === entry.field?.toLowerCase());
       if (ciMatch) {
         const oldField = entry.field;
         entry.field = ciMatch;

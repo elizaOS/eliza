@@ -1,11 +1,11 @@
-import type { Route, RouteRequest, RouteResponse, IAgentRuntime } from '@elizaos/core';
-import {
-  validateWorkflow,
-  validateNodeParameters,
-  validateNodeInputs,
-  positionNodes,
-} from '../utils/workflow';
+import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from '@elizaos/core';
 import type { WorkflowDefinition } from '../types/index';
+import {
+  positionNodes,
+  validateNodeInputs,
+  validateNodeParameters,
+  validateWorkflow,
+} from '../utils/workflow';
 import { getService } from './_helpers';
 
 /**

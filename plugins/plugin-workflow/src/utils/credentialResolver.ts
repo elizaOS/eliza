@@ -1,11 +1,11 @@
 import { logger } from '@elizaos/core';
 import type {
-  WorkflowDefinition,
+  CredentialProvider,
   CredentialResolutionResult,
   MissingConnection,
-  WorkflowPluginConfig,
-  CredentialProvider,
   WorkflowCredentialStoreApi,
+  WorkflowDefinition,
+  WorkflowPluginConfig,
 } from '../types/index';
 
 interface CredentialApiClient {

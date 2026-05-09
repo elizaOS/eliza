@@ -1,41 +1,41 @@
-import { type IAgentRuntime, ModelType, logger } from '@elizaos/core';
+import { type IAgentRuntime, logger, ModelType } from '@elizaos/core';
 import {
-  KeywordExtractionResult,
-  WorkflowDefinition,
-  WorkflowMatchResult,
-  WorkflowDraft,
-  DraftIntentResult,
-  NodeDefinition,
-  NodeSearchResult,
-  FeasibilityResult,
-  OutputRefValidation,
-  RuntimeContext,
-} from '../types/index';
-import {
-  KEYWORD_EXTRACTION_SYSTEM_PROMPT,
-  WORKFLOW_GENERATION_SYSTEM_PROMPT,
-  DRAFT_INTENT_SYSTEM_PROMPT,
   ACTION_RESPONSE_SYSTEM_PROMPT,
+  DRAFT_INTENT_SYSTEM_PROMPT,
   FEASIBILITY_CHECK_PROMPT,
   FIELD_CORRECTION_SYSTEM_PROMPT,
   FIELD_CORRECTION_USER_PROMPT,
+  KEYWORD_EXTRACTION_SYSTEM_PROMPT,
   PARAM_CORRECTION_SYSTEM_PROMPT,
   PARAM_CORRECTION_USER_PROMPT,
+  WORKFLOW_GENERATION_SYSTEM_PROMPT,
 } from '../prompts/index';
 import { WORKFLOW_MATCHING_SYSTEM_PROMPT } from '../prompts/workflowMatching';
 import {
-  keywordExtractionSchema,
-  workflowMatchingSchema,
   draftIntentSchema,
   feasibilitySchema,
+  keywordExtractionSchema,
+  workflowMatchingSchema,
 } from '../schemas/index';
+import type {
+  DraftIntentResult,
+  FeasibilityResult,
+  KeywordExtractionResult,
+  NodeDefinition,
+  NodeSearchResult,
+  OutputRefValidation,
+  RuntimeContext,
+  WorkflowDefinition,
+  WorkflowDraft,
+  WorkflowMatchResult,
+} from '../types/index';
 import { getNodeDefinition, simplifyNodeForLLM } from './catalog';
 import {
-  hasOutputSchema,
-  getAvailableResources,
-  getAvailableOperations,
-  loadOutputSchema,
   formatSchemaForPrompt,
+  getAvailableOperations,
+  getAvailableResources,
+  hasOutputSchema,
+  loadOutputSchema,
 } from './outputSchema';
 import type { UnknownParamDetection } from './workflow';
 
@@ -75,7 +75,7 @@ export async function extractKeywords(
   }
 
   // Validate structure
-  if (!result || !result.keywords || !Array.isArray(result.keywords)) {
+  if (!result?.keywords || !Array.isArray(result.keywords)) {
     logger.error(
       {
         src: 'plugin:workflow:generation:keywords',

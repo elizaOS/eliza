@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   boolean,
   index,
@@ -8,11 +9,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
-import type {
-  WorkflowExecution,
-  WorkflowDefinition,
-} from '../types/index';
+import type { WorkflowDefinition, WorkflowExecution } from '../types/index';
 
 export const workflowSchema = pgSchema('workflow');
 
@@ -23,12 +20,8 @@ export const credentialMappings = workflowSchema.table(
     userId: text('user_id').notNull(),
     credType: text('cred_type').notNull(),
     workflowCredentialId: text('workflow_credential_id').notNull(),
-    createdAt: timestamp('created_at')
-      .default(sql`now()`)
-      .notNull(),
-    updatedAt: timestamp('updated_at')
-      .default(sql`now()`)
-      .notNull(),
+    createdAt: timestamp('created_at').default(sql`now()`).notNull(),
+    updatedAt: timestamp('updated_at').default(sql`now()`).notNull(),
   },
   (table) => ({
     userCredIdx: uniqueIndex('idx_user_cred').on(table.userId, table.credType),
