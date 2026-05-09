@@ -14,7 +14,7 @@ The optimization system is not yet aligned end-to-end. The source prompt files u
 
 ## Evidence reviewed with file refs
 
-- `packages/core/src/prompts.ts:456` defines the generated `messageHandlerTemplate`. It includes launch-critical planner rules for provider usage, uploaded files, live status queries, durable future-condition tasks, N8N workflow selection, avoiding adjacent tools, and TOON-only output.
+- `packages/core/src/prompts.ts:456` defines the generated `messageHandlerTemplate`. It includes launch-critical planner rules for provider usage, uploaded files, live status queries, durable future-condition tasks, workflow selection, avoiding adjacent tools, and TOON-only output.
 - `packages/core/src/prompts.ts:519` defines `multiStepDecisionTemplate`. It tells the model to use runtime action/provider names and return TOON, but its example omits `params` even though the runtime schema accepts `params`.
 - `packages/core/src/prompts.ts:1039` and `packages/core/src/prompts.ts:621` define TOON-oriented should-respond and post-action prompts.
 - `packages/prompts/prompts/message_handler.txt:1` is stale versus the generated `messageHandlerTemplate`; it has fewer rules and lacks several launch-critical action-selection constraints.
@@ -75,7 +75,7 @@ The optimization system is not yet aligned end-to-end. The source prompt files u
 
 ### P1
 
-- Generated prompt code and source prompt files are out of sync. `packages/core/src/prompts.ts:456` contains many launch-critical planner rules that are absent from `packages/prompts/prompts/message_handler.txt:1`; `packages/core/src/prompts.ts:519` similarly differs from `packages/prompts/prompts/multi_step_decision.txt:1`. A prompt regeneration could silently remove durable-task, provider, N8N, and action-selection rules.
+- Generated prompt code and source prompt files are out of sync. `packages/core/src/prompts.ts:456` contains many launch-critical planner rules that are absent from `packages/prompts/prompts/message_handler.txt:1`; `packages/core/src/prompts.ts:519` similarly differs from `packages/prompts/prompts/multi_step_decision.txt:1`. A prompt regeneration could silently remove durable-task, provider, workflow, and action-selection rules.
 - The optimizer target does not fully match the hot planner path. The primary single-turn planner uses optimized task `response` at `packages/core/src/services/message.ts:5613`, while automated training bootstraps `action_planner` at `plugins/app-training/src/services/training-trigger.ts:503` and uses `multiStepDecisionTemplate` as the `action_planner` baseline at `plugins/app-training/src/core/training-orchestrator.ts:354`. This can make "Optimize action planner" improve the multi-step loop while missing the main planner prompt used for normal messages.
 
 ### P2
@@ -123,7 +123,7 @@ The optimization system is not yet aligned end-to-end. The source prompt files u
 - `REPLY`/`NONE` false positive and false negative rates for actionable requests.
 - Prompt tokens, completion tokens, total tokens, latency, and cost by task (`response`, `action_planner`, `should_respond`, post-action).
 - Token savings from TOON/caveman compaction measured against action accuracy and parameter validity.
-- Regression slices for uploaded files, live status/current info, durable future-condition tasks, N8N workflow creation, browser/terminal/GitHub/wallet flows, and non-English prompts.
+- Regression slices for uploaded files, live status/current info, durable future-condition tasks, workflow creation, browser/terminal/GitHub/wallet flows, and non-English prompts.
 - Dataset quality metrics: planner-label agreement, stale-format rate, duplicate trajectory rate, and contamination rate from non-planner model calls.
 
 ## Changed paths
