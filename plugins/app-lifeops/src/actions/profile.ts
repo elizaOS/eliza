@@ -427,6 +427,8 @@ export const profileAction: Action & {
     "Owner-only. Persist stable owner facts and preferences: name, location, gender, age, relationship status, travel-booking preferences (save subaction); phone number (capture_phone); reminder intensity (set_reminder_preference); escalation rules (configure_escalation). All operations are durable owner-scoped state.",
   descriptionCompressed:
     "persist owner state: save(name,location,age,prefs) + capture_phone(number) + set_reminder_preference(intensity) + configure_escalation(rules)",
+  routingHint:
+    "durable owner facts, reusable preferences, travel/booking preferences (\"remember I prefer aisle seats\", \"save my hotel preferences\") -> PROFILE; never use extraction/memory side effects/REPLY",
   contexts: ["memory", "contacts", "tasks", "settings", "calendar"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
