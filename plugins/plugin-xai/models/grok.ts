@@ -97,7 +97,11 @@ interface XaiNativeTextResult {
   text: string;
   toolCalls: Array<{ toolCallId: string; toolName: string; input: unknown }>;
   finishReason?: string;
-  usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
 }
 
 type XaiToolDefinition = {
@@ -126,7 +130,9 @@ function normalizeXaiTools(tools: unknown): unknown[] | undefined {
   }
   if (typeof tools === "object") {
     const out: Record<string, unknown>[] = [];
-    for (const [name, value] of Object.entries(tools as Record<string, XaiToolDefinition>)) {
+    for (const [name, value] of Object.entries(
+      tools as Record<string, XaiToolDefinition>,
+    )) {
       const normalized = normalizeXaiTool({ ...value, name });
       if (normalized) out.push(normalized);
     }
@@ -135,12 +141,15 @@ function normalizeXaiTools(tools: unknown): unknown[] | undefined {
   return undefined;
 }
 
-function normalizeXaiTool(tool: XaiToolDefinition): Record<string, unknown> | undefined {
+function normalizeXaiTool(
+  tool: XaiToolDefinition,
+): Record<string, unknown> | undefined {
   const name = tool.name ?? tool.function?.name;
   if (!name) return undefined;
   const description = tool.description ?? tool.function?.description;
-  const parameters =
-    tool.parameters ?? tool.function?.parameters ?? tool.inputSchema ?? { type: "object" };
+  const parameters = tool.parameters ??
+    tool.function?.parameters ??
+    tool.inputSchema ?? { type: "object" };
   return {
     type: "function",
     function: {
@@ -155,7 +164,9 @@ function normalizeXaiToolChoice(toolChoice: unknown): unknown {
   if (!toolChoice) return undefined;
   if (
     typeof toolChoice === "string" &&
-    (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required")
+    (toolChoice === "auto" ||
+      toolChoice === "none" ||
+      toolChoice === "required")
   ) {
     return toolChoice;
   }
@@ -339,7 +350,9 @@ async function generateText(
   const promptText = params.prompt ?? "";
   const tools = normalizeXaiTools(paramsWithNative.tools);
   const toolChoice = normalizeXaiToolChoice(paramsWithNative.toolChoice);
-  const responseFormat = buildXaiResponseFormat(paramsWithNative.responseSchema);
+  const responseFormat = buildXaiResponseFormat(
+    paramsWithNative.responseSchema,
+  );
   const returnNative = Boolean(
     paramsWithNative.messages ||
       paramsWithNative.tools ||

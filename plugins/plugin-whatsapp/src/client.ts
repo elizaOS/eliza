@@ -1,5 +1,4 @@
 import { EventEmitter } from "node:events";
-import axios, { type AxiosInstance, type AxiosResponse } from "axios";
 import type { IWhatsAppClient } from "./clients/interface";
 import type {
   CloudAPIConfig,
@@ -16,8 +15,16 @@ import type {
 
 const DEFAULT_API_VERSION = "v24.0";
 
+interface WhatsAppApiResponse<T> {
+  data: T;
+  status: number;
+  statusText: string;
+  headers: Headers;
+}
+
 export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
-  private client: AxiosInstance;
+  private baseUrl: string;
+  private headers: HeadersInit;
   private config: CloudAPIConfig;
   private connectionStatus: ConnectionStatus = "close";
 
@@ -25,14 +32,11 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
     super();
     this.config = config;
     const apiVersion = config.apiVersion || DEFAULT_API_VERSION;
-
-    this.client = axios.create({
-      baseURL: `https://graph.facebook.com/${apiVersion}`,
-      headers: {
-        Authorization: `Bearer ${config.accessToken}`,
-        "Content-Type": "application/json",
-      },
-    });
+    this.baseUrl = `https://graph.facebook.com/${apiVersion}`;
+    this.headers = {
+      Authorization: `Bearer ${config.accessToken}`,
+      "Content-Type": "application/json",
+    };
   }
 
   async start(): Promise<void> {
@@ -60,10 +64,12 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
   /**
    * Send a message of any supported type.
    */
-  async sendMessage(message: WhatsAppMessage): Promise<AxiosResponse<WhatsAppMessageResponse>> {
+  async sendMessage(
+    message: WhatsAppMessage
+  ): Promise<WhatsAppApiResponse<WhatsAppMessageResponse>> {
     const endpoint = `/${this.config.phoneNumberId}/messages`;
     const payload = this.buildMessagePayload(message);
-    return this.client.post(endpoint, payload);
+    return this.post<WhatsAppMessageResponse>(endpoint, payload);
   }
 
   /**
@@ -73,7 +79,7 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
     to: string,
     text: string,
     _previewUrl = false
-  ): Promise<AxiosResponse<WhatsAppMessageResponse>> {
+  ): Promise<WhatsAppApiResponse<WhatsAppMessageResponse>> {
     return this.sendMessage({
       type: "text",
       to,
@@ -99,7 +105,7 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
     };
 
     try {
-      const response = await this.client.post<WhatsAppMessageResponse>(endpoint, payload);
+      const response = await this.post<WhatsAppMessageResponse>(endpoint, payload);
       return {
         success: true,
         messageId: response.data.messages?.[0]?.id,
@@ -131,7 +137,7 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
     to: string,
     imageUrl: string,
     caption?: string
-  ): Promise<AxiosResponse<WhatsAppMessageResponse>> {
+  ): Promise<WhatsAppApiResponse<WhatsAppMessageResponse>> {
     return this.sendMessage({
       type: "image",
       to,
@@ -149,7 +155,7 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
     to: string,
     videoUrl: string,
     caption?: string
-  ): Promise<AxiosResponse<WhatsAppMessageResponse>> {
+  ): Promise<WhatsAppApiResponse<WhatsAppMessageResponse>> {
     return this.sendMessage({
       type: "video",
       to,
@@ -163,7 +169,10 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
   /**
    * Send an audio message.
    */
-  async sendAudio(to: string, audioUrl: string): Promise<AxiosResponse<WhatsAppMessageResponse>> {
+  async sendAudio(
+    to: string,
+    audioUrl: string
+  ): Promise<WhatsAppApiResponse<WhatsAppMessageResponse>> {
     return this.sendMessage({
       type: "audio",
       to,
@@ -181,7 +190,7 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
     documentUrl: string,
     filename?: string,
     caption?: string
-  ): Promise<AxiosResponse<WhatsAppMessageResponse>> {
+  ): Promise<WhatsAppApiResponse<WhatsAppMessageResponse>> {
     return this.sendMessage({
       type: "document",
       to,
@@ -202,7 +211,7 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
     longitude: number,
     name?: string,
     address?: string
-  ): Promise<AxiosResponse<WhatsAppMessageResponse>> {
+  ): Promise<WhatsAppApiResponse<WhatsAppMessageResponse>> {
     return this.sendMessage({
       type: "location",
       to,
@@ -224,7 +233,7 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
     buttons: Array<{ id: string; title: string }>,
     headerText?: string,
     footerText?: string
-  ): Promise<AxiosResponse<WhatsAppMessageResponse>> {
+  ): Promise<WhatsAppApiResponse<WhatsAppMessageResponse>> {
     const interactive: WhatsAppInteractiveMessage = {
       type: "button",
       body: { text: bodyText },
@@ -263,7 +272,7 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
     }>,
     headerText?: string,
     footerText?: string
-  ): Promise<AxiosResponse<WhatsAppMessageResponse>> {
+  ): Promise<WhatsAppApiResponse<WhatsAppMessageResponse>> {
     const interactive: WhatsAppInteractiveMessage = {
       type: "list",
       body: { text: bodyText },
@@ -300,7 +309,7 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
     };
 
     try {
-      await this.client.post(endpoint, payload);
+      await this.post<WhatsAppMessageResponse>(endpoint, payload);
       return true;
     } catch {
       return false;
@@ -312,7 +321,7 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
    */
   async getMediaUrl(mediaId: string): Promise<string | null> {
     try {
-      const response = await this.client.get(`/${mediaId}`);
+      const response = await this.get<{ url?: string }>(`/${mediaId}`);
       return response.data.url || null;
     } catch {
       return null;
@@ -324,6 +333,54 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
    */
   async verifyWebhook(token: string): Promise<boolean> {
     return token === this.config.webhookVerifyToken;
+  }
+
+  private get<T>(endpoint: string): Promise<WhatsAppApiResponse<T>> {
+    return this.request<T>(endpoint, { method: "GET" });
+  }
+
+  private post<T>(endpoint: string, payload: unknown): Promise<WhatsAppApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  private async request<T>(endpoint: string, init: RequestInit): Promise<WhatsAppApiResponse<T>> {
+    const normalizedEndpoint = endpoint.startsWith("/") ? endpoint.slice(1) : endpoint;
+    const response = await fetch(`${this.baseUrl}/${normalizedEndpoint}`, {
+      ...init,
+      headers: {
+        ...this.headers,
+        ...init.headers,
+      },
+    });
+
+    const text = await response.text();
+    const data = text ? this.parseResponseBody(text) : undefined;
+
+    if (!response.ok) {
+      const detail =
+        typeof data === "string" ? data : data ? JSON.stringify(data) : response.statusText;
+      throw new Error(
+        `WhatsApp Cloud API request failed (${response.status} ${response.statusText}): ${detail}`
+      );
+    }
+
+    return {
+      data: data as T,
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    };
+  }
+
+  private parseResponseBody(text: string): unknown {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
   }
 
   /**

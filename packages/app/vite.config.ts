@@ -2,6 +2,18 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  colorizeDevSettingsStartupBanner,
+  type DevSettingsRow,
+  formatDevSettingsTable,
+  prependDevSubsystemFigletHeading,
+  resolveAppBranding,
+  resolveDesktopApiPort,
+  resolveDesktopApiPortPreference,
+  resolveDesktopUiPort,
+  resolveDesktopUiPortPreference,
+  syncElizaEnvAliases,
+} from "@elizaos/shared";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import {
@@ -10,23 +22,6 @@ import {
   type Plugin,
   transformWithEsbuild,
 } from "vite";
-// Keep workspace-relative TS imports in this config so Vite transpiles them
-// while bundling the config instead of asking Node to load package-exported
-// .ts files directly in CI.
-import { colorizeDevSettingsStartupBanner } from "../../packages/shared/src/dev-settings-banner-style.ts";
-import { prependDevSubsystemFigletHeading } from "../../packages/shared/src/dev-settings-figlet-heading.ts";
-import {
-  type DevSettingsRow,
-  formatDevSettingsTable,
-} from "../../packages/shared/src/dev-settings-table.ts";
-import {
-  resolveDesktopApiPort,
-  resolveDesktopApiPortPreference,
-  resolveDesktopUiPort,
-  resolveDesktopUiPortPreference,
-} from "../../packages/shared/src/runtime-env.ts";
-import { resolveAppBranding } from "../../packages/ui/src/config/app-config.ts";
-import { syncElizaEnvAliases } from "../../scripts/lib/sync-eliza-env-aliases.mjs";
 import appConfig from "./app.config";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";

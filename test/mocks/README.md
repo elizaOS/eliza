@@ -24,6 +24,7 @@ at those local URLs via env vars instead of hitting real services.
 | `environments/telegram.json`          | Telegram Bot API (HTTP)              | `ELIZA_MOCK_TELEGRAM_BASE`                               |
 | `environments/linear.json`            | Linear GraphQL API                   | `ELIZA_MOCK_LINEAR_BASE`                                 |
 | `environments/shopify.json`           | Shopify Admin API 2024-04            | `ELIZA_MOCK_SHOPIFY_BASE`                                |
+| `environments/payments.json`          | Payment requests and callbacks       | `ELIZA_MOCK_PAYMENT_BASE` / `ELIZA_MOCK_PAYMENTS_BASE`  |
 | `environments/anthropic.json`         | Anthropic Messages API               | `ELIZA_MOCK_ANTHROPIC_BASE`                              |
 | `environments/openai.json`            | OpenAI Chat / Embeddings / Models    | `ELIZA_MOCK_OPENAI_BASE`                                 |
 | `environments/vision.json`            | Hosted vision analysis API           | `ELIZA_MOCK_VISION_BASE`                                 |
@@ -90,6 +91,7 @@ bunx @mockoon/cli start \
   --data test/mocks/environments/browser-workspace.json \
   --data test/mocks/environments/bluebubbles.json \
   --data test/mocks/environments/github.json \
+  --data test/mocks/environments/payments.json \
   --data test/mocks/environments/lifeops-presence-active.json
 ```
 
@@ -110,7 +112,9 @@ export ELIZA_IMESSAGE_BACKEND=bluebubbles
 export ELIZA_BLUEBUBBLES_URL=http://127.0.0.1:3008
 export ELIZA_BLUEBUBBLES_PASSWORD=mock-bluebubbles-password
 export ELIZA_MOCK_GITHUB_BASE=http://127.0.0.1:3009
-export ELIZA_MOCK_LIFEOPS_PRESENCE_ACTIVE_BASE=http://127.0.0.1:3010
+export ELIZA_MOCK_PAYMENT_BASE=http://127.0.0.1:3010
+export ELIZA_MOCK_PAYMENTS_BASE=http://127.0.0.1:3010
+export ELIZA_MOCK_LIFEOPS_PRESENCE_ACTIVE_BASE=http://127.0.0.1:3011
 ```
 
 ## Test usage
@@ -258,6 +262,7 @@ falls out of sync.
 | `telegram-bot-http`          | `GET /bot<token>/getMe`; `POST /bot<token>/sendMessage`; `POST /bot<token>/sendPhoto`; `POST /bot<token>/editMessageText`; `POST /bot<token>/sendChatAction`; `GET /bot<token>/getFile`; `POST /bot<token>/answerCallbackQuery`; `GET /bot<token>/getUpdates (drains pending queue)`; `POST /bot<token>/setWebhook`; `POST /bot<token>/deleteWebhook`; `POST /bot<token>/answerInlineQuery`; Test-only inject at /__mock/telegram/inbound (also /__mock/telegram/inbound-update alias) | No MTProto; only Bot API HTTP surface; No media types beyond photo (audio, video, document, sticker); No inline keyboards or reply markup payload validation; No chat/group admin endpoints |
 | `linear`                     | POST /graphql — Viewer query; POST /graphql — Issues query; POST /graphql — Teams query; POST /graphql — Team query; POST /graphql — Users query; POST /graphql — Projects query; POST /graphql — IssueCreate mutation (stateful issue store); POST /graphql — IssueUpdate mutation; POST /graphql — IssueDelete mutation | No webhook delivery simulation; No full GraphQL grammar (fragments, aliases, pagination cursors); No attachment, comment, cycle, or roadmap surfaces; No rate-limit or permission-error variants |
 | `shopify`                    | GET /admin/api/2024-10/products.json; POST /admin/api/2024-10/products.json; GET /admin/api/2024-10/products/:id.json; GET /admin/api/2024-10/orders.json; GET /admin/api/2024-10/orders/:id.json; GET /admin/api/2024-10/customers.json; GET /admin/api/2024-10/customers/:id.json; GET /admin/api/2024-10/inventory_levels.json; GET /admin/api/2024-10/shop.json | No cart, checkout, or fulfillment surfaces; No webhook delivery or signature verification; No metafields, collections, discounts, or gift cards; No pagination, filter query params, or error variants |
+| `payments`                   | POST /v1/payment-requests — create a dollar-denominated payment request; GET /v1/payment-requests/:id — status lookup; POST /v1/payment-requests/:id/pay — mark paid/accepted with transaction hash; POST /v1/payment-requests/:id/fail — mark failed and attach a reason; GET /__mock/payments/requests — inspect payment request and callback ledger; DELETE /__mock/payments/requests and POST /__mock/payments/reset — reset state; Signed HTTP callbacks for paid and failed transitions; request ledger metadata | No card-network, wallet, OxaPay, Stripe, or x402 protocol validation; No real settlement, exchange-rate, dispute, refund, or chargeback lifecycle; No delayed webhook retries; callback delivery is synchronous in the fixture |
 | `anthropic`                  | POST /v1/messages — text response (static baseline); POST /v1/messages — prompt-prefix-keyed text response (ping/echo/summarize/explain); POST /v1/messages — tool_use response (when tools present); POST /v1/messages — computer-use tool_use (screenshot first turn); POST /v1/messages — text after tool_result (computer-use follow-up); GET /v1/models | No streaming (Server-Sent Events) support; No message batches API; No Files API or vision image uploads; No prompt caching or token-budget headers                                                                                        |
 | `openai`                     | POST /v1/chat/completions; POST /v1/embeddings (deterministic 1536-dim vector seeded by sha256 of input); POST /v1/images/generations (placeholder image URL); GET /v1/models | No streaming (Server-Sent Events) support; No vision image uploads or image-in-content; No function-calling streaming or parallel tool calls; No Assistants v2 (threads, runs, vector stores); No fine-tuning, moderation, or audio endpoints |
 | `vision-analysis`            | POST /v1/vision/analyze — cat-fixture (default; legacy path); POST /v1/analyze — full analyze; sha256 image-bytes hash → fixture, fallback to image_hint, fallback to generic; POST /v1/describe — caption only; POST /v1/objects — object detection only; POST /v1/text — OCR only; Three deterministic fixture hints: cat-fixture, document-fixture, street-fixture; Generic 'no recognizable content' response for unknown image hashes | No real computer vision; responses are deterministic fixture data; No OCR confidence scores or word-level bounding boxes; No multi-image batch analysis; No streaming or async result polling                                              |

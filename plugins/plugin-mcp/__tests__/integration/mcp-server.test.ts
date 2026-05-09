@@ -3,6 +3,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+const runNpxMcpServerTests = process.env.ELIZA_MCP_NPX_INTEGRATION === "1";
+
 // Helper function to check if a command exists
 function commandExists(cmd: string): boolean {
   try {
@@ -21,7 +23,8 @@ function commandExists(cmd: string): boolean {
  * 1. Node.js installed
  * 2. npx available in PATH
  *
- * The tests use the official MCP filesystem server as a test target.
+ * The external npx-backed tests are opt-in via ELIZA_MCP_NPX_INTEGRATION=1
+ * because package-manager/network delays can exceed the unit test timeout.
  */
 
 describe("MCP Server Integration", () => {
@@ -38,42 +41,49 @@ describe("MCP Server Integration", () => {
       }
     });
 
-    it("should connect to a stdio MCP server", async () => {
-      // Skip if npx is not available
-      if (!commandExists("npx")) {
-        console.log("Skipping test: npx not available");
-        return;
-      }
+    it.skipIf(!runNpxMcpServerTests)(
+      "should connect to a stdio MCP server",
+      async () => {
+        // Skip if npx is not available
+        if (!commandExists("npx")) {
+          console.log("Skipping test: npx not available");
+          return;
+        }
 
-      // Create transport to the filesystem MCP server
-      transport = new StdioClientTransport({
-        command: "npx",
-        args: ["-y", "@modelcontextprotocol/server-memory"],
-        stderr: "pipe",
-      });
+        // Create transport to the memory MCP server
+        transport = new StdioClientTransport({
+          command: "npx",
+          args: ["-y", "@modelcontextprotocol/server-memory"],
+          stderr: "pipe",
+        });
 
-      client = new Client({ name: "test-client", version: "1.0.0" }, { capabilities: {} });
+        client = new Client(
+          { name: "test-client", version: "1.0.0" },
+          { capabilities: {} },
+        );
 
-      // Connect may fail if npx cannot fetch the package (network/registry issues).
-      // Treat that as a skip rather than a hard failure of the test surface.
-      try {
-        await client.connect(transport);
-      } catch (err) {
-        console.log("Skipping test: failed to start MCP server via npx", err);
-        return;
-      }
+        // Connect may fail if npx cannot fetch the package (network/registry issues).
+        // Treat that as a skip rather than a hard failure of the test surface.
+        try {
+          await client.connect(transport);
+        } catch (err) {
+          console.log("Skipping test: failed to start MCP server via npx", err);
+          return;
+        }
 
-      // Should be able to list tools
-      const toolsResponse = await client.listTools();
-      expect(toolsResponse).toBeDefined();
-      expect(Array.isArray(toolsResponse.tools)).toBe(true);
+        // Should be able to list tools
+        const toolsResponse = await client.listTools();
+        expect(toolsResponse).toBeDefined();
+        expect(Array.isArray(toolsResponse.tools)).toBe(true);
 
-      // Close gracefully
-      await transport.close();
-      await client.close();
-      transport = null;
-      client = null;
-    }, 60000);
+        // Close gracefully
+        await transport.close();
+        await client.close();
+        transport = null;
+        client = null;
+      },
+      60000,
+    );
 
     it("should handle server errors gracefully", async () => {
       // Try to connect to a non-existent server
@@ -100,7 +110,7 @@ describe("MCP Server Integration", () => {
     }, 10000);
   });
 
-  describe("Tool Calling", () => {
+  describe.skipIf(!runNpxMcpServerTests)("Tool Calling", () => {
     let transport: StdioClientTransport | null = null;
     let client: Client | null = null;
 

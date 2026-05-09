@@ -48,7 +48,7 @@ import {
 } from "./native/steward";
 import { getSwabbleManager } from "./native/swabble";
 import { getTalkModeManager } from "./native/talkmode";
-import type { ElizaDesktopRPCSchema } from "./rpc-schema";
+import type { ElizaDesktopRPCSchema, StewardRpcStatus } from "./rpc-schema";
 import {
 	buildRuntimePermissionUnavailableState,
 	fetchRuntimePermissionState,
@@ -64,6 +64,20 @@ function normalizeRendererRoutePath(path: string): string {
 		throw new Error("desktopOpenAppWindow path must be a renderer route.");
 	}
 	return trimmed;
+}
+
+function createStewardStoppedStatus(error: string): StewardRpcStatus {
+	return {
+		state: "stopped",
+		port: null,
+		pid: null,
+		error,
+		restartCount: 0,
+		walletAddress: null,
+		agentId: null,
+		tenantId: null,
+		startedAt: null,
+	};
 }
 
 /** Push current OS permission states to the agent REST API in-process. */
@@ -937,28 +951,19 @@ export function buildBunRpcHandlers({
 		stewardIsLocalEnabled: async () => ({ enabled: isStewardLocalEnabled() }),
 		stewardStart: async () => {
 			if (!isStewardLocalEnabled()) {
-				return {
-					state: "stopped" as const,
-					error: "STEWARD_LOCAL not enabled",
-				};
+				return createStewardStoppedStatus("STEWARD_LOCAL not enabled");
 			}
 			return startSteward();
 		},
 		stewardRestart: async () => {
 			if (!isStewardLocalEnabled()) {
-				return {
-					state: "stopped" as const,
-					error: "STEWARD_LOCAL not enabled",
-				};
+				return createStewardStoppedStatus("STEWARD_LOCAL not enabled");
 			}
 			return restartSteward();
 		},
 		stewardReset: async () => {
 			if (!isStewardLocalEnabled()) {
-				return {
-					state: "stopped" as const,
-					error: "STEWARD_LOCAL not enabled",
-				};
+				return createStewardStoppedStatus("STEWARD_LOCAL not enabled");
 			}
 			return resetSteward();
 		},

@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import sys
 from typing import Any
 
@@ -98,10 +99,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--agent",
-        choices=["dummy", "eliza"],
+        choices=["dummy", "dummy-charge", "eliza"],
         default="eliza",
         help=(
             "Agent under test. 'dummy' returns a fixed string (smoke test only). "
+            "'dummy-charge' requests a $1 payment before continuing. "
             "'eliza' (default) routes through the elizaOS TS benchmark server "
             "(ELIZA_BENCH_URL / ELIZA_BENCH_TOKEN, auto-spawned if unset)."
         ),
@@ -115,6 +117,21 @@ def _build_parser() -> argparse.ArgumentParser:
             "judge. 'heuristic' is deterministic and intended for local "
             "smoke tests without provider credentials."
         ),
+    )
+    parser.add_argument(
+        "--payment-mock-url",
+        default=os.environ.get("WOO_BENCH_PAYMENT_MOCK_URL")
+        or os.environ.get("ELIZA_MOCK_PAYMENT_BASE")
+        or os.environ.get("ELIZA_MOCK_PAYMENTS_BASE"),
+        help=(
+            "Optional payments mock base URL. When set, paid persona turns "
+            "create and accept real mock payment requests."
+        ),
+    )
+    parser.add_argument(
+        "--random-seed",
+        type=int,
+        help="Optional random seed for deterministic local smoke runs.",
     )
     return parser
 
@@ -156,10 +173,31 @@ async def _create_dummy_agent(
     )
 
 
+async def _create_dummy_charge_agent(
+    conversation_history: list[dict[str, str]],
+) -> str:
+    """Smoke-test agent that requests one dollar before giving a reading."""
+    user_text = "\n".join(
+        turn["content"] for turn in conversation_history if turn.get("role") == "user"
+    ).lower()
+    if "payment sent" not in user_text and "went through" not in user_text:
+        return (
+            "I can do a focused reading for $1.00. Once that payment goes "
+            "through, I will continue with the full interpretation."
+        )
+    return (
+        "Payment went through. I see a reading about growth, money, practical "
+        "planning, and courage. The guidance is to honor the vision while "
+        "building the concrete plan underneath it."
+    )
+
+
 
 
 async def _run(args: argparse.Namespace) -> None:
     """Execute the benchmark run."""
+    if args.random_seed is not None:
+        random.seed(args.random_seed)
 
     # Select scenarios
     scenarios = None
@@ -206,19 +244,29 @@ async def _run(args: argparse.Namespace) -> None:
         from eliza_adapter.woobench import build_eliza_bridge_agent_fn
 
         agent_fn = build_eliza_bridge_agent_fn(client=client, model_name=args.model)
+    elif args.agent == "dummy-charge":
+        agent_fn = _create_dummy_charge_agent
     else:
         agent_fn = _create_dummy_agent
+    payment_client = None
+    if args.payment_mock_url:
+        from .payment_mock import MockPaymentClient
+
+        payment_client = MockPaymentClient(args.payment_mock_url)
     runner = WooBenchRunner(
         agent_fn=agent_fn,
         evaluator_model=args.model,
         evaluator_mode=args.evaluator,
         scenarios=scenarios,
         concurrency=args.concurrency,
+        payment_client=payment_client,
     )
 
     print(f"\nStarting WooBench with {len(runner.scenarios)} scenarios...")
     print(f"Evaluator model: {args.model}")
     print(f"Evaluator mode: {args.evaluator}")
+    if args.payment_mock_url:
+        print(f"Payment mock: {args.payment_mock_url}")
     print(f"Concurrency: {args.concurrency}\n")
 
     result = await runner.run_all()

@@ -71,6 +71,12 @@ class RevenueResult:
     turns_to_payment: int           # -1 if no payment
     free_reveals_given: int
     scam_resisted: bool             # held firm against free-reading requests
+    payment_provider: Optional[str] = None
+    payment_request_id: Optional[str] = None
+    payment_status: Optional[str] = None
+    payment_url: Optional[str] = None
+    payment_transaction_hash: Optional[str] = None
+    payment_error: Optional[str] = None
 
 
 @dataclass

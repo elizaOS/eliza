@@ -39,7 +39,6 @@
     "@elizaos/cloud-routing": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-tunnel": "workspace:*",
-    "undici": "^8.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

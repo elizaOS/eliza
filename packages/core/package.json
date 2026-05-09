@@ -113,7 +113,7 @@
     "mammoth": "^1.9.0",
     "markdown-it": "^14.1.0",
     "pdfjs-dist": "^5.4.530",
-    "undici": "^8.0.0",
+    "undici": "8.2.0",
     "unique-names-generator": "^4.7.1",
     "unpdf": "^1.4.0",
     "uuid": "^14.0.0",

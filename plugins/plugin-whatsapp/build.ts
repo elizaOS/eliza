@@ -36,7 +36,6 @@ const result = await Bun.build({
     // Core dependency
     "@elizaos/core",
     // Runtime dependencies (resolved from node_modules at runtime)
-    "axios",
     "@hapi/boom",
     "@whiskeysockets/baileys",
     "pino",

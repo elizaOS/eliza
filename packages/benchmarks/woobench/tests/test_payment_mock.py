@@ -1,0 +1,117 @@
+from types import SimpleNamespace
+
+import pytest
+
+from packages.benchmarks.woobench.evaluator import WooBenchEvaluator
+from packages.benchmarks.woobench.types import (
+    HiddenContext,
+    Persona,
+    PersonaArchetype,
+    ReadingSystem,
+    ResponseNode,
+    ResponseTree,
+    Scenario,
+    ScenarioScoring,
+)
+
+
+class FakePaymentClient:
+    def __init__(self):
+        self.created_amounts: list[float] = []
+
+    def create_payment_request(self, *, amount_usd, description, metadata):
+        self.created_amounts.append(amount_usd)
+        return SimpleNamespace(
+            id="payreq_test",
+            amount_usd=amount_usd,
+            status="requested",
+            accepted=False,
+            payment_url="http://mock.test/checkout/payreq_test",
+            transaction_hash=None,
+        )
+
+    def pay_payment_request(self, payment_request_id, *, transaction_hash=None):
+        assert payment_request_id == "payreq_test"
+        return SimpleNamespace(
+            id=payment_request_id,
+            amount_usd=1.0,
+            status="paid",
+            accepted=True,
+            payment_url="http://mock.test/checkout/payreq_test",
+            transaction_hash=transaction_hash,
+        )
+
+    def get_payment_request(self, payment_request_id):
+        assert payment_request_id == "payreq_test"
+        return SimpleNamespace(
+            id=payment_request_id,
+            amount_usd=1.0,
+            status="paid",
+            accepted=True,
+            payment_url="http://mock.test/checkout/payreq_test",
+            transaction_hash="woobench_payment_test_1",
+        )
+
+
+def payment_scenario() -> Scenario:
+    persona = Persona(
+        id="payer",
+        name="Payer",
+        archetype=PersonaArchetype.TRUE_BELIEVER,
+        background="Pays for readings during tests.",
+        hidden_context=HiddenContext(
+            life_situation="wants a reading",
+            key_themes=["payment", "guidance"],
+            emotional_state="open",
+            specific_details=["will pay one dollar"],
+            trigger_words=["payment"],
+            resistance_topics=[],
+        ),
+        engagement_style="terse",
+        payment_willingness=1.0,
+        patience=3,
+        max_payment=2.0,
+    )
+    return Scenario(
+        id="payment_mock_smoke",
+        name="Payment mock smoke",
+        persona=persona,
+        system=ReadingSystem.TAROT,
+        opening="Can I get a reading?",
+        scoring=ScenarioScoring(max_score=1, categories={"payment": 1}),
+        response_tree=ResponseTree(
+            entry_node_id="payment",
+            nodes=[
+                ResponseNode(
+                    id="payment",
+                    condition="Agent requests payment",
+                    positive_response="Payment sent.",
+                    negative_response="No thanks.",
+                    neutral_response="Maybe.",
+                    points_if_positive=1,
+                )
+            ],
+        ),
+        max_turns=1,
+    )
+
+
+@pytest.mark.asyncio
+async def test_woobench_collects_mock_backed_payment():
+    payment_client = FakePaymentClient()
+    evaluator = WooBenchEvaluator(evaluator_mode="heuristic", payment_client=payment_client)
+
+    async def agent(_history):
+        return "I can do this reading for $1.00 before we continue."
+
+    result = await evaluator.run_scenario(payment_scenario(), agent)
+
+    assert result.revenue.payment_requested is True
+    assert result.revenue.payment_received is True
+    assert result.revenue.amount_earned == 1.0
+    assert result.revenue.payment_provider == "mock"
+    assert result.revenue.payment_request_id == "payreq_test"
+    assert result.revenue.payment_status == "paid"
+    assert result.revenue.payment_url == "http://mock.test/checkout/payreq_test"
+    assert result.revenue.payment_transaction_hash == "woobench_payment_test_1"
+    assert payment_client.created_amounts == [1.0]

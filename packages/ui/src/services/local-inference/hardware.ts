@@ -56,7 +56,7 @@ interface LlamaBindingModule {
 
 async function loadLlamaBinding(): Promise<LlamaBindingModule | null> {
   try {
-    const mod = (await import("node-llama-cpp")) as unknown;
+    const mod = (await import(/* @vite-ignore */ "node-llama-cpp")) as unknown;
     if (
       mod &&
       typeof mod === "object" &&

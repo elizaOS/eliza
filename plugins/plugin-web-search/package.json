@@ -35,9 +35,6 @@
     "format:fix": "biome format --write src/",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
-  "peerDependencies": {
-    "whatwg-url": "^16.0.0"
-  },
   "agentConfig": {
     "pluginType": "elizaos:client:1.0.0",
     "pluginParameters": {

@@ -25,7 +25,7 @@ async function build(): Promise<void> {
     format: "esm",
     sourcemap: "external",
     minify: false,
-    external: [...externalDeps, "undici"],
+    external: externalDeps,
   });
 
   if (!nodeResult.success) {

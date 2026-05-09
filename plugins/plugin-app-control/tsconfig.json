@@ -13,6 +13,7 @@
 		"lib": ["ES2022", "DOM"],
 		"types": ["node"],
 		"allowImportingTsExtensions": true,
+		"rewriteRelativeImportExtensions": true,
 		"paths": {
 			"@elizaos/core": ["../../packages/core/src/index.node.ts"]
 		}

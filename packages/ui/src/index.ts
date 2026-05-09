@@ -44,7 +44,4 @@ export * from "./types";
 export * from "./utils";
 export * from "./voice";
 export * from "./widgets";
-export * from "./widgets";
 export * from "./widgets/registry-store";
-export * from "./widgets/registry-store";
-export * from "./platform/native-plugin-entrypoints";

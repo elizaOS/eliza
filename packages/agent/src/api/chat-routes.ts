@@ -33,9 +33,12 @@ import {
   type LocalInferenceChatMetadata,
   type LocalInferenceCommandIntent,
 } from "@elizaos/plugin-local-inference";
-import { resolveStreamingUpdate } from "@elizaos/plugin-streaming";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
-import { asRecord, normalizeCharacterLanguage } from "@elizaos/shared";
+import {
+  asRecord,
+  normalizeCharacterLanguage,
+  resolveStreamingUpdate,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   type CapturedModelUsage,
