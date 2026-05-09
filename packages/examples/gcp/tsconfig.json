@@ -14,8 +14,7 @@
     "noEmit": true,
     "types": ["node"],
     "paths": {
-      "@elizaos/core": ["../../core/dist/index.d.ts"],
-      "@elizaos/core/*": ["../../core/dist/*"]
+      "@elizaos/core": ["../../core/dist/index.d.ts"]
     }
   },
   "include": ["*.ts"],

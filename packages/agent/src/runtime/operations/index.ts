@@ -9,28 +9,28 @@ export {
   type ClassifyContext,
   classifyOperation,
   defaultClassifier,
-} from "./classifier.js";
-export type { ColdStrategyOptions } from "./cold-strategy.js";
-export { createColdStrategy } from "./cold-strategy.js";
-export { getDefaultHealthChecker, HealthChecker } from "./health.js";
+} from "./classifier.ts";
+export type { ColdStrategyOptions } from "./cold-strategy.ts";
+export { createColdStrategy } from "./cold-strategy.ts";
+export { getDefaultHealthChecker, HealthChecker } from "./health.ts";
 export {
   builtInHealthChecks,
   dbConnectionCheck,
   essentialServicesCheck,
   providerSmokeCheck,
   runtimeReadyCheck,
-} from "./health-checks.js";
+} from "./health-checks.ts";
 export {
   DefaultRuntimeOperationManager,
   type DefaultRuntimeOperationManagerOptions,
   type IntentClassifier,
-} from "./manager.js";
-export { createHotStrategy, type HotStrategyDeps } from "./reload-hot.js";
+} from "./manager.ts";
+export { createHotStrategy, type HotStrategyDeps } from "./reload-hot.ts";
 export {
   FilesystemRuntimeOperationRepository,
   getDefaultRepository,
-} from "./repository.js";
-export * from "./types.js";
+} from "./repository.ts";
+export * from "./types.ts";
 export {
   _resetDefaultSecretsManagerForTesting,
   defaultSecretsManager,
@@ -42,4 +42,4 @@ export {
   resolveProviderApiKey,
   type VaultLike,
   vaultKeyForProviderApiKey,
-} from "./vault-bridge.js";
+} from "./vault-bridge.ts";

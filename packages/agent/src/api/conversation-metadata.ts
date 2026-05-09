@@ -4,7 +4,7 @@ import type {
   ConversationMeta,
   ConversationMetadata,
   ConversationScope,
-} from "./server-types.js";
+} from "./server-types.ts";
 
 type RoomMetadataRecord = Record<string, JsonValue>;
 

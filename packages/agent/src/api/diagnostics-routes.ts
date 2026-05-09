@@ -4,7 +4,7 @@ import type {
   RouteHelpers,
   RouteRequestMeta,
 } from "@elizaos/core";
-import { parseClampedInteger } from "../utils/number-parsing.js";
+import { parseClampedInteger } from "../utils/number-parsing.ts";
 
 interface LogEntryLike {
   timestamp: number;

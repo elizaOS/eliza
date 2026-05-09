@@ -84,7 +84,9 @@ export const healthPlugin: Plugin = {
 };
 
 export default healthPlugin;
-export * from "./sleep.js";
-export * from "./health-bridge.js";
-export * from "./screen-time.js";
-export * from "./actions.js";
+// `./<name>.js` (without /index) is a TypeScript-only directory-shorthand
+// that Bun's runtime ESM resolver does not honor. The `./sleep`,
+// `./health-bridge`, `./screen-time`, and `./actions` are all directories
+// that already have proper `./<name>/index.js` re-exports above (lines
+// 39, 44-46) so these duplicate flat-file forms only break runtime
+// imports without adding anything.

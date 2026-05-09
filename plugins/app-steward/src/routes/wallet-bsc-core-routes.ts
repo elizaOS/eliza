@@ -17,7 +17,7 @@ import { sendJson, sendJsonError } from "@elizaos/app-core";
 import {
   canUseLocalTradeExecution,
   resolveTradePermissionMode,
-} from "@elizaos/plugin-wallet/lib/server-wallet-trade";
+} from "@elizaos/plugin-wallet";
 import {
   buildBscTradePreflight,
   buildBscTradeQuote,

@@ -9,7 +9,9 @@
     "rootDir": "src",
     "strict": true,
     "skipLibCheck": true,
+    "allowImportingTsExtensions": false,
     "noEmit": false,
+    "allowImportingTsExtensions": false,
     "paths": {
       "@elizaos/plugin-groq": ["./src/provider-plugin.d.ts"]
     }

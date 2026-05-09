@@ -24,18 +24,14 @@ npm run build
 
 ### Step 2: Convert to Safari Extension
 
-Apple provides the `xcrun safari-web-extension-converter` tool that comes with Xcode. Run it from the terminal:
+The Safari package prepares a Safari-safe extension source before calling Apple's `xcrun safari-web-extension-converter`. This keeps Chrome's manifest unchanged while removing Chrome-only permissions such as `offscreen` from the converter input.
 
 ```bash
-# Navigate to the browser-extension directory
-cd /path/to/examples/browser-extension
+# Navigate to the Safari wrapper directory
+cd /path/to/examples/browser-extension/safari
 
-# Convert the Chrome extension to Safari
-xcrun safari-web-extension-converter chrome \
-  --project-location safari \
-  --app-name "Chat with Webpage" \
-  --bundle-identifier com.elizaos.chatwithwebpage \
-  --swift
+# Prepare the Safari source and convert it to an Xcode project
+npm run convert
 ```
 
 This will create an Xcode project in the `safari/` directory.

@@ -1,10 +1,5 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@elizaos/core": ["../../../packages/core/src/index.node.ts"],
-      "@elizaos/core/*": ["../../../packages/core/src/*"]
-    },
     "ignoreDeprecations": "6.0",
     "target": "ESNext",
     "module": "ESNext",

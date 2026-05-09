@@ -12,7 +12,7 @@ import type {
   OperationIntent,
   ReloadContext,
   ReloadStrategy,
-} from "./types.js";
+} from "./types.ts";
 
 export interface ColdStrategyOptions {
   /**

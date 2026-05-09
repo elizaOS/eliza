@@ -251,11 +251,14 @@ function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
 }
 
 function readDirectCloudToken(client: ElizaClient): string | null {
-  const token =
-    client.getRestAuthToken() ??
-    ((globalThis as Record<string, unknown>)
-      .__ELIZA_CLOUD_AUTH_TOKEN__ as unknown);
-  return typeof token === "string" && token.trim() ? token.trim() : null;
+  const globalToken = (globalThis as Record<string, unknown>)
+    .__ELIZA_CLOUD_AUTH_TOKEN__;
+  if (typeof globalToken === "string" && globalToken.trim()) {
+    return globalToken.trim();
+  }
+
+  const clientToken = client.getRestAuthToken()?.trim();
+  return clientToken || null;
 }
 
 function isNativeDirectCloudAuthMissing(client: ElizaClient): boolean {
@@ -995,7 +998,8 @@ declare module "./client-base" {
     }>;
     launchCloudCompatAgent(agentId: string): Promise<{
       success: boolean;
-      data: CloudCompatLaunchResult;
+      data?: CloudCompatLaunchResult;
+      error?: string;
     }>;
     /** Fetch a pairing token for a cloud agent (for opening Web UI in a new tab). */
     getCloudCompatPairingToken(agentId: string): Promise<{
@@ -1526,11 +1530,13 @@ ElizaClient.prototype.provisionCloudCompatAgent = async function (
   }
 
   // Proxy fallback (only hit when direct cloud token is not available — see
-  // `directCloudRequest` token plumbing). The compat namespace doesn't have
-  // a `/provision` sub-resource, so we use the v1/app proxy path here. With
-  // a properly-wired direct token we never hit this branch in normal flow.
+  // `directCloudRequest` token plumbing). The upstream provision route lives
+  // under `/api/v1/eliza/agents/{id}/provision` (see
+  // cloud/apps/api/v1/eliza/agents/[agentId]/provision/route.ts). The
+  // earlier proxy path `/api/cloud/v1/app/agents/{id}/provision` returned
+  // 405 because cloud has no provision sub-route under `/v1/app/agents`.
   const response = await this.fetch<CloudCompatAgentProvisionResponse>(
-    `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/provision`,
+    `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/provision`,
     { method: "POST" },
     { allowNonOk: true },
   );
@@ -1938,9 +1944,34 @@ ElizaClient.prototype.launchCloudCompatAgent = async function (
   this: ElizaClient,
   agentId,
 ) {
+  const direct = await directCloudRequest<{
+    success: boolean;
+    data?: CloudCompatLaunchResult;
+    error?: string;
+  }>(this, `/api/compat/agents/${encodeURIComponent(agentId)}/launch`, {
+    method: "POST",
+  });
+  if (direct) return direct;
+
+  if (isNativeDirectCloudAuthMissing(this)) {
+    return {
+      success: false,
+      error: nativeDirectCloudAuthMissingMessage(),
+    };
+  }
+
+  if (isDirectCloudBase(this)) {
+    return this.fetch(
+      `/api/compat/agents/${encodeURIComponent(agentId)}/launch`,
+      { method: "POST" },
+      { allowNonOk: true },
+    );
+  }
+
   return this.fetch(
     `/api/cloud/compat/agents/${encodeURIComponent(agentId)}/launch`,
     { method: "POST" },
+    { allowNonOk: true },
   );
 };
 

@@ -42,7 +42,7 @@ export interface RunExtractorPipelineArgs<TParsed> {
   modelType?: ModelTypeValue;
 }
 
-const EMPTY_RESULT_NO_MODEL: ExtractorPipelineResult<never> = {
+const EMPTY_RESULT_NO_MODEL: ExtractorPipelineResult<unknown> = {
   parsed: null,
   raw: "",
   repaired: false,
@@ -72,7 +72,7 @@ export async function runExtractorPipeline<TParsed>(
   const modelType = args.modelType ?? ModelType.TEXT_LARGE;
 
   if (typeof runtime.useModel !== "function") {
-    return EMPTY_RESULT_NO_MODEL;
+    return EMPTY_RESULT_NO_MODEL as ExtractorPipelineResult<TParsed>;
   }
 
   try {
@@ -108,6 +108,6 @@ export async function runExtractorPipeline<TParsed>(
       },
       "Extractor pipeline model call failed",
     );
-    return EMPTY_RESULT_NO_MODEL;
+    return EMPTY_RESULT_NO_MODEL as ExtractorPipelineResult<TParsed>;
   }
 }

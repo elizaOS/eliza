@@ -12,8 +12,8 @@ import { fileURLToPath } from "node:url";
 import { logger, sendJsonError } from "@elizaos/core";
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
 import { resolveApiToken } from "@elizaos/shared";
-import { getOrReadCachedFile } from "./memory-bounds.js";
-import { findOwnPackageRoot } from "./server-helpers.js";
+import { getOrReadCachedFile } from "./memory-bounds.ts";
+import { findOwnPackageRoot } from "./server-helpers.ts";
 
 // ---------------------------------------------------------------------------
 // MIME types

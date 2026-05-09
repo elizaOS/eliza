@@ -18,7 +18,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { formatSpeakerLabel } from "../shared/conversation-format.js";
+import { formatSpeakerLabel } from "../shared/conversation-format.ts";
 
 // ---------------------------------------------------------------------------
 // Types

@@ -8,34 +8,34 @@ import {
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
+import type { ElizaConfig } from "../config/config.ts";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   getPluginWidgets,
   type PluginWidgetDeclarationServer,
-} from "../config/plugin-widgets.js";
+} from "../config/plugin-widgets.ts";
 import {
   type AdvancedCapabilityPluginId,
   applyAdvancedCapabilitiesConfig,
   isAdvancedCapabilityPluginId,
   resolveAdvancedCapabilitiesEnabled,
-} from "../runtime/advanced-capabilities-config.js";
+} from "../runtime/advanced-capabilities-config.ts";
 import {
   CORE_PLUGINS,
   OPTIONAL_CORE_PLUGINS,
-} from "../runtime/core-plugins.js";
-import type { ResolvedPlugin } from "../runtime/plugin-types.js";
+} from "../runtime/core-plugins.ts";
+import type { ResolvedPlugin } from "../runtime/plugin-types.ts";
 import type {
   CoreManagerLike,
   InstallProgressLike,
   PluginManagerLike,
-} from "../services/plugin-manager-types.js";
-import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
-import { applyPluginRuntimeMutation } from "./plugin-runtime-apply.js";
+} from "../services/plugin-manager-types.ts";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
+import { applyPluginRuntimeMutation } from "./plugin-runtime-apply.ts";
 import {
   type PluginParamInfo,
   validatePluginConfig,
-} from "./plugin-validation.js";
+} from "./plugin-validation.ts";
 
 /** Workspace packages use `@elizaos/plugin-*` or `@elizaos/app-*` — normalize list/toggle ids. */
 function optionalPluginListId(npmName: string): string {
@@ -582,7 +582,7 @@ export async function handlePluginRoutes(
   const resolvePluginsSnapshot = async (
     config: ElizaConfig,
   ): Promise<ResolvedPlugin[]> => {
-    const { resolvePlugins } = await import("../runtime/plugin-resolver.js");
+    const { resolvePlugins } = await import("../runtime/plugin-resolver.ts");
     return await resolvePlugins(config, { quiet: true });
   };
 

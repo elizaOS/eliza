@@ -2,7 +2,7 @@ import type { AutomationNodeDescriptor } from "@elizaos/ui";
 import {
   type AutomationNodeContributorContext,
   registerAutomationNodeContributor,
-} from "@elizaos/ui";
+} from "@elizaos/app-core";
 import { logger } from "@elizaos/core";
 import type {
   LifeOpsDiscordConnectorStatus,

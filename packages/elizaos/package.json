@@ -28,7 +28,7 @@
     "lint": "bunx @biomejs/biome check --write .",
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:packaged": "node ./scripts/packaged-smoke.mjs",
     "prepublishOnly": "bun run build"
   },

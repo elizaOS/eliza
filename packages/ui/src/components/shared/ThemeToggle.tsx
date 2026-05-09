@@ -1,7 +1,7 @@
-import { Button } from "@elizaos/ui";
 import { Moon, Sun } from "lucide-react";
 import { useCallback } from "react";
 import type { UiTheme } from "../../state/persistence";
+import { Button } from "../ui/button";
 
 /** Minimal translator function type. */
 export type ThemeTranslatorFn = (key: string) => string;

@@ -3,7 +3,10 @@
 // Document*, Memory*, MCP*, Share*
 // ---------------------------------------------------------------------------
 
-import type { ConversationMetadata, ConversationScope } from "@elizaos/agent";
+import type {
+  ConversationMetadata,
+  ConversationScope,
+} from "./agent-client-type-shim";
 
 // Conversations
 export interface Conversation {

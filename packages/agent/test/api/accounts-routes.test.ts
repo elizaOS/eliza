@@ -16,7 +16,7 @@ const poolMock = vi.hoisted(() => ({
   refreshUsage: vi.fn(),
 }));
 
-vi.mock("@elizaos/app-core/account-pool", () => ({
+vi.mock("@elizaos/app-core", () => ({
   getDefaultAccountPool: () => poolMock,
 }));
 

@@ -24,6 +24,44 @@ export const SENSITIVE_ENV_RESPONSE_KEYS = new Set([
   "POSTGRES_URL",
 ]);
 
+const SENSITIVE_RESPONSE_KEY_RE =
+  /password|secret|api.?key|private.?key|seed.?phrase|authorization|connection.?string|credential|(?<!max)tokens?$/i;
+
+function redactValue(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "string") return value.trim() ? "[REDACTED]" : "";
+  if (typeof value === "number" || typeof value === "boolean")
+    return "[REDACTED]";
+  if (Array.isArray(value)) return value.map(redactValue);
+  if (typeof value === "object") {
+    const redacted: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
+      redacted[key] = redactValue(child);
+    }
+    return redacted;
+  }
+  return "[REDACTED]";
+}
+
+function redactConfigDeep(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.map(redactConfigDeep);
+  if (typeof value === "object") {
+    const redacted: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
+      redacted[key] = SENSITIVE_RESPONSE_KEY_RE.test(key)
+        ? redactValue(child)
+        : redactConfigDeep(child);
+    }
+    return redacted;
+  }
+  return value;
+}
+
 /**
  * Strip sensitive env vars from a config object before it is sent in a GET
  * /api/config response. Returns a shallow-cloned config with a filtered env
@@ -32,13 +70,15 @@ export const SENSITIVE_ENV_RESPONSE_KEYS = new Set([
 export function filterConfigEnvForResponse(
   config: Record<string, unknown>,
 ): Record<string, unknown> {
-  const env = config.env;
-  if (!env || typeof env !== "object" || Array.isArray(env)) return config;
+  const redactedConfig = redactConfigDeep(config) as Record<string, unknown>;
+  const env = redactedConfig.env;
+  if (!env || typeof env !== "object" || Array.isArray(env))
+    return redactedConfig;
 
   const filteredEnv: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(env as Record<string, unknown>)) {
     if (SENSITIVE_ENV_RESPONSE_KEYS.has(key.toUpperCase())) continue;
     filteredEnv[key] = value;
   }
-  return { ...config, env: filteredEnv };
+  return { ...redactedConfig, env: filteredEnv };
 }

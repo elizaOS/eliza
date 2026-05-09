@@ -465,6 +465,28 @@ export async function stageAndroidAgentRuntime({
       if (copyIfDifferent(src, dst)) abiChanges += 1;
     }
 
+    // llama-server is produced by compile-libllama.mjs (per-ABI). It already
+    // lands at <abiAssetsDir>/llama-server when that script ran successfully,
+    // so we don't re-copy here — but we do ensure the bit is +x because some
+    // file-copy paths (e.g. zip → unzip on Windows builders) lose the
+    // executable bit. The aosp-llama-adapter spawns it for DFlash decode;
+    // without +x exec fails with EACCES at runtime.
+    const llamaServerStaged = path.join(abiAssetsDir, "llama-server");
+    if (fs.existsSync(llamaServerStaged)) {
+      const mode = fs.statSync(llamaServerStaged).mode;
+      if ((mode & 0o111) !== 0o111) {
+        fs.chmodSync(llamaServerStaged, mode | 0o755);
+        abiChanges += 1;
+        tlog(`Restored +x on ${androidAbi}/llama-server.`);
+      }
+    } else {
+      tlog(
+        `No llama-server staged for ${androidAbi}; DFlash spec-decode on AOSP ` +
+          `will fall back to single-model decode. Run \`node ` +
+          `packages/app-core/scripts/aosp/compile-libllama.mjs\` to build it.`,
+      );
+    }
+
     // Per-ABI seccomp shim install. Only x86_64 has compiled shim
     // artifacts (arm64's kernel ABI omits the legacy syscalls Android's
     // x86_64 seccomp filter traps on, so the shim is irrelevant). When

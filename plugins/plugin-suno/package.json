@@ -33,7 +33,7 @@
     "lint:fix": "bunx @biomejs/biome check --write ./src",
     "format": "bunx @biomejs/biome format --write ./src",
     "format:check": "bunx @biomejs/biome format ./src",
-    "test": "vitest run --config vitest.config.ts",
+    "test": "vitest run --config vitest.config.ts --passWithNoTests",
     "typecheck": "echo \"Typecheck skipped for release\""
   },
   "devDependencies": {

@@ -1,3 +1,3 @@
-export * from "./conversation-format.js";
-export * from "./ui-catalog-prompt.js";
-export * from "./workspace-resolution.js";
+export * from "./conversation-format.ts";
+export * from "./ui-catalog-prompt.ts";
+export * from "./workspace-resolution.ts";

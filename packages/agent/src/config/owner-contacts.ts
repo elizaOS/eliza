@@ -1,10 +1,10 @@
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { loadElizaConfig } from "./config.js";
+import { loadElizaConfig } from "./config.ts";
 import type {
   OwnerContactEntry,
   OwnerContactsConfig,
-} from "./types.agent-defaults.js";
+} from "./types.agent-defaults.ts";
 
 type OwnerContactsLoadContext = {
   boundary: string;

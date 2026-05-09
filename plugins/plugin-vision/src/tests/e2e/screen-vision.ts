@@ -334,10 +334,10 @@ export class ScreenVisionE2ETestSuite {
         const invalidConfig: TestVisionConfig = {
           ...originalConfig,
           screenRegion: {
-          x: -100,
-          y: -100,
-          width: 50000,
-          height: 50000,
+            x: -100,
+            y: -100,
+            width: 50000,
+            height: 50000,
           },
         };
         Reflect.set(visionService, "visionConfig", invalidConfig);

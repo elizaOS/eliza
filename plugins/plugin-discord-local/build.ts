@@ -32,7 +32,6 @@ const result = await Bun.build({
     "readline",
     // Core / agent dependencies
     "@elizaos/core",
-    "@elizaos/agent",
   ],
   sourcemap: "linked",
   minify: false,

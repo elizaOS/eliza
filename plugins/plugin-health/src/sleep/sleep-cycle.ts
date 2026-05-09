@@ -5,8 +5,8 @@ import type {
   LifeOpsSleepCycle,
   LifeOpsSleepCycleEvidence,
   LifeOpsSleepCycleType,
-} from "@elizaos/shared";
-import { LIFEOPS_HEALTH_SIGNAL_SOURCES } from "@elizaos/shared";
+} from "../contracts/health.js";
+import { LIFEOPS_HEALTH_SIGNAL_SOURCES } from "../contracts/health.js";
 import {
   buildUtcDateFromLocalParts,
   getLocalDateKey,

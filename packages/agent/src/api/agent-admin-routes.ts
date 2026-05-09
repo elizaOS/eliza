@@ -5,11 +5,11 @@ import {
   getDefaultStylePreset,
   normalizeCharacterLanguage,
 } from "@elizaos/shared";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
-import { resolveUserPath } from "../config/paths.js";
-import type { AutonomousConfigLike } from "../types/config-like.js";
-import { detectRuntimeModel } from "./agent-model.js";
-import { clearPersistedOnboardingConfig } from "./provider-switch-config.js";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
+import { resolveUserPath } from "../config/paths.ts";
+import type { AutonomousConfigLike } from "../types/config-like.ts";
+import { detectRuntimeModel } from "./agent-model.ts";
+import { clearPersistedOnboardingConfig } from "./provider-switch-config.ts";
 
 type AgentStateStatus =
   | "not_started"
@@ -27,9 +27,11 @@ type AppCoreRuntimeModule = {
 };
 
 async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
-  const moduleId = "@elizaos/app-core";
+  // String-literal dynamic import — see comment in
+  // ../runtime/eliza.ts#importAppCoreRuntime for the AOSP bundle issue
+  // that requires Bun.build to statically follow this specifier.
   return import(
-    /* webpackIgnore: true */ moduleId
+    /* webpackIgnore: true */ "@elizaos/app-core"
   ) as Promise<AppCoreRuntimeModule>;
 }
 

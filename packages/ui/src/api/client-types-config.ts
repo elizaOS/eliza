@@ -11,7 +11,7 @@ import type {
   UpdateTriggerRequest as _UpdateTriggerRequest,
   ConversationScope,
   ReleaseChannel,
-} from "@elizaos/agent";
+} from "./agent-client-type-shim";
 import type { MessageExampleContent } from "@elizaos/shared";
 import type { ConfigUiHint } from "../types";
 

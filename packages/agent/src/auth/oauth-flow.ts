@@ -23,14 +23,14 @@ import { logger } from "@elizaos/core";
 import {
   type AccountCredentialRecord,
   saveAccount,
-} from "./account-storage.js";
-import type { CodexFlow } from "./openai-codex.js";
-import { startCodexLogin } from "./openai-codex.js";
-import type { SubscriptionProvider } from "./types.js";
+} from "./account-storage.ts";
+import type { CodexFlow } from "./openai-codex.ts";
+import { startCodexLogin } from "./openai-codex.ts";
+import type { SubscriptionProvider } from "./types.ts";
 import {
   type AnthropicOAuthCredentials,
   startAnthropicOAuthFlowRaw,
-} from "./vendor/pi-oauth/anthropic-login.js";
+} from "./vendor/pi-oauth/anthropic-login.ts";
 
 /** Server-tracked status of an in-flight OAuth flow. */
 export type FlowStatus =

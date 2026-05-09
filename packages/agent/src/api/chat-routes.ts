@@ -33,39 +33,42 @@ import {
   type LocalInferenceChatMetadata,
   type LocalInferenceCommandIntent,
 } from "@elizaos/plugin-local-inference";
-import { resolveStreamingUpdate } from "@elizaos/plugin-streaming";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
-import { asRecord, normalizeCharacterLanguage } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
+import {
+  asRecord,
+  normalizeCharacterLanguage,
+  resolveStreamingUpdate,
+} from "@elizaos/shared";
+import type { ElizaConfig } from "../config/config.ts";
 import {
   type CapturedModelUsage,
   estimateTokenCount,
   withModelUsageCapture,
-} from "../runtime/prompt-optimization.js";
-import { resolveTrajectoryGrouping } from "../runtime/trajectory-internals.js";
-import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.js";
-import { syncCharacterIntoConfig } from "../services/character-persistence.js";
-import { detectRuntimeModel } from "./agent-model.js";
+} from "../runtime/prompt-optimization.ts";
+import { resolveTrajectoryGrouping } from "../runtime/trajectory-internals.ts";
+import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.ts";
+import { syncCharacterIntoConfig } from "../services/character-persistence.ts";
+import { detectRuntimeModel } from "./agent-model.ts";
 import {
   executeFallbackParsedActions,
   maybeHandleDirectBinanceSkillRequest,
   parseFallbackActionBlocks,
-} from "./binance-skill-helpers.js";
+} from "./binance-skill-helpers.ts";
 import {
   isClientVisibleNoResponse,
   isNoResponsePlaceholder,
-} from "./chat-text-helpers.js";
-import { resolveClientChatAdminEntityId } from "./client-chat-admin.js";
+} from "./chat-text-helpers.ts";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
 import {
   extractAnthropicSystemAndLastUser,
   extractCompatTextContent,
   extractOpenAiSystemAndLastUser,
   resolveCompatRoomKey,
-} from "./compat-utils.js";
+} from "./compat-utils.ts";
 import {
   isInsufficientCreditsError,
   isInsufficientCreditsMessage,
-} from "./credit-detection.js";
+} from "./credit-detection.ts";
 import {
   buildWalletActionNotExecutedReply,
   cloneWithoutBlockedObjectKeys,
@@ -80,7 +83,7 @@ import {
   resolveAppUserName,
   trimWalletProgressPrefix,
   validateChatImages,
-} from "./server-helpers.js";
+} from "./server-helpers.ts";
 
 const CHAT_MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB (image-capable)
 

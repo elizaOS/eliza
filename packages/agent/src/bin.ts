@@ -26,7 +26,7 @@ import {
   ensureAospLocalInferenceHandlers as __elizaAospLocalInferenceBootstrap,
 } from "@elizaos/plugin-aosp-local-inference";
 import { ensureMobileDeviceBridgeInferenceHandlers as __elizaMobileDeviceBridgeBootstrap } from "@elizaos/plugin-capacitor-bridge";
-import { runAutonomousCli } from "./cli/index.js";
+import { runAutonomousCli } from "./cli/index.ts";
 
 // Pull @elizaos/app-{wifi,contacts,phone}'s runtime plugin adapter into the
 // mobile bundle. The adapter imports each app package's `/plugin` subpath,
@@ -41,7 +41,7 @@ import { runAutonomousCli } from "./cli/index.js";
 // Bun.build still bundles the target because the path is a string
 // literal, so the Android bundle keeps the same behavior.
 try {
-  await import("./runtime/android-app-plugins.js");
+  await import("./runtime/android-app-plugins.ts");
 } catch {
   // Android-only app plugins not bundled in this build; plugin-resolver.ts
   // returns null for these IDs and the rest of the runtime is unaffected.

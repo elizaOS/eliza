@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
-import { readJsonBody as parseJsonBody, sendJson, setOwnerContact } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import type { WhatsAppPairingEvent } from "../services/whatsapp-pairing.js";
 
@@ -16,15 +15,30 @@ export interface WhatsAppPairingSessionLike {
 export interface WhatsAppRouteState {
   whatsappPairingSessions: Map<string, WhatsAppPairingSessionLike>;
   broadcastWs?: (data: object) => void;
-  config: {
-    connectors?: Record<string, unknown>;
-  };
+  config: WhatsAppPluginConfig;
   runtime?: {
     getService(type: string): unknown | null;
   };
   saveConfig: () => void;
   workspaceDir: string;
 }
+
+type OwnerContactEntry = {
+  entityId?: string;
+  channelId?: string;
+  roomId?: string;
+};
+
+type WhatsAppPluginConfig = Record<string, unknown> & {
+  connectors?: Record<string, unknown>;
+  agents?: {
+    defaults?: {
+      ownerContacts?: Record<string, OwnerContactEntry>;
+      [key: string]: unknown;
+    };
+    [key: string]: unknown;
+  };
+};
 
 export interface WhatsAppRouteDeps {
   sanitizeAccountId: (accountId: string) => string;
@@ -52,11 +66,73 @@ async function readJsonBody<T = Record<string, unknown>>(
   req: IncomingMessage,
   res: ServerResponse
 ): Promise<T | null> {
-  return parseJsonBody(req, res, { maxBytes: MAX_BODY_BYTES });
+  let bytes = 0;
+  let body = "";
+
+  try {
+    for await (const chunk of req) {
+      const text = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+      bytes += Buffer.byteLength(text);
+      if (bytes > MAX_BODY_BYTES) {
+        json(res, { error: "Request body too large" }, 413);
+        return null;
+      }
+      body += text;
+    }
+  } catch (err) {
+    logger.warn({ err }, "Failed to read WhatsApp request body");
+    json(res, { error: "Failed to read request body" }, 400);
+    return null;
+  }
+
+  if (!body.trim()) {
+    return {} as T;
+  }
+
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    json(res, { error: "Invalid JSON body" }, 400);
+    return null;
+  }
 }
 
 function json(res: ServerResponse, data: unknown, status = 200): void {
-  sendJson(res, data, status);
+  if (!res.headersSent) {
+    res.statusCode = status;
+    res.setHeader("Content-Type", "application/json");
+  }
+  res.end(JSON.stringify(data));
+}
+
+function setOwnerContact(
+  config: WhatsAppPluginConfig,
+  update: { source: string; channelId?: string; entityId?: string; roomId?: string }
+): boolean {
+  if (!update.source) return false;
+
+  if (!config.agents) config.agents = {};
+  if (!config.agents.defaults) config.agents.defaults = {};
+  if (!config.agents.defaults.ownerContacts) config.agents.defaults.ownerContacts = {};
+
+  const existing = config.agents.defaults.ownerContacts[update.source];
+  const entry: OwnerContactEntry = {};
+  if (update.channelId) entry.channelId = update.channelId;
+  if (update.entityId) entry.entityId = update.entityId;
+  if (update.roomId) entry.roomId = update.roomId;
+
+  if (Object.keys(entry).length === 0) return false;
+  if (
+    existing &&
+    existing.channelId === entry.channelId &&
+    existing.entityId === entry.entityId &&
+    existing.roomId === entry.roomId
+  ) {
+    return false;
+  }
+
+  config.agents.defaults.ownerContacts[update.source] = entry;
+  return true;
 }
 
 function shouldConfigurePlugin(body: WhatsAppAccountBody | null): boolean {

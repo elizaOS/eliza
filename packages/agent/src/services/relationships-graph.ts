@@ -37,8 +37,8 @@ import type {
   RelationshipsGraphService,
   RelationshipsServiceLike,
 } from "@elizaos/core";
-import { resolveOwnerEntityId } from "../runtime/owner-entity.js";
-import { fetchConfiguredOwnerName } from "./owner-name.js";
+import { resolveOwnerEntityId } from "../runtime/owner-entity.ts";
+import { fetchConfiguredOwnerName } from "./owner-name.ts";
 
 type RelationshipsFeatureRuntime = IAgentRuntime & {
   enableRelationships?: () => Promise<void>;

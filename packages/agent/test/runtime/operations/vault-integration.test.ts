@@ -44,7 +44,11 @@ import type {
   ReloadContext,
   RuntimeOperation,
 } from "../../../src/runtime/operations/types.js";
-import { resolveProviderApiKey, VaultResolveError } from "../../../src/runtime/operations/vault-bridge.js";
+import {
+  persistProviderApiKey,
+  resolveProviderApiKey,
+  VaultResolveError,
+} from "../../../src/runtime/operations/vault-bridge.js";
 
 let stateDir: string;
 let testVault: TestVault;
@@ -87,7 +91,6 @@ describe("vault × runtime-ops — accepted operation persists ref, never plaint
   test("manager.start with provider-switch intent: op file holds apiKeyRef, vault holds secret", async () => {
     // Arrange — the route's contract: write secret first, then build intent.
     const apiKey = "sk-this-must-not-leak-anywhere";
-    const { persistProviderApiKey } = await import("./vault-bridge.js");
     const apiKeyRef = await persistProviderApiKey({
       secrets,
       normalizedProvider: "openai",
@@ -283,8 +286,6 @@ describe("vault × runtime-ops — hot reload resolves apiKeyRef into process.en
 describe("vault × runtime-ops — idempotency does not double-write the vault", () => {
   test("two start() calls with the same idempotency key route through one persisted op AND match the same vault entry", async () => {
     const apiKey = "sk-idem-1";
-    const { persistProviderApiKey } = await import("./vault-bridge.js");
-
     // Caller (route) writes the vault BEFORE constructing the intent.
     // The route's contract says vault is the canonical store, written at
     // the boundary; the manager handles dedup of the operation record.

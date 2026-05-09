@@ -1,1 +1,1 @@
-import "./register-routes";
+import "./register-routes.ts";

@@ -7,7 +7,7 @@
  * such as PLACE_CALL remain as actions on the same plugin.
  */
 
-import { Phone } from "@elizaos/capacitor-phone";
+import { type CallLogEntry, Phone } from "@elizaos/capacitor-phone";
 import type {
   IAgentRuntime,
   Memory,
@@ -48,7 +48,7 @@ export const phoneCallLogProvider: Provider = {
     try {
       const { calls } = await Phone.listRecentCalls({ limit: CALL_LOG_LIMIT });
       const entries: PhoneCallLogEntry[] = calls.map(
-        (call: PhoneCallLogEntry) => ({
+        (call: CallLogEntry): PhoneCallLogEntry => ({
           id: call.id,
           number: call.number,
           cachedName: call.cachedName ?? "",

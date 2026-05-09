@@ -6,7 +6,7 @@
  * `SleepRecap` from its old location for backward compatibility.
  */
 
-import type { LifeOpsRegularityClass } from "@elizaos/shared";
+import type { LifeOpsRegularityClass } from "../contracts/health.js";
 
 export interface SleepRecap {
   /** Local bedtime hour in [12, 36) (next-day-normalized). Null when baseline insufficient. */

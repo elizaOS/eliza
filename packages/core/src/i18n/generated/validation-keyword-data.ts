@@ -226,14 +226,14 @@ export const VALIDATION_KEYWORD_DOCS = {
     },
     createPlan: {
       request: {
-        base: "create plan\nmake a plan\nproject plan\ncomprehensive plan\norganize project\nstrategy\nstrategic plan",
+        base: "agent internal create plan\nagent_internal create plan\nautomation create plan\ncode create plan\ncomprehensive\ncreate plan\ncreate_plan\ncreates\ncreates comprehensive\ngenerate plan\ngenerate_plan\nmake plan\nmake_plan\nmultiple\nphases\nphases tasks\nplan\nplan multiple\nplan project\nplan_project\nproject\nproject plan\nproject_plan\ntasks\ntasks create plan\nmake a plan\ncomprehensive plan\norganize project\nstrategy\nstrategic plan",
         locales: {
-          "zh-CN": "创建计划\n制定计划\n项目计划\n综合计划\n组织项目\n策略\n战略计划",
-          ko: "계획 만들어\n계획 세워\n프로젝트 계획\n종합 계획\n프로젝트 정리\n전략\n전략 계획",
-          es: "crear plan\nhacer un plan\nplan de proyecto\nplan integral\norganizar proyecto\nestrategia\nplan estratégico\nplan estrategico",
-          pt: "criar plano\nfazer um plano\nplano de projeto\nplano abrangente\norganizar projeto\nestratégia\nestrategia\nplano estratégico\nplano estrategico",
-          vi: "tạo kế hoạch\ntao ke hoach\nlập kế hoạch\nlap ke hoach\nkế hoạch dự án\nke hoach du an\nchiến lược\nchien luoc",
-          tl: "gumawa ng plano\nplano ng proyekto\nkomprehensibong plano\nayusin ang proyekto\ndiskarte\nestratehiya",
+          es: "accion\nagente\nagente crear plan\nautomatizacion\nautomatizacion crear plan\ncodigo\ncodigo crear plan\ncrear\ncrear plan\ncron\ndepurar\ndisparador\nestado interno\nfecha limite\nflujo de trabajo\ngenerar\ngenerar plan\ngestion interna\nherramienta\nimplementar\ninterno del agente\nmonitor\npendiente\nplan\nprogramacion\nprueba\nrecordatorio\nrepositorio\nseguimiento\nsolicitud\ntarea\ntarea crear plan\ntareas\nhacer un plan\nplan de proyecto\nplan integral\norganizar proyecto\nestrategia\nplan estratégico\nplan estrategico",
+          ko: "계획\n구현\n내부 상태\n도구\n디버그\n리마인더\n마감일\n모니터\n생성\n생성 계획\n에이전트\n에이전트 내부\n에이전트 생성 계획\n요청\n워크플로\n자동화\n자동화 생성 계획\n자체 관리\n작업\n작업 생성 계획\n저장소\n코드\n코드 생성 계획\n크론\n테스트\n트리거\n프로그래밍\n할 일\n후속 조치\n계획 만들어\n계획 세워\n프로젝트 계획\n종합 계획\n프로젝트 정리\n전략\n전략 계획",
+          pt: "acao\nacompanhamento\nafazer\nagente\nagente criar plano\nautomacao\nautomacao criar plano\ncodigo\ncodigo criar plano\ncriar\ncriar plano\ncron\ndepurar\nestado interno\nferramenta\nfluxo de trabalho\ngatilho\ngerar\ngerar plano\ngestao interna\nimplementar\ninterno do agente\nlembrete\nmonitor\nplano\nprazo\nprogramacao\nrepositorio\nsolicitacao\ntarefa\ntarefa criar plano\ntarefas\nteste\nfazer um plano\nplano de projeto\nplano abrangente\norganizar projeto\nestratégia\nestrategia\nplano estratégico\nplano estrategico",
+          tl: "agent\nagent gumawa plano\naksyon\nautomation\nautomation gumawa plano\nbumuo\nbumuo plano\ncode\ncode gumawa plano\ncron\ndeadline\ndebug\nfollow up\ngawain\ngawain gumawa plano\ngumawa\ngumawa plano\ninternal ng agent\ninternal state\nipatupad\nkahilingan\nkasangkapan\nmonitor\npaalala\nplano\nprogramming\nrepo\nsariling pamamahala\ntask\ntest\ntodo\ntrigger\nworkflow\ngumawa ng plano\nplano ng proyekto\nkomprehensibong plano\nayusin ang proyekto\ndiskarte\nestratehiya",
+          vi: "cong cu\ncông cụ\nhanh dong\nhành động\nke hoach\nkế hoạch\nkho ma\nkho mã\nkich hoat\nkiểm thử\nlap trinh\nlập trình\nma\nmã\nmã tạo kế hoạch\nnhắc nhở\nnhiem vu\nnhiệm vụ\nnhiệm vụ tạo kế hoạch\nnoi bo tac tu\nnội bộ tác tử\nquy trinh\nquy trình\ntac tu\ntác tử\ntác tử tạo kế hoạch\ntac vu\ntác vụ\ntao\ntạo\ntạo kế hoạch\ntu dong hoa\ntự động hóa\ntự động hóa tạo kế hoạch\ntu quan ly\ntự quản lý\nviec can lam\nviệc cần làm\nyeu cau\nyêu cầu\ntao ke hoach\nlập kế hoạch\nlap ke hoach\nkế hoạch dự án\nke hoach du an\nchiến lược\nchien luoc",
+          "zh-CN": "仓库\n代理\n代理 创建 计划\n代理内部\n代码\n代码 创建 计划\n任务\n任务 创建 计划\n内部状态\n创建\n创建 计划\n定时\n实现\n工作流\n工具\n待办\n截止日期\n提醒\n操作\n智能体\n测试\n生成\n生成 计划\n监控\n编程\n自动化\n自动化 创建 计划\n自我管理\n触发器\n计划\n请求\n调试\n跟进\n创建计划\n制定计划\n项目计划\n综合计划\n组织项目\n策略\n战略计划",
         },
       },
     },
@@ -1253,14 +1253,14 @@ export const VALIDATION_KEYWORD_DOCS = {
     },
     sendToAdmin: {
       request: {
-        base: "admin\nuser\ntell admin\nnotify admin\ninform admin\nupdate admin\nmessage admin\nsend to admin\ncommunicate\nreport\nalert",
+        base: "admin\nadmin send to admin\nadmin user\nagent internal send to admin\nagent_internal send to admin\nautonomous\ncontext\ndirectly\ndirectly admin\nmessage\nmessage directly\nmessaging send to admin\nsend\nsend message\nsend to admin\nsend_to_admin\nuser\nuser autonomous\ntell admin\nnotify admin\ninform admin\nupdate admin\nmessage admin\ncommunicate\nreport\nalert",
         locales: {
-          "zh-CN": "管理员\n用户\n告诉管理员\n通知管理员\n向管理员汇报\n给管理员发消息\n警报",
-          ko: "관리자\n사용자\n관리자에게 알려\n관리자에게 통지\n관리자에게 보고\n관리자에게 메시지 보내\n경고",
-          es: "administrador\nusuario\navisa al administrador\ninforma al administrador\nmensaje al administrador\nenvía al administrador\nenvia al administrador\nalerta",
-          pt: "administrador\nusuário\nusuario\navise o administrador\ninforme o administrador\nmensagem ao administrador\nenvie ao administrador\nalerta",
-          vi: "quản trị viên\nquan tri vien\nngười dùng\nnguoi dung\nbáo quản trị viên\nbao quan tri vien\nnhắn quản trị viên\nnhan quan tri vien\ncảnh báo\ncanh bao",
-          tl: "admin\nuser\nsabihin sa admin\nipaalam sa admin\ni-message ang admin\niulat\nalerto",
+          es: "accion\nadministrador\nadministrador enviar administrador\nadministrador usuario\nagente\nagente enviar administrador\ndueño\nenviar\nenviar administrador\nenviar mensaje\nestado interno\ngestion interna\nherramienta\ninterno del agente\nmensaje\npermisos\npolitica\nroles\nsolicitud\nusuario\navisa al administrador\ninforma al administrador\nmensaje al administrador\nenvía al administrador\nenvia al administrador\nalerta",
+          ko: "관리자\n관리자 보내기 관리자\n관리자 사용자\n권한\n내부 상태\n도구\n메시지\n보내기\n보내기 관리자\n보내기 메시지\n사용자\n소유자\n에이전트\n에이전트 내부\n에이전트 보내기 관리자\n역할\n요청\n자체 관리\n작업\n정책\n관리자에게 알려\n관리자에게 통지\n관리자에게 보고\n관리자에게 메시지 보내\n경고",
+          pt: "acao\nadministrador\nadministrador enviar administrador\nadministrador usuario\nagente\nagente enviar administrador\ndono\nenviar\nenviar administrador\nenviar mensagem\nestado interno\nferramenta\nfuncoes\ngestao interna\ninterno do agente\nmensagem\npermissoes\npolitica\nsolicitacao\nusuario\nusuário\navise o administrador\ninforme o administrador\nmensagem ao administrador\nenvie ao administrador\nalerta",
+          tl: "admin\nadmin ipadala admin\nadmin user\nagent\nagent ipadala admin\naksyon\ngumagamit\ninternal ng agent\ninternal state\nipadala\nipadala admin\nipadala mensahe\nkahilingan\nkasangkapan\nmay ari\nmensahe\npahintulot\npatakaran\nrole\nsariling pamamahala\nuser\nsabihin sa admin\nipaalam sa admin\ni-message ang admin\niulat\nalerto",
+          vi: "chu so huu\nchủ sở hữu\ncong cu\ncông cụ\ngui\ngửi\ngửi quản trị\ngửi tin nhắn\nhanh dong\nhành động\nnguoi dung\nngười dùng\nnoi bo tac tu\nnội bộ tác tử\nquan tri\nquản trị\nquản trị gửi quản trị\nquản trị người dùng\nquyen\nquyền\ntac tu\ntác tử\ntác tử gửi quản trị\ntin nhan\ntin nhắn\ntu quan ly\ntự quản lý\nyeu cau\nyêu cầu\nquản trị viên\nquan tri vien\nbáo quản trị viên\nbao quan tri vien\nnhắn quản trị viên\nnhan quan tri vien\ncảnh báo\ncanh bao",
+          "zh-CN": "代理\n代理 发送 管理员\n代理内部\n内部状态\n发送\n发送 消息\n发送 管理员\n工具\n所有者\n操作\n智能体\n权限\n消息\n用户\n策略\n管理员\n管理员 发送 管理员\n管理员 用户\n自我管理\n角色\n请求\n告诉管理员\n通知管理员\n向管理员汇报\n给管理员发消息\n警报",
         },
       },
     },

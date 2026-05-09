@@ -26,7 +26,6 @@
     "@octokit/rest": "^22.0.0"
   },
   "peerDependencies": {
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {

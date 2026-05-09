@@ -17,7 +17,7 @@ import crypto from "node:crypto";
 import type {
   LifeOpsSleepCycleEvidence,
   LifeOpsSleepCycleType,
-} from "@elizaos/shared";
+} from "../contracts/health.js";
 
 export type LifeOpsPersistedSleepEpisodeSource =
   | LifeOpsSleepCycleEvidence["source"]

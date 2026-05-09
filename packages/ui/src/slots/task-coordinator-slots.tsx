@@ -10,7 +10,7 @@
  * boot time, and app-core renders them via the `*Slot` components below.
  *
  * Registration happens via a side-effect import in the root app entry (see
- * `@elizaos/app-task-coordinator/register-slots`).
+ * the task-coordinator slot-registration module).
  */
 
 import type { ComponentType, JSX } from "react";

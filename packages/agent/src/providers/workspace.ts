@@ -2,13 +2,13 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import * as elizaCore from "@elizaos/core";
-import { resolveUserPath } from "../config/paths.js";
+import { resolveUserPath } from "../config/paths.ts";
 import {
   DEFAULT_AGENT_WORKSPACE_DIR,
   resolveDefaultAgentWorkspaceDir,
   shouldBootstrapWorkspaceInitFiles,
   shouldUseRuntimeCwdWorkspace,
-} from "../shared/workspace-resolution.js";
+} from "../shared/workspace-resolution.ts";
 
 export {
   DEFAULT_AGENT_WORKSPACE_DIR,

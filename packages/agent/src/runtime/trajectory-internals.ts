@@ -31,7 +31,7 @@ import {
   type TrajectoryStatus,
   type TrajectoryStep,
   type TrajectoryStepKind,
-} from "../types/trajectory.js";
+} from "../types/trajectory.ts";
 
 // ---------------------------------------------------------------------------
 // Internal types

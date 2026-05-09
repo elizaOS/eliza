@@ -11,7 +11,7 @@
  * would create a startup cycle), so we look the service up by string id
  * and constrain it via {@link WorkflowServiceLike}.
  */
-import type { TriggerWakeMode } from "./types.js";
+import type { TriggerWakeMode } from "./types.ts";
 
 const WORKFLOW_SERVICE_TYPE = "workflow";
 const RESPOND_TO_EVENT_NODE_TYPE = "workflows-nodes-base.respondToEvent";

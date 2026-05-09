@@ -30,7 +30,7 @@ export const sunoPlugin: Plugin = {
                 audio &&
                     audio.enabled !== false &&
                     audio.mode === 'own-key' &&
-                    audio.provider === 'suno',
+                    audio.provider === 'suno'
             );
         },
     },

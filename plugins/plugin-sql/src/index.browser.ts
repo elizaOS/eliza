@@ -10,7 +10,7 @@ import { PGliteClientManager } from "./pglite/manager";
 import * as schema from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
 
-const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-sql/global-singletons");
+const GLOBAL_SINGLETONS = Symbol.for("elizaos.plugin-sql.global-singletons");
 
 interface GlobalSingletons {
   pgLiteClientManager?: PGliteClientManager;

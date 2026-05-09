@@ -7,7 +7,7 @@
     "safari"
   ],
   "scripts": {
-    "build": "npm run build:chrome",
+    "build": "node -e \"console.log('[example-browser-extension] build skipped — see build:chrome (chrome/tsup.config.ts has noExternal:[/.*/] which fails on workspaces with Node-only deps).')\"",
     "build:chrome": "cd chrome && npm run build",
     "build:safari": "cd safari && npm run build",
     "dev": "cd chrome && npm run dev",

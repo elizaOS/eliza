@@ -2572,6 +2572,18 @@ function synthesizeSimpleReplyFromPlainText(
 	};
 }
 
+function buildFallbackStage1DirectReplyPlan(): MessageHandlerResult {
+	return {
+		processMessage: "RESPOND",
+		thought:
+			"Tolerant fallback: response handler returned no parseable plan; routing as a simple direct reply.",
+		plan: {
+			contexts: [SIMPLE_CONTEXT_ID],
+			simple: true,
+		},
+	};
+}
+
 /**
  * Resolve the calling sender's role for context-catalog filtering.
  *
@@ -3961,10 +3973,11 @@ export async function runV5MessageRuntimeStage1(args: {
 		const messageHandlerEndedAt = Date.now();
 		let messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
 		if (!messageHandler) {
-			messageHandler = buildFallbackStage1PlanForKnownToolRequest({
-				message: args.message,
-				availableContexts,
-			});
+			messageHandler =
+				buildFallbackStage1PlanForKnownToolRequest({
+					message: args.message,
+					availableContexts,
+				}) ?? buildFallbackStage1DirectReplyPlan();
 		}
 		if (!messageHandler && process.env.MILADY_DEBUG_STAGE1 === "1") {
 			args.runtime.logger?.warn?.(

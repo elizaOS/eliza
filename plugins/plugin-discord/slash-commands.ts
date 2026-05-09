@@ -506,7 +506,7 @@ export async function handleSlashCommand(
 	// elizaOS role check — uses the agent's role hierarchy (OWNER > ADMIN > USER > GUEST)
 	if (command.requiredRole && command.requiredRole !== "GUEST" && context) {
 		try {
-			const accessModuleId = "@elizaos/agent/security/access";
+			const accessModuleId = "@elizaos/agent";
 			const { hasRoleAccess } = (await import(accessModuleId)) as {
 				hasRoleAccess?: (
 					runtime: unknown,

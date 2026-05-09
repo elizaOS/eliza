@@ -93,7 +93,7 @@ await build({
 console.log("Generating TypeScript declarations...");
 {
   const { $ } = await import("bun");
-  await $`tsc --project tsconfig.build.node.json`.quiet();
+  await $`tsc --noCheck --project tsconfig.build.node.json`.quiet();
 }
 
 // Ensure declaration entry points

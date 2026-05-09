@@ -9,7 +9,7 @@
     "test": "bun run test-client.ts --once",
     "deploy": "npx convex deploy",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "if [ -d convex/_generated ]; then tsc --noEmit; else echo 'Convex generated types missing; run convex dev/codegen for full typecheck'; fi",
+    "typecheck": "tsc --noEmit",
     "build": "bun run typecheck"
   },
   "dependencies": {

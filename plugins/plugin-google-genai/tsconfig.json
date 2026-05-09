@@ -20,8 +20,7 @@
     "types": ["node", "bun-types"],
     "allowImportingTsExtensions": true,
     "paths": {
-      "@elizaos/core": ["../../../packages/core/dist/node"],
-      "@elizaos/core/*": ["../../../packages/core/dist/*"]
+      "@elizaos/core": ["../../../packages/core/dist/node"]
     }
   },
   "include": ["./**/*.ts"],

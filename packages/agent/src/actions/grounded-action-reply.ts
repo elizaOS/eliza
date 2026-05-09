@@ -5,8 +5,8 @@ import {
   parseJSONObjectFromText,
 } from "@elizaos/core";
 import { asRecord, getRecentMessagesData } from "@elizaos/shared";
-import { loadTrajectoryByStepId } from "../runtime/trajectory-internals.js";
-import { recentConversationTexts } from "./recent-conversation-texts.js";
+import { loadTrajectoryByStepId } from "../runtime/trajectory-internals.ts";
+import { recentConversationTexts } from "./recent-conversation-texts.ts";
 
 type GroundedReplyDomain = "lifeops" | "gmail" | "calendar";
 

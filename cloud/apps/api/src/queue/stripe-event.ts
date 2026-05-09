@@ -33,6 +33,8 @@ import type Stripe from "stripe";
 import { organizationsRepository } from "@/db/repositories/organizations";
 import { usersRepository } from "@/db/repositories/users";
 import type { DrainResult } from "@/lib/queue/redis-queue";
+import { appChargeCallbacksService } from "@/lib/services/app-charge-callbacks";
+import { appChargeSettlementService } from "@/lib/services/app-charge-settlement";
 import { appCreditsService } from "@/lib/services/app-credits";
 import { creditsService } from "@/lib/services/credits";
 import { discordService } from "@/lib/services/discord";
@@ -89,7 +91,7 @@ export async function processStripeEvent(delivery: StripeEventDelivery): Promise
         await handlePaymentIntentSucceeded(event);
         break;
       case "payment_intent.payment_failed":
-        handlePaymentIntentFailed(event);
+        await handlePaymentIntentFailed(event);
         break;
       default:
         logger.debug(`[Stripe Queue] Unhandled event type: ${event.type}`);
@@ -138,6 +140,7 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
   const purchaseType = session.metadata?.type || "checkout";
   const purchaseSource = session.metadata?.source;
   const appId = session.metadata?.app_id;
+  const chargeRequestId = session.metadata?.charge_request_id;
 
   const isAppPurchase = purchaseSource === "miniapp_app" && appId && userId;
 
@@ -231,6 +234,21 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
         error: err instanceof Error ? err.message : String(err),
       }),
     );
+  }
+
+  if (isAppPurchase && appId && userId && chargeRequestId) {
+    await appChargeSettlementService.markPaid({
+      appId,
+      chargeRequestId,
+      provider: "stripe",
+      providerPaymentId: paymentIntentId,
+      amountUsd: credits,
+      payerUserId: userId,
+      payerOrganizationId: organizationId,
+      metadata: {
+        stripe_checkout_session_id: session.id,
+      },
+    });
   }
 
   // Revenue splits run on every delivery (including duplicate event_id
@@ -565,10 +583,17 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event): Promise<void> 
 // payment_intent.payment_failed
 // ---------------------------------------------------------------------------
 
-function handlePaymentIntentFailed(event: Stripe.Event): void {
+async function handlePaymentIntentFailed(event: Stripe.Event): Promise<void> {
   const paymentIntent = event.data.object as Stripe.PaymentIntent;
   const orgId = paymentIntent.metadata?.organization_id;
   const userId = paymentIntent.metadata?.user_id;
+  const appId = paymentIntent.metadata?.app_id;
+  const chargeRequestId = paymentIntent.metadata?.charge_request_id;
+  const purchaseSource = paymentIntent.metadata?.source;
+  const amountUsd =
+    parseAndValidateCredits(
+      paymentIntent.metadata?.credits || paymentIntent.metadata?.amount || "",
+    ) ?? (paymentIntent.amount ? Math.round((paymentIntent.amount / 100) * 100) / 100 : undefined);
   const lastPaymentError = paymentIntent.last_payment_error;
   const errorReason = lastPaymentError?.message || lastPaymentError?.code || "Payment failed";
 
@@ -578,4 +603,21 @@ function handlePaymentIntentFailed(event: Stripe.Event): void {
     organizationId: orgId,
     errorReason,
   });
+
+  if (purchaseSource === "miniapp_app" && appId && chargeRequestId) {
+    await appChargeCallbacksService.dispatch({
+      appId,
+      chargeRequestId,
+      status: "failed",
+      provider: "stripe",
+      providerPaymentId: paymentIntent.id,
+      amountUsd,
+      payerUserId: userId,
+      payerOrganizationId: orgId,
+      reason: errorReason,
+      metadata: {
+        stripe_payment_intent_status: paymentIntent.status,
+      },
+    });
+  }
 }

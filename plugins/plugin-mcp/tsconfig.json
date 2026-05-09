@@ -19,12 +19,7 @@
     "noImplicitReturns": false,
     "noImplicitAny": false,
     "paths": {
-      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
-      "@elizaos/agent/*": ["../../packages/agent/src/*"]
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"]
     },
     "types": ["node"]
   },

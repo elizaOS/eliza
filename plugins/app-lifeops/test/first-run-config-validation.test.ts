@@ -109,7 +109,7 @@ describe("first-run config validation", () => {
         "follow-ups",
         " inbox triage ",
       ]),
-    ).toEqual(["sleep tracking", "follow-ups"]);
+    ).toEqual(["sleep tracking", "follow-ups", "inbox triage"]);
   });
 
   it("parseRelationships shapes user input and bounds at 5 entries", () => {

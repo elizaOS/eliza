@@ -11,13 +11,13 @@
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
+  formatError,
   logger,
   readRequestBody,
   readRequestBodyBuffer,
   sendJson,
   sendJsonError,
 } from "@elizaos/core";
-import { formatError } from "@elizaos/shared";
 import type { StreamConfig } from "../services/stream-manager.js";
 import {
   getHeadlessCaptureConfig,
@@ -30,6 +30,29 @@ import type { StreamRouteState } from "./stream-route-state.js";
 import type { StreamingDestination } from "./streaming-types.js";
 
 export type { StreamRouteState } from "./stream-route-state.js";
+
+interface BrowserCaptureModule {
+  FRAME_FILE: string;
+  startBrowserCapture(config: {
+    url: string;
+    width?: number;
+    height?: number;
+    quality?: number;
+    endpoint?: string;
+    display?: string;
+    headless?: boolean | "new";
+    executablePath?: string;
+    userDataDir?: string;
+    browserArgs?: string[];
+  }): Promise<void>;
+  stopBrowserCapture(): Promise<void>;
+}
+
+async function loadBrowserCapture(): Promise<BrowserCaptureModule> {
+  return (await import(
+    "@elizaos/plugin-browser"
+  )) as unknown as BrowserCaptureModule;
+}
 
 // ---------------------------------------------------------------------------
 // MJPEG frame store — shared state for GET /api/stream/screen
@@ -315,7 +338,7 @@ async function startStreamPipeline(
         `http://127.0.0.1:${state.port ?? 2138}`;
 
       try {
-        const { startBrowserCapture } = await import("@elizaos/plugin-browser");
+        const { startBrowserCapture } = await loadBrowserCapture();
         // Browser capture in x11grab mode just opens the browser on the display --
         // we don't need the frame file since FFmpeg captures the display directly.
         await startBrowserCapture({
@@ -364,9 +387,7 @@ async function startStreamPipeline(
         `[stream] Capture mode: file (browser capture -> ${captureUrl})`,
       );
 
-      const { startBrowserCapture, FRAME_FILE } = await import(
-        "@elizaos/plugin-browser"
-      );
+      const { startBrowserCapture, FRAME_FILE } = await loadBrowserCapture();
       try {
         await startBrowserCapture({
           url: captureUrl,
@@ -540,7 +561,7 @@ export async function handleStreamRoute(
     try {
       // Stop browser capture
       try {
-        const { stopBrowserCapture } = await import("@elizaos/plugin-browser");
+        const { stopBrowserCapture } = await loadBrowserCapture();
         await stopBrowserCapture();
       } catch {
         // Browser capture may not have been started -- ignore

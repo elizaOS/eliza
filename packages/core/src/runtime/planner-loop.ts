@@ -348,20 +348,10 @@ export async function runPlannerLoop(
 			logger: params.runtime.logger,
 		});
 
-		// Conservative gate: when a successful tool drained the queue and the
-		// just-completed planner call gave us a clean explicit `messageToUser`,
-		// the in-loop evaluator's job (decide FINISH / NEXT_RECOMMENDED /
-		// CONTINUE) collapses to FINISH with success=true. Synthesize that
-		// decision and skip ONLY the in-loop `runEvaluator` LLM call.
-		//
-		// The post-turn registered evaluator step (`runPostTurnEvaluators` in
-		// `services/evaluator.ts`, dispatched from `services/message.ts` after
-		// `runPlannerLoop` returns) runs regardless of how the loop terminates
-		// and is unaffected by this gate. See `tryGateEvaluator` doc-comment for
-		// the full scope contract.
-		//
-		// Falls through to the real evaluator on any ambiguity (failure, more
-		// queued tools, missing/unsafe message).
+		// Conservative gate (PR #7514): when a successful tool drained the queue
+		// and the just-completed planner call gave us a clean explicit
+		// `messageToUser`, synthesize a FINISH and skip the in-loop evaluator.
+		// Falls through on any ambiguity. See `tryGateEvaluator` doc-comment.
 		const gateStartedAt = Date.now();
 		const gated = tryGateEvaluator({
 			trajectory,
@@ -375,11 +365,6 @@ export async function runPlannerLoop(
 				iteration,
 				evaluator: gated,
 			});
-			// Recorder-stage parity: emit a synthesized "evaluation" stage so
-			// trajectory replay tools see the iteration's outcome on the same
-			// timeline slot they would for a model-produced evaluation. The
-			// stage carries `gated: true` + `llmCallSkipped: true` so reviewers
-			// can distinguish gated decisions from real evaluator calls.
 			await recordGatedEvaluationStage({
 				recorder: params.recorder,
 				trajectoryId: params.trajectoryId,
@@ -403,12 +388,10 @@ export async function runPlannerLoop(
 
 		let evaluator = await evaluateTrajectory(params, trajectory, iteration);
 		trajectory.evaluatorOutputs.push(evaluator);
-		trajectory.context = appendEvaluationEvent({
-			context: trajectory.context,
-			iteration,
-			evaluator,
-		});
+		appendEvaluatorContextEvent(trajectory, evaluator, iteration);
 
+		// Repair pass (PR #7497): if FINISH after tool use without
+		// `messageToUser`, ask once more for a user-facing answer.
 		if (
 			evaluator.decision === "FINISH" &&
 			!getNonEmptyString(evaluator.messageToUser) &&
@@ -1406,6 +1389,18 @@ function appendEvaluationEvent(args: {
 	});
 }
 
+function appendEvaluatorContextEvent(
+	trajectory: PlannerTrajectory,
+	evaluator: EvaluatorOutput,
+	iteration: number,
+): void {
+	trajectory.context = appendEvaluationEvent({
+		context: trajectory.context,
+		iteration,
+		evaluator,
+	});
+}
+
 async function repairFinishWithoutUserMessage(args: {
 	params: PlannerLoopParams;
 	trajectory: PlannerTrajectory;
@@ -1440,11 +1435,7 @@ async function repairFinishWithoutUserMessage(args: {
 		args.iteration,
 	);
 	args.trajectory.evaluatorOutputs.push(repaired);
-	args.trajectory.context = appendEvaluationEvent({
-		context: args.trajectory.context,
-		iteration: args.iteration,
-		evaluator: repaired,
-	});
+	appendEvaluatorContextEvent(args.trajectory, repaired, args.iteration);
 	return repaired;
 }
 

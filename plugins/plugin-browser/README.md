@@ -43,7 +43,7 @@ Eliza loads `browserBridgePlugin` as a core runtime plugin so the Browser
 Workspace UI, agent actions, and companion extension use the same API surface.
 
 ```ts
-import { browserBridgePlugin } from "@elizaos/plugin-browser/plugin";
+import { browserBridgePlugin } from "@elizaos/plugin-browser";
 ```
 
 ## Authentication

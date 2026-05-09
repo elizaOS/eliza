@@ -15,6 +15,7 @@
     },
     "@elizaos/agent#build": {
       "dependsOn": [
+        "^build",
         "@elizaos/core#build",
         "@elizaos/shared#build",
         "@elizaos/plugin-agent-skills#build",
@@ -35,6 +36,7 @@
     },
     "@elizaos/app-core#build": {
       "dependsOn": [
+        "^build",
         "@elizaos/core#build",
         "@elizaos/agent#build",
         "@elizaos/shared#build",
@@ -49,6 +51,7 @@
     },
     "@elizaos/ui#build": {
       "dependsOn": [
+        "^build",
         "@elizaos/agent#build",
         "@elizaos/core#build",
         "@elizaos/shared#build",
@@ -95,6 +98,163 @@
         "^build"
       ],
       "outputs": []
+    },
+    "@elizaos/example-a2a-server#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/example-app-capacitor-backend#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/example-autonomous#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/example-bluesky#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/example-chat#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/example-convex#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/example-discord#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/example-form#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/example-lp-manager#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/example-mcp-server#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/example-rest-api-elysia#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/example-rest-api-express#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/example-rest-api-hono#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/example-roblox-agent#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/example-telegram#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/example-text-adventure#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/example-tic-tac-toe#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/example-xai-x#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/vercel-edge-examples#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@moltbook/eliza-agent#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/plugin-aosp-local-inference#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "eliza-next-example#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**"
+      ]
     },
     "@elizaos/example-browser-extension#build": {
       "dependsOn": [
@@ -313,7 +473,7 @@
         "^build"
       ],
       "outputs": [
-        "typescript/dist/**"
+        "src/dist/**"
       ]
     },
     "@elizaos/plugin-whatsapp#build": {
@@ -327,7 +487,28 @@
       ]
     },
     "@elizaos/native-activity-tracker#build": {
-      "dependsOn": [],
+      "dependsOn": [
+        "@elizaos/core#build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
+    },
+    "@elizaos/scenario-runner#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/agent#build",
+        "@elizaos/shared#build",
+        "@elizaos/vault#build",
+        "@elizaos/app-core#build",
+        "@elizaos/plugin-sql#build",
+        "@elizaos/plugin-telegram#build",
+        "@elizaos/plugin-streaming#build",
+        "@elizaos/plugin-signal#build",
+        "@elizaos/plugin-browser#build",
+        "@elizaos/plugin-elizacloud#build",
+        "@elizaos/ui#build"
+      ],
       "outputs": [
         "dist/**"
       ]

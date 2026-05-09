@@ -9,8 +9,7 @@ interface CapacitorBrowserPlugin {
   close?: () => Promise<void>;
 }
 
-const registeredCapacitorBrowser =
-  registerPlugin<CapacitorBrowserPlugin>("Browser");
+let registeredCapacitorBrowser: CapacitorBrowserPlugin | null = null;
 
 type CapacitorGlobal = {
   Plugins?: { Browser?: CapacitorBrowserPlugin };
@@ -24,9 +23,12 @@ function getCapacitorBrowser(): CapacitorBrowserPlugin | null {
   if (!Capacitor.isNativePlatform()) return null;
 
   const cap: unknown = Reflect.get(globalThis, "Capacitor");
-  return isCapacitorGlobal(cap)
-    ? (cap.Plugins?.Browser ?? registeredCapacitorBrowser)
-    : registeredCapacitorBrowser;
+  if (isCapacitorGlobal(cap) && cap.Plugins?.Browser) {
+    return cap.Plugins.Browser;
+  }
+  registeredCapacitorBrowser ??=
+    registerPlugin<CapacitorBrowserPlugin>("Browser");
+  return registeredCapacitorBrowser;
 }
 
 export async function openExternalUrl(url: string): Promise<void> {

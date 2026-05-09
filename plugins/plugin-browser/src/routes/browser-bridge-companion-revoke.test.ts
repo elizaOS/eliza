@@ -14,11 +14,8 @@ vi.mock("@elizaos/core", () => ({
   },
 }));
 
-vi.mock("@elizaos/agent/api/rate-limiter", () => ({
+vi.mock("@elizaos/agent", () => ({
   checkRateLimit: vi.fn(() => ({ allowed: true, retryAfterMs: 0 })),
-}));
-
-vi.mock("@elizaos/agent/diagnostics/integration-observability", () => ({
   createIntegrationTelemetrySpan: vi.fn(() => ({
     failure: vi.fn(),
     success: vi.fn(),

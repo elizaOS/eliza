@@ -2,10 +2,15 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
+    "rootDir": ".",
     "declaration": true,
     "declarationMap": false,
     "emitDeclarationOnly": true,
-    "noEmit": false
+    "noEmit": false,
+    "paths": {
+      "@elizaos/core": ["../../../packages/core/dist/index.d.ts"],
+      "@elizaos/core/*": ["../../../packages/core/dist/*"]
+    }
   },
   "include": [
     "index.node.ts",

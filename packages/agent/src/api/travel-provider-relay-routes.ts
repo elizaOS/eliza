@@ -6,7 +6,7 @@ import {
   validateCloudBaseUrl,
 } from "@elizaos/plugin-elizacloud";
 import { sendJson } from "@elizaos/shared";
-import type { CloudProxyConfigLike } from "../types/config-like.js";
+import type { CloudProxyConfigLike } from "../types/config-like.ts";
 
 export interface TravelProviderRelayRouteState {
   config: CloudProxyConfigLike;

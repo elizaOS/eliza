@@ -12,11 +12,11 @@ import type {
   IAgentRuntime,
 } from "@elizaos/core";
 import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared";
-import { loadElizaConfig } from "../config/config.js";
+import { loadElizaConfig } from "../config/config.ts";
 import {
   createVisionProvider,
   type MediaProviderFactoryOptions,
-} from "../providers/media-provider.js";
+} from "../providers/media-provider.ts";
 
 function getMediaProviderOptions(): MediaProviderFactoryOptions {
   const config = loadElizaConfig();

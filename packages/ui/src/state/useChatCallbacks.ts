@@ -544,10 +544,17 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           if (!isCurrentHydration()) {
             return null;
           }
-          console.warn(
-            "[eliza][chat:init] failed to load restored conversation messages",
-            err,
-          );
+          const transientOptionalFetchFailure =
+            err instanceof Error &&
+            err.name === "ApiError" &&
+            (err as Error & { kind?: string }).kind === "network" &&
+            /^(Failed to fetch|Request aborted)$/i.test(err.message);
+          if (!transientOptionalFetchFailure) {
+            console.warn(
+              "[eliza][chat:init] failed to load restored conversation messages",
+              err,
+            );
+          }
           greetingFiredRef.current = false;
           conversationMessagesRef.current = [];
           setConversationMessages([]);

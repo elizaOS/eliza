@@ -34,7 +34,6 @@ import {
   patchAutonomousElizaOnboardingPresets,
   patchBrokenElizaCoreRuntimeDists,
   patchCodexFolderApprovalPromptCompat,
-  patchElizaCoreRolesSubpath,
   patchExtensionlessJsExports,
   patchNobleHashesCompat,
   patchPtyManagerCursorPositionCompat,
@@ -93,7 +92,6 @@ patchExtensionlessJsExports(root, "@noble/hashes");
 patchNobleHashesCompat(root);
 patchCodexFolderApprovalPromptCompat(root);
 patchBrokenElizaCoreRuntimeDists(root);
-patchElizaCoreRolesSubpath(root);
 patchPtyManagerEsmDirnameCompat(root);
 patchPtyManagerCursorPositionCompat(root);
 // @elizaos/agent and @elizaos/ui ship exports maps where glob targets still

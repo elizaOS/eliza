@@ -19,10 +19,12 @@ const SOURCE_EXTENSIONS = [
   ".mts",
   ".cts",
   ".d.ts",
+  ".html",
 ];
 const GENERATED_DIRS = new Set([
   ".git",
   ".turbo",
+  ".vite",
   ".wrangler",
   ".wrangler-dry-run",
   "build",
@@ -30,6 +32,10 @@ const GENERATED_DIRS = new Set([
   "dist",
   "node_modules",
 ]);
+const GENERATED_PATH_PARTS = [
+  "packages/app/android/app/src/main/assets",
+  "packages/app/electrobun/build",
+];
 const ASSET_EXPORT_EXTENSIONS = new Set([
   ".css",
   ".json",
@@ -180,6 +186,10 @@ function listSourceFiles(packages) {
   for (const base of WORKSPACE_BASES) {
     const abs = path.join(ROOT, base);
     walk(abs, (file) => {
+      const relative = path.relative(ROOT, file).replace(/\\/g, "/");
+      if (GENERATED_PATH_PARTS.some((part) => relative.startsWith(part))) {
+        return;
+      }
       if (isSourceFile(file)) files.push(file);
     });
   }
@@ -194,6 +204,7 @@ function findImports(packages) {
   const importRegex =
     /(?:from\s+|import\s*\(\s*|import\s+|export\s+[^;]*?from\s+)["']([^"']+)["']/g;
   for (const file of listSourceFiles(packages)) {
+    if (!fs.existsSync(file)) continue;
     const text = stripComments(fs.readFileSync(file, "utf8"));
     let match;
     while ((match = importRegex.exec(text))) {
@@ -225,10 +236,12 @@ function findStringReferences(packages) {
   const references = [];
   const stringRegex = /["'](@(?:elizaos|elizaai|clawville)\/[^"']+)["']/g;
   for (const file of listSourceFiles(packages)) {
+    if (!fs.existsSync(file)) continue;
     const text = stripComments(fs.readFileSync(file, "utf8"));
     let match;
     while ((match = stringRegex.exec(text))) {
       const specifier = match[1];
+      if (/\s/.test(specifier)) continue;
       const packageName = packageNames.find(
         (name) => specifier === name || specifier.startsWith(`${name}/`),
       );
