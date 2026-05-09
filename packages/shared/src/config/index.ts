@@ -1,12 +1,3 @@
-export * from "../components/config-ui/config-renderer";
-export {
-  evaluateUiVisibility,
-  getSupportedComponents,
-  runValidation as runUiValidation,
-  sanitizeLinkHref,
-  UiRenderer,
-  type UiRendererProps,
-} from "../components/config-ui/ui-renderer";
 export * from "./allowed-hosts";
 export * from "./app-config";
 export * from "./boot-config";

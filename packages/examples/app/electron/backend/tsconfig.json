@@ -12,5 +12,5 @@
     "noEmit": false
   },
   "include": ["src/**/*.ts"],
-  "extends": "../../../../../tsconfig.workspace-paths.json"
+  "extends": "../../../../../tsconfig.dist-paths.json"
 }

@@ -25,5 +25,5 @@
       "path": "./tsconfig.node.json"
     }
   ],
-  "extends": "../../../tsconfig.workspace-paths.json"
+  "extends": "../../../tsconfig.dist-paths.json"
 }

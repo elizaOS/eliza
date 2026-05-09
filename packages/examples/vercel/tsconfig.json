@@ -15,5 +15,5 @@
   },
   "include": ["*.ts", "typescript/**/*.ts", "api/**/*.ts"],
   "exclude": ["node_modules", "dist", "rust"],
-  "extends": "../../../tsconfig.workspace-paths.json"
+  "extends": "../../../tsconfig.dist-paths.json"
 }

@@ -44,7 +44,7 @@ bun scripts/refactor/run-all.mjs --apply --commit-per-phase
 | `p2-standardize-plugin-builds.mjs` | P2 | Add `tsc --emitDeclarationOnly` step to 28 plugins missing `.d.ts`. Create shared `tsconfig.build.shared.json`. |
 | `p3-flip-package-main.mjs` | P3 | Flip `main`/`module`/`types`/`exports` from `src/` to `dist/` for 37 packages. |
 | `p4-publish-pipeline.mjs` | P4 | Create `publish-from-dist.mjs`. Delete obsolete `restore-workspace-refs.js` and `replace-workspace-versions.js`. |
-| `p5-tsconfig-paths.mjs` | P5 | Rename `tsconfig.workspace-paths.json` → `tsconfig.dist-paths.json`. Expand to cover all built packages. |
+| `p5-tsconfig-paths.mjs` | P5 | Rename `tsconfig.dist-paths.json` → `tsconfig.dist-paths.json`. Expand to cover all built packages. |
 | `p6-turbo-json.mjs` | P6 | Add explicit turbo build entries for newly-built packages. |
 | `verify.mjs` | P7 | Run `bun install`, `bun run build`, `bun run typecheck`, `bun run typecheck:dist`, `bun run test`. Report pass/fail per check. |
 | `run-all.mjs` | All | Orchestrator. |
