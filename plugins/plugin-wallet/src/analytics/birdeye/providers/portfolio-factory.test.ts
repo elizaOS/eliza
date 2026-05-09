@@ -24,7 +24,7 @@ function createRuntime(service: unknown): IAgentRuntime {
     },
   };
 
-  return runtime as unknown as IAgentRuntime;
+  return runtime as IAgentRuntime;
 }
 
 describe("Birdeye portfolio provider factory", () => {

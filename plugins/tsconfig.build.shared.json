@@ -26,6 +26,12 @@
       "@elizaos/agent/*": ["../packages/agent/dist/packages/agent/src/*"],
       "@elizaos/plugin-wallet": ["../plugins/plugin-wallet/dist/index.d.mts"],
       "@elizaos/plugin-wallet/*": ["../plugins/plugin-wallet/dist/*"],
+      "@elizaos/plugin-elizacloud": [
+        "../packages/agent/src/external-modules.d.ts"
+      ],
+      "@elizaos/plugin-elizacloud/*": [
+        "../packages/agent/src/external-modules.d.ts"
+      ],
       "@elizaos/cloud-sdk": ["../cloud/packages/sdk/dist/index.d.ts"],
       "@elizaos/scenario-runner": ["../packages/scenario-runner/dist/index.d.ts"]
     }

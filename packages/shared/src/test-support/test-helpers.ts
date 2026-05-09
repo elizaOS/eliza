@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
+import { ServerResponse } from "node:http";
 import type http from "node:http";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -423,13 +424,15 @@ export function waitMs(ms: number): Promise<void> {
 }
 
 type MockResponsePayload<T> = {
-  res: http.ServerResponse & {
-    _status: number;
-    _body: string;
-    writeHead: (statusCode: number) => void;
-  };
+  res: MockHttpServerResponse;
   getStatus: () => number;
   getJson: () => T;
+};
+
+type MockHttpServerResponse = http.ServerResponse & {
+  _status: number;
+  _body: string;
+  writeHead: (statusCode: number) => void;
 };
 
 type MockBodyChunk = string | Buffer;
@@ -449,32 +452,32 @@ export function createMockHttpResponse<T = unknown>(): MockResponsePayload<T> {
   let legacyStatus = 0;
   let payload = "";
 
-  const res = {
-    set statusCode(value: number) {
-      statusCode = value;
-      legacyStatus = value;
-    },
-    get statusCode() {
+  const res = Object.create(ServerResponse.prototype) as MockHttpServerResponse;
+  Object.defineProperty(res, "statusCode", {
+    get() {
       return statusCode;
     },
-    _status: legacyStatus,
-    _body: payload,
-    setHeader: () => undefined,
-    writeHead: (value: number) => {
+    set(value: number) {
       statusCode = value;
       legacyStatus = value;
     },
-    end: (chunk?: string | Buffer) => {
-      payload = chunk ? chunk.toString() : "";
-      res._body = payload;
-      legacyStatus = statusCode;
-      res._status = legacyStatus;
-    },
-  } as unknown as http.ServerResponse & {
-    _status: number;
-    _body: string;
-    writeHead: (statusCode: number) => void;
-  };
+    configurable: true,
+  });
+  res._status = legacyStatus;
+  res._body = payload;
+  res.setHeader = () => res;
+  res.writeHead = ((value: number) => {
+    statusCode = value;
+    legacyStatus = value;
+    return res;
+  }) as MockHttpServerResponse["writeHead"];
+  res.end = ((chunk?: string | Buffer) => {
+    payload = chunk ? chunk.toString() : "";
+    res._body = payload;
+    legacyStatus = statusCode;
+    res._status = legacyStatus;
+    return res;
+  }) as MockHttpServerResponse["end"];
 
   return {
     res,

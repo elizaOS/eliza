@@ -1,6 +1,7 @@
 import type { Dirent } from "node:fs";
 import { promises as fs } from "node:fs";
 import type http from "node:http";
+import { ServerResponse } from "node:http";
 import path from "node:path";
 import type { IAgentRuntime, RouteRequestMeta } from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";
@@ -625,15 +626,23 @@ async function proxyRunSteeringRequest(
   }
 
   const captured = createCapturedResponse();
+  const syntheticResponse = Object.assign(
+    Object.create(ServerResponse.prototype) as http.ServerResponse,
+    captured,
+  );
   const syntheticUrl = new URL(ctx.url.toString());
   syntheticUrl.pathname = target.pathname;
   const syntheticCtx: AppsRouteContext = {
-		...ctx,
-		pathname: target.pathname,
-		url: syntheticUrl,
-		res: captured as unknown as http.ServerResponse,
-		readJsonBody: async <T extends object>() => body as T | null,
-    json: (response: http.ServerResponse, data: unknown, status = 200): void => {
+    ...ctx,
+    pathname: target.pathname,
+    url: syntheticUrl,
+				res: syntheticResponse,
+    readJsonBody: async <T extends object>() => body as T | null,
+    json: (
+      response: http.ServerResponse,
+      data: unknown,
+      status = 200,
+    ): void => {
       response.writeHead(status, { "Content-Type": "application/json" });
       response.end(JSON.stringify(data));
     },

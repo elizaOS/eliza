@@ -739,10 +739,10 @@
         "./plugins/plugin-mysticism/dist/*"
       ],
       "@elizaos/plugin-groq": [
-        "./plugins/plugin-groq/dist/index.d.ts"
+        "./plugins/plugin-groq/index.ts"
       ],
       "@elizaos/plugin-groq/*": [
-        "./plugins/plugin-groq/dist/*"
+        "./plugins/plugin-groq/*"
       ],
       "@elizaos/plugin-openai": [
         "./plugins/plugin-openai/dist/index.d.ts"

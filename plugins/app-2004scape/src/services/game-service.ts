@@ -1,9 +1,11 @@
 import {
   type IAgentRuntime,
+  type Memory,
   ModelType,
   parseJSONObjectFromText,
   Service,
   setTrajectoryPurpose,
+  type State,
   type TextGenerationModelType,
   withStandaloneTrajectory,
 } from "@elizaos/core";
@@ -285,12 +287,12 @@ export class RsSdkGameService extends Service {
   private async gatherProviderContext(): Promise<string> {
     const dummyMemory = {
       content: { text: "" },
-    } as unknown as import("@elizaos/core").Memory;
+    } as Memory;
     const dummyState = {
       values: {},
       data: {},
       text: "",
-    } as unknown as import("@elizaos/core").State;
+    } as State;
     const sections: string[] = [];
 
     try {

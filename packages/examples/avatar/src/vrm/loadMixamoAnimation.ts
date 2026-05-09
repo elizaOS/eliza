@@ -81,8 +81,17 @@ function getHipsHeightFromVrm(vrm: VRM): number {
 }
 
 function loadFbx(url: string): Promise<THREE.Group> {
-  const loader = new FBXLoader();
-  return loader.loadAsync(url);
+  const loader = new FBXLoader() as {
+    load: (
+      url: string,
+      onLoad: (asset: THREE.Group) => void,
+      onProgress?: (event: ProgressEvent) => void,
+      onError?: (error: unknown) => void,
+    ) => void;
+  };
+  return new Promise((resolve, reject) => {
+    loader.load(url, resolve, undefined, reject);
+  });
 }
 
 /**

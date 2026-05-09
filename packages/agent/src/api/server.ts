@@ -697,8 +697,7 @@ type OptionalTrainingConfigApi = {
   saveTrainingConfig: (config: OptionalTrainingConfig) => void;
 };
 
-const TRAINING_CONFIG_MODULE =
-  "@elizaos/app-training/core/training-config";
+const TRAINING_CONFIG_MODULE = "@elizaos/app-training/core/training-config";
 
 function defaultTrainingConfig(): OptionalTrainingConfig {
   return {
@@ -2921,9 +2920,8 @@ async function handleRequest(
       runtime: state.runtime,
       isAuthorized: () => isAuthorized(req),
       hostContext: {
-        config: state.config as unknown as Record<string, unknown>,
-        saveConfig: (nextConfig) =>
-          saveElizaConfig(nextConfig as unknown as ElizaConfig),
+        config: state.config as Record<string, unknown>,
+        saveConfig: (nextConfig) => saveElizaConfig(nextConfig as ElizaConfig),
         restartRuntime,
         createTelemetrySpan: (meta) =>
           meta.boundary === "cloud"
@@ -4469,7 +4467,11 @@ export async function startApiServer(opts?: {
               }
               for (const ws of wsClients) {
                 if (ws.readyState === 1 || ws.readyState === 0) {
-                  (ws as unknown as { terminate(): void }).terminate();
+                  if ("terminate" in ws && typeof ws.terminate === "function") {
+                    ws.terminate();
+                  } else {
+                    ws.close();
+                  }
                 }
               }
               wsClients.clear();

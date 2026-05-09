@@ -11,7 +11,7 @@ function runtime(settings: Record<string, string>): IAgentRuntime {
 	return {
 		character: { settings: {} },
 		getSetting: vi.fn((key: string) => settings[key] ?? null),
-	} as unknown as IAgentRuntime;
+	} as IAgentRuntime;
 }
 
 describe("BlueSky account config", () => {
@@ -51,10 +51,10 @@ describe("BlueSky account config", () => {
 			},
 			registerMessageConnector: vi.fn(),
 			registerPostConnector: vi.fn(),
-		} as unknown as IAgentRuntime & {
+		} as IAgentRuntime & {
 			registerPostConnector: ReturnType<typeof vi.fn>;
 		};
-		const service = new BlueSkyService() as unknown as {
+		const service = new BlueSkyService() as BlueSkyService & {
 			agents: Map<string, unknown>;
 		};
 		const messageService = (accountId: string) => ({
@@ -92,7 +92,7 @@ describe("BlueSky account config", () => {
 
 		BlueSkyService.registerSendHandlers(
 			rt,
-			service as unknown as BlueSkyService,
+			service,
 		);
 
 		expect(rt.registerMessageConnector).toHaveBeenCalledTimes(2);

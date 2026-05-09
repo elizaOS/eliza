@@ -236,6 +236,7 @@ name = "eliza-cloud-api-prod"
 workers_dev = false
 routes = [
   { pattern = "api.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "x402.elizaos.ai/*", zone_name = "elizaos.ai" },
 ]
 
 [env.production.define]

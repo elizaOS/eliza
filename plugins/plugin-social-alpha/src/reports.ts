@@ -93,9 +93,7 @@ function calculateTradeMetrics(
 
 	for (const tx of transactions) {
 		const normalizedAmount = normalizeBalance(tx.amount, token.decimals || 0);
-		const price = tx.price
-			? Number.parseFloat(tx.price as unknown as string)
-			: 0;
+		const price = tx.price ? Number.parseFloat(tx.price) : 0;
 		const value = normalizedAmount * price;
 
 		if (tx.timestamp < firstTradeTime) firstTradeTime = new Date(tx.timestamp);
@@ -254,12 +252,8 @@ function formatTransactionHistory(
 		)
 		.map((tx) => {
 			const normalizedAmount = normalizeBalance(tx.amount, token.decimals || 0);
-			const price = tx.price
-				? formatPrice(Number.parseFloat(tx.price as unknown as string))
-				: "N/A";
-			const value = tx.valueUsd
-				? formatPrice(Number.parseFloat(tx.valueUsd as unknown as string))
-				: "N/A";
+			const price = tx.price ? formatPrice(Number.parseFloat(tx.price)) : "N/A";
+			const value = tx.valueUsd ? formatPrice(tx.valueUsd) : "N/A";
 
 			return `
   ${formatDate(tx.timestamp)} - ${tx.type}
