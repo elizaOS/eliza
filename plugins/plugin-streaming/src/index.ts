@@ -3,6 +3,38 @@
  */
 
 export * from "./core.ts";
+export {
+  resolveStreamingUpdate,
+  mergeStreamingText,
+  type StreamingUpdate,
+  type StreamingUpdateKind,
+} from "./api/streaming-text.ts";
+export {
+  readStreamSettings,
+  writeStreamSettings,
+  validateStreamSettings,
+  readOverlayLayout,
+  writeOverlayLayout,
+  seedOverlayDefaults,
+  safeDestId,
+  parseDestinationQuery,
+  getHeadlessCaptureConfig,
+  type StreamVoiceSettings,
+  type StreamVisualSettings,
+} from "./api/stream-persistence.ts";
+export { handleTtsRoutes, type TtsRouteContext } from "./api/tts-routes.ts";
+export {
+  streamManager,
+  type AudioSource,
+  type StreamConfig,
+} from "./services/stream-manager.ts";
+export {
+  handleStreamRoute,
+  getActiveDestination,
+  detectCaptureMode,
+  ensureXvfb,
+} from "./api/stream-routes.ts";
+export type { StreamRouteState } from "./api/stream-route-state.ts";
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import {
