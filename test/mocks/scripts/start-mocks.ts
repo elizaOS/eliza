@@ -3043,6 +3043,46 @@ function paymentMockView(request: PaymentMockRequest): Record<string, JsonValue>
   };
 }
 
+function paymentMockAppId(request: PaymentMockRequest): string | null {
+  const appId = request.metadata?.app_id ?? request.metadata?.appId;
+  return typeof appId === "string" && appId.length > 0 ? appId : null;
+}
+
+function paymentMockProviders(request: PaymentMockRequest): string[] {
+  const raw = request.metadata?.providers;
+  if (!Array.isArray(raw)) return ["stripe", "oxapay"];
+  const providers = raw.filter(
+    (provider): provider is string => provider === "stripe" || provider === "oxapay",
+  );
+  return providers.length > 0 ? providers : ["stripe", "oxapay"];
+}
+
+function paymentMockAppChargeView(request: PaymentMockRequest): Record<string, JsonValue> {
+  const appId = paymentMockAppId(request) ?? "mock-app";
+  return {
+    id: request.id,
+    appId,
+    amountUsd: request.amountUsd,
+    description: request.description,
+    providers: paymentMockProviders(request),
+    paymentUrl: request.paymentUrl,
+    status: request.status === "paid" ? "confirmed" : request.status,
+    paidAt: request.paidAt ?? null,
+    paidProvider: request.provider === "mock" ? null : request.provider,
+    providerPaymentId: request.transactionHash ? request.id : null,
+    expiresAt: request.expiresAt,
+    createdAt: request.createdAt,
+    metadata: request.metadata ?? null,
+  };
+}
+
+function readPaymentProviders(body: RequestBody): string[] {
+  const providers = readStringArray(body, "providers").filter(
+    (provider) => provider === "stripe" || provider === "oxapay",
+  );
+  return providers.length > 0 ? providers : ["stripe", "oxapay"];
+}
+
 function setPaymentLedger(
   ledgerEntry: MockRequestLedgerEntry,
   metadata: Omit<PaymentRequestLedgerMetadata, "runId">,
@@ -3148,6 +3188,9 @@ async function paymentDynamicFixture(
     setPaymentLedger(ledgerEntry, { action: "payment_requests.mock_list" });
     return jsonFixture({
       paymentRequests: Array.from(state.requests.values()).map(paymentMockView),
+      appCharges: Array.from(state.requests.values())
+        .filter((request) => request.metadata?.kind === "app_charge_request")
+        .map(paymentMockAppChargeView),
       callbacks: state.callbacks,
     });
   }
@@ -3160,6 +3203,142 @@ async function paymentDynamicFixture(
     state.callbacks.splice(0, state.callbacks.length);
     setPaymentLedger(ledgerEntry, { action: "payment_requests.reset" });
     return jsonFixture({ ok: true });
+  }
+
+  const appChargeCreateMatch = /^\/api\/v1\/apps\/([^/]+)\/charges\/?$/.exec(pathname);
+  if (method === "POST" && appChargeCreateMatch) {
+    const amountUsd = readMoney(requestBody, "amountUsd", "amount_usd", "amount");
+    if (amountUsd === null) {
+      throw new MockHttpError(400, "amountUsd must be a positive number");
+    }
+
+    const appId = decodeURIComponent(appChargeCreateMatch[1] ?? "mock-app");
+    const origin = paymentMockOrigin(headers);
+    const id = `charge_${crypto.randomUUID()}`;
+    const now = new Date();
+    const expiresInSeconds =
+      typeof requestBody.lifetimeSeconds === "number" &&
+      Number.isFinite(requestBody.lifetimeSeconds)
+        ? Math.max(60, Math.floor(requestBody.lifetimeSeconds))
+        : 7 * 24 * 60 * 60;
+    const providers = readPaymentProviders(requestBody);
+    const metadata = {
+      ...(jsonRecordValue(requestBody.metadata) ?? {}),
+      kind: "app_charge_request",
+      app_id: appId,
+      amount_usd: amountUsd,
+      providers,
+      payment_url: `${origin}/payment/app-charge/${encodeURIComponent(appId)}/${encodeURIComponent(id)}`,
+      callback_url:
+        readOptionalString(requestBody, "callbackUrl") ??
+        readOptionalString(requestBody, "callback_url") ??
+        undefined,
+      callback_channel:
+        jsonRecordValue(requestBody.callbackChannel) ??
+        jsonRecordValue(requestBody.callback_channel) ??
+        undefined,
+      callback_metadata:
+        jsonRecordValue(requestBody.callbackMetadata) ??
+        jsonRecordValue(requestBody.callback_metadata) ??
+        undefined,
+    } satisfies Record<string, JsonValue | undefined>;
+    const request: PaymentMockRequest = {
+      id,
+      amountUsd,
+      currency: "USD",
+      status: "requested",
+      accepted: false,
+      provider: "app-charge",
+      network: "app-charge",
+      description: readOptionalString(requestBody, "description") ?? "Mock app charge",
+      paymentUrl: metadata.payment_url as string,
+      checkoutUrl: `${origin}/checkout/${encodeURIComponent(id)}`,
+      callbackUrl:
+        readOptionalString(requestBody, "callbackUrl") ??
+        readOptionalString(requestBody, "callback_url") ??
+        undefined,
+      callbackSecret:
+        readOptionalString(requestBody, "callbackSecret") ??
+        readOptionalString(requestBody, "callback_secret") ??
+        undefined,
+      channel:
+        jsonRecordValue(requestBody.channel) ??
+        jsonRecordValue(requestBody.callbackChannel) ??
+        jsonRecordValue(requestBody.callback_channel),
+      metadata: metadata as Record<string, JsonValue>,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + expiresInSeconds * 1000).toISOString(),
+    };
+    state.requests.set(id, request);
+    setPaymentLedger(ledgerEntry, {
+      action: "app_charges.create",
+      paymentRequestId: id,
+      status: request.status,
+      amountUsd,
+    });
+    return jsonFixture({ success: true, charge: paymentMockAppChargeView(request) }, 201);
+  }
+
+  const appChargeGetMatch = /^\/api\/v1\/apps\/([^/]+)\/charges\/([^/]+)\/?$/.exec(pathname);
+  if (method === "GET" && appChargeGetMatch) {
+    const appId = decodeURIComponent(appChargeGetMatch[1] ?? "");
+    const chargeId = decodeURIComponent(appChargeGetMatch[2] ?? "");
+    const request = state.requests.get(chargeId);
+    if (!request || paymentMockAppId(request) !== appId) {
+      return mockJsonError(404, "app_charge_not_found");
+    }
+    setPaymentLedger(ledgerEntry, {
+      action: "app_charges.get",
+      paymentRequestId: request.id,
+      status: request.status,
+      amountUsd: request.amountUsd,
+    });
+    return jsonFixture({ success: true, charge: paymentMockAppChargeView(request) });
+  }
+
+  const appChargeCheckoutMatch =
+    /^\/api\/v1\/apps\/([^/]+)\/charges\/([^/]+)\/checkout\/?$/.exec(pathname);
+  if (method === "POST" && appChargeCheckoutMatch) {
+    const appId = decodeURIComponent(appChargeCheckoutMatch[1] ?? "");
+    const chargeId = decodeURIComponent(appChargeCheckoutMatch[2] ?? "");
+    const request = state.requests.get(chargeId);
+    if (!request || paymentMockAppId(request) !== appId) {
+      return mockJsonError(404, "app_charge_not_found");
+    }
+    const provider = readOptionalString(requestBody, "provider") ?? "oxapay";
+    const providers = paymentMockProviders(request);
+    if (!providers.includes(provider)) {
+      return mockJsonError(400, "provider_not_enabled");
+    }
+    request.provider = provider;
+    request.updatedAt = new Date().toISOString();
+    setPaymentLedger(ledgerEntry, {
+      action: "app_charges.checkout",
+      paymentRequestId: request.id,
+      status: request.status,
+      amountUsd: request.amountUsd,
+    });
+    if (provider === "stripe") {
+      return jsonFixture({
+        success: true,
+        checkout: {
+          provider: "stripe",
+          url: `${request.checkoutUrl}?provider=stripe`,
+          sessionId: `cs_mock_${request.id}`,
+        },
+      });
+    }
+    return jsonFixture({
+      success: true,
+      checkout: {
+        provider: "oxapay",
+        paymentId: request.id,
+        trackId: request.id,
+        payLink: `${request.checkoutUrl}?provider=oxapay`,
+        expiresAt: request.expiresAt,
+      },
+    });
   }
 
   if (method === "POST" && pathname === "/v1/payment-requests") {
@@ -3234,7 +3413,8 @@ async function paymentDynamicFixture(
   const payId =
     method === "POST"
       ? routeParam(pathname, /^\/v1\/payment-requests\/([^/]+)\/(?:pay|confirm|settle)\/?$/) ??
-        routeParam(pathname, /^\/__mock\/payments\/([^/]+)\/(?:pay|confirm|settle)\/?$/)
+        routeParam(pathname, /^\/__mock\/payments\/([^/]+)\/(?:pay|confirm|settle)\/?$/) ??
+        routeParam(pathname, /^\/__mock\/app-charges\/([^/]+)\/(?:pay|confirm|settle)\/?$/)
       : null;
   if (payId) {
     const request = state.requests.get(payId);

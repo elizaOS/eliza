@@ -190,7 +190,7 @@ type CloudStage =
   | "login"
   | "loading"
   | "auto-creating"
-  | "agent-list"
+  | "retry"
   | "creating"
   | "provisioning"
   | "connecting";
@@ -329,19 +329,18 @@ async function probeCloudAgentReachable(
   }
 }
 
-function readCloudAuthToken(): string | undefined {
-  const clientToken = client.getRestAuthToken()?.trim();
-  if (clientToken) return clientToken;
-
+function readCloudControlToken(): string | undefined {
   if (typeof globalThis === "undefined") return undefined;
   const globalToken = (
     globalThis as typeof globalThis & {
       __ELIZA_CLOUD_AUTH_TOKEN__?: unknown;
     }
   ).__ELIZA_CLOUD_AUTH_TOKEN__;
-  return typeof globalToken === "string" && globalToken.trim()
-    ? globalToken.trim()
-    : undefined;
+  if (typeof globalToken === "string" && globalToken.trim()) {
+    return globalToken.trim();
+  }
+
+  return client.getRestAuthToken()?.trim() || undefined;
 }
 
 // TODO: replace with real onboarding artwork per runtime choice
@@ -368,26 +367,6 @@ export function resolveRuntimeChoices(args: {
     return ["cloud", "local", "remote"];
   }
   return ["cloud", "remote"];
-}
-
-function statusBadge(status: string): { label: string; className: string } {
-  switch (status) {
-    case "running":
-      return { label: "LIVE", className: "bg-ok text-white" };
-    case "provisioning":
-    case "queued":
-      return { label: "STARTING", className: "bg-warn text-black" };
-    case "stopped":
-    case "suspended":
-      return { label: "STOPPED", className: "bg-black/20 text-black/70" };
-    case "failed":
-      return { label: "FAILED", className: "bg-danger text-white" };
-    default:
-      return {
-        label: status.toUpperCase(),
-        className: "bg-black/10 text-black/60",
-      };
-  }
 }
 
 export function RuntimeGate() {
@@ -419,7 +398,6 @@ export function RuntimeGate() {
   const [cloudStage, setCloudStage] = React.useState<CloudStage>(
     elizaCloudConnected ? "loading" : "login",
   );
-  const [agents, setAgents] = React.useState<CloudCompatAgent[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [provisionStatus, setProvisionStatus] = React.useState("");
   const pollTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(
@@ -578,14 +556,14 @@ export function RuntimeGate() {
   // ── Completion helpers ─────────────────────────────────────────────
 
   const finishAsCloud = React.useCallback(
-    (agent: CloudCompatAgent) => {
+    async (agent: CloudCompatAgent) => {
       // Refuse to complete cloud onboarding without a usable agent URL —
       // persisting an active server with no apiBase puts the next boot
       // into an infinite loopback poll (`https://localhost/api/auth/status`)
       // because client.getBaseUrl() falls back to window.location.origin
       // when nothing is set. Surface the failure so the user can retry
       // instead of silently writing a broken active-server record.
-      const apiBase = resolveCloudAgentApiBase(agent);
+      let apiBase = resolveCloudAgentApiBase(agent);
       if (!apiBase) {
         setError(
           t("runtimegate.cloudAgentMissingUrl", {
@@ -593,28 +571,68 @@ export function RuntimeGate() {
               "Cloud agent is not reachable yet. Retry after it finishes starting.",
           }),
         );
-        setCloudStage("agent-list");
+        setCloudStage("retry");
         return;
       }
       setCloudStage("connecting");
 
-      const accessToken = readCloudAuthToken();
+      let label = agent.agent_name;
+      let accessToken: string | undefined;
+      try {
+        const launchRes = await client.launchCloudCompatAgent(agent.agent_id);
+        const launchConnection = launchRes.data?.connection;
+        const launchApiBase = normalizeRuntimeUrl(launchConnection?.apiBase);
+        const launchToken = launchConnection?.token?.trim();
+
+        if (!launchRes.success || !launchApiBase || !launchToken) {
+          throw new Error(
+            launchRes.error ||
+              t("runtimegate.cloudLaunchMissingConnection", {
+                defaultValue:
+                  "Cloud did not return a runtime connection for this agent.",
+              }),
+          );
+        }
+
+        apiBase = launchApiBase;
+        accessToken = launchToken;
+        if (launchRes.data?.agentName) {
+          label = launchRes.data.agentName;
+        }
+      } catch (err) {
+        const controlToken = readCloudControlToken();
+        if (controlToken?.startsWith("agent_")) {
+          accessToken = controlToken;
+        } else {
+          setError(
+            displayErrorMessage(
+              err,
+              t("runtimegate.cloudLaunchFailed", {
+                defaultValue: "Cloud agent launch failed. Please retry.",
+              }),
+            ),
+          );
+          setCloudStage("retry");
+          return;
+        }
+      }
 
       savePersistedActiveServer({
         id: `cloud:${agent.agent_id}`,
         kind: "cloud",
-        label: agent.agent_name,
+        label,
         apiBase,
         ...(accessToken ? { accessToken } : {}),
       });
       addAgentProfile({
         kind: "cloud",
-        label: agent.agent_name,
+        label,
         cloudAgentId: agent.agent_id,
         apiBase,
         ...(accessToken ? { accessToken } : {}),
       });
 
+      setError(null);
       client.setBaseUrl(apiBase);
       client.setToken(accessToken ?? null);
       persistMobileRuntimeModeForServerTarget("elizacloud");
@@ -885,7 +903,7 @@ export function RuntimeGate() {
               }),
             ),
           );
-          setCloudStage("agent-list");
+          setCloudStage("retry");
           return;
         } finally {
           if (startStatusTimer) clearTimeout(startStatusTimer);
@@ -897,7 +915,7 @@ export function RuntimeGate() {
                 defaultValue: "Provisioning failed",
               }),
           );
-          setCloudStage("agent-list");
+          setCloudStage("retry");
           return;
         }
         provisionData = provRes.data;
@@ -994,7 +1012,7 @@ export function RuntimeGate() {
             )
             .catch(() => null);
           if (readyFromProvisionUrl) {
-            finishAsCloud(readyFromProvisionUrl);
+            await finishAsCloud(readyFromProvisionUrl);
             return;
           }
         }
@@ -1002,7 +1020,7 @@ export function RuntimeGate() {
           Date.now() + AGENT_URL_WAIT_DEADLINE_MS,
         );
         if (ready) {
-          finishAsCloud(ready);
+          await finishAsCloud(ready);
         } else {
           setError(
             t("runtimegate.agentNotReady", {
@@ -1010,7 +1028,7 @@ export function RuntimeGate() {
                 "Agent created but isn't ready yet (no connectable URL). Try again in a moment.",
             }),
           );
-          setCloudStage("agent-list");
+          setCloudStage("retry");
         }
         return;
       }
@@ -1020,7 +1038,7 @@ export function RuntimeGate() {
         if (pollTimerRef.current) clearInterval(pollTimerRef.current);
         pollTimerRef.current = null;
         setError(message);
-        setCloudStage("agent-list");
+        setCloudStage("retry");
       };
       const provisionJobDeadlineMs =
         Date.now() +
@@ -1089,7 +1107,7 @@ export function RuntimeGate() {
             readyFromJob ??
             (await fetchAgentWithUrl(Date.now() + AGENT_URL_WAIT_DEADLINE_MS));
           if (ready) {
-            finishAsCloud(ready);
+            await finishAsCloud(ready);
           } else {
             setError(
               t("runtimegate.agentNotReady", {
@@ -1097,13 +1115,13 @@ export function RuntimeGate() {
                   "Agent created but isn't ready yet (no connectable URL). Try again in a moment.",
               }),
             );
-            setCloudStage("agent-list");
+            setCloudStage("retry");
           }
         } else if (job.status === "failed") {
           if (pollTimerRef.current) clearInterval(pollTimerRef.current);
           pollTimerRef.current = null;
           setError(job.error ?? "Provisioning failed");
-          setCloudStage("agent-list");
+          setCloudStage("retry");
         } else {
           setProvisionStatus(`Provisioning (${job.status})...`);
         }
@@ -1117,33 +1135,10 @@ export function RuntimeGate() {
     [finishAsCloud, t],
   );
 
-  const handleConnectCloudAgent = React.useCallback(
-    (agent: CloudCompatAgent) => {
-      if (agent.status === "failed") {
-        return;
-      }
-      if (agent.status !== "running" || !resolveCloudAgentApiBase(agent)) {
-        void provisionAndConnect(agent.agent_id).catch((err) => {
-          setError(
-            err instanceof Error
-              ? err.message
-              : t("runtimegate.unknownError", {
-                  defaultValue: "Unknown error",
-                }),
-          );
-          setCloudStage("agent-list");
-        });
-        return;
-      }
-      finishAsCloud(agent);
-    },
-    [finishAsCloud, provisionAndConnect, t],
-  );
-
-  // ── Cloud: auto-pick first agent, or auto-create one ─────────────
-  // The user asked for a single-agent assumption during onboarding: if
-  // they already have agents, pick the first one; if not, create one
-  // named "My Agent" and connect. No list-selection UX during first run.
+  // ── Cloud: auto-pick an existing agent, or auto-create one ────────
+  // During onboarding the cloud path is intentionally automatic: pick a
+  // usable existing agent, start it if needed, or create "My Agent".
+  // The user should not have to select an agent or click a second Connect.
   React.useEffect(() => {
     if (subView !== "cloud" || cloudStage !== "loading") return;
     let cancelled = false;
@@ -1159,24 +1154,33 @@ export function RuntimeGate() {
               defaultValue: "Failed to load agents",
             }),
         );
-        setCloudStage("agent-list");
+        setCloudStage("retry");
         return;
       }
 
       const agentList = res.data;
-      setAgents(agentList);
 
       if (agentList.length > 0) {
-        const primary = agentList[0];
+        const primary =
+          agentList.find(
+            (agent) =>
+              agent.status === "running" && resolveCloudAgentApiBase(agent),
+          ) ??
+          agentList.find(
+            (agent) =>
+              agent.status !== "failed" && agent.status !== "suspended",
+          ) ??
+          agentList[0];
         if (primary) {
-          if (primary.status === "failed") {
+          if (primary.status === "failed" || primary.status === "suspended") {
             setError(
               primary.error_message ||
                 t("runtimegate.cloudAgentFailed", {
-                  defaultValue: "Cloud agent failed to start.",
+                  defaultValue:
+                    "Cloud agent is not available. Retry after checking Eliza Cloud.",
                 }),
             );
-            setCloudStage("agent-list");
+            setCloudStage("retry");
             return;
           }
           const primaryApiBase = resolveCloudAgentApiBase(primary);
@@ -1193,7 +1197,7 @@ export function RuntimeGate() {
             await provisionAndConnect(primary.agent_id);
             return;
           }
-          finishAsCloud(primary);
+          await finishAsCloud(primary);
           return;
         }
       }
@@ -1211,7 +1215,7 @@ export function RuntimeGate() {
               defaultValue: "Failed to create agent. Try again.",
             }),
         );
-        setCloudStage("agent-list");
+        setCloudStage("retry");
         return;
       }
       // MUST stay below the createCloudCompatAgent await — setting cloudStage
@@ -1234,7 +1238,7 @@ export function RuntimeGate() {
             ? err.message
             : t("runtimegate.unknownError", { defaultValue: "Unknown error" }),
         );
-        setCloudStage("agent-list");
+        setCloudStage("retry");
       }
     })().catch((err) => {
       if (cancelled) return;
@@ -1243,7 +1247,7 @@ export function RuntimeGate() {
           ? err.message
           : t("runtimegate.unknownError", { defaultValue: "Unknown error" }),
       );
-      setCloudStage("agent-list");
+      setCloudStage("retry");
     });
 
     return () => {
@@ -1489,15 +1493,15 @@ export function RuntimeGate() {
           </div>
         )}
 
-        {cloudStage === "agent-list" && (
+        {cloudStage === "retry" && (
           <div className="mt-4 flex w-full max-w-[34rem] flex-col gap-3 text-left">
             <div className="flex items-center justify-between">
               <p
                 className="text-3xs uppercase tracking-[0.2em] text-[#ffe600]/80"
                 style={{ fontFamily: MONO_FONT }}
               >
-                {t("runtimegate.yourAgents", {
-                  defaultValue: "Your cloud agents",
+                {t("runtimegate.cloudNeedsAttention", {
+                  defaultValue: "Cloud connection needs attention",
                 })}
               </p>
               <button
@@ -1519,52 +1523,15 @@ export function RuntimeGate() {
               </p>
             )}
 
-            {agents.length > 0 && (
-              <div className="flex max-h-48 flex-col gap-2 overflow-y-auto">
-                {agents.map((agent) => {
-                  const badge = statusBadge(agent.status);
-                  return (
-                    <Card
-                      key={agent.agent_id}
-                      className="border-2 border-[#f0b90b]/45 bg-black/65 shadow-[4px_4px_0_rgba(0,0,0,0.62)]"
-                      style={{ borderRadius: 0 }}
-                    >
-                      <CardContent className="flex items-center justify-between gap-3 px-3 py-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p
-                              className="truncate text-sm font-bold uppercase text-white/95"
-                              style={{ fontFamily: MONO_FONT }}
-                            >
-                              {agent.agent_name}
-                            </p>
-                            <span
-                              className={`shrink-0 rounded-none px-1.5 py-0.5 text-2xs font-bold uppercase tracking-wide ${badge.className}`}
-                              style={{ fontFamily: MONO_FONT }}
-                            >
-                              {badge.label}
-                            </span>
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="shrink-0 rounded-none border-2 border-black bg-[#ffe600] text-xs font-black uppercase tracking-[0.14em] text-black shadow-[3px_3px_0_rgba(0,0,0,0.65)] hover:bg-white"
-                          style={{ fontFamily: MONO_FONT }}
-                          onClick={() => handleConnectCloudAgent(agent)}
-                          disabled={agent.status === "failed"}
-                        >
-                          {t("common.connect", {
-                            defaultValue: "Connect",
-                          })}
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
+            <p
+              className="text-3xs uppercase tracking-wide text-white/50"
+              style={{ fontFamily: MONO_FONT }}
+            >
+              {t("runtimegate.cloudAutoRetryHint", {
+                defaultValue:
+                  "Retry will check your account, start an agent if needed, and connect automatically.",
+              })}
+            </p>
 
             <BackButton t={t} onClick={() => setSubView("chooser")} />
           </div>

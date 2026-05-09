@@ -57,10 +57,7 @@ describe("MCP Server Integration", () => {
           stderr: "pipe",
         });
 
-        client = new Client(
-          { name: "test-client", version: "1.0.0" },
-          { capabilities: {} },
-        );
+        client = new Client({ name: "test-client", version: "1.0.0" }, { capabilities: {} });
 
         // Connect may fail if npx cannot fetch the package (network/registry issues).
         // Treat that as a skip rather than a hard failure of the test surface.
@@ -82,7 +79,7 @@ describe("MCP Server Integration", () => {
         transport = null;
         client = null;
       },
-      60000,
+      60000
     );
 
     it("should handle server errors gracefully", async () => {

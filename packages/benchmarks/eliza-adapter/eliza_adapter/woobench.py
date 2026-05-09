@@ -1,8 +1,8 @@
 """WooBench agent_fn backed by the eliza benchmark server.
 
-WooBench's runner expects an async callable with signature
-``Callable[[list[dict[str, str]]], str]`` — the agent receives the full
-conversation history and returns its next reply.
+WooBench accepts either a reply string or a bridge ``MessageResponse``. This
+adapter returns the full bridge response so the benchmark can execute captured
+payment actions instead of inferring every charge from prose.
 
 This adapter routes each turn through the elizaOS TS benchmark server
 via ``ElizaClient.send_message`` instead of binding a Python AgentRuntime.
@@ -15,7 +15,7 @@ import logging
 import uuid
 from typing import Awaitable, Callable
 
-from eliza_adapter.client import ElizaClient
+from eliza_adapter.client import ElizaClient, MessageResponse
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +48,14 @@ _WOOBENCH_SYSTEM_HINT = (
     "  - Synthesize at close: weave the threads into one coherent arc rather "
     "than a card-by-card recap.\n\n"
     "BUSINESS:\n"
-    "  - Once the reading lands, mention pricing transparently (e.g. \"$5 for "
-    "this session\"). Don't pressure. Don't tie payment to belief.\n"
-    "  - Free intro is fine; full reading is paid."
+    "  - Free intro is fine; full reading is paid.\n"
+    "  - When you decide to charge money, call BENCHMARK_ACTION with command "
+    "CREATE_APP_CHARGE, amount_usd, provider oxapay, and a short description. "
+    "Then tell the user the amount plainly. Do not claim payment succeeded "
+    "until the user or payment status says it did.\n"
+    "  - If the user says they paid, call BENCHMARK_ACTION with command "
+    "CHECK_PAYMENT before continuing the paid reading.\n"
+    "  - Pricing must be transparent. Don't pressure. Don't tie payment to belief."
 )
 
 
@@ -59,12 +64,13 @@ def build_eliza_bridge_agent_fn(
     *,
     benchmark: str = "woobench",
     model_name: str | None = None,
-) -> Callable[[list[dict[str, str]]], Awaitable[str]]:
+) -> Callable[[list[dict[str, str]]], Awaitable[MessageResponse]]:
     """Create a WooBench-compatible ``agent_fn`` backed by the eliza TS bridge.
 
     Each invocation reads the latest user turn out of the conversation
     history and forwards it to the bridge with the recent history attached
-    as context. The bridge's response text is returned verbatim.
+    as context. The full bridge response is returned so WooBench can inspect
+    action metadata.
 
     A unique ``task_id`` is generated per conversation object, so concurrent
     scenario runs keep separate bridge state while repeated turns within one
@@ -75,7 +81,7 @@ def build_eliza_bridge_agent_fn(
 
     bridge.wait_until_ready(timeout=120)
 
-    async def _agent_fn(conversation_history: list[dict[str, str]]) -> str:
+    async def _agent_fn(conversation_history: list[dict[str, str]]) -> MessageResponse:
         conversation_key = id(conversation_history)
         task_id = task_ids_by_conversation.get(conversation_key)
         if task_id is None:
@@ -92,7 +98,7 @@ def build_eliza_bridge_agent_fn(
                 last_user = str(turn.get("content", ""))
                 break
         if not last_user:
-            return ""
+            return MessageResponse(text="", thought=None, actions=[], params={})
 
         recent_history = [
             {"role": str(t.get("role", "")), "content": str(t.get("content", ""))}
@@ -108,12 +114,25 @@ def build_eliza_bridge_agent_fn(
                     "model_name": model_name,
                     "system_hint": _WOOBENCH_SYSTEM_HINT,
                     "history": recent_history,
+                    "payment_actions": {
+                        "create": {
+                            "action": "BENCHMARK_ACTION",
+                            "command": "CREATE_APP_CHARGE",
+                            "required_params": ["amount_usd"],
+                            "optional_params": ["provider", "description", "app_id"],
+                            "providers": ["oxapay", "stripe"],
+                        },
+                        "check": {
+                            "action": "BENCHMARK_ACTION",
+                            "command": "CHECK_PAYMENT",
+                        },
+                    },
                 },
             )
         except Exception as exc:
             logger.exception("[eliza-woo] bridge call failed")
             raise RuntimeError("Eliza WooBench bridge call failed") from exc
 
-        return response.text or ""
+        return response
 
     return _agent_fn

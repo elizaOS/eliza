@@ -7,13 +7,13 @@ import {
   type DevSettingsRow,
   formatDevSettingsTable,
   prependDevSubsystemFigletHeading,
-  resolveAppBranding,
   resolveDesktopApiPort,
   resolveDesktopApiPortPreference,
   resolveDesktopUiPort,
   resolveDesktopUiPortPreference,
   syncElizaEnvAliases,
 } from "@elizaos/shared";
+import { resolveAppBranding } from "@elizaos/ui";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import {

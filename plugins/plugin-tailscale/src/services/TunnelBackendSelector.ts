@@ -9,7 +9,7 @@ import type { TailscaleBackendMode } from "../types";
 import { CloudTailscaleService } from "./CloudTailscaleService";
 import { LocalTailscaleService } from "./LocalTailscaleService";
 
-export type TunnelBackendCtor =
+type TunnelBackendCtor =
   | typeof LocalTailscaleService
   | typeof CloudTailscaleService;
 

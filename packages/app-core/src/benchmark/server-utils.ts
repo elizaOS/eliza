@@ -370,6 +370,9 @@ export function capturedActionToParams(
   if (!capturedAction) return {};
 
   const benchmarkParams: Record<string, unknown> = {};
+  if (capturedAction.params) {
+    Object.assign(benchmarkParams, capturedAction.params);
+  }
   if (capturedAction.command) benchmarkParams.command = capturedAction.command;
   if (capturedAction.toolName)
     benchmarkParams.tool_name = capturedAction.toolName;
