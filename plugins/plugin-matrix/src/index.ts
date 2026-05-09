@@ -32,6 +32,13 @@ const matrixPlugin: Plugin = {
 
   tests: [],
 
+  // Self-declared auto-enable: activate when the "matrix" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["matrix"],
+  },
+
   init: async (_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
     // Register the Matrix provider with the ConnectorAccountManager.
     try {

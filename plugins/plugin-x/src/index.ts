@@ -18,6 +18,13 @@ export const XPlugin: Plugin = {
   actions: [],
   providers: [],
   services: [XService],
+  // Self-declared auto-enable: activate when the "x" connector (or the legacy
+  // "twitter" alias) is configured under config.connectors. The hardcoded
+  // CONNECTOR_PLUGINS map in plugin-auto-enable-engine.ts still serves as a
+  // fallback.
+  autoEnable: {
+    connectorKeys: ["x", "twitter"],
+  },
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     logger.log("🔧 Initializing X plugin...");
 

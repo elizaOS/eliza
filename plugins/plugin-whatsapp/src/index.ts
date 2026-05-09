@@ -9,6 +9,12 @@ const whatsappPlugin: Plugin = {
   actions: [],
   services: [WhatsAppConnectorService],
   routes: whatsappSetupRoutes,
+  // Self-declared auto-enable: activate when the "whatsapp" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["whatsapp"],
+  },
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     // Register the WhatsApp provider with the ConnectorAccountManager so the
     // HTTP CRUD surface (packages/agent/src/api/connector-account-routes.ts)

@@ -17,6 +17,12 @@ const signalPlugin: Plugin = {
   actions: [],
   providers: [],
   routes: signalSetupRoutes,
+  // Self-declared auto-enable: activate when the "signal" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["signal"],
+  },
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     // Register the Signal provider with the ConnectorAccountManager so the
     // HTTP CRUD surface (packages/agent/src/api/connector-account-routes.ts)
