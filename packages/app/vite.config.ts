@@ -385,6 +385,42 @@ function resolveExistingUiSourceModule(id: string) {
   return id;
 }
 
+function resolveExistingTsSourceModule(id: string): string {
+  if (fs.existsSync(id)) {
+    return id;
+  }
+
+  const candidates = [
+    `${id}.ts`,
+    `${id}.tsx`,
+    path.join(id, "index.ts"),
+    path.join(id, "index.tsx"),
+  ];
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? id;
+}
+
+function resolveSharedSourceExportTarget(
+  sharedPkgDir: string,
+  key: string,
+  value: unknown,
+): string | null {
+  if (key === ".") {
+    return path.join(sharedPkgDir, "src/index.ts");
+  }
+
+  const exportTarget = resolvePackageExportTarget(value);
+  if (!exportTarget) return null;
+
+  const sourceRelative = exportTarget
+    .replace(/^\.\//, "")
+    .replace(/^dist\//, "")
+    .replace(/\.js$/, "");
+  return resolveExistingTsSourceModule(
+    path.join(sharedPkgDir, "src", sourceRelative),
+  );
+}
+
 /**
  * Bun stores a full npm tarball under node_modules/.bun even when the workspace
  * symlink for @elizaos/core points at an unbuilt local eliza checkout.
@@ -1116,7 +1152,11 @@ export default defineConfig({
         const sharedPkg = JSON.parse(fs.readFileSync(sharedPkgPath, "utf8"));
         const aliases = [];
         for (const [key, value] of Object.entries(sharedPkg.exports || {})) {
-          const exportTarget = resolvePackageExportTarget(value);
+          const exportTarget = resolveSharedSourceExportTarget(
+            sharedPkgDir,
+            key,
+            value,
+          );
           if (!exportTarget) continue;
           const aliasKey =
             key === "."
@@ -1124,7 +1164,7 @@ export default defineConfig({
               : `@elizaos/shared/${key.replace(/^\.\//, "")}`;
           aliases.push({
             find: new RegExp(`^${escapeRegExp(aliasKey)}$`),
-            replacement: path.resolve(sharedPkgDir, exportTarget),
+            replacement: exportTarget,
           });
         }
         return aliases;

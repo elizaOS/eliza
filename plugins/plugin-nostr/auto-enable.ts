@@ -8,8 +8,7 @@ import type { PluginAutoEnableContext } from "@elizaos/shared";
 
 /** Enable when a `nostr` connector block is present and not explicitly disabled. */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
-  const c = (ctx.config?.connectors as Record<string, unknown> | undefined)
-    ?.nostr;
+  const c = (ctx.config?.connectors as Record<string, unknown> | undefined)?.nostr;
   if (!c || typeof c !== "object") return false;
   const config = c as Record<string, unknown>;
   if (config.enabled === false) return false;

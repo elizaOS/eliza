@@ -26,7 +26,10 @@
 	"elizaos": {
 		"plugin": {
 			"autoEnableModule": "./auto-enable.ts",
-			"capabilities": ["messaging", "voice"]
+			"capabilities": [
+				"messaging",
+				"voice"
+			]
 		}
 	},
 	"keywords": [],
