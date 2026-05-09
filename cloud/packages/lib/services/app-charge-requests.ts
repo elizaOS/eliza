@@ -25,11 +25,17 @@ interface ChargeRequestMetadata {
   amount_usd?: number;
   description?: string;
   providers?: AppChargeProvider[];
+  payment_url?: string;
   success_url?: string;
   cancel_url?: string;
   creator_user_id?: string;
   creator_organization_id?: string;
   created_by?: string;
+  paid_at?: string;
+  paid_provider?: AppChargeProvider;
+  paid_provider_payment_id?: string;
+  payer_user_id?: string;
+  payer_organization_id?: string;
 }
 
 export interface CreateAppChargeRequestParams {
@@ -51,7 +57,13 @@ export interface AppChargeRequest {
   amountUsd: number;
   description: string | null;
   providers: AppChargeProvider[];
+  paymentUrl: string;
   status: string;
+  paidAt: Date | null;
+  paidProvider?: AppChargeProvider;
+  providerPaymentId?: string;
+  payerUserId?: string;
+  payerOrganizationId?: string;
   expiresAt: Date;
   createdAt: Date;
   successUrl?: string;
@@ -61,6 +73,14 @@ export interface AppChargeRequest {
 
 function chargeMetadata(payment: CryptoPayment): ChargeRequestMetadata & Record<string, unknown> {
   return (payment.metadata ?? {}) as ChargeRequestMetadata & Record<string, unknown>;
+}
+
+function appChargePaymentPath(appId: string, chargeRequestId: string): string {
+  return `/payment/app-charge/${encodeURIComponent(appId)}/${encodeURIComponent(chargeRequestId)}`;
+}
+
+function chargePaymentUrl(appId: string, chargeRequestId: string): string {
+  return defaultRedirectUrl(appChargePaymentPath(appId, chargeRequestId));
 }
 
 function toChargeRequest(payment: CryptoPayment): AppChargeRequest | null {
@@ -81,7 +101,25 @@ function toChargeRequest(payment: CryptoPayment): AppChargeRequest | null {
     amountUsd: Number(payment.expected_amount),
     description: typeof metadata.description === "string" ? metadata.description : null,
     providers,
+    paymentUrl:
+      typeof metadata.payment_url === "string"
+        ? metadata.payment_url
+        : chargePaymentUrl(metadata.app_id, payment.id),
     status: payment.status,
+    paidAt: payment.confirmed_at ?? (metadata.paid_at ? new Date(metadata.paid_at) : null),
+    paidProvider:
+      metadata.paid_provider === "stripe" || metadata.paid_provider === "oxapay"
+        ? metadata.paid_provider
+        : undefined,
+    providerPaymentId:
+      typeof metadata.paid_provider_payment_id === "string"
+        ? metadata.paid_provider_payment_id
+        : undefined,
+    payerUserId: typeof metadata.payer_user_id === "string" ? metadata.payer_user_id : undefined,
+    payerOrganizationId:
+      typeof metadata.payer_organization_id === "string"
+        ? metadata.payer_organization_id
+        : undefined,
     expiresAt: payment.expires_at,
     createdAt: payment.created_at,
     successUrl: typeof metadata.success_url === "string" ? metadata.success_url : undefined,
@@ -103,6 +141,16 @@ function normalizeLifetime(seconds?: number): number {
   return Math.min(Math.max(Math.floor(seconds), 60), MAX_CHARGE_LIFETIME_SECONDS);
 }
 
+function assertChargePayable(request: AppChargeRequest): void {
+  if (request.status !== "requested") {
+    throw new Error("Charge request is not payable");
+  }
+
+  if (request.expiresAt.getTime() <= Date.now()) {
+    throw new Error("Charge request has expired");
+  }
+}
+
 function defaultRedirectUrl(path: string): string {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   return new URL(path, baseUrl).toString();
@@ -116,13 +164,19 @@ function allowedRedirectOrigins(app: App): string[] {
   ].filter((origin): origin is string => Boolean(origin));
 }
 
-function validateRedirects(params: { app: App; successUrl?: string; cancelUrl?: string }): {
+function validateRedirects(params: {
+  app: App;
+  successUrl?: string;
+  cancelUrl?: string;
+  defaultCancelUrl?: string;
+}): {
   successUrl: string;
   cancelUrl: string;
 } {
   const origins = allowedRedirectOrigins(params.app);
   const rawSuccessUrl = params.successUrl || defaultRedirectUrl("/payment/success");
-  const rawCancelUrl = params.cancelUrl || defaultRedirectUrl("/payment/cancel");
+  const rawCancelUrl =
+    params.cancelUrl || params.defaultCancelUrl || defaultRedirectUrl("/payment/cancel");
 
   return {
     successUrl: assertAllowedAbsoluteRedirectUrl(rawSuccessUrl, origins, "success_url").toString(),
@@ -142,18 +196,22 @@ export class AppChargeRequestsService {
     }
 
     const amount = normalizeAmount(params.amountUsd);
+    const chargeRequestId = randomUUID();
+    const paymentUrl = chargePaymentUrl(params.appId, chargeRequestId);
     const redirects = validateRedirects({
       app,
       successUrl: params.successUrl,
       cancelUrl: params.cancelUrl,
+      defaultCancelUrl: paymentUrl,
     });
     const providers = params.providers?.length ? params.providers : ["stripe", "oxapay"];
     const expiresAt = new Date(Date.now() + normalizeLifetime(params.lifetimeSeconds) * 1000);
 
     const payment = await cryptoPaymentsRepository.create({
+      id: chargeRequestId,
       organization_id: params.creatorOrganizationId,
       user_id: params.creatorUserId,
-      payment_address: `app_charge:${randomUUID()}`,
+      payment_address: `app_charge:${chargeRequestId}`,
       expected_amount: amount.toFixed(2),
       credits_to_add: amount.toFixed(2),
       network: "APP_CHARGE",
@@ -168,6 +226,7 @@ export class AppChargeRequestsService {
         amount_usd: amount.toNumber(),
         description: params.description,
         providers,
+        payment_url: paymentUrl,
         success_url: redirects.successUrl,
         cancel_url: redirects.cancelUrl,
         creator_user_id: params.creatorUserId,
@@ -240,9 +299,7 @@ export class AppChargeRequestsService {
       throw new Error("Charge request not found");
     }
 
-    if (request.status !== "requested") {
-      throw new Error("Charge request is not payable");
-    }
+    assertChargePayable(request);
 
     if (!request.providers.includes("stripe")) {
       throw new Error("Stripe is not enabled for this charge request");
@@ -252,6 +309,7 @@ export class AppChargeRequestsService {
       app,
       successUrl: params.successUrl ?? request.successUrl,
       cancelUrl: params.cancelUrl ?? request.cancelUrl,
+      defaultCancelUrl: request.paymentUrl,
     });
     const successUrl = new URL(redirects.successUrl);
     successUrl.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
@@ -323,9 +381,7 @@ export class AppChargeRequestsService {
       throw new Error("Charge request not found");
     }
 
-    if (request.status !== "requested") {
-      throw new Error("Charge request is not payable");
-    }
+    assertChargePayable(request);
 
     if (!request.providers.includes("oxapay")) {
       throw new Error("OxaPay is not enabled for this charge request");
@@ -335,6 +391,7 @@ export class AppChargeRequestsService {
       app,
       successUrl: params.returnUrl ?? request.successUrl,
       cancelUrl: request.cancelUrl,
+      defaultCancelUrl: request.paymentUrl,
     });
     const returnUrl = new URL(redirects.successUrl);
     returnUrl.searchParams.set("charge_request_id", request.id);
