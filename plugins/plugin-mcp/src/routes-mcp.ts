@@ -1,12 +1,11 @@
 import type http from "node:http";
 import { logger } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
+import type { ElizaConfig, ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   getMcpServerDetails,
   searchMcpMarketplace,
-} from "../services/mcp-marketplace.js";
-import { parseClampedInteger } from "../utils/number-parsing.js";
+} from "@elizaos/agent/services/mcp-marketplace";
+import { parseClampedInteger } from "@elizaos/agent/utils/number-parsing";
 
 // ---------------------------------------------------------------------------
 // Types
