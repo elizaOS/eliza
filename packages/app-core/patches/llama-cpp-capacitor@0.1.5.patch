@@ -112,7 +112,7 @@ index 0000000..0000001 100644
          
          // Chat and completion
          CAPPluginMethod(name: "getFormattedChat", returnType: CAPPluginReturnPromise),
-@@ -76,6 +80,74 @@ public class LlamaCppPlugin: CAPPlugin, CAPBridgedPlugin {
+@@ -76,7 +80,75 @@ public class LlamaCppPlugin: CAPPlugin, CAPBridgedPlugin {
      
      private let implementation = LlamaCpp()
  
