@@ -13,9 +13,34 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import * as api from "../helpers/api-client";
 import { createTestAgent, deleteTestAgent } from "../helpers/app-lifecycle";
+import { readJson } from "../helpers/json-body";
 import { NONEXISTENT_UUID } from "../helpers/test-data";
 
 setDefaultTimeout(30_000);
+
+type PublishedAgent = {
+  isPublic: boolean;
+  monetizationEnabled?: boolean;
+  markupPercentage?: number;
+  a2aEnabled?: boolean;
+  mcpEnabled?: boolean;
+  a2aEndpoint?: string;
+  mcpEndpoint?: string;
+};
+
+type PublishAgentResponse = {
+  success?: boolean;
+  agent: PublishedAgent;
+};
+
+type AgentMonetizationResponse = {
+  success?: boolean;
+  monetization: {
+    enabled: boolean;
+    markupPercentage: number;
+    isPublic: boolean;
+  };
+};
 
 describe("Agent Publishing", () => {
   let agentId: string;
@@ -60,7 +85,7 @@ describe("Agent Publishing", () => {
     );
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<PublishAgentResponse>(response);
     expect(body.success).toBe(true);
     expect(body.agent).toBeDefined();
     expect(body.agent.isPublic).toBe(true);
@@ -95,7 +120,7 @@ describe("Agent Publishing", () => {
     });
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<AgentMonetizationResponse>(response);
     expect(body.success).toBe(true);
     expect(body.monetization).toBeDefined();
     expect(typeof body.monetization.enabled).toBe("boolean");
@@ -119,7 +144,7 @@ describe("Agent Publishing", () => {
     );
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<AgentMonetizationResponse>(response);
     expect(body.success).toBe(true);
     expect(body.monetization.markupPercentage).toBe(100);
   });
@@ -133,7 +158,7 @@ describe("Agent Publishing", () => {
     });
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<PublishAgentResponse>(response);
     expect(body.success).toBe(true);
     expect(body.agent.isPublic).toBe(false);
   });
@@ -147,7 +172,7 @@ describe("Agent Publishing", () => {
     });
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<AgentMonetizationResponse>(response);
     expect(body.monetization.enabled).toBe(false);
     expect(body.monetization.isPublic).toBe(false);
   });
@@ -163,7 +188,7 @@ describe("Agent Publishing", () => {
     );
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<PublishAgentResponse>(response);
     expect(body.agent.isPublic).toBe(true);
     // Monetization should be off since we set enableMonetization: false
     expect(body.agent.monetizationEnabled).toBe(false);

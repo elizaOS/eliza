@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { readJson } from "../helpers/json-body";
+
+type AffiliateCodeResponse = {
+  code?: {
+    code?: string;
+  };
+};
 
 /**
  * Affiliates, Referrals, Analytics & Tracking API E2E Tests
@@ -45,9 +52,12 @@ describe("Affiliates API", () => {
       authenticated: true,
     });
     expect(getRes.status).toBe(200);
-    const getBody = (await getRes.json()) as any;
+    const getBody = await readJson<AffiliateCodeResponse>(getRes);
     const affiliateCode = getBody.code?.code;
     expect(affiliateCode).toBeTruthy();
+    if (!affiliateCode) {
+      throw new Error("Expected affiliate code response to include code.code");
+    }
 
     // 2. Initial redeemable-balance check
     const initialBalanceRes = await api.get("/api/v1/redemptions/balance", {

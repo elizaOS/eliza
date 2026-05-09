@@ -6,6 +6,7 @@ import {
   type CatalogLike,
   coerceClarifications,
   pruneResolvedClarifications,
+  type WorkflowClarificationResolution,
 } from '../lib/workflow-clarification';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
 import type {
@@ -63,11 +64,11 @@ function resolveAgentId(ctx: WorkflowRouteContext): string {
   if (ctx.agentId?.trim()) {
     return ctx.agentId.trim();
   }
-  const runtime = ctx.runtime as unknown as {
-    agentId?: string;
-    character?: { id?: string };
-  } | null;
-  return runtime?.agentId ?? runtime?.character?.id ?? '00000000-0000-0000-0000-000000000000';
+  return (
+    ctx.runtime?.agentId ??
+    ctx.runtime?.character?.id ??
+    '00000000-0000-0000-0000-000000000000'
+  );
 }
 
 function getWorkflowService(ctx: WorkflowRouteContext): WorkflowService | null {
@@ -83,6 +84,13 @@ function getConnectorTargetCatalog(ctx: WorkflowRouteContext): CatalogLike | nul
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function asClarificationResolution(value: unknown): WorkflowClarificationResolution | null {
+  if (!isRecord(value) || typeof value.paramPath !== 'string' || typeof value.value !== 'string') {
+    return null;
+  }
+  return { paramPath: value.paramPath, value: value.value };
 }
 
 async function readJsonBody(
@@ -130,7 +138,7 @@ function asWorkflow(value: unknown): WorkflowDefinition | null {
   ) {
     return null;
   }
-  return value as unknown as WorkflowDefinition;
+  return value as WorkflowDefinition;
 }
 
 async function readWorkflowPayload(
@@ -197,10 +205,7 @@ async function buildTriggerContextFromConversation(
   runtime: AgentRuntime | null,
   conversationId: string
 ): Promise<TriggerContext | undefined> {
-  const anyRuntime = runtime as unknown as {
-    getRoom?: (id: string) => Promise<{ metadata?: unknown } | null>;
-  } | null;
-  const room = await anyRuntime?.getRoom?.(conversationId);
+  const room = await runtime?.getRoom?.(conversationId);
   const metadata = isRecord(room?.metadata) ? room.metadata : null;
   const inbound = isRecord(metadata?.inbound) ? metadata.inbound : null;
   if (!inbound) {
@@ -299,11 +304,21 @@ async function handleResolveClarification(
     return;
   }
 
-  const draft = body.draft as unknown as WorkflowDefinition;
-  const result = applyResolutions(
-    draft as unknown as Record<string, unknown>,
-    body.resolutions as Array<{ paramPath: string; value: string }>
+  const draftRecord = body.draft;
+  const draft = asWorkflow(draftRecord);
+  if (!draft) {
+    sendJson(ctx, 400, { error: 'valid draft workflow required' });
+    return;
+  }
+  const resolutions = body.resolutions.map(asClarificationResolution);
+  const validResolutions = resolutions.filter(
+    (resolution): resolution is WorkflowClarificationResolution => resolution !== null
   );
+  if (validResolutions.length !== body.resolutions.length) {
+    sendJson(ctx, 400, { error: 'resolution missing paramPath or string value' });
+    return;
+  }
+  const result = applyResolutions(draftRecord, validResolutions);
   if (!result.ok) {
     sendJson(ctx, 400, { error: result.error, paramPath: result.paramPath });
     return;
@@ -317,11 +332,7 @@ async function handleResolveClarification(
   const freeFormCount = body.resolutions.filter(
     (resolution) => !isRecord(resolution) || typeof resolution.paramPath !== 'string'
   ).length;
-  pruneResolvedClarifications(
-    draft as unknown as Record<string, unknown>,
-    resolvedPaths,
-    freeFormCount
-  );
+  pruneResolvedClarifications(draftRecord, resolvedPaths, freeFormCount);
 
   if (typeof body.name === 'string' && body.name.trim()) {
     draft.name = body.name.trim();

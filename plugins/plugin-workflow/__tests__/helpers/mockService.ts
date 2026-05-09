@@ -5,7 +5,7 @@ import { createExecution, createWorkflowResponse } from '../fixtures/workflows';
 export function createMockService(
   overrides?: Partial<Record<keyof WorkflowService, unknown>>
 ): WorkflowService {
-  return {
+  const service = {
     serviceType: 'workflow',
     generateWorkflowDraft: mock(() =>
       Promise.resolve({
@@ -125,5 +125,7 @@ export function createMockService(
       })
     ),
     ...overrides,
-  } as unknown as WorkflowService;
+  };
+
+  return service as WorkflowService;
 }

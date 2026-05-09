@@ -13,8 +13,30 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import * as api from "../helpers/api-client";
 import { createTestApp, deleteTestApp, enableMonetization } from "../helpers/app-lifecycle";
+import { readJson } from "../helpers/json-body";
 
 setDefaultTimeout(30_000);
+
+type CreditBalanceResponse = {
+  balance: number;
+};
+
+type CheckoutResponse = {
+  url: string;
+  sessionId: string;
+};
+
+type AppCreditBalanceResponse = {
+  success: boolean;
+  balance: number;
+  totalPurchased: number;
+  totalSpent: number;
+  isLow: boolean;
+};
+
+type AppCreditCheckoutResponse = CheckoutResponse & {
+  success: boolean;
+};
 
 // ── Organization Credits ────────────────────────────────────────────
 describe("Organization Credits", () => {
@@ -24,7 +46,7 @@ describe("Organization Credits", () => {
     });
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<CreditBalanceResponse>(response);
     expect(typeof body.balance).toBe("number");
     expect(body.balance).toBeGreaterThanOrEqual(0);
   });
@@ -35,7 +57,7 @@ describe("Organization Credits", () => {
     });
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<CreditBalanceResponse>(response);
     expect(typeof body.balance).toBe("number");
   });
 
@@ -51,7 +73,7 @@ describe("Organization Credits", () => {
     );
 
     if (response.status === 200) {
-      const body = (await response.json()) as any;
+      const body = await readJson<CheckoutResponse>(response);
       expect(typeof body.url).toBe("string");
       expect(typeof body.sessionId).toBe("string");
       // Stripe checkout URLs start with https://checkout.stripe.com
@@ -108,7 +130,7 @@ describe("App Credits", () => {
     });
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<AppCreditBalanceResponse>(response);
     expect(body.success).toBe(true);
     expect(typeof body.balance).toBe("number");
     expect(typeof body.totalPurchased).toBe("number");
@@ -125,7 +147,7 @@ describe("App Credits", () => {
     });
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<Pick<AppCreditBalanceResponse, "success">>(response);
     expect(body.success).toBe(true);
   });
 
@@ -143,7 +165,7 @@ describe("App Credits", () => {
 
     // May succeed with Stripe or fail if Stripe not configured
     if (response.status === 200) {
-      const body = (await response.json()) as any;
+      const body = await readJson<AppCreditCheckoutResponse>(response);
       expect(body.success).toBe(true);
       expect(typeof body.url).toBe("string");
       expect(typeof body.sessionId).toBe("string");

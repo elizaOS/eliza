@@ -64,7 +64,7 @@ export default defineConfig(({ mode }) => {
       defineMap[`process.env.${key}`] = JSON.stringify(value);
     }
   }
-  // Catch-all: any unmatched `process.env.X` access resolves to `undefined`
+  // Catch-all for unmatched `process.env.X` access resolves to `undefined`
   // via `({}).X` rather than throwing a ReferenceError at runtime. The
   // specific keys above must be declared *before* this entry so Vite's
   // textual replacement matches them first.
@@ -145,7 +145,7 @@ export default defineConfig(({ mode }) => {
         { find: /^inherits$/, replacement: r("./src/shims/inherits.cjs") },
         // Real Buffer polyfill — Solana wallet adapters, viem, ethers, base64
         // helpers all depend on Buffer. Stubbing it throws at runtime as soon
-        // as any browser-reachable code path constructs a Buffer.
+        // if a browser-reachable code path constructs a Buffer.
         { find: /^(node:)?buffer$/, replacement: "buffer" },
         // Real process shim — many libs read `process.env.NODE_ENV`,
         // `process.browser`, or call `process.nextTick(...)`. The empty stub

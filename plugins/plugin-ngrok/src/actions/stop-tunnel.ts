@@ -8,7 +8,7 @@ import {
   type Memory,
   type State,
 } from '@elizaos/core';
-import type { ITunnelService } from '@elizaos/plugin-tunnel';
+import { getTunnelService } from '@elizaos/plugin-tunnel';
 
 export const stopTunnelAction: Action = {
   name: 'STOP_TUNNEL',
@@ -16,17 +16,16 @@ export const stopTunnelAction: Action = {
   description:
     'Stop the running ngrok tunnel and clean up resources. Can be chained with START_TUNNEL actions for tunnel rotation workflows or combined with deployment actions for automated service management.',
   validate: async (runtime: IAgentRuntime, _message: Memory) => {
-    const tunnelService = runtime.getService<ITunnelService>('tunnel');
-    return !!tunnelService;
+    return !!getTunnelService(runtime);
   },
   handler: async (
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
-    _options?: any,
+    _options?: unknown,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const tunnelService = runtime.getService<ITunnelService>('tunnel');
+    const tunnelService = getTunnelService(runtime);
     if (!tunnelService) {
       elizaLogger.error('Tunnel service is not available');
       if (callback) {
@@ -35,6 +34,7 @@ export const stopTunnelAction: Action = {
         });
       }
       return {
+        success: false,
         text: 'Tunnel service is not available. Please ensure the ngrok plugin is properly configured.',
         values: { success: false, error: 'service_unavailable' },
         data: { action: 'STOP_TUNNEL' },
@@ -52,6 +52,7 @@ export const stopTunnelAction: Action = {
         });
       }
       return {
+        success: true,
         text: 'No tunnel is currently running.',
         values: { success: true, wasActive: false },
         data: { action: 'STOP_TUNNEL', status: 'already_stopped' },
@@ -81,6 +82,7 @@ export const stopTunnelAction: Action = {
       }
 
       return {
+        success: true,
         text: responseText,
         values: {
           success: true,
@@ -97,29 +99,32 @@ export const stopTunnelAction: Action = {
           },
         },
       };
-    } catch (error: any) {
-      elizaLogger.error('Failed to stop tunnel:', error);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? (error.stack ?? null) : null;
+      elizaLogger.error(`Failed to stop tunnel: ${message}`);
 
       if (callback) {
         await callback({
-          text: `❌ Failed to stop ngrok tunnel: ${error.message}`,
+          text: `❌ Failed to stop ngrok tunnel: ${message}`,
           metadata: {
-            error: error.message,
+            error: message,
             action: 'tunnel_stop_failed',
           },
         });
       }
 
       return {
-        text: `❌ Failed to stop ngrok tunnel: ${error.message}`,
+        success: false,
+        text: `❌ Failed to stop ngrok tunnel: ${message}`,
         values: {
           success: false,
-          error: error.message,
+          error: message,
         },
         data: {
           action: 'STOP_TUNNEL',
           errorType: 'tunnel_stop_failed',
-          errorDetails: error.stack,
+          errorDetails: stack,
         },
       };
     }

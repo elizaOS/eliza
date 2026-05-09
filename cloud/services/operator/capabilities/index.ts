@@ -29,6 +29,10 @@ When(Server)
 
 const lastPhase = new Map<string, string>();
 
+function hasStatus(error: unknown, status: number): boolean {
+  return typeof error === "object" && error !== null && "status" in error && error.status === status;
+}
+
 When(a.Deployment)
   .IsUpdated()
   .InNamespace("eliza-agents")
@@ -76,8 +80,8 @@ When(a.Deployment)
       if (server.metadata?.deletionTimestamp) return;
       Log.info(`Deployment ${serverName} deleted externally, re-reconciling`);
       await applyResources(server);
-    } catch (err: any) {
-      if (err?.status === 404) return; // CR deleted, nothing to re-reconcile
+    } catch (err: unknown) {
+      if (hasStatus(err, 404)) return; // CR deleted, nothing to re-reconcile
       Log.error(err, `Failed to re-reconcile Server ${serverName}`);
     }
   });
@@ -97,8 +101,8 @@ When(a.Service)
       if (server.metadata?.deletionTimestamp) return;
       Log.info(`Service ${serverName} deleted externally, re-reconciling`);
       await applyResources(server);
-    } catch (err: any) {
-      if (err?.status === 404) return; // CR deleted, nothing to re-reconcile
+    } catch (err: unknown) {
+      if (hasStatus(err, 404)) return; // CR deleted, nothing to re-reconcile
       Log.error(err, `Failed to re-reconcile Server ${serverName}`);
     }
   });

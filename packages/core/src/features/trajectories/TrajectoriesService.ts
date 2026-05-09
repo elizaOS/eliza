@@ -236,12 +236,8 @@ export class TrajectoriesService extends Service {
 		const first = runtime.getService(
 			TrajectoriesService.serviceType,
 		) as Service | null;
-		if (
-			first &&
-			typeof (first as unknown as Record<string, unknown>).startTrajectory ===
-				"function"
-		) {
-			return first as unknown as TrajectoriesService;
+		if (first instanceof TrajectoriesService) {
+			return first;
 		}
 
 		// Slow path — the core stub won, scan all services for the real one.
@@ -250,11 +246,8 @@ export class TrajectoriesService extends Service {
 				? runtime.getServicesByType(TrajectoriesService.serviceType)
 				: [];
 		for (const svc of all) {
-			if (
-				typeof (svc as unknown as Record<string, unknown>).startTrajectory ===
-				"function"
-			) {
-				return svc as unknown as TrajectoriesService;
+			if (svc instanceof TrajectoriesService) {
+				return svc;
 			}
 		}
 		return null;
@@ -301,6 +294,7 @@ export class TrajectoriesService extends Service {
 			isEnabled: TrajectoriesService["isEnabled"];
 			listTrajectories: TrajectoriesService["listTrajectories"];
 			getTrajectoryDetail: TrajectoriesService["getTrajectoryDetail"];
+			flushWriteQueue: TrajectoriesService["flushWriteQueue"];
 		};
 
 		service.startTrajectory = this.startTrajectory.bind(this);
@@ -315,8 +309,7 @@ export class TrajectoriesService extends Service {
 		service.isEnabled = this.isEnabled.bind(this);
 		service.listTrajectories = this.listTrajectories.bind(this);
 		service.getTrajectoryDetail = this.getTrajectoryDetail.bind(this);
-		(service as unknown as Record<string, unknown>).flushWriteQueue =
-			this.flushWriteQueue.bind(this);
+		service.flushWriteQueue = this.flushWriteQueue.bind(this);
 	}
 
 	static async start(runtime: IAgentRuntime): Promise<Service> {

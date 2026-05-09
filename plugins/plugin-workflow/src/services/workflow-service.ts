@@ -85,6 +85,15 @@ type WorkflowDefinitionClient = Pick<
   supportsWorkflow?(workflow: WorkflowDefinition): { supported: boolean; missing: string[] };
 };
 
+function isWorkflowCredentialStoreApi(service: unknown): service is WorkflowCredentialStoreApi {
+  return (
+    service !== null &&
+    typeof service === 'object' &&
+    typeof (service as { get?: unknown }).get === 'function' &&
+    typeof (service as { set?: unknown }).set === 'function'
+  );
+}
+
 /**
  * Workflow Service - Orchestrates the RAG pipeline for workflow generation.
  *
@@ -666,9 +675,8 @@ export class WorkflowService extends Service {
     const deployTarget = this.resolveDeployTarget(workflow);
     const { config, client } = deployTarget;
 
-    const credStore = this.runtime.getService(WORKFLOW_CREDENTIAL_STORE_TYPE) as unknown as
-      | WorkflowCredentialStoreApi
-      | undefined;
+    const rawCredStore = this.runtime.getService(WORKFLOW_CREDENTIAL_STORE_TYPE);
+    const credStore = isWorkflowCredentialStoreApi(rawCredStore) ? rawCredStore : null;
 
     const rawProvider = this.runtime.getService(WORKFLOW_CREDENTIAL_PROVIDER_TYPE);
     const credProvider = isCredentialProvider(rawProvider) ? rawProvider : null;
@@ -710,8 +718,8 @@ export class WorkflowService extends Service {
           { src: 'plugin:workflow:service:main' },
           `Update failed for workflow ${workflow.id}, creating new workflow instead`
         );
-        const { id: _, ...rest } = credentialResult.workflow as unknown as Record<string, unknown>;
-        deployedWorkflow = await client.createWorkflow(rest as unknown as WorkflowDefinition);
+        const { id: _, ...rest } = credentialResult.workflow;
+        deployedWorkflow = await client.createWorkflow(rest);
       }
     } else {
       deployedWorkflow = await client.createWorkflow(credentialResult.workflow);

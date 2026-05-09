@@ -74,8 +74,7 @@ describe('extractKeywords', () => {
 
     await extractKeywords(runtime, 'Send my emails');
 
-    const promptArg = (useModel as unknown as { mock: { calls: unknown[][] } }).mock
-      .calls[0][1] as { prompt: string };
+    const promptArg = useModel.mock.calls[0][1] as { prompt: string };
     expect(promptArg.prompt).not.toContain('Host-supported providers');
   });
 
@@ -85,8 +84,7 @@ describe('extractKeywords', () => {
 
     await extractKeywords(runtime, 'Summarize my emails to my chat', ['gmail', 'discord']);
 
-    const promptArg = (useModel as unknown as { mock: { calls: unknown[][] } }).mock
-      .calls[0][1] as { prompt: string };
+    const promptArg = useModel.mock.calls[0][1] as { prompt: string };
     expect(promptArg.prompt).toContain('Host-supported providers: gmail, discord');
     expect(promptArg.prompt).toContain('emit the specific provider keyword');
   });
@@ -97,8 +95,7 @@ describe('extractKeywords', () => {
 
     await extractKeywords(runtime, 'Send my emails', []);
 
-    const promptArg = (useModel as unknown as { mock: { calls: unknown[][] } }).mock
-      .calls[0][1] as { prompt: string };
+    const promptArg = useModel.mock.calls[0][1] as { prompt: string };
     expect(promptArg.prompt).not.toContain('Host-supported providers');
   });
 });

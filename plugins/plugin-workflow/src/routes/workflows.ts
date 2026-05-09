@@ -8,6 +8,32 @@ import {
 } from '../utils/workflow';
 import { getService } from './_helpers';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isWorkflowDefinition(value: unknown): value is WorkflowDefinition {
+  return (
+    isRecord(value) &&
+    typeof value.name === 'string' &&
+    Array.isArray(value.nodes) &&
+    isRecord(value.connections)
+  );
+}
+
+function readWorkflowBody(
+  body: RouteRequest['body']
+): { workflow: WorkflowDefinition; userId: string; activate?: boolean } | null {
+  if (!isRecord(body) || !isWorkflowDefinition(body.workflow) || typeof body.userId !== 'string') {
+    return null;
+  }
+  return {
+    workflow: body.workflow,
+    userId: body.userId,
+    activate: typeof body.activate === 'boolean' ? body.activate : undefined,
+  };
+}
+
 /**
  * GET /workflows
  */
@@ -40,16 +66,12 @@ async function createWorkflow(
   runtime: IAgentRuntime
 ): Promise<void> {
   try {
-    const { workflow, userId, activate } = req.body as unknown as {
-      workflow: WorkflowDefinition;
-      userId: string;
-      activate?: boolean;
-    };
-
-    if (!workflow || !userId) {
+    const payload = readWorkflowBody(req.body);
+    if (!payload) {
       res.status(400).json({ success: false, error: 'workflow and userId are required' });
       return;
     }
+    const { workflow, userId, activate } = payload;
 
     const validation = validateWorkflow(workflow);
     if (!validation.valid) {
@@ -143,15 +165,12 @@ async function updateWorkflow(
       return;
     }
 
-    const { workflow, userId } = req.body as unknown as {
-      workflow: WorkflowDefinition;
-      userId: string;
-    };
-
-    if (!workflow || !userId) {
+    const payload = readWorkflowBody(req.body);
+    if (!payload) {
       res.status(400).json({ success: false, error: 'workflow and userId are required' });
       return;
     }
+    const { workflow, userId } = payload;
 
     const validation = validateWorkflow(workflow);
     if (!validation.valid) {

@@ -1,8 +1,12 @@
-import type { IAgentRuntime, Memory, MessageExample, Provider, State } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  MessageExample,
+  MessageExampleGroup,
+  Provider,
+  State,
+} from "@elizaos/core";
 import { addHeader } from "@elizaos/core";
-
-/** Legacy grouped shape; `Character.messageExamples` is `MessageExample[][]`. */
-type MessageExampleGroup = { examples: MessageExample[] };
 
 function getExampleMessages(example: MessageExampleGroup | MessageExample[]): MessageExample[] {
   return Array.isArray(example) ? example : example.examples;
@@ -170,7 +174,7 @@ export const characterProvider: Provider = {
       const scoredExamples = character.messageExamples.map((example) => {
         const messages = getExampleMessages(example);
         const exampleText = messages
-          .map((msg: any) => msg.content?.text ?? "")
+          .map((msg) => msg.content?.text ?? "")
           .join(" ")
           .toLowerCase();
         const exampleWords = exampleText.split(/\s+/).filter((w) => w.length > 3);
@@ -195,7 +199,7 @@ export const characterProvider: Provider = {
       const formattedExamples = selectedExamples
         .map((exchange) => {
           return exchange
-            .map((msg: any) => {
+            .map((msg) => {
               // Skip messages without text content
               if (!msg.content?.text) {
                 return null;
@@ -207,7 +211,7 @@ export const characterProvider: Provider = {
               text = text.replace(/\{\{char\}\}/g, character.name ?? "");
               return text;
             })
-            .filter((text: any): text is string => text !== null)
+            .filter((text): text is string => text !== null)
             .join("\n");
         })
         .filter((exchange) => exchange.length > 0)

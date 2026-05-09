@@ -102,18 +102,14 @@ export function createValidWorkflow(overrides?: Partial<WorkflowDefinition>): Wo
 }
 
 export function createWorkflowWithoutPositions(): WorkflowDefinition {
+  const trigger = createTriggerNode();
+  const gmail = createGmailNode();
+  delete (trigger as Partial<typeof trigger>).position;
+  delete (gmail as Partial<typeof gmail>).position;
+
   return {
     name: 'No Positions Workflow',
-    nodes: [
-      {
-        ...createTriggerNode(),
-        position: undefined as unknown as [number, number],
-      },
-      {
-        ...createGmailNode(),
-        position: undefined as unknown as [number, number],
-      },
-    ],
+    nodes: [trigger, gmail],
     connections: {
       'Schedule Trigger': {
         main: [[{ node: 'Gmail', type: 'main', index: 0 }]],

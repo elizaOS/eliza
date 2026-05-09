@@ -58,6 +58,7 @@ import {
 import {
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,
+	SIMPLE_CONTEXT_ID,
 } from "../runtime/message-handler";
 import {
 	buildModelInputBudget,
@@ -2433,10 +2434,46 @@ function parseMessageHandlerModelOutput(
 	if (typeof raw !== "string") {
 		return (
 			parseMessageHandlerNativeToolCall(raw) ??
-			parseMessageHandlerOutput(getV5ModelText(raw))
+			parseMessageHandlerOutput(getV5ModelText(raw)) ??
+			synthesizeSimpleReplyFromPlainText(getV5ModelText(raw))
 		);
 	}
-	return parseMessageHandlerOutput(raw);
+	return (
+		parseMessageHandlerOutput(raw) ??
+		synthesizeSimpleReplyFromPlainText(raw)
+	);
+}
+
+/**
+ * Tolerant fallback: when the model returns plain text instead of the
+ * expected JSON / native tool-call format, wrap the text as a simple
+ * reply. This keeps the conversation alive on cold-start turns where
+ * weaker / smaller models occasionally skip the structured-output
+ * scaffold. Without this, the runtime threw `v5 messageHandler returned
+ * invalid MessageHandlerResult` and the user saw the failure-template.
+ *
+ * Returns null only when the text is genuinely empty — that's a real
+ * failure that should still propagate.
+ */
+function synthesizeSimpleReplyFromPlainText(
+	raw: string | undefined | null,
+): MessageHandlerResult | null {
+	if (typeof raw !== "string") return null;
+	const trimmed = raw.trim();
+	if (!trimmed) return null;
+	// Strip <think>...</think> blocks emitted by reasoning models.
+	const cleaned = trimmed.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+	const replyText = cleaned || trimmed;
+	return {
+		processMessage: "RESPOND",
+		thought:
+			"Tolerant fallback: model returned plain text instead of the structured plan; treating as simple reply.",
+		plan: {
+			contexts: [SIMPLE_CONTEXT_ID],
+			reply: replyText,
+			simple: true,
+		},
+	};
 }
 
 /**

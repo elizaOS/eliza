@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type {
   Action,
   AgentRuntime,
+  AgentContext,
   Evaluator,
   Plugin,
   PluginModelRegistration,
@@ -30,9 +31,11 @@ type ElizaPluginOwnership = {
   registeredAt: number;
 };
 
+type RuntimeEventHandler = NonNullable<AgentRuntime["events"][string]>[number];
+
 type ElizaPluginEventRegistration = {
   eventName: string;
-  handler: (params: unknown) => Promise<void>;
+  handler: RuntimeEventHandler;
 };
 
 type ElizaPluginModelRegistration = {
@@ -47,7 +50,7 @@ type ElizaPluginServiceRegistration = {
 };
 
 type ContextScoped = {
-  contexts?: string[];
+  contexts?: AgentContext[];
 };
 
 type RuntimeAction = NonNullable<Plugin["actions"]>[number] & ContextScoped;
@@ -55,7 +58,6 @@ type RuntimeProvider = NonNullable<Plugin["providers"]>[number] & ContextScoped;
 type RuntimeEvaluator = NonNullable<Plugin["evaluators"]>[number];
 type RuntimeRoute = NonNullable<Plugin["routes"]>[number];
 type RuntimeServiceClass = NonNullable<Plugin["services"]>[number];
-type RuntimeEventHandler = ElizaPluginEventRegistration["handler"];
 type RuntimeEventRegistration = ElizaPluginEventRegistration;
 type RuntimeModelRegistration = ElizaPluginModelRegistration;
 type RuntimeServiceRegistration = ElizaPluginServiceRegistration;
@@ -147,7 +149,7 @@ const pluginServiceStartContext =
 const serviceClassOwners = new WeakMap<RuntimeServiceClass, string>();
 
 function getRuntimePrivateState(runtime: AgentRuntime): RuntimePrivateState {
-  return runtime as unknown as RuntimePrivateState;
+  return runtime as AgentRuntime & RuntimePrivateState;
 }
 
 function getPluginOwnershipStore(
@@ -214,7 +216,7 @@ function applyEffectiveActionContexts(
     ...inherited,
     contexts: [
       ...resolveActionContexts(
-        inherited as unknown as Parameters<typeof resolveActionContexts>[0],
+        inherited,
       ),
     ],
   };
@@ -233,7 +235,7 @@ function applyEffectiveProviderContexts(
     ...inherited,
     contexts: [
       ...resolveProviderContexts(
-        inherited as unknown as Parameters<typeof resolveProviderContexts>[0],
+        inherited,
       ),
     ],
   };
@@ -445,7 +447,7 @@ function removeOwnedEvents(
     if (!currentHandlers || currentHandlers.length === 0) continue;
     const ownedSet = new Set(ownedHandlers);
     const remainingHandlers = currentHandlers.filter(
-      (handler) => !ownedSet.has(handler as unknown as RuntimeEventHandler),
+      (handler) => !ownedSet.has(handler),
     );
     if (remainingHandlers.length > 0) {
       runtime.events[eventName] = remainingHandlers;
@@ -744,7 +746,7 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
     for (const registeredHandler of nextHandlers.slice(handlersBefore)) {
       pushUniqueEvent(capture.ownership.events, {
         eventName: event,
-        handler: registeredHandler as unknown as RuntimeEventHandler,
+        handler: registeredHandler,
       });
     }
   }) as typeof runtime.registerEvent;

@@ -105,9 +105,11 @@ function patchAiSdk(webSearchTool: unknown): void {
     for (const key of Object.getOwnPropertyNames(original)) {
       if (key !== "length" && key !== "name" && key !== "prototype") {
         try {
-          (wrapped as unknown as Record<string, unknown>)[key] = (
-            original as unknown as Record<string, unknown>
-          )[key];
+          const wrappedWithStatics = wrapped as typeof wrapped &
+            Record<string, unknown>;
+          const originalWithStatics = original as typeof original &
+            Record<string, unknown>;
+          wrappedWithStatics[key] = originalWithStatics[key];
         } catch {
           /* read-only */
         }
