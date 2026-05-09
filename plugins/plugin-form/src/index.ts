@@ -11,17 +11,7 @@ import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { formRestoreAction } from "./actions/restore";
 import { formEvaluator } from "./evaluators/extractor";
 
-// ============================================================================
-// TYPE EXPORTS
-// ============================================================================
-
-// Types - all interfaces and type definitions
 export * from "./types";
-
-// ============================================================================
-// BUILT-IN TYPES EXPORTS
-// Pre-registered control types (text, number, email, etc.)
-// ============================================================================
 
 export {
   BUILTIN_TYPE_MAP,
@@ -30,11 +20,6 @@ export {
   isBuiltinType,
   registerBuiltinTypes,
 } from "./builtins";
-
-// ============================================================================
-// VALIDATION EXPORTS
-// Field validation, type coercion, and custom type registration
-// ============================================================================
 
 export {
   clearTypeHandlers,
@@ -45,23 +30,6 @@ export {
   registerTypeHandler,
   validateField,
 } from "./validation";
-
-// ============================================================================
-// INTENT DETECTION EXPORTS
-// Two-tier intent detection (fast path + LLM fallback)
-// ============================================================================
-
-export {
-  hasDataToExtract,
-  isLifecycleIntent,
-  isUXIntent,
-  quickIntentDetect,
-} from "./intent";
-
-// ============================================================================
-// STORAGE EXPORTS
-// Component-based persistence for sessions, submissions, autofill
-// ============================================================================
 
 export {
   deleteSession,
@@ -75,21 +43,14 @@ export {
   saveSubmission,
 } from "./storage";
 
-// ============================================================================
-// EXTRACTION EXPORTS
-// LLM-based field extraction from natural language
-// ============================================================================
-
 export {
+  buildFormExtractorPromptSection,
+  buildFormExtractorSchema,
+  coerceExtractionsAgainstControls,
   detectCorrection,
   extractSingleField,
-  llmIntentAndExtract,
+  parseFormExtractorOutput,
 } from "./extraction";
-
-// ============================================================================
-// TTL & EFFORT EXPORTS
-// Smart retention based on user effort
-// ============================================================================
 
 export {
   calculateTTL,
@@ -101,44 +62,15 @@ export {
   shouldNudge,
 } from "./ttl";
 
-// ============================================================================
-// DEFAULTS EXPORTS
-// Sensible default value application
-// ============================================================================
-
 export { applyControlDefaults, applyFormDefaults, prettify } from "./defaults";
-
-// ============================================================================
-// BUILDER API EXPORTS
-// Fluent API for defining forms and controls
-// ============================================================================
 
 export { C, ControlBuilder, Form, FormBuilder } from "./builder";
 
-// ============================================================================
-// SERVICE EXPORT
-// Central form management service
-// ============================================================================
-
 export { FormService } from "./service";
 
-// ============================================================================
-// COMPONENT EXPORTS
-// Provider, Action, Tasks
-// ============================================================================
-
-// Action - fast-path restore for stashed forms
 export { formRestoreAction } from "./actions/restore";
-
-// Post-message hook - extracts fields and handles intents
-// (Action with mode: ActionMode.ALWAYS_AFTER)
 export { formEvaluator } from "./evaluators/extractor";
-// Provider - injects form context into agent state
 export { formContextProvider } from "./providers/context";
-
-// ============================================================================
-// PLUGIN DEFINITION
-// ============================================================================
 
 /**
  * Form Plugin
@@ -150,11 +82,12 @@ export const formPlugin = {
   description: "Agent-native conversational forms for data collection",
   descriptionCompressed: "Conversational forms for structured data collection.",
 
-  // Self-declared auto-enable: activate when features.form is enabled.
   autoEnable: {
-    shouldEnable: (_env: Record<string, string | undefined>, config: Record<string, unknown>) => {
-      const f = (config?.features as Record<string, unknown> | undefined)
-        ?.form;
+    shouldEnable: (
+      _env: Record<string, string | undefined>,
+      config: Record<string, unknown>,
+    ) => {
+      const f = (config?.features as Record<string, unknown> | undefined)?.form;
       return (
         f === true ||
         (typeof f === "object" &&
@@ -164,7 +97,6 @@ export const formPlugin = {
     },
   },
 
-  // Service for form management
   services: [
     {
       serviceType: "FORM",
@@ -175,7 +107,6 @@ export const formPlugin = {
     } as ServiceClass,
   ],
 
-  // Provider for form context
   providers: [
     {
       name: "FORM_CONTEXT",
@@ -188,9 +119,8 @@ export const formPlugin = {
     },
   ],
 
-  // Action for restoring stashed forms before normal reply generation,
-  // plus the form-extraction post-message hook (mode: ALWAYS_AFTER).
-  actions: [formRestoreAction, formEvaluator],
+  actions: [formRestoreAction],
+  evaluators: [formEvaluator],
 } as Plugin & { descriptionCompressed?: string };
 
 export default formPlugin;
