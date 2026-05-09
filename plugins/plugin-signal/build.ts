@@ -11,15 +11,15 @@ await build({
   external: ["@elizaos/core", "zod"],
 });
 
-const dts = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.dts.json"], {
+const proc = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.json"], {
   cwd: import.meta.dir,
   stdout: "inherit",
   stderr: "inherit",
 });
 
-const dtsExit = await dts.exited;
-if (dtsExit !== 0) {
-  process.exit(dtsExit);
+const code = await proc.exited;
+if (code !== 0) {
+  process.exit(code);
 }
 
 console.log("Build complete!");

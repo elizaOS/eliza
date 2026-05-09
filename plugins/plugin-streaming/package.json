@@ -42,9 +42,9 @@
     "lint": "eslint ./src --fix && prettier --write ./src",
     "lint:check": "eslint ./src",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist .turbo node_modules tsconfig.tsbuildinfo",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "publishConfig": {
     "access": "public"

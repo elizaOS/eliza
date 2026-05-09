@@ -35,7 +35,8 @@ function makeRuntimeWithService(
     },
   };
   const runtime = {
-    getService: (type: string): unknown => (type === "workflow" ? service : null),
+    getService: (type: string): unknown =>
+      type === "workflow" ? service : null,
   } as unknown as IAgentRuntime;
   return { runtime, calls };
 }

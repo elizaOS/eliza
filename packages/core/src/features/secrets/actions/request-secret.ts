@@ -11,7 +11,7 @@ import {
 	ModelType,
 	type State,
 } from "../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 import {
 	SECRETS_SERVICE_TYPE,
 	type SecretsService,
@@ -66,7 +66,7 @@ export const requestSecretAction: Action = {
 			typeof params.key === "string" && params.key.trim().length > 0;
 		return (
 			hasStructuredKey ||
-			hasActionContextOrKeyword(message, _state, {
+			hasActionContext(message, _state, {
 				contexts: ["secrets", "settings", "connectors"],
 			})
 		);

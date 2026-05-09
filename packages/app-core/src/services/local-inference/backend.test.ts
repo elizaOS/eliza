@@ -255,3 +255,83 @@ describe("BackendDispatcher", () => {
     );
   });
 });
+
+describe("decideBackend kernel-availability probe", () => {
+  it("returns no unsatisfiedKernels when no probe is provided (older binaries)", () => {
+    const catalog = withRuntime(BASE_CATALOG, {
+      optimizations: { requiresKernel: ["dflash"] },
+    });
+    const decision = decideBackend({
+      override: "auto",
+      catalog,
+      llamaServerAvailable: true,
+      dflashRequired: false,
+    });
+    expect(decision.unsatisfiedKernels).toBeUndefined();
+  });
+
+  it("returns empty unsatisfiedKernels when binary advertises required kernels", () => {
+    const catalog = withRuntime(BASE_CATALOG, {
+      optimizations: { requiresKernel: ["dflash", "turbo3"] },
+    });
+    const decision = decideBackend({
+      override: "auto",
+      catalog,
+      llamaServerAvailable: true,
+      dflashRequired: false,
+      binaryKernels: { dflash: true, turbo3: true, turbo4: false },
+    });
+    expect(decision.unsatisfiedKernels).toEqual([]);
+  });
+
+  it("flags missing kernels when binary lacks them", () => {
+    const catalog = withRuntime(BASE_CATALOG, {
+      optimizations: { requiresKernel: ["dflash", "turbo3_tcq"] },
+    });
+    const decision = decideBackend({
+      override: "auto",
+      catalog,
+      llamaServerAvailable: true,
+      dflashRequired: false,
+      binaryKernels: { dflash: true, turbo3_tcq: false },
+    });
+    expect(decision.unsatisfiedKernels).toEqual(["turbo3_tcq"]);
+  });
+
+  it("rejects load when required kernels are unsatisfied", async () => {
+    const node = new FakeBackend("node-llama-cpp");
+    const server = new FakeBackend("llama-server");
+    const d = new BackendDispatcher(
+      node,
+      server,
+      () => true,
+      () => false,
+      () => ({ dflash: true, turbo3_tcq: false }),
+    );
+    const catalog = withRuntime(BASE_CATALOG, {
+      optimizations: { requiresKernel: ["turbo3_tcq"] },
+    });
+    await expect(
+      d.load({ modelPath: "/m.gguf", catalog }),
+    ).rejects.toThrow(/turbo3_tcq.*does not advertise/);
+    expect(server.loaded).toBe(false);
+    expect(node.loaded).toBe(false);
+  });
+
+  it("loads cleanly when probed kernels match the requirement", async () => {
+    const node = new FakeBackend("node-llama-cpp");
+    const server = new FakeBackend("llama-server");
+    const d = new BackendDispatcher(
+      node,
+      server,
+      () => true,
+      () => false,
+      () => ({ dflash: true, turbo3: true }),
+    );
+    const catalog = withRuntime(BASE_CATALOG, {
+      optimizations: { requiresKernel: ["dflash"] },
+    });
+    await d.load({ modelPath: "/m.gguf", catalog });
+    expect(d.activeBackendId()).toBe("llama-server");
+  });
+});

@@ -11,6 +11,8 @@
     "declaration": false,
     "noEmit": true,
     "paths": {
+      "drizzle-orm": ["../../node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../../node_modules/drizzle-orm/*"],
       "@elizaos/app-lifeops": ["../../plugins/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["../../plugins/app-lifeops/src/*"],
       "@elizaos/app-lifeops/types": [
@@ -91,7 +93,6 @@
   "include": [
     "src",
     "../app-core/src/ambient-modules.d.ts",
-    "../agent/src/external-modules.d.ts",
-    "../../plugins/app-companion/src"
+    "../agent/src/external-modules.d.ts"
   ]
 }

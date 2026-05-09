@@ -1,6 +1,6 @@
 import { getDefaultModels, getElizaCloudApiUrl } from "./config";
 
-// messageExamples uses legacy MessageExample[][] format; createCharacter() normalizes it at
+// messageExamples uses grouped MessageExample[][] rows; createCharacter() normalizes it at
 // load time in agent-loader.ts. The type assertion below suppresses the structural mismatch.
 const character = {
   id: "b850bc30-45f8-0041-a00a-83df46d8555d", // existing agent id in DB

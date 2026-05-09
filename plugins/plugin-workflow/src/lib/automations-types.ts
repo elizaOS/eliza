@@ -153,9 +153,7 @@ function deriveSystemHeartbeatName(task: Task): string {
       .toLowerCase()
       .replace(/\b\w/g, (c) => c.toUpperCase());
   }
-  const tag = (task.tags ?? []).find(
-    (t) => t !== 'queue' && t !== 'repeat' && t !== 'trigger'
-  );
+  const tag = (task.tags ?? []).find((t) => t !== 'queue' && t !== 'repeat' && t !== 'trigger');
   if (tag) {
     return `${tag.charAt(0).toUpperCase()}${tag.slice(1)} Heartbeat`;
   }
@@ -308,16 +306,13 @@ function isWorkbenchTodoTask(task: Task): boolean {
 export function toWorkbenchTaskView(task: Task): WorkbenchTaskView | null {
   if (!task.tags?.includes(WORKBENCH_TASK_TAG)) return null;
   if (readTriggerConfig(task) || isWorkbenchTodoTask(task)) return null;
-  const id =
-    typeof task.id === 'string' && task.id.trim().length > 0 ? task.id : null;
+  const id = typeof task.id === 'string' && task.id.trim().length > 0 ? task.id : null;
   if (!id) return null;
   const metadata = readTaskMetadata(task);
-  const updatedAt =
-    normalizeTimestamp(task.updatedAt) ?? normalizeTimestamp(metadata.updatedAt);
+  const updatedAt = normalizeTimestamp(task.updatedAt) ?? normalizeTimestamp(metadata.updatedAt);
   return {
     id,
-    name:
-      typeof task.name === 'string' && task.name.trim().length > 0 ? task.name : 'Task',
+    name: typeof task.name === 'string' && task.name.trim().length > 0 ? task.name : 'Task',
     description: typeof task.description === 'string' ? task.description : '',
     tags: normalizeStringArray(task.tags),
     isCompleted: readTaskCompleted(task),
@@ -339,12 +334,7 @@ export type AutomationSource =
   | 'workflow_shadow'
   | 'automation_draft';
 
-export type AutomationStatus =
-  | 'active'
-  | 'paused'
-  | 'completed'
-  | 'draft'
-  | 'system';
+export type AutomationStatus = 'active' | 'paused' | 'completed' | 'draft' | 'system';
 
 export interface AutomationRoomBinding {
   conversationId: string | null;

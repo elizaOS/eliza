@@ -14,6 +14,13 @@
 
 import type { AgentRuntime, Room, Task, UUID } from '@elizaos/core';
 import { stringToUuid } from '@elizaos/core';
+import type { WorkflowStatusResponse } from '../routes/workflow-routes';
+import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
+import type {
+  WorkflowDefinition,
+  WorkflowDefinitionResponse,
+  WorkflowExecution,
+} from '../types/index';
 import {
   type AutomationItem,
   type AutomationLastExecution,
@@ -22,20 +29,12 @@ import {
   type AutomationSummary,
   type ConversationMetadata,
   type ConversationScope,
-  type TriggerSummary,
-  type WorkbenchTaskView,
   isAutomationConversationMetadata,
-  readTriggerConfig,
+  type TriggerSummary,
   taskToTriggerSummary,
   toWorkbenchTaskView,
+  type WorkbenchTaskView,
 } from './automations-types';
-import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
-import type {
-  WorkflowDefinition,
-  WorkflowDefinitionResponse,
-  WorkflowExecution,
-} from '../types/index';
-import type { WorkflowStatusResponse } from '../routes/workflow-routes';
 
 const WORKFLOW_DRAFT_TITLE = 'New Workflow Draft';
 
@@ -100,6 +99,24 @@ function isSystemTask(task: WorkbenchTaskView): boolean {
   }
   const tags = new Set(task.tags ?? []);
   return tags.has('queue') && tags.has('repeat');
+}
+
+/**
+ * True when the raw runtime task carries the `migratedToWorkflowId` metadata
+ * flag set by `migrateLegacyWorkbenchTasks`. The workflow representation is
+ * already surfaced by the workflow listing path; the original task should not
+ * also appear as a coordinator-text item.
+ */
+function taskHasMigrationFlag(rawTasks: Task[], taskId: string): boolean {
+  for (const raw of rawTasks) {
+    if (raw.id !== taskId) continue;
+    const meta = isRecord(raw.metadata) ? raw.metadata : null;
+    if (meta && typeof meta.migratedToWorkflowId === 'string') {
+      return true;
+    }
+    return false;
+  }
+  return false;
 }
 
 function choosePreferredSystemTask(
@@ -189,7 +206,8 @@ function extractConversationMetadataFromRoom(
   const sourceConversationId = asString(stored.sourceConversationId);
   if (sourceConversationId) next.sourceConversationId = sourceConversationId;
   const terminalBridgeConversationId = asString(stored.terminalBridgeConversationId);
-  if (terminalBridgeConversationId) next.terminalBridgeConversationId = terminalBridgeConversationId;
+  if (terminalBridgeConversationId)
+    next.terminalBridgeConversationId = terminalBridgeConversationId;
   return Object.keys(next).length > 0 ? next : undefined;
 }
 
@@ -246,8 +264,7 @@ async function listTriggerTasks(runtime: AgentRuntime): Promise<Task[]> {
   const merged = new Map<string, Task>();
   for (const task of [...triggerTasks, ...heartbeatTasks]) {
     const key =
-      task.id ??
-      `${task.name ?? ''}:${task.description ?? ''}:${(task.tags ?? []).join(',')}`;
+      task.id ?? `${task.name ?? ''}:${task.description ?? ''}:${(task.tags ?? []).join(',')}`;
     if (!merged.has(key)) {
       merged.set(key, task);
     }
@@ -455,9 +472,7 @@ function buildWorkflowStatus(service: WorkflowService | null): WorkflowStatusRes
   };
 }
 
-async function loadWorkflowList(
-  service: WorkflowService | null
-): Promise<{
+async function loadWorkflowList(service: WorkflowService | null): Promise<{
   workflows: WorkflowDefinitionResponse[];
   workflowFetchError: string | null;
 }> {
@@ -533,6 +548,11 @@ export async function buildAutomationListResponse(
     allTasks
       .map((task) => toWorkbenchTaskView(task))
       .filter((task): task is WorkbenchTaskView => task !== null)
+      // Tasks migrated to workflows by plugin-workflow's boot migration carry
+      // a `migratedToWorkflowId` metadata flag; their workflow representation
+      // is already in the workflowItemsById map below, so skip them here to
+      // avoid duplicate Automations entries.
+      .filter((task) => !taskHasMigrationFlag(allTasks, task.id))
   );
 
   const triggerTaskRecords = await listTriggerTasks(runtime);
@@ -636,9 +656,8 @@ export async function buildAutomationListResponse(
 
   const summary: AutomationSummary = {
     total: automations.length,
-    coordinatorCount: automations.filter(
-      (automation) => automation.type === 'coordinator_text'
-    ).length,
+    coordinatorCount: automations.filter((automation) => automation.type === 'coordinator_text')
+      .length,
     workflowCount: automations.filter((automation) => automation.type === 'workflow').length,
     scheduledCount: automations.filter((automation) => automation.schedules.length > 0).length,
     draftCount: automations.filter((automation) => automation.isDraft).length,

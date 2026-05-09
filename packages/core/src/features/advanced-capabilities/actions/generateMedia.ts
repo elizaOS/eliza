@@ -18,7 +18,7 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { ContentType, ModelType, ServiceType } from "../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 
 const spec: ActionDoc = getActionSpec("GENERATE_MEDIA") ?? {
 	name: "GENERATE_MEDIA",
@@ -327,7 +327,7 @@ export const generateMediaAction = {
 		const prompt = readPrompt(message, options);
 		if (prompt && normalizeMediaType(params.mediaType)) return true;
 
-		return hasActionContextOrKeyword(message, state, {
+		return hasActionContext(message, state, {
 			contexts: [...MEDIA_CONTEXTS],
 		});
 	},

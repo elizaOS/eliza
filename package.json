@@ -112,7 +112,9 @@
     "db:cloud:studio": "bun run --cwd cloud db:studio",
     "publish:dry-run": "bun scripts/publish-from-dist.mjs",
     "publish:packages": "bun scripts/publish-from-dist.mjs --apply",
-    "typecheck:dist": "tsc --noEmit -p tsconfig.dist-paths.json"
+    "typecheck:dist": "tsc --noEmit -p tsconfig.dist-paths.json",
+    "knip": "knip --directory packages/core --no-exit-code --no-config-hints",
+    "knip:strict": "knip --directory packages/core"
   },
   "packageManager": "bun@1.3.5",
   "workspaces": [
@@ -151,7 +153,8 @@
     "turbo": "^2.7.4",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.17"
+    "vitest": "^4.0.17",
+    "knip": "^5.88.1"
   },
   "resolutions": {
     "@elizaos/core": "workspace:*",

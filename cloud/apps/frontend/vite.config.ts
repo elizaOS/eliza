@@ -15,7 +15,7 @@ const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 // Whitelist of env vars that get baked into the client bundle. Anything not
 // listed here is *not* exposed — keeps server-only secrets out of the SPA.
 // Mirrors the `NEXT_PUBLIC_*` vars that consumer code actually reads via
-// `process.env.*` (legacy Next.js call sites).
+// `process.env.*` (historical Next.js-shaped call sites).
 const PUBLIC_ENV_KEYS = [
   "NEXT_PUBLIC_API_URL",
   "NEXT_PUBLIC_APP_URL",

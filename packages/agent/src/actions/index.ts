@@ -18,7 +18,6 @@ export * from "./runtime.js";
 export * from "./settings-actions.js";
 export * from "./skill-command.js";
 export * from "./stream-control.js";
-export * from "./task.js";
 export * from "./terminal.js";
 export * from "./trajectories.js";
 export * from "./trigger.js";
