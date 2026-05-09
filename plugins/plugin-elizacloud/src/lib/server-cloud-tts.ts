@@ -5,18 +5,34 @@
  * `POST /api/elevenlabs/tts`. Both accept `{ text, voiceId?, modelId? }` with
  * **ElevenLabs** voice and model ids; the cloud runs ElevenLabs server-side.
  */
+import fs from "node:fs";
 import type http from "node:http";
-import { loadElizaConfig } from "@elizaos/agent/config";
 import {
   isElizaCloudServiceSelectedInConfig,
   sanitizeSpeechText,
 } from "@elizaos/shared";
-import { ttsDebug, ttsDebugTextPreview } from "@elizaos/app-core/utils/tts-debug";
 import { getCloudSecret } from "./cloud-secrets";
+import { resolveConfigPath } from "./state-paths";
+import { ttsDebug, ttsDebugTextPreview } from "./tts-debug";
 
 // ---------------------------------------------------------------------------
 // Internal helpers (not exported)
 // ---------------------------------------------------------------------------
+
+type ConfigLike = Record<string, unknown> & {
+  cloud?: {
+    apiKey?: unknown;
+    baseUrl?: unknown;
+  };
+};
+
+function loadElizaConfig(): ConfigLike {
+  const raw = fs.readFileSync(resolveConfigPath(), "utf8");
+  const parsed = JSON.parse(raw) as unknown;
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as ConfigLike)
+    : {};
+}
 
 /** Browser → API correlation (never forwarded to Eliza Cloud). */
 export function readTtsDebugClientHeaders(

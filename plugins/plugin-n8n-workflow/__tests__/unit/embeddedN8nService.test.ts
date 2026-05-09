@@ -39,6 +39,16 @@ async function persistentRuntime(
   };
 }
 
+function firstRunJson(
+  execution: { data?: { resultData?: { runData?: Record<string, unknown[]> } } },
+  nodeName: string
+): Record<string, unknown> | undefined {
+  const run = execution.data?.resultData?.runData?.[nodeName]?.[0] as
+    | { data?: { main?: Array<Array<{ json?: Record<string, unknown> }>> } }
+    | undefined;
+  return run?.data?.main?.[0]?.[0]?.json;
+}
+
 describe('EmbeddedN8nService', () => {
   test('rejects workflows with unregistered nodes before activation', async () => {
     const service = await EmbeddedN8nService.start(runtime());
@@ -146,4 +156,124 @@ describe('EmbeddedN8nService', () => {
     expect(result.item.source).toBe('embedded');
     expect(result.item.body.ok).toBe(true);
   }, 20_000);
+
+  test('persists workflows across embedded service restarts', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'embedded-n8n-persist-'));
+    const dataDir = join(dir, 'pglite');
+    const firstClient = new PGlite({ dataDir });
+    const firstDb = drizzle(firstClient, { schema: dbSchema });
+    const first = await EmbeddedN8nService.start(runtime({}, {}, firstDb));
+    const created = await first.createWorkflow({
+      name: 'Persistent workflow',
+      nodes: [
+        {
+          id: 'manual',
+          name: 'Manual Trigger',
+          type: 'n8n-nodes-base.manualTrigger',
+          typeVersion: 1,
+          position: [0, 0],
+          parameters: {},
+        },
+      ],
+      connections: {},
+    });
+    await first.stop();
+    await firstClient.close();
+
+    const secondClient = new PGlite({ dataDir });
+    const secondDb = drizzle(secondClient, { schema: dbSchema });
+    const second = await EmbeddedN8nService.start(runtime({}, {}, secondDb));
+    const loaded = await second.getWorkflow(created.id);
+
+    expect(loaded.name).toBe('Persistent workflow');
+    expect(loaded.id).toBe(created.id);
+
+    await second.stop();
+    await secondClient.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test('runs Code node in the QuickJS sandbox', async () => {
+    const harness = await persistentRuntime();
+    const service = await EmbeddedN8nService.start(harness.runtime);
+    try {
+      const created = await service.createWorkflow({
+        name: 'QuickJS code',
+        nodes: [
+          {
+            id: 'manual',
+            name: 'Manual Trigger',
+            type: 'n8n-nodes-base.manualTrigger',
+            typeVersion: 1,
+            position: [0, 0],
+            parameters: {},
+          },
+          {
+            id: 'code',
+            name: 'Code',
+            type: 'n8n-nodes-base.code',
+            typeVersion: 2,
+            position: [200, 0],
+            parameters: {
+              jsCode:
+                'return items.map((item) => ({ json: { ok: true, trigger: item.json.trigger } }));',
+            },
+          },
+        ],
+        connections: {
+          'Manual Trigger': { main: [[{ node: 'Code', type: 'main', index: 0 }]] },
+        },
+      });
+      const execution = await service.executeWorkflow(created.id);
+      const item = firstRunJson(execution, 'Code');
+
+      expect(execution.status).toBe('success');
+      expect(item?.ok).toBe(true);
+      expect(item?.trigger).toBe('manual');
+    } finally {
+      await service.stop();
+      await harness.close();
+    }
+  });
+
+  test('executes active embedded webhooks through the plugin service', async () => {
+    const harness = await persistentRuntime();
+    const service = await EmbeddedN8nService.start(harness.runtime);
+    try {
+      const created = await service.createWorkflow({
+        name: 'Webhook workflow',
+        nodes: [
+          {
+            id: 'webhook',
+            name: 'Webhook',
+            type: 'n8n-nodes-base.webhook',
+            typeVersion: 2,
+            position: [0, 0],
+            parameters: { path: 'incoming', httpMethod: 'POST' },
+          },
+          {
+            id: 'set',
+            name: 'Set',
+            type: 'n8n-nodes-base.set',
+            typeVersion: 3.4,
+            position: [200, 0],
+            parameters: { assignments: { assignments: [{ name: 'handled', value: true }] } },
+          },
+        ],
+        connections: {
+          Webhook: { main: [[{ node: 'Set', type: 'main', index: 0 }]] },
+        },
+      });
+      await service.activateWorkflow(created.id);
+      const execution = await service.executeWebhook('incoming', { payload: 'ok' }, 'POST');
+      const item = firstRunJson(execution, 'Set');
+
+      expect(execution.status).toBe('success');
+      expect(item?.payload).toBe('ok');
+      expect(item?.handled).toBe(true);
+    } finally {
+      await service.stop();
+      await harness.close();
+    }
+  });
 });

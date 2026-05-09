@@ -24,10 +24,8 @@
       "@elizaos/cloud-sdk": ["../../cloud/packages/sdk/dist/index.d.ts"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
-      "@elizaos/agent/*": ["../../packages/agent/src/*"],
-      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../../packages/app-core/src/*"]
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"]
     }
   },
   "include": ["src/**/*.ts", "__tests__/**/*.ts", "build.ts", "vitest.config.ts"],

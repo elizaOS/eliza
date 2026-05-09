@@ -114,8 +114,11 @@ bun cloud/scripts/vast/upsert-template.ts
 
 For Qwen3.5 4B/9B, use `bartowski/Qwen_Qwen3.5-{4B,9B}-GGUF` as the target
 repo and `psychopenguin/Qwen3.5-{4B,9B}-DFlash-FP16-GGUF` with the
-`*-DFlash-Q4_K_M.gguf` drafter. `LLAMA_CACHE_TYPE_K/V` can be set for
-TurboQuant-capable forks; stock upstream images will reject those cache types.
+`*-DFlash-Q4_K_M.gguf` drafter. Those Qwen3.5 drafters are repaired on startup
+when they are missing `tokenizer.ggml.merges`; bundle llama.cpp's `gguf-py`
+next to `llama-server` or set `GGUF_PYTHONPATH` in the template image.
+`LLAMA_CACHE_TYPE_K/V` can be set for TurboQuant-capable forks; stock upstream
+images will reject those cache types.
 
 ## Routing from eliza/cloud
 

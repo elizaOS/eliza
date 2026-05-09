@@ -45,7 +45,7 @@ async function executeWebhook(
     );
     res.json({ success: true, data: execution });
   } catch (error) {
-    res.status(error instanceof N8nApiError ? error.statusCode : 500).json({
+    res.status(error instanceof N8nApiError ? (error.statusCode ?? 500) : 500).json({
       success: false,
       error: 'failed_to_execute_webhook',
       message: error instanceof Error ? error.message : 'Unknown error',

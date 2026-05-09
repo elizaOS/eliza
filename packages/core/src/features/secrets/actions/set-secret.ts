@@ -94,51 +94,32 @@ export const setSecretAction: Action = {
 		},
 	],
 
-	validate: async (
-		runtime: IAgentRuntime,
-		message: Memory,
-		_state?: State,
-		_options?: HandlerOptions,
-	): Promise<boolean> => {
-		if (runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE) === null) {
-			return false;
-		}
-		const params =
-			_options?.parameters && typeof _options.parameters === "object"
-				? (_options.parameters as Record<string, unknown>)
-				: {};
-		const hasStructuredSecrets =
-			Array.isArray(params.secrets) && params.secrets.length > 0;
-		const text = message.content.text?.toLowerCase() ?? "";
-		const setPatterns = [
-			/\bset\b.*\b(key|token|secret|password|credential|api)/i,
-			/\bmy\b.*\b(key|token|secret|api)\b.*\bis\b/i,
-			/\buse\b.*\b(key|token|this)\b/i,
-			/\bstore\b.*\b(key|token|secret)/i,
-			/\bconfigure\b.*\b(key|token|secret)/i,
-			/\bsave\b.*\b(key|token|secret)/i,
-			/sk-[a-zA-Z0-9]+/i,
-			/sk-ant-[a-zA-Z0-9]+/i,
-			/gsk_[a-zA-Z0-9]+/i,
-		];
-		const hasSetPattern = setPatterns.some((pattern) => pattern.test(text));
-		if (!hasSetPattern) {
+		validate: async (
+			runtime: IAgentRuntime,
+			message: Memory,
+			_state?: State,
+			_options?: HandlerOptions,
+		): Promise<boolean> => {
+			if (runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE) === null) {
+				return false;
+			}
+			const channelType = message.content.channelType;
+			if (channelType !== undefined && channelType !== ChannelType.DM) {
+				return false;
+			}
+			const params =
+				_options?.parameters && typeof _options.parameters === "object"
+					? (_options.parameters as Record<string, unknown>)
+					: {};
+			const hasStructuredSecrets =
+				Array.isArray(params.secrets) && params.secrets.length > 0;
 			return (
 				hasStructuredSecrets ||
 				hasActionContextOrKeyword(message, _state, {
 					contexts: ["secrets", "settings", "connectors"],
-					keywords: [
-						"set secret",
-						"save secret",
-						"store api key",
-						"configure token",
-					],
 				})
 			);
-		}
-
-		return hasStructuredSecrets || hasSetPattern;
-	},
+		},
 
 	handler: async (
 		runtime: IAgentRuntime,

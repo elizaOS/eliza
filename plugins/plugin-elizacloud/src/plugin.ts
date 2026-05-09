@@ -16,16 +16,11 @@
  */
 
 import type http from "node:http";
-import { loadElizaConfig, type ElizaConfig } from "@elizaos/agent/config";
-import { ensureRouteAuthorized } from "@elizaos/app-core/api/auth";
-import type { CompatRuntimeState } from "@elizaos/app-core/api/compat-route-shared";
-import { sendJson } from "@elizaos/app-core/api/response";
-import type { Plugin, Route } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import {
-  isElizaSettingsDebugEnabled,
-  sanitizeForSettingsDebug,
-} from "@elizaos/shared";
+import type { Plugin, Route } from "@elizaos/core";
+import { getRuntimeRouteHostContext } from "@elizaos/core";
+import type { ElizaConfig } from "./lib/config-like";
+import { sendJson } from "./lib/http";
 import {
   type CloudRouteState,
   handleCloudRoute,
@@ -34,68 +29,14 @@ import { handleCloudStatusRoutes } from "./routes/cloud-status-routes";
 
 type AnyRuntime = Parameters<typeof handleCloudStatusRoutes>[0]["runtime"];
 
-interface CloudCompatState extends CompatRuntimeState {
-  current: AnyRuntime;
+function getHostContext(runtime: unknown) {
+  return getRuntimeRouteHostContext<Record<string, unknown>>(
+    runtime && typeof runtime === "object" ? runtime : null,
+  );
 }
 
-function buildState(runtime: unknown): CloudCompatState {
-  return { current: runtime as AnyRuntime } as CloudCompatState;
-}
-
-/**
- * Loopback PUT to the same API server's `/api/config` endpoint. Used to
- * sync cloud login / disconnect state into the upstream's in-memory
- * config. Loopback origin is derived from the request's local port, which
- * always resolves to the actual listener — never trusts the incoming
- * Host header.
- */
-async function compatLoopbackConfigPut(
-  req: http.IncomingMessage,
-  body: Record<string, unknown>,
-): Promise<void> {
-  const localPort = req.socket?.localPort;
-  if (!Number.isFinite(localPort)) {
-    return;
-  }
-  const base = `http://127.0.0.1:${localPort}`;
-  const headers = new Headers({
-    Accept: "application/json",
-    "Content-Type": "application/json",
-  });
-  // Forward the inbound request's auth so the loopback PUT passes through the
-  // same compat auth gate.
-  const authHeader = req.headers.authorization;
-  if (typeof authHeader === "string" && authHeader.length > 0) {
-    headers.set("Authorization", authHeader);
-  }
-  const csrfHeader = req.headers["x-eliza-csrf"];
-  if (typeof csrfHeader === "string" && csrfHeader.length > 0) {
-    headers.set("X-Eliza-CSRF", csrfHeader);
-  }
-  const cookie = req.headers.cookie;
-  if (typeof cookie === "string" && cookie.length > 0) {
-    headers.set("Cookie", cookie);
-  }
-  const response = await fetch(`${base}/api/config`, {
-    method: "PUT",
-    headers,
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    throw new Error(
-      `${response.status} ${response.statusText}: /api/config`,
-    );
-  }
-}
-
-/**
- * Status-only handler — `/api/cloud/status` and `/api/cloud/credits`.
- * The cloud-provisioned exemption for `/api/cloud/status` lives in app-core
- * (server.ts) before this plugin route fires; if we get here, auth is
- * required.
- */
-function isCloudProvisioned(): boolean {
-  return process.env.ELIZA_CLOUD_PROVISIONED === "1";
+function getRuntimeConfig(runtime: unknown): ElizaConfig {
+  return (getHostContext(runtime)?.config ?? {}) as ElizaConfig;
 }
 
 function makeStatusHandler() {
@@ -108,22 +49,8 @@ function makeStatusHandler() {
     const httpRes = res as http.ServerResponse;
     const url = new URL(httpReq.url ?? "/", "http://localhost");
     const method = (httpReq.method ?? "GET").toUpperCase();
-    const state = buildState(runtime);
-
-    // Cloud-provisioned containers exempt /api/cloud/status from auth so the
-    // SPA can discover cloud connection state without a token.
-    const isCloudStatusExempt =
-      isCloudProvisioned() &&
-      method === "GET" &&
-      url.pathname === "/api/cloud/status";
-    if (
-      !isCloudStatusExempt &&
-      !(await ensureRouteAuthorized(httpReq, httpRes, state))
-    ) {
-      return;
-    }
-
-    const config = loadElizaConfig();
+    const runtimeRef = runtime as AnyRuntime;
+    const config = getRuntimeConfig(runtime);
 
     await handleCloudStatusRoutes({
       req: httpReq,
@@ -131,9 +58,9 @@ function makeStatusHandler() {
       method,
       pathname: url.pathname,
       config,
-      runtime: state.current,
+      runtime: runtimeRef,
       json: (_res, body, status = 200) => {
-        sendJson(httpRes, status, body);
+        sendJson(httpRes, body, status);
       },
     });
   };
@@ -154,15 +81,25 @@ function makeCloudRouteHandler() {
     const httpRes = res as http.ServerResponse;
     const url = new URL(httpReq.url ?? "/", "http://localhost");
     const method = (httpReq.method ?? "GET").toUpperCase();
-    const state = buildState(runtime);
+    const hostContext = getHostContext(runtime);
 
-    if (!(await ensureRouteAuthorized(httpReq, httpRes, state))) return;
-
-    const config = loadElizaConfig() as ElizaConfig;
+    if (!hostContext?.config) {
+      logger.warn("[eliza-cloud-routes] host config unavailable");
+    }
+    const config = (hostContext?.config ?? {}) as ElizaConfig;
     const cloudState: CloudRouteState = {
       config,
-      runtime: state.current as CloudRouteState["runtime"],
+      runtime: runtime as CloudRouteState["runtime"],
       cloudManager: null,
+      restartRuntime: hostContext?.restartRuntime,
+      services: {
+        createIntegrationTelemetrySpan: hostContext?.createTelemetrySpan,
+        saveElizaConfig: (nextConfig) => {
+          hostContext?.saveConfig?.(
+            nextConfig as unknown as Record<string, unknown>,
+          );
+        },
+      },
     };
 
     const handled = await handleCloudRoute(
@@ -175,93 +112,6 @@ function makeCloudRouteHandler() {
 
     if (!handled) {
       return;
-    }
-
-    // Login/persist + login/status: sync the freshly persisted apiKey into the
-    // upstream's in-memory config via loopback PUT /api/config. Skipped silently
-    // if disk has no apiKey (e.g. login still pending or rejected).
-    if (
-      (method === "POST" && url.pathname === "/api/cloud/login/persist") ||
-      (method === "GET" && url.pathname.startsWith("/api/cloud/login/status"))
-    ) {
-      const refreshed = loadElizaConfig() as ElizaConfig;
-      const cloud =
-        refreshed.cloud && typeof refreshed.cloud === "object"
-          ? (refreshed.cloud as Record<string, unknown>)
-          : undefined;
-      const apiKey =
-        typeof cloud?.apiKey === "string" ? cloud.apiKey.trim() : "";
-      if (apiKey.length > 0) {
-        const nextCloud: Record<string, unknown> = { apiKey };
-        const baseUrl =
-          typeof cloud?.baseUrl === "string" ? cloud.baseUrl.trim() : "";
-        if (baseUrl) {
-          nextCloud.baseUrl = baseUrl;
-        }
-        const patch: Record<string, unknown> = {
-          cloud: nextCloud,
-          linkedAccounts: {
-            elizacloud: { status: "linked", source: "api-key" },
-          },
-        };
-        if (isElizaSettingsDebugEnabled()) {
-          logger.debug(
-            `[eliza][settings][compat] cloud login → loopback PUT /api/config patch=${JSON.stringify(sanitizeForSettingsDebug(patch))}`,
-          );
-        }
-        try {
-          await compatLoopbackConfigPut(httpReq, patch);
-          if (isElizaSettingsDebugEnabled()) {
-            logger.debug(
-              "[eliza][settings][compat] cloud login loopback sync OK",
-            );
-          }
-        } catch (err) {
-          logger.warn(
-            `[eliza][cloud/login] Failed to sync cloud login to upstream state: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          );
-        }
-      }
-    }
-
-    // Disconnect: clear cloud + serviceRouting + linkedAccounts in upstream
-    // state so the next saveElizaConfig doesn't reintroduce the just-cleared
-    // key. See full rationale in the original server.ts inline comment.
-    if (method === "POST" && url.pathname === "/api/cloud/disconnect") {
-      const disconnectPatch = {
-        cloud: { enabled: false, apiKey: null },
-        serviceRouting: {
-          llmText: null,
-          tts: null,
-          media: null,
-          embeddings: null,
-          rpc: null,
-        },
-        linkedAccounts: {
-          elizacloud: { status: "unlinked", source: "api-key" },
-        },
-      };
-      if (isElizaSettingsDebugEnabled()) {
-        logger.debug(
-          `[eliza][settings][compat] POST /api/cloud/disconnect → loopback PUT /api/config patch=${JSON.stringify(sanitizeForSettingsDebug(disconnectPatch))}`,
-        );
-      }
-      try {
-        await compatLoopbackConfigPut(httpReq, disconnectPatch);
-        if (isElizaSettingsDebugEnabled()) {
-          logger.debug(
-            "[eliza][settings][compat] POST /api/cloud/disconnect loopback sync OK",
-          );
-        }
-      } catch (err) {
-        logger.warn(
-          `[eliza][cloud/disconnect] Failed to sync cloud disable to upstream state: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
     }
   };
 }

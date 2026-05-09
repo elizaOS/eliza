@@ -33,6 +33,14 @@ function createRuntimeWithPluginRegistration(initialPlugins: Plugin[] = []): {
 }
 
 describe("LifeOps Google plugin registration", () => {
+  it("exposes the LIFE action for todos-routed planner turns", () => {
+    const lifeAction = appLifeOpsPlugin.actions?.find(
+      (action) => action.name === "LIFE",
+    );
+
+    expect(lifeAction?.contexts).toContain("todos");
+  });
+
   it("declares plugin-google for app and route plugin dependency resolution", () => {
     expect(appLifeOpsPlugin.dependencies).toContain("@elizaos/plugin-google");
     expect(lifeopsPlugin.dependencies).toContain("@elizaos/plugin-google");

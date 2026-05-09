@@ -19,15 +19,18 @@ import {
   provisionCloudWallets,
 } from "../cloud/cloud-wallet.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
-import { isCloudWalletEnabled } from "@elizaos/agent/config/feature-flags";
-import { resolveStateDir } from "@elizaos/agent/config/paths";
-import { persistConfigEnv } from "@elizaos/agent/api/config-env";
+import { persistConfigEnv } from "../lib/config-env";
+import {
+  applyCanonicalOnboardingConfig,
+  isTimeoutError,
+} from "../lib/config-like";
+import { isCloudWalletEnabled } from "../lib/feature-flags";
 import {
   readJsonBody as parseJsonBody,
   sendJson,
   sendJsonError,
-} from "@elizaos/agent/api/http-helpers";
-import { applyCanonicalOnboardingConfig } from "@elizaos/agent/api/provider-switch-config";
+} from "../lib/http";
+import { resolveStateDir } from "../lib/state-paths";
 
 export interface CloudConfigLike {
   cloud?: {
@@ -265,13 +268,6 @@ async function readJsonBody<T = Record<string, unknown>>(
 
 function isRedirectResponse(response: Response): boolean {
   return response.status >= 300 && response.status < 400;
-}
-
-function isTimeoutError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  if (error.name === "TimeoutError" || error.name === "AbortError") return true;
-  const message = error.message.toLowerCase();
-  return message.includes("timed out") || message.includes("timeout");
 }
 
 function createNoopTelemetrySpan(): IntegrationTelemetrySpanLike {

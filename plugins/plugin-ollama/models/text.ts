@@ -290,21 +290,22 @@ function buildOllamaStreamTextResult(args: {
   promptForEstimate: string;
 }): TextStreamResult {
   const streamResult = streamText(args.streamParams);
-  const textPromise = Promise.resolve(streamResult.text);
-  const finishReasonPromise = Promise.resolve(streamResult.finishReason) as Promise<
-    string | undefined
-  >;
-  void textPromise.catch(() => undefined);
-  void finishReasonPromise.catch(() => undefined);
+  // Keep SDK promises settled-or-empty so stream failures surface through the
+  // textStream generator rather than as unhandled rejections on side promises.
+  const textPromise = Promise.resolve(streamResult.text).catch(() => "");
+  const finishReasonPromise = Promise.resolve(streamResult.finishReason).catch(
+    () => undefined
+  ) as Promise<string | undefined>;
 
-  const usagePromise = Promise.resolve(streamResult.usage).then(async (usage) => {
-    const fullText = await textPromise;
-    const normalized =
-      normalizeTokenUsage(usage) ?? estimateUsage(args.promptForEstimate, fullText);
-    emitModelUsed(args.runtime, args.modelType, args.model, normalized);
-    return normalized as unknown as TokenUsage | undefined;
-  });
-  void usagePromise.catch(() => undefined);
+  const usagePromise = Promise.resolve(streamResult.usage)
+    .then(async (usage) => {
+      const fullText = await textPromise;
+      const normalized =
+        normalizeTokenUsage(usage) ?? estimateUsage(args.promptForEstimate, fullText);
+      emitModelUsed(args.runtime, args.modelType, args.model, normalized);
+      return normalized as unknown as TokenUsage | undefined;
+    })
+    .catch(() => undefined);
 
   async function* textStreamWithUsage(): AsyncIterable<string> {
     let completed = false;
@@ -378,26 +379,24 @@ function buildOllamaStreamWithToolsResult(args: {
   promptForEstimate: string;
 }): OllamaStreamTextWithToolsResult {
   const streamResult = streamText(args.streamParams);
-  const sdkTextPromise = Promise.resolve(streamResult.text);
-  const finishReasonPromise = Promise.resolve(streamResult.finishReason) as Promise<
-    string | undefined
-  >;
-  void sdkTextPromise.catch(() => undefined);
-  void finishReasonPromise.catch(() => undefined);
+  const sdkTextPromise = Promise.resolve(streamResult.text).catch(() => "");
+  const finishReasonPromise = Promise.resolve(streamResult.finishReason).catch(
+    () => undefined
+  ) as Promise<string | undefined>;
 
-  const toolCallsPromise = Promise.resolve(streamResult.toolCalls).then((calls) =>
-    mapAiSdkToolCallsToCore(calls as unknown[] | undefined)
-  );
-  void toolCallsPromise.catch(() => undefined);
+  const toolCallsPromise = Promise.resolve(streamResult.toolCalls)
+    .then((calls) => mapAiSdkToolCallsToCore(calls as unknown[] | undefined))
+    .catch(() => [] as ToolCall[]);
 
-  const usagePromise = Promise.resolve(streamResult.usage).then(async (usage) => {
-    const fullText = await sdkTextPromise;
-    const normalized =
-      normalizeTokenUsage(usage) ?? estimateUsage(args.promptForEstimate, fullText);
-    emitModelUsed(args.runtime, args.modelType, args.model, normalized);
-    return normalized as unknown as TokenUsage | undefined;
-  });
-  void usagePromise.catch(() => undefined);
+  const usagePromise = Promise.resolve(streamResult.usage)
+    .then(async (usage) => {
+      const fullText = await sdkTextPromise;
+      const normalized =
+        normalizeTokenUsage(usage) ?? estimateUsage(args.promptForEstimate, fullText);
+      emitModelUsed(args.runtime, args.modelType, args.model, normalized);
+      return normalized as unknown as TokenUsage | undefined;
+    })
+    .catch(() => undefined);
 
   const isNativePlannerType =
     args.modelType === RESPONSE_HANDLER_MODEL_TYPE ||
@@ -409,10 +408,9 @@ function buildOllamaStreamWithToolsResult(args: {
         if (first) {
           return stringifyPlannerToolArgs(first.arguments);
         }
-        return sdkTextPromise.then((t) => t);
+        return sdkTextPromise;
       })
-    : sdkTextPromise.then((t) => t);
-  void textPromise.catch(() => undefined);
+    : sdkTextPromise;
 
   async function* textStreamWithUsage(): AsyncIterable<string> {
     let completed = false;
