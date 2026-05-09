@@ -55,7 +55,10 @@ function readTriggerFromMetadata(task: Task): LegacyTriggerConfig | null {
   return cfg;
 }
 
-function buildRespondToEventWorkflow(trigger: LegacyTriggerConfig, fallbackName: string): WorkflowDefinition {
+function buildRespondToEventWorkflow(
+  trigger: LegacyTriggerConfig,
+  fallbackName: string
+): WorkflowDefinition {
   const displayName =
     typeof trigger.displayName === 'string' && trigger.displayName.trim().length > 0
       ? trigger.displayName

@@ -22,7 +22,6 @@ import {
   clearRegisteredSkillSlugs,
   skillCommandAction,
 } from "../actions/skill-command.js";
-import { taskAction } from "../actions/task.js";
 import { terminalAction } from "../actions/terminal.js";
 import { queryTrajectoriesAction } from "../actions/trajectories.js";
 import { triggerAction } from "../actions/trigger.js";
@@ -204,7 +203,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
     actions: [
       terminalAction,
-      taskAction,
       triggerAction,
       ...pageActionGroupActions,
       skillCommandAction,
