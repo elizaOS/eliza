@@ -29,12 +29,7 @@ import {
   type AgentRuntime,
   type IAgentRuntime,
   logger,
-  readJsonBody as parseJsonBody,
-  type ReadJsonBodyOptions,
   type Route,
-  readRequestBody,
-  sendJson,
-  sendJsonError,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -49,99 +44,17 @@ import {
 } from "@elizaos/shared";
 import { type WebSocket, WebSocketServer } from "ws";
 import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
-
-const WALLET_OS_STORE_TRUE_VALUES = new Set(["1", "true", "on", "yes"]);
-const WALLET_OS_STORE_FALSE_VALUES = new Set(["0", "false", "off", "no"]);
-
-function executableOnPathSync(binaryName: string): boolean {
-  if (process.platform === "win32") return false;
-  const pathEnv = process.env.PATH ?? "";
-  for (const dir of pathEnv.split(path.delimiter)) {
-    if (!dir) continue;
-    try {
-      fs.accessSync(path.join(dir, binaryName), fs.constants.X_OK);
-      return true;
-    } catch {
-      // keep scanning PATH
-    }
-  }
-  return false;
-}
-
-function isWalletOsStoreDefaultAvailable(): boolean {
-  if (process.platform === "darwin") return true;
-  if (process.platform === "linux") return executableOnPathSync("secret-tool");
-  return false;
-}
-
-function isWalletOsStoreEnabledForStartup(): boolean {
-  const raw = process.env.ELIZA_WALLET_OS_STORE?.trim().toLowerCase();
-  if (raw) {
-    if (WALLET_OS_STORE_TRUE_VALUES.has(raw)) return true;
-    if (WALLET_OS_STORE_FALSE_VALUES.has(raw)) return false;
-  }
-  return isWalletOsStoreDefaultAvailable();
-}
-
-function isPlaintextWalletPrivateKeyConfigValue(value: unknown): boolean {
-  if (typeof value !== "string") return false;
-  const trimmed = value.trim();
-  return Boolean(trimmed && !trimmed.startsWith("vault://"));
-}
-
-function isVaultConfigRef(value: string): boolean {
-  return value.startsWith("vault://") && value.length > "vault://".length;
-}
-
-import { isStreamingDestinationConfigured } from "@elizaos/core";
-import type {
-  BrowserBridgeKind,
-  BrowserBridgePackagePathTarget,
-} from "@elizaos/plugin-browser/contracts";
-import {
-  buildBrowserBridgeCompanionPackage,
-  getBrowserBridgeCompanionPackageStatus,
-  openBrowserBridgeCompanionManager,
-  openBrowserBridgeCompanionPackagePath,
-} from "@elizaos/plugin-browser/packaging";
-import {
-  type BrowserWorkspaceCommand,
-  type BrowserWorkspaceTabKind,
-  closeBrowserWorkspaceTab,
-  evaluateBrowserWorkspaceTab,
-  executeBrowserWorkspaceCommand,
-  getBrowserWorkspaceSnapshot,
-  hideBrowserWorkspaceTab,
-  listBrowserWorkspaceTabs,
-  navigateBrowserWorkspaceTab,
-  openBrowserWorkspaceTab,
-  showBrowserWorkspaceTab,
-  snapshotBrowserWorkspaceTab,
-} from "@elizaos/plugin-browser/workspace";
-import { handleComputerUseRoutes } from "@elizaos/plugin-computeruse";
-import {
-  handleCloudStatusRoutes,
-  isCloudProvisionedContainer,
-} from "@elizaos/plugin-elizacloud";
-// BlueBubbles routes extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
-// resolveBlueBubblesWebhookPath stays in @elizaos/plugin-imessage so the auth gate can compute
-// the webhook path before the runtime plugin route dispatcher runs.
-import { resolveBlueBubblesWebhookPath } from "@elizaos/plugin-imessage";
-// signal-routes: handleSignalRoute dispatch and applySignalQrOverride extracted to @elizaos/plugin-signal (setup-routes.ts)
-import { applySignalQrOverride } from "@elizaos/plugin-signal";
-// WhatsApp route dispatch extracted to @elizaos/plugin-whatsapp setup-routes.ts (Plugin.routes).
-// applyWhatsAppQrOverride remains for plugin-discovery's QR override flow.
-import { applyWhatsAppQrOverride } from "@elizaos/plugin-whatsapp";
 import {
   type ElizaConfig,
   loadElizaConfig,
   saveElizaConfig,
 } from "../config/config.js";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
+import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.js";
 import { CharacterSchema } from "../config/zod-schema.js";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
 // ONBOARDING_CLOUD_PROVIDER_OPTIONS, ONBOARDING_PROVIDER_CATALOG moved to server-helpers-config.ts
 import { validateX402Startup } from "../middleware/x402/startup-validator.js";
+import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
 import {
   type AgentEventServiceLike,
   getAgentEventService,
@@ -184,9 +97,9 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
-// signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout, signalAuthExists owned by @elizaos/plugin-signal
+// signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout extracted to @elizaos/plugin-signal
+import { signalAuthExists } from "../services/signal-pairing.js";
 import { streamManager } from "../services/stream-manager.js";
-import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 // telegram-account-auth helpers moved to @elizaos/plugin-telegram (account-setup-routes.ts).
 // WhatsApp pairing service helpers (sanitizeAccountId, WhatsAppPairingSession,
 // whatsappAuthExists, whatsappLogout) are owned by @elizaos/plugin-whatsapp now;
@@ -220,16 +133,21 @@ import { handleAppPackageRoutes } from "./app-package-routes.js";
 import { handleAppsRoutes } from "./apps-routes.js";
 import { handleAuthRoutes } from "./auth-routes.js";
 import { handleAvatarRoutes } from "./avatar-routes.js";
+// BlueBubbles routes extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
+// resolveBlueBubblesWebhookPath stays here so the auth gate can compute the webhook path
+// before the runtime plugin route dispatcher runs.
+import { resolveBlueBubblesWebhookPath } from "./bluebubbles-routes.js";
 import { handleBugReportRoutes } from "./bug-report-routes.js";
 import { handleCharacterRoutes } from "./character-routes.js";
 import {
   initSse as initSseFromChatRoutes,
   writeSseJson as writeSseJsonFromChatRoutes,
 } from "./chat-routes.js";
+import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
+import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
+import { handleComputerUseRoutes } from "./computer-use-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
-import { handleConnectorAccountRoutes } from "./connector-account-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
-import { isConnectorOAuthCallbackEndpoint } from "./connector-oauth-callback-auth.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.js";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
@@ -237,8 +155,15 @@ import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.js";
 import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.js";
 import { handleHealthRoutes } from "./health-routes.js";
+import {
+  readJsonBody as parseJsonBody,
+  type ReadJsonBodyOptions,
+  readRequestBody,
+  sendJson,
+  sendJsonError,
+} from "./http-helpers.js";
 // iMessage routes extracted to @elizaos/plugin-imessage setup-routes.ts (Plugin.routes)
-// import { handleIMessageRoute } from "@elizaos/plugin-imessage";
+// import { handleIMessageRoute } from "./imessage-routes.js";
 import {
   getLocalInferenceActiveModelId,
   handleLocalInferenceRoutes,
@@ -278,6 +203,8 @@ import {
   handleLifeOpsRuntimePluginRoute,
   handleSandboxRouteGroup,
 } from "./server-route-dispatch.js";
+// signal-routes: handleSignalRoute dispatch extracted to @elizaos/plugin-signal (setup-routes.ts)
+import { applySignalQrOverride } from "./signal-routes.js";
 import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
@@ -300,6 +227,9 @@ import {
 } from "./wallet-capability.js";
 import { handleWalletRoutes } from "./wallet-routes.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
+// WhatsApp route dispatch extracted to @elizaos/plugin-whatsapp setup-routes.ts (Plugin.routes).
+// applyWhatsAppQrOverride remains for plugin-discovery's QR override flow.
+import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
 import { handleWorkbenchRoutes } from "./workbench-routes.js";
 
 export {
@@ -341,7 +271,7 @@ export {
   IMAGE_ONLY_CHAT_FALLBACK_PROMPT,
   isUuidLike,
   isWalletActionRequiredIntent,
-  maybeAugmentChatMessageWithDocuments,
+  maybeAugmentChatMessageWithKnowledge,
   maybeAugmentChatMessageWithLanguage,
   maybeAugmentChatMessageWithWalletContext,
   normalizeIncomingChatPrompt,
@@ -1060,7 +990,7 @@ function coerce<T>(value: unknown): T {
 // maybeAugmentChatMessageWithLanguage and getErrorMessage moved to server-helpers.ts;
 // imported in the consolidated import at the top
 
-// Documents + wallet context augmentation moved to server-helpers.ts;
+// Knowledge + wallet context augmentation moved to server-helpers.ts;
 // imported in the consolidated import at the top
 
 // ChatImageAttachment, image validation, chat attachments, normalizeIncomingChatPrompt,
@@ -1416,7 +1346,6 @@ import {
   isAllowedHost as _isAllowedHost,
   isAuthorized as _isAuthorized,
   isSharedTerminalClientId as _isSharedTerminalClientId,
-  isTrustedLocalRequest as _isTrustedLocalRequest,
   isWebSocketAuthorized as _isWebSocketAuthorized,
   normalizePairingCode as _normalizePairingCode,
   normalizeWsClientId as _normalizeWsClientId,
@@ -1445,7 +1374,6 @@ export {
 const isAllowedHost = _isAllowedHost;
 const applyCors = _applyCors;
 const isAuthorized = _isAuthorized;
-const isTrustedLocalRequest = _isTrustedLocalRequest;
 const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
 const normalizeWsClientId = _normalizeWsClientId;
 const resolveTerminalRunClientId = _resolveTerminalRunClientId;
@@ -1574,10 +1502,6 @@ async function handleRequest(
           }
         : undefined,
     });
-  const isConnectorOAuthCallbackRoute = isConnectorOAuthCallbackEndpoint(
-    method,
-    pathname,
-  );
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
 
   const canonicalizeRestartReason = (reason: string): string => {
@@ -1700,7 +1624,6 @@ async function handleRequest(
     !isCloudOnboardingStatusEndpoint &&
     !isWhatsAppWebhookEndpoint &&
     !isBlueBubblesWebhookEndpoint &&
-    !isConnectorOAuthCallbackRoute &&
     !isPublicRuntimePluginRoute({
       runtime: state.runtime,
       method,
@@ -1936,8 +1859,8 @@ async function handleRequest(
   // (/api/trajectories/*) are now provided by the @elizaos/app-training
   // plugin via the runtime route registry.
 
-  // Document routes (/api/documents/*) are now provided by the
-  // @elizaos/app-documents plugin via the runtime route registry.
+  // Knowledge routes (/api/knowledge/*) are now provided by the
+  // @elizaos/app-knowledge plugin via the runtime route registry.
 
   if (
     pathname.startsWith("/api/memory") ||
@@ -2133,6 +2056,7 @@ async function handleRequest(
         EVM_PLUGIN_PACKAGE,
         applyWhatsAppQrOverride,
         applySignalQrOverride,
+        signalAuthExists,
         resolvePluginConfigMutationRejections,
         requirePluginManager,
         requireCoreManager,
@@ -2372,24 +2296,7 @@ async function handleRequest(
     return;
   }
 
-  // ── Connector account routes (/api/connectors/:provider/accounts, oauth) ──
-  if (
-    await handleConnectorAccountRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      state,
-      json,
-      error,
-      readJsonBody,
-      authorize: () => isTrustedLocalRequest(req) || isCloudProvisioned,
-    })
-  ) {
-    return;
-  }
-
-  // ── Connector config routes (extracted to connector-routes.ts) ─────────
+  // ── Connector routes (extracted to connector-routes.ts) ──────────────
   if (
     await handleConnectorRoutes({
       req,
@@ -2405,15 +2312,15 @@ async function handleRequest(
       isBlockedObjectKey,
       cloneWithoutBlockedObjectKeys,
       onConnectorDisconnect: async (connectorName) => {
-        // Disconnect cascades to the workflow credential cache: without this,
-        // credStore.get() returns a stale credential id and the next
+        // Disconnect cascades to the n8n credential cache: without this,
+        // credStore.get() returns a stale n8n credential id and the next
         // workflow generation silently bypasses the missing-credentials
         // banner.
         const credTypes = credTypesForConnector(connectorName);
         if (credTypes.length === 0) return;
         const runtime = state.runtime;
         if (!runtime) return;
-        const credStore = runtime.getService("workflow_credential_store") as {
+        const credStore = runtime.getService("n8n_credential_store") as {
           delete?: (userId: string, credType: string) => Promise<void>;
         } | null;
         const deleteCred = credStore?.delete;
@@ -2617,7 +2524,7 @@ async function handleRequest(
   }
 
   // Browser workspace routes (/api/browser-workspace/*) are served by the
-  // @elizaos/plugin-browser plugin via Plugin.routes.
+  // @elizaos/app-browser plugin via Plugin.routes.
 
   // Agent self-status, Privy, and ERC-8004 registry routes are now handled
   // by handleAgentStatusRoutes above.
@@ -2919,19 +2826,6 @@ async function handleRequest(
       url,
       runtime: state.runtime,
       isAuthorized: () => isAuthorized(req),
-      hostContext: {
-        config: state.config as Record<string, unknown>,
-        saveConfig: (nextConfig) => saveElizaConfig(nextConfig as ElizaConfig),
-        restartRuntime,
-        createTelemetrySpan: (meta) =>
-          meta.boundary === "cloud"
-            ? createIntegrationTelemetrySpan({
-                boundary: "cloud",
-                operation: meta.operation,
-                timeoutMs: meta.timeoutMs,
-              })
-            : undefined,
-      },
     })
   ) {
     return;
@@ -3041,12 +2935,8 @@ export async function startApiServer(opts?: {
   ] as const;
   for (const key of envKeysToHydrate) {
     const value = persistedEnv?.[key];
-    if (typeof value !== "string") {
-      continue;
-    }
-    const trimmed = value.trim();
-    if (trimmed && !isVaultConfigRef(trimmed) && !process.env[key]) {
-      process.env[key] = trimmed;
+    if (typeof value === "string" && value.trim() && !process.env[key]) {
+      process.env[key] = value.trim();
     }
   }
 
@@ -3073,17 +2963,24 @@ export async function startApiServer(opts?: {
   // available synchronously from the start (cloud-provisioned containers).
   await initStewardWalletCache();
 
-  // Warn when wallet private keys live in plaintext config and no secure local
-  // store is active. Vault sentinels are not plaintext and should not trigger it.
+  // Warn when wallet private keys live in plaintext config and the OS secure
+  // store is not enabled.  This nudges operators toward ELIZA_WALLET_OS_STORE=1.
   {
     const hasPlaintextKeys =
-      isPlaintextWalletPrivateKeyConfigValue(persistedEnv?.EVM_PRIVATE_KEY) ||
-      isPlaintextWalletPrivateKeyConfigValue(persistedEnv?.SOLANA_PRIVATE_KEY);
-    const osStoreEnabled = isWalletOsStoreEnabledForStartup();
+      (typeof persistedEnv?.EVM_PRIVATE_KEY === "string" &&
+        persistedEnv.EVM_PRIVATE_KEY.trim()) ||
+      (typeof persistedEnv?.SOLANA_PRIVATE_KEY === "string" &&
+        persistedEnv.SOLANA_PRIVATE_KEY.trim());
+    const osStoreRaw = process.env.ELIZA_WALLET_OS_STORE?.trim().toLowerCase();
+    const osStoreEnabled =
+      osStoreRaw === "1" ||
+      osStoreRaw === "true" ||
+      osStoreRaw === "on" ||
+      osStoreRaw === "yes";
     if (hasPlaintextKeys && !osStoreEnabled) {
       logger.warn(
         "[wallet] Private keys are stored in plaintext config. " +
-          "Use the vault or enable ELIZA_WALLET_OS_STORE=1 on a supported desktop.",
+          "Set ELIZA_WALLET_OS_STORE=1 to use the OS secure store instead.",
       );
     }
   }
@@ -4304,7 +4201,7 @@ export async function startApiServer(opts?: {
       );
     }
     for (const w of result.warnings) {
-      logger.debug(`[x402] ${w}`);
+      logger.warn(`[x402] ${w}`);
     }
   };
 

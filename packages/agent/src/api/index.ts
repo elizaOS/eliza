@@ -16,16 +16,25 @@ export * from "./apps-routes.js";
 export * from "./auth-routes.js";
 export * from "./bug-report-routes.js";
 export * from "./character-routes.js";
+export * from "./cloud-billing-routes.js";
+export * from "./cloud-compat-routes.js";
+export {
+  type CloudRouteState,
+  handleCloudRoute,
+} from "./cloud-routes.js";
+export {
+  type CloudStatusRouteContext,
+  handleCloudStatusRoutes,
+} from "./cloud-status-routes.js";
 export * from "./compat-utils.js";
-export * from "./connector-account-routes.js";
 export * from "./connector-health.js";
-export * from "./connector-routes.js";
 export * from "./credit-detection.js";
 export * from "./database.js";
 export * from "./diagnostics-routes.js";
 export * from "./documents-routes.js";
 export * from "./documents-service-loader.js";
 export * from "./early-logs.js";
+export * from "./http-helpers.js";
 export * from "./memory-bounds.js";
 export * from "./memory-routes.js";
 export * from "./models-routes.js";
@@ -37,6 +46,7 @@ export * from "./provider-switch-config.js";
 export * from "./rate-limiter.js";
 export * from "./registry-routes.js";
 export * from "./registry-service.js";
+export * from "./route-helpers.js";
 // `runtime-plugin-routes.ts` exports `matchPluginRoutePath` (used by plugin
 // authors and their tests, e.g. plugins/app-vincent/src/vincent-plugin-dispatch.test.ts)
 // and the request-handling helper `tryHandleRuntimePluginRoute` (used by
@@ -46,6 +56,14 @@ export {
   tryHandleRuntimePluginRoute,
 } from "./runtime-plugin-routes.js";
 export * from "./sandbox-routes.js";
+export {
+  applySignalQrOverride,
+  handleSignalRoute,
+  type SignalPairingEventLike,
+  type SignalPairingSessionLike,
+  type SignalRouteDeps,
+  type SignalRouteState,
+} from "./signal-routes.js";
 export * from "./stream-route-state.js";
 export * from "./stream-routes.js";
 export * from "./streaming-text.js";
@@ -60,4 +78,12 @@ export * from "./wallet-evm-balance.js";
 export * from "./wallet-routes.js";
 export * from "./wallet-rpc.js";
 export * from "./wallet-trading-profile.js";
+export {
+  applyWhatsAppQrOverride,
+  handleWhatsAppRoute,
+  type WhatsAppPairingEventLike,
+  type WhatsAppPairingSessionLike,
+  type WhatsAppRouteDeps,
+  type WhatsAppRouteState,
+} from "./whatsapp-routes.js";
 export * from "./zip-utils.js";
