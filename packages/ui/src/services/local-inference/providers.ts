@@ -307,7 +307,7 @@ const ZAI_PROVIDER: ProviderDefinition = {
   label: "z.ai API",
   kind: "cloud-api",
   description: "GLM models via z.ai API key or linked account pool.",
-  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     return apiKeyOrLinkedAccountState("zai-api", [
       "ZAI_API_KEY",
@@ -322,7 +322,7 @@ const MOONSHOT_PROVIDER: ProviderDefinition = {
   label: "Kimi / Moonshot API",
   kind: "cloud-api",
   description: "Kimi models via Moonshot API key or linked account pool.",
-  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     return apiKeyOrLinkedAccountState("moonshot-api", [
       "MOONSHOT_API_KEY",
