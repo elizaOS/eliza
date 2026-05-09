@@ -79,6 +79,7 @@ import {
   toActionData,
 } from "../lifeops/google/format-helpers.js";
 import { normalizeExplicitTimeZoneToken } from "../lifeops/time/timezone.js";
+import { getDefaultPromptExamplePair } from "../lifeops/i18n/prompt-registry.js";
 
 // ── Types ─────────────────────────────────────────────
 
@@ -3503,35 +3504,21 @@ export const lifeAction: Action & {
         },
       },
     ],
+    // W2-E: multilingual brush-teeth examples now resolve from the
+    // `MultilingualPromptRegistry` default pack via `exampleKey`. The
+    // Spanish row that previously lived inline here moved into the
+    // registry table at `lifeops/i18n/prompt-registry.ts`.
     [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "recuérdame cepillarme los dientes por la mañana y por la noche",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: 'Puedo guardar ese hábito para la mañana y la noche. Confirma y lo guardo.',
-          actions: ["LIFE"],
-        },
-      },
+      ...getDefaultPromptExamplePair(
+        "life.brush_teeth.create_definition",
+        "es",
+      ),
     ],
     [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "help me brush my teeth at 8 am and 9 pm every day",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: 'I can set up a habit named "Brush teeth" for 8 am and 9 pm daily. Confirm and I\'ll save it.',
-          actions: ["LIFE"],
-        },
-      },
+      ...getDefaultPromptExamplePair(
+        "life.brush_teeth.create_definition",
+        "en",
+      ),
     ],
     [
       {

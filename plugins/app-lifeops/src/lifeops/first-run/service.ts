@@ -4,7 +4,7 @@
  * Owns:
  *   - the lifecycle state machine (`pending` → `in_progress` → `complete`)
  *     via `FirstRunStateStore`
- *   - writes to `OwnerFactStore` (interim wrapper, W2-E swap target)
+ *   - writes to the canonical `OwnerFactStore` (W2-E real store)
  *   - emission of the defaults pack into the `ScheduledTaskRunner`
  *   - the replay path (re-run without destroying tasks)
  *
@@ -46,6 +46,9 @@ import {
   createOwnerFactStore,
   type FirstRunRecord,
   type FirstRunStateStore,
+  type OwnerFactProvenance,
+  type OwnerFacts,
+  type OwnerFactsPatch,
   type OwnerFactStore,
 } from "./state.js";
 import { asCacheRuntime } from "../runtime-cache.js";
@@ -132,12 +135,62 @@ export async function clearFallbackScheduledTasks(
   await cache.deleteCache(FALLBACK_RUNNER_CACHE_KEY);
 }
 
+// --- Flat-facts view (test-facing) ----------------------------------------
+
+/**
+ * Flat projection of the typed `OwnerFacts` store, used by callers that
+ * want quick scalar access to fact values (first-run tests, replay
+ * pre-fill). Provenance is intentionally elided — readers that need it go
+ * through the typed `OwnerFactStore` directly.
+ */
+export interface FirstRunFlatFacts {
+  preferredName?: string;
+  timezone?: string;
+  morningWindow?: { startLocal: string; endLocal: string };
+  eveningWindow?: { startLocal: string; endLocal: string };
+  preferredNotificationChannel?: string;
+  locale?: string;
+}
+
+function flattenFacts(facts: OwnerFacts): FirstRunFlatFacts {
+  const flat: FirstRunFlatFacts = {};
+  if (facts.preferredName) flat.preferredName = facts.preferredName.value;
+  if (facts.timezone) flat.timezone = facts.timezone.value;
+  if (facts.morningWindow) {
+    flat.morningWindow = {
+      startLocal: facts.morningWindow.value.startLocal,
+      endLocal: facts.morningWindow.value.endLocal,
+    };
+  }
+  if (facts.eveningWindow) {
+    flat.eveningWindow = {
+      startLocal: facts.eveningWindow.value.startLocal,
+      endLocal: facts.eveningWindow.value.endLocal,
+    };
+  }
+  if (facts.preferredNotificationChannel) {
+    flat.preferredNotificationChannel =
+      facts.preferredNotificationChannel.value;
+  }
+  if (facts.locale) flat.locale = facts.locale.value;
+  return flat;
+}
+
+function makeFirstRunProvenance(note?: string): OwnerFactProvenance {
+  const provenance: OwnerFactProvenance = {
+    source: "first_run",
+    recordedAt: new Date().toISOString(),
+  };
+  if (note) provenance.note = note;
+  return provenance;
+}
+
 // --- Service ---------------------------------------------------------------
 
 export interface FirstRunRunResult {
   status: "ok" | "needs_more_input" | "already_complete";
   record: FirstRunRecord;
-  facts: Awaited<ReturnType<OwnerFactStore["read"]>>;
+  facts: FirstRunFlatFacts;
   scheduledTasks: ScheduledTask[];
   /** Question id awaiting an answer (only set when status = needs_more_input). */
   awaitingQuestion?: string;
@@ -209,8 +262,8 @@ export class FirstRunService {
     return this.stateStore.read();
   }
 
-  async readFacts(): ReturnType<OwnerFactStore["read"]> {
-    return this.factStore.read();
+  async readFacts(): Promise<FirstRunFlatFacts> {
+    return flattenFacts(await this.factStore.read());
   }
 
   /**
@@ -225,7 +278,7 @@ export class FirstRunService {
       return {
         status: "already_complete",
         record,
-        facts: await this.factStore.read(),
+        facts: flattenFacts(await this.factStore.read()),
         scheduledTasks: [],
         message:
           "First-run already completed. Use the replay path to re-confirm settings.",
@@ -247,7 +300,7 @@ export class FirstRunService {
       return {
         status: "needs_more_input",
         record,
-        facts: await this.factStore.read(),
+        facts: flattenFacts(await this.factStore.read()),
         scheduledTasks: [],
         awaitingQuestion: "wakeTime",
         message: "What time do you usually wake up?",
@@ -260,7 +313,7 @@ export class FirstRunService {
       return {
         status: "needs_more_input",
         record,
-        facts: await this.factStore.read(),
+        facts: flattenFacts(await this.factStore.read()),
         scheduledTasks: [],
         awaitingQuestion: "wakeTime",
         message:
@@ -276,12 +329,16 @@ export class FirstRunService {
       input.channel ?? "in_app",
       this.runtime,
     );
-    const facts = await this.factStore.update({
+    const factsPatch: OwnerFactsPatch = {
       morningWindow,
       timezone,
       eveningWindow: DEFAULT_EVENING_WINDOW,
       preferredNotificationChannel: channelValidation.channel,
-    });
+    };
+    const facts = await this.factStore.update(
+      factsPatch,
+      makeFirstRunProvenance("defaults path: wake-time answer"),
+    );
 
     const pack = buildDefaultsPack({
       morningWindow,
@@ -300,7 +357,7 @@ export class FirstRunService {
     return {
       status: "ok",
       record: completed,
-      facts,
+      facts: flattenFacts(facts),
       scheduledTasks,
       message: this.formatDefaultsCompleteMessage(scheduledTasks.length),
       warnings: channelValidation.warning ? [channelValidation.warning] : [],
@@ -320,7 +377,7 @@ export class FirstRunService {
       return {
         status: "already_complete",
         record,
-        facts: await this.factStore.read(),
+        facts: flattenFacts(await this.factStore.read()),
         scheduledTasks: [],
         message:
           "First-run already completed. Use the replay path to re-confirm settings.",
@@ -339,7 +396,7 @@ export class FirstRunService {
       return {
         status: "needs_more_input",
         record,
-        facts: await this.factStore.read(),
+        facts: flattenFacts(await this.factStore.read()),
         scheduledTasks: [],
         awaitingQuestion: next.id,
         message: next.prompt,
@@ -349,14 +406,17 @@ export class FirstRunService {
 
     const finalized = finalizeCustomizeAnswers(merged, this.runtime);
 
-    const factsPatch: Parameters<OwnerFactStore["update"]>[0] = {
+    const factsPatch: OwnerFactsPatch = {
       preferredName: finalized.preferredName,
       timezone: finalized.timezone,
       morningWindow: finalized.morningWindow,
       eveningWindow: finalized.eveningWindow,
       preferredNotificationChannel: finalized.channel,
     };
-    const facts = await this.factStore.update(factsPatch);
+    const facts = await this.factStore.update(
+      factsPatch,
+      makeFirstRunProvenance("customize path: completed questionnaire"),
+    );
 
     const pack = buildDefaultsPack({
       morningWindow: finalized.morningWindow,
@@ -381,7 +441,7 @@ export class FirstRunService {
     return {
       status: "ok",
       record: completed,
-      facts,
+      facts: flattenFacts(facts),
       scheduledTasks,
       message: this.formatCustomizeCompleteMessage(
         finalized,
@@ -399,8 +459,8 @@ export class FirstRunService {
   async runReplayPath(input: ReplayPathInput): Promise<FirstRunRunResult> {
     let record = await this.stateStore.read();
     record = await this.stateStore.begin("replay");
-    const currentFacts = await this.factStore.read();
-    const partial = partialAnswersFromFacts(currentFacts);
+    const currentTypedFacts = await this.factStore.read();
+    const partial = partialAnswersFromFacts(currentTypedFacts);
     const merged = mergeCustomizeAnswers(
       {
         ...partial,
@@ -415,7 +475,7 @@ export class FirstRunService {
       return {
         status: "needs_more_input",
         record,
-        facts: currentFacts,
+        facts: flattenFacts(currentTypedFacts),
         scheduledTasks: [],
         awaitingQuestion: next.id,
         message: next.prompt,
@@ -424,14 +484,17 @@ export class FirstRunService {
     }
 
     const finalized = finalizeCustomizeAnswers(merged, this.runtime);
-    const factsPatch: Parameters<OwnerFactStore["update"]>[0] = {
+    const factsPatch: OwnerFactsPatch = {
       preferredName: finalized.preferredName,
       timezone: finalized.timezone,
       morningWindow: finalized.morningWindow,
       eveningWindow: finalized.eveningWindow,
       preferredNotificationChannel: finalized.channel,
     };
-    const facts = await this.factStore.update(factsPatch);
+    const facts = await this.factStore.update(
+      factsPatch,
+      makeFirstRunProvenance("replay path: refreshed answers"),
+    );
 
     // Re-emit the defaults pack with the same idempotency keys so the runner
     // upserts in place. Existing user-authored tasks (different idempotency
@@ -454,7 +517,7 @@ export class FirstRunService {
     return {
       status: "ok",
       record: completed,
-      facts,
+      facts: flattenFacts(facts),
       scheduledTasks,
       message: "Settings refreshed. Existing scheduled tasks were preserved.",
       warnings,
