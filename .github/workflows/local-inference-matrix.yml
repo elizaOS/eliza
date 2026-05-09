@@ -1,6 +1,6 @@
 name: Local Inference Matrix
 
-# Builds the buun-llama-cpp fork on each runner class, runs the ablation
+# Builds the bun-llama-cpp fork on each runner class, runs the ablation
 # variant suite, and gates regressions against per-(backend, variant) tok/s
 # floors in scripts/local-inference-thresholds.json.
 #
@@ -12,10 +12,14 @@ name: Local Inference Matrix
 # Matrix gating:
 #   - ubuntu-latest CPU always runs.
 #   - ubuntu-latest CUDA only runs when the PR carries the `gpu` label
-#     (and a self-hosted GPU runner with the `gpu` label is online).
+#     (and a self-hosted GPU runner with the `gpu` runner labels is online).
 #   - macos-14 Metal only runs on workflow_dispatch (Apple Silicon cost).
 # CUDA and Metal entries are continue-on-error until self-hosted runners
 # are wired up so the workflow stays green on CPU only.
+#
+# Note: Job-level `if:` cannot reference `matrix` (GitHub Actions limitation).
+# Optional legs are added by `prepare-matrix` via JSON so only requested
+# combinations are scheduled.
 
 on:
   workflow_dispatch:
@@ -56,51 +60,90 @@ env:
   SMOKE_MODEL_FILE: "SmolLM2-360M-Instruct-Q4_K_M.gguf"
 
 jobs:
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - uses: actions/github-script@v7
+        id: set
+        with:
+          script: |
+            const ev = context.eventName;
+            const pr = context.payload.pull_request;
+            const inputs = github.event.inputs ?? {};
+
+            const hasGpuLabel =
+              ev === "pull_request" &&
+              Array.isArray(pr?.labels) &&
+              pr.labels.some((label) => label?.name === "gpu");
+
+            const runCudaDispatch =
+              ev === "workflow_dispatch" &&
+              (inputs.run_cuda === true ||
+                inputs.run_cuda === "true");
+
+            const runMetalDispatch =
+              ev === "workflow_dispatch" &&
+              inputs.run_metal !== false &&
+              inputs.run_metal !== "false";
+
+            const include = [
+              {
+                label: "ubuntu-latest cpu",
+                "runs-on": "ubuntu-latest",
+                backend: "cpu",
+                target: "linux-x64-cpu",
+                timeout: 90,
+                "continue-on-error": false,
+                build_only: false,
+              },
+              {
+                label: "ubuntu-latest vulkan (build-only)",
+                "runs-on": "ubuntu-latest",
+                backend: "vulkan",
+                target: "linux-x64-vulkan",
+                timeout: 90,
+                "continue-on-error": true,
+                build_only: true,
+              },
+            ];
+
+            if (hasGpuLabel || runCudaDispatch) {
+              include.push({
+                label: "ubuntu-latest cuda (self-hosted)",
+                "runs-on": ["self-hosted", "gpu", "cuda"],
+                backend: "cuda",
+                target: "linux-x64-cuda",
+                timeout: 120,
+                "continue-on-error": true,
+                build_only: false,
+              });
+            }
+
+            if (runMetalDispatch) {
+              include.push({
+                label: "macos-14 metal",
+                "runs-on": "macos-14",
+                backend: "metal",
+                target: "darwin-arm64-metal",
+                timeout: 120,
+                "continue-on-error": true,
+                build_only: false,
+              });
+            }
+
+            core.setOutput("matrix", JSON.stringify({ include }));
+
   matrix:
     name: ${{ matrix.label }}
+    needs: prepare-matrix
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: ${{ matrix.timeout }}
     continue-on-error: ${{ matrix.continue-on-error }}
-    if: ${{ matrix.run_if == 'true' || matrix.run_if == true }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - label: "ubuntu-latest cpu"
-            runs-on: ubuntu-latest
-            backend: cpu
-            target: linux-x64-cpu
-            timeout: 90
-            continue-on-error: false
-            build_only: false
-            run_if: true
-          - label: "ubuntu-latest vulkan (build-only)"
-            runs-on: ubuntu-latest
-            backend: vulkan
-            target: linux-x64-vulkan
-            timeout: 90
-            continue-on-error: true
-            # GitHub-hosted ubuntu runners have libvulkan1 from mesa but no
-            # Vulkan-capable GPU, so we verify the cross-compile end-to-end
-            # without attempting an ablation run.
-            build_only: true
-            run_if: true
-          - label: "ubuntu-latest cuda (self-hosted)"
-            runs-on: [self-hosted, gpu, cuda]
-            backend: cuda
-            target: linux-x64-cuda
-            timeout: 120
-            continue-on-error: true
-            build_only: false
-            run_if: ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'gpu')) || (github.event_name == 'workflow_dispatch' && inputs.run_cuda == true) }}
-          - label: "macos-14 metal"
-            runs-on: macos-14
-            backend: metal
-            target: darwin-arm64-metal
-            timeout: 120
-            continue-on-error: true
-            build_only: false
-            run_if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_metal == true }}
+      matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
