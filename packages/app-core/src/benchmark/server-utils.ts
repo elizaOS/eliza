@@ -8,6 +8,8 @@ import {
 } from "@elizaos/core";
 import type { BenchmarkContext, CapturedAction } from "./plugin";
 
+export { coerceParams } from "./params";
+
 export const DEFAULT_PORT = 3939;
 export const DEFAULT_HOST = "127.0.0.1";
 export const BENCHMARK_WORLD_ID = stringToUuid("eliza-benchmark-world");
@@ -312,26 +314,6 @@ export function composeBenchmarkPrompt(params: {
 export function coerceActions(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((entry): entry is string => typeof entry === "string");
-}
-
-export function coerceParams(value: unknown): Record<string, unknown> {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
-      }
-    } catch {
-      return {};
-    }
-  }
-
-  return {};
 }
 
 export function normalizeBenchmarkContext(
