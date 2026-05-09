@@ -290,6 +290,12 @@ class AospDflashAdapter implements DflashAdapter {
       const exitDetail = exitedEarly
         ? ` (process exited with code=${exitedEarly.code} signal=${exitedEarly.signal})`
         : "";
+      // Clean up the child if it is still alive so we don't orphan it.
+      if (this.child && !this.child.killed && this.child.exitCode === null) {
+        try { this.child.kill("SIGTERM"); } catch { /* ignore */ }
+      }
+      this.child = null;
+      this.baseUrl = null;
       throw new Error(
         `${err instanceof Error ? err.message : String(err)}${exitDetail}\n` +
           `--- llama-server stderr tail ---\n${tail}`,
