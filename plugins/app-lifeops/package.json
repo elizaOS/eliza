@@ -161,6 +161,9 @@
     }
   },
   "scripts": {
+    "lint:default-packs": "node scripts/lint-default-packs.mjs",
+    "verify": "bun run lint:default-packs && bun run build:types && bun run test",
+    "pretest": "node scripts/lint-default-packs.mjs",
     "test": "vitest run --config vitest.config.ts",
     "test:app-state": "vitest run --config vitest.config.ts eliza/plugins/app-lifeops/test/lifeops-app-state.test.ts",
     "test:integration": "cd ../../.. && vitest run --config eliza/test/vitest/integration.config.ts eliza/plugins/app-lifeops/test/life-smoke.integration.test.ts",
