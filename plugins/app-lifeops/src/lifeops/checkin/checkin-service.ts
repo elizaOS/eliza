@@ -46,7 +46,7 @@ import type {
  * data from an unavailable source.
  */
 
-export const CHECKIN_REPORTS_TABLE = "life_checkin_reports";
+export const CHECKIN_REPORTS_TABLE = "app_lifeops.life_checkin_reports";
 
 const ACK_WINDOW_MS = 72 * 60 * 60 * 1000;
 const DEFAULT_SECTION_LIMIT = 8;
@@ -465,7 +465,7 @@ async function collectHabitSummaries(
               title AS definition_title,
               kind AS definition_kind,
               metadata_json AS definition_metadata_json
-         FROM life_task_definitions
+         FROM app_lifeops.life_task_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND kind IN ('habit', 'routine')
           AND status IN ('active', 'paused')
@@ -481,7 +481,7 @@ async function collectHabitSummaries(
               state AS occurrence_state,
               due_at AS occurrence_due_at,
               updated_at AS occurrence_updated_at
-         FROM life_task_occurrences
+         FROM app_lifeops.life_task_occurrences
         WHERE agent_id = ${sqlQuote(agentId)}
           AND definition_id IN (${definitionRows.map((row) => sqlQuote(toText(row.definition_id))).join(", ")})
         ORDER BY definition_id ASC, due_at ASC, updated_at ASC`,
@@ -563,8 +563,8 @@ async function collectOverdueTodos(
               occ.definition_id AS definition_id,
               COALESCE(def.title, '') AS title,
               occ.due_at AS due_at
-         FROM life_task_occurrences occ
-         LEFT JOIN life_task_definitions def ON def.id = occ.definition_id
+         FROM app_lifeops.life_task_occurrences occ
+         LEFT JOIN app_lifeops.life_task_definitions def ON def.id = occ.definition_id
         WHERE occ.agent_id = ${sqlQuote(agentId)}
           AND occ.state IN ('pending', 'active', 'in_progress')
           AND occ.due_at IS NOT NULL
@@ -592,7 +592,7 @@ async function collectOverdueTodos(
     const message = error instanceof Error ? error.message : String(error);
     logMissingOnce(
       "overdue-todos",
-      `overdue-todos collector unavailable (life_task_occurrences not ready): ${message}`,
+      `overdue-todos collector unavailable (app_lifeops.life_task_occurrences not ready): ${message}`,
     );
     return { rows: [], error: message };
   }
@@ -609,7 +609,7 @@ async function collectTodaysMeetings(
     const rows = await executeRawSql(
       runtime,
       `SELECT id, title, start_at, end_at
-         FROM life_calendar_events
+         FROM app_lifeops.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND start_at >= ${sqlQuote(day.start.toISOString())}
           AND start_at < ${sqlQuote(day.end.toISOString())}
@@ -629,7 +629,7 @@ async function collectTodaysMeetings(
     const message = error instanceof Error ? error.message : String(error);
     logMissingOnce(
       "todays-meetings",
-      `meetings collector unavailable (life_calendar_events not ready): ${message}`,
+      `meetings collector unavailable (app_lifeops.life_calendar_events not ready): ${message}`,
     );
     return { rows: [], error: message };
   }
@@ -654,8 +654,8 @@ async function collectCompletedWins(
       `SELECT occ.id AS id,
               COALESCE(def.title, '') AS title,
               occ.updated_at AS completed_at
-         FROM life_task_occurrences occ
-         LEFT JOIN life_task_definitions def ON def.id = occ.definition_id
+         FROM app_lifeops.life_task_occurrences occ
+         LEFT JOIN app_lifeops.life_task_definitions def ON def.id = occ.definition_id
         WHERE occ.agent_id = ${sqlQuote(agentId)}
           AND occ.state = 'completed'
           AND occ.updated_at >= ${sqlQuote(start.toISOString())}
@@ -937,7 +937,7 @@ async function collectCalendarChangeSection(
     const rows = await executeRawSql(
       runtime,
       `SELECT title, start_at, end_at, status, html_link, updated_at
-         FROM life_calendar_events
+         FROM app_lifeops.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND side = 'owner'
           AND (
@@ -1016,7 +1016,7 @@ async function collectGitHubSection(
         runtime,
         `SELECT subject, from_display, snippet, received_at, html_link,
                 is_unread, is_important, likely_reply_needed, triage_score
-           FROM life_gmail_messages
+           FROM app_lifeops.life_gmail_messages
           WHERE agent_id = ${sqlQuote(agentId)}
             AND side = 'owner'
             AND received_at >= ${sqlQuote(sinceIso)}
@@ -1027,7 +1027,7 @@ async function collectGitHubSection(
       executeRawSql(
         runtime,
         `SELECT identifier, display_name, start_at, duration_seconds
-           FROM life_screen_time_sessions
+           FROM app_lifeops.life_screen_time_sessions
           WHERE agent_id = ${sqlQuote(agentId)}
             AND start_at >= ${sqlQuote(day.start.toISOString())}
             AND start_at < ${sqlQuote(day.end.toISOString())}
@@ -1100,8 +1100,8 @@ async function collectContactSection(
               interaction.direction,
               interaction.summary,
               interaction.occurred_at
-         FROM life_relationship_interactions interaction
-         LEFT JOIN life_relationships rel
+         FROM app_lifeops.life_relationship_interactions interaction
+         LEFT JOIN app_lifeops.life_relationships rel
            ON rel.agent_id = interaction.agent_id
           AND rel.id = interaction.relationship_id
         WHERE interaction.agent_id = ${sqlQuote(agentId)}
@@ -1163,8 +1163,8 @@ async function collectPromiseSection(
               followup.completed_at,
               followup.updated_at,
               COALESCE(rel.name, followup.relationship_id) AS name
-         FROM life_follow_ups followup
-         LEFT JOIN life_relationships rel
+         FROM app_lifeops.life_follow_ups followup
+         LEFT JOIN app_lifeops.life_relationships rel
            ON rel.agent_id = followup.agent_id
           AND rel.id = followup.relationship_id
         WHERE followup.agent_id = ${sqlQuote(agentId)}
