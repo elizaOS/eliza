@@ -1,5 +1,9 @@
 import type http from "node:http";
-import type { IAgentRuntime, ReadJsonBodyOptions } from "@elizaos/core";
+import type {
+  EventPayload,
+  IAgentRuntime,
+  ReadJsonBodyOptions,
+} from "@elizaos/core";
 import { credTypesForConnector } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { CONNECTOR_ENV_MAP } from "../config/env-vars.js";
@@ -16,6 +20,12 @@ import type { ConnectorConfig } from "../config/types.eliza.js";
  * `plugins/plugin-workflow/src/types/index.ts` (`CONNECTOR_DISCONNECTED_EVENT`).
  */
 const CONNECTOR_DISCONNECTED_EVENT = "connector_disconnected";
+
+interface ConnectorDisconnectedPayload extends EventPayload {
+  userId: string;
+  credTypes: readonly string[];
+  connectorName: string;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,12 +80,13 @@ async function emitConnectorDisconnected(
 ): Promise<void> {
   if (!runtime) return;
   const credTypes = credTypesForConnector(connectorName);
-  await runtime.emitEvent(CONNECTOR_DISCONNECTED_EVENT, {
+  const payload: ConnectorDisconnectedPayload = {
     runtime,
     userId: runtime.agentId,
     credTypes,
     connectorName,
-  });
+  };
+  await runtime.emitEvent(CONNECTOR_DISCONNECTED_EVENT, payload);
 }
 
 function getConfiguredConnectorsFromEnv(): Record<
