@@ -2,57 +2,17 @@
  * Agent-side autofill refusal list. This is the first gate before a request is
  * sent to the browser companion, so unsafe domains are rejected even if the
  * companion is unreachable.
+ *
+ * The 49 default brand domains live in
+ * `src/default-packs/autofill-whitelist-pack.ts` (W2-F). This module re-exports
+ * them as `DEFAULT_AUTOFILL_WHITELIST` so callers don't need to know about the
+ * pack — adding a default domain is a literal-edit in the pack file, not here.
  */
 
-export const DEFAULT_AUTOFILL_WHITELIST: readonly string[] = [
-  "github.com",
-  "gitlab.com",
-  "bitbucket.org",
-  "google.com",
-  "googlemail.com",
-  "gmail.com",
-  "microsoft.com",
-  "live.com",
-  "outlook.com",
-  "office.com",
-  "apple.com",
-  "icloud.com",
-  "stripe.com",
-  "figma.com",
-  "notion.so",
-  "linear.app",
-  "slack.com",
-  "discord.com",
-  "zoom.us",
-  "dropbox.com",
-  "box.com",
-  "twitter.com",
-  "x.com",
-  "facebook.com",
-  "instagram.com",
-  "linkedin.com",
-  "reddit.com",
-  "youtube.com",
-  "bing.com",
-  "duckduckgo.com",
-  "amazon.com",
-  "ebay.com",
-  "shopify.com",
-  "paypal.com",
-  "wellsfargo.com",
-  "chase.com",
-  "bankofamerica.com",
-  "citi.com",
-  "1password.com",
-  "proton.me",
-  "protonmail.com",
-  "anthropic.com",
-  "openai.com",
-  "cloudflare.com",
-  "vercel.com",
-  "netlify.com",
-  "npmjs.com",
-];
+import { getDefaultAutofillWhitelist } from "../default-packs/autofill-whitelist-pack.js";
+
+export const DEFAULT_AUTOFILL_WHITELIST: readonly string[] =
+  getDefaultAutofillWhitelist();
 
 export function extractRegistrableDomain(input: string): string | null {
   if (typeof input !== "string") return null;
