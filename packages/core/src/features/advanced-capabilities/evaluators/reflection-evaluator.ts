@@ -89,7 +89,8 @@ You just helped {{agentName}} respond. Now produce ONE JSON object that captures
   1. a short self-reflective thought,
   2. fact-store operations on the agent's two-store fact memory,
   3. relationship updates between participants,
-  4. whether the user's task is complete this turn.
+  4. platform identities mentioned in the conversation,
+  5. whether the user's task is complete this turn.
 
 Return exactly one JSON object. No prose, no fences, no XML, no <think>.
 
@@ -122,6 +123,17 @@ Ops:
 - tags is an array of short strings (e.g. ["dm_interaction", "colleague"]).
 - metadata may carry small structured fields (e.g. interactions count, sentiment).
 - Omit relationships entirely if nothing changed.
+
+## Identities
+
+- entityId is the UUID of the entity the identity belongs to. It MUST be one of the UUIDs listed in "Entities in Room".
+- platform is a short lowercase string: "twitter", "github", "telegram", "discord", "bluesky", "farcaster", "linkedin", etc.
+- handle is the platform-specific handle. Strip leading "@" for platforms that don't require it (twitter, github, bluesky, farcaster). Keep "@" only when the platform's canonical form includes it (e.g. some telegram refs).
+- confidence is between 0 and 1. Use 0.9 when the speaker explicitly claims their own handle ("my github is X"), 0.7-0.85 for clear self-claims with slight ambiguity, lower for second-hand mentions.
+- Only emit identities that a participant explicitly states or claims for themselves OR for another known participant in the recent conversation. Do not invent.
+- If the speaker mentions a third party by name, resolve that name against "Entities in Room". If you cannot resolve it to a listed entity UUID, OMIT the identity entirely.
+- Do not emit identities for ambient mentions of public figures who aren't participants in the room.
+- Omit the identities array entirely (or return []) when nothing was mentioned.
 
 ## Task completion
 

@@ -82,6 +82,10 @@ interface RawPlannerOutput {
 	tools?: unknown;
 	actions?: unknown;
 	action?: unknown;
+	actionName?: unknown;
+	name?: unknown;
+	tool?: unknown;
+	function?: unknown;
 	messageToUser?: unknown;
 	text?: unknown;
 }

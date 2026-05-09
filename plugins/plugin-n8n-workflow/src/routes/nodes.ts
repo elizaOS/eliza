@@ -8,6 +8,21 @@ import {
 import type { NodeSearchResult } from '../types/index';
 import { N8N_CREDENTIAL_PROVIDER_TYPE, isCredentialProvider } from '../types/index';
 import { validateLimit } from './_helpers';
+import { N8N_EMBEDDED_SERVICE_TYPE, type EmbeddedN8nService } from '../services/embedded-n8n-service';
+
+function getRegisteredEmbeddedNodes(runtime: IAgentRuntime): Set<string> | null {
+  const service = runtime.getService(N8N_EMBEDDED_SERVICE_TYPE) as EmbeddedN8nService | null;
+  const names = service?.getRegisteredNodeTypes?.();
+  return names?.length ? new Set(names) : null;
+}
+
+function filterEmbeddedResults(
+  results: NodeSearchResult[],
+  runtime: IAgentRuntime
+): NodeSearchResult[] {
+  const registered = getRegisteredEmbeddedNodes(runtime);
+  return registered ? results.filter((result) => registered.has(result.node.name)) : results;
+}
 
 /**
  * GET /nodes?q=gmail,email&limit=20
@@ -15,7 +30,7 @@ import { validateLimit } from './_helpers';
 async function listNodes(
   req: RouteRequest,
   res: RouteResponse,
-  _runtime: IAgentRuntime
+  runtime: IAgentRuntime
 ): Promise<void> {
   try {
     const q = req.query?.q as string | undefined;
@@ -33,7 +48,7 @@ async function listNodes(
       .split(',')
       .map((k) => k.trim())
       .filter(Boolean);
-    const results = searchNodes(keywords, limit);
+    const results = filterEmbeddedResults(searchNodes(keywords, limit), runtime);
 
     res.json({
       success: true,
@@ -59,7 +74,10 @@ async function listAvailableNodes(
   runtime: IAgentRuntime
 ): Promise<void> {
   try {
-    const catalog = getAllNodes();
+    const registered = getRegisteredEmbeddedNodes(runtime);
+    const catalog = registered
+      ? getAllNodes().filter((node) => registered.has(node.name))
+      : getAllNodes();
     const allResults: NodeSearchResult[] = catalog
       .filter((n) => n.name && n.displayName)
       .map((node) => ({ node, score: 0, matchReason: 'catalog' }));
@@ -122,12 +140,18 @@ async function listAvailableNodes(
 async function getNode(
   req: RouteRequest,
   res: RouteResponse,
-  _runtime: IAgentRuntime
+  runtime: IAgentRuntime
 ): Promise<void> {
   try {
     const type = req.params?.type;
     if (!type) {
       res.status(400).json({ success: false, error: 'node_type_required' });
+      return;
+    }
+
+    const registered = getRegisteredEmbeddedNodes(runtime);
+    if (registered && !registered.has(type)) {
+      res.status(404).json({ success: false, error: `node_type_not_available: ${type}` });
       return;
     }
 
