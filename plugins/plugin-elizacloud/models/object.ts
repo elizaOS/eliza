@@ -147,10 +147,17 @@ async function generateObjectByModelType(
     const lastUserMsg = input[input.length - 1];
     if (lastUserMsg && lastUserMsg.role === "user") {
       const schemaDirective = `\n\nReturn ONLY a valid JSON value (no prose, no markdown fences) that matches this JSON Schema exactly:\n${JSON.stringify(params.schema)}`;
-      lastUserMsg.content = lastUserMsg.content.map((part) => ({
-        ...part,
-        text: part.text + schemaDirective,
-      }));
+      const firstTextIdx = lastUserMsg.content.findIndex(
+        (p) => p.type === "input_text"
+      );
+      if (firstTextIdx !== -1) {
+        const part = lastUserMsg.content[firstTextIdx];
+        lastUserMsg.content = [
+          ...lastUserMsg.content.slice(0, firstTextIdx),
+          { ...part, text: part.text + schemaDirective },
+          ...lastUserMsg.content.slice(firstTextIdx + 1),
+        ];
+      }
     }
   }
   const requestBody: Record<string, unknown> = {
