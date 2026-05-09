@@ -200,11 +200,13 @@ class OpenAICompatibleMind2WebAgent:
         "openai": "https://api.openai.com/v1",
         "groq": "https://api.groq.com/openai/v1",
         "openrouter": "https://openrouter.ai/api/v1",
+        "cerebras": "https://api.cerebras.ai/v1",
     }
     _KEY_VARS = {
         "openai": "OPENAI_API_KEY",
         "groq": "GROQ_API_KEY",
         "openrouter": "OPENROUTER_API_KEY",
+        "cerebras": "CEREBRAS_API_KEY",
     }
 
     def __init__(self, config: Mind2WebConfig) -> None:
