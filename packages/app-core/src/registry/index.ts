@@ -21,15 +21,29 @@ export {
 export * from "./schema";
 
 // Bun.build collapses these top-level `const` declarations into `var`s
-// inside an `__esm` wrapper. When the bundle ends up with a code path that
-// reaches `loadRegistry()` before `init_registry6()` has run (no obvious
-// trigger we can find — possibly a TLA scheduling quirk in 1.3.13), the
-// `var entriesDir` is `undefined` and `path.join(undefined, "apps")` throws
-// `TypeError: The "paths[0]" property must be of type string`. Resolve the
-// directory lazily inside `loadRegistry()` so a stale call still finds the
-// path via `import.meta.url`.
+// inside an `__esm` wrapper, and `import.meta.url` inside that wrapper
+// can resolve to `undefined` on the on-device runtime when the registry
+// module is initialised through the `Promise.resolve().then(() => init_xxx())`
+// adapter the bundler emits for dynamic-import re-exports of `@elizaos/app-core`.
+// The fallback to `process.argv[1]` matches the bundle's own entrypoint
+// (e.g. `/data/data/.../agent-bundle.js`) so the registry sits at
+// `<bundle-dir>/entries/`. Phase A asset extraction stages the `entries/`
+// payload alongside the bundle.
 function resolveEntriesDir(): string {
-  const moduleDir = dirname(fileURLToPath(import.meta.url));
+  const url =
+    typeof import.meta.url === "string" && import.meta.url
+      ? import.meta.url
+      : null;
+  let moduleDir: string;
+  if (url) {
+    try {
+      moduleDir = dirname(fileURLToPath(url));
+    } catch {
+      moduleDir = dirname(process.argv[1] ?? process.cwd());
+    }
+  } else {
+    moduleDir = dirname(process.argv[1] ?? process.cwd());
+  }
   return join(moduleDir, "entries");
 }
 
