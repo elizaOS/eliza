@@ -7,6 +7,9 @@
     "strict": true,
     "skipLibCheck": true,
     "outDir": "dist",
+    "paths": {
+      "@elizaos/core": ["../../../core/src/index.ts"]
+    },
     "types": ["node", "bun-types"],
     "resolveJsonModule": true
   },
