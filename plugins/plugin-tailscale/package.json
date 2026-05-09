@@ -31,9 +31,14 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."
   },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-tunnel": "workspace:*"
+  },
   "dependencies": {
     "@elizaos/cloud-routing": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-tunnel": "workspace:*",
     "undici": "^8.0.0",
     "zod": "^4.4.3"
   },

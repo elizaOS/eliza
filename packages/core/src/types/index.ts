@@ -5,7 +5,7 @@ export { logger } from "../logger";
 export {
 	addHeader,
 	composePromptFromState,
-	parseKeyValueXml,
+	parseKeyValueXml, // audit:allowlist - retained for cloud/ XML evaluators; new prompts must use JSON
 } from "../utils";
 export * from "./agent";
 // Channel configuration types for plugins

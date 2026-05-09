@@ -258,7 +258,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     callback: (tx: IDatabaseAdapter<IStorage>) => Promise<T>,
     _options?: { entityContext?: UUID }
   ): Promise<T> {
-    return callback(this as unknown as IDatabaseAdapter<IStorage>);
+    return callback(this as IDatabaseAdapter<IStorage>);
   }
 
   // ── Embedding ─────────────────────────────────────────────────────────
@@ -494,11 +494,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         update.componentId
       );
       if (!component) continue;
-      const data = { ...(component.data ?? {}) } as unknown as Record<string, unknown>;
+      const data = { ...(component.data ?? {}) } as Record<string, unknown>;
       for (const op of update.ops) {
         applyPatchOp(data, op);
       }
-      component.data = data as unknown as Component["data"];
+      component.data = data as Component["data"];
       await this.storage.set(COLLECTIONS.COMPONENTS, update.componentId, component);
     }
   }

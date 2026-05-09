@@ -1,3 +1,12 @@
+export { applySignalQrOverride } from "@elizaos/plugin-signal";
+export {
+  applyWhatsAppQrOverride,
+  handleWhatsAppRoute,
+  type WhatsAppPairingEventLike,
+  type WhatsAppPairingSessionLike,
+  type WhatsAppRouteDeps,
+  type WhatsAppRouteState,
+} from "@elizaos/plugin-whatsapp";
 export * from "./accounts-routes.js";
 export * from "./agent-admin-routes.js";
 export * from "./agent-lifecycle-routes.js";
@@ -37,7 +46,6 @@ export {
   tryHandleRuntimePluginRoute,
 } from "./runtime-plugin-routes.js";
 export * from "./sandbox-routes.js";
-export { applySignalQrOverride } from "@elizaos/plugin-signal";
 export * from "./stream-route-state.js";
 export * from "./stream-routes.js";
 export * from "./streaming-text.js";
@@ -52,12 +60,4 @@ export * from "./wallet-evm-balance.js";
 export * from "./wallet-routes.js";
 export * from "./wallet-rpc.js";
 export * from "./wallet-trading-profile.js";
-export {
-  applyWhatsAppQrOverride,
-  handleWhatsAppRoute,
-  type WhatsAppPairingEventLike,
-  type WhatsAppPairingSessionLike,
-  type WhatsAppRouteDeps,
-  type WhatsAppRouteState,
-} from "@elizaos/plugin-whatsapp";
 export * from "./zip-utils.js";

@@ -33,7 +33,7 @@ export const musicQueueProvider: Provider = {
     try {
       const musicService = runtime.getService(
         MUSIC_SERVICE_NAME,
-      ) as unknown as MusicService | null;
+      ) as MusicService | null;
       if (!musicService) return { text: "" };
 
       const room = state?.data?.room || (await runtime.getRoom(message.roomId));

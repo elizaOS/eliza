@@ -42,7 +42,7 @@ interface NodeFsGlobModule {
 }
 
 function getNodeFsGlob(): NodeFsGlobModule["glob"] | undefined {
-  const candidate = (fs as unknown as Partial<NodeFsGlobModule>).glob;
+  const candidate = (fs as Partial<NodeFsGlobModule>).glob;
   return typeof candidate === "function" ? candidate : undefined;
 }
 

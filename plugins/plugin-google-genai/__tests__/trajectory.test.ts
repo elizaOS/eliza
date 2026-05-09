@@ -33,7 +33,7 @@ function createInlineRuntime(calls: CapturedLlmCall[]): IAgentRuntime {
     getServicesByType: (type: string) =>
       type === "trajectories" ? [trajectoryLogger] : [],
     getSetting: (key: string) => settings[key] ?? process.env[key] ?? null,
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 if (!SHOULD_RUN) {
@@ -69,7 +69,7 @@ if (!SHOULD_RUN) {
               properties: { answer: { type: "number" } },
               required: ["answer"],
             },
-          } as unknown as Parameters<typeof handleTextLarge>[1]);
+          } as Parameters<typeof handleTextLarge>[1]);
         },
       );
 

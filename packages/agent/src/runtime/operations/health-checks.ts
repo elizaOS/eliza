@@ -34,13 +34,13 @@ interface ServiceRegistryLike {
 }
 
 function getDbAdapter(runtime: AgentRuntime): DbAdapterLike | null {
-  const adapter = (runtime as unknown as { adapter?: unknown }).adapter;
+  const adapter = runtime.adapter;
   if (adapter == null || typeof adapter !== "object") return null;
   return adapter as DbAdapterLike;
 }
 
 function asServiceRegistry(runtime: AgentRuntime): ServiceRegistryLike {
-  return runtime as unknown as ServiceRegistryLike;
+  return runtime as AgentRuntime & ServiceRegistryLike;
 }
 
 export function describeError(err: unknown): string {

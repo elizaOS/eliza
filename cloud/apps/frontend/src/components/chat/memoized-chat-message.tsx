@@ -274,7 +274,12 @@ function normalizeMarkdownLists(text: string): string {
 
 // Pre-load plugins at module level - shared across all message instances
 // This prevents the flash caused by loading plugins inside each component
-let pluginsCache: { remarkGfm: any; rehypeHighlight: any } | null = null;
+type MarkdownPlugins = {
+  remarkGfm: (typeof import("remark-gfm"))["default"];
+  rehypeHighlight: (typeof import("rehype-highlight"))["default"];
+};
+
+let pluginsCache: MarkdownPlugins | null = null;
 const pluginsPromise = Promise.all([
   import("remark-gfm").then((mod) => mod.default),
   import("rehype-highlight").then((mod) => mod.default),

@@ -12,7 +12,13 @@ export {
 export * from "./actions/index.js";
 export * from "./api/config-env.js";
 export * from "./api/conversation-metadata.js";
+export {
+  readJsonBody,
+  sendJson,
+  sendJsonError,
+} from "./api/http-helpers.js";
 export * from "./api/index.js";
+export { setOwnerContact } from "./api/owner-contact-helpers.js";
 export {
   findPrimaryEnvKey,
   readBundledPluginPackageMetadata,

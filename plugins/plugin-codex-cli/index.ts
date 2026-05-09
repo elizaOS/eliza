@@ -184,7 +184,7 @@ const codexModels = {
     generateTextWithCodex(runtime, params, RESPONSE_HANDLER_MODEL_TYPE),
   [ACTION_PLANNER_MODEL_TYPE]: (runtime: IAgentRuntime, params: GenerateTextParams) =>
     generateTextWithCodex(runtime, params, ACTION_PLANNER_MODEL_TYPE),
-} as unknown as Plugin["models"];
+} as Plugin["models"];
 
 export const codexCliPlugin: Plugin = {
   name: "codex-cli",

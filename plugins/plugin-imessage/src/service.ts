@@ -309,7 +309,7 @@ function contactTarget(
       {
         source: "imessage",
         channelId: normalized,
-        entityId: normalized as unknown as UUID,
+        entityId: normalized as UUID,
       },
       IMESSAGE_LOCAL_ACCOUNT_ID
     ),
@@ -346,7 +346,7 @@ function chatTarget(chat: IMessageChat, contacts: ContactsMap): MessageConnector
     IMESSAGE_LOCAL_ACCOUNT_ID
   );
   if (!isGroup && primaryHandle) {
-    target.entityId = primaryHandle as unknown as UUID;
+    target.entityId = primaryHandle as UUID;
   }
   return {
     target,
@@ -628,7 +628,7 @@ export class IMessageService extends Service implements IIMessageService {
                     channelId: message.chatId.startsWith("chat_id:")
                       ? message.chatId
                       : `chat_id:${message.chatId}`,
-                    entityId: handle ? (handle as unknown as UUID) : undefined,
+                    entityId: handle ? (handle as UUID) : undefined,
                   },
                   IMESSAGE_LOCAL_ACCOUNT_ID
                 ),
@@ -895,7 +895,7 @@ export class IMessageService extends Service implements IIMessageService {
         to: target,
         text,
         hasMedia: Boolean(options?.mediaUrl),
-      } as unknown as EventPayload);
+      } as EventPayload);
       this.runtime.emitEvent(EventType.MESSAGE_SENT, {
         runtime: this.runtime,
         source: "imessage",
@@ -916,7 +916,7 @@ export class IMessageService extends Service implements IIMessageService {
           },
           createdAt: Date.now(),
         },
-      } as unknown as EventPayload);
+      } as EventPayload);
     }
 
     return {
@@ -1430,7 +1430,7 @@ export class IMessageService extends Service implements IIMessageService {
         chatType: row.chatType,
       },
       name: resolvedName ?? row.displayName ?? row.handle ?? undefined,
-      ...(row.handle ? { userId: row.handle as unknown as UUID } : {}),
+      ...(row.handle ? { userId: row.handle as UUID } : {}),
       worldName: row.displayName ? `imessage-chat-${row.displayName}` : `imessage-chat-${roomKey}`,
       userName: resolvedName ?? row.handle ?? undefined,
     });
@@ -1489,7 +1489,7 @@ export class IMessageService extends Service implements IIMessageService {
           },
         ],
         entities: [],
-      } as unknown as EventPayload);
+      } as EventPayload);
       logger.debug(`[imessage][world-joined] roomKey=${roomKey}`);
     }
 
@@ -1508,7 +1508,7 @@ export class IMessageService extends Service implements IIMessageService {
           displayName: resolvedName ?? row.handle,
           type: channelType,
         },
-      } as unknown as EventPayload);
+      } as EventPayload);
       logger.debug(
         `[imessage][entity-joined] entityKey=${entityKey} name=${resolvedName ?? row.handle}`
       );
@@ -1596,7 +1596,7 @@ export class IMessageService extends Service implements IIMessageService {
         // Editing / retraction state for downstream filters.
         ...(row.dateEdited ? { imessageEditedAt: row.dateEdited } : {}),
         ...(row.dateRetracted ? { imessageRetractedAt: row.dateRetracted } : {}),
-      } as unknown as Memory["metadata"],
+      } as Memory["metadata"],
       createdAt: row.timestamp || Date.now(),
     };
 
@@ -1736,7 +1736,7 @@ export class IMessageService extends Service implements IIMessageService {
         add: row.reaction.add,
         emoji: row.reaction.emoji,
         service: row.service,
-      } as unknown as EventPayload);
+      } as EventPayload);
       this.runtime.emitEvent(EventType.REACTION_RECEIVED, {
         runtime: this.runtime,
         source: "imessage",
@@ -1745,7 +1745,7 @@ export class IMessageService extends Service implements IIMessageService {
         reactionKind: row.reaction.kind,
         add: row.reaction.add,
         emoji: row.reaction.emoji,
-      } as unknown as EventPayload);
+      } as EventPayload);
       return;
     }
 
@@ -1764,7 +1764,7 @@ export class IMessageService extends Service implements IIMessageService {
           handle: row.handle,
           rowId: row.rowId,
           guid: row.guid,
-        } as unknown as EventPayload
+        } as EventPayload
       );
     }
   }
@@ -1875,7 +1875,7 @@ export class IMessageService extends Service implements IIMessageService {
             contactsCount,
             connected: this.connected,
             timestamp: Date.now(),
-          } as unknown as EventPayload
+          } as EventPayload
         );
       },
       validate: async () => true,

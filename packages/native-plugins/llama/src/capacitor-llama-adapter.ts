@@ -221,7 +221,7 @@ function normalizeHardwareInfo(
   const availableRamGb =
     value.availableRamGb === null
       ? null
-      : numberFromUnknown(value.availableRamGb) ?? fallback.availableRamGb;
+      : (numberFromUnknown(value.availableRamGb) ?? fallback.availableRamGb);
   const gpu =
     value.gpu && isObject(value.gpu)
       ? {
@@ -230,7 +230,7 @@ function normalizeHardwareInfo(
             value.gpu.backend === "vulkan" ||
             value.gpu.backend === "gpu-delegate"
               ? value.gpu.backend
-              : fallback.gpu?.backend ?? "gpu-delegate",
+              : (fallback.gpu?.backend ?? "gpu-delegate"),
           available: Boolean(value.gpu.available),
         }
       : fallback.gpu;

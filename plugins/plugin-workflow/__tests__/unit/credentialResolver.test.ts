@@ -51,7 +51,7 @@ function createMockApiClient(overrides?: Partial<CredentialApiClient>): Credenti
       })
     ),
     ...overrides,
-  } as unknown as CredentialApiClient;
+  } as CredentialApiClient;
 }
 
 const baseConfig: WorkflowPluginConfig = { apiKey: 'embedded', host: 'in-process' };

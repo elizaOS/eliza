@@ -1,4 +1,4 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, MessageConnectorTarget } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { buildMemoryFromMessage } from "../discord-history";
 import { DiscordService } from "../service";
@@ -17,7 +17,7 @@ function createRuntime() {
 		getRoom: vi.fn(),
 		getEntityById: vi.fn(),
 		getRelationships: vi.fn().mockResolvedValue([]),
-	} as unknown as IAgentRuntime & {
+	} as IAgentRuntime & {
 		registerMessageConnector: ReturnType<typeof vi.fn>;
 		registerSendHandler: ReturnType<typeof vi.fn>;
 	};
@@ -126,14 +126,15 @@ describe("Discord message connector adapter", () => {
 			},
 		});
 
-		const userTargets = await service.resolveConnectorTargets("ada", {
+		const userTargets: MessageConnectorTarget[] =
+			await service.resolveConnectorTargets("ada", {
 			runtime,
 		});
-		expect(userTargets.some((target: any) => target.kind === "user")).toBe(
+		expect(userTargets.some((target) => target.kind === "user")).toBe(
 			true,
 		);
 		expect(
-			userTargets.find((target: any) => target.kind === "user")?.target
+			userTargets.find((target) => target.kind === "user")?.target
 				.entityId,
 		).toBe("333333333333333333");
 	});

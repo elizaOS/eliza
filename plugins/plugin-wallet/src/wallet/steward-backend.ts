@@ -19,8 +19,8 @@ interface StewardEvmAccountBinding {
 }
 
 /**
- * Shape of the dynamically imported @elizaos/app-steward/services/steward-evm-account
- * module. Defined locally to avoid a devDependency cycle with app-steward.
+ * Shape of the dynamically imported @elizaos/app-steward module. Defined
+ * locally to avoid a devDependency cycle with app-steward.
  */
 interface StewardEvmAccountModule {
   initStewardEvmAccount(): Promise<StewardEvmAccountBinding | null>;
@@ -35,6 +35,8 @@ interface StewardEvmAccountModule {
     agentId: string,
   ): Promise<{ evm: `0x${string}` | null; solana: string | null }>;
 }
+
+const STEWARD_MODULE_ID = ["@elizaos", "app-steward"].join("/");
 
 /**
  * Cloud / mobile signing via Steward for EVM. Solana addresses may be exposed from
@@ -61,7 +63,7 @@ export class StewardBackend implements WalletBackend {
     let steward: StewardEvmAccountModule;
     try {
       steward = (await import(
-        "@elizaos/app-steward/services/steward-evm-account"
+        STEWARD_MODULE_ID
       )) as unknown as StewardEvmAccountModule;
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);

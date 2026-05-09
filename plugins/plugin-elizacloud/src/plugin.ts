@@ -96,7 +96,7 @@ function makeCloudRouteHandler() {
         createIntegrationTelemetrySpan: hostContext?.createTelemetrySpan,
         saveElizaConfig: (nextConfig) => {
           hostContext?.saveConfig?.(
-            nextConfig as unknown as Record<string, unknown>,
+            nextConfig as Record<string, unknown>,
           );
         },
       },

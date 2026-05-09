@@ -29,7 +29,7 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
     getSetting: vi.fn((key: string) => settings[key]),
     getService: vi.fn(<T>(type: string) => services.get(type) as T | null),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 
   const sandbox = await SandboxService.start(runtime);
   const session = await SessionCwdService.start(runtime);
@@ -47,7 +47,7 @@ function makeMessage(roomId = "11111111-aaaa-bbbb-cccc-222222222222"): Memory {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
     content: { text: "" },
     createdAt: Date.now(),
-  } as unknown as Memory;
+  } as Memory;
 }
 
 describe("bashAction", () => {

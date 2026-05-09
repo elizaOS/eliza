@@ -287,7 +287,7 @@ class MobileDeviceBridge {
 
   async attachToHttpServer(server: HttpServer): Promise<void> {
     if (!SERVICE_ENABLED || this.wss) return;
-    const ws = (await import("ws")) as unknown as WsModule;
+    const ws: WsModule = await import("ws");
     const wss = new ws.WebSocketServer({
       noServer: true,
       maxPayload: 1024 * 1024,

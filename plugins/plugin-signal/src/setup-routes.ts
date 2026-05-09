@@ -63,7 +63,7 @@ interface ConnectorSetupService {
 }
 
 function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
-  return runtime.getService("connector-setup") as ConnectorSetupService | null;
+  return runtime.getService("connector-setup") as unknown as ConnectorSetupService | null;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -269,7 +269,7 @@ async function handleStatus(
 
   let serviceConnected = false;
   try {
-    const sigService = runtime.getService("signal") as Record<string, unknown> | null;
+    const sigService = runtime.getService("signal") as unknown as Record<string, unknown> | null;
     if (sigService) {
       serviceConnected =
         Boolean(sigService.connected) ||

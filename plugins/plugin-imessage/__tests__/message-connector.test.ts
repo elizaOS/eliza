@@ -29,7 +29,7 @@ function makeRuntime(registrations: MessageConnectorRegistration[]): IAgentRunti
     registerSendHandler: vi.fn(),
     getRoom: vi.fn(async () => null),
     getMemoryById: vi.fn(async () => null),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 describe("iMessage message connector registration", () => {
@@ -43,7 +43,7 @@ describe("iMessage message connector registration", () => {
       getRecentMessages: vi.fn(async () => []),
       getMessages: vi.fn(async () => []),
       sendMessage: vi.fn(async () => ({ success: true, messageId: "msg-1" })),
-    } as unknown as IMessageService;
+    } as IMessageService;
 
     IMessageService.registerSendHandlers(runtime, service);
 
@@ -102,7 +102,7 @@ describe("iMessage message connector registration", () => {
         },
       ]),
       sendMessage: vi.fn(async () => ({ success: true, messageId: "msg-1" })),
-    } as unknown as IMessageService;
+    } as IMessageService;
 
     IMessageService.registerSendHandlers(runtime, service);
     const memories = await registrations[0].fetchMessages?.({ runtime }, { limit: 1 });

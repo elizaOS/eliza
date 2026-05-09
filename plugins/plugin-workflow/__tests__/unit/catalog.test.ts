@@ -87,11 +87,10 @@ describe('simplifyNodeForLLM', () => {
 
     const simplified = simplifyNodeForLLM(http!);
     for (const prop of simplified.properties) {
-      const raw = prop as unknown as Record<string, unknown>;
-      expect(raw.routing).toBeUndefined();
-      expect(raw.displayOptions).toBeUndefined();
-      expect(raw.typeOptions).toBeUndefined();
-      expect(raw.modes).toBeUndefined();
+      expect('routing' in prop ? prop.routing : undefined).toBeUndefined();
+      expect('displayOptions' in prop ? prop.displayOptions : undefined).toBeUndefined();
+      expect('typeOptions' in prop).toBe(false);
+      expect('modes' in prop).toBe(false);
     }
   });
 

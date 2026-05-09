@@ -4242,6 +4242,15 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "GET_TUNNEL_STATUS",
+			description:
+				"Get the current status of the ngrok tunnel including URL, port, and uptime information. Supports action chaining by providing tunnel metadata for monitoring workflows, health checks, or conditional tunnel management.",
+			parameters: [],
+			similes: ["TUNNEL_STATUS", "CHECK_TUNNEL", "NGROK_STATUS", "TUNNEL_INFO"],
+			descriptionCompressed:
+				"Get the current status of the ngrok tunnel including URL, port, and uptime info. Supports action chaining by providing tunnel metadata for monitoring...",
+		},
+		{
 			name: "GLOB",
 			description:
 				"Find files matching a glob pattern (e.g. '**/*.ts'). Returns up to 100 absolute paths sorted by mtime descending. Excludes VCS, build, and dependency directories. Use this instead of BASH for file discovery.",
@@ -6213,6 +6222,24 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "START_TUNNEL",
+			description:
+				"Start an ngrok tunnel to expose a local port to the internet. Supports action chaining by providing tunnel metadata that can be used for webhook configuration, API testing, or remote access workflows.",
+			parameters: [],
+			similes: ["OPEN_TUNNEL", "CREATE_TUNNEL", "NGROK_START", "TUNNEL_UP"],
+			descriptionCompressed:
+				"Start an ngrok tunnel to expose a local port to the internet. Supports action chaining by providing tunnel metadata that can be used for webhook config, API...",
+		},
+		{
+			name: "STOP_TUNNEL",
+			description:
+				"Stop the running ngrok tunnel and clean up resources. Can be chained with START_TUNNEL actions for tunnel rotation workflows or combined with deployment actions for automated service management.",
+			parameters: [],
+			similes: ["CLOSE_TUNNEL", "SHUTDOWN_TUNNEL", "NGROK_STOP", "TUNNEL_DOWN"],
+			descriptionCompressed:
+				"Stop the running ngrok tunnel and clean up resources. Can be chained with START_TUNNEL actions for tunnel rotation workflows or combined with deployment...",
+		},
+		{
 			name: "TAILSCALE",
 			description:
 				"Tailscale tunnel router. Operations: start (open tunnel for a local port), stop (close active tunnel). Status reads come from the tailscaleStatus provider.",
@@ -6421,6 +6448,66 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "TUNNEL",
+			description:
+				"Tunnel operations dispatched by `op`: start, stop, status. The `start` op accepts an optional `port` (defaults to 3000); `stop` and `status` take no parameters. Backed by whichever tunnel plugin is active (local Tailscale CLI, Eliza Cloud headscale, or ngrok).",
+			parameters: [
+				{
+					name: "op",
+					description:
+						"Which tunnel sub-operation to run. One of: start, stop, status.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Which tunnel sub-operation to run. One of: start, stop, status.",
+				},
+				{
+					name: "parameters",
+					description:
+						"Parameters forwarded to the selected sub-op. For `start`, optionally `{ port: number }`. `stop` and `status` take no parameters.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"params forwarded to the selected sub-op. For `start`, optionally `{ port: number }`. `stop` and `status` take no params.",
+				},
+			],
+			similes: [
+				"TAILSCALE",
+				"START_TAILSCALE",
+				"STOP_TAILSCALE",
+				"GET_TAILSCALE_STATUS",
+				"START_TUNNEL",
+				"OPEN_TUNNEL",
+				"CREATE_TUNNEL",
+				"TAILSCALE_UP",
+				"STOP_TUNNEL",
+				"CLOSE_TUNNEL",
+				"TAILSCALE_DOWN",
+				"TAILSCALE_STATUS",
+				"CHECK_TUNNEL",
+				"TUNNEL_INFO",
+				"TUNNEL_STATUS",
+			],
+			exampleCalls: [
+				{
+					user: "Use TUNNEL with the provided parameters.",
+					actions: ["TUNNEL"],
+					params: {
+						TUNNEL: {
+							op: "example",
+							parameters: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Tunnel operations dispatched by `op`: start, stop, status. The `start` op accepts an optional `port` (defaults to 3000). `stop` and `status` take no params...",
 		},
 		{
 			name: "UPDATE_LINEAR_ISSUE",

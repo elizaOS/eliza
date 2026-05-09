@@ -50,7 +50,9 @@ interface ConnectorSetupService {
 }
 
 function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
-  return runtime.getService("connector-setup") as ConnectorSetupService | null;
+  return runtime.getService(
+    "connector-setup",
+  ) as unknown as ConnectorSetupService | null;
 }
 
 async function readJsonBody<T>(req: RouteRequest): Promise<T | null> {

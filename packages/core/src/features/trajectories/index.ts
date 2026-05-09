@@ -207,12 +207,12 @@ export const trajectoriesPlugin: Plugin = {
 				const { runtime, message, source } = payload;
 				if (!message || !runtime) return;
 
-				// Ensure metadata is initialized
-				if (!message.metadata) {
-					message.metadata = {
-						type: "message",
-					} as unknown as typeof message.metadata;
-				}
+					// Ensure metadata is initialized
+					if (!message.metadata) {
+						message.metadata = {
+							type: "message",
+						};
+					}
 				const meta = message.metadata as Record<string, unknown>;
 
 				const logger = TrajectoriesService.resolveFromRuntime(runtime);

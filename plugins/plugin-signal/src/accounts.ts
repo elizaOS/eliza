@@ -148,7 +148,7 @@ export function listSignalAccountIds(runtime: IAgentRuntime): string[] {
     return [DEFAULT_ACCOUNT_ID];
   }
 
-  return ids.toSorted((a: string, b: string) => a.localeCompare(b));
+  return [...ids].sort((a: string, b: string) => a.localeCompare(b));
 }
 
 /**

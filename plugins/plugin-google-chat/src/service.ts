@@ -544,7 +544,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
   }
 
   isConnected(): boolean {
-    const legacy = this as unknown as { connected?: boolean };
+    const legacy = this as { connected?: boolean };
     const states = this.states ?? new Map<string, GoogleChatAccountState>();
     if (states.size === 0 && typeof legacy.connected === "boolean") {
       return legacy.connected;
@@ -553,7 +553,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
   }
 
   getAccountId(runtime?: IAgentRuntime): string {
-    const legacy = this as unknown as { settings?: GoogleChatSettings | null };
+    const legacy = this as { settings?: GoogleChatSettings | null };
     const states = this.states ?? new Map<string, GoogleChatAccountState>();
     if (states.size === 0 && legacy.settings?.accountId) {
       return normalizeGoogleChatAccountId(legacy.settings.accountId);
@@ -1028,7 +1028,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       return state;
     }
 
-    const legacy = this as unknown as {
+    const legacy = this as {
       settings?: GoogleChatSettings | null;
       auth?: GoogleAuth | null;
       connected?: boolean;

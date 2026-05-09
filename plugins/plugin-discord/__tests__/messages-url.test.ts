@@ -20,7 +20,7 @@ function runtime(): IAgentRuntime {
 			info: vi.fn(),
 			warn: vi.fn(),
 		},
-	} as unknown as IAgentRuntime;
+	} as IAgentRuntime;
 }
 
 function discordMessage(content: string): DiscordMessage {
@@ -29,13 +29,13 @@ function discordMessage(content: string): DiscordMessage {
 		embeds: [],
 		mentions: { users: new Map() },
 		attachments: new Map(),
-	} as unknown as DiscordMessage;
+	} as DiscordMessage;
 }
 
 function managerFor(testRuntime: IAgentRuntime): MessageManager {
 	const manager = Object.create(MessageManager.prototype) as MessageManager;
 	Object.assign(
-		manager as unknown as {
+		manager as {
 			runtime: IAgentRuntime;
 			attachmentManager: {
 				processAttachments: () => Promise<[]>;
@@ -106,7 +106,7 @@ describe("hasActiveTaskAgentWorkForMessage", () => {
 			getService: vi.fn((serviceType) =>
 				serviceType === "SWARM_COORDINATOR" ? { tasks } : null,
 			),
-		} as unknown as IAgentRuntime;
+		} as IAgentRuntime;
 	}
 
 	it("matches active task-agent work by originating message id", () => {

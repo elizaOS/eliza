@@ -20,13 +20,13 @@ interface SchemaIndex {
   version: string;
 }
 
-const SCHEMA_INDEX = schemaIndex as unknown as SchemaIndex;
-const TRIGGER_SCHEMAS =
-  (
-    triggerSchemaIndex as unknown as {
-      triggers: Record<string, { outputSchema: SchemaContent }>;
-    }
-  ).triggers ?? {};
+interface TriggerSchemaIndex {
+  triggers?: Record<string, { outputSchema: SchemaContent }>;
+}
+
+const SCHEMA_INDEX: SchemaIndex = schemaIndex;
+const TRIGGER_SCHEMA_INDEX: TriggerSchemaIndex = triggerSchemaIndex;
+const TRIGGER_SCHEMAS = TRIGGER_SCHEMA_INDEX.triggers ?? {};
 
 const NODE_SCHEMAS = SCHEMA_INDEX.nodeTypes ?? {};
 

@@ -11,7 +11,7 @@ function runtime(settings: Record<string, string>): IAgentRuntime {
   return {
     character: { settings: {} },
     getSetting: vi.fn((key: string) => settings[key] ?? null),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 describe("Instagram account config", () => {
@@ -54,7 +54,7 @@ describe("Instagram connector accounts", () => {
       registerSendHandler: vi.fn(),
       getRoom: vi.fn(),
       logger: { info: vi.fn() },
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
 
     const service = Object.create(InstagramService.prototype) as InstagramService;
     const owner = Object.create(InstagramService.prototype) as InstagramService;

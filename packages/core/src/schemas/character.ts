@@ -1,7 +1,7 @@
 import z from "zod";
 import type { Character } from "../types/agent";
-import { ChannelType, ContentType } from "../types/primitives";
 import type { JsonValue } from "../types/primitives";
+import { ChannelType, ContentType } from "../types/primitives";
 
 // UUID validation schema
 export const uuidSchema = z

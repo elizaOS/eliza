@@ -4,9 +4,9 @@ import { buildCharacterFromConfig } from "../../src/runtime/build-character-conf
 
 describe("buildCharacterFromConfig capability hints (regression for #7362 Bug A)", () => {
   it("appends a task-manager capability hint to the system prompt so the agent does not deny CREATE_TASK / persistence", () => {
-    const config = {
+    const config: ElizaConfig = {
       ui: { presetId: "chen" },
-    } as unknown as ElizaConfig;
+    };
 
     const character = buildCharacterFromConfig(config);
 
@@ -17,7 +17,7 @@ describe("buildCharacterFromConfig capability hints (regression for #7362 Bug A)
 
   it("preserves the user's preset / character system prompt before appending hints", () => {
     const userSystem = "You are Chen, a helpful assistant.";
-    const config = {
+    const config: ElizaConfig = {
       agents: {
         list: [
           {
@@ -27,7 +27,7 @@ describe("buildCharacterFromConfig capability hints (regression for #7362 Bug A)
           },
         ],
       },
-    } as unknown as ElizaConfig;
+    };
 
     const character = buildCharacterFromConfig(config);
 

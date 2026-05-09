@@ -2,11 +2,7 @@ import { spawn } from "node:child_process";
 import { elizaLogger, type IAgentRuntime, Service } from "@elizaos/core";
 import { z } from "zod";
 import { validateTailscaleConfig } from "../environment";
-import {
-  type ITunnelService,
-  TAILSCALE_LOCAL_TUNNEL_SERVICE_TYPE,
-  type TunnelStatus,
-} from "../types";
+import type { ITunnelService, TunnelStatus } from "../types";
 
 const tailscaleStatusPeerSchema = z.object({
   DNSName: z.string().optional(),
@@ -69,7 +65,7 @@ function parseTailscaleStatus(stdout: string): TailscaleStatus | null {
 }
 
 export class LocalTailscaleService extends Service implements ITunnelService {
-  static override serviceType = TAILSCALE_LOCAL_TUNNEL_SERVICE_TYPE;
+  static override serviceType = "tunnel";
   readonly capabilityDescription =
     "Provides secure tunnel functionality via the locally-installed `tailscale` CLI (serve / funnel).";
 

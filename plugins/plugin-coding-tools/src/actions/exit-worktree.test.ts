@@ -48,7 +48,7 @@ async function setupRepo(): Promise<TestEnv> {
       if (key === "CODING_TOOLS_WORKSPACE_ROOTS") return repoDir;
       return undefined;
     },
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 
   const sandbox = await SandboxService.start(runtime);
   const session = await SessionCwdService.start(runtime);
@@ -58,7 +58,7 @@ async function setupRepo(): Promise<TestEnv> {
     [SANDBOX_SERVICE]: sandbox,
     [SESSION_CWD_SERVICE]: session,
   };
-  (runtime as unknown as { getService: (k: string) => unknown }).getService = (
+  (runtime as { getService: (k: string) => unknown }).getService = (
     key: string,
   ) => services[key] ?? null;
 
@@ -82,7 +82,7 @@ async function cleanupEnv(env: TestEnv | undefined): Promise<void> {
 }
 
 function makeMessage(conversationId: string): Memory {
-  return { roomId: conversationId } as unknown as Memory;
+  return { roomId: conversationId } as Memory;
 }
 
 async function enter(env: TestEnv): Promise<string> {
@@ -102,7 +102,7 @@ async function enter(env: TestEnv): Promise<string> {
 const state: State | undefined = undefined;
 
 describe("EXIT_WORKTREE", () => {
-  let env: TestEnv = undefined as unknown as TestEnv;
+  let env: TestEnv = undefined as TestEnv;
 
   beforeEach(async () => {
     env = await setupRepo();
@@ -186,7 +186,7 @@ describe("EXIT_WORKTREE", () => {
   it("fails with missing_param when message has no roomId", async () => {
     const result = await exitWorktreeAction.handler?.(
       env.runtime,
-      {} as unknown as Memory,
+      {} as Memory,
       state,
       { parameters: {} },
     );

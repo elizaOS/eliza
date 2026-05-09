@@ -277,7 +277,7 @@ export const minecraftAction: Action = {
       description: "Operation to run.",
       descriptionCompressed: "Op.",
       required: true,
-      schema: { type: "string", enum: MC_OPS as unknown as string[] },
+      schema: { type: "string", enum: MC_OPS as string[] },
     },
     {
       name: "params",

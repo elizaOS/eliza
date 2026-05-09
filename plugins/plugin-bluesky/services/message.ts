@@ -382,7 +382,7 @@ export class BlueSkyMessageService {
 					rev: message.rev,
 					senderDid,
 				},
-			} as unknown as Memory["metadata"],
+			} as Memory["metadata"],
 		};
 	}
 

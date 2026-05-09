@@ -1286,9 +1286,7 @@ export async function resolvePlugins(
   //     (user config still wins; defaults only fill keys the user hasn't set)
   const changes: string[] = [];
   try {
-    const appManifest = await readAppManifest(process.cwd()).catch(
-      () => null,
-    );
+    const appManifest = await readAppManifest(process.cwd()).catch(() => null);
     const defaultedEntries = applyAppManifestDefaults(config, appManifest);
     if (defaultedEntries.length > 0) {
       logger.info(
@@ -1300,10 +1298,7 @@ export async function resolvePlugins(
       allCandidates,
       appManifest,
     );
-    if (
-      appManifest?.candidates &&
-      candidates.length < allCandidates.length
-    ) {
+    if (appManifest?.candidates && candidates.length < allCandidates.length) {
       logger.info(
         `[eliza] App manifest restricted candidate set: ${candidates.length}/${allCandidates.length} plugins considered`,
       );

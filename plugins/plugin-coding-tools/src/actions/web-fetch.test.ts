@@ -45,7 +45,7 @@ afterAll(async () => {
 function makeRuntime(settings: Record<string, unknown> = {}): IAgentRuntime {
   return {
     getSetting: (key: string) => settings[key],
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 const message = {} as Memory;

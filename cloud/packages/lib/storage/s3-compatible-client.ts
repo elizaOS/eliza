@@ -3,7 +3,7 @@
  *
  * Production: Cloudflare R2.
  * Local dev: self-hosted Supabase Storage (S3 protocol at /storage/v1/s3).
- * Other: any AWS-S3-compatible endpoint.
+ * Other providers: AWS-S3-compatible endpoints.
  *
  * Selection rules (see docs/object-storage.md):
  *   STORAGE_PROVIDER  r2 | supabase | s3       explicit; otherwise inferred:
