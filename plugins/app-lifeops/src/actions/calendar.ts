@@ -660,28 +660,7 @@ export const calendarAction: Action & {
 } = {
   name: ACTION_NAME,
   similes: ["CALENDAR", "SCHEDULE", "MEETING"],
-  tags: [
-    "always-include",
-    "calendar",
-    "event",
-    "recurring block",
-    "time block",
-    "daily time with Jill",
-    "travel itinerary",
-    "meeting slots",
-    "bundle meetings while traveling",
-    "bulk partnership reschedule",
-    "push meetings to next month",
-    "reschedule options",
-    "sleep window",
-    "no-call hours",
-    "protected hours",
-    "blackout window",
-    "meeting preferences",
-    "scheduling rules",
-    "flight conflict",
-    "rebook the other thing",
-  ],
+  tags: ["always-include", "calendar", "event", "scheduling"],
   description:
     "Owner's calendar and scheduling surface: Google Calendar (view feed, search, create/update/delete events, trip windows, bulk reschedule), " +
     "Calendly (event types, availability, upcoming, single-use booking links), availability checks, meeting-preference updates, " +
@@ -1024,7 +1003,7 @@ export const calendarAction: Action & {
       {
         name: "{{name1}}",
         content: {
-          text: "Propose three 30-minute slots for a sync with Marco next week.",
+          text: "Propose three 30-minute slots for a sync with a colleague next week.",
         },
       },
       {
@@ -1078,13 +1057,13 @@ export const calendarAction: Action & {
       {
         name: "{{name1}}",
         content: {
-          text: "Need to book 1 hour per day for time with Jill. Any time is fine, ideally before sleep.",
+          text: "Need to book 1 hour per day for a recurring 1:1 with my partner. Any time is fine, ideally before sleep.",
         },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "I'll set up a recurring daily one-hour block with Jill and keep it biased toward the evening before your sleep window.",
+          text: "I'll set up a recurring daily one-hour block and keep it biased toward the evening before your sleep window.",
         },
       },
     ],

@@ -1,9 +1,9 @@
 {
-  "catalogId": "ice-bambam-executive-assistant",
+  "catalogId": "executive-assistant-transcript",
   "title": "Transcript-derived LifeOps executive assistant scenario catalog",
   "source": {
-    "rawTranscript": "/Users/shawwalters/Desktop/chat-exports/discord/Direct Messages - ice bambam 🧊🍣 [1323980531141972083].json",
-    "readableLog": ".tmp/lifeops-research/ice-bambam-conversation-log.md",
+    "rawTranscript": "<redacted: source transcript path>",
+    "readableLog": "<redacted: research log path>",
     "messageCount": 1925,
     "dateRange": {
       "start": "2025-01-01T06:09:47.514-07:00",
@@ -17,8 +17,8 @@
   },
   "scenarios": [
     {
-      "id": "ea.schedule.daily-time-with-jill",
-      "title": "Reserve recurring daily decompression time with Jill",
+      "id": "ea.schedule.recurring-relationship-block",
+      "title": "Reserve recurring daily decompression time with a relationship",
       "suite": "calendar",
       "priority": "P0",
       "currentCoverage": "missing",
@@ -37,7 +37,7 @@
       "backgroundJobs": [],
       "runnerRequirements": ["calendar seed", "recurring-event final check"],
       "approvalMode": "autonomous if inside free time and standing preference",
-      "examplePrompt": "Need to book 1 hour per day for time with Jill."
+      "examplePrompt": "Need to book 1 hour per day for time with my partner."
     },
     {
       "id": "ea.schedule.protect-sleep-window",
@@ -317,8 +317,8 @@
         "booking confirmation final check"
       ],
       "approvalMode": "always ask first",
-      "benchmarkPrompt": "Jill confirmed it will just be me for LA and Toronto. Put together the flights and hotel and hold it for my approval before you book anything.",
-      "examplePrompt": "Jill confirmed it would be just you for LA and Toronto. I can start booking flights and hotel today if that's good with you."
+      "benchmarkPrompt": "My partner confirmed it will just be me for LA and Toronto. Put together the flights and hotel and hold it for my approval before you book anything.",
+      "examplePrompt": "Your partner confirmed it would be just you for LA and Toronto. I can start booking flights and hotel today if that's good with you."
     },
     {
       "id": "ea.travel.flight-conflict-rebooking",

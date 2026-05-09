@@ -1,7 +1,7 @@
 import { scenario } from "@elizaos/scenario-schema";
 
 export default scenario({
-  id: "gmail-suran-routing",
+  id: "gmail-direct-message-sender-routing",
   title: "Narrative Gmail sender routing",
   domain: "gmail",
   tags: ["lifeops", "gmail"],
@@ -13,15 +13,15 @@ export default scenario({
     {
       id: "main",
       source: "discord",
-      title: "LifeOps Gmail Suran Routing",
+      title: "LifeOps Gmail Direct Message Sender Routing",
     },
   ],
   turns: [
     {
       kind: "message",
       name: "gmail narrative sender routing",
-      text: "can you search my email and tell me if anyone named suran emailed me",
-      plannerIncludesAll: ["gmail_action", "suran"],
+      text: "can you search my email and tell me if anyone named pat emailed me",
+      plannerIncludesAll: ["gmail_action", "pat"],
       plannerExcludes: [
         "create_task",
         "spawn_agent",

@@ -466,8 +466,8 @@ export const proposeMeetingTimesAction: Action & {
     "reschedule options. " +
     "STRONG POSITIVE TRIGGERS — route HERE, not to CALENDAR_ACTION or SCHEDULING: " +
     "'propose three times for a sync with a person', 'suggest a few times for " +
-    "Jill', 'offer Marco three 30-minute slots', 'find us three options " +
-    "next week', 'give me slots to send Sarah'. " +
+    "a partner', 'offer a colleague three 30-minute slots', 'find us three options " +
+    "next week', 'give me slots to send to a teammate'. " +
     "DO NOT use this for small talk, weather, or vague conversation. " +
     "DO NOT use this to check the owner's calendar, create a calendar event, " +
     "or view upcoming events — that is CALENDAR_ACTION. " +

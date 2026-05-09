@@ -1,19 +1,19 @@
 {
-  "id": "gmail-suran-routing",
+  "id": "gmail-direct-message-sender-routing",
   "title": "Narrative Gmail sender routing",
   "domain": "gmail",
   "rooms": [
     {
       "id": "main",
       "source": "discord",
-      "title": "LifeOps Gmail Suran Routing"
+      "title": "LifeOps Gmail Direct Message Sender Routing"
     }
   ],
   "turns": [
     {
       "name": "gmail narrative sender routing",
-      "text": "can you search my email and tell me if anyone named suran emailed me",
-      "plannerIncludesAll": ["gmail_action", "suran"],
+      "text": "can you search my email and tell me if anyone named pat emailed me",
+      "plannerIncludesAll": ["gmail_action", "pat"],
       "plannerExcludes": [
         "create_task",
         "spawn_agent",

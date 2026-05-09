@@ -486,7 +486,7 @@ export const resolveRequestAction: Action & {
       {
         name: "{{name1}}",
         content: {
-          text: "Yeah, go ahead and send that draft to Marco.",
+          text: "Yeah, go ahead and send that draft.",
         },
       },
       {
