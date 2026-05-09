@@ -33,6 +33,7 @@ import type Stripe from "stripe";
 import { organizationsRepository } from "@/db/repositories/organizations";
 import { usersRepository } from "@/db/repositories/users";
 import type { DrainResult } from "@/lib/queue/redis-queue";
+import { appChargeSettlementService } from "@/lib/services/app-charge-settlement";
 import { appCreditsService } from "@/lib/services/app-credits";
 import { creditsService } from "@/lib/services/credits";
 import { discordService } from "@/lib/services/discord";
@@ -138,6 +139,7 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
   const purchaseType = session.metadata?.type || "checkout";
   const purchaseSource = session.metadata?.source;
   const appId = session.metadata?.app_id;
+  const chargeRequestId = session.metadata?.charge_request_id;
 
   const isAppPurchase = purchaseSource === "miniapp_app" && appId && userId;
 
@@ -231,6 +233,21 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
         error: err instanceof Error ? err.message : String(err),
       }),
     );
+  }
+
+  if (isAppPurchase && appId && userId && chargeRequestId) {
+    await appChargeSettlementService.markPaid({
+      appId,
+      chargeRequestId,
+      provider: "stripe",
+      providerPaymentId: paymentIntentId,
+      amountUsd: credits,
+      payerUserId: userId,
+      payerOrganizationId: organizationId,
+      metadata: {
+        stripe_checkout_session_id: session.id,
+      },
+    });
   }
 
   // Revenue splits run on every delivery (including duplicate event_id

@@ -431,6 +431,55 @@ class CryptoPaymentsService {
       const creditsToAdd = receivedDecimal.toFixed(3);
       const payCurrency = actualPayCurrency || payment.token;
       const appPurchase = getAppCreditPurchaseMetadata(payment.metadata);
+      const confirmedAt = new Date();
+
+      const markChargeRequestPaid = async () => {
+        if (!appPurchase?.chargeRequestId) return;
+
+        const [chargeRequest] = await tx
+          .select()
+          .from(cryptoPayments)
+          .where(eq(cryptoPayments.id, appPurchase.chargeRequestId))
+          .for("update")
+          .limit(1);
+
+        if (!chargeRequest) {
+          throw new Error("Charge request not found");
+        }
+
+        const chargeMetadata = chargeRequest.metadata ?? {};
+        if (
+          chargeMetadata.kind !== "app_charge_request" ||
+          chargeMetadata.app_id !== appPurchase.appId
+        ) {
+          throw new Error("Charge request metadata mismatch");
+        }
+
+        if (chargeRequest.status === "confirmed") return;
+
+        await tx
+          .update(cryptoPayments)
+          .set({
+            status: "confirmed",
+            received_amount: creditsToAdd,
+            credits_to_add: creditsToAdd,
+            confirmed_at: confirmedAt,
+            updated_at: confirmedAt,
+            metadata: {
+              ...chargeMetadata,
+              paid_at: confirmedAt.toISOString(),
+              paid_provider: "oxapay",
+              paid_provider_payment_id: payment.id,
+              payer_user_id: payment.user_id ?? undefined,
+              payer_organization_id: payment.organization_id,
+              paid_crypto_payment_id: payment.id,
+              paid_transaction_hash: txHash,
+              paid_network: payment.network,
+              paid_token: payCurrency,
+            },
+          })
+          .where(eq(cryptoPayments.id, appPurchase.chargeRequestId));
+      };
 
       await tx
         .update(cryptoPayments)
@@ -439,7 +488,7 @@ class CryptoPaymentsService {
           transaction_hash: txHash,
           received_amount: receivedAmount,
           credits_to_add: creditsToAdd,
-          confirmed_at: new Date(),
+          confirmed_at: confirmedAt,
         })
         .where(eq(cryptoPayments.id, paymentId));
 
@@ -455,6 +504,8 @@ class CryptoPaymentsService {
           purchaseAmount: receivedDecimal.toNumber(),
           stripePaymentIntentId: `crypto:${payment.id}`,
         });
+
+        await markChargeRequestPaid();
 
         await invoicesService.create({
           organization_id: payment.organization_id,
@@ -703,6 +754,55 @@ class CryptoPaymentsService {
         const creditsToAdd = receivedAmount.toFixed(3);
         const payCurrency = matchingTx.currency || payment.token;
         const appPurchase = getAppCreditPurchaseMetadata(payment.metadata);
+        const confirmedAt = new Date();
+
+        const markChargeRequestPaid = async () => {
+          if (!appPurchase?.chargeRequestId) return;
+
+          const [chargeRequest] = await tx
+            .select()
+            .from(cryptoPayments)
+            .where(eq(cryptoPayments.id, appPurchase.chargeRequestId))
+            .for("update")
+            .limit(1);
+
+          if (!chargeRequest) {
+            throw new Error("Charge request not found");
+          }
+
+          const chargeMetadata = chargeRequest.metadata ?? {};
+          if (
+            chargeMetadata.kind !== "app_charge_request" ||
+            chargeMetadata.app_id !== appPurchase.appId
+          ) {
+            throw new Error("Charge request metadata mismatch");
+          }
+
+          if (chargeRequest.status === "confirmed") return;
+
+          await tx
+            .update(cryptoPayments)
+            .set({
+              status: "confirmed",
+              received_amount: creditsToAdd,
+              credits_to_add: creditsToAdd,
+              confirmed_at: confirmedAt,
+              updated_at: confirmedAt,
+              metadata: {
+                ...chargeMetadata,
+                paid_at: confirmedAt.toISOString(),
+                paid_provider: "oxapay",
+                paid_provider_payment_id: payment.id,
+                payer_user_id: payment.user_id ?? undefined,
+                payer_organization_id: payment.organization_id,
+                paid_crypto_payment_id: payment.id,
+                paid_transaction_hash: txHash,
+                paid_network: payment.network,
+                paid_token: payCurrency,
+              },
+            })
+            .where(eq(cryptoPayments.id, appPurchase.chargeRequestId));
+        };
 
         logger.info("[Crypto Payments] On-chain verification successful", {
           paymentId: redact.paymentId(paymentId),
@@ -720,7 +820,7 @@ class CryptoPaymentsService {
             transaction_hash: txHash,
             received_amount: matchingTx.amount.toString(),
             credits_to_add: creditsToAdd,
-            confirmed_at: new Date(),
+            confirmed_at: confirmedAt,
           })
           .where(eq(cryptoPayments.id, paymentId));
 
@@ -739,6 +839,8 @@ class CryptoPaymentsService {
             purchaseAmount: receivedAmount.toNumber(),
             stripePaymentIntentId: `crypto:${payment.id}`,
           });
+
+          await markChargeRequestPaid();
 
           await invoicesService.create({
             organization_id: payment.organization_id,
