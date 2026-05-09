@@ -583,7 +583,11 @@ function generateAddColumnSQL(table: string, column: string, definition: SchemaC
     parts.push("NOT NULL");
   }
 
-  return `ALTER TABLE ${tableNameWithSchema} ADD COLUMN ${parts.join(" ")};`;
+  // IF NOT EXISTS makes this idempotent — important when a column was added by
+  // a prior boot whose migration journal/snapshot didn't persist (e.g. crash
+  // mid-bootstrap, manual ALTER, or .elizadb reset without journal reset).
+  // PostgreSQL 9.6+ and PGlite both support this syntax.
+  return `ALTER TABLE ${tableNameWithSchema} ADD COLUMN IF NOT EXISTS ${parts.join(" ")};`;
 }
 
 /**
@@ -593,8 +597,8 @@ function generateAddColumnSQL(table: string, column: string, definition: SchemaC
 function generateDropColumnSQL(table: string, column: string): string {
   const [schema, tableName] = table.includes(".") ? table.split(".") : ["public", table];
   const tableNameWithSchema = `"${schema}"."${tableName}"`;
-  // Use CASCADE to handle dependent objects
-  return `ALTER TABLE ${tableNameWithSchema} DROP COLUMN "${column}" CASCADE;`;
+  // IF EXISTS for the same idempotency reasons as ADD COLUMN above.
+  return `ALTER TABLE ${tableNameWithSchema} DROP COLUMN IF EXISTS "${column}" CASCADE;`;
 }
 
 // Column change tracking interface
