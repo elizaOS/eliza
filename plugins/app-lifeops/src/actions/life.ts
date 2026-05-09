@@ -1974,6 +1974,8 @@ export const lifeAction: Action & {
     "Owner-only personal life-management surface for the LifeOps app. Subactions: create / update / delete a life-item (kind=definition for habit/routine/reminder/alarm/todo, or kind=goal for a long-term aspiration); complete / skip / snooze the next occurrence of a definition; review progress on a goal. Cadence (once / daily / weekly / interval / times_per_day) is parsed from the natural-language intent. Owner profile persistence (phone, escalation rules, reminder preferences) lives in PROFILE; calendar/email/overview queries belong to CALENDAR.",
   descriptionCompressed:
     "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal",
+  routingHint:
+    "live LifeOps status (todos, tasks, reminders, habits, routines, goals, alarms, \"what's on my list today\") -> LIFE; never answer from provider summaries; one-off dated reminders to call/text someone (\"remember to call mom Sunday\") also belong here",
   contexts: ["tasks", "todos", "calendar", "health"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,

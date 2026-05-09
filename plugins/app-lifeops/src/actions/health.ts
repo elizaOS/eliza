@@ -294,6 +294,8 @@ export const healthAction: Action = {
     "other body/activity metrics. Subactions: today, trend, by_metric, status.",
   descriptionCompressed:
     "health/fitness telemetry HealthKit/GoogleFit/Strava/Fitbit/Withings/Oura: today | trend(days) | by_metric(steps heart-rate sleep calories distance workouts) | status",
+  routingHint:
+    "health/wearable reads (\"step count\", \"sleep last night\", heart rate, workouts) -> HEALTH; never answer from provider summaries or REPLY",
   contexts: ["health", "tasks", "calendar"],
   roleGate: { minRole: "OWNER" },
   validate: async () => true,
