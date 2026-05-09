@@ -168,7 +168,9 @@ function formatGenericProfileValue(value: unknown): string | undefined {
   }
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, entryValue]) => entryValue !== undefined && entryValue !== null)
+      .filter(
+        ([, entryValue]) => entryValue !== undefined && entryValue !== null,
+      )
       .map(([entryKey, entryValue]) => {
         const label = entryKey.replace(/[_-]+/g, " ");
         if (typeof entryValue === "boolean") {
@@ -194,7 +196,8 @@ function normalizePlannerProfileParams(
   }
 
   const key = typeof params.key === "string" ? params.key.toLowerCase() : "";
-  const text = typeof message.content?.text === "string" ? message.content.text : "";
+  const text =
+    typeof message.content?.text === "string" ? message.content.text : "";
   const looksLikeTravelPreference =
     /\b(?:travel|booking|flight|seat|hotel|venue|carry[-\s]?on)\b/i.test(key) ||
     /\b(?:travel|booking|flight|seat|hotel|venue|carry[-\s]?on)\b/i.test(text);
@@ -429,7 +432,7 @@ export const profileAction: Action & {
   descriptionCompressed:
     "persist owner state: save(name,location,age,prefs) + capture_phone(number) + set_reminder_preference(intensity) + configure_escalation(rules)",
   routingHint:
-    "durable owner facts, reusable preferences, travel/booking preferences (\"remember I prefer aisle seats\", \"save my hotel preferences\") -> PROFILE; never use extraction/memory side effects/REPLY",
+    'durable owner facts, reusable preferences, travel/booking preferences ("remember I prefer aisle seats", "save my hotel preferences") -> PROFILE; never use extraction/memory side effects/REPLY',
   contexts: ["memory", "contacts", "tasks", "settings", "calendar"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -445,8 +448,13 @@ export const profileAction: Action & {
       message,
     );
     const normalizedOptions: HandlerOptions | undefined = options
-      ? ({ ...options, parameters: normalizedRawParams } as HandlerOptions)
-      : ({ parameters: normalizedRawParams } as HandlerOptions);
+      ? ({
+          ...options,
+          parameters: normalizedRawParams as HandlerOptions["parameters"],
+        } as HandlerOptions)
+      : ({
+          parameters: normalizedRawParams as HandlerOptions["parameters"],
+        } as HandlerOptions);
     const resolved = await resolveActionArgs<ProfileSubaction, ProfileParams>({
       runtime,
       message,

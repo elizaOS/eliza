@@ -26,7 +26,7 @@
 	"author": "elizaOS",
 	"license": "MIT",
 	"scripts": {
-		"build": "bun run build:prompts && bun run build.ts",
+		"build": "bun run build.ts",
 		"build:ts": "bun run build.ts",
 		"dev": "bun --hot build.ts",
 		"clean": "rm -rf dist .turbo node_modules",
@@ -36,7 +36,6 @@
 		"lint:check": "../../node_modules/.bin/biome check .",
 		"format": "../../node_modules/.bin/biome format --write .",
 		"format:check": "../../node_modules/.bin/biome format .",
-		"build:prompts": "sh -c 'if test -f ../../packages/prompts/scripts/generate-plugin-prompts.js; then node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./generated/prompts --target all; else echo \"Prompt generation skipped\"; fi'",
 		"test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
 		"test:live": "bun run test:e2e"
 	},

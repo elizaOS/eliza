@@ -1,7 +1,7 @@
-import { renderGroundedActionReply } from "@elizaos/agent";
 import {
   extractConversationMetadataFromRoom,
   isPageScopedConversationMetadata,
+  renderGroundedActionReply,
 } from "@elizaos/agent";
 import type {
   Action,
@@ -339,10 +339,11 @@ function resolveDeferredLifeDraftReuseMode(args: {
     return "confirm";
   }
 
-  if (
-    args.explicitOperation &&
-    (args.explicitOperation as string) !== (args.draft.operation as string)
-  ) {
+  const explicitOperation = args.explicitOperation
+    ? String(args.explicitOperation)
+    : undefined;
+  const draftOperation = String(args.draft.operation);
+  if (explicitOperation && explicitOperation !== draftOperation) {
     return null;
   }
 
@@ -1975,7 +1976,7 @@ export const lifeAction: Action & {
   descriptionCompressed:
     "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal",
   routingHint:
-    "live LifeOps status (todos, tasks, reminders, habits, routines, goals, alarms, \"what's on my list today\") -> LIFE; never answer from provider summaries; one-off dated reminders to call/text someone (\"remember to call mom Sunday\") also belong here",
+    'live LifeOps status (todos, tasks, reminders, habits, routines, goals, alarms, "what\'s on my list today") -> LIFE; never answer from provider summaries; one-off dated reminders to call/text someone ("remember to call mom Sunday") also belong here',
   contexts: ["tasks", "todos", "calendar", "health"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,

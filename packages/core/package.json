@@ -75,7 +75,7 @@
 		"dist"
 	],
 	"scripts": {
-		"prebuild": "[ -d src/types/generated ] || (cd ../schemas && bunx buf generate); [ -f src/i18n/generated/validation-keyword-data.ts ] || node ../shared/scripts/generate-keywords.mjs --target ts",
+		"prebuild": "[ -f src/i18n/generated/validation-keyword-data.ts ] || node ../shared/scripts/generate-keywords.mjs --target ts",
 		"prepublishOnly": "bun run build",
 		"build": "bun run build.ts",
 		"build:node": "bun run build.ts --node-only",
