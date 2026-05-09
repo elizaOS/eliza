@@ -1,5 +1,5 @@
-import { client } from "@elizaos/app-core";
-import { isApiError } from "@elizaos/app-core";
+import { client } from "@elizaos/ui";
+import { isApiError } from "@elizaos/ui";
 import { APP_RESUME_EVENT } from "@elizaos/shared";
 import { dispatchFocusConnector } from "@elizaos/ui";
 import { useApp } from "@elizaos/ui";

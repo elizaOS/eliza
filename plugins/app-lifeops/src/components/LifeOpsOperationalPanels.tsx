@@ -4,7 +4,7 @@ import {
   client,
   dispatchFocusConnector,
   useApp,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import type {
   LifeOpsCapabilityState,
   LifeOpsManualOverrideKind,

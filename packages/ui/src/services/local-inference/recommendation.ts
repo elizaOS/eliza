@@ -39,6 +39,7 @@ const SLOT_LADDERS: Record<
       "smollm2-360m",
     ],
     TEXT_LARGE: [
+      "qwen3.5-9b-dflash",
       "qwen3.5-4b-dflash",
       "llama-3.2-3b",
       "smollm2-1.7b",

@@ -341,7 +341,7 @@ function resolveDeferredLifeDraftReuseMode(args: {
 
   if (
     args.explicitOperation &&
-    args.explicitOperation !== args.draft.operation
+    (args.explicitOperation as string) !== (args.draft.operation as string)
   ) {
     return null;
   }

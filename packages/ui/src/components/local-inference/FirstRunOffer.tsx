@@ -5,6 +5,8 @@ import type {
   HardwareProbe,
   InstalledModel,
 } from "../../api/client-local-inference";
+import { MODEL_CATALOG } from "../../services/local-inference/catalog";
+import { selectRecommendedModels } from "../../services/local-inference/recommendation";
 import { findInstalled } from "./hub-utils";
 
 interface FirstRunOfferProps {
@@ -88,27 +90,13 @@ function pickRecommended(
   installed: InstalledModel[],
   hardware: HardwareProbe,
 ): CatalogModel | null {
-  const bucket = hardware.recommendedBucket;
-  // Prefer a general chat model in the recommended bucket. Fall back to
-  // anything in-bucket, then anything smaller.
-  const inBucket = catalog.filter((m) => m.bucket === bucket);
-  const notInstalled = inBucket.filter((m) => !findInstalled(m, installed));
-  const chatFirst = [
-    ...notInstalled.filter((m) => m.category === "chat"),
-    ...notInstalled.filter((m) => m.category !== "chat"),
-  ];
-  if (chatFirst[0]) return chatFirst[0];
-
-  const fallbackOrder: Array<typeof bucket> = ["mid", "small"];
-  for (const alt of fallbackOrder) {
-    if (alt === bucket) continue;
-    const candidate = catalog.find(
-      (m) =>
-        m.bucket === alt &&
-        !findInstalled(m, installed) &&
-        m.category === "chat",
-    );
-    if (candidate) return candidate;
+  const recommended = selectRecommendedModels(hardware, MODEL_CATALOG);
+  for (const candidate of [
+    recommended.TEXT_LARGE.model,
+    recommended.TEXT_SMALL.model,
+  ]) {
+    if (!candidate || findInstalled(candidate, installed)) continue;
+    return catalog.find((model) => model.id === candidate.id) ?? candidate;
   }
   return null;
 }

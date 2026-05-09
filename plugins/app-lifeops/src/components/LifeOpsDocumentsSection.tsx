@@ -1,8 +1,8 @@
-import { client, useApp } from "@elizaos/app-core";
+import { client, useApp } from "@elizaos/ui";
 import type {
   DocumentRecord,
   DocumentScope,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import { Button, Input, PagePanel, Textarea } from "@elizaos/ui";
 import {
   Bot,

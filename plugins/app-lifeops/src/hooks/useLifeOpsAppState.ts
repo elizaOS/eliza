@@ -1,4 +1,4 @@
-import { client } from "@elizaos/app-core";
+import { client } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
 
 function errorMessage(cause: unknown): string {

@@ -110,15 +110,11 @@
       ]
     },
     "@elizaos/core#build": {
-      "dependsOn": [
-        "@elizaos/schemas#build"
-      ],
       "env": [
         "LOG_LEVEL"
       ],
       "outputs": [
-        "dist/**",
-        "src/types/generated/**"
+        "dist/**"
       ],
       "inputs": [
         "src/**",
@@ -333,16 +329,6 @@
       "dependsOn": [],
       "outputs": [
         "dist/**"
-      ]
-    },
-    "@elizaos/schemas#build": {
-      "outputs": [
-        "../core/src/types/generated/**"
-      ],
-      "inputs": [
-        "eliza/**",
-        "buf.yaml",
-        "buf.gen.yaml"
       ]
     },
     "lint": {

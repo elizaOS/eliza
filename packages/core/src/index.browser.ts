@@ -69,10 +69,7 @@ export {
 	ConnectorAuthMethod,
 } from "./types";
 export * from "./types/message-service";
-export type { JsonObject, JsonValue } from "./types/proto";
-// Keep proto JSON helpers as explicit runtime exports so browser plugin
-// bundles don't depend on Bun preserving the ./types barrel namespace export.
-export * as proto from "./types/proto";
+export type { JsonObject, JsonValue } from "./types/primitives";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
 export { Semaphore } from "./utils/batch-queue/semaphore.js";

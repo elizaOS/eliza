@@ -3,7 +3,7 @@ import "./api/client-lifeops.js";
 // `ElizaClient` MUST come from `@elizaos/app-core/api/client-base` (the
 // source module) — the `@elizaos/app-core` barrel imports this file as a
 // side-effect and would resolve to `undefined` here at module-init time.
-import { ElizaClient } from "@elizaos/app-core";
+import { ElizaClient } from "@elizaos/ui";
 import {
   type AppBlockerPermissionResult,
   type AppBlockerPluginLike,

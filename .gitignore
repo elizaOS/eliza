@@ -242,13 +242,6 @@ standalone.ts
 # Continuous Claude cache (local only)
 .claude/cache/
 
-# Proto-generated files (regenerated from schemas/)
-packages/core/src/types/generated/
-packages/core/src/types/generated/
-packages/python/elizaos/types/generated/
-packages/rust/src/types/generated/
-packages/rust/.cargo-tools/
-
 # i18n keyword codegen (regenerated from keywords/*.keywords.json)
 packages/shared/src/i18n/generated/
 packages/core/src/i18n/generated/

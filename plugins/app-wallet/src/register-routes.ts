@@ -3,9 +3,7 @@
  * shell page + bundled chat sidebar widget) with @elizaos/app-core.
  *
  * Hosts that bundle @elizaos/app-wallet should `import "@elizaos/app-wallet/register"`
- * (or just `import "@elizaos/app-wallet"`, which re-exports this side effect)
- * exactly once at boot so the registry entries are seeded before the shell
- * mounts.
+ * exactly once at boot so the registry entries are seeded before the shell mounts.
  */
 
 import { registerAppRoutePluginLoader } from "@elizaos/core";

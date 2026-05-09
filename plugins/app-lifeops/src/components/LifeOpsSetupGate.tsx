@@ -13,7 +13,7 @@ import {
   dispatchFocusConnector,
   Input,
   useApp,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import { CalendarDays, MessageCircle, SkipForward } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";

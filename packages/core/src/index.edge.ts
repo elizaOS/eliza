@@ -77,10 +77,7 @@ export * from "./types/agentEvent";
 export * from "./types/message-service";
 export * from "./types/onboarding";
 export * from "./types/plugin-manifest";
-export type { JsonObject, JsonValue } from "./types/proto";
-// Keep proto JSON helpers as explicit runtime exports so edge/plugin bundles
-// don't depend on Bun preserving the ./types barrel namespace export.
-export * as proto from "./types/proto";
+export type { JsonObject, JsonValue } from "./types/primitives";
 export * from "./utils";
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";

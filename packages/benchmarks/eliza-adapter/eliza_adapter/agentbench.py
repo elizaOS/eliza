@@ -91,13 +91,29 @@ class ElizaAgentHarness:
             while not done and step_num < task.max_steps:
                 step_start = time.time()
 
-                # Build prompt
-                if step_num == 0:
-                    prompt_text = f"Start the benchmark task: {task.goal}"
+                # Build prompt — prefer the adapter's structured prompt so the
+                # agent sees the action-language contract (e.g. ```bash ...``` for
+                # the OS env, ```sql ...``` for the DB env). Without this the
+                # agent saw only a one-line goal and emitted conversational
+                # confirmations or empty "think" actions, which the adapters
+                # rejected with "No valid command/SQL query found".
+                formatter = getattr(adapter, "format_prompt", None)
+                if callable(formatter):
+                    try:
+                        prompt_text = formatter(task, observation)
+                    except Exception as fmt_err:
+                        logger.warning(
+                            "[eliza-agentbench] format_prompt failed for %s: %s",
+                            task.id, fmt_err,
+                        )
+                        prompt_text = f"Start the benchmark task: {task.goal}"
                 else:
-                    prompt_text = (
-                        f"Continue with the benchmark task. Step {step_num + 1}/{task.max_steps}"
-                    )
+                    if step_num == 0:
+                        prompt_text = f"Start the benchmark task: {task.goal}"
+                    else:
+                        prompt_text = (
+                            f"Continue with the benchmark task. Step {step_num + 1}/{task.max_steps}"
+                        )
 
                 # Send to eliza
                 response = self._client.send_message(

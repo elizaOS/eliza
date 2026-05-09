@@ -22,7 +22,8 @@
       "@elizaos/ui": ["../packages/ui/dist/index.d.ts"],
       "@elizaos/ui/*": ["../packages/ui/dist/*"],
       "@elizaos/app-core": ["../packages/app-core/dist/index.d.ts"],
-      "@elizaos/agent": ["../packages/agent/dist/index.d.ts"],
+      "@elizaos/agent": ["../packages/agent/dist/packages/agent/src/index.d.ts"],
+      "@elizaos/agent/*": ["../packages/agent/dist/packages/agent/src/*"],
       "@elizaos/cloud-sdk": ["../cloud/packages/sdk/dist/index.d.ts"],
       "@elizaos/scenario-runner": ["../packages/scenario-runner/dist/index.d.ts"]
     }

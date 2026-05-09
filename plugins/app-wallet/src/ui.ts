@@ -1,5 +1,3 @@
-import "./register-routes";
-
 export { InventoryView } from "./InventoryView";
 export { ChainIcon } from "./inventory/ChainIcon";
 export { TokenLogo } from "./inventory/TokenLogo";

@@ -1,6 +1,7 @@
 import type {
   Action,
   ActionExample,
+  ActionParameterSchema,
   HandlerOptions,
   IAgentRuntime,
   Memory,
@@ -444,8 +445,8 @@ export const profileAction: Action & {
       message,
     );
     const normalizedOptions: HandlerOptions | undefined = options
-      ? { ...options, parameters: normalizedRawParams }
-      : { parameters: normalizedRawParams };
+      ? ({ ...options, parameters: normalizedRawParams } as HandlerOptions)
+      : ({ parameters: normalizedRawParams } as HandlerOptions);
     const resolved = await resolveActionArgs<ProfileSubaction, ProfileParams>({
       runtime,
       message,
@@ -551,13 +552,14 @@ export const profileAction: Action & {
       description:
         "Compatibility value for generic profile set calls; normalized into explicit owner profile fields when possible.",
       schema: {
+        type: "string" as const,
         anyOf: [
           { type: "string" as const },
           { type: "number" as const },
           { type: "boolean" as const },
           { type: "object" as const, additionalProperties: true },
         ],
-      },
+      } as ActionParameterSchema,
     },
     {
       name: "phoneNumber",

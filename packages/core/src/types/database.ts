@@ -119,27 +119,21 @@ export interface EvaluatorLogBody extends BaseLogBody {
 /**
  * Action context for model logs
  */
-export type ModelActionContext = Omit<
-	ProtoModelActionContext,
-	"$typeName" | "$unknown"
->;
+export interface ModelActionContext {
+	actionName: string;
+	actionId: string;
+}
 
 /**
  * Log body for model logs
  */
-export interface ModelLogBody
-	extends Omit<
-			ProtoModelLogBody,
-			| "$typeName"
-			| "$unknown"
-			| "base"
-			| "params"
-			| "response"
-			| "actionContext"
-			| "timestamp"
-			| "executionTime"
-		>,
-		BaseLogBody {
+export interface ModelLogBody extends BaseLogBody {
+	base?: BaseLogBody;
+	modelType?: string;
+	modelKey?: string;
+	prompt?: string;
+	systemPrompt?: string;
+	provider?: string;
 	params?: Record<string, LogBodyValue>;
 	actionContext?: ModelActionContext;
 	timestamp?: number | bigint;
@@ -150,12 +144,9 @@ export interface ModelLogBody
 /**
  * Log body for embedding logs
  */
-export interface EmbeddingLogBody
-	extends Omit<
-			ProtoEmbeddingLogBody,
-			"$typeName" | "$unknown" | "base" | "duration"
-		>,
-		BaseLogBody {
+export interface EmbeddingLogBody extends BaseLogBody {
+	base?: BaseLogBody;
+	memoryId?: UUID;
 	duration?: number | bigint;
 	error?: string | Error;
 }
@@ -173,11 +164,9 @@ export type LogBody =
 /**
  * Represents a log entry
  */
-export interface Log
-	extends Omit<
-		ProtoLog,
-		"$typeName" | "$unknown" | "body" | "createdAt" | "entityId" | "roomId"
-	> {
+export interface Log {
+	id?: UUID;
+	type: string;
 	entityId: UUID;
 	roomId?: UUID;
 	body: LogBody;
@@ -459,29 +448,31 @@ export interface DeleteOAuthFlowStateParams {
 	provider?: string;
 }
 
-export interface AgentRunCounts
-	extends Omit<ProtoAgentRunCounts, "$typeName" | "$unknown"> {}
+export interface AgentRunCounts {
+	actions: number;
+	modelCalls: number;
+	errors: number;
+	evaluators: number;
+}
 
-export interface AgentRunSummary
-	extends Omit<
-		ProtoAgentRunSummary,
-		| "$typeName"
-		| "$unknown"
-		| "status"
-		| "startedAt"
-		| "endedAt"
-		| "durationMs"
-		| "metadata"
-	> {
-	status: RunStatus | ProtoDbRunStatus;
+export interface AgentRunSummary {
+	runId: string;
+	status: RunStatus | DbRunStatus;
 	startedAt: number | bigint | null;
 	endedAt: number | bigint | null;
 	durationMs: number | bigint | null;
+	messageId?: string;
+	roomId?: string;
+	entityId?: string;
 	metadata?: Record<string, JsonValue>;
+	counts?: AgentRunCounts;
 }
 
-export interface AgentRunSummaryResult
-	extends Omit<ProtoAgentRunSummaryResult, "$typeName" | "$unknown"> {}
+export interface AgentRunSummaryResult {
+	runs: AgentRunSummary[];
+	total: number;
+	hasMore: boolean;
+}
 
 /**
  * Interface for database operations.
@@ -1484,8 +1475,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 /**
  * Result interface for embedding similarity searches
  */
-export interface EmbeddingSearchResult
-	extends Omit<ProtoEmbeddingSearchResult, "levenshteinScore"> {
+export interface EmbeddingSearchResult {
+	embedding: number[];
 	levenshtein_score?: number;
 }
 

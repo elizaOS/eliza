@@ -1,4 +1,4 @@
-import { Badge, Button, useApp } from "@elizaos/app-core";
+import { Badge, Button, useApp } from "@elizaos/ui";
 import type { PermissionStatus } from "@elizaos/shared";
 import { ShieldBan } from "lucide-react";
 import type { WebsiteBlockerSettingsCardProps } from "../types";

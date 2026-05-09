@@ -101,6 +101,22 @@ export interface CatalogModel {
 
 export type HardwareFitLevel = "fits" | "tight" | "wontfit";
 
+export interface MobileHardwareProbe {
+  platform: "ios" | "android" | "web";
+  deviceModel?: string;
+  machineId?: string;
+  osVersion?: string;
+  isSimulator?: boolean;
+  availableRamGb?: number | null;
+  freeStorageGb?: number | null;
+  lowPowerMode?: boolean;
+  thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
+  gpuSupported?: boolean;
+  dflashSupported?: boolean;
+  dflashReason?: string;
+  source?: "native" | "adapter-fallback";
+}
+
 export interface HardwareProbe {
   totalRamGb: number;
   freeRamGb: number;
@@ -119,6 +135,8 @@ export interface HardwareProbe {
   recommendedBucket: ModelBucket;
   /** Source of the probe; "node-llama-cpp" when GPU values come from the binding. */
   source: "node-llama-cpp" | "os-fallback";
+  /** Mobile-only details used for minspec, storage, and native DFlash gating. */
+  mobile?: MobileHardwareProbe;
 }
 
 export interface InstalledModel {

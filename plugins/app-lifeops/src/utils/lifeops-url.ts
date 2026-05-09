@@ -1,4 +1,4 @@
-import { client } from "@elizaos/app-core";
+import { client } from "@elizaos/ui";
 
 function resolveLocationOrigin(): string | null {
   if (

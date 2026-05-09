@@ -28,7 +28,6 @@
     "test:launch-qa:release:dry": "node scripts/launch-qa/run.mjs --suite release --dry-run",
     "test:ui:playwright": "bun run --cwd packages/app test:e2e",
     "generate:action-search-keywords": "node scripts/generate-action-search-keywords.mjs && node packages/shared/scripts/generate-keywords.mjs --target ts",
-    "generate:types": "cd packages/schemas && bunx buf lint && bunx buf generate",
     "start": "bun run --cwd packages/agent start",
     "start:eliza": "bun packages/app-core/src/entry.ts start",
     "dev": "node packages/app-core/scripts/rt.mjs packages/app-core/scripts/dev-ui.mjs --name=eliza --app=app",
@@ -74,7 +73,7 @@
     "test:plugins": "bun run build:core && turbo run test --concurrency 3 --filter='./plugins/*' --filter='!@elizaos/plugin-agent-orchestrator' && turbo run test --concurrency 1 --filter='@elizaos/plugin-agent-orchestrator'",
     "test:client": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/app|packages/ui|plugins/app-lifeops|plugins/app-companion|plugins/app-training)\\)' TEST_SCRIPT_FILTER='^test$' node scripts/run-all-tests.mjs --no-cloud",
     "test:core": "node scripts/with-test-runtime.mjs turbo run test --filter=./packages/core",
-    "test:server": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/agent|packages/app-core|packages/shared|packages/core|packages/vault|packages/elizaos|packages/schemas|packages/skills|packages/interop|packages/scenario-runner)\\)' TEST_SCRIPT_FILTER='^test$' node scripts/run-all-tests.mjs --no-cloud",
+    "test:server": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/agent|packages/app-core|packages/shared|packages/core|packages/vault|packages/elizaos|packages/skills|packages/interop|packages/scenario-runner)\\)' TEST_SCRIPT_FILTER='^test$' node scripts/run-all-tests.mjs --no-cloud",
     "browser-bridge:package:release": "cd packages/browser-bridge && bun run package:release",
     "test:browser-bridge": "cd packages/browser-bridge && bun run test:ci",
     "test:browser-bridge:safari": "cd packages/browser-bridge && bun run test:smoke:safari",
@@ -118,7 +117,6 @@
   ],
   "devDependencies": {
     "@biomejs/biome": "2.4.14",
-    "@bufbuild/buf": "^1.47.2",
     "@capacitor/core": "8.3.1",
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-lifeops": "workspace:*",
@@ -195,7 +193,6 @@
   },
   "trustedDependencies": [
     "@biomejs/biome",
-    "@bufbuild/buf",
     "@discordjs/opus",
     "@elizaos/plugin-starter",
     "@nestjs/core",

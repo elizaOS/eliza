@@ -50,13 +50,23 @@ const PENDING_LOG_FILENAME = "pending-requests.json";
 interface DeviceCapabilities {
   platform: "ios" | "android" | "web" | "electrobun" | "desktop";
   deviceModel: string;
+  machineId?: string;
+  osVersion?: string;
+  isSimulator?: boolean;
   totalRamGb: number;
+  availableRamGb?: number | null;
+  freeStorageGb?: number | null;
   cpuCores: number;
   gpu: {
     backend: "metal" | "vulkan" | "gpu-delegate" | "cuda";
     available: boolean;
     totalVramGb?: number;
   } | null;
+  gpuSupported?: boolean;
+  lowPowerMode?: boolean;
+  thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
+  dflashSupported?: boolean;
+  dflashReason?: string;
 }
 
 interface DeviceRegistration {
@@ -250,15 +260,25 @@ function scoreDevice(
       : cap.platform === "ios" || cap.platform === "android"
         ? 10
         : 0;
-  const ramScore = cap.totalRamGb * 2;
+  const usableRamGb =
+    typeof cap.availableRamGb === "number" && cap.availableRamGb > 0
+      ? Math.min(cap.totalRamGb, Math.max(cap.availableRamGb, cap.totalRamGb * 0.6))
+      : cap.totalRamGb;
+  const ramScore = usableRamGb * 2;
   const vramScore = cap.gpu?.available
     ? (cap.gpu.totalVramGb ?? cap.totalRamGb) * 5
     : 0;
+  const healthPenalty =
+    cap.lowPowerMode || cap.thermalState === "serious"
+      ? 15
+      : cap.thermalState === "critical"
+        ? 100
+        : 0;
   const loadedBonus =
     opts.preferLoadedPath && device.loadedPath === opts.preferLoadedPath
       ? 50
       : 0;
-  return platformBase + ramScore + vramScore + loadedBonus;
+  return platformBase + ramScore + vramScore + loadedBonus - healthPenalty;
 }
 
 export class DeviceBridge {

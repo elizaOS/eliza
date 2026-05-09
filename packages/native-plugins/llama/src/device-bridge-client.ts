@@ -17,12 +17,22 @@ import { loadCapacitorLlama } from "./load-capacitor-llama";
 interface DeviceCapabilities {
   platform: "ios" | "android" | "web";
   deviceModel: string;
+  machineId?: string;
+  osVersion?: string;
+  isSimulator?: boolean;
   totalRamGb: number;
+  availableRamGb?: number | null;
+  freeStorageGb?: number | null;
   cpuCores: number;
   gpu: {
     backend: "metal" | "vulkan" | "gpu-delegate";
     available: boolean;
   } | null;
+  gpuSupported?: boolean;
+  lowPowerMode?: boolean;
+  thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
+  dflashSupported?: boolean;
+  dflashReason?: string;
 }
 
 type AgentInbound =
@@ -237,9 +247,29 @@ export class DeviceBridgeClient {
         capabilities: {
           platform: hardware.platform,
           deviceModel: hardware.deviceModel,
+          ...(hardware.machineId ? { machineId: hardware.machineId } : {}),
+          ...(hardware.osVersion ? { osVersion: hardware.osVersion } : {}),
+          ...(typeof hardware.isSimulator === "boolean"
+            ? { isSimulator: hardware.isSimulator }
+            : {}),
           totalRamGb: hardware.totalRamGb,
+          availableRamGb: hardware.availableRamGb,
+          ...(typeof hardware.freeStorageGb === "number"
+            ? { freeStorageGb: hardware.freeStorageGb }
+            : {}),
           cpuCores: hardware.cpuCores,
           gpu: hardware.gpu,
+          gpuSupported: hardware.gpuSupported,
+          ...(typeof hardware.lowPowerMode === "boolean"
+            ? { lowPowerMode: hardware.lowPowerMode }
+            : {}),
+          ...(hardware.thermalState
+            ? { thermalState: hardware.thermalState }
+            : {}),
+          dflashSupported: hardware.dflashSupported,
+          ...(hardware.dflashReason
+            ? { dflashReason: hardware.dflashReason }
+            : {}),
         },
         loadedPath: loaded.modelPath,
       },
