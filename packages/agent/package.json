@@ -146,6 +146,7 @@
     "@elizaos/plugin-computeruse": "workspace:*",
     "@elizaos/plugin-discord-local": "workspace:*",
     "@elizaos/plugin-local-embedding": "workspace:*",
+    "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-ollama": "workspace:*",
     "@elizaos/plugin-pdf": "workspace:*",
     "@elizaos/plugin-signal": "workspace:*",
