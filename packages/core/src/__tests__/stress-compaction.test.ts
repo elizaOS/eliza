@@ -9,7 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { V5_MESSAGE_HANDLER_TOOL_NAME } from "../prompts/message-handler";
+import { HANDLE_RESPONSE_TOOL_NAME } from "../actions/to-tool";
 import { runV5MessageRuntimeStage1 } from "../services/message";
 import type {
 	Action,
@@ -395,7 +395,7 @@ describe("v5 stress path — long build, compaction, gates, trajectory export", 
 						toolCalls: [
 							{
 								id: "mh-1",
-								name: V5_MESSAGE_HANDLER_TOOL_NAME,
+								name: HANDLE_RESPONSE_TOOL_NAME,
 								arguments: {
 									processMessage: "RESPOND",
 									plan: { contexts: ["general"] },

@@ -9,8 +9,10 @@ import { Readable } from "node:stream";
 import type {
   EventPayload,
   GenerateTextParams,
+  JSONSchema,
   ModelTypeName,
   TextEmbeddingParams,
+  ToolDefinition,
 } from "@elizaos/core";
 import { EventType, type IAgentRuntime, logger, ModelType, type Plugin } from "@elizaos/core";
 import {
@@ -18,11 +20,11 @@ import {
   type Llama,
   LlamaChatSession,
   type LlamaContext,
-  type LlamaContextSequence,
   type LlamaEmbeddingContext,
   type LlamaModel,
 } from "node-llama-cpp";
 import { type Config, validateConfig } from "./environment";
+import { extractToolCalls, planStructuredRequest, type ToolCallResult } from "./structured-output";
 import { type EmbeddingModelSpec, MODEL_SPECS, type ModelSpec } from "./types";
 import { DownloadManager } from "./utils/downloadManager";
 import { getPlatformManager } from "./utils/platform";
@@ -30,6 +32,21 @@ import { TokenizerManager } from "./utils/tokenizerManager";
 import { TranscribeManager } from "./utils/transcribeManager";
 import { TTSManager } from "./utils/ttsManager";
 import { VisionManager } from "./utils/visionManager";
+
+const DEFAULT_LOCAL_SYSTEM_PROMPT =
+  "You are a helpful AI assistant. Respond to the current request only.";
+
+interface ChatSessionEntry {
+  context: LlamaContext;
+  session: LlamaChatSession;
+  systemPrompt: string;
+}
+
+interface LocalGenerationResult {
+  text: string;
+  toolCalls: ToolCallResult[];
+  finishReason: string | undefined;
+}
 
 const wordsToPunish = [
   " please",
@@ -124,6 +141,36 @@ function estimateEmbeddingUsage(text: string): NormalizedUsage {
   };
 }
 
+function stripThinkTags(text: string): string {
+  return text.includes("<think>") ? text.replace(/<think>[\s\S]*?<\/think>\n?/g, "") : text;
+}
+
+function wantsNativeShape(params: GenerateTextParams): boolean {
+  if (params.tools && params.tools.length > 0) return true;
+  if (params.responseSchema) return true;
+  if (params.toolChoice) return true;
+  if (
+    params.responseFormat &&
+    typeof params.responseFormat === "object" &&
+    params.responseFormat.type === "json_object"
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function buildNativeResult(result: LocalGenerationResult): {
+  text: string;
+  toolCalls: ToolCallResult[];
+  finishReason?: string;
+} {
+  return {
+    text: result.text,
+    toolCalls: result.toolCalls,
+    ...(result.finishReason ? { finishReason: result.finishReason } : {}),
+  };
+}
+
 function getLocalModelLabel(runtime: IAgentRuntime, type: ModelTypeName): string {
   const config = validateConfig();
   if (type === ModelType.TEXT_EMBEDDING) {
@@ -168,9 +215,7 @@ class LocalAIManager {
   private mediumModel: LlamaModel | undefined;
   private embeddingModel: LlamaModel | undefined;
   private embeddingContext: LlamaEmbeddingContext | undefined;
-  private ctx: LlamaContext | undefined;
-  private sequence: LlamaContextSequence | undefined;
-  private chatSession: LlamaChatSession | undefined;
+  private chatSessions: Map<ModelTypeName, ChatSessionEntry> = new Map();
   private modelPath!: string;
   private mediumModelPath!: string;
   private embeddingModelPath!: string;
@@ -466,97 +511,142 @@ class LocalAIManager {
     await this.embeddingInitializingPromise;
   }
 
-  async generateText(params: GenerateTextParams): Promise<string> {
-    if (this.ctx) {
-      this.ctx.dispose();
-      this.ctx = undefined;
+  /**
+   * Resolve (and cache) the LlamaContext + LlamaChatSession for a given model
+   * type. Reusing the context preserves the KV cache across turns: subsequent
+   * `prompt` calls reuse the prefix already evaluated, just like the openai
+   * and anthropic providers do via their cache_control / stable-system-prompt
+   * patterns.
+   */
+  private async getOrCreateChatSession(
+    modelType: ModelTypeName,
+    systemPrompt: string
+  ): Promise<ChatSessionEntry> {
+    const existing = this.chatSessions.get(modelType);
+    if (existing && existing.systemPrompt === systemPrompt) {
+      return existing;
     }
-    await this.initializeEnvironment();
-    logger.info("Generating text with model:", params.modelType);
-    if (params.modelType === ModelType.TEXT_LARGE) {
-      await this.lazyInitMediumModel();
-
-      if (!this.mediumModel) {
-        throw new Error("Medium model initialization failed");
+    if (existing) {
+      // System prompt changed — drop the cached session for this model.
+      try {
+        existing.context.dispose();
+      } catch (err) {
+        logger.warn("[plugin-local-ai] Failed disposing stale context:", err);
       }
+      this.chatSessions.delete(modelType);
+    }
 
+    let model: LlamaModel;
+    let contextSize: number;
+    if (modelType === ModelType.TEXT_LARGE) {
+      await this.lazyInitMediumModel();
+      if (!this.mediumModel) throw new Error("Medium model initialization failed");
+      model = this.mediumModel;
+      contextSize = MODEL_SPECS.medium.contextSize;
       this.activeModelConfig = MODEL_SPECS.medium;
-      const mediumModel = this.mediumModel;
-
-      this.ctx = await mediumModel.createContext({
-        contextSize: MODEL_SPECS.medium.contextSize,
-      });
     } else {
       await this.lazyInitSmallModel();
-
-      if (!this.smallModel) {
-        throw new Error("Small model initialization failed");
-      }
-
+      if (!this.smallModel) throw new Error("Small model initialization failed");
+      model = this.smallModel;
+      contextSize = MODEL_SPECS.small.contextSize;
       this.activeModelConfig = MODEL_SPECS.small;
-      const smallModel = this.smallModel;
-
-      this.ctx = await smallModel.createContext({
-        contextSize: MODEL_SPECS.small.contextSize,
-      });
     }
 
-    if (!this.ctx) {
-      throw new Error("Failed to create prompt");
-    }
+    const context = await model.createContext({ contextSize });
+    const sequence = context.getSequence();
+    const session = new LlamaChatSession({
+      contextSequence: sequence,
+      systemPrompt,
+    });
+    const entry: ChatSessionEntry = { context, session, systemPrompt };
+    this.chatSessions.set(modelType, entry);
+    logger.info("[plugin-local-ai] Created new chat session", {
+      modelType,
+      contextSize,
+      systemPromptLength: systemPrompt.length,
+    });
+    return entry;
+  }
 
-    this.sequence = this.ctx.getSequence();
+  async generateText(params: GenerateTextParams): Promise<LocalGenerationResult> {
+    await this.initializeEnvironment();
+    const modelType = params.modelType ?? ModelType.TEXT_SMALL;
+    const systemPrompt = params.system?.trim() || DEFAULT_LOCAL_SYSTEM_PROMPT;
+    const entry = await this.getOrCreateChatSession(modelType, systemPrompt);
 
-    this.chatSession = new LlamaChatSession({
-      contextSequence: this.sequence,
+    const prompt = params.prompt ?? "";
+    if (!this.llama) throw new Error("[plugin-local-ai] Llama runtime not initialized");
+
+    const plan = await planStructuredRequest(
+      { llama: this.llama },
+      {
+        tools: params.tools as readonly ToolDefinition[] | undefined,
+        responseSchema: params.responseSchema as JSONSchema | undefined,
+        responseFormat: params.responseFormat,
+      }
+    );
+
+    const usedTokensBefore = entry.session.sequence?.contextTokens?.length ?? 0;
+    logger.info("[plugin-local-ai] generateText", {
+      modelType,
+      kind: plan.kind,
+      promptLength: prompt.length,
+      cachedPrefixTokens: usedTokensBefore,
     });
 
-    if (!this.chatSession) {
-      throw new Error("Failed to create chat session");
-    }
-    logger.info("Created new chat session for model:", params.modelType);
-    logger.info("Incoming prompt structure:", {
-      contextLength: params.prompt.length,
-      hasAction: params.prompt.includes("action"),
-      runtime: !!params.runtime,
-      stopSequences: params.stopSequences,
-    });
-
-    const tokens = await this.tokenizerManager.encode(params.prompt, this.activeModelConfig);
-    logger.info("Input tokens:", { count: tokens.length });
-
-    const systemMessage = "You are a helpful AI assistant. Respond to the current request only.";
-    await this.chatSession.prompt(systemMessage, {
-      maxTokens: 1,
-      temperature: 0.0,
-    });
-
-    let response = await this.chatSession.prompt(params.prompt, {
-      maxTokens: 8192,
-      temperature: 0.7,
-      topP: 0.9,
+    const punishModel = modelType === ModelType.TEXT_LARGE ? this.mediumModel : this.smallModel;
+    const baseOptions = {
+      maxTokens: params.maxTokens ?? 8192,
+      temperature: params.temperature ?? 0.7,
+      topP: params.topP ?? 0.9,
       repeatPenalty: {
         punishTokensFilter: () =>
-          this.smallModel ? this.smallModel.tokenize(wordsToPunish.join(" ")) : [],
+          punishModel ? punishModel.tokenize(wordsToPunish.join(" ")) : [],
         penalty: 1.2,
         frequencyPenalty: 0.7,
         presencePenalty: 0.7,
       },
-    });
+    } as const;
 
-    logger.info("Raw response structure:", {
-      responseLength: response.length,
-      hasAction: response.includes("action"),
-      hasThinkTag: response.includes("<think>"),
-    });
-
-    if (response.includes("<think>")) {
-      logger.info("Cleaning think tags from response");
-      response = response.replace(/<think>[\s\S]*?<\/think>\n?/g, "");
-      logger.info("Think tags removed from response");
+    if (plan.kind === "tools") {
+      const meta = await entry.session.promptWithMeta(prompt, {
+        ...baseOptions,
+        functions: plan.functions,
+      });
+      const toolCalls = extractToolCalls(meta.response);
+      const text = stripThinkTags(meta.responseText);
+      const usedTokensAfter = entry.session.sequence?.contextTokens?.length ?? 0;
+      logger.info("[plugin-local-ai] tool-call response", {
+        toolCallCount: toolCalls.length,
+        textLength: text.length,
+        cacheGrewBy: usedTokensAfter - usedTokensBefore,
+      });
+      return { text, toolCalls, finishReason: meta.stopReason };
     }
 
-    return response;
+    if (plan.kind === "schema" || plan.kind === "json_object") {
+      const meta = await entry.session.promptWithMeta(prompt, {
+        ...baseOptions,
+        grammar: plan.grammar,
+      });
+      const text = stripThinkTags(meta.responseText);
+      const usedTokensAfter = entry.session.sequence?.contextTokens?.length ?? 0;
+      logger.info("[plugin-local-ai] structured response", {
+        kind: plan.kind,
+        textLength: text.length,
+        cacheGrewBy: usedTokensAfter - usedTokensBefore,
+      });
+      return { text, toolCalls: [], finishReason: meta.stopReason };
+    }
+
+    const responseText = await entry.session.prompt(prompt, baseOptions);
+    const text = stripThinkTags(responseText);
+    const usedTokensAfter = entry.session.sequence?.contextTokens?.length ?? 0;
+    logger.info("[plugin-local-ai] text response", {
+      textLength: text.length,
+      cacheGrewBy: usedTokensAfter - usedTokensBefore,
+    });
+    return { text, toolCalls: [], finishReason: undefined };
   }
 
   public async describeImage(
@@ -618,13 +708,6 @@ class LocalAIManager {
         });
 
         this.smallModel = smallModel;
-
-        const ctx = await smallModel.createContext({
-          contextSize: MODEL_SPECS.small.contextSize,
-        });
-
-        this.ctx = ctx;
-        this.sequence = undefined;
         this.smallModelInitialized = true;
         logger.info("Small model initialized successfully");
       })();
@@ -797,44 +880,34 @@ export const localAiPlugin: Plugin = {
     logger.info("💡 Models will be loaded on-demand when first used");
   },
   models: {
-    [ModelType.TEXT_SMALL]: async (
-      runtime: IAgentRuntime,
-      { prompt, stopSequences = [] }: GenerateTextParams
-    ) => {
+    [ModelType.TEXT_SMALL]: async (runtime: IAgentRuntime, params: GenerateTextParams) => {
       await localAIManager.initializeEnvironment();
       const result = await localAIManager.generateText({
-        prompt,
-        stopSequences,
-        runtime,
+        ...params,
         modelType: ModelType.TEXT_SMALL,
       });
       emitModelUsed(
         runtime,
         ModelType.TEXT_SMALL,
         getLocalModelLabel(runtime, ModelType.TEXT_SMALL),
-        estimateUsage(prompt, result)
+        estimateUsage(params.prompt ?? "", result.text)
       );
-      return result;
+      return wantsNativeShape(params) ? buildNativeResult(result) : result.text;
     },
 
-    [ModelType.TEXT_LARGE]: async (
-      runtime: IAgentRuntime,
-      { prompt, stopSequences = [] }: GenerateTextParams
-    ) => {
+    [ModelType.TEXT_LARGE]: async (runtime: IAgentRuntime, params: GenerateTextParams) => {
       await localAIManager.initializeEnvironment();
       const result = await localAIManager.generateText({
-        prompt,
-        stopSequences,
-        runtime,
+        ...params,
         modelType: ModelType.TEXT_LARGE,
       });
       emitModelUsed(
         runtime,
         ModelType.TEXT_LARGE,
         getLocalModelLabel(runtime, ModelType.TEXT_LARGE),
-        estimateUsage(prompt, result)
+        estimateUsage(params.prompt ?? "", result.text)
       );
-      return result;
+      return wantsNativeShape(params) ? buildNativeResult(result) : result.text;
     },
 
     [ModelType.TEXT_EMBEDDING]: async (runtime: IAgentRuntime, params: TextEmbeddingParams) => {
@@ -854,13 +927,6 @@ export const localAiPlugin: Plugin = {
       return embedding;
     },
 
-    // NOTE: local-ai (node-llama-cpp) does not currently expose a native
-    // tool-calling / structured-output API surface. Callers that need
-    // structured output should pass `responseSchema` to TEXT_*; the local
-    // backend will fall back to plain text generation, which is acceptable
-    // for the local stub. If you need guaranteed JSON, prefer a hosted
-    // provider (anthropic/openai/groq/etc.) which routes through native
-    // tools.
     [ModelType.TEXT_TOKENIZER_ENCODE]: async (
       _runtime: IAgentRuntime,
       { text }: { text: string }

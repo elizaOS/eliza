@@ -1,6 +1,6 @@
 import type { JSONSchema } from "../types/model";
 
-export const v5PlannerTemplate = `task: Plan next native tool calls.
+export const plannerTemplate = `task: Plan next native tool calls.
 
 rules:
 - use only tools from the tools array; smallest grounded queue
@@ -26,9 +26,7 @@ context_object:
 trajectory:
 {{trajectory}}`;
 
-export const V5_PLANNER_TEMPLATE = v5PlannerTemplate;
-
-export const v5PlannerSchema: JSONSchema = {
+export const plannerSchema: JSONSchema = {
 	type: "object",
 	additionalProperties: false,
 	properties: {
@@ -55,5 +53,3 @@ export const v5PlannerSchema: JSONSchema = {
 	},
 	required: ["thought", "toolCalls"],
 };
-
-export const V5_PLANNER_SCHEMA = v5PlannerSchema;

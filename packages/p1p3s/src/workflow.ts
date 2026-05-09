@@ -345,7 +345,7 @@ export class Workflow {
 		}
 
 		if (Array.isArray(parameterValue)) {
-			const returnArray: any[] = [];
+			const returnArray: unknown[] = [];
 
 			for (const currentValue of parameterValue) {
 				returnArray.push(
@@ -357,10 +357,10 @@ export class Workflow {
 				);
 			}
 
-			return returnArray;
+			return returnArray as unknown as NodeParameterValueType;
 		}
 
-		const returnData: any = {};
+		const returnData: INodeParameters = {};
 
 		for (const parameterName of Object.keys(parameterValue || {})) {
 			returnData[parameterName] = this.renameNodeInParameterValue(
@@ -754,7 +754,10 @@ export class Workflow {
 		const connectionsByDest = this.connectionsByDestinationNode;
 
 		while (queue.length > 0) {
-			const currentNodeName = queue.shift()!;
+			const currentNodeName = queue.shift();
+			if (currentNodeName === undefined) {
+				break;
+			}
 
 			if (visitedNodes.has(currentNodeName)) {
 				continue;

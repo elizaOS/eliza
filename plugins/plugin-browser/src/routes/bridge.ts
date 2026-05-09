@@ -17,11 +17,6 @@
 import fs from "node:fs";
 import type http from "node:http";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
-import {
-  checkRateLimit,
-  type RateLimitConfig,
-} from "@elizaos/agent";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
@@ -158,6 +153,56 @@ const BROWSER_BRIDGE_RATE_LIMITS = {
   default: { maxRequests: 60, windowMs: 60_000 },
 } satisfies Record<string, RateLimitConfig>;
 
+interface RateLimitConfig {
+  maxRequests: number;
+  windowMs: number;
+}
+
+interface RateLimitEntry {
+  timestamps: number[];
+}
+
+const rateLimitBuckets = new Map<string, RateLimitEntry>();
+const RATE_LIMIT_CLEANUP_INTERVAL_MS = 5 * 60 * 1_000;
+let lastRateLimitCleanup = Date.now();
+
+function cleanupRateLimitBuckets(windowMs: number): void {
+  const now = Date.now();
+  if (now - lastRateLimitCleanup < RATE_LIMIT_CLEANUP_INTERVAL_MS) return;
+  lastRateLimitCleanup = now;
+  const cutoff = now - windowMs;
+  for (const [key, entry] of rateLimitBuckets) {
+    entry.timestamps = entry.timestamps.filter((timestamp) => timestamp > cutoff);
+    if (entry.timestamps.length === 0) rateLimitBuckets.delete(key);
+  }
+}
+
+function checkBrowserBridgeRateLimit(
+  key: string,
+  config: RateLimitConfig,
+): { allowed: boolean; retryAfterMs: number } {
+  const now = Date.now();
+  cleanupRateLimitBuckets(config.windowMs);
+  let entry = rateLimitBuckets.get(key);
+  if (!entry) {
+    entry = { timestamps: [] };
+    rateLimitBuckets.set(key, entry);
+  }
+
+  const cutoff = now - config.windowMs;
+  entry.timestamps = entry.timestamps.filter((timestamp) => timestamp > cutoff);
+
+  if (entry.timestamps.length >= config.maxRequests) {
+    const oldestInWindow = entry.timestamps[0];
+    const retryAfterMs =
+      oldestInWindow === undefined ? 0 : oldestInWindow + config.windowMs - now;
+    return { allowed: false, retryAfterMs: Math.max(retryAfterMs, 0) };
+  }
+
+  entry.timestamps.push(now);
+  return { allowed: true, retryAfterMs: 0 };
+}
+
 function rateLimitRequest(
   ctx: BrowserBridgeRouteContext,
   operation: string,
@@ -169,7 +214,10 @@ function rateLimitRequest(
   const remoteAddress = ctx.req.socket.remoteAddress?.trim() ?? "unknown";
   const limitKey = `${agentId}:${operation}:${remoteAddress}:${companionId}`;
   const config = BROWSER_BRIDGE_RATE_LIMITS.default;
-  const { allowed, retryAfterMs } = checkRateLimit(limitKey, config);
+  const { allowed, retryAfterMs } = checkBrowserBridgeRateLimit(
+    limitKey,
+    config,
+  );
   if (!allowed) {
     ctx.res.writeHead(429, {
       "Content-Type": "application/json",
@@ -183,6 +231,80 @@ function rateLimitRequest(
 
 function routeOperation(ctx: BrowserBridgeRouteContext): string {
   return `${ctx.method.toUpperCase()} ${ctx.pathname}`;
+}
+
+interface BrowserBridgeTelemetrySpan {
+  success: (args?: { statusCode?: number }) => void;
+  failure: (args?: {
+    statusCode?: number;
+    error?: unknown;
+    errorKind?: string;
+  }) => void;
+}
+
+function sanitizeTelemetryToken(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const token = value.toLowerCase().replace(/[^a-z0-9_-]/g, "_");
+  const normalized = token.replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+  return normalized ? normalized.slice(0, 64) : undefined;
+}
+
+function inferTelemetryErrorKind(error: unknown): string | undefined {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    if (
+      error.name === "AbortError" ||
+      error.name === "TimeoutError" ||
+      message.includes("timeout") ||
+      message.includes("timed out")
+    ) {
+      return "timeout";
+    }
+    return sanitizeTelemetryToken(error.name);
+  }
+  return typeof error === "string" ? sanitizeTelemetryToken(error) : undefined;
+}
+
+function createBrowserBridgeTelemetrySpan(meta: {
+  boundary: "browser-bridge";
+  operation: string;
+  timeoutMs?: number;
+}): BrowserBridgeTelemetrySpan {
+  const startedAt = Date.now();
+  let settled = false;
+
+  const finalize = (
+    outcome: "success" | "failure",
+    args?: { statusCode?: number; error?: unknown; errorKind?: string },
+  ): void => {
+    if (settled) return;
+    settled = true;
+    const event: Record<string, unknown> = {
+      schema: "integration_boundary_v1",
+      boundary: meta.boundary,
+      operation: meta.operation,
+      outcome,
+      durationMs: Math.max(0, Date.now() - startedAt),
+    };
+    if (typeof meta.timeoutMs === "number") event.timeoutMs = meta.timeoutMs;
+    if (typeof args?.statusCode === "number") event.statusCode = args.statusCode;
+    if (outcome === "failure") {
+      event.errorKind =
+        sanitizeTelemetryToken(args?.errorKind) ??
+        inferTelemetryErrorKind(args?.error);
+    }
+    const line = `[integration] ${JSON.stringify(event)}`;
+    if (outcome === "success") {
+      logger.info(line);
+    } else {
+      logger.warn(line);
+    }
+  };
+
+  return {
+    success: (args) => finalize("success", args),
+    failure: (args) => finalize("failure", args),
+  };
 }
 
 function errorMessage(error: unknown): string {
@@ -243,7 +365,7 @@ async function runRoute(
   fn: (service: BrowserBridgeRouteService) => Promise<void>,
 ): Promise<boolean> {
   const operation = routeOperation(ctx);
-  const span = createIntegrationTelemetrySpan({
+  const span = createBrowserBridgeTelemetrySpan({
     boundary: "browser-bridge",
     operation,
   });
@@ -314,7 +436,7 @@ async function runStatelessRoute(
   fn: () => Promise<void>,
 ): Promise<boolean> {
   const operation = routeOperation(ctx);
-  const span = createIntegrationTelemetrySpan({
+  const span = createBrowserBridgeTelemetrySpan({
     boundary: "browser-bridge",
     operation,
   });

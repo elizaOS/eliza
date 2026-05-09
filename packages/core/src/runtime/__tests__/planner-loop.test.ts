@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { v5PlannerTemplate } from "../../prompts/planner";
+import { plannerTemplate } from "../../prompts/planner";
 import { type ChatMessage, ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
 import { parsePlannerOutput, runPlannerLoop } from "../planner-loop";
@@ -131,10 +131,10 @@ describe("v5 planner loop skeleton", () => {
 	});
 
 	it("instructs planners to use exposed tools for unresolved current work", () => {
-		expect(v5PlannerTemplate).toContain(
+		expect(plannerTemplate).toContain(
 			"task is not complete while the user still needs live/current/external data",
 		);
-		expect(v5PlannerTemplate).toContain(
+		expect(plannerTemplate).toContain(
 			"prior attachments, memory, or conversation snippets are not a substitute",
 		);
 	});

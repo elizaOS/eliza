@@ -1,5 +1,5 @@
 import { PLAN_ACTIONS_TOOL_NAME } from "../actions/to-tool";
-import { v5PlannerSchema, v5PlannerTemplate } from "../prompts/planner";
+import { plannerSchema, plannerTemplate } from "../prompts/planner";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { ActionResult, ProviderDataRecord } from "../types/components";
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
@@ -413,7 +413,7 @@ function renderPlannerModelInput(params: {
 	promptSegments: PromptSegment[];
 } {
 	const renderedContext = renderContextObject(params.context);
-	const template = params.template ?? v5PlannerTemplate;
+	const template = params.template ?? plannerTemplate;
 	const instructions = (
 		template.split("context_object:")[0] ?? template
 	).trim();
@@ -431,7 +431,7 @@ function renderPlannerModelInput(params: {
 		extraSegments.length > 0
 			? [...renderedContext.promptSegments, ...extraSegments]
 			: renderedContext.promptSegments;
-	// The planner stage instructions are template-derived (`v5PlannerTemplate`)
+	// The planner stage instructions are template-derived (`plannerTemplate`)
 	// and structurally identical across iterations and across user turns, so they
 	// belong in the cached prefix. Marking the segment `stable: true` lets the
 	// Anthropic provider stamp `cache_control` on this block and lets the
@@ -508,7 +508,7 @@ function renderToolForAvailableActions(tool: ContextObjectTool): string {
 /**
  * Build a "Routing hints" block from each available action's
  * {@link Action.routingHint}. Replaces the hand-written domain-routing prose
- * that used to live inline in `v5PlannerTemplate` — each action now carries
+ * that used to live inline in `plannerTemplate` — each action now carries
  * its own one-line hint as metadata, and the planner sees them only when the
  * action is actually exposed for this turn.
  *
@@ -847,7 +847,7 @@ async function callPlanner(params: {
 		modelParams.tools = params.tools;
 		modelParams.toolChoice = params.toolChoice ?? "auto";
 	} else {
-		modelParams.responseSchema = v5PlannerSchema;
+		modelParams.responseSchema = plannerSchema;
 	}
 
 	const startedAt = Date.now();

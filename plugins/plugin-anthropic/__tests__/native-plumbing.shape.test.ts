@@ -436,7 +436,21 @@ describe("Anthropic model defaults", () => {
     expect(assistantTurn).toBeDefined();
     expect(toolTurn).toBeDefined();
 
-    // Stable segments carry cache_control on the wire.
+    // Stable prefix reaches the wire as a cacheable system parameter.
+    // Anthropic's prompt-caching docs recommend cache_control on the separate
+    // `system` parameter for the stable prefix; the dynamic-only segmented
+    // user content is sent in `messages` without cache_control. Putting the
+    // same stable text in both `system` and `messages` would duplicate tokens.
+    const system = call.system as { content?: string; providerOptions?: Record<string, unknown> };
+    expect(system?.providerOptions).toMatchObject({
+      anthropic: { cacheControl: { type: "ephemeral" } },
+    });
+    expect(typeof system?.content === "string" && system.content.includes("planner_stage")).toBe(
+      true
+    );
+
+    // The dynamic-only user content in `messages` must NOT carry cache_control,
+    // and must NOT include any stable-segment text (it would duplicate tokens).
     const allTextParts: Array<Record<string, unknown>> = [];
     for (const message of call.messages) {
       if (Array.isArray(message.content)) {
@@ -446,11 +460,13 @@ describe("Anthropic model defaults", () => {
       }
     }
     const cached = allTextParts.filter((part) => part.providerOptions);
-    expect(cached.length).toBeGreaterThan(0);
-    expect(cached.length).toBeLessThanOrEqual(4);
-    const cachedTexts = cached.map((p) => p.text);
-    expect(cachedTexts.some((t) => typeof t === "string" && t.includes("planner_stage"))).toBe(
-      true
+    expect(cached.length).toBe(0);
+    const messageTexts = allTextParts.map((p) => p.text);
+    expect(messageTexts.some((t) => typeof t === "string" && t.includes("planner_stage"))).toBe(
+      false
+    );
+    expect(messageTexts.some((t) => typeof t === "string" && t.includes("stable prefix"))).toBe(
+      false
     );
 
     // Tools still reach the wire.

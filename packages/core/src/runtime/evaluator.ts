@@ -1,4 +1,4 @@
-import { v5EvaluatorSchema, v5EvaluatorTemplate } from "../prompts/evaluator";
+import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { EvaluationResult } from "../types/components";
 import {
@@ -92,7 +92,7 @@ export async function runEvaluator(
 		modelType,
 		{
 			messages: renderedInput.messages,
-			responseSchema: v5EvaluatorSchema,
+			responseSchema: evaluatorSchema,
 			promptSegments: renderedInput.promptSegments,
 			providerOptions,
 		},
@@ -252,13 +252,13 @@ function renderEvaluatorModelInput(params: {
 	promptSegments: PromptSegment[];
 } {
 	const renderedContext = renderContextObject(params.context);
-	const template = params.template ?? v5EvaluatorTemplate;
+	const template = params.template ?? evaluatorTemplate;
 	const instructions = (
 		template.split("context_object:")[0] ?? template
 	).trim();
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
 	// Mirrors planner-loop: the evaluator stage instructions are template-derived
-	// (`v5EvaluatorTemplate`) and structurally identical across calls. Marking
+	// (`evaluatorTemplate`) and structurally identical across calls. Marking
 	// the segment `stable: true` makes them cacheable on Anthropic's wire path.
 	const promptSegments = normalizePromptSegments([
 		...renderedContext.promptSegments,

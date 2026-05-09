@@ -438,7 +438,9 @@ export function displayParameter(
 				return true;
 			}
 
-			if (!checkConditions(show[propertyName]!, values)) {
+			if (
+				!checkConditions(show[propertyName] as Array<NodeParameterValue | DisplayCondition>, values)
+			) {
 				return false;
 			}
 		}
@@ -455,7 +457,10 @@ export function displayParameter(
 				nodeValuesRoot
 			);
 
-			if (values.length !== 0 && checkConditions(hide[propertyName]!, values)) {
+			if (
+				values.length !== 0 &&
+				checkConditions(hide[propertyName] as Array<NodeParameterValue | DisplayCondition>, values)
+			) {
 				return false;
 			}
 		}
@@ -939,7 +944,7 @@ export function getNodeParameters(
 							});
 						}
 
-						tempNodePropertiesArray = nodePropertyOptions.values!;
+						tempNodePropertiesArray = nodePropertyOptions.values;
 						tempValue = getNodeParameters(
 							tempNodePropertiesArray,
 							nodeValue,
@@ -971,7 +976,7 @@ export function getNodeParameters(
 					);
 
 					if (nodePropertyOptions !== undefined) {
-						tempNodePropertiesArray = (nodePropertyOptions as INodePropertyCollection).values!;
+						tempNodePropertiesArray = (nodePropertyOptions as INodePropertyCollection).values;
 						const itemNodeValues = (nodeValues[nodeProperties.name] as INodeParameters)[
 							itemName
 						] as INodeParameters;

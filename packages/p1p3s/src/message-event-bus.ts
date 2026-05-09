@@ -48,7 +48,7 @@ export interface IAbstractEventMessage {
 
 	message: string;
 
-	payload: any;
+	payload: unknown;
 }
 
 // ===============================

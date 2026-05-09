@@ -3,6 +3,7 @@ import z from "zod";
 import { formatActionNames, formatActions } from "../actions";
 import {
 	actionToTool,
+	createHandleResponseTool,
 	HANDLE_RESPONSE_TOOL_NAME,
 	PLAN_ACTIONS_TOOL,
 	PLAN_ACTIONS_TOOL_NAME,
@@ -17,10 +18,6 @@ import {
 import { looksLikeNonActionableChatter } from "../features/basic-capabilities/providers/non-actionable-chatter";
 import { logger } from "../logger";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
-import {
-	createV5MessageHandlerTool,
-	V5_MESSAGE_HANDLER_TOOL_NAME,
-} from "../prompts/message-handler";
 import { checkSenderRole } from "../roles";
 import {
 	buildActionCatalog,
@@ -747,15 +744,15 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
  * provider. Structured prior turns are additionally rendered by
  * `appendPriorDialogueEvents`.
  */
-const V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS = [
+const MODEL_CONTEXT_PROVIDER_EXCLUSIONS = [
 	"ACTIONS",
 	"ACTION_STATE",
 	"CHARACTER",
 	"PROVIDERS",
 ] as const;
 
-const V5_MODEL_CONTEXT_PROVIDER_EXCLUSION_SET = new Set<string>(
-	V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS,
+const MODEL_CONTEXT_PROVIDER_EXCLUSION_SET = new Set<string>(
+	MODEL_CONTEXT_PROVIDER_EXCLUSIONS,
 );
 
 /**
@@ -848,7 +845,7 @@ function selectV5PlannerStateProviderNames(args: {
 		if (!name || provider.private) {
 			continue;
 		}
-		if (V5_MODEL_CONTEXT_PROVIDER_EXCLUSION_SET.has(name.toUpperCase())) {
+		if (MODEL_CONTEXT_PROVIDER_EXCLUSION_SET.has(name.toUpperCase())) {
 			continue;
 		}
 		providerNames.add(name);
@@ -1644,8 +1641,8 @@ async function createV5MessageContextObject(args: {
 	const events: ContextEvent[] = [];
 
 	const renderExclusions = args.extraProviderExclusions?.length
-		? [...V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS, ...args.extraProviderExclusions]
-		: V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS;
+		? [...MODEL_CONTEXT_PROVIDER_EXCLUSIONS, ...args.extraProviderExclusions]
+		: MODEL_CONTEXT_PROVIDER_EXCLUSIONS;
 	appendStateProviderEvents(events, args.state, renderExclusions);
 
 	appendPriorDialogueEvents(events, args.runtime, args.state, args.message);
@@ -2072,7 +2069,7 @@ function formatRoleGateForPrompt(
 	return undefined;
 }
 
-function renderV5MessageHandlerInstructions(
+function renderMessageHandlerInstructions(
 	availableContexts: readonly ContextDefinition[],
 	options?: { directMessage?: boolean },
 ): string {
@@ -2080,13 +2077,13 @@ function renderV5MessageHandlerInstructions(
 		state: {
 			directMessage: options?.directMessage ? "true" : "",
 			availableContexts: formatAvailableContextsForPrompt(availableContexts),
-			handleResponseToolName: V5_MESSAGE_HANDLER_TOOL_NAME,
+			handleResponseToolName: HANDLE_RESPONSE_TOOL_NAME,
 		},
 		template: messageHandlerTemplate,
 	}).trim();
 }
 
-function renderV5MessageHandlerModelInput(
+function renderMessageHandlerModelInput(
 	context: ContextObject,
 	availableContexts: readonly ContextDefinition[] = [],
 	options?: { directMessage?: boolean },
@@ -2095,7 +2092,7 @@ function renderV5MessageHandlerModelInput(
 	promptSegments: PromptSegment[];
 } {
 	const rendered = renderContextObject(context);
-	const instructions = renderV5MessageHandlerInstructions(
+	const instructions = renderMessageHandlerInstructions(
 		availableContexts,
 		options,
 	);
@@ -3305,7 +3302,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			args.message.content?.channelType === ChannelType.VOICE_DM ||
 			args.message.content?.channelType === ChannelType.API ||
 			args.message.content?.channelType === ChannelType.SELF;
-		const messageHandlerInput = renderV5MessageHandlerModelInput(
+		const messageHandlerInput = renderMessageHandlerModelInput(
 			context,
 			availableContexts,
 			{ directMessage: directMessageChannel },
@@ -3325,7 +3322,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
 			hashString(`stage1:${stage1SystemContent}`);
 		const messageHandlerTools = [
-			createV5MessageHandlerTool({
+			createHandleResponseTool({
 				directMessage: directMessageChannel,
 			}),
 		];
@@ -7205,7 +7202,7 @@ export class DefaultMessageService implements IMessageService {
 		let shouldRespondToMessage = true;
 		let terminalDecision: "IGNORE" | "STOP" | null = null;
 		let routedDecision: ContextRoutingDecision | null = null;
-		let v5StrategyResult: StrategyResult | null = null;
+		let strategyResult: StrategyResult | null = null;
 		let _usedV5Runtime = false;
 
 		const parallelJoin: { translatedUserText?: string } = {};
@@ -7232,7 +7229,7 @@ export class DefaultMessageService implements IMessageService {
 				);
 			}
 			try {
-				const [v5Outcome] = await Promise.all([
+				const [outcome] = await Promise.all([
 					runV5MessageRuntimeStage1({
 						runtime,
 						message,
@@ -7244,7 +7241,7 @@ export class DefaultMessageService implements IMessageService {
 						parallelHookCtx,
 					),
 				]);
-				const routedContexts = v5Outcome.messageHandler.plan.contexts;
+				const routedContexts = outcome.messageHandler.plan.contexts;
 				routedDecision =
 					routedContexts.length > 0
 						? {
@@ -7254,16 +7251,16 @@ export class DefaultMessageService implements IMessageService {
 						: {};
 				setContextRoutingMetadata(message, routedDecision);
 
-				if (v5Outcome.kind === "terminal") {
+				if (outcome.kind === "terminal") {
 					shouldRespondToMessage = false;
-					terminalDecision = v5Outcome.action;
-					state = v5Outcome.state;
+					terminalDecision = outcome.action;
+					state = outcome.state;
 				} else {
 					shouldRespondToMessage = true;
 					terminalDecision = null;
-					v5StrategyResult = v5Outcome.result;
+					strategyResult = outcome.result;
 					_usedV5Runtime = true;
-					state = v5Outcome.result.state;
+					state = outcome.result.state;
 				}
 			} catch (error) {
 				runtime.logger.warn(
@@ -7276,7 +7273,7 @@ export class DefaultMessageService implements IMessageService {
 				);
 				shouldRespondToMessage = true;
 				terminalDecision = null;
-				v5StrategyResult = await this.buildStructuredFailureReply(
+				strategyResult = await this.buildStructuredFailureReply(
 					runtime,
 					message,
 					state,
@@ -7284,7 +7281,7 @@ export class DefaultMessageService implements IMessageService {
 					"running the native tool message runtime",
 				);
 				_usedV5Runtime = true;
-				state = v5StrategyResult.state;
+				state = strategyResult.state;
 			}
 		} else if (!hasTextGenerationHandler(runtime)) {
 			await runtime.applyPipelineHooks(
@@ -7325,7 +7322,7 @@ export class DefaultMessageService implements IMessageService {
 			}
 			terminalDecision = null;
 			if (shouldRespondToMessage) {
-				v5StrategyResult = this.buildNoModelProviderReply(
+				strategyResult = this.buildNoModelProviderReply(
 					runtime,
 					message,
 					state,
@@ -7377,8 +7374,8 @@ export class DefaultMessageService implements IMessageService {
 
 		if (shouldRespondToMessage) {
 			let result: StrategyResult;
-			if (v5StrategyResult) {
-				result = v5StrategyResult;
+			if (strategyResult) {
+				result = strategyResult;
 			} else {
 				_usedV5Runtime = true;
 				result = await this.buildStructuredFailureReply(

@@ -177,7 +177,7 @@ export class Expression {
 		// no-op: in-process evaluator does not pool isolates
 	}
 
-	static initializeGlobalContext(data: IDataObject) {
+	static initializeGlobalContext(data: IDataObject | IWorkflowDataProxyData) {
 		/**
 		 * Denylist
 		 */

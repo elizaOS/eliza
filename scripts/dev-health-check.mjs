@@ -278,6 +278,9 @@ function isSuspiciousLogLine(line) {
   if (/\b(Runtime bootstrap failed|Migration failed|Task execution failed|failed to load model|proxy error|crashed during init)\b/i.test(line)) {
     return true;
   }
+  if (/\b(Pre-transform error|Transform failed|PARSE_ERROR)\b/i.test(line)) {
+    return true;
+  }
   if (/\bUsage: eliza\b/i.test(line)) {
     return true;
   }
