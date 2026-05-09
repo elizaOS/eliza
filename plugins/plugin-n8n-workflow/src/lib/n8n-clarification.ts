@@ -229,9 +229,7 @@ export function setByDotPath(
     cur = next as Record<string, unknown> | unknown[];
   }
   const last = segments[segments.length - 1];
-  const isExistingObject = (v: unknown): boolean =>
-    v !== null && typeof v === 'object';
-  const isObjectValue = (v: unknown): boolean =>
+  const isNonNullObject = (v: unknown): boolean =>
     v !== null && typeof v === 'object';
   if (Array.isArray(cur)) {
     let idx: number;
@@ -245,7 +243,7 @@ export function setByDotPath(
         );
       }
     }
-    if (isExistingObject(cur[idx]) && !isObjectValue(value)) {
+    if (isNonNullObject(cur[idx]) && !isNonNullObject(value)) {
       throw new Error(
         `paramPath terminal "${last}" currently holds an object; refusing to overwrite with non-object value (path likely points at a parent scope rather than a leaf field)`
       );
@@ -253,7 +251,7 @@ export function setByDotPath(
     cur[idx] = value;
   } else {
     const existing = (cur as Record<string, unknown>)[last];
-    if (isExistingObject(existing) && !isObjectValue(value)) {
+    if (isNonNullObject(existing) && !isNonNullObject(value)) {
       throw new Error(
         `paramPath terminal "${last}" currently holds an object; refusing to overwrite with non-object value (path likely points at a parent scope rather than a leaf field)`
       );
