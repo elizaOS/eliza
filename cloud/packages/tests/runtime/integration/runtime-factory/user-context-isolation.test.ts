@@ -22,8 +22,31 @@ import {
   invalidateRuntime,
   runtimeFactory,
   type TestDataSet,
+  type TestRuntime,
   verifyConnection,
 } from "../../../infrastructure";
+
+type McpServerSettings = {
+  url?: string;
+  headers?: Record<string, string | undefined>;
+};
+
+type McpSettings = {
+  servers?: {
+    google?: McpServerSettings;
+  };
+};
+
+type RuntimeMcpCarrier = TestRuntime & {
+  character?: {
+    settings?: {
+      mcp?: McpSettings;
+    };
+  };
+  settings?: {
+    mcp?: McpSettings;
+  };
+};
 
 let connectionString: string;
 let testDataUser1: TestDataSet;
@@ -246,8 +269,9 @@ describe.skipIf(!hasDatabaseUrl)("User Context Isolation", () => {
 
   it("should not leak MCP settings between users with different OAuth states", async () => {
     // Helper to get MCP settings the way McpService does
-    const getMcpSettings = (runtime: any): Record<string, unknown> | undefined => {
-      return runtime.character?.settings?.mcp || runtime.settings?.mcp;
+    const getMcpSettings = (runtime: TestRuntime): McpSettings | undefined => {
+      const carrier = runtime as RuntimeMcpCarrier;
+      return carrier.character?.settings?.mcp || carrier.settings?.mcp;
     };
 
     // User 1: Has Google OAuth
@@ -264,9 +288,9 @@ describe.skipIf(!hasDatabaseUrl)("User Context Isolation", () => {
     // Check User 1 has Google MCP enabled without persisting their API key
     const mcp1 = getMcpSettings(runtime1);
     expect(mcp1).toBeDefined();
-    expect((mcp1 as any)?.servers?.google).toBeDefined();
+    expect(mcp1?.servers?.google).toBeDefined();
 
-    const googleServer1 = (mcp1 as any)?.servers?.google;
+    const googleServer1 = mcp1?.servers?.google;
     expect(googleServer1?.url).toContain("/api/mcps/google/streamable-http");
     expect(googleServer1?.headers?.["X-API-Key"]).toBeUndefined();
 
@@ -288,11 +312,10 @@ describe.skipIf(!hasDatabaseUrl)("User Context Isolation", () => {
       const mcp2 = getMcpSettings(runtime2);
 
       // MCP should either be undefined/null or have no Google server
-      const hasGoogleServer = mcp2 && (mcp2 as any)?.servers?.google;
+      const googleServer2 = mcp2?.servers?.google;
 
-      if (hasGoogleServer) {
+      if (googleServer2) {
         // If somehow MCP exists, it still must not carry any user API key.
-        const googleServer2 = (mcp2 as any).servers.google;
         expect(googleServer2?.headers?.["X-API-Key"]).toBeUndefined();
       }
 

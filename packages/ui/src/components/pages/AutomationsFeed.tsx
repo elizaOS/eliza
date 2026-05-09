@@ -41,11 +41,17 @@ import type {
   AutomationItem,
   AutomationListResponse,
 } from "../../api/client-types-config";
+import {
+  type FeedFilter,
+  passesFilter,
+} from "../../utils/automation-feed-filter";
 import { formatSchedule } from "../../utils/cron-format";
-import { decodeScheduleTags, TaskEditor } from "./TaskEditor";
+import { decodeScheduleTags } from "../../utils/task-schedule";
+import { TaskEditor } from "./TaskEditor";
 import { WorkflowEditor } from "./WorkflowEditor";
 
-type FeedFilter = "all" | "tasks" | "workflows" | "active" | "inactive";
+export { passesFilter } from "../../utils/automation-feed-filter";
+export type { FeedFilter } from "../../utils/automation-feed-filter";
 
 type ChooserState = "closed" | "task" | "workflow";
 
@@ -105,23 +111,6 @@ function automationToRow(item: AutomationItem): FeedRow {
     lastUpdated: item.updatedAt,
     source: item,
   };
-}
-
-export function passesFilter(row: FeedRow, filter: FeedFilter): boolean {
-  switch (filter) {
-    case "all":
-      return true;
-    case "tasks":
-      return row.kind === "task";
-    case "workflows":
-      return row.kind === "workflow";
-    case "active":
-      return row.active;
-    case "inactive":
-      return !row.active;
-    default:
-      return true;
-  }
 }
 
 export function AutomationsFeed() {
