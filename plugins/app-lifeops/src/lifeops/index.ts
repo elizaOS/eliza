@@ -24,7 +24,6 @@ export {
   type HealthDailySummary,
   type HealthDataPoint,
 } from "@elizaos/plugin-health";
-export * from "./identity-observations.js";
 export * from "./intent-sync.js";
 export * from "./owner-profile.js";
 export * from "./password-manager-bridge.js";

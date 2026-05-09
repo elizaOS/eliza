@@ -6,11 +6,6 @@ export {
   mergeEntities,
 } from "./merge.js";
 export {
-  type ContactResolverShim,
-  createContactResolverShim,
-  type ResolvedContactShim,
-} from "./resolver-shim.js";
-export {
   AUTO_MERGE_CONFIDENCE_THRESHOLD,
   EntityStore,
 } from "./store.js";
