@@ -1,54 +1,49 @@
-import {
-	getConnectorAccountManager,
-	type IAgentRuntime,
-	logger,
-	type Plugin,
-} from "@elizaos/core";
+import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import channelOp from "./actions/channelOp";
+import chatWithAttachments from "./actions/chatWithAttachments";
+import createPoll from "./actions/createPoll";
+import getUserInfo from "./actions/getUserInfo";
+import mediaOp from "./actions/mediaOp";
+import messageOp from "./actions/messageOp";
 import setupCredentials from "./actions/setup-credentials";
+import { summarize } from "./actions/summarizeConversation";
 import { printBanner } from "./banner";
-import { createDiscordConnectorAccountProvider } from "./connector-account-provider";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
+import { discordChannelsProvider } from "./providers/discordChannels";
+import { discordServerInfoProvider } from "./providers/discordServerInfo";
+import { guildInfoProvider } from "./providers/guildInfo";
+import { voiceStateProvider } from "./providers/voiceState";
+import { registerDiscordSearchCategory } from "./search-category";
 import { DiscordService } from "./service";
 import { discordSetupRoutes } from "./setup-routes";
 import { DiscordTestSuite } from "./tests";
-import { DiscordUserAccountScraperImpl } from "./user-account-scraper/service";
 
 const discordPlugin: Plugin = {
 	name: "discord",
 	description:
 		"Discord service plugin for integration with Discord servers and channels",
-	services: [
-		DiscordService,
-		DiscordOwnerPairingServiceImpl,
-		DiscordUserAccountScraperImpl,
-	],
+	services: [DiscordService, DiscordOwnerPairingServiceImpl],
 	routes: discordSetupRoutes,
-	actions: [setupCredentials],
-	providers: [],
+	actions: [
+		messageOp,
+		channelOp,
+		mediaOp,
+		chatWithAttachments,
+		summarize,
+		createPoll,
+		getUserInfo,
+		setupCredentials,
+	],
+	providers: [
+		voiceStateProvider,
+		guildInfoProvider,
+		discordChannelsProvider,
+		discordServerInfoProvider,
+	],
 	tests: [new DiscordTestSuite()],
-	// Self-declared auto-enable: activate when the "discord" connector is
-	// configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
-	// in plugin-auto-enable-engine.ts still serves as a fallback.
-	autoEnable: {
-		connectorKeys: ["discord"],
-	},
 	init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-		// Register the Discord provider with the ConnectorAccountManager so the
-		// HTTP CRUD surface (packages/agent/src/api/connector-account-routes.ts)
-		// can list, create, patch, delete, and start OAuth on Discord accounts.
-		try {
-			const manager = getConnectorAccountManager(runtime);
-			manager.registerProvider(createDiscordConnectorAccountProvider(runtime));
-		} catch (err) {
-			logger.warn(
-				{
-					src: "plugin:discord",
-					err: err instanceof Error ? err.message : String(err),
-				},
-				"Failed to register Discord provider with ConnectorAccountManager",
-			);
-		}
+		registerDiscordSearchCategory(runtime);
 
 		const token = runtime.getSetting("DISCORD_API_TOKEN") as string;
 		const botTokens = runtime.getSetting("DISCORD_BOT_TOKENS") as string;
@@ -195,11 +190,6 @@ export type {
 	DiscordPluralKitConfig,
 	DiscordReactionNotificationMode,
 } from "./config";
-// ConnectorAccountManager provider exports
-export {
-	createDiscordConnectorAccountProvider,
-	DISCORD_PROVIDER_ID,
-} from "./connector-account-provider";
 export { DISCORD_SERVICE_NAME } from "./constants";
 // Discord local IPC service + setup routes
 export {
@@ -292,32 +282,19 @@ export type {
 	RolePermissionsChangedPayload,
 } from "./types";
 export { DiscordEventTypes } from "./types";
-// Discord user-account scraper (browser-workspace driven; per-account
-// partitions). Used by lifeops and any other consumer that needs to read
-// state from a logged-in Discord user account.
 export {
-	captureDiscordDeliveryStatus,
-	closeDiscordTab,
-	DISCORD_APP_URL,
-	DISCORD_USER_ACCOUNT_SCRAPER_SERVICE_TYPE,
-	type DiscordDesktopCdpStatus,
-	type DiscordDmInboxProbe,
-	type DiscordMessageSearchResult,
-	type DiscordTabIdentity,
-	type DiscordTabProbe,
-	type DiscordUserAccountScraper,
-	DiscordUserAccountScraperImpl,
-	type DiscordVisibleDmPreview,
-	discordBrowserWorkspaceAvailable,
-	discordUserAccountPartitionFor,
-	emptyDiscordDmInboxProbe,
-	ensureDiscordTab,
-	getDiscordDesktopCdpStatus,
-	navigateDiscordTabToHome,
-	probeDiscordCapturedPage,
-	probeDiscordDocumentState,
-	probeDiscordTab,
-	relaunchDiscordDesktopForCdp,
-	searchDiscordMessages,
-	sendDiscordViaDesktopCdp,
-} from "./user-account-scraper";
+	buildDiscordAvatarCacheFileName,
+	cacheDiscordAvatarUrl,
+	getDiscordAvatarCacheDir,
+	getDiscordAvatarCachePath,
+	getDiscordAvatarPublicPath,
+	isDiscordAvatarUrl,
+} from "./discord-avatar-cache";
+export {
+	cacheDiscordAvatarForRuntime,
+	isCanonicalDiscordSource,
+	resolveDiscordMessageAuthorProfile,
+	resolveDiscordRoomProfile,
+	resolveDiscordUserProfile,
+	resolveStoredDiscordEntityProfile,
+} from "./discord-profiles";
