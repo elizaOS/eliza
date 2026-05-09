@@ -3750,9 +3750,9 @@ export async function startEliza(
       logger.info("[eliza] AutonomyService skipped — ENABLE_AUTONOMY=false");
     }
 
-    // Enable the autonomy loop so trigger/heartbeat instructions are
-    // actually processed. Without this, memories created by
-    // dispatchInstruction() sit in the DB and are never acted on.
+    // Enable the autonomy loop so memories injected into the autonomy
+    // room (e.g. by workflow nodes that post into autonomy) are actually
+    // processed by the agent's autonomous reasoning.
     if (autonomyEnabled) {
       const autonomySvc = getAutonomyService(runtime);
       if (autonomySvc) {
