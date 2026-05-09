@@ -479,8 +479,10 @@ export function applyIosAppIdentity({
 
   const replacements = [
     ["group.ai.elizaos.app", appGroup],
+    ["group.app.eliza", appGroup],
     ["group.com.miladyai.milady", appGroup],
     ['"group.ai.elizaos.app"', `"${appGroup}"`],
+    ['"group.app.eliza"', `"${appGroup}"`],
     ['"group.com.miladyai.milady"', `"${appGroup}"`],
   ];
   for (const relPath of [
@@ -1660,6 +1662,7 @@ function overlayIos() {
   if (fs.existsSync(srcEnt)) {
     let ent = fs.readFileSync(srcEnt, "utf8");
     ent = ent.replace("group.ai.elizaos.app", `group.${APP.appId}`);
+    ent = ent.replace("group.app.eliza", `group.${APP.appId}`);
     fs.writeFileSync(path.join(targetAppDir, "App.entitlements"), ent, "utf8");
     console.log(
       `[mobile-build] Copied iOS entitlements (app group: group.${APP.appId}).`,

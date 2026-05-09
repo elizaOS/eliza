@@ -1929,7 +1929,7 @@ export async function handleIosLocalAgentRequest(
     return json({
       state: running ? "running" : "not_started",
       agentName: AGENT_NAME,
-      model: activeState.status === "ready" ? activeState.modelId : undefined,
+      model: activeState.status === "ready" ? activeState.modelId : null,
       startedAt,
       uptime: Date.now() - startedAt,
       cloud: {
@@ -1955,7 +1955,7 @@ export async function handleIosLocalAgentRequest(
       status: {
         state: "running",
         agentName: AGENT_NAME,
-        model: activeState.status === "ready" ? activeState.modelId : undefined,
+        model: activeState.status === "ready" ? activeState.modelId : null,
         startedAt,
         uptime: 0,
         cloud: {
