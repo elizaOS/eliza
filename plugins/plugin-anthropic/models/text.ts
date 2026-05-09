@@ -195,9 +195,11 @@ function isModelMessage(value: unknown): value is ModelMessage {
       return typeof value.content === "string";
     case "user":
     case "assistant":
-      return typeof value.content === "string" || Array.isArray(value.content);
     case "tool":
-      return Array.isArray(value.content);
+      // Accept string or array content. Eliza runtime synthesizes tool / assistant
+      // messages with string content (see buildStageChatMessages); the AI SDK
+      // accepts these and the underlying provider normalizes them.
+      return typeof value.content === "string" || Array.isArray(value.content);
     default:
       return false;
   }
