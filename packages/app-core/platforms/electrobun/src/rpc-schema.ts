@@ -534,6 +534,20 @@ export type ElizaDesktopRPCSchema = {
 					| { ok: false; error: string };
 			};
 
+			// ---- Renderer diagnostics ----
+			rendererReportDiagnostic: {
+				params:
+					| {
+							level?: "log" | "info" | "warn" | "error";
+							source?: string;
+							message?: string;
+							details?: unknown;
+					  }
+					| undefined
+					| null;
+				response: { ok: true };
+			};
+
 			// ---- Desktop: Tray ----
 			desktopCreateTray: { params: TrayOptions; response: undefined };
 			desktopUpdateTray: { params: Partial<TrayOptions>; response: undefined };
