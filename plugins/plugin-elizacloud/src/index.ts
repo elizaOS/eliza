@@ -26,6 +26,7 @@ import { CloudBackupService } from "./services/cloud-backup";
 import { CloudBootstrapServiceImpl } from "./services/cloud-bootstrap";
 import { CloudBridgeService } from "./services/cloud-bridge";
 import { CloudContainerService } from "./services/cloud-container";
+import { CloudCredentialProvider } from "./services/cloud-credential-provider";
 import { CloudManagedGatewayRelayService } from "./services/cloud-managed-gateway-relay";
 import { CloudModelRegistryService } from "./services/cloud-model-registry";
 import { createCloudApiClient } from "./utils/sdk-client";
@@ -121,6 +122,10 @@ export const elizaOSCloudPlugin: Plugin = {
     CloudContainerService,
     CloudBridgeService,
     CloudBackupService,
+    // Bridges plugin-workflow's `workflow_credential_provider` slot to the
+    // cloud's per-connector OAuth surface. Must start after CloudAuthService
+    // because it reads the authenticated client via getService("CLOUD_AUTH").
+    CloudCredentialProvider,
   ],
 
   // ─── Cloud Providers ─────────────────────────────────────────────────
