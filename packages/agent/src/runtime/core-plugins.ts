@@ -17,7 +17,7 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] = [
 /**
  * Mobile-safe core plugins. Used when `ELIZA_PLATFORM=android` (or `ios`).
  *
- * Phones cannot host the n8n sidecar, the Signal CLI, the swarm orchestrator,
+ * Phones cannot host the workflow runtime, the Signal CLI, the swarm orchestrator,
  * the sandbox engine, the desktop launch hooks, or the autonomous PTY tools.
  * They also have no `/usr/bin/open`, `osascript`, `xdg-open`, `ffmpeg`,
  * `wmctrl`, etc., so plugins that bind to those at init crash the runtime.

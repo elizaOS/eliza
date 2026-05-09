@@ -157,7 +157,7 @@ const AUTOMATION_DRAFT_SYSTEM_ADDENDUM =
   "automation. Decide whether it should be a task or a workflow and call " +
   "the matching action exactly once:\n" +
   '- Task: a simple prompt that runs on a schedule or from an event, for example "every morning summarize my inbox" or "when I get a GitHub notification, make a todo". Use WORKFLOW with op="create_trigger" and a clear displayName, instructions, and any needed schedule.\n' +
-  '- Workflow: a multi-step n8n pipeline with deterministic steps and integrations, for example "when a Slack message matches X, post to Discord and log it". Use WORKFLOW with op="create" and a clear seedPrompt.\n' +
+  '- Workflow: a multi-step workflow pipeline with deterministic steps and integrations, for example "when a Slack message matches X, post to Discord and log it". Use WORKFLOW with op="create" and a clear seedPrompt.\n' +
   "Ask one short clarifying question only if the shape is genuinely " +
   "ambiguous; otherwise create immediately. After creation, briefly " +
   "confirm what you made and how it starts.";
@@ -1713,7 +1713,7 @@ function ClarificationPanel({
   // target_channel) force a fresh ChoiceWidget instance instead of inheriting
   // the previous pick's locked/disabled internal state. Also doubled as the
   // widget's data id.
-  const choiceId = `n8n-clarification-${current.paramPath || "free-text"}`;
+  const choiceId = `workflow-clarification-${current.paramPath || "free-text"}`;
 
   return (
     <PagePanel
@@ -1733,7 +1733,7 @@ function ClarificationPanel({
             <ChoiceWidget
               key={choiceId}
               id={choiceId}
-              scope="n8n-clarification"
+              scope="workflow-clarification"
               options={options}
               onChoose={(value) => {
                 if (state.busy) return;
@@ -3949,10 +3949,10 @@ function WorkflowAutomationDetailPane({
                         defaultValue: "Updating...",
                       })
                     : workflowIsActive
-                      ? t("automations.n8n.deactivate", {
+                      ? t("automations.workflow.deactivate", {
                           defaultValue: "Deactivate",
                         })
-                      : t("automations.n8n.activate", {
+                      : t("automations.workflow.activate", {
                           defaultValue: "Activate",
                         })
                 }
@@ -3986,7 +3986,7 @@ function WorkflowAutomationDetailPane({
                     ? t("common.updating", {
                         defaultValue: "Updating...",
                       })
-                    : t("automations.n8n.deleteWorkflow", {
+                    : t("automations.workflow.deleteWorkflow", {
                         defaultValue: "Delete workflow",
                       })
                 }
@@ -5148,7 +5148,7 @@ function AutomationsLayout() {
         setPageNotice(
           error instanceof Error
             ? error.message
-            : t("automations.n8n.updateStateFailed", {
+            : t("automations.workflow.updateStateFailed", {
                 defaultValue: "Failed to update workflow state.",
               }),
         );
@@ -5221,17 +5221,17 @@ function AutomationsLayout() {
         return;
       }
       const confirmed = await confirmDesktopAction({
-        title: t("automations.n8n.deleteWorkflow", {
+        title: t("automations.workflow.deleteWorkflow", {
           defaultValue: "Delete workflow",
         }),
         message:
           item.schedules.length > 0
             ? `Delete "${item.title}" and ${item.schedules.length} attached schedule${item.schedules.length === 1 ? "" : "s"}? This cannot be undone.`
-            : t("automations.n8n.deleteConfirmWorkflow", {
+            : t("automations.workflow.deleteConfirmWorkflow", {
                 defaultValue: 'Delete "{{name}}"? This cannot be undone.',
                 name: item.title,
               }),
-        confirmLabel: t("automations.n8n.deleteWorkflow", {
+        confirmLabel: t("automations.workflow.deleteWorkflow", {
           defaultValue: "Delete workflow",
         }),
         cancelLabel: t("common.cancel"),
@@ -5283,7 +5283,7 @@ function AutomationsLayout() {
         setPageNotice(
           error instanceof Error
             ? error.message
-            : t("automations.n8n.deleteFailed", {
+            : t("automations.workflow.deleteFailed", {
                 defaultValue: "Failed to delete workflow.",
               }),
         );

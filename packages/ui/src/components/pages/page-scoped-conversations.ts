@@ -128,9 +128,9 @@ export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
   },
   "page-automations": {
     title: "Automations",
-    body: "Use me to create or inspect a task or n8n workflow. Tell me the trigger, timing, and result.",
+    body: "Use me to create or inspect a task or workflow. Tell me the trigger, timing, and result.",
     systemAddendum:
-      'You are answering inside the Automations view. The user can create tasks and n8n workflows, attach either one to a schedule or event, configure wake mode, max runs, and enabled state, browse templates, inspect existing automations, and troubleshoot failed runs. Treat tasks as simple prompt-driven automations and workflows as multi-step n8n pipelines. Recommend the smaller task shape unless the user clearly needs a multi-step pipeline. When the user describes a concrete automation, dispatch it via the planner actions field: TRIGGER (op="create") for scheduled or event tasks, WORKFLOW (op="create") for n8n workflows, or TASK (op="list"|"create"|"update"|"complete"|"delete") for task list operations. Reference live tasks and workflows in context by display name. Never fabricate automation names.',
+      'You are answering inside the Automations view. The user can create tasks and workflows, attach either one to a schedule or event, configure wake mode, max runs, and enabled state, browse templates, inspect existing automations, and troubleshoot failed runs. Treat tasks as simple prompt-driven automations and workflows as multi-step workflow pipelines. Recommend the smaller task shape unless the user clearly needs a multi-step pipeline. When the user describes a concrete automation, dispatch it via the planner actions field: TRIGGER (op="create") for scheduled or event tasks, WORKFLOW (op="create") for workflows, or TASK (op="list"|"create"|"update"|"complete"|"delete") for task list operations. Reference live tasks and workflows in context by display name. Never fabricate automation names.',
   },
   "page-apps": {
     title: "Apps chat",

@@ -120,7 +120,7 @@ ElizaClient.prototype.resolveWorkflowClarification = async function (
 ): Promise<WorkflowDefinitionGenerateResponse> {
   // Patch + deploy is server-side and synchronous from the user's view, but
   // it still runs validateAndRepair + a deploy round-trip. Reuse the same
-  // generous timeout as the generate call so a slow n8n write does not
+  // generous timeout as the generate call so a slow workflow write does not
   // surface as a misleading "Request timed out" toast.
   return this.fetch<WorkflowDefinitionGenerateResponse>(
     "/api/workflow/workflows/resolve-clarification",

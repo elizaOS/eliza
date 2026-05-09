@@ -32,7 +32,7 @@ export interface ConnectorRouteContext {
   /**
    * Called when a connector is disconnected (POST `/api/connectors` with
    * `enabled: false`) or DELETE-d. Lets the host purge service-owned caches
-   * keyed off the connector — most importantly the n8n credential cache,
+   * keyed off the connector — most importantly the workflow credential cache,
    * which would otherwise return stale ids and silently bypass the
    * missing-credentials banner.
    */

@@ -329,7 +329,7 @@ export function collectPluginNames(
   // Allow-list entries are additive (extra plugins), not exclusive.
   const allowList = config.plugins?.allow;
   // On mobile (ELIZA_PLATFORM=android|ios) the desktop core list pulls in
-  // ~10 plugins that depend on subprocesses (n8n, signal-cli), platform
+  // ~10 plugins that depend on subprocesses (signal-cli), platform
   // launchers (/usr/bin/open, osascript, xdg-open), or PTY tooling — all
   // unavailable in the app sandbox. Substitute the curated mobile-safe set.
   const onMobile = isMobilePlatform();
