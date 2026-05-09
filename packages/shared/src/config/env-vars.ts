@@ -1,69 +1,17 @@
-import {
-  collectConfigEnvVars as upstreamCollectConfigEnvVars,
-  collectConnectorEnvVars as upstreamCollectConnectorEnvVars,
-  CONNECTOR_ENV_MAP as upstreamConnectorEnvMap,
-} from "@elizaos/agent";
-
-const COMPAT_BLOCKED_STARTUP_ENV_KEYS = new Set([
-  "ELIZA_API_TOKEN",
-  "ELIZA_WALLET_EXPORT_TOKEN",
-  "ELIZA_TERMINAL_RUN_TOKEN",
-]);
-const TELEGRAM_ACCOUNT_ENV_MAP = {
-  phone: "TELEGRAM_ACCOUNT_PHONE",
-  appId: "TELEGRAM_ACCOUNT_APP_ID",
-  appHash: "TELEGRAM_ACCOUNT_APP_HASH",
-  deviceModel: "TELEGRAM_ACCOUNT_DEVICE_MODEL",
-  systemVersion: "TELEGRAM_ACCOUNT_SYSTEM_VERSION",
-} as const;
-
-export const CONNECTOR_ENV_MAP = {
-  ...upstreamConnectorEnvMap,
-  telegramAccount:
-    upstreamConnectorEnvMap.telegramAccount ?? TELEGRAM_ACCOUNT_ENV_MAP,
-};
-
-export function collectConfigEnvVars(
-  ...args: Parameters<typeof upstreamCollectConfigEnvVars>
-): ReturnType<typeof upstreamCollectConfigEnvVars> {
-  const entries = upstreamCollectConfigEnvVars(...args);
-
-  for (const key of Object.keys(entries)) {
-    if (COMPAT_BLOCKED_STARTUP_ENV_KEYS.has(key.toUpperCase())) {
-      delete entries[key];
-    }
-  }
-
-  return entries;
-}
-
-export function collectConnectorEnvVars(
-  ...args: Parameters<typeof upstreamCollectConnectorEnvVars>
-): ReturnType<typeof upstreamCollectConnectorEnvVars> {
-  const entries = upstreamCollectConnectorEnvVars(...args);
-  const [cfg] = args;
-  const rawConnectors =
-    cfg?.connectors ?? (cfg as Record<string, unknown> | undefined)?.channels;
-  const telegramAccount =
-    rawConnectors &&
-    typeof rawConnectors === "object" &&
-    !Array.isArray(rawConnectors)
-      ? (rawConnectors as Record<string, unknown>).telegramAccount
-      : undefined;
-
-  if (
-    telegramAccount &&
-    typeof telegramAccount === "object" &&
-    !Array.isArray(telegramAccount)
-  ) {
-    const config = telegramAccount as Record<string, unknown>;
-    for (const [field, envKey] of Object.entries(TELEGRAM_ACCOUNT_ENV_MAP)) {
-      const value = config[field];
-      if (typeof value === "string" && value.trim()) {
-        entries[envKey] = value;
-      }
-    }
-  }
-
-  return entries;
-}
+// CYCLE BREAK: previously re-exported `collectConfigEnvVars`,
+// `collectConnectorEnvVars`, `CONNECTOR_ENV_MAP` from `@elizaos/agent`
+// with a thin compat wrapper. That created an `agent → shared → agent`
+// runtime cycle which broke node ESM resolution at the bench server
+// boot ("conflicting star exports for name 'collectConfigEnvVars'").
+//
+// No consumer actually imported these symbols *via* `@elizaos/shared`
+// (verified by repo-wide grep — every consumer imports from its local
+// `config/env-vars.js` or directly from `@elizaos/agent`). The compat
+// wrapper added a small TELEGRAM_ACCOUNT_ENV_MAP fallback and a
+// startup-key blocklist; the upstream agent module already covers the
+// blocklist, and the telegram fallback is tracked there too. Drop the
+// shared-side wrapper entirely to break the cycle.
+//
+// If a future caller wants the behavior, they should import from
+// `@elizaos/agent` directly (correct dependency direction).
+export {};
