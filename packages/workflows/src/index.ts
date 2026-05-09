@@ -555,9 +555,33 @@ export type NodeHint = {
 	whenToDisplay?: 'always' | 'beforeExecution' | 'afterExecution';
 };
 
+/**
+ * Host-environment requirements declared by a node.
+ *
+ * The workflow engine compares these flags against the host's
+ * `HostCapabilities` at registration / activation time and refuses to schedule
+ * a workflow whose nodes can't run on the current host.
+ *
+ * Flags are additive — every flag absent means the node has no special
+ * requirement on that dimension.
+ */
+export interface NodeCapabilities {
+	/** Reads/writes filesystem via `node:fs`. iOS/Android/Workers don't have it. */
+	requiresFs?: boolean;
+	/** Needs to receive inbound HTTP from the public internet (webhook trigger). */
+	requiresInbound?: boolean;
+	/** Needs the host process to stay alive across schedule firings. Workers can't. */
+	requiresLongRunning?: boolean;
+	/** Spawns a child process. iOS/Android/Workers can't. */
+	requiresChildProcess?: boolean;
+	/** Uses raw TCP/UDP sockets via `node:net` (vs `fetch`). Workers can't. */
+	requiresNet?: boolean;
+}
+
 export interface INodeTypeDescription extends INodeTypeBaseDescription {
 	version: number | number[];
 	defaults: NodeDefaults;
+	capabilities?: NodeCapabilities;
 	eventTriggerDescription?: string;
 	activationMessage?: string;
 	inputs: Array<NodeConnectionType | INodeInputConfiguration> | ExpressionString;

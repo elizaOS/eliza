@@ -49,6 +49,14 @@ interface IExecuteFunctions {
   getNode(): WorkflowNode;
 }
 
+interface NodeCapabilities {
+  requiresFs?: boolean;
+  requiresInbound?: boolean;
+  requiresLongRunning?: boolean;
+  requiresChildProcess?: boolean;
+  requiresNet?: boolean;
+}
+
 interface INodeTypeDescription {
   displayName: string;
   name: string;
@@ -59,6 +67,7 @@ interface INodeTypeDescription {
   inputs: unknown[];
   outputs: unknown[];
   properties: unknown[];
+  capabilities?: NodeCapabilities;
 }
 
 interface INodeType {
