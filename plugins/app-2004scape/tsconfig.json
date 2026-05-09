@@ -21,18 +21,18 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
-      "@elizaos/agent/*": ["../../packages/agent/src/*"],
-      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
-      "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
-      "@elizaos/plugin-signal/*": ["../../plugins/plugin-signal/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/agent": [
+        "../../packages/agent/dist/packages/agent/src/index.d.ts"
+      ],
+      "@elizaos/agent/*": ["../../packages/agent/dist/packages/agent/src/*"],
+      "@elizaos/app-core": ["../../packages/app-core/dist/index.d.ts"],
+      "@elizaos/app-core/*": ["../../packages/app-core/dist/*"],
+      "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
+      "@elizaos/core/*": ["../../packages/core/dist/*"],
+      "@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/dist/*"],
+      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/dist/*"],
       "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [
         "../../packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"

@@ -11,6 +11,8 @@
  * Kept out of `workflows-routes.ts` so the handlers stay focused on transport.
  */
 
+import { logger } from '@elizaos/core';
+
 export interface WorkflowClarificationRequest {
   kind: 'target_channel' | 'target_server' | 'recipient' | 'value' | 'free_text';
   platform?: string;
@@ -46,6 +48,29 @@ const VALID_KINDS: ReadonlySet<WorkflowClarificationRequest['kind']> = new Set([
   'value',
   'free_text',
 ]);
+
+/**
+ * Stable sort priority for clarification kinds. Lower number = asked first.
+ *
+ * `target_server` MUST come before `target_channel` because the channel
+ * picker reads `scope.guildId` from the server pick to narrow its options.
+ * If the LLM emits them in reverse order (which it sometimes does), the
+ * user picks a channel first against an unscoped catalog, which is bad UX
+ * (every channel from every guild they belong to) and can land the wrong
+ * id when channel names collide across guilds.
+ *
+ * `recipient` shares the server-scoped concern — DMs/contacts belong to a
+ * platform context — so it sorts after `target_server` too. `value` and
+ * `free_text` don't depend on prior picks; relative order is preserved
+ * because Array.prototype.sort is stable as of ES2019.
+ */
+const KIND_SORT_PRIORITY: Readonly<Record<WorkflowClarificationRequest['kind'], number>> = {
+  target_server: 0,
+  target_channel: 1,
+  recipient: 1,
+  value: 2,
+  free_text: 3,
+};
 
 function isStructuredClarification(v: unknown): v is RawStructuredClarification {
   if (!v || typeof v !== 'object') {
@@ -97,6 +122,9 @@ export function coerceClarifications(raw: unknown): WorkflowClarificationRequest
       paramPath,
     });
   }
+  // Stable-sort so dependency-bearing kinds come first. Within the same
+  // priority bucket the LLM's emission order is preserved.
+  out.sort((a, b) => KIND_SORT_PRIORITY[a.kind] - KIND_SORT_PRIORITY[b.kind]);
   return out;
 }
 
@@ -158,14 +186,48 @@ export function parseParamPath(path: string): string[] {
 }
 
 /**
+ * Find the index of a named entry in an array of objects, matching against
+ * `.name` first then `.id`. Returns -1 if no match. Used by `setByDotPath`
+ * to resolve `nodes["My Node"]`-style segments — the LLM consistently
+ * addresses workflow nodes by their human name even though `workflow.nodes`
+ * is an array, so we map name → index here rather than rejecting the path.
+ */
+function findArrayIndexByNameOrId(arr: unknown[], key: string): number {
+  for (let i = 0; i < arr.length; i += 1) {
+    const entry = arr[i];
+    if (entry === null || typeof entry !== 'object') continue;
+    const obj = entry as Record<string, unknown>;
+    if (obj.name === key || obj.id === key) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/**
  * Mutate `obj` so that its value at `paramPath` becomes `value`. Creates
  * intermediate plain objects as needed; never replaces an existing
  * non-object intermediate (those throw, since the path is invalid).
  *
- * Numeric segments index into arrays. If the segment expects an array but
- * the existing intermediate is a non-array object, we treat it as an
- * object key (workflow shapes mix arrays and objects fairly freely;
- * we err on the side of preserving the existing structure).
+ * Segments that hit an array can be:
+ *   - numeric → direct index
+ *   - non-numeric (string) → looked up against the array's `.name` or `.id`
+ *     field. Common in LLM output: the model writes `nodes["Post to Slack"]`
+ *     rather than `nodes[2]`. Treating that as a hard failure forced every
+ *     clarification resolution through a 400.
+ *
+ * If the segment expects an array but the existing intermediate is a non-
+ * array object, we treat it as an object key (workflow shapes mix arrays and
+ * objects fairly freely; we err on the side of preserving structure).
+ *
+ * Terminal-segment guard: refuses to overwrite an existing object with a
+ * non-object value. The LLM sometimes emits a paramPath that points at a
+ * parent scope rather than a leaf (e.g.
+ * `nodes["Hourly Trigger"].parameters` for a question whose answer is a
+ * channel name); naively writing the string there replaces the entire
+ * `parameters` object and the workflow runner then rejects the workflow with
+ * `parameters must be object`. Throwing here gives `applyResolutions` a
+ * chance to fall back to the userNotes path.
  */
 export function setByDotPath(
   obj: Record<string, unknown>,
@@ -178,10 +240,17 @@ export function setByDotPath(
     const seg = segments[i];
     const isArrayIndex = /^[0-9]+$/.test(seg);
     if (Array.isArray(cur)) {
-      if (!isArrayIndex) {
-        throw new Error(`paramPath segment "${seg}" is not a valid array index at depth ${i}`);
+      let idx: number;
+      if (isArrayIndex) {
+        idx = Number(seg);
+      } else {
+        idx = findArrayIndexByNameOrId(cur, seg);
+        if (idx < 0) {
+          throw new Error(
+            `paramPath segment "${seg}" did not match any element by name/id at depth ${i}`
+          );
+        }
       }
-      const idx = Number(seg);
       let next = cur[idx];
       if (next === undefined || next === null) {
         next = /^[0-9]+$/.test(segments[i + 1]) ? [] : {};
@@ -204,14 +273,60 @@ export function setByDotPath(
     cur = next as Record<string, unknown> | unknown[];
   }
   const last = segments[segments.length - 1];
+  const isNonNullObject = (v: unknown): boolean => v !== null && typeof v === 'object';
   if (Array.isArray(cur)) {
-    if (!/^[0-9]+$/.test(last)) {
-      throw new Error(`paramPath terminal segment "${last}" must be numeric at array`);
+    let idx: number;
+    if (/^[0-9]+$/.test(last)) {
+      idx = Number(last);
+    } else {
+      idx = findArrayIndexByNameOrId(cur, last);
+      if (idx < 0) {
+        throw new Error(
+          `paramPath terminal segment "${last}" did not match any element by name/id at array`
+        );
+      }
     }
-    cur[Number(last)] = value;
+    if (isNonNullObject(cur[idx]) && !isNonNullObject(value)) {
+      throw new Error(
+        `paramPath terminal "${last}" currently holds an object; refusing to overwrite with non-object value (path likely points at a parent scope rather than a leaf field)`
+      );
+    }
+    cur[idx] = value;
   } else {
+    const existing = (cur as Record<string, unknown>)[last];
+    if (isNonNullObject(existing) && !isNonNullObject(value)) {
+      throw new Error(
+        `paramPath terminal "${last}" currently holds an object; refusing to overwrite with non-object value (path likely points at a parent scope rather than a leaf field)`
+      );
+    }
     (cur as Record<string, unknown>)[last] = value;
   }
+}
+
+/**
+ * Append a free-form answer to `draft._meta.userNotes`. Used for
+ * clarifications with no `paramPath` AND as the fallback when
+ * `setByDotPath` can't resolve a paramPath against the current draft.
+ * Subsequent LLM regeneration rounds read these notes from `_meta` so the
+ * user's answer is preserved across the failure rather than discarded.
+ */
+function appendUserNote(draft: Record<string, unknown>, value: string): void {
+  const existingMeta = draft._meta;
+  const meta =
+    existingMeta && typeof existingMeta === 'object'
+      ? (existingMeta as Record<string, unknown>)
+      : {};
+  draft._meta = meta;
+
+  let notes: string[];
+  if (Array.isArray(meta.userNotes)) {
+    notes = meta.userNotes as string[];
+  } else {
+    notes =
+      meta.userNotes !== null && meta.userNotes !== undefined ? [String(meta.userNotes)] : [];
+    meta.userNotes = notes;
+  }
+  notes.push(value);
 }
 
 export function applyResolutions(
@@ -233,33 +348,45 @@ export function applyResolutions(
       // Free-form clarification with no field to wire into. Record the user's
       // answer under draft._meta.userNotes so subsequent LLM iterations can
       // consume the context, but don't mutate the workflow itself.
-      const draftRecord = draft as Record<string, unknown>;
-      const existingMeta = draftRecord._meta;
-      const meta =
-        existingMeta && typeof existingMeta === 'object'
-          ? (existingMeta as Record<string, unknown>)
-          : {};
-      draftRecord._meta = meta;
-
-      let notes: string[];
-      if (Array.isArray(meta.userNotes)) {
-        notes = meta.userNotes as string[];
-      } else {
-        notes =
-          meta.userNotes !== null && meta.userNotes !== undefined ? [String(meta.userNotes)] : [];
-        meta.userNotes = notes;
-      }
-      notes.push(r.value);
+      appendUserNote(draft, r.value);
       continue;
+    }
+    // Surface structural parse errors (unterminated bracket, empty
+    // identifier, etc.) up to the caller as a 400 — these signal a
+    // malformed LLM emission and cannot be silently recovered into
+    // userNotes without losing the failure mode in the metrics pipeline.
+    try {
+      parseParamPath(r.paramPath);
+    } catch (err) {
+      return {
+        ok: false,
+        error: `paramPath is structurally invalid: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        paramPath: r.paramPath,
+      };
     }
     try {
       setByDotPath(draft, r.paramPath, r.value);
     } catch (err) {
-      return {
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
-        paramPath: r.paramPath,
-      };
+      // Lookup-time failure: the path parsed cleanly but didn't resolve
+      // against the current draft (e.g. references a node the LLM didn't
+      // actually create, or points at a parent scope rather than a leaf
+      // field). Failing the whole resolution batch with a 400 is a
+      // dead-end — the user has no way to recover without re-prompting
+      // from scratch. Log a warn and record the answer as a free-form
+      // note so the next regeneration round can use it.
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.warn(
+        {
+          src: 'plugin:workflow:clarification:applyResolutions',
+          err: errMsg,
+          paramPath: r.paramPath,
+        },
+        `setByDotPath failed for paramPath "${r.paramPath}"; recording "${r.value}" as a free-form note instead`
+      );
+      appendUserNote(draft, r.value);
+      continue;
     }
   }
   return { ok: true };

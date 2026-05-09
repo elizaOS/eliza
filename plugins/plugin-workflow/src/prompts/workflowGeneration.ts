@@ -173,6 +173,53 @@ If a node has no \`credentialAuthMatrix\` field, no \`authentication\` parameter
 
 ---
 
+### 6c. **Resource and operation selection — match the user's verb to the operation, not just the node**
+
+Each service node groups its capabilities under \`(resource, operation)\` pairs. The user's verb is the strongest signal for the operation:
+
+| Verb in the user's prompt | Operation |
+|:--|:--|
+| "send", "post", "deliver" | \`send\` or \`post\` (NOT \`create\`) |
+| "create", "make", "set up", "add" (when the object is a *container* like a channel, server, list) | \`create\` |
+| "list", "get all", "fetch all" | \`getAll\` |
+| "get", "fetch" (singular), "look up" | \`get\` |
+| "delete", "remove" | \`delete\` |
+| "update", "edit", "change" | \`update\` |
+
+The **resource** is the *object* of the verb. "Send a meow message" → \`resource: "message"\`, \`operation: "send"\`. NOT \`resource: "channel"\`. Picking the wrong resource means picking from a wrong operation set entirely; verify resource first, then operation.
+
+When the node definition lists multiple resources, pick the one whose name is the noun the user mentioned. Use \`channel\` only when the user wants to create / edit / delete the channel itself, not when they want to send a message *to* a channel. Use \`server\` / \`guild\` only when the user is acting on the workspace itself.
+
+**Self-check before emitting:** read your chosen \`(resource, operation)\` pair back as English: does it describe what the user asked for? "Discord channel:create" reads as *"create a Discord channel"* — only correct if the user actually wants a new channel. For *"send a message to Discord"*, the correct read-back is "Discord message:send".
+
+---
+
+### 6d. **Self-monitoring workflows is a Schedule + execution-history loop, NEVER errorTrigger**
+
+When the user wants to monitor their own workflows, accounts, or activity — phrasings like *"review my activity"*, *"check stuck or errored"*, *"ping me when X is broken"*, *"alert me if my workflows fail"*, *"audit recent executions"* — the canonical primitive is:
+
+\`\`\`
+Schedule Trigger (every N minutes)
+        ↓
+Execution-history node (Execution: getAll, filters: status=error)
+        ↓
+IF / Filter (e.g. only those with no output, or running > 30 min)
+        ↓
+Notification node (Discord / Slack / Gmail / Telegram)
+\`\`\`
+
+**Hard rules — \`errorTrigger\` is never the right answer for self-monitoring:**
+
+- \`workflows-nodes-base.errorTrigger\` is a *callback*, not a *poller*. It only fires when another workflow that has registered THIS workflow as its error workflow throws. It cannot inspect its own workflow's history, cannot detect *stuck* runs (those produce no error event), and produces a dead workflow if no other workflow is wired to call it. Even the phrase *"monitor errors"* maps to **Schedule + execution-history**, not errorTrigger.
+- A workflow whose only trigger is \`errorTrigger\` and whose intent is "review my activity / check for errors" is a **certain-broken output**. Refuse to emit it. Use \`scheduleTrigger\` as the trigger instead.
+
+**Hard rules — generic external scanners are also wrong:**
+
+- \`workflows-nodes-base.urlScanIoApi\` is a *URL-safety service*. It has nothing to do with workflow execution history. Never include it in a self-monitoring workflow.
+- Any node whose displayName / description hits "scan" / "check" / "monitor" but whose category is *not* in {\`trigger\`, \`transform\`} or whose target service is not the workflow runtime itself — skip it.
+
+---
+
 ### 7. **Workflow Settings (optional)**
 
 Workflow-level settings, e.g. timezone, error workflow, execution options.

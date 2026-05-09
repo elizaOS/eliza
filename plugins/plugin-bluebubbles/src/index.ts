@@ -17,6 +17,7 @@ import {
 	blueBubblesSetupRoutes,
 	resolveBlueBubblesWebhookPath,
 } from "./setup-routes.js";
+import { BlueBubblesWorkflowCredentialProvider } from "./workflow-credential-provider.js";
 
 // Account management exports
 export {
@@ -52,7 +53,7 @@ const blueBubblesPlugin: Plugin = {
 	name: "bluebubbles",
 	description: "BlueBubbles iMessage bridge plugin for ElizaOS agents",
 
-	services: [BlueBubblesService],
+	services: [BlueBubblesService, BlueBubblesWorkflowCredentialProvider],
 	actions: [],
 	providers: [],
 	routes: blueBubblesSetupRoutes,

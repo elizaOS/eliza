@@ -727,6 +727,94 @@ export function injectNoCompressTarGz(content) {
  *
  * Idempotent: re-runs are no-ops once the block is present.
  */
+/**
+ * Inject the `copyForkLlamaLib` Gradle task that bundles the buun-llama-cpp
+ * fork's android-arm64 .so into the APK's jniLibs/. The fork's specialized
+ * KV cache types (turbo3, turbo4, turbo3_tcq) and DFlash spec-decoding kernels
+ * live in this .so; without it, mobile only gets stock llama.cpp.
+ *
+ * Resolution order for the libdir:
+ *   1. -Peliza.dflash.android.libdir=<path>   (gradle property)
+ *   2. ELIZA_DFLASH_ANDROID_LIBDIR env var
+ *   3. ~/.eliza/local-inference/bin/dflash/android-arm64-{cpu,vulkan}/
+ *
+ * Skips with a clear log when no path is configured or the dir doesn't exist,
+ * so a desktop dev still gets a working APK without local fork builds.
+ *
+ * Idempotent: re-runs are no-ops once the block is present.
+ */
+export function injectCopyForkLlamaLibTask(content) {
+  if (/\[copyForkLlamaLib\]/.test(content)) return content;
+  const block =
+    `\n// Bundle the buun-llama-cpp fork's android-arm64 .so into the APK so\n` +
+    `// mobile gets DFlash + TurboQuant KV cache + QJL kernels. Stock\n` +
+    `// llama-cpp-capacitor's .so still ships when the fork lib dir is missing.\n` +
+    `def resolveForkLlamaLibDir = { ->\n` +
+    `    def fromProp = project.findProperty('eliza.dflash.android.libdir')\n` +
+    `    if (fromProp) return fromProp.toString()\n` +
+    `    def fromEnv = System.getenv('ELIZA_DFLASH_ANDROID_LIBDIR')\n` +
+    `    if (fromEnv) return fromEnv\n` +
+    `    def stateDir = System.getenv('ELIZA_STATE_DIR') ?: "\${System.getProperty('user.home')}/.eliza"\n` +
+    `    def candidates = ['vulkan', 'cpu'].collect { backend ->\n` +
+    `        "\${stateDir}/local-inference/bin/dflash/android-arm64-\${backend}"\n` +
+    `    }\n` +
+    `    return candidates.find { new File(it).isDirectory() }\n` +
+    `}\n` +
+    `\n` +
+    `task copyForkLlamaLib {\n` +
+    `    doLast {\n` +
+    `        def libDir = resolveForkLlamaLibDir()\n` +
+    `        if (!libDir) {\n` +
+    `            println "[copyForkLlamaLib] no fork lib dir configured (set -Peliza.dflash.android.libdir or build via packages/app-core/scripts/build-llama-cpp-dflash.mjs --target android-arm64-vulkan); APK ships stock llama-cpp-capacitor only"\n` +
+    `            return\n` +
+    `        }\n` +
+    `        def srcDir = new File(libDir.toString())\n` +
+    `        if (!srcDir.isDirectory()) {\n` +
+    `            println "[copyForkLlamaLib] fork lib dir \${libDir} does not exist; APK ships stock llama-cpp-capacitor only"\n` +
+    `            return\n` +
+    `        }\n` +
+    `        def jniDir = file('src/main/jniLibs/arm64-v8a')\n` +
+    `        jniDir.mkdirs()\n` +
+    `        def assetsDir = file('src/main/assets')\n` +
+    `        assetsDir.mkdirs()\n` +
+    `        int copied = 0\n` +
+    `        srcDir.eachFile { src ->\n` +
+    `            if (src.name.endsWith('.so')) {\n` +
+    `                def dst = new File(jniDir, src.name)\n` +
+    `                dst.bytes = src.bytes\n` +
+    `                copied++\n` +
+    `            }\n` +
+    `            if (src.name == 'kernels.json') {\n` +
+    `                def dst = new File(assetsDir, 'llama-cpp-kernels.json')\n` +
+    `                dst.bytes = src.bytes\n` +
+    `                println "[copyForkLlamaLib] staged kernels.json as assets/llama-cpp-kernels.json"\n` +
+    `            }\n` +
+    `        }\n` +
+    `        println "[copyForkLlamaLib] copied \${copied} .so file(s) from \${libDir} to \${jniDir}"\n` +
+    `    }\n` +
+    `}\n` +
+    `\n` +
+    `afterEvaluate {\n` +
+    `    tasks.matching { it.name == 'preBuild' }.all { it.dependsOn copyForkLlamaLib }\n` +
+    `}\n`;
+  const androidOpen = content.search(/\n\s*android\s*\{/);
+  if (androidOpen < 0) return content;
+  let depth = 0;
+  let i = content.indexOf("{", androidOpen);
+  while (i < content.length) {
+    const ch = content[i];
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return content.slice(0, i + 1) + block + content.slice(i + 1);
+      }
+    }
+    i += 1;
+  }
+  return content;
+}
+
 export function injectAospAssetThinning(content) {
   if (/\[app-thinning\]/.test(content)) return content;
   const block =
@@ -1973,6 +2061,7 @@ function patchAndroidGradle() {
     patched = injectBuildConfigAospField(patched);
     patched = injectNoCompressTarGz(patched);
     patched = injectAospAssetThinning(patched);
+    patched = injectCopyForkLlamaLibTask(patched);
     if (patched !== current) {
       fs.writeFileSync(appGradlePath, patched, "utf8");
       console.log(

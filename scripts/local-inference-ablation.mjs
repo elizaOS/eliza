@@ -145,6 +145,8 @@ function parseArgs(argv) {
     variants: null,
     outDir: path.join(process.cwd(), "artifacts", "local-inference-ablation"),
     config: null,
+    gate: null,
+    requireAll: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -190,6 +192,8 @@ function parseArgs(argv) {
         .filter(Boolean);
     else if (arg === "--out-dir") args.outDir = path.resolve(next());
     else if (arg === "--config") args.config = path.resolve(next());
+    else if (arg === "--gate") args.gate = path.resolve(next());
+    else if (arg === "--require-all") args.requireAll = true;
     else if (arg === "--quick") {
       args.runs = 1;
       args.maxTokens = 96;
@@ -223,6 +227,12 @@ Options:
   --runs 3 --max-tokens 256 --quick
   --out-dir artifacts/local-inference-ablation
   --config scripts/local-inference-ablation.config.json
+  --gate scripts/local-inference-thresholds.json
+  --require-all   fail (exit 1) if any variant is skipped due to a missing model
+
+Exit codes:
+  0  all selected variants ran (or were cleanly skipped) and met thresholds (if --gate is set)
+  1  startup error, a variant failed to run, gate thresholds were violated, or a model was missing while --require-all is set
 `);
 }
 
@@ -236,9 +246,55 @@ function loadVariants(args) {
     const wanted = new Set(args.variants);
     variants = variants.filter((variant) => wanted.has(variant.name));
   }
-  return variants.filter(
-    (variant) => !variant.needsDrafter || fs.existsSync(args.drafter),
-  );
+  const targetExists = fs.existsSync(args.model);
+  const drafterExists = fs.existsSync(args.drafter);
+  return variants.map((variant) => {
+    if (!targetExists) {
+      return { ...variant, skipReason: `model missing: ${args.model}` };
+    }
+    if (variant.needsDrafter && !drafterExists) {
+      return { ...variant, skipReason: `drafter missing: ${args.drafter}` };
+    }
+    return variant;
+  });
+}
+
+function loadThresholds(filePath) {
+  const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error(`invalid threshold file: ${filePath}`);
+  }
+  return parsed;
+}
+
+function thresholdFor(thresholds, backend, variantName) {
+  if (!thresholds) return null;
+  const byBackend = thresholds[backend];
+  if (!byBackend || typeof byBackend !== "object") return null;
+  const direct = byBackend[variantName];
+  if (typeof direct === "number" && Number.isFinite(direct)) return direct;
+  const fallback = byBackend.default;
+  if (typeof fallback === "number" && Number.isFinite(fallback)) return fallback;
+  return null;
+}
+
+function evaluateGate(report, thresholds) {
+  const violations = [];
+  for (const variant of report.variants) {
+    if (variant.skipped || !variant.ok) continue;
+    const min = thresholdFor(thresholds, report.hardware.backend, variant.name);
+    if (min === null) continue;
+    variant.thresholdTokPerSec = min;
+    if (variant.avgTokPerSec < min) {
+      violations.push({
+        name: variant.name,
+        backend: report.hardware.backend,
+        avgTokPerSec: variant.avgTokPerSec,
+        thresholdTokPerSec: min,
+      });
+    }
+  }
+  return violations;
 }
 
 function runCapture(cmd, cmdArgs) {
@@ -483,9 +539,17 @@ async function runVariant(args, variant) {
 function printSummary(results) {
   console.log("\nAblation summary");
   for (const row of results) {
-    if (row.ok) {
+    if (row.skipped) {
       console.log(
-        `${row.name.padEnd(24)} ${row.avgTokPerSec.toFixed(2).padStart(8)} tok/s  (${row.label})`,
+        `${row.name.padEnd(24)} SKIPPED  ${row.skipReason ?? "unknown"}`,
+      );
+    } else if (row.ok) {
+      const gate =
+        typeof row.thresholdTokPerSec === "number"
+          ? `  >=${row.thresholdTokPerSec.toFixed(2)} tok/s gate`
+          : "";
+      console.log(
+        `${row.name.padEnd(24)} ${row.avgTokPerSec.toFixed(2).padStart(8)} tok/s  (${row.label})${gate}`,
       );
     } else {
       console.log(
@@ -497,12 +561,13 @@ function printSummary(results) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  if (!fs.existsSync(args.binary))
-    throw new Error(`missing llama-server: ${args.binary}`);
-  if (!fs.existsSync(args.model))
-    throw new Error(`missing target model: ${args.model}`);
   const variants = loadVariants(args);
   if (variants.length === 0) throw new Error("no variants selected");
+
+  const binaryMissing = !fs.existsSync(args.binary);
+  const modelMissing = !fs.existsSync(args.model);
+  const thresholds = args.gate ? loadThresholds(args.gate) : null;
+
   fs.mkdirSync(args.outDir, { recursive: true });
 
   const report = {
@@ -514,18 +579,74 @@ async function main() {
     runs: args.runs,
     hardware: hardwareInfo(args),
     variants: [],
+    gate: thresholds ? args.gate : null,
   };
 
-  for (const variant of variants) {
-    console.log(`\n[ablation] ${variant.name}: ${variant.label}`);
-    report.variants.push(await runVariant(args, variant));
+  if (binaryMissing) {
+    const reason = `binary missing: ${args.binary}`;
+    console.log(`[ablation] skip all variants: ${reason}`);
+    for (const variant of variants) {
+      report.variants.push({
+        name: variant.name,
+        label: variant.label,
+        skipped: true,
+        skipReason: reason,
+      });
+    }
+  } else {
+    for (const variant of variants) {
+      if (variant.skipReason) {
+        console.log(
+          `[ablation] skip ${variant.name}: ${variant.skipReason}`,
+        );
+        report.variants.push({
+          name: variant.name,
+          label: variant.label,
+          skipped: true,
+          skipReason: variant.skipReason,
+        });
+        continue;
+      }
+      console.log(`\n[ablation] ${variant.name}: ${variant.label}`);
+      report.variants.push(await runVariant(args, variant));
+    }
   }
 
+  const violations = thresholds ? evaluateGate(report, thresholds) : [];
+  report.thresholdViolations = violations;
+
   printSummary(report.variants);
+
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const outPath = path.join(args.outDir, `${stamp}-${args.backend}.json`);
   fs.writeFileSync(outPath, `${JSON.stringify(report, null, 2)}\n`);
   console.log(`\nWrote ${outPath}`);
+
+  const skipped = report.variants.filter((row) => row.skipped);
+  const failed = report.variants.filter((row) => !row.skipped && !row.ok);
+  let exitCode = 0;
+  if (failed.length > 0) {
+    console.error(
+      `[ablation] ${failed.length} variant(s) failed: ${failed.map((row) => row.name).join(", ")}`,
+    );
+    exitCode = 1;
+  }
+  if (args.requireAll && skipped.length > 0) {
+    console.error(
+      `[ablation] --require-all set but ${skipped.length} variant(s) skipped: ${skipped.map((row) => row.name).join(", ")}`,
+    );
+    exitCode = 1;
+  }
+  if (violations.length > 0) {
+    console.error("[ablation] threshold gate violations:");
+    for (const v of violations) {
+      console.error(
+        `  ${v.backend}/${v.name}: ${v.avgTokPerSec.toFixed(2)} tok/s < ${v.thresholdTokPerSec.toFixed(2)} tok/s`,
+      );
+    }
+    exitCode = 1;
+  }
+  process.exit(exitCode);
 }
 
 main().catch((error) => {
