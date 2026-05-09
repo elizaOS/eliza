@@ -523,4 +523,60 @@ export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
 export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
 export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
 export { handleWebsiteBlockerRoutes } from "./routes/website-blocker-routes.js";
+// W1-A — ScheduledTask spine. Source of truth:
+// `docs/audit/wave1-interfaces.md` §1.
+// Other Wave-1 agents import from `@elizaos/app-lifeops` to consume
+// these types and the runtime wiring helper.
+export {
+  createAnchorRegistry,
+  createCompletionCheckRegistry,
+  createConsolidationRegistry,
+  createEscalationLadderRegistry,
+  createInMemoryScheduledTaskLogStore,
+  createInMemoryScheduledTaskStore,
+  createScheduledTaskRunner,
+  createTaskGateRegistry,
+  DEFAULT_ESCALATION_LADDERS,
+  PRIORITY_DEFAULT_LADDER_KEYS,
+  registerBuiltInCompletionChecks,
+  registerBuiltInGates,
+  registerDefaultEscalationLadders,
+  registerStubAnchors,
+  STATE_LOG_DEFAULT_RETENTION_DAYS,
+} from "./lifeops/scheduled-task/index.js";
+export type {
+  AnchorContribution,
+  AnchorConsolidationPolicy,
+  AnchorRegistry,
+  CompletionCheckContribution,
+  CompletionCheckRegistry,
+  EscalationLadder,
+  EscalationLadderRegistry,
+  EscalationStep,
+  GateDecision,
+  ScheduledTask,
+  ScheduledTaskCompletionCheck,
+  ScheduledTaskContextRequest,
+  ScheduledTaskEscalation,
+  ScheduledTaskFilter,
+  ScheduledTaskKind,
+  ScheduledTaskLogEntry,
+  ScheduledTaskOutput,
+  ScheduledTaskPipeline,
+  ScheduledTaskPriority,
+  ScheduledTaskRef,
+  ScheduledTaskRunner,
+  ScheduledTaskRunnerHandle,
+  ScheduledTaskShouldFire,
+  ScheduledTaskState,
+  ScheduledTaskStatus,
+  ScheduledTaskSubject,
+  ScheduledTaskTrigger,
+  ScheduledTaskVerb,
+  TaskGateContribution,
+  TaskGateRegistry,
+  TerminalState,
+} from "./lifeops/scheduled-task/index.js";
+export { createRuntimeScheduledTaskRunner } from "./lifeops/scheduled-task/runtime-wiring.js";
+export type { CreateRuntimeRunnerOptions } from "./lifeops/scheduled-task/runtime-wiring.js";
 export { BrowserBridgePluginService, browserBridgeProvider };
