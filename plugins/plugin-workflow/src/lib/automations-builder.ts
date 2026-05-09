@@ -231,12 +231,12 @@ async function listAutomationRooms(
  * Replicates `listTriggerTasks` from @elizaos/agent's triggers/runtime.ts.
  * We can't import from @elizaos/agent (would create a dependency cycle),
  * so we hit the runtime's task API directly with the same tag filters.
+ * `runtime.getTasks` automatically scopes by `agentId`.
  */
 async function listTriggerTasks(runtime: AgentRuntime): Promise<Task[]> {
-  const agentIds = [runtime.agentId];
   const [triggerTasks, heartbeatTasks] = await Promise.all([
-    runtime.getTasks({ agentIds, tags: ['repeat', 'trigger'] }),
-    runtime.getTasks({ agentIds, tags: ['repeat', 'heartbeat'] }),
+    runtime.getTasks({ tags: ['repeat', 'trigger'] }),
+    runtime.getTasks({ tags: ['repeat', 'heartbeat'] }),
   ]);
 
   const merged = new Map<string, Task>();
@@ -524,7 +524,7 @@ export async function buildAutomationListResponse(
     .filter((room) => typeof room.metadata.draftId === 'string')
     .map((room) => buildAutomationDraftItem(room));
 
-  const allTasks = await runtime.getTasks({ agentIds: [runtime.agentId] });
+  const allTasks = await runtime.getTasks({});
   const tasks = deduplicateSystemTasks(
     allTasks
       .map((task) => toWorkbenchTaskView(task))
