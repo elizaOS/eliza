@@ -246,10 +246,12 @@ def _env_configbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[s
     env: dict[str, str] = {}
     if provider_name in {"groq", "openai", "anthropic"}:
         env["CONFIGBENCH_AGENT_PROVIDER"] = provider_name
+    elif provider_name in {"cerebras", "openrouter", "vllm"}:
+        env["CONFIGBENCH_AGENT_PROVIDER"] = "openai"
     if provider_name == "groq" and ctx.request.model.strip():
         env["GROQ_SMALL_MODEL"] = ctx.request.model.strip()
         env["GROQ_LARGE_MODEL"] = ctx.request.model.strip()
-    elif provider_name == "openai" and ctx.request.model.strip():
+    elif provider_name in {"openai", "cerebras", "openrouter", "vllm"} and ctx.request.model.strip():
         env["OPENAI_SMALL_MODEL"] = ctx.request.model.strip()
         env["OPENAI_LARGE_MODEL"] = ctx.request.model.strip()
     return env
