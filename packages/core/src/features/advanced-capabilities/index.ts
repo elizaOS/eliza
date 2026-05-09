@@ -71,7 +71,8 @@ export const advancedProviders = [
  * Advanced actions - extended agent capabilities.
  *
  * Includes both planner actions and post-message `ALWAYS_AFTER` hooks
- * (formerly evaluators) for fact extraction, reflection, relationship
+ * (formerly evaluators) for the consolidated reflection (facts +
+ * relationships + task completion in one LLM call), pre-message relationship
  * extraction, skill extraction/refinement, and experience learning.
  */
 export const advancedActions = [
@@ -90,11 +91,9 @@ export const advancedActions = [
 	// Personality actions
 	characterAction,
 	// Post-message ALWAYS_AFTER hooks (replaces legacy evaluators)
-	postMessageActions.factExtractorAction,
-	postMessageActions.reflectionAction,
+	postMessageActions.consolidatedReflectionAction,
 	postMessageActions.relationshipExtractionAction,
-	postMessageActions.skillExtractionAction,
-	postMessageActions.skillRefinementAction,
+	postMessageActions.consolidatedSkillAction,
 	experienceAction,
 ];
 
