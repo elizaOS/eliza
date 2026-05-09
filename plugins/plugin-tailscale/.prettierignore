@@ -1,9 +1,0 @@
-node_modules/
-dist/
-coverage/
-.env
-.env.*
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-*.tsbuildinfo

@@ -47,9 +47,9 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
     "@types/bun": "^1.2.22",
     "@types/node": "^24.5.2",
-    "prettier": "^3.8.3",
     "typescript": "^6.0.3"
   },
   "scripts": {
@@ -57,10 +57,10 @@
     "dev": "bun --hot build.ts",
     "test": "echo 'No tests defined for plugin-elevenlabs'",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src",
-    "lint": "prettier --write ./src",
-    "lint:check": "prettier --check ./src",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --project tsconfig.build.json --noEmit"
   },
   "publishConfig": {
