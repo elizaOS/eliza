@@ -47,21 +47,39 @@ export * from "./personality/index.ts";
 export * from "./providers/index.ts";
 export * from "./todos/index.ts";
 
-// Import for local use
-import * as actions from "./actions/index.ts";
-import * as postMessageActions from "./evaluators/index.ts";
-import * as providers from "./providers/index.ts";
+// Import for local use.
+//
+// Direct named imports (not `import * as ns`) — Bun.build mis-rewrites the
+// namespace-access pattern (`ns.x`) when the same module is also re-exported
+// via `export * from`. The alias collision produces `ReferenceError: x is
+// not defined` at runtime in the on-device bundle. Direct named imports
+// bypass the bug.
+import {
+	messageAction,
+	postAction,
+	roomOpAction,
+	updateRoleAction,
+} from "./actions/index.ts";
+import { reflectionItems, skillItems } from "./evaluators/index.ts";
+import {
+	advancedContactsProvider,
+	factsProvider,
+	followUpsProvider,
+	relationshipsProvider,
+	roleProvider,
+	settingsProvider,
+} from "./providers/index.ts";
 
 /**
  * Advanced providers - extended context and state management
  */
 export const advancedProviders = [
-	providers.contactsProvider,
-	providers.factsProvider,
-	providers.followUpsProvider,
-	providers.relationshipsProvider,
-	providers.roleProvider,
-	providers.settingsProvider,
+	advancedContactsProvider,
+	factsProvider,
+	followUpsProvider,
+	relationshipsProvider,
+	roleProvider,
+	settingsProvider,
 	experienceProvider,
 	todosProvider,
 	userPersonalityProvider,
@@ -74,11 +92,11 @@ export const advancedProviders = [
  * `advancedEvaluators` and run by the EvaluatorService in one model call.
  */
 export const advancedActions = [
-	withCanonicalActionDocs(actions.roomOpAction),
-	withCanonicalActionDocs(actions.updateRoleAction),
+	withCanonicalActionDocs(roomOpAction),
+	withCanonicalActionDocs(updateRoleAction),
 	withCanonicalActionDocs(searchExperiencesAction),
-	actions.messageAction,
-	actions.postAction,
+	messageAction,
+	postAction,
 	// Todo actions
 	todoAction,
 	createTodoAction,
@@ -91,8 +109,8 @@ export const advancedActions = [
 ];
 
 export const advancedEvaluators = [
-	...postMessageActions.reflectionItems,
-	...postMessageActions.skillItems,
+	...reflectionItems,
+	...skillItems,
 	experiencePatternEvaluator,
 ] as unknown as Evaluator[];
 

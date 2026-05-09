@@ -7,7 +7,7 @@ import {
 	skillItems,
 } from "../features/advanced-capabilities/evaluators/index";
 import {
-	contactsProvider,
+	advancedContactsProvider,
 	factsProvider,
 	followUpsProvider,
 	relationshipsProvider,
@@ -51,7 +51,7 @@ export const relationshipsPlugin: Plugin = {
 	],
 	evaluators: [...reflectionItems, ...skillItems],
 	providers: [
-		contactsProvider,
+		advancedContactsProvider,
 		factsProvider,
 		followUpsProvider,
 		relationshipsProvider,
