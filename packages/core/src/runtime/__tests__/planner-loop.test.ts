@@ -590,7 +590,7 @@ describe("v5 planner loop — evaluator gate", () => {
 		expect(result.finalMessage).toBe("Status check passed.");
 		expect(result.evaluator?.decision).toBe("FINISH");
 		expect(result.evaluator?.success).toBe(true);
-		expect(result.evaluator?.thought).toContain("Gated FINISH");
+		expect(result.evaluator?.thought).toContain("trajectory evaluation skipped");
 
 		// Consumer-shape contract: `subPlannerResultToPlannerToolResult` in
 		// services/message.ts reads `evaluator.success` and `evaluator.messageToUser`
@@ -603,7 +603,9 @@ describe("v5 planner loop — evaluator gate", () => {
 		// `evaluatorOutputs` and as a context event so trajectory dumps and replay
 		// tools see the iteration's outcome (just no recorder evaluation stage).
 		expect(result.trajectory.evaluatorOutputs).toHaveLength(1);
-		expect(result.trajectory.evaluatorOutputs[0]?.thought).toContain("Gated FINISH");
+		expect(result.trajectory.evaluatorOutputs[0]?.thought).toContain(
+			"trajectory evaluation skipped",
+		);
 		const evalEvents = (result.trajectory.context.events ?? []).filter(
 			(event) => event.type === "evaluation",
 		);

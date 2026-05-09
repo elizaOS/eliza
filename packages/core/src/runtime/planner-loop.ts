@@ -357,13 +357,13 @@ export async function runPlannerLoop(
 		// The post-turn registered evaluator step (`runPostTurnEvaluators` in
 		// `services/evaluator.ts`, dispatched from `services/message.ts` after
 		// `runPlannerLoop` returns) runs regardless of how the loop terminates
-		// and is unaffected by this gate. See `tryGateEvaluator` doc-comment for
+		// and is unaffected by this gate. See `tryGateTrajectoryEvaluation` doc-comment for
 		// the full scope contract.
 		//
 		// Falls through to the real evaluator on any ambiguity (failure, more
 		// queued tools, missing/unsafe message).
 		const gateStartedAt = Date.now();
-		const gated = tryGateEvaluator({
+		const gated = tryGateTrajectoryEvaluation({
 			trajectory,
 			failures,
 			lastPlannerExplicitMessageToUser,
@@ -380,7 +380,7 @@ export async function runPlannerLoop(
 			// timeline slot they would for a model-produced evaluation. The
 			// stage carries `gated: true` + `llmCallSkipped: true` so reviewers
 			// can distinguish gated decisions from real evaluator calls.
-			await recordGatedEvaluationStage({
+			await recordGatedTrajectoryEvaluationStage({
 				recorder: params.recorder,
 				trajectoryId: params.trajectoryId,
 				parentStageId: params.parentStageId,
@@ -1134,7 +1134,7 @@ function compactText(value: string, maxLength: number): string {
  * calls without a string-match against the thought marker. No `model` block
  * is included — no LLM call happened.
  */
-async function recordGatedEvaluationStage(args: {
+async function recordGatedTrajectoryEvaluationStage(args: {
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	parentStageId?: string;
@@ -1905,7 +1905,7 @@ function latestToolResultText(
  * native-tool-call returns without an explicit `messageToUser` field do NOT
  * trigger the gate — those calls remain on the full evaluator path.
  */
-function tryGateEvaluator(args: {
+function tryGateTrajectoryEvaluation(args: {
 	trajectory: PlannerTrajectory;
 	failures: readonly FailureLike[];
 	lastPlannerExplicitMessageToUser: string | undefined;
@@ -1922,16 +1922,17 @@ function tryGateEvaluator(args: {
 	return {
 		success: true,
 		decision: "FINISH",
-		thought: GATED_EVALUATOR_THOUGHT,
+		thought: GATED_TRAJECTORY_EVALUATION_THOUGHT,
 		messageToUser: message,
 	};
 }
 
 /** Marker the gate stamps onto synthesized EvaluatorOutputs so trajectory
- * dumps and replay tools can identify gated (i.e. evaluator-skipped) decisions
- * cheaply. */
-export const GATED_EVALUATOR_THOUGHT =
-	"Gated FINISH: queue drained successfully with a clean planner messageToUser; evaluator LLM call skipped.";
+ * dumps and replay tools can identify gated (i.e. trajectory-evaluation-skipped)
+ * decisions cheaply. The text describes the precondition that triggered the
+ * gate, not the gate itself, so a reader sees *why* skipping was safe. */
+export const GATED_TRAJECTORY_EVALUATION_THOUGHT =
+	"Planner produced an explicit terminal reply with no pending tool work; in-loop LLM trajectory evaluation skipped (registered post-turn evaluators still run).";
 
 function userSafeFinalMessage(
 	message: string | undefined,
