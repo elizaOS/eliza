@@ -5,35 +5,6 @@
  * that require Node APIs or server-only runtime state.
  */
 
-export { ChainIcon } from "@elizaos/app-wallet/inventory/ChainIcon";
-// Inventory + wallet UI moved to @elizaos/app-wallet. Re-exported here for
-// renderer-side modules (e.g. plugins/app-companion/.../walletUtils.ts) that
-// still reach for these symbols via @elizaos/app-core/browser.
-// Compatibility bridge while consumers migrate to direct @elizaos/app-wallet imports.
-export {
-  CHAIN_CONFIGS,
-  type ChainConfig,
-  type ChainKey,
-  chainKeyToWalletRpcChain,
-  getChainConfig,
-  getContractLogoUrl,
-  getExplorerTokenUrl,
-  getExplorerTxUrl,
-  getNativeLogoUrl,
-  getStablecoinAddress,
-  PRIMARY_CHAIN_KEYS,
-  resolveChainKey,
-} from "@elizaos/app-wallet/inventory/chainConfig";
-export {
-  BSC_GAS_READY_THRESHOLD,
-  BSC_GAS_THRESHOLD,
-  HEX_ADDRESS_RE,
-  isAvaxChainName,
-  isBscChainName,
-  type NftItem,
-  type TokenRow,
-  toNormalizedAddress,
-} from "@elizaos/app-wallet/inventory/constants";
 export { TokenLogo } from "@elizaos/app-wallet/inventory/TokenLogo";
 export { useInventoryData } from "@elizaos/app-wallet/inventory/useInventoryData";
 export type { RestartHandler } from "@elizaos/shared";

@@ -8,7 +8,49 @@
 
 export type ModelBucket = "small" | "mid" | "large" | "xl";
 
-export type ModelCategory = "chat" | "code" | "tools" | "tiny" | "reasoning";
+export type ModelCategory =
+  | "chat"
+  | "code"
+  | "tools"
+  | "tiny"
+  | "reasoning"
+  | "drafter";
+
+export type LocalRuntimeBackend = "node-llama-cpp" | "llama-server";
+
+export interface LocalRuntimeAcceleration {
+  /**
+   * Prefer out-of-process llama-server over the node binding when the
+   * required binary and companion files are available.
+   */
+  preferredBackend?: LocalRuntimeBackend;
+  dflash?: {
+    /** Catalog id of the hidden drafter GGUF companion. */
+    drafterModelId: string;
+    specType: "dflash";
+    /** llama-server context for the target model. */
+    contextSize: number;
+    /** llama-server context for the drafter. */
+    draftContextSize: number;
+    /** Default draft range passed to llama-server. */
+    draftMin: number;
+    draftMax: number;
+    /** `--n-gpu-layers` and `--n-gpu-layers-draft` defaults. */
+    gpuLayers: number | "auto";
+    draftGpuLayers: number | "auto";
+    /** Qwen3.5/3.6 DFlash drafters are trained against non-thinking text. */
+    disableThinking: boolean;
+  };
+  kvCache?: {
+    /**
+     * llama.cpp KV cache type overrides. Stock builds support f16/q8_0;
+     * TurboQuant-capable forks add tbq3_0/tbq4_0.
+     */
+    typeK?: string;
+    typeV?: string;
+    requiresFork?: "apothic-turboquant" | "buun-llama-cpp";
+  };
+}
 
 export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
@@ -24,6 +66,7 @@ export interface CatalogModel {
     | "1.7B"
     | "2B"
     | "3B"
+    | "4B"
     | "7B"
     | "8B"
     | "9B"
@@ -41,6 +84,19 @@ export interface CatalogModel {
   category: ModelCategory;
   bucket: ModelBucket;
   blurb: string;
+  /**
+   * Hidden entries are installable by id and can be downloaded as companions,
+   * but are omitted from the visible Model Hub catalog.
+   */
+  hiddenFromCatalog?: boolean;
+  /** Models such as DFlash drafters are not valid standalone chat choices. */
+  runtimeRole?: "chat" | "dflash-drafter";
+  /** Parent chat model id when this entry is a hidden companion. */
+  companionForModelId?: string;
+  /** Extra catalog model ids to download alongside this model. */
+  companionModelIds?: string[];
+  /** Runtime-specific acceleration metadata. */
+  runtime?: LocalRuntimeAcceleration;
 }
 
 export type HardwareFitLevel = "fits" | "tight" | "wontfit";
@@ -94,6 +150,8 @@ export interface InstalledModel {
   sha256?: string;
   /** ISO timestamp of the last successful re-verification. Absent = never verified since install. */
   lastVerifiedAt?: string;
+  runtimeRole?: "chat" | "dflash-drafter";
+  companionFor?: string;
 }
 
 export type DownloadState =

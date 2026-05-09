@@ -1427,6 +1427,3 @@ export class XService extends Service {
     logger.log("X service stopped");
   }
 }
-
-// Backward-compatible alias for users still importing { TwitterService }.
-export const TwitterService = XService;

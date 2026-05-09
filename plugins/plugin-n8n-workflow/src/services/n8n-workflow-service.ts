@@ -1,5 +1,6 @@
 import { type IAgentRuntime, logger, Service } from '@elizaos/core';
 import { N8nApiClient } from '../utils/api';
+import { EmbeddedN8nService, N8N_EMBEDDED_SERVICE_TYPE } from './embedded-n8n-service';
 import { searchNodes, filterNodesByIntegrationSupport } from '../utils/catalog';
 import { getUserTagName } from '../utils/context';
 import {
@@ -51,7 +52,50 @@ export const N8N_WORKFLOW_SERVICE_TYPE = 'n8n_workflow';
 export interface N8nWorkflowServiceConfig {
   apiKey: string;
   host: string;
+  backend?: 'http' | 'embedded';
   credentials?: Record<string, string>; // Pre-configured credential IDs
+}
+
+type N8nWorkflowClient = Pick<
+  N8nApiClient,
+  | 'createWorkflow'
+  | 'listWorkflows'
+  | 'getWorkflow'
+  | 'updateWorkflow'
+  | 'deleteWorkflow'
+  | 'activateWorkflow'
+  | 'deactivateWorkflow'
+  | 'updateWorkflowTags'
+  | 'createCredential'
+  | 'listExecutions'
+  | 'getExecution'
+  | 'deleteExecution'
+  | 'listTags'
+  | 'createTag'
+  | 'getOrCreateTag'
+> & {
+  getRuntimeNodeTypeVersions(): Promise<Map<string, number[]> | null> | Map<string, number[]> | null;
+};
+
+function settingAsString(runtime: IAgentRuntime, key: string): string {
+  const value = runtime.getSetting(key);
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function isTruthySetting(value: string): boolean {
+  return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+}
+
+function isEmbeddedBackendEnabled(runtime: IAgentRuntime): boolean {
+  const backend = settingAsString(runtime, 'N8N_BACKEND').toLowerCase();
+  const mode = settingAsString(runtime, 'N8N_MODE').toLowerCase();
+  const host = settingAsString(runtime, 'N8N_HOST').toLowerCase();
+  return (
+    backend === 'embedded' ||
+    mode === 'embedded' ||
+    host.startsWith('embedded://') ||
+    isTruthySetting(settingAsString(runtime, 'N8N_EMBEDDED_ENABLED'))
+  );
 }
 
 /**
@@ -67,23 +111,15 @@ export class N8nWorkflowService extends Service {
     'Generate and deploy n8n workflows from natural language using RAG pipeline. ' +
     'Supports workflow CRUD, execution management, and credential resolution.';
 
-  private apiClient: N8nApiClient | null = null;
+  private apiClient: N8nWorkflowClient | null = null;
   private serviceConfig: N8nWorkflowServiceConfig | null = null;
 
   static async start(runtime: IAgentRuntime): Promise<N8nWorkflowService> {
     logger.info({ src: 'plugin:n8n-workflow:service:main' }, 'Starting N8n Workflow Service...');
 
-    // Validate configuration
     const apiKey = runtime.getSetting('N8N_API_KEY');
     const host = runtime.getSetting('N8N_HOST');
-
-    if (!apiKey || typeof apiKey !== 'string') {
-      throw new Error('N8N_API_KEY is required in settings');
-    }
-
-    if (!host || typeof host !== 'string') {
-      throw new Error('N8N_HOST is required in settings (e.g., https://your.n8n.cloud)');
-    }
+    const embeddedEnabled = isEmbeddedBackendEnabled(runtime);
 
     // Get optional pre-configured credentials from character.settings.workflows
     // Note: runtime.getSetting() only returns primitives — nested objects must be read directly
@@ -93,18 +129,40 @@ export class N8nWorkflowService extends Service {
     const credentials = workflowSettings?.credentials;
 
     const service = new N8nWorkflowService(runtime);
-    service.serviceConfig = {
-      apiKey,
-      host,
-      credentials,
-    };
+    if (embeddedEnabled) {
+      const embedded =
+        (runtime.getService(N8N_EMBEDDED_SERVICE_TYPE) as EmbeddedN8nService | null) ??
+        (await EmbeddedN8nService.start(runtime));
+      service.serviceConfig = {
+        apiKey: 'embedded',
+        host: embedded.host,
+        backend: 'embedded',
+        credentials,
+      };
+      service.apiClient = embedded;
+    } else {
+      if (!apiKey || typeof apiKey !== 'string') {
+        throw new Error('N8N_API_KEY is required in settings');
+      }
 
-    // Initialize API client
-    service.apiClient = new N8nApiClient(host, apiKey);
+      if (!host || typeof host !== 'string') {
+        throw new Error('N8N_HOST is required in settings (e.g., https://your.n8n.cloud)');
+      }
+
+      service.serviceConfig = {
+        apiKey,
+        host,
+        backend: 'http',
+        credentials,
+      };
+
+      // Initialize API client
+      service.apiClient = new N8nApiClient(host, apiKey);
+    }
 
     logger.info(
       { src: 'plugin:n8n-workflow:service:main' },
-      `N8n Workflow Service started - connected to ${host}`
+      `N8n Workflow Service started - connected to ${service.serviceConfig.host} (${service.serviceConfig.backend ?? 'http'})`
     );
     if (credentials) {
       const configured = Object.entries(credentials)
@@ -157,7 +215,7 @@ export class N8nWorkflowService extends Service {
     }
   }
 
-  private getClient(): N8nApiClient {
+  private getClient(): N8nWorkflowClient {
     if (!this.apiClient) {
       throw new Error('N8n Workflow Service not initialized');
     }

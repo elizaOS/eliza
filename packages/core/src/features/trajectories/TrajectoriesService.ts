@@ -357,7 +357,17 @@ export class TrajectoriesService extends Service {
 		}
 
 		const sqlHelper = this.getSqlHelper();
-		const db = runtime.adapter.db as {
+		const dbCandidate = runtime.adapter.db as
+			| { execute?: unknown }
+			| undefined;
+		// Adapters without SQL support (e.g. InMemoryDatabaseAdapter used in tests)
+		// expose `db = {}` rather than a Drizzle handle. Treat schema/CRUD calls as
+		// no-ops so trajectory logging can degrade gracefully instead of spamming
+		// "db.execute is not a function" for every step.
+		if (!dbCandidate || typeof dbCandidate.execute !== "function") {
+			return { rows: [], columns: [] };
+		}
+		const db = dbCandidate as {
 			execute(query: ReturnType<typeof sql.raw>): Promise<SqlExecuteResult>;
 		};
 		const query = sqlHelper.raw(sqlText);
@@ -376,10 +386,20 @@ export class TrajectoriesService extends Service {
 		if (this.initialized) return;
 		this.exposeBoundMethods();
 
-		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
+		const runtime = this.runtime as IAgentRuntime & {
+			adapter?: { db?: unknown };
+		};
 		if (!runtime?.adapter) {
 			logger.warn(
 				"[trajectory-logger] No runtime adapter available, skipping initialization",
+			);
+			return;
+		}
+
+		const db = runtime.adapter.db as { execute?: unknown } | undefined;
+		if (!db || typeof db.execute !== "function") {
+			logger.warn(
+				"[trajectory-logger] Runtime adapter does not support db.execute (likely InMemory adapter); skipping table setup",
 			);
 			return;
 		}
@@ -1461,8 +1481,14 @@ export class TrajectoriesService extends Service {
 	async listTrajectories(
 		options: TrajectoryListOptions = {},
 	): Promise<TrajectoryListResult> {
-		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
+		const runtime = this.runtime as IAgentRuntime & {
+			adapter?: { db?: unknown };
+		};
 		if (!runtime?.adapter) {
+			return { trajectories: [], total: 0, offset: 0, limit: 50 };
+		}
+		const db = runtime.adapter.db as { execute?: unknown } | undefined;
+		if (!db || typeof db.execute !== "function") {
 			return { trajectories: [], total: 0, offset: 0, limit: 50 };
 		}
 		await this.ensureStorageReady();

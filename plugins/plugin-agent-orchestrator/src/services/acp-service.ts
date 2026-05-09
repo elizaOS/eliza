@@ -481,8 +481,9 @@ export class AcpService {
     return this.sendPrompt(sessionId, input);
   }
 
-  async sendKeysToSession(): Promise<void> {
-    // TODO(W4): clarify with W6 how key events should map onto non-PTY acpx sessions.
+  async sendKeysToSession(sessionId: string): Promise<void> {
+    await this.requireSession(sessionId);
+    throw new Error("ACP sessions do not support raw key input.");
   }
 
   async stopSession(sessionId: string): Promise<void> {
@@ -787,7 +788,7 @@ export class AcpService {
     return { finalText, stopReason };
   }
 
-  private emitSessionEvent(
+  emitSessionEvent(
     sessionId: string,
     event: SessionEventName,
     data: unknown,
