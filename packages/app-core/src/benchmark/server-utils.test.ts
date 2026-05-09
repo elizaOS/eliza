@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coerceParams } from "./server-utils";
+import { coerceParams } from "./params";
 
 describe("coerceParams", () => {
   it("returns object params as-is", () => {

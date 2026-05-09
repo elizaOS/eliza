@@ -336,6 +336,7 @@ export class AppChargeRequestsService {
     });
     const successUrl = new URL(redirects.successUrl);
     successUrl.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
+    successUrl.searchParams.set("app_id", params.appId);
     successUrl.searchParams.set("charge_request_id", request.id);
 
     const checkoutMetadata = {
@@ -422,6 +423,7 @@ export class AppChargeRequestsService {
       defaultCancelUrl: request.paymentUrl,
     });
     const returnUrl = new URL(redirects.successUrl);
+    returnUrl.searchParams.set("app_id", params.appId);
     returnUrl.searchParams.set("charge_request_id", request.id);
 
     const payment = await cryptoPaymentsService.createPayment({
