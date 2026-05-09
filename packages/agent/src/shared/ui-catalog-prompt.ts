@@ -1,11 +1,21 @@
 /**
- * ui-catalog-prompt.ts -- Generates a system prompt for LLMs describing
- * all available UiSpec components so they can produce valid JSON specs.
+ * ui-catalog-prompt.ts -- Static instruction prompt + dynamic component
+ * catalog used by LLMs to emit valid UiSpec JSON-patch output.
+ *
+ * The instruction prompt and the catalog are separate so callers can
+ * include only what they need (e.g. only form components, or only the
+ * patch format with no examples).
  *
  * Exports:
- *   - COMPONENT_CATALOG   — metadata for every supported component
- *   - generateCatalogPrompt(options?) — builds the system prompt string
- *   - getComponentNames()  — returns the list of component type names
+ *   - COMPONENT_CATALOG, ComponentMeta, getComponentNames — catalog data
+ *   - UI_INSTRUCTION_HEADER_GENERATE / UI_INSTRUCTION_HEADER_CHAT —
+ *       mode-specific opening sentence
+ *   - UI_PATCH_FORMAT — patch format + path conventions + element schema
+ *   - UI_BINDING_DOCS — data binding, state, visibility, validation,
+ *       events, and repeat (composed from smaller named blocks)
+ *   - UI_EXAMPLE_GENERATE / UI_EXAMPLE_CHAT — one canonical example each
+ *   - formatComponentCatalogForPrompt(options?) — renders the catalog
+ *   - generateCatalogPrompt(options?) — back-compat assembler
  */
 
 // ── Component metadata types ────────────────────────────────────────
@@ -850,7 +860,7 @@ export const COMPONENT_CATALOG: Record<string, ComponentMeta> = {
 };
 
 // ══════════════════════════════════════════════════════════════════════
-// UTILITIES
+// CATALOG UTILITIES
 // ══════════════════════════════════════════════════════════════════════
 
 /** Returns the list of all component type names in the catalog. */
@@ -858,62 +868,63 @@ export function getComponentNames(): string[] {
   return Object.keys(COMPONENT_CATALOG);
 }
 
-// ══════════════════════════════════════════════════════════════════════
-// PROMPT GENERATION
-// ══════════════════════════════════════════════════════════════════════
-
-export interface CatalogPromptOptions {
-  /** Extra rules appended to the end of the prompt. */
-  customRules?: string[];
-  /** Include a small example UiSpec at the end. */
-  includeExamples?: boolean;
-  /** Only include these component types (subset of catalog). */
-  componentFilter?: string[];
-  /**
-   * Output mode:
-   *   "generate" (default) — AI outputs ONLY JSONL patches, no prose. Use for
-   *                          standalone UI builders and playgrounds.
-   *   "chat"               — AI responds conversationally first, then emits
-   *                          JSONL patches on their own lines when UI is needed.
-   *                          Text-only replies are allowed (greetings, questions).
-   *                          Use for conversational interfaces.
-   */
-  mode?: "generate" | "chat";
+export interface FormatComponentCatalogOptions {
+  /** Render only these component types. Names not in the catalog are ignored. */
+  include?: string[];
+  /** Override the section heading. Defaults to "## Available components". */
+  heading?: string;
 }
 
 /**
- * Builds a system prompt string describing the UiSpec JSON format and
- * all available components so an LLM can generate valid specs.
- *
- * Two modes:
- *   "generate" (default) — AI outputs only JSONL patches, no prose.
- *   "chat"               — AI can respond conversationally and embed JSONL
- *                          patches inline when rich UI is appropriate.
+ * Renders the component catalog as a Markdown section suitable for
+ * embedding in a system prompt. Pass `include` to render a subset.
  */
-export function generateCatalogPrompt(options?: CatalogPromptOptions): string {
-  const parts: string[] = [];
-  const mode = options?.mode ?? "generate";
+export function formatComponentCatalogForPrompt(
+  options?: FormatComponentCatalogOptions,
+): string {
+  const include = options?.include;
+  const heading = options?.heading ?? "## Available components";
+  const entries = Object.entries(COMPONENT_CATALOG).filter(
+    ([name]) => !include || include.includes(name),
+  );
 
-  // ── 1. Header ───────────────────────────────────────────────────────
-
-  if (mode === "chat") {
-    parts.push(
-      `You can generate interactive UI components inline in your responses using JSONL patches.
-
-When the user's request calls for a form, chart, slider, metric display, wallet control, or any interactive element, respond conversationally first (one or two sentences), then emit the JSONL patches on their own lines immediately after. Each patch must be on its own line with no extra whitespace or code fences.
-
-When no UI is needed (greetings, factual questions, clarifications) — reply with text only. Never emit patches unless they genuinely add value.`,
-    );
-  } else {
-    parts.push(
-      "You are generating UI specifications as JSONL patches. Output ONLY the patches — one JSON object per line, no prose, no markdown, no code fences.",
+  const componentLines: string[] = [];
+  for (const [name, meta] of entries) {
+    const propDescs: string[] = [];
+    for (const [prop, info] of Object.entries(meta.props)) {
+      const req = info.required ? " (required)" : "";
+      propDescs.push(
+        `    - ${prop}: ${info.type}${req} -- ${info.description}`,
+      );
+    }
+    const slotsLine = meta.slots
+      ? `  Slots: ${meta.slots.join(", ")} (accepts children)`
+      : "  No children.";
+    componentLines.push(
+      `- **${name}**: ${meta.description}\n  Props:\n${propDescs.join("\n")}\n${slotsLine}`,
     );
   }
 
-  // ── 2. Patch format ─────────────────────────────────────────────────
+  return `${heading} (${entries.length})\n\n${componentLines.join("\n\n")}`;
+}
 
-  parts.push(`
-## Output format — JSONL patches (RFC 6902)
+// ══════════════════════════════════════════════════════════════════════
+// STATIC INSTRUCTION BLOCKS
+// ══════════════════════════════════════════════════════════════════════
+
+/** Opening sentence for "generate" mode (JSONL-only output). */
+export const UI_INSTRUCTION_HEADER_GENERATE =
+  "You are generating UI specifications as JSONL patches. Output ONLY the patches — one JSON object per line, no prose, no markdown, no code fences.";
+
+/** Opening sentences for "chat" mode (prose + inline JSONL when useful). */
+export const UI_INSTRUCTION_HEADER_CHAT = `You can generate interactive UI components inline in your responses using JSONL patches.
+
+When the user's request calls for a form, chart, slider, metric display, wallet control, or any interactive element, respond conversationally first (one or two sentences), then emit the JSONL patches on their own lines immediately after. Each patch must be on its own line with no extra whitespace or code fences.
+
+When no UI is needed (greetings, factual questions, clarifications) — reply with text only. Never emit patches unless they genuinely add value.`;
+
+/** Patch wire format: ops, paths, element schema, ordering rules. */
+export const UI_PATCH_FORMAT = `## Output format — JSONL patches (RFC 6902)
 
 Each line of UI output is a single JSON patch operation:
 
@@ -945,60 +956,25 @@ Each line of UI output is a single JSON patch operation:
 \`\`\`
 
 Always emit \`/root\` first, then all \`/elements\` entries, then \`/state\` values.
-Element IDs must be unique kebab-case strings (e.g. \`send-btn\`, \`amount-slider\`).`);
+Element IDs must be unique kebab-case strings (e.g. \`send-btn\`, \`amount-slider\`).`;
 
-  // ── 3. Available components ─────────────────────────────────────────
-
-  const filter = options?.componentFilter;
-  const entries = Object.entries(COMPONENT_CATALOG).filter(
-    ([name]) => !filter || filter.includes(name),
-  );
-
-  const componentLines: string[] = [];
-  for (const [name, meta] of entries) {
-    const propDescs: string[] = [];
-    for (const [prop, info] of Object.entries(meta.props)) {
-      const req = info.required ? " (required)" : "";
-      propDescs.push(
-        `    - ${prop}: ${info.type}${req} -- ${info.description}`,
-      );
-    }
-    const slotsLine = meta.slots
-      ? `  Slots: ${meta.slots.join(", ")} (accepts children)`
-      : "  No children.";
-    componentLines.push(
-      `- **${name}**: ${meta.description}\n  Props:\n${propDescs.join("\n")}\n${slotsLine}`,
-    );
-  }
-
-  parts.push(`
-## Available components (${entries.length})
-
-${componentLines.join("\n\n")}`);
-
-  // ── 4. Data binding ─────────────────────────────────────────────────
-
-  parts.push(`
-## Data binding
+/** Data binding section. */
+export const UI_DATA_BINDING = `## Data binding
 
 Reference state values dynamically in props using either syntax:
 
 1. **String prefix**: \`"$data.path.to.value"\` -- the value at that state path is resolved at render time.
 2. **Object syntax**: \`{ "$path": "path.to.value" }\` -- equivalent, useful when the value is not a string.
 
-Inside a \`repeat\` block, reference the current item's fields with \`"$data.$item/fieldName"\` or \`{ "$path": "$item/fieldName" }\`.`);
+Inside a \`repeat\` block, reference the current item's fields with \`"$data.$item/fieldName"\` or \`{ "$path": "$item/fieldName" }\`.`;
 
-  // ── 5. State binding ────────────────────────────────────────────────
+/** State binding section. */
+export const UI_STATE_BINDING = `## State binding
 
-  parts.push(`
-## State binding
+Form elements accept a \`statePath\` prop (dot-delimited path into \`state\`). This creates two-way binding: the element reads its current value from the path and writes back on user input. Example: \`"statePath": "form.email"\` binds to \`state.form.email\`.`;
 
-Form elements accept a \`statePath\` prop (dot-delimited path into \`state\`). This creates two-way binding: the element reads its current value from the path and writes back on user input. Example: \`"statePath": "form.email"\` binds to \`state.form.email\`.`);
-
-  // ── 6. Visibility ───────────────────────────────────────────────────
-
-  parts.push(`
-## Visibility
+/** Visibility section. */
+export const UI_VISIBILITY = `## Visibility
 
 Any element can have a \`visible\` condition. If it evaluates to false, the element is not rendered.
 
@@ -1019,12 +995,10 @@ Values: signedIn, signedOut, admin, or any custom role string.
 { "and": [ <condition>, <condition> ] }
 { "or": [ <condition>, <condition> ] }
 { "not": <condition> }
-\`\`\``);
+\`\`\``;
 
-  // ── 7. Validation ───────────────────────────────────────────────────
-
-  parts.push(`
-## Validation
+/** Validation section. */
+export const UI_VALIDATION = `## Validation
 
 Form elements can declare a \`validation\` object:
 
@@ -1048,12 +1022,10 @@ Built-in validators:
 - **maxLength** -- args: { length: number }
 - **pattern** -- args: { pattern: string } (regex)
 - **min** -- args: { value: number }
-- **max** -- args: { value: number }`);
+- **max** -- args: { value: number }`;
 
-  // ── 8. Events ───────────────────────────────────────────────────────
-
-  parts.push(`
-## Events
+/** Events section. */
+export const UI_EVENTS = `## Events
 
 Elements can have an \`on\` property mapping event names to actions:
 
@@ -1076,12 +1048,10 @@ Elements can have an \`on\` property mapping event names to actions:
 }
 \`\`\`
 
-Common event names: press, change. The \`action\` string identifies the handler. \`params\`, \`confirm\`, \`onSuccess\`, and \`onError\` are all optional.`);
+Common event names: press, change. The \`action\` string identifies the handler. \`params\`, \`confirm\`, \`onSuccess\`, and \`onError\` are all optional.`;
 
-  // ── 9. Repeat / list rendering ──────────────────────────────────────
-
-  parts.push(`
-## Repeat / list rendering
+/** Repeat / list rendering section. */
+export const UI_REPEAT = `## Repeat / list rendering
 
 Render an element once per item in a state array:
 
@@ -1096,23 +1066,41 @@ Render an element once per item in a state array:
 
 - \`path\`: dot-path to an array in state.
 - \`key\`: field name on each item used as the unique key.
-- Inside the repeated element and its children, use \`$data.$item/fieldName\` or \`{ "$path": "$item/fieldName" }\` to reference item fields.`);
+- Inside the repeated element and its children, use \`$data.$item/fieldName\` or \`{ "$path": "$item/fieldName" }\` to reference item fields.`;
 
-  // ── 10. Custom rules ────────────────────────────────────────────────
+/**
+ * All binding-related docs (data, state, visibility, validation, events,
+ * repeat) joined for convenience. Callers that only need a subset can
+ * import the individual blocks.
+ */
+export const UI_BINDING_DOCS = [
+  UI_DATA_BINDING,
+  UI_STATE_BINDING,
+  UI_VISIBILITY,
+  UI_VALIDATION,
+  UI_EVENTS,
+  UI_REPEAT,
+].join("\n\n");
 
-  if (options?.customRules && options.customRules.length > 0) {
-    parts.push(`
-## Additional rules
+// ══════════════════════════════════════════════════════════════════════
+// EXAMPLES
+// ══════════════════════════════════════════════════════════════════════
 
-${options.customRules.map((r) => `- ${r}`).join("\n")}`);
-  }
+/** Canonical example for "generate" mode. */
+export const UI_EXAMPLE_GENERATE = `## Example — generate mode
 
-  // ── 11. Example ─────────────────────────────────────────────────────
+\`\`\`
+{"op":"add","path":"/root","value":"main"}
+{"op":"add","path":"/elements/main","value":{"type":"Card","props":{"title":"Contact Us"},"children":["heading","desc","email-input","submit-btn"]}}
+{"op":"add","path":"/elements/heading","value":{"type":"Heading","props":{"text":"Get in Touch","level":"h2"},"children":[]}}
+{"op":"add","path":"/elements/desc","value":{"type":"Text","props":{"text":"Fill out the form and we will respond within 24 hours.","variant":"muted"},"children":[]}}
+{"op":"add","path":"/elements/email-input","value":{"type":"Input","props":{"label":"Email","type":"email","placeholder":"you@example.com","statePath":"form.email"},"children":[],"validation":{"checks":[{"fn":"required","message":"Email is required"},{"fn":"email","message":"Enter a valid email"}],"validateOn":"blur"}}}
+{"op":"add","path":"/elements/submit-btn","value":{"type":"Button","props":{"label":"Send Message","variant":"primary"},"children":[],"on":{"press":{"action":"submitContact","params":{"email":{"$path":"form.email"}}}}}}
+{"op":"add","path":"/state/form","value":{"email":""}}
+\`\`\``;
 
-  if (options?.includeExamples) {
-    if (mode === "chat") {
-      parts.push(`
-## Example — chat mode
+/** Canonical example for "chat" mode (prose + JSONL + a text-only reply). */
+export const UI_EXAMPLE_CHAT = `## Example — chat mode
 
 User: "Help me send some BNB to a friend"
 
@@ -1137,22 +1125,52 @@ User: "What does BNB stand for?"
 
 Your response: BNB stands for Binance Coin — it's the native token of the BNB Chain (formerly Binance Smart Chain).
 
-(text-only reply — no patches needed)`);
-    } else {
-      parts.push(`
-## Example — generate mode
+(text-only reply — no patches needed)`;
 
-\`\`\`
-{"op":"add","path":"/root","value":"main"}
-{"op":"add","path":"/elements/main","value":{"type":"Card","props":{"title":"Contact Us"},"children":["heading","desc","email-input","submit-btn"]}}
-{"op":"add","path":"/elements/heading","value":{"type":"Heading","props":{"text":"Get in Touch","level":"h2"},"children":[]}}
-{"op":"add","path":"/elements/desc","value":{"type":"Text","props":{"text":"Fill out the form and we will respond within 24 hours.","variant":"muted"},"children":[]}}
-{"op":"add","path":"/elements/email-input","value":{"type":"Input","props":{"label":"Email","type":"email","placeholder":"you@example.com","statePath":"form.email"},"children":[],"validation":{"checks":[{"fn":"required","message":"Email is required"},{"fn":"email","message":"Enter a valid email"}],"validateOn":"blur"}}}
-{"op":"add","path":"/elements/submit-btn","value":{"type":"Button","props":{"label":"Send Message","variant":"primary"},"children":[],"on":{"press":{"action":"submitContact","params":{"email":{"$path":"form.email"}}}}}}
-{"op":"add","path":"/state/form","value":{"email":""}}
-\`\`\``);
-    }
+// ══════════════════════════════════════════════════════════════════════
+// BACK-COMPAT ASSEMBLER
+// ══════════════════════════════════════════════════════════════════════
+
+export interface CatalogPromptOptions {
+  /** Extra rules appended to the end of the prompt. */
+  customRules?: string[];
+  /** Include a small example UiSpec at the end. */
+  includeExamples?: boolean;
+  /** Only include these component types (subset of catalog). */
+  componentFilter?: string[];
+  /**
+   * Output mode:
+   *   "generate" (default) — AI outputs ONLY JSONL patches, no prose.
+   *   "chat"               — AI responds conversationally first, then
+   *                          emits JSONL patches on their own lines.
+   */
+  mode?: "generate" | "chat";
+}
+
+/**
+ * Assembles the full UI catalog system prompt from the static blocks
+ * and a rendered component catalog. Prefer composing the named exports
+ * directly at the call site when you know which sections you need.
+ */
+export function generateCatalogPrompt(options?: CatalogPromptOptions): string {
+  const mode = options?.mode ?? "generate";
+
+  const parts: string[] = [
+    mode === "chat" ? UI_INSTRUCTION_HEADER_CHAT : UI_INSTRUCTION_HEADER_GENERATE,
+    UI_PATCH_FORMAT,
+    formatComponentCatalogForPrompt({ include: options?.componentFilter }),
+    UI_BINDING_DOCS,
+  ];
+
+  if (options?.customRules && options.customRules.length > 0) {
+    parts.push(
+      `## Additional rules\n\n${options.customRules.map((r) => `- ${r}`).join("\n")}`,
+    );
   }
 
-  return parts.join("\n");
+  if (options?.includeExamples) {
+    parts.push(mode === "chat" ? UI_EXAMPLE_CHAT : UI_EXAMPLE_GENERATE);
+  }
+
+  return parts.join("\n\n");
 }
