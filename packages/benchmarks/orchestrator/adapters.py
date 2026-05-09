@@ -98,6 +98,7 @@ def _make_registry_adapter(
         "gaia",
         "gaia_orchestrated",
         "gauntlet",
+        "orchestrator_lifecycle",
         "realm",
         "rlm_bench",
         "social_alpha",
