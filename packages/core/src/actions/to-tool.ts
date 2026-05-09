@@ -55,6 +55,12 @@ export const HANDLE_RESPONSE_EXTRACT_SCHEMA: JSONSchema = {
 				required: ["subject", "predicate", "object"],
 			},
 		},
+		addressedTo: {
+			type: "array",
+			description:
+				"Entity UUIDs or participant names this message is directed at. Empty when unsure or when the message is broadcast / not directed at anyone in particular.",
+			items: { type: "string" },
+		},
 	},
 };
 

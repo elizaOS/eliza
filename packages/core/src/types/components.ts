@@ -153,6 +153,13 @@ export interface MessageHandlerExtractedRelationship {
 export interface MessageHandlerExtract {
 	facts?: string[];
 	relationships?: MessageHandlerExtractedRelationship[];
+	/**
+	 * Entities the inbound message is directed at — entity UUIDs or
+	 * participant names that the post-parse pipeline resolves to UUIDs.
+	 * Empty / omitted means "unknown / not directed at anyone in particular".
+	 * Drives the "addressed" relationship edge from speaker → target.
+	 */
+	addressedTo?: string[];
 }
 
 export interface MessageHandlerResult {
