@@ -1,10 +1,10 @@
-import type { ElizaConfig } from "@elizaos/agent";
-import { isPlainObject } from "@elizaos/shared";
+import { isPlainObject } from "../type-guards";
 import {
   parseConfigPath,
   setConfigValueAtPath,
   unsetConfigValueAtPath,
 } from "./config-paths";
+import type { ElizaConfig } from "./types.eliza";
 
 type OverrideTree = Record<string, unknown>;
 

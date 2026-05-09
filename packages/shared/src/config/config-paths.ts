@@ -1,4 +1,4 @@
-import { isPlainObject } from "@elizaos/shared";
+import { isPlainObject } from "../type-guards";
 
 type PathNode = Record<string, unknown>;
 
