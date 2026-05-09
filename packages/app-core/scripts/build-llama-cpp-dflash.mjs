@@ -325,9 +325,67 @@ template [[host_name("kernel_set_rows_turbo4_i32")]] kernel set_rows_turbo4_t ke
   }
 }
 
+// DRAFT: copies repo-local Vulkan compute shaders into the fork's source tree
+// so a custom build can experiment with the turbo3 / turbo4 / turbo3_tcq
+// kernel ports under local-inference/kernels/vulkan/. Default OFF — the user
+// must set ELIZA_DFLASH_PATCH_VULKAN_KERNELS=1 to opt in for hardware testing.
+// See local-inference/kernels/README.md.
+function patchVulkanKernels(cacheDir) {
+  if (process.env.ELIZA_DFLASH_PATCH_VULKAN_KERNELS !== "1") return;
+  const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
+  const srcDir = path.join(repoRoot, "local-inference", "kernels", "vulkan");
+  if (!fs.existsSync(srcDir)) {
+    console.warn(`[dflash-build] patchVulkanKernels: ${srcDir} missing, skipping`);
+    return;
+  }
+  const dstDir = path.join(cacheDir, "ggml", "src", "ggml-vulkan", "vulkan-shaders");
+  if (!fs.existsSync(dstDir)) {
+    console.warn(`[dflash-build] patchVulkanKernels: ${dstDir} missing in fork, skipping`);
+    return;
+  }
+  for (const name of ["turbo3.comp", "turbo4.comp", "turbo3_tcq.comp"]) {
+    const src = path.join(srcDir, name);
+    if (!fs.existsSync(src)) continue;
+    fs.copyFileSync(src, path.join(dstDir, name));
+  }
+  console.log(
+    "[dflash-build] DRAFT patchVulkanKernels applied — kernels NOT validated on hardware",
+  );
+}
+
+// DRAFT: copies the repo-local Metal turbo3 / turbo3_tcq shader sources into
+// the fork. Default OFF — set ELIZA_DFLASH_PATCH_METAL_TURBO3=1 to opt in.
+// patchMetalTurbo4 above is unrelated and always runs in metal builds.
+function patchMetalTurbo3Tcq(cacheDir) {
+  if (process.env.ELIZA_DFLASH_PATCH_METAL_TURBO3 !== "1") return;
+  const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
+  const srcDir = path.join(repoRoot, "local-inference", "kernels", "metal");
+  if (!fs.existsSync(srcDir)) {
+    console.warn(`[dflash-build] patchMetalTurbo3Tcq: ${srcDir} missing, skipping`);
+    return;
+  }
+  const dstDir = path.join(cacheDir, "ggml", "src", "ggml-metal");
+  if (!fs.existsSync(dstDir)) {
+    console.warn(`[dflash-build] patchMetalTurbo3Tcq: ${dstDir} missing in fork, skipping`);
+    return;
+  }
+  for (const name of ["turbo3.metal", "turbo3_tcq.metal"]) {
+    const src = path.join(srcDir, name);
+    if (!fs.existsSync(src)) continue;
+    fs.copyFileSync(src, path.join(dstDir, name));
+  }
+  console.log(
+    "[dflash-build] DRAFT patchMetalTurbo3Tcq applied — kernels NOT validated on hardware",
+  );
+}
+
 function applyForkPatches(cacheDir, backend) {
   if (backend === "metal") {
     patchMetalTurbo4(cacheDir);
+    patchMetalTurbo3Tcq(cacheDir);
+  }
+  if (backend === "vulkan") {
+    patchVulkanKernels(cacheDir);
   }
 }
 
