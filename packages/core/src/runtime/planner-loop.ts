@@ -401,6 +401,18 @@ export async function runPlannerLoop(
 			};
 		}
 
+		// Single-use semantics: the captured `lastPlannerExplicitMessageToUser`
+		// is only valid for the immediately-following tool execution. If the
+		// gate withheld and we're about to run the evaluator, the message is no
+		// longer "fresh planner intent for the current trajectory state" —
+		// drop it so subsequent iterations don't fire the gate with a pre-tool
+		// message after the evaluator has already intervened. (Discovered via
+		// review of the multi-tool NEXT_RECOMMENDED drain scenario: planner
+		// queues [A, B] with messageToUser="X"; A runs; evaluator says
+		// NEXT_RECOMMENDED; B runs and drains the queue; without this reset
+		// the gate would fire with the stale "X".)
+		lastPlannerExplicitMessageToUser = undefined;
+
 		const evaluator = await evaluateTrajectory(params, trajectory, iteration);
 		trajectory.evaluatorOutputs.push(evaluator);
 		trajectory.context = appendEvaluationEvent({
@@ -1897,8 +1909,10 @@ function latestToolResultText(
  * gets the entry, and the loop's return value still carries `evaluator` in the
  * shape consumers (`subPlannerResultToPlannerToolResult` in `services/message.ts`)
  * read — `success` and `messageToUser`. Recorder stage entries for "evaluation"
- * are NOT emitted in the gated case; the recorder timeline shows tool stages
- * only for that iteration.
+ * ARE emitted in the gated case via `recordGatedTrajectoryEvaluationStage`; those
+ * stages carry `gated: true` / `llmCallSkipped: true` / `reason: "explicit_terminal_reply"`
+ * and no `model` block, so replay tools can distinguish them from
+ * model-produced evaluations.
  *
  * Cost win: roughly 50% of LLM calls on "tool-then-explicit-reply" turns where
  * the planner committed a `messageToUser` field at plan-time. Native-mode

@@ -751,6 +751,75 @@ describe("v5 planner loop — evaluator gate", () => {
 		expect(evaluate).toHaveBeenCalled();
 	});
 
+	it("WITHHOLDS on multi-tool drain after NEXT_RECOMMENDED — stale planner message is not consumed", async () => {
+		// Regression for the multi-tool NEXT_RECOMMENDED scenario surfaced in
+		// review (#7514, greptile-apps[bot]):
+		//
+		// 1. Planner returns [A, B] with messageToUser="X". The captured
+		//    `lastPlannerExplicitMessageToUser` is "X".
+		// 2. A executes successfully. Queue still has B → gate withholds.
+		// 3. Evaluator decides NEXT_RECOMMENDED → loop continues without
+		//    re-calling the planner; B remains queued.
+		// 4. B executes successfully. Queue drains.
+		// 5. Without single-use reset, the gate would now fire using the
+		//    stale "X" — a message composed before the planner saw any tool
+		//    results, even though the evaluator explicitly decided a second
+		//    round of execution was needed.
+		//
+		// The fix resets `lastPlannerExplicitMessageToUser` to undefined
+		// after the gate withholds (right before `evaluateTrajectory`), so
+		// any iteration that doesn't re-call the planner has no message to
+		// consume.
+		const runtime = {
+			useModel: plannerJsonWith({
+				messageToUser: "Pre-execution message — should not survive evaluator NEXT_RECOMMENDED.",
+				toolCalls: [
+					{ name: "LOOKUP", args: {} },
+					{ name: "FOLLOW_UP", args: {} },
+				],
+			}),
+		};
+		const executeToolCall = vi.fn(async () => ({ success: true, text: "ok" }));
+		// Evaluator says NEXT_RECOMMENDED on the first call (queue not yet drained,
+		// recommend B), then FINISH on the second call (B has run, queue drained).
+		// Critically: the second evaluator call must HAPPEN — proving the gate
+		// did not consume the stale planner messageToUser after B drained.
+		let evalCallCount = 0;
+		const evaluate = vi.fn(async ({ trajectory }) => {
+			evalCallCount++;
+			if (evalCallCount === 1) {
+				return {
+					success: true,
+					decision: "NEXT_RECOMMENDED" as const,
+					thought: "Run the next queued tool.",
+					recommendedToolCallId: trajectory.plannedQueue[0]?.id,
+				};
+			}
+			return {
+				success: true,
+				decision: "FINISH" as const,
+				thought: "Real evaluator decision after both tools ran.",
+				messageToUser: "Real evaluator-composed reply.",
+			};
+		});
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		// Both tools ran.
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		// Evaluator was called twice — proving the gate did NOT short-circuit
+		// after the second tool drained the queue using the stale message.
+		expect(evaluate).toHaveBeenCalledTimes(2);
+		// The final message is the evaluator's, not the stale planner pre-execution one.
+		expect(result.finalMessage).toBe("Real evaluator-composed reply.");
+		expect(result.finalMessage).not.toContain("Pre-execution message");
+	});
+
 	it("WITHHOLDS when planner produced no messageToUser — evaluator IS called", async () => {
 		const runtime = {
 			useModel: plannerJsonWith({
