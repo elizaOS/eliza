@@ -1,6 +1,24 @@
-// Override CONNECTOR_IDS to include App-local connectors.
-// The wildcard re-export above is shadowed by this explicit named export.
-import { CONNECTOR_IDS as _upstreamConnectorIds } from "@elizaos/agent";
+// CYCLE BREAK: previously imported CONNECTOR_IDS from `@elizaos/agent`,
+// creating an agent ↔ shared ESM cycle that broke node module resolution
+// at bench-server boot. Inline the upstream id list so shared has its
+// own canonical copy. Keep in sync with `packages/agent/src/config/schema.ts`
+// when new connectors are added there.
+const _upstreamConnectorIds = [
+  "bluebubbles",
+  "telegram",
+  "telegramAccount",
+  "discord",
+  "discordLocal",
+  "slack",
+  "twitter",
+  "whatsapp",
+  "signal",
+  "imessage",
+  "farcaster",
+  "lens",
+  "msteams",
+  "feishu",
+] as const;
 
 const ELIZA_COMPAT_CONNECTOR_IDS = ["telegramAccount"] as const;
 /** App-local connectors not present in upstream @elizaos/agent. */
