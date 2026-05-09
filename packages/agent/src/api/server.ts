@@ -209,6 +209,7 @@ import {
   DISABLED_TRIGGER_INTERVAL_MS,
   normalizeTriggerDraft,
 } from "../triggers/scheduling.js";
+import { deployTextTriggerWorkflow } from "../triggers/text-to-workflow.js";
 import { parseClampedInteger } from "../utils/number-parsing.js";
 import { handleAccountsRoutes } from "./accounts-routes.js";
 import { handleAgentAdminRoutes } from "./agent-admin-routes.js";
@@ -1924,6 +1925,7 @@ async function handleRequest(
     buildTriggerConfig,
     buildTriggerMetadata,
     normalizeTriggerDraft,
+    deployTextTriggerWorkflow,
     DISABLED_TRIGGER_INTERVAL_MS,
     TRIGGER_TASK_NAME,
     TRIGGER_TASK_TAGS: [...TRIGGER_TASK_TAGS],

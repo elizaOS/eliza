@@ -338,7 +338,10 @@ export function buildTriggerDedupeKey(parts: {
   kind?: TriggerKind;
   workflowId?: string;
 }): string {
-  const effectiveKind: TriggerKind = parts.kind ?? "text";
+  // Phase 2E: every persisted trigger is `kind: "workflow"`. Stale
+  // `kind: "text"` records are tolerated only on read (legacy hash) until
+  // the boot migration rewrites them.
+  const effectiveKind: TriggerKind = parts.kind ?? "workflow";
   const normalizedParts = [
     parts.triggerType,
     normalizeText(parts.instructions).toLowerCase(),
