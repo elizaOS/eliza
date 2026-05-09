@@ -19,8 +19,10 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { createRuntimeScheduledTaskRunner } from "../lifeops/scheduled-task/runtime-wiring.js";
+import { handleEntityRoutes } from "./entities.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { handleLifeOpsRoutes } from "./lifeops-routes.js";
+import { handleRelationshipRoutes } from "./relationships.js";
 import {
   makeScheduledTasksRouteHandler,
   SCHEDULED_TASKS_ROUTE_PATHS,
@@ -379,6 +381,14 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/features/toggle" },
   // Browser extension self-registration.
   { type: "POST", path: "/api/lifeops/browser/register" },
+  // W1-E knowledge-graph: entities + relationships.
+  { type: "GET", path: "/api/lifeops/entities" },
+  { type: "POST", path: "/api/lifeops/entities" },
+  { type: "GET", path: "/api/lifeops/entities/resolve" },
+  { type: "POST", path: "/api/lifeops/entities/merge" },
+  { type: "GET", path: "/api/lifeops/relationships" },
+  { type: "POST", path: "/api/lifeops/relationships" },
+  { type: "POST", path: "/api/lifeops/relationships/observe" },
 ];
 
 const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
@@ -440,6 +450,13 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/occurrences/:id/snooze" },
   // /api/lifeops/website-access/callbacks/:key/resolve
   { type: "POST", path: "/api/lifeops/website-access/callbacks/:key/resolve" },
+  // W1-E knowledge graph dynamic routes.
+  { type: "GET", path: "/api/lifeops/entities/:id" },
+  { type: "PATCH", path: "/api/lifeops/entities/:id" },
+  { type: "POST", path: "/api/lifeops/entities/:id/identities" },
+  { type: "GET", path: "/api/lifeops/relationships/:id" },
+  { type: "PATCH", path: "/api/lifeops/relationships/:id" },
+  { type: "POST", path: "/api/lifeops/relationships/:id/retire" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -575,6 +592,8 @@ function lifeOpsRouteHandler(): PluginRouteHandler {
       httpRes,
       (runtime as AgentRuntime) ?? null,
     );
+    if (await handleEntityRoutes(ctx)) return;
+    if (await handleRelationshipRoutes(ctx)) return;
     await handleLifeOpsRoutes(ctx);
   };
 }
