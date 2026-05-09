@@ -35,6 +35,7 @@ const pluginComputerUseSrc = path.join(
   monorepoRoot,
   "plugins/plugin-computeruse/src",
 );
+const pluginDiscordRoot = path.join(monorepoRoot, "plugins/plugin-discord");
 const pluginElizaCloudSrc = path.join(
   monorepoRoot,
   "plugins/plugin-elizacloud",
@@ -212,6 +213,10 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-computeruse$/,
         replacement: path.join(pluginComputerUseSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-discord$/,
+        replacement: path.join(pluginDiscordRoot, "index.ts"),
       },
       {
         find: /^@elizaos\/plugin-elizacloud$/,
