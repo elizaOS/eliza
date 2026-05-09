@@ -42,7 +42,7 @@
   "scripts": {
     "clean": "rm -rf dist",
     "prepublishOnly": "bun run build",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc --noCheck -p tsconfig.build.json",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

@@ -36,4 +36,3 @@ export {
   type BrowserCaptureConfig,
 } from "./workspace/browser-capture.js";
 export * from "./workspace/index.js";
-export * from "./workspace.js";

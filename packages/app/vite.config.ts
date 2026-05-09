@@ -1181,6 +1181,16 @@ export default defineConfig({
       // Contains native-only pty-state-capture / pty-console imports; skip pre-bundling.
       "@elizaos/plugin-agent-orchestrator",
       "pty-console",
+      // chalk + drizzle-orm: Node-only deps that never run in the
+      // renderer. Excluded from dep-optimisation so the
+      // nativeModuleStubPlugin can replace them at resolve-time with
+      // browser-safe Proxy stubs (otherwise rolldown emits a bare
+      // `import "chalk"` that the browser can't resolve).
+      "chalk",
+      "drizzle-orm",
+      "drizzle-orm/pg-core",
+      "drizzle-orm/pglite",
+      "drizzle-orm/neon-http",
       // Built-in secrets live in @elizaos/core features; Vite must not externalize them as a separate package.
       // Node-only HTTP client — crashes in browser, stub via nativeModuleStubPlugin
       "undici",
@@ -1228,16 +1238,11 @@ export default defineConfig({
             "electron",
             "node-llama-cpp",
             "pty-manager",
-            // Lazy-imported only by sql-compat's runtime repair path (server-side
-            // database column reconciliation). Never reached from the browser
-            // bundle, but rolldown's static analyzer still tries to resolve the
-            // dynamic import. Externalising prevents resolution; the import will
-            // throw at runtime if the repair path ever runs in the renderer
-            // (which it shouldn't — that code is database-server-only).
-            "drizzle-orm",
-            // chalk is used only by @elizaos/shared's terminal theme helpers,
-            // which never run in the browser. Same rationale as drizzle-orm.
-            "chalk",
+            // chalk + drizzle-orm intentionally NOT externalised here:
+            // marking them external leaves a bare ESM specifier in the
+            // output bundle (e.g. `import "chalk"`), which the browser
+            // can't resolve. They are stubbed at resolve-time by
+            // nativeModuleStubPlugin instead.
           ].includes(id)
         )
           return true;

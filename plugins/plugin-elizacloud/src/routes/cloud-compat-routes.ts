@@ -244,9 +244,11 @@ export async function handleCloudCompatRoute(
 
   // /api/cloud/compat/* → /api/compat/*  (existing mapping)
   // /api/cloud/v1/*    → /api/v1/*       (eliza v1 endpoints, e.g. pairing-token)
-  const compatPath = isV1Route
-    ? pathname.slice("/api/cloud".length)
-    : pathname.replace("/api/cloud", "/api");
+  // Both branches strip the leading `/api/cloud` and re-prefix `/api`. The
+  // earlier v1 branch used `.slice("/api/cloud".length)` which left
+  // `/v1/...` (no `/api/` prefix), causing upstream to return 405 for
+  // valid POSTs to e.g. /api/v1/app/agents/{id}/provision.
+  const compatPath = pathname.replace("/api/cloud", "/api");
   const fullUrl = req.url ?? pathname;
   const qsIndex = fullUrl.indexOf("?");
   const queryString = qsIndex >= 0 ? fullUrl.slice(qsIndex) : "";
