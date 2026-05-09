@@ -39,8 +39,7 @@ export async function executeSkill(rpcUrl: string, privateKey: string, chainId: 
   }
 
 
-  await sendAndTrack({ to: '0x000000000000000000000000000000000000dEaD' as Address, value: parseEther('0.001') });
-  await sendAndTrack({ to: account.address, value: parseEther('0.0001') });
+  await sendAndTrack({ to: '0x0000000000000000000000000000000000000008' as Address, data: '0x' as Hex });
 
 
   return JSON.stringify({ results, error: null });

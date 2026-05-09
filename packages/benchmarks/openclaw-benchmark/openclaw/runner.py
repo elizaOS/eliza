@@ -27,10 +27,31 @@ from .scoring import score_episode, format_score_summary
 
 # Configuration
 SCENARIOS_DIR = Path(__file__).parent / "scenarios"
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-DEFAULT_MODEL = os.environ.get("GROQ_MODEL", "moonshotai/kimi-k2-instruct")
+DEFAULT_MODEL = (
+    os.environ.get("BENCHMARK_MODEL_NAME")
+    or os.environ.get("GROQ_MODEL")
+    or "moonshotai/kimi-k2-instruct"
+)
+DEFAULT_BASE_URL = (
+    os.environ.get("OPENAI_BASE_URL")
+    or "https://api.groq.com/openai/v1"
+)
 API_TIMEOUT = 120
 MAX_STEPS = 15
+
+
+def _resolve_api_key() -> Optional[str]:
+    """Pick the API key to use based on the configured OpenAI-compatible endpoint.
+
+    The orchestrator sets OPENAI_API_KEY (and OPENAI_BASE_URL) for any
+    OpenAI-compatible provider — cerebras, openrouter, vllm, openai. Standalone
+    invocations may set GROQ_API_KEY for the legacy Groq path.
+    """
+    return (
+        os.environ.get("OPENAI_API_KEY")
+        or os.environ.get("CEREBRAS_API_KEY")
+        or os.environ.get("GROQ_API_KEY")
+    )
 
 
 class BenchmarkRunner:
@@ -41,11 +62,16 @@ class BenchmarkRunner:
         model: str = DEFAULT_MODEL,
         api_key: Optional[str] = None,
         use_docker: bool = False,
+        base_url: Optional[str] = None,
     ):
         self.model = model
-        self.api_key = api_key or GROQ_API_KEY
+        self.api_key = api_key or _resolve_api_key()
         if not self.api_key:
-            raise ValueError("API key required. Set GROQ_API_KEY environment variable.")
+            raise ValueError(
+                "API key required. Set OPENAI_API_KEY (recommended), CEREBRAS_API_KEY, "
+                "or GROQ_API_KEY in the environment."
+            )
+        self.base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
 
         self.sandbox_config = SandboxConfig(use_docker=use_docker)
         self.tool_calls: list[dict] = []
@@ -80,7 +106,7 @@ class BenchmarkRunner:
         }
 
         response = httpx.post(
-            "https://api.groq.com/openai/v1/chat/completions",
+            f"{self.base_url}/chat/completions",
             headers=headers,
             json=payload,
             timeout=API_TIMEOUT,
@@ -293,34 +319,32 @@ class BenchmarkRunner:
 
     def _build_system_prompt(self) -> str:
         """Build the system prompt with tool instructions."""
-        return """You are an expert software developer helping to complete coding tasks.
+        return """You are an expert software developer completing coding tasks in a sandbox.
+
+You MUST take action by emitting tool calls. Describing what you "will do" without
+emitting <tool_call> blocks counts as zero work and the task will fail.
 
 AVAILABLE TOOLS:
-- exec: Run shell commands
-  {"tool": "exec", "args": {"command": "npm init -y"}}
+- exec: Run shell commands (npm, git, mkdir, etc.)
+  <tool_call>{"tool": "exec", "args": {"command": "git init"}}</tool_call>
 
-- write: Write a file
-  {"tool": "write", "args": {"path": "src/index.ts", "content": "// code here"}}
+- write: Create or overwrite a file (parent directories are created automatically)
+  <tool_call>{"tool": "write", "args": {"path": "src/index.ts", "content": "// code"}}</tool_call>
 
-- read: Read a file
-  {"tool": "read", "args": {"path": "package.json"}}
+- read: Read an existing file
+  <tool_call>{"tool": "read", "args": {"path": "package.json"}}</tool_call>
 
-To use a tool, format your response with:
-<tool_call>
-{"tool": "tool_name", "args": {"key": "value"}}
-</tool_call>
-
-You can make multiple tool calls in one response. After tool results, continue
-working until the task is complete.
-
-IMPORTANT GUIDELINES:
-1. Create actual working code, not just descriptions
-2. Use proper error handling
-3. Follow TypeScript/JavaScript best practices
-4. Test your code if possible
-5. Keep files organized (src/, tests/, etc.)
-
-When the task is complete, provide a final summary without tool calls."""
+RULES:
+1. Every turn must contain at least one <tool_call> block until the task is fully done.
+2. Emit tool calls as raw text in your response, exactly like the examples above —
+   one JSON object per <tool_call>...</tool_call> block. Multiple blocks per turn
+   are allowed and encouraged.
+3. Do NOT wrap tool calls in markdown fences. Do NOT use any other tag name.
+4. Create the actual files and run the actual commands the task requires.
+   "I will create X" without a corresponding write/exec call is a failure.
+5. Only emit a final summary (no tool calls) once every requirement is satisfied.
+6. Never use destructive shell patterns (rm -rf, sudo, chmod 777, curl | sh).
+"""
 
 
 def main():

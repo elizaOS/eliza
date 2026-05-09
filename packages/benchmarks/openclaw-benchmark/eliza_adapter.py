@@ -274,13 +274,27 @@ Scoring modes:
 
     # Run benchmark
     if args.mode == "execution":
-        # Use the new execution-based runner
-        api_key = os.environ.get("GROQ_API_KEY")
+        # Use the new execution-based runner. Accepts any OpenAI-compatible
+        # provider via OPENAI_API_KEY + OPENAI_BASE_URL (cerebras, openrouter,
+        # vllm, openai) and falls back to legacy GROQ_API_KEY.
+        api_key = (
+            os.environ.get("OPENAI_API_KEY")
+            or os.environ.get("CEREBRAS_API_KEY")
+            or os.environ.get("GROQ_API_KEY")
+        )
         if not api_key:
-            print("Error: GROQ_API_KEY environment variable required for execution mode")
+            print(
+                "Error: OPENAI_API_KEY (or CEREBRAS_API_KEY / GROQ_API_KEY) "
+                "is required for execution mode",
+            )
             sys.exit(1)
 
-        model = args.model or os.environ.get("GROQ_MODEL", "moonshotai/kimi-k2-instruct")
+        model = (
+            args.model
+            or os.environ.get("BENCHMARK_MODEL_NAME")
+            or os.environ.get("GROQ_MODEL")
+            or "moonshotai/kimi-k2-instruct"
+        )
 
         try:
             runner = BenchmarkRunner(model=model, api_key=api_key, use_docker=args.docker)
