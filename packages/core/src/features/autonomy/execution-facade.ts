@@ -11,6 +11,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { createUniqueUuid } from "../../entities.ts";
 import { executePlannedToolCall } from "../../runtime/execute-planned-tool-call.ts";
+import { runPostTurnEvaluators } from "../../services/evaluator.ts";
 import type {
 	ActionResult,
 	AgentContext,
@@ -212,6 +213,10 @@ export async function runAutonomyPostResponse(
 			responseContent.actions[0]?.toUpperCase() !== "IGNORE" &&
 			responseContent.actions[0]?.toUpperCase() !== "STOP");
 
+	await runPostTurnEvaluators(runtime, autonomousMessage, state, {
+		didRespond,
+		responses: responseMessages,
+	});
 	await runtime.runActionsByMode("ALWAYS_AFTER", autonomousMessage, state, {
 		didRespond,
 		responses: responseMessages,

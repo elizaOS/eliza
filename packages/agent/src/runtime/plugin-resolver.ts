@@ -17,14 +17,17 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { logger, type Plugin } from "@elizaos/core";
-import { formatError, isMobilePlatform } from "@elizaos/shared";
-
-import { type ElizaConfig, saveElizaConfig } from "../config/config.js";
-import { resolveStateDir, resolveUserPath } from "../config/paths.js";
 import {
   type ApplyPluginAutoEnableParams,
   applyPluginAutoEnable,
-} from "../config/plugin-auto-enable.js";
+  formatError,
+  isMobilePlatform,
+} from "@elizaos/shared";
+
+import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types.js";
+import { type ElizaConfig, saveElizaConfig } from "../config/config.js";
+import { resolveStateDir, resolveUserPath } from "../config/paths.js";
+import { evmAutoEnableReasonFromCapability } from "../services/evm-signing-capability.js";
 import type { PluginInstallRecord } from "../config/types.eliza.js";
 import { diagnoseNoAIProvider } from "../services/version-compat.js";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
@@ -927,6 +930,8 @@ export async function resolvePlugins(
     config,
     env: process.env,
     isNativePlatform: isMobilePlatform(),
+    subscriptionProviderMap: SUBSCRIPTION_PROVIDER_MAP,
+    evmAutoEnableReason: evmAutoEnableReasonFromCapability,
   } satisfies ApplyPluginAutoEnableParams);
   if (autoEnableResult.changes.length > 0) {
     logger.info(

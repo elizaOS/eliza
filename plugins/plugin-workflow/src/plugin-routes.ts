@@ -1,16 +1,7 @@
 /**
- * n8n route plugin — registers `/api/workflow/*` route handlers with the
- * elizaOS runtime plugin route system.
- *
- * Migrated from packages/app-core/src/api/n8n-routes.ts. All routes use
- * `rawPath: true` to preserve the legacy `/api/workflow/*` paths without a
- * plugin-name prefix.
- *
- * The existing `n8n-workflow` plugin (`./plugin.ts`) ships actions,
- * services, providers, and schema. This file ships only the rawPath route
- * adapters used by the app-core HTTP server, so the two plugins stay
- * narrowly scoped: one for the runtime/agent surface, one for the
- * compatibility HTTP routes.
+ * Workflow route plugin — registers `/api/workflow/*` route handlers with the
+ * elizaOS runtime plugin route system. The handlers run in-process against
+ * plugin-workflow services; there is no external workflow server or sidecar.
  */
 
 import { loadElizaConfig } from '@elizaos/agent/config';
@@ -19,11 +10,11 @@ import type { CompatRuntimeState } from '@elizaos/app-core';
 import { sendJson } from '@elizaos/app-core';
 import type { Plugin, Route } from '@elizaos/core';
 import type http from 'node:http';
-import { handleWorkflowRoutes, type WorkflowRouteContext } from './routes/n8n-routes';
+import { handleWorkflowRoutes, type WorkflowRouteContext } from './routes/workflow-routes';
 
 type AnyRuntime = WorkflowRouteContext['runtime'];
 
-interface WorkflowCompatState extends CompatRuntimeState {
+interface WorkflowCompatState {
   current: AnyRuntime;
 }
 
@@ -39,7 +30,7 @@ function makeWorkflowHandler() {
     const method = (httpReq.method ?? 'GET').toUpperCase();
     const state = buildState(runtime);
 
-    if (!(await ensureRouteAuthorized(httpReq, httpRes, state))) {
+    if (!(await ensureRouteAuthorized(httpReq, httpRes, state as unknown as CompatRuntimeState))) {
       return;
     }
 
@@ -59,7 +50,7 @@ function makeWorkflowHandler() {
 
 const workflowHandler = makeWorkflowHandler();
 
-const n8nRouteList: Route[] = [
+const workflowRouteList: Route[] = [
   // Status surface
   {
     type: 'GET',
@@ -67,10 +58,10 @@ const n8nRouteList: Route[] = [
     rawPath: true,
     handler: workflowHandler,
   },
-  // Sidecar lifecycle
+  // Runtime lifecycle/status compatibility
   {
     type: 'POST',
-    path: '/api/workflow/sidecar/start',
+    path: '/api/workflow/runtime/start',
     rawPath: true,
     handler: workflowHandler,
   },
@@ -90,6 +81,18 @@ const n8nRouteList: Route[] = [
   {
     type: 'POST',
     path: '/api/workflow/workflows/generate',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'POST',
+    path: '/api/workflow/workflows/resolve-clarification',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'GET',
+    path: '/api/workflow/workflows/:id',
     rawPath: true,
     handler: workflowHandler,
   },
@@ -119,11 +122,11 @@ const n8nRouteList: Route[] = [
   },
 ];
 
-export const n8nWorkflowRoutePlugin: Plugin = {
+export const workflowRoutePlugin: Plugin = {
   name: '@elizaos/plugin-workflow:routes',
   description:
-    'n8n workflow routes — status, sidecar lifecycle, and workflow CRUD proxy (extracted from app-core/server.ts)',
-  routes: n8nRouteList,
+    'Workflow routes — in-process status, generation, CRUD, and lifecycle handlers.',
+  routes: workflowRouteList,
 };
 
-export default n8nWorkflowRoutePlugin;
+export default workflowRoutePlugin;

@@ -25,7 +25,7 @@ import {
   useState,
 } from "react";
 import type {
-  N8nConnectionMap,
+  WorkflowConnectionMap,
   WorkflowStatusResponse,
   WorkflowDefinition,
   WorkflowDefinitionNode,
@@ -158,7 +158,7 @@ function workflowToReactFlow(workflow: WorkflowDefinition | null): {
   }
 
   const edges: Edge[] = [];
-  const connections: N8nConnectionMap = workflow.connections ?? {};
+  const connections: WorkflowConnectionMap = workflow.connections ?? {};
   for (const [sourceName, outputMap] of Object.entries(connections)) {
     const sourceId = nameToId.get(sourceName);
     if (!sourceId) continue;

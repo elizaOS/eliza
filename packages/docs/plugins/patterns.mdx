@@ -778,7 +778,12 @@ const basicCapabilities = {
     // ... more providers
   ],
   services: [TaskService],
-  evaluators: [evaluators.reflectionEvaluator],
+  evaluators: [
+    evaluators.factMemoryEvaluator,
+    evaluators.relationshipEvaluator,
+    evaluators.identityEvaluator,
+    evaluators.successEvaluator,
+  ],
   events: {
     [EventType.MESSAGE_RECEIVED]: [messageReceivedHandler],
     [EventType.POST_GENERATED]: [postGeneratedHandler],

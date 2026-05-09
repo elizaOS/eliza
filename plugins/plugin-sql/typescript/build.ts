@@ -15,6 +15,7 @@ mkdirSync(DIST, { recursive: true });
 mkdirSync(join(DIST, "node"), { recursive: true });
 mkdirSync(join(DIST, "browser"), { recursive: true });
 mkdirSync(join(DIST, "cjs"), { recursive: true });
+mkdirSync(join(DIST, "drizzle"), { recursive: true });
 
 const nodeExternals = [
   "dotenv",
@@ -109,6 +110,14 @@ await writeFile(join(DIST, "cjs", "index.d.ts"), reexportNode);
 await writeFile(join(DIST, "cjs", "index.node.d.cts"), reexportNode);
 await writeFile(join(DIST, "index.d.ts"), reexportRoot);
 await writeFile(join(DIST, "index.js"), reexportRootRuntime);
+await writeFile(
+  join(DIST, "drizzle", "index.d.ts"),
+  `export { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, type SQL, sql } from 'drizzle-orm';\n`,
+);
+await writeFile(
+  join(DIST, "drizzle", "index.js"),
+  `export { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';\n`,
+);
 await appendFile(
   join(DIST, "index.node.d.ts"),
   `\nexport * from './schema/index';\nexport type { DrizzleDatabase } from './types';\n`

@@ -73,7 +73,7 @@ interface LlamaCppPluginLike {
   addListener: (
     event: string,
     listener: (data: TokenEventPayload) => void,
-  ) => Promise<PluginListenerHandle | void>;
+  ) => Promise<PluginListenerHandle | undefined>;
 }
 
 const CONTEXT_ID = 1;
@@ -249,24 +249,32 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
       this.loadedPath = null;
     }
 
+    const params: NativeContextParams & Record<string, unknown> = {
+      model: options.modelPath,
+      n_ctx: options.contextSize ?? 4096,
+      n_gpu_layers: options.useGpu === false ? 0 : 99,
+      n_threads: options.maxThreads ?? 0,
+      use_mmap: true,
+      ...(options.draftModelPath
+        ? {
+            draft_model: options.draftModelPath,
+            speculative_samples: options.speculativeSamples ?? 3,
+            mobile_speculative: options.mobileSpeculative ?? true,
+          }
+        : {}),
+      ...(options.draftContextSize
+        ? { n_ctx_draft: options.draftContextSize }
+        : {}),
+      ...(options.draftMin ? { draft_min: options.draftMin } : {}),
+      ...(options.draftMax ? { draft_max: options.draftMax } : {}),
+      ...(options.cacheTypeK ? { cache_type_k: options.cacheTypeK } : {}),
+      ...(options.cacheTypeV ? { cache_type_v: options.cacheTypeV } : {}),
+      ...(options.disableThinking ? { reasoning: false } : {}),
+    };
+
     await plugin.initContext({
       contextId: CONTEXT_ID,
-      params: {
-        model: options.modelPath,
-        n_ctx: options.contextSize ?? 4096,
-        n_gpu_layers: options.useGpu === false ? 0 : 99,
-        n_threads: options.maxThreads ?? 0,
-        use_mmap: true,
-        ...(options.draftModelPath
-          ? {
-              draft_model: options.draftModelPath,
-              speculative_samples: options.speculativeSamples ?? 3,
-              mobile_speculative: options.mobileSpeculative ?? true,
-            }
-          : {}),
-        ...(options.cacheTypeK ? { cache_type_k: options.cacheTypeK } : {}),
-        ...(options.cacheTypeV ? { cache_type_v: options.cacheTypeV } : {}),
-      },
+      params,
     });
     this.loadedPath = options.modelPath;
   }
@@ -400,8 +408,8 @@ export function registerCapacitorLlamaLoader(runtime: {
 }): void {
   if (typeof runtime.registerService !== "function") return;
   runtime.registerService("localInferenceLoader", {
-    async loadModel(args: { modelPath: string }): Promise<void> {
-      await capacitorLlama.load({ modelPath: args.modelPath });
+    async loadModel(args: LoadOptions): Promise<void> {
+      await capacitorLlama.load(args);
     },
     async unloadModel(): Promise<void> {
       await capacitorLlama.unload();

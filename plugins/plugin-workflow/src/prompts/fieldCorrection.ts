@@ -1,4 +1,4 @@
-export const FIELD_CORRECTION_SYSTEM_PROMPT = `Fix the n8n field reference to use a valid field path.
+export const FIELD_CORRECTION_SYSTEM_PROMPT = `Fix the p1p3s field reference to use a valid field path.
 
 You will receive:
 1. A $json reference with an invalid field

@@ -3,8 +3,8 @@ import {
 	postAction,
 } from "../features/advanced-capabilities/actions/index";
 import {
-	reflectionEvaluator,
-	skillEvaluator,
+	reflectionItems,
+	skillItems,
 } from "../features/advanced-capabilities/evaluators/index";
 import {
 	contactsProvider,
@@ -48,12 +48,8 @@ export const relationshipsPlugin: Plugin = {
 		// MESSAGE and POST use umbrella `operation`/`op` parameters instead of
 		// registering per-operation leaves. The planner unwraps those compact
 		// calls at benchmark/report time.
-		// ALWAYS_AFTER actions (post-message work; replaces legacy evaluators).
-		// reflectionEvaluator extracts facts, relationships, platform
-		// identities, and task completion in a single LLM call.
-		reflectionEvaluator,
-		skillEvaluator,
 	],
+	evaluators: [...reflectionItems, ...skillItems],
 	providers: [
 		contactsProvider,
 		factsProvider,

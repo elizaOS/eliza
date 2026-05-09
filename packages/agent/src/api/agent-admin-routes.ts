@@ -21,6 +21,13 @@ type AgentStateStatus =
 
 import type { AutonomousConfigLike } from "../types/config-like.js";
 
+async function importAppCoreRuntime(): Promise<Record<string, any>> {
+  const moduleId = "@elizaos/app-core";
+  return import(/* webpackIgnore: true */ moduleId) as Promise<
+    Record<string, any>
+  >;
+}
+
 function resolveDefaultAgentName(config: AutonomousConfigLike): string {
   const ui = config.ui as
     | { assistant?: { name?: string }; language?: string }
@@ -193,9 +200,7 @@ export async function handleAgentAdminRoutes(
       // → useCloudState reports cloud connected → user sees themselves still
       // logged in even though they just hit "Reset".
       try {
-        const { sharedVault } = await import(
-          "@elizaos/app-core"
-        );
+        const { sharedVault } = await importAppCoreRuntime();
         const vault = sharedVault();
         const cloudKeys = [
           "ELIZAOS_CLOUD_API_KEY",

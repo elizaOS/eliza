@@ -13,7 +13,14 @@ import type {
   WorkflowCredentialStoreApi,
   CredentialProviderResult,
 } from "../../src/types/index";
-import type { WorkflowApiClient } from "../../src/utils/api";
+
+interface CredentialApiClient {
+  createCredential(credential: {
+    name: string;
+    type: string;
+    data: Record<string, unknown>;
+  }): Promise<{ id: string }>;
+}
 
 function createMockCredStore(
   overrides?: Partial<WorkflowCredentialStoreApi>,
@@ -36,11 +43,11 @@ function createMockCredProvider(
   };
 }
 
-function createMockApiClient(overrides?: Partial<WorkflowApiClient>): WorkflowApiClient {
+function createMockApiClient(overrides?: Partial<CredentialApiClient>): CredentialApiClient {
   return {
     createCredential: mock(() =>
       Promise.resolve({
-        id: "n8n-cred-123",
+        id: "p1p3s-cred-123",
         name: "gmailOAuth2Api",
         type: "gmailOAuth2Api",
         createdAt: "2025-01-01T00:00:00Z",
@@ -48,10 +55,10 @@ function createMockApiClient(overrides?: Partial<WorkflowApiClient>): WorkflowAp
       }),
     ),
     ...overrides,
-  } as unknown as WorkflowApiClient;
+  } as unknown as CredentialApiClient;
 }
 
-const baseConfig: WorkflowPluginConfig = { apiKey: "key", host: "http://localhost" };
+const baseConfig: WorkflowPluginConfig = { apiKey: "embedded", host: "in-process" };
 const testTagName = "user:user-001";
 
 // ============================================================================
@@ -244,7 +251,7 @@ describe("resolveCredentials", () => {
   // External provider mode — credential_data
   // --------------------------------------------------------------------------
 
-  test("provider mode: creates n8n credential from credential_data", async () => {
+  test("provider mode: creates p1p3s credential from credential_data", async () => {
     const oauthData = {
       clientId: "goog-client-id",
       clientSecret: "goog-secret",
@@ -274,11 +281,11 @@ describe("resolveCredentials", () => {
       type: "gmailOAuth2Api",
       data: oauthData,
     });
-    expect(res.injectedCredentials.get("gmailOAuth2Api")).toBe("n8n-cred-123");
+    expect(res.injectedCredentials.get("gmailOAuth2Api")).toBe("p1p3s-cred-123");
     expect(res.missingConnections).toHaveLength(0);
   });
 
-  test("provider mode: caches n8n credential ID after creation", async () => {
+  test("provider mode: caches p1p3s credential ID after creation", async () => {
     const provider = createMockCredProvider(async () => ({
       status: "credential_data" as const,
       data: { access_token: "tok" },
@@ -300,7 +307,7 @@ describe("resolveCredentials", () => {
     expect(credStore.set).toHaveBeenCalledWith(
       "user-001",
       "gmailOAuth2Api",
-      "n8n-cred-123",
+      "p1p3s-cred-123",
     );
   });
 
@@ -332,7 +339,7 @@ describe("resolveCredentials", () => {
     }));
 
     const apiClient = createMockApiClient({
-      createCredential: mock(() => Promise.reject(new Error("n8n API down"))),
+      createCredential: mock(() => Promise.reject(new Error("workflow API down"))),
     });
 
     const res = await resolveCredentials(

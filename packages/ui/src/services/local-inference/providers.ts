@@ -97,7 +97,8 @@ const LOCAL_PROVIDER: ProviderDefinition = {
       const hasModel = entries.some(
         (e) => e.isFile() && e.name.toLowerCase().endsWith(".gguf"),
       );
-      if (!hasModel) return { enabled: false, reason: "No local model installed" };
+      if (!hasModel)
+        return { enabled: false, reason: "No local model installed" };
       const dflash = getDflashRuntimeStatus();
       return dflash.enabled
         ? { enabled: true, reason: "GGUF model installed; DFlash available" }
@@ -362,7 +363,7 @@ export const BUILT_IN_PROVIDERS: readonly ProviderDefinition[] = [
 ];
 
 function apiKeyOrLinkedAccountState(
-  providerId: "deepseek-api" | "zai-api" | "moonshot-api",
+  _providerId: "deepseek-api" | "zai-api" | "moonshot-api",
   envKeys: readonly string[],
 ): ProviderEnableState {
   const hasEnv = envKeys.some((key) => process.env[key]?.trim());

@@ -40,7 +40,7 @@ and re-checked by `scripts/jsonl_to_parquet.py:normalize_record`):
   `reply`, `tool_call`, `shell_command`, `mcp_tool_call`, `mcp_routing`,
   `scam_defense`, `mobile_action`, `agent_trace`, `reasoning_cot`,
   `dialogue_routing`, `claude_distill`, `n8n_workflow_generation`,
-  `reflection`, `reflection_evaluator`, ...
+  `reflection`, `post_turn_evaluator`, ...
 - `source_dataset` — origin slug (e.g. `scambench`, `hermes-fc-v1`,
   `discord-chat`, `synth-eliza-prompts`).
 - `license` — best-effort license string from the source.
@@ -86,7 +86,7 @@ reflection, and distill records use task-specific shapes.
 | `mobile_action`               | JSON planner envelope                                                                         |
 | `n8n_workflow_generation`     | JSON planner envelope; the workflow JSON rides under `actions[1].params.workflow`             |
 | `reflection`                  | JSON: `thought`, `quality_score: 0-100`, `strengths`, `improvements`, `learnings`             |
-| `reflection_evaluator`        | JSON: `thought`, `task_completed: bool`, `task_completion_reason`, `relationships[N]{sourceEntityId,targetEntityId,tags[M]}` |
+| `post_turn_evaluator`         | JSON: evaluator-section object keyed by active registered evaluator names |
 | `fact_extractor`              | RAW JSON: `{"ops":[{"op":"add_durable\|add_current\|strengthen\|decay\|contradict", ...}]}` — empty `{"ops":[]}` is a valid (and common) output. |
 | `summarization`               | JSON: `text`, `topics[N]`, `keyPoints[M]`                                                     |
 | `long_term_extraction`        | JSON: `memories[N]{category: episodic\|semantic\|procedural, content, confidence: >=0.85}` — empty `memories` block is the common case |

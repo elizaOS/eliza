@@ -1,5 +1,6 @@
-import { client, openExternalUrl } from "@elizaos/app-core";
+import { openExternalUrl } from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { vincentClient } from "./client";
 
 interface VincentStateParams {
   setActionNotice: (
@@ -24,7 +25,7 @@ export function useVincentState({ setActionNotice, t }: VincentStateParams) {
 
   const pollVincentStatus = useCallback(async () => {
     try {
-      const status = await client.vincentStatus();
+      const status = await vincentClient.vincentStatus();
       setVincentConnected(status.connected);
       setVincentConnectedAt(status.connectedAt);
       return status.connected;
@@ -50,7 +51,7 @@ export function useVincentState({ setActionNotice, t }: VincentStateParams) {
     setVincentLoginError(null);
 
     try {
-      const { authUrl } = await client.vincentStartLogin("Eliza");
+      const { authUrl } = await vincentClient.vincentStartLogin("Eliza");
       await openExternalUrl(authUrl);
 
       if (loginPollRef.current) clearInterval(loginPollRef.current);
@@ -101,7 +102,7 @@ export function useVincentState({ setActionNotice, t }: VincentStateParams) {
 
   const handleVincentDisconnect = useCallback(async () => {
     try {
-      await client.vincentDisconnect();
+        await vincentClient.vincentDisconnect();
       setVincentConnected(false);
       setVincentConnectedAt(null);
       setVincentLoginError(null);

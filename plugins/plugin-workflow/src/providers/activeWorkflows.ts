@@ -11,7 +11,7 @@ import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/index';
  */
 export const activeWorkflowsProvider: Provider = {
   name: 'ACTIVE_WORKFLOWS',
-  description: "User's active n8n workflows with IDs and descriptions",
+  description: "User's active workflows with IDs and descriptions",
   contexts: ['automation', 'connectors'],
   contextGate: { anyOf: ['automation', 'connectors'] },
   cacheScope: 'agent',
@@ -68,7 +68,7 @@ export const activeWorkflowsProvider: Provider = {
       };
     } catch (error) {
       logger.error(
-        { src: 'plugin:n8n-workflow:providers:active-workflows' },
+        { src: 'plugin:workflow:providers:active-workflows' },
         `Failed to get active workflows: ${error instanceof Error ? error.message : String(error)}`
       );
       return {

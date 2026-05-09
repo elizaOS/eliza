@@ -44,8 +44,7 @@ export interface SkillTrajectoryService {
 }
 
 export function parseJsonObject(raw: string): Record<string, unknown> | null {
-	const fenceMatch = raw.match(/```json\s*([\s\S]*?)\s*```/i);
-	const jsonText = fenceMatch ? fenceMatch[1] : raw.trim();
+	const jsonText = raw.trim();
 	if (!jsonText) return null;
 	let parsed: unknown;
 	try {

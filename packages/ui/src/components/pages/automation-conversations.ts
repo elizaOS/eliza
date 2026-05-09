@@ -99,7 +99,7 @@ export function buildWorkflowConversationMetadata(
 ): ConversationMetadata {
   return {
     scope: "automation-workflow",
-    automationType: "n8n_workflow",
+    automationType: "workflow",
     workflowId,
     workflowName,
     ...(bridgeConversationId
@@ -117,7 +117,7 @@ export function buildWorkflowDraftConversationMetadata(
 ): ConversationMetadata {
   return {
     scope: "automation-workflow-draft",
-    automationType: "n8n_workflow",
+    automationType: "workflow",
     draftId,
     ...(bridgeConversationId
       ? {

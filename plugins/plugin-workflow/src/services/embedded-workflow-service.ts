@@ -366,7 +366,7 @@ function createScheduleTriggerNode(): INodeType {
   return {
     description: {
       displayName: 'Schedule Trigger',
-      name: 'n8n-nodes-base.scheduleTrigger',
+      name: 'p1p3s-nodes-base.scheduleTrigger',
       group: ['trigger'],
       version: [1, 1.1, 1.2],
       description: 'Starts the workflow on a schedule.',
@@ -397,7 +397,7 @@ function createSetNode(): INodeType {
   return {
     description: {
       displayName: 'Edit Fields (Set)',
-      name: 'n8n-nodes-base.set',
+      name: 'p1p3s-nodes-base.set',
       group: ['transform'],
       version: [1, 2, 3, 3.1, 3.2, 3.3, 3.4],
       description: 'Sets values on the current item.',
@@ -495,7 +495,7 @@ function createHttpRequestNode(): INodeType {
   return {
     description: {
       displayName: 'HTTP Request',
-      name: 'n8n-nodes-base.httpRequest',
+      name: 'p1p3s-nodes-base.httpRequest',
       group: ['output'],
       version: [1, 2, 3, 4, 4.1, 4.2],
       description: 'Makes an HTTP request.',
@@ -637,7 +637,7 @@ function createManualTriggerNode(): INodeType {
   return {
     description: {
       displayName: 'Manual Trigger',
-      name: 'n8n-nodes-base.manualTrigger',
+      name: 'p1p3s-nodes-base.manualTrigger',
       group: ['trigger'],
       version: [1],
       description: 'Starts the workflow manually.',
@@ -659,7 +659,7 @@ function createWebhookNode(): INodeType {
   return {
     description: {
       displayName: 'Webhook',
-      name: 'n8n-nodes-base.webhook',
+      name: 'p1p3s-nodes-base.webhook',
       group: ['trigger'],
       version: [1, 2],
       description: 'Starts the workflow from an HTTP webhook.',
@@ -689,7 +689,7 @@ function createRespondToWebhookNode(): INodeType {
   return {
     description: {
       displayName: 'Respond to Webhook',
-      name: 'n8n-nodes-base.respondToWebhook',
+      name: 'p1p3s-nodes-base.respondToWebhook',
       group: ['output'],
       version: [1],
       description: 'Returns the current item as a webhook response.',
@@ -715,7 +715,7 @@ function createNoOpNode(): INodeType {
   return {
     description: {
       displayName: 'No Operation, do nothing',
-      name: 'n8n-nodes-base.noOp',
+      name: 'p1p3s-nodes-base.noOp',
       group: ['transform'],
       version: [1],
       description: 'Passes input data through unchanged.',
@@ -735,7 +735,7 @@ function createIfNode(): INodeType {
   return {
     description: {
       displayName: 'If',
-      name: 'n8n-nodes-base.if',
+      name: 'p1p3s-nodes-base.if',
       group: ['transform'],
       version: [1, 2],
       description: 'Routes items based on conditions.',
@@ -764,7 +764,7 @@ function createFilterNode(): INodeType {
   return {
     description: {
       displayName: 'Filter',
-      name: 'n8n-nodes-base.filter',
+      name: 'p1p3s-nodes-base.filter',
       group: ['transform'],
       version: [1, 2],
       description: 'Keeps items that match conditions.',
@@ -786,7 +786,7 @@ function createSwitchNode(): INodeType {
   return {
     description: {
       displayName: 'Switch',
-      name: 'n8n-nodes-base.switch',
+      name: 'p1p3s-nodes-base.switch',
       group: ['transform'],
       version: [1, 2, 3],
       description: 'Routes items to multiple outputs.',
@@ -818,7 +818,7 @@ function createMergeNode(): INodeType {
   return {
     description: {
       displayName: 'Merge',
-      name: 'n8n-nodes-base.merge',
+      name: 'p1p3s-nodes-base.merge',
       group: ['transform'],
       version: [1, 2, 3],
       description: 'Combines items from multiple inputs.',
@@ -840,7 +840,7 @@ function createSplitInBatchesNode(): INodeType {
   return {
     description: {
       displayName: 'Split In Batches',
-      name: 'n8n-nodes-base.splitInBatches',
+      name: 'p1p3s-nodes-base.splitInBatches',
       group: ['transform'],
       version: [1, 2, 3],
       description: 'Emits the next batch of items.',
@@ -861,7 +861,7 @@ function createWaitNode(): INodeType {
   return {
     description: {
       displayName: 'Wait',
-      name: 'n8n-nodes-base.wait',
+      name: 'p1p3s-nodes-base.wait',
       group: ['transform'],
       version: [1, 1.1],
       description: 'Pauses execution for a duration.',
@@ -889,7 +889,7 @@ function createDateTimeNode(): INodeType {
   return {
     description: {
       displayName: 'Date & Time',
-      name: 'n8n-nodes-base.dateTime',
+      name: 'p1p3s-nodes-base.dateTime',
       group: ['transform'],
       version: [1, 2],
       description: 'Adds date/time values to items.',
@@ -918,7 +918,7 @@ function createCryptoNode(): INodeType {
   return {
     description: {
       displayName: 'Crypto',
-      name: 'n8n-nodes-base.crypto',
+      name: 'p1p3s-nodes-base.crypto',
       group: ['transform'],
       version: [1],
       description: 'Hashes data.',
@@ -956,7 +956,7 @@ function createItemListsNode(): INodeType {
   return {
     description: {
       displayName: 'Item Lists',
-      name: 'n8n-nodes-base.itemLists',
+      name: 'p1p3s-nodes-base.itemLists',
       group: ['transform'],
       version: [1, 2, 3],
       description: 'Transforms item lists.',
@@ -998,7 +998,7 @@ async function runQuickJsCode(
     const $workflow = {};
     const $env = {};
     const console = { log() {}, warn() {}, error() {}, info() {} };
-    (function embeddedN8nCodeNode() {
+    (function embeddedWorkflowCodeNode() {
       ${jsCode}
     })()
   `;
@@ -1012,7 +1012,7 @@ function createCodeNode(): INodeType {
   return {
     description: {
       displayName: 'Code',
-      name: 'n8n-nodes-base.code',
+      name: 'p1p3s-nodes-base.code',
       group: ['transform'],
       version: [1, 2],
       description: 'Runs JavaScript in a QuickJS sandbox.',
@@ -1078,7 +1078,7 @@ class EmbeddedNodeTypes implements INodeTypes {
   getByNameAndVersion(nodeType: string): INodeType {
     const node = this.nodes.get(nodeType);
     if (!node) {
-      throw new Error(`Node type not available in embedded n8n runtime: ${nodeType}`);
+      throw new Error(`Node type not available in embedded workflow runtime: ${nodeType}`);
     }
     return node;
   }
@@ -1114,7 +1114,7 @@ export class EmbeddedWorkflowService extends Service {
   static override readonly serviceType = EMBEDDED_WORKFLOW_SERVICE_TYPE;
 
   override capabilityDescription =
-    'Feature-flagged embedded n8n workflow runtime for local plugin-owned workflow execution.';
+    'Feature-flagged embedded workflow runtime for local plugin-owned workflow execution.';
 
   private readonly scheduleHandles = new Map<string, ScheduleHandle[]>();
   private readonly nodeTypes = new EmbeddedNodeTypes();
@@ -1123,8 +1123,8 @@ export class EmbeddedWorkflowService extends Service {
   static async start(runtime: IAgentRuntime): Promise<EmbeddedWorkflowService> {
     const service = new EmbeddedWorkflowService(runtime);
     logger.info(
-      { src: 'plugin:n8n-workflow:embedded' },
-      'Embedded n8n service registered (lazy runtime load)'
+      { src: 'plugin:workflow:embedded' },
+      'Embedded workflow service registered (lazy runtime load)'
     );
     if (runtime.db) {
       await service.ensureSchema();
@@ -1162,7 +1162,7 @@ export class EmbeddedWorkflowService extends Service {
     const db = this.runtime.db;
     if (!db) {
       throw new Error(
-        'Database not available for EmbeddedWorkflowService. Embedded n8n requires plugin-sql/PGlite/Postgres persistence.'
+        'Database not available for EmbeddedWorkflowService. Embedded workflow requires plugin-sql/PGlite/Postgres persistence.'
       );
     }
     return db as NodePgDatabase;
@@ -1172,23 +1172,23 @@ export class EmbeddedWorkflowService extends Service {
     if (!this.schemaReady) {
       this.schemaReady = (async () => {
         const db = this.getDb();
-        await db.execute(sql`CREATE SCHEMA IF NOT EXISTS "n8n_workflow"`);
+        await db.execute(sql`CREATE SCHEMA IF NOT EXISTS "workflow"`);
         await db.execute(sql`
-          CREATE TABLE IF NOT EXISTS "n8n_workflow"."credential_mappings" (
+          CREATE TABLE IF NOT EXISTS "workflow"."credential_mappings" (
             "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             "user_id" text NOT NULL,
             "cred_type" text NOT NULL,
-            "n8n_credential_id" text NOT NULL,
+            "workflow_credential_id" text NOT NULL,
             "created_at" timestamp DEFAULT now() NOT NULL,
             "updated_at" timestamp DEFAULT now() NOT NULL
           )
         `);
         await db.execute(sql`
           CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_cred"
-          ON "n8n_workflow"."credential_mappings" ("user_id", "cred_type")
+          ON "workflow"."credential_mappings" ("user_id", "cred_type")
         `);
         await db.execute(sql`
-          CREATE TABLE IF NOT EXISTS "n8n_workflow"."embedded_workflows" (
+          CREATE TABLE IF NOT EXISTS "workflow"."embedded_workflows" (
             "id" text PRIMARY KEY,
             "name" text NOT NULL,
             "active" boolean DEFAULT false NOT NULL,
@@ -1200,14 +1200,14 @@ export class EmbeddedWorkflowService extends Service {
         `);
         await db.execute(sql`
           CREATE INDEX IF NOT EXISTS "idx_embedded_workflows_active"
-          ON "n8n_workflow"."embedded_workflows" ("active")
+          ON "workflow"."embedded_workflows" ("active")
         `);
         await db.execute(sql`
           CREATE INDEX IF NOT EXISTS "idx_embedded_workflows_updated_at"
-          ON "n8n_workflow"."embedded_workflows" ("updated_at")
+          ON "workflow"."embedded_workflows" ("updated_at")
         `);
         await db.execute(sql`
-          CREATE TABLE IF NOT EXISTS "n8n_workflow"."embedded_executions" (
+          CREATE TABLE IF NOT EXISTS "workflow"."embedded_executions" (
             "id" text PRIMARY KEY,
             "workflow_id" text NOT NULL,
             "status" text NOT NULL,
@@ -1220,18 +1220,18 @@ export class EmbeddedWorkflowService extends Service {
         `);
         await db.execute(sql`
           CREATE INDEX IF NOT EXISTS "idx_embedded_executions_workflow_id"
-          ON "n8n_workflow"."embedded_executions" ("workflow_id")
+          ON "workflow"."embedded_executions" ("workflow_id")
         `);
         await db.execute(sql`
           CREATE INDEX IF NOT EXISTS "idx_embedded_executions_status"
-          ON "n8n_workflow"."embedded_executions" ("status")
+          ON "workflow"."embedded_executions" ("status")
         `);
         await db.execute(sql`
           CREATE INDEX IF NOT EXISTS "idx_embedded_executions_started_at"
-          ON "n8n_workflow"."embedded_executions" ("started_at")
+          ON "workflow"."embedded_executions" ("started_at")
         `);
         await db.execute(sql`
-          CREATE TABLE IF NOT EXISTS "n8n_workflow"."embedded_credentials" (
+          CREATE TABLE IF NOT EXISTS "workflow"."embedded_credentials" (
             "id" text PRIMARY KEY,
             "name" text NOT NULL,
             "type" text NOT NULL,
@@ -1243,10 +1243,10 @@ export class EmbeddedWorkflowService extends Service {
         `);
         await db.execute(sql`
           CREATE INDEX IF NOT EXISTS "idx_embedded_credentials_type"
-          ON "n8n_workflow"."embedded_credentials" ("type")
+          ON "workflow"."embedded_credentials" ("type")
         `);
         await db.execute(sql`
-          CREATE TABLE IF NOT EXISTS "n8n_workflow"."embedded_tags" (
+          CREATE TABLE IF NOT EXISTS "workflow"."embedded_tags" (
             "id" text PRIMARY KEY,
             "name" text NOT NULL,
             "created_at" text NOT NULL,
@@ -1255,7 +1255,7 @@ export class EmbeddedWorkflowService extends Service {
         `);
         await db.execute(sql`
           CREATE UNIQUE INDEX IF NOT EXISTS "idx_embedded_tags_name"
-          ON "n8n_workflow"."embedded_tags" ("name")
+          ON "workflow"."embedded_tags" ("name")
         `);
       })();
     }
@@ -1535,7 +1535,7 @@ export class EmbeddedWorkflowService extends Service {
     for (const row of rows) {
       const workflow = cloneJson(row.workflow);
       const webhookNode = workflow.nodes.find((node) => {
-        if (node.disabled || node.type !== 'n8n-nodes-base.webhook') return false;
+        if (node.disabled || node.type !== 'p1p3s-nodes-base.webhook') return false;
         const nodePath = normalizeWebhookPath(node.parameters.path);
         const nodeMethod = readString(node.parameters.httpMethod, 'POST').toUpperCase();
         return nodePath === normalizedPath && nodeMethod === normalizedMethod;
@@ -1590,7 +1590,7 @@ export class EmbeddedWorkflowService extends Service {
       .map((node) => `${node.name} (${node.type})`);
     if (missing.length > 0) {
       throw new WorkflowApiError(
-        `Embedded n8n runtime does not support node(s): ${missing.join(', ')}`,
+        `Embedded workflow runtime does not support node(s): ${missing.join(', ')}`,
         400
       );
     }
@@ -1611,7 +1611,7 @@ export class EmbeddedWorkflowService extends Service {
     this.clearSchedules(workflowId);
     const entry = await this.getStoredWorkflow(workflowId);
     const scheduleNodes = entry.workflow.nodes.filter(
-      (node) => !node.disabled && node.type === 'n8n-nodes-base.scheduleTrigger'
+      (node) => !node.disabled && node.type === 'p1p3s-nodes-base.scheduleTrigger'
     );
     if (scheduleNodes.length === 0) return;
 
@@ -1626,7 +1626,7 @@ export class EmbeddedWorkflowService extends Service {
           }
         })().catch((error: unknown) => {
             logger.warn(
-              { src: 'plugin:n8n-workflow:embedded' },
+              { src: 'plugin:workflow:embedded' },
               `Scheduled workflow ${workflowId} failed: ${
                 error instanceof Error ? error.message : String(error)
               }`
@@ -1707,7 +1707,7 @@ export class EmbeddedWorkflowService extends Service {
     if (mode === 'webhook') {
       for (const node of enabledNodes) {
         if (
-          node.type === 'n8n-nodes-base.webhook' &&
+          node.type === 'p1p3s-nodes-base.webhook' &&
           isRecord(node.parameters.__embeddedPayload)
         ) {
           start.add(node.name);
@@ -1715,16 +1715,16 @@ export class EmbeddedWorkflowService extends Service {
       }
       if (start.size === 0) {
         for (const node of enabledNodes) {
-          if (node.type === 'n8n-nodes-base.webhook') start.add(node.name);
+          if (node.type === 'p1p3s-nodes-base.webhook') start.add(node.name);
         }
       }
     } else if (mode === 'trigger') {
       for (const node of enabledNodes) {
-        if (node.type === 'n8n-nodes-base.scheduleTrigger') start.add(node.name);
+        if (node.type === 'p1p3s-nodes-base.scheduleTrigger') start.add(node.name);
       }
     } else {
       for (const node of enabledNodes) {
-        if (node.type === 'n8n-nodes-base.manualTrigger') start.add(node.name);
+        if (node.type === 'p1p3s-nodes-base.manualTrigger') start.add(node.name);
       }
     }
 

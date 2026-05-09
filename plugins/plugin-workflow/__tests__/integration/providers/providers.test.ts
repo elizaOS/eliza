@@ -2,7 +2,7 @@ import { describe, test, expect, mock } from "bun:test";
 import { activeWorkflowsProvider } from "../../../src/providers/activeWorkflows";
 import { workflowStatusProvider } from "../../../src/providers/workflowStatus";
 import { pendingDraftProvider } from "../../../src/providers/pendingDraft";
-import { WORKFLOW_SERVICE_TYPE } from "../../../src/services/n8n-workflow-service";
+import { WORKFLOW_SERVICE_TYPE } from "../../../src/services/workflow-service";
 import {
   createMockRuntime,
   createMockMessage,
@@ -157,7 +157,7 @@ describe("workflowStatusProvider", () => {
       createMockState(),
     );
 
-    expect(result.text).toContain("No n8n workflows");
+    expect(result.text).toContain("No workflows");
   });
 
   test("includes workflow status and execution info", async () => {
@@ -254,14 +254,14 @@ describe("pendingDraftProvider", () => {
     nodes: [
       {
         name: "Gmail Trigger",
-        type: "n8n-nodes-base.gmailTrigger",
+        type: "p1p3s-nodes-base.gmailTrigger",
         typeVersion: 1,
         position: [0, 0],
         parameters: {},
       },
       {
         name: "Telegram Send",
-        type: "n8n-nodes-base.telegram",
+        type: "p1p3s-nodes-base.telegram",
         typeVersion: 1,
         position: [200, 0],
         parameters: {},

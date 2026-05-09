@@ -2,7 +2,7 @@
  * TradingStrategyPanel — displays Vincent strategy configuration.
  */
 
-import { Button, StatusBadge } from "@elizaos/app-core";
+import { Button, StatusBadge } from "@elizaos/ui";
 import { Activity, ExternalLink, Settings2 } from "lucide-react";
 import type { VincentStrategy } from "./vincent-contracts";
 

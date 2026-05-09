@@ -695,7 +695,7 @@ export function applyPluginAutoEnable(
   {
     const workflowPluginName = "@elizaos/plugin-workflow";
     const workflowPluginId = "workflow";
-    const workflowMasterEnabled = updatedConfig.n8n?.enabled !== false;
+    const workflowMasterEnabled = updatedConfig.workflow?.enabled !== false;
     const workflowExplicitlyDisabled =
       pluginsConfig.entries[workflowPluginId]?.enabled === false;
     if (workflowMasterEnabled && !workflowExplicitlyDisabled) {

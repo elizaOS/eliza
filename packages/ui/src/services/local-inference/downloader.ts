@@ -23,7 +23,11 @@ import { Readable, type Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { ensureDefaultAssignment } from "./assignments";
 import { buildHuggingFaceResolveUrl, findCatalogModel } from "./catalog";
-import { downloadsStagingDir, elizaModelsDir } from "./paths";
+import {
+  downloadsStagingDir,
+  elizaModelsDir,
+  localInferenceRoot,
+} from "./paths";
 import { upsertElizaModel } from "./registry";
 import type {
   CatalogModel,
@@ -44,6 +48,13 @@ interface ActiveJob {
 type DownloadListener = (event: DownloadEvent) => void;
 
 const PROGRESS_THROTTLE_MS = 250;
+const TERMINAL_DOWNLOADS_FILENAME = "download-status.json";
+const TERMINAL_DOWNLOAD_LIMIT = 32;
+
+interface TerminalDownloadsFile {
+  version: 1;
+  jobs: DownloadJob[];
+}
 
 function stagingFilename(modelId: string): string {
   // Filename is derived deterministically so repeated download attempts
@@ -62,6 +73,10 @@ async function ensureDirs(): Promise<void> {
   await fsp.mkdir(elizaModelsDir(), { recursive: true });
 }
 
+function terminalDownloadsPath(): string {
+  return path.join(localInferenceRoot(), TERMINAL_DOWNLOADS_FILENAME);
+}
+
 async function partialSize(stagingPath: string): Promise<number> {
   try {
     const stat = await fsp.stat(stagingPath);
@@ -73,8 +88,13 @@ async function partialSize(stagingPath: string): Promise<number> {
 
 export class Downloader {
   private readonly active = new Map<string, ActiveJob>();
+  private readonly terminal = new Map<string, DownloadJob>();
   private readonly listeners = new Set<DownloadListener>();
   private readonly lastEmit = new Map<string, number>();
+
+  constructor() {
+    this.loadTerminalDownloads();
+  }
 
   subscribe(listener: DownloadListener): () => void {
     this.listeners.add(listener);
@@ -84,7 +104,13 @@ export class Downloader {
   }
 
   snapshot(): DownloadJob[] {
-    return [...this.active.values()].map((a) => ({ ...a.job }));
+    const active = [...this.active.values()].map((a) => ({ ...a.job }));
+    const activeIds = new Set(active.map((job) => job.modelId));
+    const terminal = [...this.terminal.values()]
+      .filter((job) => !activeIds.has(job.modelId))
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      .map((job) => ({ ...job }));
+    return [...active, ...terminal];
   }
 
   isActive(modelId: string): boolean {
@@ -111,6 +137,7 @@ export class Downloader {
       );
     }
     const modelId = catalogEntry.id;
+    this.clearTerminalDownload(modelId);
 
     const existing = this.active.get(modelId);
     if (
@@ -166,6 +193,7 @@ export class Downloader {
     }
     record.abortController.abort();
     this.updateState(record, "cancelled");
+    this.rememberTerminalDownload(record.job);
     this.emit({ type: "cancelled", job: { ...record.job } });
     this.active.delete(modelId);
     return true;
@@ -185,6 +213,65 @@ export class Downloader {
   private updateState(record: ActiveJob, state: DownloadState): void {
     record.job.state = state;
     record.job.updatedAt = new Date().toISOString();
+  }
+
+  private loadTerminalDownloads(): void {
+    try {
+      const raw = fs.readFileSync(terminalDownloadsPath(), "utf8");
+      const parsed = JSON.parse(raw) as TerminalDownloadsFile;
+      if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.jobs)) {
+        return;
+      }
+      for (const job of parsed.jobs) {
+        if (
+          job &&
+          typeof job.modelId === "string" &&
+          (job.state === "completed" ||
+            job.state === "failed" ||
+            job.state === "cancelled")
+        ) {
+          this.terminal.set(job.modelId, { ...job });
+        }
+      }
+    } catch {
+      // Missing or malformed terminal-download state should not block
+      // local inference. New terminal states will rewrite the file.
+    }
+  }
+
+  private persistTerminalDownloads(): void {
+    try {
+      fs.mkdirSync(localInferenceRoot(), { recursive: true });
+      const jobs = [...this.terminal.values()]
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+        .slice(0, TERMINAL_DOWNLOAD_LIMIT);
+      const payload: TerminalDownloadsFile = { version: 1, jobs };
+      fs.writeFileSync(
+        terminalDownloadsPath(),
+        JSON.stringify(payload, null, 2),
+        "utf8",
+      );
+    } catch {
+      // Terminal status is useful for chat/UI telemetry but is not allowed to
+      // fail the download path.
+    }
+  }
+
+  private rememberTerminalDownload(job: DownloadJob): void {
+    this.terminal.set(job.modelId, { ...job });
+    const ordered = [...this.terminal.values()].sort((left, right) =>
+      right.updatedAt.localeCompare(left.updatedAt),
+    );
+    this.terminal.clear();
+    for (const terminalJob of ordered.slice(0, TERMINAL_DOWNLOAD_LIMIT)) {
+      this.terminal.set(terminalJob.modelId, terminalJob);
+    }
+    this.persistTerminalDownloads();
+  }
+
+  private clearTerminalDownload(modelId: string): void {
+    if (!this.terminal.delete(modelId)) return;
+    this.persistTerminalDownloads();
   }
 
   private throttleEmit(record: ActiveJob): void {
@@ -305,20 +392,22 @@ export class Downloader {
       for (const companionId of catalogEntry.companionModelIds ?? []) {
         if (!this.isActive(companionId)) {
           void this.start(companionId).catch((err) => {
+            const job: DownloadJob = {
+              jobId: randomUUID(),
+              modelId: companionId,
+              state: "failed",
+              received: 0,
+              total: 0,
+              bytesPerSec: 0,
+              etaMs: null,
+              startedAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              error: err instanceof Error ? err.message : String(err),
+            };
+            this.rememberTerminalDownload(job);
             this.emit({
               type: "failed",
-              job: {
-                jobId: randomUUID(),
-                modelId: companionId,
-                state: "failed",
-                received: 0,
-                total: 0,
-                bytesPerSec: 0,
-                etaMs: null,
-                startedAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                error: err instanceof Error ? err.message : String(err),
-              },
+              job,
             });
           });
         }
@@ -327,14 +416,17 @@ export class Downloader {
       this.updateState(record, "completed");
       record.job.received = finalStat.size;
       record.job.total = finalStat.size;
+      this.rememberTerminalDownload(record.job);
       this.emit({ type: "completed", job: { ...record.job } });
     } catch (err) {
       if (record.abortController.signal.aborted) {
         this.updateState(record, "cancelled");
+        this.rememberTerminalDownload(record.job);
         this.emit({ type: "cancelled", job: { ...record.job } });
       } else {
         this.updateState(record, "failed");
         record.job.error = err instanceof Error ? err.message : String(err);
+        this.rememberTerminalDownload(record.job);
         this.emit({ type: "failed", job: { ...record.job } });
       }
     } finally {

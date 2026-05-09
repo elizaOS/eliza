@@ -23,6 +23,11 @@ export interface LoadOptions {
   maxThreads?: number;
   /** Optional draft GGUF for native speculative decoding builds. */
   draftModelPath?: string;
+  /** Context window for the draft model when supported by the native build. */
+  draftContextSize?: number;
+  /** Lower/upper speculative draft bounds for fork builds that expose them. */
+  draftMin?: number;
+  draftMax?: number;
   /** Number of draft tokens/samples when the native runtime supports it. */
   speculativeSamples?: number;
   /** Mobile runtimes may enable a lower-memory speculative path. */
@@ -30,6 +35,8 @@ export interface LoadOptions {
   /** Optional KV cache types for fork builds such as TurboQuant. */
   cacheTypeK?: string;
   cacheTypeV?: string;
+  /** Qwen DFlash drafters are trained for non-thinking outputs. */
+  disableThinking?: boolean;
 }
 
 export interface GenerateOptions {

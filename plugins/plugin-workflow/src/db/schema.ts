@@ -14,15 +14,15 @@ import type {
   WorkflowDefinition,
 } from '../types/index';
 
-export const n8nWorkflowSchema = pgSchema('n8n_workflow');
+export const workflowSchema = pgSchema('workflow');
 
-export const credentialMappings = n8nWorkflowSchema.table(
+export const credentialMappings = workflowSchema.table(
   'credential_mappings',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     userId: text('user_id').notNull(),
     credType: text('cred_type').notNull(),
-    n8nCredentialId: text('n8n_credential_id').notNull(),
+    workflowCredentialId: text('workflow_credential_id').notNull(),
     createdAt: timestamp('created_at')
       .default(sql`now()`)
       .notNull(),
@@ -35,7 +35,7 @@ export const credentialMappings = n8nWorkflowSchema.table(
   })
 );
 
-export const embeddedWorkflows = n8nWorkflowSchema.table(
+export const embeddedWorkflows = workflowSchema.table(
   'embedded_workflows',
   {
     id: text('id').primaryKey(),
@@ -52,7 +52,7 @@ export const embeddedWorkflows = n8nWorkflowSchema.table(
   })
 );
 
-export const embeddedExecutions = n8nWorkflowSchema.table(
+export const embeddedExecutions = workflowSchema.table(
   'embedded_executions',
   {
     id: text('id').primaryKey(),
@@ -71,7 +71,7 @@ export const embeddedExecutions = n8nWorkflowSchema.table(
   })
 );
 
-export const embeddedCredentials = n8nWorkflowSchema.table(
+export const embeddedCredentials = workflowSchema.table(
   'embedded_credentials',
   {
     id: text('id').primaryKey(),
@@ -87,7 +87,7 @@ export const embeddedCredentials = n8nWorkflowSchema.table(
   })
 );
 
-export const embeddedTags = n8nWorkflowSchema.table(
+export const embeddedTags = workflowSchema.table(
   'embedded_tags',
   {
     id: text('id').primaryKey(),

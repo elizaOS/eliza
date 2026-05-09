@@ -57,8 +57,8 @@ describe("GET /nodes", () => {
     expect(getResult().status).toBe(400);
   });
 
-  test("returns search results for gmail keyword", async () => {
-    const req = createRouteRequest({ query: { q: "gmail" } });
+  test("returns search results for supported HTTP keyword", async () => {
+    const req = createRouteRequest({ query: { q: "http" } });
     const { res, getResult } = createRouteResponse();
 
     await searchHandler(req, res, runtime);
@@ -71,7 +71,7 @@ describe("GET /nodes", () => {
     };
     expect(data.success).toBe(true);
     expect(data.data.length).toBeGreaterThan(0);
-    expect(data.data[0].name.toLowerCase()).toContain("gmail");
+    expect(data.data[0].name).toBe("p1p3s-nodes-base.httpRequest");
     // Search results include score and matchReason
     expect(typeof data.data[0].score).toBe("number");
     expect(typeof data.data[0].matchReason).toBe("string");
@@ -88,7 +88,7 @@ describe("GET /nodes", () => {
   });
 
   test("handles comma-separated keywords", async () => {
-    const req = createRouteRequest({ query: { q: "gmail,slack" } });
+    const req = createRouteRequest({ query: { q: "http,set" } });
     const { res, getResult } = createRouteResponse();
 
     await searchHandler(req, res, runtime);
@@ -102,7 +102,7 @@ describe("GET /nodes", () => {
 describe("GET /nodes/:type", () => {
   test("returns node definition for valid type", async () => {
     const req = createRouteRequest({
-      params: { type: "n8n-nodes-base.gmail" },
+      params: { type: "p1p3s-nodes-base.httpRequest" },
     });
     const { res, getResult } = createRouteResponse();
 
@@ -115,13 +115,13 @@ describe("GET /nodes/:type", () => {
       data: { name: string; properties: unknown[] };
     };
     expect(data.success).toBe(true);
-    expect(data.data.name).toBe("n8n-nodes-base.gmail");
+    expect(data.data.name).toBe("p1p3s-nodes-base.httpRequest");
     expect(data.data.properties.length).toBeGreaterThan(0);
   });
 
   test("returns 404 for unknown node type", async () => {
     const req = createRouteRequest({
-      params: { type: "n8n-nodes-base.nonexistentNode12345" },
+      params: { type: "p1p3s-nodes-base.nonexistentNode12345" },
     });
     const { res, getResult } = createRouteResponse();
 
@@ -158,24 +158,22 @@ describe("GET /nodes/available", () => {
       };
     };
     expect(data.success).toBe(true);
-    // Without credential bridge, all service nodes go to supported
     expect(data.data.supported.length).toBeGreaterThan(0);
     expect(data.data.utility.length).toBeGreaterThan(0);
     // Catalog nodes should NOT have score/matchReason
-    const first = data.data.supported[0] as Record<string, unknown>;
+    const first = data.data.utility[0] as Record<string, unknown>;
     expect(first.score).toBeUndefined();
     expect(first.matchReason).toBeUndefined();
   });
 
-  test("filters nodes when credential bridge is available", async () => {
+  test("credential bridge path keeps utility-only embedded catalog available", async () => {
     const runtimeWithBridge = createMockRuntime({
       services: {
         workflow_credential_provider: {
           resolve: () => Promise.resolve(null),
           checkCredentialTypes: (types: string[]) => ({
-            // Only support gmail-related credentials
-            supported: types.filter((t) => t.startsWith("gmail")),
-            unsupported: types.filter((t) => !t.startsWith("gmail")),
+            supported: types,
+            unsupported: [],
           }),
         },
       },
@@ -194,13 +192,8 @@ describe("GET /nodes/available", () => {
         utility: unknown[];
       };
     };
-    // Should have some supported (gmail nodes) and some unsupported (everything else)
     expect(data.data.supported.length).toBeGreaterThan(0);
-    expect(data.data.unsupported.length).toBeGreaterThan(0);
-    // Unsupported nodes should have missingCredentials array
-    expect(data.data.unsupported[0].missingCredentials).toBeDefined();
-    expect(Array.isArray(data.data.unsupported[0].missingCredentials)).toBe(
-      true,
-    );
+    expect(data.data.unsupported).toEqual([]);
+    expect(data.data.utility.length).toBeGreaterThan(0);
   });
 });

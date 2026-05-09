@@ -7,7 +7,7 @@ import {
 import defaultNodesData from '../data/defaultNodes.json' with { type: 'json' };
 
 /**
- * n8n node catalog with keyword-based search
+ * p1p3s node catalog with keyword-based search
  * @note Uses embedded catalog (457 nodes as of April 2025)
  * @todo Add dynamic refresh via GET /node-types in v2
  */
@@ -22,8 +22,7 @@ export function getAllNodes(): NodeDefinition[] {
 /**
  * Look up a node definition by its type name.
  *
- * Handles full names ("n8n-nodes-base.gmail", "@n8n/n8n-nodes-langchain.openAi")
- * and bare names ("gmail", "openAi").
+ * Handles full names ("p1p3s-nodes-base.httpRequest") and bare names ("httpRequest").
  */
 export function getNodeDefinition(typeName: string): NodeDefinition | undefined {
   const exact = NODE_CATALOG.find((n) => n.name === typeName);
@@ -31,9 +30,9 @@ export function getNodeDefinition(typeName: string): NodeDefinition | undefined 
     return exact;
   }
 
-  const bare = typeName.replace(/^(?:n8n-nodes-base|@n8n\/n8n-nodes-langchain)\./, '');
+  const bare = typeName.replace(/^p1p3s-nodes-base\./, '');
   return NODE_CATALOG.find((n) => {
-    const catalogBare = n.name.replace(/^(?:n8n-nodes-base|@n8n\/n8n-nodes-langchain)\./, '');
+    const catalogBare = n.name.replace(/^p1p3s-nodes-base\./, '');
     return catalogBare === bare || n.name === bare;
   });
 }

@@ -4,13 +4,13 @@
  * (Session 19 safety net) and before `deployWorkflow`.
  *
  * Six checks, each emitting a `Repair` (auto-fixed) or `ValidationError`
- * (handed off to the retry loop in n8n-workflow-service.ts):
+ * (handed off to the retry loop in workflow-service.ts):
  *
  *   1. typeVersion clamp           — closes "LLM emits 2.2 when only 1, 2, 2.1 exist"
  *   2. authentication back-fill    — closes "credentials attached but parameters.authentication missing"
  *   3. output-field validation     — closes "subject vs Subject" + typo classes
  *   4. required-parameter pre-flight
- *   5. node-name uniqueness        — n8n rejects duplicates with confusing errors
+ *   5. node-name uniqueness        — p1p3s rejects duplicates with confusing errors
  *   6. connection sanity           — drop edges to non-existent nodes
  *
  * Mutates the workflow in place AND returns it for ergonomic chaining.
@@ -81,10 +81,10 @@ function applyTypeVersionClamp(
   const catalogVersions = Array.isArray(def.version) ? def.version : [def.version];
   const catalogNumeric = catalogVersions.filter((v): v is number => typeof v === 'number');
 
-  // When the live n8n runtime registry is available, intersect with it.
+  // When the live workflow runtime registry is available, intersect with it.
   // The static plugin catalog is sometimes ahead of the user's running
-  // n8n binary (e.g. catalog claims Gmail v2.2 but runtime only has up
-  // to v2.1) — without this intersect, the LLM picks a version n8n
+  // p1p3s binary (e.g. catalog claims Gmail v2.2 but runtime only has up
+  // to v2.1) — without this intersect, the LLM picks a version p1p3s
   // can't instantiate and activation crashes with `Cannot read
   // properties of undefined (reading 'execute')`.
   const runtime = runtimeVersions?.get(node.type);
@@ -362,7 +362,7 @@ function applyAggregationSourceFieldFix(
   }
 
   for (const node of workflow.nodes) {
-    if (node.type !== 'n8n-nodes-base.summarize') {
+    if (node.type !== 'p1p3s-nodes-base.summarize') {
       continue;
     }
 
@@ -579,7 +579,7 @@ export function validateAndRepair(
   if (repairs.length > 0) {
     logger.info(
       {
-        src: 'plugin:n8n-workflow:utils:validate',
+        src: 'plugin:workflow:utils:validate',
         repairCount: repairs.length,
         repairs,
       },
@@ -589,7 +589,7 @@ export function validateAndRepair(
   if (errors.length > 0) {
     logger.warn(
       {
-        src: 'plugin:n8n-workflow:utils:validate',
+        src: 'plugin:workflow:utils:validate',
         errorCount: errors.length,
         errors,
       },

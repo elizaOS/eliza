@@ -1078,8 +1078,12 @@ export function withSubscriptions<
     summarizeSubscriptionCancellation(
       summary: LifeOpsSubscriptionCancellationSummary,
     ): string {
-      const lines = [summarizeCancellationStatus(summary.cancellation)];
-      if (summary.cancellation.evidenceSummary) {
+      const status = summarizeCancellationStatus(summary.cancellation);
+      const lines = [status];
+      if (
+        summary.cancellation.evidenceSummary &&
+        summary.cancellation.evidenceSummary !== status
+      ) {
         lines.push(summary.cancellation.evidenceSummary);
       }
       if (summary.candidate) {

@@ -507,12 +507,12 @@ export interface WorkbenchOverview {
 
 export type AutomationType =
   | "coordinator_text"
-  | "n8n_workflow"
+  | "workflow"
   | "automation_draft";
 export type AutomationSource =
   | "workbench_task"
   | "trigger"
-  | "n8n_workflow"
+  | "workflow"
   | "workflow_draft"
   | "workflow_shadow"
   | "automation_draft";
@@ -572,7 +572,7 @@ export interface AutomationSummary {
 export interface AutomationListResponse {
   automations: AutomationItem[];
   summary: AutomationSummary;
-  n8nStatus: import("./client-types-chat").WorkflowStatusResponse | null;
+  workflowStatus: import("./client-types-chat").WorkflowStatusResponse | null;
   workflowFetchError: string | null;
 }
 

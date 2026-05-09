@@ -73,6 +73,48 @@ export interface ConversationMessageReaction {
   users?: string[];
 }
 
+export type ChatFailureKind =
+  | "insufficient_credits"
+  | "no_provider"
+  | "provider_issue"
+  | "local_inference";
+
+export type LocalInferenceChatStatus =
+  | "missing"
+  | "downloading"
+  | "loading"
+  | "failed"
+  | "no_space"
+  | "idle"
+  | "ready"
+  | "cancelled"
+  | "routing";
+
+export interface LocalInferenceChatMetadata {
+  intent?:
+    | "retry"
+    | "resume"
+    | "redownload"
+    | "download"
+    | "cancel"
+    | "switch_smaller"
+    | "status"
+    | "use_cloud"
+    | "use_local";
+  status: LocalInferenceChatStatus;
+  modelId?: string | null;
+  activeModelId?: string | null;
+  provider?: string;
+  error?: string;
+  progress?: {
+    percent?: number;
+    receivedBytes: number;
+    totalBytes: number;
+    bytesPerSec?: number;
+    etaMs?: number | null;
+  };
+}
+
 export interface ConversationMessage {
   id: string;
   role: "user" | "assistant";
@@ -109,7 +151,9 @@ export interface ConversationMessage {
    * Settings") for `failureKind === "no_provider"` instead of rendering
    * the fallback `text` as a normal reply bubble.
    */
-  failureKind?: "insufficient_credits" | "no_provider" | "provider_issue";
+  failureKind?: ChatFailureKind;
+  /** Structured local-inference status returned with local model command/error replies. */
+  localInference?: LocalInferenceChatMetadata;
 }
 
 export type ConversationChannelType =
@@ -385,20 +429,18 @@ export interface ShareIngestItem {
   files: Array<{ name: string }>;
 }
 
-// ── n8n Workflow types ────────────────────────────────────────────────────────
+// ── Workflow types ────────────────────────────────────────────────────────────
 
-export type N8nMode = "cloud" | "local" | "disabled";
-export type N8nSidecarStatus = "stopped" | "starting" | "ready" | "error";
+export type WorkflowMode = "local" | "cloud" | "disabled";
+export type WorkflowRuntimeStatus = "ready" | "error";
 
 export interface WorkflowStatusResponse {
-  mode: N8nMode;
+  mode: WorkflowMode;
   host: string | null;
-  status: N8nSidecarStatus;
+  status: WorkflowRuntimeStatus;
   cloudConnected: boolean;
   localEnabled: boolean;
-  /** Track B: populated by /api/workflow/status once backend lands. */
-  platform?: "desktop" | "mobile";
-  /** Track C: populated by /api/workflow/status once backend lands. */
+  platform?: "desktop";
   cloudHealth?: "ok" | "degraded" | "unknown";
 }
 
@@ -407,27 +449,30 @@ export interface WorkflowDefinitionNode {
   name: string;
   type: string;
   typeVersion?: number;
-  /** Canvas position from n8n — [x, y]. Present on single-workflow GET; absent on list. */
+  /** Canvas position — [x, y]. Present on single-workflow GET; absent on list. */
   position?: [number, number];
-  /** Node parameters from n8n. Present on single-workflow GET; absent on list. */
+  /** Node parameters. Present on single-workflow GET; absent on list. */
   parameters?: Record<string, unknown>;
   notes?: string;
   notesInFlow?: boolean;
 }
 
-/** A single outbound connection edge from n8n's connection map. */
-export interface N8nConnection {
+/** A single outbound connection edge from the workflow connection map. */
+export interface WorkflowConnection {
   node: string;
   type: "main";
   index: number;
 }
 
 /**
- * n8n connection map shape.
+ * Workflow connection map shape.
  * Keys are source node names; values group edges by output type.
  * Present on single-workflow GET only — list endpoint stays shallow.
  */
-export type N8nConnectionMap = Record<string, { main?: N8nConnection[][] }>;
+export type WorkflowConnectionMap = Record<
+  string,
+  { main?: WorkflowConnection[][] }
+>;
 
 export interface WorkflowDefinition {
   id: string;
@@ -438,7 +483,7 @@ export interface WorkflowDefinition {
   nodes?: WorkflowDefinitionNode[];
   lastExecutionAt?: string;
   /** Connection graph. Present on single-workflow GET; absent on list. */
-  connections?: N8nConnectionMap;
+  connections?: WorkflowConnectionMap;
 }
 
 /**
@@ -580,7 +625,7 @@ export interface WorkflowDefinitionWriteNode {
 export interface WorkflowDefinitionWriteRequest {
   name: string;
   nodes: WorkflowDefinitionWriteNode[];
-  connections: N8nConnectionMap;
+  connections: WorkflowConnectionMap;
   settings?: Record<string, unknown>;
 }
 

@@ -34,6 +34,43 @@ const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
   "bge-small-en-v1.5": 384,
 };
 
+const DFLASH_LOAD_METADATA: Record<
+  string,
+  {
+    drafterModelId: string;
+    contextSize: number;
+    draftContextSize: number;
+    draftMin: number;
+    draftMax: number;
+    disableThinking: boolean;
+  }
+> = {
+  "qwen3.5-4b-dflash": {
+    drafterModelId: "qwen3.5-4b-dflash-drafter-q4",
+    contextSize: 8192,
+    draftContextSize: 256,
+    draftMin: 1,
+    draftMax: 16,
+    disableThinking: true,
+  },
+  "qwen3.5-9b-dflash": {
+    drafterModelId: "qwen3.5-9b-dflash-drafter-q4",
+    contextSize: 8192,
+    draftContextSize: 256,
+    draftMin: 1,
+    draftMax: 16,
+    disableThinking: true,
+  },
+  "qwen3.6-27b-dflash": {
+    drafterModelId: "qwen3.6-27b-dflash-drafter-q8",
+    contextSize: 8192,
+    draftContextSize: 256,
+    draftMin: 1,
+    draftMax: 16,
+    disableThinking: true,
+  },
+};
+
 type GenerateTextHandler = (
   runtime: IAgentRuntime,
   params: GenerateTextParams,
@@ -43,6 +80,22 @@ type EmbeddingHandler = (
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null,
 ) => Promise<number[]>;
+
+interface LocalInferenceLoadArgs {
+  modelPath: string;
+  contextSize?: number;
+  useGpu?: boolean;
+  maxThreads?: number;
+  draftModelPath?: string;
+  draftContextSize?: number;
+  draftMin?: number;
+  draftMax?: number;
+  speculativeSamples?: number;
+  mobileSpeculative?: boolean;
+  cacheTypeK?: string;
+  cacheTypeV?: string;
+  disableThinking?: boolean;
+}
 
 type RuntimeWithModelRegistration = AgentRuntime & {
   getModel: (
@@ -133,13 +186,7 @@ type DeviceOutbound =
   | { type: "pong"; at: number };
 
 type AgentOutbound =
-  | {
-      type: "load";
-      correlationId: string;
-      modelPath: string;
-      contextSize?: number;
-      useGpu?: boolean;
-    }
+  | ({ type: "load"; correlationId: string } & LocalInferenceLoadArgs)
   | { type: "unload"; correlationId: string }
   | {
       type: "generate";
@@ -167,15 +214,17 @@ interface Pending<T> {
   routedDeviceId: string;
 }
 
+interface RegistryModelEntry {
+  id?: unknown;
+  path?: unknown;
+  dimensions?: unknown;
+  embeddingDimension?: unknown;
+  embeddingDimensions?: unknown;
+}
+
 interface RegistryFile {
   version?: number;
-  models?: Array<{
-    id?: unknown;
-    path?: unknown;
-    dimensions?: unknown;
-    embeddingDimension?: unknown;
-    embeddingDimensions?: unknown;
-  }>;
+  models?: RegistryModelEntry[];
 }
 
 interface AssignmentsFile {
@@ -430,7 +479,7 @@ class MobileDeviceBridge {
     });
   }
 
-  async loadModel(args: { modelPath: string }): Promise<void> {
+  async loadModel(args: LocalInferenceLoadArgs): Promise<void> {
     const device = this.primaryDevice();
     if (device?.loadedPath === args.modelPath) return;
     return this.sendToPrimary<void>(
@@ -438,7 +487,7 @@ class MobileDeviceBridge {
       (correlationId) => ({
         type: "load",
         correlationId,
-        modelPath: args.modelPath,
+        ...args,
       }),
       readTimeoutMs("ELIZA_DEVICE_LOAD_TIMEOUT_MS", DEFAULT_LOAD_TIMEOUT_MS),
       "DEVICE_TIMEOUT: model load exceeded deadline",
@@ -560,11 +609,15 @@ function resolveFromRegistry(slot: string): string | null {
   const assigned = assignments?.[slot];
   if (typeof assigned !== "string" || !assigned.trim()) return null;
 
-  const models = readJsonFile<RegistryFile>(registryPath())?.models ?? [];
+  const models = readRegistryModels();
   const matched = models.find((model) => model.id === assigned);
   return typeof matched?.path === "string" && existsSync(matched.path)
     ? matched.path
     : null;
+}
+
+function readRegistryModels(): RegistryModelEntry[] {
+  return readJsonFile<RegistryFile>(registryPath())?.models ?? [];
 }
 
 function resolveAssignedRegistryModel(slot: string): {
@@ -580,7 +633,7 @@ function resolveAssignedRegistryModel(slot: string): {
   const assigned = assignments?.[slot];
   if (typeof assigned !== "string" || !assigned.trim()) return null;
 
-  const models = readJsonFile<RegistryFile>(registryPath())?.models ?? [];
+  const models = readRegistryModels();
   const matched = models.find((model) => model.id === assigned);
   if (typeof matched?.path !== "string" || !existsSync(matched.path)) {
     return null;
@@ -592,6 +645,17 @@ function resolveAssignedRegistryModel(slot: string): {
     embeddingDimension: matched.embeddingDimension,
     embeddingDimensions: matched.embeddingDimensions,
   };
+}
+
+function resolveRegistryModelById(id: string): {
+  id: string;
+  path: string;
+} | null {
+  const matched = readRegistryModels().find((model) => model.id === id);
+  if (typeof matched?.path !== "string" || !existsSync(matched.path)) {
+    return null;
+  }
+  return { id, path: matched.path };
 }
 
 function resolveFromManifest(slot: string): string | null {
@@ -629,6 +693,42 @@ function resolveLocalModelPath(slot: string): string | null {
   );
 }
 
+function buildLoadArgsFromRegistryModel(model: {
+  id: string;
+  path: string;
+}): LocalInferenceLoadArgs {
+  const args: LocalInferenceLoadArgs = { modelPath: model.path };
+  const dflash = DFLASH_LOAD_METADATA[model.id];
+  if (dflash) {
+    const drafter = resolveRegistryModelById(dflash.drafterModelId);
+    args.contextSize = dflash.contextSize;
+    args.useGpu = true;
+    args.draftContextSize = dflash.draftContextSize;
+    args.draftMin = dflash.draftMin;
+    args.draftMax = dflash.draftMax;
+    args.speculativeSamples = dflash.draftMax;
+    args.mobileSpeculative = true;
+    args.disableThinking = dflash.disableThinking;
+    if (drafter) args.draftModelPath = drafter.path;
+  }
+  if (model.id === "bonsai-8b-1bit") {
+    args.cacheTypeK = "tbq4_0";
+    args.cacheTypeV = "tbq3_0";
+  }
+  return args;
+}
+
+function resolveLocalLoadArgs(slot: string): LocalInferenceLoadArgs | null {
+  const envPath = resolveFromEnv(slot);
+  if (envPath) return { modelPath: envPath };
+  const registryModel = resolveAssignedRegistryModel(slot);
+  if (registryModel) return buildLoadArgsFromRegistryModel(registryModel);
+  const manifestPath = resolveFromManifest(slot);
+  if (manifestPath) return { modelPath: manifestPath };
+  const firstGguf = resolveFirstGguf();
+  return firstGguf ? { modelPath: firstGguf } : null;
+}
+
 function resolveEmbeddingDimension(): number {
   const assigned = resolveAssignedRegistryModel("TEXT_EMBEDDING");
   return (
@@ -644,13 +744,13 @@ function resolveEmbeddingDimension(): number {
 
 function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
   return async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
-    const modelPath = resolveLocalModelPath(slot);
-    if (!modelPath) {
+    const loadArgs = resolveLocalLoadArgs(slot);
+    if (!loadArgs) {
       throw new Error(
         `[mobile-device-bridge] No local GGUF model installed under ${modelsDir()}. Download a local model before using the on-device agent.`,
       );
     }
-    await mobileDeviceBridge.loadModel({ modelPath });
+    await mobileDeviceBridge.loadModel(loadArgs);
     return mobileDeviceBridge.generate({
       prompt: params.prompt ?? "",
       stopSequences: params.stopSequences,
@@ -696,8 +796,13 @@ export function getMobileDeviceBridgeStatus(): MobileDeviceBridgeStatus {
 
 export async function loadMobileDeviceBridgeModel(
   modelPath: string,
+  modelId?: string,
 ): Promise<void> {
-  await mobileDeviceBridge.loadModel({ modelPath });
+  await mobileDeviceBridge.loadModel(
+    modelId
+      ? buildLoadArgsFromRegistryModel({ id: modelId, path: modelPath })
+      : { modelPath },
+  );
 }
 
 export async function unloadMobileDeviceBridgeModel(): Promise<void> {

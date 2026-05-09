@@ -36,7 +36,11 @@
     }
   },
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0"
   },
   "elizaos": {

@@ -124,7 +124,6 @@ export type {
   ModelProviderAuthMode,
   ModelProviderConfig,
   ModelsConfig,
-  N8nConfig,
   NodeHostBrowserProxyConfig,
   NodeHostConfig,
   OwnerContactEntry,
@@ -168,6 +167,7 @@ export * from "./connectors.js";
 // `contracts/theme` is intentionally NOT pulled in here; it reaches the public
 // surface through `./themes`, which already re-exports the same identifiers.
 export * from "./contracts/index.js";
+export { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "./contracts/service-routing.js";
 export * from "./dev-settings-banner-style.js";
 export * from "./dev-settings-table.js";
 // `eliza-core-roles` is intentionally NOT re-exported from this barrel.

@@ -286,10 +286,12 @@ reflections, summaries) and persists it to the appropriate stores
 
 | Evaluator                  | Template                                      |
 |----------------------------|-----------------------------------------------|
-| `REFLECTION`               | `reflectionEvaluatorTemplate`                 |
+| `FACT_MEMORY`              | `reflection-items.ts`                         |
+| `RELATIONSHIP`             | `reflection-items.ts`                         |
+| `IDENTITY`                 | `reflection-items.ts`                         |
+| `SUCCESS`                  | `reflection-items.ts`                         |
 | `REFLECT`                  | `reflectionTemplate`                          |
 | `FACT_EXTRACTOR`           | `factExtractionTemplate`                      |
-| `RELATIONSHIP_EXTRACTION`  | (uses reflectionEvaluatorTemplate)            |
 | `SKILL_EXTRACTION`         | (advanced-capabilities)                       |
 | `SKILL_REFINEMENT`         | (advanced-capabilities)                       |
 | `LONG_TERM_EXTRACTION`     | `longTermExtractionTemplate`                  |
@@ -338,10 +340,10 @@ expects.
 core_prompts files cover this surface:
 
 - `synthesized/core_prompts/reflection.jsonl`
-- `synthesized/core_prompts/reflection_evaluator.jsonl`
+- `synthesized/core_prompts/post_turn_evaluator.jsonl`
 
 We have NO factExtraction examples, NO summarization examples, NO
-relationshipExtraction, NO skill-extraction, NO long-term-memory
+relationship section coverage, NO skill-extraction, NO long-term-memory
 extraction. This is the largest gap in the corpus.
 
 ---

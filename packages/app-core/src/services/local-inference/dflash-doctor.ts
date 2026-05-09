@@ -18,9 +18,9 @@ export interface DflashDoctorReport {
   checks: DflashDoctorCheck[];
 }
 
-const DFLASH_TARGET_IDS = MODEL_CATALOG.filter((model) => model.runtime?.dflash).map(
-  (model) => model.id,
-);
+const DFLASH_TARGET_IDS = MODEL_CATALOG.filter(
+  (model) => model.runtime?.dflash,
+).map((model) => model.id);
 
 export async function runDflashDoctor(): Promise<DflashDoctorReport> {
   const checks: DflashDoctorCheck[] = [];
@@ -37,7 +37,8 @@ export async function runDflashDoctor(): Promise<DflashDoctorReport> {
 
   checks.push({
     id: "llama-server-binary",
-    status: runtime.binaryPath && fs.existsSync(runtime.binaryPath) ? "pass" : "fail",
+    status:
+      runtime.binaryPath && fs.existsSync(runtime.binaryPath) ? "pass" : "fail",
     label: "llama-server",
     detail: runtime.binaryPath ?? "No compatible binary found",
     fix: "ELIZA_DFLASH_LLAMA_SERVER=/path/to/llama-server",

@@ -43,7 +43,7 @@ export type ConversationScope =
   | "page-browser"
   | "page-automations";
 
-export type ConversationAutomationType = "coordinator_text" | "n8n_workflow";
+export type ConversationAutomationType = "coordinator_text" | "workflow";
 
 export interface ConversationMetadata {
   scope?: ConversationScope;

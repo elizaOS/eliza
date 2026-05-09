@@ -1,6 +1,3 @@
-// API client
-export { WorkflowApiClient } from './api';
-
 // Node catalog search
 export { searchNodes } from './catalog';
 

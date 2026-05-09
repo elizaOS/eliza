@@ -54,6 +54,7 @@ import {
 } from "./service-normalize-connector.js";
 import {
   normalizeGmailReplyBody,
+  normalizeGmailDraftTone,
   normalizeGmailBulkOperation,
   normalizeOptionalGmailLabelIdArray,
   normalizeOptionalMessageIdArray,
@@ -67,6 +68,8 @@ import {
   summarizeGmailSpamReviewItems,
   summarizeGmailTriage,
   summarizeGmailUnresponded,
+  buildFallbackGmailReplyDraftBody,
+  buildGmailReplyDraft,
 } from "./service-normalize-gmail.js";
 
 export interface LifeOpsGmailService {
@@ -226,29 +229,26 @@ function labelsAfterGmailManage(
 
 function draftForMessage(
   message: LifeOpsGmailMessageSummary,
-  bodyText: string,
+  args: {
+    intent?: string;
+    tone?: "brief" | "neutral" | "warm";
+    includeQuotedOriginal?: boolean;
+    senderName?: string;
+  } = {},
 ): LifeOpsGmailReplyDraft {
-  const firstRecipient = message.fromEmail ?? "";
-  const subject = message.subject.toLowerCase().startsWith("re:")
-    ? message.subject
-    : `Re: ${message.subject}`;
-  const body = [
-    "Hi,",
-    "",
-    "Thanks for the note. I saw this and will follow up.",
-    bodyText.trim() ? "" : "",
-  ].join("\n");
-  return {
-    messageId: message.id,
-    threadId: message.threadId,
-    subject,
-    to: firstRecipient ? [firstRecipient] : [],
-    cc: [],
-    bodyText: body,
-    previewLines: body.split(/\n/).slice(0, 4),
-    sendAllowed: Boolean(firstRecipient),
-    requiresConfirmation: true,
-  };
+  const bodyText = buildFallbackGmailReplyDraftBody({
+    message,
+    tone: args.tone ?? "neutral",
+    intent: args.intent,
+    includeQuotedOriginal: args.includeQuotedOriginal ?? false,
+    senderName: args.senderName ?? "",
+  });
+  return buildGmailReplyDraft({
+    message,
+    senderName: args.senderName ?? "",
+    sendAllowed: true,
+    bodyText,
+  });
 }
 
 /** @internal */
@@ -390,6 +390,9 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
       );
       const getMessage = requireGoogleServiceMethod(this.runtime, "getMessage");
       let messageId = normalizeOptionalString(request.messageId);
+      if (messageId) {
+        messageId = externalMessageIdFromInput(messageId);
+      }
       let query: string | null = null;
       if (!messageId) {
         query = normalizeGmailSearchQuery(request.query ?? "in:inbox newer_than:30d");
@@ -817,13 +820,22 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
       requestUrl: URL,
       request: CreateLifeOpsGmailReplyDraftRequest,
     ): Promise<LifeOpsGmailReplyDraft> {
+      const tone = normalizeGmailDraftTone(request.tone);
+      const intent = normalizeOptionalString(request.intent);
+      const includeQuotedOriginal =
+        normalizeOptionalBoolean(request.includeQuotedOriginal, "includeQuotedOriginal") ??
+        false;
       const read = await this.readGmailMessage(requestUrl, {
         mode: request.mode,
         side: request.side,
         grantId: request.grantId,
         messageId: request.messageId,
       });
-      return draftForMessage(read.message, read.bodyText);
+      return draftForMessage(read.message, {
+        tone,
+        intent,
+        includeQuotedOriginal,
+      });
     }
 
     async createGmailBatchReplyDrafts(
@@ -860,7 +872,18 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
               now,
             )
           ).messages;
-      const drafts = messages.map((message) => draftForMessage(message, ""));
+      const tone = normalizeGmailDraftTone(request.tone);
+      const intent = normalizeOptionalString(request.intent);
+      const includeQuotedOriginal =
+        normalizeOptionalBoolean(request.includeQuotedOriginal, "includeQuotedOriginal") ??
+        false;
+      const drafts = messages.map((message) =>
+        draftForMessage(message, {
+          tone,
+          intent,
+          includeQuotedOriginal,
+        }),
+      );
       return {
         query: request.query ?? null,
         messages,

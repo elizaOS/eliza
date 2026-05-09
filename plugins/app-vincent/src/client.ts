@@ -3,15 +3,10 @@
  */
 
 /**
- * Declaration merging must target the module that declares `ElizaClient`.
- * Import from the source module (`@elizaos/app-core/api/client-base`) — NOT
- * from the `@elizaos/app-core` barrel — to avoid a circular dependency.
- * `app-core/api/client.ts` imports this file (Vincent extension) AFTER
- * defining `ElizaClient` but BEFORE re-exporting it through the barrel, so
- * a barrel import here resolves to `undefined` when this file evaluates.
- * Going direct to the source module breaks the cycle.
+ * Frontend client extensions are installed on the UI package's ElizaClient
+ * prototype and exposed through a locally typed client wrapper.
  */
-import { ElizaClient } from "@elizaos/app-core";
+import { client as baseClient, ElizaClient } from "@elizaos/ui";
 import type {
   VincentStartLoginResponse,
   VincentStatusResponse,
@@ -21,41 +16,42 @@ import type {
   VincentTradingProfileResponse,
 } from "./vincent-contracts";
 
-declare module "@elizaos/app-core/api/client-base" {
-  interface ElizaClient {
-    vincentStartLogin(appName?: string): Promise<VincentStartLoginResponse>;
-    vincentStatus(): Promise<VincentStatusResponse>;
-    vincentDisconnect(): Promise<{ ok: boolean }>;
-    vincentStrategy(): Promise<VincentStrategyResponse>;
-    vincentUpdateStrategy(
-      request: VincentStrategyUpdateRequest,
-    ): Promise<VincentStrategyUpdateResponse>;
-    vincentTradingProfile(): Promise<VincentTradingProfileResponse>;
-  }
+export interface VincentClientMethods {
+  vincentStartLogin(appName?: string): Promise<VincentStartLoginResponse>;
+  vincentStatus(): Promise<VincentStatusResponse>;
+  vincentDisconnect(): Promise<{ ok: boolean }>;
+  vincentStrategy(): Promise<VincentStrategyResponse>;
+  vincentUpdateStrategy(
+    request: VincentStrategyUpdateRequest,
+  ): Promise<VincentStrategyUpdateResponse>;
+  vincentTradingProfile(): Promise<VincentTradingProfileResponse>;
 }
+
+const vincentPrototype = ElizaClient.prototype as ElizaClient &
+  VincentClientMethods;
 
 // ── Implementation ────────────────────────────────────────────────────
 
-ElizaClient.prototype.vincentStartLogin = async function (appName?: string) {
+vincentPrototype.vincentStartLogin = async function (appName?: string) {
   return this.fetch("/api/vincent/start-login", {
     method: "POST",
     body: JSON.stringify({ appName: appName ?? "Eliza" }),
   });
 };
 
-ElizaClient.prototype.vincentStatus = async function () {
+vincentPrototype.vincentStatus = async function () {
   return this.fetch("/api/vincent/status");
 };
 
-ElizaClient.prototype.vincentDisconnect = async function () {
+vincentPrototype.vincentDisconnect = async function () {
   return this.fetch("/api/vincent/disconnect", { method: "POST" });
 };
 
-ElizaClient.prototype.vincentStrategy = async function () {
+vincentPrototype.vincentStrategy = async function () {
   return this.fetch("/api/vincent/strategy");
 };
 
-ElizaClient.prototype.vincentUpdateStrategy = async function (
+vincentPrototype.vincentUpdateStrategy = async function (
   request: VincentStrategyUpdateRequest,
 ) {
   return this.fetch("/api/vincent/strategy", {
@@ -64,6 +60,9 @@ ElizaClient.prototype.vincentUpdateStrategy = async function (
   });
 };
 
-ElizaClient.prototype.vincentTradingProfile = async function () {
+vincentPrototype.vincentTradingProfile = async function () {
   return this.fetch("/api/vincent/trading-profile");
 };
+
+export const vincentClient = baseClient as typeof baseClient &
+  VincentClientMethods;

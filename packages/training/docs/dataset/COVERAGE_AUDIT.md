@@ -41,7 +41,7 @@ or drop for each.
 | `multi_step_decision`           | 3     | synthesize_core_prompts                     | RECLASS — it's the multistep planner template, which is phase-2-multistep, not phase-3. Move to Phase 2. |
 | `message_classifier`            | 3     | synthesize_core_prompts                     | KEEP — classifier-only routing variant |
 | `reflection`                    | 4     | synthesize_core_prompts                     | KEEP |
-| `reflection_evaluator`          | 4     | synthesize_core_prompts                     | KEEP |
+| `post_turn_evaluator`           | 4     | synthesize_core_prompts                     | KEEP |
 | `reasoning_cot`                 | OOB   | kimi, glm, opus, deepseek, qwen reasoning   | DROP — see "Out-of-band" below |
 | `claude_distill`                | OOB   | Kassadin88/Claude-Distills                  | TRANSFORM — see "Claude distill" below |
 | `abliteration_harmful`          | OOB   | abliteration corpus                         | KEEP for separate Heretic gate; do NOT mix with main SFT |
@@ -162,7 +162,7 @@ Total records classified: **1,059,915**.
 
 **Phase 3 / Phase 4 fixes:**
 - Phase 3 has 358 records across only 6 templates with examples (most templates have <100 records, several have 5). The 7 missing templates were synthesized via `scripts/synthesize_phase3_actions.py`.
-- Phase 4 has 166 records (81 reflection_evaluator + 75 reflection + 5 each of summarization/long_term_extraction). The 5-evaluator synthesizer at `scripts/synthesize_evaluator_prompts.py` will add ~15k records.
+- Phase 4 has 166 records (81 legacy post-turn evaluator + 75 reflection + 5 each of summarization/long_term_extraction). The registered-evaluator synthesizer at `scripts/synthesize_evaluator_prompts.py` will add coverage for the unified post-turn call.
 
 After applying all transforms + synth runs, projected post-pack distribution:
 
@@ -205,16 +205,18 @@ encode the output, write to `data/synthesized/core_prompts/<action>.jsonl`.
 
 ## Phase 4 — evaluation gap (the largest hole)
 
-Current state: only `reflection` and `reflection_evaluator` files exist
-(~5k records). The runtime has **7 evaluator handlers** that each make an
-LLM call.
+Current state: the runtime has one post-turn evaluator service. Active
+registered evaluator items contribute output sections to one structured model
+call.
 
 | Evaluator                | Template                          | Synthesizer needed |
 |--------------------------|-----------------------------------|--------------------|
-| `REFLECTION`             | `reflectionEvaluatorTemplate`     | EXISTS |
+| `FACT_MEMORY`            | `reflection-items.ts`             | EXISTS |
+| `RELATIONSHIP`           | `reflection-items.ts`             | EXISTS |
+| `IDENTITY`               | `reflection-items.ts`             | EXISTS |
+| `SUCCESS`                | `reflection-items.ts`             | EXISTS |
 | `REFLECT`                | `reflectionTemplate`              | EXISTS |
 | `FACT_EXTRACTOR`         | `factExtractionTemplate`          | **MISSING** |
-| `RELATIONSHIP_EXTRACTION`| `reflectionEvaluatorTemplate` (relationships sub-output) | **MISSING (separate single-task synth)** |
 | `SKILL_EXTRACTION`       | (advanced-capabilities)           | **MISSING** |
 | `SKILL_REFINEMENT`       | (advanced-capabilities)           | **MISSING** |
 | `LONG_TERM_EXTRACTION`   | `longTermExtractionTemplate`      | **MISSING** |

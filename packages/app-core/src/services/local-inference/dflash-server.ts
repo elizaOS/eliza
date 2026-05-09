@@ -4,11 +4,11 @@
  * DFlash needs llama-server flags (`-md`, `--spec-type dflash`) that the
  * in-process node-llama-cpp API does not expose. This backend is deliberately
  * small: spawn a compatible llama-server, wait for health, and use the
- * OpenAI-compatible `/completion` endpoint so callers keep the same raw
- * prompt semantics as LocalInferenceEngine.
+ * OpenAI-compatible chat endpoint so llama-server applies the model chat
+ * template and reasoning controls consistently with LlamaChatSession.
  */
 
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -54,7 +54,13 @@ export function dflashEnabled(): boolean {
   if (readBool("ELIZA_DFLASH_DISABLED")) return false;
   if (readBool("ELIZA_DFLASH_ENABLED")) return true;
   return fs.existsSync(
-    path.join(localInferenceRoot(), "bin", "dflash", platformKey(), "llama-server"),
+    path.join(
+      localInferenceRoot(),
+      "bin",
+      "dflash",
+      platformKey(),
+      "llama-server",
+    ),
   );
 }
 
@@ -66,7 +72,13 @@ function candidateBinaryPaths(): string[] {
   const explicit = process.env.ELIZA_DFLASH_LLAMA_SERVER?.trim();
   const out = explicit ? [explicit] : [];
   out.push(
-    path.join(localInferenceRoot(), "bin", "dflash", platformKey(), "llama-server"),
+    path.join(
+      localInferenceRoot(),
+      "bin",
+      "dflash",
+      platformKey(),
+      "llama-server",
+    ),
   );
   if (readBool("ELIZA_DFLASH_ENABLED")) out.push("llama-server");
   return out;
@@ -167,7 +179,7 @@ function maybeRepairDflashDrafter(
     .filter((value): value is string => Boolean(value))
     .join(path.delimiter);
 
-  const repairCode = String.raw`
+  const repairCode = `
 import sys
 from pathlib import Path
 
@@ -206,14 +218,18 @@ copy_with_new_metadata(
 print(out)
 `;
 
-  const result = spawnSync(python, ["-c", repairCode, targetModelPath, drafterModelPath, repairedPath], {
-    env: {
-      ...process.env,
-      ...(pythonPath ? { PYTHONPATH: pythonPath } : {}),
+  const result = spawnSync(
+    python,
+    ["-c", repairCode, targetModelPath, drafterModelPath, repairedPath],
+    {
+      env: {
+        ...process.env,
+        ...(pythonPath ? { PYTHONPATH: pythonPath } : {}),
+      },
+      encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024,
     },
-    encoding: "utf8",
-    maxBuffer: 16 * 1024 * 1024,
-  });
+  );
 
   if (result.status !== 0) {
     console.warn(
@@ -224,7 +240,9 @@ print(out)
   }
 
   const outputPath = result.stdout.trim().split(/\r?\n/).at(-1)?.trim();
-  return outputPath && fs.existsSync(outputPath) ? outputPath : drafterModelPath;
+  return outputPath && fs.existsSync(outputPath)
+    ? outputPath
+    : drafterModelPath;
 }
 
 function resolvePort(): Promise<number> {
@@ -242,7 +260,9 @@ function resolvePort(): Promise<number> {
         if (address && typeof address === "object") {
           resolve(address.port);
         } else {
-          reject(new Error("Could not allocate a loopback port for llama-server"));
+          reject(
+            new Error("Could not allocate a loopback port for llama-server"),
+          );
         }
       });
     });
@@ -264,7 +284,9 @@ async function fetchJson(
     const res = await fetch(url, { ...init, signal: controller.signal });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      throw new Error(`HTTP ${res.status} from ${url}${body ? `: ${body}` : ""}`);
+      throw new Error(
+        `HTTP ${res.status} from ${url}${body ? `: ${body}` : ""}`,
+      );
     }
     return await res.json();
   } finally {
@@ -390,23 +412,34 @@ export class DflashLlamaServer {
       throw new Error("[dflash] llama-server is not running");
     }
     const payload = {
-      prompt: args.prompt,
-      n_predict: args.maxTokens ?? 2048,
+      model: "local-dflash",
+      messages: [{ role: "user", content: args.prompt }],
+      max_tokens: args.maxTokens ?? 2048,
       temperature: args.temperature ?? 0.7,
       top_p: args.topP ?? 0.9,
       stop: args.stopSequences,
       stream: false,
     };
-    const json = (await fetchJson(`${this.baseUrl}/completion`, {
+    const json = (await fetchJson(`${this.baseUrl}/v1/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     })) as Record<string, unknown>;
-    const content = json.content;
+    const choice = Array.isArray(json.choices) ? json.choices[0] : null;
+    const message =
+      choice && typeof choice === "object"
+        ? (choice as { message?: unknown }).message
+        : null;
+    const content =
+      message && typeof message === "object"
+        ? (message as { content?: unknown }).content
+        : null;
     if (typeof content === "string") return content;
     const text = json.text;
     if (typeof text === "string") return text;
-    throw new Error(`[dflash] Unexpected llama-server response: ${JSON.stringify(json)}`);
+    throw new Error(
+      `[dflash] Unexpected llama-server response: ${JSON.stringify(json)}`,
+    );
   }
 
   private captureLog(chunk: Buffer | string): void {
@@ -433,15 +466,23 @@ export class DflashLlamaServer {
         return;
       } catch {
         try {
-          await fetchJson(`${this.baseUrl}/v1/models`, { method: "GET" }, 2_000);
+          await fetchJson(
+            `${this.baseUrl}/v1/models`,
+            { method: "GET" },
+            2_000,
+          );
           return;
         } catch {
           await sleep(500);
         }
       }
     }
-    const detail = this.stderrTail.length ? ` Last logs: ${this.stderrTail.join(os.EOL)}` : "";
-    throw new Error(`[dflash] llama-server did not become ready within ${timeoutMs}ms.${detail}`);
+    const detail = this.stderrTail.length
+      ? ` Last logs: ${this.stderrTail.join(os.EOL)}`
+      : "";
+    throw new Error(
+      `[dflash] llama-server did not become ready within ${timeoutMs}ms.${detail}`,
+    );
   }
 }
 

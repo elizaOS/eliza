@@ -198,7 +198,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   // the user to hand-edit the system prompt. Kept terse (one sentence per
   // capability) to stay out of the way of the preset's voice.
   const capabilityHints: string[] = [];
-  const workflowMasterEnabled = config.n8n?.enabled !== false;
+  const workflowMasterEnabled = config.workflow?.enabled !== false;
   const workflowExplicitlyDisabled =
     config.plugins?.entries?.["workflow"]?.enabled === false;
   if (workflowMasterEnabled && !workflowExplicitlyDisabled) {

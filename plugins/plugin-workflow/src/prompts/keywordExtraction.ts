@@ -1,8 +1,8 @@
-export const KEYWORD_EXTRACTION_SYSTEM_PROMPT = `You are an expert at extracting relevant search terms for finding n8n nodes.
+export const KEYWORD_EXTRACTION_SYSTEM_PROMPT = `You are an expert at extracting relevant search terms for finding p1p3s nodes.
 
-Given a user prompt describing an n8n workflow, extract up to 5 concise keywords or phrases that best represent the core actions, services, or data transformations involved.
+Given a user prompt describing an workflow, extract up to 5 concise keywords or phrases that best represent the core actions, services, or data transformations involved.
 
-Focus on terms likely to match n8n node names or functionalities. Avoid generic words.
+Focus on terms likely to match p1p3s node names or functionalities. Avoid generic words.
 
 Examples:
 - request: Send me Stripe payment summaries via Gmail every Monday

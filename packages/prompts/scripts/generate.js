@@ -37,6 +37,7 @@ const STANDARD_JSON_FOOTER =
 const HIDDEN_SOURCE_FILES = new Set([
   "should_change_room_state.txt",
   "autonomy.txt",
+  "reflection_evaluator.txt",
 ]);
 
 /**

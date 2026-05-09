@@ -33,13 +33,6 @@ export {
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
-// Keep post-message hook actions explicit in the node entrypoint. Bun has
-// dropped some of these when they were only re-exported transitively through
-// the basic-capabilities barrel, which leaves dangling exports in dist.
-export {
-	reflectionEvaluator,
-	skillEvaluator,
-} from "./features/advanced-capabilities/evaluators/index";
 export * from "./features/advanced-memory";
 // Export capabilities and plugin creation
 export * from "./features/basic-capabilities/index";
@@ -152,6 +145,7 @@ export * from "./secrets";
 // Export security utilities
 export * from "./security";
 export * from "./services";
+export * from "./services/evaluator";
 export * from "./services/agentEvent";
 export * from "./services/approval";
 export * from "./services/hook";

@@ -6,21 +6,32 @@ import * as http from "node:http";
 import * as https from "node:https";
 import os from "node:os";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { type ContentValue, logger } from "@elizaos/core";
+import { readJsonBody, sendJson, sendJsonError } from "@elizaos/shared";
 import {
   getMobileDeviceBridgeStatus,
   loadMobileDeviceBridgeModel,
   unloadMobileDeviceBridgeModel,
 } from "../runtime/mobile-device-bridge-bootstrap.js";
-import { readJsonBody, sendJson, sendJsonError } from "@elizaos/shared";
 
-type ModelRole = "chat" | "embedding";
+type ModelRole = "chat" | "embedding" | "drafter";
 type DownloadState =
   | "queued"
   | "downloading"
   | "completed"
   | "failed"
   | "cancelled";
+
+export type LocalInferenceCommandIntent =
+  | "retry"
+  | "resume"
+  | "redownload"
+  | "download"
+  | "cancel"
+  | "switch_smaller"
+  | "status"
+  | "use_cloud"
+  | "use_local";
 
 interface CatalogModel {
   id: string;
@@ -35,6 +46,8 @@ interface CatalogModel {
   bucket: string;
   blurb: string;
   role: ModelRole;
+  companionModelIds?: string[];
+  hiddenFromCatalog?: boolean;
 }
 
 interface InstalledModel {
@@ -63,6 +76,37 @@ interface DownloadJob {
   error?: string;
 }
 
+export interface LocalInferenceChatMetadata {
+  [key: string]: ContentValue;
+  intent?: LocalInferenceCommandIntent;
+  status:
+    | "missing"
+    | "downloading"
+    | "loading"
+    | "failed"
+    | "no_space"
+    | "idle"
+    | "ready"
+    | "cancelled"
+    | "routing";
+  modelId?: string | null;
+  activeModelId?: string | null;
+  provider?: string;
+  error?: string;
+  progress?: {
+    percent?: number;
+    receivedBytes: number;
+    totalBytes: number;
+    bytesPerSec?: number;
+    etaMs?: number | null;
+  };
+}
+
+export interface LocalInferenceChatResult {
+  text: string;
+  localInference: LocalInferenceChatMetadata;
+}
+
 type Assignments = Partial<
   Record<
     | "TEXT_SMALL"
@@ -87,7 +131,8 @@ interface RoutingPreferencesFile {
 let activeModelState: {
   modelId: string | null;
   loadedAt: string | null;
-  status: "idle" | "ready";
+  status: "idle" | "loading" | "ready" | "error";
+  error?: string;
 } = { modelId: null, loadedAt: null, status: "idle" };
 
 export function getLocalInferenceActiveModelId(): string | undefined {
@@ -126,6 +171,37 @@ const CATALOG: CatalogModel[] = [
     blurb:
       "Recommended mobile local chat default with a larger context window.",
     role: "chat",
+  },
+  {
+    id: "qwen3.5-4b-dflash",
+    displayName: "Qwen3.5 4B DFlash (Q4_K_M)",
+    hfRepo: "bartowski/Qwen_Qwen3.5-4B-GGUF",
+    ggufFile: "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
+    params: "4B",
+    quant: "Q4_K_M",
+    sizeGb: 2.5,
+    minRamGb: 5,
+    category: "chat",
+    bucket: "small",
+    blurb:
+      "Quantized Qwen3.5 mobile target. Downloads the DFlash drafter companion when the native runtime supports speculative decode.",
+    role: "chat",
+    companionModelIds: ["qwen3.5-4b-dflash-drafter-q4"],
+  },
+  {
+    id: "qwen3.5-4b-dflash-drafter-q4",
+    displayName: "Qwen3.5 4B DFlash drafter (Q4_K_M)",
+    hfRepo: "psychopenguin/Qwen3.5-4B-DFlash-FP16-GGUF",
+    ggufFile: "Qwen3.5-4B-DFlash-Q4_K_M.gguf",
+    params: "1B",
+    quant: "Q4_K_M DFlash",
+    sizeGb: 0.51,
+    minRamGb: 1,
+    category: "drafter",
+    bucket: "small",
+    blurb: "DFlash drafter companion for Qwen3.5 4B.",
+    role: "drafter",
+    hiddenFromCatalog: true,
   },
   {
     id: "bge-small-en-v1.5",
@@ -411,7 +487,7 @@ async function assignModel(
     if (overwrite || !assignments.TEXT_EMBEDDING) {
       assignments.TEXT_EMBEDDING = model.id;
     }
-  } else {
+  } else if (model.role === "chat") {
     if (overwrite || !assignments.TEXT_SMALL) assignments.TEXT_SMALL = model.id;
     if (overwrite || !assignments.TEXT_LARGE) assignments.TEXT_LARGE = model.id;
   }
@@ -516,6 +592,17 @@ async function downloadModel(
       lastVerifiedAt: new Date().toISOString(),
     });
     await ensureDefaultAssignment(model);
+    for (const companionId of model.companionModelIds ?? []) {
+      if (!activeDownloads.has(companionId)) {
+        void startDownload(companionId).catch((error) => {
+          logger.warn(
+            `[local-inference] Companion download failed for ${companionId}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        });
+      }
+    }
 
     record.state = "completed";
     record.received = stat.size;
@@ -592,7 +679,7 @@ export async function getLocalInferenceActiveSnapshot(): Promise<
 
 async function hubSnapshot(): Promise<Record<string, unknown>> {
   return {
-    catalog: CATALOG,
+    catalog: CATALOG.filter((model) => !model.hiddenFromCatalog),
     installed: await installedSnapshot(),
     active: await getLocalInferenceActiveSnapshot(),
     downloads: [...activeDownloads.values()].map(({ job }) => ({ ...job })),
@@ -609,6 +696,438 @@ async function hubSnapshot(): Promise<Record<string, unknown>> {
     },
     assignments: await readAssignments(),
   };
+}
+
+function chatModels(): CatalogModel[] {
+  return CATALOG.filter((model) => model.role === "chat");
+}
+
+function recommendedChatModel(): CatalogModel | null {
+  const totalRamGb = os.totalmem() / 1024 ** 3;
+  const candidates = chatModels()
+    .filter((model) => totalRamGb >= model.minRamGb)
+    .sort((left, right) => {
+      const leftDflash = left.companionModelIds?.length ? 1 : 0;
+      const rightDflash = right.companionModelIds?.length ? 1 : 0;
+      if (leftDflash !== rightDflash && totalRamGb >= 6) {
+        return rightDflash - leftDflash;
+      }
+      return right.sizeGb - left.sizeGb;
+    });
+  return (
+    candidates[0] ?? chatModels().sort((a, b) => a.sizeGb - b.sizeGb)[0] ?? null
+  );
+}
+
+function isNoSpaceMessage(value: unknown): boolean {
+  const message =
+    value instanceof Error
+      ? value.message
+      : typeof value === "string"
+        ? value
+        : "";
+  return /\b(?:enospc|no space left|disk full|not enough (?:disk )?space|insufficient storage)\b/i.test(
+    message,
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const precision = value >= 10 || unitIndex === 0 ? 0 : 1;
+  return `${value.toFixed(precision)} ${units[unitIndex]}`;
+}
+
+function progressForJob(
+  job: DownloadJob,
+): LocalInferenceChatMetadata["progress"] {
+  const percent =
+    job.total > 0
+      ? Math.max(0, Math.min(100, Math.round((job.received / job.total) * 100)))
+      : undefined;
+  return {
+    ...(typeof percent === "number" ? { percent } : {}),
+    receivedBytes: job.received,
+    totalBytes: job.total,
+    ...(job.bytesPerSec > 0
+      ? { bytesPerSec: Math.round(job.bytesPerSec) }
+      : {}),
+    etaMs: job.etaMs,
+  };
+}
+
+function progressText(
+  progress: LocalInferenceChatMetadata["progress"] | undefined,
+): string {
+  if (!progress) return "";
+  const percent =
+    typeof progress.percent === "number" ? `${progress.percent}%` : "progress";
+  const total =
+    progress.totalBytes > 0 ? ` of ${formatBytes(progress.totalBytes)}` : "";
+  return `${percent} (${formatBytes(progress.receivedBytes)}${total})`;
+}
+
+function pickStatusLine(status: LocalInferenceChatMetadata["status"]): string {
+  const variants: Record<LocalInferenceChatMetadata["status"], string[]> = {
+    missing: [
+      "I do not have a local chat model installed yet.",
+      "Local chat is waiting on a model download.",
+      "There is no local chat model ready on this device.",
+    ],
+    downloading: [
+      "The local model is still downloading.",
+      "I am still pulling down the local model.",
+      "Local inference is waiting for the model download to finish.",
+    ],
+    loading: [
+      "The local model is loading now.",
+      "I am warming up the local model.",
+      "Local inference is still bringing the model online.",
+    ],
+    failed: [
+      "The local model setup hit an error.",
+      "Local inference failed before generation could start.",
+      "The local model is not ready because the last operation failed.",
+    ],
+    no_space: [
+      "The local model needs more disk space before it can finish.",
+      "Local inference is blocked because storage is full.",
+      "The model download cannot continue until some disk space is freed.",
+    ],
+    idle: [
+      "A local model is installed, but none is loaded right now.",
+      "Local inference is idle with an installed model available.",
+      "The local model is installed and waiting to be activated.",
+    ],
+    ready: [
+      "Local inference is ready.",
+      "The local model is loaded and ready.",
+      "On-device inference is online.",
+    ],
+    cancelled: [
+      "I cancelled the local model download.",
+      "The local download has been stopped.",
+      "Local model download cancelled.",
+    ],
+    routing: [
+      "I updated the inference routing.",
+      "The model routing preference is updated.",
+      "Inference routing has been changed.",
+    ],
+  };
+  const list = variants[status];
+  return list[Math.floor(Date.now() / 15_000) % list.length] ?? list[0];
+}
+
+function buildLocalInferenceChatResult(
+  metadata: LocalInferenceChatMetadata,
+  detail?: string,
+): LocalInferenceChatResult {
+  const progress = progressText(metadata.progress);
+  const parts = [
+    pickStatusLine(metadata.status),
+    metadata.modelId ? `Model: ${metadata.modelId}.` : "",
+    progress ? `Progress: ${progress}.` : "",
+    metadata.error ? `Error: ${metadata.error}` : "",
+    detail ?? "",
+  ].filter((part) => part.trim().length > 0);
+  return {
+    text: parts.join(" "),
+    localInference: metadata,
+  };
+}
+
+function resolveRequestedCatalogModel(prompt: string): CatalogModel | null {
+  const normalized = prompt.toLowerCase();
+  return (
+    chatModels().find((model) => {
+      const candidates = [
+        model.id,
+        model.displayName,
+        model.params,
+        model.bucket,
+        model.category,
+      ].map((value) => value.toLowerCase());
+      return candidates.some((candidate) => normalized.includes(candidate));
+    }) ?? null
+  );
+}
+
+async function resolveDefaultChatModel(
+  prompt: string,
+): Promise<CatalogModel | null> {
+  const requested = resolveRequestedCatalogModel(prompt);
+  if (requested) return requested;
+  const installed = await installedSnapshot();
+  const active = await getLocalInferenceActiveSnapshot();
+  const activeCatalog = active.modelId
+    ? CATALOG.find(
+        (model) => model.id === active.modelId && model.role === "chat",
+      )
+    : null;
+  if (activeCatalog) return activeCatalog;
+  const installedCatalog = installed
+    .map((entry) =>
+      CATALOG.find((model) => model.id === entry.id && model.role === "chat"),
+    )
+    .filter((model): model is CatalogModel => Boolean(model))
+    .sort((a, b) => a.sizeGb - b.sizeGb)[0];
+  return installedCatalog ?? recommendedChatModel();
+}
+
+async function setRoutingForChat(provider: string): Promise<void> {
+  const current = await readJsonFile<RoutingPreferencesFile>(
+    routingPath(),
+    defaultRoutingPreferences(),
+  );
+  const preferences =
+    current.preferences ?? defaultRoutingPreferences().preferences;
+  for (const slot of ["TEXT_SMALL", "TEXT_LARGE"] as const) {
+    preferences.preferredProvider[slot] = provider;
+    preferences.policy[slot] = "manual";
+  }
+  await writeJsonFile(routingPath(), { version: 1, preferences });
+}
+
+async function activateInstalledModel(
+  installed: InstalledModel,
+): Promise<LocalInferenceChatResult> {
+  activeModelState = {
+    modelId: installed.id,
+    loadedAt: null,
+    status: "loading",
+  };
+  try {
+    await loadMobileDeviceBridgeModel(installed.path, installed.id);
+    activeModelState = {
+      modelId: installed.id,
+      loadedAt: new Date().toISOString(),
+      status: "ready",
+    };
+    return buildLocalInferenceChatResult({
+      intent: "use_local",
+      status: "ready",
+      modelId: installed.id,
+      activeModelId: installed.id,
+      provider: "capacitor-llama",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    activeModelState = {
+      modelId: installed.id,
+      loadedAt: null,
+      status: "error",
+      error: message,
+    };
+    return buildLocalInferenceChatResult({
+      intent: "use_local",
+      status: isNoSpaceMessage(message) ? "no_space" : "failed",
+      modelId: installed.id,
+      activeModelId: null,
+      error: message,
+    });
+  }
+}
+
+export async function getLocalInferenceChatStatus(
+  intent: LocalInferenceCommandIntent = "status",
+  error?: unknown,
+): Promise<LocalInferenceChatResult> {
+  const activeDownload = [...activeDownloads.values()]
+    .map(({ job }) => ({ ...job }))
+    .find((job) => job.state === "queued" || job.state === "downloading");
+  if (activeDownload) {
+    return buildLocalInferenceChatResult({
+      intent,
+      status: "downloading",
+      modelId: activeDownload.modelId,
+      activeModelId: activeModelState.modelId,
+      progress: progressForJob(activeDownload),
+    });
+  }
+
+  const active = await getLocalInferenceActiveSnapshot();
+  if (activeModelState.status === "loading") {
+    return buildLocalInferenceChatResult({
+      intent,
+      status: "loading",
+      modelId: activeModelState.modelId,
+      activeModelId: active.modelId,
+    });
+  }
+
+  const errorMessage =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : activeModelState.error;
+  if (errorMessage) {
+    return buildLocalInferenceChatResult({
+      intent,
+      status: isNoSpaceMessage(errorMessage) ? "no_space" : "failed",
+      modelId: activeModelState.modelId,
+      activeModelId: active.modelId,
+      error: errorMessage,
+    });
+  }
+
+  if (active.status === "ready" && active.modelId) {
+    return buildLocalInferenceChatResult({
+      intent,
+      status: "ready",
+      modelId: active.modelId,
+      activeModelId: active.modelId,
+      provider: "capacitor-llama",
+    });
+  }
+
+  const installed = await installedSnapshot();
+  const installedChat = installed.find((entry) =>
+    CATALOG.some((model) => model.id === entry.id && model.role === "chat"),
+  );
+  if (installedChat) {
+    return buildLocalInferenceChatResult({
+      intent,
+      status: "idle",
+      modelId: installedChat.id,
+      activeModelId: active.modelId,
+    });
+  }
+
+  return buildLocalInferenceChatResult({
+    intent,
+    status: "missing",
+    modelId: null,
+    activeModelId: active.modelId,
+  });
+}
+
+export async function handleLocalInferenceChatCommand(
+  intent: LocalInferenceCommandIntent,
+  prompt: string,
+): Promise<LocalInferenceChatResult> {
+  if (intent === "status") {
+    return getLocalInferenceChatStatus(intent);
+  }
+
+  if (intent === "cancel") {
+    const requested = resolveRequestedCatalogModel(prompt);
+    const targets = requested ? [requested.id] : [...activeDownloads.keys()];
+    for (const modelId of targets) {
+      activeDownloads.get(modelId)?.abortController.abort();
+      activeDownloads.delete(modelId);
+    }
+    return buildLocalInferenceChatResult({
+      intent,
+      status: "cancelled",
+      modelId: requested?.id ?? targets[0] ?? null,
+      activeModelId: activeModelState.modelId,
+    });
+  }
+
+  if (intent === "use_cloud") {
+    await setRoutingForChat("elizacloud");
+    return buildLocalInferenceChatResult(
+      {
+        intent,
+        status: "routing",
+        modelId: activeModelState.modelId,
+        activeModelId: activeModelState.modelId,
+        provider: "elizacloud",
+      },
+      "Future chat model calls will prefer Eliza Cloud.",
+    );
+  }
+
+  if (intent === "use_local") {
+    await setRoutingForChat("capacitor-llama");
+    const installed = await installedSnapshot();
+    const requested = await resolveDefaultChatModel(prompt);
+    const installedModel = installed.find(
+      (entry) => entry.id === requested?.id,
+    );
+    if (installedModel) {
+      return activateInstalledModel(installedModel);
+    }
+    if (requested) {
+      const job = await startDownload(requested.id);
+      return buildLocalInferenceChatResult(
+        {
+          intent: "download",
+          status: "downloading",
+          modelId: requested.id,
+          activeModelId: activeModelState.modelId,
+          provider: "capacitor-llama",
+          progress: progressForJob(job),
+        },
+        "I also set chat routing to prefer local inference.",
+      );
+    }
+    return getLocalInferenceChatStatus(intent);
+  }
+
+  if (intent === "switch_smaller") {
+    const active = await getLocalInferenceActiveSnapshot();
+    const installed = await installedSnapshot();
+    const activeCatalog = active.modelId
+      ? CATALOG.find((model) => model.id === active.modelId)
+      : null;
+    const smallerInstalled = installed
+      .map((entry) => ({
+        entry,
+        catalog: CATALOG.find(
+          (model) => model.id === entry.id && model.role === "chat",
+        ),
+      }))
+      .filter(
+        (entry): entry is { entry: InstalledModel; catalog: CatalogModel } => {
+          const catalog = entry.catalog;
+          if (!catalog) return false;
+          return !activeCatalog || catalog.sizeGb < activeCatalog.sizeGb;
+        },
+      )
+      .sort((a, b) => a.catalog.sizeGb - b.catalog.sizeGb)[0];
+    if (smallerInstalled) {
+      return activateInstalledModel(smallerInstalled.entry);
+    }
+    const smallest = chatModels().sort((a, b) => a.sizeGb - b.sizeGb)[0];
+    if (smallest) {
+      const job = await startDownload(smallest.id);
+      return buildLocalInferenceChatResult(
+        {
+          intent,
+          status: "downloading",
+          modelId: smallest.id,
+          activeModelId: active.modelId,
+          progress: progressForJob(job),
+        },
+        "I could not switch to a smaller installed model, so I started the smallest local chat model download.",
+      );
+    }
+  }
+
+  const model = await resolveDefaultChatModel(prompt);
+  if (!model) {
+    return getLocalInferenceChatStatus(intent);
+  }
+  if (intent === "redownload") {
+    await removeInstalledModel(model.id).catch(() => false);
+  }
+  const job = await startDownload(model.id);
+  return buildLocalInferenceChatResult({
+    intent,
+    status: "downloading",
+    modelId: model.id,
+    activeModelId: activeModelState.modelId,
+    progress: progressForJob(job),
+  });
 }
 
 function writeSse(res: http.ServerResponse, payload: unknown): void {
@@ -657,7 +1176,9 @@ export async function handleLocalInferenceRoutes(
     return true;
   }
   if (method === "GET" && pathname === "/api/local-inference/catalog") {
-    sendJson(res, { models: CATALOG });
+    sendJson(res, {
+      models: CATALOG.filter((model) => !model.hiddenFromCatalog),
+    });
     return true;
   }
   if (method === "GET" && pathname === "/api/local-inference/installed") {
@@ -831,7 +1352,12 @@ export async function handleLocalInferenceRoutes(
     const catalog = CATALOG.find((model) => model.id === installed.id);
     if (catalog) await assignModel(catalog, true);
     try {
-      await loadMobileDeviceBridgeModel(installed.path);
+      activeModelState = {
+        modelId: installed.id,
+        loadedAt: null,
+        status: "loading",
+      };
+      await loadMobileDeviceBridgeModel(installed.path, installed.id);
       activeModelState = {
         modelId: installed.id,
         loadedAt: new Date().toISOString(),
@@ -839,6 +1365,12 @@ export async function handleLocalInferenceRoutes(
       };
       sendJson(res, activeModelState);
     } catch (error) {
+      activeModelState = {
+        modelId: installed.id,
+        loadedAt: null,
+        status: "error",
+        error: error instanceof Error ? error.message : String(error),
+      };
       sendJsonError(
         res,
         error instanceof Error ? error.message : "Failed to load model",

@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type {
   Action,
   AgentRuntime,
+  Evaluator,
   Plugin,
   PluginModelRegistration,
   Provider,
@@ -19,6 +20,7 @@ type ElizaPluginOwnership = {
   registeredPlugin: Plugin | null;
   actions: Action[];
   providers: Provider[];
+  evaluators: Evaluator[];
   routes: Route[];
   events: ElizaPluginEventRegistration[];
   models: ElizaPluginModelRegistration[];
@@ -50,6 +52,7 @@ type ContextScoped = {
 
 type RuntimeAction = NonNullable<Plugin["actions"]>[number] & ContextScoped;
 type RuntimeProvider = NonNullable<Plugin["providers"]>[number] & ContextScoped;
+type RuntimeEvaluator = NonNullable<Plugin["evaluators"]>[number];
 type RuntimeRoute = NonNullable<Plugin["routes"]>[number];
 type RuntimeServiceClass = NonNullable<Plugin["services"]>[number];
 type RuntimeEventHandler = ElizaPluginEventRegistration["handler"];
@@ -292,6 +295,7 @@ function createEmptyOwnership(plugin: Plugin): RuntimePluginOwnership {
     registeredPlugin: null,
     actions: [],
     providers: [],
+    evaluators: [],
     routes: [],
     events: [],
     models: [],
@@ -495,6 +499,7 @@ function removeOwnedComponents(
 ): void {
   removeArrayItemsByReference(runtime.actions, ownership.actions);
   removeArrayItemsByReference(runtime.providers, ownership.providers);
+  removeArrayItemsByReference(runtime.evaluators, ownership.evaluators);
 }
 
 async function restoreAdapterIfNeeded(
@@ -619,6 +624,7 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
     typeof runtime.registerPlugin !== "function" ||
     typeof runtime.registerAction !== "function" ||
     typeof runtime.registerProvider !== "function" ||
+    typeof runtime.registerEvaluator !== "function" ||
     typeof runtime.registerModel !== "function" ||
     typeof runtime.registerEvent !== "function" ||
     typeof runtime.registerService !== "function"
@@ -630,6 +636,7 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
   const originalRegisterPlugin = runtime.registerPlugin.bind(runtime);
   const originalRegisterAction = runtime.registerAction.bind(runtime);
   const originalRegisterProvider = runtime.registerProvider.bind(runtime);
+  const originalRegisterEvaluator = runtime.registerEvaluator.bind(runtime);
   const originalRegisterModel = runtime.registerModel.bind(runtime);
   const originalRegisterEvent = runtime.registerEvent.bind(runtime);
   const originalRegisterService = runtime.registerService.bind(runtime);
@@ -699,6 +706,18 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
       pushUniqueRef(capture.ownership.providers, registeredProvider);
     }
   }) as typeof runtime.registerProvider;
+
+  runtime.registerEvaluator = ((evaluator: RuntimeEvaluator) => {
+    const capture = pluginRegistrationContext.getStore();
+    const evaluatorsBefore = runtime.evaluators.length;
+    originalRegisterEvaluator(evaluator);
+    if (!capture || runtime.evaluators.length <= evaluatorsBefore) return;
+    for (const registeredEvaluator of runtime.evaluators.slice(
+      evaluatorsBefore,
+    )) {
+      pushUniqueRef(capture.ownership.evaluators, registeredEvaluator);
+    }
+  }) as typeof runtime.registerEvaluator;
 
   runtime.registerModel = ((modelType, handler, provider, priority) => {
     const capture = pluginRegistrationContext.getStore();
@@ -812,6 +831,7 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
         capture.ownership.registeredPlugin ||
         capture.ownership.actions.length > 0 ||
         capture.ownership.providers.length > 0 ||
+        capture.ownership.evaluators.length > 0 ||
         capture.ownership.routes.length > 0 ||
         capture.ownership.events.length > 0 ||
         capture.ownership.models.length > 0 ||

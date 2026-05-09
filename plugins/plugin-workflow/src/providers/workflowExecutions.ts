@@ -23,16 +23,16 @@ interface ExecutionRow {
 }
 
 /**
- * Provider that surfaces recent n8n workflow execution history as JSON context.
+ * Provider that surfaces recent workflow execution history as JSON context.
  *
  * Replaces the legacy GET_WORKFLOW_EXECUTIONS action. Surfacing executions through a
  * provider lets the planner reason over recent runs every turn without paying
  * an LLM hop to match a workflow.
  */
-export const n8nExecutionsProvider: Provider = {
-  name: 'n8nExecutions',
-  description: 'Recent n8n workflow execution history (status, start/stop, errors).',
-  descriptionCompressed: 'Recent n8n workflow execution history.',
+export const p1p3sExecutionsProvider: Provider = {
+  name: 'p1p3sExecutions',
+  description: 'Recent workflow execution history (status, start/stop, errors).',
+  descriptionCompressed: 'Recent workflow execution history.',
   contexts: ['automation', 'connectors'],
   contextGate: { anyOf: ['automation', 'connectors'] },
   cacheScope: 'turn',
@@ -51,7 +51,7 @@ export const n8nExecutionsProvider: Provider = {
       if (workflows.length === 0) {
         return {
           text: JSON.stringify({
-            n8nExecutions: { status: 'no_workflows', executions: [] },
+            p1p3sExecutions: { status: 'no_workflows', executions: [] },
           }, null, 2),
           data: { executions: [] },
           values: { hasExecutions: false },
@@ -71,7 +71,7 @@ export const n8nExecutionsProvider: Provider = {
             return { workflow: wf, executions };
           } catch (error) {
             logger.debug(
-              { src: 'plugin:n8n-workflow:provider:executions' },
+              { src: 'plugin:workflow:provider:executions' },
               `Could not fetch executions for workflow ${wf.id}: ${error instanceof Error ? error.message : String(error)}`
             );
             return { workflow: wf, executions: [] as WorkflowExecution[] };
@@ -102,7 +102,7 @@ export const n8nExecutionsProvider: Provider = {
       if (rows.length === 0) {
         return {
           text: JSON.stringify({
-            n8nExecutions: { status: 'no_executions', executions: [] },
+            p1p3sExecutions: { status: 'no_executions', executions: [] },
           }, null, 2),
           data: { executions: [] },
           values: { hasExecutions: false },
@@ -111,10 +111,10 @@ export const n8nExecutionsProvider: Provider = {
 
       return {
         text: JSON.stringify({
-          n8nExecutions: {
+          p1p3sExecutions: {
             status: 'ready',
             instruction:
-              "Recent execution rows for the user's n8n workflows. Use `error` to diagnose failed runs.",
+              "Recent execution rows for the user's workflows. Use `error` to diagnose failed runs.",
             executions: rows,
           },
         }, null, 2),
@@ -123,7 +123,7 @@ export const n8nExecutionsProvider: Provider = {
       };
     } catch (error) {
       logger.error(
-        { src: 'plugin:n8n-workflow:provider:executions' },
+        { src: 'plugin:workflow:provider:executions' },
         `Failed to load executions: ${error instanceof Error ? error.message : String(error)}`
       );
       return { text: '', data: {}, values: {} };

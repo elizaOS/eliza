@@ -419,19 +419,6 @@ export const VALIDATION_KEYWORD_DOCS = {
         },
       },
     },
-    experienceEvaluator: {
-      request: {
-        base: "analyzes\nanalyzes conversation\nconversation\nexperience evaluator\nexperience recorder\nexperience_evaluator\nexperience_recorder\nexperiences\nextract\nextract novel\nlearning\nlearning evaluator\nlearning_evaluator\nnovel\npatterns\npatterns extract\nperiodically\nperiodically analyzes\nself reflection\nself_reflection\nself-reflection",
-        locales: {
-          es: "accion\nanalizar\nextraer\nherramienta\nreflexion\nsolicitud",
-          ko: "도구\n분석\n성찰\n요청\n작업\n추출",
-          pt: "acao\nanalisar\nextrair\nferramenta\nreflexao\nsolicitacao",
-          tl: "aksyon\nkahilingan\nkasangkapan\nkunin\npagninilay\nsuriin",
-          vi: "cong cu\ncông cụ\nhanh dong\nhành động\nphan anh\nphản ánh\nphan tich\nphân tích\ntrich xuat\ntrích xuất\nyeu cau\nyêu cầu",
-          "zh-CN": "分析\n反思\n工具\n提取\n操作\n请求",
-        },
-      },
-    },
     extractPage: {
       request: {
         base: "browser extract page\nclean\ncleaned\ncloud\ncontent\ncontent through\ndata\ndata page\ndocuments extract page\neliza\nextract\nextract page\nextract web page\nextract_page\nextract_web_page\nfetch page\nfetch_page\nhost\nhost tool\nhosted\nhosted tools\nhtml\nlink\nlink screenshot\nlinks\nlinks screenshot\nmarkdown\nmetadata\noptional\npage\npage content\npage metadata\nplus\nread web page\nread_web_page\nreturn\nreturns\nscrape page\nscrape_page\nscreenshot\nscreenshot data\nthrough\ntool\ntool return\ntools\ntools returns\nweb extract page",
@@ -819,19 +806,6 @@ export const VALIDATION_KEYWORD_DOCS = {
           tl: "agent\nagent memory\nalaala\nalalahanin\nalisin\nalisin memory\nburahin\nburahin alisin\nburahin i-update\nburahin memory\ndokumento\ndokumento memory\ngumawa\ngumawa maghanap\ngumawa memory\ngumawa tindahan\nhanapin\nhanapin memory\ni-edit\ni-edit memory\ni-save\ni-update\ni-update burahin\ni-update i-edit\ni-update memory\ninternal ng agent\ninternal state\nisulat\nisulat memory\nkuwarto\nlong term memory\nmaghanap\nmaghanap i-update\nmaghanap memory\nmemory\nmemory gumawa\nmemory maghanap\nmemory memory\nnilalaman ng file\nnotes\npamahalaan agent\nquery i-update\nroom\nroom query\nsariling pamamahala\ntandaan\ntindahan\ntindahan memory",
           vi: "cap nhat\ncập nhật\ncập nhật ký ức\nchinh sua\nchỉnh sửa\nchỉnh sửa ký ức\ncua hang\ncửa hàng\ncửa hàng ký ức\nghi chu\nghi chú\nghi nho\nghi nhớ\ngỡ ký ức\nky uc\nký ức\nký ức ký ức\nký ức tạo\nký ức tìm kiếm\nlưu ghi chú\nnoi bo tac tu\nnội bộ tác tử\nphòng truy vấn\nquan ly\nquản lý\nquản lý tác tử\ntac tu\ntác tử\ntác tử ký ức\ntai lieu\ntài liệu\ntài liệu ký ức\ntạo cửa hàng\ntạo ký ức\ntạo tìm kiếm\ntim kiem\ntìm kiếm\ntìm kiếm ký ức\ntìm ký ức\ntruy van\ntruy vấn\ntruy vấn cập nhật\ntu quan ly\ntự quản lý\nviết ký ức\nxóa cập nhật\nxóa gỡ\nxóa ký ức",
           "zh-CN": "代理\n代理 记忆\n代理内部\n保存笔记\n内部状态\n写入\n写入 记忆\n创建\n创建 商店\n创建 搜索\n创建 记忆\n删除\n删除 更新\n删除 移除\n删除 记忆\n商店\n商店 记忆\n回忆\n房间\n房间 查询\n搜索\n搜索 更新\n搜索 记忆\n文件内容\n文档\n文档 记忆\n智能体\n更新\n更新 删除\n更新 编辑\n更新 记忆\n查找\n查找 记忆\n查询 更新\n移除\n移除 记忆\n笔记\n管理 代理\n编辑\n编辑 记忆\n聊天室\n自我管理\n记住\n记忆\n记忆 创建\n记忆 搜索\n记忆 记忆\n长期记忆",
-        },
-      },
-    },
-    memoryEvaluator: {
-      request: {
-        base: "context\ncontext compression\ncontext_compression\nconversation\nentity\nextracts\nextracts long\nfeeds\nforward\nitems\nlong\nlong term memory extraction\nlong_term_memory_extraction\nmemory\nmemory consolidation\nmemory evaluator\nmemory items\nmemory provider\nmemory summarization\nmemory_consolidation\nmemory_evaluator\nmemory_summarization\npass\nprovider\nrolls\nsingle\nsummary\nsummary extracts\ntagged\ntagged memory\nterm\nterm memory",
-        locales: {
-          es: "accion\nextraer\nherramienta\nmemoria\nsolicitud",
-          ko: "기억\n도구\n요청\n작업\n추출",
-          pt: "acao\nextrair\nferramenta\nmemoria\nsolicitacao",
-          tl: "aksyon\nalaala\nkahilingan\nkasangkapan\nkunin\nmemory",
-          vi: "cong cu\ncông cụ\nhanh dong\nhành động\nky uc\nký ức\ntrich xuat\ntrích xuất\nyeu cau\nyêu cầu",
-          "zh-CN": "工具\n提取\n操作\n记忆\n请求",
         },
       },
     },
