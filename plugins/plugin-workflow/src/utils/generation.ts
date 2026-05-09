@@ -39,22 +39,29 @@ import {
 } from './outputSchema';
 import type { UnknownParamDetection } from './workflow';
 
-type ObjectModelRunner = {
+type StructuredModelRunner = {
   useModel<T>(
     modelType: string,
-    params: { prompt: string; schema: unknown },
+    params: { prompt: string; responseSchema: unknown },
     provider?: string
   ): Promise<T>;
 };
 
+/**
+ * Route structured-output requests through TEXT_SMALL with `responseSchema`.
+ * Provider plugins (anthropic, openai, openrouter, google-genai, ollama, groq,
+ * etc.) translate `responseSchema` into native tool calling / structured output
+ * APIs. The dedicated OBJECT_SMALL / OBJECT_LARGE model types were removed —
+ * all text models support JSON-shaped output via tools or response_format.
+ */
 async function useStructuredModel<T>(
   runtime: IAgentRuntime,
   prompt: string,
   schema: unknown
 ): Promise<T> {
-  return await (runtime as unknown as ObjectModelRunner).useModel<T>('OBJECT_SMALL', {
+  return await (runtime as unknown as StructuredModelRunner).useModel<T>(ModelType.TEXT_SMALL, {
     prompt,
-    schema,
+    responseSchema: schema,
   });
 }
 

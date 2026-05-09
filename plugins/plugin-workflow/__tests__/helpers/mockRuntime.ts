@@ -12,16 +12,18 @@ export interface MockRuntimeOptions {
 }
 
 /**
- * Create a useModel mock that handles both structured (schema) and text (formatting) calls.
+ * Create a useModel mock that handles both structured (responseSchema) and text (formatting) calls.
  *
- * - Schema calls (OBJECT_SMALL) → return schemaResult
+ * - Structured calls (TEXT_SMALL with `responseSchema`) → return schemaResult
  * - Text calls (TEXT_SMALL for formatActionResponse) → return the data section from the prompt
  *   so tests can verify that the right data was passed to the LLM
  */
 export function createUseModelMock(schemaResult?: Record<string, unknown>) {
   return mock((_type: string, opts: Record<string, unknown>) => {
-    // Schema-based calls (intent classification, keyword extraction)
-    if (opts?.schema) return Promise.resolve(schemaResult || {});
+    // Structured-output calls (intent classification, keyword extraction).
+    // Accept both the new `responseSchema` field and the legacy `schema` field
+    // to keep tests that haven't been updated working through the transition.
+    if (opts?.responseSchema || opts?.schema) return Promise.resolve(schemaResult || {});
 
     // Text calls (response formatting) — extract and return the data section
     const prompt = (opts?.prompt || '') as string;
