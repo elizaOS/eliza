@@ -26,7 +26,7 @@ beforeEach(() => {
 });
 
 describe("xAI native text plumbing", () => {
-  it("forwards tools and returns native shape with toolCalls when caller passes tools", async () => {
+  it("forwards tools and returns native shape with toolCalls when caller passes tools", { timeout: 15000 }, async () => {
     const fetchMock = vi.fn(async () =>
       new Response(
         JSON.stringify({

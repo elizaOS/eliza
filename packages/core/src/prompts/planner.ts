@@ -53,3 +53,6 @@ export const plannerSchema: JSONSchema = {
 	},
 	required: ["thought", "toolCalls"],
 };
+
+export const v5PlannerTemplate = plannerTemplate;
+export const v5PlannerSchema = plannerSchema;

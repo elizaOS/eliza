@@ -30,8 +30,15 @@
   "files": [
     "dist",
     "README.md",
-    "package.json"
+    "package.json",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": ["messaging"]
+    }
+  },
   "dependencies": {
     "@hapi/boom": "^10.0.1",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",

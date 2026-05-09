@@ -62,3 +62,6 @@ export const evaluatorSchema: JSONSchema = {
 	},
 	required: ["success", "decision", "thought"],
 };
+
+export const v5EvaluatorTemplate = evaluatorTemplate;
+export const v5EvaluatorSchema = evaluatorSchema;

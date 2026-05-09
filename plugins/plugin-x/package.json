@@ -15,8 +15,15 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": ["messaging", "social-posting"]
+    }
+  },
   "dependencies": {
     "headers-polyfill": "^5.0.0",
     "json-stable-stringify": "^1.3.0",
