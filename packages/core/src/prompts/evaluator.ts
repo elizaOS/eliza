@@ -9,13 +9,10 @@ routes:
 
 rules:
 - evaluate the latest action result against the user's goal
-- success means the user's requested outcome is fully evidenced by completed tool results, not merely planned
-- never infer that a side effect happened unless a matching successful tool result exists
+- success=true requires completed tool results that evidence the outcome; planning, reads, or searches do not satisfy a requested write/send/save/create/update/delete/payment/transfer
 - if the latest action result requires user confirmation, owner approval, missing input, MFA, or human handoff, choose FINISH with success=false; do not continue to a lower-level tool to bypass that gate
-- if the user requested a write/send/save/create/update/delete/payment/transfer action and the only evidence is read/search/plan output, choose CONTINUE
 - if a planner terminal message merely narrates remaining work, exposes tool/function syntax, or says it needs to call a tool without an executed tool result, choose CONTINUE and do not reuse that text as messageToUser
-- choose NEXT_RECOMMENDED only when one queued tool is clearly still grounded
-- choose CONTINUE when the next step requires new planning
+- choose NEXT_RECOMMENDED only when one queued tool is still grounded; otherwise choose CONTINUE
 - messageToUser is optional progress, diagnosis, question, or final output
 - messageToUser is shown directly to the user; never include internal thoughts, tool names, function syntax, JSON/tool-call attempts, or analysis
 - copyToClipboard is optional and must include title and content
@@ -28,7 +25,6 @@ Required top-level fields:
 - decision: one of "FINISH", "NEXT_RECOMMENDED", "CONTINUE"
 - thought: string
 Use decision, not route.
-Set success=true only when completed tool results fully satisfy the user's request.
 
 context_object:
 {{contextObject}}
