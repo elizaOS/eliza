@@ -16,7 +16,7 @@ import { readJsonBody } from "@elizaos/shared";
 import {
   createPaymentAwareHandler,
   isRoutePaymentWrapped,
-} from "../middleware/x402/payment-wrapper.js";
+} from "@elizaos/plugin-x402";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 
