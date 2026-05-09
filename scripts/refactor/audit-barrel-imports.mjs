@@ -11,6 +11,7 @@ import { relative } from "node:path";
 import {
   REPO_ROOT,
   findImportSpecifiers,
+  walkWorkspacePackages,
   walkSourceFiles,
 } from "./lib/util.mjs";
 
@@ -33,20 +34,32 @@ const PACKAGE_SUBPATH_RE = /^(@(?:elizaos|babylon)\/[^/]+)\/(.+)$/;
 
 function main() {
   const violations = [];
+  const packageByDir = walkWorkspacePackages()
+    .map((pkg) => ({
+      name: pkg.name,
+      dir: relative(REPO_ROOT, pkg.dir).replace(/\\/g, "/"),
+    }))
+    .sort((a, b) => b.dir.length - a.dir.length);
   const files = walkSourceFiles(REPO_ROOT, (path) => {
     return !path.includes(`${REPO_ROOT}/scripts/refactor/`);
   });
 
   for (const file of files) {
+    const relFile = relative(REPO_ROOT, file).replace(/\\/g, "/");
+    const owner = packageByDir.find(
+      (pkg) => relFile === `${pkg.dir}/package.json` || relFile.startsWith(`${pkg.dir}/`),
+    )?.name;
     const source = readFileSync(file, "utf8");
     for (const spec of findImportSpecifiers(source)) {
       const match = PACKAGE_SUBPATH_RE.exec(spec.specifier);
       if (!match) continue;
+      const packageName = match[1];
+      if (owner === packageName) continue;
       const subpath = match[2];
       if (ALLOWED_SUFFIXES.has(subpath)) continue;
       if (isAllowedAssetSubpath(subpath)) continue;
       violations.push({
-        file: relative(REPO_ROOT, file),
+        file: relFile,
         specifier: spec.specifier,
       });
     }
