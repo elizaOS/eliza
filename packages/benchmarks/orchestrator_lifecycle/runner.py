@@ -66,6 +66,11 @@ class LifecycleRunner:
                 "Status: active subagent is running, progress is steady, no blockers, "
                 "next step is validation."
             )
+        if "resume" in msg and ("scope" in msg or "change" in msg or "update" in msg):
+            return (
+                "Task resumed. Scope change acknowledged, updated plan applied, and "
+                "the active subagent is continuing with the new task plan."
+            )
         if "pause" in msg:
             return "Task paused and put on hold. No further execution until resume."
         if "resume" in msg:
@@ -74,15 +79,20 @@ class LifecycleRunner:
             return "Task cancelled and execution stopped. Cancel confirmed."
         if "undo" in msg or "uncancel" in msg:
             return "Cancellation undone, updated plan applied, and task resumed."
-        if "change" in msg or "scope" in msg:
+        if "change" in msg or "scope" in msg or "replan" in msg or "re-plan" in msg:
             return (
-                "Scope change acknowledged. I updated the plan, delegated to the right "
-                "subagent, and will report progress."
+                "Scope change acknowledged. Updated plan: re-planned the task, "
+                "delegated to the right subagent, and will report progress."
             )
         if "summary" in msg or "done" in msg or "complete" in msg:
             return (
                 "Summary: work completed, deliverable validated, risks noted, and next "
                 "actions documented for stakeholder review."
+            )
+        if "fix" in msg or "test" in msg or "shell" in msg or "code" in msg or "implement" in msg:
+            return (
+                "I will delegate this to a subagent worker and report active subagent "
+                "status updates as the task progresses."
             )
         generic = [
             "I will delegate this to a subagent and provide regular status updates.",
