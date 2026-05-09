@@ -42,8 +42,7 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    },
-    "./dev-settings-figlet-heading": "./dist/dev-settings-figlet-heading.js"
+    }
   },
   "publishConfig": {
     "access": "public",
