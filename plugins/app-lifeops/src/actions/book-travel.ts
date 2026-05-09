@@ -659,7 +659,7 @@ export const bookTravelAction: Action & {
       {
         name: "{{name1}}",
         content: {
-          text: "Jill confirmed it will just be me for LA and Toronto. Put together the flights and hotel and hold it for my approval before you book anything.",
+          text: "My partner confirmed it will just be me for LA and Toronto. Put together the flights and hotel and hold it for my approval before you book anything.",
         },
       },
       {

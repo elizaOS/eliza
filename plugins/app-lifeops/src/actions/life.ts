@@ -3513,7 +3513,7 @@ export const lifeAction: Action & {
       {
         name: "{{agentName}}",
         content: {
-          text: 'Puedo guardar el hábito "Brush teeth" para la mañana y la noche. Confirma y lo guardo.',
+          text: 'Puedo guardar ese hábito para la mañana y la noche. Confirma y lo guardo.',
           actions: ["LIFE"],
         },
       },

@@ -10,7 +10,7 @@ Journey numbering follows the Phase 7 orchestration brief and matches the
 
 | Journey ID | Journey Name | Domain | PRD Section | Test File | Mockoon Environments | Status |
 |---|---|---|---|---|---|---|
-| 1 | Recurring Relationship Time (e.g. weekly Jill block) | Calendar / Recurring | Suite A (`ea.schedule.daily-time-with-jill`) | `test/scenarios/calendar-llm-eval-mutations.scenario.ts` | google | covered (extension pending) |
+| 1 | Recurring Relationship Time | Calendar / Recurring | Suite A (`ea.schedule.recurring-relationship-block`) | `test/scenarios/calendar-llm-eval-mutations.scenario.ts` | google | covered (extension pending) |
 | 2 | Sleep Window Protection (reject 7am meeting) | Calendar / Sleep Goal | Suite A (`ea.schedule.protect-sleep-window`) | `test/scenarios/goal-sleep-basic.scenario.ts` | google | covered (extension pending) |
 | 3 | Travel Blackout Reschedule (bulk cancel for trip) | Travel / Calendar | Suite A (`ea.schedule.travel-blackout-reschedule`) | `test/book-travel.approval.integration.test.ts` | google (vi-fetch) | covered (extension pending) |
 | 4 | Bundle Meetings While Traveling (NYC trip) | Calendar / Travel | Suite A (`ea.schedule.bundle-meetings-while-traveling`) | `test/bundle-meetings.e2e.test.ts` | google | covered |

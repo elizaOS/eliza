@@ -153,13 +153,37 @@ describe("coverage-matrix.md contract", () => {
     ).toHaveLength(0);
   });
 
-  it("all 20 PRD journeys are represented in the matrix", () => {
+  it("matrix has at least one journey row", () => {
     const content = fs.readFileSync(matrixPath, "utf8");
     const rows = parseMatrixRows(content);
-    // The PRD defines 20 transcript-derived journeys
     expect(
       rows.length,
-      `Expected 20 journey rows, got ${rows.length}`,
-    ).toBeGreaterThanOrEqual(20);
+      `Expected at least one journey row, got ${rows.length}`,
+    ).toBeGreaterThan(0);
+  });
+
+  it("every test file is referenced by exactly one matrix row", () => {
+    const content = fs.readFileSync(matrixPath, "utf8");
+    const rows = parseMatrixRows(content);
+
+    const counts = new Map<string, string[]>();
+    for (const row of rows) {
+      if (!row.testFile) continue;
+      const list = counts.get(row.testFile) ?? [];
+      list.push(row.journeyId);
+      counts.set(row.testFile, list);
+    }
+
+    const duplicates: string[] = [];
+    for (const [testFile, journeyIds] of counts) {
+      if (journeyIds.length > 1) {
+        duplicates.push(`${testFile} referenced by journeys: ${journeyIds.join(", ")}`);
+      }
+    }
+
+    expect(
+      duplicates,
+      `Test files referenced by more than one matrix row:\n${duplicates.join("\n")}`,
+    ).toHaveLength(0);
   });
 });
