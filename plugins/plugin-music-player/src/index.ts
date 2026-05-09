@@ -113,3 +113,5 @@ const musicPlayerPlugin: Plugin = {
 };
 
 export default musicPlayerPlugin;
+
+export { tryHandleMusicPlayerStatusFallback } from "./route-fallback.js";

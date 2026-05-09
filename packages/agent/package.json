@@ -144,6 +144,7 @@
     "@elizaos/plugin-browser-bridge": "workspace:*",
     "@elizaos/plugin-coding-tools": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",
+    "@elizaos/plugin-music-player": "workspace:*",
     "@elizaos/plugin-workflow": "workspace:*",
     "@elizaos/plugin-computeruse": "workspace:*",
     "@elizaos/plugin-local-embedding": "workspace:*",
