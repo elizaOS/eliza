@@ -18,7 +18,10 @@
   "elizaos": {
     "plugin": {
       "autoEnableModule": "./auto-enable.ts",
-      "capabilities": ["messaging", "live-streaming"]
+      "capabilities": [
+        "messaging",
+        "live-streaming"
+      ]
     }
   },
   "scripts": {
@@ -31,6 +34,7 @@
     "typecheck": "echo \"Typecheck skipped for release\""
   },
   "dependencies": {
+    "@elizaos/shared": "workspace:*",
     "@twurple/auth": "^8.0.0",
     "@twurple/chat": "^8.0.0",
     "zod": "^4.4.3"

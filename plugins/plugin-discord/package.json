@@ -1,152 +1,153 @@
 {
-	"name": "@elizaos/plugin-discord",
-	"version": "2.0.0-beta.0",
-	"description": "",
-	"type": "module",
-	"main": "dist/index.js",
-	"module": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"sideEffects": false,
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/elizaos-plugins/plugin-discord.git"
-	},
-	"exports": {
-		"./package.json": "./package.json",
-		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.js",
-			"default": "./dist/index.js"
-		}
-	},
-	"files": [
-		"dist",
-		"auto-enable.ts"
-	],
-	"elizaos": {
-		"plugin": {
-			"autoEnableModule": "./auto-enable.ts",
-			"capabilities": [
-				"messaging",
-				"voice"
-			]
-		}
-	},
-	"keywords": [],
-	"author": "elizaOS",
-	"license": "MIT",
-	"scripts": {
-		"build": "npm run build:prompts && bun run build.ts",
-		"build:ts": "bun run build.ts",
-		"dev": "bun --hot build.ts",
-		"clean": "rm -rf dist .turbo node_modules",
-		"test": "vitest run",
-		"typecheck": "tsc --noEmit",
-		"lint": "../../node_modules/.bin/biome check --write --unsafe .",
-		"lint:check": "../../node_modules/.bin/biome check .",
-		"format": "../../node_modules/.bin/biome format --write .",
-		"format:check": "../../node_modules/.bin/biome format .",
-		"build:prompts": "sh -c 'if test -f ../../packages/prompts/scripts/generate-plugin-prompts.js; then node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./generated/prompts --target all; else echo \"Prompt generation skipped\"; fi'",
-		"test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
-		"test:live": "bun run test:e2e"
-	},
-	"dependencies": {
-		"@discordjs/opus": "^0.10.0",
-		"@discordjs/rest": "^2.6.1",
-		"@discordjs/voice": "^0.19.2",
-		"@elizaos/core": "workspace:*",
-		"@elizaos/plugin-browser": "workspace:*",
-		"discord-api-types": "^0.38.0",
-		"discord.js": "^14.26.4",
-		"fast-levenshtein": "^3.0.0",
-		"fluent-ffmpeg": "^2.1.3",
-		"get-func-name": "^3.0.0",
-		"libsodium-wrappers": "^0.8.0",
-		"opusscript": "^0.1.1",
-		"prism-media": "1.3.5",
-		"typescript": "^6.0.0",
-		"zod": "^4.4.3"
-	},
-	"devDependencies": {
-		"@biomejs/biome": "^2.4.14",
-		"@types/node": "^25.0.3",
-		"typescript": "^6.0.0",
-		"vitest": "^4.1.4"
-	},
-	"peerDependencies": {
-		"@elizaos/core": "workspace:*",
-		"whatwg-url": "^16.0.0"
-	},
-	"publishConfig": {
-		"access": "public"
-	},
-	"agentConfig": {
-		"pluginType": "elizaos:plugin:1.0.0",
-		"pluginParameters": {
-			"DISCORD_API_TOKEN": {
-				"type": "string",
-				"description": "Discord API token used to authenticate and log in the Discord client/service.",
-				"required": true,
-				"sensitive": true
-			},
-			"DISCORD_APPLICATION_ID": {
-				"type": "string",
-				"description": "Discord application ID for the bot",
-				"required": true,
-				"sensitive": false
-			},
-			"CHANNEL_IDS": {
-				"type": "string",
-				"description": "Comma-separated list of Discord channel IDs that will be parsed into an array if provided.",
-				"required": false,
-				"sensitive": false
-			},
-			"DISCORD_TEST_CHANNEL_ID": {
-				"type": "string",
-				"description": "Discord channel ID used during test suite to locate the test channel for sending messages, voice interactions, and other test operations.",
-				"required": false,
-				"sensitive": false
-			},
-			"DISCORD_VOICE_CHANNEL_ID": {
-				"type": "string",
-				"description": "ID of the Discord voice channel the bot should join when scanning a guild. If not supplied, the bot selects a channel based on member activity.",
-				"required": false,
-				"sensitive": false
-			},
-			"DISCORD_SHOULD_IGNORE_BOT_MESSAGES": {
-				"type": "boolean",
-				"description": "If true, the bot will ignore messages from other bots. Can be overridden by character settings.",
-				"required": false,
-				"sensitive": false
-			},
-			"DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES": {
-				"type": "boolean",
-				"description": "If true, the bot will ignore direct messages. Can be overridden by character settings.",
-				"required": false,
-				"sensitive": false
-			},
-			"DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS": {
-				"type": "boolean",
-				"description": "If true, the bot will only respond when explicitly mentioned. Can be overridden by character settings.",
-				"required": false,
-				"sensitive": false
-			},
-			"DISCORD_LISTEN_CHANNEL_IDS": {
-				"type": "string",
-				"description": "Comma-separated list of Discord channel IDs where the bot will only listen (not respond).",
-				"required": false,
-				"sensitive": false
-			}
-		}
-	},
-	"eliza": {
-		"platforms": [
-			"node"
-		],
-		"runtime": "node",
-		"platformDetails": {
-			"node": "Default export (Node.js)"
-		}
-	},
-	"gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
+  "name": "@elizaos/plugin-discord",
+  "version": "2.0.0-beta.0",
+  "description": "",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-discord.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "messaging",
+        "voice"
+      ]
+    }
+  },
+  "keywords": [],
+  "author": "elizaOS",
+  "license": "MIT",
+  "scripts": {
+    "build": "npm run build:prompts && bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "dev": "bun --hot build.ts",
+    "clean": "rm -rf dist .turbo node_modules",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "../../node_modules/.bin/biome check --write --unsafe .",
+    "lint:check": "../../node_modules/.bin/biome check .",
+    "format": "../../node_modules/.bin/biome format --write .",
+    "format:check": "../../node_modules/.bin/biome format .",
+    "build:prompts": "sh -c 'if test -f ../../packages/prompts/scripts/generate-plugin-prompts.js; then node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./generated/prompts --target all; else echo \"Prompt generation skipped\"; fi'",
+    "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
+    "test:live": "bun run test:e2e"
+  },
+  "dependencies": {
+    "@discordjs/opus": "^0.10.0",
+    "@discordjs/rest": "^2.6.1",
+    "@discordjs/voice": "^0.19.2",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-browser": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "discord-api-types": "^0.38.0",
+    "discord.js": "^14.26.4",
+    "fast-levenshtein": "^3.0.0",
+    "fluent-ffmpeg": "^2.1.3",
+    "get-func-name": "^3.0.0",
+    "libsodium-wrappers": "^0.8.0",
+    "opusscript": "^0.1.1",
+    "prism-media": "1.3.5",
+    "typescript": "^6.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.0",
+    "vitest": "^4.1.4"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*",
+    "whatwg-url": "^16.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "DISCORD_API_TOKEN": {
+        "type": "string",
+        "description": "Discord API token used to authenticate and log in the Discord client/service.",
+        "required": true,
+        "sensitive": true
+      },
+      "DISCORD_APPLICATION_ID": {
+        "type": "string",
+        "description": "Discord application ID for the bot",
+        "required": true,
+        "sensitive": false
+      },
+      "CHANNEL_IDS": {
+        "type": "string",
+        "description": "Comma-separated list of Discord channel IDs that will be parsed into an array if provided.",
+        "required": false,
+        "sensitive": false
+      },
+      "DISCORD_TEST_CHANNEL_ID": {
+        "type": "string",
+        "description": "Discord channel ID used during test suite to locate the test channel for sending messages, voice interactions, and other test operations.",
+        "required": false,
+        "sensitive": false
+      },
+      "DISCORD_VOICE_CHANNEL_ID": {
+        "type": "string",
+        "description": "ID of the Discord voice channel the bot should join when scanning a guild. If not supplied, the bot selects a channel based on member activity.",
+        "required": false,
+        "sensitive": false
+      },
+      "DISCORD_SHOULD_IGNORE_BOT_MESSAGES": {
+        "type": "boolean",
+        "description": "If true, the bot will ignore messages from other bots. Can be overridden by character settings.",
+        "required": false,
+        "sensitive": false
+      },
+      "DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES": {
+        "type": "boolean",
+        "description": "If true, the bot will ignore direct messages. Can be overridden by character settings.",
+        "required": false,
+        "sensitive": false
+      },
+      "DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS": {
+        "type": "boolean",
+        "description": "If true, the bot will only respond when explicitly mentioned. Can be overridden by character settings.",
+        "required": false,
+        "sensitive": false
+      },
+      "DISCORD_LISTEN_CHANNEL_IDS": {
+        "type": "string",
+        "description": "Comma-separated list of Discord channel IDs where the bot will only listen (not respond).",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Default export (Node.js)"
+    }
+  },
+  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
 }

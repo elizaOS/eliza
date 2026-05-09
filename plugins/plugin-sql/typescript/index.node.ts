@@ -136,7 +136,11 @@ export function createDatabaseAdapter(
   if (!shouldReusePgliteManager(globalSingletons.pgLiteClientManager)) {
     globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });
   }
-  return new PgliteDatabaseAdapter(agentId, globalSingletons.pgLiteClientManager);
+  const manager = globalSingletons.pgLiteClientManager;
+  if (!manager) {
+    throw new Error("[plugin-sql] pgLiteClientManager not initialized before adapter creation");
+  }
+  return new PgliteDatabaseAdapter(agentId, manager);
 }
 
 export const plugin: Plugin = {

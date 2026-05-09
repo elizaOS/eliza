@@ -209,7 +209,11 @@ async function stageDependencyIntoNodeModules(params: {
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
   const stat = await fs.lstat(sourcePath);
   if (stat.isSymbolicLink()) {
-    await fs.symlink(await fs.realpath(sourcePath), targetPath);
+    const linkTarget = await resolveSymlinkTargetIfPresent(sourcePath);
+    if (!linkTarget) {
+      return false;
+    }
+    await fs.symlink(linkTarget, targetPath);
     return true;
   }
   if (!stat.isDirectory()) {
@@ -234,9 +238,7 @@ async function ensureStagedPackageDependencies(params: {
     params.stagedPackageRoot,
     "node_modules",
   );
-  if (!(await pathEntryExists(stagedNodeModulesPath))) {
-    return;
-  }
+  await fs.mkdir(stagedNodeModulesPath, { recursive: true });
 
   const manifest = await readPluginPackageManifest(params.packageRoot);
   if (!manifest) {
@@ -736,7 +738,8 @@ async function stageNodeModulesEntries(params: {
           continue;
         }
         if (scopedEntry.isSymbolicLink()) {
-          const linkTarget = await resolveSymlinkTargetIfPresent(scopedSourcePath);
+          const linkTarget =
+            await resolveSymlinkTargetIfPresent(scopedSourcePath);
           if (!linkTarget) continue;
           await fs.symlink(linkTarget, scopedTargetPath);
           continue;
@@ -771,6 +774,48 @@ async function stageNodeModulesEntries(params: {
       dereference: true,
     });
   }
+}
+
+function stageAllHoistedNodeModulesEnabled(): boolean {
+  const raw = process.env.ELIZA_STAGE_ALL_HOISTED_NODE_MODULES;
+  if (!raw) return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
+function stageFullPluginPackageEnabled(): boolean {
+  const raw = process.env.ELIZA_STAGE_FULL_PLUGIN_PACKAGE;
+  if (!raw) return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
+function createPluginPackageStageFilter(packageRoot: string) {
+  const distPath = path.join(packageRoot, "dist");
+  const stageBuiltPackageOnly =
+    existsSync(distPath) && !stageFullPluginPackageEnabled();
+
+  return (src: string): boolean => {
+    const relativePath = path.relative(packageRoot, src);
+    if (!relativePath) return true;
+
+    const [topLevel] = relativePath.split(path.sep);
+    if (topLevel === "node_modules") return false;
+
+    if (stageBuiltPackageOnly) {
+      return topLevel === "dist" || relativePath === "package.json";
+    }
+
+    return ![
+      ".turbo",
+      "coverage",
+      "docs",
+      "node_modules",
+      "public_src",
+      "test",
+      "__tests__",
+    ].includes(topLevel);
+  };
 }
 
 async function linkHoistedNodeModulesPackages(params: {
@@ -846,10 +891,7 @@ async function stagePluginImportRoot(params: {
     recursive: true,
     force: true,
     dereference: true,
-    // Staging the package itself is enough for hot reloads. Copying the
-    // dependency tree dereferenced turns workspace plugin reloads into a
-    // massive recursive copy for packages like plugin-discord.
-    filter: (src) => path.basename(src) !== "node_modules",
+    filter: createPluginPackageStageFilter(params.packageRoot),
   });
 
   const installNodeModulesPath = path.join(params.installRoot, "node_modules");
@@ -895,22 +937,24 @@ async function stagePluginImportRoot(params: {
     }
   }
 
-  await linkAncestorNodeModulesIfNeeded({
-    installRoot: params.installRoot,
-    packageRoot: params.packageRoot,
-    stagedPackageRoot,
-  });
-  await linkHoistedNodeModulesPackages({
-    installRoot: params.installRoot,
-    packageRoot: params.packageRoot,
-    stagedPackageRoot,
-  });
   await ensureStagedPackageDependencies({
     installRoot: params.installRoot,
     packageName: params.packageName,
     packageRoot: params.packageRoot,
     stagedPackageRoot,
   });
+  if (stageAllHoistedNodeModulesEnabled()) {
+    await linkAncestorNodeModulesIfNeeded({
+      installRoot: params.installRoot,
+      packageRoot: params.packageRoot,
+      stagedPackageRoot,
+    });
+    await linkHoistedNodeModulesPackages({
+      installRoot: params.installRoot,
+      packageRoot: params.packageRoot,
+      stagedPackageRoot,
+    });
+  }
 
   return stagedPackageRoot;
 }
@@ -947,8 +991,9 @@ async function discoverPluginCandidates(): Promise<PluginCandidate[]> {
     const elizaScope = path.join(root, "node_modules", "@elizaos");
     let entries: import("node:fs").Dirent[];
     try {
-      entries = (await fs.readdir(elizaScope, { withFileTypes: true })) as
-        import("node:fs").Dirent[];
+      entries = (await fs.readdir(elizaScope, {
+        withFileTypes: true,
+      })) as import("node:fs").Dirent[];
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
       throw err;
@@ -973,18 +1018,16 @@ async function discoverPluginCandidates(): Promise<PluginCandidate[]> {
     const pluginsDir = path.join(root, "plugins");
     let entries: import("node:fs").Dirent[];
     try {
-      entries = (await fs.readdir(pluginsDir, { withFileTypes: true })) as
-        import("node:fs").Dirent[];
+      entries = (await fs.readdir(pluginsDir, {
+        withFileTypes: true,
+      })) as import("node:fs").Dirent[];
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
       throw err;
     }
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
-      if (
-        !entry.name.startsWith("plugin-") &&
-        !entry.name.startsWith("app-")
-      ) {
+      if (!entry.name.startsWith("plugin-") && !entry.name.startsWith("app-")) {
         continue;
       }
       // Some workspace plugins keep their package at `<name>/typescript`; try

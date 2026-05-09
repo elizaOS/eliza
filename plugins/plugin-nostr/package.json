@@ -20,7 +20,9 @@
   "elizaos": {
     "plugin": {
       "autoEnableModule": "./auto-enable.ts",
-      "capabilities": ["social-posting"]
+      "capabilities": [
+        "social-posting"
+      ]
     }
   },
   "publishConfig": {
@@ -37,6 +39,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "nostr-tools": "^2.0.0",
     "zod": "^4.4.3"
   },

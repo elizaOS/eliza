@@ -53,6 +53,7 @@
   "dependencies": {
     "@ai-sdk/groq": "^3.0.4",
     "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "ai": "^6.0.0"
   },
   "devDependencies": {

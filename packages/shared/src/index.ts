@@ -31,6 +31,7 @@ export * from "./config/config-catalog";
 export * from "./config/config-paths";
 export * from "./config/env-vars";
 export * from "./config/plugin-auto-enable";
+export * from "./config/plugin-manifest";
 export * from "./config/plugin-ui-spec";
 export * from "./config/runtime-overrides";
 export * from "./config/schema";

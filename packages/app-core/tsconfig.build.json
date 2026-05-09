@@ -24,7 +24,9 @@
       "@elizaos/ui/*": ["../ui/dist/*"],
       "@elizaos/vault": ["../vault/dist/index.d.ts"],
       "@elizaos/vault/*": ["../vault/dist/*"],
-      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/dist/index.d.ts"],
+      "@elizaos/plugin-browser": [
+        "../../plugins/plugin-browser/dist/index.d.ts"
+      ],
       "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/dist/*"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/dist/index.node.d.ts"
@@ -33,16 +35,12 @@
         "../../plugins/plugin-elizacloud/dist/*"
       ],
       "@elizaos/plugin-sql": [
-        "../../plugins/plugin-sql/typescript/dist/index.d.ts"
+        "../../plugins/plugin-sql/typescript/dist/index.node.d.ts"
       ],
       "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/typescript/dist/*"],
-      "@elizaos/plugin-wechat": [
-        "../../plugins/plugin-wechat/dist/index.d.ts"
-      ],
+      "@elizaos/plugin-wechat": ["../../plugins/plugin-wechat/dist/index.d.ts"],
       "@elizaos/plugin-wechat/*": ["../../plugins/plugin-wechat/dist/*"],
-      "@elizaos/capacitor-*": [
-        "../native-plugins/*/dist/index.d.ts"
-      ],
+      "@elizaos/capacitor-*": ["../native-plugins/*/dist/index.d.ts"],
       "@elizaos/native-activity-tracker": [
         "../native-plugins/activity-tracker/dist/index.d.ts"
       ],
@@ -50,13 +48,9 @@
         "../native-plugins/activity-tracker/dist/*"
       ],
       "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
-      "drizzle-orm/*": [
-        "../../plugins/plugin-sql/node_modules/drizzle-orm/*"
-      ],
+      "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
       "react": ["./node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": [
-        "./node_modules/@types/react/jsx-runtime.d.ts"
-      ],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"],
       "react/jsx-dev-runtime": [
         "./node_modules/@types/react/jsx-dev-runtime.d.ts"
       ],

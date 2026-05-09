@@ -1,6 +1,6 @@
 import { ApplicationError } from '../workflows-errors/index.js';
 
-export type DbConnectionTimeoutErrorOpts = {
+type DbConnectionTimeoutErrorOpts = {
 	configuredTimeoutInMs: number;
 	cause: Error;
 };

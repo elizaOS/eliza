@@ -48,6 +48,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.9",
+    "@elizaos/shared": "workspace:*",
     "ai": "^6.0.30",
     "js-tiktoken": "^1.0.21",
     "undici": "^8.0.0"

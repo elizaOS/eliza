@@ -38,7 +38,7 @@ export type IConnectionAdjacencyList = Map<string, Set<IConnection>>;
 /**
  * Find all edges leading into the graph described in `graphIds`.
  */
-export function getInputEdges(
+function getInputEdges(
 	graphIds: Set<string>,
 	adjacencyList: IConnectionAdjacencyList
 ): Array<[string, IConnection]> {
@@ -59,7 +59,7 @@ export function getInputEdges(
 /**
  * Find all edges leading out of the graph described in `graphIds`.
  */
-export function getOutputEdges(
+function getOutputEdges(
 	graphIds: Set<string>,
 	adjacencyList: IConnectionAdjacencyList
 ): Array<[string, IConnection]> {
@@ -100,7 +100,7 @@ function difference<T>(minuend: Set<T>, subtrahend: Set<T>): Set<T> {
 	return result;
 }
 
-export function getRootNodes(
+function getRootNodes(
 	graphIds: Set<string>,
 	adjacencyList: IConnectionAdjacencyList
 ): Set<string> {
@@ -120,7 +120,7 @@ export function getRootNodes(
 	return difference(graphIds, innerNodes);
 }
 
-export function getLeafNodes(
+function getLeafNodes(
 	graphIds: Set<string>,
 	adjacencyList: IConnectionAdjacencyList
 ): Set<string> {
@@ -142,7 +142,7 @@ export function getLeafNodes(
 	return result;
 }
 
-export function hasPath(start: string, end: string, adjacencyList: IConnectionAdjacencyList) {
+function hasPath(start: string, end: string, adjacencyList: IConnectionAdjacencyList) {
 	const seen = new Set<string>();
 	const paths: string[] = [start];
 	while (true) {
