@@ -41,32 +41,6 @@ const LOG_PREFIX = "[ExecuteCodePlugin]";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const EXECUTE_CODE_CONTEXTS = ["code", "terminal", "automation"] as const;
-const EXECUTE_CODE_KEYWORDS = [
-  "execute",
-  "run",
-  "script",
-  "code",
-  "javascript",
-  "tool",
-  "automation",
-  "terminal",
-  "ejecutar",
-  "código",
-  "exécuter",
-  "skript",
-  "ausführen",
-  "executar",
-  "codice",
-  "eseguire",
-  "コード",
-  "実行",
-  "脚本",
-  "执行",
-  "代码",
-  "스크립트",
-  "실행",
-] as const;
-
 const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
   ...args: string[]
 ) => (...callArgs: unknown[]) => Promise<unknown>;
@@ -181,23 +155,6 @@ function hasSelectedContext(
   return contexts.some((context) => selected.has(context));
 }
 
-function hasExecuteCodeIntent(
-  message: Memory,
-  state: State | undefined,
-): boolean {
-  const text = [
-    typeof message.content?.text === "string" ? message.content.text : "",
-    typeof state?.values?.recentMessages === "string"
-      ? state.values.recentMessages
-      : "",
-  ]
-    .join("\n")
-    .toLowerCase();
-  return EXECUTE_CODE_KEYWORDS.some((keyword) =>
-    text.includes(keyword.toLowerCase()),
-  );
-}
-
 export const executeCodeAction: Action = {
   name: "EXECUTE_CODE",
   contexts: [...EXECUTE_CODE_CONTEXTS],
@@ -231,14 +188,19 @@ export const executeCodeAction: Action = {
       schema: { type: "number" },
     },
   ],
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
+  validate: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    state?: State,
+    options?: unknown,
+  ) => {
     const disable = runtime.getSetting?.("EXECUTECODE_DISABLE");
     if (disable === true || disable === "true" || disable === "1") {
       return false;
     }
     return (
       hasSelectedContext(state, EXECUTE_CODE_CONTEXTS) ||
-      hasExecuteCodeIntent(message, state)
+      "params" in readParams(options)
     );
   },
   handler: async (

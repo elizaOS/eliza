@@ -271,14 +271,11 @@ function readErrorMessage(result: ActionResult, fallbackText: string): string {
 
 async function validateRouter(
   runtime: IAgentRuntime,
-  message: Memory,
-  routes: readonly LinearRoute[],
-  fallback: RegExp
+  _message: Memory,
+  _routes: readonly LinearRoute[],
+  _fallback: RegExp
 ): Promise<boolean> {
-  if (!hasLinearAccess(runtime)) return false;
-  const text = textOf(message);
-  if (!text.trim()) return false;
-  return routes.some((route) => route.match.test(text)) || fallback.test(text);
+  return hasLinearAccess(runtime);
 }
 
 async function dispatchRoute<T extends LinearRouterResultData>(

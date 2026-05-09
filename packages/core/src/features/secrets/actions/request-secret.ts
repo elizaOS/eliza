@@ -3,6 +3,7 @@ import { extractSecretRequestTemplate as extractRequestTemplate } from "../../..
 import {
 	type Action,
 	type ActionExample,
+	ChannelType,
 	type HandlerCallback,
 	type HandlerOptions,
 	type IAgentRuntime,
@@ -51,6 +52,10 @@ export const requestSecretAction: Action = {
 		_options?: HandlerOptions,
 	): Promise<boolean> => {
 		if (!runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE)) {
+			return false;
+		}
+		const channelType = message.content.channelType;
+		if (channelType !== undefined && channelType !== ChannelType.DM) {
 			return false;
 		}
 		const params =

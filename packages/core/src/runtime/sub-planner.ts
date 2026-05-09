@@ -192,6 +192,7 @@ export async function runSubPlanner(
 	const authorizedActiveContexts = unionContexts(
 		params.ctx.activeContexts,
 		params.action.contexts,
+		...declaredChildActions.map((child) => child.contexts),
 	);
 	const childActions = filterByContextGate(
 		declaredChildActions,

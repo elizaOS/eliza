@@ -1452,7 +1452,11 @@ async function collectV5PlannerCandidateActions(args: {
 				);
 				continue;
 			}
-			await appendIfAllowed(childAction, parentAction.name, childActiveContexts);
+			await appendIfAllowed(
+				childAction,
+				parentAction.name,
+				mergeAgentContexts(childActiveContexts, childAction.contexts),
+			);
 		}
 	}
 
@@ -3285,9 +3289,18 @@ export async function runV5MessageRuntimeStage1(args: {
 						true,
 					)
 				: args.state;
-		const plannerState = attachAvailableContexts(
-			recomposedPlannerState,
-			args.runtime,
+		const selectedContextRoutingState =
+			selectedContexts.length > 0
+				? {
+						[CONTEXT_ROUTING_STATE_KEY]: {
+							primaryContext: selectedContexts[0],
+							secondaryContexts: selectedContexts.slice(1),
+						},
+					}
+				: undefined;
+		const plannerState = withContextRoutingValues(
+			attachAvailableContexts(recomposedPlannerState, args.runtime),
+			selectedContextRoutingState,
 		);
 			const plannerCandidateActions = await collectV5PlannerCandidateActions({
 				runtime: args.runtime,
@@ -3911,6 +3924,10 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["EMAIL_FETCH_UNREAD", "MESSAGE"],
 		["FETCH_UNREAD_EMAIL", "MESSAGE"],
 		["LIST_UNREAD_EMAILS", "MESSAGE"],
+		["SUMMARIZE_UNREAD_EMAILS", "MESSAGE"],
+		["SUMMARISE_UNREAD_EMAILS", "MESSAGE"],
+		["UNREAD_EMAIL_SUMMARY", "MESSAGE"],
+		["READ_UNREAD_EMAILS", "MESSAGE"],
 		["ADD_TODO", "LIFE"],
 		["CREATE_TODO", "LIFE"],
 		["TODO_ADD", "LIFE"],

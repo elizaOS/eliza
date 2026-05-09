@@ -113,6 +113,10 @@ export const manageSecretAction: Action = {
 		if (runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE) === null) {
 			return false;
 		}
+		const channelType = message.content.channelType;
+		if (channelType !== undefined && channelType !== ChannelType.DM) {
+			return false;
+		}
 		const params =
 			_options?.parameters && typeof _options.parameters === "object"
 				? (_options.parameters as Record<string, unknown>)
