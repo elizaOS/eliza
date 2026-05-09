@@ -4,8 +4,8 @@ import { logger } from "@elizaos/core";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
-import type { CloudProxyConfigLike } from "@elizaos/agent/types/config-like";
-import { sendJson, sendJsonError } from "@elizaos/agent/api/http-helpers";
+import type { CloudProxyConfigLike } from "../lib/config-like";
+import { sendJson, sendJsonError } from "../lib/http";
 
 export interface CloudCompatRouteState {
   config: CloudProxyConfigLike;

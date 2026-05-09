@@ -1427,8 +1427,7 @@ async function handler(
 /**
  * Consolidated post-response reflection. One LLM call extracts facts,
  * relationship updates, platform identities, and task completion in a single
- * pass — replacing the legacy factExtractorAction + reflectionAction +
- * relationshipExtractionEvaluator.
+ * pass.
  */
 export const reflectionEvaluator: Action = {
 	name: "REFLECTION",

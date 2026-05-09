@@ -13,7 +13,7 @@
  */
 
 import type http from "node:http";
-import type { RouteHelpers } from "@elizaos/agent/api/route-helpers";
+import type { RouteHelpers } from "../lib/http";
 
 interface RelayServiceLike {
   getSessionInfo(): {

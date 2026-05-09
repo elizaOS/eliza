@@ -298,6 +298,12 @@ function build(args) {
     fs.copyFileSync(src, dst);
     if (executableNames.includes(name)) fs.chmodSync(dst, 0o755);
   }
+  const ggufPySrc = path.join(args.cacheDir, "gguf-py");
+  const ggufPyDst = path.join(args.outDir, "gguf-py");
+  if (fs.existsSync(ggufPySrc)) {
+    fs.rmSync(ggufPyDst, { recursive: true, force: true });
+    fs.cpSync(ggufPySrc, ggufPyDst, { recursive: true });
+  }
   makeDarwinInstallSelfContained(args.outDir, runtimeNames, binDir);
   console.log(`[dflash-build] installed ${args.backend} binaries to ${args.outDir}`);
   console.log(`[dflash-build] set ELIZA_DFLASH_ENABLED=1 to force this backend, or leave it unset for auto-detect from the managed path.`);

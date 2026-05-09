@@ -114,6 +114,7 @@ function runBash(
 export const bashAction: Action = {
   name: "BASH",
   contexts: [...CODING_TOOLS_CONTEXTS],
+  roleGate: { minRole: "OWNER" },
   contextGate: { anyOf: ["code", "terminal", "automation"] },
   similes: ["SHELL", "EXEC", "RUN_COMMAND"],
   description:
@@ -147,7 +148,11 @@ export const bashAction: Action = {
       schema: { type: "string" },
     },
   ],
-  validate: async () => true,
+  validate: async (runtime: IAgentRuntime) =>
+    Boolean(
+      runtime.getService(SANDBOX_SERVICE) &&
+        runtime.getService(SESSION_CWD_SERVICE),
+    ),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,

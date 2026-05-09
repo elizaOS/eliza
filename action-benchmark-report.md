@@ -1,33 +1,33 @@
 # Action Selection Benchmark
 
-**Selection Accuracy:** 0.0% (0/1)
-**Latency:** avg 9512ms · p50 9512ms · p95 9512ms
-**Planner Accuracy:** 0.0% (0/1)
+**Selection Accuracy:** 100.0% (1/1)
+**Latency:** avg 7116ms · p50 7116ms · p95 7116ms
+**Planner Accuracy:** 100.0% (1/1)
 **Execution Accuracy:** 0.0% (0/1)
-**LLM Token Usage:** input 15832 · output 876 · total 16708 (3/8 calls reported usage)
-**Cache Read:** 33.1% (5248/15832 input tokens)
-**Cache Write:** 0.0% (0/15832 input tokens)
+**LLM Token Usage:** input 15836 · output 2821 · total 18657 (9/15 calls reported usage)
+**Cache Read:** 78.4% (12416/15836 input tokens)
+**Cache Write:** 0.0% (0/15836 input tokens)
 
 ## By tag
 
 | Tag | Passed | Total | Accuracy |
 | --- | ---: | ---: | ---: |
-| standard | 0 | 1 | 0.0% |
-| todos | 0 | 1 | 0.0% |
+| standard | 1 | 1 | 100.0% |
+| todos | 1 | 1 | 100.0% |
 
 ## By failure mode
 
 | Mode | Count |
 | --- | ---: |
-| passed | 0 |
+| passed | 1 |
 | validate_filtered | 0 |
 | llm_chose_reply | 0 |
-| llm_chose_other_action | 1 |
+| llm_chose_other_action | 0 |
 | no_response | 0 |
 | error | 0 |
 
-## Failures (1)
+## Execution Issues (1)
 
-| Case | Expected | Planned | Completed | Failure Mode | Error |
-| --- | --- | --- | --- | --- | --- |
-| todo-add-simple | LIFE | TODOS_CREATE | (none) | llm_chose_other_action |  |
+| Case | Planned | Started | Completed | Error |
+| --- | --- | --- | --- | --- |
+| todo-add-simple | LIFE | (none) | (none) |  |

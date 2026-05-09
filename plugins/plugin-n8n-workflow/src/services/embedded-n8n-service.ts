@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { type IAgentRuntime, logger, Service } from '@elizaos/core';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import type { IWorkflowExecuteAdditionalData } from 'n8n-workflow';
 import type {
   N8nCredential,
   N8nExecution,
@@ -20,7 +22,14 @@ import {
 
 export const N8N_EMBEDDED_SERVICE_TYPE = 'n8n_embedded_workflow';
 
+type N8nCoreRuntime = typeof import('n8n-core');
+type N8nWorkflowRuntime = typeof import('n8n-workflow');
 type WorkflowExecuteMode = N8nExecution['mode'];
+
+interface EmbeddedRuntimeModules {
+  core: N8nCoreRuntime;
+  workflow: N8nWorkflowRuntime;
+}
 
 interface INodeExecutionData {
   json: Record<string, unknown>;
@@ -85,8 +94,44 @@ interface IncomingConnection {
 
 const EMBEDDED_HOST = 'embedded://local';
 const DEFAULT_SCHEDULE_INTERVAL_MS = 60_000;
+const N8N_CORE_PACKAGE = 'n8n-core';
+const N8N_WORKFLOW_PACKAGE = 'n8n-workflow';
 
+let loadedModules: Promise<EmbeddedRuntimeModules> | null = null;
 let loadedQuickJs: Promise<typeof import('quickjs-emscripten')> | null = null;
+
+async function loadN8nRuntime(): Promise<EmbeddedRuntimeModules> {
+  if (!loadedModules) {
+    loadedModules = (async () => {
+      try {
+        const [core, workflow] = await Promise.all([
+          import(N8N_CORE_PACKAGE),
+          import(N8N_WORKFLOW_PACKAGE),
+        ]);
+        return { core, workflow };
+      } catch (importError) {
+        const require = createRequire(import.meta.url);
+        try {
+          return {
+            core: require(N8N_CORE_PACKAGE) as N8nCoreRuntime,
+            workflow: require(N8N_WORKFLOW_PACKAGE) as N8nWorkflowRuntime,
+          };
+        } catch (requireError) {
+          throw new Error(
+            `Failed to load embedded n8n runtime: ${
+              requireError instanceof Error
+                ? requireError.message
+                : importError instanceof Error
+                  ? importError.message
+                  : String(requireError)
+            }`
+          );
+        }
+      }
+    })();
+  }
+  return loadedModules;
+}
 
 async function loadQuickJs(): Promise<typeof import('quickjs-emscripten')> {
   loadedQuickJs ??= import('quickjs-emscripten');
@@ -1676,27 +1721,103 @@ export class EmbeddedN8nService extends Service {
       });
   }
 
+  private buildIncomingConnections(workflowData: N8nWorkflow): Map<string, IncomingConnection[]> {
+    const incoming = new Map<string, IncomingConnection[]>();
+    for (const [source, outputsByType] of Object.entries(workflowData.connections ?? {})) {
+      const mainOutputs = outputsByType.main ?? [];
+      mainOutputs.forEach((connections, sourceOutputIndex) => {
+        for (const connection of connections ?? []) {
+          if (connection.type !== 'main') continue;
+          const destination = incoming.get(connection.node) ?? [];
+          destination.push({
+            source,
+            sourceOutputIndex,
+            destinationInputIndex: connection.index ?? 0,
+          });
+          incoming.set(connection.node, destination);
+        }
+      });
+    }
+    return incoming;
+  }
+
+  private resolveStartNodes(
+    workflowData: N8nWorkflow,
+    mode: WorkflowExecuteMode,
+    incoming: Map<string, IncomingConnection[]>
+  ): Set<string> {
+    const enabledNodes = workflowData.nodes.filter((node) => !node.disabled);
+    const start = new Set<string>();
+
+    if (mode === 'webhook') {
+      for (const node of enabledNodes) {
+        if (
+          node.type === 'n8n-nodes-base.webhook' &&
+          isRecord(node.parameters.__embeddedPayload)
+        ) {
+          start.add(node.name);
+        }
+      }
+      if (start.size === 0) {
+        for (const node of enabledNodes) {
+          if (node.type === 'n8n-nodes-base.webhook') start.add(node.name);
+        }
+      }
+    } else if (mode === 'trigger') {
+      for (const node of enabledNodes) {
+        if (node.type === 'n8n-nodes-base.scheduleTrigger') start.add(node.name);
+      }
+    } else {
+      for (const node of enabledNodes) {
+        if (node.type === 'n8n-nodes-base.manualTrigger') start.add(node.name);
+      }
+    }
+
+    if (start.size === 0) {
+      for (const node of enabledNodes) {
+        if ((incoming.get(node.name) ?? []).length === 0) start.add(node.name);
+      }
+    }
+
+    return start;
+  }
+
+  private collectInputData(
+    nodeName: string,
+    incoming: Map<string, IncomingConnection[]>,
+    nodeOutputs: Map<string, INodeExecutionData[][]>
+  ): INodeExecutionData[][] {
+    const inputData: INodeExecutionData[][] = [];
+    for (const connection of incoming.get(nodeName) ?? []) {
+      const sourceOutputs = nodeOutputs.get(connection.source) ?? [];
+      const sourceItems = sourceOutputs[connection.sourceOutputIndex] ?? [];
+      inputData[connection.destinationInputIndex] = [
+        ...(inputData[connection.destinationInputIndex] ?? []),
+        ...sourceItems,
+      ];
+    }
+    return inputData.length > 0 ? inputData : [[]];
+  }
+
+  private async executeNode(
+    node: N8nNode,
+    inputData: INodeExecutionData[][]
+  ): Promise<INodeExecutionData[][]> {
+    const nodeType = this.nodeTypes.getByNameAndVersion(node.type);
+    const context: IExecuteFunctions = {
+      getNode: () => node,
+      getInputData: (inputIndex = 0) => inputData[inputIndex] ?? [],
+    };
+    const output = await nodeType.execute.call(context);
+    return output.length > 0 ? output : [[]];
+  }
+
   private async runWorkflow(
     workflowData: N8nWorkflow,
     mode: WorkflowExecuteMode
   ): Promise<N8nExecution> {
-    const { core, workflow: workflowRuntime } = await loadN8nRuntime();
     const executionId = randomUUID();
     const startedAt = new Date();
-    const workflow = new workflowRuntime.Workflow({
-      id: workflowData.id ?? '',
-      name: workflowData.name,
-      nodes: cloneJson(workflowData.nodes) as never,
-      connections: cloneJson(workflowData.connections) as never,
-      active: workflowData.active ?? false,
-      settings: workflowData.settings,
-      nodeTypes: this.nodeTypes,
-    });
-    const runner = new core.WorkflowExecute(
-      this.createAdditionalData(core, executionId, mode, workflowData),
-      mode
-    );
-
     const pending: N8nExecution = {
       id: executionId,
       finished: false,
@@ -1708,17 +1829,82 @@ export class EmbeddedN8nService extends Service {
     await this.saveExecution(pending);
 
     try {
-      const run = await runner.run({ workflow });
+      const enabledNodes = workflowData.nodes.filter((node) => !node.disabled);
+      const nodeByName = new Map(enabledNodes.map((node) => [node.name, node]));
+      const incoming = this.buildIncomingConnections(workflowData);
+      const startNodes = this.resolveStartNodes(workflowData, mode, incoming);
+      const nodeOutputs = new Map<string, INodeExecutionData[][]>();
+      const executed = new Set<string>();
+      const runData: Record<string, unknown[]> = {};
+      let lastNodeExecuted: string | undefined;
+
+      while (executed.size < enabledNodes.length) {
+        let progressed = false;
+
+        for (const node of enabledNodes) {
+          if (executed.has(node.name)) continue;
+
+          const incomingConnections = incoming
+            .get(node.name)
+            ?.filter((connection) => nodeByName.has(connection.source)) ?? [];
+          const isStartNode = startNodes.has(node.name);
+          const dependenciesComplete = incomingConnections.every((connection) =>
+            executed.has(connection.source)
+          );
+
+          if (!isStartNode && !dependenciesComplete) continue;
+
+          const inputData =
+            isStartNode && incomingConnections.length === 0
+              ? [[]]
+              : this.collectInputData(node.name, incoming, nodeOutputs);
+          const hasInputItems = inputData.some((items) => items.length > 0);
+          const started = Date.now();
+
+          const outputData =
+            !isStartNode && incomingConnections.length > 0 && !hasInputItems
+              ? [[]]
+              : await this.executeNode(node, inputData);
+
+          nodeOutputs.set(node.name, outputData);
+          runData[node.name] = [
+            {
+              startTime: started,
+              executionTime: Date.now() - started,
+              data: { main: cloneJson(outputData) },
+              source: incomingConnections.map((connection) => ({
+                previousNode: connection.source,
+                previousNodeOutput: connection.sourceOutputIndex,
+                previousNodeRun: 0,
+              })),
+            },
+          ];
+          executed.add(node.name);
+          lastNodeExecuted = node.name;
+          progressed = true;
+        }
+
+        if (!progressed) {
+          const unresolved = enabledNodes
+            .filter((node) => !executed.has(node.name))
+            .map((node) => node.name)
+            .join(', ');
+          throw new Error(`Unable to resolve workflow execution order for node(s): ${unresolved}`);
+        }
+      }
+
       const stoppedAt = new Date();
-      const status = readString((run as unknown as { status?: unknown }).status, 'success') as
-        | N8nExecution['status']
-        | 'success';
       const execution: N8nExecution = {
         ...pending,
-        finished: status === 'success',
-        status: status === 'success' ? 'success' : status,
+        finished: true,
+        status: 'success',
         stoppedAt: stoppedAt.toISOString(),
-        data: cloneJson((run as unknown as { data?: N8nExecution['data'] }).data ?? {}),
+        data: {
+          resultData: {
+            runData,
+            lastNodeExecuted,
+          },
+        },
       };
       await this.saveExecution(execution);
       return cloneJson(execution);
@@ -1741,57 +1927,5 @@ export class EmbeddedN8nService extends Service {
       await this.saveExecution(execution);
       throw error;
     }
-  }
-
-  private createAdditionalData(
-    core: N8nCoreRuntime,
-    executionId: string,
-    mode: WorkflowExecuteMode,
-    workflowData: N8nWorkflow
-  ): IWorkflowExecuteAdditionalData {
-    const credentialsHelper = {
-      getParentTypes: () => [],
-      authenticate: async (
-        _credentials: unknown,
-        _typeName: string,
-        requestOptions: unknown
-      ) => requestOptions,
-      preAuthentication: async () => undefined,
-      getCredentials: async () => {
-        throw new Error('Embedded n8n credential lookup is not implemented in P0');
-      },
-      getDecrypted: async () => {
-        throw new Error('Embedded n8n credential decryption is not implemented in P0');
-      },
-      updateCredentials: async () => undefined,
-      updateCredentialsOauthTokenData: async () => undefined,
-      getCredentialsProperties: () => [],
-    };
-
-    return {
-      credentialsHelper,
-      executeWorkflow: async () => {
-        throw new Error('Embedded sub-workflow execution is not implemented in P0');
-      },
-      getRunExecutionData: async () => undefined,
-      hooks: new core.ExecutionLifecycleHooks(mode, executionId, workflowData as never),
-      executionId,
-      currentNodeExecutionIndex: 0,
-      restApiUrl: EMBEDDED_HOST,
-      instanceBaseUrl: EMBEDDED_HOST,
-      formWaitingBaseUrl: EMBEDDED_HOST,
-      webhookBaseUrl: EMBEDDED_HOST,
-      webhookWaitingBaseUrl: EMBEDDED_HOST,
-      webhookTestBaseUrl: EMBEDDED_HOST,
-      variables: {},
-      logAiEvent: () => undefined,
-      startRunnerTask: async () => {
-        throw new Error('Embedded n8n task runner is not implemented in P0');
-      },
-      getRunnerStatus: () => ({
-        available: false,
-        reason: 'Embedded P0 does not include task runners',
-      }),
-    } as unknown as IWorkflowExecuteAdditionalData;
   }
 }

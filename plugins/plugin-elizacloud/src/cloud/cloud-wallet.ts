@@ -15,14 +15,14 @@
  */
 
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { persistConfigEnv } from "@elizaos/agent/api/config-env";
-import { isCloudWalletEnabled } from "@elizaos/agent/config/feature-flags";
 import type {
   CloudBridgeError,
   CloudChainType,
   CloudWalletDescriptor,
   CloudWalletProvider,
 } from "./bridge-client.js";
+import { persistConfigEnv } from "../lib/config-env";
+import { isCloudWalletEnabled } from "../lib/feature-flags";
 
 export const ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV =
   "ELIZA_CLOUD_CLIENT_ADDRESS_KEY";

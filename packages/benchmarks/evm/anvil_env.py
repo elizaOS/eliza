@@ -304,6 +304,19 @@ async def anvil_node(
     """Context manager to start/stop Anvil."""
     anvil_path = shutil.which("anvil")
     if anvil_path is None:
+        # Foundry's installer puts anvil in ~/.foundry/bin which is on PATH only
+        # if the user sourced their shell rc. Benchmark subprocesses inherit a
+        # cleaner env, so probe the canonical install location before failing.
+        candidates = [
+            os.path.expanduser("~/.foundry/bin/anvil"),
+            "/usr/local/bin/anvil",
+            "/opt/homebrew/bin/anvil",
+        ]
+        for candidate in candidates:
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                anvil_path = candidate
+                break
+    if anvil_path is None:
         raise RuntimeError(
             "Anvil not found. Install Foundry: curl -L https://foundry.paradigm.xyz | bash"
         )
