@@ -79,6 +79,10 @@ export const MODEL_CATALOG: CatalogModel[] = [
     companionModelIds: ["qwen3.5-4b-dflash-drafter-q4"],
     runtime: {
       preferredBackend: "llama-server",
+      optimizations: {
+        requiresKernel: ["dflash"],
+        flashAttention: true,
+      },
       dflash: {
         drafterModelId: "qwen3.5-4b-dflash-drafter-q4",
         specType: "dflash",
@@ -139,6 +143,10 @@ export const MODEL_CATALOG: CatalogModel[] = [
     companionModelIds: ["qwen3.5-9b-dflash-drafter-q4"],
     runtime: {
       preferredBackend: "llama-server",
+      optimizations: {
+        requiresKernel: ["dflash"],
+        flashAttention: true,
+      },
       dflash: {
         drafterModelId: "qwen3.5-9b-dflash-drafter-q4",
         specType: "dflash",
@@ -233,6 +241,43 @@ export const MODEL_CATALOG: CatalogModel[] = [
   },
 
   // ─── large (8-20 GB) ────────────────────────────────────────────────
+  // ─── AWQ-derived GGUFs (mid) ────────────────────────────────────────
+  // AWQ-quantized GGUFs are GGUFs where AWQ scales were applied prior to
+  // K-quant conversion. They load via the standard llama.cpp/llama-server
+  // path — no special kernel — but tend to outperform pure K-quants on
+  // long-context recall and code reasoning at the same bit-width. We
+  // route them through the in-process binding by default and let the
+  // dispatcher promote them to llama-server when the operator opts into
+  // continuous batching or MoE expert offload.
+  //
+  // GPTQ-derived GGUFs exist on HF (e.g. RichardErkhov re-quants) but the
+  // quality of those repos is mixed and bartowski/TheBloke do not ship
+  // first-party GPTQ GGUFs. We deliberately skip GPTQ entries until a
+  // first-party publisher ships them or we add a per-quant verification
+  // step. Operators can still install ad-hoc GGUFs via the HF search.
+  {
+    id: "qwen3-coder-30b-awq-q4",
+    displayName: "Qwen3 Coder 30B Instruct (AWQ→Q4_K_M)",
+    hfRepo: "straino/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit-Q4_K_M-GGUF",
+    ggufFile: "qwen3-coder-30b-a3b-instruct-awq-4bit-q4_k_m.gguf",
+    params: "32B",
+    quant: "AWQ→Q4_K_M",
+    sizeGb: 18.5,
+    minRamGb: 36,
+    category: "code",
+    bucket: "large",
+    runtime: {
+      optimizations: {
+        // Qwen3 Coder is MoE (A3B = 3B active over 30B total). MoE expert
+        // offload to CPU keeps VRAM down on workstation GPUs while the
+        // active 3B path stays on the accelerator.
+        moeOffload: "cpu",
+        flashAttention: true,
+      },
+    },
+    blurb:
+      "AWQ scales applied before Q4_K_M conversion. Sharper code recall than the bartowski K-quants at the same bit-width; MoE expert offload defaults to CPU so 24GB VRAM workstations can run the active path comfortably.",
+  },
   {
     id: "deepseek-coder-v2-lite",
     displayName: "DeepSeek Coder V2 Lite 16B",
@@ -299,6 +344,10 @@ export const MODEL_CATALOG: CatalogModel[] = [
     companionModelIds: ["qwen3.6-27b-dflash-drafter-q8"],
     runtime: {
       preferredBackend: "llama-server",
+      optimizations: {
+        requiresKernel: ["dflash"],
+        flashAttention: true,
+      },
       dflash: {
         drafterModelId: "qwen3.6-27b-dflash-drafter-q8",
         specType: "dflash",
