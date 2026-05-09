@@ -61,10 +61,12 @@ export const codingToolsPlugin: Plugin = {
 export default codingToolsPlugin;
 
 export {
+  CodingTaskExecutor,
   FileStateService,
   RipgrepService,
   SandboxService,
   SessionCwdService,
 } from "./services/index.js";
+export * from "./services/coding-agent-context.js";
 export { availableToolsProvider } from "./providers/available-tools.js";
 export * from "./types.js";
