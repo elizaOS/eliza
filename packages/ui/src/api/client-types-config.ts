@@ -538,6 +538,13 @@ export interface AutomationRoomBinding {
   terminalBridgeConversationId?: string;
 }
 
+export interface AutomationLastExecution {
+  status: 'success' | 'error' | 'running' | 'waiting' | 'unknown';
+  startedAt: string;
+  stoppedAt?: string | null;
+  errorMessage?: string;
+}
+
 export interface AutomationItem {
   id: string;
   type: AutomationType;
@@ -559,6 +566,7 @@ export interface AutomationItem {
   workflow?: import("./client-types-chat").WorkflowDefinition;
   schedules: TriggerSummary[];
   room?: AutomationRoomBinding | null;
+  lastExecution?: AutomationLastExecution;
 }
 
 export interface AutomationSummary {

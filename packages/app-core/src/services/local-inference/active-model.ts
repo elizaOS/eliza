@@ -48,6 +48,14 @@ export interface LocalInferenceLoader {
     stopSequences?: string[];
     maxTokens?: number;
     temperature?: number;
+    /**
+     * Optional `promptCacheKey` from the runtime cache plan. Loaders
+     * that implement prefix caching (out-of-process llama-server,
+     * in-process node-llama-cpp session pool) use this to pin
+     * subsequent calls with the same key to the same KV cache slot.
+     * Loaders without prefix caching can ignore the field.
+     */
+    cacheKey?: string;
   }): Promise<string>;
   /**
    * Optional embedding surface. When a loader implements this, the runtime

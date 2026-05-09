@@ -9,6 +9,7 @@ import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { getConnectorAccountManager, logger } from "@elizaos/core";
 import { createGoogleChatConnectorAccountProvider } from "./connector-account-provider.js";
 import { GoogleChatService } from "./service.js";
+import { GoogleChatWorkflowCredentialProvider } from "./workflow-credential-provider.js";
 
 export * from "./accounts.js";
 // Message, space listing, and reaction operations route through MESSAGE via
@@ -25,7 +26,7 @@ const googleChatPlugin: Plugin = {
   name: "google-chat",
   description: "Google Chat integration plugin for ElizaOS agents",
 
-  services: [GoogleChatService],
+  services: [GoogleChatService, GoogleChatWorkflowCredentialProvider],
 
   actions: [],
 
