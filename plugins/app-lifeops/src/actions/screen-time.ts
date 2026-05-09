@@ -32,11 +32,11 @@ import {
   resolveActionArgs,
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
-import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   messageText,
   renderLifeOpsActionReply,
-} from "./lifeops-grounded-reply.js";
+} from "../lifeops/voice/grounded-reply.js";
 
 const ACTION_NAME = "SCREEN_TIME";
 

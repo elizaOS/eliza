@@ -38,11 +38,8 @@ import {
   schedulingAction,
   updateMeetingPreferencesAction,
 } from "./lib/scheduling-handler.js";
-import {
-  formatCalendarEventDateTime,
-  hasLifeOpsAccess,
-  INTERNAL_URL,
-} from "./lifeops-google-helpers.js";
+import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
+import { formatCalendarEventDateTime } from "../lifeops/google/format-helpers.js";
 
 type OwnerCalendarSubaction =
   // Google Calendar

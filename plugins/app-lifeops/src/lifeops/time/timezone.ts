@@ -1,4 +1,4 @@
-import { isValidTimeZone } from "../lifeops/defaults.js";
+import { isValidTimeZone } from "../defaults.js";
 
 const TIME_ZONE_ALIASES: Record<string, string> = {
   pst: "America/Los_Angeles",

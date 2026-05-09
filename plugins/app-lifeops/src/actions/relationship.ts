@@ -21,14 +21,12 @@ import {
 } from "@elizaos/shared";
 import { LifeOpsService } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
-import {
-  hasLifeOpsAccess,
-  runLifeOpsJsonModel,
-} from "./lifeops-google-helpers.js";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
+import { runLifeOpsJsonModel } from "../lifeops/google/format-helpers.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
-} from "./lifeops-grounded-reply.js";
+} from "../lifeops/voice/grounded-reply.js";
 
 type Subaction =
   | "list_contacts"
