@@ -13,7 +13,7 @@ import { readEffectiveAssignments, setAssignment } from "./assignments";
 import { registerBundledModels } from "./bundled-models";
 import type { CacheStatsEntry } from "./cache-bridge";
 import { MODEL_CATALOG } from "./catalog";
-import { dflashLlamaServer } from "./dflash-server";
+import { dflashLlamaServer, getDflashRuntimeStatus } from "./dflash-server";
 import { Downloader } from "./downloader";
 import { localInferenceEngine } from "./engine";
 import { probeHardware } from "./hardware";
@@ -145,6 +145,7 @@ export class LocalInferenceService {
       slot,
       hardware ?? (await this.getHardware()),
       MODEL_CATALOG,
+      { binaryKernels: this.installedBinaryKernels() },
     );
   }
 
@@ -154,7 +155,19 @@ export class LocalInferenceService {
     return selectRecommendedModels(
       hardware ?? (await this.getHardware()),
       MODEL_CATALOG,
+      { binaryKernels: this.installedBinaryKernels() },
     );
+  }
+
+  /**
+   * Pull the kernels map from CAPABILITIES.json next to the installed
+   * llama-server binary. Null when the file is absent or when DFlash isn't
+   * enabled. Surfaces to the recommender so we don't recommend a model the
+   * installed binary can't actually run.
+   */
+  private installedBinaryKernels(): Partial<Record<string, boolean>> | null {
+    const caps = getDflashRuntimeStatus().capabilities;
+    return caps?.kernels ?? null;
   }
 
   async startDownload(
