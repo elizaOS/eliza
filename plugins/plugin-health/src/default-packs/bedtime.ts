@@ -34,9 +34,7 @@ export const bedtimeDefaultPack: DefaultPack = {
       priority: "low",
       shouldFire: {
         compose: "all",
-        gates: [
-          { kind: "circadian_state_in", params: { states: ["awake"] } },
-        ],
+        gates: [{ kind: "circadian_state_in", params: { states: ["awake"] } }],
       },
       completionCheck: {
         kind: "user_acknowledged",
