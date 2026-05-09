@@ -2,11 +2,24 @@ import type {
   LifeOpsCircadianState,
   LifeOpsEventKind,
   LifeOpsRegularityClass,
+  LifeOpsScheduleInsight,
   LifeOpsScheduleSleepStatus,
   LifeOpsUnclearReason,
 } from "@elizaos/shared";
-import type { LifeOpsScheduleMergedStateRecord } from "./repository.js";
-import { parseIsoMs } from "./time-util.js";
+import { parseIsoMs } from "../util/time-util.js";
+
+/**
+ * Structural shape of `LifeOpsScheduleMergedState` (declared in
+ * `app-lifeops/src/lifeops/schedule-sync-contracts.ts`) restricted to the
+ * fields this module reads. Defined locally to keep plugin-health independent
+ * of app-lifeops' schedule-sync repository layer; app-lifeops feeds compatible
+ * objects in via the call-site.
+ */
+export interface LifeOpsScheduleMergedStateRecord
+  extends LifeOpsScheduleInsight {
+  id: string;
+  agentId: string;
+}
 
 /**
  * Typed payload for every circadian-state event emitted from the scheduler

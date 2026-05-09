@@ -4,9 +4,9 @@ import type {
   LifeOpsRegularityClass,
   LifeOpsScheduleRegularity,
 } from "@elizaos/shared";
-import { buildUtcDateFromLocalParts, getZonedDateParts } from "../time.js";
-import { parseIsoMs } from "../time-util.js";
-import type { SleepRecap } from "./types.js";
+import { buildUtcDateFromLocalParts, getZonedDateParts } from "../util/time.js";
+import { parseIsoMs } from "../util/time-util.js";
+import type { SleepRecap } from "./sleep-recap.js";
 
 export const MORNING_CHECKIN_WINDOW_MINUTES = 6 * 60;
 export const NIGHT_CHECKIN_LEAD_MINUTES = 3 * 60;

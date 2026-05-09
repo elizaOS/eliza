@@ -21,7 +21,7 @@ export { voiceCallAction } from "./actions/voice-call.js";
 export { websiteBlockAction } from "./actions/website-block.js";
 export { getAppBlockerStatus } from "./app-blocker/engine.js";
 export * from "./contracts/index.js";
-export { detectHealthBackend } from "./lifeops/health-bridge.js";
+export { detectHealthBackend } from "@elizaos/plugin-health";
 export * from "./lifeops/messaging/index.js";
 export { detectPasswordManagerBackend } from "./lifeops/password-manager-bridge.js";
 export { detectRemoteDesktopBackend } from "./lifeops/remote-desktop.js";

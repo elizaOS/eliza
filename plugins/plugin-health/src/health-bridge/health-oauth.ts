@@ -8,13 +8,13 @@ import type {
   LifeOpsHealthConnectorCapability,
   LifeOpsHealthConnectorProvider,
   StartLifeOpsHealthConnectorResponse,
-} from "../contracts/index.js";
+} from "../contracts/health.js";
 import {
   decryptTokenEnvelope,
   encryptTokenPayload,
   isEncryptedTokenEnvelope,
   resolveTokenEncryptionKey,
-} from "./token-encryption.js";
+} from "../util/token-encryption.js";
 
 const HEALTH_OAUTH_SESSION_TTL_MS = 10 * 60 * 1000;
 const ACCESS_TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;

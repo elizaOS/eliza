@@ -192,23 +192,25 @@ export interface LifeOpsScheduleObservationRecord
 export interface LifeOpsScheduleMergedStateRecord
   extends LifeOpsScheduleMergedState {}
 
-export type LifeOpsPersistedSleepEpisodeSource =
-  | LifeOpsSleepCycleEvidence["source"]
-  | "manual";
-
-export interface LifeOpsSleepEpisodeRecord {
-  id: string;
-  agentId: string;
-  startAt: string;
-  endAt: string | null;
-  source: LifeOpsPersistedSleepEpisodeSource;
-  confidence: number;
-  cycleType: LifeOpsSleepCycleType;
-  sealed: boolean;
-  evidence: LifeOpsSleepCycleEvidence[];
-  createdAt: string;
-  updatedAt: string;
-}
+// Sleep- and health-record types + factories owned by `@elizaos/plugin-health`
+// (Wave-1 W1-B extraction). Re-exported here for backward compatibility —
+// every existing app-lifeops importer of these names continues to resolve
+// via the repository module.
+export type {
+  LifeOpsPersistedSleepEpisodeSource,
+  LifeOpsSleepEpisodeRecord,
+} from "@elizaos/plugin-health";
+export {
+  createLifeOpsHealthMetricSample,
+  createLifeOpsHealthSleepEpisode,
+  createLifeOpsHealthSyncState,
+  createLifeOpsHealthWorkout,
+  createLifeOpsSleepEpisode,
+} from "@elizaos/plugin-health";
+import type {
+  LifeOpsPersistedSleepEpisodeSource,
+  LifeOpsSleepEpisodeRecord,
+} from "@elizaos/plugin-health";
 
 export interface LifeOpsCachedInboxMessage extends LifeOpsInboxMessage {
   cachedAt: string;
@@ -7645,17 +7647,8 @@ export function createLifeOpsActivitySignal(
   };
 }
 
-export function createLifeOpsSleepEpisode(
-  params: Omit<LifeOpsSleepEpisodeRecord, "id" | "createdAt" | "updatedAt">,
-): LifeOpsSleepEpisodeRecord {
-  const timestamp = isoNow();
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
+// `createLifeOpsSleepEpisode` moved to `@elizaos/plugin-health` (Wave-1 W1-B).
+// Re-exported at the top of this file for backward compatibility.
 
 export function createLifeOpsConnectorGrant(
   params: Omit<
@@ -7701,51 +7694,8 @@ export function createLifeOpsConnectorGrant(
   };
 }
 
-export function createLifeOpsHealthMetricSample(
-  params: Omit<LifeOpsHealthMetricSample, "id" | "createdAt" | "updatedAt">,
-): LifeOpsHealthMetricSample {
-  const timestamp = isoNow();
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
-export function createLifeOpsHealthWorkout(
-  params: Omit<LifeOpsHealthWorkout, "id" | "createdAt" | "updatedAt">,
-): LifeOpsHealthWorkout {
-  const timestamp = isoNow();
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
-export function createLifeOpsHealthSleepEpisode(
-  params: Omit<LifeOpsHealthSleepEpisode, "id" | "createdAt" | "updatedAt">,
-): LifeOpsHealthSleepEpisode {
-  const timestamp = isoNow();
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
-export function createLifeOpsHealthSyncState(
-  params: Omit<LifeOpsHealthSyncState, "id" | "updatedAt">,
-): LifeOpsHealthSyncState {
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    updatedAt: isoNow(),
-  };
-}
+// `createLifeOpsHealth*` factories moved to `@elizaos/plugin-health` (Wave-1 W1-B).
+// Re-exported at the top of this file for backward compatibility.
 
 export function createLifeOpsCalendarSyncState(
   params: Omit<LifeOpsCalendarSyncState, "id" | "updatedAt">,

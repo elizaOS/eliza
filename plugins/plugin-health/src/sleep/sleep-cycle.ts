@@ -11,8 +11,8 @@ import {
   buildUtcDateFromLocalParts,
   getLocalDateKey,
   getZonedDateParts,
-} from "./time.js";
-import { roundConfidence } from "./time-util.js";
+} from "../util/time.js";
+import { roundConfidence } from "../util/time-util.js";
 
 const COMPLETED_SLEEP_GAP_MIN_MS = 3 * 60 * 60 * 1_000;
 const CURRENT_SLEEP_GAP_MIN_MS = 2 * 60 * 60 * 1_000;
