@@ -9,6 +9,11 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./setup-routes": {
+      "types": "./dist/setup-routes.d.ts",
+      "import": "./dist/setup-routes.js",
+      "default": "./dist/setup-routes.js"
+    },
     "./package.json": "./package.json"
   },
   "dependencies": {
