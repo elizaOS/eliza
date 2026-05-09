@@ -9,6 +9,7 @@ import {
 import { createBlueSkyConnectorAccountProvider } from "./connector-account-provider";
 import { BlueSkyService } from "./services/bluesky";
 import { getApiKeyOptional } from "./utils/config";
+import { BlueskyWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 export { BlueSkyClient } from "./client";
 export {
@@ -127,7 +128,7 @@ export const blueSkyPlugin: Plugin = {
 
 	actions: [],
 
-	services: [BlueSkyService],
+	services: [BlueSkyService, BlueskyWorkflowCredentialProvider],
 
 	tests: pluginTests,
 };
