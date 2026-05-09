@@ -20,7 +20,6 @@ import itertools
 import json
 import logging
 import os
-import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -95,33 +94,61 @@ def _make_client(provider: str):
     return OpenAI(base_url=base_url, api_key=api_key)
 
 
-_ACTIONS_TAG_RE = re.compile(r"<actions>\s*(.*?)\s*</actions>", re.IGNORECASE | re.DOTALL)
-_TEXT_TAG_RE = re.compile(r"<text>\s*(.*?)\s*</text>", re.IGNORECASE | re.DOTALL)
+def _build_tools(action_names: list[str]) -> list[dict]:
+    """Build OpenAI tool schema where each action is a separate function.
 
-
-def _parse_response(raw: str, valid_actions: set[str]) -> tuple[list[str], str]:
-    """Extract <actions> and <text> from the LLM response.
-
-    Falls back to scanning the raw text for any valid action token if no
-    <actions> tag is present.
+    Each tool takes a single optional `text` field for the user-facing reply.
+    The model picks one or more by emitting tool_calls; we read the names
+    back as the selected actions.
     """
+    tools: list[dict] = []
+    for name in action_names:
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": f"Perform the {name} action.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "text": {
+                            "type": "string",
+                            "description": "Optional user-facing message for this action.",
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            },
+        })
+    return tools
+
+
+def _parse_tool_calls(
+    tool_calls: list,
+    fallback_text: str,
+    valid_actions: set[str],
+) -> tuple[list[str], str]:
+    """Extract action names and the first non-empty text from tool_calls."""
     actions: list[str] = []
-    text = raw
-    m = _ACTIONS_TAG_RE.search(raw)
-    if m:
-        for tok in re.split(r"[,\s]+", m.group(1)):
-            tok = tok.strip().strip("[]()").upper()
-            if tok and tok in valid_actions:
-                actions.append(tok)
-    else:
-        upper = raw.upper()
-        for name in valid_actions:
-            if re.search(rf"\b{re.escape(name)}\b", upper):
-                actions.append(name)
-                break
-    t = _TEXT_TAG_RE.search(raw)
-    if t:
-        text = t.group(1).strip()
+    text = fallback_text or ""
+    for call in tool_calls or []:
+        fn = getattr(call, "function", None)
+        if fn is None:
+            continue
+        name = (getattr(fn, "name", "") or "").upper()
+        if name not in valid_actions:
+            continue
+        actions.append(name)
+        args_raw = getattr(fn, "arguments", "") or ""
+        if args_raw and not text:
+            try:
+                parsed = json.loads(args_raw)
+                if isinstance(parsed, dict):
+                    candidate = parsed.get("text")
+                    if isinstance(candidate, str) and candidate.strip():
+                        text = candidate.strip()
+            except (json.JSONDecodeError, TypeError):
+                pass
     return actions, text
 
 
@@ -278,8 +305,9 @@ class OpenAICompatibleADHDBenchRunner:
             self._total_prompt_tokens += llm.prompt_tokens
             self._total_completion_tokens += llm.completion_tokens
 
-            actions, response_text = _parse_response(llm.raw, valid_actions)
-            history.append({"role": "assistant", "content": llm.raw})
+            actions = list(llm.actions)
+            response_text = llm.text
+            history.append({"role": "assistant", "content": llm.raw or response_text})
 
             turn_result = TurnResult(
                 turn_index=idx,
@@ -338,31 +366,48 @@ class OpenAICompatibleADHDBenchRunner:
         action_names: list[str],
         scenario_name: str,
     ) -> _LLMResponse:
-        action_menu = "\n".join(f"- {name}" for name in action_names)
+        valid_actions = {n.upper() for n in action_names}
         system = (
             f"You are an agent being benchmarked on attention/distraction handling.\n"
             f"Scenario: {scenario_name}\n\n"
-            f"Available actions (pick the most semantically appropriate one or two):\n"
-            f"{action_menu}\n\n"
-            f"Respond ONLY in this exact format:\n"
-            f"<actions>NAME[,NAME2]</actions><text>your reply to the user</text>\n"
-            f"Pick action names from the list above only. Be concise."
+            f"Pick the most semantically appropriate action (or one or two actions) "
+            f"by calling the matching function. Pass your user-facing reply, if any, "
+            f"as the `text` argument. Be concise."
         )
         messages = [{"role": "system", "content": system}] + history
+        tools = _build_tools(action_names)
         completion = self._client.chat.completions.create(
             model=self.config.model_name,
             messages=messages,
             temperature=0.0,
             max_tokens=512,
+            tools=tools,
+            tool_choice="auto",
         )
         choice = completion.choices[0]
-        raw = choice.message.content or ""
+        message = choice.message
+        content_text = message.content or ""
+        tool_calls = getattr(message, "tool_calls", None) or []
+        actions, parsed_text = _parse_tool_calls(tool_calls, content_text, valid_actions)
+        # Synthesize a raw record that captures both the structured tool calls
+        # and any free-form text the model emitted so traces stay debuggable.
+        raw_payload = {
+            "content": content_text,
+            "tool_calls": [
+                {
+                    "name": getattr(getattr(c, "function", None), "name", ""),
+                    "arguments": getattr(getattr(c, "function", None), "arguments", ""),
+                }
+                for c in tool_calls
+            ],
+        }
+        raw = json.dumps(raw_payload, ensure_ascii=False)
         usage = getattr(completion, "usage", None)
         prompt_tokens = getattr(usage, "prompt_tokens", 0) if usage else 0
         completion_tokens = getattr(usage, "completion_tokens", 0) if usage else 0
         return _LLMResponse(
-            text=raw,
-            actions=[],
+            text=parsed_text,
+            actions=actions,
             raw=raw,
             prompt_tokens=int(prompt_tokens or 0),
             completion_tokens=int(completion_tokens or 0),
