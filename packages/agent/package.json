@@ -143,6 +143,7 @@
     "@elizaos/plugin-agent-skills": "workspace:*",
     "@elizaos/plugin-browser-bridge": "workspace:*",
     "@elizaos/plugin-coding-tools": "workspace:*",
+    "@elizaos/plugin-workflow": "workspace:*",
     "@elizaos/plugin-computeruse": "workspace:*",
     "@elizaos/plugin-local-embedding": "workspace:*",
     "@elizaos/plugin-ollama": "workspace:*",

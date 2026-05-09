@@ -77,3 +77,9 @@ export const workflowPlugin: Plugin = {
 };
 
 export default workflowPlugin;
+
+export {
+  handleTriggerRoutes,
+  type TriggerRouteContext,
+  type TriggerRouteHelpers,
+} from "./trigger-routes.js";

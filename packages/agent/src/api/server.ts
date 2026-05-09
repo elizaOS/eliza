@@ -209,7 +209,7 @@ import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
 // Telegram account routes extracted to @elizaos/plugin-telegram account-setup-routes.ts (Plugin.routes).
-import { handleTriggerRoutes } from "./trigger-routes.js";
+import { handleTriggerRoutes } from "@elizaos/plugin-workflow";
 import { handleTtsRoutes } from "./tts-routes.js";
 import { handleUpdateRoutes } from "./update-routes.js";
 import {
