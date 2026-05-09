@@ -32,8 +32,15 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": ["text-large", "text-small", "tool-use"]
+    }
+  },
   "sideEffects": false,
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.9",
