@@ -47,7 +47,9 @@
   },
   "exports": {
     ".": "./src/index.ts",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./*": "./src/*.ts",
+    "./*.js": "./src/*.ts"
   },
   "publishConfig": {
     "access": "public",
