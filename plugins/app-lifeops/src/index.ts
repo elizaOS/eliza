@@ -63,6 +63,7 @@ export type {
   WebsiteBlockerSettingsCardProps,
   WebsiteBlockerSettingsMode,
 } from "./types/index.js";
+export * from "./ui.js";
 export type {
   NativeWebsiteBlockerBackend,
   SelfControlBlockRequest,

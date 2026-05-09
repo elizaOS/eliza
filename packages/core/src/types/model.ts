@@ -1,26 +1,6 @@
 import type { StreamChunkCallback } from "./components";
 import type { AgentContext } from "./contexts";
-import type {
-	JsonValue,
-	AudioProcessingParams as ProtoAudioProcessingParams,
-	DetokenizeTextParams as ProtoDetokenizeTextParams,
-	GenerateTextOptions as ProtoGenerateTextOptions,
-	GenerateTextParams as ProtoGenerateTextParams,
-	GenerateTextResult as ProtoGenerateTextResult,
-	ImageDescriptionParams as ProtoImageDescriptionParams,
-	ImageDescriptionResult as ProtoImageDescriptionResult,
-	ImageGenerationParams as ProtoImageGenerationParams,
-	ImageGenerationResult as ProtoImageGenerationResult,
-	JSONSchema as ProtoJSONSchema,
-	ObjectGenerationParams as ProtoObjectGenerationParams,
-	TextEmbeddingParams as ProtoTextEmbeddingParams,
-	TextStreamChunk as ProtoTextStreamChunk,
-	TextToSpeechParams as ProtoTextToSpeechParams,
-	TokenizeTextParams as ProtoTokenizeTextParams,
-	TokenUsage as ProtoTokenUsage,
-	TranscriptionParams as ProtoTranscriptionParams,
-	VideoProcessingParams as ProtoVideoProcessingParams,
-} from "./proto.js";
+import type { JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 
 export type ModelTypeName = (typeof ModelType)[keyof typeof ModelType] | string;
@@ -324,11 +304,7 @@ export interface ChatMessage {
  * Plugin implementations should filter out unsupported parameters before calling their provider's API.
  * Check your provider's documentation to determine which parameters are supported.
  */
-export interface GenerateTextParams
-	extends Omit<
-		ProtoGenerateTextParams,
-		"$typeName" | "$unknown" | "responseFormat" | "stopSequences" | "prompt"
-	> {
+export interface GenerateTextParams {
 	/**
 	 * Legacy concatenated prompt string. v5 paths emit `messages` instead and
 	 * leave this field undefined. Adapters that haven't migrated to native chat
@@ -336,6 +312,17 @@ export interface GenerateTextParams
 	 * `prompt` unset.
 	 */
 	prompt?: string;
+	maxTokens?: number;
+	minTokens?: number;
+	temperature?: number;
+	topP?: number;
+	topK?: number;
+	minP?: number;
+	seed?: number;
+	repetitionPenalty?: number;
+	frequencyPenalty?: number;
+	presencePenalty?: number;
+	stream?: boolean;
 	responseFormat?: { type: "json_object" | "text" } | string;
 	stopSequences?: string[];
 	onStreamChunk?: StreamChunkCallback;
@@ -388,8 +375,10 @@ export interface GenerateTextParams
  * about provider-side cache (Anthropic prompt caching, OpenAI cached input,
  * etc.) populate them. Consumers that don't care can ignore them.
  */
-export interface TokenUsage
-	extends Omit<ProtoTokenUsage, "$typeName" | "$unknown"> {
+export interface TokenUsage {
+	promptTokens: number;
+	completionTokens: number;
+	totalTokens: number;
 	cacheReadInputTokens?: number;
 	cacheCreationInputTokens?: number;
 }
@@ -398,8 +387,10 @@ export interface TokenUsage
  * Represents a single chunk in a text stream.
  * Each chunk contains a piece of the generated text.
  */
-export interface TextStreamChunk
-	extends Omit<ProtoTextStreamChunk, "$typeName" | "$unknown"> {}
+export interface TextStreamChunk {
+	text: string;
+	done: boolean;
+}
 
 /**
  * Result of a streaming text generation request.
@@ -453,14 +444,15 @@ export interface TextStreamResult {
  * Options for the simplified generateText API.
  * Extends GenerateTextParams with additional configuration for character context.
  */
-export interface GenerateTextOptions
-	extends Omit<
-		ProtoGenerateTextOptions,
-		"$typeName" | "$unknown" | "modelType"
-	> {
+export interface GenerateTextOptions {
 	includeCharacter?: boolean;
 	modelType?: TextGenerationModelType;
+	maxTokens?: number;
 	minTokens?: number;
+	temperature?: number;
+	frequencyPenalty?: number;
+	presencePenalty?: number;
+	stopSequences?: string[];
 	topP?: number;
 	topK?: number;
 	minP?: number;
@@ -473,8 +465,9 @@ export interface GenerateTextOptions
 /**
  * Structured response from text generation.
  */
-export interface GenerateTextResult
-	extends Omit<ProtoGenerateTextResult, "$typeName" | "$unknown"> {
+export interface GenerateTextResult {
+	text: string;
+	usage?: TokenUsage;
 	finishReason?: string;
 	toolCalls?: ToolCall[];
 	providerMetadata?: Record<string, JsonValue | object | undefined>;
@@ -483,11 +476,8 @@ export interface GenerateTextResult
 /**
  * Parameters for text tokenization models
  */
-export interface TokenizeTextParams
-	extends Omit<
-		ProtoTokenizeTextParams,
-		"$typeName" | "$unknown" | "modelType"
-	> {
+export interface TokenizeTextParams {
+	prompt: string;
 	modelType: ModelTypeName;
 }
 
@@ -496,59 +486,74 @@ export interface TokenizeTextParams
  * This is the reverse operation of tokenization.
  * This structure is used with `AgentRuntime.useModel` when the `modelType` is `ModelType.TEXT_TOKENIZER_DECODE`.
  */
-export interface DetokenizeTextParams
-	extends Omit<
-		ProtoDetokenizeTextParams,
-		"$typeName" | "$unknown" | "modelType"
-	> {
+export interface DetokenizeTextParams {
+	tokens: number[];
 	modelType: ModelTypeName;
 }
 
 /**
  * Parameters for text embedding models
  */
-export interface TextEmbeddingParams
-	extends Omit<ProtoTextEmbeddingParams, "$typeName" | "$unknown"> {}
+export interface TextEmbeddingParams {
+	text: string;
+}
 
 /**
  * Parameters for image generation models
  */
-export interface ImageGenerationParams
-	extends Omit<ProtoImageGenerationParams, "$typeName" | "$unknown"> {}
+export interface ImageGenerationParams {
+	prompt: string;
+	size?: string;
+	count?: number;
+}
 
 /**
  * Parameters for image description models
  */
-export interface ImageDescriptionParams
-	extends Omit<ProtoImageDescriptionParams, "$typeName" | "$unknown"> {}
-export interface ImageDescriptionResult
-	extends Omit<ProtoImageDescriptionResult, "$typeName" | "$unknown"> {}
-export interface ImageGenerationResult
-	extends Omit<ProtoImageGenerationResult, "$typeName" | "$unknown"> {}
+export interface ImageDescriptionParams {
+	imageUrl: string;
+	prompt?: string;
+}
+export interface ImageDescriptionResult {
+	title: string;
+	description: string;
+}
+export interface ImageGenerationResult {
+	url: string;
+}
 
 /**
  * Parameters for transcription models
  */
-export interface TranscriptionParams
-	extends Omit<ProtoTranscriptionParams, "$typeName" | "$unknown"> {}
+export interface TranscriptionParams {
+	audioUrl: string;
+	prompt?: string;
+}
 
 /**
  * Parameters for text-to-speech models
  */
-export interface TextToSpeechParams
-	extends Omit<ProtoTextToSpeechParams, "$typeName" | "$unknown"> {}
+export interface TextToSpeechParams {
+	text: string;
+	voice?: string;
+	speed?: number;
+}
 
 /**
  * Parameters for audio processing models
  */
-export interface AudioProcessingParams
-	extends Omit<ProtoAudioProcessingParams, "$typeName" | "$unknown"> {}
+export interface AudioProcessingParams {
+	audioUrl: string;
+	processingType: string;
+}
 
 /**
  * Parameters for video processing models
  */
-export interface VideoProcessingParams
-	extends Omit<ProtoVideoProcessingParams, "$typeName" | "$unknown"> {}
+export interface VideoProcessingParams {
+	videoUrl: string;
+	processingType: string;
+}
 
 // ============================================================================
 // Research Model Types (Deep Research)
@@ -785,11 +790,7 @@ export interface ResearchResult {
 /**
  * Optional JSON schema for validating generated objects
  */
-export interface JSONSchema
-	extends Omit<
-		ProtoJSONSchema,
-		"$typeName" | "$unknown" | "type" | "properties" | "items" | "required"
-	> {
+export interface JSONSchema {
 	type?: string | string[];
 	properties?: Record<string, JSONSchema>;
 	items?: JSONSchema | JSONSchema[];
@@ -801,16 +802,11 @@ export interface JSONSchema
  * Parameters for object generation models
  * @template T - The expected return type, inferred from schema if provided
  */
-export interface ObjectGenerationParams
-	extends Omit<
-		ProtoObjectGenerationParams,
-		| "$typeName"
-		| "$unknown"
-		| "modelType"
-		| "schema"
-		| "enumValues"
-		| "stopSequences"
-	> {
+export interface ObjectGenerationParams {
+	prompt: string;
+	output?: string;
+	temperature?: number;
+	maxTokens?: number;
 	schema?: JSONSchema;
 	modelType?: ModelTypeName;
 	enumValues?: string[];
