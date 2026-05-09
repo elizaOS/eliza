@@ -13,9 +13,6 @@ instructions[5]:
 - set intent to count when the user only wants a count, otherwise list
 - omit fields that are not clearly requested
 
-output:
-JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
-
 Example:
 categories: vip,colleague
 searchTerm: Jane

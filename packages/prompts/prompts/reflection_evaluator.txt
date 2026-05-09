@@ -42,8 +42,6 @@ Message Sender: {{senderName}} (ID: {{senderId}})
 6. Always include a short `task_completion_reason` grounded in the conversation and action results.
 
 Output:
-JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
-Do not output JSON, XML, Markdown fences, or commentary.
 Use JSON fields exactly like this:
 thought: "a self-reflective thought on the conversation"
 task_completed: false
@@ -62,8 +60,3 @@ For additional entries, increment the index: facts[1], relationships[1], tags[1]
 Always include `task_completed` and `task_completion_reason`.
 If there are no durable new facts, omit all facts[...] entries.
 If there are no relationships, omit all relationships[...] entries.
-
-IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any text, thinking, or reasoning before or after it.
-
-
-

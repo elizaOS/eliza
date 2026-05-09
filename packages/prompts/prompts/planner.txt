@@ -12,6 +12,3 @@ rules:
 - include arguments only when grounded in the user request or prior tool results
 - if the task is complete or the only next step is speaking to the user, return no toolCalls and set messageToUser
 - do not invent tool names, connector names, providers, ids, or benchmark ids
-
-return:
-JSON object only. No markdown, no prose, no XML, no legacy formats.

@@ -14,9 +14,6 @@ instructions[6]:
 - include notes only when explicitly requested
 - omit fields that are not being changed
 
-output:
-JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
-
 Example:
 contactName: Jane Doe
 operation: add_to

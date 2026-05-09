@@ -12,11 +12,3 @@ The prompt should be specific, descriptive, and suitable for AI image generation
 Respond using JSON like this:
 thought: Your reasoning for the image prompt
 prompt: Detailed image generation prompt
-
-IMPORTANT: Your response must ONLY contain the JSON object above.
-
-
-
-
-
-

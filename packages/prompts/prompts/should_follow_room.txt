@@ -11,8 +11,5 @@ instructions[3]:
 - return false when the request is ambiguous or unrelated
 - prefer false when uncertain
 
-output:
-JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
-
 Example:
 decision: true

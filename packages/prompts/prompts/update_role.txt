@@ -20,9 +20,6 @@ instructions[6]:
 - do not invent entity ids or roles
 - include a short thought describing the change
 
-output:
-JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
-
 Example:
 thought: Sarah should become an admin.
 entity_id: 00000000-0000-0000-0000-000000000000

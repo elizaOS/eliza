@@ -18,11 +18,3 @@ quality_score: Score 0-100 for overall quality
 strengths: What went well
 improvements: What could be improved
 learnings: Key takeaways for future interactions
-
-IMPORTANT: Your response must ONLY contain the JSON object above.
-
-
-
-
-
-
