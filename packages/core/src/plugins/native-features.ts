@@ -1,17 +1,14 @@
-import {
-	messageAction,
-	postAction,
-} from "../features/advanced-capabilities/actions/index";
-import {
-	reflectionItems,
-	skillItems,
-} from "../features/advanced-capabilities/evaluators/index";
-import {
-	advancedContactsProvider,
-	factsProvider,
-	followUpsProvider,
-	relationshipsProvider,
-} from "../features/advanced-capabilities/providers/index";
+// Direct leaf-file imports — see comment in
+// ../features/advanced-capabilities/index.ts for the Bun.build mis-rewrite
+// that requires bypassing the barrels here too.
+import { messageAction } from "../features/advanced-capabilities/actions/message";
+import { postAction } from "../features/advanced-capabilities/actions/post";
+import { reflectionItems } from "../features/advanced-capabilities/evaluators/reflection-items";
+import { skillItems } from "../features/advanced-capabilities/evaluators/skill-items";
+import { advancedContactsProvider } from "../features/advanced-capabilities/providers/contacts";
+import { factsProvider } from "../features/advanced-capabilities/providers/facts";
+import { followUpsProvider } from "../features/advanced-capabilities/providers/followUps";
+import { relationshipsProvider } from "../features/advanced-capabilities/providers/relationships";
 import {
 	__setDocumentUrlFetchImplForTests,
 	DocumentService,
