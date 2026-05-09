@@ -120,9 +120,12 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   const isSweBench = benchmark === "swe_bench" || benchmark === "swe-bench";
   const isExperienceBenchmark = benchmark === "experience";
   const isGauntletBenchmark = benchmark === "gauntlet";
-  const isConversationalBenchmark = new Set(["woobench", "woo-bench"]).has(
-    benchmark,
-  );
+  const isConversationalBenchmark = new Set([
+    "woobench",
+    "woo-bench",
+    "orchestrator_lifecycle",
+    "orchestrator-lifecycle",
+  ]).has(benchmark);
 
   sections.push(`# Benchmark Task`);
   sections.push(`**Benchmark:** ${ctx.benchmark}`);
