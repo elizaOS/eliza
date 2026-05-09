@@ -572,7 +572,11 @@ export const elizaHandler: Handler = {
         PGLITE_DATA_DIR: "memory://",
         ...providerSettings,
       },
-      disableBasicCapabilities: true,
+      // Basic capabilities (REPLY/IGNORE + the actions provider) must remain
+      // enabled. Without them the actions provider never injects `actionNames`
+      // into Stage 1 state, so the LLM doesn't see SET_SECRET / MANAGE_SECRET
+      // as choices and falls back to a default REPLY with roleplay text.
+      disableBasicCapabilities: false,
     });
     if (
       typeof (runtime as unknown as Record<string, unknown>).initialize ===
