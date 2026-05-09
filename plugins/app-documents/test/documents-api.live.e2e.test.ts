@@ -7,7 +7,7 @@
  * Gated on ELIZA_LIVE_TEST=1.
  */
 import path from "node:path";
-import { documentsPlugin } from "@elizaos/app-documents/setup-routes";
+import { documentsPlugin } from "@elizaos/app-documents";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import {
   type RuntimeHarness as Runtime,

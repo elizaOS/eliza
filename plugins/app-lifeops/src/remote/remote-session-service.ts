@@ -18,7 +18,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { resolveStateDir } from "@elizaos/agent/config/paths";
+import { resolveStateDir } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import { PairingCodeStore } from "./pairing-code.js";
 

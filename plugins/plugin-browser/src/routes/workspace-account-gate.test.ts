@@ -19,7 +19,7 @@ function createRuntimeHarness() {
   const storage = new InMemoryConnectorAccountStorage();
   const runtime = {
     getService: vi.fn(() => null),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
   const manager = getConnectorAccountManager(runtime, storage);
   return { manager, runtime };
 }

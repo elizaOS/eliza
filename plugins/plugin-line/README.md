@@ -18,8 +18,8 @@ LINE Messaging API plugin for ElizaOS agents. Enables chatbot integration with L
 # npm
 npm install @elizaos/plugin-line
 
-# pnpm
-pnpm add @elizaos/plugin-line
+# bun
+bun add @elizaos/plugin-line
 ```
 
 ## Configuration

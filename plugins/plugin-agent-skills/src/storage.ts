@@ -327,12 +327,15 @@ export class FileSystemSkillStore implements ISkillStorage {
 
 	async listSkills(): Promise<string[]> {
 		if (!this.fs || !this.path) await this.initialize();
-		const { fs } = this.requireNodeModules();
+		const { fs, path } = this.requireNodeModules();
 		const entries = fs.readdirSync(this.basePath, {
 			withFileTypes: true,
 		});
 		return entries
 			.filter((e) => e.isDirectory() && !e.name.startsWith("."))
+			.filter((e) =>
+				fs.existsSync(path.join(this.basePath, e.name, "SKILL.md")),
+			)
 			.map((e) => e.name);
 	}
 

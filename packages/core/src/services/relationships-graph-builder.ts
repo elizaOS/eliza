@@ -2284,6 +2284,11 @@ export function createNativeRelationshipsGraphService(
 		return modelBuildPromise;
 	}
 
+	function invalidateModelCache(): void {
+		modelCache = null;
+		modelBuildPromise = null;
+	}
+
 	function applyOwnerName(
 		summaries: RelationshipsPersonSummary[],
 		ownerName: string | null,
@@ -2458,6 +2463,7 @@ export function createNativeRelationshipsGraphService(
 				);
 			}
 			await relationshipsService.acceptMerge(candidateId);
+			invalidateModelCache();
 		},
 
 		async rejectMerge(candidateId: UUID): Promise<void> {
@@ -2467,6 +2473,7 @@ export function createNativeRelationshipsGraphService(
 				);
 			}
 			await relationshipsService.rejectMerge(candidateId);
+			invalidateModelCache();
 		},
 
 		async proposeMerge(
@@ -2479,7 +2486,13 @@ export function createNativeRelationshipsGraphService(
 					"RelationshipsService does not support merge proposals",
 				);
 			}
-			return relationshipsService.proposeMerge(entityA, entityB, evidence);
+			const candidateId = await relationshipsService.proposeMerge(
+				entityA,
+				entityB,
+				evidence,
+			);
+			invalidateModelCache();
+			return candidateId;
 		},
 	};
 }
@@ -2529,11 +2542,13 @@ type ClusterResolver = {
 function getClusterResolver(runtime: IAgentRuntime): ClusterResolver | null {
 	const service = runtime.getService("relationships");
 	if (!service) return null;
-	const candidate = service as unknown as Partial<ClusterResolver>;
+	const candidate = service as { getMemberEntityIds?: unknown };
 	if (typeof candidate.getMemberEntityIds !== "function") {
 		return null;
 	}
-	return candidate as ClusterResolver;
+	return {
+		getMemberEntityIds: candidate.getMemberEntityIds.bind(service),
+	};
 }
 
 function dedupeMemoriesById(memories: Memory[]): Memory[] {

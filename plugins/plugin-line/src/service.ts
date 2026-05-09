@@ -357,7 +357,7 @@ export class LineService extends Service implements ILineService {
             return null;
           }
           return {
-            id: user.userId as unknown as UUID,
+            id: user.userId as UUID,
             names: [user.displayName, user.userId].filter((value) => value.length > 0),
             agentId: _handlerRuntime.agentId,
             metadata: { line: objectToMetadataValue(user) },
@@ -456,7 +456,7 @@ export class LineService extends Service implements ILineService {
         runtime: this.runtime,
         source: "line",
         service: this,
-      } as unknown as EventPayload);
+      } as EventPayload);
     }
   }
 
@@ -601,7 +601,7 @@ export class LineService extends Service implements ILineService {
 
     await this.client.replyMessage({
       replyToken,
-      messages: messages.slice(0, MAX_LINE_BATCH_SIZE) as unknown as messagingApi.Message[],
+      messages: messages.slice(0, MAX_LINE_BATCH_SIZE) as messagingApi.Message[],
     });
 
     return {
@@ -867,7 +867,7 @@ export class LineService extends Service implements ILineService {
 
       await this.client.pushMessage({
         to,
-        messages: batch as unknown as messagingApi.Message[],
+        messages: batch as messagingApi.Message[],
       });
     }
 
@@ -878,7 +878,7 @@ export class LineService extends Service implements ILineService {
         source: "line",
         to,
         messageCount: messages.length,
-      } as unknown as EventPayload);
+      } as EventPayload);
     }
 
     return {
@@ -903,7 +903,7 @@ export class LineService extends Service implements ILineService {
           source: "line",
           userId: event.source?.userId,
           timestamp: event.timestamp,
-        } as unknown as EventPayload);
+        } as EventPayload);
         break;
       case "unfollow":
         this.runtime.emitEvent([LineEventTypes.UNFOLLOW], {
@@ -911,7 +911,7 @@ export class LineService extends Service implements ILineService {
           source: "line",
           userId: event.source?.userId,
           timestamp: event.timestamp,
-        } as unknown as EventPayload);
+        } as EventPayload);
         break;
       case "join":
         this.runtime.emitEvent([LineEventTypes.JOIN_GROUP], {
@@ -925,7 +925,7 @@ export class LineService extends Service implements ILineService {
                 : undefined,
           type: event.source?.type,
           timestamp: event.timestamp,
-        } as unknown as EventPayload);
+        } as EventPayload);
         break;
       case "leave":
         this.runtime.emitEvent([LineEventTypes.LEAVE_GROUP], {
@@ -939,7 +939,7 @@ export class LineService extends Service implements ILineService {
                 : undefined,
           type: event.source?.type,
           timestamp: event.timestamp,
-        } as unknown as EventPayload);
+        } as EventPayload);
         break;
       case "postback":
         this.runtime.emitEvent([LineEventTypes.POSTBACK], {
@@ -949,7 +949,7 @@ export class LineService extends Service implements ILineService {
           data: event.postback.data,
           params: event.postback.params,
           timestamp: event.timestamp,
-        } as unknown as EventPayload);
+        } as EventPayload);
         break;
     }
   }
@@ -987,6 +987,6 @@ export class LineService extends Service implements ILineService {
       message,
       lineSource: event.source,
       replyToken: event.replyToken,
-    } as unknown as EventPayload);
+    } as EventPayload);
   }
 }

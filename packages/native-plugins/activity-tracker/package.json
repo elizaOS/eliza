@@ -16,10 +16,11 @@
   "files": [
     "dist/",
     "native/macos/activity-collector",
-    "native/macos/activity-collector.swift"
+    "native/macos/activity-collector.swift",
+    "dist"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "build": "node ../../../scripts/rm-path-recursive.mjs dist && tsc -p tsconfig.json",
     "build:swift": "swiftc -O native/macos/activity-collector.swift -o native/macos/activity-collector"
   },
   "dependencies": {

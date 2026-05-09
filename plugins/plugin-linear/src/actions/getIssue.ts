@@ -10,7 +10,7 @@ import {
   type State,
 } from "@elizaos/core";
 import type { Issue, IssueLabel } from "@linear/sdk";
-import { getIssueTemplate } from "../generated/prompts/typescript/prompts.js";
+import { getIssueTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
 import { getRecordValue, getStringValue, parseLinearPromptResponse } from "./parseLinearPrompt.js";

@@ -40,7 +40,7 @@ const execFileAsync = promisify(execFile);
 
 /**
  * Resolves a command for Windows compatibility.
- * On Windows, non-.exe commands (like npm, pnpm) require their .cmd extension.
+ * On Windows, non-.exe commands (like npm) require their .cmd extension.
  */
 function resolveCommand(command: string): string {
   if (process.platform !== "win32") {
@@ -51,7 +51,7 @@ function resolveCommand(command: string): string {
   if (ext) {
     return command;
   }
-  const cmdCommands = ["npm", "pnpm", "yarn", "npx"];
+  const cmdCommands = ["npm", "yarn", "npx"];
   if (cmdCommands.includes(basename)) {
     return `${command}.cmd`;
   }

@@ -11,12 +11,29 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
+import { findCatalogModel } from "./catalog";
 import { localInferenceEngine } from "./engine";
-import { touchElizaModel } from "./registry";
+import { listInstalledModels, touchElizaModel } from "./registry";
 import type { ActiveModelState, InstalledModel } from "./types";
 
+export interface LocalInferenceLoadArgs {
+  modelPath: string;
+  contextSize?: number;
+  useGpu?: boolean;
+  maxThreads?: number;
+  draftModelPath?: string;
+  draftContextSize?: number;
+  draftMin?: number;
+  draftMax?: number;
+  speculativeSamples?: number;
+  mobileSpeculative?: boolean;
+  cacheTypeK?: string;
+  cacheTypeV?: string;
+  disableThinking?: boolean;
+}
+
 export interface LocalInferenceLoader {
-  loadModel(args: { modelPath: string }): Promise<void>;
+  loadModel(args: LocalInferenceLoadArgs): Promise<void>;
   unloadModel(): Promise<void>;
   currentModelPath(): string | null;
   /**
@@ -31,6 +48,14 @@ export interface LocalInferenceLoader {
     stopSequences?: string[];
     maxTokens?: number;
     temperature?: number;
+    /**
+     * Optional `promptCacheKey` from the runtime cache plan. Loaders
+     * that implement prefix caching (out-of-process llama-server,
+     * in-process node-llama-cpp session pool) use this to pin
+     * subsequent calls with the same key to the same KV cache slot.
+     * Loaders without prefix caching can ignore the field.
+     */
+    cacheKey?: string;
   }): Promise<string>;
   /**
    * Optional embedding surface. When a loader implements this, the runtime
@@ -44,6 +69,37 @@ export interface LocalInferenceLoader {
     embedding: number[];
     tokens: number;
   }>;
+}
+
+export async function resolveLocalInferenceLoadArgs(
+  installed: InstalledModel,
+): Promise<LocalInferenceLoadArgs> {
+  const args: LocalInferenceLoadArgs = { modelPath: installed.path };
+  const catalog = findCatalogModel(installed.id);
+  const runtime = catalog?.runtime;
+
+  if (runtime?.kvCache?.typeK) args.cacheTypeK = runtime.kvCache.typeK;
+  if (runtime?.kvCache?.typeV) args.cacheTypeV = runtime.kvCache.typeV;
+
+  const dflash = runtime?.dflash;
+  if (!dflash) return args;
+
+  args.contextSize = dflash.contextSize;
+  args.useGpu = true;
+  args.draftContextSize = dflash.draftContextSize;
+  args.draftMin = dflash.draftMin;
+  args.draftMax = dflash.draftMax;
+  args.speculativeSamples = dflash.draftMax;
+  args.mobileSpeculative = true;
+  args.disableThinking = dflash.disableThinking;
+
+  const installedModels = await listInstalledModels();
+  const drafter = installedModels.find(
+    (model) => model.id === dflash.drafterModelId,
+  );
+  if (drafter) args.draftModelPath = drafter.path;
+
+  return args;
 }
 
 function isLoader(value: unknown): value is LocalInferenceLoader {
@@ -118,7 +174,7 @@ export class ActiveModelCoordinator {
     try {
       if (loader) {
         await loader.unloadModel();
-        await loader.loadModel({ modelPath: installed.path });
+        await loader.loadModel(await resolveLocalInferenceLoadArgs(installed));
       } else {
         await localInferenceEngine.load(installed.path);
       }

@@ -1,9 +1,9 @@
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/core";
 import type {
   RegistryPluginInfo,
   RegistrySearchResult,
 } from "../services/plugin-manager-types.js";
 import { parseClampedInteger } from "../utils/number-parsing.js";
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
 
 interface InstalledRegistryPluginLike {
   name: string;

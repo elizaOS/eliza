@@ -5,28 +5,102 @@
  * Data types are proto-generated; runtime classes remain TypeScript.
  */
 
-import type { Content, UUID } from "./primitives";
-import type {
-	JsonValue,
-	LpPositionDetails,
-	PoolInfo,
-	TokenBalance,
-	TokenData,
-	TransactionResult,
-	WalletAsset,
-	WalletPortfolio,
-} from "./proto.js";
+import type { Content, JsonObject, JsonValue, UUID } from "./primitives";
 import { Service, ServiceType } from "./service";
 
-export type {
-	LpPositionDetails,
-	PoolInfo,
-	TokenBalance,
-	TokenData,
-	TransactionResult,
-	WalletAsset,
-	WalletPortfolio,
-};
+// ============================================================================
+// Token & Wallet Types
+// ============================================================================
+
+export interface TokenBalance {
+	address: string;
+	balance: string;
+	decimals: number;
+	uiAmount?: number;
+	name?: string;
+	symbol?: string;
+	logoUri?: string;
+}
+
+export interface TokenData {
+	id: string;
+	symbol: string;
+	name: string;
+	address: string;
+	chain: string;
+	sourceProvider: string;
+	price?: number;
+	priceChange24hPercent?: number;
+	priceChange24hUsd?: number;
+	volume24hUsd?: number;
+	marketCapUsd?: number;
+	liquidity?: number;
+	holders?: number;
+	logoUri?: string;
+	decimals?: number;
+	lastUpdatedAt?: Date;
+	raw?: JsonObject;
+}
+
+export interface WalletAsset {
+	address: string;
+	balance: string;
+	decimals: number;
+	uiAmount?: number;
+	name?: string;
+	symbol?: string;
+	logoUri?: string;
+	priceUsd?: number;
+	valueUsd?: number;
+}
+
+export interface WalletPortfolio {
+	totalValueUsd: number;
+	assets: WalletAsset[];
+}
+
+// ============================================================================
+// Liquidity Pool Types
+// ============================================================================
+
+export interface PoolTokenInfo {
+	mint: string;
+	symbol?: string;
+	reserve?: string;
+	decimals?: number;
+}
+
+export interface PoolInfo {
+	id: string;
+	displayName?: string;
+	dex: string;
+	tokenA: PoolTokenInfo;
+	tokenB: PoolTokenInfo;
+	lpTokenMint?: string;
+	apr?: number;
+	apy?: number;
+	tvl?: number;
+	fee?: number;
+	metadata?: JsonObject;
+}
+
+export interface LpPositionDetails {
+	poolId: string;
+	dex: string;
+	lpTokenBalance: TokenBalance;
+	underlyingTokens: TokenBalance[];
+	valueUsd?: number;
+	accruedFees: TokenBalance[];
+	rewards: TokenBalance[];
+	metadata?: JsonObject;
+}
+
+export interface TransactionResult {
+	success: boolean;
+	transactionId?: string;
+	error?: string;
+	data?: JsonObject;
+}
 
 // ============================================================================
 // Message Bus Service Interface

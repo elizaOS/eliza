@@ -1,6 +1,7 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   asRecord,
   isElizaSettingsDebugEnabled,
@@ -30,7 +31,6 @@ import type {
   PluginManagerLike,
 } from "../services/plugin-manager-types.js";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import { applyPluginRuntimeMutation } from "./plugin-runtime-apply.js";
 import {
   type PluginParamInfo,
@@ -222,12 +222,7 @@ export interface PluginRouteContext {
     plugins: PluginEntry[],
     workspaceDir: string,
   ) => void;
-  applySignalQrOverride: (
-    plugins: PluginEntry[],
-    workspaceDir: string,
-    signalAuthExists: (dir: string) => boolean,
-  ) => void;
-  signalAuthExists: (dir: string) => boolean;
+  applySignalQrOverride: (plugins: PluginEntry[], workspaceDir: string) => void;
   resolvePluginConfigMutationRejections: (
     parameters: PluginParamDef[],
     configObj: Record<string, string>,
@@ -324,7 +319,6 @@ export async function handlePluginRoutes(
     EVM_PLUGIN_PACKAGE,
     applyWhatsAppQrOverride,
     applySignalQrOverride,
-    signalAuthExists,
     resolvePluginConfigMutationRejections,
     requirePluginManager,
     requireCoreManager,
@@ -512,11 +506,7 @@ export async function handlePluginRoutes(
     }
 
     applyWhatsAppQrOverride(allPlugins, resolveDefaultAgentWorkspaceDir());
-    applySignalQrOverride(
-      allPlugins,
-      resolveDefaultAgentWorkspaceDir(),
-      signalAuthExists,
-    );
+    applySignalQrOverride(allPlugins, resolveDefaultAgentWorkspaceDir());
 
     for (const plugin of allPlugins) {
       const providerModels = readProviderCache(plugin.id)?.models ?? [];

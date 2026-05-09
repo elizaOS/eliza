@@ -34,7 +34,7 @@ app.post("/", async (c) => {
     if (lowerMessage.includes("hello") || lowerMessage.includes("hi")) {
       reply = `Hello there! I'm your dedicated agent (${agentId}). How can I help you today?`;
     } else if (lowerMessage.includes("status") || lowerMessage.includes("mode")) {
-      reply = `I am operating normally. If I were a workflow agent, I'd trigger n8n here. If I were autonomous, I'd spawn an isolated container.`;
+      reply = `I am operating normally. If I were a workflow agent, I'd run the workflow here. If I were autonomous, I'd spawn an isolated container.`;
     } else {
       reply = `I received your message: "${message}". I will process it based on my configured capabilities.`;
     }

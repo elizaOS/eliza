@@ -41,6 +41,8 @@ import {
 const ROOM_OPS = ["follow", "unfollow", "mute", "unmute"] as const;
 type RoomOp = (typeof ROOM_OPS)[number];
 
+const ROOM_CONTEXTS = ["messaging", "contacts", "settings"] as const;
+
 type ParticipantState = "FOLLOWED" | "MUTED" | null;
 
 type RoomOpParams = {
@@ -201,6 +203,76 @@ function preconditionMet(op: RoomOp, current: ParticipantState): boolean {
 		case "unmute":
 			return current === "MUTED";
 	}
+}
+
+function readRoomOpParams(options?: HandlerOptions): RoomOpParams {
+	return ((options as { parameters?: RoomOpParams } | undefined)?.parameters ??
+		{}) as RoomOpParams;
+}
+
+function roomPreconditionFailureResult(args: {
+	op: RoomOp;
+	current: ParticipantState;
+	roomId?: UUID;
+}): ActionResult {
+	return {
+		success: false,
+		text: `Cannot ${args.op} room from state ${args.current ?? "NONE"}`,
+		values: {
+			success: false,
+			error: `ROOM_${args.op.toUpperCase()}_PRECONDITION_FAILED`,
+		},
+		data: {
+			actionName: "ROOM",
+			op: args.op,
+			...(args.roomId ? { roomId: args.roomId } : {}),
+			error: `ROOM_${args.op.toUpperCase()}_PRECONDITION_FAILED`,
+			currentState: args.current ?? "NONE",
+		},
+	};
+}
+
+async function validateRoomOpAvailability(
+	runtime: IAgentRuntime,
+	message: Memory,
+	_state?: State,
+	options?: HandlerOptions,
+	forcedOp?: RoomOp,
+): Promise<boolean> {
+	if (typeof runtime.getParticipantUserState !== "function") {
+		return false;
+	}
+
+	const params = readRoomOpParams(options);
+	const op = forcedOp ?? normalizeOp(params.op);
+	if (!op) {
+		return true;
+	}
+
+	const platform = normalizePlatform(params.platform);
+	const explicitRoomId = normalizeString(params.roomId);
+	const chatName = normalizeString(params.chatName);
+	let roomId = explicitRoomId as UUID | undefined;
+
+	if (platform && (explicitRoomId || chatName)) {
+		const targetRoom = await resolveTargetRoom({
+			runtime: runtime as RuntimeLike,
+			platform,
+			roomId: explicitRoomId,
+			chatName,
+		});
+		if (!targetRoom) {
+			return false;
+		}
+		roomId = targetRoom.id;
+	}
+
+	roomId = (roomId ?? message.roomId) as UUID;
+	const current = (await runtime.getParticipantUserState(
+		roomId,
+		runtime.agentId,
+	)) as ParticipantState;
+	return preconditionMet(op, current);
 }
 
 async function decide(
@@ -400,7 +472,7 @@ async function applyOp(args: {
 
 export const roomOpAction: Action = {
 	name: "ROOM",
-	contexts: ["messaging", "contacts", "settings"],
+	contexts: [...ROOM_CONTEXTS],
 	roleGate: { minRole: "ADMIN" },
 	similes: [
 		"MUTE_ROOM",
@@ -529,7 +601,7 @@ export const roomOpAction: Action = {
 			},
 		],
 	] as ActionExample[][],
-	validate: async () => true,
+	validate: validateRoomOpAvailability,
 	handler: async (
 		runtime: IAgentRuntime,
 		message: Memory,
@@ -538,8 +610,7 @@ export const roomOpAction: Action = {
 		_callback?: HandlerCallback,
 		_responses?: Memory[],
 	): Promise<ActionResult> => {
-		const params = ((options as { parameters?: RoomOpParams } | undefined)
-			?.parameters ?? {}) as RoomOpParams;
+		const params = readRoomOpParams(options);
 
 		const op =
 			normalizeOp(params.op) ?? inferOpFromText(getMessageText(message));
@@ -582,6 +653,17 @@ export const roomOpAction: Action = {
 					},
 					success: false,
 				};
+			}
+			const current = (await runtime.getParticipantUserState(
+				targetRoom.id,
+				runtime.agentId,
+			)) as ParticipantState;
+			if (!preconditionMet(op, current)) {
+				return roomPreconditionFailureResult({
+					op,
+					current,
+					roomId: targetRoom.id,
+				});
 			}
 			const roomName =
 				targetRoom.name ??
@@ -646,20 +728,7 @@ export const roomOpAction: Action = {
 		)) as ParticipantState;
 
 		if (!preconditionMet(op, current)) {
-			return {
-				success: false,
-				text: `Cannot ${op} room from state ${current ?? "NONE"}`,
-				values: {
-					success: false,
-					error: `ROOM_${op.toUpperCase()}_PRECONDITION_FAILED`,
-				},
-				data: {
-					actionName: "ROOM",
-					op,
-					error: `ROOM_${op.toUpperCase()}_PRECONDITION_FAILED`,
-					currentState: current ?? "NONE",
-				},
-			};
+			return roomPreconditionFailureResult({ op, current, roomId });
 		}
 
 		const proceed = await decide(runtime, message, state, cfg, op);
@@ -710,3 +779,98 @@ export const roomOpAction: Action = {
 		});
 	},
 };
+
+function makeRoomOpChildAction(args: {
+	name: string;
+	op: RoomOp;
+	description: string;
+	descriptionCompressed: string;
+	similes: string[];
+}): Action {
+	return {
+		name: args.name,
+		contexts: [...ROOM_CONTEXTS],
+		roleGate: { minRole: "ADMIN" },
+		similes: args.similes,
+		description: args.description,
+		descriptionCompressed: args.descriptionCompressed,
+		parameters: roomOpAction.parameters?.filter(
+			(parameter) => parameter.name !== "op",
+		),
+		validate: (runtime, message, state, options) =>
+			validateRoomOpAvailability(
+				runtime,
+				message,
+				state,
+				options as HandlerOptions | undefined,
+				args.op,
+			),
+		handler: (runtime, message, state, options, callback, responses) => {
+			const params =
+				options?.parameters && typeof options.parameters === "object"
+					? (options.parameters as Record<string, unknown>)
+					: {};
+			return roomOpAction.handler(
+				runtime,
+				message,
+				state,
+				{
+					...(options ?? {}),
+					parameters: {
+						...params,
+						op: args.op,
+					},
+				},
+				callback,
+				responses,
+			);
+		},
+	};
+}
+
+export const muteRoomAction = makeRoomOpChildAction({
+	name: "MUTE_ROOM",
+	op: "mute",
+	description:
+		"Mute a room or connector chat when the agent is not already muted there.",
+	descriptionCompressed:
+		"mute room/chat if current participant state is not MUTED; optional roomId|platform+chatName|durationMinutes",
+	similes: ["MUTE_CHAT", "SILENCE_GROUP_CHAT", "MUTE_CHANNEL"],
+});
+
+export const unmuteRoomAction = makeRoomOpChildAction({
+	name: "UNMUTE_ROOM",
+	op: "unmute",
+	description:
+		"Unmute a room or connector chat only when the agent is currently muted there.",
+	descriptionCompressed:
+		"unmute room/chat only from MUTED participant state; optional roomId|platform+chatName",
+	similes: ["UNMUTE_CHAT", "RESTORE_CHAT", "UNMUTE_CHANNEL"],
+});
+
+export const followRoomAction = makeRoomOpChildAction({
+	name: "FOLLOW_ROOM",
+	op: "follow",
+	description:
+		"Follow a room or connector chat when the agent is not already following or muted there.",
+	descriptionCompressed:
+		"follow room/chat if state is neither FOLLOWED nor MUTED; optional roomId|platform+chatName",
+	similes: ["FOLLOW_CHAT", "FOLLOW_CHANNEL", "JOIN_ROOM"],
+});
+
+export const unfollowRoomAction = makeRoomOpChildAction({
+	name: "UNFOLLOW_ROOM",
+	op: "unfollow",
+	description:
+		"Unfollow a room or connector chat only when the agent is currently following there.",
+	descriptionCompressed:
+		"unfollow room/chat only from FOLLOWED participant state; optional roomId|platform+chatName",
+	similes: ["UNFOLLOW_CHAT", "UNFOLLOW_THREAD", "LEAVE_ROOM"],
+});
+
+roomOpAction.subActions = [
+	muteRoomAction,
+	unmuteRoomAction,
+	followRoomAction,
+	unfollowRoomAction,
+];

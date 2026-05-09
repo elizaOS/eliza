@@ -183,7 +183,6 @@ function packageScriptCommand(
 	script: string,
 ): { file: string; args: string[] } {
 	if (pm === "bun") return { file: "bun", args: ["run", script] };
-	if (pm === "pnpm") return { file: "pnpm", args: ["run", script] };
 	return { file: "npm", args: ["run", "--silent", script] };
 }
 

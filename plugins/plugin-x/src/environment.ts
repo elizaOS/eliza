@@ -1,6 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { z } from "zod";
+import * as z from "zod";
 import { getSetting } from "./utils/settings";
 
 /**
@@ -8,7 +8,7 @@ import { getSetting } from "./utils/settings";
  * All time intervals are in minutes for consistency
  */
 export const twitterEnvSchema = z.object({
-  // Auth mode (backward compatible default)
+  // Auth mode
   TWITTER_AUTH_MODE: z.enum(["env", "oauth"]).default("env"),
 
   // Account routing. TWITTER_ACCOUNTS may contain sensitive credentials.
@@ -39,10 +39,10 @@ export const twitterEnvSchema = z.object({
   TWITTER_ENABLE_ACTIONS: z.string().default("false"), // likes, retweets, quotes
 
   // Timing configuration (all in minutes)
-  TWITTER_POST_INTERVAL: z.string().default("120"), // fallback minutes between posts when MIN/MAX unset
+  TWITTER_POST_INTERVAL: z.string().default("120"), // fixed minutes between posts when MIN/MAX unset
   TWITTER_POST_INTERVAL_MIN: z.string().default("90"), // minimum minutes between posts
   TWITTER_POST_INTERVAL_MAX: z.string().default("180"), // maximum minutes between posts
-  TWITTER_ENGAGEMENT_INTERVAL: z.string().default("30"), // fallback minutes between interactions when MIN/MAX unset
+  TWITTER_ENGAGEMENT_INTERVAL: z.string().default("30"), // fixed minutes between interactions when MIN/MAX unset
   TWITTER_ENGAGEMENT_INTERVAL_MIN: z.string().default("20"), // minimum minutes between engagements
   TWITTER_ENGAGEMENT_INTERVAL_MAX: z.string().default("40"), // maximum minutes between engagements
   TWITTER_DISCOVERY_INTERVAL_MIN: z.string().default("15"), // minimum minutes between discovery cycles
@@ -59,7 +59,7 @@ export const twitterEnvSchema = z.object({
 export type TwitterConfig = z.infer<typeof twitterEnvSchema>;
 
 /**
- * Parse safe integer with fallback
+ * Parse safe integer with a default value.
  */
 function safeParseInt(value: string | undefined, defaultValue: number): number {
   if (!value) return defaultValue;
@@ -321,10 +321,10 @@ export async function validateTwitterConfig(
   } catch (error) {
     if (error instanceof z.ZodError) {
       // zod v3 uses `issues`; some builds also expose `errors`.
-      const zodLike = error as unknown as {
+      const zodLike: {
         issues?: unknown;
         errors?: unknown;
-      };
+      } = error;
       const raw = Array.isArray(zodLike.issues)
         ? zodLike.issues
         : Array.isArray(zodLike.errors)
@@ -432,29 +432,9 @@ function getDefaultConfig(): TwitterConfig {
   };
 }
 
-/**
- * Load configuration from file (stub for future implementation)
- * @param configPath - Path to the configuration file (optional)
- * @returns Partial TwitterConfig object
- */
-export function loadConfigFromFile(
-  _configPath?: string,
-): Partial<TwitterConfig> {
-  // For now, return empty config as file loading is not implemented
-  return {};
-}
-
-/**
- * Load merged configuration from all sources
- * @param configPath - Path to the configuration file (optional)
- * @returns Complete TwitterConfig object
- */
-export function loadConfig(configPath?: string): TwitterConfig {
-  const fileConfig = loadConfigFromFile(configPath);
-
+export function loadConfig(): TwitterConfig {
   return {
     ...getDefaultConfig(),
-    ...fileConfig,
     ...getEnvConfig(),
   };
 }
@@ -470,7 +450,7 @@ export function validateConfig(config: unknown): TwitterConfig {
 
 /**
  * Get a random interval between min and max values
- * If min/max are not configured, falls back to the fixed interval
+ * If min/max are not configured, uses the fixed interval.
  *
  * @param runtime - The agent runtime
  * @param type - The type of interval ('post', 'engagement', 'discovery')
@@ -482,7 +462,7 @@ export function getRandomInterval(
 ): number {
   let minInterval: number | undefined;
   let maxInterval: number | undefined;
-  let fallbackInterval: number;
+  let fixedInterval: number;
 
   switch (type) {
     case "post": {
@@ -496,7 +476,7 @@ export function getRandomInterval(
       ) as string;
       minInterval = postMin ? safeParseInt(postMin, 0) : undefined;
       maxInterval = postMax ? safeParseInt(postMax, 0) : undefined;
-      fallbackInterval = safeParseInt(
+      fixedInterval = safeParseInt(
         getSetting(runtime, "TWITTER_POST_INTERVAL") as string,
         120,
       );
@@ -513,7 +493,7 @@ export function getRandomInterval(
       ) as string;
       minInterval = engagementMin ? safeParseInt(engagementMin, 0) : undefined;
       maxInterval = engagementMax ? safeParseInt(engagementMax, 0) : undefined;
-      fallbackInterval = safeParseInt(
+      fixedInterval = safeParseInt(
         getSetting(runtime, "TWITTER_ENGAGEMENT_INTERVAL") as string,
         30,
       );
@@ -530,7 +510,7 @@ export function getRandomInterval(
       ) as string;
       minInterval = discoveryMin ? safeParseInt(discoveryMin, 0) : undefined;
       maxInterval = discoveryMax ? safeParseInt(discoveryMax, 0) : undefined;
-      fallbackInterval = 20; // Default discovery interval
+      fixedInterval = 20; // Default discovery interval
       break;
     }
     default:
@@ -551,7 +531,6 @@ export function getRandomInterval(
     return randomInterval;
   }
 
-  // Otherwise, fall back to fixed interval
-  logger.debug(`Using fixed ${type} interval: ${fallbackInterval} minutes`);
-  return fallbackInterval;
+  logger.debug(`Using fixed ${type} interval: ${fixedInterval} minutes`);
+  return fixedInterval;
 }

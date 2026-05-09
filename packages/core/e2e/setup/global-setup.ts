@@ -31,30 +31,77 @@ const TEST_CHARACTER: Character = {
 	settings: {},
 };
 
-/** Resolve the correct model-provider plugin based on available API keys. */
+/**
+ * Resolve the correct model-provider plugin.
+ *
+ * IMPORTANT: this runs from `packages/core` inside a nested workspace
+ * (`milady/eliza/...`). Bun's bare-specifier resolution can pick the published
+ * `@elizaos/plugin-openai` hoisted at `milady/node_modules` instead of the
+ * local workspace copy under `eliza/plugins/plugin-openai/`. The published
+ * 2.0.0-alpha.537 build only forwards `params.prompt`, while the local source
+ * also forwards `params.messages` (which the v5 planner relies on). So we
+ * resolve the workspace plugins via explicit relative file imports first and
+ * fall back to bare-specifier resolution when no local source exists.
+ */
+async function importWorkspacePlugin(
+	relativeFromHere: string,
+	bareSpecifier: string,
+): Promise<Record<string, unknown> | null> {
+	try {
+		const mod = (await import(relativeFromHere)) as Record<string, unknown>;
+		console.log(`[e2e] loaded ${bareSpecifier} from workspace: ${relativeFromHere}`);
+		return mod;
+	} catch (err) {
+		console.warn(
+			`[e2e] workspace import failed for ${relativeFromHere}: ${(err as Error).message}; falling back to bare specifier`,
+		);
+		try {
+			const mod = (await import(bareSpecifier)) as Record<string, unknown>;
+			console.log(`[e2e] loaded ${bareSpecifier} via bare specifier (likely published copy)`);
+			return mod;
+		} catch {
+			return null;
+		}
+	}
+}
+
 async function resolveProviderPlugin(
 	providerName: string,
 ): Promise<Plugin | null> {
 	switch (providerName) {
 		case "openai": {
-			const mod = await import("@elizaos/plugin-openai");
-			return mod.openaiPlugin ?? mod.default ?? null;
+			const mod = await importWorkspacePlugin(
+				"../../../../plugins/plugin-openai/index.ts",
+				"@elizaos/plugin-openai",
+			);
+			if (!mod) return null;
+			return ((mod.openaiPlugin ?? mod.default) as Plugin | undefined) ?? null;
 		}
 		case "anthropic": {
-			const mod = await import("@elizaos/plugin-anthropic");
-			return mod.anthropicPlugin ?? mod.default ?? null;
+			const mod = await importWorkspacePlugin(
+				"../../../../plugins/plugin-anthropic/index.ts",
+				"@elizaos/plugin-anthropic",
+			);
+			if (!mod) return null;
+			return (
+				((mod.anthropicPlugin ?? mod.default) as Plugin | undefined) ?? null
+			);
 		}
 		case "groq": {
-			const mod = await import("@elizaos/plugin-groq");
-			return mod.groqPlugin ?? mod.default ?? null;
+			const mod = await importWorkspacePlugin(
+				"../../../../plugins/plugin-groq/index.ts",
+				"@elizaos/plugin-groq",
+			);
+			if (!mod) return null;
+			return ((mod.groqPlugin ?? mod.default) as Plugin | undefined) ?? null;
 		}
 		case "google": {
-			try {
-				const mod = await import("@elizaos/plugin-google-genai");
-				return mod.default ?? null;
-			} catch {
-				return null;
-			}
+			const mod = await importWorkspacePlugin(
+				"../../../../plugins/plugin-google-genai/index.ts",
+				"@elizaos/plugin-google-genai",
+			);
+			if (!mod) return null;
+			return (mod.default as Plugin | undefined) ?? null;
 		}
 		default:
 			return null;
@@ -83,13 +130,31 @@ function applyProviderSettings(
 	providerName: string,
 ): void {
 	switch (providerName) {
-		case "openai":
+		case "openai": {
 			runtime.setSetting(
 				"OPENAI_API_KEY",
 				process.env.OPENAI_API_KEY ?? "",
 				true,
 			);
+			const apiKey = (process.env.OPENAI_API_KEY ?? "").trim();
+			const explicitBase = process.env.OPENAI_BASE_URL?.trim();
+			if (explicitBase) {
+				runtime.setSetting("OPENAI_BASE_URL", explicitBase, true);
+			} else if (/^csk-/i.test(apiKey)) {
+				// Cerebras keys are OpenAI-compatible but must not hit api.openai.com.
+				runtime.setSetting(
+					"OPENAI_BASE_URL",
+					"https://api.cerebras.ai/v1",
+					true,
+				);
+				runtime.setSetting("MILADY_PROVIDER", "cerebras", true);
+			}
+			const explicitMiladyProvider = process.env.MILADY_PROVIDER?.trim();
+			if (explicitMiladyProvider) {
+				runtime.setSetting("MILADY_PROVIDER", explicitMiladyProvider, true);
+			}
 			break;
+		}
 		case "anthropic":
 			runtime.setSetting(
 				"ANTHROPIC_API_KEY",
@@ -245,7 +310,9 @@ export default async function globalSetup(): Promise<void> {
 				return;
 			}
 
-			// POST /chat
+			// POST /chat — drives the FULL agent message pipeline via
+			// runtime.messageService.handleMessage so providers, evaluators, and
+			// trajectory recording all run. No generateText shortcut here.
 			if (req.method === "POST" && req.url === "/chat") {
 				const raw = await readBody(req);
 				const body = JSON.parse(raw) as {
@@ -260,37 +327,11 @@ export default async function globalSetup(): Promise<void> {
 					return;
 				}
 
-				const chatRoomId = (body.roomId as UUID) ?? roomId;
-
-				// Use generateText for a reliable, simpler path than full messageService
-				const result = await runtime.generateText(body.text.trim(), {
-					modelType: "TEXT_LARGE" as "TEXT_LARGE",
-					maxTokens: 1024,
-				});
-
-				res.writeHead(200);
-				res.end(
-					JSON.stringify({
-						text: result.text,
-						agentId,
-						roomId: chatRoomId,
-					}),
-				);
-				return;
-			}
-
-			// POST /chat/full  (full message pipeline via messageService)
-			if (req.method === "POST" && req.url === "/chat/full") {
-				const raw = await readBody(req);
-				const body = JSON.parse(raw) as {
-					text?: string;
-					roomId?: string;
-					entityId?: string;
-				};
-
-				if (!body.text || typeof body.text !== "string" || !body.text.trim()) {
-					res.writeHead(400);
-					res.end(JSON.stringify({ error: "text is required" }));
+				if (!runtime.messageService) {
+					res.writeHead(500);
+					res.end(
+						JSON.stringify({ error: "messageService unavailable on runtime" }),
+					);
 					return;
 				}
 
@@ -310,17 +351,13 @@ export default async function globalSetup(): Promise<void> {
 
 				let responseText = "";
 				const callback = async (content: { text: string }) => {
-					responseText += content.text;
+					if (typeof content?.text === "string") {
+						responseText += content.text;
+					}
 					return [];
 				};
 
-				if (runtime.messageService) {
-					await runtime.messageService.handleMessage(
-						runtime,
-						message,
-						callback,
-					);
-				}
+				await runtime.messageService.handleMessage(runtime, message, callback);
 
 				res.writeHead(200);
 				res.end(

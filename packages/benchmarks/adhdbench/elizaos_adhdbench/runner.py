@@ -1,9 +1,20 @@
-"""Minimal ADHDBench runner used by the CLI and orchestrator adapter."""
+"""Mock-passthrough ADHDBench runner — for harness smoke tests only.
+
+This runner is deterministic by construction: it synthesizes responses from
+each scenario's expected outcomes, so it always scores ~100%. It is NOT a
+benchmark of any model and exists only to verify that the surrounding
+plumbing (config, scoring, reporting) executes end-to-end.
+
+Use ``--provider mock-passthrough`` to opt in. Production runs MUST select
+a real provider (``openai``, ``cerebras``, ``groq``, ``openrouter``,
+``vllm``, or ``eliza``) — the CLI fails loudly otherwise.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import itertools
+import logging
 import time
 from collections.abc import Callable
 
@@ -31,17 +42,26 @@ from elizaos_adhdbench.types import (
 
 ProgressCallback = Callable[[str, str, int, int], None]
 
+logger = logging.getLogger("adhdbench.mock_passthrough")
+
 
 class ADHDBenchRunner:
-    """Run ADHDBench scenarios through a deterministic local agent.
+    """Mock-passthrough runner — deterministic, always ~100%, for plumbing tests.
 
-    The full elizaOS path is available through ``--provider eliza`` in the CLI.
-    This runner keeps local smoke tests cheap and ensures the benchmark can
-    always produce a scoreable JSON artifact.
+    The class name is preserved for back-compat with external imports. Treat
+    every score this produces as meaningless: it concatenates expected-outcome
+    values into the response, so all evaluators trivially pass.
     """
 
     def __init__(self, config: ADHDBenchConfig) -> None:
         self.config = config
+        logger.warning(
+            "[WARNING] ADHDBenchRunner (mock-passthrough) selected. Scores from "
+            "this runner are NOT a measurement of any model — it synthesizes "
+            "responses from expected outcomes and will always score ~100%%. "
+            "Use --provider {openai|cerebras|groq|openrouter|vllm|eliza} for "
+            "real benchmarks."
+        )
 
     async def run(self, progress_callback: ProgressCallback | None = None) -> BenchmarkResults:
         start = time.perf_counter()
@@ -123,7 +143,7 @@ class ADHDBenchRunner:
             if turn.delay_seconds > 0:
                 await asyncio.sleep(min(turn.delay_seconds, 0.01))
 
-        score = compute_scenario_score(turn_results)
+        score = compute_scenario_score(turn_results, has_runtime_signal=False)
         return ScenarioResult(
             scenario_id=scenario.id,
             scenario_name=scenario.name,

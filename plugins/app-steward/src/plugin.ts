@@ -18,10 +18,9 @@
  */
 
 import type http from "node:http";
-import type { CompatRuntimeState } from "@elizaos/app-core/api/compat-route-shared";
+import type { CompatRuntimeState } from "@elizaos/app-core";
 import type { Plugin, Route } from "@elizaos/core";
 import { walletRouterAction } from "@elizaos/plugin-wallet";
-import { transferTokenAction } from "./actions/transfer-token";
 import { stewardBalanceProvider } from "./providers/steward-balance";
 import { stewardReceiveAddressProvider } from "./providers/steward-receive-address";
 import { handleStewardCompatRoutes } from "./routes/steward-compat-routes";
@@ -363,7 +362,6 @@ export const stewardPlugin: Plugin = {
     // Canonical wallet router — handles preview, swap, transfer, and other
     // wallet subactions across registered chain backends.
     walletRouterAction,
-    transferTokenAction,
   ],
   providers: [
     // Read-only wallet snapshots surfaced to the planner every turn.

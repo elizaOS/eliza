@@ -27,10 +27,10 @@ const discordPlugin: Plugin = {
 	actions: [setupCredentials],
 	providers: [],
 	tests: [new DiscordTestSuite()],
+	autoEnable: {
+		connectorKeys: ["discord"],
+	},
 	init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-		// Register the Discord provider with the ConnectorAccountManager so the
-		// HTTP CRUD surface (packages/agent/src/api/connector-account-routes.ts)
-		// can list, create, patch, delete, and start OAuth on Discord accounts.
 		try {
 			const manager = getConnectorAccountManager(runtime);
 			manager.registerProvider(createDiscordConnectorAccountProvider(runtime));
@@ -189,12 +189,15 @@ export type {
 	DiscordPluralKitConfig,
 	DiscordReactionNotificationMode,
 } from "./config";
-// ConnectorAccountManager provider exports
-export {
-	createDiscordConnectorAccountProvider,
-	DISCORD_PROVIDER_ID,
-} from "./connector-account-provider";
 export { DISCORD_SERVICE_NAME } from "./constants";
+export {
+	buildDiscordAvatarCacheFileName,
+	cacheDiscordAvatarUrl,
+	getDiscordAvatarCacheDir,
+	getDiscordAvatarCachePath,
+	getDiscordAvatarPublicPath,
+	isDiscordAvatarUrl,
+} from "./discord-avatar-cache";
 // Discord local IPC service + setup routes
 export {
 	DISCORD_LOCAL_PLUGIN_NAME,
@@ -202,6 +205,14 @@ export {
 	DiscordLocalService,
 	default as discordLocalPlugin,
 } from "./discord-local-service";
+export {
+	cacheDiscordAvatarForRuntime,
+	isCanonicalDiscordSource,
+	resolveDiscordMessageAuthorProfile,
+	resolveDiscordRoomProfile,
+	resolveDiscordUserProfile,
+	resolveStoredDiscordEntityProfile,
+} from "./discord-profiles";
 // Messaging utilities exports
 export {
 	buildChannelLink,
@@ -286,32 +297,4 @@ export type {
 	RolePermissionsChangedPayload,
 } from "./types";
 export { DiscordEventTypes } from "./types";
-// Discord user-account scraper (browser-workspace driven; per-account
-// partitions). Used by lifeops and any other consumer that needs to read
-// state from a logged-in Discord user account.
-export {
-	captureDiscordDeliveryStatus,
-	closeDiscordTab,
-	DISCORD_APP_URL,
-	DISCORD_USER_ACCOUNT_SCRAPER_SERVICE_TYPE,
-	type DiscordDesktopCdpStatus,
-	type DiscordDmInboxProbe,
-	type DiscordMessageSearchResult,
-	type DiscordTabIdentity,
-	type DiscordTabProbe,
-	type DiscordUserAccountScraper,
-	DiscordUserAccountScraperImpl,
-	type DiscordVisibleDmPreview,
-	discordBrowserWorkspaceAvailable,
-	discordUserAccountPartitionFor,
-	emptyDiscordDmInboxProbe,
-	ensureDiscordTab,
-	getDiscordDesktopCdpStatus,
-	navigateDiscordTabToHome,
-	probeDiscordCapturedPage,
-	probeDiscordDocumentState,
-	probeDiscordTab,
-	relaunchDiscordDesktopForCdp,
-	searchDiscordMessages,
-	sendDiscordViaDesktopCdp,
-} from "./user-account-scraper";
+export * from "./user-account-scraper";

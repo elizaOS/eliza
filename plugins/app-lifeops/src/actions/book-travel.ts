@@ -341,6 +341,8 @@ export const bookTravelAction: Action & {
     "Search, prepare, and approval-gate real travel booking. Use for flight or hotel booking requests that should become a real booking after explicit approval, with calendar sync once completed.",
   descriptionCompressed:
     "approval-gated real travel booking flights/hotels missing-detail collection draft-confirm calendar-sync after-approval",
+  routingHint:
+    "real flight/hotel/trip booking -> BOOK_TRAVEL; no browse-first or web-search-first",
   contexts: ["calendar", "contacts", "tasks", "payments", "finance", "browser"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,

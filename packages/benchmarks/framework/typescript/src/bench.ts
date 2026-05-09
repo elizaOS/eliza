@@ -270,6 +270,26 @@ function createMessage(text: string, index: number): Memory {
 
 // ─── Pipeline instrumentation via method wrapping ───────────────────────────
 
+interface LegacyEvaluateRuntime {
+  evaluate: (...args: unknown[]) => unknown | Promise<unknown>;
+}
+
+type LegacyEvaluate = LegacyEvaluateRuntime["evaluate"];
+
+function getLegacyEvaluate(runtime: AgentRuntime): LegacyEvaluate | null {
+  const evaluate = Reflect.get(runtime, "evaluate");
+  if (typeof evaluate !== "function") return null;
+
+  return (...args: unknown[]) => Reflect.apply(evaluate, runtime, args);
+}
+
+function setLegacyEvaluate(
+  runtime: AgentRuntime,
+  evaluate: LegacyEvaluate,
+): void {
+  Reflect.set(runtime, "evaluate", evaluate);
+}
+
 /**
  * Wrap key runtime methods with timing instrumentation.
  * This gives us real per-stage pipeline breakdown instead of just total time.
@@ -299,14 +319,17 @@ function instrumentRuntime(
     return result;
   }) as typeof runtime.useModel;
 
-  // Wrap evaluate
-  const origEvaluate = runtime.evaluate.bind(runtime);
-  runtime.evaluate = (async (...args: Parameters<typeof runtime.evaluate>) => {
-    const start = performance.now();
-    const result = await origEvaluate(...args);
-    pipelineTimer.record("evaluator", performance.now() - start);
-    return result;
-  }) as typeof runtime.evaluate;
+  // Wrap evaluate (the legacy Evaluator plugin component was removed; older
+  // runtimes still expose runtime.evaluate, newer ones do not — skip if absent).
+  const origEvaluate = getLegacyEvaluate(runtime);
+  if (origEvaluate) {
+    setLegacyEvaluate(runtime, async (...args: unknown[]) => {
+      const start = performance.now();
+      const result = await origEvaluate(...args);
+      pipelineTimer.record("evaluator", performance.now() - start);
+      return result;
+    });
+  }
 
   // Wrap runtime.createMemory. The current database adapter is batch-first;
   // runtime.createMemory is the supported single-message write path.

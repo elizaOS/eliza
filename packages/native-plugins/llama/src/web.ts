@@ -14,5 +14,6 @@ export type {
   HardwareInfo,
   LlamaAdapter,
   LoadOptions,
+  SetSpecTypeArgs,
 } from "./definitions";
 export { capacitorLlama, registerCapacitorLlamaLoader } from "./index";

@@ -1,10 +1,6 @@
 import { v4 } from "uuid";
 import type { ActionDoc } from "../../../generated/action-docs.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";
-import {
-	collectKeywordTermMatches,
-	getValidationKeywordTerms,
-} from "../../../i18n/validation-keywords.ts";
 import { logger } from "../../../logger.ts";
 import type {
 	Action,
@@ -22,7 +18,7 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { ContentType, ModelType, ServiceType } from "../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 
 const spec: ActionDoc = getActionSpec("GENERATE_MEDIA") ?? {
 	name: "GENERATE_MEDIA",
@@ -41,105 +37,6 @@ const MEDIA_CONTEXTS = ["media", "files"] as const;
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp"]);
 const VIDEO_EXTENSIONS = new Set(["mp4", "webm", "mov", "m4v"]);
 const AUDIO_EXTENSIONS = new Set(["mp3", "wav", "m4a", "ogg", "opus"]);
-
-const IMAGE_STRONG_TERMS = getValidationKeywordTerms(
-	"action.generateImage.strong",
-	{
-		includeAllLocales: true,
-	},
-);
-const IMAGE_WEAK_TERMS = getValidationKeywordTerms(
-	"action.generateImage.weak",
-	{
-		includeAllLocales: true,
-	},
-);
-
-const VIDEO_STRONG_TERMS = [
-	"generate video",
-	"create video",
-	"make video",
-	"animate",
-	"animation",
-	"video",
-	"clip",
-	"film",
-	"movie",
-	"text to video",
-	"image to video",
-	"生成视频",
-	"视频",
-	"动画",
-	"비디오",
-	"영상",
-	"애니메이션",
-	"generar video",
-	"crear video",
-	"vídeo",
-	"animar",
-	"gerar vídeo",
-	"criar vídeo",
-	"tạo video",
-	"tao video",
-	"hoạt hình",
-	"hoat hinh",
-	"gumawa ng video",
-	"lumikha ng video",
-	"i-animate",
-];
-
-const AUDIO_STRONG_TERMS = [
-	"generate audio",
-	"create audio",
-	"make audio",
-	"generate music",
-	"make music",
-	"compose",
-	"song",
-	"sound effect",
-	"text to speech",
-	"tts",
-	"speech audio",
-	"voiceover",
-	"instrumental",
-	"track",
-	"beat",
-	"生成音频",
-	"音频",
-	"音乐",
-	"歌曲",
-	"오디오",
-	"음악",
-	"노래",
-	"generar audio",
-	"crear audio",
-	"música",
-	"musica",
-	"canción",
-	"cancion",
-	"gerar áudio",
-	"criar áudio",
-	"canção",
-	"cancao",
-	"tạo âm thanh",
-	"tao am thanh",
-	"âm nhạc",
-	"am nhac",
-	"bài hát",
-	"bai hat",
-	"gumawa ng audio",
-	"musika",
-	"kanta",
-];
-
-const MEDIA_STRONG_TERMS = [
-	"generate media",
-	"create media",
-	"make media",
-	...IMAGE_STRONG_TERMS,
-	...VIDEO_STRONG_TERMS,
-	...AUDIO_STRONG_TERMS,
-];
 
 function readParams(options?: HandlerOptions): Record<string, unknown> {
 	return options?.parameters && typeof options.parameters === "object"
@@ -430,31 +327,9 @@ export const generateMediaAction = {
 		const prompt = readPrompt(message, options);
 		if (prompt && normalizeMediaType(params.mediaType)) return true;
 
-		const text = messageText(message);
-		if (!text) return false;
-		if (collectKeywordTermMatches([text], MEDIA_STRONG_TERMS).size > 0) {
-			return true;
-		}
-		return (
-			collectKeywordTermMatches([text], IMAGE_WEAK_TERMS).size > 0 ||
-			hasActionContextOrKeyword(message, state, {
-				contexts: [...MEDIA_CONTEXTS],
-				keywords: [
-					"generate media",
-					"generate image",
-					"create image",
-					"generate video",
-					"create video",
-					"generate audio",
-					"create audio",
-					"draw",
-					"make a picture",
-					"compose",
-					"sound effect",
-					"text to speech",
-				],
-			})
-		);
+		return hasActionContext(message, state, {
+			contexts: [...MEDIA_CONTEXTS],
+		});
 	},
 	handler: async (
 		runtime: IAgentRuntime,

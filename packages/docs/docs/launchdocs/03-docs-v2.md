@@ -73,7 +73,7 @@ Package READMEs:
 - `packages/docs/README.md:19-35` says Node v23+ and `mint dev`; current repo package metadata requires Node 24 and the docs site lives under root `docs/`, not clearly under `packages/docs`.
 - `packages/docs/README.md:105` links `https://github.com/elizaos/elizaos`, likely stale relative to current remotes.
 - `packages/app-core/platforms/electrobun/README.md:38` uses a relative link that resolves under `packages/app-core/platforms/docs`, not root `docs`.
-- `packages/skills/README.md:15-17` includes both npm and pnpm installs. That may be acceptable for library consumers, but it should be separated from monorepo contributor guidance because the repo is Bun-managed.
+- `packages/skills/README.md:15-17` includes both npm and bun installs. That may be acceptable for library consumers, but it should be separated from monorepo contributor guidance because the repo is Bun-managed.
 
 ## What is outdated/missing
 

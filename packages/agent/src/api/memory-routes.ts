@@ -2,18 +2,20 @@ import crypto from "node:crypto";
 import {
   type AgentRuntime,
   ChannelType,
+  composePrompt,
   createMessageMemory,
   type Memory,
   ModelType,
+  memoryContextQaTemplate,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/shared";
 import { parsePositiveInteger } from "../utils/number-parsing.js";
 import {
   type DocumentsServiceResult,
   getDocumentsService,
 } from "./documents-service-loader.js";
-import type { RouteRequestContext } from "./route-helpers.js";
 
 const HASH_MEMORY_SOURCE = "hash_memory";
 const UUID_REGEX =
@@ -228,19 +230,10 @@ function buildQuickContextPrompt(params: {
           .join("\n")
       : "- none";
 
-  return [
-    "You are a concise context assistant.",
-    "Answer only from the provided context. If context is insufficient, say so explicitly.",
-    "Keep the answer under 120 words.",
-    "",
-    `Query: ${query}`,
-    "",
-    "Saved memory notes:",
-    memorySection,
-    "",
-    "Document snippets:",
-    documentsSection,
-  ].join("\n");
+  return composePrompt({
+    state: { query, memorySection, knowledgeSection: documentsSection },
+    template: memoryContextQaTemplate,
+  });
 }
 
 type MemoryBrowseItem = {

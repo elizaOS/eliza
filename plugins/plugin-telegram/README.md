@@ -96,7 +96,7 @@ Create or modify `characters/your-character.json`:
 ## From the project root:
 
 ```bash
-npm run dev
+bun run dev
 ```
 
 ## Or using bun:

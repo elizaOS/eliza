@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
-import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
-import { resolveOwnerEntityId } from "@elizaos/agent/runtime/owner-entity";
+import { getAgentEventService } from "@elizaos/agent";
+import { resolveOwnerEntityId } from "@elizaos/agent";
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import {
   BROWSER_BRIDGE_COMPANION_CONNECTION_STATES,
@@ -20,10 +20,6 @@ import type {
   LifeOpsWorkflowDefinition,
 } from "../contracts/index.js";
 import type { computeAdaptiveWindowPolicy } from "./defaults.js";
-import {
-  GoogleManagedClient,
-  resolveManagedGoogleCloudConfig,
-} from "./google-managed-client.js";
 import {
   createBrowserBridgeCompanionStatus,
   createLifeOpsAuditEvent,
@@ -153,7 +149,6 @@ export class LifeOpsServiceBase {
   public readonly repository: LifeOpsRepository;
   public readonly explicitOwnerEntityIdValue: string | null;
   public readonly ownerEntityIdValue: string;
-  public readonly googleManagedClient: GoogleManagedClient;
   public readonly scheduleSyncClient: LifeOpsScheduleSyncClient;
   public ownerRoutingEntityIdPromise: Promise<string | null> | null = null;
 
@@ -170,11 +165,6 @@ export class LifeOpsServiceBase {
     options: LifeOpsServiceOptions = {},
   ) {
     this.repository = new LifeOpsRepository(runtime);
-    const resolveManagedCloudConfig = () =>
-      resolveManagedGoogleCloudConfig(runtime);
-    this.googleManagedClient = new GoogleManagedClient(
-      resolveManagedCloudConfig,
-    );
     this.scheduleSyncClient = new LifeOpsScheduleSyncClient();
     this.explicitOwnerEntityIdValue =
       normalizeOptionalString(options.ownerEntityId) ?? null;

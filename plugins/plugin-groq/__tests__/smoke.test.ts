@@ -81,11 +81,6 @@ describe("@elizaos/plugin-groq", () => {
       expect(typeof plugin.models?.[ModelType.TEXT_LARGE]).toBe("function");
     });
 
-    it("registers OBJECT_SMALL and OBJECT_LARGE model handlers", () => {
-      expect(typeof plugin.models?.[ModelType.OBJECT_SMALL]).toBe("function");
-      expect(typeof plugin.models?.[ModelType.OBJECT_LARGE]).toBe("function");
-    });
-
     it("registers TRANSCRIPTION model handler", () => {
       expect(typeof plugin.models?.[ModelType.TRANSCRIPTION]).toBe("function");
     });

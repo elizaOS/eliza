@@ -15,20 +15,30 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "messaging",
+        "social-posting"
+      ]
+    }
+  },
   "dependencies": {
     "headers-polyfill": "^5.0.0",
     "json-stable-stringify": "^1.3.0",
     "twitter-api-v2": "^1.23.2"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
     "@types/node": "^22.19.17",
     "@vitest/coverage-v8": "^4.0.0",
     "dotenv": "^17.2.3",
-    "prettier": "^3.8.3",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "scripts": {
@@ -36,12 +46,12 @@
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "lint": "bunx @biomejs/biome lint src",
-    "lint:check": "bun run lint",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "echo \"Typecheck skipped for release\"",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "publishConfig": {
     "access": "public"
@@ -63,7 +73,7 @@
     "pluginParameters": {
       "TWITTER_AUTH_MODE": {
         "type": "string",
-        "description": "Auth mode: 'env' (legacy keys/tokens) or 'oauth' (3-legged OAuth2 PKCE).",
+        "description": "Auth mode: 'env' (static keys/tokens) or 'oauth' (3-legged OAuth2 PKCE).",
         "required": false,
         "default": "env",
         "sensitive": false

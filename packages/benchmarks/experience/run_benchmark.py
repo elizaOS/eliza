@@ -101,6 +101,7 @@ async def _chat_completion(
         "openai": "https://api.openai.com/v1",
         "groq": "https://api.groq.com/openai/v1",
         "openrouter": "https://openrouter.ai/api/v1",
+        "cerebras": "https://api.cerebras.ai/v1",
     }
     if provider not in base_urls:
         raise RuntimeError(f"Local experience agent does not support provider '{provider}'")
@@ -243,8 +244,11 @@ async def _run_local_agent_fallback(
             for exp in query_results[:5]
         ]
         prompt = (
-            "The user is facing a familiar problem. Use relevant past "
-            "experiences from the context when answering.\n\n"
+            "The user is facing a familiar problem. Reuse the most relevant "
+            "past learning verbatim when answering — quote the matching "
+            "'learned: ...' line from the context word-for-word so the "
+            "concrete tokens (commands, flags, identifiers) appear in your "
+            "reply, then add any clarifying instructions.\n\n"
             f"User problem: {scenario.similar_query}\n\n"
             "Past experiences:\n"
             + ("\n".join(context_lines) if context_lines else "- none")
@@ -465,7 +469,7 @@ def main() -> None:
     parser.add_argument(
         "--provider",
         type=str,
-        choices=["openai", "groq", "openrouter", "anthropic", "google", "ollama"],
+        choices=["openai", "groq", "openrouter", "anthropic", "google", "ollama", "cerebras"],
         default=None,
         help="Provider for eliza-agent mode (default: auto-detect)",
     )

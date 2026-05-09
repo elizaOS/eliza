@@ -9,7 +9,6 @@ export function createAdvancedPlanningPlugin(): Plugin {
 		providers: [],
 		actions: [createPlanAction],
 		services: [PlanningService],
-		evaluators: [],
 	};
 }
 

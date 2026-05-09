@@ -10,7 +10,6 @@ import {
   type Plugin,
   transformWithEsbuild,
 } from "vite";
-import { resolveAppBranding } from "../../packages/app-core/src/config/app-config.ts";
 // Keep workspace-relative TS imports in this config so Vite transpiles them
 // while bundling the config instead of asking Node to load package-exported
 // .ts files directly in CI.
@@ -26,6 +25,7 @@ import {
   resolveDesktopUiPort,
   resolveDesktopUiPortPreference,
 } from "../../packages/shared/src/runtime-env.ts";
+import { resolveAppBranding } from "../../packages/ui/src/config/app-config.ts";
 import { syncElizaEnvAliases } from "../../scripts/lib/sync-eliza-env-aliases.mjs";
 import appConfig from "./app.config";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
@@ -42,7 +42,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
 const nativePluginsRoot = path.join(elizaRoot, "packages/native-plugins");
 const appCoreSrcRoot = path.join(elizaRoot, "packages/app-core/src");
-const pluginSqlSrcRoot = path.join(elizaRoot, "plugins/plugin-sql/typescript");
+const pluginSqlSrcRoot = path.join(elizaRoot, "plugins/plugin-sql/src");
 const pluginBrowserBridgeSrcRoot = path.join(
   elizaRoot,
   "plugins/plugin-browser/src",
@@ -109,7 +109,7 @@ function resolvePackageExportTarget(value: unknown): string | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 
   const record = value as Record<string, unknown>;
-  for (const condition of ["source", "types", "import", "default"]) {
+  for (const condition of ["source", "import", "default"]) {
     const target = record[condition];
     if (typeof target === "string") return target;
   }
@@ -149,6 +149,56 @@ function createWorkspacePackageAliases(packageRoots: string[]) {
       });
     }
   }
+  return aliases;
+}
+
+function resolveAppPluginBrowserEntry(pkgDir: string): string | null {
+  const preferred = [
+    "src/ui.ts",
+    "src/ui/index.ts",
+    "src/register.ts",
+    "src/index.ts",
+  ];
+  for (const relativePath of preferred) {
+    const candidate = path.join(pkgDir, relativePath);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function createAppPluginBrowserAliases() {
+  const pluginsRoot = path.resolve(elizaRoot, "plugins");
+  const aliases = [];
+  if (!fs.existsSync(pluginsRoot)) return aliases;
+
+  for (const entry of fs.readdirSync(pluginsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith("app-")) continue;
+    const pkgDir = path.join(pluginsRoot, entry.name);
+    const pkgPath = path.join(pkgDir, "package.json");
+    if (!fs.existsSync(pkgPath)) continue;
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+    const pkgName = pkg.name;
+    if (!pkgName) continue;
+
+    const browserEntry = resolveAppPluginBrowserEntry(pkgDir);
+    if (browserEntry) {
+      aliases.push({
+        find: new RegExp(`^${escapeRegExp(pkgName)}$`),
+        replacement: browserEntry,
+      });
+    }
+
+    for (const uiEntry of ["src/ui.ts", "src/ui/index.ts"]) {
+      const candidate = path.join(pkgDir, uiEntry);
+      if (!fs.existsSync(candidate)) continue;
+      aliases.push({
+        find: new RegExp(`^${escapeRegExp(pkgName)}/ui$`),
+        replacement: candidate,
+      });
+      break;
+    }
+  }
+
   return aliases;
 }
 
@@ -198,7 +248,7 @@ const DEFAULT_APP_ROUTE_PLUGIN_MODULES = [
   "@elizaos/plugin-github/register-routes",
   "@elizaos/plugin-computeruse/register-routes",
   "@elizaos/plugin-elizacloud/register-routes",
-  "@elizaos/plugin-n8n-workflow/register-routes",
+  "@elizaos/plugin-workflow/register-routes",
 ];
 
 // Mirror branded app env into ELIZA_* before the shared runtime helpers resolve ports.
@@ -333,6 +383,48 @@ function resolveExistingUiSourceModule(id: string) {
   }
 
   return id;
+}
+
+function resolveExistingTsSourceModule(id: string): string {
+  if (fs.existsSync(id)) {
+    try {
+      if (!fs.statSync(id).isDirectory()) {
+        return id;
+      }
+    } catch {
+      return id;
+    }
+  }
+
+  const candidates = [
+    `${id}.ts`,
+    `${id}.tsx`,
+    path.join(id, "index.ts"),
+    path.join(id, "index.tsx"),
+  ];
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? id;
+}
+
+function resolveSharedSourceExportTarget(
+  sharedPkgDir: string,
+  key: string,
+  value: unknown,
+): string | null {
+  if (key === ".") {
+    return path.join(sharedPkgDir, "src/index.ts");
+  }
+
+  const exportTarget = resolvePackageExportTarget(value);
+  if (!exportTarget) return null;
+
+  const sourceRelative = exportTarget
+    .replace(/^\.\//, "")
+    .replace(/^dist\//, "")
+    .replace(/\.js$/, "");
+  return resolveExistingTsSourceModule(
+    path.join(sharedPkgDir, "src", sourceRelative),
+  );
 }
 
 /**
@@ -726,7 +818,7 @@ function desktopCorsPlugin(): Plugin {
 /**
  * Patch the final bundle output to fix AsyncLocalStorage stubs.
  *
- * langsmith imports `{ AsyncLocalStorage } from "node:async_hooks"` at the
+ * Some packages import `{ AsyncLocalStorage } from "node:async_hooks"` at the
  * top level. Vite's dep optimizer and Rollup inline the virtual-module stub
  * as `(()=>({}))`, making AsyncLocalStorage `undefined` and causing
  * `new undefined` → "xte is not a constructor" at runtime in mobile webviews.
@@ -1049,7 +1141,13 @@ export default defineConfig({
         find: /^@elizaos\/ui\/lib\/(.*)$/,
         replacement: `${uiPkgRoot}/src/lib/$1.ts`,
       },
-      // Dynamic aliases for local app plugin packages.
+      {
+        find: /^@elizaos\/ui\/styles\/(.*)$/,
+        replacement: path.join(uiPkgRoot, "src/styles/$1"),
+      },
+      // Browser-safe aliases for local app plugin package roots.
+      ...createAppPluginBrowserAliases(),
+      // Dynamic aliases for local app plugin package subpaths.
       ...createWorkspacePackageAliases([path.resolve(elizaRoot, "plugins")]),
       ...(() => {
         const sharedPkgPath = path.resolve(
@@ -1060,7 +1158,11 @@ export default defineConfig({
         const sharedPkg = JSON.parse(fs.readFileSync(sharedPkgPath, "utf8"));
         const aliases = [];
         for (const [key, value] of Object.entries(sharedPkg.exports || {})) {
-          const exportTarget = resolvePackageExportTarget(value);
+          const exportTarget = resolveSharedSourceExportTarget(
+            sharedPkgDir,
+            key,
+            value,
+          );
           if (!exportTarget) continue;
           const aliasKey =
             key === "."
@@ -1068,7 +1170,7 @@ export default defineConfig({
               : `@elizaos/shared/${key.replace(/^\.\//, "")}`;
           aliases.push({
             find: new RegExp(`^${escapeRegExp(aliasKey)}$`),
-            replacement: path.resolve(sharedPkgDir, exportTarget),
+            replacement: exportTarget,
           });
         }
         return aliases;
@@ -1117,7 +1219,7 @@ export default defineConfig({
           }
         }
 
-        const uiSource = path.resolve(elizaRoot, "packages/app-core/src/ui");
+        const uiSource = path.resolve(elizaRoot, "packages/ui/src");
 
         return [
           ...generatedAliases,
@@ -1135,7 +1237,8 @@ export default defineConfig({
           },
           {
             find: /^@elizaos\/ui\/(.*)$/,
-            replacement: `${uiSource}/$1/index.ts`, // assumes subpaths are directories
+            replacement: `${uiSource}/$1`,
+            customResolver: resolveExistingTsSourceModule,
           },
           // NOTE: App and UI code should import `@elizaos/agent/<subpath>` only.
           // The package root still resolves to `./src/index.ts`, which pulls in
@@ -1266,6 +1369,9 @@ export default defineConfig({
       "@napi-rs/keyring",
       // Pulls `@napi-rs/keyring` dynamically; excluding avoids the optimizer crawling native bindings.
       "@elizaos/vault",
+      // Vite occasionally invalidates zod's optimized chunk during dev startup,
+      // which leaves the UI serving a missing .vite/deps file.
+      "zod",
     ],
   },
   build: {

@@ -6,27 +6,25 @@ import { fileURLToPath } from "node:url";
 import {
   type AdvancedCapabilityPluginId,
   applyPluginRuntimeMutation,
+  CONNECTOR_ENV_MAP,
   discoverPluginsFromManifest,
   findPrimaryEnvKey,
   isAdvancedCapabilityPluginId,
+  isVaultRef,
   loadElizaConfig,
   type PluginRuntimeApplyResult,
+  parseVaultRef,
   readBundledPluginPackageMetadata,
   resolveAdvancedCapabilitiesEnabled,
   saveElizaConfig,
 } from "@elizaos/agent";
-import {
-  isVaultRef,
-  parseVaultRef,
-} from "@elizaos/agent/runtime/operations/vault-bridge";
 import { type AgentRuntime, logger } from "@elizaos/core";
-import { asRecord } from "@elizaos/shared";
-import { VaultMissError } from "@elizaos/vault";
-import { CONNECTOR_ENV_MAP } from "../config/env-vars";
 import {
+  asRecord,
   CONNECTOR_PLUGINS,
   STREAMING_PLUGINS,
-} from "../config/plugin-auto-enable";
+} from "@elizaos/shared";
+import { VaultMissError } from "@elizaos/vault";
 import { loadRegistry } from "../registry";
 import type { ConfigField, RegistryEntry } from "../registry/schema";
 import {
@@ -649,8 +647,7 @@ export function analyzePluginStateDrift(
 function buildPluginDriftDiagnostics(
   runtime: AgentRuntime | null,
 ): PluginDriftDiagnosticsReport {
-  const pluginList = buildPluginListResponse(runtime)
-    .plugins as unknown as CompatPluginRecord[];
+  const pluginList = buildPluginListResponse(runtime).plugins;
   const config = loadElizaConfig();
   const configRecord = config as Record<string, unknown>;
   const configEntries = config.plugins?.entries ?? {};

@@ -425,14 +425,14 @@ export async function createRuntimes(
 			const adapter = r.adapter;
 			if (adapter && !seenAdaptersForMigrations.has(adapter)) {
 				seenAdaptersForMigrations.add(adapter);
-				await runPluginMigrations(r as unknown as IAgentRuntime);
+				await runPluginMigrations(r);
 			}
 		}
 		for (const r of runtimes) {
-			await ensureAgentInfrastructure(r as unknown as IAgentRuntime);
-			await ensureEmbeddingDimension(r as unknown as IAgentRuntime);
+			await ensureAgentInfrastructure(r);
+			await ensureEmbeddingDimension(r);
 		}
 	}
 
-	return runtimes as unknown as IAgentRuntime[];
+	return runtimes;
 }

@@ -61,7 +61,6 @@ export const webSearchPlugin: Plugin = {
         registerWebSearchCategory(runtime);
     },
     actions: [],
-    evaluators: [],
     providers: [],
     services: [WebSearchService],
 };

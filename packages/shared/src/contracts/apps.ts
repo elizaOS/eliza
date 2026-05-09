@@ -2,7 +2,11 @@
  * Shared app manager contracts.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  getRegisteredCuratedApps,
+  type IAgentRuntime,
+  registerCuratedApp as registerCoreCuratedApp,
+} from "@elizaos/core";
 
 export type AppSessionMode = "viewer" | "spectate-and-steer" | "external";
 
@@ -497,20 +501,13 @@ export function isElizaCuratedAppName(value: string): boolean {
 // definitions at runtime without modifying the hardcoded list.
 // ---------------------------------------------------------------------------
 
-const _registeredCuratedApps: ElizaCuratedAppDefinition[] = [];
-
 /**
  * Register an additional curated app definition at runtime.
  * Plugins should call this during initialization to add their app to the
  * curated catalog.
  */
 export function registerCuratedApp(def: ElizaCuratedAppDefinition): void {
-  const existing = _registeredCuratedApps.findIndex((d) => d.slug === def.slug);
-  if (existing >= 0) {
-    _registeredCuratedApps[existing] = def;
-  } else {
-    _registeredCuratedApps.push(def);
-  }
+  registerCoreCuratedApp(def);
   // Rebuild the lookup map so runtime-registered apps are discoverable
   _rebuildCuratedAppLookup();
 }
@@ -525,7 +522,7 @@ export function getCuratedAppDefinitions(): ElizaCuratedAppDefinition[] {
   for (const def of ELIZA_CURATED_APP_DEFINITIONS) {
     merged.set(def.slug, def);
   }
-  for (const def of _registeredCuratedApps) {
+  for (const def of getRegisteredCuratedApps()) {
     merged.set(def.slug, def);
   }
   return Array.from(merged.values());
@@ -533,7 +530,7 @@ export function getCuratedAppDefinitions(): ElizaCuratedAppDefinition[] {
 
 function _rebuildCuratedAppLookup(): void {
   // Add registered apps to the mutable lookup map
-  for (const def of _registeredCuratedApps) {
+  for (const def of getRegisteredCuratedApps()) {
     for (const key of getElizaCuratedAppMatchKeys(def)) {
       ELIZA_CURATED_APP_DEFINITION_BY_KEY.set(key, def);
     }

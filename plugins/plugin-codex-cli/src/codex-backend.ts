@@ -43,7 +43,10 @@ export interface CodexGenerateParams {
   maxTokens?: number;
   abortSignal?: AbortSignal;
   onTextDelta?: (delta: string) => void;
-  responseFormat?: { type: "json_object" | "text" } | string;
+  responseFormat?:
+    | { type: "json_object" | "text" }
+    | { type: "json_schema"; schema: Record<string, unknown> }
+    | string;
 }
 
 export interface CodexGenerateResult {
@@ -253,6 +256,32 @@ interface ActiveFunctionCall {
   args: string;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function stringProperty(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function recordProperty(record: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
+  const value = record[key];
+  return isRecord(value) ? value : undefined;
+}
+
+function isJsonRecord(value: unknown): value is Record<string, JsonValue> {
+  if (!isRecord(value)) return false;
+  return Object.values(value).every(isJsonValue);
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null) return true;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return true;
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  return isJsonRecord(value);
+}
+
 async function consumeResponseStream(
   body: ReadableStream<Uint8Array>,
   abortSignal?: AbortSignal,
@@ -281,7 +310,7 @@ async function consumeResponseStream(
       const next = abortPromise ? await Promise.race([iter.next(), abortPromise]) : await iter.next();
       if (next.done) break;
       if (!next.value.data) continue;
-      let payload: any;
+      let payload: unknown;
       try {
         payload = JSON.parse(next.value.data);
       } catch (err) {
@@ -292,57 +321,79 @@ async function consumeResponseStream(
         );
         continue;
       }
-      const evType: string = next.value.event ?? payload?.type ?? "";
+      const payloadRecord = isRecord(payload) ? payload : {};
+      const evType = next.value.event ?? stringProperty(payloadRecord, "type") ?? "";
       switch (evType) {
         case "response.output_text.delta": {
-          if (typeof payload.delta === "string") {
-            text += payload.delta;
-            onTextDelta?.(payload.delta);
+          const delta = payloadRecord.delta;
+          if (typeof delta === "string") {
+            text += delta;
+            onTextDelta?.(delta);
           }
           break;
         }
         case "response.output_item.added": {
-          const item = payload.item;
-          if (item?.type === "function_call") activeByItemId.set(item.id ?? item.call_id, { id: item.call_id, name: item.name, args: "" });
+          const item = recordProperty(payloadRecord, "item");
+          if (item?.type === "function_call") {
+            const itemId = stringProperty(item, "id") ?? stringProperty(item, "call_id");
+            const callId = stringProperty(item, "call_id");
+            const name = stringProperty(item, "name");
+            if (itemId && callId && name) {
+              activeByItemId.set(itemId, { id: callId, name, args: "" });
+            }
+          }
           break;
         }
         case "response.function_call_arguments.delta": {
-          const call = activeByItemId.get(payload.item_id);
-          if (call && typeof payload.delta === "string") call.args += payload.delta;
+          const itemId = stringProperty(payloadRecord, "item_id");
+          const delta = payloadRecord.delta;
+          const call = itemId ? activeByItemId.get(itemId) : undefined;
+          if (call && typeof delta === "string") call.args += delta;
           break;
         }
         case "response.output_item.done": {
-          const item = payload.item;
+          const item = recordProperty(payloadRecord, "item");
           if (item?.type === "function_call") {
-            const itemId = item.id ?? item.call_id;
+            const itemId = stringProperty(item, "id") ?? stringProperty(item, "call_id");
             const call = activeByItemId.get(itemId);
             if (call) {
-              const argStr = typeof item.arguments === "string" ? item.arguments : call.args;
+              const argStr = stringProperty(item, "arguments") ?? call.args;
               let parsed: Record<string, JsonValue> | string = argStr;
               try {
-                parsed = argStr ? (JSON.parse(argStr) as Record<string, JsonValue>) : {};
+                if (argStr) {
+                  const parsedJson: unknown = JSON.parse(argStr);
+                  parsed = isJsonRecord(parsedJson) ? parsedJson : argStr;
+                } else {
+                  parsed = {};
+                }
               } catch {
                 // keep raw string
               }
               toolCalls.push({ id: call.id, name: call.name, arguments: parsed, type: "function" });
-              activeByItemId.delete(itemId);
+              if (itemId) activeByItemId.delete(itemId);
             }
           }
           break;
         }
         case "response.completed": {
-          const resp = payload.response;
-          if (resp?.stop_reason) finishReason = String(resp.stop_reason);
-          if (resp?.usage) {
-            const inputTokens = numOrZero(resp.usage.input_tokens);
-            const outputTokens = numOrZero(resp.usage.output_tokens);
+          const resp = recordProperty(payloadRecord, "response");
+          const stopReason = resp ? resp.stop_reason : undefined;
+          if (stopReason) finishReason = String(stopReason);
+          const respUsage = resp ? recordProperty(resp, "usage") : undefined;
+          if (respUsage) {
+            const inputTokens = numOrZero(respUsage.input_tokens);
+            const outputTokens = numOrZero(respUsage.output_tokens);
             usage = { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens };
           }
           return { text, toolCalls, finishReason, usage };
         }
         case "response.failed": {
-          const resp = payload.response;
-          failed = { code: resp?.error?.code, message: resp?.error?.message };
+          const resp = recordProperty(payloadRecord, "response");
+          const error = resp ? recordProperty(resp, "error") : undefined;
+          failed = {
+            code: error ? stringProperty(error, "code") : undefined,
+            message: error ? stringProperty(error, "message") : undefined,
+          };
           throw new Error(`codex response.failed: ${failed.code ?? "unknown"} ${failed.message ?? ""}`.trim());
         }
         default:

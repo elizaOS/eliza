@@ -1,4 +1,4 @@
-import type { JsonObject } from "./proto.js";
+import type { JsonObject } from "./primitives";
 
 /**
  * Payment configuration definition for x402-enabled routes.
@@ -17,6 +17,7 @@ export type BuiltInPaymentConfig =
 	| "base_usdc"
 	| "solana_usdc"
 	| "polygon_usdc"
+	| "bsc_usdc"
 	| "base_elizaos"
 	| "solana_elizaos"
 	| "solana_degenai";

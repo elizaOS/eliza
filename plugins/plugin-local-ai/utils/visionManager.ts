@@ -150,7 +150,7 @@ export class VisionManager {
           }) as ProgressCallback,
         });
 
-        this.model = model as unknown as Florence2ForConditionalGeneration;
+        this.model = model as Florence2ForConditionalGeneration;
         logger.success("Florence2 model loaded successfully");
       } catch (error) {
         logger.error(

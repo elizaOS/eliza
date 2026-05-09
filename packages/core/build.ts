@@ -481,6 +481,10 @@ export async function runBuild(
 	// Clean previous build
 	await cleanBuild(buildOptions.outdir);
 
+	// Bun.build does not always recreate an emptied outdir; ensure it exists after clean.
+	const resolvedOutdir = buildOptions.outdir ?? "dist";
+	mkdirSync(resolvedOutdir, { recursive: true });
+
 	// Create build configuration
 	const configTimer = getTimer();
 	const config = await createElizaBuildConfig(buildOptions);

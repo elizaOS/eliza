@@ -3,6 +3,7 @@ import type http from "node:http";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import {
   installMarketplaceSkill,
@@ -11,8 +12,8 @@ import {
   uninstallMarketplaceSkill,
 } from "../services/skill-marketplace.js";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
+import { skillScaffoldMarkdown } from "../templates/skill-scaffold.js";
 import { parseClampedInteger } from "../utils/number-parsing.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
 
 // ---------------------------------------------------------------------------
 // Types shared with server.ts (kept lean to avoid circular deps)
@@ -759,7 +760,9 @@ export async function handleSkillsRoutes(
     const escapedDescription = description
       .replace(/\\/g, "\\\\")
       .replace(/"/g, '\\"');
-    const template = `---\nname: ${slug}\ndescription: ${escapedDescription}\n---\n\n## Instructions\n\n[Describe what this skill does and how the agent should use it]\n\n## When to Use\n\nUse this skill when [describe trigger conditions].\n\n## Steps\n\n1. [First step]\n2. [Second step]\n3. [Third step]\n`;
+    const template = skillScaffoldMarkdown
+      .replace(/__SLUG__/g, slug)
+      .replace(/__DESCRIPTION__/g, escapedDescription);
 
     fs.mkdirSync(skillDir, { recursive: true });
     fs.writeFileSync(path.join(skillDir, "SKILL.md"), template, "utf-8");

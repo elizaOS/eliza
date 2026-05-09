@@ -377,11 +377,10 @@ ${ONBOARDING_STEP_DESCRIPTIONS[OnboardingStep.WELCOME]}`,
 				description: "Which Node.js package manager do you prefer?",
 				type: "select",
 				options: [
-					{ value: "pnpm", label: "pnpm", hint: "Recommended" },
+					{ value: "bun", label: "Bun", hint: "Recommended" },
 					{ value: "npm", label: "npm", hint: "" },
-					{ value: "bun", label: "Bun", hint: "Fast" },
 				],
-				defaultValue: "pnpm",
+				defaultValue: "bun",
 			},
 			{
 				title: "Install Homebrew Packages",
@@ -606,7 +605,7 @@ ${ONBOARDING_STEP_DESCRIPTIONS[OnboardingStep.WELCOME]}`,
 			preferences.useHomebrew = Boolean(input.useHomebrew);
 		}
 		if (input.nodeManager) {
-			preferences.nodeManager = input.nodeManager as "npm" | "pnpm" | "bun";
+			preferences.nodeManager = input.nodeManager as "npm" | "bun";
 		}
 
 		return {
@@ -758,7 +757,7 @@ export async function runNonInteractiveOnboarding(
 		apiKey?: string;
 		channels?: string[];
 		skills?: string[];
-		nodeManager?: "npm" | "pnpm" | "bun";
+		nodeManager?: "npm" | "bun";
 	},
 ): Promise<OnboardingResult> {
 	// Welcome

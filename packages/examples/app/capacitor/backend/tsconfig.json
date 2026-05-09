@@ -1,51 +1,24 @@
 {
   "compilerOptions": {
-    "lib": [
-      "ES2022",
-      "DOM"
-    ],
+    "lib": ["ES2022", "DOM"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "target": "ES2022",
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "strict": true,
     "noEmit": true,
     "paths": {
-      "@elizaos/core": [
-        "./../../../../../packages/core/dist/index.d.ts"
-      ],
-      "@elizaos/core/*": [
-        "./../../../../../packages/core/dist/*"
-      ],
-      "@elizaos/shared": [
-        "./../../../../../packages/shared/dist/index.d.ts"
-      ],
-      "@elizaos/shared/*": [
-        "./../../../../../packages/shared/dist/*"
-      ],
-      "@elizaos/plugin-anthropic": [
-        "./src/provider-plugin.d.ts"
-      ],
-      "@elizaos/plugin-google-genai": [
-        "./src/provider-plugin.d.ts"
-      ],
-      "@elizaos/plugin-groq": [
-        "./src/provider-plugin.d.ts"
-      ],
-      "@elizaos/plugin-ollama": [
-        "./src/provider-plugin.d.ts"
-      ],
-      "@elizaos/plugin-openai": [
-        "./src/provider-plugin.d.ts"
-      ],
-      "@elizaos/plugin-openrouter": [
-        "./src/provider-plugin.d.ts"
-      ]
+      "@elizaos/core": ["./../../../../../packages/core/dist/index.d.ts"],
+      "@elizaos/core/*": ["./../../../../../packages/core/dist/*"],
+      "@elizaos/shared": ["./../../../../../packages/shared/dist/index.d.ts"],
+      "@elizaos/shared/*": ["./../../../../../packages/shared/dist/*"],
+      "@elizaos/plugin-anthropic": ["./src/provider-plugin.d.ts"],
+      "@elizaos/plugin-google-genai": ["./src/provider-plugin.d.ts"],
+      "@elizaos/plugin-groq": ["./src/provider-plugin.d.ts"],
+      "@elizaos/plugin-ollama": ["./src/provider-plugin.d.ts"],
+      "@elizaos/plugin-openai": ["./src/provider-plugin.d.ts"],
+      "@elizaos/plugin-openrouter": ["./src/provider-plugin.d.ts"]
     }
   },
-  "include": [
-    "src/**/*.ts"
-  ]
+  "include": ["src/**/*.ts"]
 }

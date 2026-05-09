@@ -25,35 +25,52 @@
         "default": "./dist/sdk/index.mjs"
       }
     },
+    "./wallet-action": {
+      "import": {
+        "types": "./dist/wallet-action.d.mts",
+        "default": "./dist/wallet-action.mjs"
+      }
+    },
     "./plugin": {
-      "types": "./src/routes/plugin.ts",
-      "import": "./src/routes/plugin.ts",
-      "default": "./src/routes/plugin.ts"
+      "types": "./dist/routes/plugin.d.ts",
+      "import": "./dist/routes/plugin.js",
+      "default": "./dist/routes/plugin.js"
     },
     "./register-routes": {
-      "types": "./src/register-routes.ts",
-      "import": "./src/register-routes.ts",
-      "default": "./src/register-routes.ts"
+      "types": "./dist/register-routes.d.ts",
+      "import": "./dist/register-routes.js",
+      "default": "./dist/register-routes.js"
     },
     "./routes/*": {
-      "types": "./src/routes/*.ts",
-      "import": "./src/routes/*.ts",
-      "default": "./src/routes/*.ts"
+      "types": "./dist/routes/*.d.ts",
+      "import": "./dist/routes/*.js",
+      "default": "./dist/routes/*.js"
     },
     "./lib/*": {
-      "types": "./src/lib/*.ts",
-      "import": "./src/lib/*.ts",
-      "default": "./src/lib/*.ts"
+      "types": "./dist/lib/*.d.mts",
+      "import": "./dist/lib/*.mjs",
+      "default": "./dist/lib/*.mjs"
     },
     "./package.json": "./package.json"
   },
   "files": [
     "dist",
     "src",
+    "auto-enable.ts",
     "SDK-LICENSE"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "wallet",
+        "evm",
+        "solana"
+      ]
+    }
+  },
   "scripts": {
-    "build": "tsdown --no-config src/index.ts --format esm --dts --clean -d dist && tsdown --no-config src/sdk/index.ts --format esm --dts --no-clean -d dist/sdk && mv dist/index-*.d.ts dist/index.d.ts 2>/dev/null || true && mv dist/sdk/index-*.d.ts dist/sdk/index.d.ts 2>/dev/null || true",
+    "build": "tsdown --no-config src/index.ts --format esm --dts --clean -d dist && tsdown --no-config src/sdk/index.ts --format esm --dts --no-clean -d dist/sdk && tsdown --no-config src/wallet-action.ts --format esm --dts --no-clean -d dist && tsdown --no-config src/lib/server-wallet-trade.ts --format esm --dts --no-clean -d dist/lib && mv dist/index-*.d.ts dist/index.d.ts 2>/dev/null || true && mv dist/sdk/index-*.d.ts dist/sdk/index.d.ts 2>/dev/null || true && mv dist/wallet-action-*.d.ts dist/wallet-action.d.ts 2>/dev/null || true && mv dist/lib/server-wallet-trade-*.d.ts dist/lib/server-wallet-trade.d.ts 2>/dev/null || true",
     "check": "tsc --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "test": "vitest run --config ./vitest.config.ts",
@@ -61,17 +78,16 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "form-data": "4.0.5",
     "whatwg-url": "^16.0.0"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",
     "@elizaos/cloud-routing": "workspace:*",
+    "@noble/hashes": "^1.8.0",
     "@lifi/data-types": "^6.0.0",
     "@lifi/sdk": "^3.7.9",
     "@lifi/types": "^17.18.0",
@@ -97,7 +113,7 @@
     "@elizaos/core": "workspace:*",
     "@types/node": "^24.0.0",
     "tsdown": "^0.21.10",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.18"
   },
   "agentConfig": {

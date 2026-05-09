@@ -43,7 +43,7 @@ describe("twitter oauth2 client", () => {
         scope: "tweet.read users.read offline.access",
       }),
     );
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    globalThis.fetch = fetchMock as typeof fetch;
 
     const { requestTwitterOAuth2Token } = await importOAuth2Client();
     const result = await requestTwitterOAuth2Token({
@@ -56,7 +56,7 @@ describe("twitter oauth2 client", () => {
     expect(result.access_token).toBe("access-token");
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://api.x.com/2/oauth2/token");
     expect(init.method).toBe("POST");
 
@@ -92,7 +92,7 @@ describe("twitter oauth2 client", () => {
         scope: "tweet.read users.read",
       }),
     );
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    globalThis.fetch = fetchMock as typeof fetch;
 
     const { requestTwitterOAuth2Token } = await importOAuth2Client();
     await requestTwitterOAuth2Token({
@@ -104,7 +104,7 @@ describe("twitter oauth2 client", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const headers = new Headers(init.headers);
     const expectedAuthorization = `Basic ${Buffer.from(
       `${encodeURIComponent("client:1:ci")}:${encodeURIComponent("secret value")}`,
@@ -130,7 +130,7 @@ describe("twitter oauth2 client", () => {
         },
         { status: 400 },
       ),
-    ) as unknown as typeof fetch;
+    ) as typeof fetch;
 
     const { requestTwitterOAuth2Token } = await importOAuth2Client();
 

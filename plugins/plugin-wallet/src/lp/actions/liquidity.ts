@@ -717,54 +717,7 @@ export const liquidityAction: Action = {
       return true;
     }
 
-    const text = message.content.text?.toLowerCase() || "";
-    const lpKeywords = [
-      "liquidity",
-      "lp",
-      "pool",
-      "vault",
-      "slippage",
-      "apr",
-      "apy",
-      "tvl",
-      "position",
-      "yield",
-      "deposit",
-      "withdraw",
-      "rebalance",
-      "reposition",
-      "auto-rebalance",
-      "auto rebalance",
-      "concentrated",
-      "price range",
-      "out of range",
-      "liquidez",
-      "posición",
-      "rendimiento",
-      "rebalancear",
-      "liquidité",
-      "position",
-      "rendement",
-      "rééquilibrer",
-      "liquidität",
-      "position",
-      "rendite",
-      "neu ausrichten",
-      "流動性",
-      "ポジション",
-      "利回り",
-      "再調整",
-      "流动性",
-      "仓位",
-      "收益",
-      "再平衡",
-      "유동성",
-      "포지션",
-      "수익률",
-      "리밸런싱",
-    ];
-
-    return lpKeywords.some((keyword) => text.includes(keyword));
+    return false;
   },
 
   handler: async (runtime, message, _state, handlerParams) => {

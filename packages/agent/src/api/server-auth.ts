@@ -7,8 +7,8 @@ import type http from "node:http";
 import { isIP } from "node:net";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
+import { logger, sendJsonError } from "@elizaos/core";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
 import {
   resolveApiSecurityConfig,
   resolveApiToken,
@@ -16,7 +16,6 @@ import {
   type WalletExportRejection,
   type WalletExportRequestBody,
 } from "@elizaos/shared";
-import { sendJsonError } from "./http-helpers.js";
 import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.js";
 import type { ConversationMeta } from "./server-helpers.js";
 

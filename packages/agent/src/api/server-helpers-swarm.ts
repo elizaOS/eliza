@@ -10,7 +10,7 @@ import type {
   SwarmEvent,
   TaskCompletionSummary,
   TaskContext,
-} from "@elizaos/app-task-coordinator/api/coordinator-types";
+} from "@elizaos/app-task-coordinator";
 import {
   type AgentRuntime,
   ChannelType,
@@ -75,8 +75,15 @@ export async function routeAutonomyTextToUser(
     return;
   }
 
-  // Ephemeral sources: broadcast to UI but don't persist to DB.
-  const ephemeralSources = new Set(["coding-agent", "coordinator", "action"]);
+  // Ephemeral sources: broadcast to UI but don't persist to DB. Connector
+  // bridges, such as swarm synthesis, are persisted by the destination
+  // connector when the actual platform message is observed.
+  const ephemeralSources = new Set([
+    "coding-agent",
+    "coordinator",
+    "action",
+    "swarm_synthesis",
+  ]);
 
   const messageId = crypto.randomUUID() as UUID;
 
@@ -219,7 +226,7 @@ export function wireCodingAgentSwarmSynthesis(st: ServerState): boolean {
 }
 
 /**
- * Handle swarm completion by synthesizing a summary via the LLM.
+ * Handle swarm completion by routing the captured task result to the user.
  */
 export async function handleSwarmSynthesis(
   st: { runtime: AgentRuntime | null },
@@ -231,8 +238,10 @@ export async function handleSwarmSynthesis(
       originalTask: string;
       status: string;
       completionSummary: string;
+      validationSummary?: string;
       roomId?: string | null;
       workdir?: string;
+      replyToExternalMessageId?: string | null;
     }>;
     total: number;
     completed: number;
@@ -265,26 +274,41 @@ export async function handleSwarmSynthesis(
   // stale rooms when the coordinator carries tasks across rooms.
   const terminalStatuses = new Set(["completed", "stopped", "errored"]);
   let fallbackRoomId: string | null = null;
+  let fallbackReplyToExternalMessageId: string | null = null;
   for (let i = payload.tasks.length - 1; i >= 0; i--) {
     const candidate = payload.tasks[i];
+    const candidateReplyId =
+      typeof candidate.replyToExternalMessageId === "string" &&
+      candidate.replyToExternalMessageId.trim().length > 0
+        ? candidate.replyToExternalMessageId.trim()
+        : null;
     if (typeof candidate.roomId !== "string" || !candidate.roomId) continue;
     if (terminalStatuses.has(candidate.status)) {
       fallbackRoomId = candidate.roomId;
+      fallbackReplyToExternalMessageId = candidateReplyId;
       break;
     }
     // Track last-seen room as a fallback if no terminal task carries one.
     if (!fallbackRoomId) {
       fallbackRoomId = candidate.roomId;
+      fallbackReplyToExternalMessageId = candidateReplyId;
     }
   }
-  await routeSynthesisToConnector(runtime, resultText, fallbackRoomId);
+  await routeSynthesisToConnector(
+    runtime,
+    resultText,
+    fallbackRoomId,
+    fallbackReplyToExternalMessageId,
+  );
 }
 
 async function buildSynthesisResultText(payload: {
   tasks: Array<{
     originalTask: string;
     completionSummary: string;
+    validationSummary?: string;
     status: string;
+    agentType: string;
     workdir?: string;
   }>;
   total: number;
@@ -298,16 +322,24 @@ async function buildSynthesisResultText(payload: {
 async function buildTaskResultLine(task: {
   originalTask: string;
   completionSummary: string;
+  validationSummary?: string;
+  agentType: string;
   workdir?: string;
 }): Promise<string> {
-  // Prefer the agent's actual final assistant message: that's the real
-  // deliverable (news brief, code summary, URL, etc.). The coordinator's
-  // completionSummary is a meta-judgment about whether the task finished,
-  // not the content the agent produced. Only fall through if the jsonl
-  // can't be read.
-  if (task.workdir) {
+  const validationSummary = task.validationSummary?.trim();
+  // Claude Code persists final assistant messages in per-workdir jsonl. That
+  // path is Claude-specific; for Codex and other agents the coordinator's
+  // completionSummary is already the captured user-facing output.
+  if (task.agentType === "claude" && task.workdir) {
     const finalText = await readAgentFinalAssistantMessage(task.workdir);
-    if (finalText) return finalText;
+    if (finalText) {
+      return validationSummary
+        ? preserveEvidenceUrls(validationSummary, finalText)
+        : finalText;
+    }
+  }
+  if (validationSummary) {
+    return preserveEvidenceUrls(validationSummary, task.completionSummary);
   }
   if (task.completionSummary) return task.completionSummary;
   const portMatch = task.originalTask.match(/port\s+(\d+)/i);
@@ -318,6 +350,35 @@ async function buildTaskResultLine(task: {
     return `built and serving at http://${host}:${port}`;
   }
   return `built the files but server isn't running on port ${port} yet`;
+}
+
+function collectHttpUrls(text: string): string[] {
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  for (const match of text.matchAll(/\bhttps?:\/\/[^\s<>"'`]+/giu)) {
+    const candidate = match[0].replace(/[),.;:!?]+$/u, "");
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        continue;
+      }
+    } catch {
+      continue;
+    }
+    if (!seen.has(candidate)) {
+      seen.add(candidate);
+      urls.push(candidate);
+    }
+  }
+  return urls;
+}
+
+function preserveEvidenceUrls(summary: string, evidence: string): string {
+  const missingUrls = collectHttpUrls(evidence).filter(
+    (url) => !summary.includes(url),
+  );
+  if (missingUrls.length === 0) return summary;
+  return [summary, ...missingUrls].join("\n");
 }
 
 async function readAgentFinalAssistantMessage(
@@ -399,6 +460,7 @@ async function routeSynthesisToConnector(
   runtime: AgentRuntime,
   resultText: string,
   fallbackRoomId: string | null = null,
+  replyToExternalMessageId: string | null = null,
 ): Promise<void> {
   const coordinator = getCoordinatorFromRuntime(runtime);
   const sourceRoomId = coordinator?.sourceRoomId ?? fallbackRoomId;
@@ -413,7 +475,13 @@ async function routeSynthesisToConnector(
         channelId: room.channelId ?? room.id,
         serverId: room.serverId,
       } as Parameters<typeof runtime.sendMessageToTarget>[0],
-      { text: resultText, source: "swarm_synthesis" },
+      {
+        text: resultText,
+        source: "swarm_synthesis",
+        ...(replyToExternalMessageId
+          ? { inReplyTo: replyToExternalMessageId }
+          : {}),
+      },
     );
     logger.info(
       `[swarm-synthesis] Routed result to ${room.source} room ${room.id}`,
@@ -501,9 +569,8 @@ export function wireCoordinatorEventRouting(st: ServerState): boolean {
           });
 
           // Temporarily force TEXT_SMALL -- coordinator events are time-sensitive.
-          const rt = runtime as unknown as Record<string, unknown>;
-          const prevLlmMode = rt.llmModeOption;
-          rt.llmModeOption = "SMALL";
+          const prevLlmMode = Reflect.get(runtime, "llmModeOption");
+          Reflect.set(runtime, "llmModeOption", "SMALL");
           let result: { text: string; agentName?: string };
           try {
             result = await generateChatResponseFromChatRoutes(
@@ -515,7 +582,7 @@ export function wireCoordinatorEventRouting(st: ServerState): boolean {
               },
             );
           } finally {
-            rt.llmModeOption = prevLlmMode;
+            Reflect.set(runtime, "llmModeOption", prevLlmMode);
           }
 
           // WS broadcast the natural language portion (strip JSON action block).

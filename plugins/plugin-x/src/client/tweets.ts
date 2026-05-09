@@ -17,6 +17,19 @@ import type { QueryTweetsResponse } from "./api-types";
 import type { TwitterAuth } from "./auth";
 import { getEntityIdByScreenName } from "./profile";
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+type TweetMediaIds = NonNullable<SendTweetV2Params["media"]>["media_ids"];
+
+function toTweetMediaIds(mediaIds: string[]): TweetMediaIds {
+  if (mediaIds.length < 1 || mediaIds.length > 4) {
+    throw new Error("Twitter media_ids must contain between 1 and 4 ids");
+  }
+  return mediaIds as TweetMediaIds;
+}
+
 /**
  * Default options for Twitter API v2 request parameters.
  * @typedef {Object} defaultOptions
@@ -341,7 +354,7 @@ export async function fetchTweets(
       next: response.meta.next_token,
     };
   } catch (error) {
-    throw new Error(`Failed to fetch tweets: ${error?.message || error}`);
+    throw new Error(`Failed to fetch tweets: ${errorMessage(error)}`);
   }
 }
 
@@ -390,7 +403,7 @@ export async function fetchTweetsAndReplies(
     };
   } catch (error) {
     throw new Error(
-      `Failed to fetch tweets and replies: ${error?.message || error}`,
+      `Failed to fetch tweets and replies: ${errorMessage(error)}`,
     );
   }
 }
@@ -587,9 +600,7 @@ export async function createCreateTweetRequest(
     // boundary since upstream validation handles arity.
     if (mediaIds && mediaIds.length > 0) {
       tweetConfig.media = {
-        media_ids: mediaIds as unknown as NonNullable<
-          SendTweetV2Params["media"]
-        >["media_ids"],
+        media_ids: toTweetMediaIds(mediaIds),
       };
     }
 
@@ -608,7 +619,7 @@ export async function createCreateTweetRequest(
       data: result,
     };
   } catch (error) {
-    throw new Error(`Failed to create tweet: ${error?.message || error}`);
+    throw new Error(`Failed to create tweet: ${errorMessage(error)}`);
   }
 }
 
@@ -667,7 +678,7 @@ export async function fetchListTweets(
       next: response.meta.next_token,
     };
   } catch (error) {
-    throw new Error(`Failed to fetch list tweets: ${error.message}`);
+    throw new Error(`Failed to fetch list tweets: ${errorMessage(error)}`);
   }
 }
 
@@ -685,7 +696,7 @@ export async function deleteTweet(tweetId: string, auth: TwitterAuth) {
       data: result,
     };
   } catch (error) {
-    throw new Error(`Failed to delete tweet: ${error.message}`);
+    throw new Error(`Failed to delete tweet: ${errorMessage(error)}`);
   }
 }
 
@@ -857,7 +868,7 @@ export async function fetchLikedTweets(
       next: response.meta.next_token,
     };
   } catch (error) {
-    throw new Error(`Failed to fetch liked tweets: ${error.message}`);
+    throw new Error(`Failed to fetch liked tweets: ${errorMessage(error)}`);
   }
 }
 
@@ -956,7 +967,7 @@ export async function getTweet(
 
     return parseTweetV2ToV1(tweet.data, tweet.includes);
   } catch (error) {
-    console.error(`Failed to get tweet: ${error.message}`);
+    console.error(`Failed to get tweet: ${errorMessage(error)}`);
     return null;
   }
 }
@@ -1094,7 +1105,7 @@ export async function createQuoteTweetRequest(
       data: result,
     };
   } catch (error) {
-    throw new Error(`Failed to create quote tweet: ${error.message}`);
+    throw new Error(`Failed to create quote tweet: ${errorMessage(error)}`);
   }
 }
 
@@ -1119,7 +1130,7 @@ export async function likeTweet(
       tweetId,
     );
   } catch (error) {
-    throw new Error(`Failed to like tweet: ${error.message}`);
+    throw new Error(`Failed to like tweet: ${errorMessage(error)}`);
   }
 }
 
@@ -1144,7 +1155,7 @@ export async function retweet(
       tweetId,
     );
   } catch (error) {
-    throw new Error(`Failed to retweet: ${error.message}`);
+    throw new Error(`Failed to retweet: ${errorMessage(error)}`);
   }
 }
 

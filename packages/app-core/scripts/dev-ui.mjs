@@ -23,7 +23,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   resolveDesktopApiPort,
   resolveDesktopUiPort,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import * as JSON5Module from "json5";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
@@ -216,13 +216,12 @@ const devLogLevel =
     .toLowerCase() || "info";
 const quietApiLogs = process.env.ELIZA_DEV_QUIET_LOGS === "1";
 const verboseApiLogs = process.env.ELIZA_DEV_VERBOSE_LOGS !== "0";
-// Opt out of `bun --watch` for the API server. Useful when concurrent builds
-// (turbo / tsup / tsc) are rewriting workspace `dist/` files — bun --watch
-// follows imports into those dist files and hot-reloads on every write,
-// preventing the agent from finishing initialization. The supervisor still
-// restarts the API on `process.exit()` so the RESTART action and /api/restart
-// endpoint continue to work; only auto-reload-on-save is disabled.
-const skipBunWatch = process.env.ELIZA_DEV_NO_WATCH === "1";
+// Keep `bun --watch` opt-in for the API server. Concurrent package builds,
+// native plugin builds, and staged plugin copies rewrite workspace `dist/`
+// files; Bun follows imports into those files and can hot-reload while the
+// runtime is still bootstrapping, leaving PGlite locked by the previous
+// process. The supervisor still restarts the API on explicit restart exits.
+const skipBunWatch = process.env.ELIZA_DEV_NO_WATCH !== "0";
 const DEV_TEST_MOCK_ENV_KEYS = [
   "ELIZA_MOCK_GOOGLE_BASE",
   "ELIZA_MOCK_TWILIO_BASE",
@@ -905,13 +904,17 @@ function startVite() {
     }
   }
 
-  const viteCmd = hasBun ? "bunx" : "npx";
+  const viteCmd = hasBun ? "bun" : "npx";
   const viteForce =
     process.env.ELIZA_VITE_FORCE === "1" ||
     process.env.ELIZA_VITE_FORCE === "1";
-  const viteArgs = viteForce
-    ? ["vite", "--force", "--port", String(UI_PORT)]
-    : ["vite", "--port", String(UI_PORT)];
+  const viteArgs = hasBun
+    ? viteForce
+      ? ["--bun", "vite", "--force", "--port", String(UI_PORT)]
+      : ["--bun", "vite", "--port", String(UI_PORT)]
+    : viteForce
+      ? ["vite", "--force", "--port", String(UI_PORT)]
+      : ["vite", "--port", String(UI_PORT)];
   if (viteForce) {
     console.log(
       `  ${green(logPrefix)} ${dim("Vite --force (ELIZA_VITE_FORCE=1): re-optimizing deps.")}`,

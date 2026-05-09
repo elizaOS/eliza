@@ -12,7 +12,7 @@ import {
   req,
 } from "../../../packages/app-core/test/helpers/http";
 import { createLiveRuntimeChildEnv } from "../../../packages/app-core/test/helpers/live-child-env.ts";
-import { selectLiveProvider } from "../../../packages/app-core/test/helpers/live-provider";
+import { selectLiveProvider } from "../../../packages/app-core/test/helpers/live-provider.ts";
 import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 
 const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";

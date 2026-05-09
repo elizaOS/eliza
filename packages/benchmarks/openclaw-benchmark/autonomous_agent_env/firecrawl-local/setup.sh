@@ -18,7 +18,7 @@ fi
 # Installiere Dependencies
 echo "📦 Installiere Dependencies..."
 cd "$SCRIPT_DIR/firecrawl-src/apps/api"
-pnpm install
+bun install
 
 # Erstelle .env wenn nicht vorhanden
 if [ ! -f "$SCRIPT_DIR/firecrawl-src/apps/api/.env" ]; then

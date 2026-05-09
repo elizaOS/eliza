@@ -338,7 +338,7 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
   private async loadRuntimeAdapterCredentialRecords(
     accountId: string
   ): Promise<ConnectorCredentialRefRecord[]> {
-    const adapter = (this.runtime as unknown as { adapter?: unknown } | undefined)?.adapter;
+    const adapter = (this.runtime as { adapter?: unknown } | undefined)?.adapter;
     if (!adapter) return [];
     if (!isConnectorCredentialRefStorageLike(adapter)) return [];
     if (typeof adapter.listConnectorAccountCredentialRefs === "function") {

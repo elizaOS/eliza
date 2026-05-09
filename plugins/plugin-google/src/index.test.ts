@@ -41,7 +41,7 @@ describe("google plugin", () => {
     const runtime = {
       getService: vi.fn(() => null),
       getSetting: vi.fn(() => undefined),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
 
     await googlePlugin.init?.({}, runtime);
 
@@ -456,7 +456,7 @@ describe("google plugin", () => {
     };
     const factory = {
       gmail: vi.fn(async () => fakeGmail),
-    } as unknown as GoogleApiClientFactory;
+    } as GoogleApiClientFactory;
     const client = new GoogleGmailClient(factory);
 
     const results = await client.searchMessages({
@@ -498,6 +498,145 @@ describe("google plugin", () => {
     expect(sent).toEqual({ id: "sent_1", threadId: "thread_2" });
   });
 
+  it("exposes rich Gmail management methods for LifeOps delegation", async () => {
+    const bodyText = Buffer.from("Please reply today", "utf8").toString("base64url");
+    const fakeGmail = {
+      users: {
+        messages: {
+          list: vi.fn(async () => ({ data: { messages: [{ id: "msg_1" }] } })),
+          get: vi.fn(async () => ({
+            data: {
+              id: "msg_1",
+              threadId: "thread_1",
+              labelIds: ["INBOX", "UNREAD"],
+              snippet: "Please reply",
+              internalDate: String(Date.parse("2026-05-07T12:00:00.000Z")),
+              payload: {
+                mimeType: "text/plain",
+                body: { data: bodyText },
+                headers: [
+                  { name: "Subject", value: "Need response" },
+                  { name: "From", value: "Ada <ada@example.com>" },
+                  { name: "To", value: "Grace <grace@example.com>" },
+                  { name: "Date", value: "Thu, 07 May 2026 12:00:00 GMT" },
+                  { name: "Message-Id", value: "<msg_1@example.com>" },
+                  { name: "List-Unsubscribe", value: "<mailto:leave@example.com>" },
+                  { name: "List-Unsubscribe-Post", value: "List-Unsubscribe=One-Click" },
+                ],
+              },
+            },
+          })),
+          send: vi.fn(async () => ({
+            data: { id: "sent_1", threadId: "thread_1", labelIds: ["SENT"] },
+          })),
+          batchModify: vi.fn(async () => ({ data: {} })),
+          batchDelete: vi.fn(async () => ({ data: {} })),
+          trash: vi.fn(async () => ({ data: {} })),
+          modify: vi.fn(async () => ({ data: {} })),
+        },
+        threads: {
+          trash: vi.fn(async () => ({ data: {} })),
+        },
+        settings: {
+          filters: {
+            create: vi.fn(async () => ({ data: { id: "filter_1" } })),
+          },
+        },
+      },
+    };
+    const factory = {
+      gmail: vi.fn(async () => fakeGmail),
+    } as GoogleApiClientFactory;
+    const client = new GoogleGmailClient(factory);
+
+    await expect(
+      client.searchGmailMessages({
+        accountId: "acct_google_1",
+        query: "in:inbox",
+        selfEmail: "grace@example.com",
+        maxResults: 1,
+      })
+    ).resolves.toMatchObject([
+      {
+        externalId: "msg_1",
+        threadId: "thread_1",
+        subject: "Need response",
+        fromEmail: "ada@example.com",
+        isUnread: true,
+        likelyReplyNeeded: true,
+        metadata: {
+          listUnsubscribe: "<mailto:leave@example.com>",
+          listUnsubscribePost: "List-Unsubscribe=One-Click",
+        },
+      },
+    ]);
+    await expect(
+      client.getGmailMessageDetail({
+        accountId: "acct_google_1",
+        messageId: "msg_1",
+        selfEmail: "grace@example.com",
+      })
+    ).resolves.toMatchObject({
+      message: { externalId: "msg_1" },
+      bodyText: "Please reply today",
+    });
+    await expect(
+      client.getGmailSubscriptionHeaders({
+        accountId: "acct_google_1",
+        query: "unsubscribe",
+        maxMessages: 1,
+      })
+    ).resolves.toMatchObject([
+      {
+        messageId: "msg_1",
+        listUnsubscribe: "<mailto:leave@example.com>",
+        listUnsubscribePost: "List-Unsubscribe=One-Click",
+      },
+    ]);
+    await client.modifyGmailMessages({
+      accountId: "acct_google_1",
+      messageIds: ["msg_1"],
+      operation: "mark_read",
+    });
+    await expect(
+      client.sendGmailReply({
+        accountId: "acct_google_1",
+        to: ["ada@example.com"],
+        subject: "Need response",
+        bodyText: "Done",
+        inReplyTo: "<msg_1@example.com>",
+      })
+    ).resolves.toEqual({ messageId: "sent_1", threadId: "thread_1", labelIds: ["SENT"] });
+    await expect(
+      client.createGmailFilterForSender({
+        accountId: "acct_google_1",
+        fromAddress: "alerts@example.com",
+        trash: true,
+      })
+    ).resolves.toEqual({ filterId: "filter_1", trashed: true });
+    await client.trashGmailThread({ accountId: "acct_google_1", threadId: "thread_1" });
+
+    expect(fakeGmail.users.messages.batchModify).toHaveBeenCalledWith({
+      userId: "me",
+      requestBody: {
+        ids: ["msg_1"],
+        addLabelIds: undefined,
+        removeLabelIds: ["UNREAD"],
+      },
+    });
+    expect(fakeGmail.users.settings.filters.create).toHaveBeenCalledWith({
+      userId: "me",
+      requestBody: {
+        criteria: { from: "alerts@example.com" },
+        action: { removeLabelIds: ["INBOX"], addLabelIds: ["TRASH"] },
+      },
+    });
+    expect(fakeGmail.users.threads.trash).toHaveBeenCalledWith({
+      userId: "me",
+      id: "thread_1",
+    });
+  });
+
   it("uses fake Calendar, Drive, and Meet clients with narrow capabilities", async () => {
     const fakeCalendar = {
       calendarList: {
@@ -526,6 +665,14 @@ describe("google plugin", () => {
                 end: { dateTime: "2026-05-07T09:30:00-07:00" },
               },
             ],
+          },
+        })),
+        get: vi.fn(async () => ({
+          data: {
+            id: "event_1",
+            summary: "Planning",
+            start: { dateTime: "2026-05-07T09:00:00-07:00" },
+            end: { dateTime: "2026-05-07T09:30:00-07:00" },
           },
         })),
         patch: vi.fn(async () => ({
@@ -563,6 +710,43 @@ describe("google plugin", () => {
             parents: ["root"],
           },
         })),
+        create: vi.fn(async () => ({
+          data: {
+            id: "file_2",
+            name: "Notes",
+            mimeType: "text/plain",
+          },
+        })),
+      },
+    };
+    const fakeDocs = {
+      documents: {
+        get: vi.fn(async () => ({
+          data: {
+            title: "Notes",
+            body: {
+              content: [{ paragraph: { elements: [{ textRun: { content: "Hello" } }] } }],
+            },
+          },
+        })),
+        batchUpdate: vi.fn(async () => ({ data: {} })),
+      },
+    };
+    const fakeSheets = {
+      spreadsheets: {
+        get: vi.fn(async () => ({
+          data: {
+            sheets: [
+              {
+                properties: { title: "Sheet1" },
+                data: [{ rowData: [{ values: [{ formattedValue: "A1" }] }] }],
+              },
+            ],
+          },
+        })),
+        values: {
+          update: vi.fn(async () => ({ data: { updatedRange: "Sheet1!A1", updatedCells: 1 } })),
+        },
       },
     };
     const fakeMeet = {
@@ -580,8 +764,10 @@ describe("google plugin", () => {
     const factory = {
       calendar: vi.fn(async () => fakeCalendar),
       drive: vi.fn(async () => fakeDrive),
+      docs: vi.fn(async () => fakeDocs),
+      sheets: vi.fn(async () => fakeSheets),
       meet: vi.fn(async () => fakeMeet),
-    } as unknown as GoogleApiClientFactory;
+    } as GoogleApiClientFactory;
 
     const calendarClient = new GoogleCalendarClient(factory);
     const driveClient = new GoogleDriveClient(factory);
@@ -602,20 +788,29 @@ describe("google plugin", () => {
     ]);
     await expect(
       calendarClient.listEvents({ accountId: "acct_google_1", limit: 1 })
-    ).resolves.toEqual([
+    ).resolves.toMatchObject([
       {
         id: "event_1",
         calendarId: "primary",
         title: "Planning",
-        start: "2026-05-07T09:00:00-07:00",
-        end: "2026-05-07T09:30:00-07:00",
-        htmlLink: undefined,
-        meetLink: undefined,
-        attendees: undefined,
-        location: undefined,
-        description: undefined,
+        start: "2026-05-07T16:00:00.000Z",
+        end: "2026-05-07T16:30:00.000Z",
+        isAllDay: false,
+        timeZone: null,
+        metadata: {
+          iCalUID: null,
+          recurringEventId: null,
+          createdAt: null,
+          updatedAt: null,
+        },
       },
     ]);
+    await expect(
+      calendarClient.getEvent({ accountId: "acct_google_1", eventId: "event_1" })
+    ).resolves.toMatchObject({
+      id: "event_1",
+      start: "2026-05-07T16:00:00.000Z",
+    });
     await expect(
       calendarClient.updateEvent({
         accountId: "acct_google_1",
@@ -639,6 +834,37 @@ describe("google plugin", () => {
     await expect(
       driveClient.getFile({ accountId: "acct_google_1", fileId: "file_1" })
     ).resolves.toMatchObject({ id: "file_1", name: "Plan", parents: ["root"] });
+    await expect(
+      driveClient.listDriveFiles({ accountId: "acct_google_1", folderId: "root", maxResults: 1 })
+    ).resolves.toMatchObject({
+      files: [{ id: "file_1", name: "Plan", parents: ["root"] }],
+      nextPageToken: null,
+    });
+    await expect(
+      driveClient.getDocContent({ accountId: "acct_google_1", documentId: "doc_1" })
+    ).resolves.toEqual({ title: "Notes", plainText: "Hello" });
+    await expect(
+      driveClient.getSheetContent({ accountId: "acct_google_1", spreadsheetId: "sheet_1" })
+    ).resolves.toEqual({ title: "Sheet1", rows: [["A1"]] });
+    await expect(
+      driveClient.createDriveFile({
+        accountId: "acct_google_1",
+        name: "Notes",
+        mimeType: "text/plain",
+        content: "Hello",
+      })
+    ).resolves.toMatchObject({ id: "file_2", name: "Notes" });
+    await expect(
+      driveClient.updateSheetCells({
+        accountId: "acct_google_1",
+        spreadsheetId: "sheet_1",
+        range: "Sheet1!A1",
+        values: [["A1"]],
+      })
+    ).resolves.toEqual({ updatedRange: "Sheet1!A1", updatedCells: 1 });
+    await expect(
+      driveClient.appendToDoc({ accountId: "acct_google_1", documentId: "doc_1", text: "Later" })
+    ).resolves.toBeUndefined();
     await expect(
       meetClient.createMeeting({
         accountId: "acct_google_1",
@@ -667,10 +893,12 @@ describe("google plugin", () => {
       eventId: "event_1",
     });
     expect(fakeDrive.files.list).toHaveBeenCalledWith({
-      q: "name contains 'Plan'",
+      q: "(name contains 'Plan') and trashed = false",
       pageSize: 1,
+      pageToken: undefined,
       orderBy: "modifiedTime desc",
-      fields: "files(id,name,mimeType,createdTime,webViewLink,modifiedTime,size,parents)",
+      fields:
+        "nextPageToken,files(id,name,mimeType,createdTime,webViewLink,modifiedTime,size,parents)",
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
     });
@@ -689,11 +917,17 @@ describe("google plugin", () => {
     expect(factory.calendar).toHaveBeenNthCalledWith(
       3,
       expect.objectContaining({ accountId: "acct_google_1" }),
+      ["calendar.read"],
+      "calendar.getEvent"
+    );
+    expect(factory.calendar).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({ accountId: "acct_google_1" }),
       ["calendar.write"],
       "calendar.updateEvent"
     );
     expect(factory.calendar).toHaveBeenNthCalledWith(
-      4,
+      5,
       expect.objectContaining({ accountId: "acct_google_1" }),
       ["calendar.write"],
       "calendar.deleteEvent"
@@ -702,13 +936,49 @@ describe("google plugin", () => {
       1,
       expect.objectContaining({ accountId: "acct_google_1" }),
       ["drive.read"],
-      "drive.searchFiles"
+      "drive.searchDriveFiles"
     );
     expect(factory.drive).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({ accountId: "acct_google_1" }),
       ["drive.read"],
       "drive.getFile"
+    );
+    expect(factory.drive).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ accountId: "acct_google_1" }),
+      ["drive.read"],
+      "drive.listFiles"
+    );
+    expect(factory.docs).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ accountId: "acct_google_1" }),
+      ["drive.read"],
+      "drive.getDocContent"
+    );
+    expect(factory.sheets).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ accountId: "acct_google_1" }),
+      ["drive.read"],
+      "drive.getSheetContent"
+    );
+    expect(factory.drive).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({ accountId: "acct_google_1" }),
+      ["drive.write"],
+      "drive.createFile"
+    );
+    expect(factory.sheets).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ accountId: "acct_google_1" }),
+      ["drive.write"],
+      "drive.updateSheetCells"
+    );
+    expect(factory.docs).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ accountId: "acct_google_1" }),
+      ["drive.write"],
+      "drive.appendToDoc"
     );
     expect(factory.meet).toHaveBeenCalledWith(
       expect.objectContaining({ accountId: "acct_google_1" }),

@@ -2,18 +2,16 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { colorizeDevSettingsStartupBanner } from "@elizaos/shared/dev-settings-banner-style";
-import { prependDevSubsystemFigletHeading } from "@elizaos/shared/dev-settings-figlet-heading";
 import {
+  colorizeDevSettingsStartupBanner,
   type DevSettingsRow,
   formatDevSettingsTable,
-} from "@elizaos/shared/dev-settings-table";
-import {
+  prependDevSubsystemFigletHeading,
   resolveDesktopApiPort,
   resolveDesktopApiPortPreference,
   resolveDesktopUiPort,
   resolveDesktopUiPortPreference,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig, type Plugin, transformWithEsbuild } from "vite";
@@ -876,7 +874,7 @@ function nativeModuleStubPlugin(): Plugin {
       }
 
       // async_hooks — AsyncLocalStorage must be a real constructor because
-      // langsmith and @elizaos packages do `new AsyncLocalStorage()` at the
+      // @elizaos packages do `new AsyncLocalStorage()` at the
       // top level. Uses function-constructor syntax (not class expressions)
       // for maximum WebView compatibility. The renderChunk plugin
       // (asyncLocalStoragePatchPlugin) also patches the final bundle output
@@ -964,7 +962,7 @@ function nativeModuleStubPlugin(): Plugin {
 /**
  * Patch the final bundle output to fix AsyncLocalStorage stubs.
  *
- * langsmith imports `{ AsyncLocalStorage } from "node:async_hooks"` at the
+ * Some packages import `{ AsyncLocalStorage } from "node:async_hooks"` at the
  * top level. Vite's dep optimizer and Rollup inline the virtual-module stub
  * as `(()=>({}))`, making AsyncLocalStorage `undefined` and causing
  * `new undefined` → "xte is not a constructor" at runtime in mobile webviews.

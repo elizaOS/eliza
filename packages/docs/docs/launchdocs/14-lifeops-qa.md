@@ -10,7 +10,7 @@
 
 LifeOps is implemented as a broad app plugin in `plugins/app-lifeops`. The plugin registers LifeOps actions for browser bridge management, calendar/inbox, X, approvals, routines, relationships/followups, Twilio, remote desktop, cross-channel send, intent sync, password/autofill, health, subscriptions, unsubscribe, payments, connector management, and mutations (`plugins/app-lifeops/src/plugin.ts:207`). It also registers providers/services for browser bridge context, blockers, LifeOps context, health, inbox triage, cross-channel context, activity profile, browser bridge service, website blocker service, activity tracking, and presence signal bridging (`plugins/app-lifeops/src/plugin.ts:254`).
 
-The HTTP surface is explicit and large: Google, calendar, Gmail, X, iMessage, Telegram, Signal, Discord, WhatsApp, channel policies, phone consent, reminders, workflows, schedule, permissions, screen time, health, money, smart features, subscriptions, unsubscribe, definitions, goals, and feature toggles are all present in the LifeOps route plugin (`plugins/app-lifeops/src/routes/plugin.ts:153`, `plugins/app-lifeops/src/routes/plugin.ts:297`). Browser companion routes have moved out of LifeOps into `@elizaos/plugin-browser-bridge` under `/api/browser-bridge/*` (`plugins/app-lifeops/src/routes/plugin.ts:251`).
+The HTTP surface is explicit and large: Google, calendar, Gmail, X, iMessage, Telegram, Signal, Discord, WhatsApp, channel policies, phone consent, reminders, workflows, schedule, permissions, screen time, health, money, smart features, subscriptions, unsubscribe, definitions, goals, and feature toggles are all present in the LifeOps route plugin (`plugins/app-lifeops/src/routes/plugin.ts:153`, `plugins/app-lifeops/src/routes/plugin.ts:297`). Browser companion routes have moved out of LifeOps into `@elizaos/plugin-browser` under `/api/browser-bridge/*` (`plugins/app-lifeops/src/routes/plugin.ts:251`).
 
 The service layer is a mixin facade. Google auth is composed before Calendar/Gmail/Drive, then reminders/browser/workflows/goals, then messaging/social connectors and status surfaces (`plugins/app-lifeops/src/lifeops/service.ts:45`). Persistent state includes connector grants with `side`, `mode`, `executionTarget`, `sourceOfTruth`, `preferredByAgent`, and `cloudConnectionId` (`plugins/app-lifeops/src/lifeops/schema.ts:34`), plus calendar events/sync state, Gmail messages/sync state, inbox messages, local intents, relationships, and follow-ups (`plugins/app-lifeops/src/lifeops/schema.ts:609`, `plugins/app-lifeops/src/lifeops/schema.ts:657`, `plugins/app-lifeops/src/lifeops/schema.ts:691`, `plugins/app-lifeops/src/lifeops/schema.ts:955`, `plugins/app-lifeops/src/lifeops/schema.ts:1004`).
 
@@ -73,7 +73,7 @@ Background scheduling is partly bootstrapped. The proactive worker and LifeOps s
 
 - Ntfy push has config/unit coverage but no CI-safe HTTP integration coverage; the live test is skipped in CI and warns not to run against a public broker (`plugins/app-lifeops/test/notifications-push.integration.test.ts:13`).
 - Remote session control-plane tests cover pairing and explicit no-data-plane responses, but actual remote usability depends on Tailscale/cloud tunnel configuration (`plugins/app-lifeops/src/remote/remote-session-service.ts:11`, `plugins/app-lifeops/src/remote/tailscale-transport.ts:109`).
-- Browser Bridge routes have moved to `@elizaos/plugin-browser-bridge`; LifeOps launch must verify that plugin is included wherever `app-lifeops` is enabled, or browser setup UI/actions will be present without their route backend.
+- Browser Bridge routes have moved to `@elizaos/plugin-browser`; LifeOps launch must verify that plugin is included wherever `app-lifeops` is enabled, or browser setup UI/actions will be present without their route backend.
 
 ## Codex-fixable work
 
@@ -100,7 +100,7 @@ Background scheduling is partly bootstrapped. The proactive worker and LifeOps s
 - OAuth callback refresh integration test covering the hook against generated callback HTML.
 - Fixture-backed Google OAuth/status tests for cloud/local/remote modes, preferred grant switching, disconnect, and token-missing/needs-reauth states.
 - Fake-adapter tests for Telegram, Signal, Discord, iMessage, WhatsApp, and X status/start/send/disconnect flows with owner/agent side assertions.
-- Browser Bridge fake companion route tests and UI smoke tests that fail if `@elizaos/plugin-browser-bridge` routes are absent.
+- Browser Bridge fake companion route tests and UI smoke tests that fail if `@elizaos/plugin-browser` routes are absent.
 - Scheduler fake-clock tests for reminder attempts across in-app, push, email, SMS/voice, and chat channels with consent/channel-policy gates.
 - Remote-session tests with fake Tailscale/cloud data-plane resolver and UI/action assertions that null ingress is treated as non-usable.
 - Local HTTP-server Ntfy integration test.

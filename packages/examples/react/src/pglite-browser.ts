@@ -10,6 +10,11 @@ import { PGlite } from "@electric-sql/pglite";
 import { fuzzystrmatch } from "@electric-sql/pglite/contrib/fuzzystrmatch";
 import { vector } from "@electric-sql/pglite/vector";
 
+type BrowserPGliteOptions = PGliteOptions & {
+  fsBundle: Blob;
+  wasmModule: WebAssembly.Module;
+};
+
 // Cache the loaded assets
 let fsBundleCache: Blob | null = null;
 let wasmModuleCache: WebAssembly.Module | null = null;
@@ -66,7 +71,7 @@ export async function createBrowserPGlite(
   options: Partial<PGliteOptions> = {},
 ): Promise<PGlite> {
   const assets = await loadPGliteAssets();
-  const assetOptions = {
+  const assetOptions: BrowserPGliteOptions = {
     ...options,
     fsBundle: assets.fsBundle,
     wasmModule: assets.wasmModule,
@@ -77,5 +82,5 @@ export async function createBrowserPGlite(
     },
   };
 
-  return new PGlite(assetOptions as unknown as PGliteOptions);
+  return new PGlite(assetOptions);
 }

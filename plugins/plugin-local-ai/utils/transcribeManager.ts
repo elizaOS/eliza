@@ -19,7 +19,7 @@ let whisperModule: WhisperModule | null = null;
 async function getWhisper(): Promise<WhisperModule> {
   if (!whisperModule) {
     const module = await import("whisper-node");
-    whisperModule = (module as unknown as { whisper: WhisperModule }).whisper;
+    whisperModule = (module as { whisper: WhisperModule }).whisper;
   }
   return whisperModule as WhisperModule;
 }

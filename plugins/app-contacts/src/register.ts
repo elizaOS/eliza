@@ -7,7 +7,7 @@
  *   import "@elizaos/app-contacts/register";
  */
 
-import { isElizaOS } from "@elizaos/app-core";
+import { isElizaOS } from "@elizaos/ui";
 import { registerContactsApp } from "./components/contacts-app";
 
 if (isElizaOS()) {

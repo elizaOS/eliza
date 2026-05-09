@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LifeOpsConnectorGrant } from "../contracts/index.js";
 import {
-  CALENDAR_CONNECTOR_ACCOUNT_MIGRATION_NOTE,
   canEgress,
   createConnectorAccountPrivacyPolicy,
   createLifeOpsEgressContext,
@@ -109,11 +108,9 @@ describe("LifeOps privacy egress", () => {
     expect(connectorAccountId).not.toContain("grant_secret_123");
   });
 
-  it("documents ambiguous calendar cache migration requirements", () => {
-    const legacyAlias = deriveConnectorAccountIdFromGrant(grant({}));
+  it("derives grant-scoped account ids when provider identity is unavailable", () => {
+    const connectorAccountId = deriveConnectorAccountIdFromGrant(grant({}));
 
-    expect(legacyAlias).toMatch(/^google:owner:legacy-grant:/);
-    expect(CALENDAR_CONNECTOR_ACCOUNT_MIGRATION_NOTE).toContain("purge");
-    expect(CALENDAR_CONNECTOR_ACCOUNT_MIGRATION_NOTE).toContain("resync");
+    expect(connectorAccountId).toMatch(/^google:owner:grant:/);
   });
 });

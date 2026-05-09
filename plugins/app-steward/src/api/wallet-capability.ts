@@ -5,4 +5,4 @@ export {
   resolveWalletAutomationMode,
   resolveWalletCapabilityStatus,
   type WalletCapabilityStatus,
-} from "@elizaos/agent/api/wallet-capability";
+} from "@elizaos/agent";

@@ -19,6 +19,7 @@
  * @module first-time-setup
  */
 
+import type { CloudOnboardingResult } from "@elizaos/plugin-elizacloud";
 import type { StylePreset } from "@elizaos/shared";
 import {
   buildDefaultElizaCloudServiceRouting,
@@ -43,8 +44,7 @@ import { pickRandomNames } from "./onboarding-names.js";
 // Helpers (private)
 // ---------------------------------------------------------------------------
 
-type FirstTimeSetupCloudResult =
-  import("@elizaos/plugin-elizacloud/onboarding").CloudOnboardingResult;
+type FirstTimeSetupCloudResult = CloudOnboardingResult;
 const DEFAULT_ONBOARDING_AGENT_NAME = getStylePresets()[0]?.name ?? "Eliza";
 
 export function applyFirstTimeSetupTopology(
@@ -334,9 +334,7 @@ export async function runFirstTimeSetup(
   // ── Step 3.5: Runtime selection (Cloud vs Local) ───────────────────────
   // Present the user with a choice of where to run their agent. Cloud mode
   // skips the local AI provider, wallet, and GitHub steps.
-  let cloudOnboardingResult:
-    | import("@elizaos/plugin-elizacloud/onboarding").CloudOnboardingResult
-    | null = null;
+  let cloudOnboardingResult: CloudOnboardingResult | null = null;
   let isCloudMode = false;
 
   const runtimeChoice = await clack.select({
@@ -368,9 +366,7 @@ export async function runFirstTimeSetup(
       "No problem! Starting with local setup. You can switch to cloud anytime with `eliza cloud connect`.",
     );
   } else if (runtimeChoice === "cloud") {
-    const { runCloudOnboarding } = await import(
-      "@elizaos/plugin-elizacloud/onboarding"
-    );
+    const { runCloudOnboarding } = await import("@elizaos/plugin-elizacloud");
     cloudOnboardingResult = await runCloudOnboarding(
       clack,
       name,

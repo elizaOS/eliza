@@ -1,4 +1,4 @@
-import { formatShortDate, Input, Skeleton } from "@elizaos/app-core";
+import { formatShortDate, Input, Skeleton } from "@elizaos/ui";
 import {
   CalendarDays,
   CircleDollarSign,

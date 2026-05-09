@@ -15,11 +15,12 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { getAccessToken, listProviderAccounts } from "@elizaos/agent";
 import {
   DIRECT_ACCOUNT_PROVIDER_ENV,
   type DirectAccountProvider,
-} from "@elizaos/agent/auth/types";
+  getAccessToken,
+  listProviderAccounts,
+} from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import { getDefaultAccountPool } from "../account-pool.js";
 

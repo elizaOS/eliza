@@ -18,7 +18,7 @@ import type {
   Route,
   RouteRequest,
   RouteResponse,
-} from '@elizaos/core';
+} from "@elizaos/core";
 import {
   clearTelegramAccountAuthState,
   clearTelegramAccountSession,
@@ -29,7 +29,7 @@ import {
   type TelegramAccountAuthSnapshot,
   telegramAccountAuthStateExists,
   telegramAccountSessionExists,
-} from './account-auth-service.js';
+} from "./account-auth-service.js";
 
 // ── Connector-setup service interface ──────────────────────────────────
 
@@ -39,8 +39,23 @@ interface ConnectorSetupService {
   updateConfig(updater: (config: Record<string, unknown>) => void): void;
 }
 
+function isConnectorSetupService(
+  service: unknown,
+): service is ConnectorSetupService {
+  if (!service || typeof service !== "object") {
+    return false;
+  }
+  const candidate = service as Partial<ConnectorSetupService>;
+  return (
+    typeof candidate.getConfig === "function" &&
+    typeof candidate.updateConfig === "function" &&
+    typeof candidate.persistConfig === "function"
+  );
+}
+
 function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
-  return runtime.getService('connector-setup') as ConnectorSetupService | null;
+  const service = runtime.getService("connector-setup");
+  return isConnectorSetupService(service) ? service : null;
 }
 
 // ── Module-level auth session state ────────────────────────────────────
@@ -83,7 +98,7 @@ type TelegramAccountStatusResponse = {
   hasAppCredentials: boolean;
   phone: string | null;
   isCodeViaApp: boolean;
-  account: TelegramAccountAuthSnapshot['account'];
+  account: TelegramAccountAuthSnapshot["account"];
   error: string | null;
 };
 
@@ -96,7 +111,7 @@ function readConnectorConfig(
     | Record<string, Record<string, unknown>>
     | undefined;
   const raw = connectors?.telegramAccount;
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return {};
   }
   return raw;
@@ -106,17 +121,17 @@ function hasConfiguredTelegramAccount(
   connConfig: Record<string, unknown>,
 ): boolean {
   return Boolean(
-    typeof connConfig.phone === 'string' &&
-    connConfig.phone.trim() &&
-    (typeof connConfig.appId === 'string' ||
-      typeof connConfig.appId === 'number') &&
-    typeof connConfig.appHash === 'string' &&
-    connConfig.appHash.trim() &&
-    typeof connConfig.deviceModel === 'string' &&
-    connConfig.deviceModel.trim() &&
-    typeof connConfig.systemVersion === 'string' &&
-    connConfig.systemVersion.trim() &&
-    connConfig.enabled !== false,
+    typeof connConfig.phone === "string" &&
+      connConfig.phone.trim() &&
+      (typeof connConfig.appId === "string" ||
+        typeof connConfig.appId === "number") &&
+      typeof connConfig.appHash === "string" &&
+      connConfig.appHash.trim() &&
+      typeof connConfig.deviceModel === "string" &&
+      connConfig.deviceModel.trim() &&
+      typeof connConfig.systemVersion === "string" &&
+      connConfig.systemVersion.trim() &&
+      connConfig.enabled !== false,
   );
 }
 
@@ -125,13 +140,13 @@ function resolveConfiguredPhone(
   connConfig: Record<string, unknown>,
 ): string | null {
   if (
-    typeof connConfig.phone === 'string' &&
+    typeof connConfig.phone === "string" &&
     connConfig.phone.trim().length > 0
   ) {
     return connConfig.phone.trim();
   }
-  const setting = runtime.getSetting('TELEGRAM_ACCOUNT_PHONE');
-  return typeof setting === 'string' && setting.trim().length > 0
+  const setting = runtime.getSetting("TELEGRAM_ACCOUNT_PHONE");
+  return typeof setting === "string" && setting.trim().length > 0
     ? setting.trim()
     : null;
 }
@@ -139,7 +154,7 @@ function resolveConfiguredPhone(
 function resolveService(
   runtime: IAgentRuntime,
 ): TelegramAccountRuntimeServiceLike | null {
-  const service = runtime.getService('telegram-account');
+  const service = runtime.getService("telegram-account");
   return (
     (service as TelegramAccountRuntimeServiceLike | null | undefined) ?? null
   );
@@ -151,14 +166,14 @@ function isServiceConnected(
   if (!service) {
     return false;
   }
-  if (typeof service.isConnected === 'function') {
+  if (typeof service.isConnected === "function") {
     return service.isConnected();
   }
   const withFlags = service as TelegramAccountRuntimeServiceLike & {
     connected?: unknown;
     isServiceConnected?: () => boolean;
   };
-  if (typeof withFlags.isServiceConnected === 'function') {
+  if (typeof withFlags.isServiceConnected === "function") {
     return withFlags.isServiceConnected();
   }
   return withFlags.connected === true;
@@ -175,7 +190,7 @@ function statusFromState(
   const service = resolveService(runtime);
   const serviceConnected = isServiceConnected(service);
   const serviceAccount =
-    typeof service?.getAccountSummary === 'function'
+    typeof service?.getAccountSummary === "function"
       ? service.getAccountSummary()
       : null;
   const fallbackPhone = resolveConfiguredPhone(runtime, connectorConfig);
@@ -183,13 +198,13 @@ function statusFromState(
   let status =
     authSnapshot?.status ??
     (serviceConnected
-      ? 'connected'
+      ? "connected"
       : configured || sessExists
-        ? 'configured'
-        : 'idle');
+        ? "configured"
+        : "idle");
 
-  if (serviceConnected && status === 'configured') {
-    status = 'connected';
+  if (serviceConnected && status === "configured") {
+    status = "connected";
   }
 
   return {
@@ -198,12 +213,12 @@ function statusFromState(
     configured,
     sessionExists: sessExists,
     serviceConnected,
-    restartRequired: status === 'configured' && !serviceConnected,
+    restartRequired: status === "configured" && !serviceConnected,
     hasAppCredentials: Boolean(
-      (typeof connectorConfig.appId === 'string' ||
-        typeof connectorConfig.appId === 'number') &&
-      typeof connectorConfig.appHash === 'string' &&
-      connectorConfig.appHash.trim().length > 0,
+      (typeof connectorConfig.appId === "string" ||
+        typeof connectorConfig.appId === "number") &&
+        typeof connectorConfig.appHash === "string" &&
+        connectorConfig.appHash.trim().length > 0,
     ),
     phone: authSnapshot?.phone ?? fallbackPhone,
     isCodeViaApp: authSnapshot?.isCodeViaApp ?? false,
@@ -224,7 +239,7 @@ function ensureConnectorBlock(
   >;
   if (
     !connectors.telegramAccount ||
-    typeof connectors.telegramAccount !== 'object' ||
+    typeof connectors.telegramAccount !== "object" ||
     Array.isArray(connectors.telegramAccount)
   ) {
     connectors.telegramAccount = {};
@@ -239,12 +254,12 @@ function createSessionOptions(config: Record<string, unknown>): {
   const connectorConfig = readConnectorConfig(config);
   return {
     deviceModel:
-      typeof connectorConfig.deviceModel === 'string' &&
+      typeof connectorConfig.deviceModel === "string" &&
       connectorConfig.deviceModel.trim().length > 0
         ? connectorConfig.deviceModel.trim()
         : defaultTelegramAccountDeviceModel(),
     systemVersion:
-      typeof connectorConfig.systemVersion === 'string' &&
+      typeof connectorConfig.systemVersion === "string" &&
       connectorConfig.systemVersion.trim().length > 0
         ? connectorConfig.systemVersion.trim()
         : defaultTelegramAccountSystemVersion(),
@@ -290,10 +305,10 @@ async function handleAuthStart(
   const connectorConfig = readConnectorConfig(config);
 
   const phone =
-    (typeof body.phone === 'string' && body.phone.trim()) ||
+    (typeof body.phone === "string" && body.phone.trim()) ||
     resolveConfiguredPhone(runtime, connectorConfig);
   if (!phone) {
-    res.status(400).json({ error: 'telegram phone number is required' });
+    res.status(400).json({ error: "telegram phone number is required" });
     return;
   }
 
@@ -304,9 +319,9 @@ async function handleAuthStart(
 
   const credentials =
     hasConfiguredTelegramAccount(connectorConfig) &&
-    (typeof connectorConfig.appId === 'string' ||
-      typeof connectorConfig.appId === 'number') &&
-    typeof connectorConfig.appHash === 'string'
+    (typeof connectorConfig.appId === "string" ||
+      typeof connectorConfig.appId === "number") &&
+    typeof connectorConfig.appHash === "string"
       ? {
           apiId: Number(connectorConfig.appId),
           apiHash: connectorConfig.appHash,
@@ -347,13 +362,13 @@ async function handleAuthSubmit(
   if (!ensureAuthSession(config)) {
     res
       .status(400)
-      .json({ error: 'telegram login session has not been started' });
+      .json({ error: "telegram login session has not been started" });
     return;
   }
   if (!telegramAccountAuthSession) {
     res
       .status(400)
-      .json({ error: 'telegram login session has not been started' });
+      .json({ error: "telegram login session has not been started" });
     return;
   }
 
@@ -385,7 +400,7 @@ async function handleDisconnect(
   clearTelegramAccountSession();
 
   const service = resolveService(runtime);
-  if (typeof service?.stop === 'function') {
+  if (typeof service?.stop === "function") {
     await service.stop();
   }
 
@@ -414,26 +429,26 @@ async function handleDisconnect(
  */
 export const telegramAccountRoutes: Route[] = [
   {
-    type: 'GET',
-    path: '/api/telegram-account/status',
+    type: "GET",
+    path: "/api/telegram-account/status",
     handler: handleStatus,
     rawPath: true,
   },
   {
-    type: 'POST',
-    path: '/api/telegram-account/auth/start',
+    type: "POST",
+    path: "/api/telegram-account/auth/start",
     handler: handleAuthStart,
     rawPath: true,
   },
   {
-    type: 'POST',
-    path: '/api/telegram-account/auth/submit',
+    type: "POST",
+    path: "/api/telegram-account/auth/submit",
     handler: handleAuthSubmit,
     rawPath: true,
   },
   {
-    type: 'POST',
-    path: '/api/telegram-account/disconnect',
+    type: "POST",
+    path: "/api/telegram-account/disconnect",
     handler: handleDisconnect,
     rawPath: true,
   },

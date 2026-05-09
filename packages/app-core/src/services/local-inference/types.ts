@@ -8,7 +8,109 @@
 
 export type ModelBucket = "small" | "mid" | "large" | "xl";
 
-export type ModelCategory = "chat" | "code" | "tools" | "tiny" | "reasoning";
+export type ModelCategory =
+  | "chat"
+  | "code"
+  | "tools"
+  | "tiny"
+  | "reasoning"
+  | "drafter";
+
+export type LocalRuntimeBackend = "node-llama-cpp" | "llama-server";
+
+/**
+ * Specialised llama.cpp kernels shipped by the buun-llama-cpp / DFlash fork.
+ * Models that declare a `requiresKernel` advertise that they only run
+ * correctly under llama-server when the matching kernel is present.
+ */
+export type LocalRuntimeKernel =
+  | "dflash"
+  | "turbo3"
+  | "turbo4"
+  | "turbo3_tcq"
+  | "qjl_full";
+
+/**
+ * llama.cpp optimization knobs that the dispatcher can wire into a
+ * `llama-server` spawn. Values come from catalog metadata (per-model) and
+ * environment overrides (per-process). The catalog is the source of truth
+ * for which knobs are *safe* on a given quant; env vars are the operator's
+ * escape hatch and override the catalog when set.
+ */
+export interface LocalRuntimeOptimizations {
+  /** Lookahead decoding window. Maps to `--lookahead N` on llama-server. */
+  lookahead?: number;
+  /**
+   * Built-in n-gram drafter (no separate drafter model). Maps to
+   * `--draft-min` / `--draft-max` / `--draft-min-prob`. Mutually exclusive
+   * with DFlash speculative decoding.
+   */
+  ngramDraft?: { min: number; max: number; minProb: number };
+  /**
+   * `--parallel N` for continuous batching. The Cache Bridge agent may bump
+   * this default at runtime; the dispatcher reads but does not override.
+   */
+  parallel?: number;
+  /**
+   * Mixture-of-experts expert-tensor offload target. `"cpu"` maps to
+   * `-ot ".*=CPU"` so expert tensors stay in CPU memory and only the
+   * shared layers occupy VRAM.
+   */
+  moeOffload?: "cpu" | "none";
+  /** `--mlock` — pin model pages in RAM. */
+  mlock?: boolean;
+  /** Inverse of `--mmap`; maps to `--no-mmap`. */
+  noMmap?: boolean;
+  /** Multimodal projector path; maps to `--mmproj <path>`. */
+  mmproj?: string;
+  /** `--alias <name>` for the OpenAI-compatible model id. */
+  alias?: string;
+  /** `-fa on` (flash attention). Always on for DFlash. */
+  flashAttention?: boolean;
+  /**
+   * Specialised kernels this model requires from the llama-server fork.
+   * The dispatcher uses this to pick `llama-server` over `node-llama-cpp`
+   * regardless of `preferredBackend`, since the in-process binding cannot
+   * provide these kernels.
+   */
+  requiresKernel?: LocalRuntimeKernel[];
+}
+
+export interface LocalRuntimeAcceleration {
+  /**
+   * Prefer out-of-process llama-server over the node binding when the
+   * required binary and companion files are available.
+   */
+  preferredBackend?: LocalRuntimeBackend;
+  /** Optimization knobs declared per-model. See `LocalRuntimeOptimizations`. */
+  optimizations?: LocalRuntimeOptimizations;
+  dflash?: {
+    /** Catalog id of the hidden drafter GGUF companion. */
+    drafterModelId: string;
+    specType: "dflash";
+    /** llama-server context for the target model. */
+    contextSize: number;
+    /** llama-server context for the drafter. */
+    draftContextSize: number;
+    /** Default draft range passed to llama-server. */
+    draftMin: number;
+    draftMax: number;
+    /** `--n-gpu-layers` and `--n-gpu-layers-draft` defaults. */
+    gpuLayers: number | "auto";
+    draftGpuLayers: number | "auto";
+    /** Qwen3.5/3.6 DFlash drafters are trained against non-thinking text. */
+    disableThinking: boolean;
+  };
+  kvCache?: {
+    /**
+     * llama.cpp KV cache type overrides. Stock builds support f16/q8_0;
+     * TurboQuant-capable forks add tbq3_0/tbq4_0.
+     */
+    typeK?: string;
+    typeV?: string;
+    requiresFork?: "apothic-turboquant" | "buun-llama-cpp";
+  };
+}
 
 export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
@@ -24,6 +126,7 @@ export interface CatalogModel {
     | "1.7B"
     | "2B"
     | "3B"
+    | "4B"
     | "7B"
     | "8B"
     | "9B"
@@ -41,9 +144,38 @@ export interface CatalogModel {
   category: ModelCategory;
   bucket: ModelBucket;
   blurb: string;
+  /**
+   * Hidden entries are installable by id and can be downloaded as companions,
+   * but are omitted from the visible Model Hub catalog.
+   */
+  hiddenFromCatalog?: boolean;
+  /** Models such as DFlash drafters are not valid standalone chat choices. */
+  runtimeRole?: "chat" | "dflash-drafter";
+  /** Parent chat model id when this entry is a hidden companion. */
+  companionForModelId?: string;
+  /** Extra catalog model ids to download alongside this model. */
+  companionModelIds?: string[];
+  /** Runtime-specific acceleration metadata. */
+  runtime?: LocalRuntimeAcceleration;
 }
 
 export type HardwareFitLevel = "fits" | "tight" | "wontfit";
+
+export interface MobileHardwareProbe {
+  platform: "ios" | "android" | "web";
+  deviceModel?: string;
+  machineId?: string;
+  osVersion?: string;
+  isSimulator?: boolean;
+  availableRamGb?: number | null;
+  freeStorageGb?: number | null;
+  lowPowerMode?: boolean;
+  thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
+  gpuSupported?: boolean;
+  dflashSupported?: boolean;
+  dflashReason?: string;
+  source?: "native" | "adapter-fallback";
+}
 
 export interface HardwareProbe {
   totalRamGb: number;
@@ -63,6 +195,8 @@ export interface HardwareProbe {
   recommendedBucket: ModelBucket;
   /** Source of the probe; "node-llama-cpp" when GPU values come from the binding. */
   source: "node-llama-cpp" | "os-fallback";
+  /** Mobile-only details used for minspec, storage, and native DFlash gating. */
+  mobile?: MobileHardwareProbe;
 }
 
 export interface InstalledModel {
@@ -94,6 +228,8 @@ export interface InstalledModel {
   sha256?: string;
   /** ISO timestamp of the last successful re-verification. Absent = never verified since install. */
   lastVerifiedAt?: string;
+  runtimeRole?: "chat" | "dflash-drafter";
+  companionFor?: string;
 }
 
 export type DownloadState =
@@ -121,6 +257,17 @@ export interface DownloadJob {
   error?: string;
 }
 
+export interface LocalInferenceDownloadStatus {
+  state: DownloadState | "missing";
+  receivedBytes: number;
+  totalBytes: number;
+  percent: number | null;
+  bytesPerSec: number;
+  etaMs: number | null;
+  updatedAt: string | null;
+  errors: string[];
+}
+
 export interface ActiveModelState {
   modelId: string | null;
   loadedAt: string | null;
@@ -142,23 +289,56 @@ export interface DownloadEvent {
  * match the `ModelType` enum in `@elizaos/core` — kept as string literals
  * here so the types file stays framework-free.
  */
-export type AgentModelSlot =
-  | "TEXT_SMALL"
-  | "TEXT_LARGE"
-  | "TEXT_EMBEDDING"
-  | "OBJECT_SMALL"
-  | "OBJECT_LARGE";
+export type AgentModelSlot = "TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING";
+
+export type TextGenerationSlot = Extract<
+  AgentModelSlot,
+  "TEXT_SMALL" | "TEXT_LARGE"
+>;
 
 export const AGENT_MODEL_SLOTS: AgentModelSlot[] = [
   "TEXT_SMALL",
   "TEXT_LARGE",
   "TEXT_EMBEDDING",
-  "OBJECT_SMALL",
-  "OBJECT_LARGE",
+];
+
+export const TEXT_GENERATION_SLOTS: TextGenerationSlot[] = [
+  "TEXT_SMALL",
+  "TEXT_LARGE",
 ];
 
 /** User-configured mapping of agent model slots → installed model ids. */
 export type ModelAssignments = Partial<Record<AgentModelSlot, string>>;
+
+export interface LocalInferenceSlotReadiness {
+  slot: TextGenerationSlot;
+  assigned: boolean;
+  assignedModelId: string | null;
+  displayName: string | null;
+  primaryDownloaded: boolean;
+  downloaded: boolean;
+  active: boolean;
+  ready: boolean;
+  state:
+    | "unassigned"
+    | "missing"
+    | "downloading"
+    | "downloaded"
+    | "active"
+    | "failed"
+    | "cancelled";
+  requiredModelIds: string[];
+  missingModelIds: string[];
+  installedBytes: number;
+  expectedBytes: number;
+  download: LocalInferenceDownloadStatus;
+  errors: string[];
+}
+
+export interface LocalInferenceReadiness {
+  updatedAt: string;
+  slots: Record<TextGenerationSlot, LocalInferenceSlotReadiness>;
+}
 
 export interface ModelHubSnapshot {
   catalog: CatalogModel[];
@@ -167,4 +347,5 @@ export interface ModelHubSnapshot {
   downloads: DownloadJob[];
   hardware: HardwareProbe;
   assignments: ModelAssignments;
+  textReadiness: LocalInferenceReadiness;
 }

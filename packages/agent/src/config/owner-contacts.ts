@@ -55,15 +55,24 @@ type RuntimeLike = Pick<
   | "getMemoriesByRoomIds"
 >;
 
+function isRelationshipsServiceLike(
+  service: unknown,
+): service is RelationshipsServiceLike {
+  return (
+    typeof service === "object" &&
+    service !== null &&
+    typeof (service as { getContact?: unknown }).getContact === "function"
+  );
+}
+
 function getRelationshipsService(
   runtime: RuntimeLike | null | undefined,
 ): RelationshipsServiceLike | null {
   if (!runtime?.getService) {
     return null;
   }
-  return runtime.getService(
-    "relationships",
-  ) as unknown as RelationshipsServiceLike | null;
+  const service = runtime.getService("relationships");
+  return isRelationshipsServiceLike(service) ? service : null;
 }
 
 function ownerContactSourceCandidates(source: string): string[] {

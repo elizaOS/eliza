@@ -32,14 +32,14 @@ function runtimeWithServices(services: Record<string, unknown>): IAgentRuntime {
     agentId: "agent-1",
     getService: vi.fn((serviceType: string) => services[serviceType] ?? null),
     setSetting: vi.fn(),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 function grant(
   overrides: Partial<LifeOpsConnectorGrant> = {},
 ): LifeOpsConnectorGrant {
   return {
-    id: "legacy-grant-1",
+    id: "grant-1",
     agentId: "agent-1",
     provider: "x",
     connectorAccountId: "acct-owner-1",
@@ -63,7 +63,7 @@ function grant(
 }
 
 describe("runtime service delegates", () => {
-  it("resolves explicit connectorAccountId before legacy grant aliases", () => {
+  it("resolves explicit connectorAccountId before metadata account ids", () => {
     expect(
       resolveRuntimeConnectorAccountId({
         grant: grant({
@@ -196,7 +196,7 @@ describe("runtime service delegates", () => {
     });
   });
 
-  it("returns fallback when plugin-x accountId-first send fails", async () => {
+  it("returns unavailable when plugin-x accountId-first send fails", async () => {
     const runtime = runtimeWithServices({
       x: {
         sendDirectMessageForAccount: vi.fn(async () => {
@@ -213,15 +213,15 @@ describe("runtime service delegates", () => {
     });
 
     expect(result).toMatchObject({
-      status: "fallback",
+      status: "unavailable",
       reason: "X runtime service sendDirectMessageForAccount failed.",
     });
-    expect(result.status === "fallback" ? result.error : null).toBeInstanceOf(
+    expect(result.status === "unavailable" ? result.error : null).toBeInstanceOf(
       Error,
     );
   });
 
-  it("returns fallback when X runtime service is unavailable", async () => {
+  it("returns unavailable when X runtime service is unavailable", async () => {
     const result = await sendXDirectMessageWithRuntimeService({
       runtime: runtimeWithServices({}),
       grant: grant(),
@@ -230,12 +230,12 @@ describe("runtime service delegates", () => {
     });
 
     expect(result).toMatchObject({
-      status: "fallback",
+      status: "unavailable",
       reason: "X runtime service handleSendMessage is not registered.",
     });
   });
 
-  it("keeps active LifeOps X paths off legacy LifeOps X clients", async () => {
+  it("keeps active LifeOps X paths off superseded LifeOps X clients", async () => {
     const activeFiles = [
       "./service-mixin-core.ts",
       "./service-mixin-x.ts",
@@ -418,7 +418,7 @@ describe("runtime service delegates", () => {
     });
   });
 
-  it("delegates Calendly account-scoped capabilities before env fallback", async () => {
+  it("delegates Calendly account-scoped capabilities before env unavailable", async () => {
     const listEventTypes = vi.fn(async () => [{ uri: "event-type-1" }]);
     const listScheduledEvents = vi.fn(async () => [{ uri: "event-1" }]);
     const getAvailability = vi.fn(async () => [
@@ -493,7 +493,7 @@ describe("runtime service delegates", () => {
     });
 
     expect(result).toMatchObject({
-      status: "fallback",
+      status: "unavailable",
       reason: "Discord runtime service handleSendMessage is not registered.",
     });
   });

@@ -29,7 +29,7 @@ import { logger } from "@/lib/utils/logger";
 
 /** Configuration for an x402-protected route */
 export interface X402PaymentConfig {
-  /** Price in USDC base units (6 decimals). "1000000" = $1.00 */
+  /** Price in the selected USDC token's base units. "1000000" = $1.00 for 6-decimal USDC. */
   price: string;
   /** CAIP-2 network identifier. Default: "eip155:8453" (Base) */
   network?: string;
@@ -69,6 +69,26 @@ export function withX402Payment<T = Record<string, string>>(
   config: X402PaymentConfig,
 ) {
   type FacilitatorPaymentPayload = Parameters<typeof x402FacilitatorService.verify>[0];
+
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null;
+
+  const isFacilitatorPaymentPayload = (
+    value: Record<string, unknown>,
+  ): value is FacilitatorPaymentPayload => {
+    if (typeof value.x402Version !== "number" || !isRecord(value.accepted)) return false;
+    if (!isRecord(value.payload) || typeof value.payload.signature !== "string") return false;
+    const authorization = value.payload.authorization;
+    return (
+      isRecord(authorization) &&
+      typeof authorization.from === "string" &&
+      typeof authorization.to === "string" &&
+      typeof authorization.value === "string" &&
+      typeof authorization.validAfter === "string" &&
+      typeof authorization.validBefore === "string" &&
+      typeof authorization.nonce === "string"
+    );
+  };
 
   const network = config.network ?? "eip155:8453";
   const description = config.description ?? "Paid API endpoint";
@@ -117,9 +137,19 @@ export function withX402Payment<T = Record<string, string>>(
     }
 
     // 3. Build payment requirements
-    const parsedPaymentPayload = paymentPayload as unknown as FacilitatorPaymentPayload;
+    if (!isFacilitatorPaymentPayload(paymentPayload)) {
+      return Response.json(
+        {
+          success: false,
+          error: "Invalid X-PAYMENT header: missing required payment fields",
+          code: "INVALID_PAYMENT_HEADER",
+        },
+        { status: 400 },
+      );
+    }
+    const parsedPaymentPayload = paymentPayload;
     const paymentRequirements = {
-      scheme: "upto",
+      scheme: "exact",
       network,
       asset: getUsdcAddress(network),
       amount: config.price,
@@ -241,7 +271,7 @@ function buildPaymentRequiredResponse(
     x402Version: 2,
     accepts: [
       {
-        scheme: "upto",
+        scheme: "exact",
         network,
         maxAmountRequired: price,
         resource,
@@ -272,8 +302,9 @@ function buildPaymentRequiredResponse(
       status: 402,
       headers: {
         "Content-Type": "application/json",
+        "PAYMENT-REQUIRED": encoded,
         "Payment-Required": encoded,
-        "Access-Control-Expose-Headers": "Payment-Required",
+        "Access-Control-Expose-Headers": "PAYMENT-REQUIRED, Payment-Required",
       },
     },
   );
@@ -284,7 +315,9 @@ function buildPaymentRequiredResponse(
  */
 function getUsdcDomainName(network: string): string {
   // Ethereum mainnet uses "USD Coin", all others use "USDC"
-  return network === "eip155:1" ? "USD Coin" : "USDC";
+  return network === "eip155:1" || network === "eip155:56" || network === "eip155:97"
+    ? "USD Coin"
+    : "USDC";
 }
 
 function getUsdcAddress(network: string): string {
@@ -293,6 +326,8 @@ function getUsdcAddress(network: string): string {
     "eip155:84532": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     "eip155:1": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
     "eip155:11155111": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+    "eip155:56": "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+    "eip155:97": "0x64544969ed7EBf5f083679233325356EBe738930",
   };
   return addresses[network] ?? addresses["eip155:8453"];
 }

@@ -64,6 +64,7 @@ export OLLAMA_BASE_URL=http://localhost:11434
 | `OLLAMA_MEDIUM_MODEL` | No | Override the medium model identifier |
 | `OLLAMA_LARGE_MODEL` | No | Override the large model identifier |
 | `OLLAMA_EMBEDDING_MODEL` | No | Override the embedding model identifier |
+| `OLLAMA_DISABLE_STRUCTURED_OUTPUT` | No | Set to `1`, `true`, `yes`, or `on` to disable JSON-schema structured text if a local model misbehaves with Ollama `format` requests |
 | `SMALL_MODEL` | No | Global alias to override the small model identifier |
 | `LARGE_MODEL` | No | Global alias to override the large model identifier |
 
@@ -165,9 +166,9 @@ Secure with a reverse proxy (Nginx + TLS) for production.
 Error: Unsupported model version v1
 ```
 
-**Cause:** The `@elizaos/plugin-ollama` depends on `ollama-ai-provider@^1.2.0`, which uses the v1 AI SDK spec. The current runtime ships AI SDK v6, causing a silent version mismatch.
+**Cause:** Older builds used `ollama-ai-provider` (v1 model spec) with AI SDK 5+, which requires providers that implement specification v2. Current `@elizaos/plugin-ollama` uses `ollama-ai-provider-v2`, which matches AI SDK 5/6. If you still see this error, run `bun install` at the repo root so dependencies resolve to the updated provider.
 
-**Workaround — Use Ollama's OpenAI-Compatible Endpoint:**
+**Alternative — Use Ollama's OpenAI-Compatible Endpoint:**
 
 Ollama exposes an OpenAI-compatible API at `http://localhost:11434/v1`. Route through the OpenAI plugin instead:
 
@@ -183,9 +184,7 @@ Ollama exposes an OpenAI-compatible API at `http://localhost:11434/v1`. Route th
 }
 ```
 
-This bypasses `plugin-ollama` entirely and uses `plugin-openai` with your local Ollama instance. All models, streaming, and function calling work as expected.
-
-> **Tracking:** [elizaos-plugins/plugin-ollama#18](https://github.com/elizaos-plugins/plugin-ollama/issues/18)
+This bypasses `plugin-ollama` entirely and uses `plugin-openai` with your local Ollama instance. Use it only when you specifically want Ollama's OpenAI-compatible route instead of the native Ollama adapter.
 
 ### Ollama Not Detected
 

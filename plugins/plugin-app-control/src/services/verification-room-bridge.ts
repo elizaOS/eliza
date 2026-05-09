@@ -234,13 +234,13 @@ export class VerificationRoomBridgeService extends Service {
 	private attach(): void {
 		const coordinator = this.runtime.getService(
 			"SWARM_COORDINATOR",
-		) as unknown as SwarmCoordinatorLike | null;
+		) as SwarmCoordinatorLike | null;
 		if (!coordinator || typeof coordinator.subscribe !== "function") {
 			// Orchestrator plugin isn't loaded or is on an older surface that
-			// doesn't expose subscribe(). Log loudly so the operator knows the
-			// bridge is inert; don't throw — plugin-app-control still works
-			// for non-create flows without the bridge.
-			logger.warn(
+			// doesn't expose subscribe(). plugin-app-control still works for
+			// non-create flows without the bridge; log at debug since this
+			// fires every boot when the orchestrator isn't enabled.
+			logger.debug(
 				"[VerificationRoomBridge] SWARM_COORDINATOR service has no subscribe(); bridge inactive. Verification verdicts will not be posted back to chat.",
 			);
 			return;

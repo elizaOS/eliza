@@ -678,9 +678,7 @@ export const roleAction: Action = {
 		const params = readParams(message, options);
 		if (params.op || params.assignments || params.target) return true;
 
-		const text =
-			typeof message.content.text === "string" ? message.content.text : "";
-		return looksLikeRoleIntent(text);
+		return true;
 	},
 
 	handler: async (

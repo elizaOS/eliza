@@ -32,7 +32,7 @@ bun run lint
 bun run test
 ```
 
-All three must exit zero. If one fails, fix it. Do not silence errors with `as any`, `// @ts-ignore`, broad `try/catch`, or `?? defaultValue` patterns that hide missing data.
+All three must exit zero. If one fails, fix it. Do not silence errors with unsafe casts to `any`, `// @ts-ignore`, broad `try/catch`, or `?? defaultValue` patterns that hide missing data.
 
 ## 5. Signal completion
 

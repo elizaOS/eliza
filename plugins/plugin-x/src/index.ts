@@ -10,6 +10,7 @@ import {
 } from "./connector-account-provider.js";
 import { XService } from "./services/x.service.js";
 import { getSetting } from "./utils/settings";
+import { XWorkflowCredentialProvider } from "./workflow-credential-provider.js";
 
 export const XPlugin: Plugin = {
   name: "x",
@@ -17,7 +18,14 @@ export const XPlugin: Plugin = {
     "X (formerly Twitter) connector with posting, interactions, and timeline actions",
   actions: [],
   providers: [],
-  services: [XService],
+  services: [XService, XWorkflowCredentialProvider],
+  // Self-declared auto-enable: activate when the "x" connector (or the legacy
+  // "twitter" alias) is configured under config.connectors. The hardcoded
+  // CONNECTOR_PLUGINS map in plugin-auto-enable-engine.ts still serves as a
+  // fallback.
+  autoEnable: {
+    connectorKeys: ["x", "twitter"],
+  },
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     logger.log("🔧 Initializing X plugin...");
 
@@ -79,16 +87,12 @@ export const XPlugin: Plugin = {
       );
     }
 
-    // In env mode (single-account legacy), materialize a synthetic `default`
-    // account so the rest of the runtime can address it through the connector
-    // account interface without a separate provisioning step.
+    // In env mode, materialize a synthetic `default` account so the rest of
+    // the runtime can address it through the connector account interface.
     if (mode === "env") {
       await materializeEnvAccountIfMissing(runtime);
     }
   },
 };
-
-// Backward-compatible alias for users still importing { TwitterPlugin }.
-export const TwitterPlugin = XPlugin;
 
 export default XPlugin;

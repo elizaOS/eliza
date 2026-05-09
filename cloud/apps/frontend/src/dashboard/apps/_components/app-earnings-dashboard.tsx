@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { MilestoneProgress } from "@elizaos/cloud-ui/components/monetization";
+import { MilestoneProgress } from "@elizaos/cloud-ui";
 import {
   Bar,
   BarChart,

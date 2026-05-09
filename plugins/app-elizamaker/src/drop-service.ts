@@ -9,10 +9,25 @@
  */
 
 import { logger } from "@elizaos/core";
-import type { DropStatus, MintResult } from "@elizaos/shared";
 import { ethers } from "ethers";
 
-export type { DropStatus, MintResult } from "@elizaos/shared";
+export interface DropStatus {
+  dropEnabled: boolean;
+  publicMintOpen: boolean;
+  whitelistMintOpen: boolean;
+  mintedOut: boolean;
+  currentSupply: number;
+  maxSupply: number;
+  shinyPrice: string;
+  userHasMinted: boolean;
+}
+
+export interface MintResult {
+  agentId: number;
+  mintNumber: number;
+  txHash: string;
+  isShiny: boolean;
+}
 
 // ── ABI ──────────────────────────────────────────────────────────────────
 

@@ -1,10 +1,11 @@
 #!/usr/bin/env bun
+
 /**
  * Dual build script for @elizaos/plugin-elevenlabs (Node + Browser)
  */
 
-import { mkdir, rename, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 
 const externalDeps = ["@elizaos/core"];
 

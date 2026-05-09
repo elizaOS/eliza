@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { readJson } from "../helpers/json-body";
+
+type ErrorResponse = {
+  error?: unknown;
+};
 
 describe("Models API", () => {
   test("GET /api/v1/models returns model list", async () => {
@@ -50,7 +55,7 @@ describe("Responses API", () => {
     expect([400, 401, 403]).toContain(response.status);
 
     if (response.status === 400) {
-      const body = (await response.json()) as any;
+      const body = await readJson<ErrorResponse>(response);
       expect(body.error).toBeTruthy();
     }
   });

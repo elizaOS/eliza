@@ -36,6 +36,13 @@ const nostrPlugin: Plugin = {
 
   tests: [],
 
+  // Self-declared auto-enable: activate when the "nostr" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["nostr"],
+  },
+
   /**
    * Plugin initialization hook
    */

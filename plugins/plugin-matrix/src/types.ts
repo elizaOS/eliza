@@ -122,6 +122,8 @@ export interface MatrixMessage {
 
 /** Options for sending a message */
 export interface MatrixMessageSendOptions {
+  /** Connector account identifier */
+  accountId?: string;
   /** Room ID or alias to send to */
   roomId?: string;
   /** Event ID to reply to */

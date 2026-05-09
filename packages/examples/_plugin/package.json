@@ -53,7 +53,7 @@
     "@vitejs/plugin-react-swc": "^4.2.2",
     "dotenv": "^17.2.3",
     "tailwindcss-animate": "^1.0.7",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   },
   "scripts": {
     "dev": "bun run build:watch",

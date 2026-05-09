@@ -10,11 +10,11 @@ function createRuntime(settings: Record<string, string>): IAgentRuntime {
   return {
     agentId: "agent-1",
     getSetting: (key: string) => settings[key],
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 describe("X account config", () => {
-  it("uses the configured default account with legacy env credentials", async () => {
+  it("uses the configured default account with env credentials", async () => {
     const runtime = createRuntime({
       TWITTER_DEFAULT_ACCOUNT_ID: "primary",
       TWITTER_AUTH_MODE: "env",

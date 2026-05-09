@@ -81,7 +81,7 @@ Do NOT use v3 syntax (@tailwind directives).
 Every layout.tsx must include ElizaProvider:
 
 \`\`\`tsx
-import { ElizaProvider } from "@elizaos/cloud-ui/components/eliza";
+import { ElizaProvider } from "@elizaos/cloud-ui";
 import './globals.css';
 
 export const metadata = {

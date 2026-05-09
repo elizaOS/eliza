@@ -103,7 +103,10 @@ export const lsAction: Action = {
     _message: Memory,
     _state?: State,
   ) => {
-    return true;
+    return Boolean(
+      runtime.getService(SANDBOX_SERVICE) &&
+        runtime.getService(SESSION_CWD_SERVICE),
+    );
   },
   handler: async (
     runtime: IAgentRuntime,

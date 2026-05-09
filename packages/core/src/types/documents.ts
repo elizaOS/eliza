@@ -1,5 +1,5 @@
+import type { MemoryMetadata } from "./memory";
 import type { Content, UUID } from "./primitives";
-import type { MemoryMetadata } from "./proto.js";
 
 export type DocumentDirectory = {
 	path?: string;

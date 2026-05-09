@@ -6,16 +6,18 @@
  *
  * These provide additional agent features:
  * - Extended providers (facts, contacts, relationships, roles, settings, todos, personality)
- * - Advanced actions (contacts management, room management, todos, personality, etc.)
- * - Evaluators (reflection, relationship extraction, experience learning, character evolution)
+ * - Advanced actions (contacts management, room management, todos, personality)
+ * - Registered post-turn evaluators (experience, skills, facts, relationships,
+ *   identities, task success)
  * - Additional services (experience, todos, personality)
  */
 
 import { withCanonicalActionDocs } from "../../action-docs.ts";
-import type { IAgentRuntime } from "../../types/index.ts";
+import { createService } from "../../services.ts";
+import type { IAgentRuntime, RegisteredEvaluator } from "../../types/index.ts";
 import type { ServiceClass } from "../../types/plugin.ts";
 import {
-	experienceEvaluator,
+	experiencePatternEvaluator,
 	experienceProvider,
 	searchExperiencesAction,
 } from "./experience/index.ts";
@@ -23,7 +25,6 @@ import {
 // Personality imports
 import {
 	characterAction,
-	characterEvolutionEvaluator,
 	userPersonalityProvider,
 } from "./personality/index.ts";
 
@@ -38,7 +39,7 @@ import {
 	todosProvider,
 } from "./todos/index.ts";
 
-// Re-export action, provider, and evaluator modules
+// Re-export action, provider, and post-message-action modules
 export * from "./actions/index.ts";
 export * from "./evaluators/index.ts";
 export * from "./experience/index.ts";
@@ -49,7 +50,7 @@ export * from "./todos/index.ts";
 
 // Import for local use
 import * as actions from "./actions/index.ts";
-import * as evaluators from "./evaluators/index.ts";
+import * as postMessageActions from "./evaluators/index.ts";
 import * as providers from "./providers/index.ts";
 
 /**
@@ -68,7 +69,10 @@ export const advancedProviders = [
 ];
 
 /**
- * Advanced actions - extended agent capabilities
+ * Advanced actions - extended agent capabilities.
+ *
+ * Includes planner actions only. Post-turn evaluation is registered through
+ * `advancedEvaluators` and run by the EvaluatorService in one model call.
  */
 export const advancedActions = [
 	withCanonicalActionDocs(actions.roomOpAction),
@@ -87,37 +91,32 @@ export const advancedActions = [
 	characterAction,
 ];
 
-/**
- * Advanced evaluators - memory, relationships, experience learning, form, personality
- */
 export const advancedEvaluators = [
-	evaluators.factExtractorEvaluator,
-	evaluators.skillExtractionEvaluator,
-	evaluators.skillRefinementEvaluator,
-	experienceEvaluator,
-	characterEvolutionEvaluator,
-];
+	...postMessageActions.reflectionItems,
+	...postMessageActions.skillItems,
+	experiencePatternEvaluator,
+] satisfies readonly RegisteredEvaluator[];
 
 /**
  * Advanced services - extended service infrastructure
  */
 export const advancedServices: ServiceClass[] = [
-	{
-		serviceType: "EXPERIENCE",
-		start: async (runtime: IAgentRuntime) => {
+	createService("EXPERIENCE")
+		.withDescription("Experience memory service")
+		.withStart(async (runtime: IAgentRuntime) => {
 			const { ExperienceService } = await import("./experience/service.ts");
 			return ExperienceService.start(runtime);
-		},
-	} as unknown as ServiceClass,
-	{
-		serviceType: "CHARACTER_MANAGEMENT",
-		start: async (runtime: IAgentRuntime) => {
+		})
+		.build(),
+	createService("CHARACTER_MANAGEMENT")
+		.withDescription("Character management service")
+		.withStart(async (runtime: IAgentRuntime) => {
 			const { CharacterFileManager } = await import(
 				"./personality/services/character-file-manager.ts"
 			);
 			return CharacterFileManager.start(runtime);
-		},
-	} as unknown as ServiceClass,
+		})
+		.build(),
 ];
 
 /**

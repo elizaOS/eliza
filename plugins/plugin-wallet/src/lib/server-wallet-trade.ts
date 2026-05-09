@@ -2,17 +2,13 @@
  * Wallet / trade compat helpers — trade permission modes, local execution
  * guards, and wallet export rejection wrappers.
  *
- * Canonical home: `@elizaos/plugin-wallet/lib/server-wallet-trade`. The
- * legacy path `@elizaos/app-core/api/server-wallet-trade` is a re-export
- * shim and will be removed once external consumers migrate.
+ * Exported from the `@elizaos/plugin-wallet` barrel for package consumers.
  */
+import crypto from "node:crypto";
 import type http from "node:http";
-import { resolveWalletExportRejection as upstreamResolveWalletExportRejection } from "@elizaos/agent";
-import {
-  syncAppEnvToEliza,
-  syncElizaEnvAliases,
-} from "@elizaos/app-core/utils/env";
+import { syncAppEnvToEliza, syncElizaEnvAliases } from "@elizaos/core";
 
+import type { WalletExportRequestBody } from "../contracts.js";
 import {
   type WalletExportRejection as CompatWalletExportRejection,
   createHardenedExportGuard,
@@ -79,12 +75,63 @@ export function runWithCompatAuthContext<T>(
   }
 }
 
-function resolveCompatWalletExportRejection(
-  ...args: Parameters<typeof upstreamResolveWalletExportRejection>
+function tokenMatches(expected: string, provided: string): boolean {
+  const a = Buffer.from(expected, "utf8");
+  const b = Buffer.from(provided, "utf8");
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+function resolveBaseWalletExportRejection(
+  req: http.IncomingMessage,
+  body: WalletExportRequestBody,
 ): CompatWalletExportRejection | null {
-  const [req] = args;
+  if (!body.confirm) {
+    return {
+      status: 403,
+      reason:
+        'Export requires explicit confirmation. Send { "confirm": true } in the request body.',
+    };
+  }
+
+  const expected = process.env.ELIZA_WALLET_EXPORT_TOKEN?.trim();
+  if (!expected) {
+    return {
+      status: 403,
+      reason:
+        "Wallet export is disabled. Set ELIZA_WALLET_EXPORT_TOKEN to enable secure exports.",
+    };
+  }
+
+  const headerToken =
+    typeof req.headers["x-eliza-export-token"] === "string"
+      ? req.headers["x-eliza-export-token"].trim()
+      : "";
+  const bodyToken =
+    typeof body.exportToken === "string" ? body.exportToken.trim() : "";
+  const provided = headerToken || bodyToken;
+
+  if (!provided) {
+    return {
+      status: 401,
+      reason:
+        "Missing export token. Provide X-Eliza-Export-Token header or exportToken in request body.",
+    };
+  }
+
+  if (!tokenMatches(expected, provided)) {
+    return { status: 401, reason: "Invalid export token." };
+  }
+
+  return null;
+}
+
+function resolveCompatWalletExportRejection(
+  req: http.IncomingMessage,
+  body: WalletExportRequestBody,
+): CompatWalletExportRejection | null {
   return runWithCompatAuthContext(req, () =>
-    normalizeCompatRejection(upstreamResolveWalletExportRejection(...args)),
+    normalizeCompatRejection(resolveBaseWalletExportRejection(req, body)),
   );
 }
 
@@ -136,10 +183,10 @@ export function canUseLocalTradeExecution(
  * audit logging (IP + UA), and a 10s confirmation delay via single-use nonces.
  */
 export function resolveWalletExportRejection(
-  ...args: Parameters<typeof upstreamResolveWalletExportRejection>
+  req: http.IncomingMessage,
+  body: WalletExportRequestBody,
 ): CompatWalletExportRejection | null {
-  const [req] = args;
   return runWithCompatAuthContext(req, () =>
-    normalizeCompatRejection(hardenedGuard(...args)),
+    normalizeCompatRejection(hardenedGuard(req, body)),
   );
 }

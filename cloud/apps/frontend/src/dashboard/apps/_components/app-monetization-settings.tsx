@@ -27,7 +27,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { EarningsSimulator, RevenueFlowDiagram } from "@elizaos/cloud-ui/components/monetization";
+import { EarningsSimulator, RevenueFlowDiagram } from "@elizaos/cloud-ui";
 
 interface MonetizationSettings {
   monetizationEnabled: boolean;

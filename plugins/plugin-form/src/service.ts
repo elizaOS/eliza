@@ -43,7 +43,7 @@
  * ```
  * Plugin Init → FormService.start() → Register Builtins → Register Forms → Ready
  *
- * User Message → Evaluator → FormService.updateField() → Session Updated
+ * User Message → form evaluator → FormService.updateField() → Session Updated
  *             → FormService.updateSubField() → Subfield Updated
  *             → FormService.activateExternalField() → External Process Started
  *                         → FormService.submit() → Submission Created

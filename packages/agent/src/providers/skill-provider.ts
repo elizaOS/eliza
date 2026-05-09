@@ -17,6 +17,7 @@ import type {
   Memory,
   Provider,
   ProviderResult,
+  Service,
   State,
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
@@ -338,9 +339,9 @@ export function createDynamicSkillProvider(): Provider {
           return { text: "", values: {}, data: {} };
         }
 
-        const service = runtime.getService(
+        const service = runtime.getService<Service & AgentSkillsServiceLike>(
           "AGENT_SKILLS_SERVICE",
-        ) as unknown as AgentSkillsServiceLike | null;
+        );
         if (!service) return { text: "", values: {}, data: {} };
 
         const skills = service.getLoadedSkills();

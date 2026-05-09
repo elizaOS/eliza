@@ -11,11 +11,11 @@ describe("OAuth token store", () => {
     const cache = new Map<string, unknown>();
     const runtime = {
       agentId: "agent-1",
-      getCache: async (key: string) => cache.get(key),
-      setCache: async (key: string, value: unknown) => {
+      getCache: async <T>(key: string) => cache.get(key) as T | undefined,
+      setCache: async <T>(key: string, value: T) => {
         cache.set(key, value);
       },
-    } as unknown as IAgentRuntime;
+    };
 
     const store = new RuntimeCacheTokenStore(runtime, "secondary");
     await store.save({
@@ -26,7 +26,7 @@ describe("OAuth token store", () => {
     expect(cache.has("twitter/oauth2/tokens/agent-1/secondary")).toBe(true);
   });
 
-  it("loads OAuth tokens from connector account credential refs before fallback stores", async () => {
+  it("loads OAuth tokens from connector account credential refs before secondary stores", async () => {
     const vaultRef = "connector.agent-1.x.acct_x_1.oauth_tokens";
     const account = {
       id: "acct_x_1",
@@ -87,21 +87,25 @@ describe("OAuth token store", () => {
         if (serviceType === "vault") return vault;
         return null;
       },
-    } as unknown as IAgentRuntime;
-    const fallback: TokenStore = {
+    } as IAgentRuntime;
+    const secondaryStore: TokenStore = {
       load: vi.fn(async () => null),
       save: vi.fn(async () => undefined),
       clear: vi.fn(async () => undefined),
     };
 
-    const store = new ConnectorAccountTokenStore(runtime, "acct_x_1", fallback);
+    const store = new ConnectorAccountTokenStore(
+      runtime,
+      "acct_x_1",
+      secondaryStore,
+    );
     await expect(store.load()).resolves.toMatchObject({
       access_token: "x-access-token",
       refresh_token: "x-refresh-token",
       expires_at: 123456,
     });
 
-    expect(fallback.load).not.toHaveBeenCalled();
+    expect(secondaryStore.load).not.toHaveBeenCalled();
     expect(vault.reveal).toHaveBeenCalledWith(vaultRef, "plugin-x");
   });
 });

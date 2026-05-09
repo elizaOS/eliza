@@ -16,7 +16,7 @@
  *   5. If `capability.hasReporting === false`, the user is on a personal
  *      PayPal account; we show a CSV-export fallback prompt.
  */
-import { client, useApp } from "@elizaos/app-core";
+import { client, useApp } from "@elizaos/ui";
 import { Loader2, Wallet } from "lucide-react";
 import { type JSX, useCallback, useEffect, useRef, useState } from "react";
 import type { LifeOpsPaymentSource } from "../lifeops/payment-types.js";

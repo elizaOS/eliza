@@ -138,7 +138,7 @@ function setupApplicationMenu(): void {
 		agentReady: isAgentReady(),
 	});
 	ApplicationMenu.setApplicationMenu(
-		menu as unknown as Parameters<typeof ApplicationMenu.setApplicationMenu>[0],
+		menu as Parameters<typeof ApplicationMenu.setApplicationMenu>[0],
 	);
 }
 
@@ -950,7 +950,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
 	// real persisted dimensions without the shouldMaximize sentinel.
 	if (state.shouldMaximize === MAXIMIZE_ON_LAUNCH_SENTINEL) {
 		try {
-			(win as unknown as { maximize?: () => void }).maximize?.();
+			(win as typeof win & { maximize?: () => void }).maximize?.();
 		} catch (err) {
 			// Non-fatal — if maximize() isn't available on this electrobun
 			// build, the window still opens at the default dimensions.
@@ -1308,7 +1308,7 @@ function wireRpcAndModules(
  * DesktopManager and other singletons.
  */
 function wireSettingsRpc(win: BrowserWindow): void {
-	const rpc = win.webview.rpc as unknown as ElectrobunRpcInstance | undefined;
+	const rpc = win.webview.rpc as ElectrobunRpcInstance | undefined;
 
 	const sendToWebview = (message: string, payload?: unknown): void => {
 		if (rpc?.send) {
@@ -2024,12 +2024,13 @@ async function main(): Promise<void> {
 
 	surfaceWindowManager = new SurfaceWindowManager({
 		createWindow: (options) =>
-			new BrowserWindow(options) as unknown as ManagedWindowLike,
+			new BrowserWindow(options) as BrowserWindow & ManagedWindowLike,
 		resolveRendererUrl,
 		readPreload: () => readResolvedPreloadScript(import.meta.dir),
-		wireRpc: (window) => wireSettingsRpc(window as unknown as BrowserWindow),
+		wireRpc: (window) =>
+			wireSettingsRpc(window as BrowserWindow & ManagedWindowLike),
 		injectApiBase: (window) =>
-			injectApiBase(window as unknown as BrowserWindow),
+			injectApiBase(window as BrowserWindow & ManagedWindowLike),
 		onWindowFocused: (window) => {
 			lastFocusedWindow = window;
 		},

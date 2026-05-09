@@ -1,4 +1,4 @@
-import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
+import { extractActionParamsViaLlm } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -1173,7 +1173,7 @@ async function dispatchWhatsAppVerify(
 ): Promise<ActionResult> {
   const limit = params.recentLimit ?? 10;
   const status = await service.getWhatsAppConnectorStatus();
-  const recent = service.pullWhatsAppRecent(limit);
+  const recent = await service.pullWhatsAppRecent(limit);
   const sendText =
     params.sendMessage ?? "LifeOps WhatsApp connector verification ping.";
   const send =
@@ -1536,7 +1536,7 @@ export const connectorAction: Action & {
       {
         name: "{{agentName}}",
         content: {
-          text: "I'll start the Google OAuth flow and return the auth URL.",
+          text: "I'll start the plugin-google account OAuth flow and return the auth URL.",
         },
       },
     ],

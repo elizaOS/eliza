@@ -89,16 +89,18 @@ function toPublicTrajectoryStep(
     ...step,
     stepId: toText(step.stepId, trajectoryId),
     timestamp: toNumber(step.timestamp, Date.now()),
-    llmCalls: (step.llmCalls ?? []).map((call) =>
+    llmCalls: ((step.llmCalls ?? []) as PersistedLlmCall[]).map((call) =>
       toPublicTrajectoryLlmCall(
-        call as unknown as PersistedLlmCall,
+        call,
         trajectoryId,
         toText(step.stepId, trajectoryId),
       ),
     ),
-    providerAccesses: (step.providerAccesses ?? []).map((access) =>
+    providerAccesses: (
+      (step.providerAccesses ?? []) as PersistedProviderAccess[]
+    ).map((access) =>
       toPublicTrajectoryProviderAccess(
-        access as unknown as PersistedProviderAccess,
+        access,
         trajectoryId,
         toText(step.stepId, trajectoryId),
       ),

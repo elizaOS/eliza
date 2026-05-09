@@ -307,9 +307,10 @@ export async function findEntityByName(
 		template: entityResolutionTemplate,
 	});
 
-	const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
+	const result = await runtime.useModel(ModelType.TEXT_SMALL, {
 		prompt,
-		schema: ENTITY_RESOLUTION_SCHEMA,
+		responseSchema: ENTITY_RESOLUTION_SCHEMA,
+		responseFormat: { type: "json_object" },
 	});
 
 	const resolution = parseEntityResolutionResponse(result);

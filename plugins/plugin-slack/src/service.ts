@@ -262,7 +262,7 @@ interface SlackMessageEventType {
   thread_ts?: string;
   team?: string;
   bot_id?: string;
-  files?: Array<Record<string, unknown>>;
+  files?: SlackFile[];
 }
 
 interface SlackAppMentionEventType {
@@ -1364,7 +1364,7 @@ export class SlackService extends Service implements ISlackService {
             channelId,
             threadTs,
           },
-        } as unknown as Memory["metadata"],
+        } satisfies Memory["metadata"],
         createdAt: Date.now(),
       };
 
@@ -1404,7 +1404,7 @@ export class SlackService extends Service implements ISlackService {
     // Extract media from files
     const media: Media[] = [];
     if ("files" in message && message.files) {
-      for (const file of message.files as unknown as SlackFile[]) {
+      for (const file of message.files) {
         media.push({
           id: file.id,
           url: file.urlPrivate,
@@ -1459,7 +1459,7 @@ export class SlackService extends Service implements ISlackService {
         slackChannelId: message.channel,
         slackMessageTs: message.ts,
         slackThreadTs: message.thread_ts,
-      } as unknown as Memory["metadata"],
+      } satisfies Memory["metadata"],
       createdAt: this.parseSlackTimestamp(message.ts),
     };
 
@@ -1529,7 +1529,7 @@ export class SlackService extends Service implements ISlackService {
         slackChannelId: event.channel,
         slackMessageTs: event.ts,
         slackThreadTs: event.thread_ts,
-      } as unknown as Memory["metadata"],
+      } satisfies Memory["metadata"],
       createdAt: this.parseSlackTimestamp(event.ts),
     };
 
@@ -2381,7 +2381,7 @@ export class SlackService extends Service implements ISlackService {
         slackMessageTs: message.ts,
         slackThreadTs: effectiveThreadTs,
         reactions: message.reactions,
-      } as unknown as Memory["metadata"],
+      } satisfies Memory["metadata"],
       createdAt: this.parseSlackTimestamp(message.ts),
     };
   }

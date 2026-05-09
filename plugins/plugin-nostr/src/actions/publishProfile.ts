@@ -95,12 +95,6 @@ export const publishProfile: Action = {
     const requestedAccountId = normalizeNostrAccountId(
       readNostrAccountId(_options, message.content) ?? nostrService.getAccountId(runtime)
     );
-    if (requestedAccountId !== nostrService.getAccountId(runtime)) {
-      return {
-        success: false,
-        error: `Nostr account '${requestedAccountId}' is not available`,
-      };
-    }
 
     // Get or compose state
     const currentState = state ?? (await runtime.composeState(message));
@@ -149,7 +143,10 @@ export const publishProfile: Action = {
 
     // Publish profile
     const timeoutMs = NOSTR_PROFILE_ACTION_TIMEOUT_MS;
-    const result = await nostrService.publishProfile(profileInfo);
+    const result = await nostrService.publishProfile({
+      ...profileInfo,
+      accountId: requestedAccountId,
+    } as NostrProfile & { accountId: string });
 
     if (!result.success) {
       if (callback) {

@@ -130,8 +130,7 @@ export class SecretsService extends Service {
 		}
 
 		const isSandboxMode = Boolean(
-			this.runtime &&
-				(this.runtime as unknown as Record<string, unknown>).sandboxMode,
+			this.runtime && "sandboxMode" in this.runtime && this.runtime.sandboxMode,
 		);
 		this.mirrorSecretsToProcessEnv =
 			!isSandboxMode &&

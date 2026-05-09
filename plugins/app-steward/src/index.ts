@@ -1,8 +1,6 @@
-export * from "@elizaos/plugin-wallet/lib/server-wallet-trade";
 export * from "./ApprovalQueue";
 export * from "./api/tx-service";
 export * from "./api/wallet-dex-prices";
-export * from "./browser-workspace-wallet";
 export * from "./chain-utils";
 export { stewardPlugin } from "./plugin";
 export {
@@ -50,8 +48,8 @@ export {
   type PersistedStewardCredentials,
   saveStewardCredentials,
 } from "./services/steward-credentials";
+export * from "./services/steward-evm-account";
 export * from "./services/steward-evm-bridge";
-export * from "./services/steward-sidecar";
 export * from "./services/steward-wallet";
 export * from "./TransactionHistory";
 export * from "./types";

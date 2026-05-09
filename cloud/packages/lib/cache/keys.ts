@@ -173,18 +173,6 @@ export const CacheKeys = {
     pattern: () => `affiliate:*`,
   },
   /**
-   * N8N Workflow cache keys
-   * Used for caching workflow lists to reduce DB load
-   */
-  n8nWorkflows: {
-    /** Cache workflow list by org and filter options */
-    list: (orgId: string, filterHash: string) => `n8n:workflows:${orgId}:${filterHash}:v1`,
-    /** Cache single workflow by ID */
-    workflow: (workflowId: string) => `n8n:workflow:${workflowId}:v1`,
-    /** Pattern for invalidating all workflow cache for an org */
-    orgPattern: (orgId: string) => `n8n:workflows:${orgId}:*`,
-  },
-  /**
    * SIWE (Sign-In With Ethereum) nonce cache.
    * Single-use nonces stored by value; consumed on verify.
    */
@@ -328,14 +316,6 @@ export const CacheTTL = {
   },
   affiliate: {
     data: 3600, // 1 hour - affiliate codes and links rarely change
-  },
-  /**
-   * N8N Workflow cache TTLs
-   * Moderate TTLs since workflows change on user action
-   */
-  n8nWorkflows: {
-    list: 60, // 1 minute - workflow list
-    workflow: 120, // 2 minutes - single workflow details
   },
   walletAuth: {
     user: 30, // 30 seconds - avoid DB upsert on every wallet-authenticated request

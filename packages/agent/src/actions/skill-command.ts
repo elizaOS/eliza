@@ -17,6 +17,7 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  Service,
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
@@ -83,11 +84,9 @@ export const skillCommandAction: Action = {
 
   validate: async (
     _runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
   ): Promise<boolean> => {
-    const text = (message.content as Record<string, unknown>)?.text;
-    if (typeof text !== "string") return false;
-    return extractSkillSlug(text) !== null;
+    return registeredSkillSlugs.size > 0;
   },
 
   handler: async (
@@ -119,9 +118,9 @@ export const skillCommandAction: Action = {
       });
     }
 
-    const service = runtime.getService(
+    const service = runtime.getService<Service & AgentSkillsServiceLike>(
       "AGENT_SKILLS_SERVICE",
-    ) as unknown as AgentSkillsServiceLike | null;
+    );
 
     if (!service) {
       const text =

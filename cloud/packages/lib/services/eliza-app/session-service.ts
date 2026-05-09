@@ -36,6 +36,15 @@ const SESSION_DURATION_SECONDS = 7 * 24 * 60 * 60; // 7 days
 const JWT_ISSUER = "eliza-app";
 const JWT_AUDIENCE = "eliza-app-users";
 
+function isElizaAppSessionPayload(value: unknown): value is ElizaAppSessionPayload {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { userId?: unknown }).userId === "string" &&
+    typeof (value as { organizationId?: unknown }).organizationId === "string"
+  );
+}
+
 class ElizaAppSessionService {
   private getSecretKey(): Uint8Array {
     return new TextEncoder().encode(elizaAppConfig.jwt.secret);
@@ -88,20 +97,18 @@ class ElizaAppSessionService {
         audience: JWT_AUDIENCE,
       });
 
-      const sessionPayload = payload as unknown as ElizaAppSessionPayload;
-
-      if (!sessionPayload.userId || !sessionPayload.organizationId) {
+      if (!isElizaAppSessionPayload(payload)) {
         logger.warn("[ElizaAppSession] Token missing required fields");
         return null;
       }
 
       return {
-        userId: sessionPayload.userId,
-        organizationId: sessionPayload.organizationId,
-        telegramId: sessionPayload.telegramId,
-        discordId: sessionPayload.discordId,
-        whatsappId: sessionPayload.whatsappId,
-        phoneNumber: sessionPayload.phoneNumber,
+        userId: payload.userId,
+        organizationId: payload.organizationId,
+        telegramId: payload.telegramId,
+        discordId: payload.discordId,
+        whatsappId: payload.whatsappId,
+        phoneNumber: payload.phoneNumber,
       };
     } catch (error) {
       logger.debug("[ElizaAppSession] Token validation failed", { error });

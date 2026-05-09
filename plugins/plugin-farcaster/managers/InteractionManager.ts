@@ -300,7 +300,7 @@ export class FarcasterInteractionManager implements IInteractionProcessor {
             memory: newMemory,
             cast: currentCast,
             source: FARCASTER_SOURCE,
-            accountId: this.getAccountId(),
+            accountId: self.getAccountId(),
           } as EventPayload
         );
       }

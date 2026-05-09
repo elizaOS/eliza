@@ -66,7 +66,7 @@ function makeRuntime(connectors: MessageConnector[]): IAgentRuntime {
 			name: "general",
 			metadata: { threadTs: "1700000000.000100" },
 		})),
-	} as unknown as IAgentRuntime;
+	} as IAgentRuntime;
 }
 
 describe("platform context providers", () => {

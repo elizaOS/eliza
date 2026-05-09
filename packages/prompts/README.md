@@ -1,60 +1,50 @@
 # @elizaos/prompts
 
-Shared prompt templates for elizaOS across TypeScript, Python, and Rust runtimes.
+Shared prompt templates and action specs for elizaOS.
 
 ## Overview
 
-This package provides a single source of truth for all prompt templates used by elizaOS agents. Prompts are stored as `.txt` files and generated into native formats for each language.
+This package is the single source of truth for prompt templates used by the runtime. Prompts are authored directly as TypeScript modules under `src/` and re-exported from `src/index.ts`.
 
 ## Structure
 
 ```
 packages/prompts/
-├── prompts/           # Source prompt templates (.txt files)
-│   ├── reply.txt
-│   ├── choose_option.txt
-│   ├── image_generation.txt
+├── src/              # TypeScript prompt template modules (source of truth)
+│   ├── reply.ts
+│   ├── choose_option.ts
+│   ├── image_generation.ts
 │   └── ...
-├── scripts/           # Build scripts
-│   └── generate.js    # Generates native code from prompts
-├── dist/              # Generated output
-│   ├── typescript/    # TypeScript exports
-│   ├── python/        # Python module
-│   └── rust/          # Rust source
-└── package.json
+├── specs/            # Canonical merged action/provider specs (JSON) + generated plugins.generated.json
+└── scripts/          # Spec + docs generators
+    ├── generate-action-docs.js
+    ├── generate-plugin-action-spec.js
+    ├── prompt-compression.js
+    └── check-secrets.js
 ```
 
 ## Template Syntax
 
-All prompts use **Handlebars-style** template variables:
+Prompts use Handlebars-style variables:
 
-- `{{variableName}}` - Simple variable substitution
-- `{{#each items}}...{{/each}}` - Iteration over arrays
-- `{{#if condition}}...{{/if}}` - Conditional blocks
+- `{{variableName}}` - simple variable substitution
+- `{{#each items}}...{{/each}}` - iteration
+- `{{#if condition}}...{{/if}}` - conditional
 
-### Variable Naming Convention
+Use camelCase for variables (`{{agentName}}`, `{{providers}}`, `{{recentMessages}}`).
 
-Use camelCase for all template variables to ensure consistency across languages:
+## Plugin-local `prompts/*.json` (under `plugins/**`)
 
-- `{{agentName}}` - The agent's name
-- `{{providers}}` - Provider context
-- `{{recentMessages}}` - Recent conversation messages
+Some plugins keep **hand-edited** `actions.json` / `evaluators.json` / `providers.json` next to their source. Those files feed **per-plugin codegen** (for example `generated/specs/spec-helpers.ts` via each plugin’s own workflow). They are **not** inputs to `scripts/generate-plugin-action-spec.js`, which instead scans `plugins/**/*.ts` for `export const …: Action` blocks and writes `specs/actions/plugins.generated.json`.
 
 ## Building
 
 ```bash
-# Build all targets
-npm run build
-
-# Build specific target
-npm run build:typescript
-npm run build:python
-npm run build:rust
+# Generate plugin action spec + action docs
+bun run build
 ```
 
 ## Usage
-
-### TypeScript
 
 ```typescript
 import { REPLY_TEMPLATE, CHOOSE_OPTION_TEMPLATE } from "@elizaos/prompts";
@@ -65,76 +55,29 @@ const prompt = composePrompt({
 });
 ```
 
-### Python
-
-```python
-from elizaos.prompts import REPLY_TEMPLATE, CHOOSE_OPTION_TEMPLATE
-
-prompt = compose_prompt(state={'agentName': 'Alice'}, template=REPLY_TEMPLATE)
-```
-
-### Rust
-
-```rust
-use elizaos_prompts::{REPLY_TEMPLATE, CHOOSE_OPTION_TEMPLATE};
-
-let prompt = compose_prompt(&state, REPLY_TEMPLATE);
-```
-
 ## Adding New Prompts
 
-1. Create a new `.txt` file in `prompts/` directory
-2. Name the file using snake_case (e.g., `my_new_action.txt`)
-3. Run `npm run build` to generate native code
-4. The prompt will be exported as `MY_NEW_ACTION_TEMPLATE` in all languages
-
-## Plugin Prompts
-
-Plugins can use the same prompt system! See [README-PLUGIN-PROMPTS.md](./README-PLUGIN-PROMPTS.md) for details on how to set up prompts in your plugin.
-
-The `scripts/generate-plugin-prompts.js` utility can be used by any plugin to generate TypeScript, Python, and Rust exports from `.txt` prompt templates.
+1. Create a new `.ts` file in `src/` exporting a `*_TEMPLATE` constant.
+2. Re-export it from `src/index.ts`.
 
 ## Template Guidelines
 
-1. **Start with a task description** - Begin prompts with `# Task:` to clearly state the objective
-2. **Include providers placeholder** - Use `{{providers}}` where provider context should be injected
-3. **Use JSON output format** - Standardize on JSON response format for consistent parsing
-4. **Add clear instructions** - Include explicit instructions for the LLM
-5. **End with output format** - Always specify the expected output format
+1. **Start with a task description** — begin prompts with `# Task:` to state the objective.
+2. **Include providers placeholder** — use `{{providers}}` where provider context should be injected.
+3. **Use JSON output format** — standardize on JSON response format for consistent parsing.
+4. **Add clear instructions** — explicit instructions for the LLM.
+5. **End with output format** — always specify the expected output format.
 
-Example:
+## Security & Privacy
 
-```txt
-# Task: Generate dialog for the character {{agentName}}.
-
-{{providers}}
-
-# Instructions: Write the next message for {{agentName}}.
-
-Respond using JSON format like this:
-thought: Your thought here
-text: Your message here
-
-IMPORTANT: Your response must ONLY contain the JSON object above. No XML or markdown fences.
-```
-
-## Security & Privacy Guidance (SOC2-aligned)
-
-- **Do not embed real secrets** in prompt templates. Prompts are source-controlled and often distributed.
+- **Do not embed real secrets** in prompt templates. Prompts are source-controlled.
 - **Avoid including PII** (emails, phone numbers, addresses, IDs) in templates or examples.
-- Prefer placeholders (e.g., `{{apiKey}}`, `{{userEmail}}`) and ensure the runtime injects only the minimum needed.
+- Prefer placeholders (e.g., `{{apiKey}}`, `{{userEmail}}`) and inject only the minimum needed at runtime.
 
 ### Secret scan
-
-This package includes a conservative scanner that flags prompt templates containing strings that strongly resemble real credentials (or private key material).
-
-Run:
 
 ```bash
 npm run check:secrets
 ```
 
-It scans:
-
-- `packages/prompts/prompts/**/*.txt`
-- `plugins/**/prompts/**/*.txt`
+Scans `packages/prompts/src/**/*.ts`, plugin prompt TS modules (paths matching `prompts/**/*.ts`, `workflow-prompts/**/*.ts`, etc.), and a few explicit files — see `scripts/check-secrets.js`.

@@ -590,6 +590,7 @@ export const formatTimestamp = formatTimestampBase;
  * finishes those surfaces.
  */
 export function parseKeyValueXml<T = Record<string, unknown>>(
+	// audit:allowlist - retained for cloud/ XML evaluators
 	text: string,
 ): T | null {
 	if (!text) return null;
@@ -611,7 +612,7 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 			return null;
 		}
 
-		const firstBlock = findFirstXmlBlock(text);
+		const firstBlock = findFirstXmlBlock(text); // audit:allowlist - helper for parseKeyValueXml
 		if (!firstBlock) {
 			logger.warn({ src: "core:utils" }, "Could not find XML block in text");
 			return null;
@@ -649,6 +650,7 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 }
 
 function findFirstXmlBlock(
+	// audit:allowlist - helper for parseKeyValueXml (legacy XML parser, retained for cloud/)
 	input: string,
 ): { tag: string; content: string } | null {
 	let i = 0;

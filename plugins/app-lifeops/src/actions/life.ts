@@ -1,8 +1,8 @@
-import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
 import {
   extractConversationMetadataFromRoom,
   isPageScopedConversationMetadata,
-} from "@elizaos/agent/api/conversation-metadata";
+  renderGroundedActionReply,
+} from "@elizaos/agent";
 import type {
   Action,
   HandlerOptions,
@@ -78,7 +78,6 @@ import {
   messageText,
   toActionData,
 } from "./lifeops-google-helpers.js";
-import { looksLikeCodingTaskRequest } from "./non-actionable-request.js";
 import { normalizeExplicitTimeZoneToken } from "./timezone-normalization.js";
 
 // ── Types ─────────────────────────────────────────────
@@ -340,10 +339,11 @@ function resolveDeferredLifeDraftReuseMode(args: {
     return "confirm";
   }
 
-  if (
-    args.explicitOperation &&
-    args.explicitOperation !== args.draft.operation
-  ) {
+  const explicitOperation = args.explicitOperation
+    ? String(args.explicitOperation)
+    : undefined;
+  const draftOperation = String(args.draft.operation);
+  if (explicitOperation && explicitOperation !== draftOperation) {
     return null;
   }
 
@@ -400,31 +400,6 @@ function normalizeLifeInputText(value: string): string {
     .replace(/[\u00a0\u1680\u2000-\u200b\u202f\u205f\u3000]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function shouldRouteToRelationshipAction(value: string): boolean {
-  const normalized = normalizeIntentText(value);
-  return (
-    /\bfollow\s+up\s+with\b/u.test(normalized) ||
-    /\bhow\s+long\b[\s\S]*\b(since|last)\b[\s\S]*\b(talked|spoke|called|texted|messaged)\b/u.test(
-      normalized,
-    )
-  );
-}
-
-function shouldRouteToDeviceIntentAction(value: string): boolean {
-  const normalized = normalizeIntentText(value);
-  const asksForReminder =
-    /\b(remind|reminder|routine|alarm|notify|notification|nudge)\b/u.test(
-      normalized,
-    );
-  const targetsDevice =
-    /\bbroadcast\b/u.test(normalized) ||
-    /\ball\s+(?:my\s+)?devices\b/u.test(normalized) ||
-    /\b(?:to|on)\s+(?:my\s+)?(?:mobile|phone|mac|desktop)\b/u.test(
-      normalized,
-    );
-  return asksForReminder && targetsDevice;
 }
 
 function normalizeTitle(value: string): string {
@@ -2000,23 +1975,16 @@ export const lifeAction: Action & {
     "Owner-only personal life-management surface for the LifeOps app. Subactions: create / update / delete a life-item (kind=definition for habit/routine/reminder/alarm/todo, or kind=goal for a long-term aspiration); complete / skip / snooze the next occurrence of a definition; review progress on a goal. Cadence (once / daily / weekly / interval / times_per_day) is parsed from the natural-language intent. Owner profile persistence (phone, escalation rules, reminder preferences) lives in PROFILE; calendar/email/overview queries belong to CALENDAR.",
   descriptionCompressed:
     "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal",
-  contexts: ["tasks", "calendar", "health"],
+  routingHint:
+    'live LifeOps status (todos, tasks, reminders, habits, routines, goals, alarms, "what\'s on my list today") -> LIFE; never answer from provider summaries; one-off dated reminders to call/text someone ("remember to call mom Sunday") also belong here',
+  contexts: ["tasks", "todos", "calendar", "health"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
-    const text = messageText(message);
-    if (looksLikeCodingTaskRequest(text)) {
-      return false;
-    }
-    if (shouldRouteToRelationshipAction(text)) {
-      return false;
-    }
-    if (shouldRouteToDeviceIntentAction(text)) {
-      return false;
-    }
     if (await isForeignPageScope(runtime, message)) {
       return false;
     }
+    return true;
   },
   handler: async (runtime, message, state, options) => {
     // Defense-in-depth: validate() excludes LIFE from planner candidates on
@@ -2278,11 +2246,11 @@ export const lifeAction: Action & {
         let windowPolicy:
           | CreateLifeOpsDefinitionRequest["windowPolicy"]
           | undefined = editingDeferredDefinitionDraft
-          ? ((detailObject(details, "windowPolicy") as unknown as
+          ? ((detailObject(details, "windowPolicy") as
               | CreateLifeOpsDefinitionRequest["windowPolicy"]
               | undefined) ?? deferredDefinitionDraft?.request.windowPolicy)
           : (deferredDefinitionDraft?.request.windowPolicy ??
-            (detailObject(details, "windowPolicy") as unknown as
+            (detailObject(details, "windowPolicy") as
               | CreateLifeOpsDefinitionRequest["windowPolicy"]
               | undefined));
         const explicitPriority = detailNumber(details, "priority");
@@ -2307,10 +2275,8 @@ export const lifeAction: Action & {
         );
 
         // Parameter enhancement fills gaps when structured planner input is incomplete.
-        // Skip when native options.parameters already contain the complete
+        // Skip when options.parameters already contain the complete
         // definition-create shape, or when reusing a confirmed deferred draft.
-        // TODO(native-parameters): delete this extractor once planners supply
-        // title/details.cadence/details.kind consistently.
         let llmPlan: Awaited<
           ReturnType<typeof extractTaskCreatePlanWithLlm>
         > | null = null;
@@ -2528,7 +2494,7 @@ export const lifeAction: Action & {
             metadata: definitionMetadata,
             windowPolicy,
             websiteAccess:
-              (detailObject(details, "websiteAccess") as unknown as
+              (detailObject(details, "websiteAccess") as
                 | CreateLifeOpsDefinitionRequest["websiteAccess"]
                 | undefined) ?? deferredDefinitionDraft?.request.websiteAccess,
           },
@@ -2900,7 +2866,7 @@ export const lifeAction: Action & {
           windowPolicy: detailObject(
             details,
             "windowPolicy",
-          ) as unknown as UpdateLifeOpsDefinitionRequest["windowPolicy"],
+          ) as UpdateLifeOpsDefinitionRequest["windowPolicy"],
           reminderPlan: detailObject(
             details,
             "reminderPlan",
@@ -2989,7 +2955,7 @@ export const lifeAction: Action & {
           description: detailString(details, "description"),
           cadence: normalizeCadenceDetail(
             detailObject(details, "cadence"),
-          ) as unknown as UpdateLifeOpsGoalRequest["cadence"],
+          ) as UpdateLifeOpsGoalRequest["cadence"],
           supportStrategy: detailObject(details, "supportStrategy"),
           successCriteria: detailObject(details, "successCriteria"),
         };

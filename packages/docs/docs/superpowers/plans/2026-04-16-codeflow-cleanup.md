@@ -158,7 +158,7 @@ CLAUDE.md
 bun.lock
 package-lock.json
 yarn.lock
-pnpm-lock.yaml
+bun.lock
 
 # Build & generated output
 apps/**/dist/**

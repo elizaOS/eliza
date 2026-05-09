@@ -155,7 +155,9 @@ export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
 
 export function getSmallModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, "OPENAI_SMALL_MODEL") ?? getSetting(runtime, "SMALL_MODEL") ?? "gpt-5-mini"
+    getSetting(runtime, "OPENAI_SMALL_MODEL") ??
+    getSetting(runtime, "SMALL_MODEL") ??
+    "gpt-5.4-mini"
   );
 }
 
@@ -193,7 +195,7 @@ export function getResponseHandlerModel(runtime: IAgentRuntime): string {
     getSetting(runtime, "OPENAI_SHOULD_RESPOND_MODEL") ??
     getSetting(runtime, "RESPONSE_HANDLER_MODEL") ??
     getSetting(runtime, "SHOULD_RESPOND_MODEL") ??
-    getNanoModel(runtime)
+    getSmallModel(runtime)
   );
 }
 

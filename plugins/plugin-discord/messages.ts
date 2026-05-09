@@ -5,6 +5,7 @@ import {
 	ContentType,
 	checkPairingAllowed,
 	createUniqueUuid,
+	type EventPayload,
 	EventType,
 	type FetchedDocumentUrl as FetchedKnowledgeUrl,
 	fetchDocumentFromUrl,
@@ -54,6 +55,8 @@ import {
 	DiscordEventTypes,
 	type DiscordSettings,
 	type IDiscordService,
+	type JsonObject,
+	type JsonValue,
 } from "./types";
 import { createTypingController } from "./typing";
 import {
@@ -78,6 +81,35 @@ export function resolveGenerationTimeoutMs(
 		return 120_000;
 	}
 	return parsed > 0 ? Math.max(30_000, parsed) : null;
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+	if (
+		value === null ||
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		return true;
+	}
+	if (Array.isArray(value)) {
+		return value.every(isJsonValue);
+	}
+	if (typeof value === "object" && value !== null) {
+		return Object.values(value).every(isJsonValue);
+	}
+	return false;
+}
+
+function compactJsonObject(record: Record<string, unknown>): JsonObject {
+	const json: JsonObject = {};
+	for (const [key, value] of Object.entries(record)) {
+		if (value === undefined) continue;
+		if (isJsonValue(value)) {
+			json[key] = value;
+		}
+	}
+	return json;
 }
 
 function escapeRegex(value: string): string {
@@ -597,30 +629,40 @@ export class MessageManager {
 										: "none",
 						},
 					},
-					extraMetadata: appendCoalescedDiscordMetadata(message, {
-						// Reply attribution for cross-agent filtering
-						// WHY: When user replies to another bot's message, we need to know
-						// so other agents can ignore it (only the replied-to agent should respond)
-						replyToAuthor: message.mentions.repliedUser
-							? {
-									id: message.mentions.repliedUser.id,
-									displayName:
-										message.mentions.repliedUser.globalName ??
-										message.mentions.repliedUser.username,
-									username: message.mentions.repliedUser.username,
-									isBot: message.mentions.repliedUser.bot,
-								}
-							: undefined,
-						replyToMessageId: message.reference?.messageId
-							? createUniqueUuid(this.runtime, message.reference.messageId)
-							: undefined,
-						replyToExternalMessageId: message.reference?.messageId,
-						replyToSenderId: message.mentions.repliedUser?.id,
-						replyToSenderName:
-							message.mentions.repliedUser?.globalName ??
-							message.mentions.repliedUser?.username,
-						replyToSenderUserName: message.mentions.repliedUser?.username,
-					}),
+					extraMetadata: compactJsonObject(
+						appendCoalescedDiscordMetadata(message, {
+							// Reply attribution for cross-agent filtering
+							// WHY: When user replies to another bot's message, we need to know
+							// so other agents can ignore it (only the replied-to agent should respond)
+							...(message.mentions.repliedUser
+								? {
+										replyToAuthor: {
+											id: message.mentions.repliedUser.id,
+											displayName:
+												message.mentions.repliedUser.globalName ??
+												message.mentions.repliedUser.username,
+											username: message.mentions.repliedUser.username,
+											isBot: message.mentions.repliedUser.bot,
+										},
+										replyToSenderId: message.mentions.repliedUser.id,
+										replyToSenderName:
+											message.mentions.repliedUser.globalName ??
+											message.mentions.repliedUser.username,
+										replyToSenderUserName:
+											message.mentions.repliedUser.username,
+									}
+								: {}),
+							...(message.reference?.messageId
+								? {
+										replyToMessageId: createUniqueUuid(
+											this.runtime,
+											message.reference.messageId,
+										),
+										replyToExternalMessageId: message.reference.messageId,
+									}
+								: {}),
+						}),
+					),
 				},
 			);
 
@@ -652,7 +694,7 @@ export class MessageManager {
 				worldId: createUniqueUuid(this.runtime, messageServerId ?? roomId),
 				worldName: message.guild?.name,
 				// Preserve the raw Discord user id in source metadata for role and allowlist checks.
-				userId: message.author.id as unknown as UUID,
+				userId: message.author.id as UUID,
 				metadata: {
 					...buildDiscordWorldMetadata(
 						this.runtime,
@@ -1102,18 +1144,23 @@ export class MessageManager {
 							{ src: "plugin:discord", agentId: this.runtime.agentId },
 							"Using event-based message handling",
 						);
+						const payload: EventPayload & {
+							message: Memory;
+							callback: HandlerCallback;
+							accountId: string;
+						} = {
+							runtime: this.runtime,
+							message: newMessage,
+							callback,
+							source: "discord",
+							accountId: this.accountId,
+						};
 						await this.runtime.emitEvent(
 							[
 								DiscordEventTypes.MESSAGE_RECEIVED,
 								EventType.MESSAGE_RECEIVED,
 							] as string[],
-							{
-								runtime: this.runtime,
-								message: newMessage,
-								callback,
-								source: "discord",
-								accountId: this.accountId,
-							} as any,
+							payload,
 						);
 					}
 				})();

@@ -20,6 +20,7 @@ import { createTwitchConnectorAccountProvider } from "./connector-account-provid
 
 // Import service for plugin
 import { TwitchService } from "./service.js";
+import { TwitchWorkflowCredentialProvider } from "./workflow-credential-provider.js";
 
 /**
  * Twitch plugin definition.
@@ -29,13 +30,20 @@ const twitchPlugin: Plugin = {
   description:
     "Twitch chat integration plugin for ElizaOS with real-time messaging",
 
-  services: [TwitchService],
+  services: [TwitchService, TwitchWorkflowCredentialProvider],
 
   actions: [],
 
   providers: [],
 
   tests: [],
+
+  // Self-declared auto-enable: activate when the "twitch" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["twitch"],
+  },
 
   init: async (
     _config: Record<string, string>,

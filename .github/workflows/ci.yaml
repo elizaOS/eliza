@@ -18,7 +18,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
+      # Cerebras is the default LLM for live e2e suites; OPENAI_* aliases are
+      # auto-applied by scripts/run-all-tests.mjs when CEREBRAS_API_KEY is set.
+      # Tests gated on a missing key skip cleanly with a yellow warning rather
+      # than failing the workflow (see test/vitest/fail-on-silent-skip.setup.ts).
+      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+      XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
       TURBO_REMOTE_ONLY: true

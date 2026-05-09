@@ -8,7 +8,7 @@ import {
 } from "../lifeops/screen-context.js";
 import { LifeOpsService } from "../lifeops/service.js";
 
-export { resolveOwnerEntityId } from "@elizaos/agent/runtime/owner-entity";
+export { resolveOwnerEntityId } from "@elizaos/agent";
 
 import {
   analyzeMessages,
@@ -26,6 +26,10 @@ import type {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
 }
 
 // ── Constants ─────────────────────────────────────────
@@ -343,7 +347,26 @@ export function readFiredLogFromMetadata(
       checkedGoalIds: [],
     };
   }
-  return log as unknown as FiredActionsLog;
+  return {
+    date: log.date,
+    gmFiredAt: typeof log.gmFiredAt === "number" ? log.gmFiredAt : undefined,
+    gnFiredAt: typeof log.gnFiredAt === "number" ? log.gnFiredAt : undefined,
+    seedingOfferedAt:
+      typeof log.seedingOfferedAt === "number"
+        ? log.seedingOfferedAt
+        : undefined,
+    socialOveruseCheckedAt:
+      typeof log.socialOveruseCheckedAt === "number"
+        ? log.socialOveruseCheckedAt
+        : undefined,
+    nudgedOccurrenceIds: isStringArray(log.nudgedOccurrenceIds)
+      ? log.nudgedOccurrenceIds
+      : [],
+    nudgedCalendarEventIds: isStringArray(log.nudgedCalendarEventIds)
+      ? log.nudgedCalendarEventIds
+      : [],
+    checkedGoalIds: isStringArray(log.checkedGoalIds) ? log.checkedGoalIds : [],
+  };
 }
 
 export function profileNeedsRebuild(

@@ -7,7 +7,7 @@ import { ROBLOX_SERVICE_NAME } from "../types";
 import { hasRobloxEnabled, validateRobloxConfig } from "../utils/config";
 
 function createMockRuntime(settings: Record<string, string> = {}): IAgentRuntime {
-  return {
+  const runtime = {
     agentId: "test-agent-00000000" as UUID,
     getSetting: vi.fn((key: string) => settings[key]),
     getService: vi.fn(() => null),
@@ -19,7 +19,9 @@ function createMockRuntime(settings: Record<string, string> = {}): IAgentRuntime
       success: vi.fn(),
     },
     character: { name: "TestAgent" },
-  } as unknown as IAgentRuntime;
+  };
+
+  return runtime as IAgentRuntime;
 }
 
 function createMockMemory(text: string): Memory {

@@ -142,6 +142,18 @@ if (!fs.existsSync(liveTestPath) || !fs.existsSync(vitestConfigPath)) {
   process.exit(0);
 }
 
+if (!pluginId) {
+  // The plugin-lifecycle harness lifts ALL workspace plugins when no filter
+  // is set, which deadlocks the child runtime under Cerebras-only env (no
+  // embeddings, no Discord/Telegram tokens, etc.). When we can't derive a
+  // plugin id from the cwd, skip with a yellow note instead of timing out.
+  process.env.SKIP_REASON ||=
+    "plugin-live-smoke: could not resolve plugin id from cwd " +
+    `${cwd}; add the plugin to plugins.json or run from its package root`;
+  console.log(`[plugin-live-smoke] [33m${process.env.SKIP_REASON}[0m`);
+  process.exit(0);
+}
+
 const result = spawnSync(
   process.env.npm_execpath || process.env.BUN || "bun",
   [

@@ -23,6 +23,15 @@ function isSettingEntry(value: unknown): value is Setting {
 	);
 }
 
+function worldSettingEntries(
+	worldSettings: WorldSettings,
+): Array<[string, Setting]> {
+	return Object.entries(worldSettings).filter(
+		(entry): entry is [string, Setting] =>
+			entry[0] !== "settings" && isSettingEntry(entry[1]),
+	);
+}
+
 const formatSettingValue = (
 	setting: Setting,
 	isOnboarding: boolean,
@@ -39,19 +48,15 @@ function generateStatusMessage(
 	state?: State,
 ): string {
 	try {
-		const formattedSettings = Object.entries(worldSettings)
+		const settingsByKey = Object.fromEntries(
+			worldSettingEntries(worldSettings),
+		);
+		const formattedSettings = Object.entries(settingsByKey)
 			.map(([key, setting]) => {
-				if (key === "settings" || !isSettingEntry(setting)) return null;
-
 				const description = setting.description || "";
 				const usageDescription = setting.usageDescription || "";
 
-				if (
-					setting.visibleIf &&
-					!setting.visibleIf(
-						worldSettings as unknown as Record<string, Setting>,
-					)
-				) {
+				if (setting.visibleIf && !setting.visibleIf(settingsByKey)) {
 					return null;
 				}
 

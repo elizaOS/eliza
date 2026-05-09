@@ -6,7 +6,10 @@
     "dev": "next dev --port 3012",
     "build": "next build",
     "start": "next start --port 3012",
-    "lint": "next lint"
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
     "@fal-ai/client": "^1.7.0",
@@ -30,7 +33,6 @@
     "tailwindcss": "^4.0.0",
     "postcss": "^8.4.49",
     "autoprefixer": "^10.4.20",
-    "eslint": "^10.0.0",
-    "eslint-config-next": "^15.1.4"
+    "@biomejs/biome": "^2.4.14"
   }
 }

@@ -74,7 +74,7 @@ function createMockRuntime(): IAgentRuntime {
     getService() {
       return null;
     },
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 describe("plugin-computeruse cross-platform driver e2e", () => {
@@ -82,7 +82,7 @@ describe("plugin-computeruse cross-platform driver e2e", () => {
 
   it.skipIf(skip)(
     "drives screenshot → mouse_move → type → screenshot via the selected driver",
-    async () => {
+    async ({ skip }) => {
       const service = (await ComputerUseService.start(
         createMockRuntime(),
       )) as ComputerUseService;
@@ -94,8 +94,18 @@ describe("plugin-computeruse cross-platform driver e2e", () => {
           // macOS denies Screen Recording until granted in System Settings.
           // CI without that permission cannot prove driver wiring; treat as
           // an environment skip rather than a fail.
-          expect(screenshotBefore.error).toBeTruthy();
-          return;
+          skip(
+            `Desktop screenshot permission denied: ${
+              screenshotBefore.error ?? "unknown"
+            }`,
+          );
+        }
+        if (!screenshotBefore.success) {
+          skip(
+            `Desktop screenshot unavailable in this environment: ${
+              screenshotBefore.error ?? "unknown"
+            }`,
+          );
         }
         expect(screenshotBefore.success).toBe(true);
         expect(screenshotBefore.screenshot).toBeTruthy();

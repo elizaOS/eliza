@@ -235,8 +235,15 @@ test("connector modes keep developer credentials as the default path", async ({
   await expandConnector(page, "telegram");
   const telegramSection = page.getByTestId("connector-section-telegram");
   await expect(
-    telegramSection.getByTestId("connector-mode-telegram-bot"),
+    telegramSection.getByTestId("connector-mode-telegram-plugin-managed"),
   ).toHaveClass(/border-accent/);
+  await expect(
+    telegramSection.getByText(
+      "Manage Telegram bot accounts through @elizaos/plugin-telegram account inventory.",
+    ),
+  ).toBeVisible();
+
+  await telegramSection.getByTestId("connector-mode-telegram-bot").click();
   await expect(
     telegramSection.getByText("Connect a Telegram Bot"),
   ).toBeVisible();

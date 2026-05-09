@@ -8,7 +8,7 @@ import type {
 } from "@elizaos/core";
 import { addHeader, ChannelType, logger } from "@elizaos/core";
 
-/** Legacy grouped shape; `Character.messageExamples` is `MessageExample[][]`. */
+/** Alternate grouped shape used by some editors (`examples[]`). `Character.messageExamples` is `MessageExample[][]`. */
 type MessageExampleGroup = { examples: MessageExample[] };
 
 const BIO_LIMIT = 10;

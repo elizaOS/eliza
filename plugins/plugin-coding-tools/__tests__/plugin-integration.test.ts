@@ -19,9 +19,7 @@ import codingToolsPlugin, {
 import * as pluginModule from "../src/index.js";
 
 const EXPECTED_ACTIONS = [
-  "READ",
-  "WRITE",
-  "EDIT",
+  "FILE",
   "BASH",
   "GREP",
   "GLOB",
@@ -38,10 +36,21 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     expect(codingToolsPlugin.description).toBeTruthy();
   });
 
-  it("registers exactly the 11 expected actions", () => {
+  it("registers exactly the 9 expected top-level actions", () => {
     const actions = codingToolsPlugin.actions ?? [];
     const names = actions.map((a) => a.name).sort();
     expect(names).toEqual([...EXPECTED_ACTIONS].sort());
+  });
+
+  it("routes file operations through hidden READ/WRITE/EDIT sub-actions", () => {
+    const fileAction = (codingToolsPlugin.actions ?? []).find(
+      (action) => action.name === "FILE",
+    );
+    expect(fileAction).toBeTruthy();
+    const subActionNames = (fileAction?.subActions ?? []).map((action) =>
+      typeof action === "string" ? action : action.name,
+    );
+    expect(subActionNames).toEqual(["READ", "WRITE", "EDIT"]);
   });
 
   it("each action has the required fields", () => {
@@ -90,8 +99,8 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
       getSetting: (key: string) =>
         key === "CODING_TOOLS_DISABLE" ? true : undefined,
       getService: () => null,
-    } as unknown as IAgentRuntime;
-    const message = { roomId: "r" } as unknown as Memory;
+    } as IAgentRuntime;
+    const message = { roomId: "r" } as Memory;
     for (const action of codingToolsPlugin.actions ?? []) {
       const ok = await action.validate!(runtime, message);
       expect(ok, action.name).toBe(true);
@@ -125,7 +134,7 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
       agentId: "00000000-0000-0000-0000-000000000000" as UUID,
       getSetting: (_key: string) => undefined,
       getService: (key: string) => services.get(key) ?? null,
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
 
     const fileState = await FileStateService.start(runtime);
     const sandbox = await SandboxService.start(runtime);
@@ -154,13 +163,18 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   });
 
   function findAction(name: string) {
-    const a = (codingToolsPlugin.actions ?? []).find((x) => x.name === name);
+    const actions = codingToolsPlugin.actions ?? [];
+    const fileAction = actions.find((x) => x.name === "FILE");
+    const fileSubActions = (fileAction?.subActions ?? []).flatMap((entry) =>
+      typeof entry === "string" ? [] : [entry],
+    );
+    const a = [...actions, ...fileSubActions].find((x) => x.name === name);
     if (!a) throw new Error(`action ${name} not found`);
     return a;
   }
 
   function makeMessage(): Memory {
-    return { roomId: "smoke-room" } as unknown as Memory;
+    return { roomId: "smoke-room" } as Memory;
   }
 
   it("READ returns a known file's contents", async () => {
@@ -225,7 +239,7 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
       ];
       const sys = candidates.find((p) => fs2.existsSync(p));
       if (!sys) return;
-      (rg as unknown as { rgPath: string }).rgPath = sys;
+      (rg as { rgPath: string }).rgPath = sys;
     }
     const action = findAction("GREP");
     const result = await action.handler!(runtime, makeMessage(), undefined, {

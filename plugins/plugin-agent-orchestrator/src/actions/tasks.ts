@@ -45,6 +45,7 @@ import type {
   CodingWorkspaceService,
   WorkspaceResult,
 } from "../services/workspace-service.js";
+import { getCodingWorkspaceService } from "../services/workspace-service.js";
 import {
   callbackText,
   contentRecord,
@@ -59,7 +60,6 @@ import {
   labelFor,
   listSessionsWithin,
   logger,
-  looksLikeTaskAgentRequest,
   messageText,
   newestSession,
   paramsRecord,
@@ -138,15 +138,6 @@ function readOp(
   return (SUPPORTED_OPS as readonly string[]).includes(normalized)
     ? (normalized as TaskOp)
     : null;
-}
-
-function looksLikeLifeOpsRequest(text: string | undefined | null): boolean {
-  if (!text) return false;
-  const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
-  if (normalized.length === 0) return false;
-  return /^(?:@\S+\s+)?(?:add|set|schedule|remind|track|log)\b[^.!?]{0,40}\b(todo|habit|reminder|goal|routine|alarm|chore|tasks?\s+for\s+(?:today|tomorrow|this\s+week))\b/i.test(
-    normalized,
-  );
 }
 
 // ── op: create (CREATE_AGENT_TASK) ──────────────────────────────────────
@@ -308,11 +299,13 @@ async function runCreate(
     const agentType = parsed.agentType as AgentType;
     const label = baseLabel ?? labelFrom(parsed.task, index);
     const msg = failureMessage(outcome.reason);
-    logger(runtime).error?.("TASKS:create launch failed", {
-      error: msg,
-      agentType,
-      workdir,
-    });
+    logger(runtime).error?.(
+      `TASKS:create launch failed: ${JSON.stringify({
+        error: msg,
+        agentType,
+        workdir,
+      })}`,
+    );
     results.push({
       sessionId: "",
       id: "",
@@ -401,11 +394,13 @@ async function runSpawnAgent(
     });
 
     setCurrentSession(state, session);
-    logger(runtime).info?.("Spawned acpx task agent", {
-      sessionId: session.sessionId,
-      agentType: session.agentType,
-      workdir: session.workdir,
-    });
+    logger(runtime).info?.(
+      `Spawned acpx task agent: ${JSON.stringify({
+        sessionId: session.sessionId,
+        agentType: session.agentType,
+        workdir: session.workdir,
+      })}`,
+    );
 
     return {
       success: true,
@@ -532,13 +527,12 @@ async function runStopAgent(
       );
       if (state)
         (
-          state as unknown as {
+          state as {
             codingSession?: unknown;
             codingSessions?: unknown;
           }
         ).codingSession = undefined;
-      if (state)
-        (state as unknown as { codingSessions?: unknown }).codingSessions = [];
+      if (state) (state as { codingSessions?: unknown }).codingSessions = [];
       const text = `Stopped ${sessions.length} sessions`;
       await callbackText(callback, text);
       return { success: true, text, data: { stoppedCount: sessions.length } };
@@ -546,8 +540,8 @@ async function runStopAgent(
 
     const requestedId =
       pickString(params, content, "sessionId") ??
-      (state as unknown as { codingSession?: { id?: string } } | undefined)
-        ?.codingSession?.id;
+      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
+        ?.id;
     const target = requestedId
       ? await Promise.resolve(service.getSession(requestedId))
       : newestSession(sessions);
@@ -564,11 +558,10 @@ async function runStopAgent(
 
     await service.stopSession(target.id);
     if (
-      (state as unknown as { codingSession?: { id?: string } } | undefined)
-        ?.codingSession?.id === target.id
+      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
+        ?.id === target.id
     ) {
-      (state as unknown as { codingSession?: unknown }).codingSession =
-        undefined;
+      (state as { codingSession?: unknown }).codingSession = undefined;
     }
     await callbackText(callback, `Stopped task-agent session ${target.id}.`);
     return {
@@ -672,8 +665,8 @@ async function runCancel(
     const threadId = pickString(params, content, "threadId");
     const sessionId =
       pickString(params, content, "sessionId") ??
-      (state as unknown as { codingSession?: { id?: string } } | undefined)
-        ?.codingSession?.id;
+      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
+        ?.id;
     const search = pickString(params, content, "search")?.toLowerCase();
     const sessions = await Promise.resolve(service.listSessions());
 
@@ -1108,13 +1101,9 @@ async function runControl(
   }
 
   const text = typeof content.text === "string" ? content.text : "";
-  // Accept either `action` (canonical) or `operation` (legacy TASK_CONTROL).
   const action = inferControlAction(
     text,
-    textValue(params.action) ??
-      textValue(content.action) ??
-      textValue(params.operation) ??
-      textValue(content.operation),
+    textValue(params.action) ?? textValue(content.action),
   );
 
   if (!action) {
@@ -1336,9 +1325,7 @@ async function runProvisionWorkspace(
     return { success: false, error: "FORBIDDEN", text: access.reason };
   }
 
-  const workspaceService = runtime.getService(
-    "CODING_WORKSPACE_SERVICE",
-  ) as unknown as CodingWorkspaceService | undefined;
+  const workspaceService = getCodingWorkspaceService(runtime);
   if (!workspaceService) {
     if (callback)
       await callback({ text: "Workspace Service is not available." });
@@ -1465,9 +1452,7 @@ async function runSubmitWorkspace(
     return { success: false, error: "FORBIDDEN", text: access.reason };
   }
 
-  const workspaceService = runtime.getService(
-    "CODING_WORKSPACE_SERVICE",
-  ) as unknown as CodingWorkspaceService | undefined;
+  const workspaceService = getCodingWorkspaceService(runtime);
   if (!workspaceService) {
     if (callback)
       await callback({ text: "Workspace Service is not available." });
@@ -1875,37 +1860,34 @@ async function runManageIssues(
     return { success: false, error: "FORBIDDEN", text: access.reason };
   }
 
-  const workspaceService = runtime.getService(
-    "CODING_WORKSPACE_SERVICE",
-  ) as unknown as CodingWorkspaceService | undefined;
+  const workspaceService = getCodingWorkspaceService(runtime);
   if (!workspaceService) {
     if (callback)
       await callback({ text: "Workspace Service is not available." });
     return { success: false, error: "SERVICE_UNAVAILABLE" };
   }
 
-  workspaceService.setAuthPromptCallback((prompt) => {
-    const delivered =
-      getCoordinator(runtime)?.sendChatMessage(
-        formatGitHubAuthPrompt(prompt),
-        "github-auth",
-      ) === true;
-    if (!delivered) {
-      coreLogger.warn(
-        "[TASKS:manage_issues] GitHub OAuth prompt requires immediate delivery, but the coordinator chat bridge is not wired",
-      );
-    }
-    return delivered;
-  });
+  workspaceService.setAuthPromptCallback(
+    (prompt: Parameters<AuthPromptCallback>[0]) => {
+      const delivered =
+        getCoordinator(runtime)?.sendChatMessage(
+          formatGitHubAuthPrompt(prompt),
+          "github-auth",
+        ) === true;
+      if (!delivered) {
+        coreLogger.warn(
+          "[TASKS:manage_issues] GitHub OAuth prompt requires immediate delivery, but the coordinator chat bridge is not wired",
+        );
+      }
+      return delivered;
+    },
+  );
 
   const text = ((content.text as string) ?? "").slice(0, ISSUE_BODY_MAX_CHARS);
 
-  // Issue sub-action lives under `action` (canonical) or `operation` (legacy MANAGE_ISSUES).
   const action =
     (params.action as string) ??
     (content.action as string) ??
-    (params.operation as string) ??
-    (content.operation as string) ??
     inferIssueAction(text);
   const repo = (params.repo as string) ?? (content.repo as string);
 
@@ -2478,10 +2460,7 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
       ])
     )
       return true;
-    const text = messageText(message);
-    if (!text.trim()) return true;
-    if (looksLikeLifeOpsRequest(text)) return false;
-    return looksLikeTaskAgentRequest(text);
+    return true;
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -2564,8 +2543,7 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
   },
 };
 
-// Back-compat alias exports — point at the consolidated parent so old imports
-// of e.g. `createTaskAction` keep resolving without breaking call sites.
+// Operation-specific handles resolve to the consolidated TASKS action.
 export const createTaskAction = tasksAction;
 export const startCodingTaskAction = tasksAction;
 export const spawnAgentAction = tasksAction;

@@ -20,10 +20,10 @@ import type {
   Route,
   RouteRequest,
   RouteResponse,
-} from '@elizaos/core';
-import { logger } from '@elizaos/core';
+} from "@elizaos/core";
+import { logger } from "@elizaos/core";
 
-const TELEGRAM_API_BASE = 'https://api.telegram.org';
+const TELEGRAM_API_BASE = "https://api.telegram.org";
 
 interface TelegramBotInfo {
   id: number;
@@ -49,8 +49,25 @@ interface ConnectorSetupService {
   }): boolean;
 }
 
+function isConnectorSetupService(
+  service: unknown,
+): service is ConnectorSetupService {
+  if (!service || typeof service !== "object") {
+    return false;
+  }
+  const candidate = service as Partial<ConnectorSetupService>;
+  return (
+    typeof candidate.getConfig === "function" &&
+    typeof candidate.updateConfig === "function" &&
+    typeof candidate.persistConfig === "function" &&
+    typeof candidate.registerEscalationChannel === "function" &&
+    typeof candidate.setOwnerContact === "function"
+  );
+}
+
 function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
-  return runtime.getService('connector-setup') as ConnectorSetupService | null;
+  const service = runtime.getService("connector-setup");
+  return isConnectorSetupService(service) ? service : null;
 }
 
 async function readJsonBody<T>(req: RouteRequest): Promise<T | null> {
@@ -64,10 +81,10 @@ async function handleValidateToken(
   runtime: IAgentRuntime,
 ): Promise<void> {
   const body = await readJsonBody<{ token?: string }>(req);
-  const token = typeof body?.token === 'string' ? body.token.trim() : '';
+  const token = typeof body?.token === "string" ? body.token.trim() : "";
 
   if (!token) {
-    res.status(200).json({ ok: false, error: 'token is required' });
+    res.status(200).json({ ok: false, error: "token is required" });
     return;
   }
 
@@ -75,7 +92,7 @@ async function handleValidateToken(
   if (!/^\d+:[A-Za-z0-9_-]{30,}$/.test(token)) {
     res.status(200).json({
       ok: false,
-      error: 'Token format invalid. Expected format: 123456:ABC-DEF...',
+      error: "Token format invalid. Expected format: 123456:ABC-DEF...",
     });
     return;
   }
@@ -100,7 +117,7 @@ async function handleValidateToken(
     if (!data.ok || !data.result) {
       res.status(200).json({
         ok: false,
-        error: 'Telegram API returned unexpected response',
+        error: "Telegram API returned unexpected response",
       });
       return;
     }
@@ -117,7 +134,7 @@ async function handleValidateToken(
           string,
           Record<string, unknown>
         >;
-        if (!connectors.telegram || typeof connectors.telegram !== 'object') {
+        if (!connectors.telegram || typeof connectors.telegram !== "object") {
           connectors.telegram = {};
         }
         connectors.telegram.botToken = token;
@@ -125,14 +142,14 @@ async function handleValidateToken(
 
       // Auto-populate owner contact so LifeOps can deliver reminders
       setupService.setOwnerContact({
-        source: 'telegram',
+        source: "telegram",
         channelId: String(bot.id),
       });
       // Add Telegram to the escalation channel list
-      setupService.registerEscalationChannel('telegram');
+      setupService.registerEscalationChannel("telegram");
     } else {
       logger.warn(
-        '[telegram-setup] connector-setup service not available — token saved to runtime only',
+        "[telegram-setup] connector-setup service not available — token saved to runtime only",
       );
     }
 
@@ -172,11 +189,11 @@ async function handleStatus(
     hasToken = Boolean(tgConfig?.botToken);
   }
   if (!hasToken) {
-    hasToken = Boolean(runtime.getSetting('TELEGRAM_BOT_TOKEN'));
+    hasToken = Boolean(runtime.getSetting("TELEGRAM_BOT_TOKEN"));
   }
 
   // Check if the Telegram service is running
-  const service = runtime.getService('telegram');
+  const service = runtime.getService("telegram");
   const connected = Boolean(service);
 
   res.status(200).json({
@@ -216,20 +233,20 @@ async function handleDisconnect(
  */
 export const telegramSetupRoutes: Route[] = [
   {
-    type: 'POST',
-    path: '/api/telegram-setup/validate-token',
+    type: "POST",
+    path: "/api/telegram-setup/validate-token",
     handler: handleValidateToken,
     rawPath: true,
   },
   {
-    type: 'GET',
-    path: '/api/telegram-setup/status',
+    type: "GET",
+    path: "/api/telegram-setup/status",
     handler: handleStatus,
     rawPath: true,
   },
   {
-    type: 'POST',
-    path: '/api/telegram-setup/disconnect',
+    type: "POST",
+    path: "/api/telegram-setup/disconnect",
     handler: handleDisconnect,
     rawPath: true,
   },

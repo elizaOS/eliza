@@ -301,7 +301,9 @@ class ElizaADHDBenchRunner:
                 ]
             turn_results.append(turn_result)
 
-        score = helpers["compute_scenario_score"](turn_results)
+        # The eliza-bridge path can populate providers_requested from a
+        # real runtime, so PROVIDERS_REQUESTED outcomes are scoreable here.
+        score = helpers["compute_scenario_score"](turn_results, has_runtime_signal=True)
         total_latency = (time.time() - scenario_start) * 1000
         logger.info("    -> score=%.1f%%, %d turns, %.0fms", score * 100, len(turn_results), total_latency)
 
@@ -361,6 +363,45 @@ class ElizaADHDBenchRunner:
         # Filter against the menu — drop bridge-internal actions like REPLY if the
         # benchmark's bootstrap menu also includes REPLY (it does).
         valid_set = {n.upper() for n in action_names} | {"REPLY", "IGNORE", "NONE"}
+
+        # The bridge sometimes returns ["BENCHMARK_ACTION"] when the LLM emitted
+        # `<actions>BENCHMARK_ACTION</actions>` with `<command>REAL_ACTION</command>`,
+        # or ["REPLY"] with the real action buried inside the XML body. Recover
+        # the intended real action by inspecting the raw text + params.
+        import re as _re
+        raw_text = response.text or ""
+        nested_actions: list[str] = []
+        # 1. Pull from response.params nested BENCHMARK_ACTION block
+        bench_params = response.params.get("BENCHMARK_ACTION") if isinstance(response.params, dict) else None
+        if isinstance(bench_params, dict):
+            cmd = bench_params.get("command") or bench_params.get("action")
+            if isinstance(cmd, str) and cmd.strip():
+                nested_actions.append(cmd.strip().upper())
+        # 2. Pull from XML <command> tags inside the body (any depth)
+        for m in _re.finditer(r"<command>\s*([A-Z][A-Z0-9_]*)\s*</command>", raw_text, _re.IGNORECASE):
+            nested_actions.append(m.group(1).upper())
+        # 3. Pull from <actions>NAME[,NAME2]</actions> directly
+        ax = _re.search(r"<actions>\s*([^<]+)\s*</actions>", raw_text, _re.IGNORECASE)
+        if ax:
+            for tok in ax.group(1).split(","):
+                tok = tok.strip().upper()
+                if tok:
+                    nested_actions.append(tok)
+
+        # If the bridge's actions list is empty/REPLY-only/BENCHMARK_ACTION, prefer
+        # the recovered nested action name when it matches a real menu entry.
+        recovered = [a for a in nested_actions if a in valid_set and a != "REPLY"]
+        if recovered:
+            # Replace generic REPLY/BENCHMARK_ACTION with the recovered intent.
+            generic = {"REPLY", "BENCHMARK_ACTION"}
+            if not actions_selected or all(a in generic for a in actions_selected):
+                actions_selected = recovered
+            else:
+                # Merge: keep validated bridge actions, append recovered if not present.
+                for a in recovered:
+                    if a not in actions_selected:
+                        actions_selected.append(a)
+
         actions_selected = [a for a in actions_selected if a in valid_set]
 
         return TurnResult(

@@ -27,7 +27,7 @@ describe("inventory — categorization heuristics", () => {
   });
 
   it("classifies generic _API_KEY suffixes as plugin", () => {
-    expect(categorizeKey("N8N_API_KEY")).toBe("plugin");
+    expect(categorizeKey("WORKFLOW_API_KEY")).toBe("plugin");
     expect(categorizeKey("CUSTOM_BACKEND_API_KEY")).toBe("plugin");
   });
 
@@ -194,7 +194,9 @@ describe("inventory — listVaultInventory", () => {
       sensitive: true,
     });
     await vault.set("EVM_PRIVATE_KEY", "0xNEVERLEAK2", { sensitive: true });
-    await vault.set("N8N_API_KEY", "n8n-NEVERLEAK-3", { sensitive: true });
+    await vault.set("WORKFLOW_API_KEY", "workflow-NEVERLEAK-3", {
+      sensitive: true,
+    });
     await vault.set("creds.github.com.alice", "PASSWORD-NEVERLEAK-4", {
       sensitive: true,
     });
@@ -206,7 +208,7 @@ describe("inventory — listVaultInventory", () => {
     const byKey = new Map(inv.map((e) => [e.key, e]));
     expect(byKey.get("OPENROUTER_API_KEY")?.category).toBe("provider");
     expect(byKey.get("EVM_PRIVATE_KEY")?.category).toBe("wallet");
-    expect(byKey.get("N8N_API_KEY")?.category).toBe("plugin");
+    expect(byKey.get("WORKFLOW_API_KEY")?.category).toBe("plugin");
     expect(byKey.get("creds.github.com.alice")?.category).toBe("credential");
     expect(byKey.get("pm.1password.session")?.category).toBe("session");
 

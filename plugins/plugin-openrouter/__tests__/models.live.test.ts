@@ -148,47 +148,53 @@ describe.skipIf(!hasApiKey)("OpenRouter Plugin", () => {
     }, 30000);
   });
 
-  describe("OBJECT_SMALL Model", () => {
-    test("should generate JSON with OBJECT_SMALL model", async () => {
+  describe("Structured output via TEXT_* (native tool calling)", () => {
+    test("should generate JSON via TEXT_SMALL with responseSchema", async () => {
       if (!hasApiKey) {
         console.warn("Skipping test: OPENROUTER_API_KEY not set");
         return;
       }
 
-      const prompt = "Create a JSON object representing a person with name, age, and hobbies.";
-
-      if (openrouterPlugin.models?.OBJECT_SMALL) {
-        const objectHandler = openrouterPlugin.models.OBJECT_SMALL;
-        const response = await objectHandler(runtime, { prompt });
-
-        expect(response).toBeDefined();
-        expect(typeof response).toBe("object");
-        expect(response).not.toBeNull();
-      } else {
-        console.warn("OBJECT_SMALL model not available");
+      const handler = openrouterPlugin.models?.TEXT_SMALL;
+      if (!handler) {
+        console.warn("TEXT_SMALL model not available");
+        return;
       }
+
+      const response = await handler(runtime, {
+        prompt: "Create a JSON object representing a person with name, age, and hobbies.",
+        responseSchema: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            age: { type: "number" },
+            hobbies: { type: "array", items: { type: "string" } },
+          },
+          required: ["name", "age", "hobbies"],
+        },
+      } as Parameters<typeof handler>[1]);
+
+      expect(response).toBeDefined();
     }, 30000);
-  });
 
-  describe("OBJECT_LARGE Model", () => {
-    test("should generate JSON with OBJECT_LARGE model", async () => {
+    test("should generate JSON via TEXT_LARGE with responseSchema", async () => {
       if (!hasApiKey) {
         console.warn("Skipping test: OPENROUTER_API_KEY not set");
         return;
       }
 
-      const prompt = "Create a detailed JSON object representing a complex product catalog.";
-
-      if (openrouterPlugin.models?.OBJECT_LARGE) {
-        const objectHandler = openrouterPlugin.models.OBJECT_LARGE;
-        const response = await objectHandler(runtime, { prompt });
-
-        expect(response).toBeDefined();
-        expect(typeof response).toBe("object");
-        expect(response).not.toBeNull();
-      } else {
-        console.warn("OBJECT_LARGE model not available");
+      const handler = openrouterPlugin.models?.TEXT_LARGE;
+      if (!handler) {
+        console.warn("TEXT_LARGE model not available");
+        return;
       }
+
+      const response = await handler(runtime, {
+        prompt: "Create a detailed JSON object representing a complex product catalog.",
+        responseSchema: { type: "object" },
+      } as Parameters<typeof handler>[1]);
+
+      expect(response).toBeDefined();
     }, 500000);
   });
 

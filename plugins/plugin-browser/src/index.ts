@@ -29,4 +29,4 @@ export { browserPlugin } from "./plugin.js";
 export * from "./routes/bridge.js";
 export * from "./schema.js";
 export * from "./service.js";
-export * from "./workspace/browser-workspace.js";
+export * from "./workspace/index.js";

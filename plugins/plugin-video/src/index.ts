@@ -7,7 +7,6 @@ const videoPlugin: Plugin = {
   services: [VideoService],
   actions: [],
   providers: [],
-  evaluators: [],
   routes: [],
 };
 

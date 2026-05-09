@@ -1,11 +1,9 @@
 import type http from "node:http";
+import { sendJson as httpSendJson, sendJsonError as httpSendJsonError } from "@elizaos/core";
 import { TLSSocket } from "node:tls";
-import { handleConnectorAccountRoutes } from "@elizaos/agent/api/connector-account-routes";
+import { handleConnectorAccountRoutes } from "@elizaos/agent";
 import {
-  readJsonBody as httpReadJsonBody,
-  sendJson as httpSendJson,
-  sendJsonError as httpSendJsonError,
-} from "@elizaos/agent/api/http-helpers";
+  readJsonBody as httpReadJsonBody } from "@elizaos/shared";
 import type {
   AgentRuntime,
   Plugin,
@@ -272,23 +270,6 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/gmail/batch-reply-send" },
   { type: "POST", path: "/api/lifeops/gmail/manage" },
   { type: "POST", path: "/api/lifeops/gmail/events/ingest" },
-  { type: "GET", path: "/api/lifeops/connectors/google/status" },
-  { type: "POST", path: "/api/lifeops/connectors/google/start" },
-  { type: "POST", path: "/api/lifeops/connectors/google/preference" },
-  {
-    type: "GET",
-    path: "/api/lifeops/connectors/google/callback",
-    public: true,
-    name: "lifeops.google.callback",
-  },
-  {
-    type: "GET",
-    path: "/api/lifeops/connectors/google/success",
-    public: true,
-    name: "lifeops.google.success",
-  },
-  { type: "GET", path: "/api/lifeops/connectors/google/accounts" },
-  { type: "POST", path: "/api/lifeops/connectors/google/disconnect" },
   { type: "GET", path: "/api/lifeops/connectors/x/status" },
   { type: "POST", path: "/api/lifeops/connectors/x/start" },
   {

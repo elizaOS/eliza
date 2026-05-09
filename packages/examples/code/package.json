@@ -20,7 +20,7 @@
     "cli": "bun src/index.tsx",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check . || true",
-    "typecheck": "tsc --noEmit || true"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.5",
@@ -51,7 +51,7 @@
     "@types/react": "19.2.3",
     "@vitest/coverage-v8": "^4.0.0",
     "react-devtools-core": "^7.0.1",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   }
 }

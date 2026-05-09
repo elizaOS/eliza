@@ -34,7 +34,6 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
-  credTypesForConnector,
   getStylePresets,
   isMobilePlatform,
   normalizeCharacterLanguage,
@@ -44,67 +43,26 @@ import {
 } from "@elizaos/shared";
 import { type WebSocket, WebSocketServer } from "ws";
 import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
-
-const WALLET_OS_STORE_TRUE_VALUES = new Set(["1", "true", "on", "yes"]);
-const WALLET_OS_STORE_FALSE_VALUES = new Set(["0", "false", "off", "no"]);
-
-function executableOnPathSync(binaryName: string): boolean {
-  if (process.platform === "win32") return false;
-  const pathEnv = process.env.PATH ?? "";
-  for (const dir of pathEnv.split(path.delimiter)) {
-    if (!dir) continue;
-    try {
-      fs.accessSync(path.join(dir, binaryName), fs.constants.X_OK);
-      return true;
-    } catch {
-      // keep scanning PATH
-    }
-  }
-  return false;
-}
-
-function isWalletOsStoreDefaultAvailable(): boolean {
-  if (process.platform === "darwin") return true;
-  if (process.platform === "linux") return executableOnPathSync("secret-tool");
-  return false;
-}
-
-function isWalletOsStoreEnabledForStartup(): boolean {
-  const raw = process.env.ELIZA_WALLET_OS_STORE?.trim().toLowerCase();
-  if (raw) {
-    if (WALLET_OS_STORE_TRUE_VALUES.has(raw)) return true;
-    if (WALLET_OS_STORE_FALSE_VALUES.has(raw)) return false;
-  }
-  return isWalletOsStoreDefaultAvailable();
-}
-
-function isPlaintextWalletPrivateKeyConfigValue(value: unknown): boolean {
-  if (typeof value !== "string") return false;
-  const trimmed = value.trim();
-  return Boolean(trimmed && !trimmed.startsWith("vault://"));
-}
-
-function isVaultConfigRef(value: string): boolean {
-  return value.startsWith("vault://") && value.length > "vault://".length;
-}
-
-import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
-import { handleCloudStatusRoutes } from "@elizaos/plugin-elizacloud/routes/cloud-status-routes-autonomous";
 import {
   type ElizaConfig,
   loadElizaConfig,
   saveElizaConfig,
 } from "../config/config.js";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
-import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.js";
+// `plugin-auto-enable.ts` was removed during a workspace refactor; the helper
+// `isStreamingDestinationConfigured` landed in `@elizaos/core`
+// (`connectors/connector-config.ts`, re-exported via index.node.ts). Importing
+// from the canonical path keeps the bench server bootable without
+// resurrecting the deleted file.
+import { isStreamingDestinationConfigured } from "@elizaos/core";
 import { CharacterSchema } from "../config/zod-schema.js";
 // ONBOARDING_CLOUD_PROVIDER_OPTIONS, ONBOARDING_PROVIDER_CATALOG moved to server-helpers-config.ts
-import { validateX402Startup } from "../middleware/x402/startup-validator.js";
+import { validateX402Startup } from "@elizaos/plugin-x402";
 import {
   type AgentEventServiceLike,
   getAgentEventService,
 } from "../runtime/agent-event-service.js";
-import { attachMobileDeviceBridgeToServer } from "../runtime/mobile-device-bridge-bootstrap.js";
+import { attachMobileDeviceBridgeToServer } from "@elizaos/plugin-capacitor-bridge";
 import {
   resolvePreferredProviderId,
   resolvePrimaryModel,
@@ -143,9 +101,8 @@ import {
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
 // signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout extracted to @elizaos/plugin-signal
-import { signalAuthExists } from "../services/signal-pairing.js";
-import { streamManager } from "../services/stream-manager.js";
-import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
+import { applySignalQrOverride } from "@elizaos/plugin-signal";
+import { streamManager } from "@elizaos/plugin-streaming";
 // telegram-account-auth helpers moved to @elizaos/plugin-telegram (account-setup-routes.ts).
 // WhatsApp pairing service helpers (sanitizeAccountId, WhatsAppPairingSession,
 // whatsappAuthExists, whatsappLogout) are owned by @elizaos/plugin-whatsapp now;
@@ -168,6 +125,7 @@ import {
   DISABLED_TRIGGER_INTERVAL_MS,
   normalizeTriggerDraft,
 } from "../triggers/scheduling.js";
+import { deployTextTriggerWorkflow } from "../triggers/text-to-workflow.js";
 import { parseClampedInteger } from "../utils/number-parsing.js";
 import { handleAccountsRoutes } from "./accounts-routes.js";
 import { handleAgentAdminRoutes } from "./agent-admin-routes.js";
@@ -182,18 +140,47 @@ import { handleAvatarRoutes } from "./avatar-routes.js";
 // BlueBubbles routes extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
 // resolveBlueBubblesWebhookPath stays here so the auth gate can compute the webhook path
 // before the runtime plugin route dispatcher runs.
-import { resolveBlueBubblesWebhookPath } from "./bluebubbles-routes.js";
+import { resolveBlueBubblesWebhookPath } from "@elizaos/plugin-imessage";
+import {
+  BROWSER_BRIDGE_KINDS,
+  BROWSER_BRIDGE_PACKAGE_PATH_TARGETS,
+  buildBrowserBridgeCompanionPackage,
+  closeBrowserWorkspaceTab,
+  evaluateBrowserWorkspaceTab,
+  executeBrowserWorkspaceCommand,
+  getBrowserBridgeCompanionPackageStatus,
+  getBrowserWorkspaceSnapshot,
+  hideBrowserWorkspaceTab,
+  listBrowserWorkspaceTabs,
+  navigateBrowserWorkspaceTab,
+  openBrowserBridgeCompanionManager,
+  openBrowserBridgeCompanionPackagePath,
+  openBrowserWorkspaceTab,
+  showBrowserWorkspaceTab,
+  snapshotBrowserWorkspaceTab,
+  type BrowserBridgeKind,
+  type BrowserBridgePackagePathTarget,
+  type BrowserWorkspaceCommand,
+  type BrowserWorkspaceTabKind,
+} from "@elizaos/plugin-browser";
 import { handleBugReportRoutes } from "./bug-report-routes.js";
 import { handleCharacterRoutes } from "./character-routes.js";
 import {
   initSse as initSseFromChatRoutes,
   writeSseJson as writeSseJsonFromChatRoutes,
 } from "./chat-routes.js";
-import { handleComputerUseRoutes } from "./computer-use-routes.js";
+// `cloud-provisioning.ts` was deleted from agent/src/api during a workspace
+// refactor; the function moved to plugin-elizacloud. Pull from there to
+// keep the bench server bootable.
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
+// `cloud-status-routes.ts` and `computer-use-routes.ts` were deleted from
+// agent/src/api during a workspace refactor; the route handlers now live in
+// the corresponding plugins. Pull from there to keep the bench server
+// bootable.
+import { handleCloudStatusRoutes } from "@elizaos/plugin-elizacloud";
+import { handleComputerUseRoutes } from "@elizaos/plugin-computeruse";
 import { handleConfigRoutes } from "./config-routes.js";
-import { handleConnectorAccountRoutes } from "./connector-account-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
-import { isConnectorOAuthCallbackEndpoint } from "./connector-oauth-callback-auth.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.js";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
@@ -209,12 +196,12 @@ import {
   sendJsonError,
 } from "./http-helpers.js";
 // iMessage routes extracted to @elizaos/plugin-imessage setup-routes.ts (Plugin.routes)
-// import { handleIMessageRoute } from "./imessage-routes.js";
+// import { handleIMessageRoute } from "@elizaos/plugin-imessage";
 import {
   getLocalInferenceActiveModelId,
   handleLocalInferenceRoutes,
-} from "./local-inference-routes.js";
-import { handleMcpRoutes } from "./mcp-routes.js";
+} from "@elizaos/plugin-local-inference";
+import { handleMcpRoutes } from "@elizaos/plugin-mcp";
 import { pushWithBatchEvict } from "./memory-bounds.js";
 import { handleMemoryRoutes } from "./memory-routes.js";
 import { handleMiscRoutes } from "./misc-routes.js";
@@ -250,13 +237,12 @@ import {
   handleSandboxRouteGroup,
 } from "./server-route-dispatch.js";
 // signal-routes: handleSignalRoute dispatch extracted to @elizaos/plugin-signal (setup-routes.ts)
-import { applySignalQrOverride } from "./signal-routes.js";
 import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
 // Telegram account routes extracted to @elizaos/plugin-telegram account-setup-routes.ts (Plugin.routes).
-import { handleTriggerRoutes } from "./trigger-routes.js";
-import { handleTtsRoutes } from "./tts-routes.js";
+import { handleTriggerRoutes } from "@elizaos/plugin-workflow";
+import { handleTtsRoutes } from "@elizaos/plugin-streaming";
 import { handleUpdateRoutes } from "./update-routes.js";
 import {
   // Balance/import/generate helpers moved to @elizaos/app-steward plugin routes.
@@ -275,7 +261,8 @@ import { handleWalletRoutes } from "./wallet-routes.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
 // WhatsApp route dispatch extracted to @elizaos/plugin-whatsapp setup-routes.ts (Plugin.routes).
 // applyWhatsAppQrOverride remains for plugin-discovery's QR override flow.
-import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
+// `whatsapp-routes.ts` was moved into the plugin; pull from there.
+import { applyWhatsAppQrOverride } from "@elizaos/plugin-whatsapp";
 import { handleWorkbenchRoutes } from "./workbench-routes.js";
 
 export {
@@ -317,7 +304,6 @@ export {
   IMAGE_ONLY_CHAT_FALLBACK_PROMPT,
   isUuidLike,
   isWalletActionRequiredIntent,
-  maybeAugmentChatMessageWithDocuments,
   maybeAugmentChatMessageWithLanguage,
   maybeAugmentChatMessageWithWalletContext,
   normalizeIncomingChatPrompt,
@@ -551,7 +537,7 @@ export {
 const fetchWithTimeoutGuard = _fetchWithTimeoutGuard;
 const streamResponseBodyWithByteLimit = _streamResponseBodyWithByteLimit;
 
-type StreamRouteDestination = import("./stream-routes.js").StreamingDestination;
+type StreamRouteDestination = import("@elizaos/plugin-streaming").StreamingDestination;
 
 interface StreamingPluginDestinationFactories {
   createCustomRtmpDestination(config?: {
@@ -640,6 +626,320 @@ function error(res: http.ServerResponse, message: string, status = 400): void {
   sendJsonError(res, message, status);
 }
 
+function emptyTrainingTaskCounters(): Record<string, number> {
+  return {
+    should_respond: 0,
+    context_routing: 0,
+    action_planner: 0,
+    response: 0,
+    media_description: 0,
+  };
+}
+
+type OptionalTrainingConfig = {
+  autoTrain: boolean;
+  triggerThreshold: number;
+  triggerCooldownHours: number;
+  backends: string[];
+};
+
+type OptionalTrainingConfigApi = {
+  loadTrainingConfig: () => OptionalTrainingConfig;
+  normalizeTrainingConfig: (input: unknown) => OptionalTrainingConfig;
+  saveTrainingConfig: (config: OptionalTrainingConfig) => void;
+};
+
+const TRAINING_CONFIG_MODULE = "@elizaos/app-training/core/training-config";
+
+function defaultTrainingConfig(): OptionalTrainingConfig {
+  return {
+    autoTrain: true,
+    triggerThreshold: 100,
+    triggerCooldownHours: 12,
+    backends: ["native"],
+  };
+}
+
+async function loadOptionalTrainingConfigApi(): Promise<OptionalTrainingConfigApi | null> {
+  try {
+    const loaded = (await import(
+      /* @vite-ignore */ TRAINING_CONFIG_MODULE
+    )) as Partial<OptionalTrainingConfigApi>;
+    if (
+      typeof loaded.loadTrainingConfig === "function" &&
+      typeof loaded.normalizeTrainingConfig === "function" &&
+      typeof loaded.saveTrainingConfig === "function"
+    ) {
+      return loaded as OptionalTrainingConfigApi;
+    }
+  } catch {
+    // app-training is optional in this server path.
+  }
+  return null;
+}
+
+async function readOptionalTrainingConfig(): Promise<OptionalTrainingConfig> {
+  const api = await loadOptionalTrainingConfigApi();
+  return api?.loadTrainingConfig() ?? defaultTrainingConfig();
+}
+
+function parseBrowserBridgeKind(
+  value: string | undefined,
+): BrowserBridgeKind | null {
+  if (!value) return null;
+  const decoded = decodeURIComponent(value);
+  return (BROWSER_BRIDGE_KINDS as readonly string[]).includes(decoded)
+    ? (decoded as BrowserBridgeKind)
+    : null;
+}
+
+function parseBrowserBridgePackageTarget(
+  value: unknown,
+): BrowserBridgePackagePathTarget | null {
+  return typeof value === "string" &&
+    (BROWSER_BRIDGE_PACKAGE_PATH_TARGETS as readonly string[]).includes(value)
+    ? (value as BrowserBridgePackagePathTarget)
+    : null;
+}
+
+async function handleBuiltinOptionalRoutes(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  method: string,
+): Promise<boolean> {
+  if (method === "GET" && pathname === "/api/wallet/steward-status") {
+    const addresses = getWalletAddresses();
+    json(res, {
+      configured: false,
+      available: false,
+      connected: false,
+      error: "Steward wallet service is not loaded.",
+      walletAddresses: {
+        evm: addresses.evmAddress ?? null,
+        solana: addresses.solanaAddress ?? null,
+      },
+      evmAddress: addresses.evmAddress ?? undefined,
+      vaultHealth: "degraded",
+    });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/training/auto/config") {
+    json(res, { config: await readOptionalTrainingConfig() });
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/training/auto/config") {
+    const body =
+      (await readJsonBody<Record<string, unknown>>(req, res)) ?? null;
+    if (!body) return true;
+    const api = await loadOptionalTrainingConfigApi();
+    const currentConfig = api?.loadTrainingConfig() ?? defaultTrainingConfig();
+    const config = api
+      ? api.normalizeTrainingConfig({
+          ...currentConfig,
+          ...body,
+        })
+      : currentConfig;
+    api?.saveTrainingConfig(config);
+    json(res, { config });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/training/auto/status") {
+    const config = await readOptionalTrainingConfig();
+    json(res, {
+      autoTrainEnabled: config.autoTrain,
+      triggerThreshold: config.triggerThreshold,
+      cooldownHours: config.triggerCooldownHours,
+      counters: emptyTrainingTaskCounters(),
+      lastTrain: {},
+      perTaskThresholds: emptyTrainingTaskCounters(),
+      perTaskCooldownMs: emptyTrainingTaskCounters(),
+      serviceRegistered: false,
+    });
+    return true;
+  }
+
+  if (
+    method === "GET" &&
+    pathname === "/api/coding-agents/coordinator/status"
+  ) {
+    json(res, {
+      supervisionLevel: "unavailable",
+      taskCount: 0,
+      tasks: [],
+      pendingConfirmations: 0,
+      taskThreadCount: 0,
+      taskThreads: [],
+      frameworks: [],
+    });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/browser-bridge/companions") {
+    json(res, { companions: [] });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/browser-bridge/packages") {
+    json(res, { status: getBrowserBridgeCompanionPackageStatus() });
+    return true;
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/browser-bridge/packages/open-path"
+  ) {
+    const body =
+      (await readJsonBody<{ target?: unknown; revealOnly?: unknown }>(
+        req,
+        res,
+      )) ?? null;
+    if (!body) return true;
+    const target = parseBrowserBridgePackageTarget(body.target);
+    if (!target) {
+      error(res, "Invalid browser bridge package target", 400);
+      return true;
+    }
+    json(
+      res,
+      await openBrowserBridgeCompanionPackagePath(target, {
+        revealOnly: body.revealOnly === true,
+      }),
+    );
+    return true;
+  }
+
+  const packageBuildMatch = pathname.match(
+    /^\/api\/browser-bridge\/packages\/([^/]+)\/build$/,
+  );
+  if (method === "POST" && packageBuildMatch) {
+    const browser = parseBrowserBridgeKind(packageBuildMatch[1]);
+    if (!browser) {
+      error(res, "Invalid browser bridge package browser", 400);
+      return true;
+    }
+    json(res, { status: await buildBrowserBridgeCompanionPackage(browser) });
+    return true;
+  }
+
+  const packageManagerMatch = pathname.match(
+    /^\/api\/browser-bridge\/packages\/([^/]+)\/open-manager$/,
+  );
+  if (method === "POST" && packageManagerMatch) {
+    const browser = parseBrowserBridgeKind(packageManagerMatch[1]);
+    if (!browser) {
+      error(res, "Invalid browser bridge package browser", 400);
+      return true;
+    }
+    json(res, await openBrowserBridgeCompanionManager(browser));
+    return true;
+  }
+
+  if (pathname === "/api/browser-workspace" && method === "GET") {
+    json(res, await getBrowserWorkspaceSnapshot());
+    return true;
+  }
+
+  if (pathname === "/api/browser-workspace/command" && method === "POST") {
+    const body =
+      (await readJsonBody<BrowserWorkspaceCommand>(req, res)) ?? null;
+    if (!body?.subaction) {
+      error(res, "subaction is required", 400);
+      return true;
+    }
+    json(res, await executeBrowserWorkspaceCommand(body));
+    return true;
+  }
+
+  if (pathname === "/api/browser-workspace/tabs" && method === "GET") {
+    json(res, { tabs: await listBrowserWorkspaceTabs() });
+    return true;
+  }
+
+  if (pathname === "/api/browser-workspace/tabs" && method === "POST") {
+    const body =
+      (await readJsonBody<{
+        url?: string;
+        title?: string;
+        show?: boolean;
+        partition?: string;
+        kind?: BrowserWorkspaceTabKind;
+      }>(req, res)) ?? {};
+    json(res, { tab: await openBrowserWorkspaceTab(body) });
+    return true;
+  }
+
+  const tabMatch = pathname.match(
+    /^\/api\/browser-workspace\/tabs\/([^/]+)(?:\/(navigate|eval|show|hide|snapshot))?$/,
+  );
+  if (!tabMatch) {
+    return false;
+  }
+
+  const tabId = decodeURIComponent(tabMatch[1]).trim();
+  const action = tabMatch[2] ?? null;
+
+  if (!action && method === "DELETE") {
+    const closed = await closeBrowserWorkspaceTab(tabId);
+    json(res, { closed }, closed ? 200 : 404);
+    return true;
+  }
+
+  if (action === "show" && method === "POST") {
+    json(res, { tab: await showBrowserWorkspaceTab(tabId) });
+    return true;
+  }
+
+  if (action === "hide" && method === "POST") {
+    json(res, { tab: await hideBrowserWorkspaceTab(tabId) });
+    return true;
+  }
+
+  if (action === "snapshot" && method === "GET") {
+    json(res, await snapshotBrowserWorkspaceTab(tabId));
+    return true;
+  }
+
+  if (action === "navigate" && method === "POST") {
+    const body =
+      (await readJsonBody<{ url?: string; partition?: string }>(req, res)) ??
+      null;
+    if (!body?.url) {
+      error(res, "url is required", 400);
+      return true;
+    }
+    json(res, {
+      tab: await navigateBrowserWorkspaceTab({
+        id: tabId,
+        url: body.url,
+      }),
+    });
+    return true;
+  }
+
+  if (action === "eval" && method === "POST") {
+    const body =
+      (await readJsonBody<{ script?: string; partition?: string }>(req, res)) ??
+      null;
+    if (!body?.script) {
+      error(res, "script is required", 400);
+      return true;
+    }
+    json(res, {
+      value: await evaluateBrowserWorkspaceTab({
+        id: tabId,
+        script: body.script,
+      }),
+    });
+    return true;
+  }
+
+  return false;
+}
+
 function isModuleResolutionFailure(err: unknown): boolean {
   if (typeof err !== "object" || err === null) {
     return false;
@@ -712,7 +1012,7 @@ function coerce<T>(value: unknown): T {
 // maybeAugmentChatMessageWithLanguage and getErrorMessage moved to server-helpers.ts;
 // imported in the consolidated import at the top
 
-// Documents + wallet context augmentation moved to server-helpers.ts;
+// Knowledge + wallet context augmentation moved to server-helpers.ts;
 // imported in the consolidated import at the top
 
 // ChatImageAttachment, image validation, chat attachments, normalizeIncomingChatPrompt,
@@ -803,6 +1103,7 @@ import {
   stripRedactedPlaceholderValuesDeep,
 } from "./server-helpers-config.js";
 
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 export { isSafeResetStateDir } from "./server-helpers-config.js";
 
 // ---------------------------------------------------------------------------
@@ -1068,7 +1369,6 @@ import {
   isAllowedHost as _isAllowedHost,
   isAuthorized as _isAuthorized,
   isSharedTerminalClientId as _isSharedTerminalClientId,
-  isTrustedLocalRequest as _isTrustedLocalRequest,
   isWebSocketAuthorized as _isWebSocketAuthorized,
   normalizePairingCode as _normalizePairingCode,
   normalizeWsClientId as _normalizeWsClientId,
@@ -1097,7 +1397,6 @@ export {
 const isAllowedHost = _isAllowedHost;
 const applyCors = _applyCors;
 const isAuthorized = _isAuthorized;
-const isTrustedLocalRequest = _isTrustedLocalRequest;
 const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
 const normalizeWsClientId = _normalizeWsClientId;
 const resolveTerminalRunClientId = _resolveTerminalRunClientId;
@@ -1182,7 +1481,6 @@ import {
   parseNullableNumber,
   readTaskCompleted,
   readTaskMetadata,
-  toWorkbenchTask,
   toWorkbenchTodo,
 } from "./workbench-helpers.js";
 
@@ -1226,10 +1524,6 @@ async function handleRequest(
           }
         : undefined,
     });
-  const isConnectorOAuthCallbackRoute = isConnectorOAuthCallbackEndpoint(
-    method,
-    pathname,
-  );
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
 
   const canonicalizeRestartReason = (reason: string): string => {
@@ -1352,7 +1646,6 @@ async function handleRequest(
     !isCloudOnboardingStatusEndpoint &&
     !isWhatsAppWebhookEndpoint &&
     !isBlueBubblesWebhookEndpoint &&
-    !isConnectorOAuthCallbackRoute &&
     !isPublicRuntimePluginRoute({
       runtime: state.runtime,
       method,
@@ -1576,6 +1869,7 @@ async function handleRequest(
     buildTriggerConfig,
     buildTriggerMetadata,
     normalizeTriggerDraft,
+    deployTextTriggerWorkflow,
     DISABLED_TRIGGER_INTERVAL_MS,
     TRIGGER_TASK_NAME,
     TRIGGER_TASK_TAGS: [...TRIGGER_TASK_TAGS],
@@ -1588,8 +1882,8 @@ async function handleRequest(
   // (/api/trajectories/*) are now provided by the @elizaos/app-training
   // plugin via the runtime route registry.
 
-  // Document routes (/api/documents/*) are now provided by the
-  // @elizaos/app-documents plugin via the runtime route registry.
+  // Knowledge routes (/api/knowledge/*) are now provided by the
+  // @elizaos/app-knowledge plugin via the runtime route registry.
 
   if (
     pathname.startsWith("/api/memory") ||
@@ -1785,7 +2079,6 @@ async function handleRequest(
         EVM_PLUGIN_PACKAGE,
         applyWhatsAppQrOverride,
         applySignalQrOverride,
-        signalAuthExists,
         resolvePluginConfigMutationRejections,
         requirePluginManager,
         requireCoreManager,
@@ -2025,24 +2318,7 @@ async function handleRequest(
     return;
   }
 
-  // ── Connector account routes (/api/connectors/:provider/accounts, oauth) ──
-  if (
-    await handleConnectorAccountRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      state,
-      json,
-      error,
-      readJsonBody,
-      authorize: () => isTrustedLocalRequest(req) || isCloudProvisioned,
-    })
-  ) {
-    return;
-  }
-
-  // ── Connector config routes (extracted to connector-routes.ts) ─────────
+  // ── Connector routes (extracted to connector-routes.ts) ──────────────
   if (
     await handleConnectorRoutes({
       req,
@@ -2057,29 +2333,10 @@ async function handleRequest(
       redactConfigSecrets,
       isBlockedObjectKey,
       cloneWithoutBlockedObjectKeys,
-      onConnectorDisconnect: async (connectorName) => {
-        // Disconnect cascades to the n8n credential cache: without this,
-        // credStore.get() returns a stale n8n credential id and the next
-        // workflow generation silently bypasses the missing-credentials
-        // banner.
-        const credTypes = credTypesForConnector(connectorName);
-        if (credTypes.length === 0) return;
-        const runtime = state.runtime;
-        if (!runtime) return;
-        const credStore = runtime.getService("n8n_credential_store") as {
-          delete?: (userId: string, credType: string) => Promise<void>;
-        } | null;
-        const deleteCred = credStore?.delete;
-        if (!deleteCred) return;
-        const userId = runtime.agentId;
-        await Promise.all(
-          credTypes.map((credType) =>
-            deleteCred(userId, credType).catch(() => {
-              /* per-credType failure shouldn't block siblings */
-            }),
-          ),
-        );
-      },
+      // Disconnect cascade is now event-driven (Phase 1B): connector-routes
+      // emits `connector_disconnected` and WorkflowCredentialStore subscribes
+      // to invalidate its own cache. No direct service lookup needed here.
+      onConnectorDisconnect: async () => {},
     })
   ) {
     return;
@@ -2270,7 +2527,7 @@ async function handleRequest(
   }
 
   // Browser workspace routes (/api/browser-workspace/*) are served by the
-  // @elizaos/plugin-browser plugin via Plugin.routes.
+  // @elizaos/app-browser plugin via Plugin.routes.
 
   // Agent self-status, Privy, and ERC-8004 registry routes are now handled
   // by handleAgentStatusRoutes above.
@@ -2477,8 +2734,6 @@ async function handleRequest(
         json,
         error,
         readJsonBody,
-        toWorkbenchTask:
-          coerce<WorkbenchRouteArg["toWorkbenchTask"]>(toWorkbenchTask),
         toWorkbenchTodo:
           coerce<WorkbenchRouteArg["toWorkbenchTodo"]>(toWorkbenchTodo),
         normalizeTags,
@@ -2574,6 +2829,10 @@ async function handleRequest(
       isAuthorized: () => isAuthorized(req),
     })
   ) {
+    return;
+  }
+
+  if (await handleBuiltinOptionalRoutes(req, res, pathname, method)) {
     return;
   }
 
@@ -2677,12 +2936,8 @@ export async function startApiServer(opts?: {
   ] as const;
   for (const key of envKeysToHydrate) {
     const value = persistedEnv?.[key];
-    if (typeof value !== "string") {
-      continue;
-    }
-    const trimmed = value.trim();
-    if (trimmed && !isVaultConfigRef(trimmed) && !process.env[key]) {
-      process.env[key] = trimmed;
+    if (typeof value === "string" && value.trim() && !process.env[key]) {
+      process.env[key] = value.trim();
     }
   }
 
@@ -2709,17 +2964,24 @@ export async function startApiServer(opts?: {
   // available synchronously from the start (cloud-provisioned containers).
   await initStewardWalletCache();
 
-  // Warn when wallet private keys live in plaintext config and no secure local
-  // store is active. Vault sentinels are not plaintext and should not trigger it.
+  // Warn when wallet private keys live in plaintext config and the OS secure
+  // store is not enabled.  This nudges operators toward ELIZA_WALLET_OS_STORE=1.
   {
     const hasPlaintextKeys =
-      isPlaintextWalletPrivateKeyConfigValue(persistedEnv?.EVM_PRIVATE_KEY) ||
-      isPlaintextWalletPrivateKeyConfigValue(persistedEnv?.SOLANA_PRIVATE_KEY);
-    const osStoreEnabled = isWalletOsStoreEnabledForStartup();
+      (typeof persistedEnv?.EVM_PRIVATE_KEY === "string" &&
+        persistedEnv.EVM_PRIVATE_KEY.trim()) ||
+      (typeof persistedEnv?.SOLANA_PRIVATE_KEY === "string" &&
+        persistedEnv.SOLANA_PRIVATE_KEY.trim());
+    const osStoreRaw = process.env.ELIZA_WALLET_OS_STORE?.trim().toLowerCase();
+    const osStoreEnabled =
+      osStoreRaw === "1" ||
+      osStoreRaw === "true" ||
+      osStoreRaw === "on" ||
+      osStoreRaw === "yes";
     if (hasPlaintextKeys && !osStoreEnabled) {
       logger.warn(
         "[wallet] Private keys are stored in plaintext config. " +
-          "Use the vault or enable ELIZA_WALLET_OS_STORE=1 on a supported desktop.",
+          "Set ELIZA_WALLET_OS_STORE=1 to use the OS secure store instead.",
       );
     }
   }
@@ -3239,7 +3501,7 @@ export async function startApiServer(opts?: {
     // configured, inject it so /api/stream/live can fetch credentials.
     void (async () => {
       try {
-        const { handleStreamRoute } = await import("./stream-routes.js");
+        const { handleStreamRoute } = await import("@elizaos/plugin-streaming");
         // Screen capture manager is injected by the desktop host via globalThis
         const screenCapture = (globalThis as Record<string, unknown>)
           .__elizaScreenCapture as
@@ -4103,7 +4365,11 @@ export async function startApiServer(opts?: {
               }
               for (const ws of wsClients) {
                 if (ws.readyState === 1 || ws.readyState === 0) {
-                  (ws as unknown as { terminate(): void }).terminate();
+                  if ("terminate" in ws && typeof ws.terminate === "function") {
+                    ws.terminate();
+                  } else {
+                    ws.close();
+                  }
                 }
               }
               wsClients.clear();

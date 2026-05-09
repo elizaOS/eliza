@@ -44,9 +44,11 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
+  createManager,
   getAutofillAllowed,
   getSavedLogin,
   listSavedLogins,
+  type Vault,
 } from "@elizaos/vault";
 import {
   evaluateBrowserWorkspaceTab,
@@ -65,6 +67,13 @@ const AUTOFILL_SUBACTION = "autofill-login";
 
 const MAX_BROWSER_TAB_SCAN = 100;
 const MAX_FILL_REASON_CHARS = 240;
+
+let cachedVault: Vault | null = null;
+
+function sharedAutofillVault(): Vault {
+  cachedVault ??= createManager().vault;
+  return cachedVault;
+}
 
 function tabUrlMatchesDomain(tabUrl: string, domain: string): boolean {
   if (!tabUrl) return false;
@@ -208,8 +217,7 @@ export async function executeBrowserAutofillLogin(
     };
   }
 
-  const { sharedVault } = await import("@elizaos/app-core/services/vault-mirror");
-  const vault = sharedVault();
+  const vault = sharedAutofillVault();
 
   const allowed = await getAutofillAllowed(vault, domain);
   if (!allowed) {

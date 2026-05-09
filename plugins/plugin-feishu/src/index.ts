@@ -4,14 +4,21 @@ import { createFeishuConnectorAccountProvider } from "./connector-account-provid
 import { FEISHU_SERVICE_NAME } from "./constants";
 import { MessageManager } from "./messageManager";
 import { FeishuService } from "./service";
+import { FeishuWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 const feishuPlugin: Plugin = {
 	name: FEISHU_SERVICE_NAME,
 	description: "Feishu/Lark client plugin for elizaOS",
-	services: [FeishuService],
+	services: [FeishuService, FeishuWorkflowCredentialProvider],
 	actions: [],
 	providers: [],
 	tests: [],
+	// Self-declared auto-enable: activate when the "feishu" connector is
+	// configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+	// in plugin-auto-enable-engine.ts still serves as a fallback.
+	autoEnable: {
+		connectorKeys: ["feishu"],
+	},
 	init: async (
 		_config: Record<string, string>,
 		runtime: IAgentRuntime,

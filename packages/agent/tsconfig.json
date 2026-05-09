@@ -11,15 +11,14 @@
       "./node_modules/@types",
       "../app-core/node_modules/@types",
       "../ui/node_modules/@types",
-      "../../node_modules/@types",
-      "../../../node_modules/@types",
-      "../../../node_modules/.bun/node_modules/@types"
+      "../../node_modules/@types"
     ],
     "declaration": false,
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
       "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/core/testing": ["../core/src/testing/index.ts"],
       "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/native-activity-tracker": [
         "../native-plugins/activity-tracker/src/index.ts"
@@ -57,8 +56,8 @@
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/app-companion": ["../../plugins/app-companion/src/index.ts"],
       "@elizaos/app-companion/*": ["../../plugins/app-companion/src/*"],
-      "@elizaos/app-documents": ["../../plugins/app-documents/src/index.ts"],
-      "@elizaos/app-documents/*": ["../../plugins/app-documents/src/*"],
+      "@elizaos/app-knowledge": ["../../plugins/app-knowledge/src/index.ts"],
+      "@elizaos/app-knowledge/*": ["../../plugins/app-knowledge/src/*"],
       "@elizaos/app-training": ["../../plugins/app-training/src/index.ts"],
       "@elizaos/app-training/*": ["../../plugins/app-training/src/*"],
       "@elizaos/app-task-coordinator": [
@@ -71,12 +70,38 @@
       "@elizaos/app-contacts/*": ["../../plugins/app-contacts/src/*"],
       "@elizaos/agent": ["./src/index.ts"],
       "@elizaos/agent/*": ["./src/*"],
-      "@elizaos/plugin-browser": [
-        "../../plugins/plugin-browser/src/index.ts"
+      "@elizaos/plugin-browser-bridge": [
+        "../../plugins/plugin-browser-bridge/src/index.ts"
       ],
-      "@elizaos/plugin-browser/*": [
-        "../../plugins/plugin-browser/src/*"
+      "@elizaos/plugin-browser-bridge/*": [
+        "../../plugins/plugin-browser-bridge/src/*"
       ],
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
+      "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
+      "@elizaos/plugin-computeruse": [
+        "../../plugins/plugin-computeruse/src/index.ts"
+      ],
+      "@elizaos/plugin-computeruse/*": [
+        "../../plugins/plugin-computeruse/src/*"
+      ],
+      "@elizaos/plugin-music": ["../../plugins/plugin-music/src/index.ts"],
+      "@elizaos/plugin-music/*": ["../../plugins/plugin-music/src/*"],
+      "@elizaos/plugin-whatsapp": [
+        "../../plugins/plugin-whatsapp/src/index.ts"
+      ],
+      "@elizaos/plugin-whatsapp/*": ["../../plugins/plugin-whatsapp/src/*"],
+      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+      "@elizaos/plugin-signal/*": ["../../plugins/plugin-signal/src/*"],
+      "@elizaos/plugin-google": ["../../plugins/plugin-google/src/index.ts"],
+      "@elizaos/plugin-google/*": ["../../plugins/plugin-google/src/*"],
+      "@elizaos/plugin-telegram": [
+        "../../plugins/plugin-telegram/src/index.ts"
+      ],
+      "@elizaos/plugin-telegram/*": ["../../plugins/plugin-telegram/src/*"],
+      "@elizaos/plugin-sql": [
+        "../../plugins/plugin-sql/src/index.node.ts"
+      ],
+      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/skills": ["../skills/src/index.ts"],

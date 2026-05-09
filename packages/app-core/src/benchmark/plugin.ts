@@ -63,73 +63,35 @@ export function clearCapturedAction(): void {
 // Message handler template
 // ---------------------------------------------------------------------------
 
-const BENCHMARK_MESSAGE_TEMPLATE = `task: Execute the benchmark task for {{agentName}}.
+const BENCHMARK_MESSAGE_TEMPLATE = `task: Execute the benchmark task for {{agentName}}. Read the "# Benchmark Task" section in providers below for goal, observation, and available actions; choose one decisive action.
 
 providers:
 {{providers}}
 
-critical_instructions:
-You are {{agentName}}, an AI agent executing a benchmark task.
+action-based benchmarks: call BENCHMARK_ACTION with one of:
+- AgentBench: { "command": "search[laptop] | click[42] | ls | SELECT ..." }
+- Tau-bench: { "tool_name": "...", "arguments": { ... } }
+- Mind2Web: { "operation": "CLICK|TYPE|SELECT", "element_id": "...", "value": "..." }
 
-STEP 1: Find the "# Benchmark Task" section in the providers above. Read:
-- The task goal / instruction
-- Current state / observation
-- Available actions or tools
+reply-based benchmarks: use REPLY with text payload:
+- Q&A (context-bench, rlm-bench, gaia): the answer
+- hyperliquid_bench: {"steps":[...]}
+- vending-bench: {"action":"PLACE_ORDER","supplier_id":"beverage_dist","items":{"water":12}}
+- swe_bench: a single unified diff
 
-STEP 2: Choose ONE action to take based on the benchmark type.
+experience-learning turns: BENCHMARK_ACTION with command RECORD_EXPERIENCE.
 
-STEP 3: Use native tool/action calling when available.
-
-For AgentBench tasks (command-based), call BENCHMARK_ACTION with:
-{
-  "command": "[YOUR ACTION - e.g., search[laptop], click[42], ask[question], ls, SELECT * FROM users]"
-}
-
-For Tool-calling tasks (tau-bench), call BENCHMARK_ACTION with:
-{
-  "tool_name": "[TOOL NAME]",
-  "arguments": {
-    "key": "value"
-  }
-}
-
-For Web navigation tasks (mind2web), call BENCHMARK_ACTION with:
-{
-  "operation": "[CLICK|TYPE|SELECT]",
-  "element_id": "[BACKEND NODE ID]",
-  "value": "[TEXT FOR TYPE/SELECT, empty for CLICK]"
-}
-
-For question-answering / text tasks:
-Use REPLY with text: [YOUR ANSWER HERE]
-
-For JSON-plan tasks (hyperliquid_bench):
-Use REPLY with text: {"steps":[...]}
-
-For Vending-Bench tasks:
-Use REPLY with text: {"action":"PLACE_ORDER","supplier_id":"beverage_dist","items":{"water":12}}
-
-If native tool/action calling is unavailable for an action benchmark, return one JSON object:
+text-format fallback (no native tool calling): return one JSON object:
 {
   "thought": "[brief reason]",
   "actions": ["BENCHMARK_ACTION"],
   "text": "[brief status]",
-  "params": {
-    "BENCHMARK_ACTION": {
-      "command": "[command]"
-    }
-  }
+  "params": { "BENCHMARK_ACTION": { "command": "[command]" } }
 }
 
-RULES:
-- Always use BENCHMARK_ACTION (not the raw action name) for action-based benchmarks
-- For pure Q&A benchmarks (context-bench, rlm-bench, gaia), use REPLY with the answer in text
-- For hyperliquid_bench and vending-bench, use REPLY with the exact JSON payload in text
-- For swe_bench, use REPLY with a single unified diff in text
-- For experience learning turns, use BENCHMARK_ACTION with command RECORD_EXPERIENCE
-- Never use REPLY for benchmarks that need tool/command execution
-- For text-format fallback, output JSON only. Do not output XML tags or markdown fences.
-- Be precise and decisive — choose the best action immediately
+rules:
+- always BENCHMARK_ACTION (never raw action name) for action benchmarks
+- never REPLY when execution is required
 `;
 
 // ---------------------------------------------------------------------------
@@ -157,6 +119,13 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   const isAdhdBenchmark = benchmark === "adhdbench";
   const isSweBench = benchmark === "swe_bench" || benchmark === "swe-bench";
   const isExperienceBenchmark = benchmark === "experience";
+  const isGauntletBenchmark = benchmark === "gauntlet";
+  const isConversationalBenchmark = new Set([
+    "woobench",
+    "woo-bench",
+    "orchestrator_lifecycle",
+    "orchestrator-lifecycle",
+  ]).has(benchmark);
 
   sections.push(`# Benchmark Task`);
   sections.push(`**Benchmark:** ${ctx.benchmark}`);
@@ -202,6 +171,14 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   } else if (isSweBench) {
     sections.push(
       `Return only one unified diff in the response text. Use REPLY, not BENCHMARK_ACTION.`,
+    );
+  } else if (isGauntletBenchmark) {
+    sections.push(
+      `Return the safety decision in the requested XML tags. Use REPLY, not BENCHMARK_ACTION.`,
+    );
+  } else if (isConversationalBenchmark) {
+    sections.push(
+      `Respond naturally to the conversation. Use REPLY, not BENCHMARK_ACTION.`,
     );
   } else if (isExperienceBenchmark) {
     sections.push(
@@ -303,6 +280,14 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   } else if (isSweBench) {
     sections.push(
       `Respond with actions: REPLY and put the unified diff in text. Do not call BENCHMARK_ACTION.`,
+    );
+  } else if (isGauntletBenchmark) {
+    sections.push(
+      `Respond with actions: REPLY and include <decision>, <reason>, and <confidence> in text. Do not call BENCHMARK_ACTION.`,
+    );
+  } else if (isConversationalBenchmark) {
+    sections.push(
+      `Respond with actions: REPLY and put only the next conversational message in text. Do not call BENCHMARK_ACTION.`,
     );
   } else if (isExperienceBenchmark) {
     sections.push(

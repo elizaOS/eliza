@@ -6,7 +6,7 @@ import type {
   WalletNftsResponse,
 } from "@elizaos/shared";
 import { useMemo } from "react";
-import type { InventoryChainFilters } from "@elizaos/app-core/state/types";
+import type { InventoryChainFilters } from "@elizaos/ui";
 import {
   CHAIN_CONFIGS,
   type ChainKey,

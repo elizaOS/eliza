@@ -1,6 +1,6 @@
 /**
  * Connector target catalog — surfaces the user's enabled connectors as
- * structured `TargetGroup`s so the n8n clarification UI can render
+ * structured `TargetGroup`s so the workflow clarification UI can render
  * quick-pick servers, channels, recipients, and chats without making the
  * end-user paste raw IDs.
  *
@@ -8,7 +8,7 @@
  * are placeholders so the host can stack them onto this framework without
  * a route or UI rewrite.
  *
- * The Discord enumeration shares its 5-minute REST cache with the n8n
+ * The Discord enumeration shares its 5-minute REST cache with the workflow
  * runtime-context provider when the host wires both with the same
  * `discordCache` instance — a "generate" call that already primed the
  * runtime-context cache pays no extra REST cost when the user picks.

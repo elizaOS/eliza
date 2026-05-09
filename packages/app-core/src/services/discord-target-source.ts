@@ -1,5 +1,5 @@
 /**
- * Discord target enumeration — shared by the n8n runtime-context provider
+ * Discord target enumeration — shared by the workflow runtime-context provider
  * (which formats results as fact strings for the LLM prompt) and the
  * connector-target-catalog (which surfaces structured TargetGroup objects
  * for the clarification UI). Owning the REST + cache here means a single
@@ -147,7 +147,7 @@ export async function fetchDiscordEnumeration(
 }
 
 /**
- * Format an enumeration result as the human-readable fact strings the n8n
+ * Format an enumeration result as the human-readable fact strings the workflow
  * runtime-context provider injects into the LLM prompt.
  */
 export function formatDiscordEnumerationAsFacts(

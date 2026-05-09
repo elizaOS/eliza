@@ -17,6 +17,7 @@ import {
   createMessageMemory,
   logger,
   type Media,
+  sendJsonError,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -42,7 +43,6 @@ import {
 } from "../services/plugin-manager-types.js";
 import { maybeAugmentChatMessageWithDocuments as augmentChatMessageWithDocuments } from "./chat-augmentation.js";
 import { extractCompatTextContent } from "./compat-utils.js";
-import { sendJsonError } from "./http-helpers.js";
 import type { ChatAttachmentWithData, ServerState } from "./server-types.js";
 import { getWalletAddresses } from "./wallet.js";
 import {

@@ -92,7 +92,7 @@ export function createMinimalState(context: string): State {
 			batcherContext: context,
 		},
 		data: {},
-	} as unknown as State;
+	};
 }
 
 export function buildCharacterContext(runtime: IAgentRuntime): string {

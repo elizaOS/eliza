@@ -150,7 +150,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 			// Update existing component
 			await this.runtime.updateComponent({
 				...existingComponent,
-				data: componentData as unknown as Component["data"],
+				data: componentData as Component["data"],
 			});
 			logger.debug(
 				`[ComponentSecretStorage] Updated secret: ${key} for user: ${context.userId}`,
@@ -166,7 +166,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 				worldId: this.runtime.agentId,
 				sourceEntityId: context.userId as UUID,
 				type: COMPONENT_TYPE,
-				data: componentData as unknown as Component["data"],
+				data: componentData as Component["data"],
 			};
 
 			await this.runtime.createComponent(newComponent);
@@ -283,7 +283,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 
 		await this.runtime.updateComponent({
 			...component,
-			data: data as unknown as Component["data"],
+			data: data as Component["data"],
 		});
 
 		return true;

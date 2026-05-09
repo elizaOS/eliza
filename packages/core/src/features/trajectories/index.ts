@@ -211,7 +211,7 @@ export const trajectoriesPlugin: Plugin = {
 				if (!message.metadata) {
 					message.metadata = {
 						type: "message",
-					} as unknown as typeof message.metadata;
+					};
 				}
 				const meta = message.metadata as Record<string, unknown>;
 

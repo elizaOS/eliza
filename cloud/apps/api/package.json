@@ -12,8 +12,8 @@
     "codegen": "node src/_generate-router.mjs",
     "typecheck": "tsc --noEmit",
     "test:audit": "node test/_audit-coverage.mjs",
-    "test:e2e": "bun test --max-concurrency=1 --preload ./test/e2e/preload.ts test/e2e --timeout 120000",
-    "test:e2e:foundation": "bun test --preload ./test/e2e/preload.ts test/e2e/agent-token-flow.test.ts --timeout 120000"
+    "test:e2e": "TEST_SERVER_SCRIPT=dev bun test --max-concurrency=1 --preload ../../packages/tests/e2e/preload.ts test/e2e --timeout 120000",
+    "test:e2e:foundation": "TEST_SERVER_SCRIPT=dev bun test --preload ../../packages/tests/e2e/preload.ts test/e2e/agent-token-flow.test.ts --timeout 120000"
   },
   "dependencies": {
     "@ai-sdk/gateway": "^3.0.37",
@@ -24,11 +24,11 @@
     "@neondatabase/serverless": "^1.1.0",
     "@upstash/redis": "^1.37.0",
     "drizzle-orm": "^0.45.1",
-    "hono": "4.12.16",
+    "hono": "4.12.18",
     "mcp-handler": "^1.0.7",
     "jose": "^6.0.0",
     "stripe": "^22.0.0",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "wrangler": "^4.0.0",
     "zod": "^4.4.3"
   },

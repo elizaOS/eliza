@@ -14,25 +14,39 @@ import {
 const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
 const elizaCoreEntry = getElizaCoreEntry(repoRoot);
 
-// Alias @elizaos/core to workspace source only when its dependencies are installed.
-const elizaCoreSource = path.join(
+/** This monorepo: core lives in `packages/core` (see `./testing` barrel in package exports). */
+const monorepoCoreRoot = path.join(repoRoot, "packages", "core");
+const monorepoCoreSource = path.join(monorepoCoreRoot, "src", "index.node.ts");
+/** Legacy submodule layout (`packages/typescript`) when embedding upstream eliza. */
+const legacyTypescriptCoreSource = path.join(
   elizaWorkspaceRoot,
   "packages",
   "typescript",
   "src",
   "index.ts",
 );
-const useLocalElizaCore =
-  existsSync(elizaCoreSource) &&
+
+const useMonorepoElizaCore =
+  existsSync(monorepoCoreSource) &&
+  existsSync(path.join(monorepoCoreRoot, "node_modules"));
+
+const useLegacyTypescriptElizaCore =
+  !useMonorepoElizaCore &&
+  existsSync(legacyTypescriptCoreSource) &&
   existsSync(
     path.join(elizaWorkspaceRoot, "packages", "typescript", "node_modules"),
   );
 
+const localCoreSourceReplacement = useMonorepoElizaCore
+  ? monorepoCoreSource
+  : useLegacyTypescriptElizaCore
+    ? legacyTypescriptCoreSource
+    : undefined;
+
 // Keep the roles shim here too; the base config owns a separate alias array.
 const elizaCoreRolesEntry = getElizaCoreRolesEntry(repoRoot);
-const localElizaCoreReplacement = useLocalElizaCore
-  ? elizaCoreSource
-  : elizaCoreEntry;
+const localElizaCoreReplacement =
+  localCoreSourceReplacement ?? elizaCoreEntry;
 const unitAliasEntries: ModuleAlias[] = [
   ...getOptionalResolvedAliases([
     {
@@ -75,21 +89,33 @@ const unitAliasEntries: ModuleAlias[] = [
     },
   ]),
   ...getOptionalResolvedAliases(
-    useLocalElizaCore
+    useMonorepoElizaCore
       ? [
           {
             find: "@elizaos/core/testing",
             replacement: path.join(
-              elizaWorkspaceRoot,
-              "packages",
-              "typescript",
+              monorepoCoreRoot,
               "src",
               "testing",
               "index.ts",
             ),
           },
         ]
-      : [],
+      : useLegacyTypescriptElizaCore
+        ? [
+            {
+              find: "@elizaos/core/testing",
+              replacement: path.join(
+                elizaWorkspaceRoot,
+                "packages",
+                "typescript",
+                "src",
+                "testing",
+                "index.ts",
+              ),
+            },
+          ]
+        : [],
   ),
   ...getOptionalResolvedAliases(
     localElizaCoreReplacement

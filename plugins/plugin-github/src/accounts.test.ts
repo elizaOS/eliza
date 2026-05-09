@@ -13,10 +13,31 @@ import {
 import { createGitHubConnectorAccountProvider } from "./connector-account-provider";
 
 function runtime(settings: Record<string, unknown>): IAgentRuntime {
-  return {
+  return createTestRuntime({
     character: {},
-    getSetting: vi.fn((key: string) => settings[key]),
-  } as unknown as IAgentRuntime;
+    getSetting: vi.fn((key: string) => toRuntimeSetting(settings[key])),
+  });
+}
+
+type RuntimeSetting = string | number | boolean | null;
+
+interface TestRuntimeShape {
+  agentId?: string;
+  character?: unknown;
+  getSetting?: (key: string) => RuntimeSetting;
+  getService?: (serviceType: string) => unknown;
+}
+
+function toRuntimeSetting(value: unknown): RuntimeSetting {
+  return typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+    ? value
+    : null;
+}
+
+function createTestRuntime(runtimeShape: TestRuntimeShape): IAgentRuntime {
+  return Object.assign(Object.create(null) as IAgentRuntime, runtimeShape);
 }
 
 describe("GitHub account resolution", () => {
@@ -68,6 +89,20 @@ describe("GitHub account resolution", () => {
       role: "user",
       token: "reviewer-token",
     });
+  });
+
+  it("does not fall back to role defaults when an explicit accountId is missing", () => {
+    const accounts = readGitHubAccounts(
+      runtime({
+        GITHUB_AGENT_PAT: "legacy-agent",
+      }),
+    );
+    const selection = resolveGitHubAccountSelection(
+      { accountId: "missing", as: "agent" },
+      "agent",
+    );
+
+    expect(resolveGitHubAccount(accounts, selection)).toBeNull();
   });
 
   it("does not read token-shaped fields from account metadata", () => {
@@ -124,7 +159,7 @@ describe("GitHub account resolution", () => {
   it("persists callback tokens as credential refs without returning token metadata", async () => {
     const vault = new Map<string, string>();
     const setCredentialRef = vi.fn(async () => undefined);
-    const runtime = {
+    const runtime = createTestRuntime({
       agentId: "agent-1",
       character: {},
       getSetting: (key: string) =>
@@ -132,7 +167,7 @@ describe("GitHub account resolution", () => {
           GITHUB_OAUTH_CLIENT_ID: "github-client",
           GITHUB_OAUTH_CLIENT_SECRET: "github-secret",
           GITHUB_OAUTH_REDIRECT_URI: "http://localhost/oauth/github/callback",
-        })[key],
+        })[key] ?? null,
       getService: (serviceType: string) =>
         serviceType === "vault"
           ? {
@@ -141,7 +176,7 @@ describe("GitHub account resolution", () => {
               },
             }
           : null,
-    } as unknown as IAgentRuntime;
+    });
     const manager = createOAuthCallbackManager(
       "github",
       "acct_github_durable_1",
@@ -223,7 +258,7 @@ describe("GitHub account resolution", () => {
   });
 
   it("fails OAuth callback when no durable vault writer is available", async () => {
-    const runtime = {
+    const runtime = createTestRuntime({
       agentId: "agent-1",
       character: {},
       getSetting: (key: string) =>
@@ -231,9 +266,9 @@ describe("GitHub account resolution", () => {
           GITHUB_OAUTH_CLIENT_ID: "github-client",
           GITHUB_OAUTH_CLIENT_SECRET: "github-secret",
           GITHUB_OAUTH_REDIRECT_URI: "http://localhost/oauth/github/callback",
-        })[key],
+        })[key] ?? null,
       getService: () => null,
-    } as unknown as IAgentRuntime;
+    });
     const manager = createOAuthCallbackManager(
       "github",
       "acct_github_durable_1",
@@ -350,10 +385,10 @@ function runtimeWithConnectorStorage(options: {
       return false;
     },
   };
-  return {
+  return createTestRuntime({
     agentId: "agent-1",
     character: {},
-    getSetting: vi.fn(() => undefined),
+    getSetting: vi.fn(() => null),
     getService: (serviceType: string) => {
       if (serviceType === "connector_account_storage") return storage;
       if (serviceType === "vault") {
@@ -363,7 +398,7 @@ function runtimeWithConnectorStorage(options: {
       }
       return null;
     },
-  } as unknown as IAgentRuntime;
+  });
 }
 
 function createOAuthCallbackManager(

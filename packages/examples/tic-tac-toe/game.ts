@@ -396,7 +396,6 @@ async function createSession(): Promise<GameSession> {
   });
 
   await runtime.initialize();
-  runtime.evaluators.length = 0;
 
   const game = new TicTacToeGame();
   const roomId = stringToUuid("tic-tac-toe-room");

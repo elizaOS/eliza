@@ -16,7 +16,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@elizaos/cloud-ui/primitives";
+} from "@elizaos/cloud-ui";
 import { Globe, Info, Link as LinkIcon, Lock, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";

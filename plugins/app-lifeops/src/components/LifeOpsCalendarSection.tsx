@@ -16,7 +16,7 @@ import {
   Spinner,
   useApp,
   useMediaQuery,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";

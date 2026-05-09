@@ -33,6 +33,37 @@ interface HookEventPayload {
   message?: string;
 }
 
+function asHookEventPayload(
+  body: Record<string, unknown>,
+): HookEventPayload | null {
+  if (typeof body.hook_event_name !== "string" || !body.hook_event_name) {
+    return null;
+  }
+  return {
+    hook_event_name: body.hook_event_name,
+    session_id:
+      typeof body.session_id === "string" ? body.session_id : undefined,
+    cwd: typeof body.cwd === "string" ? body.cwd : undefined,
+    tool_name: typeof body.tool_name === "string" ? body.tool_name : undefined,
+    toolName: typeof body.toolName === "string" ? body.toolName : undefined,
+    tool_input:
+      body.tool_input &&
+      typeof body.tool_input === "object" &&
+      !Array.isArray(body.tool_input)
+        ? { ...body.tool_input }
+        : undefined,
+    notification_type:
+      typeof body.notification_type === "string"
+        ? body.notification_type
+        : undefined,
+    notificationType:
+      typeof body.notificationType === "string"
+        ? body.notificationType
+        : undefined,
+    message: typeof body.message === "string" ? body.message : undefined,
+  };
+}
+
 /**
  * Handle Claude Code HTTP hook routes.
  * Returns true if the route was handled, false otherwise.
@@ -68,12 +99,12 @@ export async function handleHookRoutes(
     return true;
   }
 
-  const payload = body as unknown as HookEventPayload;
-  const eventName = payload.hook_event_name;
-  if (!eventName) {
+  const payload = asHookEventPayload(body);
+  if (!payload) {
     sendError(res, "Missing hook_event_name", 400);
     return true;
   }
+  const eventName = payload.hook_event_name;
 
   // Normalize field names: Gemini uses camelCase, Claude uses snake_case
   const toolName = payload.tool_name ?? payload.toolName;

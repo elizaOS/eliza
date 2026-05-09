@@ -30,8 +30,15 @@ describe("cacheProviderOptions — universal cache directives", () => {
 		expect(cerebras.promptCacheKey).toBe(cerebras.prompt_cache_key);
 	});
 
-	it("openai carries promptCacheKey and promptCacheRetention=24h", () => {
+	it("openai carries promptCacheKey without unsafe retention by default", () => {
 		const opts = cacheProviderOptions({ prefixHash: HASH });
+		const openai = opts.openai as Record<string, unknown>;
+		expect(typeof openai.promptCacheKey).toBe("string");
+		expect(openai).not.toHaveProperty("promptCacheRetention");
+	});
+
+	it("openai carries promptCacheRetention=24h for documented extended-retention models", () => {
+		const opts = cacheProviderOptions({ prefixHash: HASH, model: "gpt-5.4" });
 		const openai = opts.openai as Record<string, unknown>;
 		expect(typeof openai.promptCacheKey).toBe("string");
 		expect(openai.promptCacheRetention).toBe("24h");

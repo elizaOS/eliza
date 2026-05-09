@@ -38,7 +38,7 @@ import { toast } from "sonner";
 import { VOICE_CLONE_INSTANT_COST, VOICE_CLONE_PROFESSIONAL_COST } from "@/lib/pricing-constants";
 import { cn } from "@/lib/utils";
 import { useAudioRecorder } from "../../../components/chat/hooks/use-audio-recorder";
-import type { Voice } from "@elizaos/cloud-ui/components/voice/types";
+import type { Voice } from "@elizaos/cloud-ui";
 
 interface VoiceCloneFormProps {
   creditBalance: number;

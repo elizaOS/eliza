@@ -2,13 +2,20 @@ import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } f
 import { createWhatsAppConnectorAccountProvider } from "./connector-account-provider";
 import { WhatsAppConnectorService } from "./runtime-service";
 import { whatsappSetupRoutes } from "./setup-routes";
+import { WhatsAppWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 const whatsappPlugin: Plugin = {
   name: "whatsapp",
   description: "WhatsApp integration for ElizaOS (Cloud API + Baileys)",
   actions: [],
-  services: [WhatsAppConnectorService],
+  services: [WhatsAppConnectorService, WhatsAppWorkflowCredentialProvider],
   routes: whatsappSetupRoutes,
+  // Self-declared auto-enable: activate when the "whatsapp" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["whatsapp"],
+  },
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     // Register the WhatsApp provider with the ConnectorAccountManager so the
     // HTTP CRUD surface (packages/agent/src/api/connector-account-routes.ts)
@@ -52,6 +59,15 @@ export {
   type WhatsAppTokenResolution,
   type WhatsAppTokenSource,
 } from "./accounts";
+export {
+  applyWhatsAppQrOverride,
+  handleWhatsAppRoute,
+  MAX_PAIRING_SESSIONS as WHATSAPP_MAX_PAIRING_SESSIONS,
+  type WhatsAppPairingEventLike,
+  type WhatsAppPairingSessionLike,
+  type WhatsAppRouteDeps,
+  type WhatsAppRouteState,
+} from "./api/whatsapp-routes";
 export { ClientFactory } from "./clients/factory";
 // Channel configuration types
 export type {

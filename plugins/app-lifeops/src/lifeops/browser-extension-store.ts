@@ -51,7 +51,7 @@ const MAX_REPORT_HISTORY = 2_048;
 const MAX_REPORT_AGE_MS = 30 * 24 * 60 * 60 * 1_000;
 
 function getStore(runtime: IAgentRuntime): RuntimeStore {
-  const host = runtime as unknown as Record<symbol, RuntimeStore>;
+  const host = runtime as IAgentRuntime & Record<symbol, RuntimeStore>;
   const existing = host[STORE_KEY];
   if (existing) {
     return existing;

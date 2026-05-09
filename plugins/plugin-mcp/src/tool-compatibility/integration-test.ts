@@ -39,7 +39,6 @@ function createMockRuntime(modelProvider: string, model: string): MockRuntime {
     }),
     providers: [],
     actions: [],
-    evaluators: [],
     plugins: [],
     services: new Map(),
     events: {},

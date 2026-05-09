@@ -23,6 +23,10 @@ function normalizeNewlines(value: string): string {
   return value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /**
  * Extract YAML frontmatter block from content
  * Frontmatter must start with --- on the first line and end with --- on its own line
@@ -158,11 +162,10 @@ export function resolveSkillProvenance(
   frontmatter: SkillFrontmatter,
 ): SkillProvenance | undefined {
   const raw = frontmatter.provenance;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+  if (!isRecord(raw)) {
     return undefined;
   }
-  const record = raw as unknown as Record<string, unknown>;
-  const source = record.source;
+  const source = raw.source;
   if (
     source !== "human" &&
     source !== "agent-generated" &&
@@ -171,11 +174,11 @@ export function resolveSkillProvenance(
     return undefined;
   }
   const createdAt =
-    typeof record.createdAt === "string" ? record.createdAt : undefined;
+    typeof raw.createdAt === "string" ? raw.createdAt : undefined;
   if (!createdAt) {
     return undefined;
   }
-  const refinedCountRaw = record.refinedCount;
+  const refinedCountRaw = raw.refinedCount;
   const refinedCount =
     typeof refinedCountRaw === "number" && Number.isFinite(refinedCountRaw)
       ? Math.max(0, Math.floor(refinedCountRaw))
@@ -185,14 +188,14 @@ export function resolveSkillProvenance(
     createdAt,
     refinedCount,
   };
-  if (typeof record.derivedFromTrajectory === "string") {
-    provenance.derivedFromTrajectory = record.derivedFromTrajectory;
+  if (typeof raw.derivedFromTrajectory === "string") {
+    provenance.derivedFromTrajectory = raw.derivedFromTrajectory;
   }
   if (
-    typeof record.lastEvalScore === "number" &&
-    Number.isFinite(record.lastEvalScore)
+    typeof raw.lastEvalScore === "number" &&
+    Number.isFinite(raw.lastEvalScore)
   ) {
-    const score = record.lastEvalScore;
+    const score = raw.lastEvalScore;
     provenance.lastEvalScore = Math.max(0, Math.min(1, score));
   }
   return provenance;

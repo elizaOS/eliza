@@ -1,8 +1,10 @@
 import type { Dirent } from "node:fs";
 import { promises as fs } from "node:fs";
 import type http from "node:http";
+import { ServerResponse } from "node:http";
 import path from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, RouteRequestMeta } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/shared";
 import {
   type AppRunActionResult,
   type AppRunSummary,
@@ -27,7 +29,6 @@ import {
   scoreEntries,
   toSearchResults,
 } from "../services/registry-client-queries.js";
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
 
 const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
   ".webp": "image/webp",
@@ -625,20 +626,28 @@ async function proxyRunSteeringRequest(
   }
 
   const captured = createCapturedResponse();
+  const syntheticResponse = Object.assign(
+    Object.create(ServerResponse.prototype) as http.ServerResponse,
+    captured,
+  );
   const syntheticUrl = new URL(ctx.url.toString());
   syntheticUrl.pathname = target.pathname;
-  const syntheticCtx = {
+  const syntheticCtx: AppsRouteContext = {
     ...ctx,
     pathname: target.pathname,
     url: syntheticUrl,
-    res: captured,
+    res: syntheticResponse,
     readJsonBody: async <T extends object>() => body as T | null,
-    json: (response: CapturedResponse, data: unknown, status = 200): void => {
+    json: (
+      response: http.ServerResponse,
+      data: unknown,
+      status = 200,
+    ): void => {
       response.writeHead(status, { "Content-Type": "application/json" });
       response.end(JSON.stringify(data));
     },
     error: (
-      response: CapturedResponse,
+      response: http.ServerResponse,
       message: string,
       status = 500,
     ): void => {
@@ -647,9 +656,7 @@ async function proxyRunSteeringRequest(
     },
   };
 
-  const handled = await routeModule.handleAppRoutes(
-    syntheticCtx as unknown as AppsRouteContext,
-  );
+  const handled = await routeModule.handleAppRoutes(syntheticCtx);
   if (!handled) {
     return {
       success: false,
@@ -1059,8 +1066,8 @@ export async function handleAppsRoutes(
         // ~/.eliza/plugins/installed without depending on a plugin-manager
         // service. The runtime plugin resolver already searches that dir.
         const { installPlugin: installPluginDirect } = (await import(
-          /* webpackIgnore: true */ "@elizaos/app-core/services/plugin-installer"
-        )) as {
+          /* webpackIgnore: true */ "@elizaos/app-core"
+        )) as unknown as {
           installPlugin: (
             name: string,
             onProgress?: (progress: InstallProgressLike) => void,

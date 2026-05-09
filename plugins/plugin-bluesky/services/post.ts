@@ -9,10 +9,7 @@ import {
 	type UUID,
 } from "@elizaos/core";
 import type { BlueSkyClient } from "../client";
-import {
-	generatePostTemplate,
-	truncatePostTemplate,
-} from "../generated/prompts/typescript/prompts.js";
+import { generatePostTemplate, truncatePostTemplate } from "../prompts.js";
 import type { BlueSkyPost, CreatePostRequest } from "../types";
 import { BLUESKY_MAX_POST_LENGTH } from "../types";
 import {
@@ -213,7 +210,7 @@ export class BlueSkyPostService {
 					likeCount: post.likeCount,
 					quoteCount: post.quoteCount,
 				},
-			} as unknown as Memory["metadata"],
+			} as Memory["metadata"],
 		};
 	}
 

@@ -13,7 +13,7 @@
  * task-coordinator depend on app-core for hooks, types, and the client.
  */
 
-import { registerTaskCoordinatorSlots } from "@elizaos/app-core";
+import { registerTaskCoordinatorSlots } from "@elizaos/ui";
 import { CodingAgentControlChip } from "./CodingAgentControlChip.js";
 import { CodingAgentSettingsSection } from "./CodingAgentSettingsSection.js";
 import { CodingAgentTasksPanel } from "./CodingAgentTasksPanel.js";

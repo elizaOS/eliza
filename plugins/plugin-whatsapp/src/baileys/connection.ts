@@ -117,12 +117,12 @@ export class BaileysConnection extends EventEmitter {
       return;
     }
 
-    (
-      this.socket.ev as unknown as {
-        removeAllListeners: (...args: unknown[]) => void;
-      }
-    ).removeAllListeners();
-    (this.socket as unknown as { ws?: { close?: () => void } }).ws?.close?.();
+    const socket = this.socket as typeof this.socket & {
+      ev: { removeAllListeners: (...args: unknown[]) => void };
+      ws?: { close?: () => void };
+    };
+    socket.ev.removeAllListeners();
+    socket.ws?.close?.();
     this.socket = undefined;
     this.connectionStatus = "close";
     this.emit("connection", "close");

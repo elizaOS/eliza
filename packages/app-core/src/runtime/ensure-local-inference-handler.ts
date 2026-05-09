@@ -28,11 +28,15 @@ import {
   ModelType,
   type TextEmbeddingParams,
 } from "@elizaos/core";
-import type { LocalInferenceLoader } from "../services/local-inference/active-model";
+import {
+  type LocalInferenceLoader,
+  resolveLocalInferenceLoadArgs,
+} from "../services/local-inference/active-model";
 import {
   autoAssignAtBoot,
   readEffectiveAssignments,
 } from "../services/local-inference/assignments";
+import { extractPromptCacheKey } from "../services/local-inference/cache-bridge";
 import { deviceBridge } from "../services/local-inference/device-bridge";
 import { localInferenceEngine } from "../services/local-inference/engine";
 import { handlerRegistry } from "../services/local-inference/handler-registry";
@@ -146,7 +150,7 @@ async function ensureAssignedModelLoaded(
 
   if (loader) {
     await loader.unloadModel();
-    await loader.loadModel({ modelPath: target.path });
+    await loader.loadModel(await resolveLocalInferenceLoadArgs(target));
   } else {
     await localInferenceEngine.load(target.path);
   }
@@ -160,6 +164,16 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
     // expensive; the user is expected to assign a small number of models.
     await ensureAssignedModelLoaded(loader, slot);
 
+    // Forward the runtime-emitted prompt cache key to the local backend
+    // so the engine / llama-server can pin to a stable slot and reuse
+    // its prefix KV. Cloud providers consume the same key from
+    // `providerOptions.{provider}.promptCacheKey`; here we read the
+    // canonical form from `providerOptions.eliza.promptCacheKey`.
+    const cacheKey =
+      extractPromptCacheKey(
+        (params as { providerOptions?: unknown }).providerOptions,
+      ) ?? undefined;
+
     // Prefer a runtime-registered loader that implements `generate` — that's
     // the mobile / device-bridge path. On desktop we fall back to the
     // standalone engine.
@@ -167,6 +181,7 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
       return loader.generate({
         prompt: params.prompt ?? "",
         stopSequences: params.stopSequences,
+        cacheKey,
       });
     }
     if (!(await localInferenceEngine.available())) {
@@ -182,6 +197,7 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
     return localInferenceEngine.generate({
       prompt: params.prompt ?? "",
       stopSequences: params.stopSequences,
+      cacheKey,
     });
   };
 }
@@ -265,8 +281,8 @@ async function tryRegisterAospLlamaLoader(
   if (process.env.ELIZA_LOCAL_LLAMA?.trim() !== "1") return false;
   try {
     const mod = (await import(
-      "@elizaos/agent/runtime/aosp-llama-adapter"
-    )) as unknown as {
+      "@elizaos/plugin-aosp-local-inference"
+    )) as typeof import("@elizaos/plugin-aosp-local-inference") & {
       registerAospLlamaLoader?: (r: AgentRuntime) => Promise<boolean> | boolean;
     };
     if (typeof mod.registerAospLlamaLoader !== "function") {
@@ -296,16 +312,16 @@ async function tryRegisterCapacitorLoader(
     | undefined;
   if (!cap?.isNativePlatform?.()) return false;
   try {
-    const mod = (await import("@elizaos/capacitor-llama")) as unknown as {
-      registerCapacitorLlamaLoader?: (r: AgentRuntime) => void;
-    };
-    if (typeof mod.registerCapacitorLlamaLoader === "function") {
-      mod.registerCapacitorLlamaLoader(runtime);
-      logger.info(
-        "[local-inference] Registered capacitor-llama loader for mobile on-device inference",
-      );
-      return true;
-    }
+    const { registerCapacitorLlamaLoader } = await import(
+      "@elizaos/capacitor-llama"
+    );
+    const capacitorRuntime: Parameters<typeof registerCapacitorLlamaLoader>[0] =
+      Object.create(runtime);
+    registerCapacitorLlamaLoader(capacitorRuntime);
+    logger.info(
+      "[local-inference] Registered capacitor-llama loader for mobile on-device inference",
+    );
+    return true;
   } catch (err) {
     logger.debug(
       "[local-inference] capacitor-llama not available:",

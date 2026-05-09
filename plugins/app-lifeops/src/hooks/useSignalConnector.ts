@@ -1,4 +1,4 @@
-import { client } from "@elizaos/app-core/api";
+import { client } from "@elizaos/ui";
 import type {
   LifeOpsConnectorSide,
   LifeOpsSignalConnectorStatus,

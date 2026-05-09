@@ -2,7 +2,7 @@ import {
   type CloudBillingHistoryItem,
   client,
   useApp,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import {
   Ban,
   CalendarClock,

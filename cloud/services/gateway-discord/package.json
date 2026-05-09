@@ -25,11 +25,11 @@
     "@upstash/redis": "^1.37.0",
     "discord.js": "^14.26.4",
     "hashring": "^3.2.0",
-    "hono": "4.12.16"
+    "hono": "4.12.18"
   },
   "devDependencies": {
     "@types/hashring": "^3.2.5",
     "@types/node": "22.19.17",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   }
 }

@@ -85,7 +85,7 @@ Environment Variables:
     run_parser.add_argument(
         "--provider",
         type=str,
-        choices=["groq", "openai", "anthropic", "google-genai", "openrouter", "xai", "ollama", "local-ai", "eliza"],
+        choices=["groq", "openai", "anthropic", "google-genai", "openrouter", "xai", "ollama", "local-ai", "cerebras", "eliza"],
         help="Model provider (default: groq if GROQ_API_KEY set; 'eliza' routes through the elizaOS TS bridge)",
     )
     run_parser.add_argument(

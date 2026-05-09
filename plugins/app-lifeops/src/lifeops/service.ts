@@ -8,6 +8,10 @@
 
 export { LifeOpsServiceError } from "./service-types.js";
 
+import type {
+  LifeOpsReminderAttempt,
+  LifeOpsWorkflowRun,
+} from "@elizaos/shared";
 import { withBrowser } from "./service-mixin-browser.js";
 import { withCalendar } from "./service-mixin-calendar.js";
 import type { Constructor } from "./service-mixin-core.js";
@@ -84,3 +88,16 @@ class LifeOpsServiceComposed extends LIFEOPS_COMPOSED {}
  * {@link LifeOpsServiceBase}.
  */
 export class LifeOpsService extends LifeOpsServiceComposed {}
+
+/** Declared explicitly: mixin composition exceeds TypeScript inference depth. */
+export interface LifeOpsService {
+  processScheduledWork(request?: {
+    now?: string;
+    reminderLimit?: number;
+    workflowLimit?: number;
+  }): Promise<{
+    now: string;
+    reminderAttempts: LifeOpsReminderAttempt[];
+    workflowRuns: LifeOpsWorkflowRun[];
+  }>;
+}

@@ -1,5 +1,6 @@
 // registered to runtime through plugin
 
+import { promptRunnerTaskWorker } from "../features/basic-capabilities/prompt-runner-task";
 import type { JsonValue } from "../types";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
@@ -80,6 +81,10 @@ export class TaskService extends Service {
 				return undefined;
 			},
 		});
+		// Generic scheduled-prompt worker: lets users (and the UI) schedule
+		// arbitrary natural-language jobs via metadata.prompt without a bespoke
+		// worker per prompt. Discriminated by metadata.kind = 'prompt'.
+		runtime.registerTaskWorker(promptRunnerTaskWorker);
 		await service.startTimer();
 		// await service.createTestTasks();
 		return service;

@@ -5,20 +5,33 @@
 // safety is enforced at the composed-service level (LifeOpsService class).
 // Refactoring requires either declaration-merging every cross-mixin method
 // or moving to a single composed interface — tracked as separate work.
-import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared/contracts/lifeops";
-import { sendWhatsAppMessageWithRuntimeService } from "./runtime-service-delegates.js";
+import fs from "node:fs";
+import path from "node:path";
+import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent";
+import { whatsappAuthExists } from "@elizaos/plugin-whatsapp";
+import type { Plugin } from "@elizaos/core";
+import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
-import {
-  drainWhatsAppInboundBuffer,
-  parseAndBufferWhatsAppWebhookMessages,
-  peekWhatsAppInboundBuffer,
-  type WhatsAppMessage,
-  type WhatsAppSendRequest,
-} from "./whatsapp-client.js";
 
 const WHATSAPP_PLUGIN_SETUP_MESSAGE =
   "WhatsApp is managed by @elizaos/plugin-whatsapp. Configure and enable the WhatsApp connector plugin; LifeOps no longer sends with local WhatsApp credentials.";
+
+type WhatsAppSendRequest = {
+  to: string;
+  text: string;
+  replyToMessageId?: string;
+};
+
+type WhatsAppMessage = {
+  id: string;
+  from: string;
+  channelId: string;
+  timestamp: string;
+  type: "text" | "image" | "audio" | "document" | "unknown";
+  text?: string;
+  metadata?: Record<string, unknown>;
+};
 
 type WhatsAppRuntimeServiceLike = {
   connected?: boolean;
@@ -68,6 +81,57 @@ function whatsAppServiceConnected(
       whatsAppServiceCanSend(service) ||
       whatsAppServiceCanRead(service),
   );
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function stringField(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function isoFromMemory(memory: Memory): string {
+  const createdAt = Number(memory.createdAt);
+  return Number.isFinite(createdAt) && createdAt > 0
+    ? new Date(createdAt).toISOString()
+    : new Date().toISOString();
+}
+
+function memoryToWhatsAppMessage(memory: Memory): WhatsAppMessage {
+  const metadata = record(memory.metadata);
+  const whatsapp = record(metadata.whatsapp);
+  const sender = record(metadata.sender);
+  const id = stringField(
+    whatsapp.messageId ??
+      metadata.messageIdFull ??
+      metadata.messageId ??
+      memory.id,
+    cryptoRandomFallback(),
+  );
+  const channelId = stringField(
+    whatsapp.chatId ?? metadata.channelId ?? memory.roomId,
+    "unknown",
+  );
+  const from = stringField(
+    whatsapp.from ?? sender.id ?? sender.phone ?? memory.entityId,
+    channelId,
+  );
+  return {
+    id,
+    from,
+    channelId,
+    timestamp: isoFromMemory(memory),
+    type: stringField(whatsapp.type, "text") as WhatsAppMessage["type"],
+    text: stringField(memory.content?.text),
+    metadata,
+  };
+}
+
+function cryptoRandomFallback(): string {
+  return `whatsapp:${Date.now()}:${Math.random().toString(36).slice(2)}`;
 }
 
 /** @internal */
@@ -186,55 +250,44 @@ export function withWhatsApp<TBase extends Constructor<LifeOpsServiceBase>>(
         return { ingested: 0, messages: [] };
       }
 
-      // Buffer messages for periodic drain via syncWhatsAppInbound.
-      const messages = parseAndBufferWhatsAppWebhookMessages(payload);
-      return { ingested: messages.length, messages };
+      fail(
+        503,
+        `WhatsApp webhook ingestion is owned by @elizaos/plugin-whatsapp. ${WHATSAPP_PLUGIN_SETUP_MESSAGE}`,
+      );
     }
 
     /**
-     * Drain buffered inbound WhatsApp messages.
-     *
-     * WhatsApp Business Cloud API has no "list messages" endpoint — all inbound
-     * messages arrive via webhook push. This method drains the in-process buffer
-     * that {@link ingestWhatsAppWebhook} populates, giving callers periodic-pull
-     * semantics on top of the push-only transport.
-     *
-     * Deduplication is performed by message ID inside the buffer, so calling
-     * this method multiple times within one webhook cycle will not double-ingest.
-     *
-     * Returns the drained messages. Callers are responsible for writing them to
-     * memory or any downstream store.
+     * Backward-compatible alias for the plugin-managed recent-message read.
+     * WhatsApp webhook parsing and message storage live in plugin-whatsapp.
      */
-    syncWhatsAppInbound(): { drained: number; messages: WhatsAppMessage[] } {
-      const messages = drainWhatsAppInboundBuffer();
-      return { drained: messages.length, messages };
+    async syncWhatsAppInbound(): Promise<{
+      drained: number;
+      messages: WhatsAppMessage[];
+    }> {
+      const result = await this.pullWhatsAppRecent(100);
+      return { drained: result.count, messages: result.messages };
     }
 
-    /**
-     * Return the current set of buffered inbound WhatsApp messages without
-     * clearing the buffer (peek semantics).
-     *
-     * Use this for periodic inspection — e.g. to surface recent messages to
-     * the agent without consuming them from the buffer.  Messages are
-     * deduplicated by ID inside the buffer, so repeated calls return the
-     * same set until the buffer is drained by {@link syncWhatsAppInbound}.
-     *
-     * Mirrors the webhook-parser shape: every returned message has the same
-     * {@link WhatsAppMessage} structure as those produced by
-     * {@link ingestWhatsAppWebhook}.
-     *
-     * @param limit Maximum number of messages to return (newest first). Default: 25.
-     */
-    pullWhatsAppRecent(limit = 25): {
+    /** Return recent WhatsApp messages from plugin-whatsapp. */
+    async pullWhatsAppRecent(limit = 25): Promise<{
       count: number;
       messages: WhatsAppMessage[];
-    } {
+    }> {
       const clampedLimit = Math.min(Math.max(1, Math.floor(limit)), 500);
-      const all = peekWhatsAppInboundBuffer();
-      // Buffer is insertion-ordered (Map preserves insertion order); return
-      // the most recently inserted messages by taking from the tail.
-      const recent = all.slice(-clampedLimit);
-      return { count: recent.length, messages: recent };
+      const delegated = await fetchWhatsAppMessagesWithRuntimeService({
+        runtime: this.runtime,
+        limit: clampedLimit,
+      });
+      if (delegated.status !== "handled") {
+        fail(
+          delegated.reason.includes("not registered") ? 409 : 502,
+          delegated.error instanceof Error
+            ? delegated.error.message
+            : `${delegated.reason} ${WHATSAPP_PLUGIN_SETUP_MESSAGE}`,
+        );
+      }
+      const messages = delegated.value.map(memoryToWhatsAppMessage);
+      return { count: messages.length, messages };
     }
   }
 

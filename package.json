@@ -3,11 +3,22 @@
   "version": "2.0.0-beta.0",
   "module": "index.ts",
   "type": "module",
+  "elizaos": {
+    "app": {
+      "defaults": {},
+      "capabilities": {
+        "text-large": "required",
+        "messaging": "optional",
+        "wallet": "optional",
+        "browser-automation": "optional"
+      }
+    }
+  },
   "engines": {
     "node": "24.15.0"
   },
   "scripts": {
-    "postinstall": "bun scripts/patch-nested-core-dist.mjs && bun scripts/patch-tsup-dts.mjs && bun scripts/ensure-workspace-symlinks.mjs && node scripts/ensure-native-plugins-linked.mjs",
+    "postinstall": "bun scripts/patch-nested-core-dist.mjs && bun scripts/patch-tsup-dts.mjs && bun scripts/ensure-workspace-symlinks.mjs && node scripts/ensure-native-plugins-linked.mjs && node scripts/patch-llama-cpp-capacitor.mjs",
     "fix-deps": "bun scripts/fix-workspace-deps.mjs",
     "fix-deps:check": "bun scripts/fix-workspace-deps.mjs --check",
     "fix-deps:restore": "bun scripts/fix-workspace-deps.mjs --restore",
@@ -16,6 +27,10 @@
     "ensure-plugin-test-conventions:check": "bun scripts/ensure-plugin-test-conventions.mjs --check",
     "audit:duplicate-components": "node scripts/audit-duplicate-components.mjs",
     "audit:duplicate-components:self-check": "node scripts/audit-duplicate-components.mjs --self-check",
+    "audit:action-availability": "node scripts/audit-action-availability.mjs",
+    "audit:action-keyword-i18n": "node scripts/audit-action-keyword-i18n.mjs",
+    "audit:package-barrels": "node scripts/audit-package-barrels.mjs",
+    "audit:package-barrels:check": "node scripts/audit-package-barrels.mjs --check",
     "audit:prompt-compliance": "node scripts/audit-prompt-compliance.mjs",
     "audit:description-compressed": "node scripts/audit-prompt-compliance.mjs --description-compressed-only",
     "lint:descriptions": "node scripts/lint-description-compressed.mjs",
@@ -23,7 +38,7 @@
     "test:launch-qa": "bun test scripts/launch-qa/*.test.ts && bun run test:launch-qa:docs && node scripts/launch-qa/check-mobile-artifacts.mjs --json --allow-missing-generated && node scripts/launch-qa/check-model-data.mjs --json && node scripts/launch-qa/run.mjs --suite quick --dry-run",
     "test:launch-qa:release:dry": "node scripts/launch-qa/run.mjs --suite release --dry-run",
     "test:ui:playwright": "bun run --cwd packages/app test:e2e",
-    "generate:types": "cd packages/schemas && bunx buf lint && bunx buf generate",
+    "generate:action-search-keywords": "node scripts/generate-action-search-keywords.mjs && node packages/shared/scripts/generate-keywords.mjs --target ts",
     "start": "bun run --cwd packages/agent start",
     "start:eliza": "bun packages/app-core/src/entry.ts start",
     "dev": "node packages/app-core/scripts/rt.mjs packages/app-core/scripts/dev-ui.mjs --name=eliza --app=app",
@@ -32,22 +47,25 @@
     "dev:desktop": "ELIZA_NAMESPACE=eliza bun packages/app-core/scripts/dev-platform.mjs",
     "dev:desktop:watch": "ELIZA_NAMESPACE=eliza ELIZA_DESKTOP_VITE_WATCH=1 bun packages/app-core/scripts/dev-platform.mjs",
     "dev:harness": "bun scripts/dev-harness.mjs",
+    "local-inference:dflash:build": "node packages/app-core/scripts/build-llama-cpp-dflash.mjs",
+    "local-inference:ablation": "node scripts/local-inference-ablation.mjs",
+    "local-inference:ablation:quick": "node scripts/local-inference-ablation.mjs --quick",
     "dev:agent": "bun run --cwd packages/agent dev",
     "harness": "bun run --cwd packages/agent start",
     "dev:core": "bun run --cwd packages/core dev",
     "start:debug": "NODE_NO_WARNINGS=1 LOG_LEVEL=debug bun run --cwd packages/agent start",
-    "build": "turbo run build && node scripts/run-examples-benchmarks.mjs build",
+    "build": "turbo run build --concurrency=1 && node scripts/run-examples-benchmarks.mjs build",
     "build:typescript": "turbo run build",
     "build:client": "turbo run build --filter=@elizaos/client",
     "format": "turbo run format",
     "format:check": "turbo run format:check",
     "clean": "turbo run clean --concurrency=100% && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock* .eliza .elizadb && bun install && bun run build --concurrency=100%",
-    "clean:cache": "rm -rf .turbo .turbo-tsconfig.json tsdoc_cache tsdoc_comments && find . -type d -name .turbo -prune -exec rm -rf {} + 2>/dev/null; find . -type d -path '*/node_modules/.cache' -prune -exec rm -rf {} + 2>/dev/null; find . -type f -name .eslintcache -delete 2>/dev/null; find . -type d -name .vite -path '*/node_modules/*' -prune -exec rm -rf {} + 2>/dev/null; echo 'Cache/temp cleanup done.'",
+    "clean:cache": "rm -rf .turbo .turbo-tsconfig.json tsdoc_cache tsdoc_comments && find . -type d -name .turbo -prune -exec rm -rf {} + 2>/dev/null; find . -type d -path '*/node_modules/.cache' -prune -exec rm -rf {} + 2>/dev/null; find . -type d -name .vite -path '*/node_modules/*' -prune -exec rm -rf {} + 2>/dev/null; echo 'Cache/temp cleanup done.'",
     "build:core": "turbo run build --filter=@elizaos/core --filter=@elizaos/cloud-sdk --filter=@elizaos/cloud-routing --filter=@elizaos/vault --no-cache",
     "build:server": "turbo run build --filter=@elizaos/server --no-cache",
     "lint": "turbo run lint && node scripts/run-examples-benchmarks.mjs lint",
     "lint:check": "turbo run lint:check",
-    "typecheck": "NODE_OPTIONS='--max-old-space-size=8192' turbo run typecheck --filter='!@elizaos/example-code' && node scripts/run-examples-benchmarks.mjs typecheck",
+    "typecheck": "NODE_OPTIONS='--max-old-space-size=8192' turbo run typecheck --concurrency=1 --filter='!@elizaos/example-code' && node scripts/run-examples-benchmarks.mjs typecheck",
     "lint:all": "bun run lint:check && bun run typecheck",
     "pre-commit": "bun run scripts/pre-commit-lint.js",
     "release": "bunx lerna publish from-package --dist-tag latest --force-publish --yes --no-verify-access",
@@ -65,8 +83,8 @@
     "test:all": "node scripts/run-all-tests.mjs",
     "test:plugins": "bun run build:core && turbo run test --concurrency 3 --filter='./plugins/*' --filter='!@elizaos/plugin-agent-orchestrator' && turbo run test --concurrency 1 --filter='@elizaos/plugin-agent-orchestrator'",
     "test:client": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/app|packages/ui|plugins/app-lifeops|plugins/app-companion|plugins/app-training)\\)' TEST_SCRIPT_FILTER='^test$' node scripts/run-all-tests.mjs --no-cloud",
-    "test:core": "turbo run test --filter=./packages/core",
-    "test:server": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/agent|packages/app-core|packages/shared|packages/core|packages/vault|packages/elizaos|packages/schemas|packages/skills|packages/interop|packages/scenario-runner)\\)' TEST_SCRIPT_FILTER='^test$' node scripts/run-all-tests.mjs --no-cloud",
+    "test:core": "node scripts/with-test-runtime.mjs turbo run test --filter=./packages/core",
+    "test:server": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/agent|packages/app-core|packages/shared|packages/core|packages/vault|packages/elizaos|packages/skills|packages/interop|packages/scenario-runner)\\)' TEST_SCRIPT_FILTER='^test$' node scripts/run-all-tests.mjs --no-cloud",
     "browser-bridge:package:release": "cd packages/browser-bridge && bun run package:release",
     "test:browser-bridge": "cd packages/browser-bridge && bun run test:ci",
     "test:browser-bridge:safari": "cd packages/browser-bridge && bun run test:smoke:safari",
@@ -79,8 +97,8 @@
     "test:cloud": "bun run --cwd cloud test",
     "test:ci": "TEST_LANE=pr node scripts/run-all-tests.mjs --no-cloud",
     "test:ci:live": "TEST_LANE=post-merge node scripts/run-all-tests.mjs --no-cloud",
-    "test:e2e": "TEST_LANE=pr node scripts/run-all-tests.mjs --no-cloud --only=e2e",
-    "test:e2e:live": "TEST_LANE=post-merge node scripts/run-all-tests.mjs --no-cloud --only=e2e",
+    "test:e2e": "TEST_LANE=pr node scripts/run-all-tests.mjs --only=e2e",
+    "test:e2e:live": "TEST_LANE=post-merge node scripts/run-all-tests.mjs --only=e2e",
     "test:lifeops": "node scripts/run-all-tests.mjs --filter=plugins/app-lifeops --only=e2e",
     "test:plugin": "node scripts/run-all-tests.mjs --only=e2e --pattern",
     "test:lint:no-vi-mocks": "node scripts/lint-no-vi-mocks.mjs",
@@ -91,7 +109,12 @@
     "verify:cloud": "bun run --cwd cloud verify",
     "db:cloud:generate": "bun run --cwd cloud db:generate",
     "db:cloud:migrate": "bun run --cwd cloud db:migrate",
-    "db:cloud:studio": "bun run --cwd cloud db:studio"
+    "db:cloud:studio": "bun run --cwd cloud db:studio",
+    "publish:dry-run": "bun scripts/publish-from-dist.mjs",
+    "publish:packages": "bun scripts/publish-from-dist.mjs --apply",
+    "typecheck:dist": "tsc --noEmit -p tsconfig.dist-paths.json",
+    "knip": "knip --directory packages/core --no-exit-code --no-config-hints",
+    "knip:strict": "knip --directory packages/core"
   },
   "packageManager": "bun@1.3.5",
   "workspaces": [
@@ -107,7 +130,6 @@
   ],
   "devDependencies": {
     "@biomejs/biome": "2.4.14",
-    "@bufbuild/buf": "^1.47.2",
     "@capacitor/core": "8.3.1",
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-lifeops": "workspace:*",
@@ -130,8 +152,9 @@
     "react-test-renderer": "^19.0.0",
     "turbo": "^2.7.4",
     "tsx": "^4.21.0",
-    "typescript": "^6.0.0",
-    "vitest": "^4.0.17"
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.17",
+    "knip": "^5.88.1"
   },
   "resolutions": {
     "@elizaos/core": "workspace:*",
@@ -144,7 +167,8 @@
     "zod": "^4.4.3",
     "drizzle-orm": "0.45.2",
     "@electric-sql/pglite": "^0.4.5",
-    "@solana/web3.js": "1.98.4"
+    "@solana/web3.js": "1.98.4",
+    "@clack/prompts": "1.3.0"
   },
   "overrides": {
     "@elizaos/core": "workspace:*",
@@ -173,7 +197,8 @@
     "tsup": "8.5.1",
     "viem": "2.48.8",
     "@solana/web3.js": "1.98.4",
-    "@slack/web-api": "7.15.2"
+    "@slack/web-api": "7.15.2",
+    "@clack/prompts": "1.3.0"
   },
   "patchedDependencies": {
     "@orca-so/common-sdk@0.7.0": "patches/@orca-so%2Fcommon-sdk@0.7.0.patch",
@@ -184,7 +209,6 @@
   },
   "trustedDependencies": [
     "@biomejs/biome",
-    "@bufbuild/buf",
     "@discordjs/opus",
     "@elizaos/plugin-starter",
     "@nestjs/core",

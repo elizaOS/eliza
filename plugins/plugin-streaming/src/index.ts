@@ -23,11 +23,7 @@ export {
   type StreamVisualSettings,
 } from "./api/stream-persistence.ts";
 export { handleTtsRoutes, type TtsRouteContext } from "./api/tts-routes.ts";
-export {
-  streamManager,
-  type AudioSource,
-  type StreamConfig,
-} from "./services/stream-manager.ts";
+export { streamManager, type AudioSource, type StreamConfig } from "./services/stream-manager.ts";
 export {
   handleStreamRoute,
   getActiveDestination,

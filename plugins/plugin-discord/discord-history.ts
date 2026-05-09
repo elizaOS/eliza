@@ -426,7 +426,7 @@ export async function buildMemoryFromMessage(
 		// Top-level accountId per MessageMetadata contract. Inbound connector
 		// stamps this so outbound resolution can route replies back through the
 		// same connector account.
-		...(options?.accountId ? { accountId: options.accountId } : {}),
+		accountId,
 		timestamp: message.createdTimestamp ?? Date.now(),
 		entityName,
 		entityUserName: message.author.username,
@@ -475,7 +475,7 @@ export async function buildMemoryFromMessage(
 				: undefined,
 			...(options?.extraContent ? options.extraContent : {}),
 		},
-		metadata: metadata as unknown as Memory["metadata"],
+		metadata: metadata as Memory["metadata"],
 		createdAt: message.createdTimestamp ?? Date.now(),
 		worldId,
 	};

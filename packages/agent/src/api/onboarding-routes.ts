@@ -1,5 +1,6 @@
 import type http from "node:http";
 import { logger, stringToUuid, type UUID } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   asRecord,
   type DeploymentTargetConfig,
@@ -14,7 +15,6 @@ import {
 import type { ElizaConfig } from "../config/config.js";
 import { configFileExists, loadElizaConfig } from "../config/config.js";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import {
   applyCanonicalOnboardingConfig,
   applyOnboardingCredentialPersistence,

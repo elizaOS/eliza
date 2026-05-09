@@ -7,7 +7,7 @@ export type TwitterAuthMode = "env" | "oauth";
  * Primary abstraction: obtain a valid access token for Twitter/X API calls.
  *
  * - For OAuth2 PKCE mode, this is the OAuth2 user access token (Bearer).
- * - For env mode (legacy OAuth1.0a), this returns the OAuth1 access token string
+ * - For env mode, this returns the OAuth1 access token string
  *   (and the provider may expose additional fields via `getOAuth1Credentials()`).
  */
 export interface TwitterAuthProvider {
@@ -28,8 +28,7 @@ export interface OAuth1Credentials {
 }
 
 /**
- * Optional capability used to keep full backward compatibility with the existing OAuth1.0a flow.
- * Consumers should not depend on this unless they need OAuth1 signing.
+ * Optional capability for providers that need OAuth1 request signing.
  */
 export interface TwitterOAuth1Provider extends TwitterAuthProvider {
   getOAuth1Credentials(): Promise<OAuth1Credentials>;

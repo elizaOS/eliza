@@ -107,6 +107,31 @@ describe.skipIf(!isLiveTest)("Bluesky Agent Live Integration", () => {
     expect(post.uri).toContain("mock://");
     expect(post.cid).toContain("mock-cid");
   });
+
+  it("should register all event handlers", async () => {
+    const { AgentRuntime } = await import("@elizaos/core");
+    const { character } = await import("../character");
+    const { registerBlueskyHandlers } = await import("../handlers");
+
+    const runtime = new AgentRuntime({ character });
+    const registerSpy = vi.spyOn(runtime, "registerEvent");
+
+    registerBlueskyHandlers(runtime);
+
+    expect(registerSpy).toHaveBeenCalledTimes(3);
+    expect(registerSpy).toHaveBeenCalledWith(
+      "bluesky.mention_received",
+      expect.any(Function),
+    );
+    expect(registerSpy).toHaveBeenCalledWith(
+      "bluesky.should_respond",
+      expect.any(Function),
+    );
+    expect(registerSpy).toHaveBeenCalledWith(
+      "bluesky.create_post",
+      expect.any(Function),
+    );
+  });
 });
 
 // ============================================================================
@@ -159,31 +184,6 @@ describe("Bluesky Agent Unit Tests", () => {
 
     expect(runtime.character.name).toBe(character.name);
     expect(runtime.agentId).toBeDefined();
-  });
-
-  it("should register all event handlers", async () => {
-    const { AgentRuntime } = await import("@elizaos/core");
-    const { character } = await import("../character");
-    const { registerBlueskyHandlers } = await import("../handlers");
-
-    const runtime = new AgentRuntime({ character });
-    const registerSpy = vi.spyOn(runtime, "registerEvent");
-
-    registerBlueskyHandlers(runtime);
-
-    expect(registerSpy).toHaveBeenCalledTimes(3);
-    expect(registerSpy).toHaveBeenCalledWith(
-      "bluesky.mention_received",
-      expect.any(Function),
-    );
-    expect(registerSpy).toHaveBeenCalledWith(
-      "bluesky.should_respond",
-      expect.any(Function),
-    );
-    expect(registerSpy).toHaveBeenCalledWith(
-      "bluesky.create_post",
-      expect.any(Function),
-    );
   });
 
   it("should have messageService after initialization", async () => {

@@ -9,27 +9,13 @@
     "resolveJsonModule": true,
     "declaration": false,
     "noEmit": true,
-    "lib": [
-      "ES2022"
-    ],
-    "types": [
-      "node",
-      "bun-types"
-    ],
+    "lib": ["ES2022"],
+    "types": ["node", "bun-types"],
     "paths": {
-      "@elizaos/core": [
-        "./../../core/dist/index.d.ts"
-      ],
-      "@elizaos/core/*": [
-        "./../../core/dist/*"
-      ]
+      "@elizaos/core": ["./../../core/dist/index.d.ts"],
+      "@elizaos/core/*": ["./../../core/dist/*"]
     }
   },
-  "include": [
-    "*.ts",
-    "*.d.ts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+  "include": ["*.ts", "*.d.ts"],
+  "exclude": ["node_modules"]
 }

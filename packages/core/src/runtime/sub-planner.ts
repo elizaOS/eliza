@@ -4,6 +4,7 @@ import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { Action, ActionResult, IAgentRuntime } from "../types";
 import type { ContextEvent, ContextObject } from "../types/context-object";
 import type { JSONSchema, ToolDefinition } from "../types/model";
+import { filterByContextGate } from "./context-gates";
 import {
 	type ExecutePlannedToolCallContext,
 	type ExecutePlannedToolCallOptions,
@@ -184,9 +185,24 @@ export interface RunSubPlannerParams {
 export async function runSubPlanner(
 	params: RunSubPlannerParams,
 ): Promise<PlannerLoopResult> {
-	const childActions = resolveSubActions(params.runtime, params.action);
-	if (childActions.length === 0) {
+	const declaredChildActions = resolveSubActions(params.runtime, params.action);
+	if (declaredChildActions.length === 0) {
 		throw new Error(`Action ${params.action.name} has no sub-actions`);
+	}
+	const authorizedActiveContexts = unionContexts(
+		params.ctx.activeContexts,
+		params.action.contexts,
+		...declaredChildActions.map((child) => child.contexts),
+	);
+	const childActions = filterByContextGate(
+		declaredChildActions,
+		authorizedActiveContexts,
+		params.ctx.userRoles,
+	);
+	if (childActions.length === 0) {
+		throw new Error(
+			`Action ${params.action.name} has no sub-actions available in the current context`,
+		);
 	}
 
 	const cycles = detectSubActionCycles([params.action, ...childActions]);
@@ -215,21 +231,9 @@ export async function runSubPlanner(
 		context.events.slice(params.context.events?.length ?? 0),
 	);
 
-	// Sub-actions are authorized by the parent action's `subActions` declaration —
-	// that declaration IS the gate. We expand the active context set to include
-	// every child's declared contexts (and the parent's) so the per-action
-	// context gate in execute-planned-tool-call.ts admits them. Without this,
-	// children with non-overlapping `contexts` (e.g. RESEARCH gated to
-	// `research_workflow`, but its child WEB_SEARCH gated to `web`) get rejected
-	// even though the parent explicitly authorized them.
-	const expandedActiveContexts = unionContexts(
-		params.ctx.activeContexts,
-		params.action.contexts,
-		...childActions.map((child) => child.contexts),
-	);
 	const subPlannerCtx: ExecutePlannedToolCallContext = {
 		...params.ctx,
-		activeContexts: expandedActiveContexts,
+		activeContexts: authorizedActiveContexts,
 	};
 
 	// Mark a sub-planner descent so trajectory consumers can render the tree.

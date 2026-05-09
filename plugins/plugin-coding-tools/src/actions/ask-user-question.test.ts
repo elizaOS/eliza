@@ -6,7 +6,7 @@ import { askUserQuestionAction } from "./ask-user-question.js";
 function makeRuntime(): IAgentRuntime {
   return {
     getSetting: () => undefined,
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 function makeMessage(roomId: string): Memory {
@@ -15,7 +15,7 @@ function makeMessage(roomId: string): Memory {
     entityId: "00000000-0000-0000-0000-000000000002" as UUID,
     roomId: roomId as UUID,
     content: { text: "" },
-  } as unknown as Memory;
+  } as Memory;
 }
 
 async function invoke(params: Record<string, unknown>) {

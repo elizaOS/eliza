@@ -20,8 +20,17 @@
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"auto-enable.ts"
 	],
+	"elizaos": {
+		"plugin": {
+			"autoEnableModule": "./auto-enable.ts",
+			"capabilities": [
+				"chat-commands"
+			]
+		}
+	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*"
 	},
@@ -29,14 +38,14 @@
 		"@biomejs/biome": "^2.4.14",
 		"@types/bun": "^1.2.22",
 		"@types/node": "^24.5.2",
-		"typescript": "^6.0.0",
+		"typescript": "^6.0.3",
 		"vitest": "^4.0.18"
 	},
 	"scripts": {
 		"build": "bun run build.ts",
 		"dev": "bun --hot build.ts",
 		"test": "vitest run",
-		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+		"clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
 		"format": "../../node_modules/.bin/biome format --write .",
 		"format:check": "../../node_modules/.bin/biome format .",
 		"lint": "../../node_modules/.bin/biome check --write --unsafe .",

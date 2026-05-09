@@ -7,7 +7,7 @@
  * Gated on ELIZA_LIVE_TEST=1.
  */
 import path from "node:path";
-import appCompanionPlugin from "@elizaos/app-companion/plugin";
+import { appCompanionPlugin } from "@elizaos/app-companion";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import {
   type RuntimeHarness as Runtime,

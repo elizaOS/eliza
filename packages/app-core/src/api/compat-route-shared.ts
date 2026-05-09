@@ -1,6 +1,6 @@
 import type http from "node:http";
 import { isIP } from "node:net";
-import { type ElizaConfig, loadElizaConfig } from "@elizaos/agent/config";
+import { type ElizaConfig, loadElizaConfig } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import {
   isLoopbackBindHost,
@@ -260,6 +260,16 @@ export async function readCompatJsonBody(
   req: http.IncomingMessage,
   res: http.ServerResponse,
 ): Promise<Record<string, unknown> | null> {
+  // When this handler is invoked through the runtime's plugin-route adapter
+  // (rawPath: true), the runtime has already consumed the request stream and
+  // attached the parsed JSON body as `req.body`. Streaming the IncomingMessage
+  // again would yield zero bytes and we'd return `{}`, even though the caller
+  // sent a real payload. Honour the pre-parsed body when present.
+  const preParsed = (req as { body?: unknown }).body;
+  if (preParsed && typeof preParsed === "object" && !Array.isArray(preParsed)) {
+    return preParsed as Record<string, unknown>;
+  }
+
   const chunks: Buffer[] = [];
   let totalBytes = 0;
 

@@ -121,13 +121,8 @@ describe("AcpService", () => {
 
     const service = await AcpService.start(rt as never);
 
-    expect(
-      (
-        service as unknown as {
-          store: { backend: string };
-        }
-      ).store.backend,
-    ).toBe("runtime-db");
+    const store = Reflect.get(service, "store") as { backend: string };
+    expect(store.backend).toBe("runtime-db");
     await service.stop();
   });
 
@@ -482,11 +477,10 @@ describe("AcpService", () => {
     const { sessionId } = await spawned;
     const session = await service.getSession(sessionId);
     expect(session).toBeTruthy();
-    await (
-      service as unknown as {
-        store: { update: (id: string, patch: unknown) => Promise<void> };
-      }
-    ).store.update(sessionId, { pid: 999999 });
+    const store = Reflect.get(service, "store") as {
+      update: (id: string, patch: unknown) => Promise<void>;
+    };
+    await store.update(sessionId, { pid: 999999 });
 
     const respawnProc = nextProc();
     const reattached = service.reattachSession(sessionId);

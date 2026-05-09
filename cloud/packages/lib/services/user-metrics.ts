@@ -16,7 +16,19 @@
  * admin engagement dashboard.
  */
 
-import { and, count, countDistinct, eq, gte, inArray, isNull, lt, ne, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  countDistinct,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  ne,
+  type SQLWrapper,
+  sql,
+} from "drizzle-orm";
 import { dbRead, dbWrite } from "@/db/client";
 import { type DailyMetric, dailyMetrics, type MetricsPlatform } from "@/db/schemas/daily-metrics";
 import { memoryTable, roomTable } from "@/db/schemas/eliza";
@@ -606,7 +618,7 @@ class UserMetricsService {
    * Uses a DB-level COUNT aggregate to avoid fetching rows into memory.
    */
   private async _countRetainedUsers(
-    cohortUserIdSq: Parameters<typeof inArray>[1],
+    cohortUserIdSq: SQLWrapper | readonly string[],
     dayStart: Date,
     dayEnd: Date,
   ): Promise<number> {

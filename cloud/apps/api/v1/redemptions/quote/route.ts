@@ -23,6 +23,13 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
+const validNetworkParams = ["ethereum", "base", "bnb", "bsc", "solana"] as const;
+type NetworkParam = (typeof validNetworkParams)[number];
+
+function normalizeNetworkParam(network: NetworkParam) {
+  return network === "bsc" ? "bnb" : network;
+}
+
 app.options(
   "/",
   (c) =>
@@ -45,18 +52,17 @@ app.get("/", async (c) => {
     const networkParam = c.req.query("network");
     const pointsParam = c.req.query("pointsAmount");
 
-    const validNetworks = ["ethereum", "base", "bnb", "solana"] as const;
-    if (!networkParam || !validNetworks.includes(networkParam as (typeof validNetworks)[number])) {
+    if (!networkParam || !validNetworkParams.includes(networkParam as NetworkParam)) {
       return c.json(
         {
           success: false,
-          error: `Invalid network. Must be one of: ${validNetworks.join(", ")}`,
+          error: `Invalid network. Must be one of: ${validNetworkParams.join(", ")}`,
         },
         400,
       );
     }
 
-    const network = networkParam as (typeof validNetworks)[number];
+    const network = normalizeNetworkParam(networkParam as NetworkParam);
     const pointsAmount = pointsParam ? parseInt(pointsParam, 10) : 100;
 
     if (isNaN(pointsAmount) || pointsAmount < 1) {
@@ -148,7 +154,7 @@ app.get("/", async (c) => {
         validitySeconds: ARBITRAGE_PROTECTION.QUOTE_VALIDITY_MS / 1000,
         requiresDelay: quote.requiresDelay,
         delayUntil: quote.delayUntil?.toISOString(),
-        requiresAdminApproval: usdValue >= ADMIN_CONTROLS.ADMIN_APPROVAL_THRESHOLD_USD,
+        requiresAdminApproval: true,
         limits: {
           minRedemptionUsd: SUPPLY_SHOCK_PROTECTION.MIN_REDEMPTION_USD,
           maxRedemptionUsd: SUPPLY_SHOCK_PROTECTION.MAX_SINGLE_REDEMPTION_USD,

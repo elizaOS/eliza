@@ -24,6 +24,10 @@ export interface ContextRoutingDecision {
   secondaryContexts?: AgentContext[];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   NONE: ["general"],
   IGNORE: ["general"],
@@ -217,22 +221,19 @@ export function getActiveRoutingContexts(routing: ContextRoutingDecision): Agent
 }
 
 export function setContextRoutingMetadata(message: Memory, routing: ContextRoutingDecision): void {
-  const existingMetadata =
-    message.content && typeof message.content.metadata === "object"
-      ? (message.content.metadata as Record<string, unknown>)
-      : {};
-
   if (!message.content || typeof message.content !== "object") {
     return;
   }
 
+  const existingMetadata = isRecord(message.content.metadata) ? message.content.metadata : {};
+
   message.content = {
-    ...(message.content as Record<string, unknown>),
+    ...message.content,
     metadata: {
       ...existingMetadata,
       [CONTEXT_ROUTING_METADATA_KEY]: routing,
     },
-  } as unknown as Content;
+  } as Content;
 }
 
 export function resolveActionContexts(action: Action): AgentContext[] {

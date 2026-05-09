@@ -154,75 +154,96 @@ export class BlueSkyService extends Service {
 		serviceInstance: BlueSkyService,
 	): void {
 		const accounts = serviceInstance?.agents.get(runtime.agentId);
-		const defaultAccountId = accounts?.defaultAccountId
-			? normalizeBlueSkyAccountId(accounts.defaultAccountId)
-			: normalizeBlueSkyAccountId(resolveDefaultBlueSkyAccountId(runtime));
-		const messageService = accounts?.messageServices.get(defaultAccountId);
-		if (!messageService) {
+		if (!accounts) {
 			runtime.logger.warn(
 				{ src: "plugin:bluesky", agentId: runtime.agentId },
-				"Cannot register BlueSky DM connector; message service is not initialized",
+				"Cannot register BlueSky connectors; service is not initialized",
 			);
 			return;
 		}
 
-		const postService = accounts?.postServices.get(defaultAccountId);
-		if (postService) {
+		for (const postService of accounts.postServices.values()) {
 			BlueSkyService.registerPostConnector(runtime, postService);
 		}
 
-		const sendHandler = messageService.handleSendMessage.bind(messageService);
-		if (typeof runtime.registerMessageConnector === "function") {
-			const registration: BlueSkyMessageConnectorRegistration = {
-				source: "bluesky",
-				accountId: defaultAccountId,
-				label: "BlueSky",
-				description:
-					"BlueSky DM connector for sending private messages to conversations.",
-				capabilities: [
-					"send_message",
-					"fetch_messages",
-					"resolve_targets",
-					"list_rooms",
-					"chat_context",
-					"user_context",
-				],
-				supportedTargetKinds: ["thread", "user"],
-				contexts: ["social", "connectors"],
-				metadata: {
-					accountId: defaultAccountId,
-					service: BLUESKY_SERVICE_NAME,
-				},
-				resolveTargets:
-					messageService.resolveConnectorTargets.bind(messageService),
-				listRecentTargets:
-					messageService.listRecentConnectorTargets.bind(messageService),
-				listRooms: messageService.listConnectorRooms.bind(messageService),
-				getChatContext:
-					messageService.getConnectorChatContext.bind(messageService),
-				getUserContext:
-					messageService.getConnectorUserContext.bind(messageService),
-				fetchMessages:
-					messageService.fetchConnectorMessages.bind(messageService),
-				contentShaping: {
-					systemPromptFragment:
-						"For BlueSky DMs, keep messages direct and conversational. Avoid public-feed conventions like hashtags unless the user asked.",
-					constraints: {
-						supportsMarkdown: false,
-						channelType: ChannelType.DM,
-					},
-				},
-				sendHandler,
-			};
-			runtime.registerMessageConnector(registration);
-			runtime.logger.info(
+		if (
+			typeof runtime.registerMessageConnector === "function" &&
+			accounts.messageServices.size > 0
+		) {
+			for (const messageService of accounts.messageServices.values()) {
+				BlueSkyService.registerMessageConnector(runtime, messageService);
+			}
+			return;
+		}
+
+		const defaultAccountId = normalizeBlueSkyAccountId(
+			accounts.defaultAccountId,
+		);
+		const messageService = accounts.messageServices.get(defaultAccountId);
+		if (!messageService) {
+			runtime.logger.warn(
 				{ src: "plugin:bluesky", agentId: runtime.agentId },
-				"Registered BlueSky DM connector",
+				"Cannot register legacy BlueSky DM send handler; default message service is not initialized",
 			);
 			return;
 		}
 
-		runtime.registerSendHandler("bluesky", sendHandler);
+		runtime.registerSendHandler(
+			"bluesky",
+			messageService.handleSendMessage.bind(messageService),
+		);
+	}
+
+	private static registerMessageConnector(
+		runtime: IAgentRuntime,
+		messageService: BlueSkyMessageService,
+	): void {
+		const accountId = messageService.getAccountId();
+		const registration: BlueSkyMessageConnectorRegistration = {
+			source: "bluesky",
+			accountId,
+			label: "BlueSky",
+			description:
+				"BlueSky DM connector for sending private messages to conversations.",
+			capabilities: [
+				"send_message",
+				"fetch_messages",
+				"resolve_targets",
+				"list_rooms",
+				"chat_context",
+				"user_context",
+			],
+			supportedTargetKinds: ["thread", "user"],
+			contexts: ["social", "connectors"],
+			metadata: {
+				accountId,
+				service: BLUESKY_SERVICE_NAME,
+			},
+			resolveTargets:
+				messageService.resolveConnectorTargets.bind(messageService),
+			listRecentTargets:
+				messageService.listRecentConnectorTargets.bind(messageService),
+			listRooms: messageService.listConnectorRooms.bind(messageService),
+			getChatContext:
+				messageService.getConnectorChatContext.bind(messageService),
+			getUserContext:
+				messageService.getConnectorUserContext.bind(messageService),
+			fetchMessages: messageService.fetchConnectorMessages.bind(messageService),
+			contentShaping: {
+				systemPromptFragment:
+					"For BlueSky DMs, keep messages direct and conversational. Avoid public-feed conventions like hashtags unless the user asked.",
+				constraints: {
+					supportsMarkdown: false,
+					channelType: ChannelType.DM,
+				},
+			},
+			sendHandler: messageService.handleSendMessage.bind(messageService),
+		};
+		runtime.registerMessageConnector(registration);
+		runtime.logger.info(
+			{ src: "plugin:bluesky", agentId: runtime.agentId, accountId },
+			"Registered BlueSky DM connector",
+		);
 	}
 
 	private static registerPostConnector(
@@ -263,7 +284,7 @@ export class BlueSkyService extends Service {
 		});
 
 		runtime.logger.info(
-			{ src: "plugin:bluesky", agentId: runtime.agentId },
+			{ src: "plugin:bluesky", agentId: runtime.agentId, accountId },
 			"Registered BlueSky post connector",
 		);
 	}
@@ -277,11 +298,13 @@ export class BlueSkyService extends Service {
 		}
 	}
 
-	getMessageService(
-		agentId: UUID,
-		accountId?: string,
+	getMessageServiceForAccount(
+		accountId: string | undefined,
+		agentId?: UUID,
 	): BlueSkyMessageService | undefined {
-		const accounts = this.agents.get(agentId);
+		const resolvedAgentId = agentId ?? this.firstAgentId();
+		if (!resolvedAgentId) return undefined;
+		const accounts = this.agents.get(resolvedAgentId);
 		if (!accounts) return undefined;
 		const id = accountId
 			? normalizeBlueSkyAccountId(accountId)
@@ -289,11 +312,13 @@ export class BlueSkyService extends Service {
 		return accounts.messageServices.get(id);
 	}
 
-	getPostService(
-		agentId: UUID,
-		accountId?: string,
+	getPostServiceForAccount(
+		accountId: string | undefined,
+		agentId?: UUID,
 	): BlueSkyPostService | undefined {
-		const accounts = this.agents.get(agentId);
+		const resolvedAgentId = agentId ?? this.firstAgentId();
+		if (!resolvedAgentId) return undefined;
+		const accounts = this.agents.get(resolvedAgentId);
 		if (!accounts) return undefined;
 		const id = accountId
 			? normalizeBlueSkyAccountId(accountId)
@@ -301,12 +326,36 @@ export class BlueSkyService extends Service {
 		return accounts.postServices.get(id);
 	}
 
-	getDefaultAccountId(agentId: UUID): string | undefined {
-		return this.agents.get(agentId)?.defaultAccountId;
+	getMessageService(
+		agentId: UUID,
+		accountId?: string,
+	): BlueSkyMessageService | undefined {
+		return this.getMessageServiceForAccount(accountId, agentId);
 	}
 
-	listAccountIds(agentId: UUID): string[] {
-		const accounts = this.agents.get(agentId);
+	getPostService(
+		agentId: UUID,
+		accountId?: string,
+	): BlueSkyPostService | undefined {
+		return this.getPostServiceForAccount(accountId, agentId);
+	}
+
+	getDefaultAccountId(agentId?: UUID): string | undefined {
+		const resolvedAgentId = agentId ?? this.firstAgentId();
+		return resolvedAgentId
+			? this.agents.get(resolvedAgentId)?.defaultAccountId
+			: undefined;
+	}
+
+	listAccountIds(agentId?: UUID): string[] {
+		const resolvedAgentId = agentId ?? this.firstAgentId();
+		const accounts = resolvedAgentId
+			? this.agents.get(resolvedAgentId)
+			: undefined;
 		return accounts ? Array.from(accounts.managers.keys()) : [];
+	}
+
+	private firstAgentId(): UUID | undefined {
+		return this.agents.keys().next().value;
 	}
 }

@@ -38,16 +38,12 @@ class TestRuntime {
 		const connector = this.messageConnectors.find(
 			(candidate) => candidate.source === target.source,
 		);
-		await connector?.sendHandler?.(
-			this as unknown as IAgentRuntime,
-			target,
-			content,
-		);
+		await connector?.sendHandler?.(this as IAgentRuntime, target, content);
 	}
 }
 
 function makeRuntime(adapter?: InMemoryDatabaseAdapter): IAgentRuntime {
-	return new TestRuntime(adapter) as unknown as IAgentRuntime;
+	return new TestRuntime(adapter) as IAgentRuntime;
 }
 
 function makeTarget(source: string): TargetInfo {

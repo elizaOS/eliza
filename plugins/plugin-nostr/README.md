@@ -15,8 +15,8 @@ Nostr decentralized messaging plugin for ElizaOS agents. Enables secure, encrypt
 # npm
 npm install @elizaos/plugin-nostr
 
-# pnpm
-pnpm add @elizaos/plugin-nostr
+# bun
+bun add @elizaos/plugin-nostr
 ```
 
 ## Configuration

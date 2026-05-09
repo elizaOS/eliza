@@ -418,6 +418,7 @@ async function opClear({
 export const todoAction: Action = {
   name: "TODO",
   contexts: [...TODOS_CONTEXTS],
+  roleGate: { minRole: "ADMIN" },
   contextGate: { anyOf: [...TODOS_CONTEXTS] },
   similes: [
     "TODO_WRITE",
@@ -526,7 +527,7 @@ export const todoAction: Action = {
       schema: { type: "number" as const },
     },
   ],
-  validate: async () => true,
+  validate: async (runtime: IAgentRuntime) => Boolean(getTodosService(runtime)),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,

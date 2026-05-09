@@ -291,6 +291,7 @@ class BFCLRunner:
             ast_match = self.ast_evaluator.evaluate(
                 predicted_calls,
                 test_case.expected_calls,
+                function_defs=test_case.functions,
             )
 
         # Evaluate execution

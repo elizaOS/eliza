@@ -1,4 +1,4 @@
-import { logger } from "@elizaos/core";
+import { logger, type RouteRequestContext } from "@elizaos/core";
 import type {
   LinkedAccountConfig,
   LinkedAccountHealth,
@@ -8,7 +8,6 @@ import type { AnthropicFlow } from "../auth/anthropic.js";
 import type { CodexFlow } from "../auth/openai-codex.js";
 import type { OAuthCredentials } from "../auth/types.js";
 import type { ElizaConfig } from "../config/types.eliza.js";
-import type { RouteRequestContext } from "./route-helpers.js";
 
 type AuthModule = typeof import("../auth/index.js");
 

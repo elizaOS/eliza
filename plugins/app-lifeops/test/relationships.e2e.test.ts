@@ -13,22 +13,22 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/real-runtime";
-import { relationshipAction } from "../src/actions/relationships.js";
-import { LifeOpsRepository } from "../src/lifeops/repository.js";
-import { LifeOpsService } from "../src/lifeops/service.js";
+import { relationshipAction } from "../src/actions/relationship.ts";
+import { LifeOpsRepository } from "../src/lifeops/repository.ts";
+import { LifeOpsService } from "../src/lifeops/service.ts";
 import {
   acceptCanonicalIdentityMerge,
   assertCanonicalIdentityMerged,
   getCanonicalIdentityGraph,
   getCanonicalPersonDetail,
   seedCanonicalIdentityFixture,
-} from "./helpers/lifeops-identity-merge-fixtures.js";
+} from "./helpers/lifeops-identity-merge-fixtures.ts";
 
 const AGENT_ID = "lifeops-relationships-agent";
 
 function makeMessage(runtime: IAgentRuntime, text: string) {
   return {
-    id: `msg-${Math.random()}` as unknown as string,
+    id: `msg-${Math.random()}` as string,
     entityId: runtime.agentId,
     roomId: runtime.agentId,
     content: { text },
@@ -158,7 +158,7 @@ describe("relationships handler — real PGLite", () => {
       async () => {},
     );
     expect(result?.success).toBe(true);
-    const data = (result as unknown as { data?: { contacts?: unknown[] } })
+    const data = (result as { data?: { contacts?: unknown[] } })
       .data;
     expect(Array.isArray(data?.contacts)).toBe(true);
   });
@@ -180,7 +180,7 @@ describe("relationships handler — real PGLite", () => {
     );
     expect(result?.success).toBe(true);
     const data = (
-      result as unknown as {
+      result as {
         data?: { relationship?: { id: string; name: string } };
       }
     ).data;
@@ -199,7 +199,7 @@ describe("relationships handler — real PGLite", () => {
     );
     expect(result?.success).toBe(false);
     expect(
-      (result as unknown as { data?: { error?: string } }).data?.error,
+      (result as { data?: { error?: string } }).data?.error,
     ).toBe("MISSING_FIELDS");
   });
 
@@ -237,7 +237,7 @@ describe("relationships handler — real PGLite", () => {
 
     expect(result?.success).toBe(true);
     const data = (
-      result as unknown as {
+      result as {
         data?: { followUp?: { relationshipId: string; dueAt: string } };
       }
     ).data;
@@ -279,7 +279,7 @@ describe("relationships handler — real PGLite", () => {
 
     expect(result?.success).toBe(true);
     const data = (
-      result as unknown as {
+      result as {
         data?: { relationshipId?: string; days?: number | null };
       }
     ).data;
@@ -321,7 +321,7 @@ describe("relationships handler — real PGLite", () => {
 
     expect(result?.success).toBe(true);
     const data = (
-      result as unknown as {
+      result as {
         data?: { relationshipId?: string; days?: number | null };
       }
     ).data;
@@ -363,7 +363,7 @@ describe("relationships handler — real PGLite", () => {
 
     expect(result?.success).toBe(true);
     const data = (
-      result as unknown as {
+      result as {
         data?: { relationshipId?: string; days?: number | null };
       }
     ).data;
@@ -395,18 +395,16 @@ describe("relationships handler — real PGLite", () => {
         input &&
         "prompt" in input &&
         typeof input.prompt === "string" &&
-        input.prompt.includes("(Rolodex) subaction for this request.")
+        input.prompt.includes(
+          "Plan the RELATIONSHIP (Rolodex / follow-up) subaction",
+        )
       ) {
-        return [
-          "The response will be in valid JSON format with exactly the required fields.",
-          "```json",
-          JSON.stringify({
-            subaction: "days_since",
-            shouldAct: false,
-            response: "Omar, what have you been up to since we last talked?",
-          }),
-          "```",
-        ].join("\n");
+        return JSON.stringify({
+          subaction: "days_since",
+          shouldAct: false,
+          relationshipId: rel.id,
+          response: "Omar, what have you been up to since we last talked?",
+        });
       }
       return originalUseModel(modelType, input as never);
     }) as typeof runtime.useModel;
@@ -425,7 +423,7 @@ describe("relationships handler — real PGLite", () => {
 
       expect(result?.success).toBe(true);
       const data = (
-        result as unknown as {
+        result as {
           data?: {
             relationshipId?: string;
             days?: number | null;

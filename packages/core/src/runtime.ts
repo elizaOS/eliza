@@ -2,7 +2,6 @@ import Handlebars from "handlebars";
 import { v4 as uuidv4 } from "uuid";
 import {
 	withCanonicalActionDocs,
-	withCanonicalEvaluatorDocs,
 	withCanonicalProviderDocs,
 } from "./action-docs";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
@@ -47,7 +46,6 @@ import {
 import {
 	type TrajectoryProviderAccessLogger,
 	type TrajectoryRuntimeLlmCallLogger,
-	withEvaluatorStep,
 	withProviderStep,
 } from "./trajectory-utils";
 import {
@@ -70,7 +68,6 @@ import {
 	type DeleteConnectorAccountParams,
 	type DeleteOAuthFlowStateParams,
 	type Entity,
-	type Evaluator,
 	type EventHandler,
 	type EventPayload,
 	type EventPayloadMap,
@@ -120,6 +117,7 @@ import {
 	type Provider,
 	type ProviderResult,
 	type ProviderValue,
+	type RegisteredEvaluator,
 	type Relationship,
 	type ResolvedPipelineHook,
 	type Room,
@@ -610,6 +608,17 @@ function getServiceClassLabel(serviceClass: ServiceClass): string {
 	);
 }
 
+function isMessagingAdapter(
+	adapter: IDatabaseAdapter,
+): adapter is IDatabaseAdapter & IMessagingAdapter {
+	const candidate = adapter as Partial<IMessagingAdapter>;
+	return (
+		typeof candidate.createMessageServer === "function" &&
+		typeof candidate.createChannel === "function" &&
+		typeof candidate.createMessage === "function"
+	);
+}
+
 export class AgentRuntime implements IAgentRuntime {
 	#conversationLength = 100 as number;
 	readonly agentId: UUID;
@@ -617,8 +626,8 @@ export class AgentRuntime implements IAgentRuntime {
 	public adapter!: IDatabaseAdapter;
 	static #anonymousAgentCounter = 0;
 	readonly actions: Action[] = [];
-	readonly evaluators: Evaluator[] = [];
 	readonly providers: Provider[] = [];
+	readonly evaluators: RegisteredEvaluator[] = [];
 	readonly plugins: Plugin[] = [];
 	/**
 	 * Per-runtime context registry seeded with first-party context definitions
@@ -1075,14 +1084,14 @@ export class AgentRuntime implements IAgentRuntime {
 		if (!hooks.length) {
 			return;
 		}
-		const runtime = this as unknown as IAgentRuntime;
+
 		const roomId = pipelineHookMetricRoomId(ctx);
 
 		const runOne = async (entry: ResolvedPipelineHook) => {
 			const t0 = performance.now();
 			let errorMessage: string | undefined;
 			try {
-				await entry.handler(runtime, ctx);
+				await entry.handler(this, ctx);
 			} catch (error) {
 				errorMessage = error instanceof Error ? error.message : String(error);
 				this.logger.error(
@@ -1496,7 +1505,7 @@ export class AgentRuntime implements IAgentRuntime {
 					}
 				}
 			}
-			await pluginToRegister.init(config, this as unknown as IAgentRuntime);
+			await pluginToRegister.init(config, this);
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId, plugin: pluginToRegister.name },
 				"Plugin initialized",
@@ -1529,14 +1538,30 @@ export class AgentRuntime implements IAgentRuntime {
 				existingActionNames.add(action.name);
 			}
 		}
-		if (pluginToRegister.evaluators) {
-			for (const evaluator of pluginToRegister.evaluators) {
-				this.registerEvaluator(evaluator);
-			}
-		}
 		if (pluginToRegister.providers) {
 			for (const provider of pluginToRegister.providers) {
 				this.registerProvider(provider);
+			}
+		}
+		if (pluginToRegister.evaluators) {
+			const existingEvaluatorNames = new Set(
+				this.evaluators.map((evaluator) => evaluator.name),
+			);
+			for (const evaluator of pluginToRegister.evaluators) {
+				if (existingEvaluatorNames.has(evaluator.name)) {
+					this.logger.debug(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							evaluator: evaluator.name,
+							plugin: pluginToRegister.name,
+						},
+						"Skipping duplicate plugin evaluator",
+					);
+					continue;
+				}
+				this.registerEvaluator(evaluator);
+				existingEvaluatorNames.add(evaluator.name);
 			}
 		}
 		if (pluginToRegister.models) {
@@ -2150,6 +2175,42 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
+	private getCharacterEnvSetting(
+		key: string,
+	): string | boolean | number | undefined {
+		const env = (this.character as { env?: unknown }).env;
+		if (!env || typeof env !== "object" || Array.isArray(env)) {
+			return undefined;
+		}
+
+		const envRecord = env as Record<string, unknown>;
+		const vars =
+			envRecord.vars &&
+			typeof envRecord.vars === "object" &&
+			!Array.isArray(envRecord.vars)
+				? (envRecord.vars as Record<string, unknown>)
+				: undefined;
+
+		const directValue = envRecord[key];
+		if (
+			typeof directValue === "string" ||
+			typeof directValue === "boolean" ||
+			typeof directValue === "number"
+		) {
+			return directValue;
+		}
+
+		const varsValue = vars?.[key];
+		if (
+			typeof varsValue === "string" ||
+			typeof varsValue === "boolean" ||
+			typeof varsValue === "number"
+		) {
+			return varsValue;
+		}
+		return undefined;
+	}
+
 	getSetting(key: string): string | boolean | number | null {
 		const settings = this.character.settings;
 		const secrets = this.character.secrets;
@@ -2178,6 +2239,7 @@ export class AgentRuntime implements IAgentRuntime {
 			settings?.[key] ??
 			extraSettings?.[key] ??
 			nestedSecrets?.[key] ??
+			this.getCharacterEnvSetting(key) ??
 			this.settings[key];
 
 		// Handle each type appropriately
@@ -2437,16 +2499,8 @@ export class AgentRuntime implements IAgentRuntime {
 	getMessagingAdapter(): IMessagingAdapter | null {
 		// Check if the adapter implements IMessagingAdapter interface
 		// by checking for presence of messaging-specific methods
-		if (
-			this.adapter &&
-			typeof (this.adapter as Partial<IMessagingAdapter>)
-				.createMessageServer === "function" &&
-			typeof (this.adapter as Partial<IMessagingAdapter>).createChannel ===
-				"function" &&
-			typeof (this.adapter as Partial<IMessagingAdapter>).createMessage ===
-				"function"
-		) {
-			return this.adapter as unknown as IMessagingAdapter;
+		if (this.adapter && isMessagingAdapter(this.adapter)) {
+			return this.adapter;
 		}
 		return null;
 	}
@@ -2475,6 +2529,36 @@ export class AgentRuntime implements IAgentRuntime {
 				"Action registered",
 			);
 		}
+	}
+
+	registerEvaluator(evaluator: RegisteredEvaluator) {
+		if (this.evaluators.find((item) => item.name === evaluator.name)) {
+			this.logger.debug(
+				{ src: "agent", agentId: this.agentId, evaluator: evaluator.name },
+				"Evaluator already registered, skipping",
+			);
+			return;
+		}
+		this.evaluators.push(evaluator);
+		this.logger.debug(
+			{ src: "agent", agentId: this.agentId, evaluator: evaluator.name },
+			"Evaluator registered",
+		);
+	}
+
+	unregisterEvaluator(name: string): boolean {
+		const normalized = typeof name === "string" ? name.trim() : "";
+		if (!normalized) return false;
+		const index = this.evaluators.findIndex(
+			(evaluator) => evaluator.name === normalized,
+		);
+		if (index === -1) return false;
+		this.evaluators.splice(index, 1);
+		this.logger.debug(
+			{ src: "agent", agentId: this.agentId, evaluator: normalized },
+			"Evaluator unregistered",
+		);
+		return true;
 	}
 
 	unregisterAction(name: string): boolean {
@@ -2551,10 +2635,6 @@ export class AgentRuntime implements IAgentRuntime {
 		return { allowed: result.allowed, reason: result.reason };
 	}
 
-	registerEvaluator(evaluator: Evaluator) {
-		this.evaluators.push(withCanonicalEvaluatorDocs(evaluator));
-	}
-
 	getActionResults(messageId: UUID): ActionResult[] {
 		const cachedState = this.stateCache?.get(`${messageId}_action_results`);
 		return (
@@ -2564,81 +2644,13 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 	}
 
-	async evaluate(
-		message: Memory,
-		state: State,
-		didRespond?: boolean,
-		callback?: HandlerCallback,
-		responses?: Memory[],
-	) {
-		setTrajectoryPurpose("evaluation");
-		const evaluatorPromises = this.evaluators.map(
-			async (evaluator: Evaluator) => {
-				if (!evaluator.handler) {
-					return null;
-				}
-				if (!didRespond && !evaluator.alwaysRun) {
-					return null;
-				}
-				const result = await evaluator.validate(
-					this as unknown as IAgentRuntime,
-					message,
-					state,
-				);
-				if (result) {
-					return evaluator;
-				}
-				return null;
-			},
-		);
-		const evaluators = (await Promise.all(evaluatorPromises)).filter(
-			Boolean,
-		) as Evaluator[];
-		if (evaluators.length === 0) {
-			return [];
-		}
-		state = await this.composeState(message, ["RECENT_MESSAGES", "EVALUATORS"]);
-		// Run evaluator handlers sequentially because multiple evaluators can
-		// mutate shared memories/relationships for the same turn.
-		for (const evaluator of evaluators) {
-			if (!evaluator.handler) {
-				continue;
-			}
-			const evaluatorRuntime = this as unknown as IAgentRuntime;
-			await withEvaluatorStep(evaluatorRuntime, evaluator.name, () =>
-				evaluator.handler(
-					evaluatorRuntime,
-					message,
-					state,
-					{},
-					callback,
-					responses,
-				),
-			);
-			this.adapter.createLogs([
-				{
-					entityId: message.entityId,
-					roomId: message.roomId,
-					type: "evaluator",
-					body: {
-						evaluator: evaluator.name,
-						messageId: message.id,
-						message: message.content.text,
-						runId: this.getCurrentRunId(),
-					},
-				},
-			]);
-		}
-		return evaluators;
-	}
-
 	/**
-	 * Run actions whose `mode` matches the given hook position. Replaces
-	 * the legacy evaluator path: the runtime fires this from fixed places in
-	 * the message pipeline (see services/message.ts). DURING modes execute
-	 * handlers in parallel; all other hook modes run sequentially in
-	 * `modePriority` ascending order. CONTEXT hooks are gated by
-	 * `selectedContexts` overlapping the action's `contexts`.
+	 * Run actions whose `mode` matches the given hook position. The runtime
+	 * fires this from fixed places in the message pipeline (see
+	 * services/message.ts). DURING modes execute handlers in parallel; all
+	 * other hook modes run sequentially in `modePriority` ascending order.
+	 * CONTEXT hooks are gated by `selectedContexts` overlapping the action's
+	 * `contexts`.
 	 */
 	async runActionsByMode(
 		mode: ActionMode,
@@ -2676,12 +2688,11 @@ export class AgentRuntime implements IAgentRuntime {
 
 		setTrajectoryPurpose(mode === "ALWAYS_AFTER" ? "evaluation" : "hook");
 
-		const runtimeRef = this as unknown as IAgentRuntime;
 		const validated: Action[] = [];
 		await Promise.all(
 			candidates.map(async (action) => {
 				try {
-					const ok = await action.validate(runtimeRef, message, state);
+					const ok = await action.validate(this, message, state);
 					if (ok) validated.push(action);
 				} catch (err) {
 					this.logger.warn(
@@ -2714,7 +2725,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		const runOne = async (action: Action) => {
 			await this.emitEvent(EventType.ACTION_STARTED, {
-				runtime: runtimeRef,
+				runtime: this,
 				messageId,
 				roomId,
 				world: worldId,
@@ -2730,7 +2741,7 @@ export class AgentRuntime implements IAgentRuntime {
 			let errorMsg: string | undefined;
 			try {
 				await action.handler(
-					runtimeRef,
+					this,
 					message,
 					composedState,
 					{ mode },
@@ -2753,7 +2764,7 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 
 			await this.emitEvent(EventType.ACTION_COMPLETED, {
-				runtime: runtimeRef,
+				runtime: this,
 				messageId,
 				roomId,
 				world: worldId,
@@ -3206,7 +3217,7 @@ export class AgentRuntime implements IAgentRuntime {
 				const start = Date.now();
 				let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 				let timedOut = false;
-				const providerRuntime = this as unknown as IAgentRuntime;
+				const providerRuntime: IAgentRuntime = this;
 				try {
 					const result = await Promise.race([
 						withProviderStep(providerRuntime, provider.name, () =>
@@ -3449,9 +3460,7 @@ export class AgentRuntime implements IAgentRuntime {
 			return null;
 		}
 		try {
-			const serviceInstance = await serviceDef.start(
-				this as unknown as IAgentRuntime,
-			);
+			const serviceInstance = await serviceDef.start(this);
 			if (!serviceInstance) {
 				this.serviceRegistrationStatus.set(key, "failed");
 				return null;
@@ -3469,10 +3478,7 @@ export class AgentRuntime implements IAgentRuntime {
 				this.servicePromiseHandlers.delete(serviceType);
 			}
 			if (serviceDef.registerSendHandlers) {
-				serviceDef.registerSendHandlers(
-					this as unknown as IAgentRuntime,
-					serviceInstance,
-				);
+				serviceDef.registerSendHandlers(this, serviceInstance);
 			}
 			this.serviceRegistrationStatus.set(key, "registered");
 			return serviceInstance;
@@ -4166,11 +4172,12 @@ export class AgentRuntime implements IAgentRuntime {
 			const modelSettings = this.getModelSettings(requestedModelKey);
 
 			if (modelSettings) {
-				// Apply model settings if configured
-				modelParams = {
-					...modelSettings, // Apply model settings first (includes defaults and model-specific)
-					...(paramsClone as Record<string, JsonValue | object>), // Then apply specific params (allowing overrides)
-				} as ModelParamsMap[T];
+				// Apply model settings if configured — merged object is narrowed at handlers after routing.
+				const merged: object = {
+					...modelSettings,
+					...(paramsClone as Record<string, JsonValue | object>),
+				};
+				modelParams = merged as ModelParamsMap[T];
 			} else {
 				// No model settings configured, use params as-is
 				modelParams = paramsClone as ModelParamsMap[T];
@@ -4261,7 +4268,7 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 
 		const rawResponse = await handler(
-			this as unknown as IAgentRuntime,
+			this,
 			modelParams as Record<string, JsonValue | object>,
 		);
 
@@ -6610,14 +6617,14 @@ ${section_end}`;
 			let paramsWithRuntime:
 				| EventPayloadMap[keyof EventPayloadMap]
 				| EventPayload = {
-				runtime: this as unknown as IAgentRuntime,
+				runtime: this,
 				source: "runtime",
 			};
 			if (typeof params === "object" && params && params !== null) {
 				const paramsObj = params as Record<string, JsonValue | object>;
 				paramsWithRuntime = {
 					...paramsObj,
-					runtime: this as unknown as IAgentRuntime,
+					runtime: this,
 					source:
 						typeof paramsObj.source === "string" ? paramsObj.source : "runtime",
 				} as EventPayloadMap[keyof EventPayloadMap] | EventPayload;
@@ -8219,11 +8226,7 @@ ${section_end}`;
 			);
 			throw new Error(errorMsg);
 		}
-		const result = await handler(
-			this as unknown as IAgentRuntime,
-			target,
-			content,
-		);
+		const result = await handler(this, target, content);
 		return result as Memory | undefined;
 	}
 	async getMemoriesByWorldId(params: {

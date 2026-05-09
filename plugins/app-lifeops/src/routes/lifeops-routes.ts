@@ -1,10 +1,10 @@
 import type http from "node:http";
-import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
+import type { ReadJsonBodyOptions } from "@elizaos/core";
 import {
   checkRateLimit,
   type RateLimitConfig,
-} from "@elizaos/agent/api/rate-limiter";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+} from "@elizaos/agent";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import type {
   AcknowledgeLifeOpsReminderRequest,
@@ -19,7 +19,6 @@ import type {
   CreateLifeOpsGoalRequest,
   CreateLifeOpsWorkflowRequest,
   CreateLifeOpsXPostRequest,
-  DisconnectLifeOpsGoogleConnectorRequest,
   DisconnectLifeOpsHealthConnectorRequest,
   DisconnectLifeOpsMessagingConnectorRequest,
   GetLifeOpsCalendarFeedRequest,
@@ -43,7 +42,6 @@ import type {
   RelockLifeOpsWebsiteAccessRequest,
   ResolveLifeOpsWebsiteAccessCallbackRequest,
   RunLifeOpsWorkflowRequest,
-  SelectLifeOpsGoogleConnectorPreferenceRequest,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
@@ -51,7 +49,6 @@ import type {
   SetLifeOpsReminderPreferenceRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsDiscordConnectorRequest,
-  StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsHealthConnectorRequest,
   StartLifeOpsSignalPairingRequest,
   StartLifeOpsTelegramAuthRequest,
@@ -1009,38 +1006,6 @@ export async function handleLifeOpsRoutes(
     return true;
   }
 
-  if (
-    method === "GET" &&
-    pathname === "/api/lifeops/connectors/google/status"
-  ) {
-    if (rateLimitRequest(ctx, "google_api_read")) return true;
-    return runRoute(ctx, async (service) => {
-      const mode = parseConnectorModeQuery(url.searchParams.get("mode"));
-      const side = parseConnectorSideQuery(url.searchParams.get("side"));
-      const rawGrantId = url.searchParams.get("grantId");
-      json(
-        res,
-        await service.getGoogleConnectorStatus(
-          url,
-          mode,
-          side,
-          rawGrantId ?? undefined,
-        ),
-      );
-    });
-  }
-
-  if (
-    method === "GET" &&
-    pathname === "/api/lifeops/connectors/google/accounts"
-  ) {
-    if (rateLimitRequest(ctx, "google_api_read")) return true;
-    return runRoute(ctx, async (service) => {
-      const side = parseConnectorSideQuery(url.searchParams.get("side"));
-      json(res, await service.getGoogleConnectorAccounts(url, side));
-    });
-  }
-
   if (method === "GET" && pathname === "/api/lifeops/calendar/feed") {
     if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
@@ -1541,102 +1506,6 @@ export async function handleLifeOpsRoutes(
   }
 
   if (
-    method === "POST" &&
-    pathname === "/api/lifeops/connectors/google/start"
-  ) {
-    if (rateLimitRequest(ctx, "google_api_write")) return true;
-    const body = await readJsonBody<StartLifeOpsGoogleConnectorRequest>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(res, await service.startGoogleConnector(body, url));
-    });
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/connectors/google/preference"
-  ) {
-    if (rateLimitRequest(ctx, "google_api_write")) return true;
-    const body =
-      await readJsonBody<SelectLifeOpsGoogleConnectorPreferenceRequest>(
-        req,
-        res,
-      );
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.selectGoogleConnectorMode(url, body.mode, body.side),
-      );
-    });
-  }
-
-  if (
-    method === "GET" &&
-    pathname === "/api/lifeops/connectors/google/callback"
-  ) {
-    const service = getService(ctx);
-    if (!service) return true;
-    try {
-      const connectorStatus =
-        await service.completeGoogleConnectorCallback(url);
-      writeHtml(
-        res,
-        200,
-        "Google Connected",
-        "Google access is now available in Eliza. You can close this window.",
-        {
-          side: connectorStatus.side,
-          mode: connectorStatus.mode,
-        },
-      );
-      return true;
-    } catch (error) {
-      if (error instanceof LifeOpsServiceError) {
-        writeHtml(res, error.status, "Google Connection Failed", error.message);
-        return true;
-      }
-      throw error;
-    }
-  }
-
-  if (
-    method === "GET" &&
-    pathname === "/api/lifeops/connectors/google/success"
-  ) {
-    const refreshDetail = parseConnectorRefreshDetailFromQuery(ctx, {
-      side: "owner",
-      mode: "cloud_managed",
-    });
-    if (!refreshDetail) return true;
-    writeHtml(
-      res,
-      200,
-      "Google Connected",
-      "Google access is now available in Eliza. You can close this window.",
-      refreshDetail,
-    );
-    return true;
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/connectors/google/disconnect"
-  ) {
-    if (rateLimitRequest(ctx, "google_api_write")) return true;
-    const body = await readJsonBody<
-      DisconnectLifeOpsGoogleConnectorRequest & { grantId?: string }
-    >(req, res);
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(res, await service.disconnectGoogleConnector(body, url));
-    });
-  }
-
-  if (
     method === "GET" &&
     pathname === "/api/lifeops/connectors/health/status"
   ) {
@@ -1829,7 +1698,7 @@ export async function handleLifeOpsRoutes(
     if (
       !parseConnectorRefreshDetailFromQuery(ctx, {
         side: "owner",
-        mode: "cloud_managed",
+        mode: "local",
       })
     ) {
       return true;
@@ -1837,10 +1706,10 @@ export async function handleLifeOpsRoutes(
     writeHtml(
       res,
       connected && !error ? 200 : 400,
-      connected && !error ? "X Connected" : "X Connection Failed",
+      connected && !error ? "X Connector Refreshed" : "X Connection Failed",
       connected && !error
-        ? "X access is now available in Eliza. You can close this window."
-        : (error ?? "X authorization did not complete successfully."),
+        ? "X connector status was refreshed in Eliza. You can close this window."
+        : (error ?? "X connector setup did not complete successfully."),
     );
     return true;
   }
@@ -2073,7 +1942,7 @@ export async function handleLifeOpsRoutes(
         state: status.connected ? "connected" : "error",
         error: status.connected
           ? undefined
-          : "Telegram setup is managed by @elizaos/plugin-telegram. Legacy LifeOps code/password submission is disabled.",
+          : "Telegram setup is managed by @elizaos/plugin-telegram. LifeOps code/password submission is disabled.",
         status,
       });
     });
@@ -2395,7 +2264,7 @@ export async function handleLifeOpsRoutes(
         parsePositiveIntegerQuery(url.searchParams.get("limit"), "limit", {
           max: 500,
         }) ?? 25;
-      json(res, service.pullWhatsAppRecent(limit));
+      json(res, await service.pullWhatsAppRecent(limit));
     });
   }
 

@@ -1,18 +1,8 @@
 import type http from "node:http";
 import type { AgentRuntime, Task, UUID } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import type { TriggerSummary } from "../triggers/types.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
-import { WORKBENCH_TASK_TAG, WORKBENCH_TODO_TAG } from "./workbench-helpers.js";
-
-interface WorkbenchTaskView {
-  id: string;
-  name: string;
-  description: string;
-  tags: string[];
-  isCompleted: boolean;
-  createdAt: string | null;
-  updatedAt: string | null;
-}
+import { WORKBENCH_TODO_TAG } from "./workbench-helpers.js";
 
 interface WorkbenchTodoView {
   id: string;
@@ -48,7 +38,6 @@ export interface WorkbenchRouteContext {
     options?: ReadJsonBodyOptions,
   ) => Promise<T | null>;
   // Helpers from server.ts
-  toWorkbenchTask: (task: Task) => WorkbenchTaskView | null;
   toWorkbenchTodo: (task: Task) => WorkbenchTodoView | null;
   normalizeTags: (value: unknown, required?: string[]) => string[];
   readTaskMetadata: (task: Task) => Record<string, unknown>;
@@ -74,8 +63,11 @@ export async function handleWorkbenchRoutes(
   const { req, res, method, pathname, state, json, error, readJsonBody } = ctx;
 
   // ── GET /api/workbench/overview ──────────────────────────────────────
+  // Workbench surfaces todos + triggers. Tasks were unified into workflows;
+  // workflow listings live at /api/automations now. The `tasks: []` field is
+  // kept in the response for backward compatibility with existing clients
+  // that still read it.
   if (method === "GET" && pathname === "/api/workbench/overview") {
-    const tasks: WorkbenchTaskView[] = [];
     const triggers: TriggerSummary[] = [];
     const todos: WorkbenchTodoView[] = [];
     const summary = {
@@ -87,30 +79,18 @@ export async function handleWorkbenchRoutes(
       completedTodos: 0,
     };
 
-    let tasksAvailable = false;
     let triggersAvailable = false;
     let todosAvailable = false;
-    let runtimeTasks: Task[] = [];
 
     if (state.runtime) {
       try {
-        runtimeTasks = await state.runtime.getTasks({});
-        tasksAvailable = true;
+        const runtimeTasks = await state.runtime.getTasks({});
         todosAvailable = true;
-
         for (const task of runtimeTasks) {
           const todo = ctx.toWorkbenchTodo(task);
-          if (todo) {
-            todos.push(todo);
-            continue;
-          }
-          const mappedTask = ctx.toWorkbenchTask(task);
-          if (mappedTask) {
-            tasks.push(mappedTask);
-          }
+          if (todo) todos.push(todo);
         }
       } catch {
-        tasksAvailable = false;
         todosAvailable = false;
       }
 
@@ -124,15 +104,7 @@ export async function handleWorkbenchRoutes(
           }
         }
       } catch {
-        if (tasksAvailable) {
-          triggersAvailable = true;
-          for (const task of runtimeTasks) {
-            const summaryItem = ctx.taskToTriggerSummary(task);
-            if (summaryItem) {
-              triggers.push(summaryItem as NonNullable<typeof summaryItem>);
-            }
-          }
-        }
+        triggersAvailable = false;
       }
     }
 
@@ -145,13 +117,10 @@ export async function handleWorkbenchRoutes(
       todos.push(...dedupedTodos.values());
     }
 
-    tasks.sort((a, b) => a.name.localeCompare(b.name));
     todos.sort((a, b) => a.name.localeCompare(b.name));
     triggers.sort((a, b) =>
       (a.displayName ?? "").localeCompare(b.displayName ?? ""),
     );
-    summary.totalTasks = tasks.length;
-    summary.completedTasks = tasks.filter((task) => task.isCompleted).length;
     summary.totalTriggers = triggers.length;
     summary.activeTriggers = triggers.filter(
       (trigger) => trigger.enabled,
@@ -160,141 +129,14 @@ export async function handleWorkbenchRoutes(
     summary.completedTodos = todos.filter((todo) => todo.isCompleted).length;
 
     json(res, {
-      tasks,
+      tasks: [],
       triggers,
       todos,
       summary,
-      tasksAvailable,
+      tasksAvailable: false,
       triggersAvailable,
       todosAvailable,
     });
-    return true;
-  }
-
-  // ── GET /api/workbench/tasks ─────────────────────────────────────────
-  if (method === "GET" && pathname === "/api/workbench/tasks") {
-    if (!state.runtime) {
-      error(res, "Agent runtime is not available", 503);
-      return true;
-    }
-    const runtimeTasks = await state.runtime.getTasks({});
-    const tasks = runtimeTasks
-      .map((task) => ctx.toWorkbenchTask(task))
-      .filter((task): task is WorkbenchTaskView => task !== null)
-      .sort((a, b) => a.name.localeCompare(b.name));
-    json(res, { tasks });
-    return true;
-  }
-
-  // ── POST /api/workbench/tasks ────────────────────────────────────────
-  if (method === "POST" && pathname === "/api/workbench/tasks") {
-    if (!state.runtime) {
-      error(res, "Agent runtime is not available", 503);
-      return true;
-    }
-    const body = await readJsonBody<{
-      name?: string;
-      description?: string;
-      tags?: string[];
-      isCompleted?: boolean;
-    }>(req, res);
-    if (!body) return true;
-    const name = typeof body.name === "string" ? body.name.trim() : "";
-    if (!name) {
-      error(res, "name is required", 400);
-      return true;
-    }
-    const description =
-      typeof body.description === "string" ? body.description : "";
-    const isCompleted = body.isCompleted === true;
-    const metadata = {
-      isCompleted,
-      workbench: { kind: "task" },
-    };
-    const taskId = await state.runtime.createTask({
-      name,
-      description,
-      tags: ctx.normalizeTags(body.tags, [WORKBENCH_TASK_TAG]),
-      metadata,
-    });
-    const created = await state.runtime.getTask(taskId);
-    const task = created ? ctx.toWorkbenchTask(created) : null;
-    if (!task) {
-      error(res, "Task created but unavailable", 500);
-      return true;
-    }
-    json(res, { task }, 201);
-    return true;
-  }
-
-  // ── GET/PUT/DELETE /api/workbench/tasks/:id ─────────────────────────
-  const taskItemMatch = /^\/api\/workbench\/tasks\/([^/]+)$/.exec(pathname);
-  if (taskItemMatch && ["GET", "PUT", "DELETE"].includes(method)) {
-    if (!state.runtime) {
-      error(res, "Agent runtime is not available", 503);
-      return true;
-    }
-    const decodedTaskId = ctx.decodePathComponent(
-      taskItemMatch[1],
-      res,
-      "task id",
-    );
-    if (!decodedTaskId) return true;
-    const task = await state.runtime.getTask(decodedTaskId as UUID);
-    const taskView = task ? ctx.toWorkbenchTask(task) : null;
-    if (!task || !taskView || !task.id) {
-      error(res, "Task not found", 404);
-      return true;
-    }
-
-    if (method === "GET") {
-      json(res, { task: taskView });
-      return true;
-    }
-
-    if (method === "DELETE") {
-      await state.runtime.deleteTask(task.id);
-      json(res, { ok: true });
-      return true;
-    }
-
-    const body = await readJsonBody<{
-      name?: string;
-      description?: string;
-      tags?: string[];
-      isCompleted?: boolean;
-    }>(req, res);
-    if (!body) return true;
-
-    const update: Partial<Task> = {};
-    if (typeof body.name === "string") {
-      const name = body.name.trim();
-      if (!name) {
-        error(res, "name cannot be empty", 400);
-        return true;
-      }
-      update.name = name;
-    }
-    if (typeof body.description === "string") {
-      update.description = body.description;
-    }
-    if (body.tags !== undefined) {
-      update.tags = ctx.normalizeTags(body.tags, [WORKBENCH_TASK_TAG]);
-    }
-    if (typeof body.isCompleted === "boolean") {
-      update.metadata = {
-        ...ctx.readTaskMetadata(task),
-        isCompleted: body.isCompleted,
-      };
-    }
-    await state.runtime.updateTask(task.id, update);
-    const refreshed = await state.runtime.getTask(task.id);
-    const refreshedView = refreshed ? ctx.toWorkbenchTask(refreshed) : null;
-    if (!refreshedView) {
-      error(res, "Task updated but unavailable", 500);
-      return true;
-    }
-    json(res, { task: refreshedView });
     return true;
   }
 

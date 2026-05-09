@@ -1,6 +1,6 @@
 import { getDefaultModels, getElizaCloudApiUrl } from "./config";
 
-// messageExamples uses legacy MessageExample[][] format; createCharacter() normalizes it at
+// messageExamples uses grouped MessageExample[][] rows; createCharacter() normalizes it at
 // load time in agent-loader.ts. The type assertion below suppresses the structural mismatch.
 const character = {
   id: "b850bc30-45f8-0041-a00a-83df46d8555d", // existing agent id in DB
@@ -53,9 +53,6 @@ const character = {
       getDefaultModels().large,
     // Note: ELIZAOS_API_KEY will be set at runtime with user's auto-generated key
     // ElevenLabs Voice Configuration
-    // n8n Workflow Configuration
-    N8N_API_KEY: process.env.N8N_API_KEY!,
-    N8N_HOST: process.env.N8N_HOST!,
     ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY!,
     ELEVENLABS_VOICE_ID: process.env.ELEVENLABS_VOICE_ID || "EXAVITQu4vr4xnSDxMaL", // Rachel voice (default)
     ELEVENLABS_MODEL_ID: process.env.ELEVENLABS_MODEL_ID || "eleven_multilingual_v2",

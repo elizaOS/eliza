@@ -2,16 +2,13 @@ import type { Plugin } from "@elizaos/core";
 import {
   askUserQuestionAction,
   bashAction,
-  editAction,
   enterWorktreeAction,
   exitWorktreeAction,
   fileAction,
   globAction,
   grepAction,
   lsAction,
-  readAction,
   webFetchAction,
-  writeAction,
 } from "./actions/index.js";
 import { availableToolsProvider } from "./providers/available-tools.js";
 import {
@@ -43,15 +40,33 @@ export const codingToolsPlugin: Plugin = {
     enterWorktreeAction,
     exitWorktreeAction,
   ],
+  // Self-declared auto-enable: activate when features.codingTools is enabled,
+  // or via the legacy "coding-agent" feature key (the plugin was renamed).
+  autoEnable: {
+    shouldEnable: (_env, config) => {
+      const features = config?.features as Record<string, unknown> | undefined;
+      const isFeatureEnabled = (f: unknown) =>
+        f === true ||
+        (typeof f === "object" &&
+          f !== null &&
+          (f as { enabled?: unknown }).enabled !== false);
+      return (
+        isFeatureEnabled(features?.codingTools) ||
+        isFeatureEnabled(features?.["coding-agent"])
+      );
+    },
+  },
 };
 
 export default codingToolsPlugin;
 
 export {
+  CodingTaskExecutor,
   FileStateService,
   RipgrepService,
   SandboxService,
   SessionCwdService,
 } from "./services/index.js";
+export * from "./services/coding-agent-context.js";
 export { availableToolsProvider } from "./providers/available-tools.js";
 export * from "./types.js";

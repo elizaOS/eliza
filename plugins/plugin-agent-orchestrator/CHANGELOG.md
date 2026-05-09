@@ -2,12 +2,9 @@
 
 ## 0.2.0 (unreleased)
 
-Consolidated `@elizaos/plugin-acpx` (ACP-based spawn) and the legacy
-`@elizaos/plugin-agent-orchestrator` (PTY + workspace) into a single
-package at `plugins/plugin-agent-orchestrator`. The acpx package was
-renamed; the legacy orchestrator content was folded in. External
-consumers of `@elizaos/plugin-agent-orchestrator` continue to resolve;
-internal `@elizaos/plugin-acpx` callers were rewritten.
+Consolidated ACP-based spawn, PTY sessions, and workspace services into
+a single package at `plugins/plugin-agent-orchestrator`. Internal
+`@elizaos/plugin-acpx` callers were rewritten to the consolidated package.
 
 ### Added
 
@@ -37,8 +34,6 @@ internal `@elizaos/plugin-acpx` callers were rewritten.
   the router's import surface type-only.
 - Browser build dropped: this package owns Node-only services
   (`PTYService`, `CodingWorkspaceService`, child_process spawn).
-- Plugin name aliases preserved: `taskAgentPlugin`, `codingAgentPlugin`,
-  `acpPlugin` all reference `agentOrchestratorPlugin`.
 
 ### Fixed
 

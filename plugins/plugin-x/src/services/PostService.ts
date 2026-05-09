@@ -12,6 +12,10 @@ import type {
 export class TwitterPostService implements IPostService {
   constructor(private client: ClientBase) {}
 
+  private errorDetail(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
   private async safeParseJsonResponse(
     result: unknown,
   ): Promise<unknown | undefined> {
@@ -106,7 +110,7 @@ export class TwitterPostService implements IPostService {
             mediaIds.push(mediaId);
             logger.info(`Media uploaded successfully. Media ID: ${mediaId}`);
           } catch (error) {
-            logger.error("Error uploading media:", error);
+            logger.error("Error uploading media:", this.errorDetail(error));
             // Continue with other media files even if one fails
           }
         }
@@ -124,7 +128,7 @@ export class TwitterPostService implements IPostService {
               options.media?.map((m) => ({
                 data: m.data,
                 mediaType: m.type,
-              })), // Keep for backward compatibility
+              })),
               false, // hideLinkPreview
               mediaIds, // Pass uploaded media IDs
             )
@@ -174,7 +178,7 @@ export class TwitterPostService implements IPostService {
 
       return post;
     } catch (error) {
-      logger.error("Error creating post:", error);
+      logger.error("Error creating post:", this.errorDetail(error));
       throw error;
     }
   }
@@ -183,7 +187,7 @@ export class TwitterPostService implements IPostService {
     try {
       await this.client.twitterClient.deleteTweet(postId);
     } catch (error) {
-      logger.error("Error deleting post:", error);
+      logger.error("Error deleting post:", this.errorDetail(error));
       throw error;
     }
   }
@@ -192,18 +196,19 @@ export class TwitterPostService implements IPostService {
     try {
       const tweet = await this.client.twitterClient.getTweet(postId);
 
-      if (!tweet) return null;
+      if (!tweet?.id) return null;
+      const tweetId = tweet.id;
 
       const post: Post = {
-        id: tweet.id,
+        id: tweetId,
         agentId: agentId,
         roomId: createUniqueUuid(
           this.client.runtime,
-          tweet.conversationId || tweet.id,
+          tweet.conversationId || tweetId,
         ),
-        userId: tweet.userId,
-        username: tweet.username,
-        text: tweet.text,
+        userId: tweet.userId ?? "",
+        username: tweet.username ?? "",
+        text: tweet.text ?? "",
         timestamp: getEpochMs(tweet.timestamp),
         metrics: {
           likes: tweet.likes || 0,
@@ -226,7 +231,7 @@ export class TwitterPostService implements IPostService {
 
       return post;
     } catch (error) {
-      logger.error("Error fetching post:", error);
+      logger.error("Error fetching post:", this.errorDetail(error));
       return null;
     }
   }
@@ -254,39 +259,44 @@ export class TwitterPostService implements IPostService {
         );
       }
 
-      const posts: Post[] = tweets.map((tweet) => ({
-        id: tweet.id,
-        agentId: options.agentId,
-        roomId: createUniqueUuid(
-          this.client.runtime,
-          tweet.conversationId || tweet.id,
-        ),
-        userId: tweet.userId,
-        username: tweet.username,
-        text: tweet.text,
-        timestamp: getEpochMs(tweet.timestamp),
-        metrics: {
-          likes: tweet.likes || 0,
-          reposts: tweet.retweets || 0,
-          replies: tweet.replies || 0,
-          quotes: tweet.quotes || 0,
-          views: tweet.views || 0,
-        },
-        media:
-          tweet.photos?.map((photo) => ({
-            type: "image" as const,
-            url: photo.url,
-            metadata: { id: photo.id },
-          })) || [],
-        metadata: {
-          conversationId: tweet.conversationId,
-          permanentUrl: tweet.permanentUrl,
-        },
-      }));
+      const posts: Post[] = tweets
+        .filter((tweet) => typeof tweet.id === "string")
+        .map((tweet) => {
+          const tweetId = tweet.id as string;
+          return {
+            id: tweetId,
+            agentId: options.agentId,
+            roomId: createUniqueUuid(
+              this.client.runtime,
+              tweet.conversationId || tweetId,
+            ),
+            userId: tweet.userId ?? "",
+            username: tweet.username ?? "",
+            text: tweet.text ?? "",
+            timestamp: getEpochMs(tweet.timestamp),
+            metrics: {
+              likes: tweet.likes || 0,
+              reposts: tweet.retweets || 0,
+              replies: tweet.replies || 0,
+              quotes: tweet.quotes || 0,
+              views: tweet.views || 0,
+            },
+            media:
+              tweet.photos?.map((photo) => ({
+                type: "image" as const,
+                url: photo.url,
+                metadata: { id: photo.id },
+              })) || [],
+            metadata: {
+              conversationId: tweet.conversationId,
+              permanentUrl: tweet.permanentUrl,
+            },
+          };
+        });
 
       return posts;
     } catch (error) {
-      logger.error("Error fetching posts:", error);
+      logger.error("Error fetching posts:", this.errorDetail(error));
       return [];
     }
   }
@@ -295,7 +305,7 @@ export class TwitterPostService implements IPostService {
     try {
       await this.client.twitterClient.likeTweet(postId);
     } catch (error) {
-      logger.error("Error liking post:", error);
+      logger.error("Error liking post:", this.errorDetail(error));
       throw error;
     }
   }
@@ -304,7 +314,7 @@ export class TwitterPostService implements IPostService {
     try {
       await this.client.twitterClient.retweet(postId);
     } catch (error) {
-      logger.error("Error reposting:", error);
+      logger.error("Error reposting:", this.errorDetail(error));
       throw error;
     }
   }
@@ -327,40 +337,45 @@ export class TwitterPostService implements IPostService {
         options?.before,
       );
 
-      const posts: Post[] = searchResult.tweets.map((tweet) => ({
-        id: tweet.id,
-        agentId: agentId,
-        roomId: createUniqueUuid(
-          this.client.runtime,
-          tweet.conversationId || tweet.id,
-        ),
-        userId: tweet.userId,
-        username: tweet.username,
-        text: tweet.text,
-        timestamp: getEpochMs(tweet.timestamp),
-        metrics: {
-          likes: tweet.likes || 0,
-          reposts: tweet.retweets || 0,
-          replies: tweet.replies || 0,
-          quotes: tweet.quotes || 0,
-          views: tweet.views || 0,
-        },
-        media:
-          tweet.photos?.map((photo) => ({
-            type: "image" as const,
-            url: photo.url,
-            metadata: { id: photo.id },
-          })) || [],
-        metadata: {
-          conversationId: tweet.conversationId,
-          permanentUrl: tweet.permanentUrl,
-          isMention: true,
-        },
-      }));
+      const posts: Post[] = searchResult.tweets
+        .filter((tweet) => typeof tweet.id === "string")
+        .map((tweet) => {
+          const tweetId = tweet.id as string;
+          return {
+            id: tweetId,
+            agentId: agentId,
+            roomId: createUniqueUuid(
+              this.client.runtime,
+              tweet.conversationId || tweetId,
+            ),
+            userId: tweet.userId ?? "",
+            username: tweet.username ?? "",
+            text: tweet.text ?? "",
+            timestamp: getEpochMs(tweet.timestamp),
+            metrics: {
+              likes: tweet.likes || 0,
+              reposts: tweet.retweets || 0,
+              replies: tweet.replies || 0,
+              quotes: tweet.quotes || 0,
+              views: tweet.views || 0,
+            },
+            media:
+              tweet.photos?.map((photo) => ({
+                type: "image" as const,
+                url: photo.url,
+                metadata: { id: photo.id },
+              })) || [],
+            metadata: {
+              conversationId: tweet.conversationId,
+              permanentUrl: tweet.permanentUrl,
+              isMention: true,
+            },
+          };
+        });
 
       return posts;
     } catch (error) {
-      logger.error("Error fetching mentions:", error);
+      logger.error("Error fetching mentions:", this.errorDetail(error));
       return [];
     }
   }
@@ -372,7 +387,7 @@ export class TwitterPostService implements IPostService {
       logger.warn("Unlike functionality not yet implemented");
       throw new Error("Unlike functionality not yet implemented");
     } catch (error) {
-      logger.error("Error unliking post:", error);
+      logger.error("Error unliking post:", this.errorDetail(error));
       throw error;
     }
   }
@@ -384,7 +399,7 @@ export class TwitterPostService implements IPostService {
       logger.warn("Unrepost functionality not yet implemented");
       throw new Error("Unrepost functionality not yet implemented");
     } catch (error) {
-      logger.error("Error unreposting:", error);
+      logger.error("Error unreposting:", this.errorDetail(error));
       throw error;
     }
   }

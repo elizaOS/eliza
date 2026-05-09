@@ -1,18 +1,15 @@
 import type { Memory } from "./memory";
 import type { Content, UUID } from "./primitives";
-import type {
-	MessageResult as ProtoMessageResult,
-	MessageStreamChunkPayload as ProtoMessageStreamChunkPayload,
-	MessageStreamErrorPayload as ProtoMessageStreamErrorPayload,
-	TargetInfo as ProtoTargetInfo,
-} from "./proto.js";
 import type { IAgentRuntime } from "./runtime";
 
 /**
  * Information describing the target of a message.
  */
-export interface TargetInfo
-	extends Omit<ProtoTargetInfo, "$typeName" | "$unknown"> {
+export interface TargetInfo {
+	source: string;
+	channelId?: string;
+	serverId?: string;
+	threadId?: string;
 	/**
 	 * Connector account identifier for multi-account sources.
 	 * Omitted/undefined targets use the legacy source-only route.
@@ -69,9 +66,11 @@ export type MessageStreamEventType =
  * Payload for messageStreamChunk event
  * Uses camelCase for client-facing WebSocket events (JS convention)
  */
-export interface MessageStreamChunkPayload
-	extends Omit<ProtoMessageStreamChunkPayload, "messageId" | "agentId"> {
+export interface MessageStreamChunkPayload {
 	messageId: UUID;
+	chunk: string;
+	index: number;
+	channelId: string;
 	agentId: UUID;
 }
 
@@ -79,10 +78,12 @@ export interface MessageStreamChunkPayload
  * Payload for messageStreamError event
  * Uses camelCase for client-facing WebSocket events (JS convention)
  */
-export interface MessageStreamErrorPayload
-	extends Omit<ProtoMessageStreamErrorPayload, "messageId" | "agentId"> {
+export interface MessageStreamErrorPayload {
 	messageId: UUID;
+	channelId: string;
 	agentId: UUID;
+	error: string;
+	partialText?: string;
 }
 
 /**
@@ -144,14 +145,17 @@ export interface MessageHandlerOptions {
  * Result of sending a message to an agent (User → Agent)
  * Follows the core pattern: ActionResult, ProviderResult, GenerateTextResult, etc.
  */
-export interface MessageResult
-	extends Omit<
-		ProtoMessageResult,
-		"messageId" | "userMessage" | "agentResponses"
-	> {
+export interface MessageUsage {
+	inputTokens: number;
+	outputTokens: number;
+	model: string;
+}
+
+export interface MessageResult {
 	messageId: UUID;
 	userMessage?: Memory;
 	agentResponses?: Content[];
+	usage?: MessageUsage;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

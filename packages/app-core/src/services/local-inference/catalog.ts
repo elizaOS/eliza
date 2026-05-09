@@ -1,7 +1,7 @@
 /**
  * Eliza-curated local model catalog.
  *
- * Hand-picked as of April 2026. All entries reference public GGUF repos on
+ * Hand-picked as of May 2026. All entries reference public GGUF repos on
  * HuggingFace. Quants default to Q4_K_M (the usual sweet spot). When upstream
  * naming conventions drift, update `ggufFile` here — we rely on the exact
  * filename for resolved-URL construction in the downloader.
@@ -66,18 +66,53 @@ export const MODEL_CATALOG: CatalogModel[] = [
     blurb: "Fast general chat for 8GB laptops; coherent summaries and Q&A.",
   },
   {
-    id: "qwen2.5-3b",
-    displayName: "Qwen2.5 3B Instruct",
-    hfRepo: "bartowski/Qwen2.5-3B-Instruct-GGUF",
-    ggufFile: "Qwen2.5-3B-Instruct-Q4_K_M.gguf",
-    params: "3B",
+    id: "qwen3.5-4b-dflash",
+    displayName: "Qwen3.5 4B DFlash (Q4_K_M)",
+    hfRepo: "bartowski/Qwen_Qwen3.5-4B-GGUF",
+    ggufFile: "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
+    params: "4B",
     quant: "Q4_K_M",
-    sizeGb: 2.0,
-    minRamGb: 4,
+    sizeGb: 2.5,
+    minRamGb: 5,
     category: "chat",
     bucket: "small",
+    companionModelIds: ["qwen3.5-4b-dflash-drafter-q4"],
+    runtime: {
+      preferredBackend: "llama-server",
+      optimizations: {
+        requiresKernel: ["dflash"],
+        flashAttention: true,
+      },
+      dflash: {
+        drafterModelId: "qwen3.5-4b-dflash-drafter-q4",
+        specType: "dflash",
+        contextSize: 8192,
+        draftContextSize: 256,
+        draftMin: 1,
+        draftMax: 16,
+        gpuLayers: "auto",
+        draftGpuLayers: "auto",
+        disableThinking: true,
+      },
+    },
     blurb:
-      "Punchy small model with strong multilingual and instruction following.",
+      "Default small Qwen3.5 path. Quantized target plus hidden DFlash drafter; falls back to standard llama.cpp when the DFlash server binary is unavailable.",
+  },
+  {
+    id: "qwen3.5-4b-dflash-drafter-q4",
+    displayName: "Qwen3.5 4B DFlash drafter (Q4_K_M)",
+    hfRepo: "psychopenguin/Qwen3.5-4B-DFlash-FP16-GGUF",
+    ggufFile: "Qwen3.5-4B-DFlash-Q4_K_M.gguf",
+    params: "1B",
+    quant: "Q4_K_M DFlash",
+    sizeGb: 0.51,
+    minRamGb: 1,
+    category: "drafter",
+    bucket: "small",
+    hiddenFromCatalog: true,
+    runtimeRole: "dflash-drafter",
+    companionForModelId: "qwen3.5-4b-dflash",
+    blurb: "Hidden DFlash drafter companion for Qwen3.5 4B.",
   },
 
   // ─── mid (4-8 GB) ───────────────────────────────────────────────────
@@ -95,17 +130,53 @@ export const MODEL_CATALOG: CatalogModel[] = [
     blurb: "Battle-tested general chat; the default 8GB-VRAM daily driver.",
   },
   {
-    id: "qwen2.5-7b",
-    displayName: "Qwen2.5 7B Instruct",
-    hfRepo: "bartowski/Qwen2.5-7B-Instruct-GGUF",
-    ggufFile: "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
-    params: "7B",
+    id: "qwen3.5-9b-dflash",
+    displayName: "Qwen3.5 9B DFlash (Q4_K_M)",
+    hfRepo: "bartowski/Qwen_Qwen3.5-9B-GGUF",
+    ggufFile: "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
+    params: "9B",
     quant: "Q4_K_M",
-    sizeGb: 4.7,
-    minRamGb: 10,
+    sizeGb: 5.4,
+    minRamGb: 12,
     category: "chat",
     bucket: "mid",
-    blurb: "Strong reasoning and multilingual chat; rivals Llama-3.1-8B.",
+    companionModelIds: ["qwen3.5-9b-dflash-drafter-q4"],
+    runtime: {
+      preferredBackend: "llama-server",
+      optimizations: {
+        requiresKernel: ["dflash"],
+        flashAttention: true,
+      },
+      dflash: {
+        drafterModelId: "qwen3.5-9b-dflash-drafter-q4",
+        specType: "dflash",
+        contextSize: 8192,
+        draftContextSize: 256,
+        draftMin: 1,
+        draftMax: 16,
+        gpuLayers: "auto",
+        draftGpuLayers: "auto",
+        disableThinking: true,
+      },
+    },
+    blurb:
+      "Workstation Qwen3.5 default. Quantized target plus hidden DFlash drafter for fast speculative decode on supported llama-server builds.",
+  },
+  {
+    id: "qwen3.5-9b-dflash-drafter-q4",
+    displayName: "Qwen3.5 9B DFlash drafter (Q4_K_M)",
+    hfRepo: "psychopenguin/Qwen3.5-9B-DFlash-FP16-GGUF",
+    ggufFile: "Qwen3.5-9B-DFlash-Q4_K_M.gguf",
+    params: "1B",
+    quant: "Q4_K_M DFlash",
+    sizeGb: 0.98,
+    minRamGb: 2,
+    category: "drafter",
+    bucket: "small",
+    hiddenFromCatalog: true,
+    runtimeRole: "dflash-drafter",
+    companionForModelId: "qwen3.5-9b-dflash",
+    blurb: "Hidden DFlash drafter companion for Qwen3.5 9B.",
   },
   {
     id: "gemma-2-9b",
@@ -158,11 +229,55 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 8,
     category: "chat",
     bucket: "mid",
+    runtime: {
+      kvCache: {
+        typeK: "tbq4_0",
+        typeV: "tbq3_0",
+        requiresFork: "apothic-turboquant",
+      },
+    },
     blurb:
       '1-bit weights with TurboQuant KV-cache compression (~4-4.6x KV memory cut) on phone CPU via the apothic/llama.cpp-1bit-turboquant fork. Auto-enabled when the AOSP runtime loads any GGUF whose filename contains "bonsai" (k=tbq4_0, v=tbq3_0); override with ELIZA_LLAMA_CACHE_TYPE_K/_V. Apple Silicon (Metal) and Vulkan GPU still run at full fp16 KV cache.',
   },
 
   // ─── large (8-20 GB) ────────────────────────────────────────────────
+  // ─── AWQ-derived GGUFs (mid) ────────────────────────────────────────
+  // AWQ-quantized GGUFs are GGUFs where AWQ scales were applied prior to
+  // K-quant conversion. They load via the standard llama.cpp/llama-server
+  // path — no special kernel — but tend to outperform pure K-quants on
+  // long-context recall and code reasoning at the same bit-width. We
+  // route them through the in-process binding by default and let the
+  // dispatcher promote them to llama-server when the operator opts into
+  // continuous batching or MoE expert offload.
+  //
+  // GPTQ-derived GGUFs exist on HF (e.g. RichardErkhov re-quants) but the
+  // quality of those repos is mixed and bartowski/TheBloke do not ship
+  // first-party GPTQ GGUFs. We deliberately skip GPTQ entries until a
+  // first-party publisher ships them or we add a per-quant verification
+  // step. Operators can still install ad-hoc GGUFs via the HF search.
+  {
+    id: "qwen3-coder-30b-awq-q4",
+    displayName: "Qwen3 Coder 30B Instruct (AWQ→Q4_K_M)",
+    hfRepo: "straino/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit-Q4_K_M-GGUF",
+    ggufFile: "qwen3-coder-30b-a3b-instruct-awq-4bit-q4_k_m.gguf",
+    params: "32B",
+    quant: "AWQ→Q4_K_M",
+    sizeGb: 18.5,
+    minRamGb: 36,
+    category: "code",
+    bucket: "large",
+    runtime: {
+      optimizations: {
+        // Qwen3 Coder is MoE (A3B = 3B active over 30B total). MoE expert
+        // offload to CPU keeps VRAM down on workstation GPUs while the
+        // active 3B path stays on the accelerator.
+        moeOffload: "cpu",
+        flashAttention: true,
+      },
+    },
+    blurb:
+      "AWQ scales applied before Q4_K_M conversion. Sharper code recall than the bartowski K-quants at the same bit-width; MoE expert offload defaults to CPU so 24GB VRAM workstations can run the active path comfortably.",
+  },
   {
     id: "deepseek-coder-v2-lite",
     displayName: "DeepSeek Coder V2 Lite 16B",
@@ -214,6 +329,55 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "large",
     blurb: "Largest Gemma 2. Excellent for long-form writing and reasoning.",
+  },
+  {
+    id: "qwen3.6-27b-dflash",
+    displayName: "Qwen3.6 27B DFlash (Q4_K_M)",
+    hfRepo: "bartowski/Qwen_Qwen3.6-27B-GGUF",
+    ggufFile: "Qwen_Qwen3.6-27B-Q4_K_M.gguf",
+    params: "27B",
+    quant: "Q4_K_M + Q8_0 drafter",
+    sizeGb: 16.1,
+    minRamGb: 32,
+    category: "chat",
+    bucket: "large",
+    companionModelIds: ["qwen3.6-27b-dflash-drafter-q8"],
+    runtime: {
+      preferredBackend: "llama-server",
+      optimizations: {
+        requiresKernel: ["dflash"],
+        flashAttention: true,
+      },
+      dflash: {
+        drafterModelId: "qwen3.6-27b-dflash-drafter-q8",
+        specType: "dflash",
+        contextSize: 8192,
+        draftContextSize: 256,
+        draftMin: 1,
+        draftMax: 16,
+        gpuLayers: "auto",
+        draftGpuLayers: "auto",
+        disableThinking: true,
+      },
+    },
+    blurb:
+      "Latest large Qwen3.6 target with the recommended Q8_0 DFlash drafter. Best local/cloud llama-server path when a supported DFlash build is available.",
+  },
+  {
+    id: "qwen3.6-27b-dflash-drafter-q8",
+    displayName: "Qwen3.6 27B DFlash drafter (Q8_0)",
+    hfRepo: "spiritbuun/Qwen3.6-27B-DFlash-GGUF",
+    ggufFile: "dflash-draft-3.6-q8_0.gguf",
+    params: "2B",
+    quant: "Q8_0 DFlash",
+    sizeGb: 1.75,
+    minRamGb: 3,
+    category: "drafter",
+    bucket: "small",
+    hiddenFromCatalog: true,
+    runtimeRole: "dflash-drafter",
+    companionForModelId: "qwen3.6-27b-dflash",
+    blurb: "Hidden DFlash drafter companion for Qwen3.6 27B.",
   },
 
   // ─── xl (>20 GB) ────────────────────────────────────────────────────

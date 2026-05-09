@@ -4,6 +4,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function isActivityProfile(value: unknown): value is ActivityProfile {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.analyzedAt === "number" &&
+    typeof value.ownerEntityId === "string" &&
+    typeof value.totalMessages === "number"
+  );
+}
+
 /**
  * Read a previously-persisted {@link ActivityProfile} from entity metadata.
  *
@@ -16,10 +25,6 @@ export function readProfileFromMetadata(
 ): ActivityProfile | null {
   if (!metadata?.activityProfile) return null;
   const candidate = metadata.activityProfile;
-  if (!isRecord(candidate)) return null;
   // Reject profiles missing required shape fields (corrupt or stale version)
-  if (typeof candidate.analyzedAt !== "number") return null;
-  if (typeof candidate.ownerEntityId !== "string") return null;
-  if (typeof candidate.totalMessages !== "number") return null;
-  return candidate as unknown as ActivityProfile;
+  return isActivityProfile(candidate) ? candidate : null;
 }

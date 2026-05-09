@@ -55,10 +55,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { buildTestRuntimeEnv } from "./lib/test-runtime.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
-const bunCmd = process.env.npm_execpath || process.env.BUN || "bun";
+const parentRepoRoot = path.dirname(repoRoot);
+const outerRepoRoot =
+  path.basename(repoRoot) === "eliza" &&
+  fs.existsSync(path.join(parentRepoRoot, "package.json")) &&
+  fs.existsSync(path.join(parentRepoRoot, "eliza", "package.json"))
+    ? parentRepoRoot
+    : repoRoot;
+const testRuntimeEnv = buildTestRuntimeEnv(process.env, { repoRoot });
+const bunCmd = testRuntimeEnv.npm_execpath || testRuntimeEnv.BUN || "bun";
 
 // ---------------------------------------------------------------------------
 // CLI flag parsing
@@ -97,6 +106,13 @@ const helpFlag = parseFlag("--help") || parseFlag("-h");
 const filterFlag = parseFlagValue("--filter");
 const patternFlag = parseFlagValue("--pattern");
 const onlyFlag = parseFlagValue("--only"); // "e2e" | "test"
+
+if (onlyFlag && onlyFlag !== "e2e" && onlyFlag !== "test") {
+  console.error(
+    `[eliza-test] ERROR unsupported --only=${JSON.stringify(onlyFlag)}; expected "e2e" or "test".`,
+  );
+  process.exit(1);
+}
 
 if (helpFlag) {
   process.stdout.write(
@@ -137,10 +153,18 @@ if (TEST_SHARD) {
   if (parts.length === 2) {
     const index = parseInt(parts[0], 10);
     const total = parseInt(parts[1], 10);
-    if (!isNaN(index) && !isNaN(total) && total > 0 && index >= 1 && index <= total) {
+    if (
+      !isNaN(index) &&
+      !isNaN(total) &&
+      total > 0 &&
+      index >= 1 &&
+      index <= total
+    ) {
       shardConfig = { index, total };
     } else {
-      console.warn(`[eliza-test] WARN invalid TEST_SHARD "${TEST_SHARD}" — expected N/M (1-indexed). Ignoring.`);
+      console.warn(
+        `[eliza-test] WARN invalid TEST_SHARD "${TEST_SHARD}" — expected N/M (1-indexed). Ignoring.`,
+      );
     }
   }
 }
@@ -185,11 +209,18 @@ if (TEST_LANE === "pr") {
 
 const EXTRA_SCRIPT_NAMES = [
   "test:integration",
+  "test:e2e:all",
   "test:e2e",
   "test:playwright",
   "test:ui",
   "test:live",
 ];
+const E2E_COMPANION_SCRIPT_NAMES = new Set([
+  "test:playwright",
+  "test:ui",
+  "test:live",
+]);
+const MANUAL_TEST_SCRIPT_PATTERN = /(?:^|:)manual(?:$|:)/;
 const NO_TEST_OUTPUT_PATTERNS = [/No test files found/i, /No tests found/i];
 const TEST_FILE_PATTERN = /\.(?:test|spec)\.[cm]?[tj]sx?$/;
 const TEST_FILE_SKIP_DIRS = new Set([
@@ -307,7 +338,7 @@ function resolveScriptCommand(scriptName, scripts, seen = new Set()) {
   seen.add(scriptName);
 
   const aliasMatch = raw.match(
-    /^(?:bun|npm|pnpm|yarn)(?:\s+run)?\s+([A-Za-z0-9:_-]+)$/,
+    /^(?:bun|npm|yarn)(?:\s+run)?\s+([A-Za-z0-9:_-]+)$/,
   );
   if (aliasMatch?.[1] && scripts?.[aliasMatch[1]]) {
     return resolveScriptCommand(aliasMatch[1], scripts, seen);
@@ -319,7 +350,7 @@ function resolveScriptCommand(scriptName, scripts, seen = new Set()) {
 function runCommand(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: repoRoot,
-    env: process.env,
+    env: testRuntimeEnv,
     stdio: "pipe",
     encoding: "utf8",
     ...options,
@@ -417,7 +448,7 @@ function scriptReferencesScript(command, scriptName) {
   }
   const escapedName = escapeForRegex(scriptName);
   const referencePattern = new RegExp(
-    `(?:^|[;&|]\\s*|&&\\s*|\\|\\|\\s*)(?:bun|npm|pnpm|yarn)(?:\\s+run)?\\s+${escapedName}(?:\\s|$)`,
+    `(?:^|[;&|]\\s*|&&\\s*|\\|\\|\\s*)(?:bun|npm|yarn)(?:\\s+run)?\\s+${escapedName}(?:\\s|$)`,
   );
   return referencePattern.test(command);
 }
@@ -428,8 +459,7 @@ function getReferencedScriptNames(command, scripts) {
   }
 
   const matches = [];
-  const invocationPattern =
-    /(?:bun|npm|pnpm|yarn)(?:\s+run)?\s+([A-Za-z0-9:_-]+)/g;
+  const invocationPattern = /(?:bun|npm|yarn)(?:\s+run)?\s+([A-Za-z0-9:_-]+)/g;
   for (const match of command.matchAll(invocationPattern)) {
     const scriptName = match[1];
     if (scriptName && scripts?.[scriptName]) {
@@ -437,6 +467,72 @@ function getReferencedScriptNames(command, scripts) {
     }
   }
   return matches;
+}
+
+function isManualTestScript(scriptName) {
+  return MANUAL_TEST_SCRIPT_PATTERN.test(scriptName);
+}
+
+function isE2EScriptName(scriptName) {
+  return (
+    scriptName === "test:e2e" ||
+    scriptName.startsWith("test:e2e:") ||
+    scriptName.endsWith(":e2e") ||
+    scriptName.includes(":e2e:")
+  );
+}
+
+function isE2ELikeScriptName(scriptName) {
+  return (
+    isE2EScriptName(scriptName) || E2E_COMPANION_SCRIPT_NAMES.has(scriptName)
+  );
+}
+
+function orderScriptCandidates(scriptNames) {
+  const priority = new Map(
+    [
+      "test:integration",
+      "test:e2e:all",
+      "test:e2e",
+      "test:playwright",
+      "test:ui",
+      "test:live",
+    ].map((scriptName, index) => [scriptName, index]),
+  );
+
+  return [...scriptNames].sort((left, right) => {
+    const leftPriority = priority.get(left) ?? 100;
+    const rightPriority = priority.get(right) ?? 100;
+    if (leftPriority !== rightPriority) {
+      return leftPriority - rightPriority;
+    }
+    return left.localeCompare(right);
+  });
+}
+
+function collectAdditionalScriptCandidates(scripts) {
+  const candidates = new Set();
+
+  for (const scriptName of EXTRA_SCRIPT_NAMES) {
+    if (scripts[scriptName]) {
+      candidates.add(scriptName);
+    }
+  }
+
+  for (const scriptName of Object.keys(scripts)) {
+    if (isManualTestScript(scriptName)) {
+      continue;
+    }
+    if (isE2EScriptName(scriptName)) {
+      candidates.add(scriptName);
+    }
+  }
+
+  return orderScriptCandidates(candidates);
+}
+
+function collectE2EScriptCandidates(scripts) {
+  return collectAdditionalScriptCandidates(scripts).filter(isE2ELikeScriptName);
 }
 
 function scriptInvokesScript(
@@ -476,9 +572,69 @@ function scriptInvokesScript(
   return false;
 }
 
+function isCoveredBySelectedScript(scriptName, selectedScriptNames, scripts) {
+  for (const selectedScriptName of selectedScriptNames) {
+    if (selectedScriptName === scriptName) {
+      continue;
+    }
+    if (scriptInvokesScript(selectedScriptName, scriptName, scripts)) {
+      return true;
+    }
+    if (selectedScriptName === "test:e2e:all" && isE2EScriptName(scriptName)) {
+      return true;
+    }
+    if (
+      selectedScriptName === "test:e2e" &&
+      scriptName.startsWith("test:e2e:")
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function appendScriptIfRunnable(
+  scriptNames,
+  seenCommands,
+  scriptName,
+  scripts,
+) {
+  const raw = normalizeWhitespace(scripts[scriptName] ?? "");
+  if (!raw) {
+    return;
+  }
+
+  if (isCoveredBySelectedScript(scriptName, scriptNames, scripts)) {
+    return;
+  }
+
+  const resolved = resolveScriptCommand(scriptName, scripts) || raw;
+  if (seenCommands.has(resolved)) {
+    return;
+  }
+
+  scriptNames.push(scriptName);
+  seenCommands.add(resolved);
+}
+
 function collectScriptsToRun(scripts) {
   const scriptNames = [];
   const seenCommands = new Set();
+
+  if (onlyFlag === "e2e") {
+    for (const scriptName of collectE2EScriptCandidates(scripts)) {
+      appendScriptIfRunnable(scriptNames, seenCommands, scriptName, scripts);
+    }
+    return scriptNames;
+  }
+
+  if (onlyFlag === "test") {
+    if (scripts.test) {
+      scriptNames.push("test");
+    }
+    return scriptNames;
+  }
 
   if (scripts.test) {
     const resolvedTestCommand =
@@ -490,13 +646,16 @@ function collectScriptsToRun(scripts) {
     }
   }
 
-  for (const scriptName of EXTRA_SCRIPT_NAMES) {
+  for (const scriptName of collectAdditionalScriptCandidates(scripts)) {
     const raw = normalizeWhitespace(scripts[scriptName] ?? "");
     if (!raw) {
       continue;
     }
 
     if (scriptInvokesScript("test", scriptName, scripts)) {
+      continue;
+    }
+    if (isCoveredBySelectedScript(scriptName, scriptNames, scripts)) {
       continue;
     }
 
@@ -633,6 +792,16 @@ function taskBelongsToShard(taskKey, shardCfg) {
   return bucket === shardCfg.index - 1;
 }
 
+function taskMatchesSelection(label, scriptName, taskKey) {
+  if (packageFilters.some((rx) => !rx.test(label))) {
+    return false;
+  }
+  if (scriptFilter && !scriptFilter.test(scriptName)) {
+    return false;
+  }
+  return taskBelongsToShard(taskKey, shardConfig);
+}
+
 // ---------------------------------------------------------------------------
 // Script runner
 // ---------------------------------------------------------------------------
@@ -642,9 +811,9 @@ function runScript(cwd, scriptName, label, extraEnv = {}) {
     const child = spawn(bunCmd, ["run", scriptName], {
       cwd,
       env: {
-        ...process.env,
-        NODE_NO_WARNINGS: process.env.NODE_NO_WARNINGS || "1",
-        ELIZA_LIVE_TEST: process.env.ELIZA_LIVE_TEST || "1",
+        ...testRuntimeEnv,
+        NODE_NO_WARNINGS: testRuntimeEnv.NODE_NO_WARNINGS || "1",
+        ELIZA_LIVE_TEST: testRuntimeEnv.ELIZA_LIVE_TEST || "1",
         PWD: cwd,
         ...extraEnv,
       },
@@ -686,6 +855,87 @@ function runScript(cwd, scriptName, label, extraEnv = {}) {
   });
 }
 
+function runDirectTask(label, command, args, cwd, extraEnv = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      env: {
+        ...testRuntimeEnv,
+        NODE_NO_WARNINGS: testRuntimeEnv.NODE_NO_WARNINGS || "1",
+        ELIZA_LIVE_TEST: testRuntimeEnv.ELIZA_LIVE_TEST || "1",
+        PWD: cwd,
+        ...extraEnv,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let capturedOutput = "";
+
+    child.stdout?.on("data", (chunk) => {
+      process.stdout.write(chunk);
+      capturedOutput = appendCapturedOutput(
+        capturedOutput,
+        chunk.toString("utf8"),
+      );
+    });
+    child.stderr?.on("data", (chunk) => {
+      process.stderr.write(chunk);
+      capturedOutput = appendCapturedOutput(
+        capturedOutput,
+        chunk.toString("utf8"),
+      );
+    });
+
+    child.on("error", reject);
+    child.on("exit", (code, signal) => {
+      if (code === 0) {
+        resolve({ skipped: false });
+        return;
+      }
+      if (outputIndicatesNoTests(capturedOutput)) {
+        resolve({ skipped: true });
+        return;
+      }
+      reject(
+        new Error(
+          `${label} failed with ${signal ? `signal ${signal}` : `exit code ${code ?? "unknown"}`}`,
+        ),
+      );
+    });
+  });
+}
+
+async function runRepoVitestE2E(extraEnv = {}) {
+  const configName =
+    TEST_LANE === "post-merge" ? "live-e2e.config.ts" : "e2e.config.ts";
+  const runVitestScript = path
+    .relative(outerRepoRoot, path.join(repoRoot, "scripts", "run-vitest.mjs"))
+    .split(path.sep)
+    .join("/");
+  const configPath = path
+    .relative(outerRepoRoot, path.join(repoRoot, "test", "vitest", configName))
+    .split(path.sep)
+    .join("/");
+  const label = `repo#vitest:${configName}`;
+
+  console.log(`[eliza-test] START ${label}`);
+  const startedAt = Date.now();
+  const result = await runDirectTask(
+    label,
+    "node",
+    [runVitestScript, "run", "--config", configPath],
+    outerRepoRoot,
+    extraEnv,
+  );
+  const durationMs = Date.now() - startedAt;
+  if (result.skipped) {
+    console.log(
+      `[eliza-test] SKIP ${label} (${durationMs}ms, no test files found)`,
+    );
+    return;
+  }
+  console.log(`[eliza-test] PASS ${label} (${durationMs}ms)`);
+}
+
 // ---------------------------------------------------------------------------
 // Cloud step
 // ---------------------------------------------------------------------------
@@ -698,14 +948,27 @@ function runCloudTests() {
       resolve({ skipped: true });
       return;
     }
-    console.log("[eliza-test] START cloud#test");
+    const cloudPackageJsonPath = path.join(cloudDir, "package.json");
+    const cloudPackageJson = JSON.parse(
+      fs.readFileSync(cloudPackageJsonPath, "utf8"),
+    );
+    const scriptName = onlyFlag === "e2e" ? "test:e2e:all" : "test";
+    if (!cloudPackageJson.scripts?.[scriptName]) {
+      console.log(`[eliza-test] SKIP cloud#${scriptName} (script not found)`);
+      resolve({ skipped: true });
+      return;
+    }
+
+    console.log(`[eliza-test] START cloud#${scriptName}`);
     const startedAt = Date.now();
-    const child = spawn(bunCmd, ["run", "test"], {
+    const child = spawn(bunCmd, ["run", scriptName], {
       cwd: cloudDir,
       env: {
-        ...process.env,
-        NODE_NO_WARNINGS: process.env.NODE_NO_WARNINGS || "1",
+        ...testRuntimeEnv,
+        NODE_NO_WARNINGS: testRuntimeEnv.NODE_NO_WARNINGS || "1",
+        ELIZA_LIVE_TEST: testRuntimeEnv.ELIZA_LIVE_TEST || "1",
         PWD: cloudDir,
+        ...buildLaneEnv(),
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -713,29 +976,37 @@ function runCloudTests() {
     let capturedOutput = "";
     child.stdout?.on("data", (chunk) => {
       process.stdout.write(chunk);
-      capturedOutput = appendCapturedOutput(capturedOutput, chunk.toString("utf8"));
+      capturedOutput = appendCapturedOutput(
+        capturedOutput,
+        chunk.toString("utf8"),
+      );
     });
     child.stderr?.on("data", (chunk) => {
       process.stderr.write(chunk);
-      capturedOutput = appendCapturedOutput(capturedOutput, chunk.toString("utf8"));
+      capturedOutput = appendCapturedOutput(
+        capturedOutput,
+        chunk.toString("utf8"),
+      );
     });
 
     child.on("error", reject);
     child.on("exit", (code, signal) => {
       const durationMs = Date.now() - startedAt;
       if (code === 0) {
-        console.log(`[eliza-test] PASS cloud#test (${durationMs}ms)`);
+        console.log(`[eliza-test] PASS cloud#${scriptName} (${durationMs}ms)`);
         resolve({ skipped: false });
         return;
       }
       if (outputIndicatesNoTests(capturedOutput)) {
-        console.log(`[eliza-test] SKIP cloud#test (${durationMs}ms, no test files found)`);
+        console.log(
+          `[eliza-test] SKIP cloud#${scriptName} (${durationMs}ms, no test files found)`,
+        );
         resolve({ skipped: true });
         return;
       }
       reject(
         new Error(
-          `cloud#test failed with ${signal ? `signal ${signal}` : `exit code ${code ?? "unknown"}`}`,
+          `cloud#${scriptName} failed with ${signal ? `signal ${signal}` : `exit code ${code ?? "unknown"}`}`,
         ),
       );
     });
@@ -773,15 +1044,9 @@ for (const packageJsonPath of packageJsonPaths) {
         continue;
       }
     }
-    if (packageFilters.some((rx) => !rx.test(label))) {
-      continue;
-    }
-    if (scriptFilter && !scriptFilter.test(scriptName)) {
-      continue;
-    }
     // Shard filtering: deterministic by relative package dir hash. Keeps a
     // package's `test` + `test:e2e` tasks colocated in the same shard.
-    if (!taskBelongsToShard(relativeDir, shardConfig)) {
+    if (!taskMatchesSelection(label, scriptName, relativeDir)) {
       continue;
     }
     if (shouldSkipEmptyVitestScript(cwd, scriptName, scripts)) {
@@ -804,6 +1069,16 @@ for (const packageJsonPath of packageJsonPaths) {
       continue;
     }
     console.log(`[eliza-test] PASS ${label} (${durationMs}ms)`);
+  }
+}
+
+if (onlyFlag !== "test") {
+  const repoE2ELabel = "repo (.)#test:e2e";
+  if (!started && repoE2ELabel.includes(startAt)) {
+    started = true;
+  }
+  if (started && taskMatchesSelection(repoE2ELabel, "test:e2e", "repo:e2e")) {
+    await runRepoVitestE2E(buildLaneEnv());
   }
 }
 

@@ -15,6 +15,8 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  DEFAULT_INSTAGRAM_ACCOUNT_ID,
+  listInstagramAccountIds,
   normalizeInstagramAccountId,
   readInstagramAccountId,
   resolveDefaultInstagramAccountId,
@@ -160,29 +162,52 @@ export class InstagramService extends Service {
   private instagramConfig: InstagramConfig | null = null;
   private isRunning = false;
   private loggedInUser: InstagramUser | null = null;
+  private accountServices = new Map<string, InstagramService>();
+  private defaultAccountId = DEFAULT_INSTAGRAM_ACCOUNT_ID;
 
   /**
    * Static factory method to create and start the service
    */
   static override async start(runtime: IAgentRuntime): Promise<InstagramService> {
     const service = new InstagramService(runtime);
-    await service.initialize();
-    await service.startService();
+    service.defaultAccountId = resolveDefaultInstagramAccountId(runtime);
+    const accountIds = listInstagramAccountIds(runtime);
+    for (const accountId of accountIds) {
+      const normalizedAccountId = normalizeInstagramAccountId(accountId);
+      const accountService =
+        normalizedAccountId === service.defaultAccountId ? service : new InstagramService(runtime);
+      accountService.defaultAccountId = normalizedAccountId;
+      await accountService.initialize(normalizedAccountId);
+      if (!accountService.validateConfig()) {
+        continue;
+      }
+      await accountService.startService();
+      service.accountServices.set(normalizedAccountId, accountService);
+      InstagramService.registerSendHandlers(runtime, service, normalizedAccountId);
+    }
+    if (service.accountServices.size === 0) {
+      await service.initialize(service.defaultAccountId);
+    }
     return service;
   }
 
-  static registerSendHandlers(runtime: IAgentRuntime, serviceInstance: InstagramService): void {
+  static registerSendHandlers(
+    runtime: IAgentRuntime,
+    serviceInstance: InstagramService,
+    requestedAccountId = serviceInstance.getAccountId(runtime)
+  ): void {
     if (!serviceInstance) {
       return;
     }
 
-    const accountId = serviceInstance.getAccountId(runtime);
+    const accountId = normalizeInstagramAccountId(requestedAccountId);
+    const accountService = serviceInstance.getAccountService(accountId);
     const sendHandler = async (
       handlerRuntime: IAgentRuntime,
       target: TargetInfo,
       content: Content
     ): Promise<Memory | undefined> => {
-      await serviceInstance.handleSendMessage(handlerRuntime, target, content);
+      await accountService.handleSendMessage(handlerRuntime, target, content);
       return undefined;
     };
     if (typeof runtime.registerMessageConnector === "function") {
@@ -208,7 +233,7 @@ export class InstagramService extends Service {
         getUserContext: serviceInstance.getConnectorUserContext.bind(serviceInstance),
         getUser: async (handlerRuntime, params) => {
           if (params.username || params.handle) {
-            const user = await serviceInstance
+            const user = await accountService
               .getUserByUsername(String(params.username ?? params.handle))
               .catch(() => null);
             if (!user) {
@@ -241,7 +266,7 @@ export class InstagramService extends Service {
           if (entity) {
             return entity;
           }
-          const context = await serviceInstance.getConnectorUserContext(entityId, {
+          const context = await accountService.getConnectorUserContext(entityId, {
             runtime: handlerRuntime,
           });
           return context
@@ -271,7 +296,7 @@ export class InstagramService extends Service {
             maxMessageLength: MAX_COMMENT_LENGTH,
             requiresMediaTarget: true,
           },
-          postHandler: serviceInstance.handleSendPost.bind(serviceInstance),
+          postHandler: accountService.handleSendPost.bind(accountService),
           contentShaping: {
             constraints: {
               maxLength: MAX_COMMENT_LENGTH,
@@ -294,8 +319,9 @@ export class InstagramService extends Service {
   /**
    * Initialize the service
    */
-  async initialize(): Promise<void> {
-    this.instagramConfig = resolveInstagramAccountConfig(this.runtime);
+  async initialize(accountId?: string): Promise<void> {
+    this.defaultAccountId = normalizeInstagramAccountId(accountId ?? this.defaultAccountId);
+    this.instagramConfig = resolveInstagramAccountConfig(this.runtime, this.defaultAccountId);
 
     if (!this.instagramConfig.username || !this.instagramConfig.password) {
       console.warn("Instagram credentials not configured. Service will not be available.");
@@ -337,6 +363,13 @@ export class InstagramService extends Service {
    */
   override async stop(): Promise<void> {
     console.log("Stopping Instagram service...");
+    for (const [accountId, accountService] of this.accountServices) {
+      if (accountService === this) {
+        continue;
+      }
+      await accountService.stop();
+      this.accountServices.delete(accountId);
+    }
     this.isRunning = false;
     this.loggedInUser = null;
     console.log("Instagram service stopped");
@@ -346,20 +379,35 @@ export class InstagramService extends Service {
    * Check if service is running
    */
   getIsRunning(): boolean {
-    return this.isRunning;
+    return (
+      this.isRunning ||
+      Array.from(this.accountServices.values()).some((service) => service.getIsRunning())
+    );
   }
 
   /**
    * Get the logged-in user
    */
   getLoggedInUser(): InstagramUser | null {
-    return this.loggedInUser;
+    return this.loggedInUser ?? this.getAccountService()?.loggedInUser ?? null;
   }
 
   getAccountId(runtime?: IAgentRuntime): string {
     return normalizeInstagramAccountId(
       this.instagramConfig?.accountId ??
-        (runtime ? resolveDefaultInstagramAccountId(runtime) : undefined)
+        (this.defaultAccountId !== DEFAULT_INSTAGRAM_ACCOUNT_ID
+          ? this.defaultAccountId
+          : runtime
+            ? resolveDefaultInstagramAccountId(runtime)
+            : undefined)
+    );
+  }
+
+  private getAccountService(accountId = this.defaultAccountId): InstagramService {
+    const normalized = normalizeInstagramAccountId(accountId);
+    const services = this.accountServices ?? new Map<string, InstagramService>();
+    return (
+      services.get(normalized) ?? (normalized === this.getAccountId() ? this : undefined) ?? this
     );
   }
 
@@ -410,6 +458,11 @@ export class InstagramService extends Service {
   }
 
   async handleSendPost(runtime: IAgentRuntime, content: Content): Promise<Memory> {
+    const requestedAccountId = readInstagramAccountId(content);
+    const accountService = requestedAccountId ? this.getAccountService(requestedAccountId) : this;
+    if (accountService !== this) {
+      return accountService.handleSendPost(runtime, content);
+    }
     const text = truncateInstagramComment(
       typeof content.text === "string" ? content.text.trim() : ""
     );
@@ -583,6 +636,10 @@ export class InstagramService extends Service {
     const requestedAccountId = normalizeInstagramAccountId(
       target.accountId ?? readInstagramAccountId(content, target) ?? this.getAccountId()
     );
+    const accountService = this.getAccountService(requestedAccountId);
+    if (accountService !== this) {
+      return accountService.handleSendMessage(runtime, target, content);
+    }
     if (requestedAccountId !== this.getAccountId()) {
       throw new Error(
         `Instagram account '${requestedAccountId}' is not available in this service instance`

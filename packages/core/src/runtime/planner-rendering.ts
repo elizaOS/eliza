@@ -2,6 +2,12 @@ import type { ChatMessage } from "../types/model";
 import type { JsonValue } from "../types/primitives.ts";
 import { stringifyForModel } from "./json-output";
 import type { PlannerStep, PlannerToolResult } from "./planner-types";
+import {
+	buildProviderCachePlan,
+	type CacheableSection,
+	type ProviderCachePlan,
+	type ProviderCachePlanArgs,
+} from "./provider-cache-plan";
 
 /**
  * Convert completed trajectory steps into proper assistant/tool message pairs
@@ -94,40 +100,16 @@ export function toolMessageContent(result: PlannerToolResult): string {
 	return result.success ? "ok" : "failed";
 }
 
-export function cacheProviderOptions(args: {
-	prefixHash: string;
-	segmentHashes?: readonly string[];
-}): Record<string, JsonValue | object | undefined> {
-	const promptCacheKey = `v5:${args.prefixHash}`.slice(0, 1024);
-	return {
-		eliza: {
-			promptCacheKey,
-			prefixHash: args.prefixHash,
-			...(args.segmentHashes ? { segmentHashes: [...args.segmentHashes] } : {}),
-		},
-		cerebras: {
-			promptCacheKey,
-			prompt_cache_key: promptCacheKey,
-		},
-		openai: {
-			promptCacheKey,
-			promptCacheRetention: "24h",
-		},
-		// Anthropic requires explicit cache_control on stable segments.
-		// plugin-anthropic reads cacheControl from anthropic providerOptions and
-		// stamps it onto each stable promptSegment block. This key tells the
-		// plugin which TTL to use; "5m" is the Anthropic default.
-		anthropic: {
-			cacheControl: { type: "ephemeral" },
-		},
-		// OpenRouter passes cache_control through to the underlying provider.
-		// For Anthropic-backed models it forwards the anthropic cache_control;
-		// for OpenAI-compat models it forwards prompt_cache_key.
-		openrouter: {
-			promptCacheKey,
-		},
-		gateway: {
-			caching: "auto",
-		},
-	};
+export function cacheProviderOptions(
+	args: ProviderCachePlanArgs,
+): Record<string, JsonValue | object | undefined> {
+	return buildProviderCachePlan(args).providerOptions;
 }
+
+export function providerCachePlan(
+	args: ProviderCachePlanArgs,
+): ProviderCachePlan {
+	return buildProviderCachePlan(args);
+}
+
+export type { CacheableSection, ProviderCachePlan };

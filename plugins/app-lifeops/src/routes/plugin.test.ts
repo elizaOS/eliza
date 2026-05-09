@@ -67,7 +67,7 @@ function createRuntime(options?: {
     ]),
     getEntityById: vi.fn(async () => null),
     getRelationships: vi.fn(async () => []),
-  } as unknown as AgentRuntime;
+  } as AgentRuntime;
 }
 
 function findRoute(
@@ -126,12 +126,12 @@ describe("LifeOps raw route owner/admin gate", () => {
     });
   });
 
-  it("does not wrap public OAuth success routes with the owner/admin gate", async () => {
-    const route = findRoute("GET", "/api/lifeops/connectors/google/success");
+  it("does not wrap public OAuth callback routes with the owner/admin gate", async () => {
+    const route = findRoute("GET", "/api/connectors/google/oauth/callback");
     const res = createResponse();
 
     await route.handler(
-      createRequest("/api/lifeops/connectors/google/success", {
+      createRequest("/api/connectors/google/oauth/callback", {
         "x-eliza-entity-id": "user-1",
       }) as never,
       res as never,
@@ -139,8 +139,9 @@ describe("LifeOps raw route owner/admin gate", () => {
     );
 
     expect(route.public).toBe(true);
-    expect(res.statusCode).toBe(200);
-    expect(res.headers["content-type"]).toBe("text/html; charset=utf-8");
-    expect(res.body).toContain("Google Connected");
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body)).toEqual({
+      error: "Missing OAuth state",
+    });
   });
 });

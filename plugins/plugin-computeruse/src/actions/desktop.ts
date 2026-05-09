@@ -261,7 +261,7 @@ export const desktopAction: Action = {
     _state?: State,
   ): Promise<boolean> => {
     const service =
-      (runtime.getService("computeruse") as unknown as ComputerUseService) ??
+      (runtime.getService("computeruse") as ComputerUseService) ??
       null;
     if (!service) return false;
     const caps = service.getCapabilities();
@@ -279,7 +279,7 @@ export const desktopAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const service =
-      (runtime.getService("computeruse") as unknown as ComputerUseService) ??
+      (runtime.getService("computeruse") as ComputerUseService) ??
       null;
     if (!service) {
       return { success: false, error: "ComputerUseService not available" };
@@ -287,7 +287,7 @@ export const desktopAction: Action = {
 
     const params = resolveActionParams<DesktopParameters>(message, options);
     const op = readSubaction<DesktopOp>(
-      params as unknown as Record<string, unknown>,
+      params as Record<string, unknown>,
       {
         allowed: DESKTOP_OPS,
         keys: ["op", "subaction"],

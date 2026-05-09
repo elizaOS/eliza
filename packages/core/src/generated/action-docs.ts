@@ -1,5 +1,5 @@
 /**
- * Auto-generated canonical action/provider/evaluator docs.
+ * Auto-generated canonical action/provider docs.
  * DO NOT EDIT - Generated from packages/prompts/specs/**.
  */
 
@@ -69,38 +69,10 @@ export type ProviderDoc = {
 	dynamic?: boolean;
 };
 
-export type EvaluatorDocMessageContent = {
-	text: string;
-	type?: string;
-};
-
-export type EvaluatorDocMessage = {
-	name: string;
-	content: EvaluatorDocMessageContent;
-};
-
-export type EvaluatorDocExample = {
-	prompt: string;
-	messages: readonly EvaluatorDocMessage[];
-	outcome: string;
-};
-
-export type EvaluatorDoc = {
-	name: string;
-	description: string;
-	descriptionCompressed?: string;
-	compressedDescription?: string;
-	similes?: readonly string[];
-	alwaysRun?: boolean;
-	examples?: readonly EvaluatorDocExample[];
-};
-
 export const coreActionsSpecVersion = "1.0.0" as const;
 export const allActionsSpecVersion = "1.0.0" as const;
 export const coreProvidersSpecVersion = "1.0.0" as const;
 export const allProvidersSpecVersion = "1.0.0" as const;
-export const coreEvaluatorsSpecVersion = "1.0.0" as const;
-export const allEvaluatorsSpecVersion = "1.0.0" as const;
 
 export const coreActionsSpec = {
 	version: "1.0.0",
@@ -3289,6 +3261,9 @@ export const allActionsSpec = {
 				"MORNING_CHECK_IN",
 				"NIGHT_CHECKIN",
 				"NIGHT_CHECK_IN",
+				"RUN_CHECKIN",
+				"RUN_MORNING_CHECKIN",
+				"RUN_NIGHT_CHECKIN",
 				"DAILY_BRIEF",
 			],
 			exampleCalls: [
@@ -4267,6 +4242,15 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "GET_TUNNEL_STATUS",
+			description:
+				"Get the current status of the ngrok tunnel including URL, port, and uptime information. Supports action chaining by providing tunnel metadata for monitoring workflows, health checks, or conditional tunnel management.",
+			parameters: [],
+			similes: ["TUNNEL_STATUS", "CHECK_TUNNEL", "NGROK_STATUS", "TUNNEL_INFO"],
+			descriptionCompressed:
+				"Get the current status of the ngrok tunnel including URL, port, and uptime info. Supports action chaining by providing tunnel metadata for monitoring...",
+		},
+		{
 			name: "GLOB",
 			description:
 				"Find files matching a glob pattern (e.g. '**/*.ts'). Returns up to 100 absolute paths sorted by mtime descending. Excludes VCS, build, and dependency directories. Use this instead of BASH for file discovery.",
@@ -5167,6 +5151,174 @@ export const allActionsSpec = {
 							platform: "example",
 							limit: 1,
 							offset: 1,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "MUSIC",
+			description:
+				"Unified music action. Use flat op for everything: library (playlist, play_query, search_youtube, download), playback transport (pause, resume, skip, stop, queue), play_audio, routing, zones. ",
+			parameters: [
+				{
+					name: "op",
+					description:
+						"Flat operation: playlist | play_query | search_youtube | download | pause | resume | skip | stop | queue | play_audio | routing | zones (hyphens and legacy aliases accepted).",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"playlist",
+							"play_query",
+							"search_youtube",
+							"download",
+							"pause",
+							"resume",
+							"skip",
+							"stop",
+							"queue",
+							"play_audio",
+							"routing",
+							"zones",
+						],
+					},
+					descriptionCompressed:
+						"Flat operation: playlist | play_query | search_youtube | download | pause | resume | skip | stop | queue | play_audio | routing | zones (hyphens and legacy...",
+				},
+				{
+					name: "subaction",
+					description:
+						"Playlist subaction when op=playlist (save, load, delete, add, …).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Playlist subaction when op=playlist (save, load, delete, add, …).",
+				},
+				{
+					name: "query",
+					description: "Search/play/queue query depending on op.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Search/play/queue query depending on op.",
+				},
+				{
+					name: "url",
+					description: "Direct media URL when using play_audio.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Direct media URL when using play_audio.",
+				},
+				{
+					name: "playlistName",
+					description: "Playlist name for playlist ops.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Playlist name for playlist ops.",
+				},
+				{
+					name: "song",
+					description: "Song query for playlist add.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Song query for playlist add.",
+				},
+				{
+					name: "limit",
+					description: "Search result limit (YouTube / library helpers).",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+						maximum: 10,
+					},
+					descriptionCompressed:
+						"Search result limit (YouTube/library helpers).",
+				},
+				{
+					name: "confirmed",
+					description:
+						"Must be true when the underlying operation requires confirmation.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"Must be true when the underlying operation requires confirmation.",
+				},
+				{
+					name: "operation",
+					description:
+						"Structured routing operation when using routing (set_mode, start_route, …).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Structured routing operation when using routing (set_mode, start_route, …).",
+				},
+				{
+					name: "mode",
+					description: "Routing mode for routing operations.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Routing mode for routing operations.",
+				},
+				{
+					name: "sourceId",
+					description: "Stream/source id for routing.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Stream/source id for routing.",
+				},
+				{
+					name: "targetIds",
+					description: "Routing target ids.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "Routing target ids.",
+				},
+			],
+			descriptionCompressed:
+				"Flat op: playlist/play_query/search_youtube/download/pause/resume/skip/stop/queue/play_audio/routing/zones.",
+			exampleCalls: [
+				{
+					user: "Use MUSIC with the provided parameters.",
+					actions: ["MUSIC"],
+					params: {
+						MUSIC: {
+							op: "playlist",
+							subaction: "example",
+							query: "example",
+							url: "example",
+							playlistName: "example",
+							song: "example",
+							limit: 1,
+							confirmed: false,
+							operation: "example",
+							mode: "example",
+							sourceId: "example",
+							targetIds: "example",
 						},
 					},
 				},
@@ -6238,6 +6390,24 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "START_TUNNEL",
+			description:
+				"Start an ngrok tunnel to expose a local port to the internet. Supports action chaining by providing tunnel metadata that can be used for webhook configuration, API testing, or remote access workflows.",
+			parameters: [],
+			similes: ["OPEN_TUNNEL", "CREATE_TUNNEL", "NGROK_START", "TUNNEL_UP"],
+			descriptionCompressed:
+				"Start an ngrok tunnel to expose a local port to the internet. Supports action chaining by providing tunnel metadata that can be used for webhook config, API...",
+		},
+		{
+			name: "STOP_TUNNEL",
+			description:
+				"Stop the running ngrok tunnel and clean up resources. Can be chained with START_TUNNEL actions for tunnel rotation workflows or combined with deployment actions for automated service management.",
+			parameters: [],
+			similes: ["CLOSE_TUNNEL", "SHUTDOWN_TUNNEL", "NGROK_STOP", "TUNNEL_DOWN"],
+			descriptionCompressed:
+				"Stop the running ngrok tunnel and clean up resources. Can be chained with START_TUNNEL actions for tunnel rotation workflows or combined with deployment...",
+		},
+		{
 			name: "TAILSCALE",
 			description:
 				"Tailscale tunnel router. Operations: start (open tunnel for a local port), stop (close active tunnel). Status reads come from the tailscaleStatus provider.",
@@ -6448,6 +6618,99 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "TUNNEL",
+			description:
+				"Tunnel operations dispatched by `op`: start, stop, status. The `start` op accepts an optional `port` (defaults to 3000); `stop` and `status` take no parameters. Backed by whichever tunnel plugin is active (local Tailscale CLI, Eliza Cloud headscale, or ngrok).",
+			parameters: [
+				{
+					name: "op",
+					description:
+						"Which tunnel sub-operation to run. One of: start, stop, status.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Which tunnel sub-operation to run. One of: start, stop, status.",
+				},
+				{
+					name: "parameters",
+					description:
+						"Parameters forwarded to the selected sub-op. For `start`, optionally `{ port: number }`. `stop` and `status` take no parameters.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"params forwarded to the selected sub-op. For `start`, optionally `{ port: number }`. `stop` and `status` take no params.",
+				},
+			],
+			similes: [
+				"TAILSCALE",
+				"START_TAILSCALE",
+				"STOP_TAILSCALE",
+				"GET_TAILSCALE_STATUS",
+				"START_TUNNEL",
+				"OPEN_TUNNEL",
+				"CREATE_TUNNEL",
+				"TAILSCALE_UP",
+				"STOP_TUNNEL",
+				"CLOSE_TUNNEL",
+				"TAILSCALE_DOWN",
+				"TAILSCALE_STATUS",
+				"CHECK_TUNNEL",
+				"TUNNEL_INFO",
+				"TUNNEL_STATUS",
+			],
+			exampleCalls: [
+				{
+					user: "Use TUNNEL with the provided parameters.",
+					actions: ["TUNNEL"],
+					params: {
+						TUNNEL: {
+							op: "example",
+							parameters: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Tunnel operations dispatched by `op`: start, stop, status. The `start` op accepts an optional `port` (defaults to 3000). `stop` and `status` take no params...",
+		},
+		{
+			name: "UPDATE_LINEAR_ISSUE",
+			description:
+				"Update an existing Linear issue (title, priority, assignee, status, labels, team)",
+			parameters: [
+				{
+					name: "issueId",
+					description: "Linear issue id or identifier to update.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Linear issue id or id to update.",
+				},
+			],
+			descriptionCompressed: "update Linear issue",
+			similes: [
+				"update-linear-issue",
+				"edit-linear-issue",
+				"modify-linear-issue",
+			],
+			exampleCalls: [
+				{
+					user: "Use UPDATE_LINEAR_ISSUE with the provided parameters.",
+					actions: ["UPDATE_LINEAR_ISSUE"],
+					params: {
+						UPDATE_LINEAR_ISSUE: {
+							issueId: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "USE_SKILL",
 			description:
 				"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
@@ -6613,12 +6876,6 @@ export const coreProvidersSpec = {
 			dynamic: true,
 			descriptionCompressed:
 				"Entities in context: users, agents, participants.",
-		},
-		{
-			name: "EVALUATORS",
-			description: "Available evaluators for assessing agent behavior",
-			dynamic: false,
-			descriptionCompressed: "Available evaluators for agent behavior.",
 		},
 		{
 			name: "FACTS",
@@ -6793,12 +7050,6 @@ export const allProvidersSpec = {
 				"Entities in context: users, agents, participants.",
 		},
 		{
-			name: "EVALUATORS",
-			description: "Available evaluators for assessing agent behavior",
-			dynamic: false,
-			descriptionCompressed: "Available evaluators for agent behavior.",
-		},
-		{
 			name: "FACTS",
 			description:
 				"Provides known facts about entities learned through conversation",
@@ -6894,352 +7145,6 @@ export const allProvidersSpec = {
 		},
 	],
 } as const satisfies { version: string; providers: readonly ProviderDoc[] };
-export const coreEvaluatorsSpec = {
-	version: "1.0.0",
-	evaluators: [
-		{
-			name: "REFLECTION",
-			description:
-				"Generate a self-reflective thought on the conversation, then extract facts and relationships between entities in the conversation. Reflects on agent behavior and provides feedback for improvement.",
-			similes: [
-				"REFLECT",
-				"SELF_REFLECT",
-				"EVALUATE_INTERACTION",
-				"ASSESS_SITUATION",
-			],
-			alwaysRun: false,
-			examples: [
-				{
-					prompt:
-						"Agent Name: Sarah\nAgent Role: Community Manager\nRoom Type: group\nCurrent Room: general-chat\nMessage Sender: John (user-123)",
-					messages: [
-						{
-							name: "John",
-							content: {
-								text: "Hey everyone, I'm new here!",
-							},
-						},
-						{
-							name: "Sarah",
-							content: {
-								text: "Welcome John! How did you find our community?",
-							},
-						},
-						{
-							name: "John",
-							content: {
-								text: "Through a friend who's really into AI",
-							},
-						},
-					],
-					outcome:
-						'thought: "I\'m engaging appropriately with a new community member, maintaining a welcoming and professional tone. My questions are helping to learn more about John and make him feel welcome."\nfacts[0]:\n  claim: John is new to the community\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: John found the community through a friend interested in AI\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: sarah-agent\n  targetEntityId: user-123\n  tags[0]: group_interaction',
-				},
-				{
-					prompt:
-						"Agent Name: Alex\nAgent Role: Tech Support\nRoom Type: group\nCurrent Room: tech-help\nMessage Sender: Emma (user-456)",
-					messages: [
-						{
-							name: "Emma",
-							content: {
-								text: "My app keeps crashing when I try to upload files",
-							},
-						},
-						{
-							name: "Alex",
-							content: {
-								text: "Have you tried clearing your cache?",
-							},
-						},
-						{
-							name: "Emma",
-							content: {
-								text: "No response...",
-							},
-						},
-						{
-							name: "Alex",
-							content: {
-								text: "Emma, are you still there? We can try some other troubleshooting steps.",
-							},
-						},
-					],
-					outcome:
-						"thought: \"I'm not sure if I'm being helpful or if Emma is frustrated with my suggestions. The lack of response is concerning - maybe I should have asked for more details about the issue first before jumping to solutions.\"\nfacts[0]:\n  claim: Emma is having technical issues with file uploads\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: Emma stopped responding after the first troubleshooting suggestion\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: alex-agent\n  targetEntityId: user-456\n  tags[0]: group_interaction\n  tags[1]: support_interaction\n  tags[2]: incomplete_interaction",
-				},
-				{
-					prompt:
-						"Agent Name: Max\nAgent Role: Discussion Facilitator\nRoom Type: group\nCurrent Room: book-club\nMessage Sender: Lisa (user-789)",
-					messages: [
-						{
-							name: "Lisa",
-							content: {
-								text: "What did everyone think about chapter 5?",
-							},
-						},
-						{
-							name: "Max",
-							content: {
-								text: "The symbolism was fascinating! The red door clearly represents danger.",
-							},
-						},
-						{
-							name: "Max",
-							content: {
-								text: "And did anyone notice how the author used weather to reflect the protagonist's mood?",
-							},
-						},
-						{
-							name: "Max",
-							content: {
-								text: "Plus the foreshadowing in the first paragraph was brilliant!",
-							},
-						},
-						{
-							name: "Max",
-							content: {
-								text: "I also have thoughts about the character development...",
-							},
-						},
-					],
-					outcome:
-						"thought: \"I'm dominating the conversation and not giving others a chance to share their perspectives. I've sent multiple messages in a row without waiting for responses. I need to step back and create space for other members to participate.\"\nfacts[0]:\n  claim: The discussion is about chapter 5 of a book\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: Max has sent 4 consecutive messages without user responses\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: max-agent\n  targetEntityId: user-789\n  tags[0]: group_interaction\n  tags[1]: excessive_interaction",
-				},
-			],
-			descriptionCompressed:
-				"Generate a self-reflective thought on the convo, then extract facts and relationships between entities in the convo. Reflects on agent behavior and provides...",
-		},
-		{
-			name: "RELATIONSHIP_EXTRACTION",
-			description:
-				"Passively extracts and updates relationship information from conversations. Identifies platform identities, relationship indicators, and mentioned third parties.",
-			similes: [
-				"RELATIONSHIP_ANALYZER",
-				"SOCIAL_GRAPH_BUILDER",
-				"CONTACT_EXTRACTOR",
-			],
-			alwaysRun: false,
-			examples: [
-				{
-					prompt: "User introduces themselves with social media",
-					messages: [
-						{
-							name: "{{name1}}",
-							content: {
-								type: "text",
-								text: "Hi, I'm Sarah Chen. You can find me on X @sarahchen_dev",
-							},
-						},
-					],
-					outcome:
-						"Extracts X handle and creates/updates the entity with a platform identity.",
-				},
-			],
-			descriptionCompressed:
-				"Passively extracts and updates relationship info from convos. Identifies platform identities, relationship indicators, and mentioned third parties.",
-		},
-		{
-			name: "MEMORY_SUMMARIZATION",
-			description:
-				"Automatically summarizes conversations to optimize context usage. Compresses conversation history while preserving important information.",
-			similes: [
-				"CONVERSATION_SUMMARY",
-				"CONTEXT_COMPRESSION",
-				"MEMORY_OPTIMIZATION",
-			],
-			alwaysRun: true,
-			examples: [],
-			descriptionCompressed:
-				"Auto summarizes convos to optimize context usage. Compresses convo history while preserving important info.",
-		},
-		{
-			name: "LONG_TERM_MEMORY_EXTRACTION",
-			description:
-				"Extracts long-term facts about users from conversations. Identifies and stores persistent information like preferences, interests, and personal details.",
-			similes: ["MEMORY_EXTRACTION", "FACT_LEARNING", "USER_PROFILING"],
-			alwaysRun: true,
-			examples: [],
-			descriptionCompressed:
-				"Extract long-term facts about users from convos. Identifies and stores persistent info like preferences, interests, and personal details.",
-		},
-	],
-} as const satisfies {
-	version: string;
-	evaluators: readonly EvaluatorDoc[];
-};
-export const allEvaluatorsSpec = {
-	version: "1.0.0",
-	evaluators: [
-		{
-			name: "REFLECTION",
-			description:
-				"Generate a self-reflective thought on the conversation, then extract facts and relationships between entities in the conversation. Reflects on agent behavior and provides feedback for improvement.",
-			similes: [
-				"REFLECT",
-				"SELF_REFLECT",
-				"EVALUATE_INTERACTION",
-				"ASSESS_SITUATION",
-			],
-			alwaysRun: false,
-			examples: [
-				{
-					prompt:
-						"Agent Name: Sarah\nAgent Role: Community Manager\nRoom Type: group\nCurrent Room: general-chat\nMessage Sender: John (user-123)",
-					messages: [
-						{
-							name: "John",
-							content: {
-								text: "Hey everyone, I'm new here!",
-							},
-						},
-						{
-							name: "Sarah",
-							content: {
-								text: "Welcome John! How did you find our community?",
-							},
-						},
-						{
-							name: "John",
-							content: {
-								text: "Through a friend who's really into AI",
-							},
-						},
-					],
-					outcome:
-						'thought: "I\'m engaging appropriately with a new community member, maintaining a welcoming and professional tone. My questions are helping to learn more about John and make him feel welcome."\nfacts[0]:\n  claim: John is new to the community\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: John found the community through a friend interested in AI\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: sarah-agent\n  targetEntityId: user-123\n  tags[0]: group_interaction',
-				},
-				{
-					prompt:
-						"Agent Name: Alex\nAgent Role: Tech Support\nRoom Type: group\nCurrent Room: tech-help\nMessage Sender: Emma (user-456)",
-					messages: [
-						{
-							name: "Emma",
-							content: {
-								text: "My app keeps crashing when I try to upload files",
-							},
-						},
-						{
-							name: "Alex",
-							content: {
-								text: "Have you tried clearing your cache?",
-							},
-						},
-						{
-							name: "Emma",
-							content: {
-								text: "No response...",
-							},
-						},
-						{
-							name: "Alex",
-							content: {
-								text: "Emma, are you still there? We can try some other troubleshooting steps.",
-							},
-						},
-					],
-					outcome:
-						"thought: \"I'm not sure if I'm being helpful or if Emma is frustrated with my suggestions. The lack of response is concerning - maybe I should have asked for more details about the issue first before jumping to solutions.\"\nfacts[0]:\n  claim: Emma is having technical issues with file uploads\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: Emma stopped responding after the first troubleshooting suggestion\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: alex-agent\n  targetEntityId: user-456\n  tags[0]: group_interaction\n  tags[1]: support_interaction\n  tags[2]: incomplete_interaction",
-				},
-				{
-					prompt:
-						"Agent Name: Max\nAgent Role: Discussion Facilitator\nRoom Type: group\nCurrent Room: book-club\nMessage Sender: Lisa (user-789)",
-					messages: [
-						{
-							name: "Lisa",
-							content: {
-								text: "What did everyone think about chapter 5?",
-							},
-						},
-						{
-							name: "Max",
-							content: {
-								text: "The symbolism was fascinating! The red door clearly represents danger.",
-							},
-						},
-						{
-							name: "Max",
-							content: {
-								text: "And did anyone notice how the author used weather to reflect the protagonist's mood?",
-							},
-						},
-						{
-							name: "Max",
-							content: {
-								text: "Plus the foreshadowing in the first paragraph was brilliant!",
-							},
-						},
-						{
-							name: "Max",
-							content: {
-								text: "I also have thoughts about the character development...",
-							},
-						},
-					],
-					outcome:
-						"thought: \"I'm dominating the conversation and not giving others a chance to share their perspectives. I've sent multiple messages in a row without waiting for responses. I need to step back and create space for other members to participate.\"\nfacts[0]:\n  claim: The discussion is about chapter 5 of a book\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: Max has sent 4 consecutive messages without user responses\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: max-agent\n  targetEntityId: user-789\n  tags[0]: group_interaction\n  tags[1]: excessive_interaction",
-				},
-			],
-			descriptionCompressed:
-				"Generate a self-reflective thought on the convo, then extract facts and relationships between entities in the convo. Reflects on agent behavior and provides...",
-		},
-		{
-			name: "RELATIONSHIP_EXTRACTION",
-			description:
-				"Passively extracts and updates relationship information from conversations. Identifies platform identities, relationship indicators, and mentioned third parties.",
-			similes: [
-				"RELATIONSHIP_ANALYZER",
-				"SOCIAL_GRAPH_BUILDER",
-				"CONTACT_EXTRACTOR",
-			],
-			alwaysRun: false,
-			examples: [
-				{
-					prompt: "User introduces themselves with social media",
-					messages: [
-						{
-							name: "{{name1}}",
-							content: {
-								type: "text",
-								text: "Hi, I'm Sarah Chen. You can find me on X @sarahchen_dev",
-							},
-						},
-					],
-					outcome:
-						"Extracts X handle and creates/updates the entity with a platform identity.",
-				},
-			],
-			descriptionCompressed:
-				"Passively extracts and updates relationship info from convos. Identifies platform identities, relationship indicators, and mentioned third parties.",
-		},
-		{
-			name: "MEMORY_SUMMARIZATION",
-			description:
-				"Automatically summarizes conversations to optimize context usage. Compresses conversation history while preserving important information.",
-			similes: [
-				"CONVERSATION_SUMMARY",
-				"CONTEXT_COMPRESSION",
-				"MEMORY_OPTIMIZATION",
-			],
-			alwaysRun: true,
-			examples: [],
-			descriptionCompressed:
-				"Auto summarizes convos to optimize context usage. Compresses convo history while preserving important info.",
-		},
-		{
-			name: "LONG_TERM_MEMORY_EXTRACTION",
-			description:
-				"Extracts long-term facts about users from conversations. Identifies and stores persistent information like preferences, interests, and personal details.",
-			similes: ["MEMORY_EXTRACTION", "FACT_LEARNING", "USER_PROFILING"],
-			alwaysRun: true,
-			examples: [],
-			descriptionCompressed:
-				"Extract long-term facts about users from convos. Identifies and stores persistent info like preferences, interests, and personal details.",
-		},
-	],
-} as const satisfies {
-	version: string;
-	evaluators: readonly EvaluatorDoc[];
-};
 
 export const coreActionDocs: readonly ActionDoc[] = coreActionsSpec.actions;
 export const allActionDocs: readonly ActionDoc[] = allActionsSpec.actions;
@@ -7247,7 +7152,3 @@ export const coreProviderDocs: readonly ProviderDoc[] =
 	coreProvidersSpec.providers;
 export const allProviderDocs: readonly ProviderDoc[] =
 	allProvidersSpec.providers;
-export const coreEvaluatorDocs: readonly EvaluatorDoc[] =
-	coreEvaluatorsSpec.evaluators;
-export const allEvaluatorDocs: readonly EvaluatorDoc[] =
-	allEvaluatorsSpec.evaluators;

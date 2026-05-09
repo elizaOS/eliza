@@ -39,6 +39,11 @@ const whatsappPairingSessions: Map<string, PairingSessionLike> = new Map();
 
 const MAX_PAIRING_SESSIONS = 10;
 
+function routeHost(req: RouteRequest): string {
+  const host = req.headers?.host;
+  return (Array.isArray(host) ? host[0] : host) ?? "localhost";
+}
+
 /**
  * Minimal interface for the connector-setup service exposed by the agent.
  * Plugins access it via `runtime.getService("connector-setup")`.
@@ -94,10 +99,7 @@ async function handleWebhookVerify(
   res: RouteResponse,
   runtime: IAgentRuntime
 ): Promise<void> {
-  const url = new URL(
-    (req as unknown as { url?: string }).url ?? "/",
-    `http://${(req as unknown as { headers?: Record<string, string> }).headers?.host ?? "localhost"}`
-  );
+  const url = new URL(req.url ?? "/", `http://${routeHost(req)}`);
   const mode = url.searchParams.get("hub.mode") ?? "";
   const token = url.searchParams.get("hub.verify_token") ?? "";
   const challenge = url.searchParams.get("hub.challenge") ?? "";
@@ -234,9 +236,7 @@ async function handlePair(
           });
 
           // Auto-populate owner contact so LifeOps can deliver reminders
-          const phoneNumber = (event as unknown as Record<string, unknown>).phoneNumber as
-            | string
-            | undefined;
+          const phoneNumber = event.phoneNumber;
           setupService.setOwnerContact({
             source: "whatsapp",
             channelId: phoneNumber ?? undefined,
@@ -265,10 +265,7 @@ async function handleStatus(
   cleanupStaleSessions();
 
   const setupService = getSetupService(runtime);
-  const url = new URL(
-    (req as unknown as { url?: string }).url ?? "/",
-    `http://${(req as unknown as { headers?: Record<string, string> }).headers?.host ?? "localhost"}`
-  );
+  const url = new URL(req.url ?? "/", `http://${routeHost(req)}`);
 
   let accountId: string;
   try {
@@ -286,7 +283,7 @@ async function handleStatus(
   try {
     const waService = runtime.getService("whatsapp");
     if (waService && typeof waService === "object") {
-      const waState = waService as unknown as Record<string, unknown>;
+      const waState = waService as { connected?: unknown; phoneNumber?: unknown };
       serviceConnected = Boolean(waState.connected);
       servicePhone = typeof waState.phoneNumber === "string" ? waState.phoneNumber : null;
     }

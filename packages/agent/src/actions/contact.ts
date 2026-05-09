@@ -42,6 +42,7 @@ import type {
   Memory,
   Metadata,
   ProviderValue,
+  RelationshipsMergeProposalEvidence,
   SearchCategoryRegistration,
   State,
   UUID,
@@ -53,8 +54,6 @@ import {
   parseJSONObjectFromText,
   stringToUuid,
 } from "@elizaos/core";
-import type { RelationshipsMergeProposalEvidence } from "@elizaos/core/services/relationships-graph-builder";
-import { v4 as uuidv4 } from "uuid";
 import type {
   RelationshipsGraphService,
   RelationshipsPersonDetail,
@@ -184,6 +183,23 @@ interface FollowUpServiceLike {
     priority?: "high" | "medium" | "low",
     message?: string,
   ): Promise<{ id?: UUID | string }>;
+}
+
+function isRelationshipsServiceLike(
+  service: unknown,
+): service is RelationshipsServiceLike {
+  return typeof service === "object" && service !== null;
+}
+
+function isFollowUpServiceLike(
+  service: unknown,
+): service is FollowUpServiceLike {
+  return (
+    typeof service === "object" &&
+    service !== null &&
+    typeof (service as { scheduleFollowUp?: unknown }).scheduleFollowUp ===
+      "function"
+  );
 }
 
 type RuntimeWithDeleteEntities = IAgentRuntime & {
@@ -1133,7 +1149,7 @@ async function handleUpdateComponent(
     };
   }
 
-  const newComponentId = uuidv4() as UUID;
+  const newComponentId = crypto.randomUUID() as UUID;
   await runtime.createComponent({
     id: newComponentId,
     entityId,
@@ -1727,12 +1743,14 @@ async function handleFollowup(
   runtime: IAgentRuntime,
   params: ContactParams,
 ): Promise<ActionResult> {
-  const relationships = runtime.getService(
-    "relationships",
-  ) as unknown as RelationshipsServiceLike | null;
-  const followUpService = runtime.getService(
-    "follow_up",
-  ) as unknown as FollowUpServiceLike | null;
+  const relationshipsService = runtime.getService("relationships");
+  const relationships = isRelationshipsServiceLike(relationshipsService)
+    ? relationshipsService
+    : null;
+  const followUpServiceRaw = runtime.getService("follow_up");
+  const followUpService = isFollowUpServiceLike(followUpServiceRaw)
+    ? followUpServiceRaw
+    : null;
   if (!relationships || !followUpService) {
     return fail(
       "Follow-up scheduling is unavailable.",

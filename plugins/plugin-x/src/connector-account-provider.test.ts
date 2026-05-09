@@ -6,6 +6,10 @@ import type {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createXConnectorAccountProvider } from "./connector-account-provider";
 
+function asRuntime<T extends object>(runtime: T): IAgentRuntime & T {
+  return runtime as IAgentRuntime & T;
+}
+
 describe("X connector account OAuth", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -15,7 +19,7 @@ describe("X connector account OAuth", () => {
   it("persists callback tokens as credential refs without returning token metadata", async () => {
     const vault = new Map<string, string>();
     const setCredentialRef = vi.fn(async () => undefined);
-    const runtime = {
+    const runtime = asRuntime({
       agentId: "agent-1",
       getSetting: (key: string) =>
         ({
@@ -30,7 +34,7 @@ describe("X connector account OAuth", () => {
               },
             }
           : null,
-    } as unknown as IAgentRuntime;
+    });
     const manager = createOAuthCallbackManager(
       "x",
       "acct_x_durable_1",
@@ -109,7 +113,7 @@ describe("X connector account OAuth", () => {
   });
 
   it("fails OAuth callback when no durable credential writer is available", async () => {
-    const runtime = {
+    const runtime = asRuntime({
       agentId: "agent-1",
       getSetting: (key: string) =>
         ({
@@ -117,7 +121,7 @@ describe("X connector account OAuth", () => {
           TWITTER_REDIRECT_URI: "http://localhost/oauth/x/callback",
         })[key],
       getService: () => null,
-    } as unknown as IAgentRuntime;
+    });
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string | URL | Request) => {

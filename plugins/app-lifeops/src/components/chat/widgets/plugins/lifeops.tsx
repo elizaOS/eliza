@@ -1,4 +1,4 @@
-import { client, useApp } from "@elizaos/app-core";
+import { client, useApp } from "@elizaos/ui";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
@@ -156,6 +156,7 @@ export function GoogleGlanceSection({ timeZone }: { timeZone: string }) {
             ? client.getLifeOpsCalendarFeed({
                 mode: dataStatus.mode,
                 side: dataStatus.side,
+                grantId: dataStatus.grant?.id,
                 timeZone,
               })
             : Promise.resolve<LifeOpsCalendarFeed | null>(null),
@@ -163,6 +164,7 @@ export function GoogleGlanceSection({ timeZone }: { timeZone: string }) {
             ? client.getLifeOpsGmailTriage({
                 mode: dataStatus.mode,
                 side: dataStatus.side,
+                grantId: dataStatus.grant?.id,
                 maxResults: GOOGLE_WIDGET_MESSAGE_LIMIT,
               })
             : Promise.resolve<LifeOpsGmailTriageFeed | null>(null),

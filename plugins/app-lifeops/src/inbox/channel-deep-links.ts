@@ -19,7 +19,6 @@ export function buildDeepLink(
     case "signal":
       return buildSignalLink(meta);
     case "imessage":
-    case "bluebubbles":
       return buildIMessageLink(meta);
     case "whatsapp":
       return buildWhatsAppLink(meta);

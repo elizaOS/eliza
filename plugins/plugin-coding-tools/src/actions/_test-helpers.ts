@@ -54,7 +54,7 @@ export async function setupEnv(
     agentId: "test-agent",
     getSetting: (key: string) => settings[key],
     getService: (key: string) => services.get(key) ?? null,
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 
   const sandbox = await SandboxService.start(runtime);
   const fileState = await FileStateService.start(runtime);
@@ -64,7 +64,7 @@ export async function setupEnv(
   const message = {
     roomId: "test-room",
     entityId: "test-entity",
-  } as unknown as Memory;
+  } as Memory;
 
   return {
     runtime,

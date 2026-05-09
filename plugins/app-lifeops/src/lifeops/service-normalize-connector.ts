@@ -1,4 +1,4 @@
-import { parseCronExpression } from "@elizaos/agent/triggers/scheduling";
+import { parseCronExpression } from "@elizaos/agent";
 import {
   BROWSER_BRIDGE_KINDS,
   BROWSER_BRIDGE_SITE_ACCESS_MODES,

@@ -1,10 +1,12 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
-import { resolveCloudApiKey } from "@elizaos/plugin-elizacloud/cloud/cloud-api-key";
-import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
+import {
+  isCloudProvisionedContainer,
+  resolveCloudApiKey,
+} from "@elizaos/plugin-elizacloud";
 import type { ElizaConfig } from "../config/config.js";
 import type { ConnectorHealthMonitor } from "./connector-health.js";
-import { getLocalInferenceActiveSnapshot } from "./local-inference-routes.js";
+import { getLocalInferenceActiveSnapshot } from "@elizaos/plugin-local-inference";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -524,7 +526,6 @@ export async function handleHealthRoutes(
           pluginCount: 0,
           actionCount: 0,
           providerCount: 0,
-          evaluatorCount: 0,
           serviceTypeCount: 0,
           serviceCount: 0,
         },
@@ -532,7 +533,6 @@ export async function handleHealthRoutes(
           plugins: [],
           actions: [],
           providers: [],
-          evaluators: [],
           services: [],
         },
         sections: {
@@ -540,7 +540,6 @@ export async function handleHealthRoutes(
           plugins: [],
           actions: [],
           providers: [],
-          evaluators: [],
           services: {},
         },
       });
@@ -560,10 +559,6 @@ export async function handleHealthRoutes(
         runtime.providers,
         "provider",
       );
-      const orderEvaluators = describeRuntimeOrder(
-        runtime.evaluators,
-        "evaluator",
-      );
 
       json(res, {
         runtimeAvailable: true,
@@ -577,7 +572,6 @@ export async function handleHealthRoutes(
           pluginCount: runtime.plugins.length,
           actionCount: runtime.actions.length,
           providerCount: runtime.providers.length,
-          evaluatorCount: runtime.evaluators.length,
           serviceTypeCount: servicesMap.size,
           serviceCount,
         },
@@ -585,7 +579,6 @@ export async function handleHealthRoutes(
           plugins: orderPlugins,
           actions: orderActions,
           providers: orderProviders,
-          evaluators: orderEvaluators,
           services: orderServices,
         },
         sections: {
@@ -594,10 +587,6 @@ export async function handleHealthRoutes(
           actions: serializeForRuntimeDebug(runtime.actions, serializeOptions),
           providers: serializeForRuntimeDebug(
             runtime.providers,
-            serializeOptions,
-          ),
-          evaluators: serializeForRuntimeDebug(
-            runtime.evaluators,
             serializeOptions,
           ),
           services: serializeForRuntimeDebug(servicesMap, serializeOptions),

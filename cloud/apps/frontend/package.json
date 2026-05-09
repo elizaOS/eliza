@@ -34,7 +34,7 @@
     "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.1",
     "remark-mdx-frontmatter": "^5.0.0",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vite": "^8.0.10"
   },
   "devDependencies": {

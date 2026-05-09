@@ -28,6 +28,7 @@
 
 import nodeCrypto from "node:crypto";
 import { logger } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/shared";
 import {
   isLinkedAccountProviderId,
   type LinkedAccountConfig,
@@ -60,7 +61,6 @@ import {
   type SubscriptionProvider,
 } from "../auth/types.js";
 import type { ElizaConfig } from "../config/types.eliza.js";
-import type { RouteRequestContext } from "./route-helpers.js";
 
 // ─── Account pool (single source of truth) ──────────────────────────
 //

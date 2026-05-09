@@ -30,7 +30,7 @@ const VALID_SCOPES = new Set<ConversationScope>([
   "page-automations",
 ]);
 
-const VALID_AUTOMATION_TYPES = new Set(["coordinator_text", "n8n_workflow"]);
+const VALID_AUTOMATION_TYPES = new Set(["coordinator_text", "workflow"]);
 
 const normalizeOptionalString = asNonEmptyString;
 

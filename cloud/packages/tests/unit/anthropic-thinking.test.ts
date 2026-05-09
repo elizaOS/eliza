@@ -281,7 +281,7 @@ describe("parseThinkingBudgetFromCharacterSettings", () => {
     expect(parseThinkingBudgetFromCharacterSettings({})).toBeUndefined();
     expect(
       parseThinkingBudgetFromCharacterSettings({
-        anthropicThinkingBudgetTokens: "nope" as unknown as number,
+        anthropicThinkingBudgetTokens: "nope",
       }),
     ).toBeUndefined();
   });

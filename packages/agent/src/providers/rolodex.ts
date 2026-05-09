@@ -3,13 +3,12 @@ import type {
   Memory,
   Provider,
   ProviderResult,
+  RelationshipsGraphService,
+  RelationshipsPersonSummary,
+  Service,
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type {
-  RelationshipsGraphService,
-  RelationshipsPersonSummary,
-} from "@elizaos/core/services/relationships-graph-builder";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import { hasAdminAccess } from "../security/access.js";
 
@@ -65,9 +64,9 @@ export const rolodexProvider: Provider = {
     }
 
     try {
-      const graphService = runtime.getService(
-        "relationships",
-      ) as unknown as RelationshipsGraphService | null;
+      const graphService = runtime.getService<
+        Service & RelationshipsGraphService
+      >("relationships");
 
       if (!graphService) {
         return { text: "", values: {}, data: {} };

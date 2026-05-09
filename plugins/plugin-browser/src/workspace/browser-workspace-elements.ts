@@ -720,7 +720,7 @@ export function getBrowserWorkspaceElementValue(
 
 export function getBrowserWorkspaceElementStyles(
   element: Element,
-  window: Window,
+  window: Pick<Window, "getComputedStyle">,
 ): Record<string, string | null> {
   const computed = window.getComputedStyle(element);
   return {

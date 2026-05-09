@@ -8,7 +8,6 @@
 import {
   LIFEOPS_SIGNAL_CAPABILITIES,
   type LifeOpsConnectorDegradation,
-  type LifeOpsConnectorGrant,
   type LifeOpsConnectorSide,
   type LifeOpsSignalCapability,
   type LifeOpsSignalConnectorStatus,
@@ -29,7 +28,7 @@ const FULL_SIGNAL_CAPABILITIES: LifeOpsSignalCapability[] = [
 ];
 
 const SIGNAL_PLUGIN_SETUP_MESSAGE =
-  "Signal is managed by @elizaos/plugin-signal. Configure and enable the Signal connector plugin; LifeOps no longer uses local signal-cli credentials.";
+  "Signal is managed by @elizaos/plugin-signal. Configure and enable the Signal connector plugin; LifeOps no longer uses local Signal credentials.";
 
 const SIGNAL_PAIRING_MIGRATED_MESSAGE =
   "Signal pairing has moved to @elizaos/plugin-signal. Use the Signal connector setup routes (/api/signal/pair, /api/signal/status, and /api/signal/disconnect); LifeOps no longer owns Signal device-link credentials.";
@@ -101,31 +100,11 @@ function signalReadyCapabilities(args: {
   );
 }
 
-function stripLegacyTokenRef(
-  grant: LifeOpsConnectorGrant | null,
-): LifeOpsConnectorGrant | null {
-  if (!grant) {
-    return null;
-  }
-  if (!grant.tokenRef) {
-    return grant;
-  }
-  return {
-    ...grant,
-    tokenRef: null,
-    metadata: {
-      ...grant.metadata,
-      legacyTokenRefIgnored: true,
-    },
-  };
-}
-
 function signalStatusDegradations(args: {
   connected: boolean;
   grantedCapabilities: readonly LifeOpsSignalCapability[];
   inboundReady: boolean;
   sendReady: boolean;
-  hasLegacyTokenRef: boolean;
 }): LifeOpsConnectorDegradation[] {
   const degradations: LifeOpsConnectorDegradation[] = [];
   const granted = new Set(args.grantedCapabilities);
@@ -153,15 +132,6 @@ function signalStatusDegradations(args: {
       message:
         "Signal is connected, but @elizaos/plugin-signal does not expose a send path.",
       retryable: true,
-    });
-  }
-  if (args.hasLegacyTokenRef) {
-    degradations.push({
-      axis: "auth-expired",
-      code: "legacy_lifeops_credentials_ignored",
-      message:
-        "Legacy LifeOps Signal credentials are present but ignored. Migrate this account to @elizaos/plugin-signal before sending or reading Signal messages.",
-      retryable: false,
     });
   }
   return degradations;
@@ -226,40 +196,20 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
       const sendReady = signalServiceCanSend(signalService);
       const connected =
         signalServiceConnected(signalService) || inboundReady || sendReady;
-      const legacyGrant = await this.repository
-        .getConnectorGrant(this.agentId(), "signal", "local", resolvedSide)
-        .catch((error) => {
-          this.logLifeOpsWarn(
-            "signal_legacy_grant_status_failed",
-            error instanceof Error ? error.message : String(error),
-            { provider: "signal", side: resolvedSide },
-          );
-          return null;
-        });
-      const grant = stripLegacyTokenRef(legacyGrant);
       const grantedCapabilities = connected
         ? FULL_SIGNAL_CAPABILITIES
-        : normalizeSignalCapabilities(legacyGrant?.capabilities);
+        : [];
       const capabilities = signalReadyCapabilities({
         granted: grantedCapabilities,
         inboundReady,
         sendReady,
       });
-      const legacyIdentity =
-        legacyGrant?.identity && typeof legacyGrant.identity === "object"
-          ? (legacyGrant.identity as Record<string, unknown>)
-          : {};
-      const phoneNumber =
-        signalService?.getAccountNumber?.() ??
-        (typeof legacyIdentity.phoneNumber === "string"
-          ? legacyIdentity.phoneNumber
-          : null);
+      const phoneNumber = signalService?.getAccountNumber?.() ?? null;
       const degradations = signalStatusDegradations({
         connected,
         grantedCapabilities,
         inboundReady,
         sendReady,
-        hasLegacyTokenRef: Boolean(legacyGrant?.tokenRef),
       });
 
       return {
@@ -267,15 +217,11 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
         side: resolvedSide,
         connected,
         inbound: connected && capabilities.includes("signal.read"),
-        reason: connected
-          ? "connected"
-          : legacyGrant?.tokenRef
-            ? "session_revoked"
-            : "disconnected",
+        reason: connected ? "connected" : "disconnected",
         identity: phoneNumber ? { phoneNumber } : null,
         grantedCapabilities: capabilities,
         pairing: null,
-        grant,
+        grant: null,
         ...(degradations.length > 0 ? { degradations } : {}),
       };
     }
@@ -306,20 +252,6 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsSignalConnectorStatus> {
       const resolvedSide =
         normalizeOptionalConnectorSide(side, "side") ?? "owner";
-      const legacyGrant = await this.repository.getConnectorGrant(
-        this.agentId(),
-        "signal",
-        "local",
-        resolvedSide,
-      );
-      if (legacyGrant) {
-        await this.repository.deleteConnectorGrant(
-          this.agentId(),
-          "signal",
-          "local",
-          resolvedSide,
-        );
-      }
       return {
         provider: "signal",
         side: resolvedSide,

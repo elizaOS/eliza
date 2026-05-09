@@ -25,6 +25,13 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import {
+  cacheDiscordAvatarForRuntime,
+  isCanonicalDiscordSource,
+  resolveDiscordMessageAuthorProfile,
+  resolveDiscordUserProfile,
+  resolveStoredDiscordEntityProfile,
+} from "@elizaos/plugin-discord";
 import type { ElizaConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import type { ChatGenerationResult, LogEntry } from "./chat-routes.js";
@@ -49,13 +56,6 @@ import {
   buildConversationRoomMetadata,
   sanitizeConversationMetadata,
 } from "./conversation-metadata.js";
-import {
-  cacheDiscordAvatarForRuntime,
-  isCanonicalDiscordSource,
-  resolveDiscordMessageAuthorProfile,
-  resolveDiscordUserProfile,
-  resolveStoredDiscordEntityProfile,
-} from "./discord-profiles.js";
 import { evictOldestConversation } from "./memory-bounds.js";
 import type { RouteRequestContext } from "./route-helpers.js";
 import {

@@ -2,11 +2,11 @@
  * Agent Browser Bridge contracts.
  *
  * Transport/domain types for the generic browser companion + packaging
- * surface. LifeOps workflow-bound browser *sessions* (with scoping columns
- * and workflowId) remain in `@elizaos/shared/contracts/lifeops` and
- * continue to reference `BrowserBridgeKind` / `BrowserBridgeAction` from
- * this module.
+ * surface. LifeOps workflow-bound browser session contracts live in this
+ * plugin so runtime plugins do not depend on `@elizaos/shared`.
  */
+
+import type { LifeOpsBrowserSession } from "./lifeops-session-contracts.js";
 
 export const BROWSER_BRIDGE_KINDS = ["chrome", "safari"] as const;
 export type BrowserBridgeKind = (typeof BROWSER_BRIDGE_KINDS)[number];
@@ -276,9 +276,7 @@ export interface BrowserBridgeCompanionSyncResponse {
   tabs: BrowserBridgeTabSummary[];
   currentPage: BrowserBridgePageContext | null;
   settings: BrowserBridgeSettings;
-  session:
-    | import("@elizaos/shared/contracts/lifeops").LifeOpsBrowserSession
-    | null;
+  session: LifeOpsBrowserSession | null;
 }
 
 export interface UpdateBrowserBridgeSessionProgressRequest {

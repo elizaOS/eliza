@@ -1,4 +1,4 @@
-import { client } from "@elizaos/app-core";
+import { client } from "@elizaos/ui";
 import type {
   LifeOpsConnectorSide,
   LifeOpsTelegramAuthState,
@@ -32,7 +32,7 @@ function isTelegramPluginManagedMessage(
     normalized.includes("@elizaos/plugin-telegram") ||
     normalized.includes("telegram setup is managed") ||
     normalized.includes("telegram account auth has moved") ||
-    normalized.includes("legacy lifeops code/password submission is disabled")
+    normalized.includes("lifeops code/password submission is disabled")
   );
 }
 

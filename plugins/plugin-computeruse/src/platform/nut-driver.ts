@@ -297,8 +297,17 @@ export async function nutKeyCombo(combo: string): Promise<void> {
     throw new Error(`Combo "${combo}" must include at least one non-modifier key`);
   }
   const mainCode = resolveKeyCode(mainKey);
-  await m.keyboard.pressKey(...modifierCodes, mainCode);
-  await m.keyboard.releaseKey(mainCode, ...modifierCodes.reverse());
+  if (modifierCodes.length > 0) {
+    await m.keyboard.pressKey(...modifierCodes);
+  }
+  try {
+    await m.keyboard.pressKey(mainCode);
+    await m.keyboard.releaseKey(mainCode);
+  } finally {
+    if (modifierCodes.length > 0) {
+      await m.keyboard.releaseKey(...modifierCodes.reverse());
+    }
+  }
 }
 
 // ── Screenshot ──────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Trajectory } from "@elizaos/agent/types/trajectory";
+import type { Trajectory } from "@elizaos/agent";
 import type {
   AgentRuntime,
   ChannelType,
@@ -649,7 +649,7 @@ async function resolveRuntime(runtime?: AgentRuntime): Promise<RuntimeLike> {
     return runtime as RuntimeLike;
   }
 
-  const { bootElizaRuntime } = await import("@elizaos/agent/runtime/eliza");
+  const { bootElizaRuntime } = await import("@elizaos/agent");
   return (await bootElizaRuntime()) as RuntimeLike;
 }
 

@@ -25,7 +25,7 @@ function runtimeWithServices(services: Record<string, unknown>): IAgentRuntime {
       info: vi.fn(),
       debug: vi.fn(),
     },
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 describe("MC_ACTION", () => {

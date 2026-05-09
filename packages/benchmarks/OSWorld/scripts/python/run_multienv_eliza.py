@@ -53,7 +53,13 @@ ELIZA_ADAPTER_ROOT = os.path.join(BENCHMARKS_ROOT, "eliza-adapter")
 if ELIZA_ADAPTER_ROOT not in sys.path:
     sys.path.insert(0, ELIZA_ADAPTER_ROOT)
 
-from desktop_env.desktop_env import DesktopEnv
+try:
+    from desktop_env.desktop_env import DesktopEnv
+except ModuleNotFoundError as exc:
+    DesktopEnv = None  # type: ignore[assignment]
+    DESKTOP_ENV_IMPORT_ERROR = exc
+else:
+    DESKTOP_ENV_IMPORT_ERROR = None
 from lib_run_single import run_single_example
 from lib_results_logger import log_task_error
 
@@ -269,7 +275,14 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, object]:
     if args.region:
         env_kwargs["region"] = args.region
 
-    env = _DryRunEnv() if args.dry_run else DesktopEnv(**env_kwargs)
+    if args.dry_run:
+        env = _DryRunEnv()
+    else:
+        if DesktopEnv is None:
+            raise RuntimeError(
+                f"OSWorld dependencies are not installed: {DESKTOP_ENV_IMPORT_ERROR}"
+            )
+        env = DesktopEnv(**env_kwargs)
     if args.dry_run:
         import lib_run_single
 

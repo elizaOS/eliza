@@ -18,7 +18,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { IAgentRuntime, Service, ServiceTypeName } from "@elizaos/core";
+import { Service, type IAgentRuntime, type ServiceTypeName } from "@elizaos/core";
 import type {
   AnonymizerLookup,
   FilterableTrajectory,
@@ -256,16 +256,16 @@ export interface TrainingTriggerServiceOptions {
 }
 
 /**
- * Lightweight, function-based service. We follow the n8n-dispatch pattern
- * already used in `runtime/eliza.ts` (services map insertion) rather than
- * subclassing `Service`, because the trigger has no `start()` lifecycle —
- * it is created once at runtime boot and lives for the runtime's lifetime.
+ * Lightweight service registered directly into the runtime service map. It has
+ * no `start()` lifecycle, but extends the core base class so the registration
+ * stays assignable to the runtime's `Service[]` registry.
  */
-export class TrainingTriggerService {
+export class TrainingTriggerService extends Service {
   readonly capabilityDescription =
     "Tracks completed trajectories and fires training runs when per-task counters hit the configured threshold.";
+  readonly instance = this;
 
-  private readonly runtime: RuntimeLike;
+  private readonly runtimeRef: RuntimeLike;
   private readonly statePath: string;
   private readonly configLoader: () => TrainingConfig;
   private readonly triggerImpl: typeof triggerTraining;
@@ -278,7 +278,8 @@ export class TrainingTriggerService {
     runtime: RuntimeLike,
     options: TrainingTriggerServiceOptions = {},
   ) {
-    this.runtime = runtime;
+    super();
+    this.runtimeRef = runtime;
     this.statePath =
       options.statePath ?? join(trainingStateRoot(), "trigger-state.json");
     this.configLoader = options.configLoader ?? loadTrainingConfig;
@@ -340,7 +341,7 @@ export class TrainingTriggerService {
     const config = this.configLoader();
     if (!config.autoTrain) return;
 
-    const trajectoryService = this.runtime.getService(
+    const trajectoryService = this.runtimeRef.getService(
       "trajectories",
     ) as TrajectoryServiceLike | null;
     if (
@@ -373,7 +374,7 @@ export class TrainingTriggerService {
     backend?: TrainingBackend;
     dryRun?: boolean;
   }): Promise<TrainingRunRecord> {
-    const record = await this.triggerImpl(this.runtime, {
+    const record = await this.triggerImpl(this.runtimeRef, {
       task: input.task,
       backend: input.backend,
       source: "manual",
@@ -412,7 +413,7 @@ export class TrainingTriggerService {
     }
     if (this.inflight.has(task)) return;
     this.inflight.add(task);
-    const log: MinimalLogger = this.runtime.logger ?? {
+    const log: MinimalLogger = this.runtimeRef.logger ?? {
       info: () => {},
       warn: () => {},
       error: () => {},
@@ -421,7 +422,7 @@ export class TrainingTriggerService {
       `[TrainingTriggerService] firing task=${task} threshold=${policy.threshold} count=${count} backend=${policy.backend ?? "<none>"}`,
     );
     try {
-      const record = await this.triggerImpl(this.runtime, {
+      const record = await this.triggerImpl(this.runtimeRef, {
         task,
         source: "threshold",
         anonymizer: this.anonymizer,
@@ -455,7 +456,7 @@ export class TrainingTriggerService {
  * `getService(TRAINING_TRIGGER_SERVICE)` can type the result without
  * importing the concrete class.
  */
-export interface RegisteredTrainingTriggerEntry {
+export interface RegisteredTrainingTriggerEntry extends Service {
   notifyTrajectoryCompleted: (trajectoryId: string) => Promise<void>;
   getStatus: () => TriggerStatusSnapshot;
   runManually: (input: {
@@ -471,7 +472,7 @@ export interface RegisteredTrainingTriggerEntry {
 
 /**
  * Register the service against a runtime's services map. Mirrors the
- * n8n-dispatch pattern in `packages/app-core/src/runtime/eliza.ts`: we
+ * workflow-dispatch pattern in `packages/app-core/src/runtime/eliza.ts`: we
  * insert a function-shaped service entry directly rather than going through
  * the `Service.start()` lifecycle, which expects a class.
  *
@@ -482,21 +483,7 @@ export function registerTrainingTriggerService(
   options: TrainingTriggerServiceOptions = {},
 ): TrainingTriggerService {
   const service = new TrainingTriggerService(runtime, options);
-  const entry: RegisteredTrainingTriggerEntry = {
-    notifyTrajectoryCompleted: service.notifyTrajectoryCompleted.bind(service),
-    getStatus: service.getStatus.bind(service),
-    runManually: service.runManually.bind(service),
-    resetCounters: service.resetCounters.bind(service),
-    stop: service.stop.bind(service),
-    capabilityDescription: service.capabilityDescription,
-    instance: service,
-  };
-  // The runtime's services map is typed Map<ServiceTypeName, Service[]>. Our
-  // entry is structurally Service-compatible (stop + capabilityDescription)
-  // plus extra methods consumed via the registered entry interface. Use a
-  // single explicit cast at the boundary rather than `as never` — the entry
-  // does satisfy the minimum Service contract that callers rely on.
-  runtime.services.set(TRAINING_TRIGGER_SERVICE, [entry as unknown as Service]);
+  runtime.services.set(TRAINING_TRIGGER_SERVICE, [service]);
   return service;
 }
 
@@ -507,6 +494,15 @@ const BOOTSTRAP_TASKS: readonly TrajectoryTrainingTask[] = [
 
 interface OptimizedPromptServiceLike {
   hasOptimized: (task: TrajectoryTrainingTask) => boolean;
+}
+
+function hasOptimizedPromptService(
+  service: Service | null,
+): service is Service & OptimizedPromptServiceLike {
+  return (
+    !!service &&
+    typeof (service as { hasOptimized?: unknown }).hasOptimized === "function"
+  );
 }
 
 interface UserNotifier {
@@ -557,13 +553,7 @@ export async function bootstrapOptimizationFromAccumulatedTrajectories(
   if (!config.autoTrain) return [];
   if (!config.backends.includes("native")) return [];
 
-  // IAgentRuntime.getService returns a typed Service subclass. The
-  // OptimizedPromptService shape we consume is structurally compatible but
-  // not exposed as a named type from core, so we cross the nominal type
-  // boundary via unknown once.
-  const optimizedPromptService = runtime.getService(
-    "optimized_prompt",
-  ) as unknown as OptimizedPromptServiceLike | null;
+  const optimizedPromptService = runtime.getService("optimized_prompt");
 
   const status = service.getStatus();
   const fired: TrajectoryTrainingTask[] = [];
@@ -572,7 +562,12 @@ export async function bootstrapOptimizationFromAccumulatedTrajectories(
       status.perTaskThresholds[task] ?? Number.POSITIVE_INFINITY;
     const count = status.counters[task] ?? 0;
     if (count < threshold) continue;
-    if (optimizedPromptService?.hasOptimized(task) === true) continue;
+    if (
+      hasOptimizedPromptService(optimizedPromptService) &&
+      optimizedPromptService.hasOptimized(task)
+    ) {
+      continue;
+    }
     const trigger =
       options.triggerOverride ??
       (async (input) =>

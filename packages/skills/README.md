@@ -14,7 +14,7 @@ Skills are markdown files that provide specialized instructions for AI agents to
 ```bash
 npm install @elizaos/skills
 # or
-pnpm add @elizaos/skills
+bun add @elizaos/skills
 ```
 
 ## Usage

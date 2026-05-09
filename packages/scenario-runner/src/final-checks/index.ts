@@ -1127,7 +1127,7 @@ registerFinalCheckHandler("gmailNoRealWrite", () => {
   };
 });
 
-registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
+registerFinalCheckHandler("workflowDispatchOccurred", (check, { ctx }) => {
   const { workflowId, expected, minCount } = check as {
     workflowId?: string;
     expected?: boolean;
@@ -1137,7 +1137,7 @@ registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
     hasRecursiveObjectMatch(
       action.result?.data ?? action.result?.raw,
       (record) => {
-        if (record.kind !== "dispatch_n8n_workflow") {
+        if (record.kind !== "dispatch_workflow") {
           return false;
         }
         return workflowId === undefined || record.workflowId === workflowId;
@@ -1146,7 +1146,7 @@ registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
   );
   const matchedWrites = (ctx.memoryWrites ?? []).filter((write) =>
     hasRecursiveObjectMatch(write.content, (record) => {
-      if (record.kind !== "dispatch_n8n_workflow") {
+      if (record.kind !== "dispatch_workflow") {
         return false;
       }
       return workflowId === undefined || record.workflowId === workflowId;
@@ -1156,19 +1156,22 @@ registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
   const want = expected ?? true;
   if (!want) {
     return total === 0
-      ? { status: "passed", detail: "no n8n dispatch observed" }
-      : { status: "failed", detail: `expected no n8n dispatch, saw ${total}` };
+      ? { status: "passed", detail: "no workflow dispatch observed" }
+      : {
+          status: "failed",
+          detail: `expected no workflow dispatch, saw ${total}`,
+        };
   }
   const min = typeof minCount === "number" ? minCount : 1;
   if (total < min) {
     return {
       status: "failed",
-      detail: `expected ${min} n8n dispatch record(s), saw ${total}`,
+      detail: `expected ${min} workflow dispatch record(s), saw ${total}`,
     };
   }
   return {
     status: "passed",
-    detail: `${total} n8n dispatch record(s) observed`,
+    detail: `${total} workflow dispatch record(s) observed`,
   };
 });
 

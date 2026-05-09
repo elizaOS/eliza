@@ -117,26 +117,27 @@ export const UNIVERSAL_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
 /**
  * Map intent categories → action names that get full params when detected.
  *
- * These names must match the registered action names in the runtime. If an
- * action is renamed or removed upstream, the compaction gracefully degrades
- * — the action simply won't appear in the prompt at all, so the stale name
- * in this map is harmless (it just won't match anything).
+ * Names must match registered Action.name strings. Verified live (2026-05-08):
+ *   TASKS         — plugins/plugin-agent-orchestrator/src/actions/tasks.ts:2029
+ *                   (polymorphic action that subsumes the old START_CODING_TASK
+ *                   / CREATE_TASK / SPAWN_AGENT / CREATE_WORKSPACE /
+ *                   SUBMIT_WORKSPACE / LIST_AGENTS / SEND_TO_AGENT /
+ *                   STOP_AGENT / MANAGE_ISSUES sub-ops)
+ *   RUNTIME       — packages/agent/src/actions/runtime.ts:405 (op:"restart"
+ *                   replaces the old RESTART_AGENT)
+ *   SHELL_COMMAND — packages/agent/src/actions/terminal.ts:261
+ *   PLAY_EMOTE    — plugins/app-companion/src/actions/emote.ts:22
+ *
+ * GitHub issue ops live under GITHUB_ISSUE in plugin-github but that plugin
+ * isn't loaded by default — kept out of the map to avoid validator noise; it
+ * still gets surfaced when present because action listing is dynamic.
  */
 export const INTENT_ACTION_MAP: Record<string, Set<string>> = {
-  coding: new Set([
-    "START_CODING_TASK",
-    "CREATE_TASK",
-    "SPAWN_AGENT",
-    "CREATE_WORKSPACE",
-    "SUBMIT_WORKSPACE",
-    "LIST_AGENTS",
-    "SEND_TO_AGENT",
-    "STOP_AGENT",
-  ]),
-  terminal: new Set(["SHELL_COMMAND", "RESTART_AGENT"]),
-  issues: new Set(["MANAGE_ISSUES"]),
+  coding: new Set(["TASKS"]),
+  terminal: new Set(["SHELL_COMMAND", "RUNTIME"]),
+  issues: new Set(["TASKS"]),
   emote: new Set(["PLAY_EMOTE"]),
-  plugin_ui: new Set(["RESTART_AGENT"]),
+  plugin_ui: new Set(["RUNTIME"]),
   wallet: new Set(),
 };
 

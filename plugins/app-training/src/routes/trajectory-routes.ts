@@ -13,12 +13,8 @@
  */
 
 import type http from "node:http";
-import {
-  readJsonBody as parseJsonBody,
-  sendJson,
-  sendJsonError,
-} from "@elizaos/agent/api/http-helpers";
-import { createZipArchive } from "@elizaos/agent/api/zip-utils";
+import { readJsonBody as parseJsonBody, sendJson, sendJsonError } from "@elizaos/core";
+import { createZipArchive } from "@elizaos/agent";
 import {
   enrichTrajectoryLlmCall,
   executeRawSql,
@@ -26,7 +22,7 @@ import {
   type PersistedStep,
   type PersistedTrajectory,
   saveTrajectory,
-} from "@elizaos/agent/runtime/trajectory-internals";
+} from "@elizaos/agent";
 import type {
   Trajectory,
   TrajectoryExportFormat,
@@ -38,7 +34,7 @@ import type {
   TrajectoryLlmCall,
   TrajectoryStatus,
   TrajectoryStep,
-} from "@elizaos/agent/types/trajectory";
+} from "@elizaos/agent";
 import {
   ELIZA_NATIVE_TRAJECTORY_FORMAT,
   type AgentRuntime,
@@ -984,7 +980,7 @@ function toPersistedTrajectory(traj: Trajectory): PersistedTrajectory {
       llmCalls: (step.llmCalls ?? []).map((call, callIndex) => {
         const normalizedCall = enrichTrajectoryLlmCall(
           call as Record<string, unknown>,
-        ) as unknown as TrajectoryLlmCall;
+        ) as TrajectoryLlmCall;
         return {
           callId:
             typeof normalizedCall.callId === "string" &&
@@ -1138,7 +1134,7 @@ function trajectoryToUIDetail(traj: Trajectory): UITrajectoryDetailResult {
   for (const entry of listTrajectoryCallEntries(traj)) {
     const call = enrichTrajectoryLlmCall(
       entry.call as Record<string, unknown>,
-    ) as unknown as TrajectoryLlmCall;
+    ) as TrajectoryLlmCall;
     llmCalls.push({
       id: call.callId || `${entry.stepId}-call-${entry.callIndex}`,
       trajectoryId,

@@ -27,14 +27,14 @@ import { toast } from "sonner";
 import { useChatStore } from "@/lib/stores/chat-store";
 import { cn } from "@/lib/utils";
 import { ElizaAvatar } from "../chat/eliza-avatar";
-import { ElizaCloudLockup } from "@elizaos/cloud-ui/components/brand/eliza-cloud-lockup";
+import { ElizaCloudLockup } from "@elizaos/cloud-ui";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@elizaos/cloud-ui/components/dropdown-menu";
-import { Switch } from "@elizaos/cloud-ui/components/switch";
+} from "@elizaos/cloud-ui";
+import { Switch } from "@elizaos/cloud-ui";
 import { SidebarBottomPanel } from "./sidebar-bottom-panel";
 
 interface ChatSidebarProps {

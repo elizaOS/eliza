@@ -1,8 +1,8 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { resolveRequestedXAccountId, DEFAULT_X_ACCOUNT_ID } from "../accounts";
 import type { TwitterClientState } from "../../types";
 import { getSetting } from "../../utils/settings";
+import { DEFAULT_X_ACCOUNT_ID, resolveRequestedXAccountId } from "../accounts";
 import { promptForRedirectedUrl, waitForLoopbackCallback } from "./interactive";
 import { createCodeChallenge, createCodeVerifier, createState } from "./pkce";
 import type { StoredOAuth2Tokens, TokenStore } from "./token-store";

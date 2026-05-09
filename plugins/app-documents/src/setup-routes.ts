@@ -6,12 +6,10 @@
  */
 
 import type http from "node:http";
+import { sendJson as httpSendJson, sendJsonError as httpSendJsonError } from "@elizaos/core";
 import { TLSSocket } from "node:tls";
 import {
-  readJsonBody as httpReadJsonBody,
-  sendJson as httpSendJson,
-  sendJsonError as httpSendJsonError,
-} from "@elizaos/agent/api/http-helpers";
+  readJsonBody as httpReadJsonBody } from "@elizaos/shared";
 import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
 import { handleDocumentsRoutes } from "./routes.js";
 

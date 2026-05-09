@@ -199,7 +199,7 @@ export class BlueSkyClient {
 		limit?: number;
 		cursor?: string;
 	}): Promise<{ posts: BlueSkyPost[]; cursor?: string }> {
-		const api = this.agent as unknown as {
+		const api = this.agent as {
 			app: {
 				bsky: {
 					feed: {

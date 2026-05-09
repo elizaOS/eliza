@@ -64,7 +64,7 @@ bun run dev
 
 | Tool | Purpose |
 |------|---------|
-| pnpm | Optional package manager for non-repo workflows |
+| bun | Optional package manager for non-repo workflows |
 | Docker | Container testing |
 | VS Code | Recommended editor |
 

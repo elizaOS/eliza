@@ -1,7 +1,7 @@
 import {
   listTriggerTasks,
   readTriggerConfig,
-} from "@elizaos/agent/triggers/runtime";
+} from "@elizaos/agent";
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { ChannelType, stringToUuid } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-schema";

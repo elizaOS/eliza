@@ -162,7 +162,7 @@ export async function handleReaction(
 				? stringToUuid(reaction.message.guild.id)
 				: undefined,
 			type: channelType,
-			userId: user.id as unknown as UUID,
+			userId: user.id as UUID,
 			metadata: {
 				...buildDiscordWorldMetadata(
 					service.runtime,

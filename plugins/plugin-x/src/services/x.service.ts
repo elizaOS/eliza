@@ -126,11 +126,11 @@ function normalizeXConnectorQuery(value: string): string {
 
 function clampLimit(
   value: number | undefined,
-  fallback: number,
+  defaultValue: number,
   max: number,
 ): number {
   if (!Number.isFinite(value)) {
-    return fallback;
+    return defaultValue;
   }
   return Math.min(Math.max(1, Math.floor(value as number)), max);
 }
@@ -1118,9 +1118,8 @@ export class XService extends Service {
     };
   }> {
     const base = (await this.getTwitterClientForAccount(accountId)).client;
-    const auth = (
-      base as unknown as { auth?: { getV2Client: () => Promise<unknown> } }
-    )?.auth;
+    const auth = (base as { auth?: { getV2Client: () => Promise<unknown> } })
+      ?.auth;
     if (!auth) {
       throw new Error("X auth client not initialized");
     }
@@ -1232,10 +1231,13 @@ export class XService extends Service {
 
     const messages: Array<{
       id: string;
+      conversationId: string;
       senderId: string;
       senderUsername: string | null;
       text: string;
       createdAt: string | null;
+      isInbound: boolean;
+      participantIds: string[];
     }> = [];
     for await (const event of iterator) {
       if (event.event_type && event.event_type !== "MessageCreate") {
@@ -1333,7 +1335,7 @@ export class XService extends Service {
           metrics: post.metrics,
           ...(post.metadata ?? {}),
         },
-      } as unknown as Memory["metadata"],
+      } satisfies Memory["metadata"],
     };
   }
 
@@ -1398,7 +1400,7 @@ export class XService extends Service {
           isInbound: message.isInbound ?? true,
           participantIds: message.participantIds ?? [],
         },
-      } as unknown as Memory["metadata"],
+      } satisfies Memory["metadata"],
     };
   }
 
@@ -1424,6 +1426,3 @@ export class XService extends Service {
     logger.log("X service stopped");
   }
 }
-
-// Backward-compatible alias for users still importing { TwitterService }.
-export const TwitterService = XService;

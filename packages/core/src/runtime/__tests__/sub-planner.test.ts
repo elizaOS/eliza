@@ -7,6 +7,10 @@ import {
 	runSubPlanner,
 } from "../sub-planner";
 
+type SubPlannerTestRuntime = Pick<IAgentRuntime, "actions" | "useModel"> & {
+	logger: Pick<IAgentRuntime["logger"], "debug" | "warn" | "error">;
+};
+
 function makeAction(overrides: Partial<Action>): Action {
 	return {
 		name: "TEST_ACTION",
@@ -18,15 +22,16 @@ function makeAction(overrides: Partial<Action>): Action {
 }
 
 function makeRuntime(actions: Action[], useModel = vi.fn()): IAgentRuntime {
-	return {
+	const runtime: SubPlannerTestRuntime = {
 		actions,
-		useModel,
+		useModel: useModel as IAgentRuntime["useModel"],
 		logger: {
 			debug: vi.fn(),
 			warn: vi.fn(),
 			error: vi.fn(),
 		},
-	} as unknown as IAgentRuntime;
+	};
+	return runtime as IAgentRuntime;
 }
 
 function makeMessage(): Memory {
@@ -207,18 +212,14 @@ describe("sub-planner helpers", () => {
 		expect(prompt).not.toContain("- PARENT:");
 	});
 
-	it("expands activeContexts for sub-action execution so child gates pass", async () => {
-		// Reproduce the production case: parent and children with non-overlapping
-		// `contexts`. Without ctx expansion, the per-action context gate in
-		// execute-planned-tool-call.ts rejects the child even though the parent's
-		// `subActions` declaration explicitly authorized it.
+	it("uses selected plus parent contexts for sub-action execution gates", async () => {
 		const child = makeAction({
 			name: "CHILD",
 			contexts: ["web"],
 		});
 		const parent = makeAction({
 			name: "PARENT",
-			contexts: ["research_workflow"],
+			contexts: ["research_workflow", "web"],
 			subActions: ["CHILD"],
 			subPlanner: true,
 		});
@@ -249,9 +250,9 @@ describe("sub-planner helpers", () => {
 			}),
 		});
 
-		// The execute callback must receive a ctx where activeContexts now includes
-		// the child's contexts (so the gate admits it). The original parent
-		// activeContexts is preserved as well.
+		// The execute callback receives selected contexts plus the parent's declared
+		// contexts. Child-only contexts are no longer added as an authorization
+		// shortcut; parents must declare every child context they intend to expose.
 		const [, executedCtx] = execute.mock.calls[0] ?? [];
 		expect(executedCtx).toBeDefined();
 		const activeContexts = (executedCtx as { activeContexts?: string[] })
@@ -259,5 +260,32 @@ describe("sub-planner helpers", () => {
 		expect(activeContexts).toEqual(
 			expect.arrayContaining(["research_workflow", "web"]),
 		);
+	});
+
+	it("does not expose child actions whose role gate is not satisfied", async () => {
+		const child = makeAction({
+			name: "OWNER_CHILD",
+			contexts: ["admin"],
+			roleGate: { minRole: "OWNER" },
+		});
+		const parent = makeAction({
+			name: "PARENT",
+			contexts: ["admin"],
+			subActions: ["OWNER_CHILD"],
+			subPlanner: true,
+		});
+
+		await expect(
+			runSubPlanner({
+				runtime: makeRuntime([parent, child]),
+				action: parent,
+				context: { id: "ctx", events: [] },
+				ctx: {
+					message: makeMessage(),
+					activeContexts: ["admin"],
+					userRoles: ["USER"],
+				},
+			}),
+		).rejects.toThrow(/no sub-actions available/i);
 	});
 });

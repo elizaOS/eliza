@@ -7,7 +7,6 @@ import type {
 	ActionMode,
 	ActionResult,
 	AgentContext,
-	Evaluator,
 	HandlerCallback,
 	Provider,
 	StreamChunkCallback,
@@ -21,6 +20,7 @@ import type {
 	Room,
 	World,
 } from "./environment";
+import type { RegisteredEvaluator } from "./evaluator";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { Memory, MemoryMetadata } from "./memory";
 import type { IMessageService } from "./message-service";
@@ -47,8 +47,7 @@ import type {
 	RuntimeEventStorage,
 	ServiceClass,
 } from "./plugin";
-import type { ChannelType, Content, UUID } from "./primitives";
-import type { JsonValue } from "./proto.js";
+import type { ChannelType, Content, JsonValue, UUID } from "./primitives";
 import type {
 	SearchCategoryEnumerationOptions,
 	SearchCategoryLookupOptions,
@@ -447,7 +446,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	messageService: IMessageService | null;
 	providers: Provider[];
 	actions: Action[];
-	evaluators: Evaluator[];
+	evaluators: RegisteredEvaluator[];
 	plugins: Plugin[];
 	services: Map<ServiceTypeName, Service[]>;
 	events: RuntimeEventStorage;
@@ -563,14 +562,6 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
 	getActionResults(messageId: UUID): ActionResult[];
 
-	evaluate(
-		message: Memory,
-		state?: State,
-		didRespond?: boolean,
-		callback?: HandlerCallback,
-		responses?: Memory[],
-	): Promise<Evaluator[] | null>;
-
 	/**
 	 * Run actions whose `mode` matches one of the 9 hook positions
 	 * (ALWAYS_x/CONTEXT_x/MESSAGE_x). The runtime fires this at fixed
@@ -596,6 +587,8 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
 	registerAction(action: Action): void;
 	unregisterAction(name: string): boolean;
+	registerEvaluator(evaluator: RegisteredEvaluator): void;
+	unregisterEvaluator(name: string): boolean;
 
 	/**
 	 * Get all registered actions.
@@ -637,8 +630,6 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	):
 		| { allowed: boolean; reason: string }
 		| Promise<{ allowed: boolean; reason: string }>;
-
-	registerEvaluator(evaluator: Evaluator): void;
 
 	ensureConnections(
 		entities: Entity[],
@@ -867,7 +858,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	 * Enrich an in-flight execution trace with an additional score signal.
 	 *
 	 * Traces are keyed by runId and held in memory until finalization (e.g. RUN_ENDED
-	 * in prompt-optimization plugins). Evaluators and actions can attach signals after DPE.
+	 * in prompt-optimization plugins). Hook actions can attach signals after DPE.
 	 */
 	enrichTrace(
 		runId: string,

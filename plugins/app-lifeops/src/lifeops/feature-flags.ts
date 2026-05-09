@@ -22,7 +22,7 @@ import {
 /**
  * SQL-backed FeatureFlagService.
  *
- * Reads & writes the `lifeops_features` table owned by `app-lifeops` and
+ * Reads & writes the `app_lifeops.lifeops_features` table owned by `app-lifeops` and
  * migrated via the plugin's `schema` export.
  * Compile-time defaults (`FEATURE_DEFAULTS`) are the authority when no row
  * exists. The runtime never writes a row with `source = 'default'` —
@@ -168,7 +168,7 @@ class PgFeatureFlagService implements FeatureFlagService {
   async get(key: LifeOpsFeatureKey): Promise<FeatureFlagState> {
     const cloudLinked = this.snapshotCloudLinked();
     try {
-      const sql = `SELECT ${SELECT_COLUMNS} FROM lifeops_features
+      const sql = `SELECT ${SELECT_COLUMNS} FROM app_lifeops.lifeops_features
         WHERE feature_key = ${sqlText(key)}
         LIMIT 1`;
       const rows = await executeRawSql(this.runtime, sql);
@@ -184,7 +184,7 @@ class PgFeatureFlagService implements FeatureFlagService {
   async list(): Promise<ReadonlyArray<FeatureFlagState>> {
     const cloudLinked = this.snapshotCloudLinked();
     try {
-      const sql = `SELECT ${SELECT_COLUMNS} FROM lifeops_features`;
+      const sql = `SELECT ${SELECT_COLUMNS} FROM app_lifeops.lifeops_features`;
       const rows = await executeRawSql(this.runtime, sql);
       const byKey = new Map<LifeOpsFeatureKey, FeatureFlagState>();
       for (const row of rows) {
@@ -247,7 +247,7 @@ class PgFeatureFlagService implements FeatureFlagService {
         : "NULL";
       const enabledBySql = enabledBy ? sqlText(enabledBy) : "NULL";
       const metadataSql = sqlJson(metadata ?? {});
-      const sql = `INSERT INTO lifeops_features (
+      const sql = `INSERT INTO app_lifeops.lifeops_features (
           feature_key, enabled, source, enabled_at, enabled_by, metadata, created_at, updated_at
         ) VALUES (
           ${sqlText(key)},

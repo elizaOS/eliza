@@ -5,12 +5,18 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { AgentRuntime, PaymentEnabledRoute, Route } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  type PaymentEnabledRoute,
+  type Route,
+  type RuntimeRouteHostContext,
+  setRuntimeRouteHostContext,
+} from "@elizaos/core";
+import { readJsonBody } from "@elizaos/shared";
 import {
   createPaymentAwareHandler,
   isRoutePaymentWrapped,
-} from "../middleware/x402/payment-wrapper.js";
-import { readJsonBody } from "./http-helpers.js";
+} from "@elizaos/plugin-x402";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 
@@ -190,8 +196,18 @@ export async function tryHandleRuntimePluginRoute(options: {
   url: URL;
   runtime: AgentRuntime | null | undefined;
   isAuthorized: () => boolean;
+  hostContext?: RuntimeRouteHostContext;
 }): Promise<boolean> {
-  const { req, res, method, pathname, url, runtime, isAuthorized } = options;
+  const {
+    req,
+    res,
+    method,
+    pathname,
+    url,
+    runtime,
+    isAuthorized,
+    hostContext,
+  } = options;
   if (!runtime?.routes?.length) return false;
 
   for (const route of runtime.routes as Route[]) {
@@ -223,6 +239,9 @@ export async function tryHandleRuntimePluginRoute(options: {
         ? createPaymentAwareHandler(route as PaymentEnabledRoute)
         : handler;
 
+    const restoreHostContext = hostContext
+      ? setRuntimeRouteHostContext(runtime, hostContext)
+      : undefined;
     try {
       await effectiveHandler(req as never, res as never, runtime);
     } catch (err) {
@@ -236,6 +255,8 @@ export async function tryHandleRuntimePluginRoute(options: {
         );
       }
       return true;
+    } finally {
+      restoreHostContext?.();
     }
 
     // Do not auto-end: handlers may return after attaching long-lived streams

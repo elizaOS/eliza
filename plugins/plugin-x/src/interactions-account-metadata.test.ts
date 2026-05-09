@@ -1,27 +1,34 @@
-import { EventType, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core";
+import {
+  EventType,
+  type IAgentRuntime,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { TwitterInteractionClient } from "./interactions";
 import type { ClientBase } from "./base";
-import type { TwitterInteractionPayload, TwitterClientState } from "./types";
+import { TwitterInteractionClient } from "./interactions";
+import type { TwitterClientState, TwitterInteractionPayload } from "./types";
+
+function asRuntime<T extends object>(runtime: T): IAgentRuntime & T {
+  return runtime as IAgentRuntime & T;
+}
 
 function createRuntime(): IAgentRuntime & {
   createMemory: ReturnType<typeof vi.fn>;
   emitEvent: ReturnType<typeof vi.fn>;
 } {
-  return {
+  const runtime = asRuntime({
     agentId: "agent-1" as UUID,
     createMemory: vi.fn(async () => undefined),
     emitEvent: vi.fn(),
     getSetting: vi.fn(),
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  } as unknown as IAgentRuntime & {
-    createMemory: ReturnType<typeof vi.fn>;
-    emitEvent: ReturnType<typeof vi.fn>;
-  };
+  });
+  return runtime;
 }
 
 function createClient(accountId: string): ClientBase {
-  return { accountId } as unknown as ClientBase;
+  return { accountId } as ClientBase;
 }
 
 describe("Twitter interaction memory account metadata", () => {
@@ -30,7 +37,7 @@ describe("Twitter interaction memory account metadata", () => {
     const client = new TwitterInteractionClient(
       createClient("secondary"),
       runtime,
-      {} as TwitterClientState
+      {} as TwitterClientState,
     );
     const interaction = {
       id: "like-1",
@@ -44,7 +51,7 @@ describe("Twitter interaction memory account metadata", () => {
         text: "hello",
         conversationId: "conversation-1",
       },
-    } as unknown as TwitterInteractionPayload;
+    } as TwitterInteractionPayload;
 
     await client.handleInteraction(interaction);
 
@@ -52,16 +59,16 @@ describe("Twitter interaction memory account metadata", () => {
     expect(storedMemory.metadata).toEqual(
       expect.objectContaining({
         accountId: "secondary",
-      })
+      }),
     );
 
     const reactionPayload = runtime.emitEvent.mock.calls.find(
-      ([event]) => event === EventType.REACTION_RECEIVED
+      ([event]) => event === EventType.REACTION_RECEIVED,
     )?.[1] as { message?: Memory } | undefined;
     expect(reactionPayload?.message?.metadata).toEqual(
       expect.objectContaining({
         accountId: "secondary",
-      })
+      }),
     );
   });
 });

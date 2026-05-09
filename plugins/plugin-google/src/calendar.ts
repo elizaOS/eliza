@@ -37,6 +37,7 @@ export class GoogleCalendarClient {
       timeMin?: string;
       timeMax?: string;
       limit?: number;
+      timeZone?: string;
     }
   ): Promise<GoogleCalendarEvent[]> {
     const calendar = await this.clientFactory.calendar(
@@ -52,9 +53,26 @@ export class GoogleCalendarClient {
       maxResults: params.limit ?? 25,
       singleEvents: true,
       orderBy: "startTime",
+      timeZone: params.timeZone,
     });
 
-    return (response.data.items ?? []).map((event) => mapEvent(event, calendarId));
+    return (response.data.items ?? []).map((event) => mapEvent(event, calendarId, params.timeZone));
+  }
+
+  async getEvent(
+    params: GoogleAccountRef & { calendarId?: string; eventId: string; timeZone?: string }
+  ): Promise<GoogleCalendarEvent> {
+    const calendar = await this.clientFactory.calendar(
+      params,
+      ["calendar.read"],
+      "calendar.getEvent"
+    );
+    const calendarId = params.calendarId ?? "primary";
+    const response = await calendar.events.get({
+      calendarId,
+      eventId: params.eventId,
+    });
+    return mapEvent(response.data, calendarId, params.timeZone);
   }
 
   async createEvent(params: GoogleCalendarEventInput): Promise<GoogleCalendarEvent> {
@@ -85,7 +103,7 @@ export class GoogleCalendarClient {
       },
     });
 
-    return mapEvent(response.data, calendarId);
+    return mapEvent(response.data, calendarId, params.timeZone);
   }
 
   async updateEvent(params: GoogleCalendarEventPatchInput): Promise<GoogleCalendarEvent> {
@@ -139,7 +157,7 @@ export class GoogleCalendarClient {
       requestBody,
     });
 
-    return mapEvent(response.data, calendarId);
+    return mapEvent(response.data, calendarId, effectiveTimeZone);
   }
 
   async deleteEvent(
@@ -184,13 +202,22 @@ function mapCalendarListEntry(
   };
 }
 
-function mapEvent(event: calendar_v3.Schema$Event, calendarId: string): GoogleCalendarEvent {
+function mapEvent(
+  event: calendar_v3.Schema$Event,
+  calendarId: string,
+  fallbackTimeZone?: string
+): GoogleCalendarEvent {
+  const start = readEventInstant(event.start, fallbackTimeZone);
+  const end = readEventInstant(event.end, start?.timeZone ?? fallbackTimeZone);
   return {
     id: event.id ?? "",
     calendarId,
     title: event.summary ?? undefined,
-    start: event.start?.dateTime ?? event.start?.date ?? undefined,
-    end: event.end?.dateTime ?? event.end?.date ?? undefined,
+    status: event.status ?? undefined,
+    start: start?.iso ?? event.start?.dateTime ?? event.start?.date ?? undefined,
+    end: end?.iso ?? event.end?.dateTime ?? event.end?.date ?? undefined,
+    isAllDay: start?.isAllDay,
+    timeZone: start?.timeZone ?? end?.timeZone ?? null,
     htmlLink: event.htmlLink ?? undefined,
     meetLink: event.hangoutLink ?? event.conferenceData?.entryPoints?.[0]?.uri ?? undefined,
     attendees: event.attendees?.map((attendee) => ({
@@ -199,11 +226,49 @@ function mapEvent(event: calendar_v3.Schema$Event, calendarId: string): GoogleCa
     })),
     location: event.location ?? undefined,
     description: event.description ?? undefined,
+    organizer: event.organizer
+      ? {
+          email: event.organizer.email ?? "",
+          name: event.organizer.displayName ?? undefined,
+          self: Boolean(event.organizer.self),
+        }
+      : undefined,
+    metadata: {
+      iCalUID: event.iCalUID ?? null,
+      recurringEventId: event.recurringEventId ?? null,
+      createdAt: event.created ?? null,
+      updatedAt: event.updated ?? null,
+    },
   };
 }
 
 function eventDateValue(value: calendar_v3.Schema$EventDateTime | undefined): string | undefined {
   return value?.dateTime ?? value?.date ?? undefined;
+}
+
+function readEventInstant(
+  value: calendar_v3.Schema$EventDateTime | undefined,
+  fallbackTimeZone?: string
+): { iso: string; isAllDay: boolean; timeZone: string | null } | null {
+  if (!value) {
+    return null;
+  }
+  if (typeof value.dateTime === "string" && value.dateTime.trim().length > 0) {
+    return {
+      iso: new Date(value.dateTime).toISOString(),
+      isAllDay: false,
+      timeZone: value.timeZone?.trim() || null,
+    };
+  }
+  if (typeof value.date === "string" && value.date.trim().length > 0) {
+    const iso = new Date(`${value.date}T00:00:00.000Z`).toISOString();
+    return {
+      iso,
+      isAllDay: true,
+      timeZone: value.timeZone?.trim() || fallbackTimeZone?.trim() || null,
+    };
+  }
+  return null;
 }
 
 function normalizePatchBounds(params: {

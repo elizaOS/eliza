@@ -7,6 +7,7 @@ import {
 
 import { type SecurityContext, SecurityEventType } from "../types/security.ts";
 import type { SecurityModule } from "./SecurityModule.ts";
+import type { SecurityModuleServiceWrapper } from "./wrappers.ts";
 
 export interface CredentialThreatDetection {
 	detected: boolean;
@@ -179,9 +180,8 @@ export class CredentialProtector extends Service {
 	static async start(runtime: IAgentRuntime): Promise<Service> {
 		const service = new CredentialProtector();
 		// Access the inner SecurityModule from the wrapper
-		const wrapper = runtime.getService("security-module") as unknown as
-			| { securityModule: SecurityModule }
-			| undefined;
+		const wrapper =
+			runtime.getService<SecurityModuleServiceWrapper>("security-module");
 		if (!wrapper) {
 			throw new Error(
 				"[CredentialProtector] SecurityModule service not available",

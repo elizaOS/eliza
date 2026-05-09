@@ -10,7 +10,7 @@
  *   import "@elizaos/app-phone/register-companion-page";
  */
 
-import { registerAppShellPage } from "@elizaos/app-core";
+import { registerAppShellPage } from "@elizaos/ui";
 import { PhoneCompanionApp } from "./companion/components/PhoneCompanionApp";
 
 registerAppShellPage({

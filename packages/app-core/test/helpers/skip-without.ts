@@ -1,7 +1,7 @@
 /** Env-based gates for live and integration tests. */
 
 import { describe, it, test } from "vitest";
-import { isLiveTestEnabled, selectLiveProvider } from "./live-provider";
+import { isLiveTestEnabled, selectLiveProvider } from "./live-provider.ts";
 
 /** Skips the current suite when required env vars are missing. */
 export function skipWithout(envVarOrVars: string | string[]): void {

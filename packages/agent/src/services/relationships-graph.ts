@@ -30,13 +30,13 @@ export {
   type RelationshipsServiceLike,
   type RelationshipsUserPersonalityPreference,
   searchMemoriesForCluster,
-} from "@elizaos/core/services/relationships-graph-builder";
+} from "@elizaos/core";
 
-import type { IAgentRuntime } from "@elizaos/core";
 import type {
+  IAgentRuntime,
   RelationshipsGraphService,
   RelationshipsServiceLike,
-} from "@elizaos/core/services/relationships-graph-builder";
+} from "@elizaos/core";
 import { resolveOwnerEntityId } from "../runtime/owner-entity.js";
 import { fetchConfiguredOwnerName } from "./owner-name.js";
 
@@ -52,6 +52,12 @@ type RelationshipsServiceWithGraph = RelationshipsServiceLike &
       fetchConfiguredOwnerName: () => Promise<string | null>;
     }) => void;
   };
+
+function isRelationshipsServiceWithGraph(
+  service: unknown,
+): service is RelationshipsServiceWithGraph {
+  return typeof service === "object" && service !== null;
+}
 
 /**
  * Resolve the merged RelationshipsService and wire its agent-side owner
@@ -70,19 +76,21 @@ export async function resolveRelationshipsGraphService(
     await runtimeWithFeatures.enableRelationships();
   }
 
-  const service = runtime.getService(
-    "relationships",
-  ) as unknown as RelationshipsServiceWithGraph | null;
-  if (!service) {
+  const service = runtime.getService("relationships");
+  if (!service || typeof service !== "object") {
     return null;
   }
+  if (!isRelationshipsServiceWithGraph(service)) {
+    return null;
+  }
+  const graphService = service;
 
-  if (typeof service.setGraphResolvers === "function") {
-    service.setGraphResolvers({
+  if (typeof graphService.setGraphResolvers === "function") {
+    graphService.setGraphResolvers({
       resolveOwnerEntityId: (rt) => resolveOwnerEntityId(rt),
       fetchConfiguredOwnerName: () => fetchConfiguredOwnerName(),
     });
   }
 
-  return service;
+  return graphService;
 }
