@@ -35,6 +35,7 @@ class ModelProvider(str, Enum):
     XAI = "xai"
     OLLAMA = "ollama"
     LOCAL_AI = "local-ai"
+    CEREBRAS = "cerebras"
 
 
 @dataclass
@@ -138,6 +139,15 @@ PROVIDER_CONFIGS: dict[ModelProvider, ProviderConfig] = {
         large_model="DeepHermes-3-Llama-3-8B-q4.gguf",
         is_local=True,
         priority=40,
+    ),
+    ModelProvider.CEREBRAS: ProviderConfig(
+        provider=ModelProvider.CEREBRAS,
+        api_key_env="CEREBRAS_API_KEY",
+        base_url_env="CEREBRAS_BASE_URL",
+        default_base_url="https://api.cerebras.ai/v1",
+        small_model="gpt-oss-120b",
+        large_model="gpt-oss-120b",
+        priority=72,
     ),
 }
 

@@ -1,18 +1,12 @@
 import type { Plugin } from "../../types/index.ts";
-import {
-	longTermExtractionAction,
-	summarizationAction,
-} from "./evaluators/index.ts";
+import { consolidatedMemoryAction } from "./evaluators/index.ts";
 import {
 	contextSummaryProvider,
 	longTermMemoryProvider,
 } from "./providers/index.ts";
 import { MemoryService } from "./services/memory-service.ts";
 
-export {
-	longTermExtractionAction,
-	summarizationAction,
-} from "./evaluators/index.ts";
+export { consolidatedMemoryAction } from "./evaluators/index.ts";
 export {
 	contextSummaryProvider,
 	longTermMemoryProvider,
@@ -44,7 +38,7 @@ export function createAdvancedMemoryPlugin(): Plugin {
 		description:
 			"Memory management with conversation summarization and long-term persistent memory",
 		services: [MemoryService],
-		actions: [summarizationAction, longTermExtractionAction],
+		actions: [consolidatedMemoryAction],
 		providers: [longTermMemoryProvider, contextSummaryProvider],
 	};
 }

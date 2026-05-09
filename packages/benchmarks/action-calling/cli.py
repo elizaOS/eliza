@@ -43,6 +43,7 @@ OPENAI_COMPAT_BASE_URLS = {
     "openai": "https://api.openai.com/v1",
     "openrouter": "https://openrouter.ai/api/v1",
     "vllm": "http://127.0.0.1:8001/v1",
+    "cerebras": "https://api.cerebras.ai/v1",
 }
 
 # Per the eliza_bench.py taxonomy: planner-style buckets emit `actions[N]`.
@@ -165,7 +166,7 @@ def _build_argparser() -> argparse.ArgumentParser:
     p.add_argument(
         "--provider",
         default="vllm",
-        choices=("vllm", "openai", "groq", "openrouter", "anthropic", "mock"),
+        choices=("vllm", "openai", "groq", "openrouter", "anthropic", "cerebras", "mock"),
     )
     p.add_argument("--model", required=True)
     p.add_argument("--base-url", default=None)
@@ -202,11 +203,12 @@ def _make_client(args: argparse.Namespace):
     if not base_url:
         raise SystemExit(f"--base-url required for {provider} provider")
     api_key_env = args.api_key_env
-    if api_key_env == "OPENAI_API_KEY" and provider in {"groq", "openrouter", "anthropic"}:
+    if api_key_env == "OPENAI_API_KEY" and provider in {"groq", "openrouter", "anthropic", "cerebras"}:
         api_key_env = {
             "anthropic": "ANTHROPIC_API_KEY",
             "groq": "GROQ_API_KEY",
             "openrouter": "OPENROUTER_API_KEY",
+            "cerebras": "CEREBRAS_API_KEY",
         }[provider]
     api_key = os.environ.get(api_key_env) or os.environ.get(args.api_key_env, "EMPTY")
     return OpenAI(base_url=base_url, api_key=api_key)
