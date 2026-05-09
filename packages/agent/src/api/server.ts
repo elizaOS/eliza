@@ -103,7 +103,7 @@ import {
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
 // signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout extracted to @elizaos/plugin-signal
-import { signalAuthExists } from "@elizaos/plugin-signal";
+import { applySignalQrOverride } from "@elizaos/plugin-signal";
 import { streamManager } from "@elizaos/plugin-streaming";
 // telegram-account-auth helpers moved to @elizaos/plugin-telegram (account-setup-routes.ts).
 // WhatsApp pairing service helpers (sanitizeAccountId, WhatsAppPairingSession,
@@ -2090,7 +2090,6 @@ async function handleRequest(
         EVM_PLUGIN_PACKAGE,
         applyWhatsAppQrOverride,
         applySignalQrOverride,
-        signalAuthExists,
         resolvePluginConfigMutationRejections,
         requirePluginManager,
         requireCoreManager,
