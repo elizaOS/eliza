@@ -12,26 +12,14 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 const PHASES = [
   { id: "p0", file: "p0-break-cycles.mjs", title: "Break circular dependencies" },
-  { id: "p1a", file: "p1-move-app-core-files.mjs", title: "Move app-core files to ui/shared" },
   { id: "p1b", file: "p1-rewrite-app-core-imports.mjs", title: "Rewrite consumer imports" },
   { id: "p1c", file: "p1-collapse-app-core-exports.mjs", title: "Collapse app-core subpath exports" },
-  { id: "p2", file: "p2-standardize-plugin-builds.mjs", title: "Standardize plugin builds" },
-  { id: "p3", file: "p3-flip-package-main.mjs", title: "Flip main/types/exports → dist" },
-  { id: "p4", file: "p4-publish-pipeline.mjs", title: "Publish pipeline" },
-  { id: "p5", file: "p5-tsconfig-paths.mjs", title: "tsconfig paths" },
-  { id: "p6", file: "p6-turbo-json.mjs", title: "turbo.json" },
 ];
 
 const COMMIT_MESSAGES = {
   p0: "refactor(p0): break agent ↔ plugin-elizacloud and app-core cycle",
-  p1a: "refactor(p1a): move app-core React + types into @elizaos/ui and @elizaos/shared",
   p1b: "refactor(p1b): rewrite consumer imports of @elizaos/app-core/<subpath>",
   p1c: "refactor(p1c): collapse @elizaos/app-core to single barrel export",
-  p2: "refactor(p2): emit .d.ts from all plugin builds",
-  p3: "refactor(p3): point package.json main/types/exports at dist/",
-  p4: "refactor(p4): publish pipeline reads dist/package.json",
-  p5: "refactor(p5): rename workspace-paths to dist-paths and add dist-contract typecheck",
-  p6: "refactor(p6): refresh turbo.json build graph",
 };
 
 async function main() {

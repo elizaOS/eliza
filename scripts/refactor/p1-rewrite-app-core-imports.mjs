@@ -50,7 +50,7 @@ async function main() {
 
   if (!existsSync(MANIFEST_PATH)) {
     log.error(
-      `Manifest not found at ${MANIFEST_PATH}. Run p1-move-app-core-files.mjs first (it always writes the manifest, even in dry-run).`,
+      `Manifest not found at ${MANIFEST_PATH}. Provide the P1a move manifest (file moves) before running this import-rewrite step.`,
     );
     process.exit(1);
   }
