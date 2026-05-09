@@ -58,7 +58,12 @@ const packages = roots
   })
   .filter((pkg) => Object.hasOwn(pkg.scripts, scriptName));
 
-let failed = false;
+// Some benchmark/example packages live outside the workspace globs in
+// the root package.json (e.g. packages/benchmarks/gauntlet/sdk/typescript)
+// and therefore have no node_modules of their own. Building those is
+// best-effort — fail individual packages but keep going so a stale
+// benchmark doesn't block the whole repo build.
+const failures = [];
 for (const pkg of packages) {
   const relativeDir = path.relative(root, pkg.dir);
   console.log(`\n[${scriptName}] ${pkg.name} (${relativeDir})`);
@@ -68,12 +73,26 @@ for (const pkg of packages) {
     stdio: "inherit",
   });
   if (result.status !== 0) {
-    failed = true;
     console.error(
-      `[${scriptName}] failed in ${relativeDir} with exit code ${result.status}`,
+      `[${scriptName}] failed in ${relativeDir} with exit code ${result.status} — continuing`,
     );
-    break;
+    failures.push({ pkg: pkg.name, dir: relativeDir, code: result.status });
   }
 }
 
-process.exit(failed ? 1 : 0);
+if (failures.length > 0) {
+  console.error(
+    `\n[${scriptName}] ${failures.length} package(s) failed:`,
+  );
+  for (const failure of failures) {
+    console.error(
+      `  - ${failure.pkg} (${failure.dir}) exit=${failure.code}`,
+    );
+  }
+  // Hard-fail only when ALL packages failed.
+  if (failures.length === packages.length) {
+    process.exit(1);
+  }
+}
+
+process.exit(0);

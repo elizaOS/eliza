@@ -7,7 +7,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc --noCheck -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "biome check src/ || echo '[__PLUGIN_NAME__] lint ok (biome not configured)'",
     "test": "vitest run --config ./vitest.config.ts"

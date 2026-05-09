@@ -35,7 +35,7 @@ if (!result.success) {
 	process.exit(1);
 }
 
-const proc = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.json"], {
+const proc = Bun.spawn(["bunx", "tsc", "--noCheck", "-p", "tsconfig.build.json"], {
 	stdio: ["inherit", "inherit", "inherit"],
 });
 

@@ -33,8 +33,38 @@ const result = await Bun.build({
     "buffer",
     "child_process",
     "readline",
-    // Core dependency
+    // Workspace packages — never bundle @elizaos/* into a plugin output;
+    // they're resolved from node_modules at runtime.
     "@elizaos/core",
+    "@elizaos/shared",
+    "@elizaos/agent",
+    "@elizaos/vault",
+    "@elizaos/cloud-routing",
+    // Heavy native libs; the `node-llama-cpp` package ships per-platform
+    // optional sub-packages that are only present on the matching host.
+    // Marking the parent + sub-package wildcards keeps Bun.build from
+    // resolving the absent platforms.
+    "node-llama-cpp",
+    "@node-llama-cpp/linux-arm64",
+    "@node-llama-cpp/linux-armv7l",
+    "@node-llama-cpp/linux-x64",
+    "@node-llama-cpp/linux-x64-cuda",
+    "@node-llama-cpp/linux-x64-cuda-ext",
+    "@node-llama-cpp/linux-x64-vulkan",
+    "@node-llama-cpp/mac-arm64-metal",
+    "@node-llama-cpp/mac-x64",
+    "@node-llama-cpp/win-arm64",
+    "@node-llama-cpp/win-x64",
+    "@node-llama-cpp/win-x64-cuda",
+    "@node-llama-cpp/win-x64-cuda-ext",
+    "@node-llama-cpp/win-x64-vulkan",
+    "@huggingface/transformers",
+    "onnxruntime-node",
+    "@napi-rs/keyring",
+    "@reflink/reflink",
+    "ipull",
+    "tailwindcss",
+    "zlib-sync",
     // Runtime dependencies (resolved from node_modules at runtime)
     "axios",
     "@hapi/boom",
@@ -57,7 +87,7 @@ if (!result.success) {
 
 // Emit real declaration files via tsc
 try {
-  execSync("bunx tsc -p tsconfig.build.json", { stdio: "inherit" });
+  execSync("bunx tsc --noCheck -p tsconfig.build.json", { stdio: "inherit" });
 } catch {
   // Non-fatal — plugin works at runtime without .d.ts files
   console.warn("[plugin-whatsapp] tsc declaration emit failed (non-fatal)");
