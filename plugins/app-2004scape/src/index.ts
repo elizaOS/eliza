@@ -29,3 +29,5 @@ export type * from "./sdk/types.js";
 export { BotManager } from "./services/bot-manager.js";
 // Re-exports for direct access
 export { RsSdkGameService } from "./services/game-service.js";
+export * from "./routes.js";
+export * from "./ui.js";

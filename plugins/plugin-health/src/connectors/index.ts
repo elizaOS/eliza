@@ -17,7 +17,6 @@
  * other Wave-1 agents can reference them.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {
   AnchorContribution,
@@ -184,25 +183,26 @@ function buildBusFamilyContribution(family: string): BusFamilyContribution {
 }
 
 function getConnectorRegistry(
-  runtime: IAgentRuntime,
+  runtime: RuntimeWithHealthRegistries,
 ): ConnectorRegistry | undefined {
-  return (runtime as IAgentRuntime & RuntimeWithHealthRegistries)
-    .connectorRegistry;
+  return runtime.connectorRegistry;
 }
 
-function getAnchorRegistry(runtime: IAgentRuntime): AnchorRegistry | undefined {
-  return (runtime as IAgentRuntime & RuntimeWithHealthRegistries)
-    .anchorRegistry;
+function getAnchorRegistry(
+  runtime: RuntimeWithHealthRegistries,
+): AnchorRegistry | undefined {
+  return runtime.anchorRegistry;
 }
 
 function getBusFamilyRegistry(
-  runtime: IAgentRuntime,
+  runtime: RuntimeWithHealthRegistries,
 ): BusFamilyRegistry | undefined {
-  return (runtime as IAgentRuntime & RuntimeWithHealthRegistries)
-    .busFamilyRegistry;
+  return runtime.busFamilyRegistry;
 }
 
-export function registerHealthConnectors(runtime: IAgentRuntime): void {
+export function registerHealthConnectors(
+  runtime: RuntimeWithHealthRegistries,
+): void {
   const registry = getConnectorRegistry(runtime);
   if (!registry) {
     logger.info(
@@ -224,7 +224,7 @@ export function registerHealthConnectors(runtime: IAgentRuntime): void {
   );
 }
 
-export function registerHealthAnchors(runtime: IAgentRuntime): void {
+export function registerHealthAnchors(runtime: RuntimeWithHealthRegistries): void {
   const registry = getAnchorRegistry(runtime);
   if (!registry) {
     logger.info(
@@ -246,7 +246,9 @@ export function registerHealthAnchors(runtime: IAgentRuntime): void {
   );
 }
 
-export function registerHealthBusFamilies(runtime: IAgentRuntime): void {
+export function registerHealthBusFamilies(
+  runtime: RuntimeWithHealthRegistries,
+): void {
   const registry = getBusFamilyRegistry(runtime);
   if (!registry) {
     logger.info(

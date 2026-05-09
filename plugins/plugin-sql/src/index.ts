@@ -214,3 +214,4 @@ export * from "./schema";
 export { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
 export * from "./types";
 export { schema };
+export * from "./drizzle";

@@ -97,7 +97,8 @@ async function resolveLlmPlugin(useRealLlm: boolean): Promise<ResolvedLlm> {
   }
 
   const plugin = await loadOpenAIPlugin();
-  const providerLabel = hasCerebras && !hasOpenAi ? "real (Cerebras)" : "real (OpenAI)";
+  const providerLabel =
+    hasCerebras && !hasOpenAi ? "real (Cerebras)" : "real (OpenAI)";
   return { llmPlugin: plugin, isRealLlm: true, providerLabel };
 }
 

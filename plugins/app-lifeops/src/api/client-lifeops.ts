@@ -2,7 +2,7 @@
  * LifeOps API methods on ElizaClient.
  *
  * Uses TypeScript declaration merging to augment the `ElizaClient` class in
- * `@elizaos/app-core/api/client-base` with LifeOps-specific methods.
+ * `@elizaos/ui` with LifeOps-specific methods.
  *
  * Side-effect import — include once at startup to register the methods:
  *
@@ -207,7 +207,7 @@ export type LifeOpsAppStateDto = {
   priorityScoring: LifeOpsPriorityScoringStateDto;
 };
 
-declare module "@elizaos/ui/api/client-base" {
+declare module "@elizaos/ui" {
   interface ElizaClient {
     getLifeOpsAppState(): Promise<LifeOpsAppStateDto>;
     updateLifeOpsAppState(data: {

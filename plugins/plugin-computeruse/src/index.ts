@@ -143,3 +143,4 @@ export type {
   WindowActionType,
   WindowInfo,
 } from "./types.js";
+export * from "./register-routes.js";

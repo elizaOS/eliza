@@ -10,10 +10,6 @@ export default defineConfig({
   resolve: {
     alias: {
       "@elizaos/core": path.join(repoRoot, "packages/core/src/index.ts"),
-      "@elizaos/core/node": path.join(
-        repoRoot,
-        "packages/core/src/index.node.ts",
-      ),
       "@elizaos/agent": path.join(repoRoot, "packages/agent/src/index.ts"),
       "@elizaos/shared": path.join(repoRoot, "packages/shared/src/index.ts"),
     },

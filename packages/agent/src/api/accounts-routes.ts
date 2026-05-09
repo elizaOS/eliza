@@ -86,7 +86,7 @@ let cachedPoolPromise: Promise<PoolFacade> | null = null;
 
 async function getPool(): Promise<PoolFacade> {
   if (!cachedPoolPromise) {
-    const moduleId = "@elizaos/app-core/account-pool";
+    const moduleId = "@elizaos/app-core";
     cachedPoolPromise = (async () => {
       const mod = (await import(/* @vite-ignore */ moduleId)) as {
         getDefaultAccountPool: () => PoolFacade;

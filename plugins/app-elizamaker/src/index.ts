@@ -21,3 +21,4 @@ export {
   markAddressVerified,
   verifyTweet,
 } from "./twitter-verify.js";
+export * from "./nft-verify.js";

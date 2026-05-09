@@ -84,3 +84,7 @@ export const healthPlugin: Plugin = {
 };
 
 export default healthPlugin;
+export * from "./sleep.js";
+export * from "./health-bridge.js";
+export * from "./screen-time.js";
+export * from "./actions.js";

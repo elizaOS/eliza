@@ -1,4 +1,4 @@
-import { isPlainObject } from "../type-guards";
+import { isPlainObject } from "../type-guards.js";
 
 type PathNode = Record<string, unknown>;
 

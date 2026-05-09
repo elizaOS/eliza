@@ -401,13 +401,26 @@ export async function runPlannerLoop(
 			};
 		}
 
-		const evaluator = await evaluateTrajectory(params, trajectory, iteration);
+		let evaluator = await evaluateTrajectory(params, trajectory, iteration);
 		trajectory.evaluatorOutputs.push(evaluator);
 		trajectory.context = appendEvaluationEvent({
 			context: trajectory.context,
 			iteration,
 			evaluator,
 		});
+
+		if (
+			evaluator.decision === "FINISH" &&
+			!getNonEmptyString(evaluator.messageToUser) &&
+			hasExecutedNonTerminalTool(trajectory)
+		) {
+			evaluator = await repairFinishWithoutUserMessage({
+				params,
+				trajectory,
+				iteration,
+				evaluator,
+			});
+		}
 
 		if (evaluator.decision === "FINISH") {
 			return {
@@ -1391,6 +1404,48 @@ function appendEvaluationEvent(args: {
 			recommendedToolCallId: args.evaluator.recommendedToolCallId,
 		},
 	});
+}
+
+async function repairFinishWithoutUserMessage(args: {
+	params: PlannerLoopParams;
+	trajectory: PlannerTrajectory;
+	iteration: number;
+	evaluator: EvaluatorOutput;
+}): Promise<EvaluatorOutput> {
+	const createdAt = Date.now();
+	args.params.runtime.logger?.warn?.(
+		{
+			iteration: args.iteration,
+			decision: args.evaluator.decision,
+			success: args.evaluator.success,
+		},
+		"Evaluator selected FINISH without a user-facing message; retrying evaluation",
+	);
+	args.trajectory.context = appendContextEvent(args.trajectory.context, {
+		id: `evaluation-missing-message:${args.iteration}:${createdAt}`,
+		type: "instruction",
+		source: "planner-loop",
+		createdAt,
+		content:
+			"The previous evaluator selected FINISH after tool use but did not include messageToUser. Re-evaluate and, if the task is complete, include a concise user-facing message grounded in the completed tool results. Do not paste raw tool transcripts, command banners, or internal logs unless the user explicitly asked for raw output.",
+		metadata: {
+			iteration: args.iteration,
+			decision: args.evaluator.decision,
+			success: args.evaluator.success,
+		},
+	});
+	const repaired = await evaluateTrajectory(
+		args.params,
+		args.trajectory,
+		args.iteration,
+	);
+	args.trajectory.evaluatorOutputs.push(repaired);
+	args.trajectory.context = appendEvaluationEvent({
+		context: args.trajectory.context,
+		iteration: args.iteration,
+		evaluator: repaired,
+	});
+	return repaired;
 }
 
 function appendTerminalPlannerOutputEvent(args: {

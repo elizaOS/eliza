@@ -1,8 +1,8 @@
-import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   deployTextTriggerWorkflow,
   getWorkflowService,
+  type WorkflowServiceRuntime,
 } from "./text-to-workflow.js";
 
 interface DeployCall {
@@ -23,7 +23,7 @@ function makeRuntimeWithService(
     workflow: DeployCall["workflow"],
     userId: string,
   ) => Promise<{ id?: string; name?: string }>,
-): { runtime: IAgentRuntime; calls: DeployCall[] } {
+): { runtime: WorkflowServiceRuntime; calls: DeployCall[] } {
   const calls: DeployCall[] = [];
   const service = {
     deployWorkflow: async (
@@ -37,7 +37,7 @@ function makeRuntimeWithService(
   const runtime = {
     getService: (type: string): unknown =>
       type === "workflow" ? service : null,
-  } as unknown as IAgentRuntime;
+  };
   return { runtime, calls };
 }
 
@@ -45,14 +45,14 @@ describe("getWorkflowService", () => {
   it("returns null when the workflow service is not registered", () => {
     const runtime = {
       getService: () => null,
-    } as unknown as IAgentRuntime;
+    };
     expect(getWorkflowService(runtime)).toBeNull();
   });
 
   it("rejects services without a deployWorkflow method", () => {
     const runtime = {
       getService: () => ({ somethingElse: () => null }),
-    } as unknown as IAgentRuntime;
+    };
     expect(getWorkflowService(runtime)).toBeNull();
   });
 });
@@ -61,7 +61,7 @@ describe("deployTextTriggerWorkflow", () => {
   it("returns null when the workflow service is missing", async () => {
     const runtime = {
       getService: () => null,
-    } as unknown as IAgentRuntime;
+    };
     const result = await deployTextTriggerWorkflow(
       runtime,
       {
@@ -129,7 +129,7 @@ describe("deployTextTriggerWorkflow", () => {
     const runtime = {
       getService: (type: string): unknown =>
         type === "workflow" ? { deployWorkflow: deploy } : null,
-    } as unknown as IAgentRuntime;
+    };
     const result = await deployTextTriggerWorkflow(
       runtime,
       {

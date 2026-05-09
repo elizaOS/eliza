@@ -139,8 +139,7 @@ import {
 } from "./model-resolution.js";
 
 const ELIZAMAKER_MODULE: string = "@elizaos/app-elizamaker";
-const STEWARD_EVM_BRIDGE_MODULE: string =
-  "@elizaos/app-steward/services/steward-evm-bridge";
+const STEWARD_EVM_BRIDGE_MODULE: string = "@elizaos/app-steward";
 
 type ElizaMakerModule = {
   initializeOGCode?: () => void;

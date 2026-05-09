@@ -30,9 +30,13 @@ function makeMessage(runtime: IAgentRuntime, text: string): Memory {
 
 const STATE: State = { values: {}, data: {}, text: "" };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 describe("first-run defaults e2e", () => {
   it("provider surfaces affordance when pending; goes silent after completion", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const provider = firstRunProvider;
     const before = await provider.get(
       runtime,
@@ -62,7 +66,7 @@ describe("first-run defaults e2e", () => {
   });
 
   it("FIRST_RUN action drives the defaults path through the action handler", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const message = makeMessage(runtime, "set me up");
 
     let lastCallback: { text?: string; data?: unknown } | null = null;
@@ -81,9 +85,7 @@ describe("first-run defaults e2e", () => {
       [],
     );
     expect(r1?.success).toBe(true);
-    expect((lastCallback as unknown as { text: string } | null)?.text).toMatch(
-      /wake up/i,
-    );
+    expect(lastCallback?.text).toMatch(/wake up/i);
 
     // Step 2: action with wake time -> complete.
     const r2 = await firstRunAction.handler?.(
@@ -100,12 +102,11 @@ describe("first-run defaults e2e", () => {
       [],
     );
     expect(r2?.success).toBe(true);
-    const cb = lastCallback as unknown as {
-      text: string;
-      data: { scheduledTaskIds: string[] };
-    } | null;
-    expect(cb?.text).toMatch(/Defaults applied/);
-    expect(cb?.data?.scheduledTaskIds?.length).toBe(4);
+    expect(lastCallback?.text).toMatch(/Defaults applied/);
+    const callbackData = isRecord(lastCallback?.data)
+      ? lastCallback.data
+      : {};
+    expect(callbackData.scheduledTaskIds).toHaveLength(4);
 
     const fallbackTasks = await readFallbackScheduledTasks(runtime);
     expect(fallbackTasks.length).toBe(4);

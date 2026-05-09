@@ -28,6 +28,7 @@ import type {
   ScheduledTaskKind,
   TerminalState,
 } from "../lifeops/wave1-types.js";
+import { asCacheRuntime } from "../lifeops/runtime-cache.js";
 
 export interface RecentTaskStateEntry {
   taskId: string;
@@ -59,22 +60,6 @@ export interface RecentTaskStatesProvider {
 const TASK_LOG_CACHE_KEY = "eliza:lifeops:scheduled-task-log:v1";
 const DEFAULT_LOOKBACK_DAYS = 7;
 
-interface RuntimeCacheLike {
-  getCache<T>(key: string): Promise<T | null | undefined>;
-  setCache<T>(key: string, value: T): Promise<boolean | undefined>;
-}
-
-function asCacheRuntime(runtime: IAgentRuntime): RuntimeCacheLike | null {
-  const candidate = runtime as unknown as Partial<RuntimeCacheLike>;
-  if (
-    typeof candidate.getCache !== "function" ||
-    typeof candidate.setCache !== "function"
-  ) {
-    return null;
-  }
-  return candidate as RuntimeCacheLike;
-}
-
 /**
  * Read the scheduled-task log. W1-A will swap the implementation to read
  * from the real `scheduled_task_log` SQL table; the wave-1 fallback is the
@@ -85,7 +70,6 @@ export async function readScheduledTaskLog(
   runtime: IAgentRuntime,
 ): Promise<RecentTaskStateEntry[]> {
   const cache = asCacheRuntime(runtime);
-  if (!cache) return [];
   const stored =
     await cache.getCache<RecentTaskStateEntry[]>(TASK_LOG_CACHE_KEY);
   if (!Array.isArray(stored)) return [];
@@ -109,7 +93,6 @@ export async function appendScheduledTaskLogEntry(
   entry: RecentTaskStateEntry,
 ): Promise<void> {
   const cache = asCacheRuntime(runtime);
-  if (!cache) return;
   const existing =
     (await cache.getCache<RecentTaskStateEntry[]>(TASK_LOG_CACHE_KEY)) ?? [];
   existing.push(entry);

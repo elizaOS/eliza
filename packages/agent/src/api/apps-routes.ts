@@ -1065,22 +1065,9 @@ export async function handleAppsRoutes(
         // Fall back to the app-core installer which writes directly to
         // ~/.eliza/plugins/installed without depending on a plugin-manager
         // service. The runtime plugin resolver already searches that dir.
-        const { installPlugin: installPluginDirect } = (await import(
+        const { installPlugin: installPluginDirect } = await import(
           /* webpackIgnore: true */ "@elizaos/app-core"
-        )) as unknown as {
-          installPlugin: (
-            name: string,
-            onProgress?: (progress: InstallProgressLike) => void,
-            version?: string,
-          ) => Promise<{
-            success: boolean;
-            pluginName: string;
-            version: string;
-            installPath: string;
-            requiresRestart: boolean;
-            error?: string;
-          }>;
-        };
+        );
         result = await installPluginDirect(name, recordProgress, body.version);
       }
       if (!result.success) {

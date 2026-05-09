@@ -1,4 +1,5 @@
 import type http from "node:http";
+import { ServerResponse } from "node:http";
 import {
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
@@ -62,15 +63,10 @@ function toHttpIncomingMessage(req: RouteRequest): http.IncomingMessage {
 }
 
 function toHttpServerResponse(res: RouteResponse): http.ServerResponse {
-  if (
-    typeof res !== "object" ||
-    res === null ||
-    typeof res.end !== "function" ||
-    typeof res.setHeader !== "function"
-  ) {
+  if (!(res instanceof ServerResponse)) {
     throw new TypeError("ElizaMaker routes require a Node HTTP response");
   }
-  return res as unknown as http.ServerResponse;
+  return res;
 }
 
 function getOptionalWalletAddresses(): {

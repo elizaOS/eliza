@@ -651,7 +651,7 @@ type OptionalTrainingConfigApi = {
   saveTrainingConfig: (config: OptionalTrainingConfig) => void;
 };
 
-const TRAINING_CONFIG_MODULE = "@elizaos/app-training/core/training-config";
+const TRAINING_CONFIG_MODULE = "@elizaos/app-training";
 
 function defaultTrainingConfig(): OptionalTrainingConfig {
   return {
@@ -989,7 +989,7 @@ type StewardWalletCoreRoutesHandler = (
 ) => Promise<boolean>;
 
 const STEWARD_WALLET_CORE_ROUTES_MODULE: string =
-  "@elizaos/app-steward/routes/wallet-core-routes";
+  "@elizaos/app-steward";
 
 // ---------------------------------------------------------------------------
 // Static UI serving — extracted to static-file-server.ts
@@ -1304,7 +1304,7 @@ type TrainingServiceCtor = new (options: {
 }) => TrainingServiceWithRuntime;
 
 const TRAINING_SERVICE_REGISTRY_MODULE: string =
-  "@elizaos/app-training/services/training-service-registry";
+  "@elizaos/app-training";
 
 async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null> {
   if (isMobilePlatform()) {
