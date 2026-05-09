@@ -65,6 +65,9 @@ function makeSandbox(overrides: Partial<AgentSandbox> = {}): AgentSandbox {
     total_billed: "0.00",
     shutdown_warning_sent_at: null,
     scheduled_shutdown_at: null,
+    pool_status: null,
+    pool_ready_at: null,
+    claimed_at: null,
     created_at: new Date("2026-03-09T10:00:00Z"),
     updated_at: new Date("2026-03-09T11:00:00Z"),
     ...overrides,
@@ -116,6 +119,12 @@ describe("toCompatAgent", () => {
     process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN = "agents.example.com";
     const agent = toCompatAgent(makeSandbox());
     expect(agent.webUiUrl).toBe("https://aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.agents.example.com");
+  });
+
+  test("falls back to waifu.fun when agent base domain is unset", () => {
+    delete process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN;
+    const agent = toCompatAgent(makeSandbox());
+    expect(agent.web_ui_url).toBe("https://aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.waifu.fun");
   });
 
   test("last_heartbeat_at is null when never heartbeated", () => {

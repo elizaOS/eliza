@@ -218,7 +218,7 @@ export async function createScenarioRuntime(
   // Basic capabilities: REPLY, CHOICE, IGNORE, NONE actions, core providers
   // (CHARACTER, ACTIONS, MESSAGES, ENTITIES, ...), and baseline services
   // (TaskService, EmbeddingGenerationService). advancedCapabilities also
-  // registers contact/message actions (ADD_CONTACT, SEND_MESSAGE, ...).
+  // registers contact/message actions (ADD_CONTACT, MESSAGE, ...).
   // Without this plugin the runtime has no conversational reply action and
   // nearly every scenario fails with "expected 1 call(s) to REPLY, saw 0".
   await runtime.registerPlugin(
@@ -360,7 +360,7 @@ export async function createScenarioRuntime(
   // observing. Use this to modify entity profiles, metadata, or attributes.")
   // is broad enough that small-model classifiers pick it for any request that
   // mentions a person or fact ("remember my favorite color is blue",
-  // "remind me to email Alex"), which crowds out CREATE_TASK, SEND_MESSAGE,
+  // "remind me to email Alex"), which crowds out CREATE_TASK, MESSAGE,
   // RELATIONSHIP, LIFE, etc. For the scenario runner — which is testing
   // user-facing action routing, not profile editing — dropping it unblocks
   // the realistic cases. Real runtimes keep UPDATE_ENTITY enabled.

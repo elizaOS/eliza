@@ -1,15 +1,15 @@
 import type http from "node:http";
 import { logger } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import { normalizeOnboardingProviderId } from "@elizaos/shared";
 import type { SecretsManager } from "@elizaos/vault";
 import type { ElizaConfig } from "../config/config.js";
-import { normalizeOnboardingProviderId } from "../contracts/onboarding.js";
 import {
   defaultSecretsManager,
   type ProviderSwitchIntent,
   persistProviderApiKey,
   type RuntimeOperationManager,
 } from "../runtime/operations/index.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import {
   applyOnboardingConnectionConfig,
   createProviderSwitchConnection,

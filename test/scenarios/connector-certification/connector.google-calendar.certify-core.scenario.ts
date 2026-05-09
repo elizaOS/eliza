@@ -13,9 +13,9 @@ export default buildConnectorCertificationScenario({
       text: "Check my availability tomorrow, create the meeting if I'm free, and be able to move or cancel it later.",
       responseIncludesAny: ["availability", "meeting", "move", "cancel"],
       acceptedActions: [
-        "OWNER_CALENDAR",
-        "OWNER_CALENDAR",
-        "OWNER_CALENDAR",
+        "CALENDAR",
+        "CALENDAR",
+        "CALENDAR",
       ],
       includesAny: ["availability", "meeting", "move", "cancel"],
     },
@@ -23,7 +23,7 @@ export default buildConnectorCertificationScenario({
   finalChecks: [
     {
       type: "selectedActionArguments",
-      actionName: "OWNER_CALENDAR",
+      actionName: "CALENDAR",
       includesAny: ["availability", "create", "cancel", "reschedule"],
     },
     {

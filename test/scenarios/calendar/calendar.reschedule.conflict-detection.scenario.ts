@@ -39,14 +39,14 @@ export default scenario({
       kind: "message",
       name: "reschedule-with-conflict",
       text: "Move my sync with Alex to 4pm tomorrow.",
-      expectedActions: ["OWNER_CALENDAR"],
+      expectedActions: ["CALENDAR"],
       responseIncludesAny: ["conflict", "overlap", "design review", "already"],
     },
   ],
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "OWNER_CALENDAR",
+      actionName: "CALENDAR",
       minCount: 1,
     },
   ],

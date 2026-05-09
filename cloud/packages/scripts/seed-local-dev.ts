@@ -1,14 +1,17 @@
-import { config } from "dotenv";
 import { sql } from "drizzle-orm";
-import { db } from "../db/client";
-import * as schema from "../db/schemas";
-import { agentTable, entityTable } from "../db/schemas/eliza";
+import { loadEnvFiles } from "./local-dev-helpers";
 
-config({ path: ".env.local" });
+loadEnvFiles([".env", { path: ".env.local", override: true }]);
 
 const DEFAULT_ELIZA_ID = "b850bc30-45f8-0041-a00a-83df46d8555d";
 
 async function seedLocalDev() {
+  const [{ db }, schema, { agentTable, entityTable }] = await Promise.all([
+    import("../db/client"),
+    import("../db/schemas"),
+    import("../db/schemas/eliza"),
+  ]);
+
   console.log("🌱 Seeding Local Development Data");
   console.log("=".repeat(50));
 

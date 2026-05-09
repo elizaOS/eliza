@@ -8,10 +8,8 @@ import {
 } from "./intent-sync.js";
 
 /**
- * Service-layer wrappers around the local intent store. The agent-facing
- * action exposes only the broadcast flow (OWNER_DEVICE_INTENT); these
- * helpers cover the management operations that used to live as INTENT_SYNC
- * subactions and are now invoked directly by callers.
+ * Service-layer wrappers around the local intent store. These helpers
+ * cover the management operations invoked directly by callers.
  */
 
 export async function acknowledgeDeviceIntent(

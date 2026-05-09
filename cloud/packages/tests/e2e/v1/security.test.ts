@@ -179,17 +179,17 @@ describe("Gallery API", () => {
 });
 
 // =============================================================================
-// Knowledge API (auth required)
+// Documents API (auth required)
 // =============================================================================
 
-describe("Knowledge API", () => {
-  test("GET /api/v1/knowledge requires auth", async () => {
-    const response = await api.get("/api/v1/knowledge");
+describe("Documents API", () => {
+  test("GET /api/v1/documents requires auth", async () => {
+    const response = await api.get("/api/v1/documents");
     expect([401, 403]).toContain(response.status);
   });
 
-  test("POST /api/v1/knowledge requires auth", async () => {
-    const response = await api.post("/api/v1/knowledge", {});
+  test("POST /api/v1/documents requires auth", async () => {
+    const response = await api.post("/api/v1/documents", {});
     expect([401, 403]).toContain(response.status);
   });
 });
@@ -212,17 +212,6 @@ describe("App Credits API", () => {
   test("POST /api/v1/app-credits/verify requires auth", async () => {
     const response = await api.post("/api/v1/app-credits/verify", {});
     expect([400, 401, 403]).toContain(response.status);
-  });
-});
-
-// =============================================================================
-// Character Assistant API (auth required)
-// =============================================================================
-
-describe("Character Assistant API", () => {
-  test("POST /api/v1/character-assistant requires auth", async () => {
-    const response = await api.post("/api/v1/character-assistant", {});
-    expect([401, 403]).toContain(response.status);
   });
 });
 

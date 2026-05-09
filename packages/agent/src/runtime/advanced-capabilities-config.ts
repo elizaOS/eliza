@@ -2,7 +2,7 @@ import type { ElizaConfig } from "../config/config.js";
 
 export const ADVANCED_CAPABILITY_PLUGIN_IDS = [
   "experience",
-  "clipboard",
+  "todos",
   "personality",
 ] as const;
 

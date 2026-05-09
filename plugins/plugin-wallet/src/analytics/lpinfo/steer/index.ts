@@ -15,7 +15,6 @@ export const steerPlugin: Plugin = {
   name: "steer-protocol",
   description:
     "Comprehensive Steer Finance protocol integration for viewing vaults, staking pools, and market analytics. Supports multi-chain liquidity pool tracking and yield optimization.",
-  evaluators: [],
   providers: [steerLiquidityProvider],
   actions: [],
   services: [SteerLiquidityService],

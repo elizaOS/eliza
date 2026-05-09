@@ -5,24 +5,18 @@
  */
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { getConnectorAccountManager, logger } from "@elizaos/core";
 
+export * from "./accounts.js";
 // Service
 export { TwitchService } from "./service.js";
-
 // Types
 export * from "./types.js";
 
-import { twitchChannelAction } from "./actions/channelRouter.js";
-// Actions
-import { sendMessage } from "./actions/sendMessage.js";
+// Twitch send/list/join/leave operations route through the MESSAGE action via
+// the MessageConnector registered by TwitchService.registerSendHandlers.
 
-export { sendMessage, twitchChannelAction };
-
-import { twitchChannelsProvider } from "./providers/twitchChannels.js";
-import { userContextProvider } from "./providers/userContext.js";
-
-export { twitchChannelsProvider, userContextProvider };
+import { createTwitchConnectorAccountProvider } from "./connector-account-provider.js";
 
 // Import service for plugin
 import { TwitchService } from "./service.js";
@@ -37,16 +31,36 @@ const twitchPlugin: Plugin = {
 
   services: [TwitchService],
 
-  actions: [twitchChannelAction, sendMessage],
+  actions: [],
 
-  providers: [userContextProvider, twitchChannelsProvider],
+  providers: [],
 
   tests: [],
+
+  // Self-declared auto-enable: activate when the "twitch" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["twitch"],
+  },
 
   init: async (
     _config: Record<string, string>,
     runtime: IAgentRuntime,
   ): Promise<void> => {
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createTwitchConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:twitch",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register Twitch provider with ConnectorAccountManager",
+      );
+    }
+
     const username = runtime.getSetting("TWITCH_USERNAME");
     const clientId = runtime.getSetting("TWITCH_CLIENT_ID");
     const accessToken = runtime.getSetting("TWITCH_ACCESS_TOKEN");

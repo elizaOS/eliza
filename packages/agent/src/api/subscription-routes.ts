@@ -1,14 +1,13 @@
-import { logger } from "@elizaos/core";
-import type { AnthropicFlow } from "../auth/anthropic.js";
-import type { CodexFlow } from "../auth/openai-codex.js";
-import type { OAuthCredentials } from "../auth/types.js";
-import type { ElizaConfig } from "../config/types.eliza.js";
+import { logger, type RouteRequestContext } from "@elizaos/core";
 import type {
   LinkedAccountConfig,
   LinkedAccountHealth,
   LinkedAccountUsage,
-} from "../contracts/service-routing.js";
-import type { RouteRequestContext } from "./route-helpers.js";
+} from "@elizaos/shared";
+import type { AnthropicFlow } from "../auth/anthropic.js";
+import type { CodexFlow } from "../auth/openai-codex.js";
+import type { OAuthCredentials } from "../auth/types.js";
+import type { ElizaConfig } from "../config/types.eliza.js";
 
 type AuthModule = typeof import("../auth/index.js");
 

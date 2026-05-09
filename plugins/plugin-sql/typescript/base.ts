@@ -3,18 +3,33 @@ import {
   type AgentRunCounts,
   type AgentRunSummary,
   type AgentRunSummaryResult,
+  type AppendConnectorAccountAuditEventParams,
   ChannelType,
   type Component,
+  type ConnectorAccountAuditEventRecord,
+  type ConnectorAccountCredentialRefRecord,
+  type ConnectorAccountRecord,
+  type ConnectorOwnerBindingLookup,
+  type ConnectorOwnerBindingRecord,
+  type ConsumeOAuthFlowStateParams,
+  type CreateOAuthFlowStateParams,
   DatabaseAdapter,
+  type DeleteConnectorAccountParams,
   type EntitiesForRoomsResult,
   type Entity,
+  type GetConnectorAccountCredentialRefParams,
+  type GetConnectorAccountParams,
   type IDatabaseAdapter,
+  type JsonValue,
+  type ListConnectorAccountCredentialRefsParams,
+  type ListConnectorAccountsParams,
   type Log,
   type LogBody,
   logger,
   type Memory,
   type MemoryMetadata,
   type Metadata,
+  type OAuthFlowRecord,
   type PairingAllowlistEntry,
   type PairingAllowlistsResult,
   type PairingChannel,
@@ -28,14 +43,48 @@ import {
   type Relationship,
   type Room,
   type RunStatus,
+  type SetConnectorAccountCredentialRefParams,
   type Task,
   type TaskMetadata,
+  type UpsertConnectorAccountParams,
   type UUID,
   type World,
 } from "@elizaos/core";
 
-// JSON-serializable value type for metadata
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+interface GetOAuthFlowStateParams {
+  state?: string;
+  stateHash?: string;
+  flowId?: string;
+  agentId?: string;
+  provider?: string;
+  includeConsumed?: boolean;
+  includeExpired?: boolean;
+  now?: number | Date;
+}
+
+interface UpdateOAuthFlowStateParams {
+  state?: string;
+  stateHash?: string;
+  flowId?: string;
+  agentId?: string;
+  provider?: string;
+  accountId?: string | null;
+  redirectUri?: string | null;
+  codeVerifierRef?: string | null;
+  scopes?: string[];
+  metadata?: Record<string, JsonValue>;
+  expiresAt?: number | Date;
+  consumedAt?: number | Date | null;
+  consumedBy?: string | null;
+}
+
+interface DeleteOAuthFlowStateParams {
+  state?: string;
+  stateHash?: string;
+  flowId?: string;
+  agentId?: string;
+  provider?: string;
+}
 
 function asRawMessage(value: unknown): Record<string, unknown> | undefined {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -97,6 +146,11 @@ import {
   taskTable,
   worldTable,
 } from "./schema/index";
+import {
+  ConnectorAccountStore,
+  type ListConnectorAccountAuditEventsParams,
+} from "./stores/connectorAccount.store";
+import type { StoreContext } from "./stores/types";
 import type { DrizzleDatabase } from "./types";
 
 export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase> {
@@ -106,6 +160,24 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   protected readonly jitterMax: number = 1000;
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
   protected migrationService?: DatabaseMigrationService;
+  private _connectorAccountStore?: ConnectorAccountStore;
+
+  protected getConnectorAccountStore(): ConnectorAccountStore {
+    if (!this._connectorAccountStore) {
+      const ctx: StoreContext = {
+        getDb: () => this.db as DrizzleDatabase,
+        withRetry: <T>(operation: () => Promise<T>) => this.withDatabase(operation),
+        withIsolationContext: <T>(
+          entityId: UUID | null,
+          callback: (tx: DrizzleDatabase) => Promise<T>
+        ) => this.withEntityContext(entityId, callback),
+        agentId: this.agentId,
+        getEmbeddingDimension: () => this.embeddingDimension,
+      };
+      this._connectorAccountStore = new ConnectorAccountStore(ctx);
+    }
+    return this._connectorAccountStore;
+  }
 
   protected abstract withDatabase<T>(operation: () => Promise<T>): Promise<T>;
 
@@ -5151,6 +5223,88 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     for (const id of ids) {
       await this.deletePairingAllowlistEntry(id);
     }
+  }
+
+  // ── Connector account storage ────────────────────────────────────────
+
+  async listConnectorAccounts(
+    params?: ListConnectorAccountsParams
+  ): Promise<ConnectorAccountRecord[]> {
+    return this.getConnectorAccountStore().listAccounts(params ?? {});
+  }
+
+  async getConnectorAccount(
+    params: GetConnectorAccountParams
+  ): Promise<ConnectorAccountRecord | null> {
+    return this.getConnectorAccountStore().getAccount(params);
+  }
+
+  async upsertConnectorAccount(
+    params: UpsertConnectorAccountParams
+  ): Promise<ConnectorAccountRecord> {
+    return this.getConnectorAccountStore().upsertAccount(params);
+  }
+
+  async deleteConnectorAccount(params: DeleteConnectorAccountParams): Promise<boolean> {
+    return this.getConnectorAccountStore().deleteAccount(params);
+  }
+
+  async findConnectorOwnerBinding(
+    params: ConnectorOwnerBindingLookup
+  ): Promise<ConnectorOwnerBindingRecord | null> {
+    return this.getConnectorAccountStore().findOwnerBinding(params);
+  }
+
+  async setConnectorAccountCredentialRef(
+    params: SetConnectorAccountCredentialRefParams
+  ): Promise<ConnectorAccountCredentialRefRecord> {
+    return this.getConnectorAccountStore().setCredentialRef(params);
+  }
+
+  async getConnectorAccountCredentialRef(
+    params: GetConnectorAccountCredentialRefParams
+  ): Promise<ConnectorAccountCredentialRefRecord | null> {
+    return this.getConnectorAccountStore().getCredentialRef(params);
+  }
+
+  async listConnectorAccountCredentialRefs(
+    params: ListConnectorAccountCredentialRefsParams
+  ): Promise<ConnectorAccountCredentialRefRecord[]> {
+    return this.getConnectorAccountStore().listCredentialRefs(params);
+  }
+
+  async appendConnectorAccountAuditEvent(
+    params: AppendConnectorAccountAuditEventParams
+  ): Promise<ConnectorAccountAuditEventRecord> {
+    return this.getConnectorAccountStore().appendAuditEvent(params);
+  }
+
+  async listConnectorAccountAuditEvents(
+    params: ListConnectorAccountAuditEventsParams = {}
+  ): Promise<ConnectorAccountAuditEventRecord[]> {
+    return this.getConnectorAccountStore().listAuditEvents(params);
+  }
+
+  async createOAuthFlowState(params: CreateOAuthFlowStateParams): Promise<OAuthFlowRecord> {
+    return this.getConnectorAccountStore().createOAuthFlowState(params);
+  }
+
+  async consumeOAuthFlowState(
+    params: ConsumeOAuthFlowStateParams
+  ): Promise<OAuthFlowRecord | null> {
+    return this.getConnectorAccountStore().consumeOAuthFlowState(params);
+  }
+
+  async getOAuthFlowState(params: GetOAuthFlowStateParams): Promise<OAuthFlowRecord | null> {
+    return this.getConnectorAccountStore().getOAuthFlowState(params);
+  }
+
+  async updateOAuthFlowState(params: UpdateOAuthFlowStateParams): Promise<OAuthFlowRecord | null> {
+    return this.getConnectorAccountStore().updateOAuthFlowState(params);
+  }
+
+  async deleteOAuthFlowState(params: DeleteOAuthFlowStateParams): Promise<boolean> {
+    return this.getConnectorAccountStore().deleteOAuthFlowState(params);
   }
 }
 

@@ -34,6 +34,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# Ensure the eliza-adapter package is importable for the eliza TS bridge mode.
+_ELIZA_ADAPTER_PKG = Path(__file__).resolve().parents[1] / "eliza-adapter"
+if _ELIZA_ADAPTER_PKG.exists() and str(_ELIZA_ADAPTER_PKG) not in sys.path:
+    sys.path.insert(0, str(_ELIZA_ADAPTER_PKG))
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(

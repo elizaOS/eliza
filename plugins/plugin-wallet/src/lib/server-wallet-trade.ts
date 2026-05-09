@@ -8,11 +8,7 @@
  */
 import type http from "node:http";
 import { resolveWalletExportRejection as upstreamResolveWalletExportRejection } from "@elizaos/agent";
-import { mirrorCompatHeaders } from "@elizaos/app-core/api/server-cloud-tts";
-import {
-  syncAppEnvToEliza,
-  syncElizaEnvAliases,
-} from "@elizaos/app-core/utils/env";
+import { syncAppEnvToEliza, syncElizaEnvAliases } from "@elizaos/core";
 
 import {
   type WalletExportRejection as CompatWalletExportRejection,
@@ -25,6 +21,30 @@ import {
 
 function normalizeCompatReason(reason: string): string {
   return reason;
+}
+
+function mirrorCompatHeaders(req: Pick<http.IncomingMessage, "headers">): void {
+  const HEADER_ALIASES = [
+    ["x-elizaos-token", "x-eliza-token"],
+    ["x-elizaos-export-token", "x-eliza-export-token"],
+    ["x-elizaos-client-id", "x-eliza-client-id"],
+    ["x-elizaos-terminal-token", "x-eliza-terminal-token"],
+    ["x-elizaos-ui-language", "x-eliza-ui-language"],
+    ["x-elizaos-agent-action", "x-eliza-agent-action"],
+  ] as const;
+
+  for (const [appHeader, elizaHeader] of HEADER_ALIASES) {
+    const appValue = req.headers[appHeader];
+    const elizaValue = req.headers[elizaHeader];
+
+    if (appValue != null && elizaValue == null) {
+      req.headers[elizaHeader] = appValue;
+    }
+
+    if (elizaValue != null && appValue == null) {
+      req.headers[appHeader] = elizaValue;
+    }
+  }
 }
 
 export function normalizeCompatRejection<

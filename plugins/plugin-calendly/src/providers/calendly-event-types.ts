@@ -1,7 +1,7 @@
 /**
  * @module providers/calendly-event-types
  * @description calendlyEventTypes — read-only provider that surfaces the
- * connected Calendly user's active event types as a TOON document.
+ * connected Calendly user's active event types as JSON context.
  *
  * Replaces the legacy LIST_CALENDLY_EVENT_TYPES action: enumerating the user's
  * own event types is read-only context for planning a booking, not a
@@ -15,7 +15,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
+import { resolveCalendlyAccountId } from "../accounts.js";
 import type { CalendlyService } from "../services/CalendlyService.js";
 import { CALENDLY_SERVICE_TYPE } from "../types.js";
 
@@ -30,6 +30,8 @@ interface CalendlyEventTypeEntry {
   type: string;
 }
 
+const MAX_EVENT_TYPES = 20;
+
 export const calendlyEventTypesProvider: Provider = {
   name: "calendlyEventTypes",
   description:
@@ -38,6 +40,9 @@ export const calendlyEventTypesProvider: Provider = {
     "Calendly event types (name, slug, duration, scheduling URL).",
   dynamic: true,
   contexts: ["connectors", "productivity"],
+  contextGate: { anyOf: ["connectors", "productivity"] },
+  cacheStable: false,
+  cacheScope: "turn",
 
   get: async (
     runtime: IAgentRuntime,
@@ -45,13 +50,14 @@ export const calendlyEventTypesProvider: Provider = {
     _state: State,
   ): Promise<ProviderResult> => {
     const service = runtime.getService<CalendlyService>(CALENDLY_SERVICE_TYPE);
-    if (!service || !service.isConnected()) {
+    const accountId = resolveCalendlyAccountId(runtime);
+    if (!service || !service.isConnected(accountId)) {
       return { data: {}, values: { calendlyConnected: false }, text: "" };
     }
 
     let eventTypes;
     try {
-      eventTypes = await service.listEventTypes();
+      eventTypes = await service.listEventTypes(accountId);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return {
@@ -62,6 +68,7 @@ export const calendlyEventTypesProvider: Provider = {
     }
     const entries: CalendlyEventTypeEntry[] = eventTypes
       .filter((et) => et.active)
+      .slice(0, MAX_EVENT_TYPES)
       .map((et) => ({
         uri: et.uri,
         name: et.name,
@@ -83,7 +90,7 @@ export const calendlyEventTypesProvider: Provider = {
         calendlyConnected: true,
         eventTypeCount: entries.length,
       },
-      text: encode({
+      text: JSON.stringify({
         calendly_event_types: {
           count: entries.length,
           items: entries,

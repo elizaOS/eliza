@@ -8,11 +8,15 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { MusicService } from "../service";
 import { MUSIC_PLAYER_ACTION_DOCS } from "../prompts/musicPlayerInstructions";
+import { MusicService } from "../service";
 import { isPlaybackTransportControlOnlyMessage } from "../utils/playbackTransportIntent";
 import { ProgressiveMessage } from "../utils/progressiveMessage";
-import { confirmationRequired, isConfirmed } from "./confirmation";
+import {
+  confirmationRequired,
+  isConfirmed,
+  mergedOptions,
+} from "./confirmation";
 
 // Local stubs for cross-plugin / native deps that ship without d.ts files.
 // `@elizaos/plugin-music-library` builds with `dts: false`, and `discord.js`
@@ -70,6 +74,113 @@ interface VoiceManager {
   emit(event: "registerChannel", config: any): boolean;
 }
 
+type PlayAudioOptions = Record<string, unknown> | undefined;
+type ActionResultData = NonNullable<ActionResult["data"]>;
+
+function getPlayAudioQuery(message: Memory, options: PlayAudioOptions): string {
+  const merged = mergedOptions(options);
+  const explicitQuery =
+    typeof merged.query === "string" && merged.query.trim().length > 0
+      ? merged.query.trim()
+      : typeof merged.url === "string" && merged.url.trim().length > 0
+        ? merged.url.trim()
+        : "";
+  return explicitQuery || message.content.text || "";
+}
+
+function failureResult(
+  text: string,
+  error: string,
+  data?: ActionResultData,
+): ActionResult {
+  return { success: false, text, error, data };
+}
+
+const PLAY_AUDIO_CONTEXTS = ["media", "automation"] as const;
+const PLAY_AUDIO_KEYWORDS = [
+  "play",
+  "song",
+  "track",
+  "music",
+  "audio",
+  "queue",
+  "youtube",
+  "spotify",
+  "soundcloud",
+  "stream",
+  "listen",
+  "reproduce",
+  "cancion",
+  "musica",
+  "escuchar",
+  "jouer",
+  "chanson",
+  "musique",
+  "écouter",
+  "spielen",
+  "lied",
+  "musik",
+  "ascolta",
+  "riproduci",
+  "canzone",
+  "再生",
+  "曲",
+  "音楽",
+  "播放",
+  "歌曲",
+  "音乐",
+  "재생",
+  "노래",
+  "음악",
+] as const;
+
+function selectedContextMatches(
+  state: State | undefined,
+  contexts: readonly string[],
+): boolean {
+  const selected = new Set<string>();
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") selected.add(item);
+    }
+  };
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  const contextObject = (state?.data as Record<string, unknown> | undefined)
+    ?.contextObject as
+    | {
+        trajectoryPrefix?: { selectedContexts?: unknown };
+        metadata?: { selectedContexts?: unknown };
+      }
+    | undefined;
+  collect(contextObject?.trajectoryPrefix?.selectedContexts);
+  collect(contextObject?.metadata?.selectedContexts);
+  return contexts.some((context) => selected.has(context));
+}
+
+function hasPlayAudioIntent(
+  message: Memory,
+  state: State | undefined,
+): boolean {
+  const text = [
+    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof state?.values?.recentMessages === "string"
+      ? state.values.recentMessages
+      : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  if (extractAudioUrl(text).url) return true;
+  return PLAY_AUDIO_KEYWORDS.some((keyword) =>
+    text.includes(keyword.toLowerCase()),
+  );
+}
+
 /**
  * Extract Spotify track/album/playlist info from URL
  * Returns search query that can be used to find the track on YouTube
@@ -117,7 +228,7 @@ const extractAudioUrl = (
   const youtubeRegex =
     /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
   const youtubeMatch = messageText.match(youtubeRegex);
-  if (youtubeMatch && youtubeMatch[1]) {
+  if (youtubeMatch?.[1]) {
     return {
       url: `https://www.youtube.com/watch?v=${youtubeMatch[1]}`,
       isSpotify: false,
@@ -426,6 +537,9 @@ const getCurrentVoiceChannel = async (
 
 export const playAudio: Action = {
   name: "PLAY_AUDIO",
+  contexts: ["media", "automation"],
+  contextGate: { anyOf: ["media", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "PLAY_YOUTUBE",
     "PLAY_YOUTUBE_AUDIO",
@@ -450,18 +564,35 @@ export const playAudio: Action = {
     "Play new song by name/artist/URL. Not for pause/resume/stop/skip.",
   parameters: [
     {
+      name: "query",
+      description:
+        "Track name, artist, search phrase, or direct media URL to play.",
+      required: false,
+      schema: { type: "string", minLength: 3 },
+    },
+    {
+      name: "url",
+      description:
+        "Direct media URL to play. Prefer query for standard song requests.",
+      required: false,
+      schema: { type: "string", minLength: 8 },
+    },
+    {
       name: "confirmed",
       description: "Must be true to play or queue the requested audio.",
       required: false,
       schema: { type: "boolean", default: false },
     },
   ],
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
+  validate: async (_runtime: IAgentRuntime, message: Memory, state: State) => {
     const text = message.content?.text || "";
     if (isPlaybackTransportControlOnlyMessage(text)) {
       return false;
     }
-    return true;
+    return (
+      selectedContextMatches(state, PLAY_AUDIO_CONTEXTS) ||
+      hasPlayAudioIntent(message, state)
+    );
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -470,6 +601,7 @@ export const playAudio: Action = {
     options: Record<string, unknown> | undefined,
     callback: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
+    const messageText = getPlayAudioQuery(message, options);
     // Create progressive message helper for status updates
     //
     // Why use ProgressiveMessage: playAudio has a deep pipeline (library check,
@@ -487,19 +619,24 @@ export const playAudio: Action = {
       : null;
 
     // For Discord, we need the Discord service
-    if (isDiscord && (!discordService || !discordService.client)) {
+    if (isDiscord && !discordService?.client) {
       logger.error("Discord service not found or not initialized");
       await progress.fail("Discord service is not available.");
-      return;
+      return failureResult(
+        "Discord service is not available.",
+        "DISCORD_SERVICE_UNAVAILABLE",
+      );
     }
-
-    const messageText = message.content.text || "";
     if (isPlaybackTransportControlOnlyMessage(messageText)) {
+      const text =
+        "To pause, resume, stop, skip, or queue, use PLAYBACK_OP with op=pause|resume|skip|stop|queue — not PLAY_AUDIO.";
       await callback({
-        text: "To pause, resume, stop, skip, or queue, use PLAYBACK_OP with op=pause|resume|skip|stop|queue — not PLAY_AUDIO.",
+        text,
         source: message.content.source || "discord",
       });
-      return { success: false, error: "Transport control is not PLAY_AUDIO" };
+      return failureResult(text, "Transport control is not PLAY_AUDIO", {
+        query: messageText,
+      });
     }
 
     const preview = `Confirmation required before playing or queueing audio for: "${messageText}".`;
@@ -542,9 +679,9 @@ export const playAudio: Action = {
             artists?: { name: string }[];
           } | null = null;
 
-          if (musicLibrary && musicLibrary.spotifyClient) {
+          if (musicLibrary?.spotifyClient) {
             const spotifyClient = musicLibrary.spotifyClient;
-            if (spotifyClient.isConfigured && spotifyClient.isConfigured()) {
+            if (spotifyClient.isConfigured?.()) {
               const spotifyUrl = urlResult.spotifyInfo.searchQuery;
               if (urlResult.spotifyInfo.type === "track") {
                 const trackId = spotifyUrl.match(/track\/([a-zA-Z0-9]+)/)?.[1];
@@ -558,7 +695,7 @@ export const playAudio: Action = {
           }
 
           // Build search query from Spotify track info or use URL
-          if (spotifyTrackInfo && spotifyTrackInfo.name) {
+          if (spotifyTrackInfo?.name) {
             const artistNames =
               spotifyTrackInfo.artists?.map((a) => a.name).join(" ") || "";
             searchQuery = `${artistNames} ${spotifyTrackInfo.name}`.trim();
@@ -591,7 +728,7 @@ export const playAudio: Action = {
           // Try to get the last played song from music library (if available)
           try {
             const musicLibrary = runtime.getService("musicLibrary") as any;
-            if (musicLibrary && musicLibrary.getLastPlayedSong) {
+            if (musicLibrary?.getLastPlayedSong) {
               const lastSong = await musicLibrary.getLastPlayedSong();
               if (lastSong) {
                 logger.info(
@@ -613,7 +750,11 @@ export const playAudio: Action = {
             await progress.fail(
               "I couldn't find what song you're referring to. No songs have been played recently. Please specify the song name or provide a link.",
             );
-            return;
+            return failureResult(
+              "I couldn't find what song you're referring to. No songs have been played recently. Please specify the song name or provide a link.",
+              "NO_RECENT_TRACK_REFERENCE",
+              { query: messageText },
+            );
           }
         } else {
           // Extract bot name from runtime for filtering
@@ -624,7 +765,11 @@ export const playAudio: Action = {
             await progress.fail(
               "I couldn't understand what you want me to play. Please provide a link or tell me what song to search for (at least 3 characters).",
             );
-            return;
+            return failureResult(
+              "I couldn't understand what you want me to play. Please provide a link or tell me what song to search for (at least 3 characters).",
+              "UNPARSEABLE_PLAY_REQUEST",
+              { query: messageText },
+            );
           }
         }
       }
@@ -645,7 +790,7 @@ export const playAudio: Action = {
         // Step 1: Check local music library first
         try {
           const musicLibrary = runtime.getService("musicLibrary") as any;
-          if (musicLibrary && musicLibrary.searchLibrary) {
+          if (musicLibrary?.searchLibrary) {
             logger.debug(`Searching local music library for: ${searchQuery}`);
             const libraryResults = await musicLibrary.searchLibrary(
               searchQuery,
@@ -692,7 +837,11 @@ export const playAudio: Action = {
               await progress.fail(
                 `I couldn't find any results for "${searchQuery}". Try being more specific or providing a direct link.`,
               );
-              return;
+              return failureResult(
+                `I couldn't find any results for "${searchQuery}". Try being more specific or providing a direct link.`,
+                "NO_SEARCH_RESULTS",
+                { searchQuery },
+              );
             }
 
             // Use first result
@@ -717,7 +866,16 @@ export const playAudio: Action = {
                   : "Please try again or provide a direct link."
               }`,
             );
-            return;
+            return failureResult(
+              `I had trouble searching for "${searchQuery}". ${
+                errorMsg.includes("browseEndpoint") ||
+                errorMsg.includes("navigationEndpoint")
+                  ? "Try being more specific with song and artist names."
+                  : "Please try again or provide a direct link."
+              }`,
+              errorMsg,
+              { searchQuery },
+            );
           }
         }
       }
@@ -727,7 +885,7 @@ export const playAudio: Action = {
         // First, check if we have this URL in our music library
         try {
           const musicLibrary = runtime.getService("musicLibrary") as any;
-          if (musicLibrary && musicLibrary.getSongByUrl) {
+          if (musicLibrary?.getSongByUrl) {
             logger.debug(`Checking library for URL: ${audioUrl}`);
             const libraryTrack = await musicLibrary.getSongByUrl(audioUrl);
 
@@ -756,7 +914,13 @@ export const playAudio: Action = {
             // Validate YouTube URL
             if (!play.yt_validate(audioUrl)) {
               await progress.fail("The provided URL is not valid.");
-              return;
+              return failureResult(
+                "The provided URL is not valid.",
+                "INVALID_URL",
+                {
+                  audioUrl,
+                },
+              );
             }
 
             // Get video info for YouTube URLs
@@ -772,7 +936,11 @@ export const playAudio: Action = {
               await progress.fail(
                 "I could not access that content. It may be private, unavailable, or the URL may be invalid.",
               );
-              return;
+              return failureResult(
+                "I could not access that content. It may be private, unavailable, or the URL may be invalid.",
+                "INACCESSIBLE_MEDIA",
+                { audioUrl },
+              );
             }
 
             videoTitle = videoInfo.video_details.title || "Unknown Title";
@@ -798,7 +966,10 @@ export const playAudio: Action = {
       if (!currentServerId) {
         if (isDiscord) {
           await progress.fail("I could not determine which server you are in.");
-          return;
+          return failureResult(
+            "I could not determine which server you are in.",
+            "DISCORD_SERVER_UNRESOLVED",
+          );
         } else {
           // For web/CLI, use room ID as server ID
           currentServerId = `web-${message.roomId}`;
@@ -848,7 +1019,10 @@ export const playAudio: Action = {
           await progress.fail(
             "I'm not in a voice channel, and you don't appear to be in one either. Please join a voice channel first, or ask me to join one.",
           );
-          return;
+          return failureResult(
+            "I'm not in a voice channel, and you don't appear to be in one either. Please join a voice channel first, or ask me to join one.",
+            "VOICE_CHANNEL_REQUIRED",
+          );
         }
 
         voiceManager = discordService.voiceManager as VoiceManager;
@@ -856,7 +1030,10 @@ export const playAudio: Action = {
           await progress.fail(
             "Voice functionality is not available at the moment.",
           );
-          return;
+          return failureResult(
+            "Voice functionality is not available at the moment.",
+            "VOICE_MANAGER_UNAVAILABLE",
+          );
         }
 
         // Get voice connection
@@ -871,7 +1048,10 @@ export const playAudio: Action = {
             await progress.fail(
               "I could not establish a voice connection. Please try again.",
             );
-            return;
+            return failureResult(
+              "I could not establish a voice connection. Please try again.",
+              "VOICE_CONNECTION_FAILED",
+            );
           }
         }
 
@@ -995,7 +1175,7 @@ export const playAudio: Action = {
       // Track the request in user preferences (background)
       try {
         const musicLibrary = runtime.getService("musicLibrary") as any;
-        if (musicLibrary && musicLibrary.trackTrackRequest) {
+        if (musicLibrary?.trackTrackRequest) {
           musicLibrary
             .trackTrackRequest(
               message.entityId,
@@ -1020,7 +1200,7 @@ export const playAudio: Action = {
         logger.info(
           `[PlayAudio] Music library service: ${musicLibrary ? "found" : "NOT FOUND"}`,
         );
-        if (musicLibrary && musicLibrary.addSong) {
+        if (musicLibrary?.addSong) {
           logger.info(
             `[PlayAudio] Adding to music library: "${videoTitle}" (${audioUrl})`,
           );
@@ -1051,7 +1231,22 @@ export const playAudio: Action = {
       }
 
       // Memories already created via callback, return success
-      return { success: true, text: responseText };
+      return {
+        success: true,
+        text: responseText,
+        data: {
+          query: messageText,
+          searchQuery,
+          audioUrl,
+          videoTitle,
+          videoDuration,
+          foundInLibrary,
+          willPlayImmediately,
+          queueLengthBeforeAdd: queueLength,
+          trackId: track.id,
+          serverId: currentServerId,
+        },
+      };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -1094,7 +1289,7 @@ export const playAudio: Action = {
       }
 
       await progress.fail(userMessage);
-      return { success: false, error: errorMessage };
+      return failureResult(userMessage, errorMessage, { query: messageText });
     }
   },
   examples: [

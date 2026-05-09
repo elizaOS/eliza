@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { AgentRuntime, type Character, type Plugin } from "@elizaos/core";
 import anthropicPlugin from "@elizaos/plugin-anthropic";
-import { coderPlugin } from "@elizaos/plugin-code";
+import codingToolsPlugin from "@elizaos/plugin-coding-tools";
 import goalsPlugin from "@elizaos/plugin-goals";
 import mcpPlugin from "@elizaos/plugin-mcp";
 import openaiPlugin from "@elizaos/plugin-openai";
@@ -83,16 +83,12 @@ export async function initializeAgent(): Promise<AgentRuntime> {
   const providerPlugin =
     provider === "anthropic" ? anthropicPlugin : openaiPlugin;
 
-  // Ensure directories are set for safety
-  if (!process.env.CODER_ALLOWED_DIRECTORY) {
-    process.env.CODER_ALLOWED_DIRECTORY = process.cwd();
+  if (!process.env.CODING_TOOLS_WORKSPACE_ROOTS) {
+    process.env.CODING_TOOLS_WORKSPACE_ROOTS = process.cwd();
   }
   if (!process.env.SHELL_ALLOWED_DIRECTORY) {
     process.env.SHELL_ALLOWED_DIRECTORY = process.cwd();
   }
-
-  // Enable coder plugin explicitly
-  process.env.CODER_ENABLED = "true";
 
   const plugins: Plugin[] = [
     sqlPlugin,
@@ -100,8 +96,8 @@ export async function initializeAgent(): Promise<AgentRuntime> {
     mcpPlugin,
     goalsPlugin,
     shellPlugin,
-    coderPlugin, // Direct coding capabilities
-    agentOrchestratorPlugin, // Agent orchestration
+    codingToolsPlugin,
+    agentOrchestratorPlugin,
   ];
 
   const runtime = new AgentRuntime({

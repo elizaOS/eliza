@@ -6,7 +6,7 @@ import {
   SegmentedControl,
   Textarea,
   useApp,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import {
   type ReactNode,
   useCallback,
@@ -337,6 +337,7 @@ function useLifeOpsSideWorkspace({
     pollIntervalMs: CONNECTOR_REFRESH_INTERVAL_MS,
   });
   const status = connector.status;
+  const activeGrantId = status?.grant?.id;
   const capabilities = useMemo(() => capabilitySet(status), [status]);
   const connected = status?.connected === true;
   const calendarEnabled =
@@ -412,6 +413,7 @@ function useLifeOpsSideWorkspace({
             ? client.getLifeOpsCalendarFeed({
                 side: status.side,
                 mode: status.mode,
+                grantId: activeGrantId,
                 timeMin: startOfLocalDay().toISOString(),
                 timeMax: addDays(startOfLocalDay(), windowDays).toISOString(),
                 timeZone,
@@ -422,6 +424,7 @@ function useLifeOpsSideWorkspace({
             ? client.getLifeOpsGmailTriage({
                 side: status.side,
                 mode: status.mode,
+                grantId: activeGrantId,
                 maxResults: GMAIL_MESSAGE_LIMIT,
                 forceSync: options?.forceSync,
               })
@@ -442,7 +445,16 @@ function useLifeOpsSideWorkspace({
         setLoading(false);
       }
     },
-    [calendarEnabled, connected, emailEnabled, status, t, timeZone, windowDays],
+    [
+      activeGrantId,
+      calendarEnabled,
+      connected,
+      emailEnabled,
+      status,
+      t,
+      timeZone,
+      windowDays,
+    ],
   );
 
   useEffect(() => {
@@ -556,6 +568,7 @@ function useLifeOpsSideWorkspace({
       const result = await client.createLifeOpsCalendarEvent({
         side: status.side,
         mode: status.mode,
+        grantId: activeGrantId,
         title: eventTitle.trim(),
         location: eventLocation.trim() || undefined,
         startAt,
@@ -592,6 +605,7 @@ function useLifeOpsSideWorkspace({
     eventLocation,
     eventTime,
     eventTitle,
+    activeGrantId,
     refresh,
     setActionNotice,
     status,
@@ -609,6 +623,7 @@ function useLifeOpsSideWorkspace({
       const response = await client.createLifeOpsGmailReplyDraft({
         side: status.side,
         mode: status.mode,
+        grantId: activeGrantId,
         messageId: selectedGmailMessage.id,
         tone: draftTone,
         includeQuotedOriginal: true,
@@ -638,6 +653,7 @@ function useLifeOpsSideWorkspace({
   }, [
     draftTone,
     emailEnabled,
+    activeGrantId,
     selectedGmailMessage,
     setActionNotice,
     status,
@@ -663,6 +679,7 @@ function useLifeOpsSideWorkspace({
       const result = await client.getLifeOpsGmailSearch({
         side: status.side,
         mode: status.mode,
+        grantId: activeGrantId,
         query,
         maxResults: GMAIL_BULK_MESSAGE_LIMIT,
         forceSync: true,
@@ -689,6 +706,7 @@ function useLifeOpsSideWorkspace({
     gmailIncludeSpamTrash,
     gmailQuery,
     gmailReplyNeededOnly,
+    activeGrantId,
     status,
     t,
   ]);
@@ -703,6 +721,7 @@ function useLifeOpsSideWorkspace({
       const result = await client.getLifeOpsGmailNeedsResponse({
         side: status.side,
         mode: status.mode,
+        grantId: activeGrantId,
         maxResults: GMAIL_BULK_MESSAGE_LIMIT,
         forceSync: true,
       });
@@ -721,7 +740,7 @@ function useLifeOpsSideWorkspace({
     } finally {
       setLoading(false);
     }
-  }, [emailEnabled, status, t]);
+  }, [activeGrantId, emailEnabled, status, t]);
 
   const handleLoadRecommendations = useCallback(async () => {
     if (!status || !emailEnabled) {
@@ -733,6 +752,7 @@ function useLifeOpsSideWorkspace({
       const result = await client.getLifeOpsGmailRecommendations({
         side: status.side,
         mode: status.mode,
+        grantId: activeGrantId,
         query: gmailQuery.trim() || undefined,
         maxResults: GMAIL_BULK_MESSAGE_LIMIT,
         forceSync: true,
@@ -757,6 +777,7 @@ function useLifeOpsSideWorkspace({
     gmailIncludeSpamTrash,
     gmailQuery,
     gmailReplyNeededOnly,
+    activeGrantId,
     status,
     t,
   ]);
@@ -779,6 +800,7 @@ function useLifeOpsSideWorkspace({
       await client.sendLifeOpsGmailReply({
         side: status.side,
         mode: status.mode,
+        grantId: activeGrantId,
         messageId: selectedGmailMessage.id,
         bodyText: draftBody,
         confirmSend: true,
@@ -812,6 +834,7 @@ function useLifeOpsSideWorkspace({
   }, [
     draft,
     draftBody,
+    activeGrantId,
     refresh,
     selectedGmailMessage,
     sendConfirmed,
@@ -891,6 +914,7 @@ function useLifeOpsSideWorkspace({
         const result = await client.manageLifeOpsGmailMessages({
           side: status.side,
           mode: status.mode,
+          grantId: activeGrantId,
           messageIds,
           operation,
           labelIds,
@@ -925,6 +949,7 @@ function useLifeOpsSideWorkspace({
     },
     [
       emailManageEnabled,
+      activeGrantId,
       gmailLabelIds,
       gmailManageConfirmed,
       gmailSelectedMessageIds,

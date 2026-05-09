@@ -7,7 +7,7 @@ import {
   STOP_EMOTE_EVENT,
   type TranslateFn,
   useRenderGuard,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import {
   memo,
   type ReactElement,
@@ -242,6 +242,8 @@ export const VrmStage = memo(function VrmStage({
 
   return (
     <div
+      data-testid="companion-vrm-stage"
+      data-theme={environmentTheme}
       className={`fixed inset-0 z-0 overflow-hidden ${environmentTheme === "dark" ? "bg-[#08060e]" : "bg-[#f5f5f5]"}`}
     >
       {/* Static CSS fallback — themed construct with faint receding grid */}

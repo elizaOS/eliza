@@ -43,7 +43,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
-    "@cypress/react": "^8.0.0",
+    "@cypress/react": "^9.0.2",
     "@radix-ui/react-slot": "^1.0.0",
     "@radix-ui/react-tabs": "^1.0.0",
     "@tailwindcss/postcss": "4.2.4",
@@ -53,7 +53,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react-swc": "^4.0.0",
     "autoprefixer": "^10.4.21",
-    "cypress": "^13.7.0",
+    "cypress": "^15.14.2",
     "lucide-react": "^1.0.0",
     "postcss": "^8.5.4",
     "react": "^19.0.0",

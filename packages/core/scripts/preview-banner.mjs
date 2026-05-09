@@ -113,7 +113,8 @@ function graphemeWidth(grapheme) {
 }
 
 function displayWidth(text) {
-	const stripped = text.replace(/\x1b\[[0-9;]*m/g, "");
+	const ansiRe = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+	const stripped = text.replace(ansiRe, "");
 	const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 	let width = 0;
 	for (const { segment } of segmenter.segment(stripped)) {

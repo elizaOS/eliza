@@ -33,6 +33,11 @@ import {
   countAllocatedWorkloadsOnNode,
   countRetainedWorkloadsOnNode,
 } from "@/lib/services/docker-node-workloads";
+import {
+  inferArchitectureFromHetznerServerType,
+  inferNodeArchitectureFromMetadata,
+  isArchitectureCompatibleWithPlatform,
+} from "@/lib/services/docker-sandbox-utils";
 import { logger } from "@/lib/utils/logger";
 
 // ---------------------------------------------------------------------------
@@ -66,8 +71,8 @@ export const DEFAULT_AUTOSCALE_POLICY: AutoscalePolicy = {
   maxNodes: 12,
   scaleUpCooldownMs: 5 * 60 * 1000,
   idleNodeMinAgeMs: 30 * 60 * 1000,
-  defaultServerType: "cax21",
-  defaultLocation: "fsn1",
+  defaultServerType: containersEnv.defaultHcloudServerType(),
+  defaultLocation: containersEnv.defaultHcloudLocation(),
   defaultImage: "ubuntu-24.04",
   defaultCapacity: 8,
 };
@@ -128,7 +133,15 @@ export class NodeAutoscaler {
   async evaluateCapacity(): Promise<CapacityDecision> {
     const nodes = await dockerNodesRepository.findAll();
     const enabled = nodes.filter((n) => n.enabled);
-    const healthyEnabled = enabled.filter((n) => n.status === "healthy");
+    const requiredPlatform = containersEnv.defaultAgentImagePlatform();
+    const healthyEnabled = enabled.filter(
+      (n) =>
+        n.status === "healthy" &&
+        isArchitectureCompatibleWithPlatform(
+          inferNodeArchitectureFromMetadata(n.metadata),
+          requiredPlatform,
+        ),
+    );
     const allocatedByNode = new Map(
       await Promise.all(
         healthyEnabled.map(
@@ -160,7 +173,10 @@ export class NodeAutoscaler {
       belowBuffer &&
       (!recentlyProvisioned || belowHotFloor);
 
-    const drainCandidates = await this.findDrainCandidates(enabled);
+    const drainCandidates =
+      shouldScaleUp || belowBuffer
+        ? []
+        : await this.findDrainCandidates(healthyEnabled, allocatedByNode, totalAvailable);
 
     let reason = "steady";
     if (shouldScaleUp) {
@@ -225,6 +241,7 @@ export class NodeAutoscaler {
       registrationUrl: bootstrap.registrationUrl,
       registrationSecret: bootstrap.registrationSecret,
       prePullImages,
+      prePullPlatform: containersEnv.defaultAgentImagePlatform(),
       capacity,
     });
 
@@ -262,10 +279,12 @@ export class NodeAutoscaler {
       ssh_user: "root",
       metadata: {
         provider: "hetzner-cloud",
+        autoscaled: true,
         hcloudServerId: provisioned.server.id,
         serverType,
         location,
         image,
+        architecture: inferArchitectureFromHetznerServerType(serverType),
         provisionedAt: new Date().toISOString(),
       },
     });
@@ -317,14 +336,11 @@ export class NodeAutoscaler {
 
     if (options.deprovision !== true) return;
 
-    const meta = (node.metadata ?? {}) as Record<string, unknown>;
-    const hcloudServerId =
-      typeof meta.hcloudServerId === "number" ? meta.hcloudServerId : undefined;
+    const hcloudServerId = getHcloudServerId(node);
     if (!hcloudServerId) {
       logger.warn("[autoscaler] Cannot deprovision: no hcloudServerId on node metadata", {
         nodeId,
       });
-      await dockerNodesRepository.delete(node.id);
       return;
     }
 
@@ -358,20 +374,50 @@ export class NodeAutoscaler {
    * ago that we are not deprovisioning a node that has just barely come
    * online before any container could land on it.
    */
-  private async findDrainCandidates(enabled: DockerNode[]): Promise<DockerNode[]> {
-    if (enabled.length <= 1) return [];
+  private async findDrainCandidates(
+    healthyEnabled: DockerNode[],
+    allocatedByNode: Map<string, number>,
+    totalAvailable: number,
+  ): Promise<DockerNode[]> {
+    if (healthyEnabled.length <= 1) return [];
 
     const ageThreshold = this.nowFn() - this.policy.idleNodeMinAgeMs;
-    const oldEnough = enabled.filter((n) => n.created_at.getTime() < ageThreshold);
+    const oldEnough = healthyEnabled.filter(
+      (n) => isAutoscaledHetznerNode(n) && n.created_at.getTime() < ageThreshold,
+    );
     if (oldEnough.length === 0) return [];
 
+    const preservationFloor = Math.max(
+      this.policy.minFreeSlotsBuffer,
+      this.policy.minHotAvailableSlots,
+    );
     const counts = await Promise.all(
       oldEnough.map(async (node) => ({
         node,
-        count: await countRetainedWorkloadsOnNode(node.node_id),
+        retainedCount: await countRetainedWorkloadsOnNode(node.node_id),
       })),
     );
-    return counts.filter((c) => c.count === 0).map((c) => c.node);
+
+    let remainingAvailable = totalAvailable;
+    let remainingHealthyNodes = healthyEnabled.length;
+    const drainCandidates: DockerNode[] = [];
+
+    for (const { node, retainedCount } of counts) {
+      if (retainedCount > 0) continue;
+
+      const allocated = allocatedByNode.get(node.node_id) ?? node.allocated_count;
+      if (allocated > 0) continue;
+
+      const nodeAvailable = Math.max(0, node.capacity - allocated);
+      if (remainingHealthyNodes <= 1) continue;
+      if (remainingAvailable - nodeAvailable < preservationFloor) continue;
+
+      drainCandidates.push(node);
+      remainingAvailable -= nodeAvailable;
+      remainingHealthyNodes -= 1;
+    }
+
+    return drainCandidates;
   }
 }
 
@@ -383,6 +429,20 @@ function generateNodeId(): string {
   // Short hex id with a deterministic prefix — easy to scan in the dashboard.
   const random = Math.random().toString(16).slice(2, 10);
   return `node-${random}`;
+}
+
+function getHcloudServerId(node: DockerNode): number | undefined {
+  const meta = (node.metadata ?? {}) as Record<string, unknown>;
+  return typeof meta.hcloudServerId === "number" ? meta.hcloudServerId : undefined;
+}
+
+function isAutoscaledHetznerNode(node: DockerNode): boolean {
+  const meta = (node.metadata ?? {}) as Record<string, unknown>;
+  return (
+    meta.provider === "hetzner-cloud" &&
+    meta.autoscaled === true &&
+    getHcloudServerId(node) !== undefined
+  );
 }
 
 let cachedAutoscaler: NodeAutoscaler | null = null;

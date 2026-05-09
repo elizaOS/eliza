@@ -20,11 +20,13 @@ import {
   AgentRuntime,
   ChannelType,
   createMessageMemory,
+  type GenerateTextParams,
   type IAgentRuntime,
   ModelType,
   type Plugin,
-  parseToonKeyValue,
+  parseJSONObjectFromText,
   stringToUuid,
+  type TextStreamResult,
   type UUID,
 } from "@elizaos/core";
 import sqlPlugin from "@elizaos/plugin-sql";
@@ -229,14 +231,16 @@ function detectAIPlayer(text: string): Player {
  */
 async function ticTacToeModelHandler(
   _runtime: IAgentRuntime,
-  params: { prompt?: string; messages?: Array<{ content: string }> },
-): Promise<string> {
+  params: GenerateTextParams,
+): Promise<string | TextStreamResult> {
   // Extract the prompt text
   let promptText = "";
   if (params.prompt) {
     promptText = params.prompt;
   } else if (params.messages && params.messages.length > 0) {
-    promptText = params.messages.map((m) => m.content).join("\n");
+    promptText = params.messages
+      .map((m) => (typeof m.content === "string" ? m.content : ""))
+      .join("\n");
   }
 
   if (!promptText) {
@@ -287,6 +291,7 @@ const ticTacToePlugin: Plugin = {
   models: {
     [ModelType.TEXT_LARGE]: ticTacToeModelHandler,
     [ModelType.TEXT_SMALL]: ticTacToeModelHandler,
+    [ModelType.TEXT_EMBEDDING]: async () => new Array(384).fill(0),
   },
 };
 
@@ -422,11 +427,14 @@ function parseMoveFromAgentText(text: string): number | null {
   const direct = parseInt(trimmed, 10);
   if (!Number.isNaN(direct) && direct >= 0 && direct <= 8) return direct;
 
-  const parsed = parseToonKeyValue<{ text?: unknown }>(trimmed);
-  if (typeof parsed?.text === "string") {
-    const toonMove = parseInt(parsed.text.trim(), 10);
-    if (!Number.isNaN(toonMove) && toonMove >= 0 && toonMove <= 8) {
-      return toonMove;
+  const parsed = parseJSONObjectFromText(trimmed);
+  for (const key of ["text", "move", "bestMove"]) {
+    const value = parsed?.[key];
+    if (typeof value === "string" || typeof value === "number") {
+      const jsonMove = parseInt(String(value).trim(), 10);
+      if (!Number.isNaN(jsonMove) && jsonMove >= 0 && jsonMove <= 8) {
+        return jsonMove;
+      }
     }
   }
 
@@ -439,16 +447,7 @@ async function getAIMove(session: GameSession): Promise<number> {
   const state = game.getState();
 
   // Environment input -> Eliza message (full pipeline via messageService.handleMessage)
-  const boardCells = state.board.map((c) => c || "_").join(",");
-  const available = getAvailableMoves(state.board).join(",");
-  const prompt = [
-    "TIC_TAC_TOE_ENV_UPDATE:",
-    `BOARD_CELLS: ${boardCells}`,
-    `YOU_ARE: ${state.currentPlayer}`,
-    `AVAILABLE_MOVES: ${available}`,
-    "",
-    "Return ONLY the best move as a number 0-8.",
-  ].join("\n");
+  const prompt = createMovePrompt(state);
 
   const message = createMessageMemory({
     id: randomUUID() as UUID,
@@ -489,6 +488,33 @@ async function getAIMove(session: GameSession): Promise<number> {
     return fallback[0];
   }
 
+  return move;
+}
+
+function createMovePrompt(state: GameState): string {
+  const boardCells = state.board.map((c) => c || "_").join(",");
+  const available = getAvailableMoves(state.board).join(",");
+  return [
+    "TIC_TAC_TOE_ENV_UPDATE:",
+    `BOARD_CELLS: ${boardCells}`,
+    `YOU_ARE: ${state.currentPlayer}`,
+    `AVAILABLE_MOVES: ${available}`,
+    "",
+    "Return ONLY the best move as a number 0-8.",
+  ].join("\n");
+}
+
+async function getBenchmarkAIMove(session: GameSession): Promise<number> {
+  const state = session.game.getState();
+  const raw = await ticTacToeModelHandler(session.runtime, {
+    prompt: createMovePrompt(state),
+  });
+  const text = typeof raw === "string" ? raw : "";
+  const move = parseMoveFromAgentText(text);
+  if (move === null) {
+    const fallback = getAvailableMoves(state.board);
+    return fallback[0];
+  }
   return move;
 }
 
@@ -621,7 +647,7 @@ async function runBenchmark(session: GameSession): Promise<void> {
   for (let i = 0; i < iterations; i++) {
     session.game.reset();
     while (!session.game.getState().gameOver) {
-      const move = await getAIMove(session);
+      const move = await getBenchmarkAIMove(session);
       session.game.makeMove(move);
     }
   }
@@ -742,8 +768,11 @@ async function main(): Promise<void> {
 }
 
 if (import.meta.main) {
-  main().catch((error) => {
-    console.error("Fatal error:", error);
-    process.exit(1);
-  });
+  main().then(
+    () => process.exit(0),
+    (error) => {
+      console.error("Fatal error:", error);
+      process.exit(1);
+    },
+  );
 }

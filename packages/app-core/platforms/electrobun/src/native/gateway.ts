@@ -7,6 +7,7 @@
 
 import { EventEmitter } from "node:events";
 import { getBrandConfig } from "../brand-config";
+import { logger } from "../logger";
 import type {
 	DiscoveryOptions,
 	DiscoveryResult,
@@ -41,12 +42,12 @@ async function loadDiscoveryModule(): Promise<boolean> {
 	for (const pkg of packages) {
 		try {
 			bonjourModule = (await import(pkg)) as BonjourModuleProvider;
-			console.log(`[Gateway] Loaded ${pkg} module`);
+			logger.info(`[Gateway] Loaded ${pkg} module`);
 			return true;
 		} catch {}
 	}
 
-	console.warn(
+	logger.warn(
 		"[Gateway] No mDNS/Bonjour module available. Install bonjour-service for local discovery.",
 	);
 	return false;

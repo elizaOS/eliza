@@ -15,8 +15,8 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { agentBudgetService } from "@/lib/services/agent-budgets";
 import { creditsService } from "@/lib/services/credits";
 import { organizationsService } from "@/lib/services/organizations";
-import { getConnectionString } from "@/tests/helpers/local-database";
-import { cleanupTestData, createTestDataSet } from "@/tests/helpers/test-data-factory";
+import { getConnectionString } from "@/tests/infrastructure/local-database";
+import { cleanupTestData, createTestDataSet } from "@/tests/infrastructure/test-data-factory";
 
 const STRESS_BATCH_SIZE = 8;
 const STRESS_OPERATION_TIMEOUT_MS = 10_000;

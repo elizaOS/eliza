@@ -9,8 +9,9 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { getActivityTemplate } from "../generated/prompts/typescript/prompts.js";
+import { getActivityTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
+import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
 import {
   getNumberValue,
   getRecordValue,
@@ -42,6 +43,9 @@ type ActivityParams = {
 
 export const getActivityAction: Action = {
   name: "GET_LINEAR_ACTIVITY",
+  contexts: ["tasks", "connectors", "automation"],
+  contextGate: { anyOf: ["tasks", "connectors", "automation"] },
+  roleGate: { minRole: "USER" },
   description: "Get recent Linear activity log with optional filters",
   descriptionCompressed: "get recent Linear activity log w/ optional filter",
   similes: [
@@ -64,6 +68,7 @@ export const getActivityAction: Action = {
       required: false,
       schema: { type: "number" as const },
     },
+    linearAccountIdParameter,
   ],
 
   examples: [
@@ -132,6 +137,7 @@ export const getActivityAction: Action = {
       if (!linearService) {
         throw new Error("Linear service not available");
       }
+      const accountId = getLinearAccountId(runtime, _options);
 
       const content = message.content.text || "";
       const params = (_options?.parameters ?? {}) as ActivityParams;
@@ -218,7 +224,7 @@ export const getActivityAction: Action = {
         }
       }
 
-      let activity = linearService.getActivityLog(limit * 2, filters);
+      let activity = linearService.getActivityLog(limit * 2, filters, accountId);
 
       if (filters.fromDate) {
         const fromDateValue = filters.fromDate;
@@ -249,6 +255,7 @@ export const getActivityAction: Action = {
           success: true,
           data: {
             activity: [],
+            accountId,
           },
         };
       }
@@ -304,6 +311,7 @@ export const getActivityAction: Action = {
               }
             : undefined,
           count: activity.length,
+          accountId,
         },
       };
     } catch (error) {

@@ -4,7 +4,7 @@ import type {
   ScenarioCheckResult,
   ScenarioContext,
 } from "@elizaos/scenario-schema";
-import type { LifeOpsXFeedType } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsXFeedType } from "@elizaos/shared";
 import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import { seedXConnectorGrant } from "../../mocks/helpers/seed-grants.ts";
 

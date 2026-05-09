@@ -12,7 +12,7 @@
     "pinTo": [],
     "style": "card",
     "icon": "RefreshCw",
-    "group": "knowledge",
+    "group": "documents",
     "groupOrder": 6,
     "actions": ["enable", "configure"]
   },
@@ -22,5 +22,5 @@
   },
   "dependsOn": [],
   "kind": "plugin",
-  "subtype": "knowledge"
+  "subtype": "documents"
 }

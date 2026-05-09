@@ -113,7 +113,7 @@ function createOpenApiResponse(env: { NEXT_PUBLIC_APP_URL?: string }): Response 
     paths: { ...discoveredPaths },
     components: {
       securitySchemes: {
-        bearerAuth: { type: "http", scheme: "bearer", description: "Privy session token" },
+        bearerAuth: { type: "http", scheme: "bearer", description: "Steward session token" },
         apiKeyAuth: {
           type: "apiKey",
           in: "header",

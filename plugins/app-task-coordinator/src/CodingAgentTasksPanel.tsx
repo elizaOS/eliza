@@ -10,7 +10,7 @@ import {
   useApp,
   usePtySessions,
   WidgetSection,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import { Badge, Button } from "@elizaos/ui";
 import { Activity, SquareArrowOutUpRight } from "lucide-react";
 import {

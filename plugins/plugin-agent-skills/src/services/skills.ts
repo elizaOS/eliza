@@ -22,7 +22,7 @@ import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
 	estimateTokens,
 	extractBody,
-	generateSkillsToon,
+	generateSkillsJson,
 	parseFrontmatter,
 	validateFrontmatter,
 } from "../parser";
@@ -40,7 +40,7 @@ import type {
 	LoadedSkillWithSource,
 	LoadSkillOptions,
 	OttoInstallOption,
-	PromptToonOptions,
+	PromptJsonOptions,
 	Skill,
 	SkillCatalogEntry,
 	SkillConfigEntry,
@@ -1029,7 +1029,7 @@ export class AgentSkillsService extends Service {
 			case "apt":
 				return `Install with apt: sudo apt-get install ${option.package}`;
 			case "node":
-				return `Install with npm/pnpm: npm install -g ${option.package}`;
+				return `Install with npm: npm install -g ${option.package}`;
 			case "pip":
 				return `Install with pip: pip install ${option.package}`;
 			case "cargo":
@@ -1310,15 +1310,15 @@ export class AgentSkillsService extends Service {
 	}
 
 	/**
-	 * Generate TOON for available skills (for system prompts).
+	 * Generate JSON for available skills (for system prompts).
 	 */
-	generateSkillsPromptToon(options: PromptToonOptions = {}): string {
+	generateSkillsPromptJson(options: PromptJsonOptions = {}): string {
 		const metadata = this.getSkillsMetadata();
 		const limited = options.maxSkills
 			? metadata.slice(0, options.maxSkills)
 			: metadata;
 
-		return generateSkillsToon(limited, {
+		return generateSkillsJson(limited, {
 			includeLocation: options.includeLocation ?? true,
 		});
 	}

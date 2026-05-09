@@ -3,109 +3,79 @@ import type {
 	Action as ElizaAction,
 	IAgentRuntime,
 	Memory,
+	State,
 	UUID,
 } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import { parseJSONObjectFromText } from "../../../utils.ts";
 import { TrustEvidenceType, type TrustInteraction } from "../types/trust.ts";
 import { hasTrustEngine } from "./hasTrustEngine.ts";
 
 export const recordTrustInteractionAction: ElizaAction = {
 	name: "RECORD_TRUST_INTERACTION",
+	contexts: ["admin", "settings", "agent_internal"],
+	roleGate: { minRole: "ADMIN" },
 	description: "Records a trust-affecting interaction between entities",
 	suppressPostActionContinuation: true,
+	parameters: [
+		{
+			name: "type",
+			description: "Trust evidence type to record.",
+			required: true,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "targetEntityId",
+			description: "Target entity ID. Defaults to the agent ID.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "impact",
+			description: "Numerical trust impact. Defaults to 10.",
+			required: false,
+			schema: { type: "number" as const },
+		},
+		{
+			name: "description",
+			description: "Optional interaction description.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+	],
 
 	validate: async (
 		runtime: IAgentRuntime,
 		message: Memory,
-		state?: unknown,
+		state?: State,
 		options?: Record<string, unknown>,
 	): Promise<boolean> => {
-		const __avTextRaw =
-			typeof message?.content?.text === "string" ? message.content.text : "";
-		const __avText = __avTextRaw.toLowerCase();
-		const __avKeywords = ["record", "trust", "interaction"];
-		const __avKeywordOk =
-			__avKeywords.length > 0 &&
-			__avKeywords.some((word) => word.length > 0 && __avText.includes(word));
-		const __avRegex = /\b(?:record|trust|interaction)\b/i;
-		const __avRegexOk = __avRegex.test(__avText);
-		const __avSource = String(message?.content?.source ?? "");
-		const __avExpectedSource = "";
-		const __avSourceOk = __avExpectedSource
-			? __avSource === __avExpectedSource
-			: Boolean(
-					__avSource ||
-						state ||
-						runtime?.agentId ||
-						runtime?.getService ||
-						runtime?.getSetting,
-				);
-		const __avOptions = options && typeof options === "object" ? options : {};
-		const __avInputOk =
-			__avText.trim().length > 0 ||
-			Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-			Boolean(message?.content && typeof message.content === "object");
-
-		if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-			return false;
-		}
-
-		const __avLegacyValidate = async (
-			legacyRuntime: IAgentRuntime,
-			legacyMessage: Memory,
-			legacyState?: unknown,
-			legacyOptions?: Record<string, unknown>,
-		): Promise<boolean> => {
-			const __avTextRaw =
-				typeof legacyMessage?.content?.text === "string"
-					? legacyMessage.content.text
-					: "";
-			const __avText = __avTextRaw.toLowerCase();
-			const __avKeywords = ["record", "trust", "interaction"];
-			const __avKeywordOk =
-				__avKeywords.length > 0 &&
-				__avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-			const __avRegex = /\b(?:record|trust|interaction)\b/i;
-			const __avRegexOk = __avRegex.test(__avText);
-			const __avSource = String(legacyMessage?.content?.source ?? "");
-			const __avExpectedSource = "";
-			const __avSourceOk = __avExpectedSource
-				? __avSource === __avExpectedSource
-				: Boolean(
-						__avSource ||
-							legacyState ||
-							legacyRuntime?.agentId ||
-							legacyRuntime?.getService,
-					);
-			const __avOptions =
-				legacyOptions && typeof legacyOptions === "object" ? legacyOptions : {};
-			const __avInputOk =
-				__avText.trim().length > 0 ||
-				Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-				Boolean(
-					legacyMessage?.content && typeof legacyMessage.content === "object",
-				);
-
-			if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-				return false;
-			}
-
-			try {
-				return hasTrustEngine(legacyRuntime);
-			} catch {
-				return false;
-			}
-		};
 		try {
-			return Boolean(
-				await __avLegacyValidate(runtime, message, state, options),
+			if (!hasTrustEngine(runtime)) return false;
+			const params =
+				options?.parameters && typeof options.parameters === "object"
+					? (options.parameters as Record<string, unknown>)
+					: {};
+			const hasStructuredType =
+				typeof params.type === "string" && params.type.trim().length > 0;
+			return (
+				hasStructuredType ||
+				hasActionContextOrKeyword(message, state, {
+					contexts: ["admin", "settings", "agent_internal"],
+					keywords: [
+						"record trust",
+						"trust interaction",
+						"trust evidence",
+						"kept their promise",
+					],
+				})
 			);
 		} catch {
 			return false;
 		}
 	},
 
-	handler: async (runtime: IAgentRuntime, message: Memory) => {
+	handler: async (runtime: IAgentRuntime, message: Memory, _state, options) => {
 		const trustEngine = runtime.getService("trust-engine") as unknown as {
 			recordInteraction: (interaction: TrustInteraction) => Promise<void>;
 		} | null;
@@ -114,6 +84,10 @@ export const recordTrustInteractionAction: ElizaAction = {
 			throw new Error("Trust engine service not available");
 		}
 
+		const params =
+			options?.parameters && typeof options.parameters === "object"
+				? (options.parameters as Record<string, unknown>)
+				: {};
 		const text = message.content.text || "";
 		let parsed: Record<string, unknown> | null = null;
 		try {
@@ -121,15 +95,15 @@ export const recordTrustInteractionAction: ElizaAction = {
 		} catch {
 			// Not JSON
 		}
-		const parsedContent = parsed as {
+		const parsedContent = { ...(parsed ?? {}), ...params } as {
 			type?: string;
 			targetEntityId?: string;
 			impact?: number;
 			description?: string;
 			verified?: boolean;
-		} | null;
+		};
 
-		if (!parsedContent?.type) {
+		if (!parsedContent.type) {
 			return {
 				success: false,
 				text: "Could not parse trust interaction details. Please provide type and optionally: targetEntityId, impact, description",

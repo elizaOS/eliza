@@ -6,15 +6,17 @@
  */
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { GOOGLE_CHAT_MESSAGE_OP_ACTION, messageOp } from "./actions/index.js";
-import { googleChatSpacesProvider } from "./providers/index.js";
+import { getConnectorAccountManager, logger } from "@elizaos/core";
+import { createGoogleChatConnectorAccountProvider } from "./connector-account-provider.js";
 import { GoogleChatService } from "./service.js";
 
+export * from "./accounts.js";
+// Message, space listing, and reaction operations route through MESSAGE via
+// the MessageConnector registered by GoogleChatService.
 // Export types
 export * from "./types.js";
-// Export service, action, and provider
-export { GOOGLE_CHAT_MESSAGE_OP_ACTION, GoogleChatService, googleChatSpacesProvider, messageOp };
+// Export service
+export { GoogleChatService };
 
 /**
  * Google Chat plugin definition
@@ -25,17 +27,37 @@ const googleChatPlugin: Plugin = {
 
   services: [GoogleChatService],
 
-  actions: [messageOp],
+  actions: [],
 
-  providers: [googleChatSpacesProvider],
+  providers: [],
 
   tests: [],
+
+  // Self-declared auto-enable: activate when the "googlechat" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["googlechat"],
+  },
 
   /**
    * Plugin initialization hook
    */
-  init: async (config: Record<string, string>, _runtime: IAgentRuntime): Promise<void> => {
+  init: async (config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
     logger.info("Initializing Google Chat plugin...");
+
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createGoogleChatConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:google-chat",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register Google Chat provider with ConnectorAccountManager"
+      );
+    }
 
     // Log configuration status
     const serviceAccount =

@@ -7,6 +7,8 @@ Compares predicted function calls against expected calls with flexible matching.
 
 from __future__ import annotations
 
+import ast
+import json
 import logging
 import math
 from typing import Optional
@@ -205,6 +207,45 @@ class ASTEvaluator:
                 for p, e in zip(predicted, expected, strict=True)
             )
 
+        # BFCL nested-arguments singleton-list convention: each leaf value in
+        # the possible_answer ground truth is wrapped in a list of acceptable
+        # values, even inside nested objects. _parse_ground_truth_calls only
+        # unwraps the top-level list. When the model emits a scalar that
+        # matches the single allowed value, accept it. Mirror it for the
+        # opposite direction so the matcher is symmetric.
+        if not self.strict_type_matching:
+            if isinstance(expected, list) and len(expected) == 1:
+                if self._values_match(predicted, expected[0]):
+                    return True
+            if isinstance(predicted, list) and len(predicted) == 1:
+                if self._values_match(predicted[0], expected):
+                    return True
+
+        # Stringified-list tolerance: the model sometimes emits a JSON-encoded
+        # or Python-repr list when the schema wants an actual list. Try to
+        # decode and re-compare. Common with Java argv parameters and SQL
+        # column lists where the ground truth is list[str].
+        if not self.strict_type_matching:
+            if isinstance(predicted, str) and isinstance(expected, list):
+                parsed = self._try_parse_stringified_list(predicted)
+                if parsed is not None and self._values_match(parsed, expected):
+                    return True
+            if isinstance(expected, str) and isinstance(predicted, list):
+                parsed = self._try_parse_stringified_list(expected)
+                if parsed is not None and self._values_match(predicted, parsed):
+                    return True
+
+        # Comma-separated string vs list-of-strings tolerance — common when
+        # the model returns SQL-style "a, b, c" for a parameter the schema
+        # actually defines as list[str]. Only meaningful for primitive lists.
+        if not self.strict_type_matching:
+            if isinstance(predicted, str) and isinstance(expected, list):
+                if self._delimited_string_matches_list(predicted, expected):
+                    return True
+            if isinstance(expected, str) and isinstance(predicted, list):
+                if self._delimited_string_matches_list(expected, predicted):
+                    return True
+
         # Dict comparison
         if isinstance(predicted, dict) and isinstance(expected, dict):
             return self._arguments_match(predicted, expected)
@@ -237,6 +278,38 @@ class ASTEvaluator:
             except ValueError:
                 pass
         return None
+
+    def _delimited_string_matches_list(self, text: str, expected: list) -> bool:
+        """Treat a delimited string as a flat list and compare element-wise.
+
+        Accepts comma-separated, whitespace-separated, or space-after-comma
+        variants. Only fires for primitive (non-nested) expected lists.
+        """
+        if any(isinstance(e, (list, dict)) for e in expected):
+            return False
+        for parts in (
+            [p.strip().strip("'\"") for p in text.split(",") if p.strip()],
+            text.split(),
+        ):
+            if len(parts) == len(expected) and all(
+                self._values_match(p, e) for p, e in zip(parts, expected, strict=True)
+            ):
+                return True
+        return False
+
+    def _try_parse_stringified_list(self, value: str) -> Optional[list]:
+        """Decode a string that wraps a Python/JSON list literal."""
+        text = value.strip()
+        if not (text.startswith("[") and text.endswith("]")):
+            return None
+        try:
+            parsed = json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            try:
+                parsed = ast.literal_eval(text)
+            except (ValueError, SyntaxError):
+                return None
+        return parsed if isinstance(parsed, list) else None
 
     def _try_parse_bool(self, value: object) -> Optional[bool]:
         """Try to parse a value as a boolean."""

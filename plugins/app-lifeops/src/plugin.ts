@@ -1,32 +1,32 @@
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import { getDefaultTriageService, registerSendPolicy } from "@elizaos/core";
-import { manageBrowserBridgeAction } from "./action.ts";
-import { intentSyncAction } from "./actions/intent-sync.js";
-import { ownerAppBlockAction } from "./actions/owner-app-block.js";
-import { ownerAutofillAction } from "./actions/owner-autofill.js";
-import { bookTravelAction } from "./actions/owner-book-travel.js";
-import { ownerCalendarAction } from "./actions/owner-calendar.js";
-import { chatThreadControlAction } from "./actions/owner-chat-thread.js";
-import { ownerCheckinAction } from "./actions/owner-checkin.js";
-import { lifeOpsComputerUseAction } from "./actions/owner-computer-use.js";
-import { lifeOpsConnectorAction } from "./actions/owner-connector.js";
-import { ownerDigestAction } from "./actions/owner-digest.js";
-import { dossierAction } from "./actions/owner-dossier.js";
-import { healthAction } from "./actions/owner-health.js";
-import { lifeAction } from "./actions/owner-life.js";
-import { passwordManagerAction } from "./actions/owner-password-manager.js";
-import { paymentsAction } from "./actions/owner-payments.js";
-import { updateOwnerProfileAction } from "./actions/owner-profile.js";
-import { relationshipAction } from "./actions/owner-relationship.js";
-import { ownerRemoteDesktopAction } from "./actions/owner-remote-desktop.js";
-import { ownerResolveRequestAction } from "./actions/owner-resolve-request.js";
-import { ownerScheduleAction } from "./actions/owner-schedule.js";
-import { ownerScreenTimeAction } from "./actions/owner-screen-time.js";
-import { subscriptionsAction } from "./actions/owner-subscriptions.js";
-import { toggleLifeOpsFeatureAction } from "./actions/owner-toggle-feature.js";
-import { ownerVoiceCallAction } from "./actions/owner-voice-call.js";
-import { ownerWebsiteBlockAction } from "./actions/owner-website-block.js";
-import { xReadAction } from "./actions/owner-x.js";
+import {
+  getDefaultTriageService,
+  type IAgentRuntime,
+  logger,
+  messagingTriageActions,
+  type Plugin,
+  registerSendPolicy,
+} from "@elizaos/core";
+import { appBlockAction } from "./actions/app-block.js";
+import { autofillAction } from "./actions/autofill.js";
+import { bookTravelAction } from "./actions/book-travel.js";
+import { calendarAction } from "./actions/calendar.js";
+import { checkinAction } from "./actions/checkin.js";
+import { connectorAction } from "./actions/connector.js";
+import { deviceIntentAction } from "./actions/device-intent.js";
+import { healthAction } from "./actions/health.js";
+import { lifeAction } from "./actions/life.js";
+import { passwordManagerAction } from "./actions/password-manager.js";
+import { paymentsAction } from "./actions/payments.js";
+import { profileAction } from "./actions/profile.js";
+import { relationshipAction } from "./actions/relationship.js";
+import { remoteDesktopAction } from "./actions/remote-desktop.js";
+import { resolveRequestAction } from "./actions/resolve-request.js";
+import { scheduleAction } from "./actions/schedule.js";
+import { screenTimeAction } from "./actions/screen-time.js";
+import { subscriptionsAction } from "./actions/subscriptions.js";
+import { toggleFeatureAction } from "./actions/toggle-feature.js";
+import { voiceCallAction } from "./actions/voice-call.js";
+import { websiteBlockAction } from "./actions/website-block.js";
 import { ActivityTrackerService } from "./activity-profile/activity-tracker-service.js";
 import { PresenceSignalBridgeService } from "./activity-profile/presence-signal-bridge-service.js";
 import {
@@ -41,6 +41,7 @@ import {
 } from "./followup/index.js";
 import { BrowserBridgeAdapter } from "./lifeops/messaging/adapters/browser-bridge-adapter.js";
 import { CalendlyAdapter } from "./lifeops/messaging/adapters/calendly-adapter.js";
+import { LifeOpsGmailAdapter } from "./lifeops/messaging/adapters/gmail-adapter.js";
 import { XDmAdapter } from "./lifeops/messaging/adapters/x-dm-adapter.js";
 import { createOwnerSendPolicy } from "./lifeops/messaging/owner-send-policy.js";
 import { LifeOpsRepository } from "./lifeops/repository.js";
@@ -51,7 +52,7 @@ import {
   registerLifeOpsTaskWorker,
 } from "./lifeops/runtime.js";
 import { lifeOpsSchema } from "./lifeops/schema.js";
-import { browserBridgeProvider } from "./provider.ts";
+import { browserBridgeProvider } from "./provider.js";
 // Activity-profile (proactive agent: GM/GN/nudges)
 import { activityProfileProvider } from "./providers/activity-profile.js";
 import { appBlockerProvider } from "./providers/app-blocker.js";
@@ -62,9 +63,8 @@ import { healthProvider } from "./providers/health.js";
 import { inboxTriageProvider } from "./providers/inbox-triage.js";
 import { lifeOpsProvider } from "./providers/lifeops.js";
 import { websiteBlockerProvider } from "./providers/website-blocker.js";
-import { BrowserBridgePluginService } from "./service.ts";
+import { BrowserBridgePluginService } from "./service.js";
 import {
-  blockUntilTaskCompleteAction,
   listActiveBlocksAction,
   registerBlockRuleReconcilerWorker,
   releaseBlockAction,
@@ -75,6 +75,9 @@ import {
   setSelfControlPluginConfig,
 } from "./website-blocker/engine.js";
 import { WebsiteBlockerService } from "./website-blocker/service.js";
+
+const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
+const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";
 
 async function ensureTaskWithRetries(args: {
   runtime: IAgentRuntime;
@@ -131,6 +134,71 @@ function isDisabledByEnv(disableKey: string, enableKey?: string): boolean {
 
   const enableValue = (process.env[enableKey] ?? "").trim().toLowerCase();
   return enableValue === "0" || enableValue === "false";
+}
+
+function isGoogleConnectorPlugin(plugin: Plugin): boolean {
+  return (
+    plugin.name === GOOGLE_CONNECTOR_PLUGIN_NAME ||
+    plugin.name === GOOGLE_CONNECTOR_PLUGIN_PACKAGE
+  );
+}
+
+function resolvePluginExport(module: Record<string, unknown>): Plugin | null {
+  for (const key of ["googlePlugin", "default"]) {
+    const value = module[key];
+    if (
+      value &&
+      typeof value === "object" &&
+      typeof (value as Plugin).name === "string"
+    ) {
+      return value as Plugin;
+    }
+  }
+  return null;
+}
+
+async function importGoogleConnectorPluginModule(): Promise<
+  Record<string, unknown>
+> {
+  try {
+    return (await import(GOOGLE_CONNECTOR_PLUGIN_PACKAGE)) as Record<
+      string,
+      unknown
+    >;
+  } catch (error) {
+    const stagedDependencyUrl = new URL(
+      "../node_modules/@elizaos/plugin-google/dist/index.js",
+      import.meta.url,
+    );
+    try {
+      return (await import(stagedDependencyUrl.href)) as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      throw error;
+    }
+  }
+}
+
+export async function ensureLifeOpsGooglePluginRegistered(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  if (runtime.plugins.some(isGoogleConnectorPlugin)) {
+    return;
+  }
+
+  const module = await importGoogleConnectorPluginModule();
+  const plugin = resolvePluginExport(module);
+  if (!plugin) {
+    throw new Error(
+      `${GOOGLE_CONNECTOR_PLUGIN_PACKAGE} did not export a valid plugin`,
+    );
+  }
+  if (runtime.plugins.some(isGoogleConnectorPlugin)) {
+    return;
+  }
+  await runtime.registerPlugin(plugin);
 }
 
 const LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY =
@@ -196,38 +264,33 @@ const rawAppLifeOpsPlugin: Plugin = {
   name: "@elizaos/app-lifeops",
   description:
     "LifeOps: routines, goals, Google Workspace, Apple Reminders, Twilio, browser companions (Chrome/Safari), website blocking, app blocking, and related surfaces.",
+  dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE],
   schema: lifeOpsSchema,
   actions: [
-    manageBrowserBridgeAction,
-    ownerWebsiteBlockAction,
-    blockUntilTaskCompleteAction,
+    websiteBlockAction,
     listActiveBlocksAction,
     releaseBlockAction,
-    ownerAppBlockAction,
-    ownerCalendarAction,
-    xReadAction,
-    ownerResolveRequestAction,
+    appBlockAction,
+    calendarAction,
+    checkinAction,
+    resolveRequestAction,
+    deviceIntentAction,
     lifeAction,
     bookTravelAction,
-    updateOwnerProfileAction,
-    ownerCheckinAction,
+    profileAction,
     relationshipAction,
-    ownerScreenTimeAction,
-    ownerVoiceCallAction,
-    ownerRemoteDesktopAction,
-    lifeOpsComputerUseAction,
-    ownerScheduleAction,
-    intentSyncAction,
+    screenTimeAction,
+    voiceCallAction,
+    remoteDesktopAction,
+    scheduleAction,
     passwordManagerAction,
-    ownerAutofillAction,
-    dossierAction,
+    autofillAction,
     healthAction,
     subscriptionsAction,
     paymentsAction,
-    chatThreadControlAction,
-    lifeOpsConnectorAction,
-    ownerDigestAction,
-    toggleLifeOpsFeatureAction,
+    connectorAction,
+    toggleFeatureAction,
+    ...messagingTriageActions,
   ],
   providers: [
     browserBridgeProvider,
@@ -249,6 +312,8 @@ const rawAppLifeOpsPlugin: Plugin = {
     pluginConfig: Record<string, unknown>,
     runtime: IAgentRuntime,
   ) => {
+    await ensureLifeOpsGooglePluginRegistered(runtime);
+
     setSelfControlPluginConfig(pluginConfig as SelfControlPluginConfig);
     const status = await getSelfControlStatus();
 
@@ -266,10 +331,10 @@ const rawAppLifeOpsPlugin: Plugin = {
     // owner approval; everything else passes straight through.
     registerSendPolicy(runtime, createOwnerSendPolicy());
 
-    // First-party adapters that aren't part of core's built-in set: X DMs
-    // (overrides the built-in Twitter adapter), Calendly, and the
-    // browser-bridge.
+    // First-party adapters backed by LifeOps services. Gmail and X replace the
+    // core placeholders so MESSAGE triage operations operate on real connected data.
     const triage = getDefaultTriageService();
+    triage.register(new LifeOpsGmailAdapter());
     triage.register(new XDmAdapter());
     triage.register(new CalendlyAdapter());
     triage.register(new BrowserBridgeAdapter());
@@ -307,6 +372,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     });
 
     registerBlockRuleReconcilerWorker(runtime);
+
     scheduleTaskEnsureAfterRuntimeInit({
       runtime,
       prefix: "[lifeops]",
@@ -457,8 +523,4 @@ export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
 export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
 export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
 export { handleWebsiteBlockerRoutes } from "./routes/website-blocker-routes.js";
-export {
-  BrowserBridgePluginService,
-  browserBridgeProvider,
-  manageBrowserBridgeAction,
-};
+export { BrowserBridgePluginService, browserBridgeProvider };

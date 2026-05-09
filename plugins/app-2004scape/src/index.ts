@@ -7,7 +7,7 @@ import { RsSdkGameService } from "./services/game-service.js";
 const rawRs2004scapePlugin: Plugin = {
   name: "@elizaos/app-2004scape",
   description:
-    "Autonomous 2004scape game agent — WebSocket SDK, LLM-driven game loop, WALK_TO + 6 *_OP routers, and TOON world-context providers.",
+    "Autonomous 2004scape game agent — WebSocket SDK, LLM-driven game loop, RS_2004_WALK_TO + 6 routers, and JSON world-context providers.",
 
   services: [RsSdkGameService as ServiceClass],
   actions: rsSdkActions,

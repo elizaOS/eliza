@@ -88,7 +88,7 @@ scoring:
     - id: package_json_has_name
       type: file_contains
       path: package.json
-      pattern: '"name"\\s*:\\s*"weather-cli"'
+      pattern: '"name"\s*:\s*"weather-cli"'
       points: 1
       category: correctness
       description: package.json has correct project name
@@ -96,7 +96,7 @@ scoring:
     - id: package_json_has_scripts
       type: file_contains
       path: package.json
-      pattern: '"scripts"\\s*:'
+      pattern: '"scripts"\s*:'
       points: 1
       category: correctness
       description: package.json has scripts section
@@ -104,7 +104,7 @@ scoring:
     - id: tsconfig_strict
       type: file_contains
       path: tsconfig.json
-      pattern: '"strict"\\s*:\\s*true'
+      pattern: '"strict"\s*:\s*true'
       points: 2
       category: correctness
       description: tsconfig.json has strict mode enabled

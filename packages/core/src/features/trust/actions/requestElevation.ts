@@ -3,79 +3,79 @@ import type {
 	Action as ElizaAction,
 	IAgentRuntime,
 	Memory,
+	State,
 } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import { parseJSONObjectFromText } from "../../../utils.ts";
 import type { ElevationRequest } from "../types/permissions.ts";
 
 export const requestElevationAction: ElizaAction = {
 	name: "REQUEST_ELEVATION",
+	contexts: ["admin", "settings", "agent_internal"],
+	roleGate: { minRole: "USER" },
 	description:
 		"Request temporary elevation of permissions for a specific action",
 	suppressPostActionContinuation: true,
+	parameters: [
+		{
+			name: "action",
+			description: "Permission action being requested.",
+			required: true,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "resource",
+			description: "Resource scope for the permission request.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "justification",
+			description: "Reason elevation is needed.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "duration",
+			description: "Requested duration in hours. Defaults to 60.",
+			required: false,
+			schema: { type: "number" as const, minimum: 1, maximum: 168 },
+		},
+	],
 
 	validate: async (
 		runtime: IAgentRuntime,
 		message: Memory,
-		state?: unknown,
+		state?: State,
 		options?: Record<string, unknown>,
 	): Promise<boolean> => {
-		const __avTextRaw =
-			typeof message?.content?.text === "string" ? message.content.text : "";
-		const __avText = __avTextRaw.toLowerCase();
-		const __avLegacyContextOk = Boolean(
-			runtime?.getService?.("contextual-permissions"),
-		);
-		const __avKeywords = ["request", "elevation"];
-		const __avKeywordOk =
-			__avKeywords.length > 0 &&
-			(__avKeywords.some(
-				(word) => word.length > 0 && __avText.includes(word),
-			) ||
-				__avLegacyContextOk);
-		const __avRegex = /\b(?:request|elevation)\b/i;
-		const __avRegexOk = __avRegex.test(__avText) || __avLegacyContextOk;
-		const __avSource = String(message?.content?.source ?? "");
-		const __avExpectedSource = "";
-		const __avSourceOk = __avExpectedSource
-			? __avSource === __avExpectedSource
-			: Boolean(
-					__avSource ||
-						state ||
-						runtime?.agentId ||
-						runtime?.getService ||
-						runtime?.getSetting,
-				);
-		const __avOptions = options && typeof options === "object" ? options : {};
-		const __avInputOk =
-			__avText.trim().length > 0 ||
-			Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-			Boolean(message?.content && typeof message.content === "object");
-
-		if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-			return false;
-		}
-
-		const __avLegacyValidate = async (
-			legacyRuntime: IAgentRuntime,
-			_legacyMessage: Memory,
-			_legacyState?: unknown,
-			_legacyOptions?: Record<string, unknown>,
-		): Promise<boolean> => {
-			const permissionSystem = legacyRuntime.getService(
-				"contextual-permissions",
-			);
-			return !!permissionSystem;
-		};
 		try {
-			return Boolean(
-				await __avLegacyValidate(runtime, message, state, options),
+			if (!runtime.getService("contextual-permissions")) return false;
+			const params =
+				options?.parameters && typeof options.parameters === "object"
+					? (options.parameters as Record<string, unknown>)
+					: {};
+			const hasStructuredAction =
+				typeof params.action === "string" && params.action.trim().length > 0;
+			return (
+				hasStructuredAction ||
+				hasActionContextOrKeyword(message, state, {
+					contexts: ["admin", "settings", "agent_internal"],
+					keywords: [
+						"request elevation",
+						"elevate permissions",
+						"temporary access",
+						"grant me access",
+						"need permission",
+					],
+				})
 			);
 		} catch {
 			return false;
 		}
 	},
 
-	handler: async (runtime: IAgentRuntime, message: Memory) => {
+	handler: async (runtime: IAgentRuntime, message: Memory, _state, options) => {
 		const permissionSystem = runtime.getService(
 			"contextual-permissions",
 		) as unknown as {
@@ -99,6 +99,10 @@ export const requestElevationAction: ElizaAction = {
 			throw new Error("Required services not available");
 		}
 
+		const params =
+			options?.parameters && typeof options.parameters === "object"
+				? (options.parameters as Record<string, unknown>)
+				: {};
 		const text = message.content.text || "";
 		let parsed: Record<string, unknown> | null = null;
 		try {
@@ -106,14 +110,14 @@ export const requestElevationAction: ElizaAction = {
 		} catch {
 			// Not JSON
 		}
-		const requestData = parsed as {
+		const requestData = { ...(parsed ?? {}), ...params } as {
 			action?: string;
 			resource?: string;
 			justification?: string;
 			duration?: number;
-		} | null;
+		};
 
-		if (!requestData?.action) {
+		if (!requestData.action) {
 			return {
 				success: false,
 				text: 'Please specify the action you need elevated permissions for. Example: "I need to manage roles to help moderate the channel"',
@@ -168,8 +172,9 @@ Please use these permissions responsibly. All actions will be logged for audit.`
 
 				denialMessage += `\n\nYour current trust score is ${trustProfile.overallTrust}/100.`;
 
-				if (result.suggestions && result.suggestions.length > 0) {
-					denialMessage += `\n\nSuggestions:\n${result.suggestions.map((s: string) => `- ${s}`).join("\n")}`;
+				const suggestions = result.suggestions?.slice(0, 5) ?? [];
+				if (suggestions.length > 0) {
+					denialMessage += `\n\nSuggestions:\n${suggestions.map((s: string) => `- ${s}`).join("\n")}`;
 				}
 
 				return {

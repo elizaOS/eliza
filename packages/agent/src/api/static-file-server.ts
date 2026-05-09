@@ -9,10 +9,9 @@ import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { logger } from "@elizaos/core";
+import { logger, sendJsonError } from "@elizaos/core";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
 import { resolveApiToken } from "@elizaos/shared";
-import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
-import { sendJsonError } from "./http-helpers.js";
 import { getOrReadCachedFile } from "./memory-bounds.js";
 import { findOwnPackageRoot } from "./server-helpers.js";
 

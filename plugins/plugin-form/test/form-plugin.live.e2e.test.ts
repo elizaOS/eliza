@@ -72,13 +72,13 @@ describeIf(LIVE)("Plugin-Form: Plugin e2e", () => {
     expect(typeof mod.deleteSession).toBe("function");
   });
 
-  it("intent detection functions work", async () => {
+  it("form evaluator exposes schema and prompt helpers", async () => {
     const mod = await import("@elizaos/plugin-form");
-    if (!mod.quickIntentDetect) {
-      return;
-    }
-    // Quick intent detect should handle basic strings
-    const result = mod.quickIntentDetect("I want to fill out a form");
-    expect(result).toBeDefined();
+    const schema = mod.buildFormExtractorSchema();
+    expect(schema).toBeTruthy();
+    expect((schema as { type?: string }).type).toBe("object");
+    expect(typeof mod.formEvaluator.shouldRun).toBe("function");
+    expect(typeof mod.formEvaluator.prompt).toBe("function");
+    expect(Array.isArray(mod.formEvaluator.processors)).toBe(true);
   });
 });

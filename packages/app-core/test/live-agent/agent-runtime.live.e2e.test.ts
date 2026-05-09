@@ -30,7 +30,7 @@ import {
 import dotenv from "dotenv";
 import { afterAll, beforeAll, describe, expect } from "vitest";
 import { itIf } from "../helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../helpers/live-provider";
+import { selectLiveProvider } from "../helpers/live-provider.ts";
 import { sleep, withTimeout } from "../helpers/test-utils";
 
 /** Matches the table name used by @elizaos/core personality module. */
@@ -1368,7 +1368,7 @@ describe("Agent Runtime E2E", () => {
       async () => {
         // Register the trigger worker on the real runtime (same as eliza-plugin.ts does).
         const { registerTriggerTaskWorker } = await import(
-          "@elizaos/agent/triggers/runtime"
+          "@elizaos/agent"
         );
         registerTriggerTaskWorker(runtime);
 

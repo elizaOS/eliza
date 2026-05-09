@@ -14,10 +14,11 @@ import type {
 import { logger } from "@elizaos/core";
 import {
   buildResolvedClient,
+  describeSelection,
   isConfirmed,
   requireNumber,
   requireString,
-  resolveIdentity,
+  resolveAccountSelection,
   splitRepo,
 } from "../action-helpers.js";
 import {
@@ -80,8 +81,8 @@ async function runList(
   options: Record<string, unknown> | undefined,
   callback: HandlerCallback | undefined,
 ): Promise<GitHubActionResult<GitHubPrOpResult>> {
-  const identity = resolveIdentity(options, "agent");
-  const resolved = buildResolvedClient(runtime, identity);
+  const selection = resolveAccountSelection(options, "agent");
+  const resolved = buildResolvedClient(runtime, selection);
   if ("error" in resolved) {
     await callback?.({ text: resolved.error });
     return { success: false, error: resolved.error };
@@ -153,7 +154,7 @@ async function runReview(
   options: Record<string, unknown> | undefined,
   callback: HandlerCallback | undefined,
 ): Promise<GitHubActionResult<GitHubPrOpResult>> {
-  const identity = resolveIdentity(options, "user");
+  const selection = resolveAccountSelection(options, "user");
   const repo = requireString(options, "repo");
   const number = requireNumber(options, "number");
   const action = parseReviewAction(options?.action);
@@ -176,7 +177,7 @@ async function runReview(
     const preview =
       `About to ${action.replace("-", " ")} PR ${repo}#${number}` +
       (body ? ` with body: "${body.slice(0, 120)}"` : "") +
-      ` as ${identity}. Re-invoke with confirmed: true to proceed.`;
+      ` as ${describeSelection(selection)}. Re-invoke with confirmed: true to proceed.`;
     await callback?.({ text: preview });
     return { success: false, requiresConfirmation: true, preview };
   }
@@ -187,7 +188,7 @@ async function runReview(
     return { success: false, error: err };
   }
 
-  const resolved = buildResolvedClient(runtime, identity);
+  const resolved = buildResolvedClient(runtime, selection);
   if ("error" in resolved) {
     await callback?.({ text: resolved.error });
     return { success: false, error: resolved.error };
@@ -206,6 +207,9 @@ async function runReview(
 
 export const prOpAction: Action = {
   name: GitHubActions.GITHUB_PR_OP,
+  contexts: ["code", "tasks", "connectors", "automation"],
+  contextGate: { anyOf: ["code", "tasks", "connectors", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "LIST_PRS",
     "LIST_PULL_REQUESTS",
@@ -220,6 +224,76 @@ export const prOpAction: Action = {
     "Single router for GitHub PR ops: list and review. Review requires confirmed:true.",
   descriptionCompressed:
     "GitHub PR ops: list pull requests, submit review with confirmation.",
+  parameters: [
+    {
+      name: "op",
+      description: "PR operation: list or review.",
+      required: true,
+      schema: { type: "string", enum: [...SUPPORTED_OPS] },
+    },
+    {
+      name: "repo",
+      description: "Repository in owner/name form.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "number",
+      description: "Pull request number for review.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "state",
+      description: "PR state for list.",
+      required: false,
+      schema: {
+        type: "string",
+        enum: ["open", "closed", "all"],
+        default: "open",
+      },
+    },
+    {
+      name: "author",
+      description: "Optional PR author username filter for list.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "action",
+      description: "Review action: approve, request-changes, or comment.",
+      required: false,
+      schema: {
+        type: "string",
+        enum: ["approve", "request-changes", "comment"],
+      },
+    },
+    {
+      name: "body",
+      description: "Review body for comment or request-changes.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "as",
+      description: "Identity to use: agent or user.",
+      required: false,
+      schema: { type: "string", enum: ["agent", "user"], default: "agent" },
+    },
+    {
+      name: "accountId",
+      description:
+        "Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "confirmed",
+      description: "Must be true to submit a review.",
+      required: false,
+      schema: { type: "boolean", default: false },
+    },
+  ],
 
   validate: async (
     runtime: IAgentRuntime,

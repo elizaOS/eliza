@@ -6,10 +6,12 @@
  */
 
 import { platform } from "node:os";
-import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { sendMessage } from "./actions/index.js";
-import { chatContextProvider, contactsProvider } from "./providers/index.js";
+import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import { createIMessageConnectorAccountProvider } from "./connector-account-provider.js";
+// The former iMessage-specific send action duplicated the MessageConnector
+// path. The connector registered by IMessageService.registerSendHandlers is
+// now the canonical delivery path through MESSAGE operation=send. This plugin
+// no longer registers its own send action.
 import {
   chatDbMessageToPublicShape,
   IMessageService,
@@ -87,13 +89,10 @@ export {
 // Re-export types and service
 export * from "./types.js";
 export {
-  chatContextProvider,
   chatDbMessageToPublicShape,
-  contactsProvider,
   IMessageService,
   parseChatsFromAppleScript,
   parseMessagesFromAppleScript,
-  sendMessage,
 };
 
 /**
@@ -104,13 +103,36 @@ const imessagePlugin: Plugin = {
   description: "iMessage plugin for Eliza agents (macOS only)",
 
   services: [IMessageService],
-  actions: [sendMessage],
-  providers: [chatContextProvider, contactsProvider],
+  actions: [],
+  providers: [],
   routes: imessageSetupRoutes,
   tests: [],
 
-  init: async (config: Record<string, string>, _runtime: IAgentRuntime): Promise<void> => {
+  // Self-declared auto-enable: activate when the "imessage" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["imessage"],
+  },
+
+  init: async (config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
     logger.info("Initializing iMessage plugin...");
+
+    // Register the iMessage provider with the ConnectorAccountManager so the
+    // HTTP CRUD surface (packages/agent/src/api/connector-account-routes.ts)
+    // can list, create, patch, and delete iMessage accounts.
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createIMessageConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:imessage",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register iMessage provider with ConnectorAccountManager"
+      );
+    }
 
     const isMacOS = platform() === "darwin";
 
@@ -136,6 +158,23 @@ const imessagePlugin: Plugin = {
 
 export default imessagePlugin;
 
+export {
+  type BlueBubblesRouteState,
+  handleBlueBubblesRoute,
+  resolveBlueBubblesWebhookPath,
+} from "./api/bluebubbles-routes.js";
+
+// Legacy HTTP route handlers (mounted by the agent's raw HTTP router).
+// These are the moved counterparts of the agent's old api/imessage-routes.ts
+// and api/bluebubbles-routes.ts files. Per the audit, BlueBubbles is treated
+// as part of iMessage, so both live here.
+export {
+  handleIMessageRoute,
+  type IMessageRouteState,
+  type ReadJsonBodyOptions as IMessageRouteReadJsonBodyOptions,
+  type RouteHelpers as IMessageRouteHelpers,
+  type RouteRequestMeta as IMessageRouteRequestMeta,
+} from "./api/imessage-routes.js";
 // Channel configuration types
 export type {
   IMessageConfig,

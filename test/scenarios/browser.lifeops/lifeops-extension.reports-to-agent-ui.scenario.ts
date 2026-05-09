@@ -62,7 +62,7 @@ export default scenario({
       room: "main",
       text: "Is the LifeOps browser extension connected right now, and what domains is it reporting into the agent UI?",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_SCREEN_TIME"],
+        acceptedActions: ["SCREEN_TIME"],
         description: "browser extension telemetry snapshot",
       }),
       responseIncludesAny: [/extension/i, /github/i, /docs\.google\.com/i],
@@ -72,13 +72,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "OWNER_SCREEN_TIME",
+      actionName: "SCREEN_TIME",
     },
     {
       type: "custom",
       name: "browser-extension-telemetry-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_SCREEN_TIME"],
+        acceptedActions: ["SCREEN_TIME"],
         description: "browser extension telemetry snapshot",
       }),
     },
@@ -87,7 +87,7 @@ export default scenario({
       name: "browser-extension-telemetry-result",
       predicate: async (ctx) => {
         const hit = ctx.actionsCalled.find(
-          (action) => action.actionName === "OWNER_SCREEN_TIME",
+          (action) => action.actionName === "SCREEN_TIME",
         );
         if (!hit) {
           return "expected FETCH_BROWSER_ACTIVITY action result";

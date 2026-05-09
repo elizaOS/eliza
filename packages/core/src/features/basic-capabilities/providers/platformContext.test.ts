@@ -112,7 +112,7 @@ describe("platform context providers", () => {
 			serverId: "T123",
 			threadId: "1700000000.000100",
 		});
-		expect(result.text).toContain("platform_chat_context:");
+		expect(result.text).toContain('"platform_chat_context":');
 		expect(result.data).toMatchObject({
 			source: "slack",
 			chatContextCount: 1,
@@ -230,7 +230,7 @@ describe("platform context providers", () => {
 				source: "slack",
 			}),
 		);
-		expect(result.text).toContain("platform_user_context:");
+		expect(result.text).toContain('"platform_user_context":');
 		expect(result.data).toMatchObject({
 			source: "slack",
 			entityId: ENTITY_ID,

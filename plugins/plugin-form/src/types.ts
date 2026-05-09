@@ -975,7 +975,7 @@ export interface ExternalFieldState {
  * WHY shared interface:
  * - Plugins register one type of thing (ControlType)
  * - FormService treats all types uniformly
- * - Progressive complexity: simple types just use validate()
+ * - Progressive capability: simple types just use validate()
  *
  * WHY builtin flag:
  * - Protects standard types from accidental override

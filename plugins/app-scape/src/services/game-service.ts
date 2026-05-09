@@ -22,7 +22,7 @@
 import {
   type IAgentRuntime,
   ModelType,
-  parseToonKeyValue,
+  parseJSONObjectFromText,
   Service,
   setTrajectoryPurpose,
   withStandaloneTrajectory,
@@ -31,7 +31,7 @@ import {
 import {
   formatScapeRouterPrompt,
   resolveScapeRouterAction,
-} from "../actions/router-definitions.js";
+} from "./autonomous-loop-prompt.js";
 import { botStateProvider } from "../providers/bot-state.js";
 import { goalsProvider } from "../providers/goals.js";
 import { inventoryProvider } from "../providers/inventory.js";
@@ -52,7 +52,7 @@ import { JournalService } from "./journal-service.js";
  * Default URL for the xRSPS bot-SDK endpoint. Points at the live
  * production deployment on Sevalla — the same HTTP server that
  * serves the main game WebSocket routes /botsdk upgrades into
- * the bot-SDK TOON endpoint. TLS is terminated by Sevalla's
+ * the bot-SDK JSON endpoint. TLS is terminated by Sevalla's
  * ingress, so the URL is wss:// and no insecure opt-in is needed.
  *
  * Override via SCAPE_BOT_SDK_URL character secret or process env
@@ -95,7 +95,7 @@ interface EventLogEntry {
  * the dispatcher's switch can branch on a single label.
  */
 const STANDALONE_ACTION_NAMES: ReadonlySet<string> = new Set([
-  "WALK_TO",
+  "SCAPE_WALK_TO",
   "ATTACK_NPC",
   "CHAT_PUBLIC",
 ]);
@@ -444,7 +444,7 @@ export class ScapeGameService extends Service {
   /**
    * One cycle of the autonomous agent loop:
    *   1. Bail if not connected / no perception yet.
-   *   2. Gather provider context (TOON blocks).
+   *   2. Gather provider context (JSON blocks).
    *   3. Ask the LLM what to do next.
    *   4. Parse the chosen action + params.
    *   5. Dispatch through the elizaOS Action handler (which calls
@@ -605,15 +605,16 @@ ${context}
 ${eventLog}
 
 # Available Actions
-Choose exactly ONE action. Return only a TOON record:
-action: ROUTER_NAME
-subaction: router_operation
-param_name: value
+Choose exactly ONE action. Return only a JSON object:
+{
+  "action": "ROUTER_NAME",
+  "subaction": "router_operation"
+}
 ${actionList}
 
 # Instructions
 - Walk somewhere interesting. Explore. Don't stand still.
-- SCAPE_GAME with subaction walk_to takes absolute world coordinates. Use your current position (${self.x}, ${self.z}) as a reference and pick a nearby tile to move toward.
+- SCAPE_WALK_TO takes absolute world coordinates. Use your current position (${self.x}, ${self.z}) as a reference and pick a nearby tile to move toward.
 - Do NOT repeat a failed action with the same params — try something different.
 - Keep responses short. Pick ONE action and provide its params.
 
@@ -626,26 +627,26 @@ Your choice:`;
     legacyAction: string;
     params: Record<string, unknown>;
   } | null {
-    const toonParsed = parseToonKeyValue<Record<string, unknown>>(response);
-    const toonAction = this.extractActionName(toonParsed);
-    if (!toonAction) return null;
+    const parsed = parseJSONObjectFromText(response) as Record<string, unknown> | null;
+    const action = this.extractActionName(parsed);
+    if (!action) return null;
 
-    const params = this.extractParamsFromParsedResponse(toonParsed);
+    const params = this.extractParamsFromParsedResponse(parsed);
 
-    // Standalone actions: WALK_TO, ATTACK_NPC, CHAT_PUBLIC.
-    if (STANDALONE_ACTION_NAMES.has(toonAction)) {
+    // Standalone actions: SCAPE_WALK_TO, ATTACK_NPC, CHAT_PUBLIC.
+    if (STANDALONE_ACTION_NAMES.has(action)) {
       return {
-        actionName: toonAction,
-        subaction: toonAction.toLowerCase(),
-        legacyAction: toonAction,
+        actionName: action,
+        subaction: action.toLowerCase(),
+        legacyAction: action,
         params,
       };
     }
 
     // Router actions: JOURNAL_OP, INVENTORY_OP.
     const resolved = resolveScapeRouterAction(
-      toonAction,
-      this.extractSubactionName(toonParsed),
+      action,
+      this.extractSubactionName(parsed),
     );
     if (!resolved) return null;
     return {

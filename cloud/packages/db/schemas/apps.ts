@@ -205,14 +205,6 @@ export const apps = pgTable(
       >()
       .default([]),
 
-    // User database provisioning (kept for database service)
-    user_database_status: userDatabaseStatusEnum("user_database_status").notNull().default("none"),
-    user_database_uri: text("user_database_uri"),
-    user_database_project_id: text("user_database_project_id"),
-    user_database_branch_id: text("user_database_branch_id"),
-    user_database_region: text("user_database_region"),
-    user_database_error: text("user_database_error"),
-
     // Email notifications
     email_notifications: boolean("email_notifications").default(true),
     response_notifications: boolean("response_notifications").default(true),

@@ -866,7 +866,7 @@ Net Worth: ${self.get_net_worth():.2f}
         return f"Collected ${amount:.2f} from machine. Cash on hand: ${self.state.cash_on_hand:.2f}"
 
     def action_update_notes(self, key: str, content: str) -> str:
-        """Update agent's scratchpad notes."""
+        """Update agent notes."""
         self.state.notes[key] = content
         return f"Note '{key}' updated."
 

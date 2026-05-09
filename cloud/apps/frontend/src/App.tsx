@@ -8,7 +8,7 @@ import {
   Suspense,
   useEffect,
 } from "react";
-import { matchPath, Route, Routes, useLocation } from "react-router-dom";
+import { matchPath, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import RootLayout from "./RootLayout";
 
 /**
@@ -86,7 +86,7 @@ const MyAgentsPage = lazyWithPreload(() => import("./dashboard/my-agents/Page"))
 const ApiKeysPage = lazyWithPreload(() => import("./dashboard/api-keys/Page"));
 const McpsPage = lazyWithPreload(() => import("./dashboard/mcps/Page"));
 const VoicesPage = lazyWithPreload(() => import("./dashboard/voices/Page"));
-const KnowledgePage = lazyWithPreload(() => import("./dashboard/knowledge/Page"));
+const DocumentsPage = lazyWithPreload(() => import("./dashboard/documents/Page"));
 
 const AnalyticsPage = lazyWithPreload(() => import("./dashboard/analytics/Page"));
 const EarningsPage = lazyWithPreload(() => import("./dashboard/earnings/Page"));
@@ -105,7 +105,6 @@ const ContainerAgentDetailPage = lazyWithPreload(
 
 const ChatBuildLayout = lazyWithPreload(() => import("./dashboard/chat-build/Layout"));
 const ChatPage = lazyWithPreload(() => import("./dashboard/chat/Page"));
-const BuildPage = lazyWithPreload(() => import("./dashboard/build/Page"));
 
 const ApiExplorerLayout = lazyWithPreload(() => import("./dashboard/api-explorer/Layout"));
 const ApiExplorerPage = lazyWithPreload(() => import("./dashboard/api-explorer/Page"));
@@ -172,10 +171,6 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
   },
   { path: "/dashboard/billing", preload: preloadAll(DashboardLayout.preload, BillingPage.preload) },
   {
-    path: "/dashboard/build",
-    preload: preloadAll(DashboardLayout.preload, ChatBuildLayout.preload, BuildPage.preload),
-  },
-  {
     path: "/dashboard/chat",
     preload: preloadAll(DashboardLayout.preload, ChatBuildLayout.preload, ChatPage.preload),
   },
@@ -215,8 +210,8 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
     preload: preloadAll(DashboardLayout.preload, InvoiceDetailPage.preload),
   },
   {
-    path: "/dashboard/knowledge",
-    preload: preloadAll(DashboardLayout.preload, KnowledgePage.preload),
+    path: "/dashboard/documents",
+    preload: preloadAll(DashboardLayout.preload, DocumentsPage.preload),
   },
   { path: "/dashboard/mcps", preload: preloadAll(DashboardLayout.preload, McpsPage.preload) },
   {
@@ -387,6 +382,11 @@ function DashboardRouteElement() {
       </Suspense>
     </RouteErrorBoundary>
   );
+}
+
+function LegacyBuildRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/dashboard/chat${location.search}`} replace />;
 }
 
 function App() {
@@ -565,6 +565,8 @@ function App() {
          * DashboardLayout so the sidebar/header don't unmount when the user
          * jumps between dashboard tabs.
          */}
+        <Route path="dashboard/build/*" element={<LegacyBuildRedirect />} />
+
         <Route path="dashboard" element={<DashboardRouteElement />}>
           <Route index element={<DashboardIndex />} />
 
@@ -584,7 +586,7 @@ function App() {
           <Route path="api-keys" element={<ApiKeysPage />} />
           <Route path="mcps" element={<McpsPage />} />
           <Route path="voices" element={<VoicesPage />} />
-          <Route path="knowledge" element={<KnowledgePage />} />
+          <Route path="documents" element={<DocumentsPage />} />
 
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="earnings" element={<EarningsPage />} />
@@ -601,7 +603,6 @@ function App() {
 
           <Route element={<ChatBuildLayout />}>
             <Route path="chat" element={<ChatPage />} />
-            <Route path="build" element={<BuildPage />} />
           </Route>
 
           <Route path="api-explorer" element={<ApiExplorerLayout />}>

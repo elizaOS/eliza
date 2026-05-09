@@ -25,13 +25,14 @@
     "android/build.gradle",
     "dist/",
     "ios/Sources/",
-    "*.podspec"
+    "*.podspec",
+    "dist"
   ],
   "scripts": {
-    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
-    "build:docs": "npm run clean && npm run docgen && tsc && rollup -c rollup.config.mjs",
-    "clean": "rimraf ./dist",
-    "prepublishOnly": "npm run build",
+    "build": "bun run clean && tsc && bun --bun rollup -c rollup.config.mjs",
+    "build:docs": "bun run clean && bun run docgen && tsc && bun --bun rollup -c rollup.config.mjs",
+    "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
+    "prepublishOnly": "bun run build",
     "docgen": "docgen --api LocationPlugin --output-readme README.md --output-json dist/docs.json"
   },
   "author": "elizaOS",
@@ -59,7 +60,7 @@
     "@capacitor/docgen": "^0.3.0",
     "rimraf": "^6.0.0",
     "rollup": "^4.60.2",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

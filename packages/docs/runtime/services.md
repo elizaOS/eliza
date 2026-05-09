@@ -56,6 +56,7 @@ Core plugins are always loaded and each provides one or more services:
 | `trajectories` | `trajectories` | Debug and RL training trajectory capture |
 | `@elizaos/plugin-agent-orchestrator` | Orchestrator service | Multi-agent task coordination and spawning |
 | `@elizaos/plugin-shell` | Shell service | Shell command execution with security controls |
+| `@elizaos/plugin-coding-tools` | File/shell sandbox services | Native coding tools (READ, WRITE, EDIT, BASH, GREP, GLOB, …); workspace-root sealing |
 | `@elizaos/plugin-agent-skills` | `AGENT_SKILLS_SERVICE` | Skill catalog loading and execution |
 | `@elizaos/plugin-commands` | Commands service | Slash command handling (skills auto-register as /commands) |
 | Built-in (`plugin_manager` / `@elizaos/core`) | Plugin manager service | Dynamic plugin install/uninstall at runtime |
@@ -70,9 +71,7 @@ These services are available but not loaded by default — enable via admin pane
 | `@elizaos/plugin-pdf` | PDF document processing |
 | `@elizaos/plugin-cua` | CUA computer-use agent (cloud sandbox automation) |
 | `@elizaos/plugin-obsidian` | Obsidian vault CLI integration |
-| `@elizaos/plugin-code` | Code writing and file operations |
 | `@elizaos/plugin-repoprompt` | RepoPrompt CLI integration |
-| `@elizaos/plugin-claude-code-workbench` | Claude Code companion workflows |
 | `@elizaos/plugin-computeruse` | Computer use automation (platform-specific, requires platform binaries) |
 | `@elizaos/plugin-browser` | Browser automation (requires stagehand-server) |
 | `@elizaos/plugin-vision` | Visual understanding (feature-gated) |

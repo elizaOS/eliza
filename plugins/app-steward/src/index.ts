@@ -1,10 +1,8 @@
 export * from "./ApprovalQueue";
 export * from "./api/tx-service";
 export * from "./api/wallet-dex-prices";
-export * from "./browser-workspace-wallet";
 export * from "./chain-utils";
 export { stewardPlugin } from "./plugin";
-export * from "./routes/server-wallet-trade";
 export {
   __resetStewardAgentEnsured,
   approveStewardTransaction,
@@ -50,6 +48,7 @@ export {
   type PersistedStewardCredentials,
   saveStewardCredentials,
 } from "./services/steward-credentials";
+export * from "./services/steward-evm-account";
 export * from "./services/steward-evm-bridge";
 export * from "./services/steward-sidecar";
 export * from "./services/steward-wallet";

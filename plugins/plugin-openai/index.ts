@@ -6,8 +6,6 @@ import type {
   IAgentRuntime,
   ImageDescriptionParams,
   ImageGenerationParams,
-  JsonValue,
-  ObjectGenerationParams,
   Plugin,
   ResearchParams,
   ResearchResult,
@@ -20,8 +18,6 @@ import {
   handleActionPlanner,
   handleImageDescription,
   handleImageGeneration,
-  handleObjectLarge,
-  handleObjectSmall,
   handleResearch,
   handleResponseHandler,
   handleTextEmbedding,
@@ -57,6 +53,9 @@ const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER")
 export const openaiPlugin: Plugin = {
   name: "openai",
   description: "OpenAI API integration for text, image, audio, and embedding models",
+  autoEnable: {
+    envKeys: ["OPENAI_API_KEY"],
+  },
 
   config: {
     OPENAI_API_KEY: env.OPENAI_API_KEY ?? null,
@@ -191,20 +190,6 @@ export const openaiPlugin: Plugin = {
       input: CoreTextToSpeechParams | string
     ): Promise<ArrayBuffer> => {
       return handleTextToSpeech(runtime, input);
-    },
-
-    [ModelType.OBJECT_SMALL]: async (
-      runtime: IAgentRuntime,
-      params: ObjectGenerationParams
-    ): Promise<Record<string, JsonValue>> => {
-      return handleObjectSmall(runtime, params);
-    },
-
-    [ModelType.OBJECT_LARGE]: async (
-      runtime: IAgentRuntime,
-      params: ObjectGenerationParams
-    ): Promise<Record<string, JsonValue>> => {
-      return handleObjectLarge(runtime, params);
     },
 
     [ModelType.RESEARCH]: async (
@@ -386,19 +371,28 @@ export const openaiPlugin: Plugin = {
           },
         },
         {
-          name: "openai_test_object_generation",
+          name: "openai_test_structured_output_via_text_large",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
-            const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
+            const result = await runtime.useModel(ModelType.TEXT_LARGE, {
               prompt:
                 "Return a JSON object with exactly these fields: name (string), age (number), active (boolean)",
-            });
+              responseSchema: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  age: { type: "number" },
+                  active: { type: "boolean" },
+                },
+                required: ["name", "age", "active"],
+              },
+            } as unknown as GenerateTextParams);
 
-            if (!result || typeof result !== "object") {
-              throw new Error("Object generation should return an object");
+            if (!result || (typeof result !== "object" && typeof result !== "string")) {
+              throw new Error("Structured output should return an object or text");
             }
 
             logger.info(
-              `[OpenAI Test] Object generated: ${JSON.stringify(result).substring(0, 100)}`
+              `[OpenAI Test] Structured output: ${JSON.stringify(result).substring(0, 100)}`
             );
           },
         },

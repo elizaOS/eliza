@@ -27,6 +27,8 @@ export type GoogleChatAudienceType = "app-url" | "project-number";
 
 /** Configuration settings for the Google Chat plugin */
 export interface GoogleChatSettings {
+  /** Connector account identifier for this Google Chat bot instance */
+  accountId?: string;
   /** Service account JSON credentials */
   serviceAccount?: string;
   /** Path to service account JSON file */
@@ -136,6 +138,8 @@ export interface GoogleChatReaction {
 
 /** Options for sending a message */
 export interface GoogleChatMessageSendOptions {
+  /** Connector account identifier */
+  accountId?: string;
   /** Target space name */
   space?: string;
   /** Thread name for replying in thread */

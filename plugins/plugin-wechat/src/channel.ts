@@ -184,6 +184,19 @@ export class WechatChannel {
     }
   }
 
+  getAccountIds(): string[] {
+    return Array.from(this.accounts.keys());
+  }
+
+  async listContacts(accountId: string): Promise<{
+    friends: Array<{ wxid: string; name: string }>;
+    chatrooms: Array<{ wxid: string; name: string }>;
+  }> {
+    const entry = this.accounts.get(accountId);
+    if (!entry) throw new Error(`Unknown account: ${accountId}`);
+    return entry.client.getContacts();
+  }
+
   private routeIncoming(accountId: string, msg: WechatMessageContext): void {
     const entry = this.accounts.get(accountId);
     if (!entry) {

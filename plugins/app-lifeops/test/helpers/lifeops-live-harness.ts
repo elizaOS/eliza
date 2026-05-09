@@ -42,6 +42,11 @@ try {
 
 const LIVE_PROVIDER_CANDIDATES = [
   {
+    name: "cerebras",
+    plugin: "@elizaos/plugin-openai",
+    keys: ["CEREBRAS_API_KEY", "ELIZA_E2E_CEREBRAS_API_KEY"],
+  },
+  {
     name: "openai",
     plugin: "@elizaos/plugin-openai",
     keys: ["OPENAI_API_KEY"],
@@ -69,6 +74,11 @@ const LIVE_PROVIDER_CANDIDATES = [
 ] as const;
 
 export const LIVE_PROVIDER_ENV_KEYS = [
+  "MILADY_PROVIDER",
+  "CEREBRAS_API_KEY",
+  "ELIZA_E2E_CEREBRAS_API_KEY",
+  "CEREBRAS_SMALL_MODEL",
+  "CEREBRAS_LARGE_MODEL",
   "OPENAI_API_KEY",
   "OPENAI_BASE_URL",
   "OPENAI_SMALL_MODEL",
@@ -99,6 +109,12 @@ export const LIVE_CLOUD_ENV_PREFIXES = [
 ] as const;
 
 const LIVE_PROVIDER_CHEAP_MODELS = {
+  cerebras: {
+    smallKey: "OPENAI_SMALL_MODEL",
+    smallModel: "gpt-oss-120b",
+    largeKey: "OPENAI_LARGE_MODEL",
+    largeModel: "gpt-oss-120b",
+  },
   anthropic: {
     smallKey: "ANTHROPIC_SMALL_MODEL",
     smallModel: "claude-haiku-4-5-20251001",
@@ -185,6 +201,24 @@ function resolveLiveProviderModelEnv(
   };
 }
 
+function resolveCerebrasModelEnv(): Record<string, string> {
+  const smallModel =
+    process.env.ELIZA_LIVE_TEST_SMALL_MODEL?.trim() ||
+    process.env.CEREBRAS_SMALL_MODEL?.trim() ||
+    "gpt-oss-120b";
+  const largeModel =
+    process.env.ELIZA_LIVE_TEST_LARGE_MODEL?.trim() ||
+    process.env.CEREBRAS_LARGE_MODEL?.trim() ||
+    smallModel;
+
+  return {
+    OPENAI_SMALL_MODEL: smallModel,
+    OPENAI_LARGE_MODEL: largeModel,
+    SMALL_MODEL: smallModel,
+    LARGE_MODEL: largeModel,
+  };
+}
+
 async function canImportLiveProviderPlugin(
   pluginName: string,
 ): Promise<boolean> {
@@ -227,6 +261,28 @@ export async function selectLifeOpsLiveProvider(): Promise<SelectedLiveProvider 
     typeof (baseConfig.cloud as { apiKey?: unknown }).apiKey === "string"
       ? ((baseConfig.cloud as { apiKey?: string }).apiKey ?? "").trim()
       : "";
+  const cerebrasApiKey =
+    process.env.CEREBRAS_API_KEY?.trim() ||
+    process.env.ELIZA_E2E_CEREBRAS_API_KEY?.trim() ||
+    "";
+  if (
+    cerebrasApiKey &&
+    (!LIVE_PROVIDER_OVERRIDE || LIVE_PROVIDER_OVERRIDE === "cerebras") &&
+    (await canImportLiveProviderPlugin("@elizaos/plugin-openai"))
+  ) {
+    return {
+      name: "cerebras",
+      env: {
+        CEREBRAS_API_KEY: cerebrasApiKey,
+        OPENAI_API_KEY: cerebrasApiKey,
+        OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
+        MILADY_PROVIDER: "cerebras",
+        ...resolveCerebrasModelEnv(),
+      },
+      plugin: "@elizaos/plugin-openai",
+    };
+  }
+
   const openAiCompatProvider = detectOpenAiCompatibleBaseUrlProvider(
     process.env.OPENAI_BASE_URL?.trim(),
   );
@@ -282,6 +338,14 @@ export async function selectLifeOpsLiveProvider(): Promise<SelectedLiveProvider 
       env,
       resolveLiveProviderModelEnv(candidate.name as LiveProviderName),
     );
+    if (candidate.name === "cerebras") {
+      const apiKey = env.CEREBRAS_API_KEY ?? env.ELIZA_E2E_CEREBRAS_API_KEY;
+      env.CEREBRAS_API_KEY = apiKey;
+      env.OPENAI_API_KEY = apiKey;
+      env.OPENAI_BASE_URL = "https://api.cerebras.ai/v1";
+      env.MILADY_PROVIDER = "cerebras";
+      Object.assign(env, resolveCerebrasModelEnv());
+    }
     if (candidate.name === "openai" && process.env.OPENAI_BASE_URL?.trim()) {
       env.OPENAI_BASE_URL = process.env.OPENAI_BASE_URL.trim();
     }
@@ -318,7 +382,7 @@ export function getLifeOpsLiveSetupWarnings(
   return [
     !LIVE_TESTS_ENABLED ? "set ELIZA_LIVE_TEST=1" : null,
     !selectedProvider
-      ? "provide a live provider key such as OPENAI_API_KEY, OPENROUTER_API_KEY, GOOGLE_API_KEY, ANTHROPIC_API_KEY, or GROQ_API_KEY, or configure cloud.apiKey in the Eliza config"
+      ? "provide a live provider key such as CEREBRAS_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, GOOGLE_API_KEY, ANTHROPIC_API_KEY, or GROQ_API_KEY, or configure cloud.apiKey in the Eliza config"
       : null,
   ].filter((entry): entry is string => Boolean(entry));
 }

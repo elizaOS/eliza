@@ -3,18 +3,20 @@ import { mutateRowCount } from "@/db/execute-helpers";
 import { dbRead, dbWrite } from "@/db/helpers";
 import { type AnonymousSession, anonymousSessions } from "@/db/schemas";
 
+export type { AnonymousSession };
+
 /**
  * Repository for anonymous session database operations.
  *
  * Handles CRUD operations for anonymous user sessions.
  * Used for tracking free tier usage and rate limiting.
  *
- * Read operations → dbRead (read replica)
- * Write operations → dbWrite (NA primary)
+ * Read operations → dbRead (read-intent connection)
+ * Write operations → dbWrite (primary)
  */
 export class AnonymousSessionsRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -50,7 +52,7 @@ export class AnonymousSessionsRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**

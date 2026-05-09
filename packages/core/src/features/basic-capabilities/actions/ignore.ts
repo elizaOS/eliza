@@ -8,16 +8,22 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("IGNORE");
 
 export const ignoreAction: Action = {
 	name: spec.name,
+	contexts: ["general"],
+	roleGate: { minRole: "USER" },
 	similes: spec.similes ? [...spec.similes] : [],
-	validate: async (_runtime: IAgentRuntime, _message: Memory) => {
-		return true;
-	},
+	parameters: [],
+	validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) =>
+		hasActionContextOrKeyword(message, state, {
+			contexts: ["general"],
+			keywords: ["ignore", "stop", "never mind", "nevermind", "cancel"],
+		}),
 	description: spec.description,
 	handler: async (
 		_runtime: IAgentRuntime,

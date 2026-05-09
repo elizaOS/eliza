@@ -18,14 +18,34 @@ import type { AgentSkillsService } from "../services/skills";
 import { extractSlugFromMessage } from "./parse-helpers";
 import { createAgentSkillsActionValidator } from "./validators";
 
-export const installSkillAction: Action = {
-	name: "INSTALL_SKILL",
-	similes: ["DOWNLOAD_SKILL", "ADD_SKILL", "GET_SKILL"],
+const SKILL_SEARCH_LIMIT = 5;
+const SKILL_INSTALL_TEXT_MAX_CHARS = 3_000;
+
+function truncateInstallSkillText(text: string): string {
+	return text.length <= SKILL_INSTALL_TEXT_MAX_CHARS
+		? text
+		: `${text.slice(0, SKILL_INSTALL_TEXT_MAX_CHARS)}\n\n[truncated install result]`;
+}
+
+export const installSkillAction = {
+	name: "SKILL",
+	contexts: ["automation", "settings", "connectors"],
+	contextGate: { anyOf: ["automation", "settings", "connectors"] },
+	roleGate: { minRole: "USER" },
+	similes: [],
 	description:
 		"Install a skill from the ClawHub registry. The skill will be security-scanned before activation. " +
 		'Provide a skill slug or search term, e.g. "install weather" or "add github".',
 	descriptionCompressed:
 		"Install skill from ClawHub registry. Security-scanned before activation.",
+	parameters: [
+		{
+			name: "slug",
+			description: "Skill slug or search term to install.",
+			required: false,
+			schema: { type: "string" },
+		},
+	],
 	validate: createAgentSkillsActionValidator({
 		keywords: ["install", "download", "add", "get", "skill"],
 		regex:
@@ -82,7 +102,7 @@ export const installSkillAction: Action = {
 		}
 
 		// Search to find best match
-		const searchResults = await service.search(slug, 5);
+		const searchResults = await service.search(slug, SKILL_SEARCH_LIMIT);
 		const bestMatch =
 			searchResults.find(
 				(r) =>
@@ -134,15 +154,18 @@ export const installSkillAction: Action = {
 			resultText += " The skill passed security scanning and is ready to use.";
 		}
 
-		if (callback) await callback({ text: resultText });
+		const boundedResultText = truncateInstallSkillText(resultText);
+		if (callback) await callback({ text: boundedResultText });
 
 		return {
 			success: true,
-			text: resultText,
+			text: boundedResultText,
 			data: {
 				slug: installSlug,
 				name: bestMatch.displayName,
 				scanStatus: scanStatus ?? "clean",
+				searchLimit: SKILL_SEARCH_LIMIT,
+				outputTruncated: boundedResultText !== resultText,
 			},
 		};
 	},
@@ -157,11 +180,11 @@ export const installSkillAction: Action = {
 				name: "{{agentName}}",
 				content: {
 					text: "Skill **Weather** (`weather`) installed successfully. The skill passed security scanning and is ready to use.",
-					actions: ["INSTALL_SKILL"],
+					actions: ["SKILL"],
 				},
 			},
 		],
 	],
-};
+} satisfies Action;
 
 export default installSkillAction;

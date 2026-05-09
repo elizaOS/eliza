@@ -7,7 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { verifyCronSecret } from "@/lib/api/cron-auth";
+import { verifyCronSecret } from "@/lib/auth/cron";
 
 /** Helper to create a mock Request with optional Authorization header */
 function mockRequest(authHeader?: string): Request {

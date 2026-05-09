@@ -48,15 +48,18 @@ export enum DiscordEventTypes {
 
 export interface DiscordMessageReceivedPayload extends MessagePayload {
 	originalMessage: Message;
+	accountId?: string;
 }
 
 export interface DiscordMessageSentPayload extends MessagePayload {
 	originalMessages: Message[];
+	accountId?: string;
 }
 
 export interface DiscordReactionPayload extends MessagePayload {
 	originalReaction: MessageReaction;
 	user: User;
+	accountId?: string;
 }
 
 export interface DiscordServerPayload extends WorldPayload {
@@ -79,12 +82,14 @@ export interface DiscordListenChannelPayload {
 	runtime: IAgentRuntime;
 	message: Memory;
 	source: string;
+	accountId?: string;
 }
 
 export interface DiscordNotInChannelsPayload {
 	runtime: IAgentRuntime;
 	message: Message;
 	source: string;
+	accountId?: string;
 }
 
 export type PermissionState = "ALLOW" | "DENY" | "NEUTRAL";
@@ -160,6 +165,7 @@ export interface DiscordSlashCommandPayload extends EventPayload {
 	interaction: Interaction;
 	client: DiscordJsClient;
 	commands: DiscordSlashCommand[];
+	accountId?: string;
 }
 
 export interface DiscordEventPayloadMap {
@@ -198,11 +204,14 @@ export interface BuildMemoryFromMessageOptions {
 	processedAttachments?: Media[];
 	extraContent?: JsonObject;
 	extraMetadata?: JsonObject;
+	accountId?: string;
 }
 
 export interface IDiscordService {
+	accountId?: string;
 	client: DiscordJsClient | null;
 	character: Character;
+	discordSettings?: DiscordSettings;
 	getChannelType: (channel: Channel) => Promise<ChannelType>;
 	buildMemoryFromMessage: (
 		message: Message,
@@ -286,6 +295,7 @@ export type BatchHandler = (
 ) => Promise<boolean | undefined> | boolean | undefined;
 
 export interface ChannelHistoryOptions {
+	accountId?: string;
 	limit?: number;
 	force?: boolean;
 	onBatch?: BatchHandler;

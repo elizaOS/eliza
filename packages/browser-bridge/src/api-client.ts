@@ -1,4 +1,4 @@
-import type { LifeOpsBrowserCompanionSyncResponse } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsBrowserCompanionSyncResponse } from "@elizaos/shared";
 import type {
   CompanionConfig,
   CompanionSessionCompleteRequest,
@@ -14,6 +14,7 @@ export class RelayApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code: string | null = null,
   ) {
     super(message);
     this.name = "RelayApiError";
@@ -22,11 +23,14 @@ export class RelayApiError extends Error {
 
 async function throwApiError(response: Response): never {
   let message: string;
+  let code: string | null = null;
   try {
     const payload = (await response.json()) as {
+      code?: string;
       error?: string;
       message?: string;
     };
+    code = typeof payload.code === "string" ? payload.code : null;
     message =
       payload.error ??
       payload.message ??
@@ -34,7 +38,7 @@ async function throwApiError(response: Response): never {
   } catch {
     message = `${response.status} ${response.statusText}`;
   }
-  throw new RelayApiError(message, response.status);
+  throw new RelayApiError(message, response.status, code);
 }
 
 export class BrowserBridgeRelayClient {

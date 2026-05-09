@@ -2,18 +2,20 @@ import crypto from "node:crypto";
 import {
   type AgentRuntime,
   ChannelType,
+  composePrompt,
   createMessageMemory,
   type Memory,
   ModelType,
+  memoryContextQaTemplate,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/shared";
 import { parsePositiveInteger } from "../utils/number-parsing.js";
 import {
-  getKnowledgeService,
-  type KnowledgeServiceResult,
-} from "./knowledge-service-loader.js";
-import type { RouteRequestContext } from "./route-helpers.js";
+  type DocumentsServiceResult,
+  getDocumentsService,
+} from "./documents-service-loader.js";
 
 const HASH_MEMORY_SOURCE = "hash_memory";
 const UUID_REGEX =
@@ -23,7 +25,7 @@ const MEMORY_SEARCH_DEFAULT_LIMIT = 10;
 const MEMORY_SEARCH_MAX_LIMIT = 50;
 const QUICK_CONTEXT_DEFAULT_LIMIT = 8;
 const QUICK_CONTEXT_MAX_LIMIT = 20;
-const QUICK_CONTEXT_KNOWLEDGE_THRESHOLD = 0.2;
+const QUICK_CONTEXT_DOCUMENTS_THRESHOLD = 0.2;
 
 const MEMORY_BROWSE_DEFAULT_LIMIT = 50;
 const MEMORY_BROWSE_MAX_LIMIT = 200;
@@ -49,7 +51,7 @@ type MemorySearchHit = {
   score: number;
 };
 
-type KnowledgeSearchHit = {
+type DocumentSearchHit = {
   id: string;
   text: string;
   similarity: number;
@@ -58,7 +60,7 @@ type KnowledgeSearchHit = {
   position?: number;
 };
 
-type KnowledgeSearchMatch = {
+type DocumentSearchMatch = {
   id: UUID;
   content: { text?: string };
   similarity?: number;
@@ -154,14 +156,14 @@ async function searchMemoryNotes(
   return hits.slice(0, limit);
 }
 
-async function searchKnowledge(
+async function searchDocuments(
   runtime: AgentRuntime,
   query: string,
   limit: number,
-): Promise<KnowledgeSearchHit[]> {
-  const knowledge: KnowledgeServiceResult = await getKnowledgeService(runtime);
-  const knowledgeService = knowledge.service;
-  if (!knowledgeService || !runtime.agentId) return [];
+): Promise<DocumentSearchHit[]> {
+  const documents: DocumentsServiceResult = await getDocumentsService(runtime);
+  const documentsService = documents.service;
+  if (!documentsService || !runtime.agentId) return [];
 
   const agentId = runtime.agentId as UUID;
   const searchMessage: Memory = {
@@ -173,7 +175,7 @@ async function searchKnowledge(
     createdAt: Date.now(),
   };
 
-  const matches: KnowledgeSearchMatch[] = await knowledgeService.getKnowledge(
+  const matches: DocumentSearchMatch[] = await documentsService.searchDocuments(
     searchMessage,
     {
       roomId: agentId,
@@ -182,7 +184,7 @@ async function searchKnowledge(
 
   return matches
     .filter(
-      (match) => (match.similarity ?? 0) >= QUICK_CONTEXT_KNOWLEDGE_THRESHOLD,
+      (match) => (match.similarity ?? 0) >= QUICK_CONTEXT_DOCUMENTS_THRESHOLD,
     )
     .slice(0, limit)
     .map((match) => {
@@ -212,35 +214,26 @@ async function searchKnowledge(
 function buildQuickContextPrompt(params: {
   query: string;
   memories: MemorySearchHit[];
-  knowledge: KnowledgeSearchHit[];
+  documents: DocumentSearchHit[];
 }): string {
-  const { query, memories, knowledge } = params;
+  const { query, memories, documents } = params;
   const memorySection =
     memories.length > 0
       ? memories
           .map((item, index) => `- [M${index + 1}] ${item.text}`)
           .join("\n")
       : "- none";
-  const knowledgeSection =
-    knowledge.length > 0
-      ? knowledge
-          .map((item, index) => `- [K${index + 1}] ${item.text}`)
+  const documentsSection =
+    documents.length > 0
+      ? documents
+          .map((item, index) => `- [D${index + 1}] ${item.text}`)
           .join("\n")
       : "- none";
 
-  return [
-    "You are a concise context assistant.",
-    "Answer only from the provided context. If context is insufficient, say so explicitly.",
-    "Keep the answer under 120 words.",
-    "",
-    `Query: ${query}`,
-    "",
-    "Saved memory notes:",
-    memorySection,
-    "",
-    "Knowledge snippets:",
-    knowledgeSection,
-  ].join("\n");
+  return composePrompt({
+    state: { query, memorySection, knowledgeSection: documentsSection },
+    template: memoryContextQaTemplate,
+  });
 }
 
 type MemoryBrowseItem = {
@@ -438,12 +431,12 @@ export async function handleMemoryRoutes(
       QUICK_CONTEXT_MAX_LIMIT,
     );
 
-    const [memories, knowledge] = await Promise.all([
+    const [memories, documents] = await Promise.all([
       searchMemoryNotes(runtime, roomId, query, limit),
-      searchKnowledge(runtime, query, limit),
+      searchDocuments(runtime, query, limit),
     ]);
 
-    const prompt = buildQuickContextPrompt({ query, memories, knowledge });
+    const prompt = buildQuickContextPrompt({ query, memories, documents });
     let answer = "I couldn't generate a quick answer right now.";
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     const text = typeof response === "string" ? response : String(response);
@@ -455,7 +448,7 @@ export async function handleMemoryRoutes(
       query,
       answer,
       memories,
-      knowledge,
+      documents,
     });
     return true;
   }

@@ -1,5 +1,5 @@
 import type { IAgentRuntime, ModelTypeName, TextStreamResult } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { buildCanonicalSystemPrompt, logger } from "@elizaos/core";
 import { emitModelUsageEvent } from "./events";
 
 interface ClaudeCliModelUsage {
@@ -110,9 +110,16 @@ export async function generateViaCli(
   prompt: string,
   modelName: string,
   modelType: ModelTypeName,
-  maxTokens?: number
+  maxTokens?: number,
+  systemPrompt?: string
 ): Promise<CliGenerateResult> {
-  const args = buildCliArgs(prompt, modelName, runtime.character.system, maxTokens, false);
+  const args = buildCliArgs(
+    prompt,
+    modelName,
+    systemPrompt ?? buildCanonicalSystemPrompt({ character: runtime.character }),
+    maxTokens,
+    false
+  );
   logger.debug(`[Anthropic CLI] ${modelType} → ${modelName}`);
 
   const proc = getBunRuntime().spawn(args, { stdout: "pipe", stderr: "pipe" });
@@ -165,9 +172,16 @@ export function streamViaCli(
   prompt: string,
   modelName: string,
   modelType: ModelTypeName,
-  maxTokens?: number
+  maxTokens?: number,
+  systemPrompt?: string
 ): TextStreamResult {
-  const args = buildCliArgs(prompt, modelName, runtime.character.system, maxTokens, true);
+  const args = buildCliArgs(
+    prompt,
+    modelName,
+    systemPrompt ?? buildCanonicalSystemPrompt({ character: runtime.character }),
+    maxTokens,
+    true
+  );
   logger.debug(`[Anthropic CLI] streaming ${modelType} → ${modelName}`);
 
   const proc = getBunRuntime().spawn(args, { stdout: "pipe", stderr: "pipe" });

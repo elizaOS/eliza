@@ -16,11 +16,9 @@
  *   4. Stops the sidecar on app shutdown
  */
 
-import type {
-	StewardSidecar,
-	StewardSidecarStatus,
-} from "@elizaos/app-core/services/steward-sidecar";
+import type { StewardSidecar, StewardSidecarStatus } from "@elizaos/app-core";
 import { getBrandConfig } from "../brand-config";
+import { logger } from "../logger";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,26 +31,20 @@ type SendToWebviewFn = (message: string, payload?: unknown) => void;
 // Lazy runtime imports
 // ---------------------------------------------------------------------------
 
-type StewardSidecarModule =
-	typeof import("@elizaos/app-core/services/steward-sidecar");
-type StewardCredentialsModule =
-	typeof import("@elizaos/app-core/services/steward-credentials");
+type StewardSidecarModule = typeof import("@elizaos/app-core");
+type StewardCredentialsModule = typeof import("@elizaos/app-core");
 
 let stewardSidecarModulePromise: Promise<StewardSidecarModule> | null = null;
 let stewardCredentialsModulePromise: Promise<StewardCredentialsModule> | null =
 	null;
 
 function loadStewardSidecarModule(): Promise<StewardSidecarModule> {
-	stewardSidecarModulePromise ??= import(
-		"@elizaos/app-core/services/steward-sidecar"
-	);
+	stewardSidecarModulePromise ??= import("@elizaos/app-core");
 	return stewardSidecarModulePromise;
 }
 
 function loadStewardCredentialsModule(): Promise<StewardCredentialsModule> {
-	stewardCredentialsModulePromise ??= import(
-		"@elizaos/app-core/services/steward-credentials"
-	);
+	stewardCredentialsModulePromise ??= import("@elizaos/app-core");
 	return stewardCredentialsModulePromise;
 }
 
@@ -93,7 +85,9 @@ export async function getStewardSidecar(): Promise<StewardSidecar> {
 					try {
 						listener(status);
 					} catch (err) {
-						console.warn("[Steward] Status listener error:", err);
+						logger.warn(
+							`[Steward] Status listener error: ${err instanceof Error ? err.message : String(err)}`,
+						);
 					}
 				}
 			},
@@ -158,14 +152,16 @@ async function configureStewardEnvFromCredentials(): Promise<void> {
 				agentName: credentials.agentId ?? undefined,
 			});
 		} catch (err) {
-			console.warn("[Steward] Failed to persist credentials:", err);
+			logger.warn(
+				`[Steward] Failed to persist credentials: ${err instanceof Error ? err.message : String(err)}`,
+			);
 		}
 
-		console.log(
+		logger.info(
 			`[Steward] Env configured: API=${apiBase} agent=${credentials.agentId} wallet=${credentials.walletAddress}`,
 		);
 	} else {
-		console.warn("[Steward] Sidecar running but no credentials available yet");
+		logger.warn("[Steward] Sidecar running but no credentials available yet");
 	}
 }
 
@@ -181,11 +177,11 @@ export async function startSteward(): Promise<StewardSidecarStatus> {
 	const status = steward.getStatus();
 
 	if (status.state === "running") {
-		console.log("[Steward] Already running, skipping start");
+		logger.info("[Steward] Already running, skipping start");
 		return status;
 	}
 
-	console.log("[Steward] Starting sidecar...");
+	logger.info("[Steward] Starting sidecar...");
 
 	// Push initial "starting" status to renderer
 	sendToWebview?.("stewardStatusUpdate", {
@@ -202,7 +198,7 @@ export async function startSteward(): Promise<StewardSidecarStatus> {
 
 	try {
 		const result = await steward.start();
-		console.log(
+		logger.info(
 			`[Steward] Running on port ${result.port}, wallet: ${result.walletAddress ?? "none"}`,
 		);
 
@@ -212,7 +208,7 @@ export async function startSteward(): Promise<StewardSidecarStatus> {
 		return result;
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
-		console.error("[Steward] Failed to start:", msg);
+		logger.error("[Steward] Failed to start:", msg);
 		return steward.getStatus();
 	}
 }
@@ -223,9 +219,9 @@ export async function startSteward(): Promise<StewardSidecarStatus> {
  */
 export async function stopSteward(): Promise<void> {
 	if (!sidecar) return;
-	console.log("[Steward] Stopping sidecar...");
+	logger.info("[Steward] Stopping sidecar...");
 	await sidecar.stop();
-	console.log("[Steward] Stopped");
+	logger.info("[Steward] Stopped");
 }
 
 /**
@@ -236,7 +232,7 @@ export async function restartSteward(): Promise<StewardSidecarStatus> {
 	if (!sidecar) {
 		return startSteward();
 	}
-	console.log("[Steward] Restarting sidecar...");
+	logger.info("[Steward] Restarting sidecar...");
 	const result = await sidecar.restart();
 	await configureStewardEnvFromCredentials();
 	return result;
@@ -247,7 +243,7 @@ export async function restartSteward(): Promise<StewardSidecarStatus> {
  * Use when PGLite data is corrupted or user wants a fresh wallet.
  */
 export async function resetSteward(): Promise<StewardSidecarStatus> {
-	console.log("[Steward] Resetting steward data...");
+	logger.info("[Steward] Resetting steward data...");
 
 	// Stop the sidecar first
 	await stopSteward();
@@ -276,7 +272,7 @@ export async function resetSteward(): Promise<StewardSidecarStatus> {
 	}
 
 	if (fs.existsSync(resolvedDataDir)) {
-		console.log(`[Steward] Removing data directory: ${resolvedDataDir}`);
+		logger.info(`[Steward] Removing data directory: ${resolvedDataDir}`);
 		fs.rmSync(resolvedDataDir, { recursive: true, force: true });
 	}
 

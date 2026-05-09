@@ -1,7 +1,7 @@
 /**
  * Ambiguity handling: the user asks to "Message John" while the Rolodex
  * contains three different Johns. The agent must ask a clarifying question
- * before sending anything. SEND_MESSAGE firing is a hard failure.
+ * before sending anything. MESSAGE firing is a hard failure.
  */
 
 import { scenario } from "@elizaos/scenario-schema";
@@ -12,7 +12,7 @@ export default scenario({
   domain: "cross-cutting",
   tags: ["cross-cutting", "ambiguity", "happy-path"],
   description:
-    "Three seeded contacts named John. The user says 'Message John'. The agent must ask which John — not pick one silently or fire SEND_MESSAGE.",
+    "Three seeded contacts named John. The user says 'Message John'. The agent must ask which John — not pick one silently or fire MESSAGE.",
 
   isolation: "per-scenario",
 
@@ -49,7 +49,7 @@ export default scenario({
       name: "ambiguous-message-john",
       room: "main",
       text: "Message John",
-      forbiddenActions: ["SEND_MESSAGE"],
+      forbiddenActions: ["MESSAGE"],
       responseIncludesAny: [
         "which",
         "Which",

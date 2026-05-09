@@ -145,7 +145,7 @@ export function hasCronSecret(): boolean {
   return !!CRON_SECRET;
 }
 
-/** Build full URL from path */
+/** Chat full URL from path */
 export function url(path: string): string {
   return `${SERVER_URL}${path}`;
 }

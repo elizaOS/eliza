@@ -10,13 +10,49 @@ import type {
 	State,
 } from "../../../../types/index.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
-import { parseDraftFollowupParams } from "./_shared.ts";
+import {
+	bodyParameter,
+	parseDraftFollowupParams,
+	validateMessageAction,
+} from "./_shared.ts";
 
 export const draftFollowupAction: Action = {
-	name: "DRAFT_FOLLOWUP",
+	name: "MESSAGE",
+	contexts: ["messaging", "email", "contacts", "tasks"],
+	roleGate: { minRole: "ADMIN" },
 	description:
-		"Compose a draft follow-up / check-in message to a contact on a chosen platform. Never sends — produces a preview that must be confirmed via SEND_DRAFT.",
+		"Compose a draft follow-up / check-in message to a contact on a chosen platform. Never sends — produces a preview that must be confirmed via MESSAGE.",
 	similes: ["COMPOSE_FOLLOWUP", "FOLLOWUP_DRAFT", "CHECK_IN_DRAFT"],
+	parameters: [
+		{
+			name: "source",
+			description: "Message source to draft for.",
+			required: true,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "to",
+			description: "Recipient identifiers or recipient objects.",
+			required: true,
+			schema: {
+				type: "array" as const,
+				items: { type: "string" as const },
+			},
+		},
+		bodyParameter,
+		{
+			name: "subject",
+			description: "Optional subject for email-like sources.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "threadId",
+			description: "Optional existing thread identifier.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+	],
 	examples: [
 		[
 			{
@@ -27,13 +63,17 @@ export const draftFollowupAction: Action = {
 				name: "Agent",
 				content: {
 					text: "Drafting a follow-up — here's the preview.",
-					action: "DRAFT_FOLLOWUP",
+					action: "MESSAGE",
 				},
 			},
 		],
 	] as ActionExample[][],
 
-	validate: async (): Promise<boolean> => true,
+	validate: async (
+		_runtime: IAgentRuntime,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> => validateMessageAction(message, state),
 
 	handler: async (
 		runtime: IAgentRuntime,
@@ -66,7 +106,7 @@ export const draftFollowupAction: Action = {
 			`[DraftFollowup] draftId=${record.draftId} source=${record.source}`,
 		);
 		if (callback) {
-			await callback({ text, action: "DRAFT_FOLLOWUP" });
+			await callback({ text, action: "MESSAGE" });
 		}
 
 		return {

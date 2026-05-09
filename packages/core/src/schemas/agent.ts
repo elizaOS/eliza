@@ -81,8 +81,8 @@ export const agentSchema: SchemaTable = {
 			notNull: true,
 			default: "[]",
 		},
-		knowledge: {
-			name: "knowledge",
+		documents: {
+			name: "documents",
 			type: "jsonb",
 			notNull: true,
 			default: "[]",

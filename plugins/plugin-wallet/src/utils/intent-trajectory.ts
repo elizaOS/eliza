@@ -11,6 +11,8 @@
  */
 
 import {
+  buildCanonicalSystemPrompt,
+  getTrajectoryContext,
   type IAgentRuntime,
   logActiveTrajectoryLlmCall,
   ModelType,
@@ -39,7 +41,7 @@ export interface RunIntentModelParams {
  * Run an intent-extraction LLM call and record it on the active trajectory.
  *
  * Returns the raw model text so callers can continue parsing with their
- * existing TOON/JSON pipeline. Uses `recordLlmCall` when available; otherwise
+ * existing JSON pipeline. Uses `recordLlmCall` when available; otherwise
  * runs the model and emits a `logActiveTrajectoryLlmCall` entry directly.
  */
 export async function runIntentModel(
@@ -55,10 +57,14 @@ export async function runIntentModel(
     temperature,
   } = params;
 
-  const systemPrompt = runtime.character?.system ?? "";
+  const systemPrompt = buildCanonicalSystemPrompt({
+    character: runtime.character,
+    userRole: getTrajectoryContext()?.userRole,
+  });
   const modelLabel = String(modelType);
   const modelParams = {
     prompt: template,
+    system: systemPrompt,
     ...(maxTokens !== undefined ? { maxTokens } : {}),
     ...(temperature !== undefined ? { temperature } : {}),
   };

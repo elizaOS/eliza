@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { parseToonKeyValue } from "@elizaos/core";
+import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import { runExtractorPipeline } from "../extractor-pipeline.js";
 
 const VALID_CADENCE_KINDS = new Set([
@@ -38,7 +38,7 @@ function promptText(value: string): string {
 }
 
 function parseStructuredRecord(raw: string): Record<string, unknown> | null {
-  return parseToonKeyValue<Record<string, unknown>>(raw);
+  return parseJsonModelRecord<Record<string, unknown>>(raw);
 }
 
 function parseTimeOfDay(value: string): string | null {
@@ -165,7 +165,7 @@ function buildRepairPrompt(args: {
 }): string {
   return [
     "Your last reply for the LifeOps update extractor was invalid.",
-    "Return ONLY valid TOON with exactly these fields:",
+    "Return ONLY a valid JSON object with exactly these fields:",
     "title, cadenceKind, windows, weekdays, timeOfDay, everyMinutes, priority, description",
     "",
     "Use null for any field the user did not ask to change.",
@@ -206,7 +206,7 @@ export async function extractUpdateFieldsWithLlm(args: {
     `Current task: "${currentTitle}"`,
     `Current schedule: ${currentCadenceKind}, windows: [${currentWindows.join(", ")}]`,
     "",
-    "Return a TOON record with these fields (null = no change requested):",
+    "Return a JSON object with these fields (null = no change requested):",
     "- title: new name if user wants to rename",
     "- cadenceKind: new schedule type if changing (once/daily/weekly/times_per_day/interval)",
     "- windows: new time windows if changing (morning/afternoon/evening/night)",
@@ -216,15 +216,10 @@ export async function extractUpdateFieldsWithLlm(args: {
     "- priority: new priority 1-5 if changing",
     "- description: new description if changing",
     "",
-    "Examples:",
-    'Input: "change workout to 6am"',
-    "timeOfDay: 06:00",
-    'Input: "make it weekly instead of daily"',
-    "cadenceKind: weekly",
-    'Input: "rename to Morning run"',
-    "title: Morning run",
+    'Example time change: {"title":null,"cadenceKind":null,"windows":null,"weekdays":null,"timeOfDay":"06:00","everyMinutes":null,"priority":null,"description":null}',
+    'Example rename: {"title":"Morning run","cadenceKind":null,"windows":null,"weekdays":null,"timeOfDay":null,"everyMinutes":null,"priority":null,"description":null}',
     "",
-    "Return ONLY valid TOON. No prose, markdown, code fences, or any other format.",
+    "Return ONLY valid JSON. No prose, markdown, code fences, or any other format.",
     "",
     `User request: ${promptText(intent)}`,
   ].join("\n");

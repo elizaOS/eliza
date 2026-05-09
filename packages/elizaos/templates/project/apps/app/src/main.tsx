@@ -1,11 +1,11 @@
-import "@elizaos/app-core/styles/styles.css";
-import "@elizaos/app-core/styles/brand-gold.css";
+import "@elizaos/ui/styles/styles.css";
+import "@elizaos/ui/styles/brand-gold.css";
 
-import "@elizaos/app-core/platform/native-plugin-entrypoints";
+import "@elizaos/app-core";
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
-import { Keyboard } from "@capacitor/keyboard";
+import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import {
   AGENT_READY_EVENT,
@@ -38,20 +38,22 @@ import {
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
 } from "@elizaos/app-core";
-import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "@elizaos/app-lifeops";
-import { LifeOpsActivitySignalsEffect } from "@elizaos/app-lifeops/ui";
+import {
+  dispatchQueuedLifeOpsGithubCallbackFromUrl,
+  LifeOpsActivitySignalsEffect,
+} from "@elizaos/app-lifeops";
 // Side-effect: register LifeOps sidebar widgets into the app-core widget registry.
-import "@elizaos/app-lifeops/widgets";
+import "@elizaos/app-lifeops";
 // Side-effect: register coding-agent (task-coordinator) slots so app-core
 // slot wrappers (CodingAgentControlChip, PtyConsoleBase, etc.) render the
 // real components instead of nulls.
-import "@elizaos/app-task-coordinator/register-slots";
+import "@elizaos/app-task-coordinator";
 // Side-effect: register game operator surfaces + detail extensions.
-import "@elizaos/app-babylon/ui";
-import "@elizaos/app-scape/ui";
-import "@elizaos/app-hyperscape/ui";
-import "@elizaos/app-2004scape/ui";
-import "@elizaos/app-defense-of-the-agents/ui";
+import "@elizaos/app-babylon";
+import "@elizaos/app-scape";
+import "@elizaos/app-hyperscape";
+import "@elizaos/app-2004scape";
+import "@elizaos/app-defense-of-the-agents";
 import {
   AppProvider,
   applyUiTheme,
@@ -238,6 +240,8 @@ async function initializeStatusBar(): Promise<void> {
 
 async function initializeKeyboard(): Promise<void> {
   if (isIOS) {
+    await Keyboard.setResizeMode({ mode: KeyboardResize.None });
+    await Keyboard.setScroll({ isDisabled: true });
     await Keyboard.setAccessoryBarVisible({ isVisible: true });
   }
 
@@ -435,7 +439,7 @@ function mountReactApp(): void {
       <StrictMode>
         <AppProvider branding={ELIZA_BRANDING}>
           {isDetachedWindowShell(windowShellRoute) ? (
-            <div className="flex h-screen min-h-0 w-screen flex-col overflow-hidden">
+            <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
               <DetachedShellRoot route={windowShellRoute} />
             </div>
           ) : (

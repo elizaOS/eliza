@@ -1,5 +1,5 @@
 export {
-  multiStepDecisionTemplate,
-  multiStepSummaryTemplate,
+  nativePlannerTemplate,
+  nativeResponseTemplate,
   shouldRespondTemplate,
-} from "./multi-step";
+} from "./native-planner";

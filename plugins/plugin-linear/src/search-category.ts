@@ -50,6 +50,13 @@ export const LINEAR_ISSUES_SEARCH_CATEGORY: SearchCategoryRegistration = {
       type: "number",
       default: 10,
     },
+    {
+      name: "accountId",
+      label: "Account",
+      description:
+        "Optional Linear account id. Defaults to LINEAR_DEFAULT_ACCOUNT_ID or the legacy single API key.",
+      type: "string",
+    },
   ],
   resultSchemaSummary:
     "LinearIssue[] with id, identifier, title, description, state, assignee, labels, priority, team, project, url, and updatedAt.",

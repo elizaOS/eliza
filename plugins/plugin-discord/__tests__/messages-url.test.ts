@@ -1,12 +1,12 @@
 import {
-	__setKnowledgeUrlFetchImplForTests,
+	__setDocumentUrlFetchImplForTests,
 	ContentType,
 	type IAgentRuntime,
 	ServiceType,
 } from "@elizaos/core";
 import type { Message as DiscordMessage } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MessageManager } from "../messages";
+import { hasActiveTaskAgentWorkForMessage, MessageManager } from "../messages";
 
 function runtime(): IAgentRuntime {
 	return {
@@ -52,14 +52,14 @@ function managerFor(testRuntime: IAgentRuntime): MessageManager {
 }
 
 afterEach(() => {
-	__setKnowledgeUrlFetchImplForTests(null);
+	__setDocumentUrlFetchImplForTests(null);
 });
 
 describe("MessageManager URL enrichment", () => {
 	it("turns direct webpage URLs into readable link attachments without a browser service", async () => {
 		const html =
 			"<html><head><style>.hidden{display:none}</style><script>window.secret='wrong'</script></head><body><p>secret phrase: velvet-lantern-7419</p></body></html>";
-		__setKnowledgeUrlFetchImplForTests(async () => {
+		__setDocumentUrlFetchImplForTests(async () => {
 			return new Response(html, {
 				headers: { "content-type": "text/html; charset=utf-8" },
 			});
@@ -82,7 +82,7 @@ describe("MessageManager URL enrichment", () => {
 	});
 
 	it("uses a stable attachment id for the same direct URL", async () => {
-		__setKnowledgeUrlFetchImplForTests(async () => {
+		__setDocumentUrlFetchImplForTests(async () => {
 			return new Response("same page", {
 				headers: { "content-type": "text/plain; charset=utf-8" },
 			});
@@ -97,5 +97,105 @@ describe("MessageManager URL enrichment", () => {
 		);
 
 		expect(first.attachments[0]?.id).toBe(second.attachments[0]?.id);
+	});
+});
+
+describe("hasActiveTaskAgentWorkForMessage", () => {
+	function runtimeWithTasks(tasks: Map<string, unknown>): IAgentRuntime {
+		return {
+			getService: vi.fn((serviceType) =>
+				serviceType === "SWARM_COORDINATOR" ? { tasks } : null,
+			),
+		} as unknown as IAgentRuntime;
+	}
+
+	it("matches active task-agent work by originating message id", () => {
+		const runtime = runtimeWithTasks(
+			new Map([
+				[
+					"session-1",
+					{
+						status: "tool_running",
+						originMetadata: { messageId: "message-memory-id" },
+					},
+				],
+			]),
+		);
+
+		expect(hasActiveTaskAgentWorkForMessage(runtime, "message-memory-id")).toBe(
+			true,
+		);
+	});
+
+	it("matches queued active task-agent work by originating message id", () => {
+		const runtime = runtimeWithTasks(
+			new Map([
+				[
+					"session-1",
+					{
+						status: "active",
+						originMetadata: { messageId: "message-memory-id" },
+					},
+				],
+			]),
+		);
+
+		expect(hasActiveTaskAgentWorkForMessage(runtime, "message-memory-id")).toBe(
+			true,
+		);
+	});
+
+	it("matches blocked task-agent work by originating message id", () => {
+		const runtime = runtimeWithTasks(
+			new Map([
+				[
+					"session-1",
+					{
+						status: "blocked",
+						originMetadata: { messageId: "message-memory-id" },
+					},
+				],
+			]),
+		);
+
+		expect(hasActiveTaskAgentWorkForMessage(runtime, "message-memory-id")).toBe(
+			true,
+		);
+	});
+
+	it("ignores active task-agent work for a different originating message id", () => {
+		const runtime = runtimeWithTasks(
+			new Map([
+				[
+					"session-1",
+					{
+						status: "tool_running",
+						originMetadata: { messageId: "other-message-memory-id" },
+					},
+				],
+			]),
+		);
+
+		expect(hasActiveTaskAgentWorkForMessage(runtime, "message-memory-id")).toBe(
+			false,
+		);
+	});
+
+	it("ignores terminal task-agent work", () => {
+		const runtime = runtimeWithTasks(
+			new Map([
+				[
+					"session-1",
+					{
+						status: "completed",
+						originMetadata: { messageId: "message-memory-id" },
+					},
+				],
+			]),
+		);
+
+		expect(hasActiveTaskAgentWorkForMessage(runtime, "message-memory-id")).toBe(
+			false,
+		);
 	});
 });

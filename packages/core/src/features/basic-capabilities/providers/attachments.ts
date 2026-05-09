@@ -4,12 +4,14 @@ import type {
 	Media,
 	Memory,
 	Provider,
+	ProviderResult,
 } from "../../../types/index.ts";
 import { addHeader } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("ATTACHMENTS");
 const MAX_VISIBLE_ATTACHMENTS = 3;
+const MAX_ATTACHMENT_MEMORY_LOOKBACK = 50;
 
 type AttachmentWithCreatedAt = Media & {
 	_createdAt?: number;
@@ -68,32 +70,48 @@ export const attachmentsProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	dynamic: spec.dynamic ?? true,
-	get: async (runtime: IAgentRuntime, message: Memory) => {
-		const { roomId } = message;
-		const conversationLength = runtime.getConversationLength();
+	contexts: ["media", "messaging"],
+	contextGate: { anyOf: ["media", "messaging"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
 
-		const recentMessagesData = await runtime.getMemories({
-			roomId,
-			limit: conversationLength,
-			unique: false,
-			tableName: "messages",
-		});
+	get: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+	): Promise<ProviderResult> => {
+		try {
+			const { roomId } = message;
+			const conversationLength = Math.min(
+				runtime.getConversationLength(),
+				MAX_ATTACHMENT_MEMORY_LOOKBACK,
+			);
 
-		const allAttachments = mergeConversationAttachments(
-			message,
-			Array.isArray(recentMessagesData) ? recentMessagesData : [],
-		);
-		const visibleAttachments = allAttachments.slice(0, MAX_VISIBLE_ATTACHMENTS);
-		const omittedCount = Math.max(
-			0,
-			allAttachments.length - visibleAttachments.length,
-		);
+			const recentMessagesData = await runtime.getMemories({
+				roomId,
+				limit: conversationLength,
+				unique: false,
+				tableName: "messages",
+			});
 
-		// Format attachments for display
-		const formattedAttachments = visibleAttachments
-			.map(
-				(attachment) =>
-					`ID: ${attachment.id}
+			const allAttachments = mergeConversationAttachments(
+				message,
+				Array.isArray(recentMessagesData) ? recentMessagesData : [],
+			);
+			const visibleAttachments = allAttachments.slice(
+				0,
+				MAX_VISIBLE_ATTACHMENTS,
+			);
+			const omittedCount = Math.max(
+				0,
+				allAttachments.length - visibleAttachments.length,
+			);
+
+			// Format attachments for display
+			const formattedAttachments = visibleAttachments
+				.map(
+					(attachment) =>
+						`ID: ${attachment.id}
     Name: ${attachment.title}
     URL: ${attachment.url}
     Type: ${attachment.source}
@@ -104,35 +122,51 @@ export const attachmentsProvider: Provider = {
 				: "none"
 		}
     `,
-			)
-			.join("\n");
-		const omissionNotice =
-			omittedCount > 0
-				? `Showing the ${visibleAttachments.length} most recent attachments. ${omittedCount} older attachment${omittedCount === 1 ? "" : "s"} omitted from context; use READ_ATTACHMENT to inspect one.`
-				: "";
+				)
+				.join("\n");
+			const omissionNotice =
+				omittedCount > 0
+					? `Showing the ${visibleAttachments.length} most recent attachments. ${omittedCount} older attachment${omittedCount === 1 ? "" : "s"} omitted from context; use READ_ATTACHMENT to inspect one.`
+					: "";
 
-		// Create formatted text with header
-		const text =
-			formattedAttachments && formattedAttachments.length > 0
-				? addHeader(
-						"# Attachments",
-						[formattedAttachments, omissionNotice].filter(Boolean).join("\n\n"),
-					)
-				: "";
+			// Create formatted text with header
+			const text =
+				formattedAttachments && formattedAttachments.length > 0
+					? addHeader(
+							"# Attachments",
+							[formattedAttachments, omissionNotice]
+								.filter(Boolean)
+								.join("\n\n"),
+						)
+					: "";
 
-		const values = {
-			attachments: text,
-		};
-		const data = {
-			attachments: allAttachments,
-			visibleAttachments,
-			omittedCount,
-		};
+			const values = {
+				attachments: text,
+			};
+			const data = {
+				attachments: allAttachments,
+				visibleAttachments,
+				omittedCount,
+			};
 
-		return {
-			values,
-			data,
-			text,
-		};
+			return {
+				values,
+				data,
+				text,
+			};
+		} catch (error) {
+			return {
+				values: {
+					attachments: "",
+				},
+				data: {
+					attachments: [],
+					visibleAttachments: [],
+					omittedCount: 0,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				text: "",
+			};
+		}
 	},
 };

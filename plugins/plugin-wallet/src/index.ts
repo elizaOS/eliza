@@ -1,12 +1,8 @@
 import "./core-augmentation.js";
 
 export * from "./actions/index.js";
-export { birdeyePlugin } from "./analytics/birdeye/index.js";
 export { BirdeyeService } from "./analytics/birdeye/service.js";
-export {
-  DexScreenerService,
-  dexscreenerPlugin,
-} from "./analytics/dexscreener/index.js";
+export { DexScreenerService } from "./analytics/dexscreener/index.js";
 // Consolidated analytics surface (formerly @elizaos/plugin-{lpinfo,dexscreener,defi-news,birdeye}).
 export {
   kaminoPlugin,
@@ -18,8 +14,19 @@ export {
   defiNewsProvider,
   NewsDataService,
 } from "./analytics/news/index.js";
+export {
+  TOKEN_INFO_SERVICE_TYPE,
+  TokenInfoService,
+  tokenInfoAction,
+} from "./analytics/token-info/index.js";
 export * from "./audit/audit-log.js";
 export { walletRouterAction } from "./chains/wallet-action.js";
+export * from "./contracts.js";
+export {
+  canUseLocalTradeExecution,
+  resolveTradePermissionMode,
+  resolveWalletExportRejection,
+} from "./lib/server-wallet-trade.js";
 // Consolidated LP management surface (formerly @elizaos/plugin-lp-manager).
 // Includes Solana DEX adapters (Raydium / Orca / Meteora) under
 // chains/solana/dex/* and EVM DEX adapters (Uniswap / PancakeSwap / Aerodrome)
@@ -43,7 +50,7 @@ export {
   YieldOptimizationService,
 } from "./lp/lp-manager-entry.js";
 export * from "./lp/types.js";
-export { agentWalletPlugin, default, walletPlugin } from "./plugin.js";
+export { default, walletPlugin } from "./plugin.js";
 export * from "./policy/policy.js";
 export * from "./providers/canonical-provider.js";
 export { unifiedWalletProvider } from "./providers/unified-wallet-provider.js";

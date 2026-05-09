@@ -11,14 +11,13 @@
  * Protected by CRON_SECRET.
  */
 
-import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { dbRead, dbWrite } from "@/db/client";
 import { usersRepository } from "@/db/repositories";
-import { type AgentBillingStatus, agentSandboxes } from "@/db/schemas/agent-sandboxes";
-import { creditTransactions } from "@/db/schemas/credit-transactions";
-import { organizationBilling } from "@/db/schemas/organization-billing";
-import { organizations } from "@/db/schemas/organizations";
+import {
+  type AgentBillingOrganization,
+  type AgentBillingSandbox,
+  agentBillingRepository,
+} from "@/db/repositories/agent-billing";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
@@ -27,20 +26,6 @@ import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const REBILL_GUARD_MINUTES = 55;
-
-class AlreadyBilledRecentlyError extends Error {
-  constructor() {
-    super("Sandbox was already billed within the guard window");
-    this.name = "AlreadyBilledRecentlyError";
-  }
-}
-
-class InsufficientCreditsDuringBillingError extends Error {
-  constructor() {
-    super("Organization balance was insufficient when the debit was attempted");
-    this.name = "InsufficientCreditsDuringBillingError";
-  }
-}
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -71,12 +56,7 @@ async function getOrgUserEmail(organizationId: string): Promise<string | null> {
 
 async function getOrgBalance(organizationId: string): Promise<number | null> {
   try {
-    const [org] = await dbRead
-      .select({ credit_balance: organizations.credit_balance })
-      .from(organizations)
-      .where(eq(organizations.id, organizationId));
-
-    return org ? Number(org.credit_balance) : null;
+    return await agentBillingRepository.getOrganizationCreditBalance(organizationId);
   } catch (error) {
     logger.warn("[Agent Billing] Failed to refresh org balance", {
       organizationId,
@@ -99,23 +79,8 @@ function getHourlyRate(status: string): number {
 // ── Per-Agent Billing ─────────────────────────────────────────────────
 
 async function processSandboxBilling(
-  sandbox: {
-    id: string;
-    agent_name: string | null;
-    organization_id: string;
-    user_id: string;
-    status: string;
-    billing_status: string;
-    total_billed: string;
-    shutdown_warning_sent_at: Date | null;
-    scheduled_shutdown_at: Date | null;
-  },
-  org: {
-    id: string;
-    name: string;
-    credit_balance: string;
-    billing_email: string | null;
-  },
+  sandbox: AgentBillingSandbox,
+  org: AgentBillingOrganization,
   appUrl: string,
 ): Promise<BillingResult> {
   const sandboxId = sandbox.id;
@@ -159,15 +124,7 @@ async function processSandboxBilling(
       now.getTime() + AGENT_PRICING.GRACE_PERIOD_HOURS * 60 * 60 * 1000,
     );
 
-    await dbWrite
-      .update(agentSandboxes)
-      .set({
-        billing_status: "shutdown_pending" as AgentBillingStatus,
-        shutdown_warning_sent_at: now,
-        scheduled_shutdown_at: shutdownTime,
-        updated_at: now,
-      })
-      .where(eq(agentSandboxes.id, sandboxId));
+    await agentBillingRepository.scheduleShutdownWarning(sandboxId, now, shutdownTime);
 
     const recipientEmail = org.billing_email || (await getOrgUserEmail(organizationId));
     if (recipientEmail) {
@@ -223,17 +180,7 @@ async function processSandboxBilling(
   ) {
     logger.info(`[Agent Billing] Shutting down agent ${agentName} due to insufficient credits`);
 
-    await dbWrite
-      .update(agentSandboxes)
-      .set({
-        status: "stopped",
-        billing_status: "suspended" as AgentBillingStatus,
-        sandbox_id: null,
-        bridge_url: null,
-        health_url: null,
-        updated_at: now,
-      })
-      .where(eq(agentSandboxes.id, sandboxId));
+    await agentBillingRepository.suspendSandboxForInsufficientCredits(sandboxId, now);
 
     return { sandboxId, agentName, organizationId, action: "shutdown" };
   }
@@ -243,111 +190,37 @@ async function processSandboxBilling(
     sandbox.status === "running"
       ? `Eliza agent hosting (running): ${agentName}`
       : `Eliza agent storage (idle): ${agentName}`;
-  let billingResult: { newBalance: number; transactionId: string };
-  try {
-    billingResult = await dbWrite.transaction(async (tx) => {
-      const rebillCutoff = new Date(now.getTime() - REBILL_GUARD_MINUTES * 60_000);
-      // Claim the sandbox row up front so overlapping cron runs serialize on the same record.
-      const [claimedSandbox] = await tx
-        .update(agentSandboxes)
-        .set({ updated_at: now })
-        .where(
-          and(
-            eq(agentSandboxes.id, sandboxId),
-            or(
-              isNull(agentSandboxes.last_billed_at),
-              lt(agentSandboxes.last_billed_at, rebillCutoff),
-            ),
-          ),
-        )
-        .returning({ id: agentSandboxes.id });
+  const billingResult = await agentBillingRepository.recordHourlyBilling({
+    sandboxId,
+    organizationId,
+    userId: sandbox.user_id,
+    agentName,
+    sandboxStatus: sandbox.status,
+    hourlyCost,
+    billingDescription,
+    lowCreditWarningAmount: AGENT_PRICING.LOW_CREDIT_WARNING,
+    rebillCutoff: new Date(now.getTime() - REBILL_GUARD_MINUTES * 60_000),
+    now,
+  });
 
-      if (!claimedSandbox) {
-        throw new AlreadyBilledRecentlyError();
-      }
-
-      // Atomic credit deduction — the balance floor lives in SQL, not the stale org snapshot.
-      const [updatedOrg] = await tx
-        .update(organizations)
-        .set({
-          credit_balance: sql`${organizations.credit_balance} - ${String(hourlyCost)}`,
-          updated_at: now,
-        })
-        .where(
-          and(
-            eq(organizations.id, organizationId),
-            gte(organizations.credit_balance, String(hourlyCost)),
-          ),
-        )
-        .returning({ credit_balance: organizations.credit_balance });
-
-      if (!updatedOrg) {
-        throw new InsufficientCreditsDuringBillingError();
-      }
-
-      const newBalance = Number(updatedOrg.credit_balance);
-
-      // Create credit transaction
-      const [creditTx] = await tx
-        .insert(creditTransactions)
-        .values({
-          organization_id: organizationId,
-          user_id: sandbox.user_id,
-          amount: String(-hourlyCost),
-          type: "debit",
-          description: billingDescription,
-          metadata: {
-            sandbox_id: sandboxId,
-            agent_name: agentName,
-            billing_type: sandbox.status === "running" ? "agent_running" : "agent_idle",
-            hourly_rate: hourlyCost,
-            billing_hour: now.toISOString(),
-          },
-          created_at: now,
-        })
-        .returning();
-
-      const nextBillingStatus: AgentBillingStatus =
-        newBalance < AGENT_PRICING.LOW_CREDIT_WARNING ? "warning" : "active";
-
-      // Update sandbox billing fields — use SQL increment for total_billed to avoid races
-      await tx
-        .update(agentSandboxes)
-        .set({
-          last_billed_at: now,
-          billing_status: nextBillingStatus,
-          shutdown_warning_sent_at: null,
-          scheduled_shutdown_at: null,
-          hourly_rate: String(hourlyCost),
-          total_billed: sql`${agentSandboxes.total_billed} + ${String(hourlyCost)}`,
-          updated_at: now,
-        })
-        .where(eq(agentSandboxes.id, sandboxId));
-
-      return { newBalance, transactionId: creditTx.id };
-    });
-  } catch (error) {
-    if (error instanceof AlreadyBilledRecentlyError) {
-      logger.info(
-        `[Agent Billing] Skipping ${agentName}; already billed within ${REBILL_GUARD_MINUTES} minutes`,
-        {
-          sandboxId,
-        },
-      );
-      return {
+  if (billingResult.status === "already_billed_recently") {
+    logger.info(
+      `[Agent Billing] Skipping ${agentName}; already billed within ${REBILL_GUARD_MINUTES} minutes`,
+      {
         sandboxId,
-        agentName,
-        organizationId,
-        action: "skipped",
-        error: "Already billed recently",
-      };
-    }
+      },
+    );
+    return {
+      sandboxId,
+      agentName,
+      organizationId,
+      action: "skipped",
+      error: "Already billed recently",
+    };
+  }
 
-    if (error instanceof InsufficientCreditsDuringBillingError) {
-      return queueShutdownWarning();
-    }
-
-    throw error;
+  if (billingResult.status === "insufficient_credits") {
+    return queueShutdownWarning();
   }
 
   logger.info(`[Agent Billing] Billed ${agentName}: $${hourlyCost.toFixed(4)}`, {
@@ -378,77 +251,8 @@ async function handleAgentBilling(c: AppContext): Promise<Response> {
 
     logger.info("[Agent Billing] Starting hourly billing run");
     // ── 1. Running agents (always billed) ───────────────────────────
-    const runningSandboxes = await dbRead
-      .select({
-        id: agentSandboxes.id,
-        agent_name: agentSandboxes.agent_name,
-        organization_id: agentSandboxes.organization_id,
-        user_id: agentSandboxes.user_id,
-        status: agentSandboxes.status,
-        billing_status: agentSandboxes.billing_status,
-        last_billed_at: agentSandboxes.last_billed_at,
-        total_billed: agentSandboxes.total_billed,
-        shutdown_warning_sent_at: agentSandboxes.shutdown_warning_sent_at,
-        scheduled_shutdown_at: agentSandboxes.scheduled_shutdown_at,
-      })
-      .from(agentSandboxes)
-      .where(
-        and(
-          eq(agentSandboxes.status, "running"),
-          inArray(agentSandboxes.billing_status, [
-            "active",
-            "warning",
-            "shutdown_pending",
-          ] satisfies AgentBillingStatus[]),
-          or(
-            and(
-              eq(agentSandboxes.billing_status, "shutdown_pending"),
-              isNotNull(agentSandboxes.scheduled_shutdown_at),
-              lte(agentSandboxes.scheduled_shutdown_at, now),
-            ),
-            isNull(agentSandboxes.last_billed_at),
-            lt(agentSandboxes.last_billed_at, rebillCutoff),
-          ),
-        ),
-      );
-
-    // ── 2. Stopped agents with at least one backup (idle storage) ───
-    // Sub-select sandbox IDs that have backups
-    const stoppedWithBackups = await dbRead
-      .select({
-        id: agentSandboxes.id,
-        agent_name: agentSandboxes.agent_name,
-        organization_id: agentSandboxes.organization_id,
-        user_id: agentSandboxes.user_id,
-        status: agentSandboxes.status,
-        billing_status: agentSandboxes.billing_status,
-        last_billed_at: agentSandboxes.last_billed_at,
-        total_billed: agentSandboxes.total_billed,
-        shutdown_warning_sent_at: agentSandboxes.shutdown_warning_sent_at,
-        scheduled_shutdown_at: agentSandboxes.scheduled_shutdown_at,
-      })
-      .from(agentSandboxes)
-      .where(
-        and(
-          eq(agentSandboxes.status, "stopped"),
-          inArray(agentSandboxes.billing_status, [
-            "active",
-            "warning",
-            "shutdown_pending",
-          ] satisfies AgentBillingStatus[]),
-          // Only bill stopped agents that have snapshot data
-          isNotNull(agentSandboxes.last_backup_at),
-          or(
-            and(
-              eq(agentSandboxes.billing_status, "shutdown_pending"),
-              isNotNull(agentSandboxes.scheduled_shutdown_at),
-              lte(agentSandboxes.scheduled_shutdown_at, now),
-            ),
-            isNull(agentSandboxes.last_billed_at),
-            lt(agentSandboxes.last_billed_at, rebillCutoff),
-          ),
-        ),
-      );
+    const { runningSandboxes, stoppedWithBackups } =
+      await agentBillingRepository.listBillableSandboxes(now, rebillCutoff);
 
     const allBillable = [...runningSandboxes, ...stoppedWithBackups];
 
@@ -475,27 +279,8 @@ async function handleAgentBilling(c: AppContext): Promise<Response> {
     // ── Fetch organizations ─────────────────────────────────────────
     const orgIds = [...new Set(allBillable.map((s) => s.organization_id))];
 
-    const orgs = await dbRead
-      .select({
-        id: organizations.id,
-        name: organizations.name,
-        credit_balance: organizations.credit_balance,
-      })
-      .from(organizations)
-      .where(inArray(organizations.id, orgIds));
-
-    const billingData = await dbRead
-      .select({
-        organization_id: organizationBilling.organization_id,
-        billing_email: organizationBilling.billing_email,
-      })
-      .from(organizationBilling)
-      .where(inArray(organizationBilling.organization_id, orgIds));
-
-    const billingEmailMap = new Map(billingData.map((b) => [b.organization_id, b.billing_email]));
-    const orgMap = new Map(
-      orgs.map((o) => [o.id, { ...o, billing_email: billingEmailMap.get(o.id) ?? null }]),
-    );
+    const orgs = await agentBillingRepository.listBillingOrganizations(orgIds);
+    const orgMap = new Map(orgs.map((o) => [o.id, o]));
 
     // ── Process each sandbox ────────────────────────────────────────
     const results: BillingResult[] = [];

@@ -45,11 +45,6 @@ export class UsersService {
       promises.push(cache.del(CacheKeys.user.byStewardId(stewardUserId)));
       promises.push(cache.del(CacheKeys.user.byStewardIdWithOrg(stewardUserId)));
     }
-    const privyUserId = user.privy_user_id;
-    if (typeof privyUserId === "string") {
-      promises.push(cache.del(CacheKeys.user.byPrivyId(privyUserId)));
-      promises.push(cache.del(CacheKeys.user.byPrivyIdWithOrg(privyUserId)));
-    }
     const walletAddress = user.wallet_address;
     if (typeof walletAddress === "string") {
       promises.push(cache.del(CacheKeys.user.byWalletAddress(walletAddress)));
@@ -125,64 +120,6 @@ export class UsersService {
     }
   }
 
-  async getByPrivyId(privyUserId: string): Promise<UserWithOrganization | undefined> {
-    const cacheKey = CacheKeys.user.byPrivyId(privyUserId);
-    const cached = await cache.get<UserWithOrganization>(cacheKey);
-    if (cached) {
-      logger.debug("[UsersService] Cache hit for user byPrivyId");
-      return cached;
-    }
-
-    try {
-      const user = await usersRepository.findByPrivyIdWithOrganization(privyUserId);
-      if (user) {
-        await cache.set(cacheKey, user, CacheTTL.user.byPrivyId);
-        logger.debug("[UsersService] Cached user data by privyId");
-      }
-      return user;
-    } catch (error) {
-      const errorDetails = getErrorDetails(error);
-
-      logger.warn("[UsersService] Read-path Privy lookup failed, retrying on primary", {
-        privyUserId,
-        ...errorDetails,
-      });
-
-      try {
-        return await this.getByPrivyIdForWrite(privyUserId);
-      } catch (fallbackError) {
-        logger.error("[UsersService] Primary Privy lookup retry failed", {
-          privyUserId,
-          readError: errorDetails,
-          writeError: getErrorDetails(fallbackError),
-        });
-        throw fallbackError;
-      }
-    }
-  }
-
-  async getByPrivyIdForWrite(privyUserId: string): Promise<UserWithOrganization | undefined> {
-    const user = await usersRepository.findByPrivyIdWithOrganizationForWrite(privyUserId);
-    if (user) {
-      await Promise.all([
-        cache.set(CacheKeys.user.byPrivyId(privyUserId), user, CacheTTL.user.byPrivyId),
-        cache.set(
-          CacheKeys.user.byPrivyIdWithOrg(privyUserId),
-          user,
-          CacheTTL.user.byPrivyIdWithOrg,
-        ),
-      ]);
-      logger.debug("[UsersService] Cached user data by privyId from primary");
-    }
-    return user;
-  }
-
-  async getPrivyIdentityForWrite(
-    privyUserId: string,
-  ): Promise<{ user_id: string; privy_user_id: string | null } | undefined> {
-    return await usersRepository.findIdentityByPrivyIdForWrite(privyUserId);
-  }
-
   async getByStewardIdForWrite(stewardUserId: string): Promise<UserWithOrganization | undefined> {
     const user = await usersRepository.findByStewardIdWithOrganizationForWrite(stewardUserId);
     if (user) {
@@ -201,7 +138,7 @@ export class UsersService {
 
   async getStewardIdentityForWrite(
     stewardUserId: string,
-  ): Promise<{ user_id: string; steward_user_id: string | null } | undefined> {
+  ): Promise<{ user_id: string; steward_user_id: string } | undefined> {
     return await usersRepository.findIdentityByStewardIdForWrite(stewardUserId);
   }
 
@@ -285,41 +222,6 @@ export class UsersService {
       await this.invalidateCache(result);
     }
     return result;
-  }
-
-  async upsertPrivyIdentity(userId: string, privyUserId: string): Promise<void> {
-    const existingIdentity = await usersRepository.findIdentityByUserIdForWrite(userId);
-
-    // Existing authenticated users hit this path on every Privy-backed request.
-    // Once the projection already points at the canonical Privy ID, avoid the
-    // full upsert, but still refresh guarded WhatsApp projection fields so
-    // relinks do not leave stale identity data behind.
-    if (existingIdentity?.privy_user_id === privyUserId) {
-      await usersRepository.refreshWhatsAppProjectionForWrite(userId);
-
-      await Promise.all([
-        cache.del(CacheKeys.user.byPrivyId(privyUserId)),
-        cache.del(CacheKeys.user.byPrivyIdWithOrg(privyUserId)),
-      ]);
-      return;
-    }
-
-    await usersRepository.upsertPrivyIdentity(userId, privyUserId);
-    await usersRepository.refreshWhatsAppProjectionForWrite(userId);
-
-    const cacheDeletes = [
-      cache.del(CacheKeys.user.byPrivyId(privyUserId)),
-      cache.del(CacheKeys.user.byPrivyIdWithOrg(privyUserId)),
-    ];
-
-    if (existingIdentity?.privy_user_id && existingIdentity.privy_user_id !== privyUserId) {
-      cacheDeletes.push(
-        cache.del(CacheKeys.user.byPrivyId(existingIdentity.privy_user_id)),
-        cache.del(CacheKeys.user.byPrivyIdWithOrg(existingIdentity.privy_user_id)),
-      );
-    }
-
-    await Promise.all(cacheDeletes);
   }
 
   async upsertStewardIdentity(userId: string, stewardUserId: string): Promise<void> {

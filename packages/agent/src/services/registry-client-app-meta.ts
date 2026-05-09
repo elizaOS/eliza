@@ -1,5 +1,5 @@
 import { logger } from "@elizaos/core";
-import { packageNameToAppDisplayName } from "../contracts/apps.js";
+import { packageNameToAppDisplayName } from "@elizaos/shared";
 import type {
   AppUiExtensionConfig,
   RegistryAppMeta,
@@ -152,6 +152,7 @@ export function mergeAppMeta(
     session: mergeSession(base.session, patch.session),
     developerOnly: patch.developerOnly ?? base.developerOnly,
     visibleInAppStore: patch.visibleInAppStore ?? base.visibleInAppStore,
+    mainTab: patch.mainTab ?? base.mainTab,
   };
 }
 

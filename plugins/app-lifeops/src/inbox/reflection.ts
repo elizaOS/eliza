@@ -2,14 +2,14 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 
 function parseReflectionObject(raw: string): Record<string, unknown> | null {
-  const parsedToon = parseToonKeyValue<Record<string, unknown>>(raw);
-  if (parsedToon && typeof parsedToon === "object") {
-    return parsedToon;
+  const parsedJson = parseJsonModelRecord<Record<string, unknown>>(raw);
+  if (parsedJson && typeof parsedJson === "object") {
+    return parsedJson;
   }
   return null;
 }
@@ -61,12 +61,12 @@ export async function reflectOnSendConfirmation(
     "You are a safety check for an inbox response system. Your job is to determine",
     "whether the user has clearly confirmed they want to send a drafted message.",
     "",
-    "Pending draft TOON:",
+    "Pending draft:",
     `draftText: ${promptLine(opts.draftText)}`,
     `recipientName: ${promptLine(opts.recipientName)}`,
     `channelName: ${promptLine(opts.channelName)}`,
     "",
-    "Owner message TOON:",
+    "Owner message:",
     `userMessage: ${promptLine(opts.userMessage)}`,
     "",
     "Determine if the user CLEARLY confirmed they want this message sent.",
@@ -74,9 +74,7 @@ export async function reflectOnSendConfirmation(
     "Rejection signals: 'no', 'wait', 'hold on', 'change it', 'actually...', 'not yet'",
     "Ambiguous (treat as NOT confirmed): single words that could mean anything, unrelated responses",
     "",
-    "Return TOON only with exactly these fields:",
-    "confirmed: true or false",
-    "reasoning: brief explanation",
+    'Return JSON only, for example {"confirmed":true,"reasoning":"brief explanation"}.',
   ].join("\n");
 
   try {
@@ -139,12 +137,12 @@ export async function reflectOnAutoReply(
     "send a reply WITHOUT explicit owner confirmation. Your job is to determine if this",
     "auto-reply is appropriate and safe to send.",
     "",
-    "Inbound message TOON:",
+    "Inbound message:",
     `senderName: ${promptLine(opts.senderName)}`,
     `source: ${promptLine(opts.source)}`,
     `inboundText: ${promptLine(opts.inboundText)}`,
     "",
-    "Proposed reply TOON:",
+    "Proposed reply:",
     `replyText: ${promptLine(opts.replyText)}`,
     "",
     "Approve the auto-reply ONLY if ALL of these are true:",
@@ -160,9 +158,7 @@ export async function reflectOnAutoReply(
     "- The reply could be embarrassing or inappropriate",
     "- The sender seems upset or the conversation is heated",
     "",
-    "Return TOON only with exactly these fields:",
-    "approved: true or false",
-    "reasoning: brief explanation",
+    'Return JSON only, for example {"approved":true,"reasoning":"brief explanation"}.',
   ].join("\n");
 
   try {

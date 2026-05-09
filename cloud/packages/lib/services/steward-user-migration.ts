@@ -1,4 +1,4 @@
-import { type User, usersRepository } from "@/db/repositories";
+import { type User } from "@/db/repositories";
 import {
   isStewardPlatformConfigured,
   provisionStewardPlatformUser,
@@ -78,66 +78,16 @@ export async function ensureStewardUserMappingForUser(
 export async function backfillStewardUserMappings(
   options: StewardUserBackfillOptions = {},
 ): Promise<StewardUserBackfillSummary> {
-  const batchSize = Math.max(1, options.batchSize ?? 50);
-  const maxUsers = options.maxUsers ?? Number.POSITIVE_INFINITY;
   const dryRun = options.dryRun ?? false;
 
-  let scanned = 0;
-  let provisioned = 0;
-  let failed = 0;
-
-  while (scanned < maxUsers) {
-    const remaining = maxUsers - scanned;
-    const users = await usersRepository.listPendingStewardProvisioning(
-      Number.isFinite(remaining) ? Math.min(batchSize, remaining) : batchSize,
-    );
-
-    if (users.length === 0) {
-      break;
-    }
-
-    for (const user of users) {
-      scanned += 1;
-
-      if (!user.email) {
-        continue;
-      }
-
-      if (dryRun) {
-        logger.info("[StewardUserMigration] Dry run candidate", {
-          userId: user.id,
-          email: user.email,
-        });
-        continue;
-      }
-
-      try {
-        const stewardUserId = await ensureStewardUserMappingForUser(
-          {
-            ...user,
-            is_anonymous: false,
-          },
-          { required: true },
-        );
-
-        if (stewardUserId) {
-          provisioned += 1;
-        }
-      } catch (error) {
-        failed += 1;
-        logger.error("[StewardUserMigration] Failed to backfill Steward user mapping", {
-          userId: user.id,
-          email: user.email,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-  }
+  logger.warn(
+    "[StewardUserMigration] Pending Steward provisioning backfill is retired after steward_user_id became mandatory",
+  );
 
   return {
-    scanned,
-    provisioned,
-    failed,
+    scanned: 0,
+    provisioned: 0,
+    failed: 0,
     dryRun,
   };
 }

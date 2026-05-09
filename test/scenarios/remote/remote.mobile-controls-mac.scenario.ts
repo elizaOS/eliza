@@ -32,7 +32,7 @@ export default scenario({
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "OWNER_REMOTE_DESKTOP",
+      actionName: "REMOTE_DESKTOP",
       minCount: 1,
     },
   ],

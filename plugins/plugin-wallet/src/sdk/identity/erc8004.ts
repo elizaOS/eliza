@@ -675,8 +675,9 @@ function stringToHex(str: string): Hex {
 
 function hexToString(hex: Hex): string {
   const stripped = hex.startsWith("0x") ? hex.slice(2) : hex;
+  const pairs = stripped.match(/.{1,2}/g);
   const bytes = new Uint8Array(
-    stripped.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)),
+    pairs?.map((byte) => Number.parseInt(byte, 16)) ?? [],
   );
   return new TextDecoder("utf-8").decode(bytes);
 }

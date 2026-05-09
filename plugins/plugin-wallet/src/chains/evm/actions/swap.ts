@@ -7,9 +7,10 @@ import {
   isConfirmed,
 } from "./helpers";
 
-const spec = requireActionSpec("SWAP");
+const legacySpec = requireActionSpec("EVM_SWAP");
+const spec = { ...legacySpec, name: "WALLET" };
 
-import { composePromptFromState, logger, ModelType, parseToonKeyValue } from "@elizaos/core";
+import { composePromptFromState, logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
 import {
   createConfig,
   type ExtendedChain,
@@ -615,7 +616,7 @@ export async function buildSwapDetails(
     modelType: ModelType.TEXT_LARGE,
   });
 
-  const parsedResponse = parseToonKeyValue(llmResponse);
+  const parsedResponse = parseJSONObjectFromText(llmResponse) as Record<string, unknown> | null;
 
   if (!parsedResponse) {
     throw new EVMError(
@@ -675,6 +676,41 @@ export const swapAction = {
   name: spec.name,
   description: spec.description,
   descriptionCompressed: spec.descriptionCompressed,
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "fromToken",
+      description: "Input token symbol or address.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "toToken",
+      description: "Output token symbol or address.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "amount",
+      description: "Human-readable amount to swap.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "chain",
+      description: "EVM chain for the swap.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "confirmed",
+      description: "Set true after preview confirmation to submit.",
+      required: false,
+      schema: { type: "boolean", default: false },
+    },
+  ],
 
   handler: async (
     runtime: IAgentRuntime,

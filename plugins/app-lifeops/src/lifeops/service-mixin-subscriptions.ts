@@ -8,7 +8,7 @@
 import type {
   BrowserBridgeAction,
   BrowserBridgeCompanionStatus,
-} from "@elizaos/plugin-browser-bridge";
+} from "@elizaos/plugin-browser";
 import type {
   CreateLifeOpsBrowserSessionRequest,
   LifeOpsBrowserSession,
@@ -1078,8 +1078,12 @@ export function withSubscriptions<
     summarizeSubscriptionCancellation(
       summary: LifeOpsSubscriptionCancellationSummary,
     ): string {
-      const lines = [summarizeCancellationStatus(summary.cancellation)];
-      if (summary.cancellation.evidenceSummary) {
+      const status = summarizeCancellationStatus(summary.cancellation);
+      const lines = [status];
+      if (
+        summary.cancellation.evidenceSummary &&
+        summary.cancellation.evidenceSummary !== status
+      ) {
         lines.push(summary.cancellation.evidenceSummary);
       }
       if (summary.candidate) {

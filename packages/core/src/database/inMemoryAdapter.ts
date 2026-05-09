@@ -1,15 +1,32 @@
 import { DatabaseAdapter } from "../database";
 import type {
 	Agent,
+	AppendConnectorAccountAuditEventParams,
 	Component,
+	ConnectorAccountAuditEventRecord,
+	ConnectorAccountAuditOutcome,
+	ConnectorAccountCredentialRefRecord,
+	ConnectorAccountJsonObject,
+	ConnectorAccountRecord,
+	ConsumeOAuthFlowStateParams,
+	CreateOAuthFlowStateParams,
+	DeleteConnectorAccountParams,
+	DeleteOAuthFlowStateParams,
 	EntitiesForRoomsResult,
 	Entity,
+	GetConnectorAccountCredentialRefParams,
+	GetConnectorAccountParams,
+	GetOAuthFlowStateParams,
 	IDatabaseAdapter,
+	JsonValue,
+	ListConnectorAccountCredentialRefsParams,
+	ListConnectorAccountsParams,
 	Log,
 	LogBody,
 	Memory,
 	MemoryMetadata,
 	Metadata,
+	OAuthFlowRecord,
 	PairingAllowlistEntry,
 	PairingAllowlistsResult,
 	PairingChannel,
@@ -22,18 +39,123 @@ import type {
 	PatchOp,
 	Relationship,
 	Room,
+	SetConnectorAccountCredentialRefParams,
 	Task,
+	UpdateOAuthFlowStateParams,
+	UpsertConnectorAccountParams,
 	UUID,
 	World,
 } from "../types";
 import { DEFAULT_UUID } from "../types/primitives";
+import { isPlainObject } from "../utils/type-guards";
 
 function asUuid(id: string): UUID {
 	return id as UUID;
 }
 
+function randomUuid(): UUID {
+	const gen =
+		typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+			? crypto.randomUUID()
+			: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+	return asUuid(gen);
+}
+
 function roomTableKey(tableName: string, roomId: UUID): string {
 	return `${tableName}:${String(roomId)}`;
+}
+
+function connectorAccountKey(params: {
+	agentId: UUID;
+	provider: string;
+	accountKey: string;
+}): string {
+	return `${String(params.agentId)}::${params.provider}::${params.accountKey}`;
+}
+
+function connectorCredentialKey(params: {
+	accountId: UUID;
+	credentialType: string;
+}): string {
+	return `${String(params.accountId)}::${params.credentialType}`;
+}
+
+function oauthFlowKey(params: {
+	agentId: UUID;
+	provider: string;
+	stateHash: string;
+}): string {
+	return `${String(params.agentId)}::${params.provider}::${params.stateHash}`;
+}
+
+function connectorDateToMillis(
+	value: number | Date | null | undefined,
+): number | null | undefined {
+	if (value === undefined) return undefined;
+	if (value === null) return null;
+	return value instanceof Date ? value.getTime() : value;
+}
+
+function cloneConnectorJsonObject(
+	value: ConnectorAccountJsonObject | undefined,
+): ConnectorAccountJsonObject {
+	return value
+		? (JSON.parse(JSON.stringify(value)) as ConnectorAccountJsonObject)
+		: {};
+}
+
+const CONNECTOR_AUDIT_REDACTED = "[REDACTED]";
+const CONNECTOR_AUDIT_SECRET_KEY_PATTERN =
+	/(access|refresh|id)?_?token|secret|password|credential|authorization|cookie|code[_-]?verifier|codeVerifier|client[_-]?secret|api_?key|private_?key|oauth_?code|state/i;
+
+function redactConnectorAuditValue(value: unknown): JsonValue {
+	if (value === null || value === undefined) return null;
+	if (Array.isArray(value)) return value.map(redactConnectorAuditValue);
+	if (typeof value === "object") {
+		const redacted: ConnectorAccountJsonObject = {};
+		for (const [key, item] of Object.entries(
+			value as Record<string, unknown>,
+		)) {
+			redacted[key] = CONNECTOR_AUDIT_SECRET_KEY_PATTERN.test(key)
+				? CONNECTOR_AUDIT_REDACTED
+				: redactConnectorAuditValue(item);
+		}
+		return redacted;
+	}
+	if (
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		return value;
+	}
+	return String(value);
+}
+
+function redactConnectorAuditMetadata(
+	metadata: Record<string, unknown> | undefined,
+): ConnectorAccountJsonObject {
+	return redactConnectorAuditValue(
+		metadata ?? {},
+	) as ConnectorAccountJsonObject;
+}
+
+async function sha256Hex(value: string): Promise<string> {
+	const subtle = globalThis.crypto?.subtle;
+	if (!subtle) {
+		return Array.from(new TextEncoder().encode(value))
+			.map((byte) => byte.toString(16).padStart(2, "0"))
+			.join("")
+			.padEnd(64, "0")
+			.slice(0, 64);
+	}
+	const digest = await subtle.digest(
+		"SHA-256",
+		new TextEncoder().encode(value),
+	);
+	return Array.from(new Uint8Array(digest))
+		.map((byte) => byte.toString(16).padStart(2, "0"))
+		.join("");
 }
 
 function componentNaturalKey(params: {
@@ -48,10 +170,6 @@ function componentNaturalKey(params: {
 		String(params.worldId ?? ""),
 		String(params.sourceEntityId ?? ""),
 	].join("::");
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function dataContainsFilter(
@@ -140,6 +258,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	// Pairing storage
 	private pairingRequests = new Map<string, PairingRequest>();
 	private pairingAllowlist = new Map<string, PairingAllowlistEntry>();
+
+	private connectorAccountsById = new Map<string, ConnectorAccountRecord>();
+	private connectorAccountIdsByKey = new Map<string, string>();
+	private connectorCredentialRefs = new Map<
+		string,
+		ConnectorAccountCredentialRefRecord
+	>();
+	private connectorAuditEvents: ConnectorAccountAuditEventRecord[] = [];
+	private oauthFlowsByStateHash = new Map<string, OAuthFlowRecord>();
 
 	private cloneComponent(component: Component): Component {
 		return {
@@ -1287,7 +1414,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				return false;
 			if (params.tags && params.tags.length > 0) {
 				for (const tag of params.tags) {
-					if (!t.tags.includes(tag)) return false;
+					if (!t.tags?.includes(tag)) return false;
 				}
 			}
 			return true;
@@ -1520,5 +1647,464 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		for (const id of ids) {
 			this.pairingAllowlist.delete(String(id));
 		}
+	}
+
+	async listConnectorAccounts(
+		params: ListConnectorAccountsParams = {},
+	): Promise<ConnectorAccountRecord[]> {
+		const agentId = params.agentId ?? DEFAULT_UUID;
+		const offset = params.offset ?? 0;
+		const limit = params.limit ?? 100;
+		return Array.from(this.connectorAccountsById.values())
+			.filter((account) => account.agentId === agentId)
+			.filter((account) => account.deletedAt == null)
+			.filter(
+				(account) => !params.provider || account.provider === params.provider,
+			)
+			.filter((account) => !params.status || account.status === params.status)
+			.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
+			.slice(offset, offset + limit)
+			.map((account) => ({
+				...account,
+				scopes: [...account.scopes],
+				purpose: [...account.purpose],
+				capabilities: [...account.capabilities],
+				profile: cloneConnectorJsonObject(account.profile),
+				metadata: cloneConnectorJsonObject(account.metadata),
+			}));
+	}
+
+	async getConnectorAccount(
+		params: GetConnectorAccountParams,
+	): Promise<ConnectorAccountRecord | null> {
+		let account: ConnectorAccountRecord | undefined;
+		if (params.id) {
+			account = this.connectorAccountsById.get(String(params.id));
+		} else {
+			if (!params.provider || !params.accountKey) {
+				throw new Error(
+					"getConnectorAccount requires id or provider + accountKey",
+				);
+			}
+			const key = connectorAccountKey({
+				agentId: params.agentId ?? DEFAULT_UUID,
+				provider: params.provider,
+				accountKey: params.accountKey,
+			});
+			const accountId = this.connectorAccountIdsByKey.get(key);
+			account = accountId
+				? this.connectorAccountsById.get(accountId)
+				: undefined;
+		}
+		if (!account || account.deletedAt != null) return null;
+		return {
+			...account,
+			scopes: [...account.scopes],
+			purpose: [...account.purpose],
+			capabilities: [...account.capabilities],
+			profile: cloneConnectorJsonObject(account.profile),
+			metadata: cloneConnectorJsonObject(account.metadata),
+		};
+	}
+
+	async upsertConnectorAccount(
+		params: UpsertConnectorAccountParams,
+	): Promise<ConnectorAccountRecord> {
+		const agentId = params.agentId ?? DEFAULT_UUID;
+		const lookupKey = connectorAccountKey({
+			agentId,
+			provider: params.provider,
+			accountKey: params.accountKey,
+		});
+		const existingId = params.id
+			? String(params.id)
+			: this.connectorAccountIdsByKey.get(lookupKey);
+		const existing = existingId
+			? this.connectorAccountsById.get(existingId)
+			: undefined;
+		const now = Date.now();
+		const id = params.id ?? existing?.id ?? randomUuid();
+		if (existing) {
+			this.connectorAccountIdsByKey.delete(
+				connectorAccountKey({
+					agentId: existing.agentId,
+					provider: existing.provider,
+					accountKey: existing.accountKey,
+				}),
+			);
+		}
+
+		const connectedAt = connectorDateToMillis(params.connectedAt);
+		const lastSyncAt = connectorDateToMillis(params.lastSyncAt);
+		const deletedAt = connectorDateToMillis(params.deletedAt);
+		const record: ConnectorAccountRecord = {
+			id,
+			agentId,
+			provider: params.provider,
+			accountKey: params.accountKey,
+			externalId:
+				params.externalId !== undefined
+					? params.externalId
+					: existing?.externalId,
+			displayName:
+				params.displayName !== undefined
+					? params.displayName
+					: existing?.displayName,
+			username:
+				params.username !== undefined ? params.username : existing?.username,
+			email: params.email !== undefined ? params.email : existing?.email,
+			ownerBindingId:
+				params.ownerBindingId !== undefined
+					? params.ownerBindingId
+					: existing?.ownerBindingId,
+			ownerIdentityId:
+				params.ownerIdentityId !== undefined
+					? params.ownerIdentityId
+					: existing?.ownerIdentityId,
+			role: params.role ?? existing?.role ?? "OWNER",
+			purpose: params.purpose
+				? [...params.purpose]
+				: [...(existing?.purpose ?? ["messaging"])],
+			accessGate: params.accessGate ?? existing?.accessGate ?? "open",
+			status: params.status ?? existing?.status ?? "connected",
+			scopes: params.scopes
+				? [...params.scopes]
+				: [...(existing?.scopes ?? [])],
+			capabilities: params.capabilities
+				? [...params.capabilities]
+				: [...(existing?.capabilities ?? [])],
+			profile:
+				params.profile !== undefined
+					? cloneConnectorJsonObject(params.profile)
+					: cloneConnectorJsonObject(existing?.profile),
+			metadata:
+				params.metadata !== undefined
+					? cloneConnectorJsonObject(params.metadata)
+					: cloneConnectorJsonObject(existing?.metadata),
+			connectedAt: connectedAt ?? existing?.connectedAt ?? now,
+			lastSyncAt: lastSyncAt !== undefined ? lastSyncAt : existing?.lastSyncAt,
+			deletedAt: deletedAt === undefined ? null : deletedAt,
+			createdAt: existing?.createdAt ?? now,
+			updatedAt: now,
+		};
+		this.connectorAccountsById.set(String(id), record);
+		this.connectorAccountIdsByKey.set(lookupKey, String(id));
+		return this.getConnectorAccount({ id }) as Promise<ConnectorAccountRecord>;
+	}
+
+	async deleteConnectorAccount(
+		params: DeleteConnectorAccountParams,
+	): Promise<boolean> {
+		const account = await this.getConnectorAccount(params);
+		if (!account) return false;
+		const now = Date.now();
+		this.connectorAccountsById.set(String(account.id), {
+			...account,
+			status: "disabled",
+			deletedAt: now,
+			updatedAt: now,
+		});
+		this.connectorAccountIdsByKey.delete(
+			connectorAccountKey({
+				agentId: account.agentId,
+				provider: account.provider,
+				accountKey: account.accountKey,
+			}),
+		);
+		return true;
+	}
+
+	async setConnectorAccountCredentialRef(
+		params: SetConnectorAccountCredentialRefParams,
+	): Promise<ConnectorAccountCredentialRefRecord> {
+		const account = await this.getConnectorAccount({ id: params.accountId });
+		if (!account) {
+			throw new Error(`Connector account not found: ${params.accountId}`);
+		}
+		const key = connectorCredentialKey(params);
+		const existing = this.connectorCredentialRefs.get(key);
+		const now = Date.now();
+		const expiresAt = connectorDateToMillis(params.expiresAt);
+		const lastVerifiedAt = connectorDateToMillis(params.lastVerifiedAt);
+		const record: ConnectorAccountCredentialRefRecord = {
+			id: existing?.id ?? randomUuid(),
+			accountId: params.accountId,
+			agentId: account.agentId,
+			provider: account.provider,
+			credentialType: params.credentialType,
+			vaultRef: params.vaultRef,
+			metadata:
+				params.metadata !== undefined
+					? cloneConnectorJsonObject(params.metadata)
+					: cloneConnectorJsonObject(existing?.metadata),
+			expiresAt: expiresAt !== undefined ? expiresAt : existing?.expiresAt,
+			lastVerifiedAt:
+				lastVerifiedAt !== undefined
+					? lastVerifiedAt
+					: existing?.lastVerifiedAt,
+			createdAt: existing?.createdAt ?? now,
+			updatedAt: now,
+		};
+		this.connectorCredentialRefs.set(key, record);
+		return {
+			...record,
+			metadata: cloneConnectorJsonObject(record.metadata),
+		};
+	}
+
+	async getConnectorAccountCredentialRef(
+		params: GetConnectorAccountCredentialRefParams,
+	): Promise<ConnectorAccountCredentialRefRecord | null> {
+		const account = await this.getConnectorAccount({ id: params.accountId });
+		if (!account) return null;
+		const credential = this.connectorCredentialRefs.get(
+			connectorCredentialKey(params),
+		);
+		return credential
+			? {
+					...credential,
+					metadata: cloneConnectorJsonObject(credential.metadata),
+				}
+			: null;
+	}
+
+	async listConnectorAccountCredentialRefs(
+		params: ListConnectorAccountCredentialRefsParams,
+	): Promise<ConnectorAccountCredentialRefRecord[]> {
+		const account = await this.getConnectorAccount({ id: params.accountId });
+		if (!account) return [];
+		return Array.from(this.connectorCredentialRefs.values())
+			.filter((credential) => credential.accountId === params.accountId)
+			.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
+			.map((credential) => ({
+				...credential,
+				metadata: cloneConnectorJsonObject(credential.metadata),
+			}));
+	}
+
+	async appendConnectorAccountAuditEvent(
+		params: AppendConnectorAccountAuditEventParams,
+	): Promise<ConnectorAccountAuditEventRecord> {
+		let agentId = params.agentId ?? DEFAULT_UUID;
+		let provider = params.provider;
+		if (params.accountId && (!params.agentId || !provider)) {
+			const account = await this.getConnectorAccount({ id: params.accountId });
+			if (!account) {
+				throw new Error(`Connector account not found: ${params.accountId}`);
+			}
+			agentId = account.agentId;
+			provider = account.provider;
+		}
+		if (!provider) {
+			throw new Error(
+				"appendConnectorAccountAuditEvent requires provider or accountId",
+			);
+		}
+		const record: ConnectorAccountAuditEventRecord = {
+			id: randomUuid(),
+			accountId: params.accountId ?? null,
+			agentId,
+			provider,
+			actorId: params.actorId ?? null,
+			action: params.action,
+			outcome:
+				params.outcome ?? ("success" satisfies ConnectorAccountAuditOutcome),
+			metadata: redactConnectorAuditMetadata(params.metadata),
+			createdAt: connectorDateToMillis(params.createdAt) ?? Date.now(),
+		};
+		this.connectorAuditEvents.push(record);
+		return {
+			...record,
+			metadata: cloneConnectorJsonObject(record.metadata),
+		};
+	}
+
+	async createOAuthFlowState(
+		params: CreateOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord> {
+		const stateHash = await sha256Hex(params.state);
+		const agentId = params.agentId ?? DEFAULT_UUID;
+		const key = oauthFlowKey({
+			agentId,
+			provider: params.provider,
+			stateHash,
+		});
+		const existing = this.oauthFlowsByStateHash.get(key);
+		const now = Date.now();
+		const expiresAt =
+			connectorDateToMillis(params.expiresAt) ??
+			now + (params.ttlMs ?? 10 * 60_000);
+		const record: OAuthFlowRecord = {
+			stateHash,
+			agentId,
+			provider: params.provider,
+			accountId: params.accountId ?? null,
+			redirectUri: params.redirectUri ?? null,
+			codeVerifierRef: params.codeVerifierRef ?? null,
+			scopes: params.scopes ? [...params.scopes] : [],
+			metadata: cloneConnectorJsonObject(params.metadata),
+			createdAt: existing?.createdAt ?? now,
+			expiresAt,
+			consumedAt: null,
+			consumedBy: null,
+		};
+		this.oauthFlowsByStateHash.set(key, record);
+		return {
+			...record,
+			scopes: [...record.scopes],
+			metadata: cloneConnectorJsonObject(record.metadata),
+		};
+	}
+
+	async consumeOAuthFlowState(
+		params: ConsumeOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null> {
+		const existing = await this.findOAuthFlowState(params);
+		const now = connectorDateToMillis(params.now) ?? Date.now();
+		if (
+			!existing ||
+			existing.consumedAt != null ||
+			existing.expiresAt <= now ||
+			(params.agentId && existing.agentId !== params.agentId) ||
+			(params.provider && existing.provider !== params.provider)
+		) {
+			return null;
+		}
+		const record: OAuthFlowRecord = {
+			...existing,
+			consumedAt: now,
+			consumedBy: params.consumedBy ?? null,
+		};
+		this.oauthFlowsByStateHash.set(
+			oauthFlowKey({
+				agentId: record.agentId,
+				provider: record.provider,
+				stateHash: record.stateHash,
+			}),
+			record,
+		);
+		return {
+			...record,
+			scopes: [...record.scopes],
+			metadata: cloneConnectorJsonObject(record.metadata),
+		};
+	}
+
+	private async findOAuthFlowState(
+		params:
+			| GetOAuthFlowStateParams
+			| UpdateOAuthFlowStateParams
+			| DeleteOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null> {
+		let stateHash = params.stateHash;
+		if (!stateHash && params.state) {
+			stateHash = await sha256Hex(params.state);
+		}
+		const agentId = params.agentId ?? DEFAULT_UUID;
+		let existing = stateHash
+			? Array.from(this.oauthFlowsByStateHash.values()).find(
+					(flow) =>
+						flow.stateHash === stateHash &&
+						flow.agentId === agentId &&
+						(!params.provider || flow.provider === params.provider),
+				)
+			: undefined;
+		if (!existing && params.flowId) {
+			existing = Array.from(this.oauthFlowsByStateHash.values()).find(
+				(flow) =>
+					flow.metadata.flowId === params.flowId &&
+					flow.agentId === agentId &&
+					(!params.provider || flow.provider === params.provider),
+			);
+		}
+		if (!existing) return null;
+		const now =
+			connectorDateToMillis((params as GetOAuthFlowStateParams).now) ??
+			Date.now();
+		const query = params as GetOAuthFlowStateParams;
+		if (existing.agentId !== agentId) return null;
+		if (params.provider && existing.provider !== params.provider) return null;
+		if (!query.includeConsumed && existing.consumedAt != null) return null;
+		if (!query.includeExpired && existing.expiresAt <= now) return null;
+		return {
+			...existing,
+			scopes: [...existing.scopes],
+			metadata: cloneConnectorJsonObject(existing.metadata),
+		};
+	}
+
+	async getOAuthFlowState(
+		params: GetOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null> {
+		return this.findOAuthFlowState(params);
+	}
+
+	async updateOAuthFlowState(
+		params: UpdateOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null> {
+		const existing = await this.findOAuthFlowState({
+			...params,
+			includeConsumed: true,
+			includeExpired: true,
+		});
+		if (!existing) return null;
+		const expiresAt = connectorDateToMillis(params.expiresAt);
+		const consumedAt = connectorDateToMillis(params.consumedAt);
+		const record: OAuthFlowRecord = {
+			...existing,
+			accountId:
+				params.accountId !== undefined ? params.accountId : existing.accountId,
+			redirectUri:
+				params.redirectUri !== undefined
+					? params.redirectUri
+					: existing.redirectUri,
+			codeVerifierRef:
+				params.codeVerifierRef !== undefined
+					? params.codeVerifierRef
+					: existing.codeVerifierRef,
+			scopes: params.scopes ? [...params.scopes] : [...existing.scopes],
+			metadata: {
+				...cloneConnectorJsonObject(existing.metadata),
+				...(params.metadata ? cloneConnectorJsonObject(params.metadata) : {}),
+			},
+			expiresAt: expiresAt ?? existing.expiresAt,
+			consumedAt:
+				params.consumedAt !== undefined ? consumedAt : existing.consumedAt,
+			consumedBy:
+				params.consumedBy !== undefined
+					? params.consumedBy
+					: existing.consumedBy,
+		};
+		this.oauthFlowsByStateHash.set(
+			oauthFlowKey({
+				agentId: record.agentId,
+				provider: record.provider,
+				stateHash: record.stateHash,
+			}),
+			record,
+		);
+		return {
+			...record,
+			scopes: [...record.scopes],
+			metadata: cloneConnectorJsonObject(record.metadata),
+		};
+	}
+
+	async deleteOAuthFlowState(
+		params: DeleteOAuthFlowStateParams,
+	): Promise<boolean> {
+		const existing = await this.findOAuthFlowState({
+			...params,
+			includeConsumed: true,
+			includeExpired: true,
+		});
+		if (!existing) return false;
+		return this.oauthFlowsByStateHash.delete(
+			oauthFlowKey({
+				agentId: existing.agentId,
+				provider: existing.provider,
+				stateHash: existing.stateHash,
+			}),
+		);
 	}
 }

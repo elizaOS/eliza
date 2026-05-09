@@ -321,7 +321,7 @@ ralphy --parallel --sandbox
 
 How it works:
 
-    Symlinks read-only dependencies (node_modules, .git, vendor, .venv, .pnpm-store, .yarn, .cache)
+    Symlinks read-only dependencies (node_modules, .git, vendor, .venv, .bun, .yarn, .cache)
     Copies source files that agents might modify (src/, app/, lib/, config files, etc.)
 
 Why use it:

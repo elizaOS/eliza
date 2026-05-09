@@ -1,4 +1,5 @@
 import { Session } from "electrobun/bun";
+import { logger } from "../logger";
 import { resolveMainWindowPartition } from "../main-window-session";
 import {
 	type DesktopSession,
@@ -39,14 +40,13 @@ export async function primeDesktopSessionAuth(
 	try {
 		session = await loadOrCreateDesktopSession({ apiBase });
 	} catch (err) {
-		console.warn(
-			"[Main] Desktop auth bridge failed:",
-			err instanceof Error ? err.message : err,
+		logger.warn(
+			`[Main] Desktop auth bridge failed: ${err instanceof Error ? err.message : String(err)}`,
 		);
 		return;
 	}
 	if (!session) {
-		console.log(
+		logger.info(
 			"[Main] Desktop auth bridge produced no session; renderer will use the standard login flow.",
 		);
 		return;
@@ -66,13 +66,12 @@ export async function primeDesktopSessionAuth(
 			rendererOrigin,
 		});
 		desktopSessionPrimed = true;
-		console.log(
+		logger.info(
 			`[Main] Desktop loopback session primed on ${touched.join(", ") || "<no targets>"}`,
 		);
 	} catch (err) {
-		console.warn(
-			"[Main] Desktop auth cookie install failed:",
-			err instanceof Error ? err.message : err,
+		logger.warn(
+			`[Main] Desktop auth cookie install failed: ${err instanceof Error ? err.message : String(err)}`,
 		);
 	}
 }

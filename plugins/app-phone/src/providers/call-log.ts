@@ -15,7 +15,6 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 
 const CALL_LOG_LIMIT = 50;
 
@@ -35,7 +34,11 @@ export const phoneCallLogProvider: Provider = {
     "Read-only Android call history (number, cached name, timestamp, duration, call type) for resolving recent phone activity.",
   descriptionCompressed: "Phone call log: number, name, date, duration, type.",
   dynamic: true,
-  contexts: ["system"],
+  contexts: ["contacts", "messaging"],
+  contextGate: { anyOf: ["contacts", "messaging"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "ADMIN" },
+  cacheStable: false,
 
   get: async (
     _runtime: IAgentRuntime,
@@ -44,18 +47,20 @@ export const phoneCallLogProvider: Provider = {
   ): Promise<ProviderResult> => {
     try {
       const { calls } = await Phone.listRecentCalls({ limit: CALL_LOG_LIMIT });
-      const entries: PhoneCallLogEntry[] = calls.map((call) => ({
-        id: call.id,
-        number: call.number,
-        cachedName: call.cachedName ?? "",
-        date: call.date,
-        durationSeconds: call.durationSeconds,
-        type: call.type,
-        isNew: call.isNew,
-      }));
+      const entries: PhoneCallLogEntry[] = calls.map(
+        (call: PhoneCallLogEntry) => ({
+          id: call.id,
+          number: call.number,
+          cachedName: call.cachedName ?? "",
+          date: call.date,
+          durationSeconds: call.durationSeconds,
+          type: call.type,
+          isNew: call.isNew,
+        }),
+      );
 
       return {
-        text: encode({
+        text: JSON.stringify({
           phone_call_log: {
             count: entries.length,
             items: entries,

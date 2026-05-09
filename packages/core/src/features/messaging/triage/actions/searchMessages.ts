@@ -11,14 +11,16 @@ import type {
 } from "../../../../types/index.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import { ALL_MESSAGE_SOURCES } from "../types.ts";
-import { parseSearchMessagesParams } from "./_shared.ts";
+import { parseSearchMessagesParams, validateMessageAction } from "./_shared.ts";
 
 export const searchMessagesAction: Action = {
-	name: "SEARCH_MESSAGES",
+	name: "MESSAGE",
+	contexts: ["messaging", "email", "documents"],
+	roleGate: { minRole: "ADMIN" },
 	description:
-		"Search across connected message channels with combinable filters: source/connector, world (account), channel, sender, content keyword, tags, time range. Returns merged hits with citations.",
+		"Read-only search across connected message channels with combinable filters: source/connector, world (account), channel, sender, content keyword, tags, time range. Returns merged hits with citations. Do not use for requests to draft, reply, send, unsubscribe, block, archive, trash, label, or otherwise mutate messages; use MESSAGE, MESSAGE, MESSAGE, or MESSAGE instead.",
 	descriptionCompressed:
-		"search msgs cross-connector: filters source world channel sender content tags since until limit; combinable any-subset",
+		"read-only search msgs; not for draft reply send unsubscribe archive trash label mutate",
 	similes: [
 		"SEARCH_INBOX",
 		"FIND_MESSAGE",
@@ -79,7 +81,7 @@ export const searchMessagesAction: Action = {
 				name: "Agent",
 				content: {
 					text: "Searching across connected channels.",
-					action: "SEARCH_MESSAGES",
+					action: "MESSAGE",
 				},
 			},
 		],
@@ -87,9 +89,10 @@ export const searchMessagesAction: Action = {
 
 	validate: async (
 		_runtime: IAgentRuntime,
-		_message: Memory,
-		_state?: State,
-	): Promise<boolean> => true,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> =>
+		validateMessageAction(message, state, ["messaging", "email", "documents"]),
 
 	handler: async (
 		runtime: IAgentRuntime,
@@ -113,7 +116,7 @@ export const searchMessagesAction: Action = {
 		);
 
 		if (callback) {
-			await callback({ text, action: "SEARCH_MESSAGES" });
+			await callback({ text, action: "MESSAGE" });
 		}
 
 		return {

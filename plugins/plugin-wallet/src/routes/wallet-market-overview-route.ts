@@ -1,14 +1,14 @@
 import type http from "node:http";
-import { fetchWithTimeoutGuard } from "@elizaos/agent/api/server-helpers-fetch";
-import { resolveCloudApiBaseUrl } from "@elizaos/agent/cloud/base-url";
+import { fetchWithTimeoutGuard } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
+import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud";
 import type {
   WalletMarketMover,
   WalletMarketOverviewResponse,
   WalletMarketOverviewSource,
   WalletMarketPrediction,
   WalletMarketPriceSnapshot,
-} from "@elizaos/shared";
+} from "../contracts.js";
 
 const MARKET_OVERVIEW_PATH = "/api/wallet/market-overview";
 const CLOUD_MARKET_OVERVIEW_PREVIEW_PATH = "/market/preview/wallet-overview";

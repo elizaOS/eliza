@@ -1,6 +1,6 @@
 import type http from "node:http";
 import { isIP } from "node:net";
-import { type ElizaConfig, loadElizaConfig } from "@elizaos/agent/config";
+import { type ElizaConfig, loadElizaConfig } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import {
   isLoopbackBindHost,

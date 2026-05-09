@@ -125,7 +125,6 @@ export async function listSavedLogins(
   const prefix = domain ? `${PREFIX}.${normalizeDomain(domain)}` : PREFIX;
   const keys = await vault.list(prefix);
   const summaries: SavedLoginSummary[] = [];
-  const failures: string[] = [];
   for (const key of keys) {
     const parsed = parseLoginKey(key);
     if (!parsed) continue;
@@ -139,11 +138,6 @@ export async function listSavedLogins(
       username: decodeAccount(parsed.account),
       lastModified: descriptor.lastModified,
     });
-  }
-  if (failures.length > 0) {
-    throw new Error(
-      `listSavedLogins: failed to describe ${failures.length} key(s): ${failures.join(", ")}`,
-    );
   }
   return summaries;
 }

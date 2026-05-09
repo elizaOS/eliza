@@ -5,6 +5,7 @@
  * Coordinates between Neon API and our apps database.
  */
 
+import { appDatabasesRepository } from "@/db/repositories/app-databases";
 import { appsRepository } from "@/db/repositories/apps";
 import type { App, UserDatabaseStatus } from "@/db/schemas/apps";
 import { logger } from "@/lib/utils/logger";
@@ -91,38 +92,42 @@ export class UserDatabaseService {
       };
     }
 
+    const database = await appDatabasesRepository.findStateByAppId(appId);
+
     // Already has a database?
-    if (app.user_database_status === "ready" && app.user_database_uri) {
+    if (database?.user_database_status === "ready" && database.user_database_uri) {
       logger.info("App already has database", { appId });
-      const decryptedUri = await fieldEncryption.decryptIfNeeded(app.user_database_uri);
+      const decryptedUri = await fieldEncryption.decryptIfNeeded(database.user_database_uri);
       return {
         success: true,
         connectionUri: decryptedUri || undefined,
-        projectId: app.user_database_project_id || undefined,
-        branchId: app.user_database_branch_id || undefined,
-        region: app.user_database_region || region,
+        projectId: database.user_database_project_id || undefined,
+        branchId: database.user_database_branch_id || undefined,
+        region: database.user_database_region || region,
       };
     }
 
     // Atomically try to set status to "provisioning"
     // This prevents race conditions - only one request can win
-    const updatedApp = await appsRepository.trySetDatabaseProvisioning(appId, region);
+    const updatedDatabase = await appDatabasesRepository.trySetProvisioning(appId, region);
 
-    if (!updatedApp) {
+    if (!updatedDatabase) {
       // Another request won the race, or status was already "provisioning" or "ready"
       // Re-fetch to get current state
-      const currentApp = await appsRepository.findById(appId);
-      if (currentApp?.user_database_status === "ready" && currentApp.user_database_uri) {
+      const currentDatabase = await appDatabasesRepository.findStateByAppIdForWrite(appId);
+      if (currentDatabase?.user_database_status === "ready" && currentDatabase.user_database_uri) {
         logger.info("Database was provisioned by concurrent request", {
           appId,
         });
-        const decryptedUri = await fieldEncryption.decryptIfNeeded(currentApp.user_database_uri);
+        const decryptedUri = await fieldEncryption.decryptIfNeeded(
+          currentDatabase.user_database_uri,
+        );
         return {
           success: true,
           connectionUri: decryptedUri || undefined,
-          projectId: currentApp.user_database_project_id || undefined,
-          branchId: currentApp.user_database_branch_id || undefined,
-          region: currentApp.user_database_region || region,
+          projectId: currentDatabase.user_database_project_id || undefined,
+          branchId: currentDatabase.user_database_branch_id || undefined,
+          region: currentDatabase.user_database_region || region,
         };
       }
 
@@ -148,7 +153,7 @@ export class UserDatabaseService {
       // Encrypt the connection URI before storing
       const encryptedUri = await fieldEncryption.encrypt(app.organization_id, sharedDbUrl);
 
-      await appsRepository.update(appId, {
+      await appDatabasesRepository.updateState(appId, {
         user_database_uri: encryptedUri,
         user_database_status: "ready",
         user_database_error: null,
@@ -169,7 +174,7 @@ export class UserDatabaseService {
         error: errorMessage,
       });
 
-      await appsRepository.update(appId, {
+      await appDatabasesRepository.updateState(appId, {
         user_database_status: "error",
         user_database_error: errorMessage,
       });
@@ -190,24 +195,24 @@ export class UserDatabaseService {
   async cleanupDatabase(appId: string): Promise<void> {
     logger.info("Cleaning up database for app", { appId });
 
-    const app = await appsRepository.findById(appId);
-    if (!app || !app.user_database_project_id) {
+    const database = await appDatabasesRepository.findStateByAppIdForWrite(appId);
+    if (!database?.user_database_project_id) {
       logger.debug("No database to clean up", { appId });
       return;
     }
 
     try {
       const neonClient = getNeonClient();
-      await neonClient.deleteProject(app.user_database_project_id);
+      await neonClient.deleteProject(database.user_database_project_id);
       logger.info("Database cleaned up successfully", {
         appId,
-        projectId: app.user_database_project_id,
+        projectId: database.user_database_project_id,
       });
     } catch (error) {
       // Log but don't fail - database might already be deleted
       logger.warn("Failed to delete Neon project (may already be deleted)", {
         appId,
-        projectId: app.user_database_project_id,
+        projectId: database.user_database_project_id,
         error: error instanceof Error ? error.message : "Unknown",
       });
     }
@@ -220,13 +225,13 @@ export class UserDatabaseService {
    * @returns Decrypted connection URI or null if no database
    */
   async getConnectionUri(appId: string): Promise<string | null> {
-    const app = await appsRepository.findById(appId);
+    const database = await appDatabasesRepository.findStateByAppId(appId);
 
-    if (!app || app.user_database_status !== "ready" || !app.user_database_uri) {
+    if (!database || database.user_database_status !== "ready" || !database.user_database_uri) {
       return null;
     }
 
-    return fieldEncryption.decryptIfNeeded(app.user_database_uri);
+    return fieldEncryption.decryptIfNeeded(database.user_database_uri);
   }
 
   /**
@@ -237,9 +242,9 @@ export class UserDatabaseService {
    * @returns Database status
    */
   async getStatus(appId: string, includeUri = false): Promise<DatabaseStatus> {
-    const app = await appsRepository.findById(appId);
+    const database = await appDatabasesRepository.findStateByAppId(appId);
 
-    if (!app) {
+    if (!database) {
       return {
         hasDatabase: false,
         status: "none",
@@ -247,15 +252,15 @@ export class UserDatabaseService {
     }
 
     const status: DatabaseStatus = {
-      hasDatabase: app.user_database_status === "ready",
-      status: app.user_database_status as UserDatabaseStatus,
-      region: app.user_database_region || undefined,
-      error: app.user_database_error || undefined,
+      hasDatabase: database.user_database_status === "ready",
+      status: database.user_database_status as UserDatabaseStatus,
+      region: database.user_database_region || undefined,
+      error: database.user_database_error || undefined,
     };
 
-    if (includeUri && app.user_database_uri) {
+    if (includeUri && database.user_database_uri) {
       status.connectionUri =
-        (await fieldEncryption.decryptIfNeeded(app.user_database_uri)) || undefined;
+        (await fieldEncryption.decryptIfNeeded(database.user_database_uri)) || undefined;
     }
 
     return status;
@@ -275,6 +280,7 @@ export class UserDatabaseService {
     region?: string,
   ): Promise<ProvisionResult> {
     const app = await appsRepository.findById(appId);
+    const database = await appDatabasesRepository.findStateByAppIdForWrite(appId);
 
     if (!app) {
       return {
@@ -285,27 +291,29 @@ export class UserDatabaseService {
     }
 
     // Only retry if in error state
-    if (app.user_database_status !== "error") {
-      if (app.user_database_status === "ready") {
-        const decryptedUri = await fieldEncryption.decryptIfNeeded(app.user_database_uri);
+    if (database?.user_database_status !== "error") {
+      if (database?.user_database_status === "ready") {
+        const decryptedUri = await fieldEncryption.decryptIfNeeded(database.user_database_uri);
         return {
           success: true,
           connectionUri: decryptedUri || undefined,
-          projectId: app.user_database_project_id || undefined,
-          branchId: app.user_database_branch_id || undefined,
-          region: app.user_database_region || region,
+          projectId: database.user_database_project_id || undefined,
+          branchId: database.user_database_branch_id || undefined,
+          region: database.user_database_region || region,
         };
       }
 
       return {
         success: false,
-        error: `Cannot retry provisioning: current status is "${app.user_database_status}"`,
+        error: `Cannot retry provisioning: current status is "${
+          database?.user_database_status ?? "none"
+        }"`,
         errorCode: "UNKNOWN",
       };
     }
 
     // Clear error and retry
-    await appsRepository.update(appId, {
+    await appDatabasesRepository.updateState(appId, {
       user_database_status: "none",
       user_database_error: null,
     });
@@ -313,7 +321,7 @@ export class UserDatabaseService {
     return this.provisionDatabase(
       appId,
       appName,
-      region || app.user_database_region || "aws-us-east-1",
+      region || database.user_database_region || "aws-us-east-1",
     );
   }
 }
@@ -327,12 +335,15 @@ export const userDatabaseService = new UserDatabaseService();
  * This helper handles both encrypted (enc:v1:...) and legacy plaintext URIs
  * for backward compatibility during migration.
  *
- * @param app - The app object with user_database_uri field
+ * @param app - The app object whose canonical database row should be read
  * @returns Decrypted connection URI or null if no database
  */
-export async function getDecryptedDatabaseUri(app: App): Promise<string | null> {
-  if (!app.user_database_uri) {
+export async function getDecryptedDatabaseUri(app: Pick<App, "id">): Promise<string | null> {
+  const database = await appDatabasesRepository.findStateByAppId(app.id);
+
+  if (!database?.user_database_uri) {
     return null;
   }
-  return fieldEncryption.decryptIfNeeded(app.user_database_uri);
+
+  return fieldEncryption.decryptIfNeeded(database.user_database_uri);
 }

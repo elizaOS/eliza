@@ -1,4 +1,4 @@
-import { client, useApp } from "@elizaos/app-core";
+import { client, useApp } from "@elizaos/ui";
 import type {
   LifeOpsActiveReminderView,
   LifeOpsCalendarEvent,
@@ -11,7 +11,7 @@ import type {
   LifeOpsOverview,
   LifeOpsScheduleInsight,
   LifeOpsXConnectorStatus,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import {
   ArrowRight,
   AtSign,

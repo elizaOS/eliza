@@ -8,11 +8,9 @@
  * Requires admin role.
  */
 
-import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { dbWrite } from "@/db/helpers";
-import { aiPricingEntries } from "@/db/schemas/ai-pricing";
+import { aiPricingRepository } from "@/db/repositories/ai-pricing";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireAdmin } from "@/lib/auth/workers-hono-auth";
 import {
@@ -27,7 +25,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const app = new Hono<AppEnv>();
 
 const OverrideSchema = z.object({
-  billingSource: z.enum(["gateway", "openrouter", "openai", "groq", "fal", "elevenlabs"]),
+  billingSource: z.enum(["gateway", "openrouter", "openai", "groq", "vast", "fal", "elevenlabs"]),
   provider: z.string().min(1),
   model: z.string().min(1),
   productFamily: z.enum(["language", "embedding", "image", "video", "tts", "stt", "voice_clone"]),
@@ -99,58 +97,18 @@ app.put("/", async (c) => {
     const body = OverrideSchema.parse(await c.req.json());
     const dimensions = normalizePricingDimensions(body.dimensions);
     const dimensionKey = buildDimensionKey(dimensions);
-    const now = new Date();
-
-    const [created] = await dbWrite.transaction(async (tx) => {
-      await tx
-        .update(aiPricingEntries)
-        .set({
-          is_active: false,
-          effective_until: now,
-          updated_at: now,
-        })
-        .where(
-          and(
-            eq(aiPricingEntries.is_active, true),
-            eq(aiPricingEntries.source_kind, "manual_override"),
-            eq(aiPricingEntries.billing_source, body.billingSource),
-            eq(aiPricingEntries.provider, body.provider),
-            eq(aiPricingEntries.model, body.model),
-            eq(aiPricingEntries.product_family, body.productFamily),
-            eq(aiPricingEntries.charge_type, body.chargeType),
-            eq(aiPricingEntries.dimension_key, dimensionKey),
-          ),
-        );
-
-      const inserted = await tx
-        .insert(aiPricingEntries)
-        .values({
-          billing_source: body.billingSource,
-          provider: body.provider,
-          model: body.model,
-          product_family: body.productFamily,
-          charge_type: body.chargeType,
-          unit: body.unit,
-          unit_price: body.unitPrice.toString(),
-          currency: "USD",
-          dimension_key: dimensionKey,
-          dimensions,
-          source_kind: "manual_override",
-          source_url: "admin://manual-override",
-          source_hash: null,
-          fetched_at: now,
-          stale_after: null,
-          effective_from: now,
-          priority: 1000,
-          is_active: true,
-          is_override: true,
-          updated_by: user.id,
-          metadata: { reason: body.reason },
-          updated_at: now,
-        })
-        .returning();
-
-      return inserted;
+    const created = await aiPricingRepository.createManualOverride({
+      billingSource: body.billingSource,
+      provider: body.provider,
+      model: body.model,
+      productFamily: body.productFamily,
+      chargeType: body.chargeType,
+      unit: body.unit,
+      unitPrice: body.unitPrice,
+      dimensionKey,
+      dimensions,
+      reason: body.reason,
+      updatedBy: user.id,
     });
 
     return c.json({ success: true, pricing: created });

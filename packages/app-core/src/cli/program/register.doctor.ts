@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { theme } from "@elizaos/shared";
 import type { Command } from "commander";
-import { theme } from "../../terminal/theme";
 import { runCommandWithRuntime } from "../cli-utils";
 import type { CheckCategory, CheckResult, CheckStatus } from "../doctor/checks";
 
@@ -98,6 +98,43 @@ function attemptFix(result: CheckResult): boolean {
 // ---------------------------------------------------------------------------
 
 export function registerDoctorCommand(program: Command) {
+  program
+    .command("doctor:dflash")
+    .description("Check DFlash llama-server acceleration readiness")
+    .option("--json", "Output results as JSON")
+    .action(async (opts: { json: boolean }) => {
+      await runCommandWithRuntime(defaultRuntime, async () => {
+        const { runDflashDoctor } = await import(
+          "../../services/local-inference/dflash-doctor"
+        );
+        const report = await runDflashDoctor();
+        if (opts.json) {
+          process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+          if (!report.ok) process.exit(1);
+          return;
+        }
+        console.log(`\n${theme.heading("DFlash Health Check")}\n`);
+        for (const check of report.checks) {
+          const icon =
+            check.status === "pass"
+              ? theme.success("✓")
+              : check.status === "warn"
+                ? theme.warn("⚠")
+                : theme.error("✗");
+          console.log(
+            `  ${icon} ${check.label.padEnd(28)} ${theme.muted(check.detail)}`,
+          );
+          if (check.fix && check.status !== "pass") {
+            console.log(
+              `      ${theme.muted("fix:")} ${theme.command(check.fix)}`,
+            );
+          }
+        }
+        console.log();
+        if (!report.ok) process.exit(1);
+      });
+    });
+
   program
     .command("doctor")
     .description("Check environment health and diagnose common issues")

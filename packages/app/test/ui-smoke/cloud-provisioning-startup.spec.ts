@@ -225,7 +225,7 @@ for (const viewport of VIEWPORTS) {
     });
 
     await openAppPath(page, "/chat");
-    await page.getByRole("button", { name: /select cloud/i }).click();
+    await page.getByRole("button", { name: "Get started" }).click();
     await clickIfVisible(
       page.getByRole("button", { name: /sign in with eliza cloud/i }),
     );

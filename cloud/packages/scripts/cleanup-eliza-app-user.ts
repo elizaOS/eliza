@@ -6,19 +6,17 @@
  * Useful when you need a fresh start for testing login flows.
  *
  * Usage:
- *   bun run scripts/cleanup-eliza-app-user.ts +14155552671
- *   bun run scripts/cleanup-eliza-app-user.ts --telegram 123456789
- *   bun run scripts/cleanup-eliza-app-user.ts --discord 987654321
- *   bun run scripts/cleanup-eliza-app-user.ts --whatsapp 14155552671
- *   bun run scripts/cleanup-eliza-app-user.ts --id <user-uuid>
- *   bun run scripts/cleanup-eliza-app-user.ts --all-test-users
+ *   bun run packages/scripts/cleanup-eliza-app-user.ts +14155552671
+ *   bun run packages/scripts/cleanup-eliza-app-user.ts --telegram 123456789
+ *   bun run packages/scripts/cleanup-eliza-app-user.ts --discord 987654321
+ *   bun run packages/scripts/cleanup-eliza-app-user.ts --whatsapp 14155552671
+ *   bun run packages/scripts/cleanup-eliza-app-user.ts --id <user-uuid>
+ *   bun run packages/scripts/cleanup-eliza-app-user.ts --all-test-users
  */
 
-import { config } from "dotenv";
-import { resolve } from "path";
+import { loadEnvFiles } from "./local-dev-helpers";
 
-config({ path: resolve(process.cwd(), ".env") });
-config({ path: resolve(process.cwd(), ".env.local"), override: true });
+loadEnvFiles();
 
 import { Redis } from "@upstash/redis";
 import { eq, isNotNull, or } from "drizzle-orm";
@@ -311,21 +309,21 @@ async function main() {
   if (args.length === 0) {
     console.log(`
 Usage:
-  bun run scripts/cleanup-eliza-app-user.ts <phone_number>
-  bun run scripts/cleanup-eliza-app-user.ts --telegram <telegram_id>
-  bun run scripts/cleanup-eliza-app-user.ts --discord <discord_id>
-  bun run scripts/cleanup-eliza-app-user.ts --whatsapp <whatsapp_id>
-  bun run scripts/cleanup-eliza-app-user.ts --id <user_uuid>
-  bun run scripts/cleanup-eliza-app-user.ts --all-test-users
+  bun run packages/scripts/cleanup-eliza-app-user.ts <phone_number>
+  bun run packages/scripts/cleanup-eliza-app-user.ts --telegram <telegram_id>
+  bun run packages/scripts/cleanup-eliza-app-user.ts --discord <discord_id>
+  bun run packages/scripts/cleanup-eliza-app-user.ts --whatsapp <whatsapp_id>
+  bun run packages/scripts/cleanup-eliza-app-user.ts --id <user_uuid>
+  bun run packages/scripts/cleanup-eliza-app-user.ts --all-test-users
 
 Examples:
-  bun run scripts/cleanup-eliza-app-user.ts +14155552671
-  bun run scripts/cleanup-eliza-app-user.ts 4155552671
-  bun run scripts/cleanup-eliza-app-user.ts --telegram 123456789
-  bun run scripts/cleanup-eliza-app-user.ts --discord 987654321
-  bun run scripts/cleanup-eliza-app-user.ts --whatsapp 14155552671
-  bun run scripts/cleanup-eliza-app-user.ts --id a1b2c3d4-e5f6-7890-abcd-ef1234567890
-  bun run scripts/cleanup-eliza-app-user.ts --all-test-users
+  bun run packages/scripts/cleanup-eliza-app-user.ts +14155552671
+  bun run packages/scripts/cleanup-eliza-app-user.ts 4155552671
+  bun run packages/scripts/cleanup-eliza-app-user.ts --telegram 123456789
+  bun run packages/scripts/cleanup-eliza-app-user.ts --discord 987654321
+  bun run packages/scripts/cleanup-eliza-app-user.ts --whatsapp 14155552671
+  bun run packages/scripts/cleanup-eliza-app-user.ts --id a1b2c3d4-e5f6-7890-abcd-ef1234567890
+  bun run packages/scripts/cleanup-eliza-app-user.ts --all-test-users
 `);
     process.exit(1);
   }

@@ -48,6 +48,8 @@ export interface SignalAccountConfig {
   account?: string;
   /** Signal CLI HTTP server URL */
   httpUrl?: string;
+  /** Signal CLI auth/data directory */
+  authDir?: string;
   /** Signal CLI HTTP server host */
   httpHost?: string;
   /** Signal CLI HTTP server port */
@@ -84,6 +86,7 @@ export interface SignalMultiAccountConfig {
   enabled?: boolean;
   account?: string;
   httpUrl?: string;
+  authDir?: string;
   /** Per-account configuration overrides */
   accounts?: Record<string, SignalAccountConfig>;
 }
@@ -124,6 +127,7 @@ export function getMultiAccountConfig(runtime: IAgentRuntime): SignalMultiAccoun
     enabled: characterSignal?.enabled,
     account: characterSignal?.account,
     httpUrl: characterSignal?.httpUrl,
+    authDir: characterSignal?.authDir,
     accounts: characterSignal?.accounts,
   };
 }
@@ -193,6 +197,7 @@ function mergeSignalAccountConfig(runtime: IAgentRuntime, accountId: string): Si
   // Get environment/runtime settings for the base config
   const envAccount = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string | undefined;
   const envHttpUrl = runtime.getSetting("SIGNAL_HTTP_URL") as string | undefined;
+  const envAuthDir = runtime.getSetting("SIGNAL_AUTH_DIR") as string | undefined;
   const envCliPath = runtime.getSetting("SIGNAL_CLI_PATH") as string | undefined;
   const envIgnoreGroups = runtime.getSetting("SIGNAL_SHOULD_IGNORE_GROUP_MESSAGES") as
     | string
@@ -201,6 +206,7 @@ function mergeSignalAccountConfig(runtime: IAgentRuntime, accountId: string): Si
   const envConfig: SignalAccountConfig = {
     account: envAccount || undefined,
     httpUrl: envHttpUrl || undefined,
+    authDir: envAuthDir || undefined,
     cliPath: envCliPath || undefined,
     shouldIgnoreGroupMessages: envIgnoreGroups?.toLowerCase() === "true",
   };

@@ -10,7 +10,7 @@ export default scenario({
   domain: "gateway",
   tags: ["gateway", "imessage", "bluebubbles", "smoke"],
   description:
-    "The first turn must ask for confirmation. After the explicit yes, the BlueBubbles send action should fire and persist the outbound message.",
+    "The first turn must ask for confirmation. After the explicit yes, MESSAGE should route through BlueBubbles and persist the outbound message.",
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
@@ -31,7 +31,7 @@ export default scenario({
       room: "main",
       text: "iMessage Sarah that I'll be there in 10 minutes.",
       responseIncludesAny: ["iMessage", "Sarah", "confirm", "10"],
-      forbiddenActions: ["SEND_BLUEBUBBLES_MESSAGE", "AGENT_SEND_MESSAGE"],
+      forbiddenActions: ["MESSAGE"],
     },
     {
       kind: "message",
@@ -39,7 +39,7 @@ export default scenario({
       room: "main",
       text: "Yes, send it.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["SEND_BLUEBUBBLES_MESSAGE"],
+        acceptedActions: ["MESSAGE"],
         description: "BlueBubbles send after confirmation",
       }),
       responseIncludesAny: ["sent", "delivered", "iMessage"],
@@ -48,11 +48,11 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "SEND_BLUEBUBBLES_MESSAGE",
+      actionName: "MESSAGE",
     },
     {
       type: "actionCalled",
-      actionName: "SEND_BLUEBUBBLES_MESSAGE",
+      actionName: "MESSAGE",
       status: "success",
     },
     {
@@ -85,21 +85,15 @@ export default scenario({
         const secondTurnActions = ctx.turns?.[1]?.actionsCalled ?? [];
 
         if (
-          firstTurnActions.some((action) =>
-            ["SEND_BLUEBUBBLES_MESSAGE", "AGENT_SEND_MESSAGE"].includes(
-              action.actionName,
-            ),
-          )
+          firstTurnActions.some((action) => action.actionName === "MESSAGE")
         ) {
           return "first turn sent a message before confirmation";
         }
 
         if (
-          !secondTurnActions.some(
-            (action) => action.actionName === "SEND_BLUEBUBBLES_MESSAGE",
-          )
+          !secondTurnActions.some((action) => action.actionName === "MESSAGE")
         ) {
-          return "second turn did not call the BlueBubbles send action";
+          return "second turn did not call MESSAGE";
         }
 
         return undefined;

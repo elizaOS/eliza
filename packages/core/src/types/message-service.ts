@@ -7,28 +7,13 @@ import type { Room } from "./environment";
 import type { Memory } from "./memory";
 import type { ModelType } from "./model";
 import type { Content, Media, MentionContext, UUID } from "./primitives";
-import type {
-	MessageProcessingMode as ProtoMessageProcessingMode,
-	MessageProcessingOptions as ProtoMessageProcessingOptions,
-	ShouldRespondModelType as ProtoShouldRespondModelType,
-} from "./proto.js";
 import type { IAgentRuntime } from "./runtime";
 import type { State } from "./state";
 
 /**
  * Configuration options for message processing
  */
-export interface MessageProcessingOptions
-	extends Omit<
-		ProtoMessageProcessingOptions,
-		| "$typeName"
-		| "$unknown"
-		| "maxRetries"
-		| "timeoutDuration"
-		| "useMultiStep"
-		| "maxMultiStepIterations"
-		| "shouldRespondModel"
-	> {
+export interface MessageProcessingOptions {
 	maxRetries?: number;
 	timeoutDuration?: number;
 	useMultiStep?: boolean;
@@ -49,24 +34,6 @@ export interface MessageProcessingOptions
 	 * @default resolved from runtime.getSetting("BASIC_CAPABILITIES_KEEP_RESP") if not set
 	 */
 	keepExistingResponses?: boolean;
-	/**
-	 * Called after the planner commits to executing registered actions (mode === "actions"),
-	 * immediately before `processActions`. Omit for simple single-shot replies (mode === "simple").
-	 * Use for channel typing indicators so users do not see "typing" during planning-only turns.
-	 */
-	onBeforeActionExecution?: (ctx: {
-		runtime: IAgentRuntime;
-		message: Memory;
-	}) => void | Promise<void>;
-}
-
-/**
- * Dual-pressure scores from the shouldRespond classifier.
- */
-export interface DualPressureScores {
-	speakUp: number;
-	holdBack: number;
-	net: number;
 }
 
 /**
@@ -80,8 +47,6 @@ export interface MessageProcessingResult {
 	mode?: MessageProcessingMode;
 	skipEvaluation?: boolean;
 	reason?: string;
-	dualPressure?: DualPressureScores | null;
-	shouldRespondClassifierAction?: string | null;
 }
 
 /**
@@ -91,26 +56,20 @@ export interface ResponseDecision {
 	shouldRespond: boolean;
 	skipEvaluation: boolean;
 	reason: string;
-	pressure?: DualPressureScores | null;
-	classifierAction?: string | null;
 }
 
 /**
  * Extended response decision that includes context routing.
- * Used by the fine-tuned shouldRespond + context-routing classifier.
- * Falls back to ResponseDecision when context routing is not available.
+ * Used by deterministic shouldRespond bypasses and v5 message routing metadata.
  */
 export interface ContextRoutedResponseDecision extends ResponseDecision {
 	/** The single best-matching domain context for this turn */
 	primaryContext?: AgentContext;
 	/** Additional relevant contexts (may enable extra providers/actions) */
 	secondaryContexts?: AgentContext[];
-	/** Turn IDs that contributed to the intent (for multi-turn extraction) */
-	evidenceTurnIds?: string[];
 }
 
 export type ShouldRespondModelType =
-	| ProtoShouldRespondModelType
 	| "nano"
 	| "small"
 	| "large"
@@ -122,7 +81,6 @@ export type ShouldRespondModelType =
 	| typeof ModelType.TEXT_MEGA
 	| typeof ModelType.RESPONSE_HANDLER;
 export type MessageProcessingMode =
-	| ProtoMessageProcessingMode
 	| "simple"
 	| "actions"
 	| "none"
@@ -136,7 +94,7 @@ export type MessageProcessingMode =
  * including:
  * - Message validation and memory creation
  * - Response decision logic (shouldRespond)
- * - Single-shot or multi-step processing
+ * - Native planner processing
  * - Action execution and evaluation
  *
  * @example

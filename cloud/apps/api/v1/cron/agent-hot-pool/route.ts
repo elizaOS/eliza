@@ -9,7 +9,7 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  * agent image on healthy nodes with spare capacity.
  */
 
-import { verifyCronSecret } from "@/lib/api/cron-auth";
+import { verifyCronSecret } from "@/lib/auth/cron";
 import { forwardCronToContainerControlPlane } from "../../_container-control-plane-forward";
 
 async function handleAgentHotPool(c: AppContext, env?: AppEnv["Bindings"]) {

@@ -1,7 +1,7 @@
 import { DashboardErrorState, DashboardLoadingState } from "@elizaos/cloud-ui";
 import { Helmet } from "react-helmet-async";
-import { AccountPageClient } from "@/packages/ui/src/components/account/account-page-client";
 import { useUserProfile } from "../../lib/data/user";
+import { AccountPageClient } from "./_components/account-page-client";
 
 /** /dashboard/account — wraps the existing AccountPageClient. */
 export default function AccountPage() {

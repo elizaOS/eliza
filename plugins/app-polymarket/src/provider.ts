@@ -6,6 +6,10 @@ export const polymarketStatusProvider: Provider = {
   description:
     "Polymarket app readiness context including public reads and trading configuration.",
   dynamic: true,
+  contexts: ["finance", "crypto"],
+  contextGate: { anyOf: ["finance", "crypto"] },
+  cacheStable: false,
+  cacheScope: "turn",
   get: async (_runtime: IAgentRuntime, _message: Memory, _state: State) => {
     const status = derivePolymarketStatusText(process.env);
     return {

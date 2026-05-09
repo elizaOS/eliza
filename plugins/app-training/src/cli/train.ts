@@ -1,13 +1,12 @@
 /**
- * Multi-backend training CLI.
+ * Multi-backend training CLI for Eliza-native trajectory data.
  *
  * Usage:
- *   bun run train -- --backend {atropos|tinker|vertex} --dataset <path> \
+ *   bun run train -- --backend {atropos|tinker|native} --dataset <path> \
  *       [--task {should_respond|context_routing|action_planner|response|media_description}]
  *
- * Vertex backend forwards to the existing vertex-tuning module. Atropos and
- * Tinker backends live in src/backends/. The CLI is intentionally a thin
- * dispatcher so each backend can evolve independently.
+ * Backends consume `eliza_native_v1` model-boundary JSONL rows. The CLI is
+ * intentionally a thin dispatcher so each backend can evolve independently.
  */
 
 import { parseArgs } from "node:util";
@@ -15,15 +14,9 @@ import { runAtroposBackend } from "../backends/atropos.js";
 import { NATIVE_OPTIMIZERS, runNativeBackend } from "../backends/native.js";
 import { runTinkerBackend } from "../backends/tinker.js";
 import type { TrajectoryTrainingTask } from "../core/trajectory-task-datasets.js";
-import {
-  createTuningJob,
-  normalizeVertexBaseModel,
-  type VertexTuningSlot,
-  waitForTuningJob,
-} from "../core/vertex-tuning.js";
 import type { OptimizerName } from "../optimizers/index.js";
 
-const ALLOWED_BACKENDS = new Set(["atropos", "tinker", "vertex", "native"]);
+const ALLOWED_BACKENDS = new Set(["atropos", "tinker", "native"]);
 const ALLOWED_TASKS = new Set([
   "should_respond",
   "context_routing",
@@ -34,35 +27,25 @@ const ALLOWED_TASKS = new Set([
 const ALLOWED_OPTIMIZERS = new Set<string>(NATIVE_OPTIMIZERS);
 
 const HELP = `Usage:
-  bun run train -- --backend {atropos|tinker|vertex|native} --dataset <path> [options]
+  bun run train -- --backend {atropos|tinker|native} --dataset <path> [options]
 
 Options:
-  --backend NAME       atropos | tinker | vertex | native (required)
-  --dataset PATH       Path to training JSONL file (required)
+  --backend NAME       atropos | tinker | native (required)
+  --dataset PATH       Path to eliza_native_v1 JSONL file (required)
   --task NAME          should_respond | context_routing | action_planner | response | media_description
   --bin PATH           (atropos) Path to atropos CLI binary
-  --project ID         (vertex) GCP project ID
-  --bucket NAME        (vertex) GCS bucket
-  --region NAME        (vertex) GCP region (default us-central1)
-  --epochs N           (vertex) Training epochs
-  --display-name NAME  (vertex) Tuned model display name
   --optimizer NAME     (native) instruction-search | prompt-evolution | bootstrap-fewshot
                        Defaults to instruction-search.
   --baseline PATH      (native) Path to a baseline-prompt text file. Defaults to
-                       the dataset's first system message.
+                       the first system message in request.messages.
   --help               Show this help text
 `;
 
 interface ParsedTrainArgs {
-  backend: "atropos" | "tinker" | "vertex" | "native";
+  backend: "atropos" | "tinker" | "native";
   dataset: string;
-  task?: VertexTuningSlot;
+  task?: TrajectoryTrainingTask;
   bin?: string;
-  project?: string;
-  bucket?: string;
-  region?: string;
-  epochs?: number;
-  displayName?: string;
   optimizer?: OptimizerName;
   baseline?: string;
 }
@@ -75,11 +58,6 @@ export function parseTrainArgs(argv: string[]): ParsedTrainArgs | "help" {
       dataset: { type: "string" },
       task: { type: "string" },
       bin: { type: "string" },
-      project: { type: "string" },
-      bucket: { type: "string" },
-      region: { type: "string", default: "us-central1" },
-      epochs: { type: "string" },
-      "display-name": { type: "string" },
       optimizer: { type: "string" },
       baseline: { type: "string" },
       help: { type: "boolean" },
@@ -98,7 +76,7 @@ export function parseTrainArgs(argv: string[]): ParsedTrainArgs | "help" {
   if (!dataset) {
     throw new Error("--dataset <path> is required");
   }
-  let task: VertexTuningSlot | undefined;
+  let task: TrajectoryTrainingTask | undefined;
   if (values.task) {
     const t = values.task.trim();
     if (!ALLOWED_TASKS.has(t)) {
@@ -106,16 +84,7 @@ export function parseTrainArgs(argv: string[]): ParsedTrainArgs | "help" {
         `--task must be one of: ${[...ALLOWED_TASKS].join(", ")}`,
       );
     }
-    task = t as VertexTuningSlot;
-  }
-
-  const epochsRaw = values.epochs;
-  const epochs = epochsRaw ? Number(epochsRaw) : undefined;
-  if (
-    epochsRaw !== undefined &&
-    (!Number.isFinite(epochs) || (epochs ?? 0) < 1)
-  ) {
-    throw new Error("--epochs must be a positive integer");
+    task = t as TrajectoryTrainingTask;
   }
 
   let optimizer: OptimizerName | undefined;
@@ -134,11 +103,6 @@ export function parseTrainArgs(argv: string[]): ParsedTrainArgs | "help" {
     dataset,
     task,
     bin: values.bin,
-    project: values.project,
-    bucket: values.bucket,
-    region: values.region,
-    epochs,
-    displayName: values["display-name"],
     optimizer,
     baseline: values.baseline,
   };
@@ -174,39 +138,9 @@ export async function runTrainCli(argv: string[]): Promise<number> {
       for (const note of result.notes) console.log(`[train] ${note}`);
       return result.invoked ? 0 : 1;
     }
-    case "vertex": {
-      if (!parsed.project || !parsed.bucket) {
-        throw new Error("vertex backend requires --project and --bucket");
-      }
-      const slot: VertexTuningSlot = parsed.task ?? "should_respond";
-      const job = await createTuningJob({
-        projectId: parsed.project,
-        region: parsed.region,
-        gcsBucket: parsed.bucket,
-        baseModel: normalizeVertexBaseModel(undefined, slot),
-        trainingDataPath: parsed.dataset,
-        displayName: parsed.displayName ?? `eliza-${slot}`,
-        epochs: parsed.epochs,
-      });
-      console.log(`[train] vertex tuning job created: ${job.name}`);
-      const final = await waitForTuningJob(job.name, {
-        onPoll: (j) =>
-          console.log(`[train] [${new Date().toISOString()}] state=${j.state}`),
-      });
-      if (final.state !== "JOB_STATE_SUCCEEDED") {
-        console.error(
-          `[train] tuning failed: ${final.error?.message ?? "unknown"}`,
-        );
-        return 1;
-      }
-      console.log(
-        `[train] tuned model: ${final.tunedModelEndpointName ?? final.tunedModelDisplayName}`,
-      );
-      return 0;
-    }
     case "native": {
       const optimizer = parsed.optimizer ?? "instruction-search";
-      const task: TrajectoryTrainingTask = normalizeTaskForNative(parsed.task);
+      const task: TrajectoryTrainingTask = parsed.task ?? "should_respond";
       const baselinePrompt = await loadBaselinePrompt(parsed);
       // CLI invocation runs without a registered runtime/useModel, so we
       // fall back to the deterministic stub adapter that returns the
@@ -243,27 +177,6 @@ export async function runTrainCli(argv: string[]): Promise<number> {
   }
 }
 
-function normalizeTaskForNative(
-  slot: VertexTuningSlot | undefined,
-): TrajectoryTrainingTask {
-  switch (slot) {
-    case "should_respond":
-    case "action_planner":
-    case "response":
-    case "media_description":
-      return slot;
-    case "response_handler":
-      // Legacy vertex alias for the response task — keep the dataset wired
-      // to the right artifact slot.
-      return "response";
-    case "planner":
-      // Legacy vertex alias for the action planner task.
-      return "action_planner";
-    default:
-      return "should_respond";
-  }
-}
-
 async function loadBaselinePrompt(args: ParsedTrainArgs): Promise<string> {
   if (args.baseline) {
     const { readFile } = await import("node:fs/promises");
@@ -281,24 +194,31 @@ async function loadBaselinePrompt(args: ParsedTrainArgs): Promise<string> {
   if (
     !parsedJson ||
     typeof parsedJson !== "object" ||
-    !Array.isArray((parsedJson as { messages?: unknown }).messages)
+    (parsedJson as { format?: unknown }).format !== "eliza_native_v1"
   ) {
     throw new Error(
-      `[native] dataset first row is not a {messages: [...]} document; pass --baseline <path>`,
+      `[native] dataset first row is not an eliza_native_v1 document; pass --baseline <path>`,
     );
   }
-  const messages = (
-    parsedJson as { messages: Array<{ role?: string; content?: string }> }
-  ).messages;
+  const request = (
+    parsedJson as { request?: { system?: unknown; messages?: unknown } }
+  ).request;
+  const messages = Array.isArray(request?.messages)
+    ? (request.messages as Array<{ role?: string; content?: string }>)
+    : [];
   const systemMsg = messages.find(
     (msg) => msg.role === "system" && typeof msg.content === "string",
   );
-  if (!systemMsg?.content) {
+  const system =
+    typeof request?.system === "string" && request.system.length > 0
+      ? request.system
+      : systemMsg?.content;
+  if (!system) {
     throw new Error(
-      `[native] dataset first row has no system message; pass --baseline <path>`,
+      `[native] dataset first row has no request.system or system message; pass --baseline <path>`,
     );
   }
-  return systemMsg.content;
+  return system;
 }
 
 if (

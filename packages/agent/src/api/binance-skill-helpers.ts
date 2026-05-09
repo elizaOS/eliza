@@ -42,36 +42,26 @@ type RuntimeActionLike = Pick<
 
 const LIFEOPS_PUBLIC_MODULE: string = "@elizaos/app-lifeops/public";
 
-let selfControlFallbackActionsPromise: Promise<{
-  BLOCK_WEBSITES?: RuntimeActionLike;
-  REQUEST_WEBSITE_BLOCKING_PERMISSION?: RuntimeActionLike;
-} | null> | null = null;
+let ownerWebsiteBlockFallbackPromise: Promise<RuntimeActionLike | null> | null =
+  null;
 
 async function resolveBuiltInFallbackAction(
   actionName: string,
 ): Promise<RuntimeActionLike | null> {
-  if (
-    actionName !== "BLOCK_WEBSITES" &&
-    actionName !== "REQUEST_WEBSITE_BLOCKING_PERMISSION"
-  ) {
+  if (actionName !== "WEBSITE_BLOCK") {
     return null;
   }
 
-  if (!selfControlFallbackActionsPromise) {
-    selfControlFallbackActionsPromise = import(
+  if (!ownerWebsiteBlockFallbackPromise) {
+    ownerWebsiteBlockFallbackPromise = import(
       /* @vite-ignore */ LIFEOPS_PUBLIC_MODULE
     )
       .then((mod) => mod as Record<string, RuntimeActionLike | undefined>)
-      .then((mod) => ({
-        BLOCK_WEBSITES: mod.blockWebsitesAction,
-        REQUEST_WEBSITE_BLOCKING_PERMISSION:
-          mod.requestWebsiteBlockingPermissionAction,
-      }))
+      .then((mod) => mod.websiteBlockAction ?? null)
       .catch(() => null);
   }
 
-  const actions = await selfControlFallbackActionsPromise;
-  return actions?.[actionName] ?? null;
+  return ownerWebsiteBlockFallbackPromise;
 }
 
 export function inferBalanceChainFromText(
@@ -235,7 +225,7 @@ export async function executeFallbackParsedActions(
           currentText,
         );
       const shouldSuppressSuccessFallbackText =
-        parsed.name === "BLOCK_WEBSITES" &&
+        parsed.name === "WEBSITE_BLOCK" &&
         actionSucceeded === true &&
         currentTextLooksLikeCompletedWebsiteBlock;
       if (fallbackText) {
@@ -830,29 +820,25 @@ async function summarizeDirectBinanceSkillResult(
       ? `${compactInput.slice(0, DIRECT_BINANCE_SUMMARY_INPUT_MAX_CHARS)}\n\n[truncated]`
       : compactInput;
   const prompt = [
-    "You are formatting the result of a Binance skill for the end user.",
-    "The official skill instructions say to run the skill first and then summarize the results.",
-    "",
+    `Summarize this Binance skill result for the user. Be concise.`,
     `User request: ${userText}`,
     `Skill: ${skillSlug}`,
     explicitCount
-      ? `The user explicitly requested ${explicitCount} items. Return ${explicitCount} distinct items if the result contains that many.`
-      : "If the user did not request a count, choose a sensible concise amount.",
+      ? `Return ${explicitCount} distinct items if available.`
+      : `Choose a sensible concise count.`,
     "",
-    "Rules:",
-    "- Answer the user's request directly using only the result below.",
-    "- Default to a concise summary, not raw JSON.",
-    "- If the result is a ranking or list, show at most 5 items unless the user explicitly requested a different count.",
-    "- Output plain text only.",
-    "- Do not use markdown, bullets, numbered lists, bold markers, or code fences.",
-    "- Prefer a clean title line followed by compact 'Label: value' lines, with blank lines between items when listing multiple entries.",
-    "- Do not prefix lines with generic labels like 'Label:' or 'Item:'. Use the actual field name directly.",
-    "- Mention the chain when it is present in the result.",
-    "- Ignore icon URLs, image links, and social links unless the user explicitly asked for them.",
-    "- Do not mention scripts, stdout, code fences, or internal tooling.",
-    "- Do not invent missing fields. If a field is unavailable, omit it.",
-    "- If the result is an error, explain it briefly and suggest one next step.",
-    "- Do not append any follow-up sentence about raw JSON, more details, or next questions.",
+    "Format:",
+    "- plain prose, no markdown/bullets/numbered lists/bold/fences",
+    "- title line then compact 'field: value' lines (use real field names, not generic labels)",
+    "- blank line between multiple entries",
+    "- rankings/lists capped at 5 unless user requested otherwise",
+    "",
+    "Domain:",
+    "- mention the chain when present",
+    "- ignore icon/image/social URLs unless asked",
+    "- omit unavailable fields; never invent",
+    "- on error, explain briefly and suggest one next step",
+    "- no follow-up offers (raw JSON, more details, next questions)",
     "",
     "Skill result:",
     resultSnippet,

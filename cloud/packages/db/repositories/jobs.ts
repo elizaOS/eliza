@@ -186,7 +186,7 @@ export async function prepareJobInsertData(jobData: NewJob): Promise<NewJob> {
  */
 export class JobsRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -311,7 +311,7 @@ export class JobsRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**

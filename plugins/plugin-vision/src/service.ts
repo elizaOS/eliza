@@ -5,7 +5,6 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import {
-  encodeToonValue,
   type IAgentRuntime,
   logger,
   ModelType,
@@ -25,6 +24,7 @@ import { FaceRecognition } from "./face-recognition";
 import { Florence2Model } from "./florence2-model";
 import { OCRService } from "./ocr-service";
 import { ScreenCaptureService } from "./screen-capture";
+import { getTestImage } from "./test-input";
 import {
   type BoundingBox,
   type CameraInfo,
@@ -44,13 +44,17 @@ import { VisionModels } from "./vision-models";
 import { VisionWorkerManager } from "./vision-worker-manager";
 
 const execAsync = promisify(exec);
-const SCENE_DESCRIPTION_PROMPT = encodeToonValue({
-  task: "describe_visual_scene",
-  instructions: [
-    "Describe visible people, objects, UI, text, and notable scene changes.",
-    "Keep the answer concise and factual.",
-  ],
-});
+const SCENE_DESCRIPTION_PROMPT = JSON.stringify(
+  {
+    task: "describe_visual_scene",
+    instructions: [
+      "Describe visible people, objects, UI, text, and notable scene changes.",
+      "Keep the answer concise and factual.",
+    ],
+  },
+  null,
+  2,
+);
 
 interface CameraDevice {
   id: string;
@@ -663,16 +667,23 @@ export class VisionService extends Service {
     try {
       const currentTime = Date.now();
 
+      // Test-input override: when ELIZA_VISION_TEST_INPUT=image, replace the
+      // captured frame with the fixture PNG so the rest of the pipeline runs
+      // unmodified. Returns null when no override is active.
+      const testImage = getTestImage();
+
       // Convert frame to base64 for VLM
-      const jpegBuffer = await sharp(frame.data, {
-        raw: {
-          width: frame.width,
-          height: frame.height,
-          channels: 4,
-        },
-      })
-        .jpeg()
-        .toBuffer();
+      const jpegBuffer = testImage
+        ? await sharp(testImage).jpeg().toBuffer()
+        : await sharp(frame.data, {
+            raw: {
+              width: frame.width,
+              height: frame.height,
+              channels: 4,
+            },
+          })
+            .jpeg()
+            .toBuffer();
 
       const base64Image = jpegBuffer.toString("base64");
       const imageUrl = `data:image/jpeg;base64,${base64Image}`;
@@ -953,14 +964,18 @@ export class VisionService extends Service {
               {
                 model: "florence2-local",
                 systemPrompt: "",
-                userPrompt: encodeToonValue({
-                  task: "describe_visual_scene",
-                  image: {
-                    source: "camera_frame",
-                    mimeType: "image/jpeg",
-                    bytes: imageBuffer.byteLength,
+                userPrompt: JSON.stringify(
+                  {
+                    task: "describe_visual_scene",
+                    image: {
+                      source: "camera_frame",
+                      mimeType: "image/jpeg",
+                      bytes: imageBuffer.byteLength,
+                    },
                   },
-                }),
+                  null,
+                  2,
+                ),
                 temperature: 0,
                 maxTokens: 0,
                 purpose: "background",

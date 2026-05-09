@@ -3,8 +3,7 @@
  *
  * This module provides implementations of {@link IStreamExtractor}:
  * - PassthroughExtractor - Simple passthrough (no filtering)
- * - ActionStreamFilter - Content-type aware filter (for action handlers)
- * - ToonFieldStreamExtractor - Extract top-level TOON fields safely
+ * - StructuredFieldStreamExtractor - Extract top-level structured fields safely
  *
  * For the interface definition, see types/streaming.ts.
  * Implementations can use these or create their own extractors.
@@ -98,91 +97,13 @@ export class PassthroughExtractor implements IStreamExtractor {
 }
 
 // ============================================================================
-// ActionStreamFilter - For action handler response filtering
-// ============================================================================
-
-/** Detected content type from first character */
-type ContentType = "structured" | "text";
-
-/**
- * Filters action handler output for streaming.
- * Used by runtime.ts processActions() for each action's useModel calls.
- *
- * Auto-detects content type from first non-whitespace character:
- * - structured (starts with { or [) -> don't stream
- * - Plain text → Stream immediately
- */
-export class ActionStreamFilter implements IStreamExtractor {
-	private buffer = "";
-	private decided = false;
-	private contentType: ContentType | null = null;
-	private finished = false;
-
-	get done(): boolean {
-		return this.finished;
-	}
-
-	reset(): void {
-		this.buffer = "";
-		this.decided = false;
-		this.contentType = null;
-		this.finished = false;
-	}
-
-	push(chunk: string): string {
-		validateChunkSize(chunk);
-		this.buffer += chunk;
-
-		// Decide content type on first non-whitespace character
-		if (!this.decided) {
-			const contentType = this.detectContentType();
-			if (contentType) {
-				this.contentType = contentType;
-				this.decided = true;
-			} else {
-				return "";
-			}
-		}
-
-		// Route based on content type
-		switch (this.contentType) {
-			case "structured":
-				return "";
-
-			case "text":
-				return this.handlePlainText();
-
-			default:
-				return "";
-		}
-	}
-
-	/** Detect content type from first non-whitespace character */
-	private detectContentType(): ContentType | null {
-		const trimmed = this.buffer.trimStart();
-		if (trimmed.length === 0) return null;
-
-		const firstChar = trimmed[0];
-		if (firstChar === "{" || firstChar === "[") return "structured";
-		return "text";
-	}
-
-	/** Handle plain text - stream everything */
-	private handlePlainText(): string {
-		const toStream = this.buffer;
-		this.buffer = "";
-		return toStream;
-	}
-}
-
-// ============================================================================
 // MarkableExtractor - Passthrough with external completion control
 // ============================================================================
 
 /**
  * Passthrough extractor that can be marked complete externally.
  *
- * WHY: When using ToonFieldStreamExtractor inside dynamicPromptExecFromState,
+ * WHY: When using StructuredFieldStreamExtractor inside dynamicPromptExecFromState,
  * extraction/completion is handled internally. But the outer streaming context
  * still needs to know when streaming is complete for retry/fallback logic.
  *
@@ -257,14 +178,14 @@ export type FieldState =
 	| "invalid"; // Validation codes didn't match
 
 /**
- * Configuration for ToonFieldStreamExtractor.
+ * Configuration for StructuredFieldStreamExtractor.
  */
-export interface ToonFieldStreamExtractorConfig {
+export interface StructuredFieldStreamExtractorConfig {
 	/** Validation level (0-3). Level 2+ buffers until flush. */
 	level: 0 | 1 | 2 | 3;
 	/** Schema rows with field definitions */
 	schema: SchemaRow[];
-	/** Which top-level TOON fields to stream to the consumer */
+	/** Which top-level structured fields to stream to the consumer */
 	streamFields: string[];
 	/**
 	 * Callback for streaming chunks.
@@ -291,21 +212,21 @@ export interface ValidationDiagnosis {
 }
 
 // ============================================================================
-// ToonFieldStreamExtractor - TOON top-level field extraction
+// StructuredFieldStreamExtractor - top-level field extraction
 // ============================================================================
 
-const TOON_TOP_LEVEL_FIELD_RE =
+const STRUCTURED_TOP_LEVEL_FIELD_RE =
 	/^([A-Za-z_][A-Za-z0-9_.-]*(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?):(?:\s?(.*))?$/;
 
 /**
- * Extracts configured top-level scalar fields from TOON without streaming
+ * Extracts configured top-level scalar fields from line-oriented text without streaming
  * surrounding control fields such as thought/actions/providers.
  *
- * This intentionally avoids decoding partial TOON documents. It processes
+ * This intentionally avoids decoding partial structured documents. It processes
  * complete lines, tracks top-level field boundaries, and only emits values for
  * fields explicitly listed in `streamFields`.
  */
-export class ToonFieldStreamExtractor implements IStreamExtractor {
+export class StructuredFieldStreamExtractor implements IStreamExtractor {
 	private lineBuffer = "";
 	private currentField: string | null = null;
 	private fieldContents: Map<string, string> = new Map();
@@ -315,7 +236,7 @@ export class ToonFieldStreamExtractor implements IStreamExtractor {
 	private state: ExtractorState = "streaming";
 	private readonly streamFieldSet: Set<string>;
 
-	constructor(private readonly config: ToonFieldStreamExtractorConfig) {
+	constructor(private readonly config: StructuredFieldStreamExtractorConfig) {
 		this.streamFieldSet = new Set(config.streamFields);
 		for (const row of config.schema) {
 			this.fieldStates.set(row.field, "pending");
@@ -460,12 +381,14 @@ export class ToonFieldStreamExtractor implements IStreamExtractor {
 
 	private processLine(line: string): void {
 		const isTopLevel = !/^[\t ]/.test(line);
-		const fieldMatch = isTopLevel ? line.match(TOON_TOP_LEVEL_FIELD_RE) : null;
+		const fieldMatch = isTopLevel
+			? line.match(STRUCTURED_TOP_LEVEL_FIELD_RE)
+			: null;
 
 		if (fieldMatch) {
 			this.completeCurrentField();
 			const rawKey = fieldMatch[1] ?? "";
-			const field = this.baseToonFieldName(rawKey);
+			const field = this.baseStructuredFieldName(rawKey);
 			const rawValue = fieldMatch[2] ?? "";
 			this.fieldStates.set(field, "partial");
 
@@ -548,7 +471,7 @@ export class ToonFieldStreamExtractor implements IStreamExtractor {
 		return line;
 	}
 
-	private baseToonFieldName(rawKey: string): string {
+	private baseStructuredFieldName(rawKey: string): string {
 		return rawKey.split(/[[{]/, 1)[0] ?? rawKey;
 	}
 

@@ -1,0 +1,40 @@
+[Unit]
+Description=Eliza Provisioning Worker (sandbox lifecycle daemon)
+Documentation=https://github.com/elizaOS/eliza
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/opt/eliza/cloud
+EnvironmentFile=/opt/eliza/cloud/.env.local
+# ssh2 + dockerode are Node-only, so the daemon runs under tsx (not bun).
+ExecStart=/usr/bin/npx tsx packages/scripts/daemons/provisioning-worker.ts
+
+Restart=always
+RestartSec=5
+
+MemoryMax=512M
+MemoryHigh=384M
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=eliza-provisioning-worker
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+# Private writable /tmp for the service. tsx needs to create /tmp/tsx-${UID}
+# for its IPC server, which ProtectSystem=strict otherwise blocks.
+PrivateTmp=true
+ReadWritePaths=/opt/eliza
+ReadOnlyPaths=/home/deploy/.ssh
+
+# 30s for an in-flight provisioning cycle to finish before SIGKILL.
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

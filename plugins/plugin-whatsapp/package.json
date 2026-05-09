@@ -30,9 +30,19 @@
   "files": [
     "dist",
     "README.md",
-    "package.json"
+    "package.json",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "messaging"
+      ]
+    }
+  },
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
     "@hapi/boom": "^10.0.1",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "axios": "^1.16.0",
@@ -46,7 +56,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
     "@types/node": "^25.0.3",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "scripts": {

@@ -9,14 +9,56 @@ import type {
 	Memory,
 	State,
 } from "../../../../types/index.ts";
+import type { TriageService } from "../triage-service.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
-import { parseDraftReplyParams } from "./_shared.ts";
+import {
+	bodyParameter,
+	type DraftReplyParams,
+	messageIdParameter,
+	parseDraftReplyParams,
+	validateMessageAction,
+} from "./_shared.ts";
+
+async function resolveTargetMessageId(
+	runtime: IAgentRuntime,
+	service: TriageService,
+	parsed: DraftReplyParams,
+): Promise<string | null> {
+	if (parsed.messageId) return parsed.messageId;
+	const hits = await service.search(runtime, {
+		...parsed.lookup,
+		limit: 1,
+	});
+	return hits[0]?.id ?? null;
+}
 
 export const draftReplyAction: Action = {
-	name: "DRAFT_REPLY",
+	name: "MESSAGE",
+	contexts: ["messaging", "email", "contacts"],
+	roleGate: { minRole: "ADMIN" },
 	description:
-		"Compose a draft reply to an existing message (identified by messageId). Never sends — produces a preview that must be confirmed via SEND_DRAFT.",
+		"Compose a draft reply to an existing message. Use this when the user asks to draft a reply, including natural-language targets like latest email from Sarah; pass messageId when known, otherwise pass sender/content hints. Never sends — produces a preview that must be confirmed via MESSAGE.",
+	descriptionCompressed:
+		"draft reply only; can target by messageId or latest/from sender/content hints; never sends",
 	similes: ["COMPOSE_REPLY", "DRAFT_MESSAGE_REPLY"],
+	parameters: [
+		{ ...messageIdParameter, required: false },
+		{
+			name: "sender",
+			description:
+				"Optional sender name, email, or handle when messageId is unknown.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "content",
+			description:
+				"Optional subject/body keyword hint for locating the source message.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		bodyParameter,
+	],
 	examples: [
 		[
 			{
@@ -27,13 +69,17 @@ export const draftReplyAction: Action = {
 				name: "Agent",
 				content: {
 					text: "Drafting a reply — here's the preview.",
-					action: "DRAFT_REPLY",
+					action: "MESSAGE",
 				},
 			},
 		],
 	] as ActionExample[][],
 
-	validate: async (): Promise<boolean> => true,
+	validate: async (
+		_runtime: IAgentRuntime,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> => validateMessageAction(message, state),
 
 	handler: async (
 		runtime: IAgentRuntime,
@@ -53,18 +99,20 @@ export const draftReplyAction: Action = {
 		}
 
 		const service = getDefaultTriageService();
-		const record = await service.draftReply(
-			runtime,
-			parsed.messageId,
-			parsed.body,
-		);
+		const messageId = await resolveTargetMessageId(runtime, service, parsed);
+		if (!messageId) {
+			const text = "No matching message found to draft a reply to.";
+			logger.warn(`[DraftReply] ${text}`);
+			return { success: false, text, error: text };
+		}
+		const record = await service.draftReply(runtime, messageId, parsed.body);
 
 		const text = `Drafted reply on ${record.source}. Preview: ${record.preview}`;
 		logger.info(
 			`[DraftReply] draftId=${record.draftId} source=${record.source}`,
 		);
 		if (callback) {
-			await callback({ text, action: "DRAFT_REPLY" });
+			await callback({ text, action: "MESSAGE" });
 		}
 
 		return {

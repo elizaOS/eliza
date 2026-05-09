@@ -18,19 +18,29 @@ import type { AgentSkillsService } from "../services/skills";
 import { detectEnableIntent, extractSlugFromMessage } from "./parse-helpers";
 import { createAgentSkillsActionValidator } from "./validators";
 
-export const toggleSkillAction: Action = {
-	name: "TOGGLE_SKILL",
-	similes: [
-		"ENABLE_SKILL",
-		"DISABLE_SKILL",
-		"TURN_ON_SKILL",
-		"TURN_OFF_SKILL",
-		"ACTIVATE_SKILL",
-		"DEACTIVATE_SKILL",
-	],
+export const toggleSkillAction = {
+	name: "SKILL",
+	contexts: ["automation", "settings"],
+	contextGate: { anyOf: ["automation", "settings"] },
+	roleGate: { minRole: "USER" },
+	similes: [],
 	description:
 		"Enable or disable an installed skill. Say 'enable <skill>' or 'disable <skill>'.",
 	descriptionCompressed: "Enable/disable installed skill.",
+	parameters: [
+		{
+			name: "slug",
+			description: "Installed skill slug or name to enable or disable.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "enabled",
+			description: "Whether to enable true or disable false the skill.",
+			required: false,
+			schema: { type: "boolean" },
+		},
+	],
 	validate: createAgentSkillsActionValidator({
 		keywords: [
 			"enable",
@@ -152,7 +162,7 @@ export const toggleSkillAction: Action = {
 				name: "{{agentName}}",
 				content: {
 					text: "Skill **Weather** (`weather`) has been enabled.",
-					actions: ["TOGGLE_SKILL"],
+					actions: ["SKILL"],
 				},
 			},
 		],
@@ -165,11 +175,11 @@ export const toggleSkillAction: Action = {
 				name: "{{agentName}}",
 				content: {
 					text: "Skill **GitHub** (`github`) has been disabled.",
-					actions: ["TOGGLE_SKILL"],
+					actions: ["SKILL"],
 				},
 			},
 		],
 	],
-};
+} satisfies Action;
 
 export default toggleSkillAction;

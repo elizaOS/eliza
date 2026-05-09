@@ -44,8 +44,9 @@ The optimization system is not yet aligned end-to-end. The source prompt files u
 - `plugins/app-training/src/services/training-trigger.ts:503` auto-bootstraps only `should_respond` and `action_planner`.
 - `scripts/benchmark-to-training-dataset.mjs:1` converts action benchmark trajectories to planner JSONL.
 - `scripts/optimize-action-planner.mjs:1` runs native planner optimization over that benchmark dataset.
-- `plugins/app-training/datasets/action_planner_from_benchmark.meta.json:1` records a 2026-04-19 benchmark-derived dataset with 66 rows, 63 pass, 3 fail.
-- `plugins/app-training/datasets/action_planner_from_benchmark.jsonl:1` contains XML-era planner prompts/responses, including "Return only XML" style instructions rather than current generated TOON-only prompt style.
+- The stale checked-in benchmark-derived planner JSONL was removed from
+  `plugins/app-training/datasets/`; current training data should come from
+  `eliza_native_v1` trajectory exports.
 - `packages/app-core/action-benchmark-report.md:1` reports action-selection benchmark accuracy of 96.2% planner/selection accuracy and 70.5% execution accuracy.
 - `test_output/terminal-bench-20260503_080436.md:1` contains a terminal-bench artifact with 2 tasks, 0 passed, 0 commands, and 0 tokens, so it is not useful evidence for prompt optimization quality.
 
@@ -54,8 +55,8 @@ The optimization system is not yet aligned end-to-end. The source prompt files u
 - Ran `bunx vitest run src/__tests__/prompt-compression.test.ts src/__tests__/optimized-prompt-service.test.ts src/__tests__/planner-preamble.test.ts` in `packages/core`: 3 files, 24 tests passed.
 - Ran `bunx vitest run src/runtime/prompt-optimization.test.ts src/runtime/aosp-llama-adapter.test.ts` in `packages/agent`: 2 files, 30 tests passed.
 - Ran `bunx vitest run test/training-trigger.test.ts` in `plugins/app-training`: 1 file, 17 tests passed.
-- Verified that TOON parsing, optimized prompt service behavior, prompt-budget preservation, token usage enrichment, and planner preamble tests have bounded coverage.
-- Verified the benchmark-derived planner dataset exists locally and has 66 JSONL rows matching its metadata.
+- Verified that optimized prompt service behavior, prompt-budget preservation,
+  token usage enrichment, and planner preamble tests have bounded coverage.
 - Verified the checked-in benchmark report records planner/selection success separately from execution success.
 
 ## What I could not validate
@@ -79,15 +80,12 @@ The optimization system is not yet aligned end-to-end. The source prompt files u
 
 ### P2
 
-- `preferredEncapsulation: "toon"` is not explicitly honored by `dynamicPromptExecFromState`. `packages/core/src/runtime.ts:5605` handles JSON/XML preferences but not TOON, so the multi-step planner request at `packages/core/src/services/message.ts:6783` may not actually get TOON unless the global default is already TOON.
-- The current benchmark-derived planner dataset appears stale relative to current prompts. `plugins/app-training/datasets/action_planner_from_benchmark.jsonl:1` uses XML-era instructions and responses, while the generated planner prompts now instruct TOON-only output. Optimizing against that dataset risks training the model toward old formatting and old parameter style.
 - Planner optimization scoring is too shallow. `plugins/app-training/src/optimizers/scoring.ts:76` exact-matches the first action name but ignores provider selection, parameter validity, action ordering, `simple`, `text`, execution success, and whether the model used an invalid or stale action surface.
 - Trajectory task inference may contaminate planner datasets. `plugins/app-training/src/core/trajectory-task-datasets.ts:209` treats broad hints like `action` and `runtime_use_model` as `action_planner`, which can include action-handler model calls that are not planner decisions.
 - Token accounting is incomplete. Core trajectory logging records prompts and responses but not prompt/completion token counts, while agent-level enrichment depends on provider usage events or fallback estimation. This weakens prompt-efficiency optimization and regression detection.
 
 ### P3
 
-- The main planner prompt says TOON-only, but the primary call site requests XML encapsulation for streaming at `packages/core/src/services/message.ts:5623`. This may be intentional for streaming extraction, but it creates confusing prompt/runtime instructions and likely token overhead.
 - `tokenEfficiency` in `packages/core/src/runtime.ts:6176` is based on a fixed 500-token output reference, not task-specific budgets or prompt+completion totals. It is a weak metric for planner prompt efficiency.
 - `packages/core/src/services/optimized-prompt.ts:323` does not implement the documented mtime tie-break when two artifacts share `generatedAt`.
 - Reviewed action-surface formatting in `packages/core/src/actions.ts:253` uses full descriptions despite compressed descriptions being available through `packages/core/src/action-docs.ts:19`. If this is the active planner surface, TOON/caveman compression is not fully applied to action docs.
@@ -96,9 +94,10 @@ The optimization system is not yet aligned end-to-end. The source prompt files u
 ## Codex-fixable work
 
 - Synchronize `packages/prompts/prompts/message_handler.txt` and `packages/prompts/prompts/multi_step_decision.txt` with the generated prompt rules, then add a check that generated prompt output does not drift from source prompt files.
-- Add explicit TOON handling for `preferredEncapsulation: "toon"` in `dynamicPromptExecFromState`, with tests covering JSON/XML/TOON precedence.
 - Split prompt optimization tasks so the primary single-turn planner has its own task name, or make the training trigger optimize the actual task used by `messageHandlerTemplate`.
-- Refresh `action_planner_from_benchmark.jsonl` from current TOON planner trajectories after prompt source synchronization.
+- Regenerate planner optimization data from current `eliza_native_v1`
+  trajectories instead of checking benchmark-derived message JSONL into
+  `plugins/app-training/datasets/`.
 - Expand action-planner scoring to validate providers, params, action order, `simple`, `text`, parse success, and required-parameter validity.
 - Tighten trajectory task inference so `runtime_use_model` and generic `action` hints do not classify non-planner calls as planner examples without output-shape confirmation.
 - Add token fields to core trajectory LLM-call logging and make prompt-efficiency scoring use prompt+completion tokens with task-specific budgets.

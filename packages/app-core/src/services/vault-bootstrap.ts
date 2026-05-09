@@ -16,17 +16,16 @@
  * failures are isolated; if every write fails the function throws.
  */
 
-import { persistConfigEnv, readConfigEnv } from "@elizaos/agent/api/config-env";
 import {
   type ElizaConfig,
-  loadElizaConfig,
-  saveElizaConfig,
-} from "@elizaos/agent/config/config";
-import { resolveStateDir } from "@elizaos/agent/config/paths";
-import {
   formatVaultRef,
   isVaultRef,
-} from "@elizaos/agent/runtime/operations/vault-bridge";
+  loadElizaConfig,
+  persistConfigEnv,
+  readConfigEnv,
+  resolveStateDir,
+  saveElizaConfig,
+} from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import type { Vault } from "@elizaos/vault";
 

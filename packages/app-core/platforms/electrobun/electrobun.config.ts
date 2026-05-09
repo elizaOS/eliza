@@ -239,7 +239,6 @@ export function createElectrobunConfig(): ElectrobunConfig {
 					"@elizaos/app-core",
 					// Plugins — initialized by the API subprocess, never the bun shell.
 					"@elizaos/plugin-sql",
-					"@elizaos/plugin-knowledge",
 					"@elizaos/plugin-bootstrap",
 					"@elizaos/plugin-local-ai",
 					"@elizaos/plugin-local-embedding",

@@ -14,3 +14,4 @@ export {
   wifiApp,
 } from "./components/wifi-app";
 export { appWifiPlugin, default } from "./plugin";
+export { wifiNetworksProvider } from "./providers/networks";

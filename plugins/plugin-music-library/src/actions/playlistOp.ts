@@ -1,5 +1,4 @@
 import {
-  type Action,
   type ActionExample,
   type ActionResult,
   ChannelType,
@@ -10,8 +9,8 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import { loadPlaylists, savePlaylist } from "../components/playlists";
 import type { Playlist } from "../components/playlists";
+import { loadPlaylists, savePlaylist } from "../components/playlists";
 import type { MusicLibraryService } from "../services/musicLibraryService";
 import {
   getSmartMusicFetchService,
@@ -53,9 +52,24 @@ const MUSIC_LIBRARY_SERVICE_NAME = "musicLibrary";
 
 function normalizeOp(value: unknown): PlaylistOp | null {
   if (typeof value !== "string") return null;
-  const v = value.trim().toLowerCase();
+  const v = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   if (v === "save" || v === "load" || v === "delete" || v === "add") return v;
+  if (v === "remove") return "delete";
+  if (v === "play" || v === "restore") return "load";
+  if (v === "create" || v === "store") return "save";
   return null;
+}
+
+function readPlaylistOp(options: Record<string, unknown>, messageText: string) {
+  return (
+    normalizeOp(options.subaction) ??
+    normalizeOp(options.playlistOp) ??
+    normalizeOp(options.op) ??
+    inferOpFromText(messageText)
+  );
 }
 
 function inferOpFromText(text: string): PlaylistOp | null {
@@ -161,7 +175,8 @@ async function handleSave(
   if (!isConfirmed(options)) {
     await callback({ text: preview, source: message.content.source });
     return confirmationRequired(preview, {
-      op: "save",
+      op: "playlist",
+      subaction: "save",
       playlistName,
       trackCount: tracks.length,
     });
@@ -252,7 +267,8 @@ async function handleLoad(
   if (!isConfirmed(options)) {
     await callback({ text: preview, source: message.content.source });
     return confirmationRequired(preview, {
-      op: "load",
+      op: "playlist",
+      subaction: "load",
       playlistId: selected.id,
       playlistName: selected.name,
       trackCount: selected.tracks.length,
@@ -333,7 +349,8 @@ async function handleDelete(
   if (!isConfirmed(options)) {
     await callback({ text: preview, source: message.content.source });
     return confirmationRequired(preview, {
-      op: "delete",
+      op: "playlist",
+      subaction: "delete",
       playlistId: selected.id,
       playlistName: selected.name,
       trackCount: selected.tracks.length,
@@ -368,9 +385,12 @@ async function handleAdd(
   const directSong =
     typeof options.song === "string" && options.song.trim().length > 0
       ? options.song.trim()
-      : typeof options.query === "string" && options.query.trim().length > 0
-        ? options.query.trim()
-        : undefined;
+      : typeof options.songQuery === "string" &&
+          options.songQuery.trim().length > 0
+        ? options.songQuery.trim()
+        : typeof options.query === "string" && options.query.trim().length > 0
+          ? options.query.trim()
+          : undefined;
   const directName = readPlaylistName(options, "");
 
   let songQuery = directSong;
@@ -400,7 +420,8 @@ async function handleAdd(
   if (!isConfirmed(options)) {
     await callback({ text: preview, source: message.content.source });
     return confirmationRequired(preview, {
-      op: "add",
+      op: "playlist",
+      subaction: "add",
       songQuery,
       playlistName,
     });
@@ -484,11 +505,12 @@ async function handleAdd(
       content: {
         source: message.content.source,
         thought: `Added ${result.title || songQuery} to playlist ${playlistName} (source: ${result.source})`,
-        actions: ["PLAYLIST_OP"],
+        actions: ["MUSIC_LIBRARY"],
       },
       metadata: {
         type: "custom",
-        actionName: "PLAYLIST_OP",
+        actionName: "MUSIC_LIBRARY",
+        legacyActionName: "PLAYLIST",
         op: "add",
         audioUrl: result.url,
         title: result.title || songQuery,
@@ -503,116 +525,92 @@ async function handleAdd(
   return { success: true, text: responseText };
 }
 
-export const playlistOp: Action = {
-  name: "PLAYLIST_OP",
-  similes: [
-    "MUSIC_PLAYLIST",
-    "SAVE_PLAYLIST",
-    "LOAD_PLAYLIST",
-    "DELETE_PLAYLIST",
-    "ADD_TO_PLAYLIST",
-    "REMOVE_PLAYLIST",
-    "PLAY_PLAYLIST",
-  ],
-  description:
-    "Playlist operations. Use op=save, load, delete, or add. State-changing ops require confirmed:true.",
-  descriptionCompressed: "Playlist ops: save, load, delete, add.",
-  parameters: [
+export const playlistOpSimiles = [
+  "PLAYLIST",
+  "PLAYLIST",
+  "MUSIC_PLAYLIST",
+  "SAVE_PLAYLIST",
+  "LOAD_PLAYLIST",
+  "DELETE_PLAYLIST",
+  "ADD_TO_PLAYLIST",
+  "REMOVE_PLAYLIST",
+  "PLAY_PLAYLIST",
+];
+
+export const playlistOpExamples: ActionExample[][] = [
+  [
     {
-      name: "op",
-      description: "Playlist operation: save, load, delete, or add.",
-      required: true,
-      schema: { type: "string", enum: ["save", "load", "delete", "add"] },
+      name: "{{name1}}",
+      content: { text: 'save this queue as playlist "Favorites"' },
     },
     {
-      name: "playlistName",
-      description: "Playlist name for save/load/delete/add.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "song",
-      description: "Song query for op=add.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "confirmed",
-      description: "Must be true to perform a state-changing playlist op.",
-      required: false,
-      schema: { type: "boolean", default: false },
+      name: "{{agentName}}",
+      content: {
+        text: 'Confirmation required before saving playlist "Favorites".',
+        actions: ["MUSIC_LIBRARY"],
+      },
     },
   ],
-  validate: async (_runtime, message, _state) => {
-    return Boolean(inferOpFromText(message.content?.text ?? ""));
-  },
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state: State | undefined,
-    options: Record<string, unknown> | undefined,
-    callback?: HandlerCallback,
-  ): Promise<ActionResult | undefined> => {
-    if (!callback) return { success: false, error: "Missing callback" };
-    const merged = mergedOptions(options);
-    const op =
-      normalizeOp(merged.op) ?? inferOpFromText(message.content?.text ?? "");
-    if (!op) {
-      const text =
-        "Could not determine playlist op. Use op=save, load, delete, or add.";
-      await callback({ text, source: message.content.source });
-      return { success: false, error: text };
-    }
+  [
+    {
+      name: "{{name1}}",
+      content: { text: 'load my playlist "Workout"' },
+    },
+    {
+      name: "{{agentName}}",
+      content: {
+        text: 'Confirmation required before loading playlist "Workout".',
+        actions: ["MUSIC_LIBRARY"],
+      },
+    },
+  ],
+  [
+    {
+      name: "{{name1}}",
+      content: { text: "add Bohemian Rhapsody to my favorites" },
+    },
+    {
+      name: "{{agentName}}",
+      content: {
+        text: 'Confirmation required before adding "Bohemian Rhapsody" to playlist "my favorites".',
+        actions: ["MUSIC_LIBRARY"],
+      },
+    },
+  ],
+];
 
-    if (op === "save")
-      return handleSave(runtime, message, state, merged, callback);
-    if (op === "load")
-      return handleLoad(runtime, message, state, merged, callback);
-    if (op === "delete")
-      return handleDelete(runtime, message, state, merged, callback);
-    return handleAdd(runtime, message, merged, callback);
-  },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: { text: 'save this queue as playlist "Favorites"' },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: 'Confirmation required before saving playlist "Favorites".',
-          actions: ["PLAYLIST_OP"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: 'load my playlist "Workout"' },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: 'Confirmation required before loading playlist "Workout".',
-          actions: ["PLAYLIST_OP"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "add Bohemian Rhapsody to my favorites" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: 'Confirmation required before adding "Bohemian Rhapsody" to playlist "my favorites".',
-          actions: ["PLAYLIST_OP"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
-};
+export async function validatePlaylistOp(
+  _runtime: IAgentRuntime,
+  message: Memory,
+  _state?: State,
+  options?: Record<string, unknown>,
+): Promise<boolean> {
+  const merged = mergedOptions(options);
+  return Boolean(readPlaylistOp(merged, message.content?.text ?? ""));
+}
 
-export default playlistOp;
+export async function handlePlaylistOp(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: Record<string, unknown> | undefined,
+  callback?: HandlerCallback,
+): Promise<ActionResult | undefined> {
+  if (!callback) return { success: false, error: "Missing callback" };
+  const merged = mergedOptions(options);
+  const op = readPlaylistOp(merged, message.content?.text ?? "");
+  if (!op) {
+    const text =
+      "Could not determine playlist op. Use subaction=save, load, delete, or add.";
+    await callback({ text, source: message.content.source });
+    return { success: false, error: text };
+  }
+
+  if (op === "save")
+    return handleSave(runtime, message, state, merged, callback);
+  if (op === "load")
+    return handleLoad(runtime, message, state, merged, callback);
+  if (op === "delete")
+    return handleDelete(runtime, message, state, merged, callback);
+  return handleAdd(runtime, message, merged, callback);
+}

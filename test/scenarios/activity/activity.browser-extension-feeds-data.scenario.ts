@@ -53,7 +53,7 @@ export default scenario({
       room: "main",
       text: "What's the latest per-site data the LifeOps extension has sent you?",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_SCREEN_TIME"],
+        acceptedActions: ["SCREEN_TIME"],
         description: "browser extension activity snapshot",
       }),
       responseIncludesAny: [/extension/i, /github/i, /docs\.google\.com/i],
@@ -62,13 +62,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "OWNER_SCREEN_TIME",
+      actionName: "SCREEN_TIME",
     },
     {
       type: "custom",
       name: "extension-feed-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_SCREEN_TIME"],
+        acceptedActions: ["SCREEN_TIME"],
         description: "browser extension activity snapshot",
       }),
     },
@@ -77,7 +77,7 @@ export default scenario({
       name: "extension-feed-result",
       predicate: async (ctx) => {
         const hit = ctx.actionsCalled.find(
-          (action) => action.actionName === "OWNER_SCREEN_TIME",
+          (action) => action.actionName === "SCREEN_TIME",
         );
         if (!hit) {
           return "expected FETCH_BROWSER_ACTIVITY action result";

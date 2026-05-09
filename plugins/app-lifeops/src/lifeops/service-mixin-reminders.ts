@@ -11,14 +11,14 @@ import {
   loadOwnerContactsConfig,
   type OwnerContactRoutingHint,
   resolveOwnerContactWithFallback,
-} from "@elizaos/agent/config/owner-contacts";
-import { registerEscalationChannel } from "@elizaos/agent/services/escalation";
+} from "@elizaos/agent";
+import { registerEscalationChannel } from "@elizaos/agent";
 import {
   type IAgentRuntime,
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { readProfileFromMetadata } from "../activity-profile/profile-metadata.js";
 import type { ActivityProfile } from "../activity-profile/types.js";
 import type {
@@ -747,9 +747,9 @@ function normalizeModelNumber(value: unknown): number | null {
 function parseStructuredObjectFromModelText(
   value: string,
 ): Record<string, unknown> | null {
-  const parsedToon = parseToonKeyValue<Record<string, unknown>>(value);
-  if (isRecord(parsedToon)) {
-    return parsedToon;
+  const parsedJson = parseJsonModelRecord<Record<string, unknown>>(value);
+  if (isRecord(parsedJson)) {
+    return parsedJson;
   }
   return null;
 }
@@ -1062,7 +1062,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       const context = input.context ?? {};
       const prompt = [
         "Classify whether the owner reply resolves one specific reminder.",
-        "Return TOON only. Do not include prose, markdown, code fences, or hidden reasoning.",
+        "Return JSON only as a single object. Do not include prose, markdown, code fences, or hidden reasoning.",
         "",
         "Allowed decisions:",
         "- explicit_resolution: the reply clearly completes, acknowledges, skips, or snoozes this reminder",
@@ -1074,7 +1074,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         "Only resolve standalone replies like done/yes/later when the context says standalone resolution is allowed.",
         "For snoozed, set snoozeMinutes to a positive integer or snoozePreset to 15m, 30m, 1h, tonight, or tomorrow_morning; otherwise ask for clarification.",
         "",
-        "Return exactly these TOON fields:",
+        "Return exactly these JSON fields:",
         "decision: explicit_resolution | needs_clarification | unrelated | abstain",
         "resolution: completed | acknowledged | skipped | snoozed | null",
         "snoozeMinutes: positive integer minutes or null",
@@ -1082,7 +1082,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         "confidence: number from 0.0 to 1.0",
         "reason: short_reason",
         "",
-        "Reminder context TOON:",
+        "Reminder context:",
         `title: ${formatReminderPromptValue(context.title ?? null)}`,
         `attemptedAt: ${formatReminderPromptValue(context.attemptedAt ?? null)}`,
         `respondedAt: ${formatReminderPromptValue(
@@ -1095,7 +1095,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           context.allowStandaloneResolution ?? null,
         )}`,
         "",
-        "Owner reply TOON:",
+        "Owner reply:",
         `text: ${formatReminderPromptValue(input.text)}`,
       ].join("\n");
       try {

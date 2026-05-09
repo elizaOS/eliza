@@ -10,7 +10,7 @@ import { logger } from "@elizaos/core";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgeTabSummary,
-} from "@elizaos/plugin-browser-bridge";
+} from "@elizaos/plugin-browser";
 import type {
   LifeOpsBrowserSession,
   LifeOpsConnectorDegradation,
@@ -24,29 +24,31 @@ import type {
   LifeOpsOwnerBrowserAuthState,
   LifeOpsOwnerBrowserNextAction,
   LifeOpsOwnerBrowserTabState,
-} from "@elizaos/shared/contracts/lifeops";
-import { LIFEOPS_DISCORD_CAPABILITIES } from "@elizaos/shared/contracts/lifeops";
-import { asRecord } from "@elizaos/shared/type-guards";
+} from "@elizaos/shared";
+import { LIFEOPS_DISCORD_CAPABILITIES } from "@elizaos/shared";
+import { asRecord } from "@elizaos/shared";
 import {
   captureDiscordDeliveryStatus,
   closeDiscordTab,
   DISCORD_APP_URL,
+  type DiscordDesktopCdpStatus,
   type DiscordMessageSearchResult,
   type DiscordTabProbe,
   discordBrowserWorkspaceAvailable,
   emptyDiscordDmInboxProbe,
   ensureDiscordTab,
+  getDiscordDesktopCdpStatus,
   probeDiscordCapturedPage,
   probeDiscordTab,
-  searchDiscordMessages,
-} from "./discord-browser-scraper.js";
-import {
-  type DiscordDesktopCdpStatus,
-  getDiscordDesktopCdpStatus,
   relaunchDiscordDesktopForCdp,
+  searchDiscordMessages,
   sendDiscordViaDesktopCdp,
-} from "./discord-desktop-cdp.js";
+} from "@elizaos/plugin-discord";
 import { createLifeOpsConnectorGrant } from "./repository.js";
+import {
+  searchDiscordMessagesWithRuntimeService,
+  sendDiscordMessageWithRuntimeService,
+} from "./runtime-service-delegates.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 import { normalizeOptionalConnectorSide } from "./service-normalize-connector.js";
@@ -176,13 +178,64 @@ function selectedDiscordChannelIdFromStatus(
   return null;
 }
 
+function memoryToDiscordMessageSearchResult(
+  memory: unknown,
+): DiscordMessageSearchResult {
+  const record =
+    memory && typeof memory === "object"
+      ? (memory as Record<string, unknown>)
+      : {};
+  const content =
+    record.content && typeof record.content === "object"
+      ? (record.content as Record<string, unknown>)
+      : {};
+  const metadata =
+    record.metadata && typeof record.metadata === "object"
+      ? (record.metadata as Record<string, unknown>)
+      : {};
+  const sender =
+    metadata.sender && typeof metadata.sender === "object"
+      ? (metadata.sender as Record<string, unknown>)
+      : {};
+  const createdAt = Number(record.createdAt);
+  return {
+    id:
+      typeof metadata.messageId === "string"
+        ? metadata.messageId
+        : typeof record.id === "string"
+          ? record.id
+          : null,
+    content: typeof content.text === "string" ? content.text : "",
+    authorName:
+      typeof content.name === "string"
+        ? content.name
+        : typeof sender.username === "string"
+          ? sender.username
+          : null,
+    guildId:
+      typeof metadata.discordGuildId === "string"
+        ? metadata.discordGuildId
+        : null,
+    channelId:
+      typeof metadata.discordChannelId === "string"
+        ? metadata.discordChannelId
+        : typeof metadata.channelId === "string"
+          ? metadata.channelId
+          : null,
+    timestamp: Number.isFinite(createdAt)
+      ? new Date(createdAt).toISOString()
+      : null,
+    deliveryStatus: "unknown",
+  };
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function identityFromProbe(
   probe: DiscordTabProbe | null,
-  fallback: Record<string, unknown> | null,
+  pluginIdentity: Record<string, unknown> | null,
 ): LifeOpsDiscordConnectorStatus["identity"] {
   if (probe?.loggedIn && probe.identity.username) {
     return {
@@ -191,8 +244,8 @@ function identityFromProbe(
       discriminator: probe.identity.discriminator ?? undefined,
     };
   }
-  if (fallback && Object.keys(fallback).length > 0) {
-    return fallback as LifeOpsDiscordConnectorStatus["identity"];
+  if (pluginIdentity && Object.keys(pluginIdentity).length > 0) {
+    return pluginIdentity as LifeOpsDiscordConnectorStatus["identity"];
   }
   return null;
 }
@@ -1324,9 +1377,9 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         );
       }
 
+      const sideAccountId = `${this.agentId()}-${normalizedSide}`;
       const { tabId } = await ensureDiscordTab({
-        agentId: this.agentId(),
-        side: normalizedSide,
+        accountId: sideAccountId,
         existingTabId: tabIdFromGrant(existing),
         show: true,
       });
@@ -1385,14 +1438,43 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       side?: LifeOpsConnectorSide;
       query: string;
       channelId?: string;
+      limit?: number;
     }): Promise<DiscordMessageSearchResult[]> {
       const normalizedSide =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
-      if (normalizedSide === "agent") {
-        fail(
-          409,
-          "Agent-side Discord search is owned by @elizaos/plugin-discord. LifeOps does not open a separate agent browser session for search.",
+      const status = await this.getDiscordConnectorStatus(normalizedSide);
+      if (!status.connected) {
+        fail(409, "Discord is not connected.");
+      }
+      if (!status.grantedCapabilities.includes("discord.read")) {
+        fail(403, "Discord read capability is not granted.");
+      }
+      const delegated = await searchDiscordMessagesWithRuntimeService({
+        runtime: this.runtime,
+        grant: status.grant,
+        query: request.query,
+        channelId: request.channelId,
+        limit: request.limit,
+      });
+      if (delegated.status === "handled") {
+        return delegated.value.map(memoryToDiscordMessageSearchResult);
+      }
+      if (delegated.error) {
+        this.logLifeOpsWarn(
+          "runtime_service_delegation_unavailable",
+          delegated.reason,
+          {
+            provider: "discord",
+            operation: "message.search",
+            error:
+              delegated.error instanceof Error
+                ? delegated.error.message
+                : String(delegated.error),
+          },
         );
+      }
+      if (normalizedSide === "agent") {
+        fail(503, "Discord plugin search service is not available.");
       }
       const grant = await this.repository.getConnectorGrant(
         this.agentId(),
@@ -1505,13 +1587,36 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
           fail(502, result.error ?? "Discord Desktop send failed.");
         }
       } else {
-        if (typeof this.runtime.sendMessageToTarget !== "function") {
-          fail(503, "Discord send handler is not available.");
+        const delegated = await sendDiscordMessageWithRuntimeService({
+          runtime: this.runtime,
+          grant: status.grant,
+          channelId,
+          text,
+        });
+        if (delegated.status !== "handled") {
+          if (delegated.error) {
+            this.logLifeOpsWarn(
+              "runtime_service_delegation_unavailable",
+              delegated.reason,
+              {
+                provider: "discord",
+                operation: "message.send",
+                error:
+                  delegated.error instanceof Error
+                    ? delegated.error.message
+                    : String(delegated.error),
+              },
+            );
+          }
+          if (typeof this.runtime.sendMessageToTarget !== "function") {
+            fail(503, "Discord send handler is not available.");
+          }
+          const accountId = status.grant?.connectorAccountId ?? "default";
+          await this.runtime.sendMessageToTarget(
+            { source: "discord", accountId, channelId },
+            { text, source: "lifeops", metadata: { accountId } },
+          );
         }
-        await this.runtime.sendMessageToTarget(
-          { source: "discord", channelId },
-          { text, source: "lifeops" },
-        );
       }
 
       let deliveryStatus: "sent" | "sending" | "failed" | "unknown" = "unknown";

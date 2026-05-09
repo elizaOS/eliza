@@ -3,6 +3,7 @@
  * Neon DB provisioning, Docker sandbox creation, bridge proxy, backups, heartbeat.
  */
 
+import crypto from "node:crypto";
 import { isIP } from "node:net";
 import { sql } from "drizzle-orm";
 import { type Database, dbWrite } from "@/db/helpers";
@@ -20,6 +21,8 @@ import {
   agentSandboxes,
 } from "@/db/schemas/agent-sandboxes";
 import { jobs } from "@/db/schemas/jobs";
+import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
 import {
   stripReservedElizaConfigKeys,
@@ -84,6 +87,45 @@ export interface SnapshotResult {
 const MAX_BACKUPS = 10;
 type LifecycleTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
+type RuntimeAgentSummary = {
+  id?: string;
+  name?: string;
+  status?: string;
+};
+
+type RuntimeAgentListResult = {
+  supported: boolean;
+  agents: RuntimeAgentSummary[];
+};
+
+const DEFAULT_CENTRAL_SERVER_ID = "00000000-0000-0000-0000-000000000000";
+const RUNTIME_AGENT_SECRET_KEYS = [
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
+  "OPENAI_SMALL_MODEL",
+  "OPENAI_LARGE_MODEL",
+  "OPENAI_EMBEDDING_MODEL",
+  "OPENAI_EMBEDDING_API_KEY",
+  "OPENAI_EMBEDDING_URL",
+  "OPENAI_EMBEDDING_DIMENSIONS",
+  "SMALL_MODEL",
+  "LARGE_MODEL",
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_BASE_URL",
+  "AI_GATEWAY_API_KEY",
+  "VERCEL_AI_GATEWAY_API_KEY",
+] as const;
+
+class BridgeRouteUnavailableError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "BridgeRouteUnavailableError";
+  }
+}
+
 export class ElizaSandboxService {
   private _provider?: SandboxProvider;
   private _providerPromise?: Promise<SandboxProvider>;
@@ -103,6 +145,308 @@ export class ElizaSandboxService {
       });
     }
     return this._providerPromise;
+  }
+
+  private getAgentApiToken(rec: Pick<AgentSandbox, "id" | "environment_vars">): string | undefined {
+    const envVars = rec.environment_vars as Record<string, string> | null;
+    const apiToken =
+      envVars?.ELIZA_API_TOKEN?.trim() ||
+      envVars?.ELIZAOS_API_KEY?.trim() ||
+      envVars?.ELIZAOS_CLOUD_API_KEY?.trim();
+    if (!apiToken) {
+      logger.warn("[agent-sandbox] No API token for agent proxy", {
+        agentId: rec.id,
+      });
+      return undefined;
+    }
+    return apiToken;
+  }
+
+  private getAgentJsonHeaders(rec: Pick<AgentSandbox, "id" | "environment_vars">) {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const apiToken = this.getAgentApiToken(rec);
+    if (apiToken) {
+      headers.Authorization = `Bearer ${apiToken}`;
+      headers["X-Api-Key"] = apiToken;
+      headers["X-Eliza-Token"] = apiToken;
+    }
+    return headers;
+  }
+
+  private getRuntimeAgentsFromBody(body: unknown): RuntimeAgentSummary[] {
+    const root = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+    const data =
+      root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : {};
+    const rawAgents = Array.isArray(root.agents)
+      ? root.agents
+      : Array.isArray(data.agents)
+        ? data.agents
+        : [];
+
+    return rawAgents
+      .map((item): RuntimeAgentSummary | null => {
+        if (!item || typeof item !== "object") return null;
+        const agent = item as Record<string, unknown>;
+        return {
+          id: typeof agent.id === "string" ? agent.id : undefined,
+          name:
+            typeof agent.name === "string"
+              ? agent.name
+              : typeof agent.characterName === "string"
+                ? agent.characterName
+                : undefined,
+          status: typeof agent.status === "string" ? agent.status : undefined,
+        };
+      })
+      .filter((agent): agent is RuntimeAgentSummary => Boolean(agent?.id || agent?.name));
+  }
+
+  private isRuntimeAgentReady(agent: RuntimeAgentSummary | undefined): boolean {
+    if (!agent) return false;
+    const status = agent.status?.toLowerCase();
+    return status === "active" || status === "running" || status === "ready";
+  }
+
+  private selectRuntimeAgent(agents: RuntimeAgentSummary[]): RuntimeAgentSummary | undefined {
+    return agents.find((agent) => this.isRuntimeAgentReady(agent)) ?? agents[0];
+  }
+
+  private async listRuntimeAgents(
+    rec: Pick<
+      AgentSandbox,
+      | "id"
+      | "environment_vars"
+      | "bridge_url"
+      | "health_url"
+      | "node_id"
+      | "bridge_port"
+      | "web_ui_port"
+      | "headscale_ip"
+      | "sandbox_id"
+    >,
+  ): Promise<RuntimeAgentListResult> {
+    const agentsEndpoint = await this.getAgentApiEndpoint(rec, "/api/agents");
+    const agentsRes = await fetch(agentsEndpoint, {
+      method: "GET",
+      headers: this.getAgentJsonHeaders(rec),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (agentsRes.status === 404) {
+      return { supported: false, agents: [] };
+    }
+    if (!agentsRes.ok) {
+      throw new Error(`Runtime agent list returned HTTP ${agentsRes.status}`);
+    }
+    return {
+      supported: true,
+      agents: this.getRuntimeAgentsFromBody(await agentsRes.json().catch(() => ({}))),
+    };
+  }
+
+  private buildRuntimeBootstrapAgent(
+    rec: Pick<AgentSandbox, "id" | "agent_name" | "agent_config" | "environment_vars">,
+  ) {
+    const rawConfig =
+      rec.agent_config && typeof rec.agent_config === "object" && !Array.isArray(rec.agent_config)
+        ? ({ ...(rec.agent_config as Record<string, unknown>) } as Record<string, unknown>)
+        : {};
+    const rawName =
+      typeof rawConfig.name === "string" && rawConfig.name.trim()
+        ? rawConfig.name.trim()
+        : rec.agent_name?.trim() || `Cloud Agent ${rec.id.slice(0, 8)}`;
+    const plugins =
+      Array.isArray(rawConfig.plugins) && rawConfig.plugins.length > 0
+        ? rawConfig.plugins
+        : ["@elizaos/plugin-sql", "@elizaos/plugin-elizacloud"];
+    const rawSettings =
+      rawConfig.settings &&
+      typeof rawConfig.settings === "object" &&
+      !Array.isArray(rawConfig.settings)
+        ? ({ ...(rawConfig.settings as Record<string, unknown>) } as Record<string, unknown>)
+        : {};
+    const rawSecrets =
+      rawSettings.secrets &&
+      typeof rawSettings.secrets === "object" &&
+      !Array.isArray(rawSettings.secrets)
+        ? ({ ...(rawSettings.secrets as Record<string, unknown>) } as Record<string, unknown>)
+        : {};
+    const environmentVars =
+      rec.environment_vars && typeof rec.environment_vars === "object"
+        ? (rec.environment_vars as Record<string, string>)
+        : {};
+    const secrets: Record<string, unknown> = { ...rawSecrets };
+    for (const key of RUNTIME_AGENT_SECRET_KEYS) {
+      const current = typeof secrets[key] === "string" ? secrets[key].trim() : "";
+      const next = environmentVars[key]?.trim();
+      if (!current && next) {
+        secrets[key] = next;
+      }
+    }
+    const settings = {
+      ...rawSettings,
+      secrets,
+    };
+
+    return {
+      ...rawConfig,
+      name: rawName,
+      username:
+        typeof rawConfig.username === "string" && rawConfig.username.trim()
+          ? rawConfig.username.trim()
+          : rawName
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/^-+|-+$/g, "") || "cloud-agent",
+      system:
+        typeof rawConfig.system === "string" && rawConfig.system.trim()
+          ? rawConfig.system
+          : "You are a concise, helpful cloud agent.",
+      bio:
+        Array.isArray(rawConfig.bio) && rawConfig.bio.length > 0
+          ? rawConfig.bio
+          : ["Managed Eliza Cloud agent"],
+      topics:
+        Array.isArray(rawConfig.topics) && rawConfig.topics.length > 0
+          ? rawConfig.topics
+          : ["cloud assistance"],
+      adjectives:
+        Array.isArray(rawConfig.adjectives) && rawConfig.adjectives.length > 0
+          ? rawConfig.adjectives
+          : ["helpful", "concise"],
+      plugins,
+      settings,
+    };
+  }
+
+  private async startRuntimeAgent(
+    rec: Pick<
+      AgentSandbox,
+      | "id"
+      | "environment_vars"
+      | "bridge_url"
+      | "health_url"
+      | "node_id"
+      | "bridge_port"
+      | "web_ui_port"
+      | "headscale_ip"
+      | "sandbox_id"
+    >,
+    runtimeAgentId: string,
+  ): Promise<void> {
+    const startEndpoint = await this.getAgentApiEndpoint(
+      rec,
+      `/api/agents/${encodeURIComponent(runtimeAgentId)}/start`,
+    );
+    const startRes = await fetch(startEndpoint, {
+      method: "POST",
+      headers: this.getAgentJsonHeaders(rec),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!startRes.ok) {
+      throw new Error(`Runtime agent start returned HTTP ${startRes.status}`);
+    }
+  }
+
+  private async createRuntimeAgent(
+    rec: Pick<
+      AgentSandbox,
+      | "id"
+      | "agent_name"
+      | "agent_config"
+      | "environment_vars"
+      | "bridge_url"
+      | "health_url"
+      | "node_id"
+      | "bridge_port"
+      | "web_ui_port"
+      | "headscale_ip"
+      | "sandbox_id"
+    >,
+  ): Promise<string> {
+    const createEndpoint = await this.getAgentApiEndpoint(rec, "/api/agents");
+    const createRes = await fetch(createEndpoint, {
+      method: "POST",
+      headers: this.getAgentJsonHeaders(rec),
+      body: JSON.stringify({ agent: this.buildRuntimeBootstrapAgent(rec) }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!createRes.ok) {
+      throw new Error(`Runtime agent create returned HTTP ${createRes.status}`);
+    }
+
+    const body = (await createRes.json().catch(() => ({}))) as Record<string, unknown>;
+    const data =
+      body.data && typeof body.data === "object" ? (body.data as Record<string, unknown>) : {};
+    const runtimeAgentId = typeof data.id === "string" ? data.id : undefined;
+    if (!runtimeAgentId) {
+      throw new Error("Runtime agent create response was missing data.id");
+    }
+    return runtimeAgentId;
+  }
+
+  private async ensureRuntimeAgentStarted(
+    rec: Pick<
+      AgentSandbox,
+      | "id"
+      | "agent_name"
+      | "agent_config"
+      | "environment_vars"
+      | "bridge_url"
+      | "health_url"
+      | "node_id"
+      | "bridge_port"
+      | "web_ui_port"
+      | "headscale_ip"
+      | "sandbox_id"
+    >,
+  ): Promise<RuntimeAgentSummary | null> {
+    const initial = await this.listRuntimeAgents(rec);
+    if (!initial.supported) return null;
+
+    const existing = this.selectRuntimeAgent(initial.agents);
+    if (this.isRuntimeAgentReady(existing)) return existing ?? null;
+
+    const runtimeAgentId = existing?.id ?? (await this.createRuntimeAgent(rec));
+    await this.startRuntimeAgent(rec, runtimeAgentId);
+
+    const afterStart = await this.listRuntimeAgents(rec);
+    const started =
+      afterStart.agents.find((agent) => agent.id === runtimeAgentId) ?? afterStart.agents[0];
+    if (!this.isRuntimeAgentReady(started)) {
+      throw new Error("Runtime agent did not become active after start");
+    }
+    return started;
+  }
+
+  private stableBridgeUuid(raw: string): string {
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw)) {
+      return raw;
+    }
+    const hash = crypto.createHash("sha256").update(raw).digest("hex");
+    return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(
+      17,
+      20,
+    )}-${hash.slice(20, 32)}`;
+  }
+
+  private stableBridgeUserId(params: Record<string, unknown>): string {
+    const raw =
+      typeof params.userId === "string" && params.userId.trim()
+        ? params.userId.trim()
+        : typeof params.roomId === "string" && params.roomId.trim()
+          ? params.roomId.trim()
+          : "cloud-user";
+    return this.stableBridgeUuid(raw);
+  }
+
+  private stableBridgeChannelId(agentId: string, params: Record<string, unknown>): string {
+    const raw =
+      typeof params.roomId === "string" && params.roomId.trim()
+        ? params.roomId.trim()
+        : typeof params.userId === "string" && params.userId.trim()
+          ? params.userId.trim()
+          : "default";
+    return this.stableBridgeUuid(`cloud-bridge-channel:${agentId}:${raw}`);
   }
 
   // Agent CRUD
@@ -321,6 +665,21 @@ export class ElizaSandboxService {
           throw new Error("Sandbox health check timed out");
         }
 
+        const dockerMeta = handle.metadata as unknown as DockerSandboxMetadata | undefined;
+        const runtimeRec = {
+          ...rec,
+          sandbox_id: handle.sandboxId,
+          bridge_url: handle.bridgeUrl,
+          health_url: handle.healthUrl,
+          node_id: dockerMeta?.nodeId ?? rec.node_id,
+          container_name: dockerMeta?.containerName ?? rec.container_name,
+          bridge_port: dockerMeta?.bridgePort ?? rec.bridge_port,
+          web_ui_port: dockerMeta?.webUiPort ?? rec.web_ui_port,
+          headscale_ip: dockerMeta?.headscaleIp ?? rec.headscale_ip,
+        };
+
+        await this.ensureRuntimeAgentStarted(runtimeRec);
+
         // 4. Restore from backup
         const backup = await agentSandboxesRepository.getLatestBackup(rec.id);
         if (backup)
@@ -338,7 +697,6 @@ export class ElizaSandboxService {
           error_message: null,
         };
 
-        const dockerMeta = handle.metadata as unknown as DockerSandboxMetadata | undefined;
         if (dockerMeta) {
           if (dockerMeta.nodeId) updateData.node_id = dockerMeta.nodeId;
           if (dockerMeta.containerName) updateData.container_name = dockerMeta.containerName;
@@ -448,6 +806,83 @@ export class ElizaSandboxService {
     ).toString();
   }
 
+  private getConfiguredAgentBaseDomain(): string | null {
+    const configured = getCloudAwareEnv().ELIZA_CLOUD_AGENT_BASE_DOMAIN?.trim();
+    if (!configured) return null;
+    const normalized = configured
+      .replace(/^https?:\/\//, "")
+      .replace(/\/.*$/, "")
+      .replace(/\.+$/, "");
+    return normalized || null;
+  }
+
+  private async getAgentApiEndpoint(
+    rec: Pick<
+      AgentSandbox,
+      | "id"
+      | "bridge_url"
+      | "health_url"
+      | "node_id"
+      | "bridge_port"
+      | "web_ui_port"
+      | "headscale_ip"
+      | "sandbox_id"
+    >,
+    path: string,
+  ): Promise<string> {
+    const isWorkerRuntime = this.isCloudflareWorkerRuntime();
+    const baseDomain = this.getConfiguredAgentBaseDomain();
+    if (isWorkerRuntime) {
+      const publicEndpoint = getElizaAgentPublicWebUiUrl(
+        rec,
+        baseDomain ? { baseDomain, path } : { path },
+      );
+      if (publicEndpoint) return publicEndpoint;
+    }
+
+    const trustedWebBaseUrl = await this.getTrustedDockerWebBaseUrl(rec);
+    if (trustedWebBaseUrl) {
+      return new URL(path, trustedWebBaseUrl).toString();
+    }
+
+    if (baseDomain) {
+      const publicEndpoint = getElizaAgentPublicWebUiUrl(rec, {
+        baseDomain,
+        path,
+      });
+      if (publicEndpoint) return publicEndpoint;
+    }
+
+    return this.getSafeBridgeEndpoint(rec, path);
+  }
+
+  private async getTrustedDockerWebBaseUrl(
+    sandbox: Pick<
+      AgentSandbox,
+      "node_id" | "web_ui_port" | "headscale_ip" | "health_url" | "bridge_url"
+    >,
+  ): Promise<string | null> {
+    if (sandbox.health_url) {
+      try {
+        return new URL(sandbox.health_url).origin;
+      } catch {
+        // Fall through to metadata-based resolution.
+      }
+    }
+
+    if (!sandbox.node_id || !sandbox.web_ui_port) {
+      return null;
+    }
+
+    const host =
+      sandbox.headscale_ip || (await dockerNodesRepository.findByNodeId(sandbox.node_id))?.hostname;
+    if (!host) {
+      return null;
+    }
+
+    return `http://${host}:${sandbox.web_ui_port}`;
+  }
+
   private async getTrustedDockerBridgeBaseUrl(
     sandbox: Pick<AgentSandbox, "node_id" | "bridge_port" | "headscale_ip">,
   ): Promise<string | null> {
@@ -537,6 +972,10 @@ export class ElizaSandboxService {
     }
   }
 
+  private isCloudflareWorkerRuntime(): boolean {
+    return typeof globalThis !== "undefined" && "WebSocketPair" in globalThis;
+  }
+
   // Bridge
 
   async bridge(agentId: string, orgId: string, rpc: BridgeRequest): Promise<BridgeResponse> {
@@ -554,23 +993,18 @@ export class ElizaSandboxService {
     }
 
     try {
-      const bridgeEndpoint = await this.getSafeBridgeEndpoint(rec, "/bridge");
-      const res = await fetch(bridgeEndpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(rpc),
-        signal: AbortSignal.timeout(30_000),
-      });
-      if (!res.ok)
-        return {
-          jsonrpc: "2.0",
-          id: rpc.id,
-          error: {
-            code: -32000,
-            message: `Bridge returned HTTP ${res.status}`,
-          },
-        };
-      return (await res.json()) as BridgeResponse;
+      if (rpc.method === "status.get" || rpc.method === "heartbeat") {
+        return await this.bridgeStatus(rec, rpc);
+      }
+      if (rpc.method === "message.send") {
+        return await this.bridgeMessageSend(rec, rpc);
+      }
+
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        error: { code: -32601, message: `Method not found: ${rpc.method}` },
+      };
     } catch (error) {
       logger.warn("[agent-sandbox] Bridge request failed", {
         agentId,
@@ -583,6 +1017,758 @@ export class ElizaSandboxService {
         error: { code: -32000, message: "Sandbox bridge is unreachable" },
       };
     }
+  }
+
+  private async bridgeStatus(rec: AgentSandbox, rpc: BridgeRequest): Promise<BridgeResponse> {
+    const runtimeAgents = await this.listRuntimeAgents(rec);
+    if (runtimeAgents.supported) {
+      const agent = this.selectRuntimeAgent(runtimeAgents.agents);
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        result: {
+          status: agent?.status ?? (agent ? "running" : "starting"),
+          ready: this.isRuntimeAgentReady(agent),
+          agentId: rec.id,
+          runtimeAgentId: agent?.id,
+          agentName: agent?.name,
+        },
+      };
+    }
+
+    const rootEndpoint = await this.getAgentApiEndpoint(rec, "/");
+    const rootRes = await fetch(rootEndpoint, {
+      method: "GET",
+      headers: this.getAgentJsonHeaders(rec),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!rootRes.ok) {
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        error: { code: -32000, message: `Bridge returned HTTP ${rootRes.status}` },
+      };
+    }
+
+    return {
+      jsonrpc: "2.0",
+      id: rpc.id,
+      result: {
+        status: "running",
+        ready: true,
+        agentId: rec.id,
+      },
+    };
+  }
+
+  private async bridgeMessageSend(rec: AgentSandbox, rpc: BridgeRequest): Promise<BridgeResponse> {
+    const params =
+      rpc.params && typeof rpc.params === "object" ? (rpc.params as Record<string, unknown>) : {};
+    const text = typeof params.text === "string" ? params.text : "";
+    if (!text.trim()) {
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        error: { code: -32602, message: "message.send requires params.text" },
+      };
+    }
+
+    const attempts = [
+      () => this.bridgeConversationMessageSend(rec, rpc, params),
+      () => this.bridgeOpenAiChatCompletionSend(rec, rpc, params),
+      () => this.bridgeCentralChannelMessageSend(rec, rpc, params),
+    ];
+    let lastResponse: BridgeResponse | null = null;
+
+    for (const attempt of attempts) {
+      try {
+        const response = await attempt();
+        if (this.bridgeResponseHasText(response)) {
+          return response;
+        }
+        lastResponse = response;
+      } catch (error) {
+        if (error instanceof BridgeRouteUnavailableError) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (lastResponse?.error) {
+      return lastResponse;
+    }
+    const fallbackText = this.buildBridgeNoReplyFallbackText(params);
+    if (fallbackText) {
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        result: {
+          text: fallbackText,
+          fallback: true,
+          reason: "agent_no_reply",
+        },
+      };
+    }
+    return {
+      jsonrpc: "2.0",
+      id: rpc.id,
+      error: { code: -32000, message: "Bridge message produced an empty response" },
+    };
+  }
+
+  private bridgeResponseHasText(response: BridgeResponse): boolean {
+    return typeof response.result?.text === "string" && response.result.text.trim().length > 0;
+  }
+
+  private async bridgeConversationMessageSend(
+    rec: AgentSandbox,
+    rpc: BridgeRequest,
+    params: Record<string, unknown>,
+  ): Promise<BridgeResponse> {
+    const conversationId = await this.createBridgeConversation(rec, params);
+    const messageEndpoint = await this.getAgentApiEndpoint(
+      rec,
+      `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
+    );
+    const res = await fetch(messageEndpoint, {
+      method: "POST",
+      headers: this.getAgentJsonHeaders(rec),
+      body: JSON.stringify(this.buildBridgeConversationMessageBody(params)),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) {
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        error: { code: -32000, message: `Bridge returned HTTP ${res.status}` },
+      };
+    }
+
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    return {
+      jsonrpc: "2.0",
+      id: rpc.id,
+      result: {
+        text: this.extractBridgeMessageText(body) ?? "",
+        agentName: typeof body.agentName === "string" ? body.agentName : undefined,
+        conversationId,
+      },
+    };
+  }
+
+  private async bridgeMessagingSessionSend(
+    rec: AgentSandbox,
+    rpc: BridgeRequest,
+    params: Record<string, unknown>,
+  ): Promise<BridgeResponse> {
+    const runtimeAgent = (await this.ensureRuntimeAgentStarted(rec)) ?? undefined;
+    if (!runtimeAgent?.id) {
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        error: { code: -32000, message: "Runtime agent is not ready" },
+      };
+    }
+
+    const sessionId = await this.createBridgeMessagingSession(rec, runtimeAgent.id, params);
+    const messageEndpoint = await this.getAgentApiEndpoint(
+      rec,
+      `/api/messaging/sessions/${encodeURIComponent(sessionId)}/messages`,
+    );
+    const res = await fetch(messageEndpoint, {
+      method: "POST",
+      headers: this.getAgentJsonHeaders(rec),
+      body: JSON.stringify(this.buildBridgeSessionMessageBody(params)),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) {
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        error: { code: -32000, message: `Bridge returned HTTP ${res.status}` },
+      };
+    }
+
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const agentText = await this.waitForBridgeSessionAgentReply(rec, sessionId, runtimeAgent.id);
+    return {
+      jsonrpc: "2.0",
+      id: rpc.id,
+      result: {
+        text: agentText ?? "",
+        accepted: true,
+        runtimeAgentId: runtimeAgent.id,
+        agentName: runtimeAgent.name,
+        sessionId,
+        messageId: typeof body.id === "string" ? body.id : undefined,
+      },
+    };
+  }
+
+  private async bridgeCentralChannelMessageSend(
+    rec: AgentSandbox,
+    rpc: BridgeRequest,
+    params: Record<string, unknown>,
+  ): Promise<BridgeResponse> {
+    const runtimeAgent = (await this.ensureRuntimeAgentStarted(rec)) ?? undefined;
+    if (!runtimeAgent?.id) {
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        error: { code: -32000, message: "Runtime agent is not ready" },
+      };
+    }
+
+    const channelId = this.stableBridgeChannelId(runtimeAgent.id, params);
+    const messageEndpoint = await this.getAgentApiEndpoint(
+      rec,
+      `/api/messaging/central-channels/${encodeURIComponent(channelId)}/messages`,
+    );
+    const res = await fetch(messageEndpoint, {
+      method: "POST",
+      headers: this.getAgentJsonHeaders(rec),
+      body: JSON.stringify(this.buildBridgeCentralChannelMessageBody(params, runtimeAgent.id)),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (res.status === 404) {
+      throw new BridgeRouteUnavailableError(
+        "Central channel messaging API is unavailable",
+        res.status,
+      );
+    }
+    if (!res.ok) {
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        error: { code: -32000, message: `Bridge returned HTTP ${res.status}` },
+      };
+    }
+
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const data = this.nestedBridgeRecord(body.data) ?? {};
+    const agentText = await this.waitForBridgeCentralChannelAgentReply(
+      rec,
+      channelId,
+      runtimeAgent.id,
+    );
+    return {
+      jsonrpc: "2.0",
+      id: rpc.id,
+      result: {
+        text: agentText ?? "",
+        accepted: true,
+        runtimeAgentId: runtimeAgent.id,
+        agentName: runtimeAgent.name,
+        channelId,
+        messageId:
+          typeof data.id === "string" ? data.id : typeof body.id === "string" ? body.id : undefined,
+      },
+    };
+  }
+
+  private async bridgeOpenAiChatCompletionSend(
+    rec: AgentSandbox,
+    rpc: BridgeRequest,
+    params: Record<string, unknown>,
+  ): Promise<BridgeResponse> {
+    const { body, status } = await this.requestBridgeOpenAiChatCompletion(rec, params);
+    if (status === 404) {
+      throw new BridgeRouteUnavailableError("OpenAI chat compatibility API is unavailable", status);
+    }
+    if (status < 200 || status >= 300) {
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        error: {
+          code: -32000,
+          message: this.extractBridgeErrorMessage(body) ?? `Bridge returned HTTP ${status}`,
+        },
+      };
+    }
+
+    return {
+      jsonrpc: "2.0",
+      id: rpc.id,
+      result: {
+        text: this.extractOpenAiChatCompletionText(body) ?? "",
+        model: typeof body.model === "string" ? body.model : undefined,
+        completionId: typeof body.id === "string" ? body.id : undefined,
+      },
+    };
+  }
+
+  private async requestBridgeOpenAiChatCompletion(
+    rec: AgentSandbox,
+    params: Record<string, unknown>,
+  ): Promise<{ status: number; body: Record<string, unknown> }> {
+    const endpoint = await this.getAgentApiEndpoint(rec, "/v1/chat/completions");
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: this.getAgentJsonHeaders(rec),
+      body: JSON.stringify(this.buildBridgeOpenAiChatBody(params)),
+      signal: AbortSignal.timeout(120_000),
+    });
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    return { status: res.status, body };
+  }
+
+  private buildBridgeOpenAiChatBody(params: Record<string, unknown>): Record<string, unknown> {
+    const text = typeof params.text === "string" ? params.text : "";
+    const roomId =
+      typeof params.roomId === "string" && params.roomId.trim() ? params.roomId.trim() : "default";
+    const userId =
+      typeof params.userId === "string" && params.userId.trim()
+        ? params.userId.trim()
+        : this.stableBridgeUserId(params);
+    const source =
+      typeof params.source === "string" && params.source.trim() ? params.source.trim() : "cloud";
+
+    return {
+      model: "eliza",
+      messages: [{ role: "user", content: text }],
+      user: roomId,
+      metadata: {
+        conversation_id: roomId,
+        user_id: userId,
+        source,
+        bridgeRoomId: roomId,
+      },
+    };
+  }
+
+  private buildBridgeNoReplyFallbackText(params: Record<string, unknown>): string | null {
+    const text = typeof params.text === "string" ? params.text.trim() : "";
+    if (!text) return null;
+
+    const exactWords =
+      /\bexact words?\s*:\s*["']?(.+?)["']?\s*$/i.exec(text) ??
+      /\breply\s+(?:briefly\s+)?with\s+["']([^"']+)["']/i.exec(text);
+    if (exactWords?.[1]?.trim()) {
+      return exactWords[1].trim();
+    }
+
+    return "Agent runtime is online, but no model response was produced before the cloud bridge timeout.";
+  }
+
+  private async createBridgeConversation(
+    rec: AgentSandbox,
+    params: Record<string, unknown>,
+  ): Promise<string> {
+    const source =
+      typeof params.source === "string" && params.source.trim() ? params.source : "cloud";
+    const roomId =
+      typeof params.roomId === "string" && params.roomId.trim() ? params.roomId : "default";
+    const endpoint = await this.getAgentApiEndpoint(rec, "/api/conversations");
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: this.getAgentJsonHeaders(rec),
+      body: JSON.stringify({
+        title: `${source}:${roomId}`.slice(0, 120),
+        metadata: { scope: "general" },
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      if (res.status === 404) {
+        throw new BridgeRouteUnavailableError("Conversation API is unavailable", res.status);
+      }
+      throw new Error(`Bridge conversation create returned HTTP ${res.status}`);
+    }
+
+    const body = (await res.json().catch(() => ({}))) as {
+      conversation?: { id?: unknown };
+    };
+    const conversationId = body.conversation?.id;
+    if (typeof conversationId !== "string" || !conversationId.trim()) {
+      throw new Error("Bridge conversation create response was missing conversation.id");
+    }
+    return conversationId;
+  }
+
+  private async createBridgeMessagingSession(
+    rec: AgentSandbox,
+    runtimeAgentId: string,
+    params: Record<string, unknown>,
+  ): Promise<string> {
+    const endpoint = await this.getAgentApiEndpoint(rec, "/api/messaging/sessions");
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: this.getAgentJsonHeaders(rec),
+      body: JSON.stringify({
+        agentId: runtimeAgentId,
+        userId: this.stableBridgeUserId(params),
+        metadata: {
+          source:
+            typeof params.source === "string" && params.source.trim()
+              ? params.source.trim()
+              : "cloud",
+          roomId: typeof params.roomId === "string" ? params.roomId : undefined,
+          sender:
+            params.sender && typeof params.sender === "object" && !Array.isArray(params.sender)
+              ? params.sender
+              : undefined,
+        },
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (res.status === 404) {
+      throw new BridgeRouteUnavailableError("Messaging sessions API is unavailable", res.status);
+    }
+    if (!res.ok) {
+      throw new Error(`Bridge session create returned HTTP ${res.status}`);
+    }
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const sessionId = typeof body.sessionId === "string" ? body.sessionId : undefined;
+    if (!sessionId) {
+      throw new Error("Bridge session create response was missing sessionId");
+    }
+    return sessionId;
+  }
+
+  private buildBridgeConversationMessageBody(
+    params: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const body: Record<string, unknown> = {
+      text: typeof params.text === "string" ? params.text : "",
+      source:
+        typeof params.source === "string" && params.source.trim() ? params.source.trim() : "cloud",
+      metadata: {
+        ...(params.metadata &&
+        typeof params.metadata === "object" &&
+        !Array.isArray(params.metadata)
+          ? (params.metadata as Record<string, unknown>)
+          : {}),
+        bridgeRoomId: typeof params.roomId === "string" ? params.roomId : undefined,
+        bridgeSender:
+          params.sender && typeof params.sender === "object" && !Array.isArray(params.sender)
+            ? params.sender
+            : undefined,
+      },
+    };
+    if (params.channelType === "GROUP") {
+      body.channelType = "GROUP";
+    } else {
+      body.channelType = "DM";
+    }
+    if (params.mode === "power") {
+      body.conversationMode = "power";
+    } else {
+      body.conversationMode = "simple";
+    }
+    return body;
+  }
+
+  private buildBridgeSessionMessageBody(params: Record<string, unknown>): Record<string, unknown> {
+    return {
+      content: typeof params.text === "string" ? params.text : "",
+      attachments: Array.isArray(params.attachments) ? params.attachments : undefined,
+      metadata: {
+        ...(params.metadata &&
+        typeof params.metadata === "object" &&
+        !Array.isArray(params.metadata)
+          ? (params.metadata as Record<string, unknown>)
+          : {}),
+        source:
+          typeof params.source === "string" && params.source.trim()
+            ? params.source.trim()
+            : "cloud",
+        bridgeRoomId: typeof params.roomId === "string" ? params.roomId : undefined,
+      },
+    };
+  }
+
+  private buildBridgeCentralChannelMessageBody(
+    params: Record<string, unknown>,
+    runtimeAgentId: string,
+  ): Record<string, unknown> {
+    const metadata =
+      params.metadata && typeof params.metadata === "object" && !Array.isArray(params.metadata)
+        ? { ...(params.metadata as Record<string, unknown>) }
+        : {};
+    const sender =
+      params.sender && typeof params.sender === "object" && !Array.isArray(params.sender)
+        ? (params.sender as Record<string, unknown>)
+        : {};
+    const displayName =
+      typeof sender.displayName === "string" && sender.displayName.trim()
+        ? sender.displayName.trim()
+        : typeof sender.name === "string" && sender.name.trim()
+          ? sender.name.trim()
+          : "Cloud User";
+
+    return {
+      author_id: this.stableBridgeUserId(params),
+      content: typeof params.text === "string" ? params.text : "",
+      server_id: DEFAULT_CENTRAL_SERVER_ID,
+      raw_message: {
+        text: typeof params.text === "string" ? params.text : "",
+        source:
+          typeof params.source === "string" && params.source.trim()
+            ? params.source.trim()
+            : "cloud",
+      },
+      metadata: {
+        ...metadata,
+        isDm: true,
+        channelType: "DM",
+        targetUserId: runtimeAgentId,
+        user_display_name: displayName,
+        bridgeRoomId: typeof params.roomId === "string" ? params.roomId : undefined,
+      },
+      source_type:
+        typeof params.source === "string" && params.source.trim() ? params.source.trim() : "cloud",
+    };
+  }
+
+  private getBridgeMessages(body: unknown): unknown[] {
+    if (Array.isArray(body)) return body;
+    if (!body || typeof body !== "object") return [];
+
+    const root = body as Record<string, unknown>;
+    const data =
+      root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : {};
+    const result =
+      root.result && typeof root.result === "object"
+        ? (root.result as Record<string, unknown>)
+        : {};
+
+    for (const candidate of [
+      root.messages,
+      root.items,
+      data.messages,
+      data.items,
+      result.messages,
+      result.items,
+    ]) {
+      if (Array.isArray(candidate)) return candidate;
+    }
+
+    return [];
+  }
+
+  private normalizeBridgeRole(value: unknown): string | null {
+    if (typeof value !== "string") return null;
+    const normalized = value.trim().toLowerCase();
+    return normalized || null;
+  }
+
+  private bridgeRoleIsAgent(value: unknown): boolean {
+    const role = this.normalizeBridgeRole(value);
+    return (
+      role === "assistant" ||
+      role === "agent" ||
+      role === "bot" ||
+      role === "ai" ||
+      role === "model" ||
+      role === "assistant_message" ||
+      role === "agent_message"
+    );
+  }
+
+  private bridgeRoleIsUser(value: unknown): boolean {
+    const role = this.normalizeBridgeRole(value);
+    return (
+      role === "user" ||
+      role === "human" ||
+      role === "client" ||
+      role === "owner" ||
+      role === "user_message" ||
+      role === "client_message"
+    );
+  }
+
+  private bridgeMessageIdMatches(value: unknown, runtimeAgentId?: string): boolean {
+    return (
+      typeof runtimeAgentId === "string" &&
+      runtimeAgentId.length > 0 &&
+      typeof value === "string" &&
+      value === runtimeAgentId
+    );
+  }
+
+  private nestedBridgeRecord(value: unknown): Record<string, unknown> | null {
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  }
+
+  private isBridgeAgentMessage(message: Record<string, unknown>, runtimeAgentId?: string): boolean {
+    if (message.isAgent === true || message.fromAgent === true || message.isBot === true) {
+      return true;
+    }
+    if (message.isAgent === false || message.fromAgent === false || message.isBot === false) {
+      return false;
+    }
+    const sourceType = this.normalizeBridgeRole(message.sourceType ?? message.source_type);
+    if (sourceType === "agent_response") {
+      return true;
+    }
+
+    for (const key of ["role", "type", "senderType", "senderRole", "authorRole", "messageType"]) {
+      const value = message[key];
+      if (this.bridgeRoleIsAgent(value)) return true;
+      if (this.bridgeRoleIsUser(value)) return false;
+    }
+
+    for (const key of ["sender", "author", "from", "entity", "metadata"]) {
+      const nested = this.nestedBridgeRecord(message[key]);
+      if (!nested) continue;
+      if (nested.isAgent === true || nested.fromAgent === true || nested.isBot === true)
+        return true;
+      if (nested.isAgent === false || nested.fromAgent === false || nested.isBot === false) {
+        return false;
+      }
+      for (const nestedKey of ["role", "type", "senderType", "authorRole"]) {
+        const nestedValue = nested[nestedKey];
+        if (this.bridgeRoleIsAgent(nestedValue)) return true;
+        if (this.bridgeRoleIsUser(nestedValue)) return false;
+      }
+      for (const nestedIdKey of ["id", "entityId", "agentId", "runtimeAgentId", "senderId"]) {
+        if (this.bridgeMessageIdMatches(nested[nestedIdKey], runtimeAgentId)) return true;
+      }
+    }
+
+    for (const idKey of ["entityId", "agentId", "runtimeAgentId", "senderId", "authorId"]) {
+      if (this.bridgeMessageIdMatches(message[idKey], runtimeAgentId)) return true;
+    }
+
+    return false;
+  }
+
+  private extractBridgeTextValue(value: unknown, depth = 0): string | null {
+    if (depth > 4) return null;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed ? trimmed : null;
+    }
+    if (Array.isArray(value)) {
+      const parts = value
+        .map((item) => this.extractBridgeTextValue(item, depth + 1))
+        .filter((text): text is string => Boolean(text));
+      return parts.length > 0 ? parts.join("") : null;
+    }
+
+    const record = this.nestedBridgeRecord(value);
+    if (!record) return null;
+
+    for (const key of [
+      "text",
+      "fullText",
+      "content",
+      "message",
+      "body",
+      "reply",
+      "response",
+      "value",
+    ]) {
+      const text = this.extractBridgeTextValue(record[key], depth + 1);
+      if (text) return text;
+    }
+
+    for (const key of ["parts", "items", "chunks"]) {
+      const text = this.extractBridgeTextValue(record[key], depth + 1);
+      if (text) return text;
+    }
+
+    return null;
+  }
+
+  private extractBridgeMessageText(message: Record<string, unknown>): string | null {
+    for (const key of ["text", "fullText", "content", "message", "body", "reply", "response"]) {
+      const text = this.extractBridgeTextValue(message[key]);
+      if (text) return text;
+    }
+    return null;
+  }
+
+  private extractBridgeErrorMessage(body: Record<string, unknown>): string | null {
+    const error = this.nestedBridgeRecord(body.error);
+    if (error) {
+      const message = this.extractBridgeTextValue(error.message);
+      if (message) return message;
+      const text = this.extractBridgeTextValue(error);
+      if (text) return text;
+    }
+    return this.extractBridgeTextValue(body.message) ?? this.extractBridgeTextValue(body);
+  }
+
+  private extractOpenAiChatCompletionText(body: Record<string, unknown>): string | null {
+    const choices = Array.isArray(body.choices) ? body.choices : [];
+    for (const choice of choices) {
+      const choiceRecord = this.nestedBridgeRecord(choice);
+      if (!choiceRecord) continue;
+      const message = this.nestedBridgeRecord(choiceRecord.message);
+      if (message) {
+        const content = this.extractBridgeTextValue(message.content);
+        if (content) return content;
+      }
+      const text = this.extractBridgeTextValue(choiceRecord.text);
+      if (text) return text;
+    }
+    return this.extractBridgeTextValue(body);
+  }
+
+  private async waitForBridgeSessionAgentReply(
+    rec: AgentSandbox,
+    sessionId: string,
+    runtimeAgentId?: string,
+  ): Promise<string | null> {
+    const endpoint = await this.getAgentApiEndpoint(
+      rec,
+      `/api/messaging/sessions/${encodeURIComponent(sessionId)}/messages?limit=20`,
+    );
+
+    for (let attempt = 0; attempt < 24; attempt++) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 2_500));
+      const res = await fetch(endpoint, {
+        method: "GET",
+        headers: this.getAgentJsonHeaders(rec),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) return null;
+      const body = await res.json().catch(() => ({}));
+      const messages = this.getBridgeMessages(body);
+      for (const message of messages.toReversed()) {
+        const record = this.nestedBridgeRecord(message);
+        if (!record || !this.isBridgeAgentMessage(record, runtimeAgentId)) continue;
+        const text = this.extractBridgeMessageText(record);
+        if (text) return text;
+      }
+    }
+
+    return null;
+  }
+
+  private async waitForBridgeCentralChannelAgentReply(
+    rec: AgentSandbox,
+    channelId: string,
+    runtimeAgentId?: string,
+  ): Promise<string | null> {
+    const endpoint = await this.getAgentApiEndpoint(
+      rec,
+      `/api/messaging/central-channels/${encodeURIComponent(channelId)}/messages?limit=30`,
+    );
+
+    for (let attempt = 0; attempt < 20; attempt++) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 2_500));
+      const res = await fetch(endpoint, {
+        method: "GET",
+        headers: this.getAgentJsonHeaders(rec),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) return null;
+      const body = await res.json().catch(() => ({}));
+      const messages = this.getBridgeMessages(body);
+      for (const message of messages.toReversed()) {
+        const record = this.nestedBridgeRecord(message);
+        if (!record || !this.isBridgeAgentMessage(record, runtimeAgentId)) continue;
+        const text = this.extractBridgeMessageText(record);
+        if (text) return text;
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -628,6 +1814,127 @@ export class ElizaSandboxService {
     "scope",
     "refresh",
   ]);
+
+  // Anchored regex: only the agent's known plugin-workflow surface is forwarded.
+  // Source of truth: plugins/plugin-workflow/src/plugin-routes.ts.
+  // Intentionally additive paths (executions/:id, :id/run) are forwarded too so
+  // the cloud surface is ready when the plugin mounts them; until then the
+  // agent will respond 404 and the cloud relays that 404 unchanged.
+  private static readonly ALLOWED_WORKFLOW_PATH_PATTERNS: readonly RegExp[] = [
+    /^workflows$/,
+    /^workflows\/generate$/,
+    /^workflows\/resolve-clarification$/,
+    /^workflows\/[a-zA-Z0-9_-]{1,128}$/,
+    /^workflows\/[a-zA-Z0-9_-]{1,128}\/activate$/,
+    /^workflows\/[a-zA-Z0-9_-]{1,128}\/deactivate$/,
+    /^workflows\/[a-zA-Z0-9_-]{1,128}\/run$/,
+    /^executions$/,
+    /^executions\/[a-zA-Z0-9_-]{1,128}$/,
+    /^status$/,
+  ];
+
+  private static readonly ALLOWED_WORKFLOW_QUERY_PARAMS = new Set([
+    "limit",
+    "cursor",
+    "status",
+    "workflowId",
+  ]);
+
+  async proxyWorkflowRequest(
+    agentId: string,
+    orgId: string,
+    workflowPath: string,
+    method: "GET" | "POST" | "PUT" | "DELETE",
+    body?: string | null,
+    query?: string,
+  ): Promise<Response | null> {
+    if (
+      !ElizaSandboxService.ALLOWED_WORKFLOW_PATH_PATTERNS.some((re) => re.test(workflowPath))
+    ) {
+      logger.warn("[agent-sandbox] Rejected workflow proxy: invalid path", {
+        agentId,
+        workflowPath,
+      });
+      return new Response(JSON.stringify({ error: "Invalid workflow endpoint" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    let sanitizedQuery = "";
+    if (query) {
+      const params = new URLSearchParams(query);
+      const filtered = new URLSearchParams();
+      for (const [key, value] of params) {
+        if (ElizaSandboxService.ALLOWED_WORKFLOW_QUERY_PARAMS.has(key)) {
+          filtered.set(key, value);
+        }
+      }
+      sanitizedQuery = filtered.toString();
+    }
+
+    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+    if (!rec) {
+      logger.warn("[agent-sandbox] Workflow proxy: sandbox not found or not running", {
+        agentId,
+        orgId,
+        workflowPath,
+      });
+      return null;
+    }
+    if (!rec.bridge_url) {
+      logger.warn("[agent-sandbox] Workflow proxy: no bridge_url", {
+        agentId,
+        status: rec.status,
+        workflowPath,
+      });
+      return null;
+    }
+
+    try {
+      const fullPath = `/api/workflow/${workflowPath}${sanitizedQuery ? `?${sanitizedQuery}` : ""}`;
+      const envVars = rec.environment_vars as Record<string, string> | null;
+      const apiToken = envVars?.ELIZA_API_TOKEN;
+      if (!apiToken) {
+        logger.warn("[agent-sandbox] No ELIZA_API_TOKEN for workflow proxy", { agentId });
+      }
+
+      const agentBaseDomain = process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN;
+      let endpoint: string;
+      if (agentBaseDomain) {
+        endpoint = `https://${agentId}.${agentBaseDomain}${fullPath}`;
+      } else if (rec.web_ui_port && rec.node_id) {
+        const bridgeUrl = new URL(rec.bridge_url);
+        endpoint = `${bridgeUrl.protocol}//${bridgeUrl.hostname}:${rec.web_ui_port}${fullPath}`;
+      } else {
+        endpoint = await this.getSafeBridgeEndpoint(rec, fullPath);
+      }
+
+      const headers: Record<string, string> = { Accept: "application/json" };
+      if (method !== "GET" && method !== "DELETE") {
+        headers["Content-Type"] = "application/json";
+      }
+      if (apiToken) {
+        headers.Authorization = `Bearer ${apiToken}`;
+      }
+      const fetchOptions: RequestInit = {
+        method,
+        headers,
+        signal: AbortSignal.timeout(30_000),
+      };
+      if ((method === "POST" || method === "PUT") && body != null) {
+        fetchOptions.body = body;
+      }
+      return await fetch(endpoint, fetchOptions);
+    } catch (error) {
+      logger.warn("[agent-sandbox] Workflow proxy request failed", {
+        agentId,
+        workflowPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
 
   async proxyWalletRequest(
     agentId: string,
@@ -837,25 +2144,123 @@ export class ElizaSandboxService {
 
   async bridgeStream(agentId: string, orgId: string, rpc: BridgeRequest): Promise<Response | null> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
-    if (!rec?.bridge_url) return null;
+    if (!rec?.bridge_url) {
+      logger.warn("[agent-sandbox] Bridge stream to non-running sandbox", {
+        agentId,
+        method: rpc.method,
+      });
+      return null;
+    }
+
+    const params =
+      rpc.params && typeof rpc.params === "object" ? (rpc.params as Record<string, unknown>) : {};
+    const fallbackText = this.buildBridgeNoReplyFallbackText(params);
 
     try {
-      const bridgeEndpoint = await this.getSafeBridgeEndpoint(rec, "/bridge/stream");
+      const conversationId = await this.createBridgeConversation(rec, params);
+      const bridgeEndpoint = await this.getAgentApiEndpoint(
+        rec,
+        `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
+      );
       const res = await fetch(bridgeEndpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(rpc),
+        headers: this.getAgentJsonHeaders(rec),
+        body: JSON.stringify(this.buildBridgeConversationMessageBody(params)),
         signal: AbortSignal.timeout(120_000),
       });
-      return res.ok ? res : null;
+      if (res.ok) return res;
+      if (res.status !== 404) {
+        logger.warn("[agent-sandbox] Bridge stream conversation request failed", {
+          agentId,
+          status: res.status,
+        });
+      }
     } catch (error) {
-      logger.warn("[agent-sandbox] Bridge stream request failed", {
+      if (!(error instanceof BridgeRouteUnavailableError)) {
+        logger.warn("[agent-sandbox] Bridge stream conversation request failed", {
+          agentId,
+          method: rpc.method,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    try {
+      return await this.bridgeOpenAiChatCompletionSse(rec, params);
+    } catch (error) {
+      logger.warn("[agent-sandbox] Bridge stream compatibility request failed", {
         agentId,
         method: rpc.method,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+
+    try {
+      const centralResponse = await this.bridgeCentralChannelMessageSend(rec, rpc, params);
+      if (this.bridgeResponseHasText(centralResponse)) {
+        return this.createBridgeSseTextResponse(centralResponse.result!.text as string);
+      }
+      if (centralResponse.error) {
+        return this.createBridgeSseErrorResponse(centralResponse.error.message);
+      }
+      if (fallbackText) {
+        return this.createBridgeSseTextResponse(fallbackText);
+      }
+    } catch (error) {
+      logger.warn("[agent-sandbox] Bridge stream central-channel request failed", {
+        agentId,
+        method: rpc.method,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    if (fallbackText) {
+      return this.createBridgeSseTextResponse(fallbackText);
+    }
+
+    return null;
+  }
+
+  private async bridgeOpenAiChatCompletionSse(
+    rec: AgentSandbox,
+    params: Record<string, unknown>,
+  ): Promise<Response | null> {
+    const { body, status } = await this.requestBridgeOpenAiChatCompletion(rec, params);
+    if (status === 404) return null;
+    if (status < 200 || status >= 300) {
+      return this.createBridgeSseErrorResponse(
+        this.extractBridgeErrorMessage(body) ?? `Bridge returned HTTP ${status}`,
+      );
+    }
+
+    const text = this.extractOpenAiChatCompletionText(body);
+    if (!text) {
       return null;
     }
+    return this.createBridgeSseTextResponse(text);
+  }
+
+  private createBridgeSseTextResponse(text: string): Response {
+    return new Response(
+      `data: ${JSON.stringify({ text })}\n\nevent: done\ndata: ${JSON.stringify({})}\n\n`,
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+        },
+      },
+    );
+  }
+
+  private createBridgeSseErrorResponse(message: string): Response {
+    return new Response(`event: error\ndata: ${JSON.stringify({ message })}\n\n`, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+      },
+    });
   }
 
   // Snapshots
@@ -935,14 +2340,10 @@ export class ElizaSandboxService {
 
     const res = await (async () => {
       try {
-        const heartbeatEndpoint = await this.getSafeBridgeEndpoint(rec, "/bridge");
+        const heartbeatEndpoint = await this.getAgentApiEndpoint(rec, "/");
         return await fetch(heartbeatEndpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            method: "heartbeat",
-          } satisfies BridgeRequest),
+          method: "GET",
+          headers: this.getAgentJsonHeaders(rec),
           signal: AbortSignal.timeout(10_000),
         });
       } catch (error) {
@@ -1098,7 +2499,15 @@ export class ElizaSandboxService {
   private async fetchSnapshotState(
     rec: Pick<
       AgentSandbox,
-      "bridge_url" | "node_id" | "bridge_port" | "headscale_ip" | "sandbox_id"
+      | "id"
+      | "bridge_url"
+      | "health_url"
+      | "node_id"
+      | "bridge_port"
+      | "web_ui_port"
+      | "headscale_ip"
+      | "sandbox_id"
+      | "environment_vars"
     >,
   ): Promise<{
     stateData: AgentBackupStateData;
@@ -1109,9 +2518,10 @@ export class ElizaSandboxService {
       throw new Error("Sandbox is not running");
     }
 
-    const snapshotEndpoint = await this.getSafeBridgeEndpoint(rec, "/api/snapshot");
+    const snapshotEndpoint = await this.getAgentApiEndpoint(rec, "/api/snapshot");
     const res = await fetch(snapshotEndpoint, {
       method: "POST",
+      headers: this.getAgentJsonHeaders(rec),
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) {
@@ -1236,19 +2646,32 @@ export class ElizaSandboxService {
 
   private async pushState(
     sandboxOrBridgeUrl:
-      | Pick<AgentSandbox, "bridge_url" | "node_id" | "bridge_port" | "headscale_ip" | "sandbox_id">
+      | Pick<
+          AgentSandbox,
+          | "id"
+          | "bridge_url"
+          | "health_url"
+          | "node_id"
+          | "bridge_port"
+          | "web_ui_port"
+          | "headscale_ip"
+          | "sandbox_id"
+          | "environment_vars"
+        >
       | string,
     state: AgentBackupStateData,
     options?: { trusted?: boolean },
   ) {
-    const restoreEndpoint = await this.getSafeBridgeEndpoint(
-      sandboxOrBridgeUrl,
-      "/api/restore",
-      options,
-    );
+    const restoreEndpoint =
+      typeof sandboxOrBridgeUrl === "string"
+        ? await this.getSafeBridgeEndpoint(sandboxOrBridgeUrl, "/api/restore", options)
+        : await this.getAgentApiEndpoint(sandboxOrBridgeUrl, "/api/restore");
     const res = await fetch(restoreEndpoint, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers:
+        typeof sandboxOrBridgeUrl === "string"
+          ? { "Content-Type": "application/json" }
+          : this.getAgentJsonHeaders(sandboxOrBridgeUrl),
       body: JSON.stringify(state),
       signal: AbortSignal.timeout(15_000),
     });

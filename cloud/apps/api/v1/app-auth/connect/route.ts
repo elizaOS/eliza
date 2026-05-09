@@ -8,11 +8,9 @@
  * CORS_HEADERS from the Next version are intentionally dropped.
  */
 
-import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { dbRead, dbWrite } from "@/db/client";
-import { apps, appUsers } from "@/db/schemas/apps";
+import { appsRepository } from "@/db/repositories/apps";
 import { failureResponse, NotFoundError, ValidationError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
 import { logger } from "@/lib/utils/logger";
@@ -39,43 +37,23 @@ app.post("/", async (c) => {
 
     const { appId } = parsed.data;
 
-    const [appRow] = await dbRead
-      .select({ id: apps.id, name: apps.name })
-      .from(apps)
-      .where(and(eq(apps.id, appId), eq(apps.is_active, true), eq(apps.is_approved, true)))
-      .limit(1);
+    const appRow = await appsRepository.findActiveApprovedById(appId);
 
     if (!appRow) {
       throw NotFoundError("App not found");
     }
 
-    const [existingConnection] = await dbRead
-      .select({ id: appUsers.id })
-      .from(appUsers)
-      .where(and(eq(appUsers.app_id, appId), eq(appUsers.user_id, user.id)))
-      .limit(1);
+    const connectionAction = await appsRepository.connectUser({
+      appId,
+      userId: user.id,
+      signupSource: "oauth",
+      ipAddress: c.req.header("x-forwarded-for")?.split(",")[0] || null,
+      userAgent: c.req.header("user-agent") || null,
+    });
 
-    if (existingConnection) {
-      await dbWrite
-        .update(appUsers)
-        .set({ last_seen_at: new Date() })
-        .where(eq(appUsers.id, existingConnection.id));
-
+    if (connectionAction === "updated") {
       logger.info("Updated app user connection", { userId: user.id, appId });
     } else {
-      await dbWrite.insert(appUsers).values({
-        app_id: appId,
-        user_id: user.id,
-        signup_source: "oauth",
-        ip_address: c.req.header("x-forwarded-for")?.split(",")[0] || null,
-        user_agent: c.req.header("user-agent") || null,
-      });
-
-      await dbWrite
-        .update(apps)
-        .set({ total_users: sql`COALESCE(${apps.total_users}, 0) + 1` })
-        .where(eq(apps.id, appId));
-
       logger.info("Created new app user connection", { userId: user.id, appId });
     }
 

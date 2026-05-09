@@ -9,6 +9,7 @@
  * Supported chains: Base, Ethereum, Arbitrum, Polygon, Optimism, Avalanche,
  * Unichain, Linea, Sonic, Worldchain, and Base Sepolia (testnet).
  */
+import type { JsonValue } from "@elizaos/core";
 import type { Address, Hash, Hex } from "viem";
 
 /** Spend policy for a single token */
@@ -128,7 +129,7 @@ export interface ActivityEntry {
   blockNumber: bigint;
   transactionHash: Hash;
   /** Decoded event args (varies by type) */
-  args: Record<string, any>;
+  args: Record<string, JsonValue>;
 }
 
 /** Params for a single transfer in a batch */

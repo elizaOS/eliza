@@ -1,7 +1,7 @@
 [project]
 name = "milady-training"
 version = "0.1.0"
-description = "Fine-tuning pipeline for Qwen on elizaOS prompts + TOON outputs."
+description = "Fine-tuning pipeline for Qwen on Eliza-native Vercel AI SDK trajectory rows."
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 

@@ -1,7 +1,7 @@
 /**
  * Export all Nostr actions.
+ *
+ * Nostr DMs route through MESSAGE. Public notes route through POST.
  */
 
-export { publishNote } from "./publishNote.js";
 export { publishProfile } from "./publishProfile.js";
-export { sendDm } from "./sendDm.js";

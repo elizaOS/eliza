@@ -13,6 +13,8 @@ import { getMint } from "@solana/spl-token";
 import { Connection, type PublicKey } from "@solana/web3.js";
 import { loadWallet } from "../utils/loadWallet.ts";
 
+const POSITION_LIMIT = 20;
+
 export interface FetchedPositionStatistics {
   whirlpoolAddress: PublicKey;
   positionMint: PublicKey;
@@ -26,6 +28,11 @@ export const positionProvider: Provider = {
   description: "Provides Orca LP position status.",
   descriptionCompressed: "Orca LP positions status.",
   dynamic: true,
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "OWNER" },
   relevanceKeywords: [
     "orca",
     "position",
@@ -79,12 +86,19 @@ export const positionProvider: Provider = {
       const connection = new Connection(rpcUrl as string);
       const positions = await fetchPositions(connection, ownerAddress);
       return {
-        text: formatPositionsForPrompt(positions),
-        data: { positions },
+        text: formatPositionsForPrompt(positions.slice(0, POSITION_LIMIT)),
+        data: { positions: positions.slice(0, POSITION_LIMIT) },
       };
     } catch (error) {
       logger.error("Error in Orca position provider:", error);
-      return null;
+      return {
+        text: "Orca LP positions unavailable.",
+        data: {
+          positions: [],
+          error: error instanceof Error ? error.message : String(error),
+        },
+        values: { positionCount: 0, hasPositions: false },
+      };
     }
   },
 };

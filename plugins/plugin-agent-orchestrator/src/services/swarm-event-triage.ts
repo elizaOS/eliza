@@ -12,11 +12,8 @@
  * @module services/swarm-event-triage
  */
 
-import {
-  parseToonKeyValue,
-  type IAgentRuntime,
-  ModelType,
-} from "@elizaos/core";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import { parseJsonObjectResponse } from "./json-model-output.js";
 import { withTrajectoryContext } from "./trajectory-context.js";
 
 // ─── Types ───
@@ -125,11 +122,10 @@ export function classifyByHeuristic(ctx: TriageContext): TriageTier | null {
 
   // 3. For turn completions, check output patterns
   if (ctx.eventType === "turn_complete" && ctx.recentOutput) {
-    const isTerminal = TERMINAL_OUTPUT_PATTERNS.some((r) =>
-      r.test(ctx.recentOutput!),
-    );
+    const recent = ctx.recentOutput;
+    const isTerminal = TERMINAL_OUTPUT_PATTERNS.some((r) => r.test(recent));
     const isIntermediate = INTERMEDIATE_OUTPUT_PATTERNS.some((r) =>
-      r.test(ctx.recentOutput!),
+      r.test(recent),
     );
 
     if (isTerminal || isIntermediate) return "routine";
@@ -159,9 +155,8 @@ export function buildTriagePrompt(ctx: TriageContext): string {
     "tiers:",
     "  routine: simple approval, permission, config, yes/no, tool consent, obvious pass/fail",
     "  creative: task context needed, error recovery, design choice, ambiguity, approach selection",
-    "outputShape:",
-    "  tier: routine",
-    "response: TOON only",
+    "Return JSON only with this shape:",
+    '{"tier":"routine"}',
   ].join("\n");
 }
 
@@ -169,9 +164,10 @@ export function buildTriagePrompt(ctx: TriageContext): string {
  * Parse the LLM's triage response. Returns null on failure.
  */
 export function parseTriageResponse(llmOutput: string): TriageTier | null {
-  const parsedToon = parseToonKeyValue<Record<string, unknown>>(llmOutput);
-  if (parsedToon?.tier === "routine" || parsedToon?.tier === "creative") {
-    return parsedToon.tier;
+  const parsedJson =
+    parseJsonObjectResponse<Record<string, unknown>>(llmOutput);
+  if (parsedJson?.tier === "routine" || parsedJson?.tier === "creative") {
+    return parsedJson.tier;
   }
 
   const matches = llmOutput.matchAll(/\{[\s\S]*?\}/g);

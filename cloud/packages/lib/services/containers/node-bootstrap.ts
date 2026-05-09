@@ -18,6 +18,7 @@
  */
 
 import { containersEnv } from "@/lib/config/containers-env";
+import { validateDockerPlatform } from "@/lib/services/docker-sandbox-utils";
 
 export interface NodeBootstrapInput {
   /** Logical node id (must match what the control plane will register). */
@@ -39,6 +40,8 @@ export interface NodeBootstrapInput {
   registrationSecret?: string;
   /** Images to pre-pull on the new node so first deployments are fast. */
   prePullImages?: string[];
+  /** Optional Docker image platform used for pre-pulls. */
+  prePullPlatform?: string;
   /** Default capacity advertised at registration. */
   capacity?: number;
 }
@@ -51,6 +54,11 @@ export function buildContainerNodeUserData(input: NodeBootstrapInput): string {
   const network = containersEnv.dockerNetwork();
   const capacity = input.capacity ?? 8;
   const prePull = input.prePullImages ?? [containersEnv.defaultAgentImage()];
+  const prePullPlatform = input.prePullPlatform ?? containersEnv.defaultAgentImagePlatform();
+  if (prePullPlatform) validateDockerPlatform(prePullPlatform);
+  const prePullPlatformFlag = prePullPlatform
+    ? ` --platform '${sanitizeShellSingleQuoted(prePullPlatform)}'`
+    : "";
   const sshKey = sanitizeShellSingleQuoted(input.controlPlanePublicKey.trim());
   const nodeId = sanitizeShellSingleQuoted(input.nodeId);
   const registerUrl = input.registrationUrl ? sanitizeShellSingleQuoted(input.registrationUrl) : "";
@@ -60,7 +68,10 @@ export function buildContainerNodeUserData(input: NodeBootstrapInput): string {
 
   const prePullCommands = prePull
     .filter((image) => image && image.length > 0)
-    .map((image) => `  - docker pull '${sanitizeShellSingleQuoted(image)}' || true`)
+    .map(
+      (image) =>
+        `  - docker pull${prePullPlatformFlag} '${sanitizeShellSingleQuoted(image)}' || true`,
+    )
     .join("\n");
 
   // The registration call is best-effort; the admin operator can re-run
@@ -81,6 +92,9 @@ export function buildContainerNodeUserData(input: NodeBootstrapInput): string {
   return `#cloud-config
 package_update: true
 package_upgrade: false
+ssh_pwauth: false
+chpasswd:
+  expire: false
 
 write_files:
   - path: /root/.ssh/authorized_keys
@@ -90,6 +104,7 @@ write_files:
     append: true
 
 runcmd:
+  - chage -M 99999 -E -1 root || true
   - mkdir -p /data/containers /data/agents
   - chmod 0700 /data/containers /data/agents
   - curl -fsSL https://get.docker.com | sh

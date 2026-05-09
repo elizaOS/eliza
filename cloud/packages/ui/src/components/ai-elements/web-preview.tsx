@@ -12,7 +12,7 @@
 import { ChevronDownIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "../../lib/utils";
 import { Button } from "../button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../collapsible";
 import { Input } from "../input";

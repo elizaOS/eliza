@@ -1,8 +1,8 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { encodeToonValue, logger } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type { DetectedMusicEntity } from "../services/musicEntityDetectionService";
-import type { ExtractedMusicInfo } from "../services/wikipediaExtractionService";
 import type { MusicLibraryService } from "../services/musicLibraryService";
+import type { ExtractedMusicInfo } from "../services/wikipediaExtractionService";
 
 /**
  * Provider that uses LLMs to dynamically extract music information from Wikipedia
@@ -14,6 +14,10 @@ export const wikipediaProvider: Provider = {
     "Provides music information extracted from Wikipedia using LLM-based parsing",
   descriptionCompressed: "Music info from Wikipedia via LLM parsing.",
   position: 11, // After basic music info provider
+  contexts: ["media", "knowledge"],
+  contextGate: { anyOf: ["media", "knowledge"] },
+  cacheStable: false,
+  cacheScope: "turn",
 
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     logger.debug("[WIKIPEDIA_MUSIC Provider] Starting provider execution");
@@ -142,14 +146,18 @@ export const wikipediaProvider: Provider = {
       `[WIKIPEDIA_MUSIC Provider] Extracted info for ${extractedInfo.length} entity/entities`,
     );
 
-    const text = encodeToonValue({
-      wikipedia_music: extractedInfo.map((item) => ({
-        entity_type: item.entity.type,
-        entity_name: item.entity.name,
-        confidence: item.entity.confidence,
-        ...item.info,
-      })),
-    });
+    const text = JSON.stringify(
+      {
+        wikipedia_music: extractedInfo.map((item) => ({
+          entity_type: item.entity.type,
+          entity_name: item.entity.name,
+          confidence: item.entity.confidence,
+          ...item.info,
+        })),
+      },
+      null,
+      2,
+    );
 
     logger.debug(
       `[WIKIPEDIA_MUSIC Provider] Returning ${text.length} characters of Wikipedia context text`,

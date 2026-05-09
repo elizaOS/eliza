@@ -29,20 +29,25 @@ if (!skillFile) {
 
 async function main() {
   // Create a timeout with a clearable timer
-  let timeoutHandle: ReturnType<typeof setTimeout>;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutHandle = setTimeout(
       () => reject(new Error(`Skill execution timed out after ${timeoutMs}ms`)),
       timeoutMs,
     );
   });
+  const clearSkillTimeout = () => {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  };
 
   try {
     // Dynamically import the skill file
     const skillModule = await import(skillFile);
 
     if (typeof skillModule.executeSkill !== "function") {
-      clearTimeout(timeoutHandle!);
+      clearSkillTimeout();
       console.log(
         JSON.stringify({
           results: [],
@@ -59,7 +64,7 @@ async function main() {
     ]);
 
     // Clear timeout immediately so Bun can exit
-    clearTimeout(timeoutHandle!);
+    clearSkillTimeout();
 
     // Validate output is JSON
     try {
@@ -77,7 +82,7 @@ async function main() {
       process.exit(1);
     }
   } catch (err: unknown) {
-    clearTimeout(timeoutHandle!);
+    clearSkillTimeout();
     const errorMessage = err instanceof Error ? err.message : String(err);
     const errorStack = err instanceof Error ? err.stack : undefined;
     console.log(

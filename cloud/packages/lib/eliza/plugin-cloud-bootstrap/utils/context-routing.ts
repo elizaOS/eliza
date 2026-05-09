@@ -8,7 +8,7 @@ const LIST_SPLIT_RE = /[\n,;]/;
 export const AGENT_CONTEXTS = [
   "general",
   "wallet",
-  "knowledge",
+  "documents",
   "browser",
   "code",
   "media",
@@ -22,7 +22,6 @@ export type AgentContext = (typeof AGENT_CONTEXTS)[number];
 export interface ContextRoutingDecision {
   primaryContext?: AgentContext;
   secondaryContexts?: AgentContext[];
-  evidenceTurnIds?: string[];
 }
 
 const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
@@ -48,25 +47,25 @@ const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   STAKE: ["wallet"],
   UNSTAKE: ["wallet"],
   CLAIM_REWARDS: ["wallet"],
-  GET_TOKEN_PRICE: ["wallet", "knowledge"],
+  GET_TOKEN_PRICE: ["wallet", "documents"],
   GET_PORTFOLIO: ["wallet"],
   CREATE_WALLET: ["wallet"],
   IMPORT_WALLET: ["wallet"],
-  SEARCH_KNOWLEDGE: ["knowledge"],
-  ADD_KNOWLEDGE: ["knowledge"],
-  REMEMBER: ["knowledge"],
-  RECALL: ["knowledge"],
-  LEARN_FROM_EXPERIENCE: ["knowledge"],
-  SEARCH_WEB: ["knowledge", "browser"],
-  WEB_SEARCH: ["knowledge", "browser"],
-  SUMMARIZE: ["knowledge"],
-  ANALYZE: ["knowledge"],
+  SEARCH_DOCUMENT: ["documents"],
+  ADD_DOCUMENT: ["documents"],
+  REMEMBER: ["documents"],
+  RECALL: ["documents"],
+  LEARN_FROM_EXPERIENCE: ["documents"],
+  SEARCH_WEB: ["documents", "browser"],
+  WEB_SEARCH: ["documents", "browser"],
+  SUMMARIZE: ["documents"],
+  ANALYZE: ["documents"],
   BROWSE: ["browser"],
   SCREENSHOT: ["browser", "media"],
   NAVIGATE: ["browser"],
   CLICK: ["browser"],
   TYPE_TEXT: ["browser"],
-  EXTRACT_PAGE: ["browser", "knowledge"],
+  EXTRACT_PAGE: ["browser", "documents"],
   SPAWN_AGENT: ["code", "automation"],
   KILL_AGENT: ["code", "automation"],
   UPDATE_AGENT: ["code", "system"],
@@ -77,12 +76,12 @@ const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   CREATE_SUBTASK: ["code", "automation"],
   COMPLETE_TASK: ["code", "automation"],
   CANCEL_TASK: ["code", "automation"],
-  GENERATE_IMAGE: ["media"],
-  DESCRIBE_IMAGE: ["media", "knowledge"],
-  DESCRIBE_VIDEO: ["media", "knowledge"],
-  DESCRIBE_AUDIO: ["media", "knowledge"],
+  GENERATE_MEDIA: ["media"],
+  DESCRIBE_IMAGE: ["media", "documents"],
+  DESCRIBE_VIDEO: ["media", "documents"],
+  DESCRIBE_AUDIO: ["media", "documents"],
   TEXT_TO_SPEECH: ["media"],
-  TRANSCRIBE: ["media", "knowledge"],
+  TRANSCRIBE: ["media", "documents"],
   UPLOAD_FILE: ["media"],
   CREATE_CRON: ["automation"],
   UPDATE_CRON: ["automation"],
@@ -91,7 +90,7 @@ const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   PAUSE_CRON: ["automation"],
   TRIGGER_WEBHOOK: ["automation"],
   SCHEDULE: ["automation"],
-  SEND_MESSAGE: ["social"],
+  MESSAGE: ["social"],
   ADD_CONTACT: ["social"],
   UPDATE_CONTACT: ["social"],
   GET_CONTACT: ["social"],
@@ -105,33 +104,8 @@ const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   SHELL_EXEC: ["system", "code"],
   RESTART: ["system"],
   CONFIGURE_RUNTIME: ["system"],
-  OAUTH_CONNECT: ["system", "social"],
-  SEARCH_ACTIONS: ["system", "knowledge"],
+  SEARCH_ACTIONS: ["system", "documents"],
   FINISH: ["general"],
-};
-
-const PROVIDER_CONTEXT_MAP: Record<string, AgentContext[]> = {
-  time: ["general"],
-  boredom: ["general"],
-  facts: ["general", "knowledge"],
-  knowledge: ["knowledge"],
-  entities: ["social"],
-  relationships: ["social"],
-  recentMessages: ["general"],
-  worldInfo: ["general"],
-  roleInfo: ["general"],
-  settings: ["system"],
-  walletBalance: ["wallet"],
-  walletPortfolio: ["wallet"],
-  tokenPrices: ["wallet", "knowledge"],
-  chainInfo: ["wallet"],
-  contacts: ["social"],
-  trustScores: ["social"],
-  platformIdentity: ["social"],
-  cronJobs: ["automation"],
-  taskList: ["automation", "code"],
-  agentConfig: ["system"],
-  pluginList: ["system"],
 };
 
 function normalizeContext(value: unknown): AgentContext | undefined {
@@ -201,14 +175,19 @@ export function parseContextRoutingMetadata(raw: unknown): ContextRoutingDecisio
   }
 
   const value = raw as Record<string, unknown>;
-  const primaryContext = normalizeContext(value.primaryContext);
-  const secondaryContexts = parseContextList(value.secondaryContexts);
-  const evidenceTurnIds = dedupeStringValues(parseDelimitedList(value.evidenceTurnIds));
+  const contexts = parseContextList(value.contexts);
+  const primaryContext = normalizeContext(value.primaryContext) ?? contexts[0];
+  const secondaryContextSet = new Set<AgentContext>();
+  for (const context of [...parseContextList(value.secondaryContexts), ...contexts.slice(1)]) {
+    if (context !== primaryContext) {
+      secondaryContextSet.add(context);
+    }
+  }
+  const secondaryContexts = [...secondaryContextSet];
 
   return {
     primaryContext,
     secondaryContexts,
-    evidenceTurnIds,
   };
 }
 
@@ -265,15 +244,6 @@ export function resolveActionContexts(action: Action): AgentContext[] {
   return ACTION_CONTEXT_MAP[action.name.toUpperCase()] ?? ["general"];
 }
 
-function resolveProviderContexts(provider: Provider): AgentContext[] {
-  const declared = parseContextList((provider as { contexts?: unknown }).contexts);
-  if (declared.length > 0) {
-    return declared;
-  }
-
-  return PROVIDER_CONTEXT_MAP[provider.name] ?? ["general"];
-}
-
 export function deriveAvailableContexts(actions: Action[], providers: Provider[]): AgentContext[] {
   const contexts = new Set<AgentContext>(["general"]);
 
@@ -283,11 +253,7 @@ export function deriveAvailableContexts(actions: Action[], providers: Provider[]
     }
   }
 
-  for (const provider of providers) {
-    for (const context of resolveProviderContexts(provider)) {
-      contexts.add(context);
-    }
-  }
+  void providers;
 
   return [...contexts].sort((left, right) => left.localeCompare(right));
 }

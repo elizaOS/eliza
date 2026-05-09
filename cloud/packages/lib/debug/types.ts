@@ -1,8 +1,7 @@
 /**
  * Debug Tracing Types for elizaOS
  *
- * Comprehensive type definitions for execution tracing across all agent modes:
- * CHAT, ASSISTANT, BUILD, and MULTI_STEP
+ * Comprehensive type definitions for execution tracing across cloud chat runs.
  */
 
 import type { UUID } from "@elizaos/core";
@@ -205,7 +204,7 @@ export interface DebugTrace {
   agentId: UUID;
 
   // Mode information
-  agentMode: "chat" | "assistant" | "build" | "unknown";
+  agentMode: "chat" | "unknown";
   source: string;
 
   // Timing

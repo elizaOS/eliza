@@ -2,6 +2,69 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import type { NewsDataService } from "../services/newsDataService";
 
+interface CoinGeckoDefiData {
+  defi_market_cap: string;
+  eth_market_cap: string;
+  defi_to_eth_ratio: string;
+  trading_volume_24h: string;
+  defi_dominance: string;
+  top_coin_name: string;
+  top_coin_defi_dominance: number;
+}
+
+interface CoinGeckoGlobalCryptoData {
+  active_cryptocurrencies: number;
+  markets: number;
+  total_market_cap: { usd: number };
+  total_volume: { usd: number };
+  market_cap_change_percentage_24h_usd: number;
+  market_cap_percentage?: Record<string, number>;
+}
+
+interface CoinGeckoSearchResult {
+  id: string;
+  platforms?: { solana?: string };
+}
+
+interface CoinGeckoCoinData {
+  name: string;
+  symbol: string;
+  market_data?: {
+    current_price?: { usd?: number };
+    market_cap?: { usd?: number };
+    total_volume?: { usd?: number };
+    price_change_percentage_24h?: number;
+    price_change_percentage_7d?: number;
+    price_change_percentage_30d?: number;
+  };
+  community_data?: {
+    twitter_followers?: number;
+    reddit_subscribers?: number;
+  };
+}
+
+interface CoinGeckoService {
+  getGlobalDefiData(): Promise<CoinGeckoDefiData>;
+  getGlobalCryptoData(): Promise<CoinGeckoGlobalCryptoData>;
+  searchCoin(symbol: string): Promise<CoinGeckoSearchResult[]>;
+  getCoinData(tokenId: string): Promise<CoinGeckoCoinData>;
+}
+
+interface BirdeyeSymbolOption {
+  symbol: string;
+  address: string;
+}
+
+interface BirdeyeLookupService {
+  lookupSymbolAllChains(symbol: string): Promise<BirdeyeSymbolOption[]>;
+}
+
+interface SolanaTokenInfoService {
+  getAddressType(address: string): Promise<string>;
+  getTokenSymbol(publicKey: object): Promise<string | null | undefined>;
+}
+const DEFI_NEWS_TEXT_LIMIT = 4000;
+
 /**
  * DeFi News Provider
  *
@@ -31,6 +94,11 @@ export const defiNewsProvider: Provider = {
   descriptionCompressed:
     "provide DeFi market data, global crypto statistic, token information, real-world crypto new",
   dynamic: true,
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     console.log("DEFI_NEWS provider called");
 
@@ -38,7 +106,9 @@ export const defiNewsProvider: Provider = {
 
     try {
       // Get services - CoinGecko from analytics or similar plugin, NewsData from this plugin
-      const coinGeckoService = runtime.getService("COINGECKO_SERVICE") as any;
+      const coinGeckoService = runtime.getService(
+        "COINGECKO_SERVICE",
+      ) as CoinGeckoService | null;
       const newsDataService = runtime.getService(
         "NEWS_DATA_SERVICE",
       ) as NewsDataService;
@@ -74,8 +144,12 @@ export const defiNewsProvider: Provider = {
       // If token symbols are detected and services are available, look them up
       if (extractedSymbols.length > 0 && coinGeckoService) {
         // Try to get Birdeye service for symbol lookup
-        const birdeyeService = runtime.getService("birdeye") as any;
-        const solanaService = runtime.getService("chain_solana") as any;
+        const birdeyeService = runtime.getService(
+          "birdeye",
+        ) as BirdeyeLookupService | null;
+        const solanaService = runtime.getService(
+          "chain_solana",
+        ) as SolanaTokenInfoService | null;
 
         if (birdeyeService && solanaService) {
           // Process up to 3 tokens
@@ -87,8 +161,7 @@ export const defiNewsProvider: Provider = {
               const options =
                 await birdeyeService.lookupSymbolAllChains(detectedSymbol);
               const exactOptions = options.filter(
-                (t: any) =>
-                  t.symbol.toUpperCase() === detectedSymbol.toUpperCase(),
+                (t) => t.symbol.toUpperCase() === detectedSymbol.toUpperCase(),
               );
 
               console.log(
@@ -179,7 +252,7 @@ export const defiNewsProvider: Provider = {
 
     const values = {};
 
-    const text = `${defiNewsInfo}\n`;
+    const text = `${defiNewsInfo}\n`.slice(0, DEFI_NEWS_TEXT_LIMIT);
 
     return {
       data,
@@ -354,7 +427,9 @@ function getCoinGeckoIdFromSymbol(symbol: string): string | null {
 /**
  * Get global DeFi market data
  */
-async function getGlobalDefiData(coinGeckoService: any): Promise<string> {
+async function getGlobalDefiData(
+  coinGeckoService: CoinGeckoService,
+): Promise<string> {
   let defiInfo = "📊 GLOBAL DEFI MARKET DATA:\n\n";
 
   try {
@@ -377,7 +452,9 @@ async function getGlobalDefiData(coinGeckoService: any): Promise<string> {
 /**
  * Get global crypto market data
  */
-async function getGlobalCryptoData(coinGeckoService: any): Promise<string> {
+async function getGlobalCryptoData(
+  coinGeckoService: CoinGeckoService,
+): Promise<string> {
   let cryptoInfo = "🌐 GLOBAL CRYPTO MARKET DATA:\n\n";
 
   try {
@@ -459,8 +536,8 @@ async function getLatestCryptoNews(
  * Uses Birdeye + CoinGecko to fetch comprehensive token data
  */
 async function getTokenInfoByAddress(
-  coinGeckoService: any,
-  solanaService: any,
+  coinGeckoService: CoinGeckoService,
+  solanaService: SolanaTokenInfoService,
   tokenAddress: string,
   symbol: string,
 ): Promise<string | null> {
@@ -494,7 +571,7 @@ async function getTokenInfoByAddress(
     if (searchResults && searchResults.length > 0) {
       // Try to find exact match by Solana platform address
       const solanaMatch = searchResults.find(
-        (coin: any) =>
+        (coin) =>
           coin.platforms?.solana?.toLowerCase() === tokenAddress.toLowerCase(),
       );
 
@@ -598,7 +675,7 @@ async function getTokenInfoByAddress(
  * This is a helper function that can be used for specific token queries
  */
 export async function getTokenInfo(
-  coinGeckoService: any,
+  coinGeckoService: CoinGeckoService,
   tokenId: string,
 ): Promise<string> {
   let tokenInfo = `📊 TOKEN INFORMATION:\n\n`;

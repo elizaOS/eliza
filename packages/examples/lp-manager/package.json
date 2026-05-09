@@ -20,7 +20,7 @@
   "devDependencies": {
     "@types/node": "^22.19.17",
     "bun-types": "latest",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   },
   "engines": {
     "node": ">=24.0.0"

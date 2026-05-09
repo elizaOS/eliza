@@ -20,8 +20,17 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "messaging"
+      ]
+    }
+  },
   "keywords": [
     "elizaos",
     "plugin",
@@ -47,13 +56,12 @@
     "@elizaos/core": "workspace:*",
     "@slack/bolt": "^4.1.0",
     "@slack/web-api": "^7.15.2",
-    "@toon-format/toon": "2.1.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
     "@types/node": "^25.0.3",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.1.4"
   },
   "peerDependencies": {

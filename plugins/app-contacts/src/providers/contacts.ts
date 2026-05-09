@@ -15,7 +15,6 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 
 export const CONTACTS_PROVIDER_NAME = "androidContacts";
 
@@ -45,7 +44,11 @@ export const contactsProvider: Provider = {
     "Read-only Android address-book contacts (id, display name, phone numbers, emails, starred) for resolving people referenced in chat.",
   descriptionCompressed: "Android contacts: id, name, phones, emails, starred.",
   dynamic: true,
-  contexts: ["system"],
+  contexts: ["contacts", "messaging"],
+  contextGate: { anyOf: ["contacts", "messaging"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "ADMIN" },
+  cacheStable: false,
 
   get: async (
     _runtime: IAgentRuntime,
@@ -59,7 +62,7 @@ export const contactsProvider: Provider = {
       const entries = contacts.map(toEntry);
 
       return {
-        text: encode({
+        text: JSON.stringify({
           android_contacts: {
             count: entries.length,
             items: entries,

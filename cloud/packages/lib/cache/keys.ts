@@ -59,11 +59,9 @@ export const CacheKeys = {
     byId: (id: string) => `user:id:${id}:v1`,
     byEmail: (email: string) => `user:email:${email}:v1`,
     byStewardId: (stewardId: string) => `user:steward:${stewardId}:v1`,
-    byPrivyId: (privyId: string) => `user:privy:${privyId}:v1`,
     withOrg: (id: string) => `user:with-org:${id}:v1`,
     byEmailWithOrg: (email: string) => `user:email-with-org:${email}:v1`,
     byStewardIdWithOrg: (stewardId: string) => `user:steward-with-org:${stewardId}:v1`,
-    byPrivyIdWithOrg: (privyId: string) => `user:privy-with-org:${privyId}:v1`,
     byWalletAddress: (address: string) => `user:wallet:${address}:v1`,
     byWalletAddressWithOrg: (address: string) => `user:wallet-with-org:${address}:v1`,
     pattern: () => `user:*`,
@@ -175,18 +173,6 @@ export const CacheKeys = {
     pattern: () => `affiliate:*`,
   },
   /**
-   * N8N Workflow cache keys
-   * Used for caching workflow lists to reduce DB load
-   */
-  n8nWorkflows: {
-    /** Cache workflow list by org and filter options */
-    list: (orgId: string, filterHash: string) => `n8n:workflows:${orgId}:${filterHash}:v1`,
-    /** Cache single workflow by ID */
-    workflow: (workflowId: string) => `n8n:workflow:${workflowId}:v1`,
-    /** Pattern for invalidating all workflow cache for an org */
-    orgPattern: (orgId: string) => `n8n:workflows:${orgId}:*`,
-  },
-  /**
    * SIWE (Sign-In With Ethereum) nonce cache.
    * Single-use nonces stored by value; consumed on verify.
    */
@@ -255,11 +241,9 @@ export const CacheTTL = {
     byId: 600, // 10 minutes
     byEmail: 600, // 10 minutes (was 300s)
     byStewardId: 600,
-    byPrivyId: 600,
     withOrg: 600,
     byEmailWithOrg: 600,
     byStewardIdWithOrg: 600,
-    byPrivyIdWithOrg: 600,
     byWalletAddress: 600,
     byWalletAddressWithOrg: 600,
   },
@@ -332,14 +316,6 @@ export const CacheTTL = {
   },
   affiliate: {
     data: 3600, // 1 hour - affiliate codes and links rarely change
-  },
-  /**
-   * N8N Workflow cache TTLs
-   * Moderate TTLs since workflows change on user action
-   */
-  n8nWorkflows: {
-    list: 60, // 1 minute - workflow list
-    workflow: 120, // 2 minutes - single workflow details
   },
   walletAuth: {
     user: 30, // 30 seconds - avoid DB upsert on every wallet-authenticated request

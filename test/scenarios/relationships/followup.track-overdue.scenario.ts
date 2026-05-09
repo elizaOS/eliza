@@ -67,7 +67,7 @@ export default scenario({
       room: "main",
       text: "Who should I follow up with?",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_RELATIONSHIP"],
+        acceptedActions: ["RELATIONSHIP"],
         description: "overdue follow-up review",
         includesAny: ["follow", "overdue", "contact"],
       }),
@@ -83,18 +83,18 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "OWNER_RELATIONSHIP",
+      actionName: "RELATIONSHIP",
     },
     {
       type: "selectedActionArguments",
-      actionName: "OWNER_RELATIONSHIP",
+      actionName: "RELATIONSHIP",
       includesAny: ["follow", "overdue"],
     },
     {
       type: "custom",
       name: "followup-track-overdue-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_RELATIONSHIP"],
+        acceptedActions: ["RELATIONSHIP"],
         description: "overdue follow-up review",
         includesAny: ["follow", "overdue", "contact"],
       }),

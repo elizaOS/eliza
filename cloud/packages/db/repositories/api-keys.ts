@@ -7,12 +7,12 @@ export type { ApiKey, NewApiKey };
 /**
  * Repository for API key database operations.
  *
- * Read operations → dbRead (read replica)
- * Write operations → dbWrite (NA primary)
+ * Read operations → dbRead (read-intent connection)
+ * Write operations → dbWrite (primary)
  */
 export class ApiKeysRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -56,9 +56,9 @@ export class ApiKeysRepository {
   /**
    * Finds an active API key by hash on the primary connection.
    *
-   * Use this only to confirm a read-replica miss before negative-caching auth.
-   * Newly-created keys must not be rejected just because the replica has not
-   * caught up yet.
+   * Use this only to confirm a read-intent miss before negative-caching auth.
+   * Newly-created keys must not be rejected just because a prior read path
+   * returned stale data.
    */
   async findActiveByHashConsistent(hash: string): Promise<ApiKey | undefined> {
     const apiKey = await dbWrite.query.apiKeys.findFirst({
@@ -92,7 +92,7 @@ export class ApiKeysRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**

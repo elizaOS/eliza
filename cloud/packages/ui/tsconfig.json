@@ -19,10 +19,7 @@
       "@/*": ["./src/*"],
       "@/lib/*": ["../lib/*"],
       "@/db/*": ["../db/*"],
-      "@/types/*": ["../types/*"],
-      "@/components/*": ["./src/components/*"],
-      "@/app/*": ["../../app/*"],
-      "@/packages/ui/src/*": ["./src/*"]
+      "@/types/*": ["../types/*"]
     }
   },
   "include": ["src", "../types/**/*.d.ts"],

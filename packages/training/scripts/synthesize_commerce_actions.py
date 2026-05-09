@@ -37,7 +37,7 @@ from lib.eliza_record import (  # noqa: E402
     build,
     stable_id,
 )
-from lib.toon import ToonEncoder  # noqa: E402
+from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 OUT_PATH = ROOT / "data" / "synthesized" / "action_examples" / "commerce.jsonl"
 
@@ -277,7 +277,7 @@ def make_memory(rng: random.Random, speaker: str, channel: str) -> list[dict[str
 
 def _record(
     *,
-    encoder: ToonEncoder,
+    encoder: ExpectedResponseEncoder,
     rng: random.Random,
     user_msg: str,
     expected: dict[str, Any] | str,
@@ -1459,7 +1459,7 @@ _SUBTLE_NULL_REPLIES: dict[str, list[tuple[str, str]]] = {
 
 def _emit_for_action(
     *,
-    encoder: ToonEncoder,
+    encoder: ExpectedResponseEncoder,
     rng: random.Random,
     action_name: str,
     plugin: str,
@@ -1640,7 +1640,7 @@ def main() -> int:
     args = ap.parse_args()
 
     rng = random.Random(args.seed)
-    encoder = ToonEncoder()
+    encoder = JsonExpectedResponseEncoder()
     try:
         all_records: list[dict[str, Any]] = []
         per_action_counts: dict[str, int] = {}

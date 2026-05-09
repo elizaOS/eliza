@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import * as api from "../helpers/api-client";
 
 /**
- * OAuth, Connections, MCPs & Knowledge API E2E Tests
+ * OAuth, Connections, MCPs & Documents API E2E Tests
  */
 
 describe("OAuth API", () => {
@@ -49,9 +49,9 @@ describe("MCPs API", () => {
   });
 });
 
-describe("Knowledge API", () => {
-  test("GET /api/v1/knowledge requires auth", async () => {
-    const response = await api.get("/api/v1/knowledge");
+describe("Documents API", () => {
+  test("GET /api/v1/documents requires auth", async () => {
+    const response = await api.get("/api/v1/documents");
     expect([401, 403, 404]).toContain(response.status);
   });
 });

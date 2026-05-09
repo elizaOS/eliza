@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import {
   type TriggerRunRecord as CoreTriggerRunRecord,
   type IAgentRuntime,
+  type RouteRequestContext,
   stringToUuid,
   type Task,
   type TriggerConfig,
@@ -10,6 +11,7 @@ import {
   type TriggerWakeMode,
   type UUID,
 } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/shared";
 import type {
   TriggerExecutionOptions,
   TriggerExecutionResult,
@@ -20,7 +22,6 @@ import type {
   TriggerSummary,
   TriggerTaskMetadata,
 } from "../triggers/types.js";
-import type { RouteHelpers, RouteRequestContext } from "./route-helpers.js";
 
 export type TriggerRouteHelpers = RouteHelpers;
 
@@ -453,7 +454,11 @@ export async function handleTriggerRoutes(
         trigger.eventKind === eventKind
       );
     });
-    const results = [];
+    const results: Array<{
+      taskId: string | undefined;
+      result: Awaited<ReturnType<typeof executeTriggerTask>>;
+      trigger: ReturnType<typeof taskToTriggerSummary> | null;
+    }> = [];
     for (const task of matchingTasks) {
       const result = await executeTriggerTask(runtime, task, {
         source: "event",

@@ -7,12 +7,12 @@ import {
   TRIGGER_TASK_TAGS,
   taskToTriggerSummary,
   triggersFeatureEnabled,
-} from "@elizaos/agent/triggers/runtime";
+} from "@elizaos/agent";
 import {
   buildTriggerConfig,
   buildTriggerMetadata,
   normalizeTriggerDraft,
-} from "@elizaos/agent/triggers/scheduling";
+} from "@elizaos/agent";
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
 

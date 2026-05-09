@@ -56,7 +56,7 @@ async function handleText(
   _runtime: IAgentRuntime,
   params: GenerateTextParams,
 ): Promise<string> {
-  const reply = generateElizaResponse(extractUserMessage(params.prompt));
+  const reply = generateElizaResponse(extractUserMessage(params.prompt ?? ""));
   return JSON.stringify({
     thought: "Responding with deterministic ELIZA pattern matching.",
     actions: ["REPLY"],

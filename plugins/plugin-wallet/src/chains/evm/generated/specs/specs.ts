@@ -1,5 +1,5 @@
 /**
- * Auto-generated canonical action/provider/evaluator docs for plugin-wallet evm chain.
+ * Auto-generated canonical action/provider docs for plugin-wallet evm chain.
  * DO NOT EDIT - Generated from prompts/specs/**.
  */
 
@@ -20,15 +20,6 @@ export type ProviderDoc = {
   dynamic?: boolean;
 };
 
-export type EvaluatorDoc = {
-  name: string;
-  description: string;
-  descriptionCompressed?: string;
-  similes?: readonly string[];
-  alwaysRun?: boolean;
-  examples?: readonly unknown[];
-};
-
 export const coreActionsSpec = {
   version: "1.0.0",
   actions: [
@@ -46,7 +37,7 @@ export const coreActionsSpec = {
       ],
     },
     {
-      name: "SWAP",
+      name: "EVM_SWAP",
       description: "Swap tokens on a decentralized exchange",
       descriptionCompressed: "EVM token swap on a DEX (Lifi/Bebop routing).",
       similes: ["SWAP_TOKENS", "SWAP_TOKEN"],
@@ -58,7 +49,7 @@ export const coreActionsSpec = {
       similes: ["BRIDGE", "BRIDGE_TOKENS"],
     },
     {
-      name: "WALLET_GOV_OP",
+      name: "WALLET_GOV",
       description: "OZ-Governor governance op: { op: 'propose' | 'vote' | 'queue' | 'execute' }",
       descriptionCompressed: "OZ-Governor op: propose, vote, queue, or execute (op switch).",
       similes: [
@@ -91,7 +82,7 @@ export const allActionsSpec = {
       ],
     },
     {
-      name: "SWAP",
+      name: "EVM_SWAP",
       description: "Swap tokens on a decentralized exchange",
       descriptionCompressed: "EVM token swap on a DEX (Lifi/Bebop routing).",
       similes: ["SWAP_TOKENS", "SWAP_TOKEN"],
@@ -103,7 +94,7 @@ export const allActionsSpec = {
       similes: ["BRIDGE", "BRIDGE_TOKENS"],
     },
     {
-      name: "WALLET_GOV_OP",
+      name: "WALLET_GOV",
       description: "OZ-Governor governance op: { op: 'propose' | 'vote' | 'queue' | 'execute' }",
       descriptionCompressed: "OZ-Governor op: propose, vote, queue, or execute (op switch).",
       similes: [
@@ -153,18 +144,8 @@ export const allProvidersSpec = {
     },
   ],
 } as const;
-export const coreEvaluatorsSpec = {
-  version: "1.0.0",
-  evaluators: [],
-} as const;
-export const allEvaluatorsSpec = {
-  version: "1.0.0",
-  evaluators: [],
-} as const;
 
 export const coreActionDocs: readonly ActionDoc[] = coreActionsSpec.actions;
 export const allActionDocs: readonly ActionDoc[] = allActionsSpec.actions;
 export const coreProviderDocs: readonly ProviderDoc[] = coreProvidersSpec.providers;
 export const allProviderDocs: readonly ProviderDoc[] = allProvidersSpec.providers;
-export const coreEvaluatorDocs: readonly EvaluatorDoc[] = coreEvaluatorsSpec.evaluators;
-export const allEvaluatorDocs: readonly EvaluatorDoc[] = allEvaluatorsSpec.evaluators;

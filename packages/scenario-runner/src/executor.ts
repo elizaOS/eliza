@@ -12,6 +12,7 @@
 import * as crypto from "node:crypto";
 import * as http from "node:http";
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+import { isLoopbackUrl, toRecord } from "./utils.js";
 import {
   ChannelType,
   createMessageMemory,
@@ -56,6 +57,10 @@ type ScenarioRoomDefinition = {
 };
 
 type ScenarioComputerUseService = {
+  getCapabilities: () => Record<
+    string,
+    { available: boolean; tool: string }
+  >;
   executeDesktopAction: (params: Record<string, unknown>) => Promise<unknown>;
   executeBrowserAction: (params: Record<string, unknown>) => Promise<unknown>;
   executeFileAction: (params: Record<string, unknown>) => Promise<unknown>;
@@ -85,12 +90,6 @@ type SeedRunResult = {
   error?: string;
 };
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
 function stringifyForJudge(value: unknown, maxLength = 1_200): string {
   try {
     const serialized = JSON.stringify(value);
@@ -110,7 +109,7 @@ function summarizeArtifactsForJudge(value: unknown): string | null {
   }
   const labels = artifacts
     .map((artifact) => {
-      const record = asRecord(artifact);
+      const record = toRecord(artifact);
       if (!record) {
         return null;
       }
@@ -148,8 +147,8 @@ function summarizeActionForJudge(
     if (action.result.message) {
       lines.push(`Result message: ${action.result.message}`);
     }
-    const data = asRecord(action.result.data);
-    const browserTask = asRecord(data?.browserTask);
+    const data = toRecord(action.result.data);
+    const browserTask = toRecord(data?.browserTask);
     if (browserTask) {
       lines.push(
         `Browser task: completed=${browserTask.completed === true}, needsHuman=${browserTask.needsHuman === true}`,
@@ -161,7 +160,7 @@ function summarizeActionForJudge(
         lines.push(`Browser artifacts: ${browserArtifacts}`);
       }
     }
-    const intervention = asRecord(data?.interventionRequest);
+    const intervention = toRecord(data?.interventionRequest);
     if (intervention) {
       lines.push(
         `Intervention: status=${typeof intervention.status === "string" ? intervention.status : "unknown"}`,
@@ -612,8 +611,8 @@ function indexResponseIdentifiers(
   body: unknown,
   variables: ScenarioVariableState,
 ): void {
-  const record = asRecord(body);
-  const definition = asRecord(record?.definition);
+  const record = toRecord(body);
+  const definition = toRecord(record?.definition);
   const definitionId =
     typeof definition?.id === "string" ? definition.id : undefined;
   const definitionTitle =
@@ -624,15 +623,15 @@ function indexResponseIdentifiers(
 
   const occurrenceCollections = [
     record?.occurrences,
-    asRecord(record?.owner)?.occurrences,
-    asRecord(record?.agentOps)?.occurrences,
+    toRecord(record?.owner)?.occurrences,
+    toRecord(record?.agentOps)?.occurrences,
   ];
   for (const collection of occurrenceCollections) {
     if (!Array.isArray(collection)) {
       continue;
     }
     for (const item of collection) {
-      const occurrence = asRecord(item);
+      const occurrence = toRecord(item);
       const occurrenceId =
         typeof occurrence?.id === "string" ? occurrence.id : undefined;
       const occurrenceTitle =
@@ -657,11 +656,11 @@ async function lookupDefinitionIdByTitle(args: {
     `${args.apiServer.baseUrl}/api/lifeops/definitions`,
   );
   const body = await response.json();
-  const definitions = Array.isArray(asRecord(body)?.definitions)
-    ? (asRecord(body)?.definitions as unknown[])
+  const definitions = Array.isArray(toRecord(body)?.definitions)
+    ? (toRecord(body)?.definitions as unknown[])
     : [];
   for (const entry of definitions) {
-    const definition = asRecord(asRecord(entry)?.definition);
+    const definition = toRecord(toRecord(entry)?.definition);
     const title =
       typeof definition?.title === "string" ? definition.title : undefined;
     const id = typeof definition?.id === "string" ? definition.id : undefined;
@@ -829,6 +828,16 @@ function createScenarioComputerUseService(): ScenarioComputerUseService {
   };
 
   return {
+    getCapabilities() {
+      return {
+        screenshot: { available: true, tool: "scenario-screenshot" },
+        computerUse: { available: true, tool: "scenario-desktop" },
+        windowList: { available: true, tool: "scenario-window-list" },
+        browser: { available: true, tool: "scenario-browser" },
+        terminal: { available: true, tool: "scenario-terminal" },
+        fileSystem: { available: true, tool: "scenario-file-system" },
+      };
+    },
     executeDesktopAction: run,
     executeBrowserAction: run,
     executeFileAction: run,
@@ -927,23 +936,6 @@ async function runCustomSeeds(
   }
   ctx.now = currentNow.toISOString();
   return { now: currentNow };
-}
-
-function isLoopbackUrl(value: string | undefined): boolean {
-  if (!value) {
-    return false;
-  }
-  try {
-    const url = new URL(value);
-    return (
-      url.hostname === "127.0.0.1" ||
-      url.hostname === "localhost" ||
-      url.hostname === "::1" ||
-      url.hostname === "[::1]"
-    );
-  } catch {
-    return false;
-  }
 }
 
 async function deleteMockGmailDrafts(): Promise<string | undefined> {
@@ -1201,11 +1193,11 @@ async function executeTickTurn(args: {
       : undefined;
   const startedAt = Date.now();
   const { executeLifeOpsSchedulerTask } = await import(
-    "@elizaos/app-lifeops/lifeops/runtime"
+    "@elizaos/app-lifeops"
   );
   const result = await withTimeout(
     executeLifeOpsSchedulerTask(args.runtime, {
-      ...asRecord(options),
+      ...toRecord(options),
       ...(now ? { now } : {}),
     }),
     typeof args.turn.timeoutMs === "number"
@@ -1613,7 +1605,6 @@ export async function runScenario(
     ctx.memoryWrites = interceptor.memoryWrites;
     ctx.stateTransitions = interceptor.stateTransitions;
     ctx.artifacts = interceptor.artifacts;
-    ctx.stateTransitions = interceptor.stateTransitions;
     report.actionsCalled = [...interceptor.actions];
 
     const finalChecks = Array.isArray(

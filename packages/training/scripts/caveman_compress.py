@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-ELIZA_ROOT = Path("/home/shaw/milady/eliza")
+ELIZA_ROOT = Path(__file__).parent.parent.parent.parent.resolve()
 
 # ---------------------------------------------------------------------------
 # Caveman compression

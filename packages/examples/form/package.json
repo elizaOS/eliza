@@ -4,8 +4,8 @@
   "description": "Form-driven elizaOS example agent.",
   "type": "module",
   "scripts": {
-    "start": "bun run chat.ts",
-    "dev": "bun --watch run chat.ts",
+    "start": "bun ../chat/chat.ts",
+    "dev": "bun --watch ../chat/chat.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "tsc --noEmit",
     "build": "bun run typecheck"
@@ -24,7 +24,7 @@
   "devDependencies": {
     "@types/node": "^25.0.3",
     "@types/uuid": "^11.0.0",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   },
   "engines": {
     "node": ">=24.0.0"

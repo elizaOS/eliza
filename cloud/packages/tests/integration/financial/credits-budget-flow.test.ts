@@ -9,12 +9,12 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { agentBudgetService } from "@/lib/services/agent-budgets";
 import { creditsService } from "@/lib/services/credits";
 import { organizationsService } from "@/lib/services/organizations";
-import { getConnectionString } from "@/tests/helpers/local-database";
+import { getConnectionString } from "@/tests/infrastructure/local-database";
 import {
   cleanupTestData,
   createTestDataSet,
   type TestDataSet,
-} from "@/tests/helpers/test-data-factory";
+} from "@/tests/infrastructure/test-data-factory";
 
 describe("Credits-Budget Flow Integration", () => {
   let connectionString: string;

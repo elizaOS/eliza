@@ -15,8 +15,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsdown src/index.ts --format esm --dts",
-    "dev": "tsdown src/index.ts --format esm --dts --watch",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
     "test": "vitest run",
     "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
     "test:live": "bun run test:e2e"
@@ -25,7 +25,7 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "tsdown": "^0.21.0",
+    "tsdown": "^0.21.10",
     "vitest": "^4.0.0"
   },
   "agentConfig": {

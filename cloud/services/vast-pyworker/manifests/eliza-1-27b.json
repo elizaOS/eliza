@@ -1,0 +1,46 @@
+{
+  "$schema": "./schema.json",
+  "label": "eliza-1-27b-fp8",
+  "model_size": "27b",
+  "model_repo": "elizaos/eliza-1-27b-fp8",
+  "model_alias": "vast/eliza-1-27b",
+  "served_model_name": "eliza-1-27b",
+  "registry_key": "qwen3.6-27b",
+  "gpu_target": "h200-2x",
+  "image": "vllm/vllm-openai:v0.20.1",
+  "min_disk_gb": 120,
+  "min_inet_down_mbps": 500,
+  "port": 8000,
+  "health_check_url": "http://127.0.0.1:8000/health",
+  "model": "elizaos/eliza-1-27b-fp8",
+  "tensor_parallel_size": 2,
+  "expert_parallel_size": 2,
+  "gpu_memory_utilization": 0.92,
+  "max_model_len": 131072,
+  "weight_quantization": "fp8",
+  "kv_cache_dtype": "turboquant_k8v4",
+  "enable_turboquant": true,
+  "turboquant_preset": "quality",
+  "tool_parser": "qwen3_coder",
+  "reasoning_parser": "qwen3",
+  "compilation_config": {
+    "cudagraph_mode": "FULL_AND_PIECEWISE",
+    "level": 3
+  },
+  "search_params": {
+    "gpu_name": ["B200_SXM", "H200_SXM", "H200_NVL"],
+    "num_gpus": ">=2",
+    "gpu_ram": ">=180000",
+    "disk_space": ">=120",
+    "inet_down": ">=500",
+    "reliability": ">=0.95",
+    "verified": true
+  },
+  "vast_template_env": {
+    "MODEL_REPO": "elizaos/eliza-1-27b-fp8",
+    "MODEL_ALIAS": "vast/eliza-1-27b",
+    "VLLM_REGISTRY_KEY": "qwen3.6-27b"
+  },
+  "onstart_script": "onstart-vllm.sh",
+  "notes": "FP8 vLLM path for the 27B Eliza line. TurboQuant uses turboquant_k8v4 by default for quality; set VLLM_TURBOQUANT_PRESET=4bit or KV_CACHE_DTYPE=turboquant_4bit_nc only after a regression run. QJL is intentionally absent from defaults."
+}

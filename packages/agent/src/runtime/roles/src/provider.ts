@@ -30,6 +30,11 @@ export const rolesProvider: Provider = {
     "Use this to gate actions and decide what a user is allowed to do.",
   dynamic: true,
   position: 10,
+  contexts: ["admin", "settings"],
+  contextGate: { anyOf: ["admin", "settings"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "ADMIN" },
 
   async get(
     runtime: IAgentRuntime,

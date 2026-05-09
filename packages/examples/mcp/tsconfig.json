@@ -9,6 +9,10 @@
     "resolveJsonModule": true,
     "declaration": false,
     "outDir": "./dist",
+    "paths": {
+      "@elizaos/core": ["./../../core/dist/index.d.ts"],
+      "@elizaos/core/*": ["./../../core/dist/*"]
+    },
     "types": ["bun-types", "node"]
   },
   "include": ["*.ts"],

@@ -1,14 +1,9 @@
-import {
-	allActionDocs,
-	allEvaluatorDocs,
-	allProviderDocs,
-} from "./generated/action-docs.ts";
+import { allActionDocs, allProviderDocs } from "./generated/action-docs.ts";
 import type {
 	Action,
-	ActionExample,
 	ActionParameter,
-	EvaluationExample,
-	Evaluator,
+	ActionParameterSchema,
+	JsonValue,
 	Provider,
 } from "./types/index.ts";
 import { compressPromptDescription } from "./utils/prompt-compression.ts";
@@ -41,6 +36,40 @@ const coreActionDocByName: ActionDocByName =
 		return acc;
 	}, {});
 
+function cloneDocExampleValue(value: unknown): JsonValue {
+	return JSON.parse(JSON.stringify(value)) as JsonValue;
+}
+
+function cloneActionParameterSchema(
+	schema: NonNullable<
+		(typeof allActionDocs)[number]["parameters"]
+	>[number]["schema"],
+): ActionParameterSchema {
+	const { default: schemaDefault, ...restSchema } = schema;
+	const properties = schema.properties
+		? Object.fromEntries(
+				Object.entries(schema.properties).map(([key, value]) => [
+					key,
+					cloneActionParameterSchema(value),
+				]),
+			)
+		: undefined;
+
+	return {
+		...restSchema,
+		default:
+			schemaDefault === undefined
+				? undefined
+				: cloneDocExampleValue(schemaDefault),
+		enum: schema.enum ? [...schema.enum] : undefined,
+		enumValues: schema.enum ? [...schema.enum] : undefined,
+		properties,
+		items: schema.items ? cloneActionParameterSchema(schema.items) : undefined,
+		oneOf: schema.oneOf?.map(cloneActionParameterSchema),
+		anyOf: schema.anyOf?.map(cloneActionParameterSchema),
+	};
+}
+
 function toActionParameter(
 	param: NonNullable<(typeof allActionDocs)[number]["parameters"]>[number],
 ): ActionParameter {
@@ -52,11 +81,8 @@ function toActionParameter(
 			param.description,
 		),
 		required: param.required,
-		schema: {
-			...param.schema,
-			enumValues: param.schema.enum,
-		},
-		examples: param.examples ? [...param.examples] : undefined,
+		schema: cloneActionParameterSchema(param.schema),
+		examples: param.examples?.map(cloneDocExampleValue),
 	};
 }
 
@@ -160,79 +186,4 @@ export function withCanonicalProviderDocsAll(
 	providers: readonly Provider[],
 ): Provider[] {
 	return providers.map(withCanonicalProviderDocs);
-}
-
-type EvaluatorDocByName = Record<string, (typeof allEvaluatorDocs)[number]>;
-
-const coreEvaluatorDocByName: EvaluatorDocByName =
-	allEvaluatorDocs.reduce<EvaluatorDocByName>((acc, doc) => {
-		acc[doc.name] = doc;
-		return acc;
-	}, {});
-
-function toEvaluationExample(
-	ex: NonNullable<(typeof allEvaluatorDocs)[number]["examples"]>[number],
-): EvaluationExample {
-	const messages: ActionExample[] = (ex.messages ?? []).map((m) => ({
-		name: m.name,
-		content: {
-			text: m.content.text,
-			type: m.content.type,
-		},
-	}));
-
-	return {
-		prompt: ex.prompt,
-		messages,
-		outcome: ex.outcome,
-	};
-}
-
-/**
- * Merge canonical docs (description/similes/examples) into an evaluator definition.
- *
- * This is additive and intentionally conservative:
- * - does not overwrite an existing evaluator.description
- * - does not overwrite existing evaluator.similes
- * - does not overwrite existing evaluator.examples (when non-empty)
- */
-export function withCanonicalEvaluatorDocs(evaluator: Evaluator): Evaluator {
-	const doc = coreEvaluatorDocByName[evaluator.name];
-	const description = evaluator.description || doc?.description || "";
-	const descriptionCompressed = resolveCompressedDescription(
-		evaluator,
-		description,
-		doc,
-	);
-
-	if (!doc) {
-		return {
-			...evaluator,
-			descriptionCompressed,
-		};
-	}
-
-	const examples =
-		evaluator.examples && evaluator.examples.length > 0
-			? evaluator.examples
-			: (doc.examples ?? []).map(toEvaluationExample);
-
-	return {
-		...evaluator,
-		description: evaluator.description || doc.description,
-		descriptionCompressed,
-		similes:
-			evaluator.similes && evaluator.similes.length > 0
-				? evaluator.similes
-				: doc.similes
-					? [...doc.similes]
-					: undefined,
-		examples,
-	};
-}
-
-export function withCanonicalEvaluatorDocsAll(
-	evaluators: readonly Evaluator[],
-): Evaluator[] {
-	return evaluators.map(withCanonicalEvaluatorDocs);
 }

@@ -91,14 +91,16 @@ async function runSkill(): Promise<void> {
   const functionPattern = /async\s+function\s+(\w+)\s*\(/g;
 
   // Check in programs
-  let match;
-  while ((match = functionPattern.exec(programs)) !== null) {
+  let match: RegExpExecArray | null = functionPattern.exec(programs);
+  while (match !== null) {
     functionNames.add(match[1]);
+    match = functionPattern.exec(programs);
   }
 
   // Check in code and detect duplicates
   functionPattern.lastIndex = 0; // Reset regex
-  while ((match = functionPattern.exec(code)) !== null) {
+  match = functionPattern.exec(code);
+  while (match !== null) {
     if (functionNames.has(match[1])) {
       console.log(
         JSON.stringify({
@@ -110,6 +112,7 @@ async function runSkill(): Promise<void> {
       process.exit(1);
     }
     functionNames.add(match[1]);
+    match = functionPattern.exec(code);
   }
 
   const combinedCode =

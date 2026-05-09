@@ -17,7 +17,7 @@ import type {
 	BrowserWorkspaceTab,
 	NavigateBrowserWorkspaceTabRequest,
 	OpenBrowserWorkspaceTabRequest,
-} from "@elizaos/agent/services/browser-workspace-types";
+} from "@elizaos/plugin-browser";
 import type { RPCSchema } from "electrobun/bun";
 
 // ============================================================================
@@ -71,6 +71,21 @@ export interface NotificationOptions {
 	icon?: string;
 	silent?: boolean;
 	urgency?: "normal" | "critical" | "low";
+}
+
+export interface DesktopHttpRequestOptions {
+	url: string;
+	method?: string;
+	headers?: Record<string, string>;
+	body?: string | null;
+	timeoutMs?: number;
+}
+
+export interface DesktopHttpRequestResult {
+	status: number;
+	statusText?: string;
+	headers?: Record<string, string>;
+	body?: string | null;
 }
 
 export interface WindowBounds {
@@ -650,6 +665,10 @@ export type ElizaDesktopRPCSchema = {
 					externalApiBase?: string | null;
 					externalApiSource?: string | null;
 				};
+			};
+			desktopHttpRequest: {
+				params: DesktopHttpRequestOptions;
+				response: DesktopHttpRequestResult;
 			};
 			desktopOpenLogsFolder: { params: undefined; response: undefined };
 			desktopCreateBugReportBundle: {

@@ -8,6 +8,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mcpTestCharacter } from "../fixtures/mcp-test-character";
 import {
+  AgentMode,
   cleanupTestData,
   createTestDataSet,
   createTestRuntime,
@@ -96,7 +97,7 @@ describe.skipIf(skipLiveModelSuite)("MCP Plugin Loading - Production Flow", () =
     testRuntimeResult = await createTestRuntime({
       testData,
       characterId: testData.character?.id,
-      agentMode: "ASSISTANT" as any,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
 

@@ -31,14 +31,14 @@ export default scenario({
       kind: "message",
       name: "ask-now",
       text: "Anything starting right now?",
-      expectedActions: ["OWNER_CALENDAR"],
+      expectedActions: ["CALENDAR"],
       responseIncludesAny: ["alex", "sync", "now", "starting"],
     },
   ],
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "OWNER_CALENDAR",
+      actionName: "CALENDAR",
       minCount: 1,
     },
   ],

@@ -306,7 +306,10 @@ export class DockerSSHClient {
             );
             return true;
           }
-          if (fingerprint !== this.hostKeyFingerprint) {
+          if (
+            normalizeSshFingerprint(fingerprint) !==
+            normalizeSshFingerprint(this.hostKeyFingerprint)
+          ) {
             logger.error(
               `[docker-ssh] HOST KEY MISMATCH for ${this.hostname}! Expected SHA256:${this.hostKeyFingerprint}, got SHA256:${fingerprint}`,
             );
@@ -531,4 +534,11 @@ export class DockerSSHClient {
   get pinnedFingerprint(): string | undefined {
     return this.hostKeyFingerprint;
   }
+}
+
+function normalizeSshFingerprint(fingerprint: string): string {
+  return fingerprint
+    .trim()
+    .replace(/^SHA256:/, "")
+    .replace(/=+$/, "");
 }

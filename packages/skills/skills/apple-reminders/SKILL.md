@@ -30,7 +30,7 @@ Use `remindctl` to manage Apple Reminders directly from the terminal. It support
 Setup
 
 - Install (Homebrew): `brew install steipete/tap/remindctl`
-- From source: `pnpm install && pnpm build` (binary at `./bin/remindctl`)
+- From source: `bun install && bun run build` (binary at `./bin/remindctl`)
 - macOS-only; grant Reminders permission when prompted.
 
 Permissions

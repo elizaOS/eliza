@@ -22,13 +22,13 @@
     "@elizaos/plugin-ollama": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-openrouter": "workspace:*",
-    "electron": "^41.2.0",
+    "electron": "^42.0.0",
     "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
     "@types/uuid": "^11.0.0",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.17"
   }
 }

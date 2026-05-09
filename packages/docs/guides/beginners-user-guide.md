@@ -321,7 +321,7 @@ Use this staged path so you do not get overwhelmed.
    - `/apps/dashboard/settings`
    - `/apps/dashboard/talk-mode`
 2. **Knowledge and memory features**
-   - `/guides/knowledge`
+   - `/guides/documents`
    - `/agents/memory-and-state`
 3. **Connectors and channels**
    - `/guides/connectors`

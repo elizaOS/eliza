@@ -10,8 +10,8 @@ import {
 } from "@elizaos/core";
 import { MusicService } from "../service";
 import { SmartMusicFetchService } from "../services/smartMusicFetch";
-import { ProgressiveMessage } from "../utils/progressiveMessage";
 import { classifyPlaybackTransportIntent } from "../utils/playbackTransportIntent";
+import { ProgressiveMessage } from "../utils/progressiveMessage";
 import { resolveMusicGuildIdForPlayback } from "../utils/resolveMusicGuildId";
 import {
   confirmationRequired,
@@ -20,8 +20,97 @@ import {
 } from "./confirmation";
 
 const MUSIC_SERVICE_NAME = "music";
+const PLAYBACK_CONTEXTS = ["media", "automation"] as const;
+const PLAYBACK_KEYWORDS = [
+  "pause",
+  "resume",
+  "unpause",
+  "skip",
+  "next",
+  "stop",
+  "queue",
+  "playback",
+  "music",
+  "audio",
+  "pausa",
+  "reanudar",
+  "saltar",
+  "detener",
+  "cola",
+  "reprendre",
+  "arrêter",
+  "suivant",
+  "warteschlange",
+  "pausieren",
+  "fortsetzen",
+  "überspringen",
+  "停止",
+  "一時停止",
+  "再開",
+  "スキップ",
+  "暂停",
+  "继续",
+  "跳过",
+  "停止",
+  "일시정지",
+  "재개",
+  "건너뛰기",
+  "중지",
+] as const;
 
 type PlaybackOp = "pause" | "resume" | "skip" | "stop" | "queue";
+type ActionResultData = NonNullable<ActionResult["data"]>;
+
+function failureResult(
+  text: string,
+  error: string,
+  data?: ActionResultData,
+): ActionResult {
+  return { success: false, text, error, data };
+}
+
+function selectedContextMatches(
+  state: State | undefined,
+  contexts: readonly string[],
+): boolean {
+  const selected = new Set<string>();
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") selected.add(item);
+    }
+  };
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  const contextObject = (state?.data as Record<string, unknown> | undefined)
+    ?.contextObject as
+    | {
+        trajectoryPrefix?: { selectedContexts?: unknown };
+        metadata?: { selectedContexts?: unknown };
+      }
+    | undefined;
+  collect(contextObject?.trajectoryPrefix?.selectedContexts);
+  collect(contextObject?.metadata?.selectedContexts);
+  return contexts.some((context) => selected.has(context));
+}
+
+function hasPlaybackIntent(message: Memory, state: State | undefined): boolean {
+  const text = [
+    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof state?.values?.recentMessages === "string"
+      ? state.values.recentMessages
+      : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  return PLAYBACK_KEYWORDS.some((keyword) =>
+    text.includes(keyword.toLowerCase()),
+  );
+}
 
 function normalizeOp(value: unknown): PlaybackOp | null {
   if (typeof value !== "string") return null;
@@ -68,7 +157,10 @@ async function handlePause(
       text: "Music service is not available.",
       source: message.content.source,
     });
-    return { success: false, error: "Music service unavailable" };
+    return failureResult(
+      "Music service unavailable",
+      "Music service unavailable",
+    );
   }
 
   const room = state?.data?.room || (await runtime.getRoom(message.roomId));
@@ -76,7 +168,7 @@ async function handlePause(
   if (!guildId) {
     const text = "Nothing is playing right now.";
     await callback({ text, source: message.content.source });
-    return { success: false, error: "Nothing playing" };
+    return failureResult("Nothing playing", "Nothing playing");
   }
 
   const track = musicService.getCurrentTrack(guildId);
@@ -103,7 +195,10 @@ async function handleResume(
       text: "Music service is not available.",
       source: message.content.source,
     });
-    return { success: false, error: "Music service unavailable" };
+    return failureResult(
+      "Music service unavailable",
+      "Music service unavailable",
+    );
   }
 
   const room = state?.data?.room || (await runtime.getRoom(message.roomId));
@@ -111,7 +206,7 @@ async function handleResume(
   if (!guildId) {
     const text = "Nothing is paused right now.";
     await callback({ text, source: message.content.source });
-    return { success: false, error: "Nothing paused" };
+    return failureResult("Nothing paused", "Nothing paused");
   }
 
   const track = musicService.getCurrentTrack(guildId);
@@ -136,7 +231,10 @@ async function handleSkip(
       text: "Music service is not available.",
       source: message.content.source,
     });
-    return { success: false, error: "Music service unavailable" };
+    return failureResult(
+      "Music service unavailable",
+      "Music service unavailable",
+    );
   }
 
   const room = state?.data?.room || (await runtime.getRoom(message.roomId));
@@ -144,14 +242,14 @@ async function handleSkip(
   if (!guildId) {
     const text = "Nothing is playing right now.";
     await callback({ text, source: message.content.source });
-    return { success: false, error: "Nothing playing" };
+    return failureResult("Nothing playing", "Nothing playing");
   }
 
   const currentTrack = musicService.getCurrentTrack(guildId);
   if (!currentTrack) {
     const text = "No track is currently playing.";
     await callback({ text, source: message.content.source });
-    return { success: false, error: "No current track" };
+    return failureResult("No current track", "No current track");
   }
 
   const preview = `Confirmation required before skipping **${currentTrack.title}**.`;
@@ -168,7 +266,7 @@ async function handleSkip(
   if (!skipped) {
     const text = "Failed to skip track.";
     await callback({ text, source: message.content.source });
-    return { success: false, error: "Skip failed" };
+    return failureResult("Skip failed", "Skip failed");
   }
 
   const nextTrack = musicService.getCurrentTrack(guildId);
@@ -194,7 +292,10 @@ async function handleStop(
       text: "Music service is not available.",
       source: message.content.source,
     });
-    return { success: false, error: "Music service unavailable" };
+    return failureResult(
+      "Music service unavailable",
+      "Music service unavailable",
+    );
   }
 
   const room = state?.data?.room || (await runtime.getRoom(message.roomId));
@@ -202,7 +303,7 @@ async function handleStop(
   if (!guildId) {
     const text = "Nothing is playing right now.";
     await callback({ text, source: message.content.source });
-    return { success: false, error: "Nothing playing" };
+    return failureResult("Nothing playing", "Nothing playing");
   }
 
   const track = musicService.getCurrentTrack(guildId);
@@ -247,7 +348,7 @@ async function handleQueue(
     const text =
       "Please tell me what song you'd like to queue (at least 3 characters).";
     await callback({ text, source: message.content.source || "discord" });
-    return { success: false, error: "Missing queue query" };
+    return failureResult(text, "Missing queue query");
   }
 
   const preview = `Confirmation required before adding "${query}" to the music queue.`;
@@ -293,7 +394,11 @@ async function handleQueue(
     await progress.fail(
       `❌ Couldn't find or download "${query}". ${result.error || "Please try a different search term."}`,
     );
-    return { success: false, error: result.error || "Music not found" };
+    return failureResult(
+      `Couldn't find or download "${query}". ${result.error || "Please try a different search term."}`,
+      result.error || "Music not found",
+      { op: "queue", query },
+    );
   }
 
   progress.update("✨ Adding to queue...");
@@ -341,11 +446,11 @@ async function handleQueue(
         content: {
           source: "action",
           thought: `Queued music: ${query} (source: ${result.source})`,
-          actions: ["PLAYBACK_OP"],
+          actions: ["PLAYBACK"],
         },
         metadata: {
           type: "custom" as const,
-          kind: "PLAYBACK_OP",
+          kind: "PLAYBACK",
           op: "queue",
           audioUrl: result.url,
           title: query,
@@ -358,11 +463,25 @@ async function handleQueue(
     .catch((error) => logger.warn(`Failed to create memory: ${error}`));
 
   await progress.complete(responseText);
-  return { success: true, text: responseText };
+  return {
+    success: true,
+    text: responseText,
+    data: {
+      op: "queue",
+      query,
+      position,
+      trackId: track.id,
+      source: result.source,
+      audioUrl: result.url,
+    },
+  };
 }
 
 export const playbackOp: Action = {
-  name: "PLAYBACK_OP",
+  name: "PLAYBACK",
+  contexts: ["media", "automation"],
+  contextGate: { anyOf: ["media", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "PAUSE_MUSIC",
     "RESUME_MUSIC",
@@ -405,10 +524,19 @@ export const playbackOp: Action = {
       schema: { type: "boolean", default: false },
     },
   ],
-  validate: async (runtime, message, _state) => {
+  validate: async (runtime, message, state) => {
     const text = message.content?.text ?? "";
     const inferred = inferOpFromText(text);
-    if (!inferred) return false;
+    if (
+      !inferred &&
+      !(
+        selectedContextMatches(state, PLAYBACK_CONTEXTS) ||
+        hasPlaybackIntent(message, state)
+      )
+    ) {
+      return false;
+    }
+    if (!inferred) return true;
     const musicService = runtime.getService(
       MUSIC_SERVICE_NAME,
     ) as unknown as MusicService;
@@ -435,7 +563,7 @@ export const playbackOp: Action = {
     options: Record<string, unknown> | undefined,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    if (!callback) return { success: false, error: "Missing callback" };
+    if (!callback) return failureResult("Missing callback", "Missing callback");
     const merged = mergedOptions(options);
     const op =
       normalizeOp(merged.op) ?? inferOpFromText(message.content?.text ?? "");
@@ -443,7 +571,7 @@ export const playbackOp: Action = {
       const text =
         "Could not determine playback op. Use op=pause, resume, skip, stop, or queue.";
       await callback({ text, source: message.content.source });
-      return { success: false, error: text };
+      return failureResult(text, text);
     }
 
     if (op === "pause") return handlePause(runtime, message, state, callback);
@@ -461,7 +589,7 @@ export const playbackOp: Action = {
         name: "{{name2}}",
         content: {
           text: 'Paused the music. Say "resume" to continue.',
-          actions: ["PLAYBACK_OP"],
+          actions: ["PLAYBACK"],
         },
       },
     ],
@@ -469,7 +597,7 @@ export const playbackOp: Action = {
       { name: "{{name1}}", content: { text: "resume" } },
       {
         name: "{{name2}}",
-        content: { text: "Resumed playback.", actions: ["PLAYBACK_OP"] },
+        content: { text: "Resumed playback.", actions: ["PLAYBACK"] },
       },
     ],
     [
@@ -478,7 +606,7 @@ export const playbackOp: Action = {
         name: "{{name2}}",
         content: {
           text: "Confirmation required before skipping.",
-          actions: ["PLAYBACK_OP"],
+          actions: ["PLAYBACK"],
         },
       },
     ],
@@ -488,7 +616,7 @@ export const playbackOp: Action = {
         name: "{{name2}}",
         content: {
           text: "Confirmation required before stopping playback.",
-          actions: ["PLAYBACK_OP"],
+          actions: ["PLAYBACK"],
         },
       },
     ],
@@ -498,7 +626,7 @@ export const playbackOp: Action = {
         name: "{{name2}}",
         content: {
           text: 'Confirmation required before adding "Hotel California" to the queue.',
-          actions: ["PLAYBACK_OP"],
+          actions: ["PLAYBACK"],
         },
       },
     ],

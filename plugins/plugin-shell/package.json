@@ -20,8 +20,17 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "shell-access"
+      ]
+    }
+  },
   "keywords": [
     "eliza",
     "plugin",
@@ -44,7 +53,7 @@
     "@biomejs/biome": "^2.4.14",
     "@types/cross-spawn": "^6.0.6",
     "@types/node": "^25.0.3",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "scripts": {

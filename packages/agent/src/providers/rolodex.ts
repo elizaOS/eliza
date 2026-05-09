@@ -3,16 +3,13 @@ import type {
   Memory,
   Provider,
   ProviderResult,
+  RelationshipsGraphService,
+  RelationshipsPersonSummary,
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import { hasAdminAccess } from "../security/access.js";
-import type {
-  RelationshipsGraphService,
-  RelationshipsPersonSummary,
-} from "../services/relationships-graph.js";
-import { resolveRelationshipsGraphService } from "../services/relationships-graph.js";
 
 const MAX_CONTACTS = 10;
 
@@ -50,6 +47,11 @@ export const rolodexProvider: Provider = {
   relevanceKeywords: getValidationKeywordTerms("provider.rolodex.relevance", {
     includeAllLocales: true,
   }),
+  contexts: ["contacts", "memory"],
+  contextGate: { anyOf: ["contacts", "memory"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
 
   async get(
     runtime: IAgentRuntime,
@@ -61,9 +63,9 @@ export const rolodexProvider: Provider = {
     }
 
     try {
-      const graphService = (await resolveRelationshipsGraphService(
-        runtime,
-      )) as RelationshipsGraphService | null;
+      const graphService = runtime.getService(
+        "relationships",
+      ) as unknown as RelationshipsGraphService | null;
 
       if (!graphService) {
         return { text: "", values: {}, data: {} };

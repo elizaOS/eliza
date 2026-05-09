@@ -32,7 +32,7 @@ export default scenario({
       room: "main",
       text: "The clinic sent docs for me to sign before the appointment. Keep me on top of that.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_DEVICE_INTENT", "OWNER_LIFE", "OWNER_CALENDAR"],
+        acceptedActions: ["DEVICE_INTENT", "LIFE", "CALENDAR"],
         description: "signature reminder scheduling",
         includesAny: ["sign", "appointment", "clinic", "docs"],
       }),
@@ -47,7 +47,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["OWNER_DEVICE_INTENT", "OWNER_LIFE", "OWNER_CALENDAR"],
+      actionName: ["DEVICE_INTENT", "LIFE", "CALENDAR"],
     },
     {
       type: "pushSent",
@@ -56,13 +56,13 @@ export default scenario({
     {
       type: "connectorDispatchOccurred",
       channel: ["desktop", "mobile"],
-      actionName: ["OWNER_DEVICE_INTENT"],
+      actionName: ["DEVICE_INTENT"],
     },
     {
       type: "custom",
       name: "ea-signature-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_DEVICE_INTENT", "OWNER_LIFE", "OWNER_CALENDAR"],
+        acceptedActions: ["DEVICE_INTENT", "LIFE", "CALENDAR"],
         description: "signature reminder scheduling",
         includesAny: ["sign", "appointment", "clinic", "docs"],
       }),

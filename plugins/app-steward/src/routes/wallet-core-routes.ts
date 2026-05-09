@@ -16,15 +16,15 @@ import {
   type ElizaConfig,
   loadElizaConfig,
   saveElizaConfig,
-} from "@elizaos/agent/config/config";
-import { readCompatJsonBody } from "@elizaos/app-core/api/compat-route-shared";
-import { sendJson, sendJsonError } from "@elizaos/app-core/api/response";
+} from "@elizaos/agent";
+import { readCompatJsonBody } from "@elizaos/app-core";
+import { sendJson, sendJsonError } from "@elizaos/app-core";
 import type { AgentRuntime } from "@elizaos/core";
+import { resolveWalletExportRejection } from "@elizaos/plugin-wallet";
 import {
   DEFAULT_WALLET_ROUTE_DEPENDENCIES,
   handleWalletRoutes,
 } from "../api/wallet-routes";
-import { resolveWalletExportRejection } from "./server-wallet-trade";
 
 function ensureWalletKeysInEnvAndConfig(_config: ElizaConfig): boolean {
   // Stub — auto-provisioning is disabled by default; the wallet generate

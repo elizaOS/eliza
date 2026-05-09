@@ -193,10 +193,20 @@ export class UptoBillingPolicy {
     auth.remainingAmount -= amount;
     auth.status = auth.remainingAmount === 0n ? "settled" : "partially_settled";
 
-    const settlementList = this.settlements.get(authorizationId)!;
+    const settlementList = this.settlements.get(authorizationId);
+    if (!settlementList) {
+      throw new Error(
+        `[UptoBillingPolicy] Missing settlements for authorization ${authorizationId}`,
+      );
+    }
     settlementList.push(settlement);
 
-    const ledger = this.ledger.get(authorizationId)!;
+    const ledger = this.ledger.get(authorizationId);
+    if (!ledger) {
+      throw new Error(
+        `[UptoBillingPolicy] Missing ledger for authorization ${authorizationId}`,
+      );
+    }
     ledger.push({
       deltaId: nextId("upto-ledger"),
       authorizationId,
@@ -222,7 +232,12 @@ export class UptoBillingPolicy {
     reference?: string,
   ): UptoAuthorizationRecord {
     const auth = this.requireAuthorization(authorizationId);
-    const ledger = this.ledger.get(authorizationId)!;
+    const ledger = this.ledger.get(authorizationId);
+    if (!ledger) {
+      throw new Error(
+        `[UptoBillingPolicy] Missing ledger for authorization ${authorizationId}`,
+      );
+    }
     const timestamp = nowIso(finalizedAt);
 
     if (auth.status === "settled" || auth.status === "released") {

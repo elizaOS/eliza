@@ -3,7 +3,7 @@ import { openaiPlugin } from "@elizaos/plugin-openai";
 import { robloxPlugin } from "@elizaos/plugin-roblox";
 import sqlPlugin from "@elizaos/plugin-sql";
 import { createRobloxBridgeApp } from "./app";
-import { elizaClassicToonPlugin } from "./elizaClassicToonPlugin";
+import { elizaClassicJsonPlugin } from "./elizaClassicJsonPlugin";
 
 const PORT = Number(process.env.PORT ?? 3040);
 const SHARED_SECRET = process.env.ELIZA_ROBLOX_SHARED_SECRET ?? "";
@@ -30,10 +30,10 @@ function createRuntime(): AgentRuntime {
     process.env.OPENAI_API_KEY.trim() !== "";
 
   // If OPENAI_API_KEY is provided, use OpenAI for full agent behavior.
-  // Otherwise, use a classic ELIZA model wrapped into elizaOS TOON.
+  // Otherwise, use a classic ELIZA local text fallback.
   const plugins = hasOpenAIKey
     ? [sqlPlugin, openaiPlugin, robloxPlugin]
-    : [sqlPlugin, elizaClassicToonPlugin, robloxPlugin];
+    : [sqlPlugin, elizaClassicJsonPlugin, robloxPlugin];
 
   return new AgentRuntime({
     character,

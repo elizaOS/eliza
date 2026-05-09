@@ -12,8 +12,18 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "messaging",
+        "live-streaming"
+      ]
+    }
+  },
   "scripts": {
     "build": "bun run build.ts",
     "test": "bun test",

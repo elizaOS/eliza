@@ -118,8 +118,8 @@ export function clearSkillsDirCache(): void {
  *   curated/active/    — auto-promoted or human-promoted skills (loaded)
  *   curated/proposed/  — staged drafts awaiting human review (NOT loaded)
  *
- * Honors `ELIZA_STATE_DIR` and `ELIZA_STATE_DIR` (in that order); falls back
- * to `~/.eliza`.
+ * Honors the state directory resolved by @elizaos/core; falls back to
+ * `~/.eliza`.
  */
 function resolveCuratedBaseDir(): string {
   return join(resolveStateDir(), "skills", "curated");

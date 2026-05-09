@@ -9,9 +9,9 @@ describe("Promotion Pricing Constants", () => {
 
   test("PROMO_IMAGE_COST includes 20% markup", async () => {
     const { PROMO_IMAGE_COST, PLATFORM_MARKUP } = await import("@/lib/promotion-pricing");
-    const { IMAGE_GENERATION_COST } = await import("@/lib/pricing-constants");
+    const { BASE_IMAGE_GENERATION_COST } = await import("@/lib/pricing-constants");
 
-    expect(PROMO_IMAGE_COST).toBe(IMAGE_GENERATION_COST * PLATFORM_MARKUP);
+    expect(PROMO_IMAGE_COST).toBe(BASE_IMAGE_GENERATION_COST * PLATFORM_MARKUP);
   });
 
   test("estimateAssetGenerationCost returns correct values", async () => {

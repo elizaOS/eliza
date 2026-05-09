@@ -12,7 +12,7 @@ export default buildConnectorCertificationScenario({
       name: "notifications-core",
       text: "Send the reminder to my desktop and phone, and stop the ladder everywhere once I acknowledge it.",
       responseIncludesAny: ["desktop", "phone", "acknowledge", "reminder"],
-      acceptedActions: ["OWNER_DEVICE_INTENT", "OWNER_DEVICE_INTENT"],
+      acceptedActions: ["DEVICE_INTENT", "DEVICE_INTENT"],
       includesAny: ["desktop", "phone", "acknowledge", "reminder"],
     },
   ],

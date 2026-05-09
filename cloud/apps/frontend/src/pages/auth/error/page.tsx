@@ -1,4 +1,4 @@
-import { Button } from "@elizaos/cloud-ui/components/button";
+import { Button } from "@elizaos/cloud-ui";
 import { AlertCircle, Home, RefreshCw } from "lucide-react";
 import { Suspense } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";

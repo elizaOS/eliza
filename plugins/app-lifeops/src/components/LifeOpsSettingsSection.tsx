@@ -1,11 +1,10 @@
-import { Button, SegmentedControl, useApp } from "@elizaos/app-core";
-import { client } from "@elizaos/app-core/api";
-import type { ModelOption } from "@elizaos/shared/contracts/onboarding";
+import { Button, SegmentedControl, useApp } from "@elizaos/ui";
+import { client } from "@elizaos/ui";
+import type { ModelOption } from "@elizaos/shared";
 import {
-  AlertTriangle,
   Activity,
+  AlertTriangle,
   CalendarDays,
-  Cloud,
   Copy,
   ExternalLink,
   GitBranch,
@@ -33,12 +32,12 @@ import type {
 } from "../contracts/index.js";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector";
 import { useLifeOpsHealthConnectors } from "../hooks/useLifeOpsHealthConnectors";
-import { BrowserBridgeSetupPanel } from "./BrowserBridgeSetupPanel.tsx";
+import { BrowserBridgeSetupPanel } from "./BrowserBridgeSetupPanel.js";
 import { LifeOpsFeatureTogglesSection } from "./LifeOpsFeatureTogglesSection";
 import { MobileSignalsSetupCard } from "./MobileSignalsSetupCard";
 
 const MAX_GOOGLE_ACCOUNTS_PER_SIDE = 6;
-const VISIBLE_CONNECTOR_MODES = ["cloud_managed", "local"] as const;
+const VISIBLE_CONNECTOR_MODES = ["local"] as const;
 type VisibleConnectorMode = (typeof VISIBLE_CONNECTOR_MODES)[number];
 
 type TranslateFn = (
@@ -272,10 +271,9 @@ function ModeLabel({
   mode: VisibleConnectorMode;
   label: string;
 }) {
-  const Icon = mode === "cloud_managed" ? Cloud : HardDrive;
   return (
     <IconOnlyLabel label={label}>
-      <Icon className="h-3.5 w-3.5" aria-hidden />
+      <HardDrive className="h-3.5 w-3.5" aria-hidden />
     </IconOnlyLabel>
   );
 }
@@ -473,7 +471,6 @@ function GoogleConnectorSideCard({
   const { t } = useApp();
   const {
     accounts,
-    activeMode,
     actionPending,
     connect,
     connectAdditional,
@@ -517,8 +514,7 @@ function GoogleConnectorSideCard({
       ? "warning"
       : "muted";
   const controlDisabled = loading || actionPending;
-  const visibleMode: VisibleConnectorMode =
-    activeMode === "local" ? "local" : "cloud_managed";
+  const visibleMode: VisibleConnectorMode = "local";
   const visibleAuthUrl =
     pendingAuthUrl && pendingAuthUrl !== dismissedAuthUrl
       ? pendingAuthUrl
@@ -540,6 +536,7 @@ function GoogleConnectorSideCard({
         const response = await client.getLifeOpsCalendars({
           side,
           mode: status.mode,
+          grantId: preferredGrantId ?? undefined,
         });
         if (!cancelled) {
           setCalendars(response.calendars);

@@ -9,8 +9,8 @@
  */
 
 import type { ReleaseChannel } from "@elizaos/agent";
+import { theme } from "@elizaos/shared";
 import type { Command } from "commander";
-import { theme } from "../../terminal/theme";
 import { CLI_VERSION } from "../version";
 
 const ALL_CHANNELS: readonly ReleaseChannel[] = ["stable", "beta", "nightly"];
@@ -48,15 +48,9 @@ async function updateAction(opts: {
   check?: boolean;
   force?: boolean;
 }): Promise<void> {
-  const { loadElizaConfig, saveElizaConfig } = await import(
-    "@elizaos/agent/config/config"
-  );
-  const { checkForUpdate, resolveChannel } = await import(
-    "@elizaos/agent/services/update-checker"
-  );
-  const { detectInstallMethod, performUpdate } = await import(
-    "@elizaos/agent/services/self-updater"
-  );
+  const { loadElizaConfig, saveElizaConfig } = await import("@elizaos/agent");
+  const { checkForUpdate, resolveChannel } = await import("@elizaos/agent");
+  const { detectInstallMethod, performUpdate } = await import("@elizaos/agent");
   const config = loadElizaConfig();
   let newChannel: ReleaseChannel | undefined;
 
@@ -169,13 +163,11 @@ async function updateAction(opts: {
 }
 
 async function statusAction(): Promise<void> {
-  const { loadElizaConfig } = await import("@elizaos/agent/config/config");
+  const { loadElizaConfig } = await import("@elizaos/agent");
   const { resolveChannel, fetchAllChannelVersions } = await import(
-    "@elizaos/agent/services/update-checker"
+    "@elizaos/agent"
   );
-  const { detectInstallMethod } = await import(
-    "@elizaos/agent/services/self-updater"
-  );
+  const { detectInstallMethod } = await import("@elizaos/agent");
   console.log(`\n${theme.heading("Version Status")}\n`);
 
   const config = loadElizaConfig();
@@ -205,12 +197,8 @@ async function statusAction(): Promise<void> {
 }
 
 async function channelAction(channelArg: string | undefined): Promise<void> {
-  const { loadElizaConfig, saveElizaConfig } = await import(
-    "@elizaos/agent/config/config"
-  );
-  const { resolveChannel } = await import(
-    "@elizaos/agent/services/update-checker"
-  );
+  const { loadElizaConfig, saveElizaConfig } = await import("@elizaos/agent");
+  const { resolveChannel } = await import("@elizaos/agent");
   const config = loadElizaConfig();
   const current = resolveChannel(config.update);
 

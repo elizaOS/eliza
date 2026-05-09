@@ -126,6 +126,7 @@ export async function seedMorningBriefFixtures(args: {
   dmRoomId: UUID;
   stateDir: string;
 }): Promise<MorningBriefSeedContext> {
+  await LifeOpsRepository.bootstrapSchema(args.runtime);
   const repository = await seedGoogleConnector(args.runtime, args.stateDir);
   const agentId = String(args.runtime.agentId);
   const nowIso = new Date().toISOString();

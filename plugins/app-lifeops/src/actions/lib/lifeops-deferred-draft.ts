@@ -10,10 +10,10 @@
 import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
+import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import type {
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGoalRequest,
@@ -471,8 +471,7 @@ export async function extractDeferredLifeDraftFollowupWithLlm(args: {
     "Use the current message, the draft summary, and recent conversation.",
     "The user may speak in any language.",
     "",
-    "Return ONLY a TOON record with exactly this field:",
-    "mode: confirm | edit | cancel | none",
+    'Return ONLY a JSON object with exactly this field, for example {"mode":"confirm"}.',
     "",
     "Choose confirm when the user clearly approves saving the current draft now.",
     "Choose edit when the user wants to change the draft or continue specifying it before saving.",
@@ -496,7 +495,7 @@ export async function extractDeferredLifeDraftFollowupWithLlm(args: {
         }),
     );
     const raw = typeof result === "string" ? result : "";
-    const parsed = parseToonKeyValue<Record<string, unknown>>(raw);
+    const parsed = parseJsonModelRecord<Record<string, unknown>>(raw);
     const mode =
       parsed && typeof parsed.mode === "string"
         ? parsed.mode.trim().toLowerCase()

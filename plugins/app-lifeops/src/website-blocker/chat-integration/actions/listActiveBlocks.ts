@@ -10,15 +10,6 @@ import {
 } from "../../../website-blocker/engine.js";
 import { BlockRuleReader } from "../block-rule-service.js";
 
-const BLOCK_STATUS_INTENT_RE =
-  /\b(block|blocking|blocked|unblock|website block|site block|focus block|selfcontrol|self-control|distracting sites?|blocked websites?|blocked sites?|app block)\b/i;
-
-function getMessageText(
-  message: { content?: { text?: unknown } } | undefined,
-): string {
-  return typeof message?.content?.text === "string" ? message.content.text : "";
-}
-
 interface ListActiveBlocksParams {
   includeLiveStatus?: unknown;
   includeManagedRules?: unknown;
@@ -63,11 +54,12 @@ export const listActiveBlocksAction: Action = {
   name: "LIST_ACTIVE_BLOCKS",
   similes: ["LIST_BLOCK_RULES", "SHOW_ACTIVE_BLOCKS", "WEBSITE_BLOCKS_STATUS"],
   description:
-    "List the live website blocker status and any active managed website block rules, including their gate type and gate target. Only use this for website/app blocking status. Do not use it for inbox blockers, message priority, morning briefs, night briefs, operating pictures, end-of-day reviews, or general executive-assistant triage.",
+    "Report the current website blocker state by combining the live OS-level hosts/SelfControl status (active hosts, end time, permission notes) with LifeOps-managed block rules (id, gateType, websites, and gate target: todo id, ISO deadline, or fixed duration). Toggle either source via includeLiveStatus and includeManagedRules. Use only for website/app blocking status; do not use for inbox blockers, message priority, morning/night briefs, operating pictures, end-of-day reviews, or general executive-assistant triage.",
   descriptionCompressed:
-    "List live website blocker status and active block rules.",
-  validate: async (_runtime, message) =>
-    BLOCK_STATUS_INTENT_RE.test(getMessageText(message)),
+    "list-website-blocks: live hosts/SelfControl status + managed rules (gateType, target, websites)",
+  contexts: ["screen_time", "browser", "tasks", "automation"],
+  roleGate: { minRole: "OWNER" },
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     _message,
@@ -96,7 +88,11 @@ export const listActiveBlocksAction: Action = {
         text:
           sections.join("\n") ||
           "Managed block rule listing was not requested.",
-        data: { rules: [], liveStatus },
+        data: {
+          actionName: "LIST_ACTIVE_BLOCKS",
+          rules: [],
+          liveStatus,
+        },
       };
     }
 
@@ -105,7 +101,11 @@ export const listActiveBlocksAction: Action = {
       return {
         success: true,
         text: sections.join("\n"),
-        data: { rules: [], liveStatus },
+        data: {
+          actionName: "LIST_ACTIVE_BLOCKS",
+          rules: [],
+          liveStatus,
+        },
       };
     }
 
@@ -130,7 +130,7 @@ export const listActiveBlocksAction: Action = {
     return {
       success: true,
       text: sections.join("\n"),
-      data: { rules, liveStatus },
+      data: { actionName: "LIST_ACTIVE_BLOCKS", rules, liveStatus },
     };
   },
   parameters: [
@@ -158,7 +158,7 @@ export const listActiveBlocksAction: Action = {
       {
         name: "{{agentName}}",
         content: {
-          text: "A live website block is active for x.com until 2026-04-04T13:44:54.000Z.\nManaged block rules: ...",
+          text: "A live website block is active for x.com until 2026-06-04T13:44:54.000Z.\nManaged block rules: ...",
           action: "LIST_ACTIVE_BLOCKS",
         },
       },

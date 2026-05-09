@@ -301,7 +301,9 @@ class ElizaADHDBenchRunner:
                 ]
             turn_results.append(turn_result)
 
-        score = helpers["compute_scenario_score"](turn_results)
+        # The eliza-bridge path can populate providers_requested from a
+        # real runtime, so PROVIDERS_REQUESTED outcomes are scoreable here.
+        score = helpers["compute_scenario_score"](turn_results, has_runtime_signal=True)
         total_latency = (time.time() - scenario_start) * 1000
         logger.info("    -> score=%.1f%%, %d turns, %.0fms", score * 100, len(turn_results), total_latency)
 

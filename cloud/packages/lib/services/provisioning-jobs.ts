@@ -183,6 +183,79 @@ export class ProvisioningJobService {
   }
 
   /**
+   * Best-effort kick of the provisioning worker without waiting for the
+   * next cron tick. Fire-and-forget — the cron is the safety net.
+   *
+   * The cron endpoint is idempotent (FOR UPDATE SKIP LOCKED) so calling
+   * it concurrently with the scheduled invocation is safe.
+   */
+  async triggerImmediate(env?: {
+    CRON_SECRET?: string;
+    CONTAINER_CONTROL_PLANE_TOKEN?: string;
+    CONTAINER_CONTROL_PLANE_URL?: string;
+    CONTAINER_SIDECAR_URL?: string;
+    DATABASE_URL?: string;
+    HETZNER_CONTAINER_CONTROL_PLANE_URL?: string;
+    NEXT_PUBLIC_API_URL?: string;
+    NEXT_PUBLIC_APP_URL?: string;
+  }): Promise<void> {
+    const controlPlaneBaseUrl =
+      env?.CONTAINER_CONTROL_PLANE_URL ??
+      env?.CONTAINER_SIDECAR_URL ??
+      env?.HETZNER_CONTAINER_CONTROL_PLANE_URL ??
+      process.env.CONTAINER_CONTROL_PLANE_URL ??
+      process.env.CONTAINER_SIDECAR_URL ??
+      process.env.HETZNER_CONTAINER_CONTROL_PLANE_URL;
+    const controlPlaneToken =
+      env?.CONTAINER_CONTROL_PLANE_TOKEN ?? process.env.CONTAINER_CONTROL_PLANE_TOKEN;
+    const databaseUrl = env?.DATABASE_URL ?? process.env.DATABASE_URL;
+
+    if (controlPlaneBaseUrl && controlPlaneToken && databaseUrl) {
+      try {
+        const target = new URL(controlPlaneBaseUrl);
+        target.pathname = "/api/v1/cron/process-provisioning-jobs";
+        target.search = "?limit=5";
+        await fetch(target, {
+          method: "POST",
+          headers: {
+            "x-container-control-plane-token": controlPlaneToken,
+            "x-eliza-cloud-database-url": databaseUrl,
+            "user-agent": "agent-provision-trigger/1.0",
+          },
+          signal: AbortSignal.timeout(120_000),
+        });
+        return;
+      } catch (err) {
+        logger.debug("[provisioning-jobs] direct triggerImmediate failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    const cronSecret = env?.CRON_SECRET ?? process.env.CRON_SECRET;
+    const baseUrl =
+      env?.NEXT_PUBLIC_API_URL ??
+      env?.NEXT_PUBLIC_APP_URL ??
+      process.env.NEXT_PUBLIC_API_URL ??
+      process.env.NEXT_PUBLIC_APP_URL;
+    if (!cronSecret || !baseUrl) return;
+    try {
+      await fetch(`${baseUrl}/api/v1/cron/process-provisioning-jobs?limit=5`, {
+        method: "POST",
+        headers: {
+          "x-cron-secret": cronSecret,
+          "user-agent": "agent-provision-trigger/1.0",
+        },
+        signal: AbortSignal.timeout(3_000),
+      });
+    } catch (err) {
+      logger.debug("[provisioning-jobs] triggerImmediate fire-and-forget failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /**
    * Get a job by ID (for status polling).
    */
   async getJob(jobId: string): Promise<Job | undefined> {
@@ -371,6 +444,42 @@ export class ProvisioningJobService {
     });
   }
 
+  /**
+   * Drive heartbeats for every running sandbox. The on-prem worker calls this
+   * each cycle so last_heartbeat_at stays fresh and unreachable agents flip
+   * to disconnected. Heartbeats are HTTP fetches over the Headscale tunnel,
+   * so this only runs from the Node sidecar (not from the Cloudflare Worker).
+   */
+  async processRunningHeartbeats(concurrency = 5): Promise<HeartbeatResult> {
+    const running = await agentSandboxesRepository.listRunning();
+    const total = running.length;
+    if (total === 0) return { total: 0, succeeded: 0, failed: 0 };
+
+    let succeeded = 0;
+    let failed = 0;
+    const queue = [...running];
+    const workers = Array.from({ length: Math.min(concurrency, total) }, async () => {
+      while (true) {
+        const r = queue.shift();
+        if (!r) break;
+        const ok = await elizaSandboxService
+          .heartbeat(r.id, r.organization_id)
+          .catch((error: unknown) => {
+            logger.warn("[provisioning-jobs] heartbeat threw", {
+              agentId: r.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            return false;
+          });
+        if (ok) succeeded += 1;
+        else failed += 1;
+      }
+    });
+    await Promise.all(workers);
+
+    return { total, succeeded, failed };
+  }
+
   private async recoverStaleJobs(): Promise<number> {
     let totalRecovered = 0;
 
@@ -435,6 +544,12 @@ export class ProvisioningJobService {
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+export interface HeartbeatResult {
+  total: number;
+  succeeded: number;
+  failed: number;
+}
 
 export interface ProcessingResult {
   claimed: number;

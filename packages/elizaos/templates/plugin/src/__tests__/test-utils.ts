@@ -97,7 +97,7 @@ export async function createTestRuntime(
     agentId,
     character,
     adapter,
-    enableKnowledge: false,
+    enableDocuments: false,
     enableRelationships: false,
     enableTrajectories: false,
     plugins: options.plugins,

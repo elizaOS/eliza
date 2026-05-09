@@ -9,7 +9,7 @@
  *   const before = Date.now();
  *   await handleMessage(runtime, message);
  *   const invocations = await getActionInvocations(runtime, roomId, before);
- *   expectActionCalled(invocations, "OWNER_CALENDAR", { status: "success" });
+ *   expectActionCalled(invocations, "CALENDAR", { status: "success" });
  */
 
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
@@ -20,7 +20,7 @@ import { expect } from "vitest";
  * an action_result memory persisted by the runtime.
  */
 export interface ActionInvocation {
-  /** Canonical action name as recorded by the runtime (e.g. "OWNER_CALENDAR"). */
+  /** Canonical action name as recorded by the runtime (e.g. "CALENDAR"). */
   actionName: string;
   /** Whether the action succeeded or failed. */
   actionStatus: "success" | "failed" | string;
@@ -28,7 +28,7 @@ export interface ActionInvocation {
   params?: Record<string, unknown>;
   /** The full result data payload from the action, if any. */
   result?: unknown;
-  /** Run ID grouping related action invocations in a single processActions pass. */
+  /** Run ID grouping related action invocations in a single execution pass. */
   runId?: string;
   /** Unix timestamp (ms) when the memory was created. */
   timestamp?: number;
@@ -38,7 +38,7 @@ export interface ActionInvocation {
 
 /**
  * Normalize an action name for fuzzy comparison: uppercase and strip
- * underscores so that "owner_calendar", "OWNER_CALENDAR", and
+ * underscores so that "owner_calendar", "CALENDAR", and
  * "OwnerCalendar" all match.
  */
 function normalizeActionName(name: string): string {
@@ -51,8 +51,7 @@ function normalizeActionName(name: string): string {
  * sorted by timestamp ascending (oldest first).
  *
  * The runtime persists action results as memories in the "messages" table
- * with `content.type === "action_result"`. See runtime.ts processActions()
- * for the persistence logic.
+ * with `content.type === "action_result"`.
  */
 export async function getActionInvocations(
   runtime: AgentRuntime,
@@ -93,7 +92,7 @@ export async function getActionInvocations(
  * Assert that a specific action was called among the given invocations.
  *
  * Name matching is fuzzy: strips underscores and compares uppercase, so
- * "OWNER_CALENDAR" matches "owner_calendar" or "OwnerCalendar".
+ * "CALENDAR" matches "owner_calendar" or "OwnerCalendar".
  *
  * Optionally checks that the action's status and/or params match.
  * Throws a descriptive error listing what WAS called if the expected
@@ -217,7 +216,7 @@ export function expectActionOrder(
  * Assert that at least one of the given action names was called.
  *
  * Useful when multiple actions could satisfy a user request (e.g. the
- * agent might choose SEND_DRAFT or RESPOND_TO_MESSAGE for an email task).
+ * agent might choose MESSAGE or MESSAGE for an email task).
  */
 export function expectAnyActionCalled(
   invocations: ActionInvocation[],

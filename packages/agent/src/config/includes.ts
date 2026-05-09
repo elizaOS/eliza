@@ -9,8 +9,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { isPlainObject } from "@elizaos/shared";
 import JSON5 from "json5";
-import { isPlainObject } from "./object-utils.js";
 
 export const INCLUDE_KEY = "$include";
 export const MAX_INCLUDE_DEPTH = 10;
@@ -76,10 +76,11 @@ class IncludeProcessor {
     if (!isPlainObject(obj)) {
       return obj;
     }
-    if (!(INCLUDE_KEY in obj)) {
-      return this.processObject(obj);
+    const record = obj as Record<string, unknown>;
+    if (!(INCLUDE_KEY in record)) {
+      return this.processObject(record);
     }
-    return this.processInclude(obj);
+    return this.processInclude(record);
   }
 
   private processObject(obj: Record<string, unknown>): Record<string, unknown> {

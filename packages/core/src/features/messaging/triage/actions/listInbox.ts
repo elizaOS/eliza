@@ -12,12 +12,14 @@ import type {
 import { rankScored } from "../triage-engine.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import { ALL_MESSAGE_SOURCES } from "../types.ts";
-import { parseListInboxParams } from "./_shared.ts";
+import { parseListInboxParams, validateMessageAction } from "./_shared.ts";
 
 export const listInboxAction: Action = {
-	name: "LIST_INBOX",
+	name: "MESSAGE",
+	contexts: ["messaging", "email", "connectors"],
+	roleGate: { minRole: "ADMIN" },
 	description:
-		"List unread messages from every connected platform as one feed, sorted by priority and recency. Use when the user asks 'what's in my inbox across everything' or 'show me unread across all platforms'.",
+		"Read-only list of unread messages from every connected platform as one feed, sorted by priority and recency. Use when the user asks 'what's in my inbox across everything' or 'show me unread across all platforms'. Do not use as the first step for respond/reply-to-inbox or needs-answer requests; use MESSAGE so reply-worthy messages are identified before drafting.",
 	similes: ["LIST_MESSAGES", "SHOW_UNREAD_ACROSS"],
 	parameters: [
 		{
@@ -53,13 +55,18 @@ export const listInboxAction: Action = {
 				name: "Agent",
 				content: {
 					text: "Here's your inbox.",
-					action: "LIST_INBOX",
+					action: "MESSAGE",
 				},
 			},
 		],
 	] as ActionExample[][],
 
-	validate: async (): Promise<boolean> => true,
+	validate: async (
+		_runtime: IAgentRuntime,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> =>
+		validateMessageAction(message, state, ["messaging", "email", "connectors"]),
 
 	handler: async (
 		runtime: IAgentRuntime,
@@ -68,55 +75,69 @@ export const listInboxAction: Action = {
 		options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult> => {
-		const params = parseListInboxParams(options);
-		const service = getDefaultTriageService();
-		const store = service.getStore();
+		try {
+			const params = parseListInboxParams(options);
+			const service = getDefaultTriageService();
+			const store = service.getStore();
 
-		const cached = store.listMessages();
-		let messages = cached.filter((m) => !params.sources?.includes(m.source));
+			const cached = store.listMessages();
+			const requestedSources = params.sources;
+			let messages = requestedSources
+				? cached.filter((m) => requestedSources.includes(m.source))
+				: cached;
 
-		if (messages.length === 0) {
-			messages = await service.triage(runtime, {
-				sources: params.sources,
-				sinceMs: params.sinceMs,
-				limit: params.limit,
-			});
-		} else {
-			messages = rankScored(messages);
+			if (messages.length === 0) {
+				messages = await service.triage(runtime, {
+					sources: params.sources,
+					sinceMs: params.sinceMs,
+					limit: params.limit,
+				});
+			} else {
+				messages = rankScored(messages);
+			}
+
+			const unread = messages.filter((m) => !m.isRead);
+			const limit = params.limit ?? unread.length;
+			const trimmed = unread.slice(0, limit);
+
+			logger.info(
+				`[ListInbox] returning ${trimmed.length} of ${unread.length} unread message(s)`,
+			);
+
+			const text =
+				trimmed.length === 0
+					? "No unread messages across connected platforms."
+					: `You have ${unread.length} unread across ${new Set(unread.map((m) => m.source)).size} platform(s).`;
+
+			if (callback) {
+				await callback({ text, action: "MESSAGE" });
+			}
+
+			return {
+				success: true,
+				text,
+				data: {
+					total: unread.length,
+					returned: trimmed.length,
+					messages: trimmed.map((m) => ({
+						id: m.id,
+						source: m.source,
+						from: m.from.identifier,
+						subject: m.subject ?? null,
+						snippet: m.snippet,
+						priority: m.triageScore?.priority ?? null,
+					})),
+				},
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			logger.warn(`[ListInbox] failed: ${message}`);
+			return {
+				success: false,
+				text: `Failed to list inbox: ${message}`,
+				error: message,
+				data: { actionName: "MESSAGE" },
+			};
 		}
-
-		const unread = messages.filter((m) => !m.isRead);
-		const limit = params.limit ?? unread.length;
-		const trimmed = unread.slice(0, limit);
-
-		logger.info(
-			`[ListInbox] returning ${trimmed.length} of ${unread.length} unread message(s)`,
-		);
-
-		const text =
-			trimmed.length === 0
-				? "No unread messages across connected platforms."
-				: `You have ${unread.length} unread across ${new Set(unread.map((m) => m.source)).size} platform(s).`;
-
-		if (callback) {
-			await callback({ text, action: "LIST_INBOX" });
-		}
-
-		return {
-			success: true,
-			text,
-			data: {
-				total: unread.length,
-				returned: trimmed.length,
-				messages: trimmed.map((m) => ({
-					id: m.id,
-					source: m.source,
-					from: m.from.identifier,
-					subject: m.subject ?? null,
-					snippet: m.snippet,
-					priority: m.triageScore?.priority ?? null,
-				})),
-			},
-		};
 	},
 };

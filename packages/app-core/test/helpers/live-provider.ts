@@ -37,6 +37,10 @@ function providerKeyMatchesSelection(
     return false;
   }
 
+  if (providerName === "openai" && /^csk[-_]/i.test(trimmed)) {
+    return false;
+  }
+
   return true;
 }
 
@@ -71,6 +75,7 @@ function getLiveTestBaseUrlOverride(
 }
 
 export type LiveProviderName =
+  | "cerebras"
   | "groq"
   | "openai"
   | "anthropic"
@@ -90,8 +95,15 @@ export type LiveProviderConfig = {
 };
 
 export const LIVE_PROVIDER_ENV_KEYS = new Set<string>([
+  "MILADY_PROVIDER",
   "SMALL_MODEL",
+  "MEDIUM_MODEL",
   "LARGE_MODEL",
+  "ACTION_PLANNER_MODEL",
+  "PLANNER_MODEL",
+  "OPENAI_MEDIUM_MODEL",
+  "OPENAI_ACTION_PLANNER_MODEL",
+  "OPENAI_PLANNER_MODEL",
   "ELIZAOS_CLOUD_API_KEY",
   "ELIZA_CLOUD_API_KEY",
   "ELIZA_DISABLE_SUBSCRIPTION_CREDENTIALS",
@@ -114,6 +126,18 @@ const PROVIDERS: Array<{
   defaultSmallModel: string;
   defaultLargeModel: string;
 }> = [
+  {
+    name: "cerebras",
+    plugin: "@elizaos/plugin-openai",
+    keyEnvVars: ["CEREBRAS_API_KEY"],
+    keyEnvVarAliases: ["ELIZA_E2E_CEREBRAS_API_KEY"],
+    baseUrlEnvVar: "OPENAI_BASE_URL",
+    defaultBaseUrl: "https://api.cerebras.ai/v1",
+    smallModelEnvVar: "OPENAI_SMALL_MODEL",
+    largeModelEnvVar: "OPENAI_LARGE_MODEL",
+    defaultSmallModel: "gpt-oss-120b",
+    defaultLargeModel: "gpt-oss-120b",
+  },
   {
     name: "groq",
     plugin: "@elizaos/plugin-groq",
@@ -198,7 +222,7 @@ function providerKeyEnvCandidates(provider: {
  * Select the first available LLM provider based on environment variables.
  * Returns null if no provider API keys are found.
  *
- * Preference order: groq -> openai -> anthropic -> google -> openrouter.
+ * Preference order: cerebras -> groq -> openai -> anthropic -> google -> openrouter.
  */
 export function selectLiveProvider(
   preferredProvider?: LiveProviderName,
@@ -234,6 +258,16 @@ export function selectLiveProvider(
     }
     if (def.baseUrlEnvVar) {
       env[def.baseUrlEnvVar] = baseUrl;
+    }
+    if (def.name === "cerebras") {
+      env.MILADY_PROVIDER = "cerebras";
+      env.OPENAI_API_KEY = apiKey;
+      env.OPENAI_MEDIUM_MODEL = largeModel;
+      env.OPENAI_ACTION_PLANNER_MODEL = largeModel;
+      env.OPENAI_PLANNER_MODEL = largeModel;
+      env.MEDIUM_MODEL = largeModel;
+      env.ACTION_PLANNER_MODEL = largeModel;
+      env.PLANNER_MODEL = largeModel;
     }
     env[def.smallModelEnvVar] = smallModel;
     env[def.largeModelEnvVar] = largeModel;

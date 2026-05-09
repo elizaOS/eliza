@@ -1,4 +1,4 @@
-import type { RouteRequestContext } from "@elizaos/agent/api/route-helpers";
+import type { RouteRequestContext } from "@elizaos/core";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {
@@ -11,8 +11,8 @@ import {
   parseSelfControlBlockRequest,
   startSelfControlBlock,
   stopSelfControlBlock,
-} from "../website-blocker/engine.ts";
-import { syncWebsiteBlockerExpiryTask } from "../website-blocker/service.ts";
+} from "../website-blocker/engine.js";
+import { syncWebsiteBlockerExpiryTask } from "../website-blocker/service.js";
 
 type WebsiteBlockerRequestBody = {
   websites?: string[] | string;

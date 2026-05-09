@@ -19,9 +19,11 @@ import {
   setBenchmarkContext,
 } from "./plugin";
 import {
+  type BenchmarkLlmCallUsage,
   type BenchmarkOutboxEntry,
   type BenchmarkSession,
   type BenchmarkTrajectoryStep,
+  type BenchmarkTurnUsage,
   capturedActionToParams,
   coerceActions,
   coerceParams,
@@ -373,9 +375,33 @@ export async function startBenchmarkServer() {
   // Trust is now a built-in core capability — enable via ENABLE_TRUST character setting.
   // No need to load as a separate plugin.
 
-  // Load LLM provider plugins based on environment
+  // Load LLM provider plugins based on environment.
+  //
+  // Multi-plugin guard: when both Groq and another OpenAI-compatible
+  // provider are configured (e.g. Cerebras via OPENAI_BASE_URL), Groq's
+  // TEXT_LARGE handler races to register first and the runtime then calls
+  // it with whatever LARGE_MODEL is set. With cerebras runs the model
+  // name is `gpt-oss-120b`, which Groq exposes only as
+  // `openai/gpt-oss-120b` — Groq's handler errors and the v5 runtime
+  // falls back to the structured-failure template ("Something went
+  // wrong on my end. Please try again."). Suppress Groq when the
+  // explicit intent is a different provider.
   const groqApiKey = process.env.GROQ_API_KEY?.trim();
-  if (groqApiKey) {
+  const _openAiBaseUrl = process.env.OPENAI_BASE_URL?.trim();
+  const _cerebrasIntent =
+    !!_openAiBaseUrl && /(^|\.)cerebras\.ai(\/|$)/i.test(_openAiBaseUrl);
+  const _explicitProvider = process.env.MILADY_PROVIDER?.trim().toLowerCase();
+  const _benchProvider =
+    process.env.BENCHMARK_MODEL_PROVIDER?.trim().toLowerCase();
+  const _suppressGroqForOtherProvider =
+    _cerebrasIntent ||
+    (_explicitProvider !== undefined &&
+      _explicitProvider !== "" &&
+      _explicitProvider !== "groq") ||
+    (_benchProvider !== undefined &&
+      _benchProvider !== "" &&
+      _benchProvider !== "groq");
+  if (groqApiKey && !_suppressGroqForOtherProvider) {
     process.env.GROQ_API_KEY = groqApiKey;
     try {
       const { default: groqPlugin } = await import("@elizaos/plugin-groq");
@@ -386,20 +412,91 @@ export async function startBenchmarkServer() {
         `[bench] Groq plugin not available: ${formatUnknownError(error)}`,
       );
     }
+  } else if (groqApiKey && _suppressGroqForOtherProvider) {
+    elizaLogger.info(
+      "[bench] Skipping @elizaos/plugin-groq: another provider is the explicit intent " +
+        `(cerebras=${_cerebrasIntent}, MILADY_PROVIDER=${_explicitProvider ?? ""}, BENCHMARK_MODEL_PROVIDER=${_benchProvider ?? ""})`,
+    );
   }
 
+  // Load the OpenAI plugin when either:
+  //   - OPENAI_API_KEY is set (and is not actually a Groq key, prefix `gsk_`), or
+  //   - OPENAI_BASE_URL points at an OpenAI-compatible third-party endpoint
+  //     (e.g. Cerebras at *.cerebras.ai) and the matching provider key is set
+  //     (e.g. CEREBRAS_API_KEY). The openai plugin's `getApiKey` helper
+  //     resolves CEREBRAS_API_KEY automatically when the base URL matches.
   const openAiApiKey = process.env.OPENAI_API_KEY?.trim();
-  if (openAiApiKey && !openAiApiKey.startsWith("gsk_")) {
-    process.env.OPENAI_API_KEY = openAiApiKey;
+  const openAiBaseURL = process.env.OPENAI_BASE_URL?.trim();
+  const cerebrasApiKey = process.env.CEREBRAS_API_KEY?.trim();
+  const miladyProvider = process.env.MILADY_PROVIDER?.trim().toLowerCase();
+  const baseUrlIsCerebras =
+    !!openAiBaseURL && /(^|\.)cerebras\.ai(\/|$)/i.test(openAiBaseURL);
+  const providerIsCerebras = miladyProvider === "cerebras";
+  const hasOpenAiCompatibleKey =
+    (openAiApiKey && !openAiApiKey.startsWith("gsk_")) ||
+    ((baseUrlIsCerebras || providerIsCerebras) && !!cerebrasApiKey);
+  if (hasOpenAiCompatibleKey) {
+    if (openAiApiKey) {
+      process.env.OPENAI_API_KEY = openAiApiKey;
+    }
     try {
       const { default: openaiPlugin } = await import("@elizaos/plugin-openai");
-      plugins.push(toPlugin(openaiPlugin, "@elizaos/plugin-openai"));
-      elizaLogger.info("[bench] Loaded LLM plugin: @elizaos/plugin-openai");
+      const openaiPluginResolved = toPlugin(
+        openaiPlugin,
+        "@elizaos/plugin-openai",
+      );
+      // Cerebras has no /v1/embeddings endpoint. The openai plugin's
+      // TEXT_EMBEDDING handler will 404 against api.cerebras.ai and stall
+      // Stage 1 of the message pipeline before the planner picks an action.
+      // Strip TEXT_EMBEDDING when cerebras is the explicit intent so
+      // plugin-local-embedding (loaded via CORE_PLUGINS) wins for embeddings
+      // while the openai plugin still serves TEXT_LARGE / TEXT_SMALL.
+      let strippedEmbedding = false;
+      if (
+        (baseUrlIsCerebras || providerIsCerebras) &&
+        openaiPluginResolved.models &&
+        "TEXT_EMBEDDING" in openaiPluginResolved.models
+      ) {
+        const filteredModels = { ...openaiPluginResolved.models } as Record<
+          string,
+          unknown
+        >;
+        delete filteredModels.TEXT_EMBEDDING;
+        plugins.push({
+          ...openaiPluginResolved,
+          models: filteredModels as typeof openaiPluginResolved.models,
+        });
+        strippedEmbedding = true;
+      } else {
+        plugins.push(openaiPluginResolved);
+      }
+      elizaLogger.info(
+        `[bench] Loaded LLM plugin: @elizaos/plugin-openai (baseURL=${openAiBaseURL ?? "default"}, key=${
+          openAiApiKey
+            ? "OPENAI_API_KEY"
+            : cerebrasApiKey
+              ? "CEREBRAS_API_KEY"
+              : "none"
+        }${strippedEmbedding ? ", TEXT_EMBEDDING stripped (cerebras)" : ""})`,
+      );
+      if (strippedEmbedding) {
+        elizaLogger.info(
+          "[bench] Cerebras detected: removed openai plugin's TEXT_EMBEDDING handler so @elizaos/plugin-local-embedding serves embeddings.",
+        );
+      }
     } catch (error: unknown) {
-      elizaLogger.debug(
+      elizaLogger.warn(
         `[bench] OpenAI plugin not available: ${formatUnknownError(error)}`,
       );
     }
+  } else {
+    elizaLogger.warn(
+      `[bench] Skipping @elizaos/plugin-openai: no usable key found ` +
+        `(OPENAI_API_KEY=${openAiApiKey ? (openAiApiKey.startsWith("gsk_") ? "groq-key (excluded)" : "set") : "unset"}, ` +
+        `OPENAI_BASE_URL=${openAiBaseURL ?? "unset"}, ` +
+        `CEREBRAS_API_KEY=${cerebrasApiKey ? "set" : "unset"}). ` +
+        `TEXT_LARGE / TEXT_SMALL handlers will be missing — useModel() will throw.`,
+    );
   }
 
   const openRouterApiKey = process.env.OPENROUTER_API_KEY?.trim();
@@ -472,6 +569,46 @@ export async function startBenchmarkServer() {
     } catch (error: unknown) {
       elizaLogger.error(
         `[bench] Failed to load mock benchmark plugin: ${formatUnknownError(error)}`,
+      );
+    }
+  }
+
+  // Load plugin-social-alpha when the bench session targets the social-alpha
+  // benchmark. The plugin exposes CommunityInvestorService (TrustScoreService),
+  // socialAlphaProvider, and balancedTrustScoreCalculator — i.e. the actual
+  // TS implementation that the Python harness used to port. Loading it here
+  // makes the eliza TS agent the surface under test.
+  const benchName = process.env.ELIZA_BENCH_NAME?.trim().toLowerCase() ?? "";
+  const enableSocialAlphaPlugin =
+    process.env.ELIZA_BENCH_LOAD_SOCIAL_ALPHA === "true" ||
+    benchName === "social_alpha" ||
+    benchName === "social-alpha";
+  if (enableSocialAlphaPlugin) {
+    try {
+      const socialAlphaSrcPath = path.resolve(
+        process.cwd(),
+        "../../plugins/plugin-social-alpha/src/index.ts",
+      );
+      const socialAlphaModule = (await import(
+        pathToFileURL(socialAlphaSrcPath).href
+      )) as Record<string, unknown>;
+      const socialAlphaPlugin =
+        socialAlphaModule.socialAlphaPlugin ?? socialAlphaModule.default;
+      if (socialAlphaPlugin) {
+        plugins.push(
+          toPlugin(socialAlphaPlugin, "@elizaos/plugin-social-alpha"),
+        );
+        elizaLogger.info(
+          "[bench] Loaded LLM plugin: @elizaos/plugin-social-alpha (services=CommunityInvestorService; providers=socialAlphaProvider)",
+        );
+      } else {
+        elizaLogger.warn(
+          "[bench] @elizaos/plugin-social-alpha module did not expose socialAlphaPlugin",
+        );
+      }
+    } catch (error: unknown) {
+      elizaLogger.warn(
+        `[bench] @elizaos/plugin-social-alpha not loaded: ${formatUnknownError(error)}`,
       );
     }
   }
@@ -591,6 +728,99 @@ export async function startBenchmarkServer() {
   elizaLogger.info(
     `[bench] Runtime initialized — agent=${runtime.character.name}, plugins=${plugins.length}`,
   );
+
+  // ── LLM usage capture ────────────────────────────────────────────────────
+  // Plugins (currently @elizaos/plugin-openai, @elizaos/plugin-anthropic) emit
+  // a MODEL_USED event for each LLM call with token usage and provider-side
+  // cache hit info. We collect those into a per-turn buffer that handle-message
+  // installs at the start of a turn and snapshots into the trajectory at end.
+  // Buffer is `null` when no turn is in flight; events outside a turn are
+  // ignored. This is safe because the bench server processes one turn at a
+  // time per session and sessions don't run concurrent handleMessage calls.
+  let activeUsageBuffer: BenchmarkLlmCallUsage[] | null = null;
+  try {
+    const eventRuntime = runtime as unknown as {
+      registerEvent: (
+        type: string,
+        handler: (payload: unknown) => void | Promise<void>,
+      ) => void;
+    };
+    if (typeof eventRuntime.registerEvent === "function") {
+      eventRuntime.registerEvent("MODEL_USED", (payload: unknown) => {
+        if (!activeUsageBuffer) return;
+        if (!payload || typeof payload !== "object") return;
+        const p = payload as {
+          type?: unknown;
+          source?: unknown;
+          provider?: unknown;
+          tokens?: {
+            prompt?: unknown;
+            completion?: unknown;
+            total?: unknown;
+            cached?: unknown;
+          };
+        };
+        const tokens = p.tokens ?? {};
+        const promptTokens =
+          typeof tokens.prompt === "number" ? tokens.prompt : 0;
+        const completionTokens =
+          typeof tokens.completion === "number" ? tokens.completion : 0;
+        const totalTokens =
+          typeof tokens.total === "number"
+            ? tokens.total
+            : promptTokens + completionTokens;
+        const cachedTokens =
+          typeof tokens.cached === "number" ? tokens.cached : undefined;
+        activeUsageBuffer.push({
+          modelType: typeof p.type === "string" ? p.type : "unknown",
+          provider: typeof p.provider === "string" ? p.provider : undefined,
+          source: typeof p.source === "string" ? p.source : undefined,
+          promptTokens,
+          completionTokens,
+          totalTokens,
+          ...(cachedTokens !== undefined ? { cachedTokens } : {}),
+        });
+      });
+      elizaLogger.info(
+        "[bench] Registered MODEL_USED listener for trajectory usage capture",
+      );
+    } else {
+      elizaLogger.warn(
+        "[bench] runtime.registerEvent is not available; trajectory usage will be unset",
+      );
+    }
+  } catch (err: unknown) {
+    elizaLogger.warn(
+      `[bench] Could not register MODEL_USED listener: ${formatUnknownError(err)}`,
+    );
+  }
+
+  const summarizeUsage = (
+    calls: BenchmarkLlmCallUsage[],
+  ): BenchmarkTurnUsage => {
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let totalTokens = 0;
+    let cachedTokens = 0;
+    for (const call of calls) {
+      promptTokens += call.promptTokens;
+      completionTokens += call.completionTokens;
+      totalTokens += call.totalTokens;
+      if (typeof call.cachedTokens === "number") {
+        cachedTokens += call.cachedTokens;
+      }
+    }
+    const cacheHitRatio = promptTokens > 0 ? cachedTokens / promptTokens : 0;
+    return {
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      cachedTokens,
+      cacheHitRatio,
+      callCount: calls.length,
+      calls,
+    };
+  };
 
   const roomToSession = new Map<string, string>();
   const entityToSession = new Map<string, string>();
@@ -1017,6 +1247,8 @@ export async function startBenchmarkServer() {
 
           clearCapturedAction();
           setBenchmarkContext(benchmarkContext);
+          const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
+          activeUsageBuffer = turnUsageBuffer;
           const result = await (async () => {
             try {
               return await messageService.handleMessage(
@@ -1026,8 +1258,10 @@ export async function startBenchmarkServer() {
               );
             } finally {
               setBenchmarkContext(null);
+              activeUsageBuffer = null;
             }
           })();
+          const turnUsage = summarizeUsage(turnUsageBuffer);
 
           const capturedAction = getCapturedAction();
 
@@ -1064,6 +1298,7 @@ export async function startBenchmarkServer() {
             responseText,
             actions,
             params,
+            usage: turnUsage,
           });
           trajectoriesBySession.set(key, trajectory);
 

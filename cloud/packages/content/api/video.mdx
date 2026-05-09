@@ -9,7 +9,8 @@ import { Callout, Tabs } from "@/docs/components";
 
 <div className="status-badge status-stable">Stable</div>
 
-Generate AI-powered videos from text descriptions using Fal.ai models.
+Generate AI-powered videos from text descriptions using the configured video
+model catalog.
 
 ## Generate Video
 
@@ -51,7 +52,7 @@ const response = await fetch('https://elizacloud.ai/api/v1/generate-video', {
 const data = await response.json();
 console.log(data.video.url);
 
-````
+```
   </Tabs.Tab>
   <Tabs.Tab>
 ```python
@@ -71,7 +72,7 @@ response = requests.post(
 
 data = response.json()
 print(data['video']['url'])
-````
+```
 
   </Tabs.Tab>
 </Tabs>
@@ -81,7 +82,7 @@ print(data['video']['url'])
 | Parameter | Type   | Required | Description                          |
 | --------- | ------ | -------- | ------------------------------------ |
 | `prompt`  | string | ✓        | Description of the video to generate |
-| `model`   | string |          | Model to use. Default: `fal-ai/veo3` |
+| `model`   | string |          | Model to use. Check the API Explorer for the current default. |
 
 ### Response
 
@@ -99,22 +100,9 @@ print(data['video']['url'])
 
 ## Available Models
 
-| Model                                             | Provider | Quality | Speed  |
-| ------------------------------------------------- | -------- | ------- | ------ |
-| `fal-ai/veo3`                                     | Google   | Highest | Slow   |
-| `fal-ai/veo3/fast`                                | Google   | High    | Fast   |
-| `fal-ai/veo3.1`                                   | Google   | Highest | Slow   |
-| `fal-ai/veo3.1/fast`                              | Google   | High    | Fast   |
-| `fal-ai/veo3.1/lite`                              | Google   | Good    | Fast   |
-| `fal-ai/kling-video/v3/pro/text-to-video`         | Kling    | Highest | Medium |
-| `fal-ai/kling-video/v3/standard/text-to-video`    | Kling    | High    | Fast   |
-| `fal-ai/kling-video/v2.6/pro/text-to-video`       | Kling    | High    | Medium |
-| `fal-ai/minimax/hailuo-2.3/pro/text-to-video`     | MiniMax  | High    | Medium |
-| `fal-ai/minimax/hailuo-2.3/standard/text-to-video`| MiniMax  | Good    | Fast   |
-| `wan/v2.6/text-to-video`                          | Wan      | High    | Medium |
-| `fal-ai/pixverse/v5.6/text-to-video`              | PixVerse | High    | Fast   |
-| `fal-ai/pixverse/v5.5/text-to-video`              | PixVerse | Good    | Fast   |
-| `fal-ai/pixverse/v5/text-to-video`                | PixVerse | Good    | Fast   |
+Model availability changes with provider catalogs and deployment configuration.
+Use `/api/v1/models`, the API Explorer, or the generated OpenAPI reference for
+the current video model list.
 
 <Callout type="info">
   Video pricing is model-specific and refreshed from fal provider pages. Default

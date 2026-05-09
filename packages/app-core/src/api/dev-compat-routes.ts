@@ -153,7 +153,7 @@ export async function handleDevCompatRoutes(
       maxLines: Number.isFinite(maxLines) ? maxLines : undefined,
       maxBytes: Number.isFinite(maxBytes) ? maxBytes : undefined,
     });
-    if (!result.ok) {
+    if (result.ok === false) {
       sendJsonResponse(res, 404, { error: result.error });
       return true;
     }

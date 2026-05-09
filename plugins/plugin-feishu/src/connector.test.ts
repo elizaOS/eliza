@@ -31,7 +31,8 @@ describe("Feishu message connector", () => {
 
 		const registration = vi.mocked(runtime.registerMessageConnector).mock
 			.calls[0][0];
-		await registration.sendHandler(
+		expect(registration.sendHandler).toBeDefined();
+		await registration.sendHandler?.(
 			runtime,
 			{ source: "feishu", channelId: "oc_test" } as TargetInfo,
 			{

@@ -6,10 +6,11 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * Admin: drain a Docker node.
  *
  * Disables the node so no new containers schedule to it. If the node is
- * already empty AND `?deprovision=true` is set, the underlying Hetzner
- * Cloud server is also deleted (only nodes provisioned via the autoscaler
- * carry an `hcloudServerId` in metadata; manually-registered auctioned
- * boxes are simply removed from the table without touching Hetzner).
+ * already empty AND `?deprovision=true` is set, the underlying autoscaler-
+ * provisioned Hetzner Cloud server is also deleted. Manually registered
+ * auctioned/static boxes do not carry an `hcloudServerId`; those are left
+ * disabled and must be removed explicitly if the operator wants to unregister
+ * them.
  *
  * Stateful containers (volume_path != null) on the node block the
  * deprovision step until the operator migrates or deletes them. The

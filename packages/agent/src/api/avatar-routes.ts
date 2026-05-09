@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import { resolveStateDir } from "../config/paths.js";
 import {
   getDiscordAvatarCacheDir,
   getDiscordAvatarCachePath,
-} from "./discord-avatar-cache.js";
+} from "@elizaos/plugin-discord";
+import { resolveStateDir } from "../config/paths.js";
 import { readRequestBodyBuffer } from "./http-helpers.js";
 
 // ---------------------------------------------------------------------------

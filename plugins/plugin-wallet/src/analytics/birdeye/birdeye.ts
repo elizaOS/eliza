@@ -81,16 +81,12 @@ import type {
   TraderTransactionsSeekResponse,
 } from "./types/api/trader";
 import type {
-  WalletPortfolioMultichainParams,
-  WalletPortfolioMultichainResponse,
   WalletPortfolioParams,
   WalletPortfolioResponse,
   WalletSimulationParams,
   WalletSimulationResponse,
   WalletTokenBalanceParams,
   WalletTokenBalanceResponse,
-  WalletTransactionHistoryMultichainParams,
-  WalletTransactionHistoryMultichainResponse,
   WalletTransactionHistoryParams,
   WalletTransactionHistoryResponse,
 } from "./types/api/wallet";
@@ -702,20 +698,6 @@ export class BirdeyeProvider {
     });
   }
 
-  /**
-   * @deprecated This endpoint will be decommissioned on Feb 1st, 2025.
-   */
-  public async fetchWalletPortfolioMultichain(
-    params: WalletPortfolioMultichainParams,
-    options: { headers?: Record<string, string> } = {},
-  ) {
-    return this.fetchWithCacheAndRetry<WalletPortfolioMultichainResponse>({
-      url: BIRDEYE_ENDPOINTS.wallet.portfolio_multichain,
-      params,
-      headers: options.headers,
-    });
-  }
-
   public async fetchWalletTokenBalance(
     params: WalletTokenBalanceParams,
     options: { headers?: Record<string, string> } = {},
@@ -736,22 +718,6 @@ export class BirdeyeProvider {
       params,
       headers: options.headers,
     });
-  }
-
-  /**
-   * @deprecated This endpoint will be decommissioned on Feb 1st, 2025.
-   */
-  public async fetchWalletTransactionHistoryMultichain(
-    params: WalletTransactionHistoryMultichainParams,
-    options: { headers?: Record<string, string> } = {},
-  ) {
-    return this.fetchWithCacheAndRetry<WalletTransactionHistoryMultichainResponse>(
-      {
-        url: BIRDEYE_ENDPOINTS.wallet.transaction_history_multichain,
-        params,
-        headers: options.headers,
-      },
-    );
   }
 
   public async fetchWalletTransactionSimulate_POST(

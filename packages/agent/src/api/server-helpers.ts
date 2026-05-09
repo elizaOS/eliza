@@ -17,22 +17,20 @@ import {
   createMessageMemory,
   logger,
   type Media,
+  sendJsonError,
   type UUID,
 } from "@elizaos/core";
-
 import {
   normalizeCharacterLanguage,
+  normalizeOnboardingProviderId,
+  resolveDeploymentTargetInConfig,
+  resolveServiceRoutingInConfig,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
-import {
-  normalizeOnboardingProviderId,
-  resolveDeploymentTargetInConfig,
-  resolveServiceRoutingInConfig,
-} from "../contracts/onboarding.js";
 import {
   type AgentEventServiceLike,
   getAgentEventService,
@@ -43,9 +41,8 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
-import { maybeAugmentChatMessageWithKnowledge as augmentChatMessageWithKnowledge } from "./chat-augmentation.js";
+import { maybeAugmentChatMessageWithDocuments as augmentChatMessageWithDocuments } from "./chat-augmentation.js";
 import { extractCompatTextContent } from "./compat-utils.js";
-import { sendJsonError } from "./http-helpers.js";
 import type { ChatAttachmentWithData, ServerState } from "./server-types.js";
 import { getWalletAddresses } from "./wallet.js";
 import {
@@ -692,11 +689,11 @@ export function maybeAugmentChatMessageWithWalletContext(
   };
 }
 
-export async function maybeAugmentChatMessageWithKnowledge(
+export async function maybeAugmentChatMessageWithDocuments(
   runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
 ): Promise<ReturnType<typeof createMessageMemory>> {
-  return augmentChatMessageWithKnowledge(runtime, message);
+  return augmentChatMessageWithDocuments(runtime, message);
 }
 
 // ---------------------------------------------------------------------------

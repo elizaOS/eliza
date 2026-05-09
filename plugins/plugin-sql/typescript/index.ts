@@ -1,6 +1,25 @@
 import { mkdirSync } from "node:fs";
 import type { IDatabaseAdapter, UUID } from "@elizaos/core";
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+
+export {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  ne,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
+
 import { PgDatabaseAdapter } from "./pg/adapter";
 import { PostgresConnectionManager } from "./pg/manager";
 import { PgliteDatabaseAdapter } from "./pglite/adapter";
@@ -10,6 +29,25 @@ import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage
 import { resolvePgliteDir } from "./utils";
 import { stringToUuid } from "./utils/string-to-uuid";
 
+export type {
+  AppendConnectorAccountAuditEventParams,
+  ConnectorAccountAuditEventRecord,
+  ConnectorAccountAuditOutcome,
+  ConnectorAccountCredentialRefRecord,
+  ConnectorAccountJsonObject,
+  ConnectorAccountRecord,
+  ConsumeOAuthFlowStateParams,
+  CreateOAuthFlowStateParams,
+  DeleteConnectorAccountParams,
+  GetConnectorAccountCredentialRefParams,
+  GetConnectorAccountParams,
+  ListConnectorAccountCredentialRefsParams,
+  ListConnectorAccountsParams,
+  OAuthFlowRecord,
+  SetConnectorAccountCredentialRefParams,
+  UpsertConnectorAccountParams,
+} from "@elizaos/core";
+export * from "./connector-credential-store";
 export * from "./pglite/errors";
 export * from "./schema";
 export type { DrizzleDatabase } from "./types";

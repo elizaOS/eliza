@@ -1,23 +1,11 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { v4 as uuidv4 } from "uuid";
-
-interface WorkingMemoryEntry {
-	actionName: string;
-	result: ActionResult;
-	timestamp: number;
-}
-
 import Handlebars from "handlebars";
+import { v4 as uuidv4 } from "uuid";
 import {
 	withCanonicalActionDocs,
-	withCanonicalEvaluatorDocs,
 	withCanonicalProviderDocs,
 } from "./action-docs";
-import { parseActionParams, validateActionParams } from "./actions";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
-import { createTaskClipboardService } from "./features/advanced-capabilities/clipboard/services/taskClipboardService";
 import { createAdvancedMemoryPlugin } from "./features/advanced-memory/index";
 import {
 	type CapabilityConfig,
@@ -34,6 +22,13 @@ import {
 	nativeRuntimeFeaturePluginNames,
 	resolveNativeRuntimeFeatureFromPluginName,
 } from "./plugins/native-features";
+import { ContextRegistry } from "./runtime/context-registry";
+import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
+import {
+	buildCanonicalSystemPrompt,
+	resolveEffectiveSystemPrompt,
+	textFromChatMessageContent,
+} from "./runtime/system-prompt";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
 import { DefaultMessageService } from "./services/message";
@@ -43,27 +38,35 @@ import {
 	getStreamingContext,
 	runInsideModelStreamChunkDelivery,
 	runWithStreamingContext,
-	type StreamingContext,
 } from "./streaming-context";
 import {
 	getTrajectoryContext,
 	setTrajectoryPurpose,
 } from "./trajectory-context";
 import {
-	withActionStep,
-	withEvaluatorStep,
+	type TrajectoryProviderAccessLogger,
+	type TrajectoryRuntimeLlmCallLogger,
 	withProviderStep,
 } from "./trajectory-utils";
 import {
 	type Action,
-	type ActionContext,
+	type ActionMode,
 	type ActionResult,
 	type Agent,
+	type AppendConnectorAccountAuditEventParams,
 	ChannelType,
 	type Character,
 	type Component,
+	type ConnectorAccountAuditEventRecord,
+	type ConnectorAccountCredentialRefRecord,
+	type ConnectorAccountRecord,
+	type ConnectorAccountRef,
+	type ConsumeOAuthFlowStateParams,
 	type Content,
 	type ControlMessage,
+	type CreateOAuthFlowStateParams,
+	type DeleteConnectorAccountParams,
+	type DeleteOAuthFlowStateParams,
 	type Entity,
 	type Evaluator,
 	type EventHandler,
@@ -73,13 +76,17 @@ import {
 	type GenerateTextOptions,
 	type GenerateTextParams,
 	type GenerateTextResult,
+	type GetConnectorAccountCredentialRefParams,
+	type GetConnectorAccountParams,
+	type GetOAuthFlowStateParams,
 	getModelFallbackChain,
 	type HandlerCallback,
-	type HandlerOptions,
 	type IAgentRuntime,
 	type IDatabaseAdapter,
 	type IMessagingAdapter,
 	type JsonValue,
+	type ListConnectorAccountCredentialRefsParams,
+	type ListConnectorAccountsParams,
 	type Log,
 	type LogBody,
 	type Memory,
@@ -93,6 +100,7 @@ import {
 	type ModelResultMap,
 	ModelType,
 	type ModelTypeName,
+	type OAuthFlowRecord,
 	type PairingAllowlistEntry,
 	type PairingChannel,
 	type PairingRequest,
@@ -103,6 +111,9 @@ import {
 	type PipelineHookSpec,
 	type Plugin,
 	type PluginOwnership,
+	type PostConnector,
+	type PostConnectorMetadata,
+	type PostConnectorRegistration,
 	type PromptSegment,
 	type Provider,
 	type ProviderResult,
@@ -117,6 +128,7 @@ import {
 	type Service,
 	type ServiceClass,
 	type ServiceTypeName,
+	type SetConnectorAccountCredentialRefParams,
 	type State,
 	type StateValue,
 	type StreamChunkCallback,
@@ -125,15 +137,17 @@ import {
 	type TaskWorker,
 	type TextGenerationModelType,
 	type TextStreamResult,
+	type UpdateOAuthFlowStateParams,
+	type UpsertConnectorAccountParams,
 	type UUID,
 	type World,
 } from "./types";
+import type { AgentContext } from "./types/contexts";
 import type { IMessageService } from "./types/message-service";
 import {
 	afterMemoryPersistedPipelineHookContext,
 	modelStreamChunkPipelineHookContext,
 	modelStreamEndPipelineHookContext,
-	outgoingPipelineHookContext,
 	PIPELINE_HOOK_DEBUG_LOG_MS,
 	PIPELINE_HOOK_ERROR_LOG_MS,
 	PIPELINE_HOOK_WARN_MS,
@@ -163,20 +177,7 @@ import type {
 	StructuredOutputFailure,
 } from "./types/state";
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
-import {
-	parseJSONObjectFromText,
-	parseToonKeyValue,
-	stringToUuid,
-} from "./utils";
-import {
-	collectActionResultSizeWarnings,
-	getActionResultActionName,
-	getActionResultReference,
-	MAX_ACTION_RESULT_ERROR_CHARS,
-	MAX_ACTION_RESULT_TEXT_CHARS,
-	stringifyActionResultError,
-	trimActionResultForPromptState,
-} from "./utils/action-results";
+import { parseJSONObjectFromText, stringToUuid } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
 import { BufferUtils } from "./utils/buffer";
 import { resolveProviderContexts } from "./utils/context-catalog";
@@ -187,12 +188,6 @@ import {
 import { buildDeterministicSeed } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import { getErrorMessage, isTransientModelError } from "./utils/model-errors";
-import { resolveStateDir } from "./utils/state-dir";
-import {
-	ActionStreamFilter,
-	ToonFieldStreamExtractor,
-} from "./utils/streaming";
-import { encodeToonValue } from "./utils/toon";
 import { isPlainObject } from "./utils/type-guards";
 
 const environmentSettings: RuntimeSettings = {};
@@ -226,9 +221,6 @@ const STABLE_PROMPT_PROVIDER_NAMES = new Set([
 	"PROVIDERS",
 ]);
 const STRUCTURED_CODE_FENCE_PATTERN = /```([^\n`]*)\r?\n?([\s\S]*?)```/g;
-const TOON_HEADER_PATTERN = /^TOON(?:\s+DOCUMENT)?[:\s-]*$/i;
-const TOON_FIELD_PATTERN =
-	/^[A-Za-z_][A-Za-z0-9_.-]*(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?:/m;
 const JSON_OBJECT_KEY_PATTERN =
 	/(?:["'][^"'\n]+["']|[A-Za-z_][A-Za-z0-9_-]*)\s*:/;
 const WEB_SEARCH_SERVICE_TYPE = "web_search";
@@ -267,10 +259,12 @@ const TEXT_GENERATION_MODEL_KEYS: readonly string[] = [
 	ModelType.TEXT_MEGA,
 	ModelType.RESPONSE_HANDLER,
 	ModelType.ACTION_PLANNER,
+	ModelType.TEXT_REASONING_SMALL,
+	ModelType.TEXT_REASONING_LARGE,
 	ModelType.TEXT_COMPLETION,
 ];
 
-type StructuredResponseFormat = "JSON" | "TOON";
+type StructuredResponseFormat = "JSON";
 
 type StructuredResponseCandidate = {
 	text: string;
@@ -278,13 +272,33 @@ type StructuredResponseCandidate = {
 	source: string;
 };
 
-type DynamicPromptStreamExtractor = ToonFieldStreamExtractor;
+type DynamicPromptStreamExtractor = {
+	push(chunk: string): void;
+	flush(): void;
+	reset(): void;
+	signalError(message: string): void;
+	signalRetry(retry: number): { validatedFields: string[] };
+	diagnose(): {
+		missingFields: string[];
+		invalidFields: string[];
+		incompleteFields: string[];
+	};
+	getValidatedFields(): Map<string, string>;
+};
 
 function coerceOutgoingMessageText(text: unknown): string {
 	if (text === null || text === undefined) {
 		return "";
 	}
 	return String(text);
+}
+
+function stringifyStructuredForPrompt(value: unknown): string {
+	try {
+		return JSON.stringify(value, null, 2);
+	} catch {
+		return String(value);
+	}
 }
 
 function resolveDynamicPromptModelType(
@@ -312,19 +326,16 @@ function resolveDynamicPromptModelType(
 /**
  * Resolves the default structured-output format from a setting value.
  * Used by `dynamicPromptExecFromState` when no per-call preference is given.
- * Accepts `toon` or `json` (case-insensitive); anything else → TOON.
  */
 export function resolveDefaultOutputFormat(
 	raw: unknown,
 ): StructuredResponseFormat {
-	if (typeof raw !== "string") return "TOON";
+	if (typeof raw !== "string") return "JSON";
 	switch (raw.trim().toLowerCase()) {
 		case "json":
 			return "JSON";
-		case "toon":
-			return "TOON";
 		default:
-			return "TOON";
+			return "JSON";
 	}
 }
 
@@ -346,149 +357,6 @@ function isTextStreamResult(
 		"usage" in value &&
 		"finishReason" in value
 	);
-}
-
-function callbackContentHasVisibleOutput(content: Content): boolean {
-	if (typeof content.text === "string" && content.text.trim().length > 0) {
-		return true;
-	}
-	return Array.isArray(content.attachments) && content.attachments.length > 0;
-}
-
-function suppressesVisibleActionResult(actionResult: ActionResult | undefined) {
-	return actionResult?.data?.suppressVisibleCallback === true;
-}
-
-const ACTION_RESULT_CLIPBOARD_FLAGS = [
-	"addToClipboard",
-	"copyToClipboard",
-	"persistToClipboard",
-	"saveToClipboard",
-] as const;
-const ACTION_RESULT_CLIPBOARD_SUPPRESS_FLAGS = [
-	"suppressActionResultClipboard",
-	"suppressClipboard",
-] as const;
-const TERMINAL_ACTION_RESULT_NAMES = new Set([
-	"REPLY",
-	"RESPOND",
-	"IGNORE",
-	"STOP",
-	"NONE",
-]);
-const ACTION_RESULT_CLIPBOARD_TEXT_PATTERN =
-	/\b(copy|save|store|keep|persist|put)\b[\s\S]{0,80}\b(?:to|in|into|on)?\s*(?:the\s*)?clipboard\b/i;
-const CLIPBOARD_ACTION_RESULT_TEXT_PATTERN =
-	/\bclipboard\b[\s\S]{0,80}\b(copy|save|store|keep|persist)\b/i;
-const ACTION_RESULT_CLIPBOARD_NEGATION_PATTERN =
-	/\b(?:do\s+not|don't|dont|never|without)\b[\s\S]{0,80}\b(copy|save|store|keep|persist|put)\b[\s\S]{0,80}\bclipboard\b/i;
-
-type ActionResultClipboardStatus = {
-	text: string;
-};
-
-function isTruthyClipboardFlag(value: unknown): boolean {
-	if (value === true) {
-		return true;
-	}
-	if (typeof value === "string") {
-		return /^(true|1|yes|y|on)$/i.test(value.trim());
-	}
-	return false;
-}
-
-function normalizeActionResultName(value: string): string {
-	return value
-		.trim()
-		.replace(/[\s-]+/g, "_")
-		.toUpperCase();
-}
-
-function isTerminalActionResultName(actionName: string): boolean {
-	return TERMINAL_ACTION_RESULT_NAMES.has(
-		normalizeActionResultName(actionName),
-	);
-}
-
-function contentHasTruthyFlag(
-	content: Content,
-	flags: readonly string[],
-): boolean {
-	return flags.some((flag) => isTruthyClipboardFlag(content[flag]));
-}
-
-function actionResultDataHasTruthyFlag(
-	actionResult: ActionResult | undefined,
-	flags: readonly string[],
-): boolean {
-	return flags.some((flag) =>
-		isTruthyClipboardFlag(actionResult?.data?.[flag]),
-	);
-}
-
-function messageRequestsActionResultClipboard(message: Memory): boolean {
-	if (contentHasTruthyFlag(message.content, ACTION_RESULT_CLIPBOARD_FLAGS)) {
-		return true;
-	}
-
-	const text = message.content.text;
-	if (typeof text !== "string" || !text.trim()) {
-		return false;
-	}
-
-	if (ACTION_RESULT_CLIPBOARD_NEGATION_PATTERN.test(text)) {
-		return false;
-	}
-
-	return (
-		ACTION_RESULT_CLIPBOARD_TEXT_PATTERN.test(text) ||
-		CLIPBOARD_ACTION_RESULT_TEXT_PATTERN.test(text)
-	);
-}
-
-function actionResultRequestsClipboard(
-	actionResult: ActionResult | undefined,
-): boolean {
-	return actionResultDataHasTruthyFlag(
-		actionResult,
-		ACTION_RESULT_CLIPBOARD_FLAGS,
-	);
-}
-
-function suppressesActionResultClipboard(
-	action: Action,
-	actionResult: ActionResult | undefined,
-): boolean {
-	return (
-		action.suppressActionResultClipboard === true ||
-		actionResultDataHasTruthyFlag(
-			actionResult,
-			ACTION_RESULT_CLIPBOARD_SUPPRESS_FLAGS,
-		)
-	);
-}
-
-function stringFromContent(value: unknown): string | null {
-	return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function resolveActionResultClipboardTitle(
-	message: Memory,
-	action: Action,
-	actionResult: ActionResult | undefined,
-): string {
-	return (
-		stringFromContent(actionResult?.data?.clipboardTitle) ??
-		stringFromContent(message.content.clipboardTitle) ??
-		stringFromContent(message.content.title) ??
-		`${action.name} result`
-	);
-}
-
-function safeActionResultFilePart(value: string | undefined): string {
-	const normalized =
-		value?.trim().replace(/[^a-zA-Z0-9._-]/g, "_") || "unknown";
-	return normalized.slice(0, 80) || "unknown";
 }
 
 function getSearchCategoryKey(category: string): string {
@@ -542,13 +410,107 @@ function labelFromMessageConnectorSource(source: string): string {
 	return label || "Message Connector";
 }
 
+const CONNECTOR_ACCOUNT_KEY_SEPARATOR = "\u0000";
+
+function normalizeConnectorAccountId(accountId: unknown): string | undefined {
+	return typeof accountId === "string" && accountId.trim()
+		? accountId.trim()
+		: undefined;
+}
+
+function connectorRouteKey(source: string, accountId?: string): string {
+	return accountId
+		? `${source}${CONNECTOR_ACCOUNT_KEY_SEPARATOR}${accountId}`
+		: source;
+}
+
+function connectorKeySource(key: string): string {
+	return key.split(CONNECTOR_ACCOUNT_KEY_SEPARATOR, 1)[0] ?? key;
+}
+
+function cloneConnectorAccountRef(
+	account: ConnectorAccountRef,
+	source: string,
+): ConnectorAccountRef {
+	return {
+		...account,
+		source: account.source || source,
+		accountId: normalizeConnectorAccountId(account.accountId),
+		capabilities: account.capabilities
+			? account.capabilities.map((capability) => ({
+					...capability,
+					targetKinds: capability.targetKinds
+						? [...capability.targetKinds]
+						: undefined,
+					scopes: capability.scopes ? [...capability.scopes] : undefined,
+					metadata: capability.metadata
+						? { ...capability.metadata }
+						: undefined,
+				}))
+			: undefined,
+		metadata: account.metadata ? { ...account.metadata } : undefined,
+	};
+}
+
+function normalizeConnectorAccountRef(
+	source: string,
+	account?: ConnectorAccountRef,
+	accountId?: string,
+): ConnectorAccountRef | undefined {
+	const normalizedAccountId =
+		normalizeConnectorAccountId(accountId) ??
+		normalizeConnectorAccountId(account?.accountId);
+	if (!account && !normalizedAccountId) {
+		return undefined;
+	}
+	return cloneConnectorAccountRef(
+		{
+			...account,
+			source: account?.source?.trim() || source,
+			accountId: normalizedAccountId,
+		},
+		source,
+	);
+}
+
 function cloneMessageConnector(connector: MessageConnector): MessageConnector {
 	return {
 		...connector,
+		account: connector.account
+			? cloneConnectorAccountRef(connector.account, connector.source)
+			: undefined,
 		capabilities: [...connector.capabilities],
 		supportedTargetKinds: [...connector.supportedTargetKinds],
 		contexts: [...connector.contexts],
 		metadata: connector.metadata ? { ...connector.metadata } : undefined,
+		contentShaping: connector.contentShaping
+			? {
+					...connector.contentShaping,
+					constraints: connector.contentShaping.constraints
+						? { ...connector.contentShaping.constraints }
+						: undefined,
+				}
+			: undefined,
+	};
+}
+
+function clonePostConnector(connector: PostConnector): PostConnector {
+	return {
+		...connector,
+		account: connector.account
+			? cloneConnectorAccountRef(connector.account, connector.source)
+			: undefined,
+		capabilities: [...connector.capabilities],
+		contexts: [...connector.contexts],
+		metadata: connector.metadata ? { ...connector.metadata } : undefined,
+		contentShaping: connector.contentShaping
+			? {
+					...connector.contentShaping,
+					constraints: connector.contentShaping.constraints
+						? { ...connector.contentShaping.constraints }
+						: undefined,
+				}
+			: undefined,
 	};
 }
 
@@ -556,8 +518,13 @@ function normalizeMessageConnector(
 	source: string,
 	metadata: MessageConnectorMetadata = {},
 ): MessageConnector {
+	const accountId =
+		normalizeConnectorAccountId(metadata.accountId) ??
+		normalizeConnectorAccountId(metadata.account?.accountId);
 	const connector: MessageConnector = {
 		source,
+		accountId,
+		account: normalizeConnectorAccountRef(source, metadata.account, accountId),
 		label: metadata.label?.trim() || labelFromMessageConnectorSource(source),
 		capabilities: metadata.capabilities
 			? [...metadata.capabilities]
@@ -579,6 +546,56 @@ function normalizeMessageConnector(
 		connector.getChatContext = metadata.getChatContext;
 	if (metadata.getUserContext)
 		connector.getUserContext = metadata.getUserContext;
+	if (metadata.listServers) connector.listServers = metadata.listServers;
+	if (metadata.fetchMessages) connector.fetchMessages = metadata.fetchMessages;
+	if (metadata.searchMessages)
+		connector.searchMessages = metadata.searchMessages;
+	if (metadata.reactHandler) connector.reactHandler = metadata.reactHandler;
+	if (metadata.editHandler) connector.editHandler = metadata.editHandler;
+	if (metadata.deleteHandler) connector.deleteHandler = metadata.deleteHandler;
+	if (metadata.pinHandler) connector.pinHandler = metadata.pinHandler;
+	if (metadata.joinHandler) connector.joinHandler = metadata.joinHandler;
+	if (metadata.leaveHandler) connector.leaveHandler = metadata.leaveHandler;
+	if (metadata.getUser) connector.getUser = metadata.getUser;
+	if (metadata.contentShaping)
+		connector.contentShaping = {
+			...metadata.contentShaping,
+			constraints: metadata.contentShaping.constraints
+				? { ...metadata.contentShaping.constraints }
+				: undefined,
+		};
+
+	return connector;
+}
+
+function normalizePostConnector(
+	source: string,
+	metadata: PostConnectorMetadata = {},
+): PostConnector {
+	const accountId =
+		normalizeConnectorAccountId(metadata.accountId) ??
+		normalizeConnectorAccountId(metadata.account?.accountId);
+	const connector: PostConnector = {
+		source,
+		accountId,
+		account: normalizeConnectorAccountRef(source, metadata.account, accountId),
+		label: metadata.label?.trim() || labelFromMessageConnectorSource(source),
+		capabilities: metadata.capabilities ? [...metadata.capabilities] : ["post"],
+		contexts: metadata.contexts ? [...metadata.contexts] : [],
+	};
+
+	if (metadata.description) connector.description = metadata.description;
+	if (metadata.metadata) connector.metadata = { ...metadata.metadata };
+	if (metadata.postHandler) connector.postHandler = metadata.postHandler;
+	if (metadata.fetchFeed) connector.fetchFeed = metadata.fetchFeed;
+	if (metadata.searchPosts) connector.searchPosts = metadata.searchPosts;
+	if (metadata.contentShaping)
+		connector.contentShaping = {
+			...metadata.contentShaping,
+			constraints: metadata.contentShaping.constraints
+				? { ...metadata.contentShaping.constraints }
+				: undefined,
+		};
 
 	return connector;
 }
@@ -598,9 +615,15 @@ export class AgentRuntime implements IAgentRuntime {
 	public adapter!: IDatabaseAdapter;
 	static #anonymousAgentCounter = 0;
 	readonly actions: Action[] = [];
-	readonly evaluators: Evaluator[] = [];
 	readonly providers: Provider[] = [];
+	readonly evaluators: Evaluator[] = [];
 	readonly plugins: Plugin[] = [];
+	/**
+	 * Per-runtime context registry seeded with first-party context definitions
+	 * during `_initializeCore`. Plugins may register additional contexts before
+	 * Stage 1 runs.
+	 */
+	readonly contexts: ContextRegistry = new ContextRegistry([]);
 	public unloadPlugin!: (pluginName: string) => Promise<PluginOwnership | null>;
 	public reloadPlugin!: (plugin: Plugin) => Promise<void>;
 	public applyPluginConfig!: (
@@ -619,6 +642,7 @@ export class AgentRuntime implements IAgentRuntime {
 	private taskWorkers = new Map<string, TaskWorker>();
 	private sendHandlers = new Map<string, SendHandlerFunction>();
 	private messageConnectors = new Map<string, MessageConnector>();
+	private postConnectors = new Map<string, PostConnector>();
 	private searchCategories = new Map<string, SearchCategoryRegistration>();
 	private eventHandlers: Map<string, Array<(data: EventPayload) => void>> =
 		new Map();
@@ -671,17 +695,6 @@ export class AgentRuntime implements IAgentRuntime {
 		| undefined;
 	private currentRunId?: UUID; // Track the current run ID
 	private currentRoomId?: UUID; // Track the current room for logging
-	private currentActionContext?: {
-		// Track current action execution context
-		actionName: string;
-		actionId: UUID;
-		prompts: Array<{
-			modelType: string;
-			prompt: string;
-			timestamp: number;
-		}>;
-	};
-	private maxWorkingMemoryEntries: number = 50; // Default value, can be overridden
 	public messageService: IMessageService | null = null; // Lazily initialized
 	public companionUrl?: string;
 	/** Set when stop() has been called; prevents new service starts and use-after-stop. */
@@ -745,7 +758,7 @@ export class AgentRuntime implements IAgentRuntime {
 		enableSecretsManager?: boolean;
 		/** Enable plugin introspection, install/eject/sync. */
 		enablePluginManager?: boolean;
-		enableKnowledge?: boolean;
+		enableDocuments?: boolean;
 		enableRelationships?: boolean;
 		enableTrajectories?: boolean;
 		/** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. WHY: Thin runtimes (e.g. serverless) delegate embeddings and task-dirty notifications without blocking. */
@@ -766,10 +779,10 @@ export class AgentRuntime implements IAgentRuntime {
 				postExamples: [],
 				topics: [],
 				adjectives: [],
-				knowledge: [],
+				documents: [],
 				plugins: [],
 				secrets: {},
-			};
+			} as Character;
 			this.isAnonymousCharacter = true;
 		}
 
@@ -787,7 +800,7 @@ export class AgentRuntime implements IAgentRuntime {
 			enablePluginManager: opts.enablePluginManager,
 		};
 		this.nativeFeatureOptions = {
-			knowledge: opts.enableKnowledge,
+			documents: opts.enableDocuments,
 			relationships: opts.enableRelationships,
 			trajectories: opts.enableTrajectories,
 		};
@@ -853,17 +866,6 @@ export class AgentRuntime implements IAgentRuntime {
 			"Initialized",
 		);
 		this.currentRunId = undefined; // Initialize run ID tracker
-
-		// Set max working memory entries from settings or environment
-		if (opts.settings?.MAX_WORKING_MEMORY_ENTRIES) {
-			this.maxWorkingMemoryEntries =
-				parseInt(String(opts.settings.MAX_WORKING_MEMORY_ENTRIES), 10) || 50;
-		} else {
-			this.maxWorkingMemoryEntries = getNumberEnv(
-				"MAX_WORKING_MEMORY_ENTRIES",
-				50,
-			) as number;
-		}
 
 		installRuntimePluginLifecycle(this);
 	}
@@ -936,13 +938,19 @@ export class AgentRuntime implements IAgentRuntime {
 		return serviceType;
 	}
 
+	private nativeRuntimeFeatureSettingKey(
+		feature: NativeRuntimeFeature,
+	): string {
+		return `ENABLE_${feature.toUpperCase()}`;
+	}
+
 	private resolveNativeFeatureEnabled(feature: NativeRuntimeFeature): boolean {
 		const explicit = this.nativeFeatureOptions[feature];
 		if (explicit !== undefined) {
 			return explicit;
 		}
 
-		const settingKey = `ENABLE_${feature.toUpperCase()}`;
+		const settingKey = this.nativeRuntimeFeatureSettingKey(feature);
 		const settingValue = parseBooleanValue(this.getSetting(settingKey));
 		if (settingValue !== undefined) {
 			return settingValue;
@@ -960,8 +968,8 @@ export class AgentRuntime implements IAgentRuntime {
 		serviceType: ServiceTypeName | string,
 	): NativeRuntimeFeature | null {
 		switch (serviceType) {
-			case "knowledge":
-				return "knowledge";
+			case "documents":
+				return "documents";
 			case "relationships":
 				return "relationships";
 			case "trajectories":
@@ -1002,19 +1010,19 @@ export class AgentRuntime implements IAgentRuntime {
 			await this.unloadPlugin(nativeRuntimeFeaturePluginNames[feature]);
 		}
 
-		this.setSetting(`ENABLE_${feature.toUpperCase()}`, enabled);
+		this.setSetting(this.nativeRuntimeFeatureSettingKey(feature), enabled);
 	}
 
-	async enableKnowledge(): Promise<void> {
-		await this.setNativeRuntimeFeatureEnabled("knowledge", true);
+	async enableDocuments(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("documents", true);
 	}
 
-	async disableKnowledge(): Promise<void> {
-		await this.setNativeRuntimeFeatureEnabled("knowledge", false);
+	async disableDocuments(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("documents", false);
 	}
 
-	isKnowledgeEnabled(): boolean {
-		return this.hasNativeRuntimeFeature("knowledge");
+	isDocumentsEnabled(): boolean {
+		return this.hasNativeRuntimeFeature("documents");
 	}
 
 	async enableRelationships(): Promise<void> {
@@ -1519,14 +1527,30 @@ export class AgentRuntime implements IAgentRuntime {
 				existingActionNames.add(action.name);
 			}
 		}
-		if (pluginToRegister.evaluators) {
-			for (const evaluator of pluginToRegister.evaluators) {
-				this.registerEvaluator(evaluator);
-			}
-		}
 		if (pluginToRegister.providers) {
 			for (const provider of pluginToRegister.providers) {
 				this.registerProvider(provider);
+			}
+		}
+		if (pluginToRegister.evaluators) {
+			const existingEvaluatorNames = new Set(
+				this.evaluators.map((evaluator) => evaluator.name),
+			);
+			for (const evaluator of pluginToRegister.evaluators) {
+				if (existingEvaluatorNames.has(evaluator.name)) {
+					this.logger.debug(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							evaluator: evaluator.name,
+							plugin: pluginToRegister.name,
+						},
+						"Skipping duplicate plugin evaluator",
+					);
+					continue;
+				}
+				this.registerEvaluator(evaluator);
+				existingEvaluatorNames.add(evaluator.name);
 			}
 		}
 		if (pluginToRegister.models) {
@@ -1735,6 +1759,19 @@ export class AgentRuntime implements IAgentRuntime {
 		skipMigrations?: boolean;
 		allowNoDatabase?: boolean;
 	}): Promise<void> {
+		// Seed the per-runtime context registry with the first-party taxonomy
+		// before any plugin registers. Subsequent plugin/extension calls to
+		// `runtime.contexts.tryRegister(...)` will be idempotent on these ids.
+		const { skipped: skippedContexts } = this.contexts.tryRegisterMany(
+			DEFAULT_CONTEXT_DEFINITIONS,
+		);
+		for (const id of skippedContexts) {
+			this.logger.warn(
+				{ src: "agent", agentId: this.agentId, context: id },
+				"First-party context already registered, skipping",
+			);
+		}
+
 		const pluginRegistrationPromises: Promise<void>[] = [];
 
 		// Basic capabilities are now built into core - auto-register it first
@@ -2127,6 +2164,42 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
+	private getCharacterEnvSetting(
+		key: string,
+	): string | boolean | number | undefined {
+		const env = (this.character as { env?: unknown }).env;
+		if (!env || typeof env !== "object" || Array.isArray(env)) {
+			return undefined;
+		}
+
+		const envRecord = env as Record<string, unknown>;
+		const vars =
+			envRecord.vars &&
+			typeof envRecord.vars === "object" &&
+			!Array.isArray(envRecord.vars)
+				? (envRecord.vars as Record<string, unknown>)
+				: undefined;
+
+		const directValue = envRecord[key];
+		if (
+			typeof directValue === "string" ||
+			typeof directValue === "boolean" ||
+			typeof directValue === "number"
+		) {
+			return directValue;
+		}
+
+		const varsValue = vars?.[key];
+		if (
+			typeof varsValue === "string" ||
+			typeof varsValue === "boolean" ||
+			typeof varsValue === "number"
+		) {
+			return varsValue;
+		}
+		return undefined;
+	}
+
 	getSetting(key: string): string | boolean | number | null {
 		const settings = this.character.settings;
 		const secrets = this.character.secrets;
@@ -2155,6 +2228,7 @@ export class AgentRuntime implements IAgentRuntime {
 			settings?.[key] ??
 			extraSettings?.[key] ??
 			nestedSecrets?.[key] ??
+			this.getCharacterEnvSetting(key) ??
 			this.settings[key];
 
 		// Handle each type appropriately
@@ -2439,18 +2513,64 @@ export class AgentRuntime implements IAgentRuntime {
 
 	registerAction(action: Action) {
 		const canonical = withCanonicalActionDocs(action);
-		if (this.actions.find((a) => a.name === canonical.name)) {
+		Object.assign(action, canonical);
+		if (this.actions.find((a) => a.name === action.name)) {
 			this.logger.debug(
-				{ src: "agent", agentId: this.agentId, action: canonical.name },
+				{ src: "agent", agentId: this.agentId, action: action.name },
 				"Action already registered, skipping",
 			);
 		} else {
-			this.actions.push(canonical);
+			this.actions.push(action);
 			this.logger.debug(
-				{ src: "agent", agentId: this.agentId, action: canonical.name },
+				{ src: "agent", agentId: this.agentId, action: action.name },
 				"Action registered",
 			);
 		}
+	}
+
+	registerEvaluator(evaluator: Evaluator) {
+		if (this.evaluators.find((item) => item.name === evaluator.name)) {
+			this.logger.debug(
+				{ src: "agent", agentId: this.agentId, evaluator: evaluator.name },
+				"Evaluator already registered, skipping",
+			);
+			return;
+		}
+		this.evaluators.push(evaluator);
+		this.logger.debug(
+			{ src: "agent", agentId: this.agentId, evaluator: evaluator.name },
+			"Evaluator registered",
+		);
+	}
+
+	unregisterEvaluator(name: string): boolean {
+		const normalized = typeof name === "string" ? name.trim() : "";
+		if (!normalized) return false;
+		const index = this.evaluators.findIndex(
+			(evaluator) => evaluator.name === normalized,
+		);
+		if (index === -1) return false;
+		this.evaluators.splice(index, 1);
+		this.logger.debug(
+			{ src: "agent", agentId: this.agentId, evaluator: normalized },
+			"Evaluator unregistered",
+		);
+		return true;
+	}
+
+	unregisterAction(name: string): boolean {
+		const normalized = typeof name === "string" ? name.trim() : "";
+		if (!normalized) return false;
+		const index = this.actions.findIndex(
+			(action) => action.name === normalized,
+		);
+		if (index === -1) return false;
+		this.actions.splice(index, 1);
+		this.logger.debug(
+			{ src: "agent", agentId: this.agentId, action: normalized },
+			"Action unregistered",
+		);
+		return true;
 	}
 
 	getAllActions(): Action[] {
@@ -2512,1054 +2632,6 @@ export class AgentRuntime implements IAgentRuntime {
 		return { allowed: result.allowed, reason: result.reason };
 	}
 
-	registerEvaluator(evaluator: Evaluator) {
-		this.evaluators.push(withCanonicalEvaluatorDocs(evaluator));
-	}
-
-	// Helper functions for immutable action plan updates
-	private updateActionPlan<T>(plan: T, updates: Partial<T>): T {
-		return { ...plan, ...updates };
-	}
-
-	private updateActionStep<T, S>(
-		plan: T & { steps: S[] },
-		index: number,
-		stepUpdates: Partial<S>,
-	): T & { steps: S[] } {
-		// Add bounds checking
-		if (!plan.steps || index < 0 || index >= plan.steps.length) {
-			this.logger.warn(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					index,
-					stepsCount: plan.steps?.length || 0,
-				},
-				"Invalid step index",
-			);
-			return plan;
-		}
-		return {
-			...plan,
-			steps: plan.steps.map((step: S, i: number) =>
-				i === index ? { ...step, ...stepUpdates } : step,
-			),
-		};
-	}
-
-	private async writeActionResultSnapshot(params: {
-		message: Memory;
-		actionId: UUID;
-		actionName: string;
-		field: "text" | "error";
-		content: string;
-	}): Promise<string | undefined> {
-		try {
-			const directory = join(
-				resolveStateDir(),
-				"action-results",
-				safeActionResultFilePart(params.message.roomId),
-				safeActionResultFilePart(params.message.id),
-			);
-			await mkdir(directory, { recursive: true });
-			const filePath = join(
-				directory,
-				`${Date.now()}-${safeActionResultFilePart(
-					params.actionName,
-				)}-${safeActionResultFilePart(params.actionId)}-${params.field}.txt`,
-			);
-			await writeFile(filePath, params.content, "utf8");
-			return filePath;
-		} catch (error) {
-			this.logger.warn(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					action: params.actionName,
-					actionId: params.actionId,
-					field: params.field,
-					error: error instanceof Error ? error.message : String(error),
-				},
-				"Failed to persist oversized action result snapshot",
-			);
-			return undefined;
-		}
-	}
-
-	private async prepareActionResultForPromptState(
-		actionResult: ActionResult,
-		message: Memory,
-		actionId: UUID,
-	): Promise<ActionResult> {
-		const actionName = getActionResultActionName(actionResult);
-		for (const warning of collectActionResultSizeWarnings(actionResult)) {
-			this.logger.warn(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					messageId: message.id,
-					roomId: message.roomId,
-					action: warning.actionName,
-					actionId,
-					field: warning.field,
-					rawCharLength: warning.rawCharLength,
-					estimatedTokens: warning.estimatedTokens,
-					thresholdTokens: warning.thresholdTokens,
-				},
-				"Action result exceeds prompt-size warning threshold",
-			);
-		}
-
-		const references: { text?: string; error?: string } = {};
-		if (
-			typeof actionResult.text === "string" &&
-			actionResult.text.trim().length > MAX_ACTION_RESULT_TEXT_CHARS
-		) {
-			references.text =
-				getActionResultReference(actionResult, "text") ??
-				(await this.writeActionResultSnapshot({
-					message,
-					actionId,
-					actionName,
-					field: "text",
-					content: actionResult.text,
-				}));
-		}
-
-		const errorText = stringifyActionResultError(actionResult.error);
-		if (
-			typeof errorText === "string" &&
-			errorText.trim().length > MAX_ACTION_RESULT_ERROR_CHARS
-		) {
-			references.error =
-				getActionResultReference(actionResult, "error") ??
-				(await this.writeActionResultSnapshot({
-					message,
-					actionId,
-					actionName,
-					field: "error",
-					content: errorText,
-				}));
-		}
-
-		return trimActionResultForPromptState(actionResult, references);
-	}
-
-	private async maybeStoreActionResultClipboard(params: {
-		message: Memory;
-		action: Action;
-		actionId: UUID;
-		actionText: string;
-		actionResult?: ActionResult;
-	}): Promise<ActionResultClipboardStatus | null> {
-		const requested =
-			messageRequestsActionResultClipboard(params.message) ||
-			actionResultRequestsClipboard(params.actionResult);
-
-		if (!requested) {
-			return null;
-		}
-
-		if (
-			isTerminalActionResultName(params.action.name) ||
-			suppressesActionResultClipboard(params.action, params.actionResult)
-		) {
-			return null;
-		}
-
-		if (!params.actionText.trim()) {
-			return {
-				text: `No ${params.action.name} result text was available to copy to clipboard.`,
-			};
-		}
-
-		const entityId =
-			typeof params.message.entityId === "string"
-				? params.message.entityId
-				: undefined;
-
-		try {
-			const service = createTaskClipboardService(this as IAgentRuntime);
-			const { item, replaced, snapshot } = await service.addItem(
-				{
-					title: resolveActionResultClipboardTitle(
-						params.message,
-						params.action,
-						params.actionResult,
-					),
-					content: params.actionText,
-					sourceType: "action_result",
-					sourceId: params.actionId,
-					sourceLabel: params.action.name,
-				},
-				entityId,
-			);
-			if (params.actionResult) {
-				params.actionResult.data = {
-					...params.actionResult.data,
-					actionResultClipboard: {
-						id: item.id,
-						title: item.title,
-						replaced,
-						count: snapshot.items.length,
-						maxItems: snapshot.maxItems,
-					},
-				};
-			}
-			const verb = replaced ? "Updated" : "Copied";
-			return {
-				text: `${verb} ${params.action.name} result to clipboard item ${item.id}: ${item.title}. Clipboard usage: ${snapshot.items.length}/${snapshot.maxItems}.`,
-			};
-		} catch (error) {
-			const reason = error instanceof Error ? error.message : String(error);
-			this.logger.warn(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					action: params.action.name,
-					actionId: params.actionId,
-					error: reason,
-				},
-				"Failed to store action result in task clipboard",
-			);
-			return {
-				text: `Could not copy ${params.action.name} result to clipboard: ${reason}`,
-			};
-		}
-	}
-
-	async processActions(
-		message: Memory,
-		responses: Memory[],
-		state?: State,
-		callback?: HandlerCallback,
-		processOptions?: {
-			onStreamChunk?: StreamChunkCallback;
-		},
-	): Promise<void> {
-		setTrajectoryPurpose("action");
-		// Check if action planning is enabled
-		const actionPlanningEnabled = this.isActionPlanningEnabled();
-
-		// Determine if we have multiple actions to execute
-		let allActions: string[] = [];
-		let responsesToProcess = responses;
-
-		if (actionPlanningEnabled) {
-			// Multi-action mode: collect all actions
-			for (const response of responses) {
-				if (response.content?.actions && response.content.actions.length > 0) {
-					allActions.push(...response.content.actions);
-				}
-			}
-		} else {
-			// Single-action mode: only take the first action from the first response with actions
-			for (const response of responses) {
-				if (response.content?.actions && response.content.actions.length > 0) {
-					allActions = [response.content.actions[0]];
-					// Create a modified response with only the first action
-					responsesToProcess = [
-						{
-							...response,
-							content: {
-								...response.content,
-								actions: [response.content.actions[0]],
-							},
-						},
-					];
-					this.logger.debug(
-						{
-							src: "agent",
-							agentId: this.agentId,
-							selectedAction: response.content.actions[0],
-							skippedActions: response.content.actions.slice(1),
-						},
-						"Action planning disabled, limiting to first action",
-					);
-					break;
-				}
-			}
-		}
-
-		// Skip processing if no actions and respect single-action mode
-		const hasMultipleActions = allActions.length > 1 && actionPlanningEnabled;
-		const parentRunId = this.getCurrentRunId();
-		const runId = this.createRunId();
-
-		// Create action plan if multiple actions
-		let actionPlan:
-			| {
-					runId: UUID;
-					totalSteps: number;
-					currentStep: number;
-					steps: Array<{
-						action: string;
-						status: "pending" | "completed" | "failed";
-						result?: ActionResult;
-						error?: string;
-					}>;
-					thought: string;
-					startTime: number;
-			  }
-			| undefined;
-
-		const firstResponse = responses[0];
-		const thought =
-			firstResponse?.content?.thought ||
-			`Executing ${allActions.length} actions: ${allActions.join(", ")}`;
-
-		if (hasMultipleActions) {
-			// Extract thought from response content
-
-			actionPlan = {
-				runId,
-				totalSteps: allActions.length,
-				currentStep: 0,
-				steps: allActions.map((action) => ({
-					action,
-					status: "pending" as const,
-				})),
-				thought,
-				startTime: Date.now(),
-			};
-		}
-
-		let actionIndex = 0;
-		// Track which action names have already been executed in this
-		// processActions invocation. The LLM sometimes emits the same action
-		// twice in `actions` (e.g. ["SEND_MESSAGE", "OWNER_CALENDAR",
-		// "OWNER_CALENDAR"] when the user has multiple sub-intents the LLM
-		// can't split into per-action params). Without dedupe the second run
-		// uses the same params as the first → identical output → discord
-		// dedup layer rejects it as a duplicate callback. Two identical
-		// action+params runs in one turn is never useful, so collapse them.
-		const executedActionKeys = new Set<string>();
-
-		for (const response of responsesToProcess) {
-			if (!response.content?.actions || response.content.actions.length === 0) {
-				this.logger.warn(
-					{ src: "agent", agentId: this.agentId },
-					"No action found in response",
-				);
-				continue;
-			}
-			const actions = response.content.actions;
-			const actionParamsByName = parseActionParams(response.content?.params);
-
-			const actionResults: ActionResult[] = [];
-			let accumulatedState = state;
-
-			function normalizeAction(actionString: string) {
-				return actionString.toLowerCase().replace(/_/g, "");
-			}
-			const normalizedActions = this.actions.map((action) => {
-				const normalizedName = normalizeAction(action.name);
-				const normalizedSimiles = action.similes
-					? action.similes.map((simile) => normalizeAction(simile))
-					: [];
-				return {
-					action,
-					normalizedName,
-					normalizedSimiles,
-				};
-			});
-			const actionByName = new Map<string, Action>();
-			for (const entry of normalizedActions) {
-				if (!actionByName.has(entry.normalizedName)) {
-					actionByName.set(entry.normalizedName, entry.action);
-				}
-			}
-			this.logger.trace(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					actions: this.actions.map((a) => normalizeAction(a.name)),
-				},
-				"Available actions",
-			);
-
-			for (const responseAction of actions) {
-				// Update current step in plan immutably
-				if (actionPlan) {
-					actionPlan = this.updateActionPlan(actionPlan, {
-						currentStep: actionIndex + 1,
-					});
-				}
-
-				// Compose state with previous action results and plan
-				accumulatedState = await this.composeState(message, [
-					"RECENT_MESSAGES",
-					"ACTION_STATE", // This will include the action plan
-				]);
-
-				// Add action plan to state if it exists
-				if (actionPlan && accumulatedState.data) {
-					accumulatedState.data.actionPlan = actionPlan;
-					accumulatedState.data.actionResults = actionResults;
-				}
-
-				this.logger.debug(
-					{ src: "agent", agentId: this.agentId, action: responseAction },
-					"Processing action",
-				);
-				const normalizedResponseAction = normalizeAction(responseAction);
-
-				// First try exact match
-				let action = actionByName.get(normalizedResponseAction);
-
-				if (!action) {
-					// Then try fuzzy matching
-					for (const entry of normalizedActions) {
-						if (
-							entry.normalizedName.includes(normalizedResponseAction) ||
-							normalizedResponseAction.includes(entry.normalizedName)
-						) {
-							action = entry.action;
-							break;
-						}
-					}
-				}
-
-				if (!action) {
-					// Try similes
-					for (const entry of normalizedActions) {
-						const exactSimileMatch = entry.normalizedSimiles.find(
-							(simile) => simile === normalizedResponseAction,
-						);
-
-						if (exactSimileMatch) {
-							action = entry.action;
-							this.logger.debug(
-								{
-									src: "agent",
-									agentId: this.agentId,
-									action: action.name,
-									match: "simile",
-								},
-								"Action resolved via simile",
-							);
-							break;
-						}
-
-						const fuzzySimileMatch = entry.normalizedSimiles.find(
-							(simile) =>
-								simile.includes(normalizedResponseAction) ||
-								normalizedResponseAction.includes(simile),
-						);
-
-						if (fuzzySimileMatch) {
-							action = entry.action;
-							this.logger.debug(
-								{
-									src: "agent",
-									agentId: this.agentId,
-									action: action.name,
-									match: "fuzzy",
-								},
-								"Action resolved via fuzzy match",
-							);
-							break;
-						}
-					}
-				}
-				if (!action) {
-					const errorMsg = `Action not found: ${responseAction}`;
-					this.logger.error(
-						{ src: "agent", agentId: this.agentId, action: responseAction },
-						"Action not found",
-					);
-
-					if (actionPlan?.steps?.[actionIndex]) {
-						actionPlan = this.updateActionStep(actionPlan, actionIndex, {
-							status: "failed",
-							error: errorMsg,
-						});
-					}
-
-					const actionMemory: Memory = {
-						id: uuidv4() as UUID,
-						entityId: message.entityId,
-						roomId: message.roomId,
-						worldId: message.worldId,
-						content: {
-							thought: errorMsg,
-							source: "auto",
-							type: "action_result",
-							actionName: responseAction,
-							actionStatus: "failed",
-							runId,
-						},
-					};
-					await this.createMemory(actionMemory, "messages");
-					actionIndex++;
-					continue;
-				}
-				if (!action.handler) {
-					this.logger.error(
-						{ src: "agent", agentId: this.agentId, action: action.name },
-						"Action has no handler",
-					);
-
-					// Update plan with error immutably
-					if (actionPlan?.steps?.[actionIndex]) {
-						actionPlan = this.updateActionStep(actionPlan, actionIndex, {
-							status: "failed",
-							error: "No handler",
-						});
-					}
-
-					actionIndex++;
-					continue;
-				}
-				this.logger.debug(
-					{ src: "agent", agentId: this.agentId, action: action.name },
-					"Executing action",
-				);
-
-				// Validate and attach action parameters (optional)
-				const options: HandlerOptions = {};
-				if (action.parameters && action.parameters.length > 0) {
-					const responseActionKey = responseAction.trim().toUpperCase();
-					const actionKey = action.name.trim().toUpperCase();
-					const extractedParams =
-						actionParamsByName.get(responseActionKey) ??
-						actionParamsByName.get(actionKey);
-					const validation = validateActionParams(action, extractedParams);
-					if (!validation.valid) {
-						this.logger.warn(
-							{
-								src: "agent",
-								agentId: this.agentId,
-								action: action.name,
-								errors: validation.errors,
-							},
-							"Skipping action with invalid parameters",
-						);
-						if (actionPlan?.steps?.[actionIndex]) {
-							actionPlan = this.updateActionStep(actionPlan, actionIndex, {
-								status: "failed",
-								error: validation.errors.join("; "),
-							});
-						}
-						actionIndex++;
-						continue;
-					}
-
-					if (validation.params) options.parameters = validation.params;
-				}
-
-				// Dedupe: same action name + identical params bucket means
-				// repeating the run would emit identical output. Skip the
-				// repeat instead of letting the discord callback layer reject
-				// it as a duplicate. Key includes the JSON of params so that
-				// distinct invocations with different params still go through.
-				const actionDedupeKey = `${action.name.trim().toUpperCase()}::${
-					options.parameters
-						? JSON.stringify(options.parameters)
-						: "<no-params>"
-				}`;
-				if (executedActionKeys.has(actionDedupeKey)) {
-					this.logger.debug(
-						{
-							src: "agent",
-							agentId: this.agentId,
-							action: action.name,
-							dedupeKey: actionDedupeKey,
-						},
-						"Skipping duplicate action invocation in same turn",
-					);
-					actionIndex++;
-					continue;
-				}
-				executedActionKeys.add(actionDedupeKey);
-
-				const actionId = uuidv4() as UUID;
-				// Separate ID for streamed response message (independent from action badge)
-				const responseMessageId = uuidv4() as UUID;
-
-				this.currentActionContext = {
-					actionName: action.name,
-					actionId,
-					prompts: [],
-				};
-
-				// Create action context with plan information
-				const actionContext: ActionContext = {
-					previousResults: actionResults,
-					getPreviousResult: (actionName: string) => {
-						return actionResults.find(
-							(r) => r.data && r.data.actionName === actionName,
-						);
-					},
-				};
-
-				// Add plan information to options if multiple actions
-				options.actionContext = actionContext;
-
-				if (actionPlan) {
-					options.actionPlan = {
-						totalSteps: actionPlan.totalSteps,
-						currentStep: actionPlan.currentStep,
-						steps: actionPlan.steps,
-						thought: actionPlan.thought,
-					};
-				}
-
-				// Pass streaming callback to action handlers
-				if (processOptions?.onStreamChunk) {
-					options.onStreamChunk = processOptions.onStreamChunk;
-				}
-
-				await this.emitEvent(EventType.ACTION_STARTED, {
-					messageId: actionId,
-					roomId: message.roomId,
-					world: message.worldId,
-					content: {
-						text: `Executing action: ${action.name}`,
-						actions: [action.name],
-						actionStatus: "executing",
-						actionId: actionId,
-						runId: runId,
-						type: "agent_action",
-						thought: thought,
-						source: message.content?.source,
-					},
-				});
-
-				const storedCallbackData: Content[] = [];
-				let visibleCallbackIndex: number | null = null;
-
-				const storageCallback = async (response: Content) => {
-					// Use responseMessageId for the text response (separate from action badge)
-					response.responseId = responseMessageId;
-					if (callbackContentHasVisibleOutput(response)) {
-						if (visibleCallbackIndex === null) {
-							visibleCallbackIndex = storedCallbackData.length;
-							storedCallbackData.push(response);
-						} else {
-							storedCallbackData[visibleCallbackIndex] = response;
-						}
-						return [];
-					}
-					storedCallbackData.push(response);
-					return [];
-				};
-
-				// Create streaming context using responseMessageId (separate from actionId)
-				// This ensures streamed text goes to its own message, independent from action badge
-				//
-				// Actions may have multiple useModel calls (e.g., JSON extraction + text generation).
-				// onStreamEnd is called after each useModel stream completes, allowing us to reset
-				// the filter so content type detection from one call doesn't affect the next.
-				let actionStreamingContext:
-					| (StreamingContext & { onStreamEnd: () => void })
-					| undefined;
-				if (processOptions?.onStreamChunk) {
-					let currentFilter: ActionStreamFilter | null = null;
-					const onStreamChunk = processOptions.onStreamChunk;
-					// Track locally accumulated filtered text for this action stream.
-					// Note: upstream `accumulated` is discarded because ActionStreamFilter may
-					// transform/drop content, making upstream accumulated inconsistent with
-					// the actual deltas the consumer receives.
-					let filteredAccumulated = "";
-
-					actionStreamingContext = {
-						messageId: responseMessageId,
-						onStreamChunk: async (
-							chunk: string,
-							msgId?: string,
-							_accumulated?: string,
-						) => {
-							if (!currentFilter) {
-								currentFilter = new ActionStreamFilter();
-							}
-							const textToStream = currentFilter.push(chunk);
-							if (textToStream && onStreamChunk) {
-								filteredAccumulated += textToStream;
-								await this.applyPipelineHooks(
-									"model_stream_chunk",
-									modelStreamChunkPipelineHookContext({
-										source: "process_actions",
-										chunk: textToStream,
-										messageId: msgId,
-										roomId: message.roomId,
-										runId,
-										responseId: responseMessageId,
-										accumulated: filteredAccumulated,
-									}),
-								);
-								await onStreamChunk(textToStream, msgId, filteredAccumulated);
-							}
-						},
-						onStreamEnd: () => {
-							const textSnapshot = filteredAccumulated;
-							void this.applyPipelineHooks(
-								"model_stream_end",
-								modelStreamEndPipelineHookContext({
-									source: "process_actions",
-									roomId: message.roomId,
-									runId,
-									responseId: responseMessageId,
-									messageId: responseMessageId,
-									text: textSnapshot,
-								}),
-							).catch((err) => {
-								this.logger.debug(
-									{
-										src: "agent",
-										agentId: this.agentId,
-										error: err instanceof Error ? err.message : String(err),
-									},
-									"model_stream_end pipeline hook failed",
-								);
-							});
-							// Reset filter and local accumulator for next useModel call
-							currentFilter = null;
-							filteredAccumulated = "";
-						},
-					};
-				}
-
-				// Execute action with its own streaming context
-				const actionRuntime = this as unknown as IAgentRuntime;
-				const result = await withActionStep(actionRuntime, action.name, () =>
-					runWithStreamingContext(actionStreamingContext, () =>
-						action.handler(
-							actionRuntime,
-							message,
-							accumulatedState,
-							options,
-							storageCallback,
-							responses,
-						),
-					),
-				);
-
-				// Handle void, null, true, false returns
-				const isVoidReturn =
-					result === undefined ||
-					result === null ||
-					typeof result === "boolean";
-
-				// Only create ActionResult if we have a proper result
-				let actionResult: ActionResult | undefined;
-
-				if (!isVoidReturn) {
-					// Ensure we have an ActionResult with required success field
-					if (
-						typeof result === "object" &&
-						result !== null &&
-						("values" in result || "data" in result || "text" in result)
-					) {
-						const resultData =
-							typeof result.data === "object" &&
-							result.data !== null &&
-							!Array.isArray(result.data)
-								? result.data
-								: {};
-						// Ensure success field exists with default true
-						actionResult = {
-							...result,
-							data: {
-								actionName: action.name,
-								...resultData,
-							},
-							success: "success" in result ? result.success : true, // Default to true if not specified
-						} as ActionResult;
-					} else {
-						// For non-ActionResult returns, serialize the result
-						// Type narrowing: after the above checks, result is a primitive or unknown object
-						const resultValue: string | number | boolean | null =
-							typeof result === "string"
-								? result
-								: typeof result === "number"
-									? result
-									: typeof result === "boolean"
-										? result
-										: result === null
-											? null
-											: encodeToonValue({ result });
-						actionResult = {
-							success: true,
-							data: {
-								actionName: action.name,
-								result: resultValue,
-							},
-						};
-					}
-
-					actionResult = await this.prepareActionResultForPromptState(
-						actionResult,
-						message,
-						actionId,
-					);
-					actionResults.push(actionResult);
-
-					// Merge returned values into state
-					if (actionResult.values && accumulatedState) {
-						const accumulatedStateData = accumulatedState.data;
-						const rawActionResults = accumulatedStateData?.actionResults;
-						const existingActionResults: ActionResult[] = Array.isArray(
-							rawActionResults,
-						)
-							? rawActionResults
-							: [];
-						accumulatedState = {
-							...accumulatedState,
-							values: { ...accumulatedState.values, ...actionResult.values },
-							data: {
-								...accumulatedState.data,
-								actionResults: [...existingActionResults, actionResult],
-								actionPlan,
-							},
-						};
-					}
-
-					// Store in working memory (in state data) with cleanup
-					if (accumulatedState?.data) {
-						if (!accumulatedState.data.workingMemory)
-							accumulatedState.data.workingMemory = {};
-
-						// Add new entry first, then clean up if we exceed the limit
-						const responseAction = actionResult.data?.actionName || action.name;
-						const memoryKey = `action_${responseAction}_${uuidv4()}`;
-						const memoryEntry: WorkingMemoryEntry = {
-							actionName: action.name,
-							result: actionResult,
-							timestamp: Date.now(),
-						};
-						const workingMemory = accumulatedState.data.workingMemory as Record<
-							string,
-							WorkingMemoryEntry
-						>;
-						workingMemory[memoryKey] = memoryEntry;
-
-						// Clean up old entries if we now exceed the limit
-						const entries = Object.entries(workingMemory);
-						if (entries.length > this.maxWorkingMemoryEntries) {
-							let overflow = entries.length - this.maxWorkingMemoryEntries;
-							while (overflow > 0) {
-								let oldestKey: string | null = null;
-								let oldestTimestamp = Number.POSITIVE_INFINITY;
-								for (const [key, entry] of Object.entries(workingMemory)) {
-									const timestamp = entry?.timestamp ?? 0;
-									if (timestamp < oldestTimestamp) {
-										oldestTimestamp = timestamp;
-										oldestKey = key;
-									}
-								}
-								if (!oldestKey) break;
-								delete workingMemory[oldestKey];
-								overflow--;
-							}
-						}
-					}
-
-					// Update plan with success immutably
-					if (actionPlan?.steps?.[actionIndex]) {
-						actionPlan = this.updateActionStep(actionPlan, actionIndex, {
-							status: "completed",
-							result: actionResult,
-						});
-					}
-				}
-
-				const isSuccess = actionResult?.success !== false;
-				const statusText = isSuccess ? "completed" : "failed";
-				const actionText =
-					typeof actionResult?.text === "string"
-						? actionResult.text.trim()
-						: "";
-				const visibleCallbackText = storedCallbackData.find((content) =>
-					callbackContentHasVisibleOutput(content),
-				)?.text;
-				const actionTextForClipboard =
-					actionText ||
-					(typeof visibleCallbackText === "string"
-						? visibleCallbackText.trim()
-						: "");
-				const suppressVisibleActionText =
-					suppressesVisibleActionResult(actionResult);
-				const clipboardStatus = await this.maybeStoreActionResultClipboard({
-					message,
-					action,
-					actionId,
-					actionText: actionTextForClipboard,
-					actionResult,
-				});
-				const visibleActionText = suppressVisibleActionText
-					? ""
-					: (actionResult?.text ?? "");
-
-				await this.emitEvent(EventType.ACTION_COMPLETED, {
-					messageId: actionId,
-					roomId: message.roomId,
-					world: message.worldId,
-					content: {
-						// Use action's actual text, not status message (prevents overwriting streamed content)
-						text: visibleActionText,
-						actions: [action.name],
-						actionStatus: statusText,
-						actionId: actionId,
-						type: "agent_action",
-						thought: thought,
-						actionResult: actionResult,
-						source: message.content?.source, // Include original message source
-					},
-				});
-
-				if (callback) {
-					const visibleActionCallbackIndex = storedCallbackData.findIndex(
-						(content) => callbackContentHasVisibleOutput(content),
-					);
-					if (actionText && !suppressVisibleActionText) {
-						if (visibleActionCallbackIndex === -1) {
-							storedCallbackData.push({
-								text: clipboardStatus
-									? `${actionText}\n\n${clipboardStatus.text}`
-									: actionText,
-								source: "action",
-								action: action.name,
-							});
-						} else if (clipboardStatus) {
-							const visibleCallback =
-								storedCallbackData[visibleActionCallbackIndex];
-							if (
-								visibleCallback &&
-								typeof visibleCallback.text === "string" &&
-								visibleCallback.text.trim()
-							) {
-								visibleCallback.text = `${visibleCallback.text.trim()}\n\n${clipboardStatus.text}`;
-							} else {
-								storedCallbackData.push({
-									text: clipboardStatus.text,
-									source: "action",
-									action: action.name,
-								});
-							}
-						}
-					} else if (clipboardStatus) {
-						if (visibleActionCallbackIndex === -1) {
-							storedCallbackData.push({
-								text: clipboardStatus.text,
-								source: "action",
-								action: action.name,
-							});
-						} else {
-							const visibleCallback =
-								storedCallbackData[visibleActionCallbackIndex];
-							if (
-								visibleCallback &&
-								typeof visibleCallback.text === "string" &&
-								visibleCallback.text.trim()
-							) {
-								visibleCallback.text = `${visibleCallback.text.trim()}\n\n${clipboardStatus.text}`;
-							}
-						}
-					}
-				}
-
-				if (callback) {
-					for (const content of storedCallbackData) {
-						await this.applyPipelineHooks(
-							"outgoing_before_deliver",
-							outgoingPipelineHookContext(content, {
-								source: "action",
-								roomId: message.roomId,
-								message,
-								actionName: action.name,
-								responseId: content.responseId,
-							}),
-						);
-						await callback(content);
-					}
-				}
-
-				// Only persist action memories when the handler returned a real user-facing
-				// message. Placeholder bookkeeping text is internal runtime state, not chat.
-				if (actionText && !suppressVisibleActionText) {
-					const actionMemory: Memory = {
-						id: actionId,
-						entityId: this.agentId,
-						roomId: message.roomId,
-						worldId: message.worldId,
-						content: {
-							text: actionText,
-							source: "action",
-							type: "action_result",
-							actionName: action.name,
-							actionStatus: statusText,
-							runId,
-							...(actionPlan
-								? {
-										planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
-										planThought: actionPlan.thought,
-									}
-								: {}),
-							...(actionResult?.data
-								? {
-										data: actionResult.data as import("./types/proto.js").JsonObject,
-									}
-								: {}),
-						},
-					};
-					await this.createMemory(actionMemory, "messages");
-				}
-
-				this.logger.debug(
-					{ src: "agent", agentId: this.agentId, action: action.name },
-					"Action completed",
-				);
-
-				// log to database with collected prompts
-				const logResult = actionResult
-					? {
-							success: actionResult.success,
-							text: actionResult.text,
-							error: actionResult.error,
-						}
-					: undefined;
-				await this.adapter.createLogs([
-					{
-						entityId: message.entityId,
-						roomId: message.roomId,
-						type: "action",
-						body: {
-							action: action.name,
-							actionId,
-							message: message.content.text,
-							messageId: message.id,
-							result: logResult,
-							isVoidReturn,
-							prompts: this.currentActionContext?.prompts || [],
-							promptCount: this.currentActionContext?.prompts?.length || 0,
-							runId,
-							parentRunId,
-							...(actionPlan && {
-								planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
-								planThought: actionPlan.thought,
-							}),
-						},
-					},
-				]);
-
-				// Clear action context
-				this.currentActionContext = undefined;
-
-				actionIndex++;
-			}
-
-			// Store accumulated results for evaluators and providers
-			if (message.id) {
-				this.stateCache.set(`${message.id}_action_results`, {
-					values: { actionResults },
-					data: { actionResults, actionPlan },
-					text: encodeToonValue({ actionResults }),
-				});
-			}
-		}
-	}
-
 	getActionResults(messageId: UUID): ActionResult[] {
 		const cachedState = this.stateCache?.get(`${messageId}_action_results`);
 		return (
@@ -3569,72 +2641,156 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 	}
 
-	async evaluate(
+	/**
+	 * Run actions whose `mode` matches the given hook position. The runtime
+	 * fires this from fixed places in the message pipeline (see
+	 * services/message.ts). DURING modes execute handlers in parallel; all
+	 * other hook modes run sequentially in `modePriority` ascending order.
+	 * CONTEXT hooks are gated by `selectedContexts` overlapping the action's
+	 * `contexts`.
+	 */
+	async runActionsByMode(
+		mode: ActionMode,
 		message: Memory,
-		state: State,
-		didRespond?: boolean,
-		callback?: HandlerCallback,
-		responses?: Memory[],
-	) {
-		setTrajectoryPurpose("evaluation");
-		const evaluatorPromises = this.evaluators.map(
-			async (evaluator: Evaluator) => {
-				if (!evaluator.handler) {
-					return null;
-				}
-				if (!didRespond && !evaluator.alwaysRun) {
-					return null;
-				}
-				const result = await evaluator.validate(
-					this as unknown as IAgentRuntime,
-					message,
-					state,
-				);
-				if (result) {
-					return evaluator;
-				}
-				return null;
-			},
-		);
-		const evaluators = (await Promise.all(evaluatorPromises)).filter(
-			Boolean,
-		) as Evaluator[];
-		if (evaluators.length === 0) {
-			return [];
+		state?: State,
+		options?: {
+			didRespond?: boolean;
+			callback?: HandlerCallback;
+			responses?: Memory[];
+			selectedContexts?: readonly AgentContext[];
+		},
+	): Promise<Action[]> {
+		let candidates = this.actions.filter((action) => action.mode === mode);
+
+		if (
+			mode === "CONTEXT_BEFORE" ||
+			mode === "CONTEXT_DURING" ||
+			mode === "CONTEXT_AFTER"
+		) {
+			const selected = new Set(options?.selectedContexts ?? []);
+			candidates = candidates.filter((action) => {
+				const tags = action.contexts ?? [];
+				return tags.some((tag) => selected.has(tag));
+			});
 		}
-		state = await this.composeState(message, ["RECENT_MESSAGES", "EVALUATORS"]);
-		// Run evaluator handlers sequentially because multiple evaluators can
-		// mutate shared memories/relationships for the same turn.
-		for (const evaluator of evaluators) {
-			if (!evaluator.handler) {
-				continue;
-			}
-			const evaluatorRuntime = this as unknown as IAgentRuntime;
-			await withEvaluatorStep(evaluatorRuntime, evaluator.name, () =>
-				evaluator.handler(
-					evaluatorRuntime,
-					message,
-					state,
-					{},
-					callback,
-					responses,
-				),
+
+		candidates = candidates
+			.slice()
+			.sort(
+				(a, b) =>
+					(a.modePriority ?? 100) - (b.modePriority ?? 100) ||
+					a.name.localeCompare(b.name),
 			);
-			this.adapter.createLogs([
-				{
-					entityId: message.entityId,
-					roomId: message.roomId,
-					type: "evaluator",
-					body: {
-						evaluator: evaluator.name,
-						messageId: message.id,
-						message: message.content.text,
-						runId: this.getCurrentRunId(),
-					},
+		if (candidates.length === 0) return [];
+
+		setTrajectoryPurpose(mode === "ALWAYS_AFTER" ? "evaluation" : "hook");
+
+		const runtimeRef = this as unknown as IAgentRuntime;
+		const validated: Action[] = [];
+		await Promise.all(
+			candidates.map(async (action) => {
+				try {
+					const ok = await action.validate(runtimeRef, message, state);
+					if (ok) validated.push(action);
+				} catch (err) {
+					this.logger.warn(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							action: action.name,
+							mode,
+							err: err instanceof Error ? err.message : String(err),
+						},
+						"runActionsByMode validate failed",
+					);
+				}
+			}),
+		);
+		if (validated.length === 0) return [];
+
+		validated.sort(
+			(a, b) =>
+				(a.modePriority ?? 100) - (b.modePriority ?? 100) ||
+				a.name.localeCompare(b.name),
+		);
+
+		const composedState =
+			state ?? (await this.composeState(message, ["RECENT_MESSAGES"]));
+
+		const messageId = message.id;
+		const roomId = message.roomId;
+		const worldId = message.worldId ?? roomId;
+
+		const runOne = async (action: Action) => {
+			await this.emitEvent(EventType.ACTION_STARTED, {
+				runtime: runtimeRef,
+				messageId,
+				roomId,
+				world: worldId,
+				content: {
+					text: `Executing ${mode} action: ${action.name}`,
+					actions: [action.name],
+					actionStatus: "executing",
+					source: message.content?.source,
 				},
-			]);
+			}).catch(() => {});
+
+			let success = true;
+			let errorMsg: string | undefined;
+			try {
+				await action.handler(
+					runtimeRef,
+					message,
+					composedState,
+					{ mode },
+					options?.callback,
+					options?.responses,
+				);
+			} catch (err) {
+				success = false;
+				errorMsg = err instanceof Error ? err.message : String(err);
+				this.logger.warn(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						action: action.name,
+						mode,
+						err: errorMsg,
+					},
+					"runActionsByMode handler failed",
+				);
+			}
+
+			await this.emitEvent(EventType.ACTION_COMPLETED, {
+				runtime: runtimeRef,
+				messageId,
+				roomId,
+				world: worldId,
+				content: {
+					text: success
+						? `${mode} action ${action.name} completed`
+						: `${mode} action ${action.name} failed: ${errorMsg ?? "unknown"}`,
+					actions: [action.name],
+					actionStatus: success ? "completed" : "failed",
+					source: message.content?.source,
+					error: errorMsg,
+				},
+			}).catch(() => {});
+		};
+
+		const isDuring =
+			mode === "ALWAYS_DURING" ||
+			mode === "CONTEXT_DURING" ||
+			mode === "RESPONSE_HANDLER_DURING";
+		if (isDuring) {
+			await Promise.all(validated.map(runOne));
+		} else {
+			for (const action of validated) {
+				await runOne(action);
+			}
 		}
-		return evaluators;
+
+		return validated;
 	}
 
 	// highly SQL optimized queries
@@ -3998,8 +3154,8 @@ export class AgentRuntime implements IAgentRuntime {
 				? trajectoryStepIdFromMessage
 				: getTrajectoryContext()?.trajectoryStepId;
 
-		// If we're running inside a trajectory step, always bypass the state cache so
-		// providers are executed and can be logged for training/benchmark traces.
+		// When composing state for a recorded trajectory step, execute providers
+		// instead of serving a stale cached state so provider accesses are logged.
 		if (trajectoryStepId) {
 			skipCache = true;
 		}
@@ -4051,22 +3207,9 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 
 		// Optional trajectory logging service (no-op by default).
-		type TrajectoryLogger = Service & {
-			logProviderAccess: (params: {
-				stepId: string;
-				providerName: string;
-				data: Record<string, string | number | boolean | null>;
-				purpose: string;
-				query?: Record<string, string | number | boolean | null>;
-				runId?: string;
-				roomId?: string;
-				messageId?: string;
-				executionTraceId?: string;
-			}) => void;
-		};
-		const trajLogger = (await this._ensureServiceStarted(
-			"trajectories",
-		)) as TrajectoryLogger | null;
+		const trajLogger = (await this._ensureServiceStarted("trajectories")) as
+			| (Service & TrajectoryProviderAccessLogger)
+			| null;
 		const providerData = await Promise.all(
 			providersToGet.map(async (provider) => {
 				const start = Date.now();
@@ -4776,26 +3919,70 @@ export class AgentRuntime implements IAgentRuntime {
 	/**
 	 * Helper to log model calls to the database (used by both streaming and non-streaming paths)
 	 */
+	private buildRuntimeSystemPrompt(): string | undefined {
+		const prompt = buildCanonicalSystemPrompt({
+			character: this.character,
+			userRole: getTrajectoryContext()?.userRole,
+		});
+		return prompt || undefined;
+	}
+
+	private attachEffectiveSystemPrompt(
+		modelKey: string,
+		params: unknown,
+	): string | undefined {
+		if (
+			!TEXT_GENERATION_MODEL_KEYS.includes(modelKey) ||
+			!isPlainObject(params)
+		) {
+			return undefined;
+		}
+		const paramsRecord = params as Record<
+			string,
+			JsonValue | object | undefined
+		>;
+		const systemPrompt = resolveEffectiveSystemPrompt({
+			params,
+			fallback: this.buildRuntimeSystemPrompt(),
+		});
+		if (systemPrompt !== undefined && !Object.hasOwn(paramsRecord, "system")) {
+			paramsRecord.system = systemPrompt;
+		}
+		return systemPrompt;
+	}
+
+	private getFirstUserPromptFromMessages(
+		messages: unknown,
+	): string | undefined {
+		if (!Array.isArray(messages)) {
+			return undefined;
+		}
+		for (const message of messages) {
+			if (!message || typeof message !== "object" || Array.isArray(message)) {
+				continue;
+			}
+			const record = message as { role?: unknown; content?: unknown };
+			if (record.role !== "user") {
+				continue;
+			}
+			const content = textFromChatMessageContent(record.content);
+			if (content) {
+				return content;
+			}
+		}
+		return undefined;
+	}
+
 	private logModelCall(
 		modelType: string,
 		modelKey: string,
 		_params: unknown,
 		promptContent: string | null,
+		systemPrompt: string | undefined,
 		elapsedTime: number,
 		provider: string | undefined,
 		response: unknown,
 	): void {
-		// Log prompts to action context (except embeddings)
-		if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
-			if (this.currentActionContext) {
-				this.currentActionContext.prompts.push({
-					modelType: modelKey,
-					prompt: promptContent,
-					timestamp: Date.now(),
-				});
-			}
-		}
-
 		// Log to database
 		const responseValue =
 			Array.isArray(response) && response.every((x) => typeof x === "number")
@@ -4812,18 +3999,12 @@ export class AgentRuntime implements IAgentRuntime {
 						modelType,
 						modelKey,
 						prompt: promptContent ?? undefined,
-						systemPrompt: this.character.system ?? undefined,
+						systemPrompt,
 						runId: this.getCurrentRunId(),
 						timestamp: Date.now(),
 						executionTime: elapsedTime,
 						provider:
 							provider || this.models.get(modelKey)?.[0]?.provider || "unknown",
-						actionContext: this.currentActionContext
-							? {
-									actionName: this.currentActionContext.actionName,
-									actionId: this.currentActionContext.actionId,
-								}
-							: undefined,
 						response: responseValue,
 					},
 					type: `useModel:${modelKey}`,
@@ -4902,7 +4083,7 @@ export class AgentRuntime implements IAgentRuntime {
 				? paramsObj.input
 				: null) ||
 			(paramsObj && "messages" in paramsObj && Array.isArray(paramsObj.messages)
-				? encodeToonValue({ messages: paramsObj.messages })
+				? stringifyStructuredForPrompt({ messages: paramsObj.messages })
 				: null) ||
 			(typeof params === "string" ? params : null);
 		const resolvedModel = this.resolveModelRegistration(
@@ -4998,7 +4179,7 @@ export class AgentRuntime implements IAgentRuntime {
 				modelParams = {
 					...modelSettings, // Apply model settings first (includes defaults and model-specific)
 					...(paramsClone as Record<string, JsonValue | object>), // Then apply specific params (allowing overrides)
-				} as ModelParamsMap[T];
+				} as unknown as ModelParamsMap[T];
 			} else {
 				// No model settings configured, use params as-is
 				modelParams = paramsClone as ModelParamsMap[T];
@@ -5016,6 +4197,8 @@ export class AgentRuntime implements IAgentRuntime {
 				requestedModelKey === ModelType.TEXT_MEGA ||
 				requestedModelKey === ModelType.RESPONSE_HANDLER ||
 				requestedModelKey === ModelType.ACTION_PLANNER ||
+				requestedModelKey === ModelType.TEXT_REASONING_SMALL ||
+				requestedModelKey === ModelType.TEXT_REASONING_LARGE ||
 				requestedModelKey === ModelType.TEXT_COMPLETION;
 			if (
 				shouldAttachUser &&
@@ -5064,6 +4247,16 @@ export class AgentRuntime implements IAgentRuntime {
 			delete paramsAsStreaming.onStreamChunk;
 		}
 
+		const textModelKey = TEXT_GENERATION_MODEL_KEYS.includes(
+			String(resolvedModelKey),
+		)
+			? String(resolvedModelKey)
+			: requestedModelKey;
+		const effectiveSystemPrompt = this.attachEffectiveSystemPrompt(
+			textModelKey,
+			modelParams,
+		);
+
 		await this.invokePipelineHooks(
 			"pre_model",
 			preModelPipelineHookContext({
@@ -5083,7 +4276,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		const resultRef: { current: unknown } = { current: rawResponse };
 		const modelOutToTrajectoryString = (v: unknown) =>
-			typeof v === "string" ? v : encodeToonValue({ response: v });
+			typeof v === "string" ? v : stringifyStructuredForPrompt({ response: v });
 
 		// Stream: broadcast to callbacks if streaming
 		if (
@@ -5092,7 +4285,7 @@ export class AgentRuntime implements IAgentRuntime {
 			isTextStreamResult(rawResponse)
 		) {
 			// WHY undefined for accumulated: raw LLM tokens have no field-level
-			// extraction; accumulated text is only meaningful after a TOON field
+			// extraction; accumulated text is only meaningful after a structured
 			// extractor has parsed and isolated a field. Passing undefined is
 			// honest; consumers that need
 			// accumulated data get it from the extractor's onChunk bridge in
@@ -5188,6 +4381,7 @@ export class AgentRuntime implements IAgentRuntime {
 				resolvedModelKey,
 				params,
 				promptContent,
+				effectiveSystemPrompt,
 				elapsedTime,
 				resolvedModel?.provider ?? provider,
 				resultRef.current,
@@ -5196,8 +4390,10 @@ export class AgentRuntime implements IAgentRuntime {
 			await this.recordUseModelTrajectory({
 				modelType: String(modelType),
 				resolvedModelKey: String(resolvedModelKey),
+				provider: resolvedModel?.provider ?? provider,
 				modelParams,
 				promptContent,
+				result: resultRef.current,
 				response: modelOutToTrajectoryString(resultRef.current),
 				elapsedTime,
 			});
@@ -5241,6 +4437,7 @@ export class AgentRuntime implements IAgentRuntime {
 			resolvedModelKey,
 			params,
 			promptContent,
+			effectiveSystemPrompt,
 			elapsedTime,
 			resolvedModel?.provider ?? provider,
 			resultRef.current,
@@ -5249,8 +4446,10 @@ export class AgentRuntime implements IAgentRuntime {
 		await this.recordUseModelTrajectory({
 			modelType: String(modelType),
 			resolvedModelKey: String(resolvedModelKey),
+			provider: resolvedModel?.provider ?? provider,
 			modelParams,
 			promptContent,
+			result: resultRef.current,
 			response: modelOutToTrajectoryString(resultRef.current),
 			elapsedTime,
 		});
@@ -5270,39 +4469,21 @@ export class AgentRuntime implements IAgentRuntime {
 	private async recordUseModelTrajectory(args: {
 		modelType: string;
 		resolvedModelKey: string;
+		provider?: string;
 		modelParams: unknown;
 		promptContent: string | null | undefined;
+		result?: unknown;
 		response: string;
 		elapsedTime: number;
 	}): Promise<void> {
 		if (this.initResolver) return;
 
-		type TrajectoryLogger = Service & {
-			logLlmCall: (params: {
-				stepId: string;
-				model: string;
-				systemPrompt: string;
-				userPrompt: string;
-				response: string;
-				temperature: number;
-				maxTokens: number;
-				purpose: string;
-				actionType: string;
-				latencyMs: number;
-				modelSlot?: string;
-				runId?: string;
-				roomId?: string;
-				messageId?: string;
-				executionTraceId?: string;
-			}) => void;
-		};
-
 		try {
 			const trajCtx = getTrajectoryContext();
 			const stepId = trajCtx?.trajectoryStepId;
-			const trajLogger = (await this._ensureServiceStarted(
-				"trajectories",
-			)) as TrajectoryLogger | null;
+			const trajLogger = (await this._ensureServiceStarted("trajectories")) as
+				| (Service & TrajectoryRuntimeLlmCallLogger)
+				| null;
 			if (!stepId || !trajLogger) return;
 
 			const tempRaw = isPlainObject(args.modelParams)
@@ -5311,21 +4492,65 @@ export class AgentRuntime implements IAgentRuntime {
 			const maxTokensRaw = isPlainObject(args.modelParams)
 				? (args.modelParams as { maxTokens?: number }).maxTokens
 				: undefined;
+			const paramsRecord = isPlainObject(args.modelParams)
+				? (args.modelParams as Record<string, unknown>)
+				: {};
+			const systemPrompt =
+				resolveEffectiveSystemPrompt({
+					params: args.modelParams,
+					fallback: this.buildRuntimeSystemPrompt(),
+				}) ?? "";
+			const userPrompt =
+				this.getFirstUserPromptFromMessages(paramsRecord.messages) ??
+				args.promptContent ??
+				"";
+			const resultRecord = isPlainObject(args.result)
+				? (args.result as Record<string, unknown>)
+				: {};
+			const usageRecord = isPlainObject(resultRecord.usage)
+				? (resultRecord.usage as Record<string, unknown>)
+				: {};
+			const asNumber = (value: unknown): number | undefined =>
+				typeof value === "number" && Number.isFinite(value) ? value : undefined;
 			const activeTrace = this.getActiveTrace(this.getCurrentRunId());
 			trajLogger.logLlmCall({
 				stepId,
 				model: args.resolvedModelKey,
-				systemPrompt:
-					typeof this.character.system === "string"
-						? this.character.system
-						: "",
-				userPrompt: args.promptContent ?? "",
+				modelType: args.modelType,
+				provider: args.provider,
+				systemPrompt,
+				userPrompt,
+				prompt:
+					typeof paramsRecord.prompt === "string"
+						? paramsRecord.prompt
+						: userPrompt,
+				messages: Array.isArray(paramsRecord.messages)
+					? paramsRecord.messages
+					: undefined,
+				tools: paramsRecord.tools,
+				toolChoice: paramsRecord.toolChoice,
+				responseSchema: paramsRecord.responseSchema,
+				providerOptions: paramsRecord.providerOptions,
 				response: args.response,
+				toolCalls: Array.isArray(resultRecord.toolCalls)
+					? resultRecord.toolCalls
+					: undefined,
+				finishReason:
+					typeof resultRecord.finishReason === "string"
+						? resultRecord.finishReason
+						: undefined,
+				providerMetadata: resultRecord.providerMetadata,
 				temperature: typeof tempRaw === "number" ? tempRaw : 0,
 				maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
 				purpose: trajCtx?.purpose ?? "action",
 				actionType: "runtime.useModel",
 				latencyMs: Math.max(0, Math.round(args.elapsedTime)),
+				promptTokens: asNumber(usageRecord.promptTokens),
+				completionTokens: asNumber(usageRecord.completionTokens),
+				cacheReadInputTokens: asNumber(usageRecord.cacheReadInputTokens),
+				cacheCreationInputTokens: asNumber(
+					usageRecord.cacheCreationInputTokens,
+				),
 				modelSlot: args.modelType,
 				runId: trajCtx?.runId,
 				roomId: trajCtx?.roomId,
@@ -5353,22 +4578,14 @@ export class AgentRuntime implements IAgentRuntime {
 		const modelType = options?.modelType ?? ModelType.TEXT_LARGE;
 
 		let prompt = input;
+		let system: string | undefined;
 
 		// Add character context if requested
 		if (includeCharacter && this.character) {
 			const c = this.character;
 			const parts: string[] = [];
 
-			// Add bio
-			const bioText = Array.isArray(c.bio) ? c.bio.join(" ") : c.bio;
-			if (bioText) {
-				parts.push(`# About ${c.name}\n${bioText}`);
-			}
-
-			// Add system prompt
-			if (c.system) {
-				parts.push(c.system);
-			}
+			system = this.buildRuntimeSystemPrompt();
 
 			// Add style directives (all + chat)
 			const styles = [...(c.style?.all || []), ...(c.style?.chat || [])];
@@ -5394,6 +4611,7 @@ export class AgentRuntime implements IAgentRuntime {
 			repetitionPenalty: options?.repetitionPenalty,
 			frequencyPenalty: options?.frequencyPenalty,
 			presencePenalty: options?.presencePenalty,
+			system,
 			stopSequences: options?.stopSequences,
 			// User identifier for provider tracking/analytics - auto-populates from character name if not provided
 			// Explicitly set empty string or null will be preserved (not overridden)
@@ -5562,8 +4780,6 @@ export class AgentRuntime implements IAgentRuntime {
 			modelSize?: "nano" | "small" | "medium" | "large" | "mega";
 			modelType?: import("./types").TextGenerationModelType;
 			model?: string;
-			preferredEncapsulation?: "json" | "toon";
-			forceFormat?: "json" | "toon";
 			requiredFields?: string[];
 			contextCheckLevel?: 0 | 1 | 2 | 3;
 			checkpointCodes?: boolean;
@@ -5740,14 +4956,9 @@ export class AgentRuntime implements IAgentRuntime {
 			const output = outputSegments.map((segment) => segment.content).join("");
 
 			// Process format options
-			let format: StructuredResponseFormat = resolveDefaultOutputFormat(
+			const format: StructuredResponseFormat = resolveDefaultOutputFormat(
 				this.getSetting("PROMPT_OUTPUT_FORMAT"),
 			);
-			const requestedFormat =
-				options.forceFormat ?? options.preferredEncapsulation;
-			if (requestedFormat) {
-				format = resolveDefaultOutputFormat(requestedFormat);
-			}
 
 			/**
 			 * Rough token count estimate for logging/debugging purposes only.
@@ -5845,11 +5056,7 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 
 			// Generate prompt with format example
-			const isJSON = format === "JSON";
-
-			const EXAMPLE = isJSON
-				? this.renderJsonSchemaExample(schema)
-				: this.renderToonSchemaExample(schema);
+			const EXAMPLE = this.renderJsonSchemaExample(schema);
 			const VALIDATION_INSTRUCTIONS = this.buildValidationOutputInstructions({
 				format,
 				schema,
@@ -5899,7 +5106,7 @@ export class AgentRuntime implements IAgentRuntime {
 Use this shape:
 ${EXAMPLE}
 
-Return exactly one ${isJSON ? "JSON object" : "TOON document"}.
+Return exactly one JSON object.
 ${section_end}`;
 			const endBlock = checkpointCodesEnabled
 				? `\nend code: ${finalCode}\n`
@@ -5926,64 +5133,6 @@ ${section_end}`;
 			this.logger.debug(
 				`dynamicPromptExecFromState prompt ~${outputTokenEst.toLocaleString()} tokens`,
 			);
-
-			// Create a structured extractor on first iteration if streaming.
-			// TOON needs field-aware extraction; raw structured tokens must not be
-			// forwarded to user-visible streaming callbacks.
-			if (
-				currentRetry === 0 &&
-				options.onStreamChunk &&
-				!extractor &&
-				format === "TOON"
-			) {
-				const streamFields = schema
-					.filter((row) => {
-						if (row.streamField !== undefined) return row.streamField;
-						return row.field === "text";
-					})
-					.map((row) => row.field);
-
-				// Only use fallback if no explicit streamField settings exist
-				// Don't override explicit streamField: false on "text" field
-				const hasExplicitStreamSettings = schema.some(
-					(r) => r.streamField !== undefined,
-				);
-				const finalStreamFields =
-					streamFields.length > 0
-						? streamFields
-						: !hasExplicitStreamSettings &&
-								schema.some((r) => r.field === "text")
-							? ["text"]
-							: [];
-
-				const streamMessageId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-				// WHY accumulated is forwarded: the extractor tracks the full extracted text
-				// per field internally (`content` in emitFieldContent). Surfacing it
-				// here means consumers like first-sentence voice detection or Eliza's
-				// streaming-text resolver can use the authoritative value instead of
-				// Note: this design prevents dual extractor conflicts by providing authoritative accumulated data
-				// re-accumulating from deltas — which broke when two extractors ran
-				// concurrently (the dual-extractor garbling bug).
-				const onChunk = (
-					chunk: string,
-					_field?: string,
-					accumulated?: string,
-				) => options.onStreamChunk?.(chunk, streamMessageId, accumulated);
-				const onEvent = options.onStreamEvent
-					? (event: StreamEvent) =>
-							options.onStreamEvent?.(event, streamMessageId)
-					: undefined;
-
-				extractor = new ToonFieldStreamExtractor({
-					level: contextLevel,
-					schema,
-					streamFields: finalStreamFields,
-					onChunk,
-					onEvent,
-					abortSignal: options.abortSignal,
-				});
-			}
 
 			// Pass promptSegments so providers can use cache hints when supported (Anthropic block cache, OpenAI/Gemini prefix).
 			const modelParams = {
@@ -6455,15 +5604,9 @@ ${section_end}`;
 						for (const [field, content] of validatedContent) {
 							const truncated =
 								content.length > 500 ? `${content.slice(0, 500)}...` : content;
-							if (format === "TOON") {
-								validatedParts.push(
-									encodeToonValue({
-										[field]: truncated,
-									}),
-								);
-							} else {
-								validatedParts.push(`<${field}>${truncated}</${field}>`);
-							}
+							validatedParts.push(
+								stringifyStructuredForPrompt({ [field]: truncated }),
+							);
 						}
 						if (validatedParts.length > 0) {
 							smartRetryContextNext = `\n\n[RETRY CONTEXT]\nYou previously produced these valid fields:\n${validatedParts.join("\n")}\n\nPlease complete: ${diagnosis.missingFields.concat(diagnosis.invalidFields, diagnosis.incompleteFields).join(", ") || "all fields"}`;
@@ -6615,13 +5758,6 @@ ${section_end}`;
 			rows.map((row) => [row.field, this.buildJsonExampleValue(row)]),
 		);
 		return `${JSON.stringify(exampleObject, null, 2)}\n`;
-	}
-
-	private renderToonSchemaExample(rows: SchemaRow[]): string {
-		const exampleObject = Object.fromEntries(
-			rows.map((row) => [row.field, this.buildJsonExampleValue(row)]),
-		);
-		return `${encodeToonValue(exampleObject)}\n`;
 	}
 
 	private buildJsonExampleValue(spec: SchemaValueSpec): unknown {
@@ -6794,7 +5930,7 @@ ${section_end}`;
 	}
 
 	private buildValidationOutputInstructions({
-		format,
+		format: _format,
 		schema,
 		perFieldCodes,
 		includeFirstCheckpoint,
@@ -6806,14 +5942,11 @@ ${section_end}`;
 		includeFirstCheckpoint: boolean;
 		includeLastCheckpoint: boolean;
 	}): string {
-		const isJsonLike = format === "JSON" || format === "TOON";
 		const lines: string[] = [];
 
 		if (includeFirstCheckpoint) {
 			lines.push(
-				isJsonLike
-					? 'Echo the prompt checkpoint fields: "one_initial_code", "one_middle_code", "one_end_code".'
-					: "",
+				'Echo the prompt checkpoint fields: "one_initial_code", "one_middle_code", "one_end_code".',
 			);
 		}
 
@@ -6824,17 +5957,13 @@ ${section_end}`;
 			}
 
 			lines.push(
-				isJsonLike
-					? `For "${row.field}", include "code_${row.field}_start": "${fieldCode}" and "code_${row.field}_end": "${fieldCode}".`
-					: "",
+				`For "${row.field}", include "code_${row.field}_start": "${fieldCode}" and "code_${row.field}_end": "${fieldCode}".`,
 			);
 		}
 
 		if (includeLastCheckpoint) {
 			lines.push(
-				isJsonLike
-					? 'Echo the final checkpoint fields: "two_initial_code", "two_middle_code", "two_end_code".'
-					: "",
+				'Echo the final checkpoint fields: "two_initial_code", "two_middle_code", "two_end_code".',
 			);
 		}
 
@@ -7257,44 +6386,21 @@ ${section_end}`;
 		response: string,
 		expectedFormat: StructuredResponseFormat,
 	): Record<string, unknown> | null {
-		const parserOrder =
-			expectedFormat === "JSON"
-				? (["JSON", "TOON"] as const)
-				: (["TOON", "JSON"] as const);
 		const candidates = this.extractStructuredResponseCandidates(response);
 
 		for (const candidate of candidates) {
-			for (const parser of parserOrder) {
-				if (parser === "JSON") {
-					if (!candidate.formats.includes("JSON")) {
-						continue;
-					}
+			if (!candidate.formats.includes("JSON")) {
+				continue;
+			}
 
-					const parsed = parseJSONObjectFromText(candidate.text);
-					if (parsed) {
-						if (candidate.source !== "raw" || expectedFormat !== "JSON") {
-							this.logger.debug(
-								`dynamicPromptExecFromState recovered JSON from ${candidate.source}`,
-							);
-						}
-						return parsed;
-					}
-					continue;
+			const parsed = parseJSONObjectFromText(candidate.text);
+			if (parsed) {
+				if (candidate.source !== "raw" || expectedFormat !== "JSON") {
+					this.logger.debug(
+						`dynamicPromptExecFromState recovered JSON from ${candidate.source}`,
+					);
 				}
-
-				if (!candidate.formats.includes("TOON")) {
-					continue;
-				}
-
-				const parsed = parseToonKeyValue(candidate.text);
-				if (parsed) {
-					if (candidate.source !== "raw" || expectedFormat === "JSON") {
-						this.logger.debug(
-							`dynamicPromptExecFromState recovered TOON from ${candidate.source}`,
-						);
-					}
-					return parsed;
-				}
+				return parsed;
 			}
 		}
 
@@ -7334,22 +6440,13 @@ ${section_end}`;
 			const label = match[1]?.trim().toLowerCase() ?? "";
 			const content = match[2]?.trim() ?? "";
 			const hints: StructuredResponseFormat[] =
-				label === "json" || label === "json5"
-					? ["JSON"]
-					: label === "toon"
-						? ["TOON"]
-						: [];
+				label === "json" || label === "json5" ? ["JSON"] : [];
 			addCandidate(content, label ? `fence:${label}` : "fence", hints);
 		}
 
 		const embeddedJson = this.extractEmbeddedJsonObject(response);
 		if (embeddedJson) {
 			addCandidate(embeddedJson, "embedded-json", ["JSON"]);
-		}
-
-		const embeddedToon = this.extractEmbeddedToonDocument(response);
-		if (embeddedToon) {
-			addCandidate(embeddedToon, "embedded-toon", ["TOON"]);
 		}
 
 		return candidates;
@@ -7364,9 +6461,6 @@ ${section_end}`;
 		if (this.looksLikeJsonObject(trimmed)) {
 			formats.push("JSON");
 		}
-		if (this.looksLikeToonDocument(trimmed)) {
-			formats.push("TOON");
-		}
 		return formats;
 	}
 
@@ -7377,95 +6471,6 @@ ${section_end}`;
 			trimmed.includes("}") &&
 			JSON_OBJECT_KEY_PATTERN.test(trimmed)
 		);
-	}
-
-	private looksLikeToonDocument(text: string): boolean {
-		const lines = text
-			.trim()
-			.split(/\r?\n/)
-			.filter((line) => line.trim().length > 0);
-		if (lines.length === 0) {
-			return false;
-		}
-
-		const firstLine = lines[0]?.trim() ?? "";
-		if (TOON_HEADER_PATTERN.test(firstLine)) {
-			return lines
-				.slice(1)
-				.some((line) => TOON_FIELD_PATTERN.test(line.trim()));
-		}
-
-		if (!TOON_FIELD_PATTERN.test(firstLine)) {
-			return false;
-		}
-
-		if (lines.length === 1) {
-			const [, value = ""] = firstLine.split(/:(.*)/s);
-			const trimmedValue = value.trim();
-			return !(trimmedValue.startsWith("{") && trimmedValue.endsWith("}"));
-		}
-
-		let structuredFieldCount = 0;
-		for (const line of lines) {
-			const trimmed = line.trim();
-			if (TOON_FIELD_PATTERN.test(trimmed)) {
-				structuredFieldCount += 1;
-				continue;
-			}
-			if (/^[\t ]+/.test(line)) {
-				continue;
-			}
-			return false;
-		}
-
-		return structuredFieldCount > 0;
-	}
-
-	private extractEmbeddedToonDocument(text: string): string | null {
-		const lines = text.trim().split(/\r?\n/);
-		const startIndex = lines.findIndex((line) => {
-			const trimmed = line.trim();
-			return (
-				TOON_HEADER_PATTERN.test(trimmed) || TOON_FIELD_PATTERN.test(trimmed)
-			);
-		});
-
-		if (startIndex === -1) {
-			return null;
-		}
-
-		const collected: string[] = [];
-		let sawStructuredField = false;
-
-		for (let index = startIndex; index < lines.length; index++) {
-			const line = lines[index] ?? "";
-			const trimmed = line.trim();
-			const isStructuredField = TOON_FIELD_PATTERN.test(trimmed);
-			const isIndented = /^[\t ]+/.test(line);
-			const isHeader = TOON_HEADER_PATTERN.test(trimmed);
-
-			if (isHeader && !sawStructuredField) {
-				collected.push(line);
-				continue;
-			}
-
-			if (isStructuredField) {
-				sawStructuredField = true;
-				collected.push(line);
-				continue;
-			}
-
-			if (trimmed.length === 0 || isIndented) {
-				if (collected.length > 0) {
-					collected.push(line);
-					continue;
-				}
-			}
-
-			break;
-		}
-
-		return sawStructuredField ? collected.join("\n").trim() : null;
 	}
 
 	private extractEmbeddedJsonObject(text: string): string | null {
@@ -8867,7 +7872,7 @@ ${section_end}`;
 			label: "Web search",
 			description:
 				"Search current web pages and discovery surfaces through IWebSearchService.",
-			contexts: ["knowledge", "browser"],
+			contexts: ["documents", "browser"],
 			filters: [
 				{
 					name: "query",
@@ -9004,16 +8009,29 @@ ${section_end}`;
 	}
 
 	registerSendHandler(source: string, handler: SendHandlerFunction): void {
-		if (this.sendHandlers.has(source)) {
+		const normalized = typeof source === "string" ? source.trim() : "";
+		if (!normalized) {
+			throw new Error("Send handler registration requires a source");
+		}
+		const routeKey = connectorRouteKey(normalized);
+		if (this.sendHandlers.has(routeKey)) {
 			this.logger.warn(
-				{ src: "agent", agentId: this.agentId, handlerSource: source },
+				{
+					src: "agent",
+					agentId: this.agentId,
+					handlerSource: normalized,
+				},
 				"Send handler already registered, overwriting",
 			);
 		}
-		this.sendHandlers.set(source, handler);
-		this.messageConnectors.set(source, normalizeMessageConnector(source));
+		this.sendHandlers.set(routeKey, handler);
+		this.messageConnectors.set(routeKey, normalizeMessageConnector(normalized));
 		this.logger.debug(
-			{ src: "agent", agentId: this.agentId, handlerSource: source },
+			{
+				src: "agent",
+				agentId: this.agentId,
+				handlerSource: normalized,
+			},
 			"Send handler registered",
 		);
 	}
@@ -9024,41 +8042,198 @@ ${section_end}`;
 		if (!source) {
 			throw new Error("Message connector registration requires a source");
 		}
-		if (this.messageConnectors.has(source) || this.sendHandlers.has(source)) {
+		const accountId =
+			normalizeConnectorAccountId(registration.accountId) ??
+			normalizeConnectorAccountId(registration.account?.accountId);
+		const routeKey = connectorRouteKey(source, accountId);
+		if (
+			this.messageConnectors.has(routeKey) ||
+			this.sendHandlers.has(routeKey)
+		) {
 			this.logger.warn(
-				{ src: "agent", agentId: this.agentId, handlerSource: source },
+				{
+					src: "agent",
+					agentId: this.agentId,
+					handlerSource: source,
+					accountId,
+				},
 				"Message connector already registered, overwriting",
 			);
 		}
 
-		this.registerSendHandler(source, registration.sendHandler);
+		if (registration.sendHandler) {
+			this.sendHandlers.set(routeKey, registration.sendHandler);
+			this.logger.debug(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					handlerSource: source,
+					accountId,
+				},
+				"Send handler registered",
+			);
+		}
 		this.messageConnectors.set(
-			source,
-			normalizeMessageConnector(source, registration),
+			routeKey,
+			normalizeMessageConnector(source, {
+				...registration,
+				accountId,
+			}),
 		);
+	}
+
+	unregisterMessageConnector(source: string, accountId?: string): boolean {
+		const normalized = typeof source === "string" ? source.trim() : "";
+		if (!normalized) return false;
+		const normalizedAccountId = normalizeConnectorAccountId(accountId);
+		let removedConnector = false;
+		let removedHandler = false;
+		if (normalizedAccountId) {
+			const routeKey = connectorRouteKey(normalized, normalizedAccountId);
+			removedConnector = this.messageConnectors.delete(routeKey);
+			removedHandler = this.sendHandlers.delete(routeKey);
+		} else {
+			for (const [routeKey, connector] of this.messageConnectors) {
+				if (connector.source === normalized) {
+					removedConnector =
+						this.messageConnectors.delete(routeKey) || removedConnector;
+				}
+			}
+			for (const routeKey of Array.from(this.sendHandlers.keys())) {
+				if (connectorKeySource(routeKey) === normalized) {
+					removedHandler = this.sendHandlers.delete(routeKey) || removedHandler;
+				}
+			}
+		}
+		if (removedConnector || removedHandler) {
+			this.logger.debug(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					handlerSource: normalized,
+					accountId: normalizedAccountId,
+				},
+				"Message connector unregistered",
+			);
+		}
+		return removedConnector || removedHandler;
 	}
 
 	getMessageConnectors(): MessageConnector[] {
 		return Array.from(this.messageConnectors.values())
-			.filter((connector) => this.sendHandlers.has(connector.source))
 			.map(cloneMessageConnector)
-			.sort((a, b) => a.source.localeCompare(b.source));
+			.sort(
+				(a, b) =>
+					a.source.localeCompare(b.source) ||
+					(a.accountId ?? "").localeCompare(b.accountId ?? ""),
+			);
+	}
+
+	registerPostConnector(registration: PostConnectorRegistration): void {
+		const source =
+			typeof registration.source === "string" ? registration.source.trim() : "";
+		if (!source) {
+			throw new Error("Post connector registration requires a source");
+		}
+		const accountId =
+			normalizeConnectorAccountId(registration.accountId) ??
+			normalizeConnectorAccountId(registration.account?.accountId);
+		const routeKey = connectorRouteKey(source, accountId);
+		if (this.postConnectors.has(routeKey)) {
+			this.logger.warn(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					handlerSource: source,
+					accountId,
+				},
+				"Post connector already registered, overwriting",
+			);
+		}
+		this.postConnectors.set(
+			routeKey,
+			normalizePostConnector(source, {
+				...registration,
+				accountId,
+			}),
+		);
+		this.logger.debug(
+			{ src: "agent", agentId: this.agentId, handlerSource: source, accountId },
+			"Post connector registered",
+		);
+	}
+
+	unregisterPostConnector(source: string, accountId?: string): boolean {
+		const normalized = typeof source === "string" ? source.trim() : "";
+		if (!normalized) return false;
+		const normalizedAccountId = normalizeConnectorAccountId(accountId);
+		let removed = false;
+		if (normalizedAccountId) {
+			removed = this.postConnectors.delete(
+				connectorRouteKey(normalized, normalizedAccountId),
+			);
+		} else {
+			for (const [routeKey, connector] of this.postConnectors) {
+				if (connector.source === normalized) {
+					removed = this.postConnectors.delete(routeKey) || removed;
+				}
+			}
+		}
+		if (removed) {
+			this.logger.debug(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					handlerSource: normalized,
+					accountId: normalizedAccountId,
+				},
+				"Post connector unregistered",
+			);
+		}
+		return removed;
+	}
+
+	getPostConnectors(): PostConnector[] {
+		return Array.from(this.postConnectors.values())
+			.map(clonePostConnector)
+			.sort(
+				(a, b) =>
+					a.source.localeCompare(b.source) ||
+					(a.accountId ?? "").localeCompare(b.accountId ?? ""),
+			);
 	}
 
 	async sendMessageToTarget(
 		target: TargetInfo,
 		content: Content,
-	): Promise<void> {
-		const handler = this.sendHandlers.get(target.source);
+	): Promise<Memory | undefined> {
+		const source =
+			typeof target.source === "string" ? target.source.trim() : "";
+		const accountId = normalizeConnectorAccountId(target.accountId);
+		const handler =
+			this.sendHandlers.get(connectorRouteKey(source, accountId)) ??
+			this.sendHandlers.get(connectorRouteKey(source));
 		if (!handler) {
-			const errorMsg = `No send handler registered for source: ${target.source}`;
+			const errorMsg = accountId
+				? `No send handler registered for source: ${source} accountId: ${accountId}`
+				: `No send handler registered for source: ${source}`;
 			this.logger.error(
-				{ src: "agent", agentId: this.agentId, handlerSource: target.source },
+				{
+					src: "agent",
+					agentId: this.agentId,
+					handlerSource: source,
+					accountId,
+				},
 				"Send handler not found",
 			);
 			throw new Error(errorMsg);
 		}
-		await handler(this as unknown as IAgentRuntime, target, content);
+		const result = await handler(
+			this as unknown as IAgentRuntime,
+			target,
+			content,
+		);
+		return result as Memory | undefined;
 	}
 	async getMemoriesByWorldId(params: {
 		worldId: UUID;
@@ -9172,6 +8347,115 @@ ${section_end}`;
 
 	async deletePairingAllowlistEntry(id: UUID): Promise<void> {
 		return await this.adapter.deletePairingAllowlistEntries([id]);
+	}
+
+	// Connector account storage passthroughs
+	async listConnectorAccounts(
+		params: ListConnectorAccountsParams = {},
+	): Promise<ConnectorAccountRecord[]> {
+		return await this.adapter.listConnectorAccounts({
+			...params,
+			agentId: params.agentId ?? this.agentId,
+		});
+	}
+
+	async getConnectorAccount(
+		params: GetConnectorAccountParams,
+	): Promise<ConnectorAccountRecord | null> {
+		return await this.adapter.getConnectorAccount({
+			...params,
+			agentId: params.id ? params.agentId : (params.agentId ?? this.agentId),
+		});
+	}
+
+	async upsertConnectorAccount(
+		params: UpsertConnectorAccountParams,
+	): Promise<ConnectorAccountRecord> {
+		return await this.adapter.upsertConnectorAccount({
+			...params,
+			agentId: params.agentId ?? this.agentId,
+		});
+	}
+
+	async deleteConnectorAccount(
+		params: DeleteConnectorAccountParams,
+	): Promise<boolean> {
+		return await this.adapter.deleteConnectorAccount({
+			...params,
+			agentId: params.id ? params.agentId : (params.agentId ?? this.agentId),
+		});
+	}
+
+	async setConnectorAccountCredentialRef(
+		params: SetConnectorAccountCredentialRefParams,
+	): Promise<ConnectorAccountCredentialRefRecord> {
+		return await this.adapter.setConnectorAccountCredentialRef(params);
+	}
+
+	async getConnectorAccountCredentialRef(
+		params: GetConnectorAccountCredentialRefParams,
+	): Promise<ConnectorAccountCredentialRefRecord | null> {
+		return await this.adapter.getConnectorAccountCredentialRef(params);
+	}
+
+	async listConnectorAccountCredentialRefs(
+		params: ListConnectorAccountCredentialRefsParams,
+	): Promise<ConnectorAccountCredentialRefRecord[]> {
+		return await this.adapter.listConnectorAccountCredentialRefs(params);
+	}
+
+	async appendConnectorAccountAuditEvent(
+		params: AppendConnectorAccountAuditEventParams,
+	): Promise<ConnectorAccountAuditEventRecord> {
+		return await this.adapter.appendConnectorAccountAuditEvent({
+			...params,
+			agentId: params.agentId ?? this.agentId,
+		});
+	}
+
+	async createOAuthFlowState(
+		params: CreateOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord> {
+		return await this.adapter.createOAuthFlowState({
+			...params,
+			agentId: params.agentId ?? this.agentId,
+		});
+	}
+
+	async consumeOAuthFlowState(
+		params: ConsumeOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null> {
+		return await this.adapter.consumeOAuthFlowState({
+			...params,
+			agentId: params.agentId ?? this.agentId,
+		});
+	}
+
+	async getOAuthFlowState(
+		params: GetOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null> {
+		return await this.adapter.getOAuthFlowState({
+			...params,
+			agentId: params.agentId ?? this.agentId,
+		});
+	}
+
+	async updateOAuthFlowState(
+		params: UpdateOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null> {
+		return await this.adapter.updateOAuthFlowState({
+			...params,
+			agentId: params.agentId ?? this.agentId,
+		});
+	}
+
+	async deleteOAuthFlowState(
+		params: DeleteOAuthFlowStateParams,
+	): Promise<boolean> {
+		return await this.adapter.deleteOAuthFlowState({
+			...params,
+			agentId: params.agentId ?? this.agentId,
+		});
 	}
 
 	// ── Batch pass-throughs required by IDatabaseAdapter ────────────────

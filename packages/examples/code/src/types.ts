@@ -219,6 +219,41 @@ export interface CodeTask extends Omit<CoreTask, "metadata"> {
   metadata: CodeTaskMetadata;
 }
 
+export interface CodeTaskService {
+  createCodeTask(
+    name: string,
+    description: string,
+    metadata?: Record<string, JsonValue>,
+    subAgentType?: SubAgentType,
+  ): Promise<CodeTask>;
+  /** Alias used by game-generation / orchestration flows */
+  createTask(
+    name: string,
+    description: string,
+    metadata?: Record<string, JsonValue>,
+    subAgentType?: SubAgentType,
+  ): Promise<CodeTask>;
+  getCurrentTask(): Promise<CodeTask | null>;
+  getTask(taskId: string): Promise<CodeTask | null | undefined>;
+  getTasks(): Promise<CodeTask[]>;
+  startTaskExecution(taskId: string): Promise<void>;
+  pauseTask(taskId: string): Promise<void>;
+  resumeTask(taskId: string): Promise<void>;
+  cancelTask(taskId: string): Promise<void>;
+  deleteTask(taskId: string): Promise<void>;
+  renameTask(taskId: string, name: string): Promise<void>;
+  appendOutput(taskId: string, line: string): Promise<void>;
+  setCurrentTask(taskId: string): void;
+  getCurrentTaskId(): string | null;
+  setUserStatus(taskId: string, status: TaskUserStatus): Promise<void>;
+  setTaskSubAgentType(
+    taskId: string,
+    subAgentType: SubAgentType,
+  ): Promise<void>;
+  detectAndPauseInterruptedTasks(): Promise<CodeTask[]>;
+  on(event: "task", handler: (event: TaskEvent) => Promise<void> | void): void;
+}
+
 // ============================================================================
 // Progress Update
 // ============================================================================

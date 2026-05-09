@@ -9,7 +9,7 @@ import crypto from "node:crypto";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgeSettings,
-} from "@elizaos/plugin-browser-bridge";
+} from "@elizaos/plugin-browser";
 import type {
   LifeOpsScreenTimeDaily,
   LifeOpsScreenTimeHistoryPoint,
@@ -22,7 +22,6 @@ import type {
   LifeOpsScreenTimeTargetBucket,
   LifeOpsScreenTimeVisibleBuckets,
   LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
-  LifeOpsScreenTimeBreakdownItem as ScreenTimeBreakdownItem,
   LifeOpsScreenTimeBucket as ScreenTimeBucket,
   LifeOpsSocialHabitDataSource as SocialHabitDataSource,
   LifeOpsSocialHabitSummary as SocialHabitSummary,

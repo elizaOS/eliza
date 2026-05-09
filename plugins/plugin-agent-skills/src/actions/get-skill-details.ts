@@ -22,8 +22,19 @@ type GetSkillDetailsOptions = {
 	slug?: unknown;
 };
 
-export const getSkillDetailsAction: Action = {
-	name: "GET_SKILL_DETAILS",
+const SKILL_DETAILS_TEXT_MAX_CHARS = 4_000;
+
+function truncateSkillDetailsText(text: string): string {
+	return text.length <= SKILL_DETAILS_TEXT_MAX_CHARS
+		? text
+		: `${text.slice(0, SKILL_DETAILS_TEXT_MAX_CHARS)}\n\n[truncated skill details]`;
+}
+
+export const getSkillDetailsAction = {
+	name: "SKILL",
+	contexts: ["knowledge", "automation", "settings"],
+	contextGate: { anyOf: ["knowledge", "automation", "settings"] },
+	roleGate: { minRole: "USER" },
 	similes: ["SKILL_INFO", "SKILL_DETAILS"],
 	description:
 		"Get detailed information about a specific skill including version, owner, and stats.",
@@ -90,13 +101,18 @@ ${details.skill.summary}
 ${details.owner ? `**Author:** ${details.owner.displayName} (@${details.owner.handle})` : ""}
 
 ${details.latestVersion.changelog ? `**Changelog:** ${details.latestVersion.changelog}` : ""}`;
+			const boundedText = truncateSkillDetailsText(text);
 
-			if (callback) await callback({ text });
+			if (callback) await callback({ text: boundedText });
 
 			return {
 				success: true,
-				text,
-				data: { details, isInstalled },
+				text: boundedText,
+				data: {
+					details,
+					isInstalled,
+					outputTruncated: boundedText !== text,
+				},
 			};
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : String(error);
@@ -129,12 +145,12 @@ ${details.latestVersion.changelog ? `**Changelog:** ${details.latestVersion.chan
 				name: "{{agentName}}",
 				content: {
 					text: "## PDF Processing\n\n**Slug:** `pdf-processing`\n**Version:** 1.2.0\n**Status:** ✅ Installed...",
-					actions: ["GET_SKILL_DETAILS"],
+					actions: ["SKILL"],
 				},
 			},
 		],
 	],
-};
+} satisfies Action;
 
 function extractSlugFromText(text: string): string | null {
 	// Try to extract a slug-like pattern

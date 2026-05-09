@@ -1,5 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import { buildMemoryFromMessage } from "../discord-history";
 import { DiscordService } from "../service";
 
 function createRuntime() {
@@ -135,5 +136,113 @@ describe("Discord message connector adapter", () => {
 			userTargets.find((target: any) => target.kind === "user")?.target
 				.entityId,
 		).toBe("333333333333333333");
+	});
+
+	it("registers account-scoped connectors and routes sends with accountId", async () => {
+		const runtime = createRuntime();
+		const service = Object.create(DiscordService.prototype) as any;
+		service.getAccountIds = vi.fn(() => ["default", "team"]);
+		service.getDefaultAccountId = vi.fn(() => "default");
+		service.getAccountLabel = vi.fn((accountId: string) =>
+			accountId === "team" ? "Team Bot" : "Default Bot",
+		);
+		service.handleSendMessage = vi.fn().mockResolvedValue(undefined);
+		service.resolveConnectorTargets = vi.fn().mockResolvedValue([]);
+		service.listRecentConnectorTargets = vi.fn().mockResolvedValue([]);
+		service.listConnectorRooms = vi.fn().mockResolvedValue([]);
+		service.listConnectorServers = vi.fn().mockResolvedValue([]);
+		service.fetchConnectorMessages = vi.fn().mockResolvedValue([]);
+		service.searchConnectorMessages = vi.fn().mockResolvedValue([]);
+		service.reactConnectorMessage = vi.fn().mockResolvedValue(undefined);
+		service.editConnectorMessage = vi.fn();
+		service.deleteConnectorMessage = vi.fn().mockResolvedValue(undefined);
+		service.pinConnectorMessage = vi.fn().mockResolvedValue(undefined);
+		service.joinConnectorChannel = vi.fn();
+		service.leaveConnectorChannel = vi.fn().mockResolvedValue(undefined);
+		service.getConnectorUser = vi.fn();
+		service.getConnectorChatContext = vi.fn();
+		service.getConnectorUserContext = vi.fn();
+
+		DiscordService.registerSendHandlers(runtime, service);
+
+		expect(runtime.registerMessageConnector).toHaveBeenCalledTimes(3);
+		const registrations = runtime.registerMessageConnector.mock.calls.map(
+			(call) => call[0],
+		);
+		expect(registrations.map((registration) => registration.accountId)).toEqual(
+			[undefined, "default", "team"],
+		);
+
+		const teamRegistration = registrations.find(
+			(registration) => registration.accountId === "team",
+		);
+		await teamRegistration.sendHandler(
+			runtime,
+			{ source: "discord", channelId: "222222222222222222" },
+			{ text: "team hello" },
+		);
+		expect(service.handleSendMessage).toHaveBeenCalledWith(
+			runtime,
+			{
+				source: "discord",
+				channelId: "222222222222222222",
+				accountId: "team",
+			},
+			{ text: "team hello" },
+		);
+	});
+
+	it("stamps inbound Discord memories with the accountId", async () => {
+		const runtime = {
+			agentId: "00000000-0000-0000-0000-000000000001",
+			logger: {
+				debug: vi.fn(),
+				warn: vi.fn(),
+				error: vi.fn(),
+			},
+		} as any;
+		const channel = {
+			id: "222222222222222222",
+			type: 0,
+			guild: { id: "111111111111111111" },
+		};
+		const message = {
+			id: "333333333333333333",
+			content: "hello from team",
+			createdTimestamp: 1_700_000_000_000,
+			url: "https://discord.com/channels/111/222/333",
+			author: {
+				id: "444444444444444444",
+				username: "ada",
+				bot: false,
+				displayAvatarURL: () => "https://cdn.example/avatar.png",
+			},
+			channel,
+			guild: { id: "111111111111111111" },
+			reference: null,
+		};
+		const memory = await buildMemoryFromMessage(
+			{
+				accountId: "team",
+				runtime,
+				messageManager: undefined,
+				client: {} as any,
+				resolveDiscordEntityId: (userId: string) =>
+					`00000000-0000-0000-0000-${userId.slice(-12)}`,
+				getChannelType: vi.fn().mockResolvedValue("GROUP"),
+				isGuildTextBasedChannel: vi.fn(),
+			},
+			message as any,
+			{ processedContent: "hello from team" },
+		);
+
+		expect(memory?.metadata).toMatchObject({
+			accountId: "team",
+			discord: {
+				accountId: "team",
+				channelId: "222222222222222222",
+				messageId: "333333333333333333",
+			},
+		});
 	});
 });

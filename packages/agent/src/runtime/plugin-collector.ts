@@ -68,8 +68,20 @@ function isElizaOsAndroidRuntime(): boolean {
  * Legacy package names that were merged or renamed. Config allow-lists and
  * `plugins.installs` may still reference the old id.
  */
+const PLUGIN_PACKAGE_ALIASES: Readonly<Record<string, string>> = {
+  "@elizaos/plugin-coding-agent": "@elizaos/plugin-coding-tools",
+};
+
 export function resolvePluginPackageAlias(packageName: string): string {
-  return packageName;
+  return PLUGIN_PACKAGE_ALIASES[packageName] ?? packageName;
+}
+
+function packageNameFromPluginConfigId(pluginId: string): string {
+  if (pluginId.includes("/")) return pluginId;
+  if (pluginId.startsWith("app-") || pluginId.startsWith("plugin-")) {
+    return `@elizaos/${pluginId}`;
+  }
+  return `@elizaos/plugin-${pluginId}`;
 }
 
 function isTruthyCloudEnvValue(raw: string | undefined): boolean {
@@ -148,33 +160,40 @@ const REMOTE_MODEL_PROVIDER_PLUGINS = new Set(
  */
 export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   // ── Wallet plugins ─────────────────────────────────────────────────
-  // These short ids are what plugin-auto-enable.ts writes into
-  // `plugins.allow` when EVM_PRIVATE_KEY / SOLANA_PRIVATE_KEY are
-  // present in process.env. Without entries here, collectPluginNames()
-  // would fall through to loading the short id as a literal package
-  // name (`import("evm")`), which silently fails inside the loader's
-  // error boundary — short ids must resolve to real package names or optional
-  // plugins silently fail inside the loader. Keep in sync with AUTH_PROVIDER_PLUGINS
-  // in packages/agent/src/config/plugin-auto-enable.ts.
+  // These short ids are what plugin-wallet's auto-enable.ts writes into
+  // `plugins.allow` when an EVM / Solana / Steward signing path is
+  // available. Without entries here, collectPluginNames() would fall
+  // through to loading the short id as a literal package name
+  // (`import("evm")`), which silently fails inside the loader's error
+  // boundary — short ids must resolve to real package names or optional
+  // plugins silently fail. Keep in sync with the short ids that
+  // plugin-wallet auto-enables under (`wallet`, plus legacy `evm` /
+  // `solana` aliases for older configs).
   evm: "@elizaos/plugin-wallet",
   solana: "@elizaos/plugin-wallet",
   wallet: "@elizaos/plugin-wallet",
+  // Coding tools — persisted user configs may carry the legacy "coding-agent"
+  // short ID (the plugin was renamed to plugin-coding-tools). Map both forms
+  // so the resolver doesn't try to load a non-existent package.
+  "coding-agent": "@elizaos/plugin-coding-tools",
+  codingAgent: "@elizaos/plugin-coding-tools",
+  "coding-tools": "@elizaos/plugin-coding-tools",
+  codingTools: "@elizaos/plugin-coding-tools",
   /** Unified wallet (canonical actions + providers — incremental migration). */
   agent_wallet: "@elizaos/plugin-wallet",
   "agent-wallet": "@elizaos/plugin-wallet",
+  /** Browser plugin: workspace browser + Chrome/Safari companion bridge. Replaces `@elizaos/app-browser` and `@elizaos/plugin-browser-bridge`; aliases here so short IDs in plugins.allow and config.features still resolve. */
   browser: "@elizaos/plugin-browser",
-  /** Eliza desktop browser workspace + Steward; package is `@elizaos/app-browser`. */
-  "app-browser": "@elizaos/app-browser",
-  appBrowser: "@elizaos/app-browser",
-  "eliza-browser": "@elizaos/app-browser",
-  elizaBrowser: "@elizaos/app-browser",
+  "app-browser": "@elizaos/plugin-browser",
+  appBrowser: "@elizaos/plugin-browser",
+  "eliza-browser": "@elizaos/plugin-browser",
+  elizaBrowser: "@elizaos/plugin-browser",
+  "browser-bridge": "@elizaos/plugin-browser",
+  browserBridge: "@elizaos/plugin-browser",
   /** Native Polymarket app runtime plugin. */
   polymarket: "@elizaos/app-polymarket",
   "app-polymarket": "@elizaos/app-polymarket",
   appPolymarket: "@elizaos/app-polymarket",
-  /** Agent Browser Bridge: Chrome/Safari companion + packaging. Core plugin; aliased here so short IDs resolve in plugins.allow and config.features. */
-  "browser-bridge": "@elizaos/plugin-browser-bridge",
-  browserBridge: "@elizaos/plugin-browser-bridge",
   vision: "@elizaos/plugin-vision",
   elizacloud: "@elizaos/plugin-elizacloud",
   selfcontrol: "@elizaos/app-lifeops",
@@ -311,7 +330,7 @@ export function collectPluginNames(
   // Allow-list entries are additive (extra plugins), not exclusive.
   const allowList = config.plugins?.allow;
   // On mobile (ELIZA_PLATFORM=android|ios) the desktop core list pulls in
-  // ~10 plugins that depend on subprocesses (n8n, signal-cli), platform
+  // ~10 plugins that depend on subprocesses (signal-cli), platform
   // launchers (/usr/bin/open, osascript, xdg-open), or PTY tooling — all
   // unavailable in the app sandbox. Substitute the curated mobile-safe set.
   const onMobile = isMobilePlatform();
@@ -361,7 +380,7 @@ export function collectPluginNames(
       const pluginName = resolvePluginPackageAlias(
         CHANNEL_PLUGIN_MAP[item] ??
           OPTIONAL_PLUGIN_MAP[item] ??
-          (item.includes("/") ? item : `@elizaos/plugin-${item}`),
+          packageNameFromPluginConfigId(item),
       );
       pluginsToLoad.add(pluginName);
       track(pluginName, `plugins.allow[${JSON.stringify(item)}]`);
@@ -464,7 +483,7 @@ export function collectPluginNames(
       const pluginName = resolvePluginPackageAlias(
         CHANNEL_PLUGIN_MAP[key] ??
           OPTIONAL_PLUGIN_MAP[key] ??
-          (key.includes("/") ? key : `@elizaos/plugin-${key}`),
+          packageNameFromPluginConfigId(key),
       );
       const isOptionalCore = OPTIONAL_CORE_PLUGIN_NAMES.has(pluginName);
       const entryEnabled = (entry as Record<string, unknown>).enabled;

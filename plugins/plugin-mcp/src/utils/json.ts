@@ -1,4 +1,3 @@
-import { parseToonKeyValue } from "@elizaos/core";
 import Ajv from "ajv";
 import JSON5 from "json5";
 
@@ -64,53 +63,14 @@ export function assertJsonObject(value: unknown, context: string): Record<string
   return value as Record<string, unknown>;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function stripOpeningFence(input: string): string {
-  return input
-    .trim()
-    .replace(/^```(?:json|toon)?\s*/i, "")
-    .trim();
-}
-
-function looksLikeLegacyJsonObject(input: string): boolean {
-  return stripOpeningFence(input).startsWith("{");
-}
-
-function tryParseToonRecord(input: string): Record<string, unknown> | null {
-  const parsed = parseToonKeyValue<Record<string, unknown>>(input);
-  return isRecord(parsed) ? parsed : null;
-}
-
 export function parseStructuredModelOutput<T = Record<string, unknown>>(input: string): T {
   const errors: string[] = [];
-  const legacyJsonFirst = looksLikeLegacyJsonObject(input);
-
-  if (!legacyJsonFirst) {
-    const toonRecord = tryParseToonRecord(input);
-    if (toonRecord) {
-      return toonRecord as T;
-    }
-    errors.push("TOON/plain-text parse failed");
-  }
 
   try {
     return parseJSON<T>(input);
   } catch {
-    errors.push("legacy structured-object parse failed");
+    errors.push("JSON object parse failed");
   }
 
-  if (legacyJsonFirst) {
-    const toonRecord = tryParseToonRecord(input);
-    if (toonRecord) {
-      return toonRecord as T;
-    }
-    errors.push("TOON/plain-text parse failed");
-  }
-
-  throw new Error(
-    `No valid TOON/plain-text or legacy structured object found: ${errors.join("; ")}`
-  );
+  throw new Error(`No valid JSON object found: ${errors.join("; ")}`);
 }

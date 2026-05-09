@@ -21,6 +21,51 @@ const RESUMABLE_STATUSES = new Set(["pending", "stopped", "disconnected"]);
 const STARTING_STATUSES = new Set(["pending", "provisioning", "stopped", "disconnected"]);
 const RETRY_AFTER_SECONDS = 5;
 
+type PairingSandbox = NonNullable<
+  Awaited<ReturnType<typeof agentSandboxesRepository.findByIdAndOrg>>
+>;
+
+function getDirectDockerWebUiUrl(sandbox: PairingSandbox): string | null {
+  const port = sandbox.web_ui_port ?? sandbox.bridge_port;
+  if (!port) return null;
+
+  let host = sandbox.headscale_ip ?? null;
+  for (const candidate of [sandbox.health_url, sandbox.bridge_url]) {
+    if (host || !candidate) continue;
+    try {
+      host = new URL(candidate).hostname;
+    } catch {
+      // Ignore malformed legacy URLs and keep looking for a usable host.
+    }
+  }
+
+  return host ? `http://${host}:${port}` : null;
+}
+
+async function isWebUiReachable(webUiUrl: string): Promise<boolean> {
+  try {
+    const response = await fetch(webUiUrl, {
+      method: "GET",
+      redirect: "manual",
+      signal: AbortSignal.timeout(3500),
+    });
+    return response.status >= 200 && response.status < 400;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveReachableWebUiUrl(sandbox: PairingSandbox): Promise<string | null> {
+  const publicUrl = getElizaAgentPublicWebUiUrl(sandbox);
+  const directUrl = getDirectDockerWebUiUrl(sandbox);
+
+  if (process.env.NODE_ENV === "production" && publicUrl && directUrl) {
+    return (await isWebUiReachable(publicUrl)) ? publicUrl : directUrl;
+  }
+
+  return publicUrl ?? directUrl;
+}
+
 /**
  * POST /api/v1/eliza/agents/[agentId]/pairing-token
  *
@@ -144,7 +189,7 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
       return response;
     }
 
-    const webUiUrl = getElizaAgentPublicWebUiUrl(sandbox);
+    const webUiUrl = await resolveReachableWebUiUrl(sandbox);
     if (!webUiUrl) {
       return applyCorsHeaders(
         Response.json(

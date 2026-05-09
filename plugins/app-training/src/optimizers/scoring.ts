@@ -9,12 +9,10 @@
  * Token-overlap agreement (Jaccard over normalized tokens) is the same primitive
  * that `replay-validator.ts` uses for `scoreSkill`-style success measurement,
  * just lifted to the (output vs reference) comparison instead of (skill vs
- * trajectory). When a richer signal becomes available — e.g. a structured
- * TOON parser per task — the scorer factory can be swapped without changing
- * any optimizer code.
+ * trajectory). When a richer signal becomes available, the scorer factory can
+ * be swapped without changing any optimizer code.
  */
 
-import { parseToonKeyValue } from "@elizaos/core";
 import type { LlmAdapter, OptimizationExample, PromptScorer } from "./types.js";
 
 interface ScorerOptions {
@@ -68,13 +66,63 @@ export function createPromptScorer(
   };
 }
 
+function stripOutputFences(text: string): string {
+  return text
+    .trim()
+    .replace(/^```[a-z0-9_-]*\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+function parseJsonObject(text: string): Record<string, unknown> | null {
+  const trimmed = stripOutputFences(text);
+  if (!trimmed.startsWith("{")) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function readLegacyField(
+  text: string,
+  fieldName: string,
+): string | undefined {
+  const lineMatch = new RegExp(`(^|\\n)${fieldName}:\\s*([^\\n]+)`, "i").exec(
+    text,
+  );
+  const value = lineMatch?.[2]?.trim();
+  return value ? value : undefined;
+}
+
+function parsePlannerObject(text: string): Record<string, unknown> {
+  const parsed = parseJsonObject(text);
+  if (parsed) {
+    return parsed;
+  }
+
+  const legacyFields: Record<string, unknown> = {};
+  for (const fieldName of ["action", "actionName", "name", "type", "actions"]) {
+    const value = readLegacyField(text, fieldName);
+    if (value) {
+      legacyFields[fieldName] = value;
+    }
+  }
+  return legacyFields;
+}
+
 /**
- * Extract the first action name from planner TOON output. Falls back to the
- * first all-caps identifier on truncated completions.
+ * Extract the first action name from planner output. JSON is preferred; a
+ * small line-based reader keeps older key/value rows comparable.
  */
 export function extractPlannerAction(text: string): string | null {
   if (!text) return null;
-  const parsed = parseToonKeyValue<Record<string, unknown>>(text);
+  const parsed = parsePlannerObject(text);
   const raw =
     parsed?.action ??
     parsed?.actionName ??

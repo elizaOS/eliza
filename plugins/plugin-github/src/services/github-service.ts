@@ -2,15 +2,21 @@
  * @module github-service
  * @description Service that owns GitHub REST clients for the plugin.
  *
- * Two independent PATs are supported: a user-acting token and an
- * agent-acting token. Actions request the Octokit client they need via
- * `getOctokit(as)`; the service returns `null` when the requested identity
- * has no token configured (graceful degrade — the action reports a clean
- * error instead of crashing initialization).
+ * Role-tagged account records are supported, with the legacy user/agent PAT
+ * split preserved as the default account set. Actions request an Octokit
+ * client by role and optionally by accountId; the service returns `null` when
+ * the requested account has no token configured.
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { Octokit } from "@octokit/rest";
+import {
+  defaultGitHubAccountIdForRole,
+  readGitHubAccountsWithConnectorCredentials,
+  resolveGitHubAccount,
+  type GitHubAccountConfig,
+  type GitHubAccountSelection,
+} from "../accounts.js";
 import {
   GITHUB_SERVICE_TYPE,
   type GitHubIdentity,
@@ -18,23 +24,25 @@ import {
   type IGitHubService,
 } from "../types.js";
 
-interface TokenSources {
-  user: string | undefined;
-  agent: string | undefined;
+interface GitHubClientRecord {
+  account: GitHubAccountConfig;
+  client: GitHubOctokitClient;
 }
 
-function readTokens(runtime: IAgentRuntime): TokenSources {
-  const setting = (key: string): string | undefined => {
-    const value = runtime.getSetting(key);
-    if (typeof value === "string" && value.length > 0) {
-      return value;
-    }
-    return undefined;
-  };
-
+function normalizeSelector(
+  selector:
+    | GitHubIdentity
+    | { as?: GitHubIdentity; role?: GitHubIdentity; accountId?: string },
+): GitHubAccountSelection {
+  if (selector === "user" || selector === "agent") {
+    return { role: selector };
+  }
   return {
-    user: setting("GITHUB_USER_PAT") ?? setting("ELIZA_E2E_GITHUB_USER_PAT"),
-    agent: setting("GITHUB_AGENT_PAT") ?? setting("ELIZA_E2E_GITHUB_AGENT_PAT"),
+    accountId:
+      typeof selector.accountId === "string" && selector.accountId.trim()
+        ? selector.accountId.trim()
+        : undefined,
+    role: selector.role ?? selector.as ?? "agent",
   };
 }
 
@@ -43,8 +51,7 @@ export class GitHubService extends Service implements IGitHubService {
   capabilityDescription =
     "GitHub REST API integration for PRs, issues, and notifications";
 
-  private userClient: GitHubOctokitClient | null = null;
-  private agentClient: GitHubOctokitClient | null = null;
+  private clients = new Map<string, GitHubClientRecord>();
 
   constructor(
     runtime?: IAgentRuntime,
@@ -60,33 +67,48 @@ export class GitHubService extends Service implements IGitHubService {
     createClient?: (auth: string) => GitHubOctokitClient,
   ): Promise<Service> {
     const service = new GitHubService(runtime, createClient);
-    service.initialize();
+    await service.initialize();
     return service;
   }
 
-  private initialize(): void {
+  private async initialize(): Promise<void> {
     if (!this.runtime) {
       return;
     }
-    const tokens = readTokens(this.runtime);
-    if (tokens.user) {
-      this.userClient = this.createClient(tokens.user);
-    } else {
-      logger.info(
-        "[GitHubService] GITHUB_USER_PAT not set — user-acting calls will be rejected",
-      );
+    const accounts = await readGitHubAccountsWithConnectorCredentials(this.runtime);
+    this.clients.clear();
+    for (const account of accounts) {
+      this.clients.set(account.accountId, {
+        account,
+        client: this.createClient(account.token),
+      });
     }
-    if (tokens.agent) {
-      this.agentClient = this.createClient(tokens.agent);
-    } else {
-      logger.info(
-        "[GitHubService] GITHUB_AGENT_PAT not set — agent-acting calls will be rejected",
-      );
+    for (const role of ["user", "agent"] as const) {
+      if (!resolveGitHubAccount(accounts, { role })) {
+        logger.info(
+          `[GitHubService] no GitHub ${role} account configured — ${role}-acting calls will be rejected`,
+        );
+      }
     }
+    logger.info(
+      `[GitHubService] configured ${this.clients.size} GitHub account(s)`,
+    );
   }
 
-  getOctokit(as: GitHubIdentity): GitHubOctokitClient | null {
-    return as === "user" ? this.userClient : this.agentClient;
+  getOctokit(
+    selector:
+      | GitHubIdentity
+      | { as?: GitHubIdentity; role?: GitHubIdentity; accountId?: string },
+  ): GitHubOctokitClient | null {
+    const selection = normalizeSelector(selector);
+    const account = resolveGitHubAccount(
+      Array.from(this.clients.values()).map((record) => record.account),
+      selection,
+    );
+    if (!account) {
+      return null;
+    }
+    return this.clients.get(account.accountId)?.client ?? null;
   }
 
   /**
@@ -96,16 +118,19 @@ export class GitHubService extends Service implements IGitHubService {
   setClientForTesting(
     as: GitHubIdentity,
     client: GitHubOctokitClient | null,
+    accountId = defaultGitHubAccountIdForRole(as),
   ): void {
-    if (as === "user") {
-      this.userClient = client;
-    } else {
-      this.agentClient = client;
+    if (!client) {
+      this.clients.delete(accountId);
+      return;
     }
+    this.clients.set(accountId, {
+      account: { accountId, role: as, token: "test" },
+      client,
+    });
   }
 
   async stop(): Promise<void> {
-    this.userClient = null;
-    this.agentClient = null;
+    this.clients.clear();
   }
 }

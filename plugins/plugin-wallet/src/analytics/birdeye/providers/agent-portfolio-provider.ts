@@ -7,7 +7,7 @@ import {
 /**
  * Agent portfolio data provider that queries Birdeye API for the agent's wallet address.
  * When a wallet address is set, this provider fetches current token balances and makes
- * compact TOON portfolio context available to the planner.
+ * compact JSON portfolio context available to the planner.
  */
 export const agentPortfolioProvider = createBirdeyePortfolioProvider({
   name: "BIRDEYE_WALLET_PORTFOLIO",

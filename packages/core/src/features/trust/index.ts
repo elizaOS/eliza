@@ -1,6 +1,6 @@
 import { logger } from "../../logger.ts";
 import {
-	type Evaluator,
+	type Action,
 	type IAgentRuntime,
 	type Plugin,
 	Role,
@@ -10,9 +10,7 @@ import { evaluateTrustAction } from "./actions/evaluateTrust.ts";
 import { recordTrustInteractionAction } from "./actions/recordTrustInteraction.ts";
 import { requestElevationAction } from "./actions/requestElevation.ts";
 import { updateRoleAction } from "./actions/roles.ts";
-import { updateSettingsAction } from "./actions/settings.ts";
 import { securityEvaluator } from "./evaluators/securityEvaluator.ts";
-import { trustChangeEvaluator } from "./evaluators/trustChangeEvaluator.ts";
 import { adminTrustProvider } from "./providers/adminTrust.ts";
 import { roleProvider } from "./providers/roles.ts";
 import { securityStatusProvider } from "./providers/securityStatus.ts";
@@ -74,12 +72,14 @@ export {
 	TrustEngineServiceWrapper,
 } from "./services/wrappers.ts";
 
-export const trustEvaluators: Evaluator[] = [
-	securityEvaluator,
-	trustChangeEvaluator,
-];
+/**
+ * Pre-message trust hook actions (formerly the trust evaluators).
+ * `securityEvaluator` runs `ALWAYS_BEFORE` to gate adversarial input.
+ */
+export const trustHookActions: Action[] = [securityEvaluator];
 
 export interface TrustPluginOptions {
+	/** When true, register the security pre-gate as a runtime hook action. */
 	enableEvaluators?: boolean;
 }
 
@@ -138,10 +138,10 @@ export function createTrustPlugin(options: TrustPluginOptions = {}): Plugin {
 
 		actions: [
 			updateRoleAction,
-			updateSettingsAction,
 			recordTrustInteractionAction,
 			evaluateTrustAction,
 			requestElevationAction,
+			...(options.enableEvaluators ? trustHookActions : []),
 		],
 
 		providers: [
@@ -151,8 +151,6 @@ export function createTrustPlugin(options: TrustPluginOptions = {}): Plugin {
 			securityStatusProvider,
 			adminTrustProvider,
 		],
-
-		evaluators: options.enableEvaluators ? trustEvaluators : [],
 
 		services: [
 			TrustEngineServiceWrapper,

@@ -1,4 +1,4 @@
-import { and, count, countDistinct, desc, eq, gte, lte, or, sql } from "drizzle-orm";
+import { and, count, countDistinct, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys } from "@/lib/cache/keys";
 import { sqlRows } from "../execute-helpers";
@@ -57,12 +57,12 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
  *
  * Handles CRUD operations for apps, app users, and app analytics.
  *
- * Read operations → dbRead (read replica)
- * Write operations → dbWrite (NA primary)
+ * Read operations → dbRead (read-intent connection)
+ * Write operations → dbWrite (primary)
  */
 export class AppsRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -104,6 +104,50 @@ export class AppsRepository {
     return await dbRead.query.apps.findFirst({
       where: eq(apps.api_key_id, apiKeyId),
     });
+  }
+
+  async findActiveApprovedById(id: string): Promise<Pick<App, "id" | "name"> | undefined> {
+    const [app] = await dbRead
+      .select({ id: apps.id, name: apps.name })
+      .from(apps)
+      .where(and(eq(apps.id, id), eq(apps.is_active, true), eq(apps.is_approved, true)))
+      .limit(1);
+    return app;
+  }
+
+  async findPublicInfoById(
+    id: string,
+  ): Promise<
+    | Pick<
+        App,
+        | "id"
+        | "name"
+        | "description"
+        | "logo_url"
+        | "website_url"
+        | "app_url"
+        | "allowed_origins"
+        | "is_active"
+        | "is_approved"
+      >
+    | undefined
+  > {
+    const [app] = await dbRead
+      .select({
+        id: apps.id,
+        name: apps.name,
+        description: apps.description,
+        logo_url: apps.logo_url,
+        website_url: apps.website_url,
+        app_url: apps.app_url,
+        allowed_origins: apps.allowed_origins,
+        is_active: apps.is_active,
+        is_approved: apps.is_approved,
+      })
+      .from(apps)
+      .where(and(eq(apps.id, id), eq(apps.is_active, true), eq(apps.is_approved, true)))
+      .limit(1);
+    return app;
   }
 
   /**
@@ -212,6 +256,41 @@ export class AppsRepository {
     });
   }
 
+  async connectUser(input: {
+    appId: string;
+    userId: string;
+    signupSource: string;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+  }): Promise<"created" | "updated"> {
+    const existingConnection = await this.findAppUser(input.appId, input.userId);
+
+    if (existingConnection) {
+      await dbWrite
+        .update(appUsers)
+        .set({ last_seen_at: new Date() })
+        .where(eq(appUsers.id, existingConnection.id));
+      return "updated";
+    }
+
+    await dbWrite.transaction(async (tx) => {
+      await tx.insert(appUsers).values({
+        app_id: input.appId,
+        user_id: input.userId,
+        signup_source: input.signupSource,
+        ip_address: input.ipAddress ?? null,
+        user_agent: input.userAgent ?? null,
+      });
+
+      await tx
+        .update(apps)
+        .set({ total_users: sql`COALESCE(${apps.total_users}, 0) + 1` })
+        .where(eq(apps.id, input.appId));
+    });
+
+    return "created";
+  }
+
   /**
    * Lists app users for an app, ordered by first seen date.
    */
@@ -311,7 +390,7 @@ export class AppsRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**
@@ -333,39 +412,6 @@ export class AppsRepository {
         updated_at: new Date(),
       })
       .where(eq(apps.id, id))
-      .returning();
-
-    if (updated) {
-      await invalidateAppCacheEntries(id, updated.api_key_id, updated.slug);
-    }
-
-    return updated;
-  }
-
-  /**
-   * Atomically tries to set database status to "provisioning".
-   * Only succeeds if current status is "none" or "error" (not "ready" or "provisioning").
-   * This prevents race conditions when multiple requests try to provision simultaneously.
-   *
-   * @param id App ID
-   * @param region Database region to set
-   * @returns Updated app if the status transition succeeded, undefined if another process won the race
-   */
-  async trySetDatabaseProvisioning(id: string, region: string): Promise<App | undefined> {
-    const [updated] = await dbWrite
-      .update(apps)
-      .set({
-        user_database_status: "provisioning",
-        user_database_error: null,
-        user_database_region: region,
-        updated_at: new Date(),
-      })
-      .where(
-        and(
-          eq(apps.id, id),
-          or(eq(apps.user_database_status, "none"), eq(apps.user_database_status, "error")),
-        ),
-      )
       .returning();
 
     if (updated) {

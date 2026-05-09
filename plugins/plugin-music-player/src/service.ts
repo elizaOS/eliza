@@ -345,7 +345,7 @@ export class MusicService extends Service {
         const musicLibrary = this.runtime.getService(
           "musicLibrary",
         ) as MusicLibraryService | null;
-        if (musicLibrary && musicLibrary.trackTrackRequest) {
+        if (musicLibrary?.trackTrackRequest) {
           // Try to get roomId from Discord service
           const roomId = await this.getRoomIdFromGuild(guildId);
           if (roomId && track.requestedBy) {
@@ -381,7 +381,7 @@ export class MusicService extends Service {
         const musicLibrary = this.runtime.getService(
           "musicLibrary",
         ) as MusicLibraryService | null;
-        if (musicLibrary && musicLibrary.trackSkip) {
+        if (musicLibrary?.trackSkip) {
           const roomId = await this.getRoomIdFromGuild(guildId);
           if (roomId) {
             await musicLibrary.trackSkip(
@@ -521,7 +521,7 @@ export class MusicService extends Service {
       const musicLibrary = this.runtime.getService(
         "musicLibrary",
       ) as MusicLibraryService | null;
-      if (musicLibrary && musicLibrary.trackTrackPlayed) {
+      if (musicLibrary?.trackTrackPlayed) {
         const roomId = await this.getRoomIdFromGuild(guildId);
         if (roomId) {
           await musicLibrary.trackTrackPlayed(
@@ -547,7 +547,7 @@ export class MusicService extends Service {
 
     try {
       const discordService = this.runtime.getService("discord") as any;
-      if (discordService && discordService.getDefaultRoomIdForGuild) {
+      if (discordService?.getDefaultRoomIdForGuild) {
         return discordService.getDefaultRoomIdForGuild(guildId);
       }
     } catch (error) {
@@ -567,7 +567,7 @@ export class MusicService extends Service {
 
     try {
       const discordService = this.runtime.getService("discord") as any;
-      if (discordService && discordService.setListeningActivity) {
+      if (discordService?.setListeningActivity) {
         await discordService.setListeningActivity(trackTitle);
         logger.debug(`Updated Discord activity: Listening to "${trackTitle}"`);
       }
@@ -584,7 +584,7 @@ export class MusicService extends Service {
 
     try {
       const discordService = this.runtime.getService("discord") as any;
-      if (discordService && discordService.clearActivity) {
+      if (discordService?.clearActivity) {
         await discordService.clearActivity();
         logger.debug("Cleared Discord activity");
       }

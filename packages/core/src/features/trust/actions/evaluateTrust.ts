@@ -4,102 +4,64 @@ import type {
 	Action as ElizaAction,
 	IAgentRuntime,
 	Memory,
+	State,
 	UUID,
 } from "../../../types/index.ts";
+import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import { parseJSONObjectFromText } from "../../../utils.ts";
 import type { TrustProfile } from "../types/trust.ts";
 import { hasTrustEngine } from "./hasTrustEngine.ts";
 
 export const evaluateTrustAction: ElizaAction = {
 	name: "EVALUATE_TRUST",
+	contexts: ["admin", "settings", "agent_internal"],
+	roleGate: { minRole: "ADMIN" },
 	description: "Evaluates the trust score and profile for a specified entity",
 	suppressPostActionContinuation: true,
+	parameters: [
+		{
+			name: "entityId",
+			description:
+				"Optional target entity ID. Defaults to the sender entity ID.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "entityName",
+			description:
+				"Optional target entity name. EVALUATE_TRUST requires entityId for lookups; name-only requests return a bounded failure.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "detailed",
+			description: "Whether to include detailed trust dimensions.",
+			required: false,
+			schema: { type: "boolean" as const, default: false },
+		},
+	],
 
 	validate: async (
 		runtime: IAgentRuntime,
 		message: Memory,
-		state?: unknown,
+		state?: State,
 		options?: Record<string, unknown>,
 	): Promise<boolean> => {
-		const __avTextRaw =
-			typeof message?.content?.text === "string" ? message.content.text : "";
-		const __avText = __avTextRaw.toLowerCase();
-		const __avKeywords = ["evaluate", "trust"];
-		const __avKeywordOk =
-			__avKeywords.length > 0 &&
-			__avKeywords.some((word) => word.length > 0 && __avText.includes(word));
-		const __avRegex = /\b(?:evaluate|trust)\b/i;
-		const __avRegexOk = __avRegex.test(__avText);
-		const __avSource = String(message?.content?.source ?? "");
-		const __avExpectedSource = "";
-		const __avSourceOk = __avExpectedSource
-			? __avSource === __avExpectedSource
-			: Boolean(
-					__avSource ||
-						state ||
-						runtime?.agentId ||
-						runtime?.getService ||
-						runtime?.getSetting,
-				);
-		const __avOptions = options && typeof options === "object" ? options : {};
-		const __avInputOk =
-			__avText.trim().length > 0 ||
-			Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-			Boolean(message?.content && typeof message.content === "object");
-
-		if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-			return false;
-		}
-
-		const __avLegacyValidate = async (
-			legacyRuntime: IAgentRuntime,
-			legacyMessage: Memory,
-			legacyState?: unknown,
-			legacyOptions?: Record<string, unknown>,
-		): Promise<boolean> => {
-			const __avTextRaw =
-				typeof legacyMessage?.content?.text === "string"
-					? legacyMessage.content.text
-					: "";
-			const __avText = __avTextRaw.toLowerCase();
-			const __avKeywords = ["evaluate", "trust"];
-			const __avKeywordOk =
-				__avKeywords.length > 0 &&
-				__avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-			const __avRegex = /\b(?:evaluate|trust)\b/i;
-			const __avRegexOk = __avRegex.test(__avText);
-			const __avSource = String(legacyMessage?.content?.source ?? "");
-			const __avExpectedSource = "";
-			const __avSourceOk = __avExpectedSource
-				? __avSource === __avExpectedSource
-				: Boolean(
-						__avSource ||
-							legacyState ||
-							legacyRuntime?.agentId ||
-							legacyRuntime?.getService,
-					);
-			const __avOptions =
-				legacyOptions && typeof legacyOptions === "object" ? legacyOptions : {};
-			const __avInputOk =
-				__avText.trim().length > 0 ||
-				Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-				Boolean(
-					legacyMessage?.content && typeof legacyMessage.content === "object",
-				);
-
-			if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-				return false;
-			}
-
-			try {
-				return hasTrustEngine(legacyRuntime);
-			} catch {
-				return false;
-			}
-		};
 		try {
-			return Boolean(
-				await __avLegacyValidate(runtime, message, state, options),
+			if (!hasTrustEngine(runtime)) return false;
+			const params =
+				options?.parameters && typeof options.parameters === "object"
+					? (options.parameters as Record<string, unknown>)
+					: {};
+			const hasStructuredEntity =
+				typeof params.entityId === "string" &&
+				params.entityId.trim().length > 0;
+			return (
+				hasStructuredEntity ||
+				hasActionContextOrKeyword(message, state, {
+					contexts: ["admin", "settings", "agent_internal"],
+					keywords: ["evaluate trust", "trust score", "trust profile"],
+				})
 			);
 		} catch {
 			return false;
@@ -112,7 +74,7 @@ export const evaluateTrustAction: ElizaAction = {
 		_state,
 		_options,
 		_callback,
-	): Promise<ActionResult | undefined> => {
+	): Promise<ActionResult> => {
 		const trustEngine = runtime.getService("trust-engine") as unknown as {
 			evaluateTrust: (
 				entityId: unknown,
@@ -122,9 +84,21 @@ export const evaluateTrustAction: ElizaAction = {
 		} | null;
 
 		if (!trustEngine) {
-			throw new Error("Trust engine service not available");
+			return {
+				success: false,
+				text: "Trust engine service is not available.",
+				error: "Trust engine service not available",
+				data: {
+					actionName: "EVALUATE_TRUST",
+					reason: "trust_engine_unavailable",
+				},
+			};
 		}
 
+		const params =
+			_options?.parameters && typeof _options.parameters === "object"
+				? (_options.parameters as Record<string, unknown>)
+				: {};
 		const text = message.content.text || "";
 		let parsed: Record<string, unknown> | null = null;
 		try {
@@ -132,21 +106,25 @@ export const evaluateTrustAction: ElizaAction = {
 		} catch {
 			// Not JSON -- treat as plain text request
 		}
-		const requestData = parsed as {
+		const requestData = { ...(parsed ?? {}), ...params } as {
 			entityId?: string;
 			entityName?: string;
 			detailed?: boolean;
-		} | null;
+		};
 
 		let targetEntityId: UUID | undefined;
-		if (requestData?.entityId) {
+		if (requestData.entityId) {
 			targetEntityId = requestData.entityId as UUID;
-		} else if (requestData?.entityName) {
+		} else if (requestData.entityName) {
 			return {
 				success: false,
-				text: "Entity name resolution not yet implemented. Please provide entity ID.",
-				error: "Entity name resolution not implemented",
-				data: { actionName: "EVALUATE_TRUST" },
+				text: "EVALUATE_TRUST requires an entity ID for name-based requests. Please provide entityId.",
+				error: "Entity ID required for name-based trust lookup",
+				data: {
+					actionName: "EVALUATE_TRUST",
+					entityName: requestData.entityName,
+					reason: "entity_id_required",
+				},
 			};
 		} else {
 			targetEntityId = message.entityId;
@@ -164,7 +142,10 @@ export const evaluateTrustAction: ElizaAction = {
 				trustContext,
 			);
 
-			const detailed = requestData?.detailed ?? false;
+			const detailed = requestData.detailed ?? false;
+			const cappedEvidence = Array.isArray(trustProfile.evidence)
+				? trustProfile.evidence.slice(0, 20)
+				: trustProfile.evidence;
 
 			if (detailed) {
 				const dimensionText = Object.entries(trustProfile.dimensions)
@@ -201,7 +182,7 @@ Last Updated: ${new Date(trustProfile.lastCalculated).toLocaleString()}`,
 						lastCalculated: trustProfile.lastCalculated,
 						evaluatorId: trustProfile.evaluatorId,
 						dimensions: trustProfile.dimensions,
-						evidence: trustProfile.evidence,
+						evidence: cappedEvidence,
 						trend: trustProfile.trend,
 					},
 				};

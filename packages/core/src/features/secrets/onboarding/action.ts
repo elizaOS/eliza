@@ -161,7 +161,6 @@ Preserve the extracted value exactly, including punctuation.`;
 		],
 		options: {
 			modelType: ModelType.TEXT_LARGE,
-			preferredEncapsulation: "toon",
 			contextCheckLevel: 0,
 			maxRetries: 1,
 		},
@@ -312,14 +311,30 @@ function countUnconfiguredRequired(
 }
 
 /**
- * UPDATE_SETTINGS Action - extracts and saves settings from natural language.
+ * SECRETS_UPDATE_SETTINGS action - extracts and saves onboarding settings from natural language.
  */
 export const updateSettingsAction: Action = {
-	name: "UPDATE_SETTINGS",
+	name: "SECRETS_UPDATE_SETTINGS",
+	contexts: ["settings", "secrets", "connectors"],
+	roleGate: { minRole: "ADMIN" },
 	suppressPostActionContinuation: true,
 	similes: ["UPDATE_SETTING", "SAVE_SETTING", "SET_CONFIGURATION", "CONFIGURE"],
 	description:
 		"Saves a configuration setting during the onboarding process. Use when onboarding with a world owner or admin.",
+	parameters: [
+		{
+			name: "key",
+			description: "Optional setting key to update.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "value",
+			description: "Optional setting value to save.",
+			required: false,
+			schema: { type: "string" },
+		},
+	],
 
 	validate: async (
 		runtime: IAgentRuntime,
@@ -359,7 +374,7 @@ export const updateSettingsAction: Action = {
 			return {
 				text: "State and callback required",
 				values: { success: false },
-				data: { actionName: "UPDATE_SETTINGS" },
+				data: { actionName: "SECRETS_UPDATE_SETTINGS" },
 				success: false,
 			};
 		}
@@ -371,7 +386,7 @@ export const updateSettingsAction: Action = {
 			return {
 				text: "Room not found",
 				values: { success: false },
-				data: { actionName: "UPDATE_SETTINGS" },
+				data: { actionName: "SECRETS_UPDATE_SETTINGS" },
 				success: false,
 			};
 		}
@@ -382,7 +397,7 @@ export const updateSettingsAction: Action = {
 			return {
 				text: "No settings found",
 				values: { success: false },
-				data: { actionName: "UPDATE_SETTINGS" },
+				data: { actionName: "SECRETS_UPDATE_SETTINGS" },
 				success: false,
 			};
 		}
@@ -439,7 +454,7 @@ export const updateSettingsAction: Action = {
 					text: "Onboarding complete",
 					values: { success: true, onboardingComplete: true },
 					data: {
-						actionName: "UPDATE_SETTINGS",
+						actionName: "SECRETS_UPDATE_SETTINGS",
 						action: "ONBOARDING_COMPLETE",
 					},
 					success: true,
@@ -461,7 +476,7 @@ export const updateSettingsAction: Action = {
 				text: "Settings updated",
 				values: { success: true, remainingRequired: remaining },
 				data: {
-					actionName: "UPDATE_SETTINGS",
+					actionName: "SECRETS_UPDATE_SETTINGS",
 					action: "SETTING_UPDATED",
 					updated: extractedSettings.map((s) => s.key),
 				},
@@ -483,7 +498,10 @@ export const updateSettingsAction: Action = {
 		return {
 			text: "No settings updated",
 			values: { success: false },
-			data: { actionName: "UPDATE_SETTINGS", action: "SETTING_UPDATE_FAILED" },
+			data: {
+				actionName: "SECRETS_UPDATE_SETTINGS",
+				action: "SETTING_UPDATE_FAILED",
+			},
 			success: false,
 		};
 	},

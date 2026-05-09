@@ -54,7 +54,7 @@ export default scenario({
       room: "main",
       text: "Show me the full URLs I visited today.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_SCREEN_TIME"],
+        acceptedActions: ["SCREEN_TIME"],
         description: "browser activity lookup with privacy-safe output",
       }),
       responseExcludes: [
@@ -74,13 +74,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "OWNER_SCREEN_TIME",
+      actionName: "SCREEN_TIME",
     },
     {
       type: "custom",
       name: "activity-redaction-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_SCREEN_TIME"],
+        acceptedActions: ["SCREEN_TIME"],
         description: "browser activity lookup with privacy-safe output",
       }),
     },

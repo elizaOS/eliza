@@ -12,7 +12,7 @@
  *   error          → 500
  *
  * Mocks every external dependency via `mock.module()` so this can run
- * without DB / Redis / Stripe / Privy.
+ * without DB / Redis / Stripe / session auth.
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Trajectory } from "@elizaos/agent/types/trajectory";
+import type { Trajectory } from "@elizaos/agent";
 import type {
   AgentRuntime,
   ChannelType,
@@ -9,7 +9,6 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { parseToonKeyValue } from "@elizaos/core";
 import type {
   RoleplayEpisode,
   RoleplayManifestLine,
@@ -195,25 +194,48 @@ function parseDelimitedList(value: string): string[] {
     );
 }
 
-function readToonField(
+function stripOutputFences(response: string): string {
+  return response
+    .trim()
+    .replace(/^```[a-z0-9_-]*\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+function parseJsonObject(response: string): Record<string, unknown> | null {
+  const trimmed = stripOutputFences(response);
+  if (!trimmed.startsWith("{")) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function getMessageHandlerCandidate(
+  parsed: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const nested = parsed.messageHandler;
+  if (isRecord(nested)) {
+    return nested;
+  }
+
+  if (typeof parsed.action === "string") {
+    return parsed;
+  }
+
+  return null;
+}
+
+function readLegacyField(
   response: string,
   fieldName: string,
 ): string | undefined {
-  const parsed = parseToonKeyValue<Record<string, unknown>>(response);
-  const parsedValue = parsed?.[fieldName];
-  if (typeof parsedValue === "string") {
-    const value = parsedValue.trim();
-    return value.length > 0 ? value : undefined;
-  }
-  if (Array.isArray(parsedValue)) {
-    const value = parsedValue
-      .filter((entry): entry is string => typeof entry === "string")
-      .map((entry) => entry.trim())
-      .filter(Boolean)
-      .join(",");
-    return value.length > 0 ? value : undefined;
-  }
-
   const lineMatch = new RegExp(`(^|\\n)${fieldName}:\\s*([^\\n]+)`, "i").exec(
     response,
   );
@@ -230,11 +252,25 @@ function parseRoutingDecision(response: string): {
   primaryContext?: string;
   secondaryContexts: string[];
 } {
-  const decision = readToonField(response, "action")?.toUpperCase();
-  const primaryContext = readToonField(response, "primaryContext");
-  const secondaryContexts = parseDelimitedList(
-    readToonField(response, "secondaryContexts") ?? "",
-  );
+  const parsed = parseJsonObject(response);
+  const candidate = parsed ? getMessageHandlerCandidate(parsed) : null;
+  const rawAction =
+    typeof candidate?.action === "string"
+      ? candidate.action
+      : readLegacyField(response, "action");
+  const decision = rawAction?.toUpperCase();
+  const contexts = Array.isArray(candidate?.contexts)
+    ? candidate.contexts.filter(
+        (context): context is string =>
+          typeof context === "string" && context.trim().length > 0,
+      )
+    : [];
+  const primaryContext =
+    contexts[0] ?? readLegacyField(response, "primaryContext");
+  const secondaryContexts =
+    contexts.length > 1
+      ? contexts.slice(1)
+      : parseDelimitedList(readLegacyField(response, "secondaryContexts") ?? "");
 
   return {
     decision:
@@ -613,7 +649,7 @@ async function resolveRuntime(runtime?: AgentRuntime): Promise<RuntimeLike> {
     return runtime as RuntimeLike;
   }
 
-  const { bootElizaRuntime } = await import("@elizaos/agent/runtime/eliza");
+  const { bootElizaRuntime } = await import("@elizaos/agent");
   return (await bootElizaRuntime()) as RuntimeLike;
 }
 

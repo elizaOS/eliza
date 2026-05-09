@@ -11,16 +11,12 @@
  * @see https://agentskills.io
  */
 
-export { getSkillDetailsAction } from "./actions/get-skill-details";
-// Actions
-export { searchSkillsAction } from "./actions/search-skills";
-export { syncCatalogAction } from "./actions/sync-catalog";
 export { useSkillAction } from "./actions/use-skill";
 // Parser utilities
 export {
 	estimateTokens,
 	extractBody,
-	generateSkillsToon,
+	generateSkillsJson,
 	parseFrontmatter,
 	validateFrontmatter,
 	validateSkillDirectory,
@@ -33,11 +29,6 @@ export {
 	skillInstructionsProvider,
 	skillsSummaryProvider,
 } from "./providers/skills";
-export {
-	installAgentSkillsSearchDispatcher,
-	registerAgentSkillsSearchCategory,
-	SKILLS_SEARCH_CATEGORY,
-} from "./search-category";
 // Install service
 export {
 	findBestInstallOption,
@@ -82,7 +73,7 @@ export type {
 	OttoInstallOption,
 	// Otto extensions
 	OttoMetadata,
-	PromptToonOptions,
+	PromptJsonOptions,
 	// Core skill types
 	Skill,
 	SkillCatalogEntry,

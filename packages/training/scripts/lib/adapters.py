@@ -13,9 +13,9 @@ elizaOS action vocabulary (used in `availableActions`):
     MUTE_ROOM, UNMUTE_ROOM,
     FOLLOW_ROOM, UNFOLLOW_ROOM       — room-state mutations
 
-The supervised target is `expectedResponse`. For routing/tool-call/shell
-tasks it is a TOON document; for free-form replies it is plain assistant
-text.
+The supervised target is `expectedResponse`. Native v5 generation writes JSON
+documents. Legacy TOON output is only for compatibility rebuilds that pass a
+legacy encoder from `normalize.py --expected-response-format legacy-toon`.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ from .eliza_record import (
     is_default_thought_leak,
     stable_id,
 )
-from .toon import ToonEncoder
+from .expected_response import ExpectedResponseEncoder
 
 log = logging.getLogger("adapter")
 
@@ -75,7 +75,7 @@ ROLE_MAP = {
     # We tag it explicitly here so `_split_history` can attach it as the
     # `thought` of the next assistant turn rather than dropping it.
     "reasoning": "reasoning", "thought": "reasoning",
-    "scratchpad": "reasoning", "analysis": "reasoning",
+    "analysis": "reasoning",
 }
 
 
@@ -377,7 +377,6 @@ def _extract_tool_calls(
 
 _THINK_RE = re.compile(r"<think>([\s\S]*?)</think>\s*", re.M)
 _THINKING_RE = re.compile(r"<thinking>([\s\S]*?)</thinking>\s*", re.M)
-_SCRATCHPAD_RE = re.compile(r"<scratchpad>([\s\S]*?)</scratchpad>\s*", re.M)
 _THOUGHT_PREFIX_RE = re.compile(
     r"^\s*THOUGHT:\s*([\s\S]*?)(?=\n\s*```|\Z)", re.M
 )
@@ -388,8 +387,8 @@ def _split_think_response(text: str) -> tuple[str, str]:
     blob. If no <think> block is present, reasoning="" and the whole text
     is the response.
 
-    Also recognizes `<thinking>...</thinking>`, `<scratchpad>...</scratchpad>`,
-    and the swebench-style `THOUGHT: ...` prefix that precedes a fenced
+    Also recognizes `<thinking>...</thinking>` and the swebench-style
+    `THOUGHT: ...` prefix that precedes a fenced
     bash block.
     """
     if not text:
@@ -398,9 +397,6 @@ def _split_think_response(text: str) -> tuple[str, str]:
     if m:
         return m.group(1).strip(), text[m.end():].strip()
     m = _THINKING_RE.match(text)
-    if m:
-        return m.group(1).strip(), text[m.end():].strip()
-    m = _SCRATCHPAD_RE.match(text)
     if m:
         return m.group(1).strip(), text[m.end():].strip()
     m = _THOUGHT_PREFIX_RE.match(text)
@@ -467,19 +463,18 @@ def _split_thought_and_body(text: str) -> tuple[str, str]:
     return "", text.strip()
 
 
-def _cot_to_toon(
-    encoder: ToonEncoder,
+def _cot_to_expected(
+    encoder: ExpectedResponseEncoder,
     raw_text: str,
     *,
     extra_thought: str = "",
 ) -> str:
-    """Wrap a raw chain-of-thought reply as canonical TOON.
+    """Wrap a raw chain-of-thought reply as the configured target format.
 
-    Produces `{thought, text}` when a reasoning block can be extracted
-    from `<think>` / `<thinking>` / `<scratchpad>` / `THOUGHT:` markers
-    in the body, OR when `extra_thought` (e.g. an upstream `reasoning`
-    sibling field) is supplied. Otherwise emits just `{text}` so the
-    student model is not trained to emit `thought: ""` everywhere.
+    Produces `{thought, text}` when a reasoning block can be extracted from
+    `<think>` / `<thinking>` / `THOUGHT:` markers in the body,
+    OR when `extra_thought` is supplied. Native v5 encodes that object as JSON;
+    legacy compatibility rebuilds can still pass a TOON encoder.
     """
     thought, body = _split_thought_and_body(raw_text or "")
     if extra_thought:
@@ -690,8 +685,7 @@ def _planner_envelope(
         "simple": bool(simple),
     }
     if raw_thought:
-        # Insert at the head so encoded TOON keeps the canonical key order
-        # (`thought, actions, providers, text, simple`).
+        # Insert at the head so encoded structured targets keep canonical key order.
         envelope = {"thought": raw_thought, **envelope}
     return envelope
 
@@ -856,7 +850,7 @@ def _build_messages_record(
     *, slug: str, license: str, split: str,
     sys_prompt: str, memory: list[dict[str, Any]],
     current: dict[str, Any], assistant: dict[str, Any],
-    encoder: ToonEncoder,
+    encoder: ExpectedResponseEncoder,
     tools_list: list[dict[str, Any]] | None = None,
     default_task_type: str = "reply",
     extra_metadata: dict[str, Any] | None = None,
@@ -901,7 +895,7 @@ def _build_messages_record(
         else:
             task_type = default_task_type
         actions = REPLY_ACTIONS.copy()
-        target = _cot_to_toon(encoder, text, extra_thought=extra_thought)
+        target = _cot_to_expected(encoder, text, extra_thought=extra_thought)
 
     md = {
         "original_id": str(extra_metadata.get("original_id", "") if extra_metadata else ""),
@@ -934,7 +928,7 @@ def _build_messages_record(
 def _generic_messages(
     records: Iterator[dict], *, slug: str, license: str, split: str,
     messages_key: str | Callable[[dict], list[dict]],
-    encoder: ToonEncoder,
+    encoder: ExpectedResponseEncoder,
     default_task_type: str = "reply",
     tools_key: str | None = None,
 ) -> Iterator[ElizaRecord]:
@@ -1172,13 +1166,13 @@ def scambench_passthrough(records, *, slug, license, split, encoder):
                 text=text, providers=[],
                 seed=text,
             )
-        toon = encoder.encode(target)
+        expected_response = encoder.encode(target)
         yield build(
             roomName=r.get("roomName", "") or stable_id(slug, r.get("currentMessage", {}).get("content", "")),
             agentId=r.get("agentId", "scam-defense-agent"),
             memoryEntries=r.get("memoryEntries") or [],
             currentMessage=r.get("currentMessage") or {},
-            expectedResponse=toon,
+            expectedResponse=expected_response,
             availableActions=_normalize_scam_actions(
                 r.get("availableActions") or []
             ),
@@ -1213,7 +1207,7 @@ def glaive_fc(records, *, slug, license, split, encoder):
 
     The `-reasoning` shard ships an extra `processed_chat_with_reasoning`
     field where each ASSISTANT turn is prefixed with `<think>...</think>`;
-    we prefer it when present so `_cot_to_toon` can lift the reasoning
+    we prefer it when present so `_cot_to_expected` can lift the reasoning
     into `thought:` instead of dropping it.
     """
     for r in records:
@@ -1285,7 +1279,7 @@ def functions_53k(records, *, slug, license, split, encoder):
             actions = [ACTION_TASK_CALL, ACTION_REPLY, ACTION_IGNORE]
             tt = "tool_call"
         else:
-            target = _cot_to_toon(encoder, str(completion))
+            target = _cot_to_expected(encoder, str(completion))
             actions = REPLY_ACTIONS.copy()
             tt = "reply"
         yield build(
@@ -1360,7 +1354,7 @@ def toolhop(records, *, slug, license, split, encoder):
             agentId="agent",
             currentMessage={"role": "user", "speaker": "user", "content": question, "channel": "dm"},
             memoryEntries=[],
-            expectedResponse=_cot_to_toon(encoder, answer),
+            expectedResponse=_cot_to_expected(encoder, answer),
             availableActions=[ACTION_TASK_CALL, ACTION_REPLY, ACTION_IGNORE],
             task_type="reasoning_cot",
             source_dataset=slug,
@@ -1681,7 +1675,7 @@ def gemma_text(records, *, slug, license, split, encoder):
     """Single ``text`` field with a Gemma chat-template conversation.
 
     For HA-MCP records, the assistant's DSL function call is hoisted into
-    OpenAI ``tool_calls`` so the standard tool-call pipeline TOON-encodes
+    OpenAI ``tool_calls`` so the standard tool-call pipeline encodes
     it as ``{tool_calls[N]{name,arguments}: ...}``.
     """
     for r in records:
@@ -1833,7 +1827,7 @@ def noesis_text(records, *, slug, license, split, encoder):
     assistant turn as the supervised target. CoT rows (with `<think>`
     blocks or in a reasoning/code/math domain) are tagged `reasoning_cot`
     so the assistant text passes through as plain text rather than
-    TOON-wrapped reply.
+    structured reply.
     """
     for r in records:
         text = r.get("text") or ""
@@ -1872,8 +1866,8 @@ def open_paws_llama(records, *, slug, license, split, encoder):
     """open-paws/tool-use-llama-format — `messages` is a Llama-3 chat-template
     string. Parse role blocks, surface `<|python_tag|>` tool calls as OpenAI
     `tool_calls`, then route through the generic messages path so the final
-    assistant turn becomes either a `tool_call` (TOON `tool_calls`) or a
-    `reply` (TOON `thought`/`text`)."""
+    assistant turn becomes either a `tool_call` (structured `tool_calls`) or a
+    `reply` (structured `thought`/`text`)."""
     for r in records:
         text = r.get("messages")
         if not isinstance(text, str) or "<|start_header_id|>" not in text:
@@ -1928,9 +1922,9 @@ def mcp_messages(records, *, slug, license, split, encoder):
 
     1. **Multi-turn message lists** (``messages``/``conversations``/...)
        are split into one supervised record per assistant turn. Each
-       assistant turn lands as TOON ``tool_calls`` when it carries any
+       assistant turn lands as structured ``tool_calls`` when it carries any
        tool call (OpenAI ``tool_calls``, Hermes ``<tool_call>``, or
-       APIGen ``[Func(...)]``). Otherwise it lands as TOON
+       APIGen ``[Func(...)]``). Otherwise it lands as structured output
        ``{thought, text}`` for text replies. This recovers tool calls
        that live in the middle of agent traces (deepfabric-github-mcp,
        playwright-mcp-toolcalling) instead of dropping them in favor of
@@ -1938,13 +1932,13 @@ def mcp_messages(records, *, slug, license, split, encoder):
 
     2. **Alpaca with phi3-mcp DSL** (``instruction``/``input``/``output``
        where ``output`` is ``TOOL_NEEDED: <name>\\nPARAMS: <json>``).
-       Tool calls land as TOON ``tool_calls`` with the reason in
-       ``metadata.tool_reason``; non-tool replies land as TOON
+       Tool calls land as structured ``tool_calls`` with the reason in
+       ``metadata.tool_reason``; non-tool replies land as structured output
        ``{thought, text}``.
 
     3. **Generic Alpaca** (``instruction``/``input``/``output``). The
        output is checked for embedded APIGen / Hermes tool calls and
-       routed to TOON ``tool_calls`` when present.
+       routed to structured ``tool_calls`` when present.
     """
     for r in records:
         msgs = (
@@ -2015,8 +2009,8 @@ def mcp_messages(records, *, slug, license, split, encoder):
             # Plain reply — drop the thought line when there's no upstream
             # reasoning to attach (avoids training the model to emit
             # `thought: ""`). When the body has <think>...</think> the
-            # _cot_to_toon helper extracts it automatically.
-            target = _cot_to_toon(encoder, str(output))
+            # _cot_to_expected helper extracts it automatically.
+            target = _cot_to_expected(encoder, str(output))
             actions = REPLY_ACTIONS.copy()
             tt = "reply"
             md = {"original_id": str(r.get("id") or "")}
@@ -2037,7 +2031,7 @@ def mcp_messages(records, *, slug, license, split, encoder):
 
 def _mcp_multi_turn(
     r: dict[str, Any], msgs_raw: Any, *, slug: str, license: str, split: str,
-    encoder: ToonEncoder,
+    encoder: ExpectedResponseEncoder,
 ) -> Iterator[ElizaRecord]:
     """Emit one supervised record per assistant turn in a messages list."""
     msgs = _normalize_messages(msgs_raw if isinstance(msgs_raw, list) else [])
@@ -2079,13 +2073,13 @@ def mcp_routing(records, *, slug, license, split, encoder):
             "tool": r.get("tool") or r.get("expected_tool") or "",
             "arguments": r.get("arguments") or r.get("params") or {},
         }
-        toon = encoder.encode(target)
+        expected_response = encoder.encode(target)
         yield build(
             roomName=stable_id(slug, r.get("id") or query[:120]),
             agentId="mcp-router",
             currentMessage={"role": "user", "speaker": "user", "content": query, "channel": "dm"},
             memoryEntries=[],
-            expectedResponse=toon,
+            expectedResponse=expected_response,
             availableActions=[ACTION_TASK_CALL, ACTION_IGNORE],
             task_type="mcp_routing",
             source_dataset=slug,
@@ -2145,7 +2139,7 @@ def mcp_flow(records, *, slug, license, split, encoder):
             tools_raw = r.get("tools")
             tools_list = _normalize_tools(tools_raw)
             calls = [call]
-            toon = encoder.encode(_planner_tool_envelope(
+            expected_response = encoder.encode(_planner_tool_envelope(
                 thought="", tool_calls=calls, providers=[],
             ))
             yield build(
@@ -2153,7 +2147,7 @@ def mcp_flow(records, *, slug, license, split, encoder):
                 agentId="mcp-agent",
                 currentMessage={"role": "user", "speaker": "user", "content": user_q, "channel": "dm"},
                 memoryEntries=[],
-                expectedResponse=toon,
+                expectedResponse=expected_response,
                 availableActions=[ACTION_TASK_CALL, ACTION_IGNORE],
                 task_type="mcp_tool_call",
                 source_dataset=slug,
@@ -2175,7 +2169,7 @@ def mcp_flow(records, *, slug, license, split, encoder):
             if not user_q or not call:
                 continue
             calls = [call]
-            toon = encoder.encode(_planner_tool_envelope(
+            expected_response = encoder.encode(_planner_tool_envelope(
                 thought="", tool_calls=calls, providers=[],
             ))
             yield build(
@@ -2183,7 +2177,7 @@ def mcp_flow(records, *, slug, license, split, encoder):
                 agentId="mcp-agent",
                 currentMessage={"role": "user", "speaker": "user", "content": user_q, "channel": "dm"},
                 memoryEntries=[],
-                expectedResponse=toon,
+                expectedResponse=expected_response,
                 availableActions=[ACTION_TASK_CALL, ACTION_IGNORE],
                 task_type="mcp_tool_call",
                 source_dataset=slug,
@@ -2304,13 +2298,13 @@ def terminal_corpus(records, *, slug, license, split, encoder):
             command, explanation = _terminal_assistant_extract(final.get("content", "") or "")
             if not command:
                 continue
-            toon = encoder.encode(_shell_target(command, explanation))
+            expected_response = encoder.encode(_shell_target(command, explanation))
             yield build(
                 roomName=stable_id(slug, current["content"][:120]),
                 agentId="agent",
                 memoryEntries=memory,
                 currentMessage=current,
-                expectedResponse=toon,
+                expectedResponse=expected_response,
                 availableActions=[ACTION_SHELL_COMMAND, ACTION_REPLY, ACTION_IGNORE],
                 task_type="shell_command",
                 source_dataset=slug,
@@ -2325,13 +2319,13 @@ def terminal_corpus(records, *, slug, license, split, encoder):
         explanation = r.get("explanation") or r.get("rationale") or r.get("reasoning") or ""
         if not instruction or not command:
             continue
-        toon = encoder.encode(_shell_target(str(command), str(explanation)))
+        expected_response = encoder.encode(_shell_target(str(command), str(explanation)))
         yield build(
             roomName=stable_id(slug, r.get("id") or instruction[:120]),
             agentId="agent",
             memoryEntries=[],
             currentMessage={"role": "user", "speaker": "user", "content": instruction, "channel": "dm"},
-            expectedResponse=toon,
+            expectedResponse=expected_response,
             availableActions=[ACTION_SHELL_COMMAND, ACTION_REPLY, ACTION_IGNORE],
             task_type="shell_command",
             source_dataset=slug,
@@ -2392,13 +2386,13 @@ def agent_trove(records, *, slug, license, split, encoder):
                 # task_complete: true terminator with no actual shell
                 # command — drop it (audit B-4 confirms these are noise).
                 continue
-            toon = encoder.encode(_shell_target(command, explanation))
+            expected_response = encoder.encode(_shell_target(command, explanation))
             yield build(
                 roomName=stable_id(slug, r.get("id") or current["content"][:120]),
                 agentId="agent",
                 memoryEntries=memory,
                 currentMessage=current,
-                expectedResponse=toon,
+                expectedResponse=expected_response,
                 availableActions=[ACTION_SHELL_COMMAND, ACTION_REPLY, ACTION_IGNORE],
                 task_type="shell_command",
                 source_dataset=slug,
@@ -2425,7 +2419,7 @@ def reasoning_cot(records, *, slug, license, split, encoder):
     """Generic reasoning/CoT corpora (Jackrong DeepSeek/GLM/Kimi/Qwen/glm-4.7,
     open-paws, Akicou, and friends).
 
-    The supervised target is TOON `{thought, text}`. Source corpora ship
+    The supervised target is structured `{thought, text}`. Source corpora ship
     a `<think>…</think>` block followed by the answer; we extract the
     block into `thought` and put the remainder in `text`. Tool calls
     inside take the tool_call path.
@@ -2446,7 +2440,7 @@ def reasoning_cot(records, *, slug, license, split, encoder):
                 agentId="agent",
                 currentMessage={"role": "user", "speaker": "user", "content": str(prompt), "channel": "dm"},
                 memoryEntries=[],
-                expectedResponse=_cot_to_toon(encoder, str(response)),
+                expectedResponse=_cot_to_expected(encoder, str(response)),
                 availableActions=REPLY_ACTIONS.copy(),
                 task_type="reasoning_cot",
                 source_dataset=slug,
@@ -2471,7 +2465,7 @@ def reasoning_cot(records, *, slug, license, split, encoder):
             actions = [ACTION_TASK_CALL, ACTION_REPLY, ACTION_IGNORE]
             tt = "tool_call"
         else:
-            target = _cot_to_toon(encoder, text, extra_thought=extra_thought)
+            target = _cot_to_expected(encoder, text, extra_thought=extra_thought)
             actions = REPLY_ACTIONS.copy()
             tt = "reasoning_cot"
         md = {"original_id": str(r.get("id") or "")}
@@ -2736,7 +2730,7 @@ def nubilio_trajectories(records, *, slug, license, split, encoder):
 
     Each line is `{"messages": [system, user, ..., assistant]}`. The
     assistant content is parsed (XML / JSON / YAML-thought) and re-encoded
-    as TOON so the supervised target matches the elizaOS runtime decoder.
+    with the configured expected-response encoder so the supervised target matches the elizaOS runtime decoder.
 
     Filename selects task_type via `_NUBILIO_TASK_MAP`. Cross-file dedup
     uses the (system, last-user, assistant) triple.
@@ -2765,18 +2759,18 @@ def nubilio_trajectories(records, *, slug, license, split, encoder):
 
         parsed, fmt = _nubilio_response_to_dict(assistant_text)
         if parsed is None:
-            # Plain text reply → emit as TOON `{text}` (drop empty thought
+            # Plain text reply → emit as structured `{text}` (drop empty thought
             # so the student model doesn't learn to produce `thought: ""`).
-            # Any embedded `<think>` block is lifted by `_cot_to_toon`.
-            target = _cot_to_toon(encoder, assistant_text)
+            # Any embedded `<think>` block is lifted by `_cot_to_expected`.
+            target = _cot_to_expected(encoder, assistant_text)
         else:
             try:
                 target = encoder.encode(parsed)
             except (ValueError, TypeError):
                 # Fall back to wrapping the raw assistant text — keeps the
-                # supervised target valid TOON even when the structured parse
+                # supervised target valid structured output even when the structured parse
                 # produced something the encoder rejects.
-                target = _cot_to_toon(encoder, assistant_text)
+                target = _cot_to_expected(encoder, assistant_text)
                 fmt = "raw"
 
         md: dict[str, Any] = {
@@ -3128,7 +3122,7 @@ def _n8n_extract_workflow(text: str) -> dict[str, Any] | None:
 
 def _n8n_planner_target(wf: dict[str, Any]) -> dict[str, Any]:
     """Build the canonical elizaOS planner output for a CREATE_WORKFLOW
-    action, as a Python dict ready to TOON-encode.
+    action, as a Python dict ready to encode.
 
     Shape mirrors the `<response>` XML envelope nubilio emits — `thought`,
     `actions[]{name, params}`, `providers[]`, `text`, `simple` — so the
@@ -3180,7 +3174,7 @@ def n8n_workflow(records, *, slug, license, split, encoder):
 
     Detects six common input shapes and emits one ElizaRecord per row with
     `task_type='n8n_workflow_generation'`. The supervised target is the
-    elizaOS planner envelope encoded as TOON — `thought`, `actions[]
+    elizaOS planner envelope encoded with the configured expected-response encoder — `thought`, `actions[]
     {name, params:{workflow}}`, `providers[]`, `text`, `simple` — matching
     nubilio's runtime planner output exactly.
 
@@ -3303,7 +3297,7 @@ def n8n_workflow(records, *, slug, license, split, encoder):
         seen.add(dedup)
 
         response = encoder.encode(_n8n_planner_target(wf))
-        response_shape = "toon_envelope"
+        response_shape = "structured_envelope"
         emitted += 1
 
         current_msg = {
@@ -3438,7 +3432,7 @@ def light_multilight(records, *, slug, license, split, encoder):
       - one `reply` record for the agent that actually spoke, training the
         model to produce the exact line the corpus shows.
 
-    All routing targets render as the canonical TOON document
+    All routing targets render as the canonical structured document
     `{name, reasoning, action, primaryContext, secondaryContexts,
     evidenceTurnIds}`; reply targets render as `{thought, text}`.
     """
@@ -3599,7 +3593,7 @@ def light_multilight(records, *, slug, license, split, encoder):
                 )
 
             # ------ Reply record for the agent that actually spoke. The
-            # supervised target is `{thought, text}` rendered as TOON.
+            # supervised target is `{thought, text}` rendered with the configured expected-response encoder.
             reply_target = {
                 "thought": (
                     f"As {actual_speaker}, I respond to {prev_speaker} in "
@@ -3651,7 +3645,7 @@ CLAUDE_DISTILL_SYSTEM = (
 
 
 def claude_distill(records: Iterator[dict], *, slug: str, license: str,
-                   split: str, encoder: ToonEncoder) -> Iterator[ElizaRecord]:
+                   split: str, encoder: ExpectedResponseEncoder) -> Iterator[ElizaRecord]:
     """Adapter for Kassadin88/Claude-Distills (and similarly-shaped distill
     corpora). Each record is `{messages: [system?, user, assistant], source}`
     and the assistant content already contains

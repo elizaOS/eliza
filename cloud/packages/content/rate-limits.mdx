@@ -37,7 +37,8 @@ Custom rate limits based on your needs. Contact sales.
 
 ## Rate Limit Headers
 
-Every response includes rate limit information:
+Rate-limited responses include rate limit information. Some endpoints may also
+include these headers on successful responses:
 
 ```
 X-RateLimit-Limit: 200
@@ -79,7 +80,7 @@ async function fetchWithRetry(url, options, maxRetries = 3) {
     const response = await fetch(url, options);
 
     if (response.status === 429) {
-      const retryAfter = response.headers.get("X-RateLimit-Reset-After");
+      const retryAfter = response.headers.get("Retry-After");
       const waitTime = retryAfter
         ? parseInt(retryAfter) * 1000
         : Math.pow(2, i) * 1000;

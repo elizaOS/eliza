@@ -39,7 +39,7 @@ export default scenario({
       room: "main",
       text: "Connector certification run for browser-portal. Perform the requested workflow now and do not ask which action to use. Upload the file through the portal, and if the browser gets blocked, ask me for help and resume after that.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_COMPUTER_USE"],
+        acceptedActions: ["COMPUTER_USE"],
         description: "browser portal certification kickoff",
         includesAny: ["portal", "upload", "browser", "help"],
       }),
@@ -53,7 +53,7 @@ export default scenario({
       assertTurn: expectTurnBrowserTask({
         description:
           "browser portal certification completed after human resume",
-        actionName: "OWNER_COMPUTER_USE",
+        actionName: "COMPUTER_USE",
         completed: true,
         needsHuman: false,
         minArtifacts: 1,
@@ -67,7 +67,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "OWNER_COMPUTER_USE",
+      actionName: "COMPUTER_USE",
     },
     {
       type: "browserTaskCompleted",
@@ -81,7 +81,7 @@ export default scenario({
       type: "custom",
       name: "connector.browser-portal.certify-core-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_COMPUTER_USE"],
+        acceptedActions: ["COMPUTER_USE"],
         description: "browser portal connector certification",
         includesAny: ["portal", "upload", "browser", "help"],
       }),
@@ -92,7 +92,7 @@ export default scenario({
       predicate: expectScenarioBrowserTask({
         description:
           "browser portal connector blocks for human help, resumes, uploads the asset, and records provenance",
-        actionName: "OWNER_COMPUTER_USE",
+        actionName: "COMPUTER_USE",
         completed: true,
         approvalRequired: true,
         approvalSatisfied: true,

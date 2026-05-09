@@ -16,7 +16,6 @@ import linePlugin, {
   hasMarkdownContent,
   isGroupChat,
   isValidLineId,
-  LINE_MESSAGE_OP_ACTION,
   LINE_SERVICE_NAME,
   LINE_TEXT_CHUNK_LIMIT,
   LineApiError,
@@ -25,7 +24,6 @@ import linePlugin, {
   LineService,
   MAX_LINE_BATCH_SIZE,
   markdownToLineChunks,
-  messageOp,
   normalizeLineTarget,
   processLineMessage,
   resolveLineSystemLocation,
@@ -44,10 +42,9 @@ describe("Plugin metadata", () => {
     expect(linePlugin.description).toContain("LINE");
   });
 
-  it("registers a single LINE_MESSAGE_OP router action", () => {
+  it("does not register legacy LINE message router actions", () => {
     expect(Array.isArray(linePlugin.actions)).toBe(true);
-    expect(linePlugin.actions?.length).toBe(1);
-    expect(linePlugin.actions?.[0]?.name).toBe(LINE_MESSAGE_OP_ACTION);
+    expect(linePlugin.actions?.length).toBe(0);
   });
 
   it("uses core platform context providers", () => {
@@ -60,7 +57,6 @@ describe("Plugin metadata", () => {
   });
 
   it("exports all expected components", () => {
-    expect(messageOp).toBeDefined();
     expect(LineService).toBeDefined();
   });
 });
@@ -517,22 +513,6 @@ describe("Messaging utilities", () => {
     it("returns user when neither present", () => {
       expect(getChatType({})).toBe("user");
     });
-  });
-});
-
-// ===========================================================================
-// Action validation
-// ===========================================================================
-
-describe("Action validation", () => {
-  it("messageOp action has correct metadata", () => {
-    expect(messageOp.name).toBe(LINE_MESSAGE_OP_ACTION);
-    expect(messageOp.description).toContain("LINE");
-    expect(messageOp.similes).toContain("LINE_SEND_MESSAGE");
-    expect(messageOp.similes).toContain("LINE_SEND_FLEX_MESSAGE");
-    expect(messageOp.similes).toContain("LINE_SEND_LOCATION");
-    expect(Array.isArray(messageOp.examples)).toBe(true);
-    expect((messageOp.examples ?? []).length).toBeGreaterThan(0);
   });
 });
 

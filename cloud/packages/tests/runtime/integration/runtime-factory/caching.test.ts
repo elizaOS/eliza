@@ -85,7 +85,7 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Caching Behavior", () => {
 
   it("should cache runtime on first creation", async () => {
     const userContext = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
 
@@ -101,7 +101,7 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Caching Behavior", () => {
 
   it("should return cached runtime on second call", async () => {
     const userContext = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
 
@@ -179,22 +179,18 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Performance Benchmarks", () =
   });
 
   it("should benchmark runtime creation times", async () => {
-    const modes = [AgentMode.CHAT, AgentMode.ASSISTANT, AgentMode.BUILD];
     const benchmarks: Record<string, number> = {};
 
-    for (const mode of modes) {
-      // Ensure clean state
-      const userContext = buildUserContext(localTestData, {
-        agentMode: mode,
-        webSearchEnabled: false,
-      });
+    const userContext = buildUserContext(localTestData, {
+      agentMode: AgentMode.CHAT,
+      webSearchEnabled: false,
+    });
 
-      startTimer(`bench_${mode}`);
-      const runtime = await runtimeFactory.createRuntimeForUser(userContext);
-      benchmarks[mode] = endTimer(`bench_${mode}`);
+    startTimer("bench_chat");
+    const runtime = await runtimeFactory.createRuntimeForUser(userContext);
+    benchmarks[AgentMode.CHAT] = endTimer("bench_chat");
 
-      await invalidateRuntime(runtime.agentId as string);
-    }
+    await invalidateRuntime(runtime.agentId as string);
 
     console.log("\nRuntime Creation Benchmarks:");
     for (const [mode, time] of Object.entries(benchmarks)) {
@@ -202,9 +198,7 @@ describe.skipIf(!hasDatabaseUrl)("RuntimeFactory - Performance Benchmarks", () =
       localTimings[`benchmark_${mode}`] = time;
     }
 
-    // All modes should create in under 10 seconds
+    // The single chat mode should create in under 10 seconds.
     expect(benchmarks[AgentMode.CHAT]).toBeLessThan(10000);
-    expect(benchmarks[AgentMode.ASSISTANT]).toBeLessThan(10000);
-    expect(benchmarks[AgentMode.BUILD]).toBeLessThan(10000);
   }, 180000);
 });

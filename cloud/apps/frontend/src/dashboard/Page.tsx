@@ -6,18 +6,15 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Helmet } from "react-helmet-async";
 import type { DashboardAgentStats } from "@/lib/types/dashboard-agent-stats";
-import {
-  AgentsSection,
-  AgentsSectionSkeleton,
-} from "@/packages/ui/src/components/dashboard/agents-section";
-import {
-  DashboardActionCards,
-  DashboardActionCardsSkeleton,
-} from "@/packages/ui/src/components/dashboard/dashboard-action-cards";
-import { DashboardPageWrapper } from "@/packages/ui/src/components/dashboard/dashboard-page-wrapper";
 import { api } from "../lib/api-client";
 import { useRequireAuth } from "../lib/auth-hooks";
 import { useCreditsBalance } from "../lib/data/credits";
+import { AgentsSection, AgentsSectionSkeleton } from "./_components/agents-section";
+import {
+  DashboardActionCards,
+  DashboardActionCardsSkeleton,
+} from "./_components/dashboard-action-cards";
+import { DashboardPageWrapper } from "./_components/dashboard-page-wrapper";
 
 interface DashboardAgent {
   id: string;

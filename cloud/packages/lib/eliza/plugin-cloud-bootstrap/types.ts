@@ -1,6 +1,6 @@
 import type { Action, Content, Memory, State, UUID } from "@elizaos/core";
 
-export interface MultiStepActionResult {
+export interface NativePlannerActionResult {
   data: { actionName: string };
   success: boolean;
   text?: string;
@@ -56,7 +56,7 @@ export function defineActionParameters(
   })) as Action["parameters"];
 }
 
-export interface ParsedMultiStepDecision {
+export interface ParsedNativePlannerDecision {
   thought?: string;
   action?: string;
   parameters?: string | Record<string, unknown>;
@@ -76,8 +76,8 @@ export type ReasoningChunkCallback = (
 export const TRANSPARENT_META_ACTIONS = new Set(["SEARCH_ACTIONS"]);
 
 export interface CloudMessageOptions {
-  useMultiStep?: boolean;
-  maxMultiStepIterations?: number;
+  useNativePlanner?: boolean;
+  maxNativePlannerIterations?: number;
   maxRetries?: number;
   onStreamChunk?: StreamChunkCallback;
   onReasoningChunk?: ReasoningChunkCallback;

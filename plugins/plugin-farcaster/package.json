@@ -13,6 +13,7 @@
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.node.js",
       "browser": {
         "types": "./dist/browser/index.d.ts",
         "import": "./dist/browser/index.browser.js",
@@ -25,14 +26,24 @@
       },
       "bun": {
         "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
         "default": "./dist/node/index.node.js"
       },
       "default": "./dist/node/index.node.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "social-posting"
+      ]
+    }
+  },
   "sideEffects": false,
   "dependencies": {
     "@elizaos/core": "workspace:*",

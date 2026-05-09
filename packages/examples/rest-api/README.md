@@ -149,7 +149,7 @@ await runtime.messageService?.handleMessage(runtime, messageMemory, callback);
 
 The message service:
 - Manages conversation context and memory
-- Runs evaluators to check if the agent should respond
+- Runs the `shouldRespond` classifier to decide whether to reply
 - Invokes providers to gather context
 - Executes actions based on the conversation
 - Handles all model calls through the plugin system

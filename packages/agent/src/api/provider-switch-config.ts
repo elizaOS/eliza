@@ -1,36 +1,35 @@
-import { asNonEmptyString, asRecord } from "@elizaos/shared";
+import type {
+  DeploymentTargetConfig,
+  LinkedAccountFlagsConfig,
+  ServiceCapability,
+  ServiceRoutingConfig,
+} from "@elizaos/shared";
+import {
+  asNonEmptyString,
+  asRecord,
+  buildDefaultElizaCloudServiceRouting,
+  buildElizaCloudServiceRoute,
+  deriveOnboardingCredentialPersistencePlan,
+  getOnboardingProviderOption,
+  getOnboardingProviderSignalEnvKeys,
+  getStoredOnboardingProviderId,
+  migrateLegacyRuntimeConfig,
+  normalizeDeploymentTargetConfig,
+  normalizeOnboardingCredentialInputs,
+  normalizeOnboardingProviderId,
+  normalizeServiceRoutingConfig,
+  type OnboardingConnection,
+  type OnboardingCredentialInputs,
+  type OnboardingLlmPersistenceSelection,
+  type OnboardingLocalProviderId,
+  requiresAdditionalRuntimeProvider,
+} from "@elizaos/shared";
 import {
   applySubscriptionCredentials,
   deleteCredentials,
 } from "../auth/credentials.js";
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types.js";
 import type { ElizaConfig } from "../config/types.eliza.js";
-import {
-  deriveOnboardingCredentialPersistencePlan,
-  getOnboardingProviderOption,
-  getOnboardingProviderSignalEnvKeys,
-  getStoredOnboardingProviderId,
-  migrateLegacyRuntimeConfig,
-  normalizeOnboardingCredentialInputs,
-  normalizeOnboardingProviderId,
-  type OnboardingConnection,
-  type OnboardingCredentialInputs,
-  type OnboardingLlmPersistenceSelection,
-  type OnboardingLocalProviderId,
-  requiresAdditionalRuntimeProvider,
-} from "../contracts/onboarding.js";
-import type {
-  DeploymentTargetConfig,
-  LinkedAccountFlagsConfig,
-  ServiceCapability,
-  ServiceRoutingConfig,
-} from "../contracts/service-routing.js";
-import {
-  buildDefaultElizaCloudServiceRouting,
-  buildElizaCloudServiceRoute,
-  normalizeDeploymentTargetConfig,
-  normalizeServiceRoutingConfig,
-} from "../contracts/service-routing.js";
 
 type MutableElizaConfig = Partial<ElizaConfig> & {
   cloud?: Record<string, unknown>;
@@ -541,10 +540,9 @@ function toOnboardingConnectionFromSelection(
  * Sets `agents.defaults.subscriptionProvider` so the task-agent orchestrator
  * knows which subscription is active.
  *
- * For providers whose tokens can be used directly by the runtime (Codex),
- * also sets `agents.defaults.model.primary`.  For Anthropic subscriptions,
- * `model.primary` is NOT set because those tokens are restricted to the
- * Claude Code CLI (TOS).
+ * For providers with a runtime model-provider plugin, also sets
+ * `agents.defaults.model.primary`. Anthropic subscriptions are restricted to
+ * Claude Code CLI (TOS), so `model.primary` is NOT set for that provider.
  *
  * Mutates `config` in place.
  */
@@ -566,9 +564,9 @@ export function applySubscriptionProviderConfig(
   if (modelProvider) {
     defaults.subscriptionProvider = subscriptionKey;
 
-    // Only set model.primary for providers whose tokens work with the
-    // runtime.  Anthropic subscription tokens are restricted to Claude
-    // Code CLI (TOS) so the runtime cannot use them for LLM inference.
+    // Only set model.primary for providers with a runtime model-provider
+    // plugin. Anthropic subscription tokens are restricted to Claude Code
+    // CLI (TOS), so the runtime cannot use them for LLM inference.
     const runtimeApplicable = subscriptionKey !== "anthropic-subscription";
     if (runtimeApplicable) {
       defaults.model = { ...defaults.model, primary: modelProvider };

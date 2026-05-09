@@ -31,7 +31,7 @@
  * | X402_PER_REQUEST_MAX  | no       | —              | Per-request max USDC spend (decimal)             |
  */
 
-import type { Address, Hex } from "viem";
+import type { Address, Chain, Hex } from "viem";
 import { createWalletClient, http, parseUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import {
@@ -42,6 +42,7 @@ import {
   optimism,
   polygon,
 } from "viem/chains";
+import type { AgentWalletConfig } from "./types.js";
 import { createWallet, NATIVE_TOKEN, setSpendPolicy } from "./wallet-core.js";
 import { createX402Client } from "./x402/middleware.js";
 import { DEFAULT_SUPPORTED_NETWORKS, USDC_ADDRESSES } from "./x402/types.js";
@@ -52,7 +53,7 @@ import { DEFAULT_SUPPORTED_NETWORKS, USDC_ADDRESSES } from "./x402/types.js";
  * Well-known chains, keyed by name (lower-case) or numeric id.
  * Extend this map if you need additional L2s.
  */
-const CHAIN_MAP: Record<string, any> = {
+const CHAIN_MAP: Record<string, Chain> = {
   base,
   "base-sepolia": baseSepolia,
   basesepolia: baseSepolia,
@@ -85,13 +86,34 @@ const DEFAULT_RPC: Record<string, string> = {
  * @param nameOrId - Chain name ("base", "arbitrum", …) or numeric id (8453, …).
  * @returns The viem Chain object, or `base` as the default.
  */
-function resolveChain(nameOrId: string | number): any {
+function resolveChain(nameOrId: string | number): Chain {
   if (typeof nameOrId === "number") {
     const found = Object.values(CHAIN_MAP).find((c) => c.id === nameOrId);
     return found ?? base;
   }
   const key = nameOrId.toLowerCase().trim();
   return CHAIN_MAP[key] ?? base;
+}
+
+/** Maps a viem chain to the string key expected by `createWallet` (subset of networks). */
+function chainToCreateWalletKey(chain: Chain): AgentWalletConfig["chain"] {
+  switch (chain.id) {
+    case 8453:
+      return "base";
+    case 84532:
+      return "base-sepolia";
+    case 1:
+      return "ethereum";
+    case 42161:
+      return "arbitrum";
+    case 137:
+      return "polygon";
+    default:
+      throw new Error(
+        `[walletFromEnv] Unsupported chain for AgentWallet (${chain.name}, id ${chain.id}). ` +
+          `Use base, base-sepolia, ethereum, arbitrum, or polygon.`,
+      );
+  }
 }
 
 // ─── USDC scaling ──────────────────────────────────────────────────────────
@@ -193,7 +215,7 @@ export function walletFromEnv(options?: {
   // ── Delegate to core createWallet ────────────────────────────────────────
   return createWallet({
     accountAddress: walletAddress as Address,
-    chain: chain.name.toLowerCase() as any,
+    chain: chainToCreateWalletKey(chain),
     rpcUrl,
     walletClient,
   });

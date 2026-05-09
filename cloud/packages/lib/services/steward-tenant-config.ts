@@ -50,14 +50,8 @@ export async function resolveStewardTenantCredentials(
     }
 
     const tenantId = normalizeOptionalValue(organization.steward_tenant_id);
-    if (!tenantId) {
-      throw new Error(
-        `Steward tenant is not configured for organization ${options.organizationId}`,
-      );
-    }
-
     return {
-      tenantId,
+      tenantId: tenantId || resolveDefaultStewardTenantId(),
       apiKey:
         normalizeOptionalValue(options.apiKey) ||
         normalizeOptionalValue(organization.steward_tenant_api_key) ||

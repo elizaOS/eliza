@@ -52,15 +52,13 @@ Similar to plugin ejection but for the elizaOS core framework itself.
 
 ### Communication
 
-**SEND_MESSAGE** -- Send a message to a user or room on a specific platform/service. Requires `targetType` (`user` or `room`), `source` (service name like `telegram`), `target` (entity/room ID), and `text`. Looks up the service via `runtime.getService()` and calls the appropriate send method.
+**MESSAGE** -- Send a message to a user or room on a specific platform/service. Requires `targetType` (`user` or `room`), `source` (service name like `telegram`), `target` (entity/room ID), and `text`. Looks up the service via `runtime.getService()` and calls the appropriate send method.
 
 ### Media Generation
 
 | Action | Description | Required Parameters |
 |--------|-------------|-------------------|
-| `GENERATE_IMAGE` | Generate an image from a text prompt. Supports size, quality (`standard`/`hd`), style (`natural`/`vivid`), and negative prompts. | `prompt` |
-| `GENERATE_VIDEO` | Generate a video from a text prompt. Supports duration, aspect ratio, and image-to-video via `imageUrl`. | `prompt` |
-| `GENERATE_AUDIO` | Generate audio/music from a text prompt. Supports duration, instrumental mode, and genre. | `prompt` |
+| `GENERATE_MEDIA` | Generate image, video, or audio from a text prompt. Supports image size/quality/style, video duration/aspect ratio/image-to-video, and audio duration/instrumental/genre options. Use `mediaType` to force `image`, `video`, or `audio`. | `prompt` |
 | `ANALYZE_IMAGE` | Analyze an image using AI vision. Accepts `imageUrl` or `imageBase64` with an optional analysis `prompt`. | `imageUrl` or `imageBase64` |
 
 All media actions use the configured provider (Eliza Cloud by default, or FAL/OpenAI/Google/Anthropic).

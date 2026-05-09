@@ -5,60 +5,51 @@
  * or `advancedCapabilities: true` in plugin initialization.
  *
  * These provide additional agent features:
- * - Extended providers (facts, contacts, relationships, roles, settings, knowledge, clipboard, personality)
- * - Advanced actions (contacts management, room management, image generation, clipboard, personality, etc.)
- * - Evaluators (reflection, relationship extraction, experience learning, character evolution)
- * - Additional services (experience, clipboard, personality)
+ * - Extended providers (facts, contacts, relationships, roles, settings, todos, personality)
+ * - Advanced actions (contacts management, room management, todos, personality)
+ * - Registered post-turn evaluators (experience, skills, facts, relationships,
+ *   identities, task success)
+ * - Additional services (experience, todos, personality)
  */
 
 import { withCanonicalActionDocs } from "../../action-docs.ts";
-import type { IAgentRuntime } from "../../types/index.ts";
+import type { Evaluator, IAgentRuntime } from "../../types/index.ts";
 import type { ServiceClass } from "../../types/plugin.ts";
-// Clipboard imports
 import {
-	clipboardAppendAction,
-	clipboardDeleteAction,
-	clipboardListAction,
-	clipboardProvider,
-	clipboardReadAction,
-	clipboardSearchAction,
-	clipboardWriteAction,
-	readAttachmentAction,
-	readFileAction,
-	removeFromClipboardAction,
-	saveAttachmentToClipboardAction,
-} from "./clipboard/index.ts";
-import {
-	experienceEvaluator,
+	experiencePatternEvaluator,
 	experienceProvider,
-	recordExperienceAction,
 	searchExperiencesAction,
 } from "./experience/index.ts";
 
 // Personality imports
 import {
-	characterEvolutionEvaluator,
-	manageMessageExamplesAction,
-	managePostExamplesAction,
-	manageStyleRulesAction,
-	modifyCharacterAction,
-	persistCharacterAction,
-	setVoiceConfigAction,
+	characterAction,
 	userPersonalityProvider,
 } from "./personality/index.ts";
 
-// Re-export action, provider, and evaluator modules
+// Todos imports
+import {
+	completeTodoAction,
+	createTodoAction,
+	deleteTodoAction,
+	editTodoAction,
+	listTodosAction,
+	todoAction,
+	todosProvider,
+} from "./todos/index.ts";
+
+// Re-export action, provider, and post-message-action modules
 export * from "./actions/index.ts";
-export * from "./clipboard/index.ts";
 export * from "./evaluators/index.ts";
 export * from "./experience/index.ts";
 export type * from "./form/index.ts";
 export * from "./personality/index.ts";
 export * from "./providers/index.ts";
+export * from "./todos/index.ts";
 
 // Import for local use
 import * as actions from "./actions/index.ts";
-import * as evaluators from "./evaluators/index.ts";
+import * as postMessageActions from "./evaluators/index.ts";
 import * as providers from "./providers/index.ts";
 
 /**
@@ -68,62 +59,42 @@ export const advancedProviders = [
 	providers.contactsProvider,
 	providers.factsProvider,
 	providers.followUpsProvider,
-	providers.knowledgeProvider,
 	providers.relationshipsProvider,
 	providers.roleProvider,
 	providers.settingsProvider,
 	experienceProvider,
-	clipboardProvider,
+	todosProvider,
 	userPersonalityProvider,
 ];
 
 /**
- * Advanced actions - extended agent capabilities
+ * Advanced actions - extended agent capabilities.
+ *
+ * Includes planner actions only. Post-turn evaluation is registered through
+ * `advancedEvaluators` and run by the EvaluatorService in one model call.
  */
 export const advancedActions = [
-	withCanonicalActionDocs(actions.createTaskAction),
-	withCanonicalActionDocs(actions.followRoomAction),
-	withCanonicalActionDocs(actions.generateImageAction),
-	withCanonicalActionDocs(actions.thinkAction),
-	withCanonicalActionDocs(actions.muteRoomAction),
-	withCanonicalActionDocs(actions.unfollowRoomAction),
-	withCanonicalActionDocs(actions.unmuteRoomAction),
+	withCanonicalActionDocs(actions.roomOpAction),
 	withCanonicalActionDocs(actions.updateRoleAction),
-	withCanonicalActionDocs(actions.updateSettingsAction),
-	withCanonicalActionDocs(recordExperienceAction),
 	withCanonicalActionDocs(searchExperiencesAction),
-	// Clipboard actions
-	clipboardWriteAction,
-	clipboardReadAction,
-	clipboardSearchAction,
-	clipboardListAction,
-	clipboardDeleteAction,
-	clipboardAppendAction,
-	readFileAction,
-	readAttachmentAction,
-	saveAttachmentToClipboardAction,
-	removeFromClipboardAction,
+	actions.messageAction,
+	actions.postAction,
+	// Todo actions
+	todoAction,
+	createTodoAction,
+	completeTodoAction,
+	listTodosAction,
+	editTodoAction,
+	deleteTodoAction,
 	// Personality actions
-	modifyCharacterAction,
-	setVoiceConfigAction,
-	manageStyleRulesAction,
-	manageMessageExamplesAction,
-	managePostExamplesAction,
-	persistCharacterAction,
+	characterAction,
 ];
 
-/**
- * Advanced evaluators - memory, relationships, experience learning, form, personality
- */
 export const advancedEvaluators = [
-	evaluators.factExtractorEvaluator,
-	evaluators.reflectionEvaluator,
-	evaluators.relationshipExtractionEvaluator,
-	evaluators.skillExtractionEvaluator,
-	evaluators.skillRefinementEvaluator,
-	experienceEvaluator,
-	characterEvolutionEvaluator,
-];
+	...postMessageActions.reflectionItems,
+	...postMessageActions.skillItems,
+	experiencePatternEvaluator,
+] as unknown as Evaluator[];
 
 /**
  * Advanced services - extended service infrastructure

@@ -416,7 +416,7 @@ class Agent:
     
     For complex problems: agent.memorize("NOTE: Response times: 2.1s, 1.8s, 2.3s, 1.9s. GUIDANCE: Calculate the arithmetic mean of these response times and provide the result with 2 decimal places.")
     
-    SCRATCHPAD POLICY: Treat NOTE entries as append-only scratchpad items. Never overwrite or discard raw facts; instead add new NOTE lines with timestamps or brief tags when you refine conclusions. IMPORTANT: Treat your memorized NOTE entries as your personal scratchpad/hand-copied notebook. This is your working memory to collect raw facts, intermediate results, partial calculations that you will later use to guide precise actions.
+    WORKING NOTES POLICY: Treat NOTE entries as append-only working notes items. Never overwrite or discard raw facts; instead add new NOTE lines with timestamps or brief tags when you refine conclusions. IMPORTANT: Treat your memorized NOTE entries as your personal working notes/hand-copied notebook. This is your working memory to collect raw facts, intermediate results, partial calculations that you will later use to guide precise actions.
     
         Args:
             information:str, the information to be memorized. For analysis tasks, include both data and guidance for the analyst.

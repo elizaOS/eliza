@@ -6,24 +6,23 @@
  */
 
 import type { TemplateType } from "./agent.js";
-import type {
-	BuildPromptOptions as ProtoBuildPromptOptions,
-	BuiltPrompt as ProtoBuiltPrompt,
-	PromptFieldInfo as ProtoPromptFieldInfo,
-	PromptTemplateConfig as ProtoPromptTemplateConfig,
-} from "./proto.js";
 
 /**
  * Information about a field for prompt building.
  * Used when building prompts that extract or format field values.
  */
-export type PromptFieldInfo = ProtoPromptFieldInfo;
+export interface PromptFieldInfo {
+	id: string;
+	type: string;
+	label: string;
+	description?: string;
+	criteria?: string;
+}
 
 /**
  * Options for building a prompt from a template.
  */
-export interface BuildPromptOptions
-	extends Omit<ProtoBuildPromptOptions, "template" | "state" | "defaults"> {
+export interface BuildPromptOptions {
 	template: TemplateType;
 	state: Record<string, string | number | boolean | undefined>;
 	defaults?: Record<string, string>;
@@ -32,7 +31,12 @@ export interface BuildPromptOptions
 /**
  * Result of building a prompt from a template.
  */
-export type BuiltPrompt = ProtoBuiltPrompt;
+export interface BuiltPrompt {
+	prompt: string;
+	system?: string;
+	substitutedVariables: string[];
+	missingVariables: string[];
+}
 
 /**
  * Function signature for building prompts dynamically.
@@ -45,9 +49,12 @@ export type PromptBuilder = (
  * Configuration for a prompt template.
  * Extends the basic template with metadata and building options.
  */
-export interface PromptTemplateConfig
-	extends Omit<ProtoPromptTemplateConfig, "template" | "defaults"> {
+export interface PromptTemplateConfig {
 	template: TemplateType;
+	name: string;
+	description?: string;
 	defaults?: Record<string, string>;
+	requiredVariables?: string[];
+	optionalVariables?: string[];
 	builder?: PromptBuilder;
 }

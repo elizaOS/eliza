@@ -52,7 +52,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react-swc": "^4.2.1",
     "jsdom": "^29.0.0",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vite": "^8.0.8",
     "vitest": "^4.0.0"
   }

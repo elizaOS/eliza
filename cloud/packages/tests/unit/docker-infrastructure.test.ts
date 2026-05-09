@@ -310,6 +310,14 @@ describe("Docker Infrastructure - Pure Functions", () => {
       ).toBe("abcdefabcdef");
     });
 
+    test("uses the container id even when stderr arrives after stdout", () => {
+      expect(
+        extractDockerCreateContainerId(
+          "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd\n[stderr] WARNING: platform mismatch\n",
+        ),
+      ).toBe("abcdefabcdef");
+    });
+
     test("rejects non-hex output", () => {
       expect(() => extractDockerCreateContainerId("container created successfully")).toThrow(
         /invalid container id/,

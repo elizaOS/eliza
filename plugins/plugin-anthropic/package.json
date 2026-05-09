@@ -32,8 +32,19 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "text-large",
+        "text-small",
+        "tool-use"
+      ]
+    }
+  },
   "sideEffects": false,
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.9",
@@ -46,7 +57,7 @@
     "@elizaos/core": "workspace:*",
     "@types/bun": "^1.3.9",
     "@types/node": "^25.0.3",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "scripts": {
@@ -87,7 +98,7 @@
         "type": "string",
         "description": "Override the default Anthropic large model identifier used by the plugin",
         "required": false,
-        "default": "claude-sonnet-4-6",
+        "default": "claude-opus-4-7",
         "sensitive": false
       },
       "ANTHROPIC_EXPERIMENTAL_TELEMETRY": {

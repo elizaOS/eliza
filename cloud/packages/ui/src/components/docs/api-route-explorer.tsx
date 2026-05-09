@@ -1,11 +1,9 @@
-import { discoverApiV1Routes } from "@/lib/docs/api-route-discovery";
-import { ApiRouteExplorerClient } from "@/packages/ui/src/components/docs/api-route-explorer-client";
+import type { DiscoveredApiRouteDto } from "@/types/cloud-api";
+import { ApiRouteExplorerClient } from "./api-route-explorer-client";
 
 /**
- * Server component that discovers real `app/api/v1/<...>/route.ts` endpoints at build/runtime
- * and renders a searchable, docs-friendly explorer UI.
+ * Presentational API route explorer. Route discovery is owned by the app/docs layer.
  */
-export async function ApiRouteExplorer() {
-  const routes = await discoverApiV1Routes();
+export function ApiRouteExplorer({ routes }: { routes: DiscoveredApiRouteDto[] }) {
   return <ApiRouteExplorerClient routes={routes} />;
 }

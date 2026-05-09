@@ -229,9 +229,18 @@ async function startRuntimeWithPlugins(
   child.stdout.on("data", (c: string) => logBuf.push(c));
   child.stderr.on("data", (c: string) => logBuf.push(c));
 
+  let earlyExit: { code: number | null; signal: NodeJS.Signals | null } | null =
+    null;
+  child.once("exit", (code, signal) => {
+    earlyExit = { code, signal };
+  });
+
   const deadline = Date.now() + 150_000;
   let ready = false;
   while (Date.now() < deadline) {
+    if (earlyExit) {
+      break;
+    }
     try {
       const r = await fetch(`http://127.0.0.1:${port}/api/health`);
       if (r.ok) {
@@ -256,8 +265,11 @@ async function startRuntimeWithPlugins(
       });
     }
     await rm(tmp, { recursive: true, force: true });
+    const exitDetail = earlyExit
+      ? ` (child exited early with code=${earlyExit.code} signal=${earlyExit.signal})`
+      : "";
     throw new Error(
-      `Runtime failed to become ready with allowPlugins=${allowPlugins.join(", ")}\n${logBuf.join("").slice(-8_000)}`,
+      `Runtime failed to become ready with allowPlugins=${allowPlugins.join(", ")}${exitDetail}\n${logBuf.join("").slice(-8_000)}`,
     );
   }
 

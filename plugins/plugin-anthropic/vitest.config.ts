@@ -4,7 +4,7 @@ export default defineConfig({
 	test: {
 		environment: "node",
 		include: ["__tests__/**/*.test.ts"],
-		exclude: ["dist/**", "node_modules/**"],
+		exclude: ["dist/**", "node_modules/**", "**/*.live.test.ts"],
 		passWithNoTests: true,
 	},
 });

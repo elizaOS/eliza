@@ -2,9 +2,9 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import type {
   InboundMessage,
   InboxTriageConfig,
@@ -191,14 +191,10 @@ function buildTriagePrompt(
   }
 
   sections.push(
-    "Return TOON only, one result per message in the same order.",
-    "Use this exact indexed shape:",
-    "results[0]:",
-    "  classification: ignore, info, notify, needs_reply, or urgent",
-    "  urgency: low, medium, or high",
-    "  confidence: number from 0 to 1",
-    "  reasoning: brief explanation",
-    "  suggestedResponse: brief draft response when useful, otherwise leave blank",
+    "Return JSON only as a single object with one results array entry per message in the same order.",
+    "Use this exact shape:",
+    '{"results":[{"classification":"ignore|info|notify|needs_reply|urgent","urgency":"low|medium|high","confidence":0.0,"reasoning":"brief explanation","suggestedResponse":null}]}',
+    "suggestedResponse may be a brief draft response when useful, otherwise null.",
     "",
     "No prose, markdown, code fences, or <think>.",
   );
@@ -259,8 +255,8 @@ function asStructuredArray(value: unknown): unknown[] | null {
   return Array.isArray(value) ? value : null;
 }
 
-function parseTriageToonArray(raw: string): unknown[] | null {
-  const parsed = parseToonKeyValue<Record<string, unknown>>(raw);
+function parseTriageJsonObjectArray(raw: string): unknown[] | null {
+  const parsed = parseJsonModelRecord<Record<string, unknown>>(raw);
   if (!parsed) {
     return null;
   }
@@ -297,9 +293,9 @@ function parseTriageToonArray(raw: string): unknown[] | null {
 }
 
 function parseTriageStructuredArray(raw: string): unknown[] {
-  const toonParsed = parseTriageToonArray(raw);
-  if (toonParsed) {
-    return toonParsed;
+  const jsonParsed = parseTriageJsonObjectArray(raw);
+  if (jsonParsed) {
+    return jsonParsed;
   }
   return parseTriageJsonArray(raw);
 }

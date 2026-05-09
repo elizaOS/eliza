@@ -1,7 +1,5 @@
-import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { dbRead } from "@/db/client";
-import { apps } from "@/db/schemas/apps";
+import { appsRepository } from "@/db/repositories/apps";
 import { isAllowedOrigin } from "@/lib/security/origin-validation";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
@@ -38,21 +36,7 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params;
 
-    const [app] = await dbRead
-      .select({
-        id: apps.id,
-        name: apps.name,
-        description: apps.description,
-        logo_url: apps.logo_url,
-        website_url: apps.website_url,
-        app_url: apps.app_url,
-        allowed_origins: apps.allowed_origins,
-        is_active: apps.is_active,
-        is_approved: apps.is_approved,
-      })
-      .from(apps)
-      .where(and(eq(apps.id, id), eq(apps.is_active, true), eq(apps.is_approved, true)))
-      .limit(1);
+    const app = await appsRepository.findPublicInfoById(id);
 
     if (!app) {
       return Response.json(

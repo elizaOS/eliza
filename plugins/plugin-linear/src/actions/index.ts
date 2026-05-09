@@ -6,4 +6,3 @@ export * from "./getActivity";
 export * from "./getIssue";
 export * from "./routers";
 export * from "./searchIssues";
-export * from "./updateIssue";

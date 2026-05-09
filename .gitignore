@@ -242,13 +242,6 @@ standalone.ts
 # Continuous Claude cache (local only)
 .claude/cache/
 
-# Proto-generated files (regenerated from schemas/)
-packages/core/src/types/generated/
-packages/core/src/types/generated/
-packages/python/elizaos/types/generated/
-packages/rust/src/types/generated/
-packages/rust/.cargo-tools/
-
 # i18n keyword codegen (regenerated from keywords/*.keywords.json)
 packages/shared/src/i18n/generated/
 packages/core/src/i18n/generated/
@@ -285,8 +278,6 @@ packages/shared/src/**/*.js.map
 packages/shared/src/**/*.d.ts
 packages/shared/src/**/*.d.ts.map
 !packages/shared/src/elizaos-core-roles.d.ts
-!packages/shared/src/env-utils.impl.js
-!packages/shared/src/env-utils.impl.d.ts
 apps/*/src/**/*.js
 apps/*/src/**/*.js.map
 apps/*/src/**/*.d.ts
@@ -340,6 +331,9 @@ packages/elizaos/examples/
 /benchmarks/**/trajectories.grpo.groups.json
 /benchmarks/**/*.art.jsonl
 /benchmarks/**/*.grpo.groups.json
+
+# Native-tool-calling v5 run-cerebras / trajectory CLI output
+/trajectories/
 
 # AgentBench: generated local run folders (do not commit)
 /benchmarks/agentbench/benchmark_results/
@@ -468,3 +462,7 @@ packages/app-core/test/**/*.d.ts
 test/**/*.js
 test/**/*.d.ts
 test_output/
+trajectories-eliza-cerebras/
+action-benchmark-report/
+artifacts/
+research/native-tool-calling

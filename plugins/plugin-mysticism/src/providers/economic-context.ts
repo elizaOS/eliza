@@ -5,6 +5,9 @@ import { validateActionKeywords, validateActionRegex } from "@elizaos/core";
 import type { MysticismService } from "../services/mysticism-service";
 import type { PaymentRecord, ReadingSession } from "../types";
 
+const MAX_PAYMENT_HISTORY = 20;
+const MAX_SYSTEMS_LISTED = 8;
+
 export const economicContextProvider: Provider = {
   name: "ECONOMIC_CONTEXT",
   description:
@@ -13,6 +16,10 @@ export const economicContextProvider: Provider = {
     "Provide mysticism payment history, revenue, and current session payment status.",
 
   dynamic: true,
+  contexts: ["knowledge", "finance"],
+  contextGate: { anyOf: ["knowledge", "finance"] },
+  cacheStable: false,
+  cacheScope: "turn",
   relevanceKeywords: [
     "economic",
     "context",
@@ -59,37 +66,43 @@ export const economicContextProvider: Provider = {
       return { text: "" };
     }
 
-    const service = runtime.getService<MysticismService>("MYSTICISM");
-    if (!service) {
+    try {
+      const service = runtime.getService<MysticismService>("MYSTICISM");
+      if (!service) {
+        return { text: "", values: {}, data: {} };
+      }
+
+      const entityId = message.entityId as UUID;
+      const roomId = message.roomId as UUID;
+
+      // Current session info
+      const session = entityId && roomId ? service.getSession(entityId, roomId) : null;
+
+      // This user's payment history
+      const userPayments = entityId ? service.getPaymentHistory(entityId) : [];
+      const cappedUserPayments = userPayments.slice(-MAX_PAYMENT_HISTORY);
+
+      // All payment history (agent's total revenue)
+      // We don't have a getAllPayments method, so we compute from what we have
+      const pricing = service.getPricing();
+
+      const text = buildEconomicText(session, cappedUserPayments, pricing);
+
+      return {
+        text,
+        values: {
+          hasEconomicContext: "true",
+          paymentStatus: session?.paymentStatus ?? "no_session",
+        },
+        data: {
+          paymentStatus: session?.paymentStatus ?? "no_session",
+          userPaymentCount: String(userPayments.length),
+          truncated: userPayments.length > cappedUserPayments.length,
+        },
+      };
+    } catch {
       return { text: "", values: {}, data: {} };
     }
-
-    const entityId = message.entityId as UUID;
-    const roomId = message.roomId as UUID;
-
-    // Current session info
-    const session = entityId && roomId ? service.getSession(entityId, roomId) : null;
-
-    // This user's payment history
-    const userPayments = entityId ? service.getPaymentHistory(entityId) : [];
-
-    // All payment history (agent's total revenue)
-    // We don't have a getAllPayments method, so we compute from what we have
-    const pricing = service.getPricing();
-
-    const text = buildEconomicText(session, userPayments, pricing);
-
-    return {
-      text,
-      values: {
-        hasEconomicContext: "true",
-        paymentStatus: session?.paymentStatus ?? "no_session",
-      },
-      data: {
-        paymentStatus: session?.paymentStatus ?? "no_session",
-        userPaymentCount: String(userPayments.length),
-      },
-    };
   },
 };
 
@@ -110,7 +123,10 @@ function buildEconomicText(
     parts.push("- First-time visitor (no payment history)");
   } else {
     const totalPaid = completedPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
-    const systems = [...new Set(completedPayments.map((p) => p.system))];
+    const systems = [...new Set(completedPayments.map((p) => p.system))].slice(
+      0,
+      MAX_SYSTEMS_LISTED
+    );
     parts.push("### This User");
     parts.push(`- ${completedPayments.length} previous paid reading(s)`);
     parts.push(`- Total spent: $${totalPaid.toFixed(2)}`);

@@ -7,7 +7,7 @@
  * for credit balance across all components that need it.
  */
 
-import { usePathname } from "@elizaos/cloud-ui/runtime/navigation";
+import { usePathname } from "@elizaos/cloud-ui";
 import {
   createContext,
   type ReactNode,

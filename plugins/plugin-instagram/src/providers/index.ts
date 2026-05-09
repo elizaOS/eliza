@@ -1,7 +1,3 @@
 /**
- * Instagram providers module
- *
- * Contains provider implementations for Instagram state.
+ * Instagram prompt context is exposed through MESSAGE and POST connector hooks.
  */
-
-export { userStateProvider } from "./user-state";

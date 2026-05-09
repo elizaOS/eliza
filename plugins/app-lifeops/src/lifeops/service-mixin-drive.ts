@@ -1,27 +1,10 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
-import type {
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-} from "@elizaos/shared";
-import { resolveGoogleExecutionTarget } from "./google-connector-gateway.js";
+// @ts-nocheck — Mixin pattern: see service.ts for the composed public type.
+import type { LifeOpsConnectorMode, LifeOpsConnectorSide } from "@elizaos/shared";
+import type { GoogleDriveFile } from "@elizaos/plugin-google";
 import {
-  appendToDoc,
-  createDriveFile,
-  type GoogleDriveFile,
-  getDocContent,
-  getDriveFile,
-  getSheetContent,
-  listDriveFiles,
-  searchDriveFiles,
-  updateSheetCells,
-} from "./google-drive.js";
-import { ensureFreshGoogleAccessToken } from "./google-oauth.js";
+  accountIdForGrant,
+  requireGoogleServiceMethod,
+} from "./google-plugin-delegates.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 import {
@@ -29,44 +12,13 @@ import {
   normalizeOptionalConnectorSide,
 } from "./service-normalize-connector.js";
 
-// ---------------------------------------------------------------------------
-// Scope constants — Drive requires the full drive scope for read+write.
-// Docs and Sheets inherit access from Drive scopes.
-// ---------------------------------------------------------------------------
+export type { GoogleDriveFile };
 
 export const GOOGLE_DRIVE_READ_SCOPE =
   "https://www.googleapis.com/auth/drive.readonly";
 export const GOOGLE_DRIVE_WRITE_SCOPE = "https://www.googleapis.com/auth/drive";
 export const GOOGLE_DRIVE_FILE_SCOPE =
   "https://www.googleapis.com/auth/drive.file";
-
-/**
- * Returns true when the grant has at least one scope that permits reading
- * from Drive (drive, drive.readonly, or drive.file).
- */
-function hasGoogleDriveReadScope(grant: { grantedScopes: string[] }): boolean {
-  const scopes = new Set(grant.grantedScopes);
-  return (
-    scopes.has(GOOGLE_DRIVE_WRITE_SCOPE) ||
-    scopes.has(GOOGLE_DRIVE_READ_SCOPE) ||
-    scopes.has(GOOGLE_DRIVE_FILE_SCOPE)
-  );
-}
-
-/**
- * Returns true when the grant has a scope that permits writing to Drive
- * (drive or drive.file).
- */
-function hasGoogleDriveWriteScope(grant: { grantedScopes: string[] }): boolean {
-  const scopes = new Set(grant.grantedScopes);
-  return (
-    scopes.has(GOOGLE_DRIVE_WRITE_SCOPE) || scopes.has(GOOGLE_DRIVE_FILE_SCOPE)
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Capability descriptor (returned by the connector registry)
-// ---------------------------------------------------------------------------
 
 export const DRIVE_CONNECTOR_CAPABILITIES = {
   inbound: false,
@@ -77,19 +29,31 @@ export const DRIVE_CONNECTOR_CAPABILITIES = {
   deliveryStatus: false,
 } as const;
 
-// ---------------------------------------------------------------------------
-// Mixin
-// ---------------------------------------------------------------------------
+function hasDriveRead(grant: { grantedScopes: string[]; capabilities: string[] }): boolean {
+  const scopes = new Set(grant.grantedScopes);
+  return (
+    scopes.has(GOOGLE_DRIVE_WRITE_SCOPE) ||
+    scopes.has(GOOGLE_DRIVE_READ_SCOPE) ||
+    scopes.has(GOOGLE_DRIVE_FILE_SCOPE) ||
+    grant.capabilities.includes("google.drive.read") ||
+    grant.capabilities.includes("google.drive.write")
+  );
+}
+
+function hasDriveWrite(grant: { grantedScopes: string[]; capabilities: string[] }): boolean {
+  const scopes = new Set(grant.grantedScopes);
+  return (
+    scopes.has(GOOGLE_DRIVE_WRITE_SCOPE) ||
+    scopes.has(GOOGLE_DRIVE_FILE_SCOPE) ||
+    grant.capabilities.includes("google.drive.write")
+  );
+}
 
 /** @internal */
 export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {
   class LifeOpsDriveServiceMixin extends Base {
-    // -----------------------------------------------------------------------
-    // Grant helpers
-    // -----------------------------------------------------------------------
-
     public async requireGoogleDriveReadGrant(
       requestUrl: URL,
       requestedMode?: LifeOpsConnectorMode,
@@ -98,18 +62,18 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
     ) {
       const status = await this.getGoogleConnectorStatus(
         requestUrl,
-        requestedMode,
-        requestedSide,
+        normalizeOptionalConnectorMode(requestedMode, "mode"),
+        normalizeOptionalConnectorSide(requestedSide, "side"),
         grantId,
       );
       const grant = status.grant;
       if (!status.connected || !grant) {
         fail(409, "Google Drive is not connected.");
       }
-      if (!hasGoogleDriveReadScope(grant)) {
+      if (!hasDriveRead(grant)) {
         fail(
           403,
-          "Google Drive read access has not been granted. Reconnect Google with Drive scope.",
+          "Google Drive read access has not been granted. Reconnect Google through @elizaos/plugin-google with Drive scope.",
         );
       }
       return grant;
@@ -127,37 +91,15 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         requestedSide,
         grantId,
       );
-      if (!hasGoogleDriveWriteScope(grant)) {
+      if (!hasDriveWrite(grant)) {
         fail(
           403,
-          "Google Drive write access has not been granted. Reconnect Google with Drive write scope.",
+          "Google Drive write access has not been granted. Reconnect Google through @elizaos/plugin-google with Drive write scope.",
         );
       }
       return grant;
     }
 
-    // -----------------------------------------------------------------------
-    // Token helper
-    // -----------------------------------------------------------------------
-
-    async lifeOpsDriveAccessToken(grant: {
-      tokenRef: string | null;
-    }): Promise<string> {
-      return (
-        await ensureFreshGoogleAccessToken(
-          grant.tokenRef ??
-            fail(409, "Google Drive token reference is missing."),
-        )
-      ).accessToken;
-    }
-
-    // -----------------------------------------------------------------------
-    // Public Drive methods
-    // -----------------------------------------------------------------------
-
-    /**
-     * List Drive files in a folder (defaults to root).
-     */
     async listDriveFiles(
       requestUrl: URL,
       request: {
@@ -169,33 +111,24 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         pageToken?: string;
       } = {},
     ): Promise<{ files: GoogleDriveFile[]; nextPageToken: string | null }> {
-      const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-      const side = normalizeOptionalConnectorSide(request.side, "side");
       const grant = await this.requireGoogleDriveReadGrant(
         requestUrl,
-        mode,
-        side,
+        request.mode,
+        request.side,
         request.grantId,
       );
-
-      const run = async () => {
-        const accessToken = await this.lifeOpsDriveAccessToken(grant);
-        return listDriveFiles({
-          accessToken,
-          folderId: request.folderId,
-          maxResults: request.maxResults,
-          pageToken: request.pageToken,
-        });
-      };
-
-      return resolveGoogleExecutionTarget(grant) === "cloud"
-        ? this.runManagedGoogleOperation(grant, run)
-        : this.withGoogleGrantOperation(grant, run);
+      const searchFiles = requireGoogleServiceMethod(this.runtime, "searchFiles");
+      const query = request.folderId
+        ? `'${request.folderId}' in parents and trashed = false`
+        : "'root' in parents and trashed = false";
+      const files = await searchFiles({
+        accountId: accountIdForGrant(grant),
+        query,
+        limit: request.maxResults,
+      });
+      return { files, nextPageToken: null };
     }
 
-    /**
-     * Get Drive file metadata by ID.
-     */
     async getDriveFile(
       requestUrl: URL,
       request: {
@@ -205,28 +138,19 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         fileId: string;
       },
     ): Promise<GoogleDriveFile> {
-      const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-      const side = normalizeOptionalConnectorSide(request.side, "side");
       const grant = await this.requireGoogleDriveReadGrant(
         requestUrl,
-        mode,
-        side,
+        request.mode,
+        request.side,
         request.grantId,
       );
-
-      const run = async () => {
-        const accessToken = await this.lifeOpsDriveAccessToken(grant);
-        return getDriveFile({ accessToken, fileId: request.fileId });
-      };
-
-      return resolveGoogleExecutionTarget(grant) === "cloud"
-        ? this.runManagedGoogleOperation(grant, run)
-        : this.withGoogleGrantOperation(grant, run);
+      const getFile = requireGoogleServiceMethod(this.runtime, "getFile");
+      return getFile({
+        accountId: accountIdForGrant(grant),
+        fileId: request.fileId,
+      });
     }
 
-    /**
-     * Search Drive files using Drive v3 query syntax.
-     */
     async searchDriveFiles(
       requestUrl: URL,
       request: {
@@ -237,32 +161,21 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         maxResults?: number;
       },
     ): Promise<{ files: GoogleDriveFile[]; nextPageToken: string | null }> {
-      const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-      const side = normalizeOptionalConnectorSide(request.side, "side");
       const grant = await this.requireGoogleDriveReadGrant(
         requestUrl,
-        mode,
-        side,
+        request.mode,
+        request.side,
         request.grantId,
       );
-
-      const run = async () => {
-        const accessToken = await this.lifeOpsDriveAccessToken(grant);
-        return searchDriveFiles({
-          accessToken,
-          query: request.query,
-          maxResults: request.maxResults,
-        });
-      };
-
-      return resolveGoogleExecutionTarget(grant) === "cloud"
-        ? this.runManagedGoogleOperation(grant, run)
-        : this.withGoogleGrantOperation(grant, run);
+      const searchFiles = requireGoogleServiceMethod(this.runtime, "searchFiles");
+      const files = await searchFiles({
+        accountId: accountIdForGrant(grant),
+        query: request.query,
+        limit: request.maxResults,
+      });
+      return { files, nextPageToken: null };
     }
 
-    /**
-     * Read a Google Doc as plain text.
-     */
     async getDocContent(
       requestUrl: URL,
       request: {
@@ -272,28 +185,19 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         documentId: string;
       },
     ): Promise<{ title: string; plainText: string }> {
-      const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-      const side = normalizeOptionalConnectorSide(request.side, "side");
       const grant = await this.requireGoogleDriveReadGrant(
         requestUrl,
-        mode,
-        side,
+        request.mode,
+        request.side,
         request.grantId,
       );
-
-      const run = async () => {
-        const accessToken = await this.lifeOpsDriveAccessToken(grant);
-        return getDocContent({ accessToken, documentId: request.documentId });
-      };
-
-      return resolveGoogleExecutionTarget(grant) === "cloud"
-        ? this.runManagedGoogleOperation(grant, run)
-        : this.withGoogleGrantOperation(grant, run);
+      const getDocContent = requireGoogleServiceMethod(this.runtime, "getDocContent");
+      return getDocContent({
+        accountId: accountIdForGrant(grant),
+        documentId: request.documentId,
+      });
     }
 
-    /**
-     * Read a Google Sheet as a 2-D array of strings.
-     */
     async getSheetContent(
       requestUrl: URL,
       request: {
@@ -304,33 +208,20 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         range?: string;
       },
     ): Promise<{ title: string; rows: string[][] }> {
-      const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-      const side = normalizeOptionalConnectorSide(request.side, "side");
       const grant = await this.requireGoogleDriveReadGrant(
         requestUrl,
-        mode,
-        side,
+        request.mode,
+        request.side,
         request.grantId,
       );
-
-      const run = async () => {
-        const accessToken = await this.lifeOpsDriveAccessToken(grant);
-        return getSheetContent({
-          accessToken,
-          spreadsheetId: request.spreadsheetId,
-          range: request.range,
-        });
-      };
-
-      return resolveGoogleExecutionTarget(grant) === "cloud"
-        ? this.runManagedGoogleOperation(grant, run)
-        : this.withGoogleGrantOperation(grant, run);
+      const getSheetContent = requireGoogleServiceMethod(this.runtime, "getSheetContent");
+      return getSheetContent({
+        accountId: accountIdForGrant(grant),
+        spreadsheetId: request.spreadsheetId,
+        range: request.range,
+      });
     }
 
-    /**
-     * Create a new Drive file.
-     * Pass `content` for files with body; omit for Google-native types (Docs, Sheets, …).
-     */
     async createDriveFile(
       requestUrl: URL,
       request: {
@@ -343,34 +234,22 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         parentFolderId?: string;
       },
     ): Promise<GoogleDriveFile> {
-      const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-      const side = normalizeOptionalConnectorSide(request.side, "side");
       const grant = await this.requireGoogleDriveWriteGrant(
         requestUrl,
-        mode,
-        side,
+        request.mode,
+        request.side,
         request.grantId,
       );
-
-      const run = async () => {
-        const accessToken = await this.lifeOpsDriveAccessToken(grant);
-        return createDriveFile({
-          accessToken,
-          name: request.name,
-          mimeType: request.mimeType,
-          content: request.content,
-          parentFolderId: request.parentFolderId,
-        });
-      };
-
-      return resolveGoogleExecutionTarget(grant) === "cloud"
-        ? this.runManagedGoogleOperation(grant, run)
-        : this.withGoogleGrantOperation(grant, run);
+      const createDriveFile = requireGoogleServiceMethod(this.runtime, "createDriveFile");
+      return createDriveFile({
+        accountId: accountIdForGrant(grant),
+        name: request.name,
+        mimeType: request.mimeType,
+        content: request.content,
+        parentFolderId: request.parentFolderId,
+      });
     }
 
-    /**
-     * Append plain text to an existing Google Doc.
-     */
     async appendToDoc(
       requestUrl: URL,
       request: {
@@ -381,33 +260,20 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         text: string;
       },
     ): Promise<void> {
-      const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-      const side = normalizeOptionalConnectorSide(request.side, "side");
       const grant = await this.requireGoogleDriveWriteGrant(
         requestUrl,
-        mode,
-        side,
+        request.mode,
+        request.side,
         request.grantId,
       );
-
-      const run = async () => {
-        const accessToken = await this.lifeOpsDriveAccessToken(grant);
-        return appendToDoc({
-          accessToken,
-          documentId: request.documentId,
-          text: request.text,
-        });
-      };
-
-      await (resolveGoogleExecutionTarget(grant) === "cloud"
-        ? this.runManagedGoogleOperation(grant, run)
-        : this.withGoogleGrantOperation(grant, run));
+      const appendToDoc = requireGoogleServiceMethod(this.runtime, "appendToDoc");
+      await appendToDoc({
+        accountId: accountIdForGrant(grant),
+        documentId: request.documentId,
+        text: request.text,
+      });
     }
 
-    /**
-     * Update cells in a Google Sheet.
-     * `range` is A1 notation; `values` is a 2-D array of strings/numbers.
-     */
     async updateSheetCells(
       requestUrl: URL,
       request: {
@@ -419,28 +285,19 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         values: ReadonlyArray<ReadonlyArray<string | number>>;
       },
     ): Promise<{ updatedRange: string; updatedCells: number }> {
-      const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-      const side = normalizeOptionalConnectorSide(request.side, "side");
       const grant = await this.requireGoogleDriveWriteGrant(
         requestUrl,
-        mode,
-        side,
+        request.mode,
+        request.side,
         request.grantId,
       );
-
-      const run = async () => {
-        const accessToken = await this.lifeOpsDriveAccessToken(grant);
-        return updateSheetCells({
-          accessToken,
-          spreadsheetId: request.spreadsheetId,
-          range: request.range,
-          values: request.values,
-        });
-      };
-
-      return resolveGoogleExecutionTarget(grant) === "cloud"
-        ? this.runManagedGoogleOperation(grant, run)
-        : this.withGoogleGrantOperation(grant, run);
+      const updateSheetCells = requireGoogleServiceMethod(this.runtime, "updateSheetCells");
+      return updateSheetCells({
+        accountId: accountIdForGrant(grant),
+        spreadsheetId: request.spreadsheetId,
+        range: request.range,
+        values: request.values,
+      });
     }
   }
 

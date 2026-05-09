@@ -103,9 +103,6 @@ export interface Bindings {
   VERTEX_TUNING_CONTROL_PLANE_URL?: string;
   VERTEX_TUNING_HANDLER_URL?: string;
   VERTEX_TUNING_CONTROL_PLANE_TOKEN?: string;
-  N8N_BRIDGE_CONTROL_PLANE_URL?: string;
-  N8N_BRIDGE_URL?: string;
-  N8N_BRIDGE_CONTROL_PLANE_TOKEN?: string;
   NODE_ENV?: string;
 
   // ---- Feature flags ----

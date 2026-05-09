@@ -19,11 +19,52 @@
  * - 3 (Full): Codes at start AND end, maximum safety.
  */
 
+import type { EvaluationResult } from "./components";
+import type { ContextEvent } from "./context-object";
+import type { ToolCall } from "./model";
+
+type MaybePromise<T> = T | Promise<T>;
+
+export interface StreamingToolCallPayload {
+	toolCall: ToolCall;
+	contextEvent?: ContextEvent;
+	messageId?: string;
+	metadata?: Record<string, unknown>;
+}
+
+export interface StreamingToolResultPayload {
+	toolCall?: ToolCall;
+	toolCallId?: string;
+	result?: ToolCall["result"];
+	status?: ToolCall["status"];
+	contextEvent?: ContextEvent;
+	messageId?: string;
+	metadata?: Record<string, unknown>;
+}
+
+export interface StreamingEvaluationPayload {
+	evaluation: EvaluationResult;
+	contextEvent?: ContextEvent;
+	messageId?: string;
+	metadata?: Record<string, unknown>;
+}
+
+export type StreamingContextEventPayload = ContextEvent;
+
+export interface StreamingEventHooks {
+	onToolCall?: (payload: StreamingToolCallPayload) => MaybePromise<void>;
+	onToolResult?: (payload: StreamingToolResultPayload) => MaybePromise<void>;
+	onEvaluation?: (payload: StreamingEvaluationPayload) => MaybePromise<void>;
+	onContextEvent?: (
+		payload: StreamingContextEventPayload,
+	) => MaybePromise<void>;
+}
+
 /**
  * Interface for stream content extractors.
  *
  * Implementations decide HOW to filter LLM output for streaming.
- * Could be TOON field extraction, JSON suppression, plain text passthrough, or
+ * Could be structured field extraction, JSON suppression, plain text passthrough, or
  * custom logic.
  *
  * The framework doesn't care about format - that's implementation choice.
@@ -35,11 +76,8 @@
  * // Simple passthrough - streams everything as-is
  * const extractor = new PassthroughExtractor();
  *
- * // TOON field extraction - extracts content from the text field
- * const extractor = new ToonFieldStreamExtractor(config);
- *
- * // Action output filtering
- * const extractor = new ActionStreamFilter();
+ * // Structured field extraction - extracts content from the text field
+ * const extractor = new StructuredFieldStreamExtractor(config);
  *
  * // Custom implementation
  * class MyExtractor implements IStreamExtractor {

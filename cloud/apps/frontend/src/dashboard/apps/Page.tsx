@@ -7,13 +7,13 @@ import {
 } from "@elizaos/cloud-ui";
 import { Activity, ChevronDown, Grid3x3, TrendingUp, Users } from "lucide-react";
 import { Helmet } from "react-helmet-async";
-import { AppsPageWrapper } from "@/packages/ui/src/components/apps/apps-page-wrapper";
-import { AppsTable } from "@/packages/ui/src/components/apps/apps-table";
-import { CreateAppButton } from "@/packages/ui/src/components/apps/create-app-button";
-import { AppsEmptyState } from "@/packages/ui/src/components/apps-empty-state";
-import { AppsSkeleton } from "@/packages/ui/src/components/apps-skeleton";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { useApps } from "../../lib/data/apps";
+import { AppsEmptyState } from "./_components/apps-empty-state";
+import { AppsPageWrapper } from "./_components/apps-page-wrapper";
+import { AppsSkeleton } from "./_components/apps-skeleton";
+import { AppsTable } from "./_components/apps-table";
+import { CreateAppButton } from "./_components/create-app-button";
 
 function AdvancedRegisterApp() {
   return (

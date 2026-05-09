@@ -9,10 +9,8 @@
 import {
   type GenerateTextParams,
   type IAgentRuntime,
-  type JsonValue,
   type Memory,
   ModelType,
-  type ObjectGenerationParams,
   type Plugin,
   type Provider,
   type State,
@@ -187,20 +185,6 @@ export const mockLlmPlugin: Plugin = {
       params: GenerateTextParams,
     ): Promise<string> => {
       return detectAndRespondTextLarge(runtime, params);
-    },
-
-    [ModelType.OBJECT_SMALL]: async (
-      _runtime: IAgentRuntime,
-      _params: ObjectGenerationParams,
-    ): Promise<Record<string, JsonValue>> => {
-      return { result: "benchmark_object" };
-    },
-
-    [ModelType.OBJECT_LARGE]: async (
-      _runtime: IAgentRuntime,
-      _params: ObjectGenerationParams,
-    ): Promise<Record<string, JsonValue>> => {
-      return { result: "benchmark_object" };
     },
   },
 };

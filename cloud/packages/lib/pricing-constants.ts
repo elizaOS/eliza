@@ -4,17 +4,14 @@
  * making it safe to import from client components.
  */
 
+import { PLATFORM_MARKUP_MULTIPLIER } from "@elizaos/billing";
+
 /**
  * API key prefix length for display purposes.
  */
 export const API_KEY_PREFIX_LENGTH = 12;
 
-/**
- * Platform markup multiplier.
- * Applied to all AI inference and service costs.
- * 1.2 = 20% markup on top of provider costs.
- */
-export const PLATFORM_MARKUP_MULTIPLIER = 1.2;
+export { PLATFORM_MARKUP_MULTIPLIER };
 
 /**
  * Service costs in USD (stored as decimal values).
@@ -24,7 +21,7 @@ export const PLATFORM_MARKUP_MULTIPLIER = 1.2;
 // Base provider costs (before markup).
 // These are fallback/display defaults only; live media billing uses the
 // ai_pricing catalog where available.
-const BASE_IMAGE_GENERATION_COST = 0.039; // Gemini 2.5 Flash Image default output estimate
+export const BASE_IMAGE_GENERATION_COST = 0.039; // Gemini 2.5 Flash Image default output estimate
 const BASE_VIDEO_GENERATION_COST = 3.2; // Veo 3/3.1 8s 1080p video with audio
 const BASE_VIDEO_GENERATION_FALLBACK_COST = 0.28; // Lowest curated default video request
 

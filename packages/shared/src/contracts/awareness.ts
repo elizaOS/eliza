@@ -40,7 +40,7 @@ export interface AwarenessContributor {
    *  MUST be <= SUMMARY_CHAR_LIMIT chars. Return "" if nothing to show. */
   summary: (runtime: IAgentRuntime) => Promise<string>;
 
-  /** Layer 2 detail — called via GET_SELF_STATUS action.
+  /** Layer 2 detail — called via RUNTIME action with op=self_status.
    *  "brief" ~= 200 tokens, "full" ~= 2000 tokens. */
   detail?: (runtime: IAgentRuntime, level: "brief" | "full") => Promise<string>;
 

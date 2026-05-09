@@ -58,7 +58,7 @@ export default scenario({
       room: "main",
       text: "What's on my plate this morning? Give me the daily digest and call out any overdue follow-ups by name.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_RELATIONSHIP", "INBOX"],
+        acceptedActions: ["RELATIONSHIP", "INBOX"],
         description: "morning digest follow-up review",
         includesAny: ["morning", "digest", "follow-up", "overdue"],
       }),
@@ -74,18 +74,18 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["OWNER_RELATIONSHIP", "INBOX"],
+      actionName: ["RELATIONSHIP", "INBOX"],
     },
     {
       type: "selectedActionArguments",
-      actionName: ["OWNER_RELATIONSHIP", "INBOX"],
+      actionName: ["RELATIONSHIP", "INBOX"],
       includesAny: ["digest", "follow", "overdue"],
     },
     {
       type: "custom",
       name: "followup-daily-digest-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_RELATIONSHIP", "INBOX"],
+        acceptedActions: ["RELATIONSHIP", "INBOX"],
         description: "morning digest follow-up review",
         includesAny: ["digest", "follow", "overdue"],
       }),

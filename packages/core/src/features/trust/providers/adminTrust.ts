@@ -20,6 +20,12 @@ export const adminTrustProvider: Provider = {
 	description:
 		"Marks owner/admin chat identity as trusted for contact assertions (relationships-oriented).",
 	dynamic: true,
+	contexts: ["admin", "settings"],
+	contextGate: { anyOf: ["admin", "settings"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "ADMIN" },
+
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,

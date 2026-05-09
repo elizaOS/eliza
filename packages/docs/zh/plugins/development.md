@@ -303,7 +303,7 @@ interface Action {
 
 ```typescript
 const sendMessageAction: Action = {
-  name: "SEND_MESSAGE",
+  name: "MESSAGE",
   description: "Send a message to a specific user on a platform",
 
   parameters: [
@@ -1096,10 +1096,6 @@ const ModelType = {
   AUDIO: "AUDIO",                          // Audio processing
   VIDEO: "VIDEO",                          // Video processing
 
-  // Structured output
-  OBJECT_SMALL: "OBJECT_SMALL",
-  OBJECT_LARGE: "OBJECT_LARGE",
-
   // Research
   RESEARCH: "RESEARCH",
 };
@@ -1265,4 +1261,4 @@ const myPlugin: Plugin = {
 
 - [Skills 文档](/zh/plugins/skills) — 了解基于 markdown 的技能扩展
 - [注册表指南](/zh/plugins/registry) — 发布到插件注册表
-- [贡献指南](/zh/guides/contribution-guide) — 为 Eliza/elizaOS 做贡献
+- [贡献指南](/zh/guides/contributing) — 为 Eliza/elizaOS 做贡献

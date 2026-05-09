@@ -8,25 +8,41 @@ import {
 const OUTBOUND_SIGNAL_LOOKBACK_MS = 10 * 60 * 1_000;
 const IMESSAGE_PLUGIN_PACKAGE = "@elizaos/plugin-imessage";
 
+function nativeIMessageProbeDisabled(): boolean {
+  const backend = (
+    process.env.ELIZA_IMESSAGE_BACKEND ??
+    process.env.IMESSAGE_BACKEND ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  return backend === "none" || backend === "disabled";
+}
+
 export async function probeIMessageOutboundActivity(args: {
   repository: LifeOpsRepository;
   agentId: string;
   dbPath?: string;
 }): Promise<void> {
-  if (process.platform !== "darwin") {
+  if (process.platform !== "darwin" || nativeIMessageProbeDisabled()) {
     return;
   }
   // Dynamic import: openChatDb / DEFAULT_CHAT_DB_PATH ship in the local
   // workspace plugin but are absent from the published @elizaos/plugin-imessage
   // tarball. Static imports would crash module load on non-darwin CI builds
   // that resolve the plugin from npm.
-  const mod = (await import(/* @vite-ignore */ IMESSAGE_PLUGIN_PACKAGE)) as {
+  let mod: {
     openChatDb?: (path: string) => Promise<{
       getLatestOwnMessageTimestamp: () => number | null;
       close: () => void;
     } | null>;
     DEFAULT_CHAT_DB_PATH?: string;
   };
+  try {
+    mod = (await import(/* @vite-ignore */ IMESSAGE_PLUGIN_PACKAGE)) as typeof mod;
+  } catch {
+    return;
+  }
   if (typeof mod.openChatDb !== "function") {
     return;
   }

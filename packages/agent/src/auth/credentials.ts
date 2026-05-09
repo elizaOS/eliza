@@ -216,26 +216,6 @@ function parseCodexCliAuthJson(raw: string): CodexCliAuthJson | null {
   }
 }
 
-/**
- * OAuth / subscription-style access token from the Codex CLI auth file.
- * Returns null for plain API-key installs (`auth_mode === "api-key"`).
- */
-function readCodexCliAuthAccessToken(): string | null {
-  const authPath = path.join(os.homedir(), ".codex", "auth.json");
-  try {
-    const parsed = parseCodexCliAuthJson(fs.readFileSync(authPath, "utf-8"));
-    if (!parsed) return null;
-    const oauthAccess = parsed.tokens?.access_token?.trim();
-    if (oauthAccess) return oauthAccess;
-    const mode = parsed.auth_mode?.trim().toLowerCase();
-    const legacy = parsed.OPENAI_API_KEY?.trim();
-    if (legacy && mode && mode !== "api-key") return legacy;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 function readConfiguredAnthropicSetupToken(): string | null {
   const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
   const configPath =
@@ -527,12 +507,8 @@ async function importClaudeCodeOAuthToken(): Promise<string | null> {
  * subprocesses) but never injecting it into `process.env.ANTHROPIC_API_KEY`
  * or installing the stealth fetch interceptor.
  *
- * Codex / ChatGPT subscription tokens *are* applied to the environment
- * because OpenAI permits direct API usage with those tokens.
- *
- * For multi-account installs the FIRST configured Codex account is the one
- * applied to `process.env.OPENAI_API_KEY`. Real account selection lands in
- * WS2 (AccountPool).
+ * Codex / ChatGPT subscription tokens are also CLI credentials. They are used
+ * by the Codex CLI-backed provider, not injected into `OPENAI_API_KEY`.
  */
 export async function applySubscriptionCredentials(config?: {
   agents?: {
@@ -581,53 +557,32 @@ export async function applySubscriptionCredentials(config?: {
     }
   }
 
-  // ── OpenAI Codex subscription → set OPENAI_API_KEY ────────────────────
+  // ── OpenAI Codex subscription ────────────────────────────────────────
   //
-  // Account selection goes through the WS2 AccountPool when its shim is
-  // installed (via `app-core`'s `getDefaultAccountPool()` accessor). The
-  // shim is symbol-keyed on `globalThis` so this package doesn't need to
-  // depend on `@elizaos/app-core`. When the shim is absent (e.g. agent
-  // running without app-core), we fall back to the lowest-createdAt
-  // account, which is stable for single-account installs.
+  // Codex subscriptions power the Codex CLI-backed provider and task-agent
+  // subprocesses. Do not inject their OAuth access tokens into OPENAI_API_KEY:
+  // the normal OpenAI API path expects scoped API keys.
   const codexAccounts = listProviderAccounts("openai-codex");
   if (codexAccounts.length > 0) {
-    const selectorSymbol = Symbol.for(
-      "eliza.account-pool.subscription-selector.v1",
+    const labels = codexAccounts
+      .map((a) => `"${a.label}" (${a.id})`)
+      .join(", ");
+    logger.info(
+      `[auth] OpenAI Codex subscription accounts configured: ${labels} — available for Codex CLI-backed coding/model providers. ` +
+        "Not applied to OPENAI_API_KEY; add a direct OpenAI API key for @elizaos/plugin-openai runtime inference.",
     );
-    const selector = (globalThis as Record<symbol, unknown>)[selectorSymbol] as
-      | {
-          pickAccountId(
-            providerId: SubscriptionProvider,
-          ): Promise<string | null>;
-        }
-      | undefined;
-    let chosenId: string | null = null;
-    if (selector) {
-      chosenId = await selector.pickAccountId("openai-codex");
-    }
-    const primary =
-      codexAccounts.find((a) => a.id === chosenId) ??
-      codexAccounts.slice().sort((a, b) => a.createdAt - b.createdAt)[0];
-    const codexToken = await getAccessToken("openai-codex", primary.id);
-    if (codexToken) {
-      process.env.OPENAI_API_KEY = codexToken;
-      logger.info(
-        `[auth] Applied OpenAI Codex subscription credentials to environment from account "${primary.label}" (${primary.id})`,
-      );
-    }
   } else {
-    const existing = process.env.OPENAI_API_KEY?.trim();
-    const cliToken = readCodexCliAuthAccessToken();
-    if (cliToken && !existing) {
-      process.env.OPENAI_API_KEY = cliToken;
+    if (hasCodexCliSubscriptionAuth()) {
       logger.info(
-        "[auth] Applied OpenAI Codex credentials from ~/.codex/auth.json (CLI; no eliza auth account)",
+        "[auth] OpenAI Codex CLI auth detected in ~/.codex/auth.json — available for Codex CLI-backed coding/model providers. " +
+          "Not applied to OPENAI_API_KEY; add a direct OpenAI API key for @elizaos/plugin-openai runtime inference.",
       );
     }
   }
 
-  // Auto-set model.primary from subscription provider (Codex only —
-  // anthropic subscription tokens don't power the runtime directly).
+  // Auto-set model.primary only for subscription providers that have a runtime
+  // model-provider plugin. CLI-only subscriptions should not point the runtime
+  // at direct API-key plugins.
   if (config?.agents?.defaults) {
     const defaults = config.agents.defaults;
     const provider =
@@ -635,7 +590,8 @@ export async function applySubscriptionCredentials(config?: {
 
     if (provider) {
       const modelId = SUBSCRIPTION_PROVIDER_MAP[provider];
-      if (modelId) {
+      const runtimeApplicable = provider !== "anthropic-subscription";
+      if (modelId && runtimeApplicable) {
         if (!defaults.model) {
           defaults.model = { primary: modelId };
           logger.info(

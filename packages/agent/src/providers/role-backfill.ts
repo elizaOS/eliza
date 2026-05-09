@@ -34,12 +34,6 @@ type RolesWorldMetadata = {
   roleSources?: Record<string, RoleGrantSource>;
 };
 
-const EMPTY: ProviderResult = {
-  text: "",
-  values: {},
-  data: {},
-};
-
 export const roleBackfillProvider: Provider = {
   name: "roleBackfill",
   description:
@@ -49,22 +43,28 @@ export const roleBackfillProvider: Provider = {
   dynamic: true,
   // High position number = runs after the main roles provider (position 10).
   position: 11,
+  contexts: ["admin", "settings"],
+  contextGate: { anyOf: ["admin", "settings"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "ADMIN" },
 
   async get(
     runtime: IAgentRuntime,
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
+    const empty: ProviderResult = { text: "", values: {}, data: {} };
     try {
       const room = await runtime.getRoom(message.roomId);
-      if (!room?.worldId) return EMPTY;
+      if (!room?.worldId) return empty;
 
       const world = await runtime.getWorld(room.worldId);
-      if (!world) return EMPTY;
+      if (!world) return empty;
 
       const metadata = (world.metadata ?? {}) as RolesWorldMetadata;
       const ownerId = resolveCanonicalOwnerId(runtime, metadata);
-      if (!ownerId) return EMPTY;
+      if (!ownerId) return empty;
 
       const roles = metadata.roles ?? {};
       const roleSources = metadata.roleSources ?? {};
@@ -86,7 +86,7 @@ export const roleBackfillProvider: Provider = {
         !needsOwnerSourceSync &&
         !hasStaleOwners
       ) {
-        return EMPTY;
+        return empty;
       }
 
       // Backfill: set OWNER role for the world owner
@@ -119,6 +119,6 @@ export const roleBackfillProvider: Provider = {
       logger.warn(`[roles] Role backfill failed: ${String(err)}`);
     }
 
-    return EMPTY;
+    return empty;
   },
 };

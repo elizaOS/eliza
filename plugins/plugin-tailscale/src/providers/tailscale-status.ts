@@ -1,19 +1,13 @@
 /**
  * tailscaleStatus provider — injects the current tunnel status into the LLM
- * context as TOON.
+ * context as compact JSON.
  *
  * Replaces the previous GET_TAILSCALE_STATUS action: status is now passively
  * available every turn so the planner does not need to dispatch a dedicated
  * action just to read tunnel state.
  */
 
-import {
-  encodeToonValue,
-  type IAgentRuntime,
-  type Memory,
-  type Provider,
-  type State,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { getTunnelService } from "../types";
 
 function formatUptime(startedAt: Date): string {
@@ -32,6 +26,10 @@ export const tailscaleStatusProvider: Provider = {
     "Current Tailscale tunnel status: active flag, public URL, local port, uptime, backend provider.",
   descriptionCompressed: "Tailscale tunnel status: active, url, port, uptime.",
   dynamic: true,
+  contexts: ["settings", "connectors"],
+  contextGate: { anyOf: ["settings", "connectors"] },
+  cacheStable: false,
+  cacheScope: "turn",
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     const tunnelService = getTunnelService(runtime);
     if (!tunnelService) {
@@ -41,7 +39,7 @@ export const tailscaleStatusProvider: Provider = {
     const status = tunnelService.getStatus();
     const uptime = status.startedAt ? formatUptime(status.startedAt) : null;
 
-    const text = encodeToonValue({
+    const text = JSON.stringify({
       tailscale: {
         active: status.active,
         url: status.url,

@@ -332,7 +332,7 @@ export function generateOpenAPISpec(baseUrl?: string): OpenAPISpec {
           type: "http",
           scheme: "bearer",
           bearerFormat: "JWT",
-          description: "Privy session authentication",
+          description: "Steward session authentication",
         },
         apiKeyAuth: {
           type: "apiKey",

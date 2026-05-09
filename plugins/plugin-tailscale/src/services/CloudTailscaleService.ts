@@ -1,10 +1,11 @@
-import { Service, elizaLogger, type IAgentRuntime } from "@elizaos/core";
 import { spawn } from "node:child_process";
+import { elizaLogger, type IAgentRuntime, Service } from "@elizaos/core";
 import { z } from "zod";
+import { readTailscaleAccounts, resolveTailscaleAccount } from "../accounts";
 import { validateTailscaleConfig } from "../environment";
 import {
-  TAILSCALE_CLOUD_TUNNEL_SERVICE_TYPE,
   type ITunnelService,
+  TAILSCALE_CLOUD_TUNNEL_SERVICE_TYPE,
   type TunnelStatus,
 } from "../types";
 
@@ -118,7 +119,10 @@ export class CloudTailscaleService extends Service implements ITunnelService {
     await this.stopTunnel();
   }
 
-  async startTunnel(port?: number): Promise<string | void> {
+  async startTunnel(
+    port?: number,
+    options: { accountId?: string } = {},
+  ): Promise<string | undefined> {
     if (this.isActive()) {
       elizaLogger.warn("[CloudTailscaleService] tunnel already running");
       return this.tunnelUrl ?? undefined;
@@ -135,8 +139,11 @@ export class CloudTailscaleService extends Service implements ITunnelService {
       throw new Error("Invalid port number");
     }
 
-    const config = await validateTailscaleConfig(this.runtime);
-    const { baseUrl, apiKey } = this.resolveCloudCredentials();
+    const config = await validateTailscaleConfig(
+      this.runtime,
+      options.accountId,
+    );
+    const { baseUrl, apiKey } = this.resolveCloudCredentials(options.accountId);
 
     const response = await this.fetchImpl(
       `${baseUrl}/apis/tunnels/tailscale/auth-key`,
@@ -181,7 +188,7 @@ export class CloudTailscaleService extends Service implements ITunnelService {
     return this.tunnelUrl;
   }
 
-  async stopTunnel(): Promise<void> {
+  async stopTunnel(_options: { accountId?: string } = {}): Promise<void> {
     if (!this.isActive() && !this.joinedTailnet) {
       elizaLogger.warn("[CloudTailscaleService] no active tunnel to stop");
       return;
@@ -245,16 +252,23 @@ export class CloudTailscaleService extends Service implements ITunnelService {
     }
   }
 
-  private resolveCloudCredentials(): { baseUrl: string; apiKey: string } {
-    const apiKey = readNonEmptyString(
-      this.runtime.getSetting("ELIZAOS_CLOUD_API_KEY"),
-    );
+  private resolveCloudCredentials(accountId?: string): {
+    baseUrl: string;
+    apiKey: string;
+  } {
+    const account = accountId
+      ? resolveTailscaleAccount(readTailscaleAccounts(this.runtime), accountId)
+      : null;
+    const apiKey =
+      readNonEmptyString(account?.cloudApiKey) ??
+      readNonEmptyString(this.runtime.getSetting("ELIZAOS_CLOUD_API_KEY"));
     if (!apiKey) {
       throw new Error(
         "CloudTailscaleService requires ELIZAOS_CLOUD_API_KEY. Set it or use the local backend.",
       );
     }
     const baseRaw =
+      readNonEmptyString(account?.cloudBaseUrl) ??
       readNonEmptyString(this.runtime.getSetting("ELIZAOS_CLOUD_BASE_URL")) ??
       CLOUD_BASE_FALLBACK;
     return { baseUrl: stripTrailingSlash(baseRaw), apiKey };

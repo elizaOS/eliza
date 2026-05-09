@@ -56,9 +56,9 @@ export default scenario({
       text: "Which apps did I use most today?",
       assertTurn: expectTurnToCallAction({
         acceptedActions: [
-          "OWNER_SCREEN_TIME",
-          "OWNER_SCREEN_TIME",
-          "OWNER_SCREEN_TIME",
+          "SCREEN_TIME",
+          "SCREEN_TIME",
+          "SCREEN_TIME",
         ],
         description: "per-app usage lookup",
       }),
@@ -68,16 +68,16 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["OWNER_SCREEN_TIME", "OWNER_SCREEN_TIME", "OWNER_SCREEN_TIME"],
+      actionName: ["SCREEN_TIME", "SCREEN_TIME", "SCREEN_TIME"],
     },
     {
       type: "custom",
       name: "per-app-today-action-coverage",
       predicate: expectScenarioToCallAction({
         acceptedActions: [
-          "OWNER_SCREEN_TIME",
-          "OWNER_SCREEN_TIME",
-          "OWNER_SCREEN_TIME",
+          "SCREEN_TIME",
+          "SCREEN_TIME",
+          "SCREEN_TIME",
         ],
         description: "per-app usage lookup",
       }),
@@ -87,7 +87,7 @@ export default scenario({
       name: "per-app-today-results",
       predicate: async (ctx) => {
         const hit = ctx.actionsCalled.find((action) =>
-          ["OWNER_SCREEN_TIME", "OWNER_SCREEN_TIME", "OWNER_SCREEN_TIME"].includes(
+          ["SCREEN_TIME", "SCREEN_TIME", "SCREEN_TIME"].includes(
             action.actionName,
           ),
         );

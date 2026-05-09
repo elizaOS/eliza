@@ -2,16 +2,17 @@ import type { Dirent } from "node:fs";
 import { promises as fs } from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
-import { createGeneratedAppHeroSvg } from "@elizaos/shared";
+import type { IAgentRuntime, RouteRequestMeta } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/shared";
 import {
   type AppRunActionResult,
   type AppRunSummary,
   type AppSessionActionResult,
+  createGeneratedAppHeroSvg,
   hasAppInterface,
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
-} from "../contracts/apps.js";
+} from "@elizaos/shared";
 import {
   importAppRouteModule,
   resolveWorkspacePackageDir,
@@ -27,7 +28,6 @@ import {
   scoreEntries,
   toSearchResults,
 } from "../services/registry-client-queries.js";
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
 
 const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
   ".webp": "image/webp",

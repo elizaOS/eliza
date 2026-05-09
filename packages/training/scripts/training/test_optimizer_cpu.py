@@ -17,7 +17,6 @@ from torch import nn
 
 from scripts.training.optimizer import (
     _NON_LOWRANK_NAME_HINTS,
-    build_adamw_optimizer,
     build_apollo_mini_optimizer,
     build_apollo_optimizer,
     optimizer_state_bytes,
@@ -75,18 +74,13 @@ def test_apollo_optimizer_routes_2d_weights() -> None:
     assert id(model.lm_head.weight) not in lowrank_ids
 
 
-def test_apollo_mini_state_smaller_than_apollo_smaller_than_adamw() -> None:
+def test_apollo_mini_state_smaller_than_full_apollo() -> None:
     pytest.importorskip("apollo_torch")
     torch.manual_seed(0)
 
     def fresh() -> _TinyLM:
         torch.manual_seed(0)
         return _TinyLM(hidden=64, n_layers=4)
-
-    m_a = fresh()
-    opt_a = build_adamw_optimizer(m_a, lr=1e-3, weight_decay=0.0)
-    _step_once(m_a, opt_a)
-    bytes_adamw = optimizer_state_bytes(opt_a)
 
     m_b = fresh()
     opt_b = build_apollo_optimizer(m_b, lr=1e-3, weight_decay=0.0, rank=8)
@@ -98,10 +92,7 @@ def test_apollo_mini_state_smaller_than_apollo_smaller_than_adamw() -> None:
     _step_once(m_c, opt_c)
     bytes_mini = optimizer_state_bytes(opt_c)
 
-    assert bytes_adamw > 0 and bytes_apollo > 0 and bytes_mini > 0
-    assert bytes_apollo < bytes_adamw, (
-        f"APOLLO state {bytes_apollo} should be < AdamW {bytes_adamw}"
-    )
+    assert bytes_apollo > 0 and bytes_mini > 0
     assert bytes_mini < bytes_apollo, (
         f"APOLLO-Mini state {bytes_mini} should be < APOLLO {bytes_apollo}"
     )

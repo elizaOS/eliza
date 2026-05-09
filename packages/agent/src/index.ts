@@ -1,10 +1,15 @@
+export type { CloudConfigLike } from "@elizaos/plugin-elizacloud";
+export {
+  handleCloudBillingRoute,
+  handleCloudCompatRoute,
+} from "@elizaos/plugin-elizacloud";
+export type { ElizaConfig, ReleaseChannel, RolesConfig } from "@elizaos/shared";
 export {
   type ExtractActionParamsArgs,
   extractActionParamsViaLlm,
   type ParamSchemaDescriptor,
 } from "./actions/extract-params.js";
 export * from "./actions/index.js";
-export type { CloudConfigLike } from "./api/cloud-status-routes.js";
 export * from "./api/config-env.js";
 export * from "./api/conversation-metadata.js";
 export * from "./api/index.js";
@@ -13,6 +18,7 @@ export {
   readBundledPluginPackageMetadata,
 } from "./api/plugin-discovery-helpers.js";
 export * from "./api/plugin-runtime-apply.js";
+export { RegistryService } from "./api/registry-service.js";
 export {
   AGENT_EVENT_ALLOWED_STREAMS,
   CONFIG_WRITE_ALLOWED_TOP_KEYS,
@@ -84,20 +90,24 @@ export type {
   StreamEventType,
   TradePermissionMode,
 } from "./api/server-types.js";
+export {
+  normalizeJsonRpcUrl,
+  probeJsonRpcEndpoint,
+  TxService,
+} from "./api/tx-service.js";
+export { getWalletAddresses } from "./api/wallet.js";
 export * from "./api/wallet-capability.js";
 export * from "./api/workbench-helpers.js";
 export * from "./auth/index.js";
 export * from "./awareness/index.js";
-export { resolveCloudApiBaseUrl } from "./cloud/base-url.js";
-export * from "./cloud/index.js";
+export { runBenchmark } from "./cli/benchmark.js";
 export { CharacterSchema } from "./config/character-schema.js";
-export type { RolesConfig } from "./config/index.js";
 export * from "./config/index.js";
-// `contracts/awareness.js` and `contracts/config.js` add the local-only
-// (non-shared) contract surface — the rest of `./contracts` is already
-// re-exported through `@elizaos/shared`.
+// `contracts/awareness.js` adds the local-only (non-shared) contract surface.
+// Config media/custom-action contract types are exported from `./config/index.js`
+// (via `@elizaos/shared`); do not re-export `./contracts/config.js` here or
+// `tsc` reports duplicate symbol errors (TS2308).
 export * from "./contracts/awareness.js";
-export * from "./contracts/config.js";
 export * from "./diagnostics/integration-observability.js";
 export * from "./hooks/index.js";
 export * from "./providers/workspace.js";
@@ -108,6 +118,7 @@ export * from "./runtime/eliza.js";
 export * from "./runtime/eliza-plugin.js";
 export * from "./runtime/embedding-presets.js";
 export * from "./runtime/onboarding-names.js";
+export * from "./runtime/operations/vault-bridge.js";
 export * from "./runtime/owner-entity.js";
 export * from "./runtime/plugin-collector.js";
 export * from "./runtime/plugin-lifecycle.js";
@@ -123,6 +134,10 @@ export * from "./runtime/trajectory-persistence.js";
 export * from "./runtime/trajectory-query.js";
 export * from "./runtime/version.js";
 export * from "./security/index.js";
+export {
+  isStewardEvmBridgeActive,
+  setStewardEvmBridgeActive,
+} from "./services/external-bridge-state.js";
 export * from "./services/index.js";
 export {
   type ClusterMemoriesQuery,
@@ -142,7 +157,6 @@ export {
 } from "./services/relationships-graph.js";
 export * from "./test-support/index.js";
 export * from "./test-utils/sqlite-compat.js";
-export * from "./triggers/action.js";
 export * from "./triggers/runtime.js";
 export * from "./triggers/scheduling.js";
 export * from "./triggers/types.js";

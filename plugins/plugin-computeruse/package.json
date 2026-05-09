@@ -40,10 +40,11 @@
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@types/node": "^25.2.3",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "4.1.5"
   },
   "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.6",
     "puppeteer-core": "^24.9.0"
   },
   "license": "Apache-2.0",
@@ -89,6 +90,17 @@
         "description": "Run browser automation headlessly. Useful for CI and test environments without a visible desktop session.",
         "required": false,
         "default": false,
+        "sensitive": false
+      },
+      "ELIZA_COMPUTERUSE_DRIVER": {
+        "type": "string",
+        "description": "Cross-platform input driver: 'nutjs' (default; uses @nut-tree-fork/nut-js native bindings, works on macOS/Linux/Windows) or 'legacy' (per-OS shell tools: cliclick/xdotool/PowerShell).",
+        "required": false,
+        "default": "nutjs",
+        "enum": [
+          "nutjs",
+          "legacy"
+        ],
         "sensitive": false
       }
     }

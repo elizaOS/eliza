@@ -2,7 +2,7 @@
  * Mirror of the xRSPS bot-SDK protocol types.
  *
  * The shapes here MUST stay byte-compatible with xRSPS's
- * `server/src/network/botsdk/BotSdkProtocol.ts` — the TOON codec does
+ * `server/src/network/botsdk/BotSdkProtocol.ts` — the JSON codec does
  * structural matching, not schema versioning, so a rename on either side
  * silently breaks the wire format.
  *

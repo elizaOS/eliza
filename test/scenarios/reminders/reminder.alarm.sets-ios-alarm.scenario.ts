@@ -72,7 +72,7 @@ export default scenario({
         }
 
         const calendarAction = ctx.actionsCalled.find(
-          (entry) => entry.actionName === "OWNER_CALENDAR",
+          (entry) => entry.actionName === "CALENDAR",
         );
         if (
           calendarAction?.result?.data &&
@@ -97,7 +97,7 @@ export default scenario({
           }
           return undefined;
         }
-        return `expected iOS alarm request to route through LIFE or OWNER_CALENDAR. Called: ${ctx.actionsCalled.map((action) => action.actionName).join(",") || "(none)"}`;
+        return `expected iOS alarm request to route through LIFE or CALENDAR. Called: ${ctx.actionsCalled.map((action) => action.actionName).join(",") || "(none)"}`;
       },
     },
   ],

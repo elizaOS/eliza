@@ -169,6 +169,11 @@ export function createWorkspaceProvider(options?: {
     description:
       "Workspace init files (AGENTS.md, TOOLS.md, IDENTITY.md, etc.) and task-agent context",
     position: 10,
+    contexts: ["general"],
+    contextGate: { anyOf: ["general"] },
+    cacheStable: false,
+    cacheScope: "turn",
+    roleGate: { minRole: "USER" },
 
     async get(
       _runtime: IAgentRuntime,

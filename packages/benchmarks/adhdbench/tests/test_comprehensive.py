@@ -90,8 +90,8 @@ class TestEvaluatorEdgeCases:
 
     def test_action_match_multiple_selected_one_matches(self) -> None:
         """Agent selected 3 actions, one matches."""
-        o = ExpectedOutcome(OutcomeType.ACTION_MATCH, "SEND_MESSAGE")
-        r = evaluate_outcome(o, _turn(actions=["ADD_CONTACT", "SEND_MESSAGE", "SCHEDULE_FOLLOW_UP"]))
+        o = ExpectedOutcome(OutcomeType.ACTION_MATCH, "MESSAGE")
+        r = evaluate_outcome(o, _turn(actions=["ADD_CONTACT", "MESSAGE", "SCHEDULE_FOLLOW_UP"]))
         assert r.passed
 
     def test_action_match_dict_value_returns_invalid(self) -> None:
@@ -109,7 +109,7 @@ class TestEvaluatorEdgeCases:
 
     def test_action_not_match_empty_selected(self) -> None:
         """No actions selected -> not-match passes (nothing to violate)."""
-        o = ExpectedOutcome(OutcomeType.ACTION_NOT_MATCH, "SEND_MESSAGE")
+        o = ExpectedOutcome(OutcomeType.ACTION_NOT_MATCH, "MESSAGE")
         r = evaluate_outcome(o, _turn(actions=[]))
         assert r.passed
 
@@ -215,7 +215,7 @@ class TestEvaluatorScoring:
         t2 = _turn()  # no outcomes
         t3 = _turn(actions=["WRONG"])
         t3.outcome_results = [
-            OutcomeResult(ExpectedOutcome(OutcomeType.ACTION_MATCH, "SEND_MESSAGE"), False, "WRONG", "fail"),
+            OutcomeResult(ExpectedOutcome(OutcomeType.ACTION_MATCH, "MESSAGE"), False, "WRONG", "fail"),
         ]
         score = compute_scenario_score([t1, t2, t3])
         assert score == 0.5  # 1.0 + 0.0 / 2 scored turns
@@ -453,11 +453,11 @@ class TestReporting:
             latency_ms=150.0,
         )
         tr2 = TurnResult(
-            turn_index=0, actions_selected=["SEND_MESSAGE"],
+            turn_index=0, actions_selected=["MESSAGE"],
             providers_requested=[], response_text="Sent",
             providers_actually_run=["CHARACTER"],
             outcome_results=[
-                OutcomeResult(ExpectedOutcome(OutcomeType.ACTION_MATCH, "REPLY"), False, "SEND_MESSAGE", "wrong"),
+                OutcomeResult(ExpectedOutcome(OutcomeType.ACTION_MATCH, "REPLY"), False, "MESSAGE", "wrong"),
             ],
             latency_ms=200.0,
         )

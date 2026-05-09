@@ -15,7 +15,7 @@ import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 import { describeIf } from "../helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../helpers/live-provider";
+import { selectLiveProvider } from "../helpers/live-provider.ts";
 
 const envPath = path.resolve(
   import.meta.dirname,
@@ -349,11 +349,11 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
       logQaStep(profile, "reset agent");
       await resetAgentViaApi();
 
-      const knowledgeFile = await writeKnowledgeFile(profile.id);
-      const knowledgeUploadName = path.basename(knowledgeFile);
-      const knowledgeDocumentNames = [
-        knowledgeUploadName,
-        path.parse(knowledgeUploadName).name,
+      const documentFile = await writeDocumentFile(profile.id);
+      const documentUploadName = path.basename(documentFile);
+      const documentNames = [
+        documentUploadName,
+        path.parse(documentUploadName).name,
       ];
       try {
         logQaStep(profile, "open onboarding");
@@ -439,7 +439,7 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
           45_000,
         );
 
-        logQaStep(profile, "enable trajectories and upload knowledge");
+        logQaStep(profile, "enable trajectories and upload document");
         await apiJson("/api/trajectories/config", {
           method: "PUT",
           body: JSON.stringify({ enabled: true }),
@@ -449,29 +449,29 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
           page,
           '[data-testid="companion-shell-toggle-desktop"]',
         );
-        await navigate(page, `${UI_URL}/knowledge`);
-        await page.waitForSelector('[data-testid="knowledge-view"]', {
+        await navigate(page, `${UI_URL}/character/documents`);
+        await page.waitForSelector('[data-testid="documents-view"]', {
           visible: true,
         });
         await page.waitForSelector(
-          '[data-testid="knowledge-view"] input[type="file"]',
+          '[data-testid="documents-view"] input[type="file"]',
         );
 
         const uploadInput = await page.waitForSelector(
-          '[data-testid="knowledge-view"] input[type="file"]',
+          '[data-testid="documents-view"] input[type="file"]',
         );
         expect(uploadInput).toBeTruthy();
         if (!uploadInput) {
-          throw new Error("Knowledge upload input was not found.");
+          throw new Error("Document upload input was not found.");
         }
-        await uploadInput.uploadFile(knowledgeFile);
+        await uploadInput.uploadFile(documentFile);
 
         const uploadedDocument = await waitFor(
           async () => {
-            const docs = await listKnowledgeDocuments();
+            const docs = await listDocuments();
             return (
               docs.find((document) =>
-                knowledgeDocumentNames.includes(document.filename),
+                documentNames.includes(document.filename),
               ) ?? null
             );
           },
@@ -479,13 +479,13 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
           2000,
         );
 
-        expect(knowledgeDocumentNames).toContain(uploadedDocument.filename);
+        expect(documentNames).toContain(uploadedDocument.filename);
         await waitFor(
           async () => {
             const text = await page.evaluate(
               () => document.body.innerText ?? "",
             );
-            return knowledgeDocumentNames.some((name) => text.includes(name))
+            return documentNames.some((name) => text.includes(name))
               ? true
               : null;
           },
@@ -495,7 +495,7 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
 
         await waitFor(
           async () => {
-            const results = await knowledgeSearch("qa codeword");
+            const results = await documentSearch("qa codeword");
             return results.some((result) =>
               String(result.text ?? "")
                 .toUpperCase()
@@ -599,7 +599,7 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
 
         expect(await onboardingComplete()).toBe(false);
         expect((await listConversations()).length).toBe(0);
-        expect((await listKnowledgeDocumentsAfterReset()).length).toBe(0);
+        expect((await listDocumentsAfterReset()).length).toBe(0);
         await saveScreenshot(page, profile, "reset-to-onboarding");
 
         expect(pageErrors).toEqual([]);
@@ -615,7 +615,7 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
         await saveFailureArtifacts(page, profile, error);
         throw error;
       } finally {
-        await fs.rm(knowledgeFile, { force: true });
+        await fs.rm(documentFile, { force: true });
         await context.close();
       }
     }, 600_000);
@@ -2354,7 +2354,7 @@ async function qaCharacterSwitchAndDance(page: Page, profile?: Profile) {
   );
 }
 
-async function writeKnowledgeFile(profileId: string): Promise<string> {
+async function writeDocumentFile(profileId: string): Promise<string> {
   const filename = `eliza-qa-knowledge-${profileId}.txt`;
   const fullPath = path.join(os.tmpdir(), filename);
   await fs.writeFile(
@@ -2390,10 +2390,10 @@ async function resetAgentViaApi() {
   await apiJson("/api/agent/reset", { method: "POST" });
   await waitFor(async () => !(await onboardingComplete()), 30_000);
   const conversations = await listConversations();
-  const documents = await listKnowledgeDocumentsAfterReset();
+  const documents = await listDocumentsAfterReset();
   if (conversations.length > 0 || documents.length > 0) {
     throw new Error(
-      `Reset API left persisted state behind (conversations=${conversations.length}, knowledge=${documents.length}). Hard runtime restart required before live QA.`,
+      `Reset API left persisted state behind (conversations=${conversations.length}, documents=${documents.length}). Hard runtime restart required before live QA.`,
     );
   }
 }
@@ -2414,18 +2414,18 @@ async function listMessages(
   return result.messages ?? [];
 }
 
-async function listKnowledgeDocuments(): Promise<Array<{ filename: string }>> {
+async function listDocuments(): Promise<Array<{ filename: string }>> {
   const result = await apiJson<{ documents: Array<{ filename: string }> }>(
-    "/api/knowledge/documents",
+    "/api/documents",
   );
   return result.documents ?? [];
 }
 
-async function listKnowledgeDocumentsAfterReset(): Promise<
+async function listDocumentsAfterReset(): Promise<
   Array<{ filename: string }>
 > {
   try {
-    return await listKnowledgeDocuments();
+    return await listDocuments();
   } catch (error) {
     if (
       !(await onboardingComplete()) ||
@@ -2437,12 +2437,12 @@ async function listKnowledgeDocumentsAfterReset(): Promise<
   }
 }
 
-async function knowledgeSearch(
+async function documentSearch(
   query: string,
 ): Promise<Array<{ text: string }>> {
   const encoded = encodeURIComponent(query);
   const result = await apiJson<{ results: Array<{ text: string }> }>(
-    `/api/knowledge/search?q=${encoded}&threshold=0.1&limit=5`,
+    `/api/documents/search?q=${encoded}&threshold=0.1&limit=5`,
   );
   return result.results ?? [];
 }

@@ -13,22 +13,21 @@ const models = await cloud.listModels();
 const credits = await cloud.getCreditsBalance();
 const agents = await cloud.listAgents();
 
-// Every discovered Cloud API route is also exposed through cloud.routes.
+// Curated public Cloud API routes are also exposed through cloud.routes.
 const app = await cloud.routes.getApiV1AppsById({
   pathParams: { id: "app_123" },
 });
-const stream = await cloud.routes.postApiV1AppBuilderStream({
-  json: { prompt: "Build a todo app" },
+const stream = await cloud.routes.postApiV1ChatCompletionsRaw({
+  json: { model: "gpt-4o-mini", messages: [], stream: true },
 });
 ```
 
-`cloud.routes` is generated from the current Cloud API route tree under
+`cloud.routes` is generated from the public Cloud API route tree under
 `apps/api`, including both Next-style exported HTTP handlers and Hono
-`app.get` / `app.post` / `app.all` route modules. It covers public `/api/v1`
-and `/api/elevenlabs` routes plus auth, cron, internal, MCP, webhook, app, and
-dashboard route groups. The generated type and class names keep `PublicRoute*`
-for backward compatibility, but the route table covers every discovered route
-under `apps/api`.
+`app.get` / `app.post` / `app.all` route modules. It intentionally excludes
+admin, cron, webhook, internal, dashboard, auth, and MCP transport routes from
+the package root SDK surface. The route audit still inventories the full route
+tree so stale generated wrappers fail before publish.
 
 JSON endpoints expose a typed method plus a `Raw` variant. Always-stream,
 binary, and text routes return `Response` from the primary generated method;

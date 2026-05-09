@@ -20,14 +20,21 @@
     "node": ">=24.0.0"
   },
   "main": "./index.js",
+  "types": "./index.d.ts",
   "files": [
-    "index.js"
+    "index.js",
+    "index.d.ts",
+    "dist"
   ],
   "publishConfig": {
     "access": "public"
   },
   "exports": {
-    ".": "./index.js",
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js",
+      "default": "./index.js"
+    },
     "./package.json": "./package.json"
   }
 }

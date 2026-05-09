@@ -148,6 +148,81 @@ export class AiPricingRepository {
     return created;
   }
 
+  async createManualOverride(input: {
+    billingSource:
+      | "gateway"
+      | "openrouter"
+      | "openai"
+      | "groq"
+      | "vast"
+      | "fal"
+      | "elevenlabs";
+    provider: string;
+    model: string;
+    productFamily: "language" | "embedding" | "image" | "video" | "tts" | "stt" | "voice_clone";
+    chargeType: string;
+    unit: "token" | "image" | "request" | "second" | "minute" | "hour" | "character" | "1k_requests";
+    unitPrice: number;
+    dimensionKey: string;
+    dimensions: Record<string, string | number | boolean | null>;
+    reason: string;
+    updatedBy: string;
+  }): Promise<AiPricingEntry | undefined> {
+    const now = new Date();
+
+    const [created] = await dbWrite.transaction(async (tx) => {
+      await tx
+        .update(aiPricingEntries)
+        .set({
+          is_active: false,
+          effective_until: now,
+          updated_at: now,
+        })
+        .where(
+          and(
+            eq(aiPricingEntries.is_active, true),
+            eq(aiPricingEntries.source_kind, "manual_override"),
+            eq(aiPricingEntries.billing_source, input.billingSource),
+            eq(aiPricingEntries.provider, input.provider),
+            eq(aiPricingEntries.model, input.model),
+            eq(aiPricingEntries.product_family, input.productFamily),
+            eq(aiPricingEntries.charge_type, input.chargeType),
+            eq(aiPricingEntries.dimension_key, input.dimensionKey),
+          ),
+        );
+
+      return tx
+        .insert(aiPricingEntries)
+        .values({
+          billing_source: input.billingSource,
+          provider: input.provider,
+          model: input.model,
+          product_family: input.productFamily,
+          charge_type: input.chargeType,
+          unit: input.unit,
+          unit_price: input.unitPrice.toString(),
+          currency: "USD",
+          dimension_key: input.dimensionKey,
+          dimensions: input.dimensions,
+          source_kind: "manual_override",
+          source_url: "admin://manual-override",
+          source_hash: null,
+          fetched_at: now,
+          stale_after: null,
+          effective_from: now,
+          priority: 1000,
+          is_active: true,
+          is_override: true,
+          updated_by: input.updatedBy,
+          metadata: { reason: input.reason },
+          updated_at: now,
+        })
+        .returning();
+    });
+
+    return created;
+  }
+
   async updateRefreshRun(
     id: string,
     data: Partial<NewAiPricingRefreshRun>,

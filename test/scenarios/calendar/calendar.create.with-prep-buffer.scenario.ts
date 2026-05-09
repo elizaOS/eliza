@@ -21,14 +21,14 @@ export default scenario({
       kind: "message",
       name: "create-event-with-prep-buffer",
       text: "Schedule a meeting with Alex tomorrow at 3pm, with a 15-minute prep buffer before.",
-      expectedActions: ["OWNER_CALENDAR"],
+      expectedActions: ["CALENDAR"],
       responseIncludesAny: ["prep", "buffer", "15", "before", "alex"],
     },
   ],
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "OWNER_CALENDAR",
+      actionName: "CALENDAR",
       minCount: 1,
     },
   ],

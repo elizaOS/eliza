@@ -1,7 +1,7 @@
 /**
  * Module-level pass-through for the current LLM response text.
- * The runtime monkey-patches processActions to capture the response
- * before action handlers run, so actions can parse parameters from it.
+ * The autonomous loop stores the response before dispatching parsed actions,
+ * so action handlers can parse parameters from it.
  */
 let currentLlmResponse = "";
 

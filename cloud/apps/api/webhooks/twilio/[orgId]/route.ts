@@ -5,6 +5,7 @@
  * to the appropriate agent for processing.
  */
 
+import { calculateTwilioSmsBilling, resolveTwilioSmsCostPerSegment } from "@elizaos/billing";
 import { Hono } from "hono";
 import { ZodError } from "zod";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -19,9 +20,6 @@ import {
   verifyTwilioSignature,
 } from "@/lib/utils/twilio-api";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
-import { calculateTwilioSmsBilling } from "../../../../../packages/billing/src";
-
-const DEFAULT_SMS_COST_PER_SEGMENT_USD = 0.0075;
 
 function firstForwardedHeaderValue(value: string | undefined): string | undefined {
   return value?.split(",")[0]?.trim() || undefined;
@@ -45,15 +43,15 @@ function resolveTwilioVerificationUrl(c: AppContext): string {
 
 function resolveSmsCostPerSegment(env: AppContext["env"]): number {
   const raw = env.TWILIO_SMS_COST_PER_SEGMENT_USD;
-  if (!raw) return DEFAULT_SMS_COST_PER_SEGMENT_USD;
-  const parsed = Number.parseFloat(raw);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    logger.warn("[TwilioWebhook] Invalid TWILIO_SMS_COST_PER_SEGMENT_USD; using default", {
-      raw,
-    });
-    return DEFAULT_SMS_COST_PER_SEGMENT_USD;
+  if (raw) {
+    const parsed = Number.parseFloat(raw);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      logger.warn("[TwilioWebhook] Invalid TWILIO_SMS_COST_PER_SEGMENT_USD; using default", {
+        raw,
+      });
+    }
   }
-  return parsed;
+  return resolveTwilioSmsCostPerSegment(raw);
 }
 
 async function handleTwilioWebhook(c: AppContext): Promise<Response> {

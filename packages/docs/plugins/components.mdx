@@ -60,7 +60,7 @@ The basic-capabilities plugin provides 13 essential actions:
 | Action         | Description           | Example Trigger       |
 | -------------- | --------------------- | --------------------- |
 | `REPLY`        | Generate response     | "Tell me about..."    |
-| `SEND_MESSAGE` | Send to specific room | "Message the team..." |
+| `MESSAGE` | Send to specific room | "Message the team..." |
 | `NONE`         | Acknowledge silently  | "Thanks!"             |
 | `IGNORE`       | Skip message          | Spam/irrelevant       |
 
@@ -85,7 +85,7 @@ The basic-capabilities plugin provides 13 essential actions:
 
 | Action           | Description      | Example Trigger    |
 | ---------------- | ---------------- | ------------------ |
-| `GENERATE_IMAGE` | Create AI images | "Draw a cat"       |
+| `GENERATE_MEDIA` | Create AI media  | "Draw a cat"       |
 | `CHOICE`         | Present options  | "Should I A or B?" |
 
 ### Creating Actions
@@ -272,7 +272,7 @@ For complete interface definitions, see the [Provider Interface in the Reference
 | ------------------------ | ----------------- | -------------------- |
 | `characterProvider`      | Agent personality | Name, bio, traits    |
 | `timeProvider`           | Current date/time | "What time is it?"   |
-| `knowledgeProvider`      | Knowledge base    | Documentation, facts |
+| `documentsProvider`      | Character Knowledge | Document snippets, recent documents |
 | `recentMessagesProvider` | Chat history      | Context awareness    |
 | `actionsProvider`        | Available actions | "What can you do?"   |
 | `factsProvider`          | Stored facts      | User preferences     |
@@ -347,41 +347,50 @@ position: 100; // Loads last
 
 ## Evaluators
 
-Evaluators are post-processors that analyze and extract information from conversations.
+Evaluators are registered post-turn items that contribute context, schema, prompt instructions, and processors to the unified evaluator service.
 
 ### Evaluator Interface
 
-Evaluators process and extract information from agent responses. Each evaluator has:
+Evaluators process and extract information from the just-finished turn. Each evaluator has:
 
 - **name**: Unique identifier for the evaluator
 - **description**: Explanation of what it evaluates or extracts
 - **similes**: Alternative names for matching
-- **alwaysRun**: If true, runs on every agent response
-- **examples**: Training examples for the evaluator
-- **validate**: Function to determine if evaluator should run
-- **handler**: Processing logic that analyzes the response
+- **providers**: Context providers to include in the shared prompt
+- **schema**: JSON schema for this evaluator's top-level output section
+- **shouldRun**: Function to determine if evaluator should be active this turn
+- **prepare**: Optional data loader for evaluator-specific prompt context
+- **prompt**: Instructions for this evaluator's output section
+- **processors**: Post-model processors that persist or act on extracted data
 
-Evaluators run after an agent generates a response, allowing for fact extraction, sentiment analysis, or content filtering.
+Active evaluators run after the agent response in one structured model call. Each evaluator receives its own output section, then its processors run in priority order.
 
 For complete interface definitions, see the [Evaluator Interface in the Reference](/plugins/reference#evaluator-interface).
 
 ### Core Evaluators (BasicCapabilities Plugin)
 
-| Evaluator             | Purpose         | Extracts                    |
-| --------------------- | --------------- | --------------------------- |
-| `reflectionEvaluator` | Self-awareness  | Insights about interactions |
-| `factEvaluator`       | Fact extraction | Important information       |
-| `goalEvaluator`       | Goal tracking   | User objectives             |
+| Evaluator                   | Purpose                | Extracts                       |
+| --------------------------- | ---------------------- | ------------------------------ |
+| `factMemoryEvaluator`       | Durable fact memory    | Fact reconciliation operations |
+| `relationshipEvaluator`     | Relationship updates   | Entity relationship updates    |
+| `identityEvaluator`         | Platform identities    | Handles and aliases            |
+| `successEvaluator`          | Turn completion status | Task completion state          |
+| `summaryEvaluator`          | Context compression    | Rolling conversation summary   |
+| `longTermMemoryEvaluator`   | Long-term memory       | Durable memory items           |
+| `experiencePatternEvaluator`| Experience learning    | Novel lessons from the room    |
+| `skillProposalEvaluator`    | Skill creation         | Proposed reusable skills       |
+| `skillRefinementEvaluator`  | Skill improvement      | Updates for existing skills    |
 
 ### Evaluator Flow
 
 ```mermaid
 flowchart TD
-    Response[Agent Response] --> Validate[validate]
-    Validate -->|true| Handler[handler]
-    Validate -->|false| Skip[Skip]
-    Handler --> Extract[Extract Info]
-    Extract --> Store[Store in Memory]
+    Response[Agent Response] --> Validate[shouldRun]
+    Validate -->|active| Compose[Compose shared providers]
+    Validate -->|inactive| Skip[Skip]
+    Compose --> Model[Single structured evaluator call]
+    Model --> Process[Run processors]
+    Process --> Store[Store or apply results]
     Store --> Continue[Continue]
     Skip --> Continue
 
@@ -393,7 +402,7 @@ flowchart TD
 
     class Response input
     class Validate decision
-    class Handler,Extract processing
+    class Compose,Model,Process processing
     class Store storage
     class Skip,Continue result
 ```

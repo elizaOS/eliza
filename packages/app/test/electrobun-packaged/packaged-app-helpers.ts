@@ -53,6 +53,13 @@ export interface DesktopTestBridgeState {
   };
 }
 
+export interface DesktopWindowBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 interface PackagedStartOptions {
   bridgeHealthTimeoutMs?: number;
   shellReadyTimeoutMs?: number;
@@ -327,6 +334,44 @@ function normalizeEvalScript(script: string): string {
   return `return (\n${trimmed}\n);`;
 }
 
+async function findBridgeListenerPids(port: number): Promise<number[]> {
+  if (process.platform === "win32") {
+    return [];
+  }
+  try {
+    const { stdout } = await execFileAsync("lsof", [
+      "-nP",
+      `-tiTCP:${port}`,
+      "-sTCP:LISTEN",
+    ]);
+    return stdout
+      .trim()
+      .split(/\s+/)
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value > 0);
+  } catch {
+    return [];
+  }
+}
+
+async function getParentPid(pid: number): Promise<number | null> {
+  if (process.platform === "win32") {
+    return null;
+  }
+  try {
+    const { stdout } = await execFileAsync("ps", [
+      "-o",
+      "ppid=",
+      "-p",
+      String(pid),
+    ]);
+    const parentPid = Number(stdout.trim());
+    return Number.isInteger(parentPid) && parentPid > 0 ? parentPid : null;
+  } catch {
+    return null;
+  }
+}
+
 export class PackagedDesktopHarness {
   readonly tempRoot: string;
   readonly stateDir: string;
@@ -337,6 +382,7 @@ export class PackagedDesktopHarness {
   bridgeUrl: string;
   readonly launcherPath: string;
   readonly apiBase: string;
+  readonly partition: string;
   appEnv: NodeJS.ProcessEnv;
   process: ChildProcess | null = null;
   logs: PackagedProcessLogs | null = null;
@@ -355,12 +401,14 @@ export class PackagedDesktopHarness {
     this.bridgeUrl = `http://127.0.0.1:${this.bridgePort}`;
     this.launcherPath = args.launcherPath;
     this.apiBase = args.apiBase;
+    this.partition = `persist:packaged-regression-${randomUUID()}`;
     this.appEnv = createPackagedDesktopEnv({
       baseEnv: process.env,
       apiBase: args.apiBase,
       stateDir: this.stateDir,
       bridgePort: this.bridgePort,
       bridgeToken: this.bridgeToken,
+      partition: this.partition,
       appData: this.appDataDir,
       localAppData: this.localAppDataDir,
     });
@@ -391,23 +439,52 @@ export class PackagedDesktopHarness {
   }
 
   async stop(): Promise<void> {
-    if (
-      !this.process ||
-      this.process.exitCode !== null ||
-      this.process.killed
-    ) {
+    const pidsToKill = new Set<number>();
+    for (const pid of await findBridgeListenerPids(this.bridgePort)) {
+      pidsToKill.add(pid);
+      const parentPid = await getParentPid(pid);
+      if (parentPid) {
+        pidsToKill.add(parentPid);
+      }
+    }
+
+    const child = this.process;
+    if (child?.pid && child.exitCode === null && !child.killed) {
+      pidsToKill.add(child.pid);
+    }
+
+    for (const pid of pidsToKill) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // Process already exited.
+      }
+    }
+
+    if (pidsToKill.size === 0) {
       return;
     }
-    this.process.kill("SIGTERM");
+
     await new Promise<void>((resolve) => {
       const timeout = setTimeout(() => {
-        this.process?.kill("SIGKILL");
+        for (const pid of pidsToKill) {
+          try {
+            process.kill(pid, "SIGKILL");
+          } catch {
+            // Process already exited.
+          }
+        }
         resolve();
       }, 5_000);
-      this.process?.once("exit", () => {
-        clearTimeout(timeout);
-        resolve();
-      });
+      const checkExited = async () => {
+        if ((await findBridgeListenerPids(this.bridgePort)).length === 0) {
+          clearTimeout(timeout);
+          resolve();
+          return;
+        }
+        setTimeout(checkExited, 250);
+      };
+      void checkExited();
     });
   }
 
@@ -432,6 +509,7 @@ export class PackagedDesktopHarness {
       stateDir: this.stateDir,
       bridgePort: this.bridgePort,
       bridgeToken: this.bridgeToken,
+      partition: this.partition,
       appData: this.appDataDir,
       localAppData: this.localAppDataDir,
     });
@@ -445,18 +523,27 @@ export class PackagedDesktopHarness {
 
   private async waitForBridgeHealth(timeoutMs: number): Promise<void> {
     const startedAt = Date.now();
+    let detachedLaunchStartedAt: number | null = null;
     while (Date.now() - startedAt < timeoutMs) {
-      if (this.process && this.process.exitCode !== null) {
-        throw new Error(
-          `Packaged app exited before the desktop test bridge became ready.\n${formatLogs(this.logs)}`,
-        );
-      }
       try {
         await fetchJson<{ ok: boolean }>(`${this.bridgeUrl}/health`, {
           headers: { Authorization: `Bearer ${this.bridgeToken}` },
         });
         return;
       } catch {
+        if (this.process && this.process.exitCode !== null) {
+          if (process.platform !== "darwin") {
+            throw new Error(
+              `Packaged app exited before the desktop test bridge became ready.\n${formatLogs(this.logs)}`,
+            );
+          }
+          detachedLaunchStartedAt ??= Date.now();
+          if (Date.now() - detachedLaunchStartedAt > 60_000) {
+            throw new Error(
+              `Packaged app self-extractor exited, but no detached desktop test bridge became ready.\n${formatLogs(this.logs)}`,
+            );
+          }
+        }
         await new Promise((resolve) => setTimeout(resolve, 250));
       }
     }
@@ -472,6 +559,33 @@ export class PackagedDesktopHarness {
     });
   }
 
+  async setMainWindowBounds(
+    bounds: Partial<DesktopWindowBounds>,
+  ): Promise<DesktopWindowBounds> {
+    const response = await fetchJson<{ bounds: DesktopWindowBounds }>(
+      `${this.bridgeUrl}/main-window/bounds`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.bridgeToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(bounds),
+      },
+    );
+    return response.bounds;
+  }
+
+  async closeMainWindow(): Promise<void> {
+    await fetchJson<{ ok: boolean }>(`${this.bridgeUrl}/main-window/close`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.bridgeToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
   async waitForState(
     predicate: (state: DesktopTestBridgeState) => boolean,
     message: string,
@@ -481,7 +595,11 @@ export class PackagedDesktopHarness {
     let lastState: DesktopTestBridgeState | null = null;
 
     while (Date.now() - startedAt < timeoutMs) {
-      if (this.process && this.process.exitCode !== null) {
+      if (
+        this.process &&
+        this.process.exitCode !== null &&
+        (await findBridgeListenerPids(this.bridgePort)).length === 0
+      ) {
         throw new Error(
           `${message}\nPackaged app exited early.\n${formatLogs(this.logs)}`,
         );

@@ -5,15 +5,15 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { formatHourlyRate, formatMonthlyEstimate } from "@/lib/constants/agent-pricing-display";
 import { statusBadgeColor, statusDotColor } from "@/lib/constants/sandbox-status";
-import { ElizaAgentActions } from "@/packages/ui/src/components/containers/agent-actions";
-import { DockerLogsViewer } from "@/packages/ui/src/components/containers/docker-logs-viewer";
-import { ElizaAgentBackupsPanel } from "@/packages/ui/src/components/containers/eliza-agent-backups-panel";
-import { ElizaAgentLogsViewer } from "@/packages/ui/src/components/containers/eliza-agent-logs-viewer";
-import { ElizaAgentTabs } from "@/packages/ui/src/components/containers/eliza-agent-tabs";
-import { ElizaConnectButton } from "@/packages/ui/src/components/containers/eliza-connect-button";
 import { ApiError } from "../../../lib/api-client";
 import { useRequireAuth } from "../../../lib/auth-hooks";
 import { useAgent } from "../../../lib/data/eliza-agents";
+import { ElizaAgentActions } from "../../containers/_components/agent-actions";
+import { DockerLogsViewer } from "../../containers/_components/docker-logs-viewer";
+import { ElizaAgentBackupsPanel } from "../../containers/_components/eliza-agent-backups-panel";
+import { ElizaAgentLogsViewer } from "../../containers/_components/eliza-agent-logs-viewer";
+import { ElizaAgentTabs } from "../../containers/_components/eliza-agent-tabs";
+import { ElizaConnectButton } from "../../containers/_components/eliza-connect-button";
 
 function formatDate(date: string | null): string {
   if (!date) return "—";

@@ -18,7 +18,14 @@
  * password matched.
  */
 
-import { Algorithm, hash, verify } from "@node-rs/argon2";
+import { hash, verify } from "@node-rs/argon2";
+
+// Inline the value of @node-rs/argon2's `Algorithm.Argon2id` const enum.
+// `isolatedModules` cannot read ambient const enum members across module
+// boundaries, so we reference the raw integer here. The Rust side defines
+// Argon2id = 2; if upstream changes that value, hashes minted with the wrong
+// id won't verify and we'll see immediate test failures.
+const ARGON2_ALGO_ID = 2;
 
 /**
  * OWASP-aligned argon2id parameters. Tuned conservatively so cold boots on
@@ -27,7 +34,7 @@ import { Algorithm, hash, verify } from "@node-rs/argon2";
  * argon2 encodes its parameters in the hash string.
  */
 export const ARGON2_PARAMS = {
-  algorithm: Algorithm.Argon2id,
+  algorithm: ARGON2_ALGO_ID,
   memoryCost: 19_456,
   timeCost: 2,
   parallelism: 1,

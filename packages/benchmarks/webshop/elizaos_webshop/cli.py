@@ -87,7 +87,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--model-provider",
         type=str,
-        choices=["openai", "groq", "openrouter"],
+        choices=["openai", "groq", "openrouter", "cerebras"],
         default=None,
         help="Force provider (auto-detect if unset)",
     )
@@ -189,6 +189,8 @@ def main() -> int:
         os.environ["GROQ_SMALL_MODEL"] = model_name
         os.environ["OPENROUTER_LARGE_MODEL"] = model_name
         os.environ["OPENROUTER_SMALL_MODEL"] = model_name
+        os.environ["CEREBRAS_LARGE_MODEL"] = model_name
+        os.environ["CEREBRAS_SMALL_MODEL"] = model_name
 
     if config.use_mock:
         logger.warning(
@@ -203,6 +205,7 @@ def main() -> int:
             "openai": "OPENAI_API_KEY",
             "groq": "GROQ_API_KEY",
             "openrouter": "OPENROUTER_API_KEY",
+            "cerebras": "CEREBRAS_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY",
             "google": "GOOGLE_API_KEY",
         }.get(provider, "OPENAI_API_KEY")

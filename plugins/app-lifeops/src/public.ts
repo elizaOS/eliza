@@ -1,14 +1,13 @@
-export { getBrowserBridgeCompanionPackageStatus } from "@elizaos/plugin-browser-bridge";
+export { getBrowserBridgeCompanionPackageStatus } from "@elizaos/plugin-browser";
 
 import { registerLifeOpsAutomationNodeContributor } from "./automation-node-contributor.js";
 
 export { lifeopsPlugin } from "./routes/plugin.js";
 export {
-  blockWebsitesAction,
   getSelfControlPermissionState,
   openSelfControlPermissionLocation,
   requestSelfControlPermission,
-  requestWebsiteBlockingPermissionAction,
+  websiteBlockAction,
 } from "./website-blocker/public.js";
 
 registerLifeOpsAutomationNodeContributor();

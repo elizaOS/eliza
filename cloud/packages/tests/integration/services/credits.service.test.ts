@@ -25,12 +25,12 @@ import {
   InsufficientCreditsError,
   MIN_RESERVATION,
 } from "@/lib/services/credits";
-import { getConnectionString } from "@/tests/helpers/local-database";
+import { getConnectionString } from "@/tests/infrastructure/local-database";
 import {
   cleanupTestData,
   createTestDataSet,
   type TestDataSet,
-} from "@/tests/helpers/test-data-factory";
+} from "@/tests/infrastructure/test-data-factory";
 
 describe("CreditsService", () => {
   let connectionString: string;

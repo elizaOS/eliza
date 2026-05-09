@@ -6,7 +6,7 @@
  * Used by the registry and drop services for on-chain operations.
  */
 
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import { ethers } from "ethers";
 

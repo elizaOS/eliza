@@ -11,17 +11,16 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger, type UUID } from "@elizaos/core";
+import { applySignalQrOverride } from "@elizaos/plugin-signal";
+import { applyWhatsAppQrOverride } from "@elizaos/plugin-whatsapp";
 import type { ElizaConfig } from "../config/config.js";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
 import { getBundledRuntimePluginIds } from "../runtime/release-plugin-policy.js";
-import { signalAuthExists } from "../services/signal-pairing.js";
 import {
   type PluginParamInfo,
   validatePluginConfig,
 } from "./plugin-validation.js";
 import { findOwnPackageRoot } from "./server-helpers.js";
-import { applySignalQrOverride } from "./signal-routes.js";
-import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
 
 const require = createRequire(import.meta.url);
 
@@ -1126,11 +1125,7 @@ export function discoverPluginsFromManifest(): PluginEntry[] {
       );
 
       applyWhatsAppQrOverride(entries, resolveDefaultAgentWorkspaceDir());
-      applySignalQrOverride(
-        entries,
-        resolveDefaultAgentWorkspaceDir(),
-        signalAuthExists,
-      );
+      applySignalQrOverride(entries, resolveDefaultAgentWorkspaceDir());
 
       return entries;
     } catch (err) {

@@ -7,11 +7,14 @@
 
 import z from "zod";
 import { logger } from "../logger";
+import {
+	buildCanonicalSystemPrompt,
+	resolveEffectiveSystemPrompt,
+} from "../runtime/system-prompt";
 import type {
 	GenerateTextParams,
 	IAgentRuntime,
 	ModelTypeName,
-	ObjectGenerationParams,
 	TextEmbeddingParams,
 } from "../types";
 import { ModelType } from "../types";
@@ -191,33 +194,6 @@ async function generateEmbeddingWithOllama(
 }
 
 /**
- * Extract JSON object from a text response that may contain surrounding text
- */
-function extractJsonFromResponse(response: string): Record<string, unknown> {
-	// Try to find JSON object in the response
-	const jsonMatch = response.match(/\{[\s\S]*\}/);
-	const textToParse = jsonMatch ? jsonMatch[0] : response;
-
-	try {
-		const parsed: unknown = JSON.parse(textToParse);
-		if (
-			typeof parsed !== "object" ||
-			parsed === null ||
-			Array.isArray(parsed)
-		) {
-			throw new Error(`Expected JSON object but got: ${typeof parsed}`);
-		}
-		return parsed as Record<string, unknown>;
-	} catch (error) {
-		const message =
-			error instanceof Error ? error.message : "Unknown parse error";
-		throw new Error(
-			`Failed to parse JSON from Ollama response: ${message}\nResponse was: ${response.slice(0, 200)}`,
-		);
-	}
-}
-
-/**
  * Handle TEXT_SMALL model requests
  */
 async function handleTextSmall(
@@ -229,12 +205,19 @@ async function handleTextSmall(
 		"TEXT_SMALL request",
 	);
 
-	return generateTextWithOllama(DEFAULT_MODELS.text_small, params.prompt, {
-		system: runtime.character.system ?? undefined,
-		temperature: params.temperature,
-		maxTokens: params.maxTokens,
-		stopSequences: params.stopSequences,
-	});
+	return generateTextWithOllama(
+		DEFAULT_MODELS.text_small,
+		params.prompt ?? "",
+		{
+			system: resolveEffectiveSystemPrompt({
+				params,
+				fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
+			}),
+			temperature: params.temperature,
+			maxTokens: params.maxTokens,
+			stopSequences: params.stopSequences,
+		},
+	);
 }
 
 /**
@@ -249,12 +232,19 @@ async function handleTextLarge(
 		"TEXT_LARGE request",
 	);
 
-	return generateTextWithOllama(DEFAULT_MODELS.text_large, params.prompt, {
-		system: runtime.character.system ?? undefined,
-		temperature: params.temperature,
-		maxTokens: params.maxTokens,
-		stopSequences: params.stopSequences,
-	});
+	return generateTextWithOllama(
+		DEFAULT_MODELS.text_large,
+		params.prompt ?? "",
+		{
+			system: resolveEffectiveSystemPrompt({
+				params,
+				fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
+			}),
+			temperature: params.temperature,
+			maxTokens: params.maxTokens,
+			stopSequences: params.stopSequences,
+		},
+	);
 }
 
 /**
@@ -282,59 +272,18 @@ async function handleTextEmbedding(
 }
 
 /**
- * Generate structured object using Ollama with JSON mode
- */
-async function generateObjectWithOllama(
-	runtime: IAgentRuntime,
-	model: string,
-	params: ObjectGenerationParams,
-): Promise<Record<string, unknown>> {
-	logger.debug({ src: "ollama", model }, "OBJECT generation request");
-
-	const jsonPrompt = `${params.prompt}\n\nRespond with valid JSON only:`;
-	const response = await generateTextWithOllama(model, jsonPrompt, {
-		system: runtime.character.system ?? undefined,
-		temperature: params.temperature ?? 0.3, // Lower temp for structured output
-		maxTokens: params.maxTokens,
-	});
-
-	return extractJsonFromResponse(response);
-}
-
-/**
- * Handle OBJECT_SMALL model requests
- */
-async function handleObjectSmall(
-	runtime: IAgentRuntime,
-	params: ObjectGenerationParams,
-): Promise<Record<string, unknown>> {
-	return generateObjectWithOllama(runtime, DEFAULT_MODELS.text_small, params);
-}
-
-/**
- * Handle OBJECT_LARGE model requests
- */
-async function handleObjectLarge(
-	runtime: IAgentRuntime,
-	params: ObjectGenerationParams,
-): Promise<Record<string, unknown>> {
-	return generateObjectWithOllama(runtime, DEFAULT_MODELS.text_large, params);
-}
-
-/**
  * Union type of all model parameter types for Ollama handlers
  */
 type OllamaModelParams =
 	| GenerateTextParams
 	| TextEmbeddingParams
-	| ObjectGenerationParams
 	| string
 	| null;
 
 /**
  * Union type of all model result types for Ollama handlers
  */
-type OllamaModelResult = string | number[] | Record<string, unknown>;
+type OllamaModelResult = string | number[];
 
 /**
  * Model handler function type
@@ -354,7 +303,5 @@ export function createOllamaModelHandlers(): Partial<
 		[ModelType.TEXT_SMALL]: handleTextSmall as ModelHandlerFn,
 		[ModelType.TEXT_LARGE]: handleTextLarge as ModelHandlerFn,
 		[ModelType.TEXT_EMBEDDING]: handleTextEmbedding as ModelHandlerFn,
-		[ModelType.OBJECT_SMALL]: handleObjectSmall as ModelHandlerFn,
-		[ModelType.OBJECT_LARGE]: handleObjectLarge as ModelHandlerFn,
 	};
 }

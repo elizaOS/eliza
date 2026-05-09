@@ -5,7 +5,7 @@
  *   1. Extracts the command from parameters or MCP-style JSON
  *   2. POSTs to the local API server to execute it
  *   3. The API broadcasts output via WebSocket for real-time display
- *   4. Captures the output for the post-action LLM response
+ *   4. Captures the output for planner follow-up
  *   5. Stores the full output as a document attachment for follow-up actions
  *
  * @module actions/terminal
@@ -26,6 +26,7 @@ import { hasOwnerAccess } from "../security/access.js";
 /** API port for posting terminal requests. */
 const API_PORT = process.env.API_PORT || process.env.SERVER_PORT || "2138";
 const TERMINAL_ACTION_NAME = "SHELL_COMMAND";
+const MAX_TERMINAL_DATA_CHARS = 16000;
 
 const FAIL = { success: false, text: "" } as const;
 
@@ -169,6 +170,10 @@ function buildOutputPreview(content: string, maxLength = 3_000): string {
   return `${trimmed.slice(0, maxLength).trimEnd()}\n\n[... ${trimmed.length - maxLength} chars omitted; use the attachment for full output ...]`;
 }
 
+function truncateForData(text: string, max = MAX_TERMINAL_DATA_CHARS): string {
+  return text.length <= max ? text : `${text.slice(0, max)}\n…[truncated]`;
+}
+
 async function createCommandOutputAttachment(
   runtime: IAgentRuntime | undefined,
   message: Memory,
@@ -254,6 +259,8 @@ function buildCapturedResponseText(
 
 export const terminalAction: Action = {
   name: TERMINAL_ACTION_NAME,
+  contexts: ["terminal", "code", "files", "admin"],
+  roleGate: { minRole: "OWNER" },
 
   similes: [
     "RUN_IN_TERMINAL",
@@ -270,23 +277,22 @@ export const terminalAction: Action = {
     "Run a single explicit shell command that the user provided directly. " +
     "Only use when the user gives a specific command like 'run ls -la' or 'execute npm install'. " +
     "Do NOT use for building projects, creating websites, or multi-step work — use START_CODING_TASK instead. " +
-    "The command output is captured as a document attachment for post-action planning. After the run, decide whether to reply, stay silent, continue with another action, or save the attachment via the clipboard plugin.",
+    "The command output is captured as a document attachment for native planner follow-up. After the run, decide whether to reply, stay silent, continue with another action, or save the attachment via the clipboard plugin.",
   descriptionCompressed:
-    "run single explicit shell command user provide directly use user give specific command like run ls - la execute npm install use build project, create website, multi-step work use START_CODING_TASK instead command output captur document attachment post-action plan after run, decide whether reply, stay silent, continue w/ another action, save attachment via clipboard plugin",
+    "run single explicit shell command user provide directly use user give specific command like run ls - la execute npm install use build project, create website, multi-step work use START_CODING_TASK instead command output captur document attachment native planner follow-up after run, decide whether reply, stay silent, continue w/ another action, save attachment via clipboard plugin",
 
-  validate: async (runtime, message) => {
-    // Permission is the only gate here. Whether the action is relevant to the
-    // current request is the planner's job — not a regex / keyword scan in
-    // validate. The action's description + similes + examples are the
-    // contract the planner uses.
-    return hasOwnerAccess(runtime, message);
-  },
+  validate: async () => true,
 
   handler: async (runtime, message, _state, options) => {
     if (!(await hasOwnerAccess(runtime, message))) {
       return {
         success: false,
         text: "Permission denied: only the owner may run terminal commands.",
+        data: {
+          actionName: TERMINAL_ACTION_NAME,
+          suppressPostActionContinuation: true,
+          terminal: { permissionDenied: true },
+        },
       };
     }
 
@@ -317,6 +323,11 @@ export const terminalAction: Action = {
 
       const responseBody = (await response.json()) as JsonValue;
       const capturedRun = normalizeCapturedRun(command, responseBody);
+      const boundedRun = {
+        ...capturedRun,
+        stdout: truncateForData(capturedRun.stdout),
+        stderr: truncateForData(capturedRun.stderr),
+      };
       const outputAttachment = await createCommandOutputAttachment(
         runtime,
         message,
@@ -328,7 +339,7 @@ export const terminalAction: Action = {
         success: true,
         data: {
           actionName: TERMINAL_ACTION_NAME,
-          ...capturedRun,
+          ...boundedRun,
           outputAttachment: outputAttachment?.attachment,
           outputAttachmentMemoryId: outputAttachment?.memoryId,
           suppressVisibleCallback: true,

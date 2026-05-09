@@ -1,5 +1,3 @@
-import { parseToonKeyValue } from "@elizaos/core";
-
 const EMPTY_SCALAR_VALUES = new Set(["", "none", "null", "undefined", "n/a", "not provided"]);
 
 const EMPTY_LIST_VALUES = new Set([...EMPTY_SCALAR_VALUES, "clear", "clear all", "no labels"]);
@@ -33,7 +31,18 @@ function splitListString(value: string): string[] {
 }
 
 export function parseLinearPromptResponse(response: string): Record<string, unknown> {
-  return parseToonKeyValue<Record<string, unknown>>(response) ?? {};
+  try {
+    const trimmed = response.trim();
+    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    const candidate = (fenced?.[1] ?? trimmed).trim();
+    const firstBrace = candidate.indexOf("{");
+    const lastBrace = candidate.lastIndexOf("}");
+    if (firstBrace < 0 || lastBrace <= firstBrace) return {};
+    const parsed = JSON.parse(candidate.slice(firstBrace, lastBrace + 1));
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 export function getRecordValue(value: unknown): Record<string, unknown> | undefined {
@@ -41,7 +50,7 @@ export function getRecordValue(value: unknown): Record<string, unknown> | undefi
     return value;
   }
 
-  if (typeof value === "string" && value.includes(":")) {
+  if (typeof value === "string" && value.trim().startsWith("{")) {
     const parsed = parseLinearPromptResponse(value);
     return Object.keys(parsed).length > 0 ? parsed : undefined;
   }

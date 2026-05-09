@@ -5,18 +5,21 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { Action, IAgentRuntime, Memory, State } from "@elizaos/core";
+import {
+  actionsProvider as importedActionsProvider,
+  invalidateActionValidationCache as importedInvalidateActionValidationCache,
+} from "@/lib/eliza/plugin-cloud-bootstrap/providers/actions";
 
 // ─── Action Validation Cache ─────────────────────────────────────────────────
 
 describe("Action validation cache", () => {
-  let actionsProvider: typeof import("@/lib/eliza/plugin-cloud-bootstrap/providers/actions").actionsProvider;
-  let invalidateActionValidationCache: typeof import("@/lib/eliza/plugin-cloud-bootstrap/providers/actions").invalidateActionValidationCache;
+  let actionsProvider = importedActionsProvider;
+  let invalidateActionValidationCache = importedInvalidateActionValidationCache;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     // Module-level cache is a singleton — tests use unique message IDs to avoid interference.
-    const mod = await import("@/lib/eliza/plugin-cloud-bootstrap/providers/actions");
-    actionsProvider = mod.actionsProvider;
-    invalidateActionValidationCache = mod.invalidateActionValidationCache;
+    actionsProvider = importedActionsProvider;
+    invalidateActionValidationCache = importedInvalidateActionValidationCache;
   });
 
   function makeRuntime(actions: Action[], mcpToolCount?: number): IAgentRuntime {
@@ -447,32 +450,41 @@ describe("Retry config", () => {
   });
 });
 
-// ─── Multi-Step Template ─────────────────────────────────────────────────────
+// ─── Native Planner Template ─────────────────────────────────────────────────
 
-describe("Multi-step decision template", () => {
+describe("native planner template", () => {
   let decisionTemplate: string;
   let summaryTemplate: string;
 
   beforeEach(async () => {
-    const mod = await import("@/lib/eliza/plugin-cloud-bootstrap/templates/multi-step");
-    decisionTemplate = mod.multiStepDecisionTemplate;
-    summaryTemplate = mod.multiStepSummaryTemplate;
+    const mod = await import("@/lib/eliza/plugin-cloud-bootstrap/templates/native-planner");
+    decisionTemplate = mod.nativePlannerTemplate;
+    summaryTemplate = mod.nativeResponseTemplate;
   });
 
-  test("contains minimize-iterations and strengthened FINISH rules", () => {
+  test("contains minimize-iterations and terminal response rules", () => {
     expect(decisionTemplate).toContain("Minimize iterations");
-    expect(decisionTemplate).toContain("Most tasks need only 1 action + FINISH");
-    expect(decisionTemplate).toContain("call FINISH immediately");
+    expect(decisionTemplate).toContain(
+      "Most tasks need only 1 action plus a terminal messageToUser",
+    );
+    expect(decisionTemplate).toContain("Return messageToUser soon");
     expect(decisionTemplate).toContain("Do NOT add extra iterations");
   });
 
-  test("preserves OAuth/connect rules from ux-overhaul", () => {
-    expect(decisionTemplate).toContain("OAUTH_CONNECT");
-    expect(decisionTemplate).toContain("links expire and must be freshly generated");
+  test("uses native JSON output without XML planner envelopes", () => {
+    expect(decisionTemplate).toContain("toolCalls");
+    expect(decisionTemplate).toContain("messageToUser");
+    expect(decisionTemplate).toContain("Do not wrap args in action-name keys");
+    expect(decisionTemplate).not.toContain("<system>");
+    expect(decisionTemplate).not.toContain("<task>");
+    expect(decisionTemplate).not.toContain("<output>");
+  });
+
+  test("preserves execute-actions rule from ux-overhaul", () => {
     expect(decisionTemplate).toContain("Always execute actions for user requests");
   });
 
-  test("all 8 rules present and numbered", () => {
+  test("all 7 rules present and numbered", () => {
     expect(decisionTemplate).toContain("1. **Single action per step**");
     expect(decisionTemplate).toContain("2. **No redundancy**");
     expect(decisionTemplate).toContain("3. **Parameter extraction**");
@@ -480,7 +492,6 @@ describe("Multi-step decision template", () => {
     expect(decisionTemplate).toContain("5. **Completion**");
     expect(decisionTemplate).toContain("6. **Minimize iterations**");
     expect(decisionTemplate).toContain("7. **Always execute actions");
-    expect(decisionTemplate).toContain("8. **OAuth / connect requests**");
   });
 
   test("summary template preserves URL and next-step guidelines", () => {
@@ -516,20 +527,20 @@ describe("MCP timeout constant", () => {
 // ─── Parse Retry Defaults ────────────────────────────────────────────────────
 
 describe("Parse retry defaults", () => {
-  test("MULTISTEP_PARSE_RETRIES default is '2'", async () => {
+  test("NATIVE_PLANNER_PARSE_RETRIES default is '2'", async () => {
     const source = await Bun.file(
       "packages/lib/eliza/plugin-cloud-bootstrap/services/cloud-bootstrap-message-service.ts",
     ).text();
-    const match = source.match(/MULTISTEP_PARSE_RETRIES.*?\?\?\s*"(\d+)"/);
+    const match = source.match(/NATIVE_PLANNER_PARSE_RETRIES.*?\?\?\s*"(\d+)"/);
     expect(match).not.toBeNull();
     expect(match![1]).toBe("2");
   });
 
-  test("MULTISTEP_SUMMARY_PARSE_RETRIES default is '2'", async () => {
+  test("NATIVE_RESPONSE_PARSE_RETRIES default is '2'", async () => {
     const source = await Bun.file(
       "packages/lib/eliza/plugin-cloud-bootstrap/services/cloud-bootstrap-message-service.ts",
     ).text();
-    const match = source.match(/MULTISTEP_SUMMARY_PARSE_RETRIES.*?\?\?\s*"(\d+)"/);
+    const match = source.match(/NATIVE_RESPONSE_PARSE_RETRIES.*?\?\?\s*"(\d+)"/);
     expect(match).not.toBeNull();
     expect(match![1]).toBe("2");
   });

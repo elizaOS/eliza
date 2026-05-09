@@ -1,4 +1,3 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -68,7 +67,9 @@ export const markFollowupDoneAction: Action = {
     "Use this only when the interaction already happened, not for future reminders. " +
     "Requires either an explicit contactId (UUID) or an unambiguous contactName. " +
     "Ambiguous names return a clarifying response without modifying any contact.",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  contexts: ["contacts", "tasks", "calendar", "messaging"],
+  roleGate: { minRole: "OWNER" },
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     _message,

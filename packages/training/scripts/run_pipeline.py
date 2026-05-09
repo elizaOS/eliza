@@ -18,6 +18,12 @@ Usage:
         --registry-key qwen3.5-2b \
         --epochs 3
 
+    # Train from runtime trajectory export(s)
+    uv run --extra train python scripts/run_pipeline.py \
+        --registry-key qwen3.5-2b \
+        --trajectory-export ../trajectories/export.jsonl \
+        --epochs 1
+
     # Cloud-tier run on Qwen3.6-27B (eliza-1-27b) — needs 2× H200 SXM,
     # use scripts/train_nebius.sh which wraps run_pipeline.py with FSDP.
 """
@@ -66,6 +72,28 @@ def main() -> int:
     )
     ap.add_argument("--max-samples", type=int, default=0,
                     help="Cap training samples (0 = full corpus).")
+    ap.add_argument("--train-file", default=None,
+                    help="Training JSONL. Defaults to data/final/train.jsonl "
+                         "unless --trajectory-export is provided.")
+    ap.add_argument("--val-file", default=None,
+                    help="Validation JSONL. Defaults to data/final/val.jsonl "
+                         "unless --trajectory-export is provided.")
+    ap.add_argument("--test-file", default=None,
+                    help="Benchmark JSONL. Defaults to data/final/test.jsonl "
+                         "unless --trajectory-export is provided.")
+    ap.add_argument(
+        "--trajectory-export",
+        action="append",
+        default=[],
+        help="Runtime trajectory export JSON/JSONL file or directory. Repeat "
+             "to merge multiple exports into one SFT split set.",
+    )
+    ap.add_argument(
+        "--trajectory-tasks",
+        default="",
+        help="Optional comma-separated task_type allowlist for trajectory "
+             "exports before train/val/test splitting.",
+    )
     ap.add_argument("--bench-per-bucket", type=int, default=200)
     ap.add_argument("--skip-base-bench", action="store_true")
     ap.add_argument("--skip-finetune", action="store_true")
@@ -101,12 +129,47 @@ def main() -> int:
         "stages": {},
     }
 
+    train_file = Path(args.train_file) if args.train_file else ROOT / "data" / "final" / "train.jsonl"
+    val_file = Path(args.val_file) if args.val_file else ROOT / "data" / "final" / "val.jsonl"
+    test_file = Path(args.test_file) if args.test_file else ROOT / "data" / "final" / "test.jsonl"
+
+    if args.trajectory_export:
+        trajectory_data_dir = ROOT / "data" / "trajectory-runs" / run_name
+        cmd = [
+            "uv", "run", "--extra", "train", "python",
+            "scripts/trajectories_to_sft.py",
+            "--output-dir", str(trajectory_data_dir),
+        ]
+        for input_path in args.trajectory_export:
+            cmd += ["--input", input_path]
+        if args.max_samples:
+            cmd += ["--max-records", str(args.max_samples)]
+        if args.trajectory_tasks:
+            cmd += ["--tasks", args.trajectory_tasks]
+        rc = run(cmd)
+        summary["stages"]["trajectory_dataset"] = {
+            "exit": rc,
+            "output_dir": str(trajectory_data_dir),
+        }
+        if rc != 0:
+            log.error("trajectory dataset build failed; aborting")
+            (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+            return 1
+        train_file = trajectory_data_dir / "train.jsonl"
+        val_file = trajectory_data_dir / "val.jsonl"
+        test_file = trajectory_data_dir / "test.jsonl"
+
+    summary["train_file"] = str(train_file)
+    summary["val_file"] = str(val_file)
+    summary["test_file"] = str(test_file)
+
     # 1. Base benchmark
     if not args.skip_base_bench and not args.skip_bench:
         rc = run([
             "uv", "run", "--extra", "train", "python",
-            "scripts/benchmark/eliza_bench.py",
+            "scripts/benchmark/native_tool_call_bench.py",
             "--model", entry.hf_id,
+            "--test-file", str(test_file),
             "--out-dir", str(bench_dir / "base"),
             "--max-per-bucket", str(args.bench_per_bucket),
         ])
@@ -125,8 +188,10 @@ def main() -> int:
             "--run-name", run_name,
             "--full-finetune",
             "--use-liger", "on",
+            "--train-file", str(train_file),
+            "--val-file", str(val_file),
         ]
-        if args.max_samples:
+        if args.max_samples and not args.trajectory_export:
             cmd += ["--max-samples", str(args.max_samples)]
         rc = run(cmd)
         summary["stages"]["finetune"] = {"exit": rc, "checkpoint": str(ckpt_dir / "final")}
@@ -139,8 +204,9 @@ def main() -> int:
     if not args.skip_bench:
         rc = run([
             "uv", "run", "--extra", "train", "python",
-            "scripts/benchmark/eliza_bench.py",
+            "scripts/benchmark/native_tool_call_bench.py",
             "--model", str(ckpt_dir / "final"),
+            "--test-file", str(test_file),
             "--out-dir", str(bench_dir / "finetuned"),
             "--max-per-bucket", str(args.bench_per_bucket),
         ])
@@ -162,7 +228,7 @@ def main() -> int:
                 "uv", "run", "--extra", "train", "python", str(apply_script),
                 "--model", str(ckpt_dir / "final"),
                 "--output", str(out_path),
-                "--calibration", str(ROOT / "data" / "final" / "val.jsonl"),
+                "--calibration", str(val_file),
                 "--calibration-samples", "128",
             ])
             summary["stages"][f"quantize_{q}"] = {"exit": rc, "output": str(out_path)}
@@ -175,8 +241,9 @@ def main() -> int:
                 continue
             rc = run([
                 "uv", "run", "--extra", "train", "python",
-                "scripts/benchmark/eliza_bench.py",
+                "scripts/benchmark/native_tool_call_bench.py",
                 "--model", str(ck),
+                "--test-file", str(test_file),
                 "--out-dir", str(bench_dir / q),
                 "--max-per-bucket", str(args.bench_per_bucket),
             ])

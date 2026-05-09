@@ -11,6 +11,28 @@
  *   - Raydium: https://docs.raydium.io/raydium/token-pairs-and-liquidity
  */
 
+import type { TransactionInstruction } from "@solana/web3.js";
+import bs58 from "bs58";
+
+type SolanaWeb3Module = typeof import("@solana/web3.js");
+type SplTokenModule = typeof import("@solana/spl-token");
+type SolanaConnectionInstance = InstanceType<SolanaWeb3Module["Connection"]>;
+type SolanaKeypairInstance = InstanceType<SolanaWeb3Module["Keypair"]>;
+type SolanaPublicKeyInstance = InstanceType<SolanaWeb3Module["PublicKey"]>;
+
+interface ParsedSplTokenWalletAccountEntry {
+  account: {
+    data: {
+      parsed: {
+        info: {
+          mint: string;
+          tokenAmount: { amount: string; decimals: number };
+        };
+      };
+    };
+  };
+}
+
 // ─── Well-known Solana token mint addresses ───────────────────────────────────
 //
 // All addresses are base-58 encoded Solana public keys.
@@ -73,39 +95,8 @@ export const SOLANA_TOKEN_DECIMALS: Record<SolanaTokenSymbol, number> = {
 
 // ─── Dynamic import helper ────────────────────────────────────────────────────
 
-// ─── Base58 decode (built-in, no extra dependency) ───────────────────────────
-
-const BASE58_ALPHABET =
-  "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-
-function base58Decode(str: string): Uint8Array {
-  const bytes: number[] = [0];
-  for (const char of str) {
-    const idx = BASE58_ALPHABET.indexOf(char);
-    if (idx < 0) throw new Error(`base58Decode: invalid character "${char}"`);
-    let carry = idx;
-    for (let i = 0; i < bytes.length; i++) {
-      carry += bytes[i] * 58;
-      bytes[i] = carry & 0xff;
-      carry >>= 8;
-    }
-    while (carry > 0) {
-      bytes.push(carry & 0xff);
-      carry >>= 8;
-    }
-  }
-  // Add leading zeros for leading '1' chars
-  for (const char of str) {
-    if (char !== "1") break;
-    bytes.push(0);
-  }
-  return new Uint8Array(bytes.reverse());
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function loadSolanaWeb3(): Promise<any> {
+async function loadSolanaWeb3(): Promise<SolanaWeb3Module> {
   try {
-    // @ts-expect-error — @solana/web3.js is an optional peer dependency
     const mod = await import("@solana/web3.js");
     return mod;
   } catch {
@@ -115,10 +106,8 @@ async function loadSolanaWeb3(): Promise<any> {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function loadSplToken(): Promise<any> {
+async function loadSplToken(): Promise<SplTokenModule> {
   try {
-    // @ts-expect-error — @solana/spl-token is an optional peer dependency
     const mod = await import("@solana/spl-token");
     return mod;
   } catch {
@@ -164,8 +153,8 @@ export class SolanaWallet {
   private readonly config: SolanaWalletConfig;
 
   // Lazily loaded modules and connection
-  private _connection: any = null;
-  private _keypair: any = null;
+  private _connection: SolanaConnectionInstance | null = null;
+  private _keypair: SolanaKeypairInstance | null = null;
 
   constructor(config: SolanaWalletConfig = {}) {
     this.rpcUrl = config.rpcUrl ?? "https://api.mainnet-beta.solana.com";
@@ -186,15 +175,7 @@ export class SolanaWallet {
     if (this.config.keypairBytes) {
       this._keypair = Keypair.fromSecretKey(this.config.keypairBytes);
     } else if (this.config.privateKeyBase58) {
-      // bs58 decode — use the solana web3 module's bundled bs58 or a custom decode
-      const solWeb3 = await loadSolanaWeb3();
-      let decoded: Uint8Array;
-      if (solWeb3.bs58) {
-        decoded = solWeb3.bs58.decode(this.config.privateKeyBase58);
-      } else {
-        // Fallback: manually decode base58 (no external dep needed)
-        decoded = base58Decode(this.config.privateKeyBase58);
-      }
+      const decoded = bs58.decode(this.config.privateKeyBase58);
       this._keypair = Keypair.fromSecretKey(decoded);
     } else {
       throw new Error(
@@ -219,7 +200,7 @@ export class SolanaWallet {
     const { PublicKey } = await loadSolanaWeb3();
     const connection = await this.getConnection();
 
-    let pubkey: any;
+    let pubkey: SolanaPublicKeyInstance;
     if (address) {
       pubkey = new PublicKey(address);
     } else {
@@ -247,7 +228,7 @@ export class SolanaWallet {
     const splToken = await loadSplToken();
     const connection = await this.getConnection();
 
-    let ownerPubkey: any;
+    let ownerPubkey: SolanaPublicKeyInstance;
     if (owner) {
       ownerPubkey = new PublicKey(owner);
     } else {
@@ -370,7 +351,7 @@ export class SolanaWallet {
     );
 
     // Build instructions
-    const instructions: any[] = [];
+    const instructions: TransactionInstruction[] = [];
 
     // Check if recipient ATA exists
     const toAtaInfo = await connection.getAccountInfo(toAta);
@@ -419,7 +400,7 @@ export class SolanaWallet {
       { programId: splToken.TOKEN_PROGRAM_ID },
     );
 
-    return tokenAccounts.value.map((acc: any) => {
+    return tokenAccounts.value.map((acc: ParsedSplTokenWalletAccountEntry) => {
       const info = acc.account.data.parsed.info;
       return {
         mint: info.mint,

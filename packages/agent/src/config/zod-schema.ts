@@ -8,6 +8,7 @@ import {
   ChannelHeartbeatVisibilitySchema,
   GroupPolicySchema,
   HexColorSchema,
+  MediaConfigSchema,
   ModelsConfigSchema,
   TranscribeAudioSchema,
 } from "./zod-schema.core.js";
@@ -582,12 +583,7 @@ export const ElizaSchema = z
     bindings: BindingsSchema,
     broadcast: BroadcastSchema,
     audio: AudioSchema,
-    media: z
-      .object({
-        preserveFilenames: z.boolean().optional(),
-      })
-      .strict()
-      .optional(),
+    media: MediaConfigSchema,
     messages: MessagesSchema,
     commands: CommandsSchema,
     approvals: ApprovalsSchema,

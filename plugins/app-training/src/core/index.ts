@@ -1,5 +1,6 @@
 export * from "./context-audit.js";
 export * from "./context-catalog.js";
+export * from "./trajectory-consumer.js";
 export * from "./context-types.js";
 export * from "./dataset-generator.js";
 export * from "./replay-validator.js";
@@ -44,4 +45,3 @@ export {
   type TrajectoryTaskDatasetTaskSummary,
   type TrajectoryTrainingTask,
 } from "./trajectory-task-datasets.js";
-export * from "./vertex-tuning.js";

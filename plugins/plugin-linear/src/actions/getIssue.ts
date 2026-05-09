@@ -10,8 +10,9 @@ import {
   type State,
 } from "@elizaos/core";
 import type { Issue, IssueLabel } from "@linear/sdk";
-import { getIssueTemplate } from "../generated/prompts/typescript/prompts.js";
+import { getIssueTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
+import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
 import { getRecordValue, getStringValue, parseLinearPromptResponse } from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
@@ -22,6 +23,9 @@ type GetIssueParams = {
 
 export const getIssueAction: Action = {
   name: "GET_LINEAR_ISSUE",
+  contexts: ["tasks", "connectors", "knowledge"],
+  contextGate: { anyOf: ["tasks", "connectors", "knowledge"] },
+  roleGate: { minRole: "USER" },
   description: "Get details of a specific Linear issue",
   descriptionCompressed: "get detail specific Linear issue",
   similes: [
@@ -44,6 +48,7 @@ export const getIssueAction: Action = {
       required: false,
       schema: { type: "string" as const },
     },
+    linearAccountIdParameter,
   ],
 
   examples: [
@@ -112,6 +117,7 @@ export const getIssueAction: Action = {
       if (!linearService) {
         throw new Error("Linear service not available");
       }
+      const accountId = getLinearAccountId(runtime, _options);
 
       const params = (_options?.parameters ?? {}) as GetIssueParams;
       const content = params.query ?? params.issueId ?? message.content.text;
@@ -128,7 +134,7 @@ export const getIssueAction: Action = {
       }
 
       if (params.issueId) {
-        const issue = await linearService.getIssue(params.issueId);
+        const issue = await linearService.getIssue(params.issueId, accountId);
         return await formatIssueResponse(issue, callback, message);
       }
 
@@ -140,7 +146,7 @@ export const getIssueAction: Action = {
       if (!response) {
         const issueMatch = content.match(/(\w+-\d+)/);
         if (issueMatch) {
-          const issue = await linearService.getIssue(issueMatch[1]);
+          const issue = await linearService.getIssue(issueMatch[1], accountId);
           return await formatIssueResponse(issue, callback, message);
         }
         throw new Error("Could not understand issue reference");
@@ -154,7 +160,7 @@ export const getIssueAction: Action = {
 
         const directId = getStringValue(parsed.directId);
         if (directId) {
-          const issue = await linearService.getIssue(directId);
+          const issue = await linearService.getIssue(directId, accountId);
           return await formatIssueResponse(issue, callback, message);
         }
 
@@ -200,15 +206,20 @@ export const getIssueAction: Action = {
             filters.state = [state];
           }
 
-          const defaultTeamKey = runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string;
+          const defaultTeamKey =
+            linearService.getDefaultTeamKey(accountId) ??
+            (runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string);
           if (defaultTeamKey && !filters.team) {
             filters.team = defaultTeamKey;
           }
 
-          const issues = await linearService.searchIssues({
-            ...filters,
-            limit: getStringValue(searchBy.recency) ? 10 : 5,
-          });
+          const issues = await linearService.searchIssues(
+            {
+              ...filters,
+              limit: getStringValue(searchBy.recency) ? 10 : 5,
+            },
+            accountId
+          );
 
           if (issues.length === 0) {
             const noResultsMessage = "No issues found matching your criteria.";
@@ -266,7 +277,7 @@ export const getIssueAction: Action = {
         logger.warn("Failed to parse LLM response, falling back to regex:", parseError);
         const issueMatch = content.match(/(\w+-\d+)/);
         if (issueMatch) {
-          const issue = await linearService.getIssue(issueMatch[1]);
+          const issue = await linearService.getIssue(issueMatch[1], accountId);
           return await formatIssueResponse(issue, callback, message);
         }
       }

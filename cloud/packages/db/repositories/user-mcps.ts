@@ -17,7 +17,7 @@ import {
  */
 export const userMcpsRepository = {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -131,7 +131,7 @@ export const userMcpsRepository = {
   },
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**
@@ -214,7 +214,7 @@ export const userMcpsRepository = {
  */
 export const mcpUsageRepository = {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -281,7 +281,7 @@ export const mcpUsageRepository = {
   },
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**

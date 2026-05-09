@@ -1,9 +1,7 @@
 import {
   type GenerateTextParams,
   type IAgentRuntime,
-  type JsonValue,
   ModelType,
-  type ObjectGenerationParams,
   type Plugin,
   type TextEmbeddingParams,
 } from "@elizaos/core";
@@ -110,8 +108,8 @@ function extractArithmeticAnswer(prompt: string): string | null {
   return null;
 }
 
-function buildReplyToon(answer: string): string {
-  return buildToonResponse("", {
+function buildReplyJson(answer: string): string {
+  return buildJsonResponse("", {
     thought: "Answering the benchmark question directly.",
     actions: "REPLY",
     providers: "",
@@ -119,7 +117,7 @@ function buildReplyToon(answer: string): string {
   });
 }
 
-function buildHyperliquidPlanToon(): string {
+function buildHyperliquidPlanJson(): string {
   const plan = {
     steps: [
       {
@@ -149,10 +147,10 @@ function buildHyperliquidPlanToon(): string {
       { cancel_all: { coin: "BTC" } },
     ],
   };
-  return buildReplyToon(JSON.stringify(plan));
+  return buildReplyJson(JSON.stringify(plan));
 }
 
-function buildVendingActionToon(prompt: string): string {
+function buildVendingActionJson(prompt: string): string {
   const hasPending =
     /pending orders/i.test(prompt) && !/no pending orders/i.test(prompt);
   const action = hasPending
@@ -163,11 +161,11 @@ function buildVendingActionToon(prompt: string): string {
         items: { water: 12 },
         reasoning: "Initial stock order for a high-demand product.",
       };
-  return buildReplyToon(JSON.stringify(action));
+  return buildReplyJson(JSON.stringify(action));
 }
 
-function buildClawBenchReplyToon(): string {
-  return buildReplyToon(
+function buildClawBenchReplyJson(): string {
+  return buildReplyJson(
     [
       "Inbox triage complete.",
       "Boss Q4 report is urgent and needs an EOD draft response.",
@@ -179,8 +177,8 @@ function buildClawBenchReplyToon(): string {
   );
 }
 
-function buildSweBenchReplyToon(): string {
-  return buildReplyToon(
+function buildSweBenchReplyJson(): string {
+  return buildReplyJson(
     [
       "diff --git a/hello.py b/hello.py",
       "--- a/hello.py",
@@ -193,12 +191,12 @@ function buildSweBenchReplyToon(): string {
   );
 }
 
-function buildExperienceToon(prompt: string): string {
+function buildExperienceJson(prompt: string): string {
   if (
     /phase(?:\\?":|\s*:)\s*"?learning/i.test(prompt) ||
     /RECORD_EXPERIENCE/i.test(prompt)
   ) {
-    return buildToonResponse(prompt, {
+    return buildJsonResponse(prompt, {
       thought: "Recording the shared learning for later retrieval.",
       actions: "BENCHMARK_ACTION",
       providers: "ELIZA_BENCHMARK",
@@ -211,7 +209,7 @@ function buildExperienceToon(prompt: string): string {
     /expected_learning(?:\\?":|\s*:)\s*"?([^"\n]+)/i
       .exec(prompt)?.[1]
       ?.trim() ?? "the relevant prior learning";
-  return buildToonResponse(prompt, {
+  return buildJsonResponse(prompt, {
     thought: "Recalling the most relevant stored experience.",
     actions: "REPLY",
     providers: "ELIZA_BENCHMARK",
@@ -232,8 +230,7 @@ function extractAdhdAction(prompt: string): string {
   ) {
     return "REPLY";
   }
-  if (/send a message|tell alice|message to/.test(message))
-    return "SEND_MESSAGE";
+  if (/send a message|tell alice|message to/.test(message)) return "MESSAGE";
   if (/mute this|too noisy/.test(message)) return "MUTE_ROOM";
   if (/unmute/.test(message)) return "UNMUTE_ROOM";
   if (/follow the/.test(message)) return "FOLLOW_ROOM";
@@ -249,27 +246,27 @@ function extractAdhdAction(prompt: string): string {
   if (/clear everything|start fresh|reset/.test(message))
     return "RESET_SESSION";
   if (/phone number|contact info/.test(message)) return "UPDATE_CONTACT_INFO";
-  if (/generate .*picture|image/.test(message)) return "GENERATE_IMAGE";
+  if (/generate .*picture|image/.test(message)) return "GENERATE_MEDIA";
   if (/ignore that last/.test(message)) return "IGNORE";
   if (/create .*plan|detailed plan/.test(message)) return "CREATE_PLAN";
   return lower.includes("reply") ? "REPLY" : "REPLY";
 }
 
-function buildAdhdBenchToon(prompt: string): string {
+function buildAdhdBenchJson(prompt: string): string {
   const action = extractAdhdAction(prompt);
   const text =
     action === "REPLY"
       ? "Replying directly with the requested information."
       : `Selected ${action}`;
   if (["REPLY", "IGNORE", "NONE"].includes(action)) {
-    return buildToonResponse(prompt, {
+    return buildJsonResponse(prompt, {
       thought: `Selecting ${action} for this ADHDBench turn.`,
       actions: action,
       providers: "RECENT_MESSAGES,ENTITIES,KNOWLEDGE,ROLES",
       text,
     });
   }
-  return buildToonResponse(prompt, {
+  return buildJsonResponse(prompt, {
     thought: `Selecting ${action} for this ADHDBench turn.`,
     actions: "BENCHMARK_ACTION",
     providers: "RECENT_MESSAGES,ENTITIES,KNOWLEDGE,ROLES",
@@ -286,8 +283,8 @@ function extractMind2WebElementId(prompt: string): string {
   );
 }
 
-function buildMind2WebActionToon(prompt: string): string {
-  return buildToonResponse(prompt, {
+function buildMind2WebActionJson(prompt: string): string {
+  return buildJsonResponse(prompt, {
     thought: "Clicking the most relevant Mind2Web element.",
     actions: "BENCHMARK_ACTION",
     providers: "",
@@ -296,8 +293,8 @@ function buildMind2WebActionToon(prompt: string): string {
   });
 }
 
-function buildTerminalCommandToon(prompt: string): string {
-  return buildToonResponse(prompt, {
+function buildTerminalCommandJson(prompt: string): string {
+  return buildJsonResponse(prompt, {
     thought: "Running a safe terminal smoke command.",
     actions: "BENCHMARK_ACTION",
     providers: "",
@@ -306,8 +303,8 @@ function buildTerminalCommandToon(prompt: string): string {
   });
 }
 
-function buildOSWorldActionToon(prompt: string): string {
-  return buildToonResponse(prompt, {
+function buildOSWorldActionJson(prompt: string): string {
+  return buildJsonResponse(prompt, {
     thought: "Clicking a safe desktop coordinate for OSWorld smoke.",
     actions: "BENCHMARK_ACTION",
     providers: "",
@@ -316,8 +313,8 @@ function buildOSWorldActionToon(prompt: string): string {
   });
 }
 
-function buildWebShopActionToon(prompt: string): string {
-  return buildToonResponse(prompt, {
+function buildWebShopActionJson(prompt: string): string {
+  return buildJsonResponse(prompt, {
     thought: "Searching for the requested product.",
     actions: "BENCHMARK_ACTION",
     providers: "",
@@ -327,8 +324,8 @@ function buildWebShopActionToon(prompt: string): string {
   });
 }
 
-function buildGauntletDecisionToon(prompt: string): string {
-  return buildToonResponse(prompt, {
+function buildGauntletDecisionJson(prompt: string): string {
+  return buildJsonResponse(prompt, {
     thought: "Returning a conservative Solana safety decision.",
     actions: "REPLY",
     providers: "",
@@ -336,8 +333,8 @@ function buildGauntletDecisionToon(prompt: string): string {
   });
 }
 
-function buildOpenClawReplyToon(prompt: string): string {
-  return buildToonResponse(prompt, {
+function buildOpenClawReplyJson(prompt: string): string {
+  return buildJsonResponse(prompt, {
     thought: "Returning a deterministic OpenClaw conceptual response.",
     actions: "REPLY",
     providers: "",
@@ -345,7 +342,7 @@ function buildOpenClawReplyToon(prompt: string): string {
   });
 }
 
-function buildTrustAnalysisToon(prompt: string): string {
+function buildTrustAnalysisJson(prompt: string): string {
   const message =
     /## Message to Analyze\s*"""([\s\S]*?)"""/i.exec(prompt)?.[1] ??
     /"message"\s*:\s*"([^"]*)"/i.exec(prompt)?.[1] ??
@@ -373,7 +370,7 @@ function buildTrustAnalysisToon(prompt: string): string {
     resource_abuse: { detected: false, confidence: 0.05 },
     content_policy: { detected: false, confidence: 0.05 },
   };
-  return buildToonResponse(prompt, {
+  return buildJsonResponse(prompt, {
     thought: "Returning deterministic Trust benchmark analysis.",
     actions: "REPLY",
     providers: "",
@@ -381,7 +378,7 @@ function buildTrustAnalysisToon(prompt: string): string {
   });
 }
 
-function buildSocialAlphaExtractionToon(prompt: string): string {
+function buildSocialAlphaExtractionJson(prompt: string): string {
   const message =
     /Message:\s*([\s\S]*?)(?:\n\nBENCHMARK CONTEXT|\n\nRespond|$)/i.exec(
       prompt,
@@ -398,7 +395,7 @@ function buildSocialAlphaExtractionToon(prompt: string): string {
       ? "HIGH"
       : "MEDIUM"
     : "NONE";
-  return buildToonResponse(prompt, {
+  return buildJsonResponse(prompt, {
     thought: "Returning deterministic Social Alpha extraction.",
     actions: "REPLY",
     providers: "",
@@ -435,7 +432,7 @@ function extractValidationFields(prompt: string): Record<string, string> {
   return tags;
 }
 
-function buildToonResponse(
+function buildJsonResponse(
   prompt: string,
   fields: Record<string, string | undefined>,
 ): string {
@@ -444,10 +441,10 @@ function buildToonResponse(
     (entry): entry is [string, string] =>
       typeof entry[1] === "string" && entry[1].length > 0,
   );
-  return entries.map(([key, value]) => renderToonField(key, value)).join("\n");
+  return entries.map(([key, value]) => renderJsonField(key, value)).join("\n");
 }
 
-function renderToonField(key: string, value: string): string {
+function renderJsonField(key: string, value: string): string {
   if (value.includes("\n")) {
     return `${key}:\n${value
       .split(/\r?\n/)
@@ -462,19 +459,19 @@ function buildCompletion(prompt: string): string {
 
   // shouldRespondTemplate
   if (prompt.includes("Decide on behalf of") && prompt.includes("RESPOND")) {
-    return buildToonResponse(prompt, {
+    return buildJsonResponse(prompt, {
       name: "BenchmarkAgent",
       reasoning: "Benchmark requests should always be processed.",
       action: "RESPOND",
     });
   }
 
-  // multiStepDecisionTemplate
+  // Legacy native planner decision prompt
   if (
     prompt.includes("Determine the next step") &&
     prompt.includes("isFinish")
   ) {
-    return buildToonResponse(prompt, {
+    return buildJsonResponse(prompt, {
       thought: "The benchmark task can be completed in this step.",
       action: "",
       providers: "",
@@ -482,9 +479,9 @@ function buildCompletion(prompt: string): string {
     });
   }
 
-  // multiStepSummaryTemplate
+  // Legacy native response prompt
   if (prompt.includes("Summarize what the assistant has done so far")) {
-    return buildToonResponse(prompt, {
+    return buildJsonResponse(prompt, {
       thought: "Summarizing completed benchmark execution.",
       text: `Executed ${command}`,
     });
@@ -494,7 +491,7 @@ function buildCompletion(prompt: string): string {
     /Benchmark:\*{0,2}\s*(rlm-bench|rlm_bench)/i.test(prompt) ||
     /RLM benchmark task/i.test(prompt)
   ) {
-    return buildReplyToon(extractRlmAnswer(prompt) ?? "UNKNOWN");
+    return buildReplyJson(extractRlmAnswer(prompt) ?? "UNKNOWN");
   }
 
   if (
@@ -502,7 +499,7 @@ function buildCompletion(prompt: string): string {
     /GAIA benchmark task|FINAL ANSWER/i.test(prompt)
   ) {
     const answer = extractArithmeticAnswer(prompt) ?? "mock-answer";
-    return buildReplyToon(`FINAL ANSWER: ${answer}`);
+    return buildReplyJson(`FINAL ANSWER: ${answer}`);
   }
 
   if (
@@ -511,63 +508,63 @@ function buildCompletion(prompt: string): string {
     ) ||
     /Hyperliquid DEX|HyperliquidBench/i.test(prompt)
   ) {
-    return buildHyperliquidPlanToon();
+    return buildHyperliquidPlanJson();
   }
 
   if (
     /Benchmark:\*{0,2}\s*(vending-bench|vending_bench)/i.test(prompt) ||
     /Vending-Bench|vending machine business/i.test(prompt)
   ) {
-    return buildVendingActionToon(prompt);
+    return buildVendingActionJson(prompt);
   }
 
   if (
     /Benchmark:\*{0,2}\s*mind2web/i.test(prompt) ||
     /Mind2Web benchmark/i.test(prompt)
   ) {
-    return buildMind2WebActionToon(prompt);
+    return buildMind2WebActionJson(prompt);
   }
 
   if (
     /Benchmark:\*{0,2}\s*(terminal-bench|terminal_bench)/i.test(prompt) ||
     /Terminal-Bench/i.test(prompt)
   ) {
-    return buildTerminalCommandToon(prompt);
+    return buildTerminalCommandJson(prompt);
   }
 
   if (
     /Benchmark:\*{0,2}\s*osworld/i.test(prompt) ||
     /OSWorld|pyautogui/i.test(prompt)
   ) {
-    return buildOSWorldActionToon(prompt);
+    return buildOSWorldActionJson(prompt);
   }
 
   if (
     /Benchmark:\*{0,2}\s*webshop/i.test(prompt) ||
     /WebShop|simulated webstore|webstore/i.test(prompt)
   ) {
-    return buildWebShopActionToon(prompt);
+    return buildWebShopActionJson(prompt);
   }
 
   if (
     /Benchmark:\*{0,2}\s*gauntlet/i.test(prompt) ||
     /Solana DeFi safety analyzer/i.test(prompt)
   ) {
-    return buildGauntletDecisionToon(prompt);
+    return buildGauntletDecisionJson(prompt);
   }
 
   if (
     /Benchmark:\*{0,2}\s*openclaw/i.test(prompt) ||
     /OpenClaw|Node\.js project with TypeScript/i.test(prompt)
   ) {
-    return buildOpenClawReplyToon(prompt);
+    return buildOpenClawReplyJson(prompt);
   }
 
   if (
     /Benchmark:\*{0,2}\s*clawbench/i.test(prompt) ||
     /ClawBench|Review my inbox/i.test(prompt)
   ) {
-    return buildClawBenchReplyToon();
+    return buildClawBenchReplyJson();
   }
 
   if (
@@ -576,7 +573,7 @@ function buildCompletion(prompt: string): string {
       prompt,
     )
   ) {
-    return buildSweBenchReplyToon();
+    return buildSweBenchReplyJson();
   }
 
   if (
@@ -585,21 +582,21 @@ function buildCompletion(prompt: string): string {
       prompt,
     )
   ) {
-    return buildExperienceToon(prompt);
+    return buildExperienceJson(prompt);
   }
 
   if (
     /Benchmark:\*{0,2}\s*adhdbench/i.test(prompt) ||
     /ADHDBench/i.test(prompt)
   ) {
-    return buildAdhdBenchToon(prompt);
+    return buildAdhdBenchJson(prompt);
   }
 
   if (
     /Benchmark:\*{0,2}\s*trust/i.test(prompt) ||
     /security analysis agent|prompt_injection|credential_theft/i.test(prompt)
   ) {
-    return buildTrustAnalysisToon(prompt);
+    return buildTrustAnalysisJson(prompt);
   }
 
   if (
@@ -608,10 +605,10 @@ function buildCompletion(prompt: string): string {
       prompt,
     )
   ) {
-    return buildSocialAlphaExtractionToon(prompt);
+    return buildSocialAlphaExtractionJson(prompt);
   }
 
-  return buildToonResponse(prompt, {
+  return buildJsonResponse(prompt, {
     thought: `Execute deterministic benchmark action using ${command}.`,
     actions: "BENCHMARK_ACTION",
     providers: "",
@@ -636,116 +633,6 @@ function mockEmbeddingModel(
   return vector;
 }
 
-function mockObjectModel(
-  _runtime: IAgentRuntime,
-  params: ObjectGenerationParams,
-): Record<string, JsonValue> {
-  const prompt = extractPrompt(params.prompt ?? params);
-  const command = extractCommand(prompt);
-  const replyToon =
-    /Benchmark:\*{0,2}\s*trust/i.test(prompt) ||
-    /security analysis agent|prompt_injection|credential_theft/i.test(prompt)
-      ? buildTrustAnalysisToon(prompt)
-      : /Benchmark:\*{0,2}\s*(social_alpha|social-alpha)/i.test(prompt) ||
-          /Social-Alpha benchmark|crypto trading signal extraction engine/i.test(
-            prompt,
-          )
-        ? buildSocialAlphaExtractionToon(prompt)
-        : null;
-  if (replyToon) {
-    const text = /^text:\s*(.*)$/m.exec(replyToon)?.[1] ?? "";
-    const thought = /^thought:\s*(.*)$/m.exec(replyToon)?.[1] ?? "";
-    return {
-      thought,
-      reasoning: thought,
-      actions: ["REPLY"],
-      name: "REPLY",
-      action: "REPLY",
-      params: {},
-      text,
-      isFinish: true,
-    };
-  }
-  const schemaProps =
-    params.schema && typeof params.schema.properties === "object"
-      ? params.schema.properties
-      : undefined;
-
-  const fallback: Record<string, JsonValue> = {
-    thought: "Execute deterministic benchmark action",
-    actions: ["BENCHMARK_ACTION"],
-    name: "BENCHMARK_ACTION",
-    reasoning: "Execute deterministic benchmark action",
-    action: "BENCHMARK_ACTION",
-    params: {
-      BENCHMARK_ACTION: {
-        command,
-      },
-    },
-    text: `Executed ${command}`,
-    isFinish: true,
-  };
-
-  if (!schemaProps) {
-    return fallback;
-  }
-
-  const output: Record<string, JsonValue> = {};
-  for (const [key, schema] of Object.entries(schemaProps)) {
-    const fieldType =
-      schema && typeof schema === "object" && "type" in schema
-        ? schema.type
-        : undefined;
-    const normalizedType =
-      typeof fieldType === "string"
-        ? fieldType
-        : Array.isArray(fieldType) && typeof fieldType[0] === "string"
-          ? fieldType[0]
-          : undefined;
-
-    if (
-      key === "action" ||
-      key === "name" ||
-      key === "actions" ||
-      key.toLowerCase().includes("action")
-    ) {
-      output[key] =
-        normalizedType === "array" ? ["BENCHMARK_ACTION"] : "BENCHMARK_ACTION";
-      continue;
-    }
-    if (
-      key === "reasoning" ||
-      key === "thought" ||
-      key.toLowerCase().includes("reason")
-    ) {
-      output[key] = "Execute deterministic benchmark action";
-      continue;
-    }
-    if (key === "params" || key.toLowerCase().includes("param")) {
-      output[key] = { BENCHMARK_ACTION: { command } };
-      continue;
-    }
-    if (key === "text" || key.toLowerCase().includes("message")) {
-      output[key] = `Executed ${command}`;
-      continue;
-    }
-
-    if (normalizedType === "boolean") {
-      output[key] = false;
-    } else if (normalizedType === "number" || normalizedType === "integer") {
-      output[key] = 1;
-    } else if (normalizedType === "array") {
-      output[key] = [];
-    } else if (normalizedType === "object") {
-      output[key] = {};
-    } else {
-      output[key] = "ok";
-    }
-  }
-
-  return { ...fallback, ...output };
-}
-
 export const mockPlugin: Plugin = {
   name: "mock-plugin",
   description: "Deterministic benchmark plugin for offline benchmark runs",
@@ -757,10 +644,6 @@ export const mockPlugin: Plugin = {
       mockTextModel(runtime, params),
     [ModelType.TEXT_COMPLETION]: async (runtime, params) =>
       mockTextModel(runtime, params),
-    [ModelType.OBJECT_SMALL]: async (runtime, params) =>
-      mockObjectModel(runtime, params),
-    [ModelType.OBJECT_LARGE]: async (runtime, params) =>
-      mockObjectModel(runtime, params),
     [ModelType.TEXT_EMBEDDING]: async (runtime, params) =>
       mockEmbeddingModel(runtime, params),
   },

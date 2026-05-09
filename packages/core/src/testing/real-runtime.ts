@@ -22,6 +22,10 @@ import os from "node:os";
 import path from "node:path";
 import type { Plugin } from "@elizaos/core";
 import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
+
+/** Workspace plugins may resolve `@elizaos/core` from npm while this package uses source types. */
+type RegisterablePlugin = Parameters<AgentRuntime["registerPlugin"]>[0];
+
 import { configureLocalEmbeddingPlugin } from "../../../agent/src/runtime/eliza";
 import {
 	type LiveProviderConfig,
@@ -145,7 +149,7 @@ export async function createRealTestRuntime(
 
 	// Always register plugin-sql for PGLite database
 	const { default: pluginSql } = await import("@elizaos/plugin-sql");
-	await runtime.registerPlugin(pluginSql);
+	await runtime.registerPlugin(pluginSql as RegisterablePlugin);
 
 	if (options?.withLLM) {
 		try {
@@ -157,7 +161,7 @@ export async function createRealTestRuntime(
 			const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
 			if (plugin) {
 				configureLocalEmbeddingPlugin(plugin);
-				await runtime.registerPlugin(plugin);
+				await runtime.registerPlugin(plugin as RegisterablePlugin);
 				logger.info(
 					"[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",
 				);
@@ -186,7 +190,7 @@ export async function createRealTestRuntime(
 				const pluginModule = await import(providerConfig.pluginPackage);
 				const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
 				if (plugin) {
-					await runtime.registerPlugin(plugin);
+					await runtime.registerPlugin(plugin as RegisterablePlugin);
 					logger.info(
 						`[real-runtime] Registered LLM plugin: ${providerConfig.pluginPackage} (${providerName})`,
 					);
@@ -211,7 +215,7 @@ export async function createRealTestRuntime(
 			};
 			const plugin = discordModule.default ?? discordModule.elizaPlugin;
 			if (plugin) {
-				await runtime.registerPlugin(plugin);
+				await runtime.registerPlugin(plugin as RegisterablePlugin);
 				logger.info("[real-runtime] Registered Discord plugin");
 			}
 		} catch (err) {
@@ -229,7 +233,7 @@ export async function createRealTestRuntime(
 			};
 			const plugin = telegramModule.default ?? telegramModule.elizaPlugin;
 			if (plugin) {
-				await runtime.registerPlugin(plugin);
+				await runtime.registerPlugin(plugin as RegisterablePlugin);
 				logger.info("[real-runtime] Registered Telegram plugin");
 			}
 		} catch (err) {

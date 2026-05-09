@@ -50,7 +50,7 @@ export default scenario({
       room: "main",
       text: "Who should I follow up with to stay on track with my quarterly relationship goals?",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_RELATIONSHIP"],
+        acceptedActions: ["RELATIONSHIP"],
         description: "quarterly relationship follow-up review",
         includesAny: ["quarter", "follow"],
       }),
@@ -61,14 +61,14 @@ export default scenario({
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "OWNER_RELATIONSHIP",
+      actionName: "RELATIONSHIP",
       minCount: 1,
     },
     {
       type: "custom",
       name: "relationship-progress-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_RELATIONSHIP"],
+        acceptedActions: ["RELATIONSHIP"],
         description: "quarterly relationship follow-up review",
         includesAny: ["quarter", "follow"],
       }),
@@ -78,7 +78,7 @@ export default scenario({
       name: "relationship-progress-followup-list",
       predicate: async (ctx) => {
         const action = ctx.actionsCalled.find(
-          (entry) => entry.actionName === "OWNER_RELATIONSHIP",
+          (entry) => entry.actionName === "RELATIONSHIP",
         );
         const data =
           action?.result?.data && typeof action.result.data === "object"
@@ -89,7 +89,7 @@ export default scenario({
               })
             : null;
         if (!data) {
-          return "expected OWNER_RELATIONSHIP result data";
+          return "expected RELATIONSHIP result data";
         }
         if (
           data.subaction !== "follow_up_list" &&

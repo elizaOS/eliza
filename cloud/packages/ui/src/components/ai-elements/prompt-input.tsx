@@ -40,7 +40,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "../../lib/utils";
 // Native img used for framework agnosticism
 import { Button } from "../button";
 import {

@@ -42,7 +42,7 @@ export interface TriggerExecutionResult {
   taskDeleted: boolean;
   runRecord?: TriggerRunRecord;
   trigger?: TriggerSummary | null;
-  // Present when a workflow-kind trigger dispatches to N8N_DISPATCH and
+  // Present when a workflow-kind trigger dispatches to WORKFLOW_DISPATCH and
   // the service returns an execution id.
   executionId?: string;
 }
@@ -233,12 +233,11 @@ async function dispatchInstruction(
   );
 
   // For inject_now: the memory is already in the autonomy room. The
-  // AutonomyService loop will pick it up on its next cycle. We don't
-  // call processActions here to avoid double-dispatch — the loop is
+  // AutonomyService loop will pick it up on its next cycle; that loop is
   // the single execution path for all autonomous instructions.
 }
 
-interface N8nDispatchServiceLike {
+interface WorkflowDispatchServiceLike {
   execute(
     workflowId: string,
     payload?: Record<string, unknown>,
@@ -253,9 +252,9 @@ async function dispatchWorkflow(
   if (!trigger.workflowId) {
     return { ok: false, error: "workflow trigger missing workflowId" };
   }
-  const svc = runtime.getService<Service & N8nDispatchServiceLike>(
-    "N8N_DISPATCH",
-  ) as (Service & N8nDispatchServiceLike) | null;
+  const svc = runtime.getService<Service & WorkflowDispatchServiceLike>(
+    "WORKFLOW_DISPATCH",
+  ) as (Service & WorkflowDispatchServiceLike) | null;
   if (!svc) {
     runtime.logger.warn?.(
       {
@@ -263,9 +262,9 @@ async function dispatchWorkflow(
         triggerId: trigger.triggerId,
         workflowId: trigger.workflowId,
       },
-      "[triggers] workflow dispatch requested but N8N_DISPATCH service not registered",
+      "[triggers] workflow dispatch requested but WORKFLOW_DISPATCH service not registered",
     );
-    return { ok: false, error: "N8N_DISPATCH service not registered" };
+    return { ok: false, error: "WORKFLOW_DISPATCH service not registered" };
   }
   const result = event
     ? await svc.execute(trigger.workflowId, {

@@ -10,11 +10,8 @@ Output: `data/synthesized/scambench/scambench.jsonl`
 
 Each record has:
   - `task_type = "reply"`
-  - TOON `expectedResponse` shaped like
-        thought: <first-person inner thought>
-        reply:
-          text: <safe response>
-          channel: chat
+  - JSON `expectedResponse` shaped like
+        {"thought":"<first-person inner thought>","reply":{"text":"<safe response>","channel":"chat"}}
   - `metadata.system_prompt` rendered from `data/prompts/registry.json`'s
     `reply` template via the handlebars helper in
     `scripts/format_for_training.py`.
@@ -60,7 +57,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from format_for_training import _load_prompt_registry, render_handlebars  # noqa: E402
 from lib.eliza_record import build  # noqa: E402
-from lib.toon import ToonEncoder  # noqa: E402
+from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 RAW_DIR = ROOT / "data" / "raw" / "scambench" / "data"
 TRAIN_PARQUET = RAW_DIR / "train" / "train-00000-of-00001.parquet"
@@ -300,7 +297,7 @@ def load_existing_state(path: Path) -> tuple[set[str], int, int]:
 def adapt_row(
     row: dict[str, Any],
     *,
-    encoder: ToonEncoder,
+    encoder: ExpectedResponseEncoder,
     agent_id: str = "milady",
 ) -> tuple[dict[str, Any] | None, str]:
     """Adapt one parquet row to a canonical eliza record dict.
@@ -344,7 +341,7 @@ def adapt_row(
             "channel": "chat",
         },
     }
-    toon = encoder.encode(target)
+    expected_response = encoder.encode(target)
 
     sys_prompt = reply_system_prompt(agent_id)
 
@@ -374,7 +371,7 @@ def adapt_row(
         agentId=agent_id,
         memoryEntries=memory,
         currentMessage=current,
-        expectedResponse=toon,
+        expectedResponse=expected_response,
         availableActions=[],
         task_type="reply",
         source_dataset=SOURCE_SLUG,
@@ -418,7 +415,7 @@ def run_pipeline(
         len(seen_ids), OUT_FILE, prior_trig, prior_legit,
     )
 
-    encoder = ToonEncoder()
+    encoder = JsonExpectedResponseEncoder()
 
     in_count = 0
     out_count = 0
@@ -539,14 +536,11 @@ def run_pipeline(
 
 
 def validate_output(*, sample: int = 25) -> tuple[bool, list[str]]:
-    """Schema + TOON round-trip check on the emitted file."""
-    from lib.toon import ToonDecoder
-
+    """Schema + JSON expectedResponse check on the emitted file."""
     if not OUT_FILE.exists():
         return False, [f"output file missing: {OUT_FILE}"]
 
     errors: list[str] = []
-    decoder = ToonDecoder()
     n_checked = 0
 
     with OUT_FILE.open("r", encoding="utf-8") as f:
@@ -575,28 +569,27 @@ def validate_output(*, sample: int = 25) -> tuple[bool, list[str]]:
                 errors.append(f"line {idx}: unexpected source_dataset={md.get('source_dataset')}")
 
             try:
-                decoded = decoder.decode(rec["expectedResponse"])
-            except (ValueError, RuntimeError) as e:
-                errors.append(f"line {idx}: TOON decode failed: {e}")
+                decoded = json.loads(rec["expectedResponse"])
+            except (TypeError, json.JSONDecodeError) as e:
+                errors.append(f"line {idx}: JSON expectedResponse decode failed: {e}")
                 continue
 
             if not isinstance(decoded, dict):
-                errors.append(f"line {idx}: TOON did not decode to dict")
+                errors.append(f"line {idx}: expectedResponse did not decode to dict")
                 continue
             if "thought" not in decoded:
-                errors.append(f"line {idx}: TOON missing thought")
+                errors.append(f"line {idx}: expectedResponse missing thought")
             reply = decoded.get("reply")
             if not isinstance(reply, dict):
-                errors.append(f"line {idx}: TOON missing reply object")
+                errors.append(f"line {idx}: expectedResponse missing reply object")
                 continue
             if "text" not in reply or not str(reply["text"]).strip():
-                errors.append(f"line {idx}: TOON reply.text empty")
+                errors.append(f"line {idx}: expectedResponse reply.text empty")
             if reply.get("channel") != "chat":
-                errors.append(f"line {idx}: TOON reply.channel != chat")
+                errors.append(f"line {idx}: expectedResponse reply.channel != chat")
 
             n_checked += 1
 
-    decoder.close()
     return len(errors) == 0, errors
 
 
@@ -612,7 +605,7 @@ def main() -> int:
     ap.add_argument("--legitimate-ratio", type=float, default=0.25,
                     help="target fraction of output that is legitimate (default 0.25)")
     ap.add_argument("--validate", action="store_true",
-                    help="run schema + TOON round-trip check on existing output")
+                    help="run schema + JSON expectedResponse check on existing output")
     ap.add_argument("--sample-size", type=int, default=25,
                     help="how many records to validate (with --validate)")
     args = ap.parse_args()

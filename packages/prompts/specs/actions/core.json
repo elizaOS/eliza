@@ -244,57 +244,291 @@
       "descriptionCompressed": "Respond without additional action. Default when speaking only."
     },
     {
-      "name": "SEND_MESSAGE",
-      "description": "Send a message to a user or room (other than the current one)",
-      "similes": [
-        "DM",
-        "MESSAGE",
-        "SEND_DM",
-        "POST_MESSAGE",
-        "DIRECT_MESSAGE",
-        "NOTIFY"
-      ],
+      "name": "MESSAGE",
+      "description": "Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Choose operation=send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. Public feed publishing belongs to POST.",
+      "similes": ["DM", "DIRECT_MESSAGE", "CHAT", "CHANNEL", "ROOM"],
       "parameters": [
         {
-          "name": "targetType",
-          "description": "Whether the message target is a user or a room.",
-          "required": true,
+          "name": "operation",
+          "description": "Message subaction: send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage.",
+          "required": false,
           "schema": {
             "type": "string",
-            "enum": ["user", "room"]
+            "enum": [
+              "send",
+              "read_channel",
+              "read_with_contact",
+              "search",
+              "list_channels",
+              "list_servers",
+              "react",
+              "edit",
+              "delete",
+              "pin",
+              "join",
+              "leave",
+              "get_user",
+              "triage",
+              "list_inbox",
+              "search_inbox",
+              "draft_reply",
+              "draft_followup",
+              "respond",
+              "send_draft",
+              "schedule_draft_send",
+              "manage"
+            ]
           },
-          "examples": ["user", "room"],
-          "descriptionCompressed": "user or room target."
+          "descriptionCompressed": "message operation"
         },
         {
           "name": "source",
-          "description": "The platform/source to send the message on (e.g. telegram, discord, x).",
+          "description": "Connector or inbox source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
           "required": false,
           "schema": {
             "type": "string"
           },
-          "examples": ["telegram", "discord"],
-          "descriptionCompressed": "source platform (telegram, discord, x)."
+          "descriptionCompressed": "connector or inbox source"
+        },
+        {
+          "name": "accountId",
+          "description": "Optional connector account id for multi-account message connectors.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "connector account id"
+        },
+        {
+          "name": "sources",
+          "description": "Optional inbox sources for operation=triage, list_inbox, or search_inbox.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "descriptionCompressed": "inbox sources"
         },
         {
           "name": "target",
-          "description": "Identifier of the target. For user targets, a name/handle/id; for room targets, a room name/id.",
-          "required": true,
+          "description": "Loose target reference: user, handle, channel, room, group, server, contact, phone, email, or platform-specific ID.",
+          "required": false,
           "schema": {
             "type": "string"
           },
-          "examples": ["dev_guru", "announcements"],
-          "descriptionCompressed": "Target name/handle/id."
+          "descriptionCompressed": "loose message target"
         },
         {
-          "name": "text",
-          "description": "The message content to send.",
-          "required": true,
+          "name": "channel",
+          "description": "Loose channel, room, or group name/reference.",
+          "required": false,
           "schema": {
             "type": "string"
           },
-          "examples": ["Hello!", "Important announcement!"],
-          "descriptionCompressed": "Message content."
+          "descriptionCompressed": "channel reference"
+        },
+        {
+          "name": "server",
+          "description": "Loose server, guild, workspace, or team name/reference.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "server reference"
+        },
+        {
+          "name": "message",
+          "description": "Message text for operation=send or replacement text for operation=edit.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "message text"
+        },
+        {
+          "name": "query",
+          "description": "Search term for operation=search or operation=search_inbox.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "search query"
+        },
+        {
+          "name": "content",
+          "description": "Inbox search text or message lookup hint for draft/respond/manage operations.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "message lookup text"
+        },
+        {
+          "name": "sender",
+          "description": "Sender identifier, handle, or display name for inbox search or reply lookup.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "sender lookup"
+        },
+        {
+          "name": "body",
+          "description": "Draft or response body for operation=draft_reply, draft_followup, or respond.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "draft body"
+        },
+        {
+          "name": "to",
+          "description": "Recipient identifiers for operation=draft_followup.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "descriptionCompressed": "draft recipients"
+        },
+        {
+          "name": "subject",
+          "description": "Optional subject for email-like draft operations.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "draft subject"
+        },
+        {
+          "name": "messageId",
+          "description": "Platform message ID, full message ID, or stored memory ID for react/edit/delete/pin/respond/manage.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "message id"
+        },
+        {
+          "name": "draftId",
+          "description": "Draft identifier for operation=send_draft or operation=schedule_draft_send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "draft id"
+        },
+        {
+          "name": "confirmed",
+          "description": "Whether the user explicitly confirmed sending for operation=send_draft.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          },
+          "descriptionCompressed": "send confirmed"
+        },
+        {
+          "name": "sendAt",
+          "description": "Scheduled send time for operation=schedule_draft_send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "send time"
+        },
+        {
+          "name": "emoji",
+          "description": "Reaction value for operation=react.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "reaction emoji"
+        },
+        {
+          "name": "pin",
+          "description": "Pin state for operation=pin. Use false to unpin when supported.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          },
+          "descriptionCompressed": "pin state"
+        },
+        {
+          "name": "manageOperation",
+          "description": "Management operation for operation=manage, such as archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "manage operation"
+        },
+        {
+          "name": "label",
+          "description": "Label for operation=manage when adding or removing labels.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "message label"
+        },
+        {
+          "name": "tag",
+          "description": "Tag for operation=manage when adding or removing tags.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "message tag"
+        },
+        {
+          "name": "limit",
+          "description": "Maximum number of messages/channels/servers/inbox items to return.",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          },
+          "descriptionCompressed": "result limit"
+        },
+        {
+          "name": "cursor",
+          "description": "Opaque pagination cursor for read/search/list operations.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "pagination cursor"
+        },
+        {
+          "name": "sinceMs",
+          "description": "Start timestamp in milliseconds for inbox list/search/triage operations.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          },
+          "descriptionCompressed": "since timestamp"
+        },
+        {
+          "name": "since",
+          "description": "Start timestamp or parseable date for operation=search_inbox.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "search start"
+        },
+        {
+          "name": "until",
+          "description": "End timestamp or parseable date for operation=read_channel range=dates or operation=search_inbox.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "search end"
         }
       ],
       "examples": [
@@ -309,37 +543,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "Message sent to dev_guru on telegram.",
-              "actions": ["SEND_MESSAGE"]
-            }
-          }
-        ],
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "Post 'Important announcement!' in #announcements"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "Message sent to announcements.",
-              "actions": ["SEND_MESSAGE"]
-            }
-          }
-        ],
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "DM Jimmy and tell him 'Meeting at 3pm'"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "Message sent to Jimmy.",
-              "actions": ["SEND_MESSAGE"]
+              "actions": ["MESSAGE"]
             }
           }
         ]
@@ -347,228 +551,142 @@
       "exampleCalls": [
         {
           "user": "Send a message to @dev_guru on telegram saying \"Hello!\"",
-          "actions": ["REPLY", "SEND_MESSAGE"],
+          "actions": ["REPLY", "MESSAGE"],
           "params": {
-            "SEND_MESSAGE": {
-              "targetType": "user",
+            "MESSAGE": {
+              "operation": "send",
               "source": "telegram",
               "target": "dev_guru",
-              "text": "Hello!"
+              "message": "Hello!"
+            }
+          }
+        },
+        {
+          "user": "Triage my Gmail inbox",
+          "actions": ["MESSAGE"],
+          "params": {
+            "MESSAGE": {
+              "operation": "triage",
+              "sources": ["gmail"]
             }
           }
         }
       ],
-      "descriptionCompressed": "Send msg to another user or room (not current)."
+      "descriptionCompressed": "primary message action operations send read_channel read_with_contact search list_channels list_servers react edit delete pin join leave get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft"
     },
     {
-      "name": "ADD_CONTACT",
-      "description": "Add a new contact to the relationships with categorization and preferences",
-      "similes": [
-        "SAVE_CONTACT",
-        "REMEMBER_PERSON",
-        "ADD_TO_CONTACTS",
-        "SAVE_TO_ROLODEX",
-        "CREATE_CONTACT",
-        "NEW_CONTACT",
-        "add contact",
-        "save contact",
-        "add to contacts",
-        "add to relationships",
-        "remember this person",
-        "save their info",
-        "add them to my list",
-        "categorize as friend",
-        "mark as vip",
-        "add to address book"
-      ],
+      "name": "POST",
+      "description": "Primary action for public feed surfaces and timelines. Choose op=send to publish a post, op=read to fetch recent feed posts, or op=search to search public posts. Addressed DMs, groups, channels, rooms, and inbox/draft workflows belong to MESSAGE.",
+      "similes": ["TWEET", "CAST", "PUBLISH", "FEED_POST", "TIMELINE"],
       "parameters": [
         {
-          "name": "name",
-          "description": "The contact's primary name.",
-          "required": true,
+          "name": "op",
+          "description": "Post subaction: send, read, or search.",
+          "required": false,
           "schema": {
-            "type": "string"
+            "type": "string",
+            "enum": ["send", "read", "search"]
           },
-          "examples": ["Sarah Chen", "John Smith"],
-          "descriptionCompressed": "Contact name."
+          "descriptionCompressed": "post op"
         },
         {
-          "name": "notes",
-          "description": "Optional notes about the contact (short summary, context, or preferences).",
+          "name": "source",
+          "description": "Post connector source such as x, bluesky, farcaster, nostr, or instagram.",
           "required": false,
           "schema": {
             "type": "string"
           },
-          "examples": ["Met at the AI meetup; interested in agents"],
-          "descriptionCompressed": "Optional notes/context."
-        }
-      ],
-      "examples": [
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "Add John Smith to my contacts as a colleague"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "I've added John Smith to your contacts as a colleague."
-            }
-          }
-        ],
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "Save this person as a friend in my relationships"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "I've saved them as a friend in your relationships."
-            }
-          }
-        ],
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "Remember Alice as a VIP contact"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "I've added Alice to your contacts as a VIP."
-            }
-          }
-        ]
-      ],
-      "descriptionCompressed": "Add contact to relationships with category/preferences."
-    },
-    {
-      "name": "UPDATE_CONTACT",
-      "description": "Update an existing contact's details in the relationships.",
-      "similes": ["EDIT_CONTACT", "MODIFY_CONTACT", "CHANGE_CONTACT_INFO"],
-      "parameters": [
-        {
-          "name": "name",
-          "description": "The contact name to update (must match an existing contact).",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["Sarah Chen"],
-          "descriptionCompressed": "Contact name (must match existing)."
+          "descriptionCompressed": "post connector source"
         },
         {
-          "name": "updates",
-          "description": "Structured fields to update, such as notes, tags, categories, preferences, or custom fields.",
-          "required": true,
+          "name": "accountId",
+          "description": "Optional connector account id for multi-account post connectors.",
+          "required": false,
           "schema": {
             "type": "string"
           },
-          "examples": ["notes: prefers email; tags: friend"],
-          "descriptionCompressed": "Structured fields to update: notes, tags, category/categories, preferences."
-        }
-      ],
-      "examples": [
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "Update Sarah's contact to add the tag 'investor'"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "I've updated Sarah's contact with the new tag."
-            }
-          }
-        ]
-      ],
-      "descriptionCompressed": "Update existing contact details."
-    },
-    {
-      "name": "REMOVE_CONTACT",
-      "description": "Remove a contact from the relationships.",
-      "similes": [
-        "DELETE_CONTACT",
-        "REMOVE_FROM_ROLODEX",
-        "DELETE_FROM_CONTACTS",
-        "FORGET_PERSON",
-        "REMOVE_FROM_CONTACTS"
-      ],
-      "parameters": [
+          "descriptionCompressed": "post account id"
+        },
         {
-          "name": "name",
-          "description": "The contact name to remove.",
-          "required": true,
+          "name": "text",
+          "description": "Public post text for operation=send.",
+          "required": false,
           "schema": {
             "type": "string"
           },
-          "examples": ["Sarah Chen"],
-          "descriptionCompressed": "Contact name."
-        }
-      ],
-      "examples": [
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "Remove John from my contacts"
-            }
+          "descriptionCompressed": "post text"
+        },
+        {
+          "name": "target",
+          "description": "Loose feed target for operation=send/read, such as a user, channel, media id, or connector-specific reference.",
+          "required": false,
+          "schema": {
+            "type": "string"
           },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "Are you sure you want to remove John from your contacts?"
-            }
+          "descriptionCompressed": "feed target"
+        },
+        {
+          "name": "feed",
+          "description": "Feed convention for operation=read, such as home, user, hashtag, channel, or connector-specific feed.",
+          "required": false,
+          "schema": {
+            "type": "string"
           },
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "Yes"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "I've removed John from your contacts."
-            }
-          }
-        ]
-      ],
-      "descriptionCompressed": "Remove contact from relationships."
-    },
-    {
-      "name": "SEARCH_CONTACTS",
-      "description": "Search and list contacts in the relationships by name or query.",
-      "similes": [
-        "FIND_CONTACTS",
-        "LOOKUP_CONTACTS",
-        "LIST_CONTACTS",
-        "SHOW_CONTACTS",
-        "list contacts",
-        "show contacts",
-        "search contacts",
-        "find contacts",
-        "who are my friends"
-      ],
-      "parameters": [
+          "descriptionCompressed": "feed"
+        },
         {
           "name": "query",
-          "description": "Search query (name, handle, or free-text).",
-          "required": true,
+          "description": "Search term for operation=search.",
+          "required": false,
           "schema": {
             "type": "string"
           },
-          "examples": ["sarah", "AI meetup"],
-          "descriptionCompressed": "Search query (name/handle/free-text)."
+          "descriptionCompressed": "post search query"
+        },
+        {
+          "name": "replyTo",
+          "description": "Post/comment/reply target for operation=send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "reply target"
+        },
+        {
+          "name": "mediaId",
+          "description": "Media id for connector-specific comment surfaces such as Instagram.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "media id"
+        },
+        {
+          "name": "limit",
+          "description": "Maximum number of posts to return.",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          },
+          "descriptionCompressed": "result limit"
+        },
+        {
+          "name": "cursor",
+          "description": "Opaque pagination cursor for operation=read or operation=search.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "pagination cursor"
+        },
+        {
+          "name": "attachments",
+          "description": "Optional post attachments.",
+          "required": false,
+          "schema": {
+            "type": "array"
+          },
+          "descriptionCompressed": "post attachments"
         }
       ],
       "examples": [
@@ -576,18 +694,32 @@
           {
             "name": "{{name1}}",
             "content": {
-              "text": "Show me my friends"
+              "text": "Post this on X: shipping today"
             }
           },
           {
             "name": "{{name2}}",
             "content": {
-              "text": "Here are your contacts tagged as friends: Sarah Chen, John Smith..."
+              "text": "Posted to X.",
+              "actions": ["POST"]
             }
           }
         ]
       ],
-      "descriptionCompressed": "Search/list contacts by name or query."
+      "exampleCalls": [
+        {
+          "user": "Post this on X: shipping today",
+          "actions": ["POST"],
+          "params": {
+            "POST": {
+              "source": "x",
+              "text": "shipping today",
+              "op": "send"
+            }
+          }
+        }
+      ],
+      "descriptionCompressed": "primary post action ops send read search public feed timeline posts"
     },
     {
       "name": "SCHEDULE_FOLLOW_UP",
@@ -1012,156 +1144,90 @@
       "descriptionCompressed": "Assign role (Admin/Owner/None) to user(s) in channel."
     },
     {
-      "name": "UPDATE_ENTITY",
-      "description": "Add or edit contact details for a person you are talking to or observing. Use this to modify entity profiles, metadata, or attributes.",
+      "name": "GENERATE_MEDIA",
+      "description": "Generates media based on a prompt and media type. Use GENERATE_MEDIA when the agent needs to create an image, video, music, sound effect, or speech audio for the user.",
       "similes": [
-        "EDIT_ENTITY",
-        "MODIFY_ENTITY",
-        "CHANGE_ENTITY",
-        "UPDATE_PROFILE",
-        "SET_ENTITY_INFO"
-      ],
-      "parameters": [
-        {
-          "name": "entityId",
-          "description": "The entity id to update.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["00000000-0000-0000-0000-000000000000"],
-          "descriptionCompressed": "Entity id."
-        },
-        {
-          "name": "updates",
-          "description": "Named field updates to apply.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["bio: Loves Rust"],
-          "descriptionCompressed": "Named field updates."
-        }
-      ],
-      "examples": [
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "Update my profile bio to say 'AI enthusiast'"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "I've updated your profile bio.",
-              "actions": ["UPDATE_ENTITY"]
-            }
-          }
-        ]
-      ],
-      "descriptionCompressed": "Edit contact details for person in conversation."
-    },
-    {
-      "name": "THINK",
-      "description": "Pause and think deeply about a complex question, ambiguous request, or multi-faceted problem before responding. Use THINK when the question requires careful reasoning, when you are not confident in your initial assessment, when the user asks something nuanced that benefits from structured analysis, or when multiple valid approaches exist and you need to evaluate trade-offs. Do NOT use THINK for simple greetings, factual lookups, or straightforward requests where the answer is obvious. THINK re-processes the full conversation context through a larger, more capable model to produce a thorough, well-reasoned response.",
-      "similes": [
-        "PLAN",
-        "REASON",
-        "ANALYZE",
-        "REFLECT",
-        "CONSIDER",
-        "DELIBERATE",
-        "DEEP_THINK",
-        "PONDER"
-      ],
-      "parameters": [],
-      "examples": [
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "What's the best architecture for a real-time multiplayer game with 10k concurrent users?"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "That's a great question with several important trade-offs to consider. Let me think through this carefully...",
-              "actions": ["THINK"]
-            }
-          }
-        ],
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "Should I use a monorepo or polyrepo for my team of 15 engineers working on 3 microservices?"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "Let me think about the trade-offs for your specific situation...",
-              "actions": ["THINK"]
-            }
-          }
-        ],
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "We're seeing intermittent 502 errors in production but only during peak hours. Our setup is nginx -> node -> postgres. What could cause this?"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "There are several possible causes here. Let me reason through the full request path systematically...",
-              "actions": ["THINK"]
-            }
-          }
-        ],
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "How should we handle authentication across our mobile app, web app, and API given we need SSO with both Google and enterprise SAML providers?"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "Cross-platform auth with multiple identity providers has some nuance. Let me plan this out...",
-              "actions": ["THINK"]
-            }
-          }
-        ]
-      ],
-      "descriptionCompressed": "Deep reasoning for complex/ambiguous questions. Re-processes full context through larger model. Use when careful reasoning needed, not for simple lookups."
-    },
-    {
-      "name": "GENERATE_IMAGE",
-      "description": "Generates an image based on a generated prompt reflecting the current conversation. Use GENERATE_IMAGE when the agent needs to visualize, illustrate, or demonstrate something visually for the user.",
-      "similes": [
+        "GENERATE_IMAGE",
+        "GENERATE_VIDEO",
+        "GENERATE_AUDIO",
+        "GENERATE_MEDIA_IMAGE",
         "DRAW",
         "CREATE_IMAGE",
         "RENDER_IMAGE",
         "VISUALIZE",
         "MAKE_IMAGE",
         "PAINT",
-        "IMAGE"
+        "IMAGE",
+        "CREATE_VIDEO",
+        "MAKE_VIDEO",
+        "ANIMATE",
+        "COMPOSE",
+        "MAKE_MUSIC",
+        "TEXT_TO_SPEECH",
+        "SOUND_EFFECT"
       ],
       "parameters": [
         {
+          "name": "mediaType",
+          "description": "The kind of media to generate.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["image", "video", "audio"]
+          },
+          "examples": ["image", "video", "audio"],
+          "descriptionCompressed": "Media kind: image, video, audio."
+        },
+        {
           "name": "prompt",
-          "description": "Image generation prompt.",
+          "description": "Detailed generation prompt describing the desired media.",
           "required": true,
           "schema": {
             "type": "string"
           },
           "examples": ["A futuristic cityscape at sunset, cinematic lighting"],
-          "descriptionCompressed": "Image prompt."
+          "descriptionCompressed": "Generation prompt."
+        },
+        {
+          "name": "audioKind",
+          "description": "For audio generation, choose music, sfx, or tts.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["music", "sfx", "tts"]
+          },
+          "examples": ["music", "sfx", "tts"],
+          "descriptionCompressed": "Audio subtype."
+        },
+        {
+          "name": "duration",
+          "description": "Optional target duration in seconds for video or audio.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          },
+          "examples": [5, 30],
+          "descriptionCompressed": "Duration seconds."
+        },
+        {
+          "name": "aspectRatio",
+          "description": "Optional video aspect ratio such as 16:9, 9:16, or 1:1.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["16:9", "9:16"],
+          "descriptionCompressed": "Video aspect ratio."
+        },
+        {
+          "name": "size",
+          "description": "Optional image size or image provider size preset.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["1024x1024", "landscape_4_3"],
+          "descriptionCompressed": "Image size."
         }
       ],
       "examples": [
@@ -1176,7 +1242,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "Sure, I'll create a futuristic city image for you. One moment...",
-              "actions": ["GENERATE_IMAGE"]
+              "actions": ["GENERATE_MEDIA"]
             }
           }
         ],
@@ -1184,14 +1250,14 @@
           {
             "name": "{{name1}}",
             "content": {
-              "text": "What does a neural network look like visually?"
+              "text": "Make a five second clip of waves rolling in."
             }
           },
           {
             "name": "{{name2}}",
             "content": {
-              "text": "I'll create a visualization of a neural network for you, one sec...",
-              "actions": ["GENERATE_IMAGE"]
+              "text": "I'll create that video clip.",
+              "actions": ["GENERATE_MEDIA"]
             }
           }
         ],
@@ -1199,19 +1265,19 @@
           {
             "name": "{{name1}}",
             "content": {
-              "text": "Can you visualize the feeling of calmness for me?"
+              "text": "Compose a mellow synth track for studying."
             }
           },
           {
             "name": "{{name2}}",
             "content": {
-              "text": "Creating an image to capture calmness for you, please wait a moment...",
-              "actions": ["GENERATE_IMAGE"]
+              "text": "I'll generate that audio track.",
+              "actions": ["GENERATE_MEDIA"]
             }
           }
         ]
       ],
-      "descriptionCompressed": "Generate image from conversation context. Use to visualize or illustrate."
+      "descriptionCompressed": "Generate image, video, or audio from prompt."
     }
   ]
 }

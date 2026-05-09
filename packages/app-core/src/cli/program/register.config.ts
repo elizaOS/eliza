@@ -1,7 +1,6 @@
 import type { ElizaConfig } from "@elizaos/agent";
+import { getLogPrefix, theme } from "@elizaos/shared";
 import type { Command } from "commander";
-import { theme } from "../../terminal/theme";
-import { getLogPrefix } from "../../utils/log-prefix";
 
 export function registerConfigCli(program: Command) {
   const config = program
@@ -12,7 +11,7 @@ export function registerConfigCli(program: Command) {
     .command("get <key>")
     .description("Get a config value")
     .action(async (key: string) => {
-      const { loadElizaConfig } = await import("@elizaos/agent/config/config");
+      const { loadElizaConfig } = await import("@elizaos/agent");
       let elizaConfig: ReturnType<typeof loadElizaConfig> | undefined;
       try {
         elizaConfig = loadElizaConfig();
@@ -46,7 +45,7 @@ export function registerConfigCli(program: Command) {
     .command("path")
     .description("Print the resolved config file path")
     .action(async () => {
-      const { resolveConfigPath } = await import("@elizaos/agent/config/paths");
+      const { resolveConfigPath } = await import("@elizaos/agent");
       console.log(resolveConfigPath());
     });
 
@@ -56,10 +55,8 @@ export function registerConfigCli(program: Command) {
     .option("-a, --all", "Include advanced/hidden fields")
     .option("--json", "Output as raw JSON")
     .action(async (opts: { all?: boolean; json?: boolean }) => {
-      const { loadElizaConfig } = await import("@elizaos/agent/config/config");
-      const { buildConfigSchema } = await import(
-        "@elizaos/agent/config/schema"
-      );
+      const { loadElizaConfig } = await import("@elizaos/agent");
+      const { buildConfigSchema } = await import("@elizaos/agent");
 
       let config: ElizaConfig | undefined;
       try {

@@ -211,11 +211,11 @@ function createFeedbackPrompt(
 Your original response:
 ${originalResponse}
 
-Reply again as compact TOON/plain text for ${itemType} selection.
+Reply again as compact JSON for ${itemType} selection.
 Available ${itemType}s:
 ${itemsDescription}
 
 User request: ${userMessage}
 
-Use exact names from the list. For tools, use serverName, toolName, reasoning, and noToolAvailable. For resources, use serverName, uri, reasoning, and noResourceAvailable.`;
+Use exact names from the list. For tools, return a JSON object with serverName, toolName, reasoning, and noToolAvailable. For resources, return a JSON object with serverName, uri, reasoning, and noResourceAvailable.`;
 }

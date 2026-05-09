@@ -1,7 +1,6 @@
 /**
  * Steward JWT Verification with Redis Caching
  *
- * Mirrors privy-client.ts pattern for Steward session tokens.
  * Steward issues JWTs after authentication; this module verifies them
  * with caching to avoid redundant crypto operations.
  *
@@ -49,7 +48,6 @@ export interface StewardTokenClaims {
 
 /**
  * Cached representation of verified Steward claims.
- * Mirrors CachedPrivyClaims structure for consistency.
  */
 interface CachedStewardClaims {
   userId: string;

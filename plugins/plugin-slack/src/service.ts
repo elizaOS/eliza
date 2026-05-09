@@ -24,6 +24,85 @@ import { App, LogLevel } from "@slack/bolt";
 import type { WebAPICallResult } from "@slack/web-api";
 
 type WebClient = App["client"];
+type AccountScopedTargetInfo = TargetInfo & { accountId?: string };
+type AccountScopedConnectorContext = MessageConnectorQueryContext & {
+  accountId?: string;
+  account?: { accountId?: string };
+};
+type MessageConnectorRegistration = Parameters<
+  IAgentRuntime["registerMessageConnector"]
+>[0];
+
+type ConnectorFetchMessagesParams = {
+  target?: TargetInfo;
+  accountId?: string;
+  limit?: number;
+  before?: string;
+  after?: string;
+  cursor?: string;
+  channelId?: string;
+  roomId?: UUID;
+  threadId?: string;
+};
+
+type ConnectorSearchMessagesParams = ConnectorFetchMessagesParams & {
+  query?: string;
+};
+
+type ConnectorMessageMutationParams = {
+  target?: TargetInfo;
+  accountId?: string;
+  channelId?: string;
+  roomId?: UUID;
+  threadId?: string;
+  messageId?: string;
+  messageTs?: string;
+  emoji?: string;
+  remove?: boolean;
+  pin?: boolean;
+  text?: string;
+  content?: Content;
+};
+
+type ConnectorUserLookupParams = {
+  target?: TargetInfo;
+  userId?: string;
+  username?: string;
+  handle?: string;
+  query?: string;
+};
+
+type ExtendedMessageConnectorRegistration = MessageConnectorRegistration & {
+  listServers?: (context: MessageConnectorQueryContext) => Promise<World[]>;
+  fetchMessages?: (
+    context: MessageConnectorQueryContext,
+    params: ConnectorFetchMessagesParams,
+  ) => Promise<Memory[]>;
+  searchMessages?: (
+    context: MessageConnectorQueryContext,
+    params: ConnectorSearchMessagesParams,
+  ) => Promise<Memory[]>;
+  reactHandler?: (
+    runtime: IAgentRuntime,
+    params: ConnectorMessageMutationParams,
+  ) => Promise<void>;
+  editHandler?: (
+    runtime: IAgentRuntime,
+    params: ConnectorMessageMutationParams,
+  ) => Promise<Memory>;
+  deleteHandler?: (
+    runtime: IAgentRuntime,
+    params: ConnectorMessageMutationParams,
+  ) => Promise<void>;
+  pinHandler?: (
+    runtime: IAgentRuntime,
+    params: ConnectorMessageMutationParams,
+  ) => Promise<void>;
+  getUser?: (
+    runtime: IAgentRuntime,
+    params: ConnectorUserLookupParams,
+  ) => Promise<unknown>;
+};
 
 type SlackApiUserProfile = {
   title?: string;
@@ -72,10 +151,18 @@ type SlackApiUserMember = {
 const SLACK_CONNECTOR_CONTEXTS = ["social", "connectors"];
 const SLACK_CONNECTOR_CAPABILITIES = [
   "send_message",
+  "read_messages",
+  "search_messages",
   "resolve_targets",
   "list_rooms",
+  "list_servers",
   "chat_context",
   "user_context",
+  "react_message",
+  "edit_message",
+  "delete_message",
+  "pin_message",
+  "get_user",
 ];
 const SLACK_USER_ID_PATTERN = /^[UW][A-Z0-9]{2,}$/i;
 
@@ -118,7 +205,10 @@ function scoreSlackConnectorMatch(
   return bestScore;
 }
 
-function extractSlackUserIdFromMetadata(metadata: unknown): string | null {
+function extractSlackUserIdFromMetadata(
+  metadata: unknown,
+  accountId?: string | null,
+): string | null {
   if (!metadata || typeof metadata !== "object") {
     return null;
   }
@@ -128,6 +218,21 @@ function extractSlackUserIdFromMetadata(metadata: unknown): string | null {
     record.slack && typeof record.slack === "object"
       ? (record.slack as Record<string, unknown>)
       : null;
+
+  const metadataAccountId =
+    typeof record.accountId === "string"
+      ? record.accountId
+      : typeof slack?.accountId === "string"
+        ? slack.accountId
+        : undefined;
+  if (
+    accountId &&
+    metadataAccountId &&
+    normalizeAccountId(metadataAccountId) !== normalizeAccountId(accountId)
+  ) {
+    return null;
+  }
+
   const candidates = [
     slack?.userId,
     slack?.id,
@@ -181,6 +286,13 @@ const getMessageService = (runtime: IAgentRuntime): IMessageService | null => {
   return null;
 };
 
+import {
+  DEFAULT_ACCOUNT_ID,
+  listEnabledSlackAccounts,
+  normalizeAccountId,
+  type ResolvedSlackAccount,
+  resolveDefaultSlackAccountId,
+} from "./accounts";
 import { markdownToSlackMrkdwn } from "./formatting";
 import {
   getSlackChannelType,
@@ -200,6 +312,21 @@ import {
   type SlackUser,
 } from "./types";
 
+type SlackAccountRuntime = {
+  accountId: string;
+  account: ResolvedSlackAccount;
+  app: App;
+  client: WebClient;
+  botUserId: string | null;
+  teamId: string | null;
+  settings: SlackSettings;
+  allowedChannelIds: Set<string>;
+  dynamicChannelIds: Set<string>;
+  userCache: Map<string, SlackUser>;
+  channelCache: Map<string, SlackChannel>;
+  isConnected: boolean;
+};
+
 /**
  * SlackService class for interacting with Slack via Socket Mode
  */
@@ -218,11 +345,13 @@ export class SlackService extends Service implements ISlackService {
   private botToken: string | null = null;
   private appToken: string | null = null;
   private signingSecret: string | null = null;
+  private defaultAccountId = DEFAULT_ACCOUNT_ID;
+  private accountStates: Map<string, SlackAccountRuntime> = new Map();
+  private accountStarts: Map<string, Promise<SlackAccountRuntime>> = new Map();
   private allowedChannelIds: Set<string> = new Set();
   private dynamicChannelIds: Set<string> = new Set();
   private userCache: Map<string, SlackUser> = new Map();
   private channelCache: Map<string, SlackChannel> = new Map();
-  private isStarting = false;
   private isConnected = false;
 
   constructor(runtime: IAgentRuntime) {
@@ -230,19 +359,9 @@ export class SlackService extends Service implements ISlackService {
     this.character = runtime.character;
     this.settings = this.loadSettings();
 
-    // Parse allowed channel IDs
-    const channelIdsRaw = runtime.getSetting("SLACK_CHANNEL_IDS") as
-      | string
-      | undefined;
-    if (channelIdsRaw?.trim()) {
-      channelIdsRaw
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0 && isValidChannelId(s))
-        .forEach((id) => {
-          this.allowedChannelIds.add(id);
-        });
-
+    // Parse allowed channel IDs for the legacy/default account path.
+    this.allowedChannelIds = this.buildAllowedChannelSet();
+    if (this.allowedChannelIds.size > 0) {
       this.runtime.logger.debug(
         {
           src: "plugin:slack",
@@ -254,7 +373,7 @@ export class SlackService extends Service implements ISlackService {
     }
   }
 
-  private loadSettings(): SlackSettings {
+  private loadSettings(account?: ResolvedSlackAccount): SlackSettings {
     const ignoreBotMessages = this.runtime.getSetting(
       "SLACK_SHOULD_IGNORE_BOT_MESSAGES",
     );
@@ -263,43 +382,94 @@ export class SlackService extends Service implements ISlackService {
     );
 
     return {
-      allowedChannelIds: undefined,
+      allowedChannelIds: account?.config.allowedChannelIds,
       shouldIgnoreBotMessages:
-        ignoreBotMessages === "true" || ignoreBotMessages === true,
+        account?.config.shouldIgnoreBotMessages ??
+        (ignoreBotMessages === "true" || ignoreBotMessages === true),
       shouldRespondOnlyToMentions:
-        respondOnlyToMentions === "true" || respondOnlyToMentions === true,
+        account?.config.shouldRespondOnlyToMentions ??
+        (respondOnlyToMentions === "true" || respondOnlyToMentions === true),
     };
+  }
+
+  private buildAllowedChannelSet(account?: ResolvedSlackAccount): Set<string> {
+    const allowed = new Set<string>();
+    const configuredIds = account?.config.allowedChannelIds;
+    const channelIdsRaw =
+      configuredIds && configuredIds.length > 0
+        ? configuredIds.join(",")
+        : (this.runtime.getSetting("SLACK_CHANNEL_IDS") as string | undefined);
+
+    if (!channelIdsRaw?.trim()) {
+      return allowed;
+    }
+
+    channelIdsRaw
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && isValidChannelId(s))
+      .forEach((id) => {
+        allowed.add(id);
+      });
+
+    return allowed;
   }
 
   static async start(runtime: IAgentRuntime): Promise<SlackService> {
     const service = new SlackService(runtime);
 
-    const botToken = runtime.getSetting("SLACK_BOT_TOKEN") as string;
-    const appToken = runtime.getSetting("SLACK_APP_TOKEN") as string;
-    const signingSecret = runtime.getSetting("SLACK_SIGNING_SECRET") as
-      | string
-      | undefined;
-    if (!botToken?.trim()) {
+    const accounts = listEnabledSlackAccounts(runtime);
+    service.defaultAccountId = resolveDefaultSlackAccountId(runtime);
+
+    if (accounts.length === 0) {
       runtime.logger.warn(
         { src: "plugin:slack", agentId: runtime.agentId },
-        "SLACK_BOT_TOKEN not provided, Slack service will not start",
+        "No enabled Slack accounts configured, Slack service will not start",
       );
       return service;
     }
 
-    if (!appToken?.trim()) {
-      runtime.logger.warn(
-        { src: "plugin:slack", agentId: runtime.agentId },
-        "SLACK_APP_TOKEN not provided, Socket Mode will not work",
-      );
-      return service;
+    let startedAccounts = 0;
+    let lastError: unknown;
+    for (const account of accounts) {
+      if (!account.appToken?.trim()) {
+        runtime.logger.warn(
+          {
+            src: "plugin:slack",
+            agentId: runtime.agentId,
+            accountId: account.accountId,
+          },
+          "SLACK_APP_TOKEN not provided for Slack account, Socket Mode will not work",
+        );
+        continue;
+      }
+
+      try {
+        await service.initializeAccount(account);
+        startedAccounts++;
+      } catch (error) {
+        lastError = error;
+        runtime.logger.error(
+          {
+            src: "plugin:slack",
+            agentId: runtime.agentId,
+            accountId: account.accountId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Failed to initialize Slack account",
+        );
+      }
     }
 
-    service.botToken = botToken;
-    service.appToken = appToken;
-    service.signingSecret = signingSecret || undefined;
-
-    await service.initialize();
+    if (startedAccounts === 0) {
+      if (lastError) {
+        throw lastError;
+      }
+      runtime.logger.warn(
+        { src: "plugin:slack", agentId: runtime.agentId },
+        "Slack service started without connected accounts",
+      );
+    }
 
     return service;
   }
@@ -321,31 +491,161 @@ export class SlackService extends Service implements ISlackService {
       return;
     }
 
-    const sendHandler = serviceInstance.handleSendMessage.bind(serviceInstance);
-    if (typeof runtime.registerMessageConnector === "function") {
-      runtime.registerMessageConnector({
+    const registerConnector = (accountId?: string) => {
+      const normalizedAccountId = accountId
+        ? normalizeAccountId(accountId)
+        : undefined;
+      const state = normalizedAccountId
+        ? serviceInstance.getAccountState(normalizedAccountId)
+        : serviceInstance.getDefaultAccountState();
+      const sendHandler = async (
+        handlerRuntime: IAgentRuntime,
+        target: TargetInfo,
+        content: Content,
+      ): Promise<void> => {
+        await serviceInstance.handleSendMessage(
+          handlerRuntime,
+          normalizedAccountId && !(target as AccountScopedTargetInfo).accountId
+            ? ({ ...target, accountId: normalizedAccountId } as TargetInfo)
+            : target,
+          content,
+        );
+      };
+
+      const withContextAccount = (
+        context: MessageConnectorQueryContext,
+      ): MessageConnectorQueryContext =>
+        normalizedAccountId &&
+        !(context as AccountScopedConnectorContext).accountId
+          ? ({
+              ...context,
+              accountId: normalizedAccountId,
+              account: (context as AccountScopedConnectorContext).account ?? {
+                source: "slack",
+                accountId: normalizedAccountId,
+                label: state?.account.name ?? normalizedAccountId,
+              },
+            } as MessageConnectorQueryContext)
+          : context;
+
+      const registration: ExtendedMessageConnectorRegistration = {
         source: "slack",
-        label: "Slack",
+        ...(normalizedAccountId ? { accountId: normalizedAccountId } : {}),
+        ...(normalizedAccountId
+          ? {
+              account: {
+                source: "slack",
+                accountId: normalizedAccountId,
+                label: state?.account.name ?? normalizedAccountId,
+                authMethod: "BOT_TOKEN",
+                metadata: {
+                  teamId: state?.teamId,
+                },
+              },
+            }
+          : {}),
+        label: state?.account.name ? `Slack (${state.account.name})` : "Slack",
         description:
-          "Slack connector for sending messages to channels, threads, and users.",
+          "Slack connector for sending, reading, searching, reacting to, editing, deleting, and pinning messages in channels, threads, and users.",
         capabilities: [...SLACK_CONNECTOR_CAPABILITIES],
         supportedTargetKinds: ["channel", "thread", "user"],
         contexts: [...SLACK_CONNECTOR_CONTEXTS],
         metadata: {
           service: SLACK_SERVICE_NAME,
           maxMessageLength: MAX_SLACK_MESSAGE_LENGTH,
+          ...(normalizedAccountId ? { accountId: normalizedAccountId } : {}),
         },
-        resolveTargets:
-          serviceInstance.resolveConnectorTargets.bind(serviceInstance),
-        listRecentTargets:
-          serviceInstance.listRecentConnectorTargets.bind(serviceInstance),
-        listRooms: serviceInstance.listConnectorRooms.bind(serviceInstance),
-        getChatContext:
-          serviceInstance.getConnectorChatContext.bind(serviceInstance),
-        getUserContext:
-          serviceInstance.getConnectorUserContext.bind(serviceInstance),
+        resolveTargets: (query, context) =>
+          serviceInstance.resolveConnectorTargets(
+            query,
+            withContextAccount(context),
+          ),
+        listRecentTargets: (context) =>
+          serviceInstance.listRecentConnectorTargets(
+            withContextAccount(context),
+          ),
+        listRooms: (context) =>
+          serviceInstance.listConnectorRooms(withContextAccount(context)),
+        listServers: (context) =>
+          serviceInstance.listConnectorServers(withContextAccount(context)),
+        fetchMessages: (context, params) =>
+          serviceInstance.fetchConnectorMessages(withContextAccount(context), {
+            ...params,
+            ...(normalizedAccountId && !params.accountId
+              ? { accountId: normalizedAccountId }
+              : {}),
+          }),
+        searchMessages: (context, params) =>
+          serviceInstance.searchConnectorMessages(withContextAccount(context), {
+            ...params,
+            ...(normalizedAccountId && !params.accountId
+              ? { accountId: normalizedAccountId }
+              : {}),
+          }),
+        reactHandler: (handlerRuntime, params) =>
+          serviceInstance.reactConnectorMessage(handlerRuntime, {
+            ...params,
+            ...(normalizedAccountId && !params.accountId
+              ? { accountId: normalizedAccountId }
+              : {}),
+          }),
+        editHandler: (handlerRuntime, params) =>
+          serviceInstance.editConnectorMessage(handlerRuntime, {
+            ...params,
+            ...(normalizedAccountId && !params.accountId
+              ? { accountId: normalizedAccountId }
+              : {}),
+          }),
+        deleteHandler: (handlerRuntime, params) =>
+          serviceInstance.deleteConnectorMessage(handlerRuntime, {
+            ...params,
+            ...(normalizedAccountId && !params.accountId
+              ? { accountId: normalizedAccountId }
+              : {}),
+          }),
+        pinHandler: (handlerRuntime, params) =>
+          serviceInstance.pinConnectorMessage(handlerRuntime, {
+            ...params,
+            ...(normalizedAccountId && !params.accountId
+              ? { accountId: normalizedAccountId }
+              : {}),
+          }),
+        getUser: (handlerRuntime, params) =>
+          serviceInstance.getConnectorUser(handlerRuntime, {
+            ...params,
+            ...(normalizedAccountId && !params.target
+              ? {
+                  target: {
+                    source: "slack",
+                    accountId: normalizedAccountId,
+                  } as TargetInfo,
+                }
+              : {}),
+          }),
+        getChatContext: (target, context) =>
+          serviceInstance.getConnectorChatContext(
+            normalizedAccountId &&
+              !(target as AccountScopedTargetInfo).accountId
+              ? ({ ...target, accountId: normalizedAccountId } as TargetInfo)
+              : target,
+            withContextAccount(context),
+          ),
+        getUserContext: (entityId, context) =>
+          serviceInstance.getConnectorUserContext(
+            entityId,
+            withContextAccount(context),
+          ),
         sendHandler,
-      });
+      };
+
+      runtime.registerMessageConnector(registration);
+    };
+
+    if (typeof runtime.registerMessageConnector === "function") {
+      registerConnector();
+      for (const accountId of serviceInstance.getRegisteredAccountIds()) {
+        registerConnector(accountId);
+      }
       runtime.logger.info(
         { src: "plugin:slack", agentId: runtime.agentId },
         "Registered Slack message connector",
@@ -353,7 +653,10 @@ export class SlackService extends Service implements ISlackService {
       return;
     }
 
-    runtime.registerSendHandler("slack", sendHandler);
+    runtime.registerSendHandler(
+      "slack",
+      serviceInstance.handleSendMessage.bind(serviceInstance),
+    );
     runtime.logger.info(
       { src: "plugin:slack", agentId: runtime.agentId },
       "Registered Slack send handler",
@@ -364,69 +667,141 @@ export class SlackService extends Service implements ISlackService {
     await this.shutdown();
   }
 
-  private async initialize(): Promise<void> {
-    if (this.isStarting || this.isConnected) {
-      return;
+  private syncDefaultAccountAliases(): void {
+    const state = this.getDefaultAccountState();
+    this.app = state?.app ?? null;
+    this.client = state?.client ?? null;
+    this.botUserId = state?.botUserId ?? null;
+    this.teamId = state?.teamId ?? null;
+    this.botToken = state?.account.botToken ?? null;
+    this.appToken = state?.account.appToken ?? null;
+    this.signingSecret = state?.account.signingSecret ?? null;
+    this.isConnected = Array.from(this.accountStates?.values?.() ?? []).some(
+      (accountState) => accountState.isConnected,
+    );
+  }
+
+  private async initializeAccount(
+    account: ResolvedSlackAccount,
+  ): Promise<SlackAccountRuntime> {
+    const accountId = normalizeAccountId(account.accountId);
+    const cached = this.accountStates.get(accountId);
+    if (cached) {
+      return cached;
     }
 
-    this.isStarting = true;
-    const botToken = this.botToken;
-    const appToken = this.appToken;
-
-    if (!botToken || !appToken) {
-      this.isStarting = false;
-      throw new Error("Slack service requires bot and app tokens");
+    const starting = this.accountStarts.get(accountId);
+    if (starting) {
+      return starting;
     }
 
-    this.runtime.logger.info(
-      { src: "plugin:slack", agentId: this.runtime.agentId },
-      "Initializing Slack service with Socket Mode",
-    );
+    const startPromise = (async () => {
+      if (!account.botToken || !account.appToken) {
+        throw new Error(
+          `Slack account ${accountId} requires bot and app tokens`,
+        );
+      }
 
-    this.app = new App({
-      token: botToken,
-      appToken,
-      socketMode: true,
-      logLevel: LogLevel.INFO,
-      ...(this.signingSecret ? { signingSecret: this.signingSecret } : {}),
-    });
+      this.runtime.logger.info(
+        { src: "plugin:slack", agentId: this.runtime.agentId, accountId },
+        "Initializing Slack service with Socket Mode",
+      );
 
-    this.client = this.app.client;
+      const app = new App({
+        token: account.botToken,
+        appToken: account.appToken,
+        socketMode: true,
+        logLevel: LogLevel.INFO,
+        ...(account.signingSecret
+          ? { signingSecret: account.signingSecret }
+          : {}),
+      });
 
-    // Get bot user info
-    const authResult = await this.client.auth.test();
-    this.botUserId = authResult.user_id as string;
-    this.teamId = authResult.team_id as string;
+      const state: SlackAccountRuntime = {
+        accountId,
+        account,
+        app,
+        client: app.client,
+        botUserId: null,
+        teamId: null,
+        settings: this.loadSettings(account),
+        allowedChannelIds: this.buildAllowedChannelSet(account),
+        dynamicChannelIds: new Set(),
+        userCache: new Map(),
+        channelCache: new Map(),
+        isConnected: false,
+      };
 
-    this.runtime.logger.info(
-      {
-        src: "plugin:slack",
-        agentId: this.runtime.agentId,
-        botUserId: this.botUserId,
-        teamId: this.teamId,
-      },
-      "Slack bot authenticated",
-    );
+      const authResult = await state.client.auth.test();
+      state.botUserId = authResult.user_id as string;
+      state.teamId = authResult.team_id as string;
 
-    // Register event handlers
-    this.registerEventHandlers();
+      this.accountStates.set(accountId, state);
+      this.syncDefaultAccountAliases();
 
-    // Start the Socket Mode connection
-    await this.app.start();
+      this.runtime.logger.info(
+        {
+          src: "plugin:slack",
+          agentId: this.runtime.agentId,
+          accountId,
+          botUserId: state.botUserId,
+          teamId: state.teamId,
+        },
+        "Slack bot authenticated",
+      );
 
-    this.isConnected = true;
-    this.isStarting = false;
+      this.registerEventHandlers(state);
 
-    this.runtime.logger.info(
-      { src: "plugin:slack", agentId: this.runtime.agentId },
-      "Slack service started successfully",
-    );
+      try {
+        await app.start();
+      } catch (error) {
+        this.accountStates.delete(accountId);
+        this.syncDefaultAccountAliases();
+        throw error;
+      }
+      state.isConnected = true;
+      this.syncDefaultAccountAliases();
 
-    // Ensure all workspaces exist
-    await this.ensureWorkspaceExists();
+      this.runtime.logger.info(
+        { src: "plugin:slack", agentId: this.runtime.agentId, accountId },
+        "Slack account started successfully",
+      );
+
+      await this.ensureWorkspaceExists(accountId);
+      return state;
+    })();
+
+    this.accountStarts.set(accountId, startPromise);
+    try {
+      return await startPromise;
+    } finally {
+      this.accountStarts.delete(accountId);
+    }
   }
 
   private async shutdown(): Promise<void> {
+    const states =
+      this.accountStates instanceof Map
+        ? Array.from(this.accountStates.values())
+        : [];
+    if (states.length > 0) {
+      for (const state of states) {
+        await state.app.stop();
+        state.isConnected = false;
+        this.runtime.logger.info(
+          {
+            src: "plugin:slack",
+            agentId: this.runtime.agentId,
+            accountId: state.accountId,
+          },
+          "Slack account stopped",
+        );
+      }
+      this.accountStates.clear();
+      this.syncDefaultAccountAliases();
+      return;
+    }
+
     if (this.app) {
       await this.app.stop();
       this.app = null;
@@ -440,63 +815,257 @@ export class SlackService extends Service implements ISlackService {
     }
   }
 
-  private registerEventHandlers(): void {
-    if (!this.app) return;
+  private registerEventHandlers(state?: SlackAccountRuntime): void {
+    const app = state?.app ?? this.app;
+    const accountId = state?.accountId ?? this.defaultAccountId;
+    if (!app) return;
 
     // Handle regular messages
-    this.app.message(async ({ message, client }) => {
-      await this.handleMessage(message as SlackMessageEventType, client);
+    app.message(async ({ message, client }) => {
+      await this.handleMessage(
+        message as SlackMessageEventType,
+        client,
+        accountId,
+      );
     });
 
     // Handle app mentions
-    this.app.event("app_mention", async ({ event, client }) => {
-      await this.handleAppMention(event as SlackAppMentionEventType, client);
+    app.event("app_mention", async ({ event, client }) => {
+      await this.handleAppMention(
+        event as SlackAppMentionEventType,
+        client,
+        accountId,
+      );
     });
 
     // Handle reactions
-    this.app.event("reaction_added", async ({ event }) => {
-      await this.handleReactionAdded(event);
+    app.event("reaction_added", async ({ event }) => {
+      await this.handleReactionAdded(event, accountId);
     });
 
-    this.app.event("reaction_removed", async ({ event }) => {
-      await this.handleReactionRemoved(event);
+    app.event("reaction_removed", async ({ event }) => {
+      await this.handleReactionRemoved(event, accountId);
     });
 
     // Handle channel joins/leaves
-    this.app.event("member_joined_channel", async ({ event }) => {
-      await this.handleMemberJoinedChannel(event);
+    app.event("member_joined_channel", async ({ event }) => {
+      await this.handleMemberJoinedChannel(event, accountId);
     });
 
-    this.app.event("member_left_channel", async ({ event }) => {
-      await this.handleMemberLeftChannel(event);
+    app.event("member_left_channel", async ({ event }) => {
+      await this.handleMemberLeftChannel(event, accountId);
     });
 
     // Handle file shares
-    this.app.event("file_shared", async ({ event }) => {
-      await this.handleFileShared(event);
+    app.event("file_shared", async ({ event }) => {
+      await this.handleFileShared(event, accountId);
     });
+  }
+
+  private getDefaultAccountState(): SlackAccountRuntime | null {
+    const states = this.accountStates;
+    if (!(states instanceof Map) || states.size === 0) {
+      return null;
+    }
+    const defaultId = normalizeAccountId(
+      this.defaultAccountId ?? DEFAULT_ACCOUNT_ID,
+    );
+    return states.get(defaultId) ?? states.values().next().value ?? null;
+  }
+
+  private getAccountState(
+    accountId?: string | null,
+  ): SlackAccountRuntime | null {
+    const states = this.accountStates;
+    if (!(states instanceof Map) || states.size === 0) {
+      return null;
+    }
+    if (accountId) {
+      return states.get(normalizeAccountId(accountId)) ?? null;
+    }
+    return this.getDefaultAccountState();
+  }
+
+  private getClientForAccount(accountId?: string | null): WebClient | null {
+    const state = this.getAccountState(accountId);
+    if (state?.client) {
+      return state.client;
+    }
+    const requested = accountId ? normalizeAccountId(accountId) : null;
+    const defaultId = normalizeAccountId(
+      this.defaultAccountId ?? DEFAULT_ACCOUNT_ID,
+    );
+    if (!requested || requested === defaultId) {
+      return this.client;
+    }
+    return null;
+  }
+
+  private getSettingsForAccount(accountId?: string | null): SlackSettings {
+    return this.getAccountState(accountId)?.settings ?? this.settings;
+  }
+
+  private getAllowedChannelIdsForAccount(
+    accountId?: string | null,
+  ): Set<string> {
+    return (
+      this.getAccountState(accountId)?.allowedChannelIds ??
+      this.allowedChannelIds
+    );
+  }
+
+  private getDynamicChannelIdsForAccount(
+    accountId?: string | null,
+  ): Set<string> {
+    return (
+      this.getAccountState(accountId)?.dynamicChannelIds ??
+      this.dynamicChannelIds
+    );
+  }
+
+  private getUserCacheForAccount(
+    accountId?: string | null,
+  ): Map<string, SlackUser> {
+    return this.getAccountState(accountId)?.userCache ?? this.userCache;
+  }
+
+  private getChannelCacheForAccount(
+    accountId?: string | null,
+  ): Map<string, SlackChannel> {
+    return this.getAccountState(accountId)?.channelCache ?? this.channelCache;
+  }
+
+  private getBotUserIdForAccount(accountId?: string | null): string | null {
+    return this.getAccountState(accountId)?.botUserId ?? this.botUserId;
+  }
+
+  private getTeamIdForAccount(accountId?: string | null): string | null {
+    return this.getAccountState(accountId)?.teamId ?? this.teamId;
+  }
+
+  private getRegisteredAccountIds(): string[] {
+    const states = this.accountStates;
+    if (states instanceof Map && states.size > 0) {
+      return Array.from(states.keys());
+    }
+    return [normalizeAccountId(this.defaultAccountId ?? DEFAULT_ACCOUNT_ID)];
+  }
+
+  private resolveAccountIdFromContext(
+    context?: MessageConnectorQueryContext | null,
+    target?: TargetInfo | null,
+  ): string | undefined {
+    const scopedTarget = target as AccountScopedTargetInfo | null | undefined;
+    const scopedContext = context as
+      | AccountScopedConnectorContext
+      | null
+      | undefined;
+    return (
+      scopedTarget?.accountId ??
+      (scopedContext?.target as AccountScopedTargetInfo | undefined)
+        ?.accountId ??
+      scopedContext?.accountId ??
+      scopedContext?.account?.accountId ??
+      undefined
+    );
+  }
+
+  private async resolveAccountIdForTarget(
+    runtime: IAgentRuntime,
+    target?: TargetInfo | null,
+    fallback?: { accountId?: string; roomId?: UUID } | null,
+  ): Promise<string> {
+    const direct =
+      (target as AccountScopedTargetInfo | null | undefined)?.accountId ??
+      fallback?.accountId ??
+      undefined;
+    if (direct) {
+      return normalizeAccountId(direct);
+    }
+
+    const roomId = target?.roomId ?? fallback?.roomId;
+    if (roomId && typeof runtime.getRoom === "function") {
+      const room = await runtime.getRoom(roomId);
+      const metadata = room?.metadata as Record<string, unknown> | undefined;
+      if (
+        typeof metadata?.accountId === "string" &&
+        metadata.accountId.trim()
+      ) {
+        return normalizeAccountId(metadata.accountId);
+      }
+      const slack =
+        metadata?.slack && typeof metadata.slack === "object"
+          ? (metadata.slack as Record<string, unknown>)
+          : undefined;
+      if (typeof slack?.accountId === "string" && slack.accountId.trim()) {
+        return normalizeAccountId(slack.accountId);
+      }
+    }
+
+    return normalizeAccountId(this.defaultAccountId ?? DEFAULT_ACCOUNT_ID);
+  }
+
+  private getCandidateAccountIds(
+    context?: MessageConnectorQueryContext | null,
+    target?: TargetInfo | null,
+  ): string[] {
+    const explicit = this.resolveAccountIdFromContext(context, target);
+    if (explicit) {
+      return [normalizeAccountId(explicit)];
+    }
+    return this.getRegisteredAccountIds();
+  }
+
+  private scopedSlackKey(
+    prefix: string,
+    key: string,
+    accountId?: string | null,
+  ): string {
+    const normalized = normalizeAccountId(
+      accountId ?? this.defaultAccountId ?? DEFAULT_ACCOUNT_ID,
+    );
+    return normalized === DEFAULT_ACCOUNT_ID
+      ? `${prefix}-${key}`
+      : `${prefix}-${normalized}-${key}`;
+  }
+
+  private buildEventPayload(accountId?: string | null): EventPayload {
+    const normalized = normalizeAccountId(
+      accountId ?? this.defaultAccountId ?? DEFAULT_ACCOUNT_ID,
+    );
+    return {
+      runtime: this.runtime,
+      source: "slack",
+      accountId: normalized,
+      metadata: { accountId: normalized },
+    } as EventPayload;
   }
 
   private async handleMessage(
     message: SlackMessageEventType,
     _client: WebClient,
+    accountId = this.defaultAccountId,
   ): Promise<void> {
+    const settings = this.getSettingsForAccount(accountId);
+    const botUserId = this.getBotUserIdForAccount(accountId);
+
     // Ignore bot messages if configured
-    if (this.settings.shouldIgnoreBotMessages && message.bot_id) {
+    if (settings.shouldIgnoreBotMessages && message.bot_id) {
       return;
     }
 
     // Ignore messages from self
-    if (message.user === this.botUserId) {
+    if (message.user === botUserId) {
       return;
     }
 
     // Check channel restrictions
-    if (!this.isChannelAllowed(message.channel)) {
+    if (!this.isChannelAllowed(message.channel, accountId)) {
       this.runtime.logger.debug(
         {
           src: "plugin:slack",
           agentId: this.runtime.agentId,
+          accountId,
           channelId: message.channel,
         },
         "Message received in non-allowed channel, ignoring",
@@ -505,12 +1074,12 @@ export class SlackService extends Service implements ISlackService {
     }
 
     // Check if we should only respond to mentions
-    const isMentioned = message.text?.includes(`<@${this.botUserId}>`);
+    const isMentioned = message.text?.includes(`<@${botUserId}>`);
     // Skip @mentions in channels — handleAppMention handles those
     if (isMentioned && message.channel_type !== "im") {
       return;
     }
-    if (this.settings.shouldRespondOnlyToMentions && !isMentioned) {
+    if (settings.shouldRespondOnlyToMentions && !isMentioned) {
       return;
     }
 
@@ -519,24 +1088,28 @@ export class SlackService extends Service implements ISlackService {
     );
 
     // Build memory from message
-    const memory = await this.buildMemoryFromMessage(message);
+    const memory = await this.buildMemoryFromMessage(message, accountId);
     if (!memory) return;
 
     // Get or create room
     const room = await this.ensureRoomExists(
       message.channel,
       message.thread_ts,
+      accountId,
     );
 
     const existingEntity = await this.runtime.getEntityById(memory.entityId);
     if (!existingEntity) {
-      const user = await this.getUser(message.user);
+      const user = await this.getUser(message.user, accountId);
       const displayName = user ? getSlackUserDisplayName(user) : message.user;
       await this.runtime.createEntity({
         id: memory.entityId,
         names: [displayName],
         metadata: {
+          source: "slack",
+          accountId,
           slack: {
+            accountId,
             id: message.user,
             name: displayName,
             userName: user?.name || message.user,
@@ -552,10 +1125,7 @@ export class SlackService extends Service implements ISlackService {
     // Emit event
     await this.runtime.emitEvent(
       SlackEventTypes.MESSAGE_RECEIVED as string,
-      {
-        runtime: this.runtime,
-        source: "slack",
-      } as EventPayload,
+      this.buildEventPayload(accountId),
     );
 
     // Process the message through the agent
@@ -564,38 +1134,50 @@ export class SlackService extends Service implements ISlackService {
       room,
       message.channel,
       message.thread_ts || message.ts,
+      accountId,
     );
   }
 
   private async handleAppMention(
     event: SlackAppMentionEventType,
     _client: WebClient,
+    accountId = this.defaultAccountId,
   ): Promise<void> {
     // Skip if no user (optional in AppMentionEvent)
     if (!event.user) return;
 
     // Build memory from mention
-    const memory = await this.buildMemoryFromMention({
-      user: event.user,
-      text: event.text,
-      channel: event.channel,
-      ts: event.ts,
-      thread_ts: event.thread_ts,
-    });
+    const memory = await this.buildMemoryFromMention(
+      {
+        user: event.user,
+        text: event.text,
+        channel: event.channel,
+        ts: event.ts,
+        thread_ts: event.thread_ts,
+      },
+      accountId,
+    );
     if (!memory) return;
 
     // Get or create room
-    const room = await this.ensureRoomExists(event.channel, event.thread_ts);
+    const room = await this.ensureRoomExists(
+      event.channel,
+      event.thread_ts,
+      accountId,
+    );
 
     const existingEntity = await this.runtime.getEntityById(memory.entityId);
     if (!existingEntity) {
-      const user = await this.getUser(event.user);
+      const user = await this.getUser(event.user, accountId);
       const displayName = user ? getSlackUserDisplayName(user) : event.user;
       await this.runtime.createEntity({
         id: memory.entityId,
         names: [displayName],
         metadata: {
+          source: "slack",
+          accountId,
           slack: {
+            accountId,
             id: event.user,
             name: displayName,
             userName: user?.name || event.user,
@@ -611,10 +1193,7 @@ export class SlackService extends Service implements ISlackService {
     // Emit event
     await this.runtime.emitEvent(
       SlackEventTypes.APP_MENTION as string,
-      {
-        runtime: this.runtime,
-        source: "slack",
-      } as EventPayload,
+      this.buildEventPayload(accountId),
     );
 
     // Process the message
@@ -623,106 +1202,107 @@ export class SlackService extends Service implements ISlackService {
       room,
       event.channel,
       event.thread_ts || event.ts,
+      accountId,
     );
   }
 
-  private async handleReactionAdded(_event: {
-    user: string;
-    reaction: string;
-    item: { type: string; channel: string; ts: string };
-    item_user?: string;
-  }): Promise<void> {
+  private async handleReactionAdded(
+    _event: {
+      user: string;
+      reaction: string;
+      item: { type: string; channel: string; ts: string };
+      item_user?: string;
+    },
+    accountId = this.defaultAccountId,
+  ): Promise<void> {
     await this.runtime.emitEvent(
       SlackEventTypes.REACTION_ADDED as string,
-      {
-        runtime: this.runtime,
-        source: "slack",
-      } as EventPayload,
+      this.buildEventPayload(accountId),
     );
   }
 
-  private async handleReactionRemoved(_event: {
-    user: string;
-    reaction: string;
-    item: { type: string; channel: string; ts: string };
-    item_user?: string;
-  }): Promise<void> {
+  private async handleReactionRemoved(
+    _event: {
+      user: string;
+      reaction: string;
+      item: { type: string; channel: string; ts: string };
+      item_user?: string;
+    },
+    accountId = this.defaultAccountId,
+  ): Promise<void> {
     await this.runtime.emitEvent(
       SlackEventTypes.REACTION_REMOVED as string,
-      {
-        runtime: this.runtime,
-        source: "slack",
-      } as EventPayload,
+      this.buildEventPayload(accountId),
     );
   }
 
-  private async handleMemberJoinedChannel(event: {
-    user: string;
-    channel: string;
-    team?: string;
-  }): Promise<void> {
+  private async handleMemberJoinedChannel(
+    event: {
+      user: string;
+      channel: string;
+      team?: string;
+    },
+    accountId = this.defaultAccountId,
+  ): Promise<void> {
     // If the bot joined, add to dynamic channels
-    if (event.user === this.botUserId) {
-      this.dynamicChannelIds.add(event.channel);
-      await this.ensureRoomExists(event.channel);
+    if (event.user === this.getBotUserIdForAccount(accountId)) {
+      this.getDynamicChannelIdsForAccount(accountId).add(event.channel);
+      await this.ensureRoomExists(event.channel, undefined, accountId);
     }
 
     await this.runtime.emitEvent(
       SlackEventTypes.MEMBER_JOINED_CHANNEL as string,
-      {
-        runtime: this.runtime,
-        source: "slack",
-      } as EventPayload,
+      this.buildEventPayload(accountId),
     );
   }
 
-  private async handleMemberLeftChannel(event: {
-    user: string;
-    channel: string;
-    team?: string;
-  }): Promise<void> {
+  private async handleMemberLeftChannel(
+    event: {
+      user: string;
+      channel: string;
+      team?: string;
+    },
+    accountId = this.defaultAccountId,
+  ): Promise<void> {
     // If the bot left, remove from dynamic channels
-    if (event.user === this.botUserId) {
-      this.dynamicChannelIds.delete(event.channel);
+    if (event.user === this.getBotUserIdForAccount(accountId)) {
+      this.getDynamicChannelIdsForAccount(accountId).delete(event.channel);
     }
 
     await this.runtime.emitEvent(
       SlackEventTypes.MEMBER_LEFT_CHANNEL as string,
-      {
-        runtime: this.runtime,
-        source: "slack",
-      } as EventPayload,
+      this.buildEventPayload(accountId),
     );
   }
 
-  private async handleFileShared(_event: {
-    file_id: string;
-    user_id: string;
-    channel_id: string;
-  }): Promise<void> {
+  private async handleFileShared(
+    _event: {
+      file_id: string;
+      user_id: string;
+      channel_id: string;
+    },
+    accountId = this.defaultAccountId,
+  ): Promise<void> {
     await this.runtime.emitEvent(
       SlackEventTypes.FILE_SHARED as string,
-      {
-        runtime: this.runtime,
-        source: "slack",
-      } as EventPayload,
+      this.buildEventPayload(accountId),
     );
   }
 
-  private isChannelAllowed(channelId: string): boolean {
+  private isChannelAllowed(
+    channelId: string,
+    accountId?: string | null,
+  ): boolean {
+    const allowedChannelIds = this.getAllowedChannelIdsForAccount(accountId);
+    const dynamicChannelIds = this.getDynamicChannelIdsForAccount(accountId);
+
     // If no restrictions, all channels allowed
-    if (
-      this.allowedChannelIds.size === 0 &&
-      this.dynamicChannelIds.size === 0
-    ) {
+    if (allowedChannelIds.size === 0 && dynamicChannelIds.size === 0) {
       return true;
     }
 
     // Check static and dynamic allowed lists
-    return (
-      this.allowedChannelIds.has(channelId) ||
-      this.dynamicChannelIds.has(channelId)
-    );
+    return allowedChannelIds.has(channelId) || dynamicChannelIds.has(channelId);
   }
 
   private async processAgentMessage(
@@ -730,6 +1310,7 @@ export class SlackService extends Service implements ISlackService {
     room: Room,
     channelId: string,
     threadTs: string,
+    accountId = this.defaultAccountId,
   ): Promise<void> {
     const callback: HandlerCallback = async (
       response: Content,
@@ -743,15 +1324,20 @@ export class SlackService extends Service implements ISlackService {
         return [];
       }
 
-      await this.sendMessage(channelId, responseText, {
-        threadTs,
-        replyBroadcast: undefined,
-        unfurlLinks: undefined,
-        unfurlMedia: undefined,
-        mrkdwn: undefined,
-        attachments: undefined,
-        blocks: undefined,
-      });
+      await this.sendMessage(
+        channelId,
+        responseText,
+        {
+          threadTs,
+          replyBroadcast: undefined,
+          unfurlLinks: undefined,
+          unfurlMedia: undefined,
+          mrkdwn: undefined,
+          attachments: undefined,
+          blocks: undefined,
+        },
+        accountId,
+      );
 
       // Create memory for the response
       const responseMemory: Memory = {
@@ -763,7 +1349,22 @@ export class SlackService extends Service implements ISlackService {
           text: response.text || "",
           source: "slack",
           inReplyTo: memory.id,
+          metadata: { accountId },
         },
+        metadata: {
+          type: "message",
+          source: "slack",
+          provider: "slack",
+          accountId,
+          fromBot: true,
+          fromId: this.runtime.agentId,
+          sourceId: this.runtime.agentId,
+          slack: {
+            accountId,
+            channelId,
+            threadTs,
+          },
+        } as unknown as Memory["metadata"],
         createdAt: Date.now(),
       };
 
@@ -771,10 +1372,7 @@ export class SlackService extends Service implements ISlackService {
 
       await this.runtime.emitEvent(
         SlackEventTypes.MESSAGE_SENT as string,
-        {
-          runtime: this.runtime,
-          source: "slack",
-        } as EventPayload,
+        this.buildEventPayload(accountId),
       );
 
       return [responseMemory];
@@ -788,14 +1386,19 @@ export class SlackService extends Service implements ISlackService {
 
   private async buildMemoryFromMessage(
     message: SlackMessageEventType,
+    accountId = this.defaultAccountId,
   ): Promise<Memory | null> {
     if (!message.user) return null;
 
-    const roomId = await this.getRoomId(message.channel, message.thread_ts);
-    const entityId = this.getEntityId(message.user);
+    const roomId = await this.getRoomId(
+      message.channel,
+      message.thread_ts,
+      accountId,
+    );
+    const entityId = this.getEntityId(message.user, accountId);
 
     // Get user info for display name
-    const user = await this.getUser(message.user);
+    const user = await this.getUser(message.user, accountId);
     const displayName = user ? getSlackUserDisplayName(user) : message.user;
 
     // Extract media from files
@@ -813,7 +1416,10 @@ export class SlackService extends Service implements ISlackService {
     }
 
     const memory: Memory = {
-      id: createUniqueUuid(this.runtime, `slack-${message.ts}`),
+      id: createUniqueUuid(
+        this.runtime,
+        this.scopedSlackKey("slack", message.ts, accountId),
+      ),
       agentId: this.runtime.agentId,
       roomId,
       entityId,
@@ -821,32 +1427,75 @@ export class SlackService extends Service implements ISlackService {
         text: message.text || "",
         source: "slack",
         name: displayName,
+        metadata: { accountId },
         ...(media.length > 0 ? { attachments: media } : {}),
       },
+      metadata: {
+        type: "message",
+        source: "slack",
+        provider: "slack",
+        accountId,
+        timestamp: this.parseSlackTimestamp(message.ts),
+        entityName: displayName,
+        entityUserName: user?.name ?? message.user,
+        fromBot: false,
+        fromId: message.user,
+        sourceId: entityId,
+        chatType: message.channel_type,
+        messageIdFull: message.ts,
+        sender: {
+          id: message.user,
+          name: displayName,
+          username: user?.name ?? message.user,
+        },
+        slack: {
+          accountId,
+          teamId: this.getTeamIdForAccount(accountId) ?? undefined,
+          channelId: message.channel,
+          userId: message.user,
+          messageId: message.ts,
+          threadTs: message.thread_ts,
+        },
+        slackChannelId: message.channel,
+        slackMessageTs: message.ts,
+        slackThreadTs: message.thread_ts,
+      } as unknown as Memory["metadata"],
       createdAt: this.parseSlackTimestamp(message.ts),
     };
 
     return memory;
   }
 
-  private async buildMemoryFromMention(event: {
-    user: string;
-    text: string;
-    channel: string;
-    ts: string;
-    thread_ts?: string;
-  }): Promise<Memory | null> {
-    const roomId = await this.getRoomId(event.channel, event.thread_ts);
-    const entityId = this.getEntityId(event.user);
+  private async buildMemoryFromMention(
+    event: {
+      user: string;
+      text: string;
+      channel: string;
+      ts: string;
+      thread_ts?: string;
+    },
+    accountId = this.defaultAccountId,
+  ): Promise<Memory | null> {
+    const roomId = await this.getRoomId(
+      event.channel,
+      event.thread_ts,
+      accountId,
+    );
+    const entityId = this.getEntityId(event.user, accountId);
 
-    const user = await this.getUser(event.user);
+    const user = await this.getUser(event.user, accountId);
     const displayName = user ? getSlackUserDisplayName(user) : event.user;
 
     // Remove the bot mention from the text
-    const cleanText = event.text.replace(`<@${this.botUserId}>`, "").trim();
+    const cleanText = event.text
+      .replace(`<@${this.getBotUserIdForAccount(accountId)}>`, "")
+      .trim();
 
     const memory: Memory = {
-      id: createUniqueUuid(this.runtime, `slack-mention-${event.ts}`),
+      id: createUniqueUuid(
+        this.runtime,
+        this.scopedSlackKey("slack-mention", event.ts, accountId),
+      ),
       agentId: this.runtime.agentId,
       roomId,
       entityId,
@@ -854,22 +1503,54 @@ export class SlackService extends Service implements ISlackService {
         text: cleanText,
         source: "slack",
         name: displayName,
+        metadata: { accountId },
         mentionContext: { isMention: true, isReply: false, isThread: false },
       },
+      metadata: {
+        type: "message",
+        source: "slack",
+        provider: "slack",
+        accountId,
+        timestamp: this.parseSlackTimestamp(event.ts),
+        entityName: displayName,
+        entityUserName: user?.name ?? event.user,
+        fromBot: false,
+        fromId: event.user,
+        sourceId: entityId,
+        messageIdFull: event.ts,
+        slack: {
+          accountId,
+          teamId: this.getTeamIdForAccount(accountId) ?? undefined,
+          channelId: event.channel,
+          userId: event.user,
+          messageId: event.ts,
+          threadTs: event.thread_ts,
+        },
+        slackChannelId: event.channel,
+        slackMessageTs: event.ts,
+        slackThreadTs: event.thread_ts,
+      } as unknown as Memory["metadata"],
       createdAt: this.parseSlackTimestamp(event.ts),
     };
 
     return memory;
   }
 
-  private async getRoomId(channelId: string, threadTs?: string): Promise<UUID> {
+  private async getRoomId(
+    channelId: string,
+    threadTs?: string,
+    accountId?: string | null,
+  ): Promise<UUID> {
     // Use thread_ts to create unique rooms for threads
     const roomKey = threadTs ? `${channelId}-${threadTs}` : channelId;
-    return createUniqueUuid(this.runtime, `slack-room-${roomKey}`);
+    return createUniqueUuid(
+      this.runtime,
+      this.scopedSlackKey("slack-room", roomKey, accountId),
+    );
   }
 
-  private getEntityId(userId: string): UUID {
-    return stringToUuid(`slack-user-${userId}`);
+  private getEntityId(userId: string, accountId?: string | null): UUID {
+    return stringToUuid(this.scopedSlackKey("slack-user", userId, accountId));
   }
 
   private parseSlackTimestamp(ts: string): number {
@@ -878,30 +1559,36 @@ export class SlackService extends Service implements ISlackService {
     return parseInt(seconds, 10) * 1000;
   }
 
-  private async ensureWorkspaceExists(): Promise<void> {
-    if (!this.teamId || !this.client) return;
+  private async ensureWorkspaceExists(
+    accountId = this.defaultAccountId,
+  ): Promise<void> {
+    const teamId = this.getTeamIdForAccount(accountId);
+    const client = this.getClientForAccount(accountId);
+    if (!teamId || !client) return;
 
     const worldId = createUniqueUuid(
       this.runtime,
-      `slack-workspace-${this.teamId}`,
+      this.scopedSlackKey("slack-workspace", teamId, accountId),
     );
 
     const existingWorld = await this.runtime.getWorld(worldId);
     if (existingWorld) return;
 
     // Get team info
-    const teamInfo = await this.client.team.info();
+    const teamInfo = await client.team.info();
     const team = teamInfo.team;
 
     const world: World = {
       id: worldId,
-      name:
-        (team as { name?: string })?.name || `Slack Workspace ${this.teamId}`,
+      name: (team as { name?: string })?.name || `Slack Workspace ${teamId}`,
       agentId: this.runtime.agentId,
       metadata: {
         type: "slack",
+        source: "slack",
+        accountId,
         extra: {
-          teamId: this.teamId,
+          accountId,
+          teamId,
           domain: (team as { domain?: string })?.domain,
         },
       },
@@ -913,8 +1600,9 @@ export class SlackService extends Service implements ISlackService {
       {
         src: "plugin:slack",
         agentId: this.runtime.agentId,
+        accountId,
         worldId,
-        teamId: this.teamId,
+        teamId,
       },
       "Created Slack workspace world",
     );
@@ -923,18 +1611,23 @@ export class SlackService extends Service implements ISlackService {
   private async ensureRoomExists(
     channelId: string,
     threadTs?: string,
+    accountId = this.defaultAccountId,
   ): Promise<Room> {
-    const roomId = await this.getRoomId(channelId, threadTs);
+    const roomId = await this.getRoomId(channelId, threadTs, accountId);
 
     const existingRoom = await this.runtime.getRoom(roomId);
     if (existingRoom) return existingRoom;
 
     // Get channel info
-    const channel = await this.getChannel(channelId);
+    const channel = await this.getChannel(channelId, accountId);
     const channelType = channel ? getSlackChannelType(channel) : "channel";
+    const teamId = this.getTeamIdForAccount(accountId);
 
-    const worldId = this.teamId
-      ? createUniqueUuid(this.runtime, `slack-workspace-${this.teamId}`)
+    const worldId = teamId
+      ? createUniqueUuid(
+          this.runtime,
+          this.scopedSlackKey("slack-workspace", teamId, accountId),
+        )
       : undefined;
 
     const elizaChannelType =
@@ -953,11 +1646,19 @@ export class SlackService extends Service implements ISlackService {
       channelId,
       worldId,
       metadata: {
+        source: "slack",
+        accountId,
         slackChannelType: channelType,
         threadTs,
         topic: channel?.topic?.value,
         purpose: channel?.purpose?.value,
-        serverId: this.teamId,
+        serverId: teamId,
+        slack: {
+          accountId,
+          teamId,
+          channelId,
+          threadTs,
+        },
       },
     };
 
@@ -967,6 +1668,7 @@ export class SlackService extends Service implements ISlackService {
       {
         src: "plugin:slack",
         agentId: this.runtime.agentId,
+        accountId,
         roomId,
         channelId,
         threadTs,
@@ -980,21 +1682,24 @@ export class SlackService extends Service implements ISlackService {
   private buildConnectorChannelTarget(
     channel: SlackChannel,
     score = 0.5,
+    accountId = this.defaultAccountId,
   ): MessageConnectorTarget | null {
     if (!channel.id || channel.isArchived) {
       return null;
     }
-    if (!this.isChannelAllowed(channel.id)) {
+    if (!this.isChannelAllowed(channel.id, accountId)) {
       return null;
     }
 
     const kind = channel.isIm ? "user" : channel.isMpim ? "group" : "channel";
     const label = channel.name ? `#${channel.name}` : channel.id;
+    const teamId = this.getTeamIdForAccount(accountId);
     return {
       target: {
         source: "slack",
+        accountId,
         channelId: channel.id,
-        serverId: this.teamId ?? undefined,
+        serverId: teamId ?? undefined,
       } as TargetInfo,
       label,
       kind,
@@ -1002,8 +1707,9 @@ export class SlackService extends Service implements ISlackService {
       score,
       contexts: ["social", "connectors"],
       metadata: {
+        accountId,
         slackChannelId: channel.id,
-        slackTeamId: this.teamId,
+        slackTeamId: teamId,
         slackChannelType: getSlackChannelType(channel),
         channelName: channel.name,
         isPrivate: channel.isPrivate,
@@ -1017,6 +1723,7 @@ export class SlackService extends Service implements ISlackService {
   private buildConnectorUserTarget(
     user: SlackUser,
     score = 0.5,
+    accountId = this.defaultAccountId,
   ): MessageConnectorTarget | null {
     if (!user.id || user.deleted || user.isBot || user.isAppUser) {
       return null;
@@ -1025,8 +1732,10 @@ export class SlackService extends Service implements ISlackService {
     return {
       target: {
         source: "slack",
+        accountId,
         entityId: user.id as UUID,
-        serverId: user.teamId ?? this.teamId ?? undefined,
+        serverId:
+          user.teamId ?? this.getTeamIdForAccount(accountId) ?? undefined,
       } as TargetInfo,
       label: `@${label}`,
       kind: "user",
@@ -1034,8 +1743,9 @@ export class SlackService extends Service implements ISlackService {
       score,
       contexts: ["social", "connectors"],
       metadata: {
+        accountId,
         slackUserId: user.id,
-        slackTeamId: user.teamId ?? this.teamId,
+        slackTeamId: user.teamId ?? this.getTeamIdForAccount(accountId),
         slackName: user.name,
         slackRealName: user.realName,
         slackDisplayName: user.profile.displayName,
@@ -1050,6 +1760,7 @@ export class SlackService extends Service implements ISlackService {
     const byKey = new Map<string, MessageConnectorTarget>();
     for (const target of targets) {
       const key = [
+        (target.target as AccountScopedTargetInfo).accountId ?? "",
         target.kind ?? "target",
         target.target.channelId ?? "",
         target.target.entityId ?? "",
@@ -1068,6 +1779,7 @@ export class SlackService extends Service implements ISlackService {
   private async resolveSlackTargetUserId(
     runtime: IAgentRuntime,
     entityId: string,
+    accountId?: string | null,
   ): Promise<string | null> {
     if (SLACK_USER_ID_PATTERN.test(entityId)) {
       return entityId;
@@ -1077,7 +1789,10 @@ export class SlackService extends Service implements ISlackService {
       typeof runtime.getEntityById === "function"
         ? await runtime.getEntityById(entityId as UUID)
         : null;
-    const metadataUserId = extractSlackUserIdFromMetadata(entity?.metadata);
+    const metadataUserId = extractSlackUserIdFromMetadata(
+      entity?.metadata,
+      accountId,
+    );
     if (metadataUserId) {
       return metadataUserId;
     }
@@ -1106,6 +1821,7 @@ export class SlackService extends Service implements ISlackService {
           : null;
       const linkedUserId = extractSlackUserIdFromMetadata(
         linkedEntity?.metadata,
+        accountId,
       );
       if (linkedUserId) {
         return linkedUserId;
@@ -1115,11 +1831,15 @@ export class SlackService extends Service implements ISlackService {
     return null;
   }
 
-  private async openDirectMessageChannel(userId: string): Promise<string> {
-    if (!this.client) {
+  private async openDirectMessageChannel(
+    userId: string,
+    accountId?: string | null,
+  ): Promise<string> {
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
       throw new Error("Slack client not initialized");
     }
-    const result = await this.client.conversations.open({ users: userId });
+    const result = await client.conversations.open({ users: userId });
     const channel = result.channel as { id?: string } | undefined;
     if (!channel?.id) {
       throw new Error(`Could not open Slack DM channel for user ${userId}`);
@@ -1132,7 +1852,8 @@ export class SlackService extends Service implements ISlackService {
     target: TargetInfo,
     content: Content,
   ): Promise<void> {
-    if (!this.client) {
+    const accountId = await this.resolveAccountIdForTarget(runtime, target);
+    if (!this.getClientForAccount(accountId)) {
       throw new Error("Slack client not initialized");
     }
 
@@ -1154,20 +1875,21 @@ export class SlackService extends Service implements ISlackService {
     }
 
     if (channelId && SLACK_USER_ID_PATTERN.test(channelId)) {
-      channelId = await this.openDirectMessageChannel(channelId);
+      channelId = await this.openDirectMessageChannel(channelId, accountId);
     }
 
     if (!channelId && target.entityId) {
       const slackUserId = await this.resolveSlackTargetUserId(
         runtime,
         String(target.entityId),
+        accountId,
       );
       if (!slackUserId) {
         throw new Error(
           `Could not resolve Slack user ID for entity ${target.entityId}`,
         );
       }
-      channelId = await this.openDirectMessageChannel(slackUserId);
+      channelId = await this.openDirectMessageChannel(slackUserId, accountId);
     }
 
     if (!channelId) {
@@ -1176,135 +1898,160 @@ export class SlackService extends Service implements ISlackService {
       );
     }
 
-    await this.sendMessage(channelId, text, {
-      threadTs,
-      replyBroadcast: undefined,
-      unfurlLinks: undefined,
-      unfurlMedia: undefined,
-      mrkdwn: undefined,
-      attachments: undefined,
-      blocks: undefined,
-    });
+    await this.sendMessage(
+      channelId,
+      text,
+      {
+        threadTs,
+        replyBroadcast: undefined,
+        unfurlLinks: undefined,
+        unfurlMedia: undefined,
+        mrkdwn: undefined,
+        attachments: undefined,
+        blocks: undefined,
+      },
+      accountId,
+    );
   }
 
   async resolveConnectorTargets(
     query: string,
     context: MessageConnectorQueryContext,
   ): Promise<MessageConnectorTarget[]> {
-    if (!this.client) {
-      return [];
-    }
-
     const normalizedQuery = normalizeSlackConnectorQuery(query);
     const targets: MessageConnectorTarget[] = [];
+    const accountIds = this.getCandidateAccountIds(context, context.target);
 
-    try {
-      const channels = await this.listChannels({
-        types: "public_channel,private_channel,mpim,im",
-        limit: 1000,
-      });
-      for (const channel of channels) {
-        const score = scoreSlackConnectorMatch(normalizedQuery, channel.id, [
-          channel.name,
-          channel.topic?.value,
-          channel.purpose?.value,
-        ]);
-        if (score <= 0) {
-          continue;
-        }
-        const target = this.buildConnectorChannelTarget(channel, score);
-        if (target) {
-          targets.push(target);
-        }
+    for (const accountId of accountIds) {
+      const client = this.getClientForAccount(accountId);
+      if (!client) {
+        continue;
       }
-    } catch (error) {
-      this.runtime.logger.debug(
-        {
-          src: "plugin:slack",
-          agentId: this.runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Slack connector channel query failed",
-      );
-    }
 
-    try {
-      const usersResult = await this.client.users.list({ limit: 200 });
-      const members = (usersResult.members ?? []) as SlackApiUserMember[];
-      for (const member of members) {
-        const user: SlackUser = {
-          id: member.id ?? "",
-          teamId: member.team_id,
-          name: member.name ?? "",
-          deleted: Boolean(member.deleted),
-          realName: member.real_name,
-          tz: member.tz,
-          tzLabel: member.tz_label,
-          tzOffset: member.tz_offset,
-          profile: {
-            title: member.profile?.title,
-            phone: member.profile?.phone,
-            skype: member.profile?.skype,
-            realName: member.profile?.real_name,
-            realNameNormalized: member.profile?.real_name_normalized,
-            displayName: member.profile?.display_name,
-            displayNameNormalized: member.profile?.display_name_normalized,
-            statusText: member.profile?.status_text,
-            statusEmoji: member.profile?.status_emoji,
-            statusExpiration: member.profile?.status_expiration,
-            avatarHash: member.profile?.avatar_hash,
-            email: member.profile?.email,
-            image24: member.profile?.image_24,
-            image32: member.profile?.image_32,
-            image48: member.profile?.image_48,
-            image72: member.profile?.image_72,
-            image192: member.profile?.image_192,
-            image512: member.profile?.image_512,
-            image1024: member.profile?.image_1024,
-            imageOriginal: member.profile?.image_original,
-            team: member.profile?.team,
+      try {
+        const channels = await this.listChannels(
+          {
+            types: "public_channel,private_channel,mpim,im",
+            limit: 1000,
           },
-          isAdmin: Boolean(member.is_admin),
-          isOwner: Boolean(member.is_owner),
-          isPrimaryOwner: Boolean(member.is_primary_owner),
-          isRestricted: Boolean(member.is_restricted),
-          isUltraRestricted: Boolean(member.is_ultra_restricted),
-          isBot: Boolean(member.is_bot),
-          isAppUser: Boolean(member.is_app_user),
-          updated: member.updated ?? 0,
-        };
-        const score = scoreSlackConnectorMatch(normalizedQuery, user.id, [
-          user.name,
-          user.realName,
-          user.profile.displayName,
-          user.profile.realName,
-          user.profile.email,
-        ]);
-        if (score <= 0) {
-          continue;
+          accountId,
+        );
+        for (const channel of channels) {
+          const score = scoreSlackConnectorMatch(normalizedQuery, channel.id, [
+            channel.name,
+            channel.topic?.value,
+            channel.purpose?.value,
+          ]);
+          if (score <= 0) {
+            continue;
+          }
+          const target = this.buildConnectorChannelTarget(
+            channel,
+            score,
+            accountId,
+          );
+          if (target) {
+            targets.push(target);
+          }
         }
-        const target = this.buildConnectorUserTarget(user, score);
-        if (target) {
-          targets.push(target);
-        }
+      } catch (error) {
+        this.runtime.logger.debug(
+          {
+            src: "plugin:slack",
+            agentId: this.runtime.agentId,
+            accountId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Slack connector channel query failed",
+        );
       }
-    } catch (error) {
-      this.runtime.logger.debug(
-        {
-          src: "plugin:slack",
-          agentId: this.runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Slack connector user query failed",
-      );
-    }
 
-    if (context.target?.channelId) {
-      const channel = await this.getChannel(context.target.channelId);
-      if (channel) {
-        const target = this.buildConnectorChannelTarget(channel, 0.6);
-        if (target) {
-          targets.push(target);
+      try {
+        const usersResult = await client.users.list({ limit: 200 });
+        const members = (usersResult.members ?? []) as SlackApiUserMember[];
+        for (const member of members) {
+          const user: SlackUser = {
+            id: member.id ?? "",
+            teamId: member.team_id,
+            name: member.name ?? "",
+            deleted: Boolean(member.deleted),
+            realName: member.real_name,
+            tz: member.tz,
+            tzLabel: member.tz_label,
+            tzOffset: member.tz_offset,
+            profile: {
+              title: member.profile?.title,
+              phone: member.profile?.phone,
+              skype: member.profile?.skype,
+              realName: member.profile?.real_name,
+              realNameNormalized: member.profile?.real_name_normalized,
+              displayName: member.profile?.display_name,
+              displayNameNormalized: member.profile?.display_name_normalized,
+              statusText: member.profile?.status_text,
+              statusEmoji: member.profile?.status_emoji,
+              statusExpiration: member.profile?.status_expiration,
+              avatarHash: member.profile?.avatar_hash,
+              email: member.profile?.email,
+              image24: member.profile?.image_24,
+              image32: member.profile?.image_32,
+              image48: member.profile?.image_48,
+              image72: member.profile?.image_72,
+              image192: member.profile?.image_192,
+              image512: member.profile?.image_512,
+              image1024: member.profile?.image_1024,
+              imageOriginal: member.profile?.image_original,
+              team: member.profile?.team,
+            },
+            isAdmin: Boolean(member.is_admin),
+            isOwner: Boolean(member.is_owner),
+            isPrimaryOwner: Boolean(member.is_primary_owner),
+            isRestricted: Boolean(member.is_restricted),
+            isUltraRestricted: Boolean(member.is_ultra_restricted),
+            isBot: Boolean(member.is_bot),
+            isAppUser: Boolean(member.is_app_user),
+            updated: member.updated ?? 0,
+          };
+          const score = scoreSlackConnectorMatch(normalizedQuery, user.id, [
+            user.name,
+            user.realName,
+            user.profile.displayName,
+            user.profile.realName,
+            user.profile.email,
+          ]);
+          if (score <= 0) {
+            continue;
+          }
+          const target = this.buildConnectorUserTarget(user, score, accountId);
+          if (target) {
+            targets.push(target);
+          }
+        }
+      } catch (error) {
+        this.runtime.logger.debug(
+          {
+            src: "plugin:slack",
+            agentId: this.runtime.agentId,
+            accountId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Slack connector user query failed",
+        );
+      }
+
+      if (context.target?.channelId) {
+        const channel = await this.getChannel(
+          context.target.channelId,
+          accountId,
+        );
+        if (channel) {
+          const target = this.buildConnectorChannelTarget(
+            channel,
+            0.6,
+            accountId,
+          );
+          if (target) {
+            targets.push(target);
+          }
         }
       }
     }
@@ -1313,21 +2060,31 @@ export class SlackService extends Service implements ISlackService {
   }
 
   async listConnectorRooms(
-    _context: MessageConnectorQueryContext,
+    context: MessageConnectorQueryContext,
   ): Promise<MessageConnectorTarget[]> {
-    if (!this.client) {
-      return [];
+    const targets: MessageConnectorTarget[] = [];
+    for (const accountId of this.getCandidateAccountIds(context)) {
+      if (!this.getClientForAccount(accountId)) {
+        continue;
+      }
+      const channels = await this.listChannels(
+        {
+          types: "public_channel,private_channel,mpim,im",
+          limit: 1000,
+        },
+        accountId,
+      );
+      targets.push(
+        ...channels
+          .map((channel) =>
+            this.buildConnectorChannelTarget(channel, 0.5, accountId),
+          )
+          .filter((target): target is MessageConnectorTarget =>
+            Boolean(target),
+          ),
+      );
     }
-
-    const channels = await this.listChannels({
-      types: "public_channel,private_channel,mpim,im",
-      limit: 1000,
-    });
-    return this.dedupeConnectorTargets(
-      channels
-        .map((channel) => this.buildConnectorChannelTarget(channel, 0.5))
-        .filter((target): target is MessageConnectorTarget => Boolean(target)),
-    ).slice(0, 50);
+    return this.dedupeConnectorTargets(targets).slice(0, 50);
   }
 
   async listRecentConnectorTargets(
@@ -1338,6 +2095,14 @@ export class SlackService extends Service implements ISlackService {
       context.roomId && typeof context.runtime.getRoom === "function"
         ? await context.runtime.getRoom(context.roomId)
         : null;
+    const accountId = await this.resolveAccountIdForTarget(
+      context.runtime,
+      context.target,
+      {
+        accountId: (context as AccountScopedConnectorContext).accountId,
+        roomId: context.roomId,
+      },
+    );
     const channelId =
       context.target?.channelId ??
       (room?.source === "slack" ? room.channelId : undefined);
@@ -1349,9 +2114,13 @@ export class SlackService extends Service implements ISlackService {
         : undefined);
 
     if (channelId) {
-      const channel = await this.getChannel(channelId);
+      const channel = await this.getChannel(channelId, accountId);
       if (channel) {
-        const target = this.buildConnectorChannelTarget(channel, 0.95);
+        const target = this.buildConnectorChannelTarget(
+          channel,
+          0.95,
+          accountId,
+        );
         if (target) {
           if (threadTs) {
             target.kind = "thread";
@@ -1367,7 +2136,12 @@ export class SlackService extends Service implements ISlackService {
       }
     }
 
-    targets.push(...(await this.listConnectorRooms(context)));
+    targets.push(
+      ...(await this.listConnectorRooms({
+        ...context,
+        accountId,
+      } as MessageConnectorQueryContext)),
+    );
     return this.dedupeConnectorTargets(targets).slice(0, 25);
   }
 
@@ -1375,7 +2149,16 @@ export class SlackService extends Service implements ISlackService {
     target: TargetInfo,
     context: MessageConnectorQueryContext,
   ): Promise<MessageConnectorChatContext | null> {
-    if (!this.client) {
+    const accountId = await this.resolveAccountIdForTarget(
+      context.runtime,
+      target,
+      {
+        accountId: (context as AccountScopedConnectorContext).accountId,
+        roomId: context.roomId,
+      },
+    );
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
       return null;
     }
 
@@ -1392,15 +2175,17 @@ export class SlackService extends Service implements ISlackService {
     const threadTs =
       target.threadId ??
       (typeof metadata?.threadTs === "string" ? metadata.threadTs : undefined);
-    const channel = await this.getChannel(channelId);
+    const channel = await this.getChannel(channelId, accountId);
 
     const messages = threadTs
-      ? await this.client.conversations.replies({
+      ? await client.conversations.replies({
           channel: channelId,
           ts: threadTs,
           limit: 10,
         })
-      : { messages: await this.readHistory(channelId, { limit: 10 }) };
+      : {
+          messages: await this.readHistory(channelId, { limit: 10 }, accountId),
+        };
     const rawMessages = (messages.messages ?? []) as Array<
       SlackMessage | Record<string, unknown>
     >;
@@ -1414,13 +2199,16 @@ export class SlackService extends Service implements ISlackService {
         (rawMessage as SlackMessage).user ??
         (rawMessage as Record<string, string | undefined>).user;
       const user =
-        typeof userId === "string" ? await this.getUser(userId) : null;
+        typeof userId === "string"
+          ? await this.getUser(userId, accountId)
+          : null;
       recentMessages.push({
         entityId: userId ? (userId as UUID) : undefined,
         name: user ? getSlackUserDisplayName(user) : userId,
         text,
         timestamp: Number((rawMessage as SlackMessage).ts) * 1000 || undefined,
         metadata: {
+          accountId,
           slackMessageTs: (rawMessage as SlackMessage).ts,
           slackUserId: userId,
         },
@@ -1430,19 +2218,457 @@ export class SlackService extends Service implements ISlackService {
     return {
       target: {
         source: "slack",
+        accountId,
         roomId: target.roomId ?? room?.id,
         channelId,
-        serverId: target.serverId ?? this.teamId ?? undefined,
+        serverId:
+          target.serverId ?? this.getTeamIdForAccount(accountId) ?? undefined,
         threadId: threadTs,
       } as TargetInfo,
       label: channel?.name ? `#${channel.name}` : channelId,
       summary: channel?.purpose?.value || channel?.topic?.value,
       recentMessages,
       metadata: {
+        accountId,
         slackChannelId: channelId,
-        slackTeamId: this.teamId,
+        slackTeamId: this.getTeamIdForAccount(accountId),
         slackThreadTs: threadTs,
         channelName: channel?.name,
+      },
+    };
+  }
+
+  private async resolveConnectorMessageLocation(
+    target?: TargetInfo | null,
+    fallback?: ConnectorFetchMessagesParams,
+  ): Promise<{ accountId: string; channelId: string; threadTs?: string }> {
+    const accountId = await this.resolveAccountIdForTarget(
+      this.runtime,
+      target,
+      fallback,
+    );
+    let channelId = target?.channelId ?? fallback?.channelId;
+    let threadTs = target?.threadId ?? fallback?.threadId;
+    const roomId = target?.roomId ?? fallback?.roomId;
+
+    if (roomId && (!channelId || !threadTs)) {
+      const room = await this.runtime.getRoom(roomId);
+      channelId = channelId ?? room?.channelId;
+      const metadata = room?.metadata as Record<string, unknown> | undefined;
+      const roomThreadTs =
+        typeof metadata?.threadTs === "string" ? metadata.threadTs : undefined;
+      threadTs = threadTs ?? roomThreadTs;
+    }
+
+    if (channelId && SLACK_USER_ID_PATTERN.test(channelId)) {
+      channelId = await this.openDirectMessageChannel(channelId, accountId);
+    }
+
+    if (!channelId && target?.entityId) {
+      const slackUserId = await this.resolveSlackTargetUserId(
+        this.runtime,
+        String(target.entityId),
+        accountId,
+      );
+      if (slackUserId) {
+        channelId = await this.openDirectMessageChannel(slackUserId, accountId);
+      }
+    }
+
+    if (!channelId) {
+      throw new Error(
+        "Slack message operation requires channelId, roomId, or entityId.",
+      );
+    }
+
+    return { accountId, channelId, threadTs };
+  }
+
+  private async slackMessageToMemory(
+    message: SlackMessage,
+    channelId: string,
+    threadTs?: string,
+    accountId = this.defaultAccountId,
+  ): Promise<Memory> {
+    const effectiveThreadTs = threadTs ?? message.threadTs;
+    const roomId = await this.getRoomId(
+      channelId,
+      effectiveThreadTs,
+      accountId,
+    );
+    const botUserId = this.getBotUserIdForAccount(accountId);
+    const slackUserId = message.user ?? botUserId ?? "unknown";
+    const entityId =
+      slackUserId === botUserId
+        ? this.runtime.agentId
+        : this.getEntityId(slackUserId, accountId);
+    const user = message.user
+      ? await this.getUser(message.user, accountId)
+      : null;
+    const displayName = user ? getSlackUserDisplayName(user) : slackUserId;
+    const channel = await this.getChannel(channelId, accountId).catch(
+      () => null,
+    );
+    const channelType = effectiveThreadTs
+      ? ChannelType.THREAD
+      : channel?.isIm
+        ? ChannelType.DM
+        : ChannelType.GROUP;
+
+    const attachments: Media[] = (message.files ?? []).map((file) => ({
+      id: file.id,
+      url: file.urlPrivate,
+      title: file.title || file.name,
+      source: "slack",
+      description: file.name,
+    }));
+
+    return {
+      id: createUniqueUuid(
+        this.runtime,
+        this.scopedSlackKey("slack", `${channelId}-${message.ts}`, accountId),
+      ),
+      agentId: this.runtime.agentId,
+      roomId,
+      entityId,
+      content: {
+        text: message.text || "",
+        source: "slack",
+        name: displayName,
+        channelType,
+        metadata: { accountId },
+        ...(effectiveThreadTs && effectiveThreadTs !== message.ts
+          ? {
+              inReplyTo: createUniqueUuid(
+                this.runtime,
+                this.scopedSlackKey(
+                  "slack",
+                  `${channelId}-${effectiveThreadTs}`,
+                  accountId,
+                ),
+              ),
+            }
+          : {}),
+        ...(attachments.length > 0 ? { attachments } : {}),
+      },
+      metadata: {
+        type: "message",
+        source: "slack",
+        provider: "slack",
+        accountId,
+        timestamp: this.parseSlackTimestamp(message.ts),
+        entityName: displayName,
+        entityUserName: user?.name ?? slackUserId,
+        fromBot: slackUserId === botUserId,
+        fromId: slackUserId,
+        sourceId: entityId,
+        chatType: channelType,
+        messageIdFull: message.ts,
+        sender: {
+          id: slackUserId,
+          name: displayName,
+          username: user?.name ?? slackUserId,
+        },
+        slack: {
+          accountId,
+          teamId: this.getTeamIdForAccount(accountId) ?? undefined,
+          channelId,
+          userId: slackUserId,
+          messageId: message.ts,
+          threadTs: effectiveThreadTs,
+        },
+        slackChannelId: channelId,
+        slackMessageTs: message.ts,
+        slackThreadTs: effectiveThreadTs,
+        reactions: message.reactions,
+      } as unknown as Memory["metadata"],
+      createdAt: this.parseSlackTimestamp(message.ts),
+    };
+  }
+
+  async listConnectorServers(
+    context: MessageConnectorQueryContext,
+  ): Promise<World[]> {
+    const worlds: World[] = [];
+    for (const accountId of this.getCandidateAccountIds(context)) {
+      const teamId = this.getTeamIdForAccount(accountId);
+      if (!teamId) {
+        continue;
+      }
+
+      let name = `Slack Workspace ${teamId}`;
+      try {
+        const client = this.getClientForAccount(accountId);
+        if (client) {
+          const teamInfo = await client.team.info();
+          const team = teamInfo.team as { name?: string } | undefined;
+          name = team?.name || name;
+        }
+      } catch {
+        // Best-effort metadata; the workspace id is still useful.
+      }
+
+      worlds.push({
+        id: createUniqueUuid(
+          this.runtime,
+          this.scopedSlackKey("slack-workspace", teamId, accountId),
+        ),
+        agentId: this.runtime.agentId,
+        name,
+        metadata: {
+          source: "slack",
+          accountId,
+          teamId,
+        },
+      });
+    }
+
+    return worlds;
+  }
+
+  async fetchConnectorMessages(
+    _context: MessageConnectorQueryContext,
+    params: ConnectorFetchMessagesParams,
+  ): Promise<Memory[]> {
+    const accountId = await this.resolveAccountIdForTarget(
+      _context.runtime,
+      params.target,
+      { accountId: params.accountId, roomId: params.roomId },
+    );
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
+      return [];
+    }
+
+    const { channelId, threadTs } = await this.resolveConnectorMessageLocation(
+      params.target,
+      { ...params, accountId },
+    );
+    const limit = Number.isFinite(params.limit)
+      ? Math.max(1, Math.min(Number(params.limit), 100))
+      : 25;
+
+    const rawMessages = threadTs
+      ? (((
+          await client.conversations.replies({
+            channel: channelId,
+            ts: threadTs,
+            limit,
+            latest: params.before,
+            oldest: params.after,
+            cursor: params.cursor,
+          })
+        ).messages as
+          | Array<SlackMessage | Record<string, unknown>>
+          | undefined) ?? [])
+      : await this.readHistory(
+          channelId,
+          {
+            limit,
+            before: params.before,
+            after: params.after,
+          },
+          accountId,
+        );
+
+    const memories: Memory[] = [];
+    for (const rawMessage of rawMessages) {
+      const message = rawMessage as SlackMessage;
+      if (!message.ts) {
+        continue;
+      }
+      memories.push(
+        await this.slackMessageToMemory(
+          message,
+          channelId,
+          threadTs,
+          accountId,
+        ),
+      );
+    }
+    return memories.sort(
+      (left, right) =>
+        Number(right.createdAt ?? 0) - Number(left.createdAt ?? 0),
+    );
+  }
+
+  async searchConnectorMessages(
+    context: MessageConnectorQueryContext,
+    params: ConnectorSearchMessagesParams,
+  ): Promise<Memory[]> {
+    const query = params.query?.trim().toLowerCase();
+    if (!query) {
+      return [];
+    }
+
+    const memories = await this.fetchConnectorMessages(context, {
+      ...params,
+      limit: Math.max(params.limit ?? 100, 100),
+    });
+    return memories
+      .filter((memory) => {
+        const text = String(memory.content?.text ?? "").toLowerCase();
+        const name = String(memory.content?.name ?? "").toLowerCase();
+        return text.includes(query) || name.includes(query);
+      })
+      .slice(0, params.limit ?? 25);
+  }
+
+  async reactConnectorMessage(
+    _runtime: IAgentRuntime,
+    params: ConnectorMessageMutationParams,
+  ): Promise<void> {
+    const { accountId, channelId } = await this.resolveConnectorMessageLocation(
+      params.target,
+      params,
+    );
+    const messageTs = params.messageTs ?? params.messageId;
+    const emoji = params.emoji?.trim();
+    if (!messageTs || !emoji) {
+      throw new Error("Slack reaction requires messageId/messageTs and emoji.");
+    }
+    if (params.remove) {
+      await this.removeReaction(channelId, messageTs, emoji, accountId);
+      return;
+    }
+    await this.sendReaction(channelId, messageTs, emoji, accountId);
+  }
+
+  async editConnectorMessage(
+    _runtime: IAgentRuntime,
+    params: ConnectorMessageMutationParams,
+  ): Promise<Memory> {
+    const { accountId, channelId, threadTs } =
+      await this.resolveConnectorMessageLocation(params.target, params);
+    const messageTs = params.messageTs ?? params.messageId;
+    const text = params.content?.text ?? params.text;
+    if (!messageTs || !text?.trim()) {
+      throw new Error("Slack edit requires messageId/messageTs and text.");
+    }
+
+    await this.editMessage(channelId, messageTs, text, accountId);
+    return this.slackMessageToMemory(
+      {
+        type: "message",
+        ts: messageTs,
+        user: this.getBotUserIdForAccount(accountId) ?? undefined,
+        text,
+        threadTs,
+        subtype: undefined,
+        replyCount: undefined,
+        replyUsersCount: undefined,
+        latestReply: undefined,
+        reactions: undefined,
+        files: undefined,
+        attachments: undefined,
+        blocks: undefined,
+      },
+      channelId,
+      threadTs,
+      accountId,
+    );
+  }
+
+  async deleteConnectorMessage(
+    _runtime: IAgentRuntime,
+    params: ConnectorMessageMutationParams,
+  ): Promise<void> {
+    const { accountId, channelId } = await this.resolveConnectorMessageLocation(
+      params.target,
+      params,
+    );
+    const messageTs = params.messageTs ?? params.messageId;
+    if (!messageTs) {
+      throw new Error("Slack delete requires messageId/messageTs.");
+    }
+    await this.deleteMessage(channelId, messageTs, accountId);
+  }
+
+  async pinConnectorMessage(
+    _runtime: IAgentRuntime,
+    params: ConnectorMessageMutationParams,
+  ): Promise<void> {
+    const { accountId, channelId } = await this.resolveConnectorMessageLocation(
+      params.target,
+      params,
+    );
+    const messageTs = params.messageTs ?? params.messageId;
+    if (!messageTs) {
+      throw new Error("Slack pin requires messageId/messageTs.");
+    }
+    if (params.pin === false) {
+      await this.unpinMessage(channelId, messageTs, accountId);
+      return;
+    }
+    await this.pinMessage(channelId, messageTs, accountId);
+  }
+
+  async getConnectorUser(
+    runtime: IAgentRuntime,
+    params: ConnectorUserLookupParams,
+  ): Promise<unknown> {
+    const accountId = normalizeAccountId(
+      (params.target as AccountScopedTargetInfo | undefined)?.accountId ??
+        this.defaultAccountId ??
+        DEFAULT_ACCOUNT_ID,
+    );
+    const lookup =
+      params.userId ?? params.handle ?? params.username ?? params.query;
+    if (!lookup) {
+      return null;
+    }
+
+    let slackUserId = SLACK_USER_ID_PATTERN.test(lookup)
+      ? lookup
+      : await this.resolveSlackTargetUserId(runtime, lookup, accountId);
+
+    const client = this.getClientForAccount(accountId);
+    if (!slackUserId && client) {
+      const usersResult = await client.users.list({ limit: 200 });
+      const members = (usersResult.members ?? []) as SlackApiUserMember[];
+      const normalized = normalizeSlackConnectorQuery(lookup);
+      const match = members.find((member) =>
+        [
+          member.id,
+          member.name,
+          member.real_name,
+          member.profile?.display_name,
+          member.profile?.email,
+        ]
+          .filter((value): value is string => Boolean(value))
+          .some((value) =>
+            normalizeSlackConnectorQuery(value).includes(normalized),
+          ),
+      );
+      slackUserId = match?.id ?? null;
+    }
+
+    if (!slackUserId) {
+      return null;
+    }
+
+    const user = await this.getUser(slackUserId, accountId);
+    if (!user) {
+      return null;
+    }
+
+    return {
+      id: this.getEntityId(user.id, accountId),
+      agentId: this.runtime.agentId,
+      names: [getSlackUserDisplayName(user), user.name, user.realName].filter(
+        (value): value is string => Boolean(value),
+      ),
+      metadata: {
+        source: "slack",
+        accountId,
+        slack: {
+          accountId,
+          id: user.id,
+          teamId: user.teamId ?? this.getTeamIdForAccount(accountId),
+          name: user.name,
+          realName: user.realName,
+          profile: { ...user.profile },
+        },
       },
     };
   }
@@ -1451,14 +2677,22 @@ export class SlackService extends Service implements ISlackService {
     entityId: UUID | string,
     context: MessageConnectorQueryContext,
   ): Promise<MessageConnectorUserContext | null> {
+    const accountId = normalizeAccountId(
+      (context.target as AccountScopedTargetInfo | undefined)?.accountId ??
+        (context as AccountScopedConnectorContext).accountId ??
+        (context as AccountScopedConnectorContext).account?.accountId ??
+        this.defaultAccountId ??
+        DEFAULT_ACCOUNT_ID,
+    );
     const slackUserId = await this.resolveSlackTargetUserId(
       context.runtime,
       String(entityId),
+      accountId,
     );
     if (!slackUserId) {
       return null;
     }
-    const user = await this.getUser(slackUserId);
+    const user = await this.getUser(slackUserId, accountId);
     if (!user) {
       return null;
     }
@@ -1478,23 +2712,29 @@ export class SlackService extends Service implements ISlackService {
         ...(user.profile.email ? { email: user.profile.email } : {}),
       },
       metadata: {
+        accountId,
         slackUserId: user.id,
-        slackTeamId: user.teamId ?? this.teamId,
+        slackTeamId: user.teamId ?? this.getTeamIdForAccount(accountId),
         profile: { ...user.profile },
       },
     };
   }
 
-  async getUser(userId: string): Promise<SlackUser | null> {
+  async getUser(
+    userId: string,
+    accountId?: string | null,
+  ): Promise<SlackUser | null> {
+    const userCache = this.getUserCacheForAccount(accountId);
     // Check cache first
-    const cachedUser = this.userCache.get(userId);
+    const cachedUser = userCache.get(userId);
     if (cachedUser) {
       return cachedUser;
     }
 
-    if (!this.client) return null;
+    const client = this.getClientForAccount(accountId);
+    if (!client) return null;
 
-    const result = await this.client.users.info({ user: userId });
+    const result = await client.users.info({ user: userId });
     if (!result.user) return null;
 
     const user: SlackUser = {
@@ -1539,20 +2779,25 @@ export class SlackService extends Service implements ISlackService {
       updated: result.user.updated || 0,
     };
 
-    this.userCache.set(userId, user);
+    userCache.set(userId, user);
     return user;
   }
 
-  async getChannel(channelId: string): Promise<SlackChannel | null> {
+  async getChannel(
+    channelId: string,
+    accountId?: string | null,
+  ): Promise<SlackChannel | null> {
+    const channelCache = this.getChannelCacheForAccount(accountId);
     // Check cache first
-    const cachedChannel = this.channelCache.get(channelId);
+    const cachedChannel = channelCache.get(channelId);
     if (cachedChannel) {
       return cachedChannel;
     }
 
-    if (!this.client) return null;
+    const client = this.getClientForAccount(accountId);
+    if (!client) return null;
 
-    const result = await this.client.conversations.info({ channel: channelId });
+    const result = await client.conversations.info({ channel: channelId });
     if (!result.channel) return null;
 
     const channel: SlackChannel = {
@@ -1605,7 +2850,7 @@ export class SlackService extends Service implements ISlackService {
       creator: (result.channel as { creator: string }).creator,
     };
 
-    this.channelCache.set(channelId, channel);
+    channelCache.set(channelId, channel);
     return channel;
   }
 
@@ -1613,8 +2858,10 @@ export class SlackService extends Service implements ISlackService {
     channelId: string,
     text: string,
     options?: SlackMessageSendOptions,
+    accountId?: string | null,
   ): Promise<{ ts: string; channelId: string }> {
-    if (!this.client) {
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
       throw new Error("Slack client not initialized");
     }
 
@@ -1624,7 +2871,7 @@ export class SlackService extends Service implements ISlackService {
     let lastTs = "";
 
     for (const msg of messages) {
-      const result = await this.client.chat.postMessage({
+      const result = await client.chat.postMessage({
         channel: channelId,
         text: msg,
         thread_ts: options?.threadTs,
@@ -1646,15 +2893,17 @@ export class SlackService extends Service implements ISlackService {
     channelId: string,
     messageTs: string,
     emoji: string,
+    accountId?: string | null,
   ): Promise<void> {
-    if (!this.client) {
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
       throw new Error("Slack client not initialized");
     }
 
     // Remove colons if present
     const cleanEmoji = emoji.replace(/^:/, "").replace(/:$/, "");
 
-    await this.client.reactions.add({
+    await client.reactions.add({
       channel: channelId,
       timestamp: messageTs,
       name: cleanEmoji,
@@ -1665,14 +2914,16 @@ export class SlackService extends Service implements ISlackService {
     channelId: string,
     messageTs: string,
     emoji: string,
+    accountId?: string | null,
   ): Promise<void> {
-    if (!this.client) {
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
       throw new Error("Slack client not initialized");
     }
 
     const cleanEmoji = emoji.replace(/^:/, "").replace(/:$/, "");
 
-    await this.client.reactions.remove({
+    await client.reactions.remove({
       channel: channelId,
       timestamp: messageTs,
       name: cleanEmoji,
@@ -1683,57 +2934,78 @@ export class SlackService extends Service implements ISlackService {
     channelId: string,
     messageTs: string,
     text: string,
+    accountId?: string | null,
   ): Promise<void> {
-    if (!this.client) {
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
       throw new Error("Slack client not initialized");
     }
 
-    await this.client.chat.update({
+    await client.chat.update({
       channel: channelId,
       ts: messageTs,
       text,
     });
   }
 
-  async deleteMessage(channelId: string, messageTs: string): Promise<void> {
-    if (!this.client) {
+  async deleteMessage(
+    channelId: string,
+    messageTs: string,
+    accountId?: string | null,
+  ): Promise<void> {
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
       throw new Error("Slack client not initialized");
     }
 
-    await this.client.chat.delete({
+    await client.chat.delete({
       channel: channelId,
       ts: messageTs,
     });
   }
 
-  async pinMessage(channelId: string, messageTs: string): Promise<void> {
-    if (!this.client) {
+  async pinMessage(
+    channelId: string,
+    messageTs: string,
+    accountId?: string | null,
+  ): Promise<void> {
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
       throw new Error("Slack client not initialized");
     }
 
-    await this.client.pins.add({
+    await client.pins.add({
       channel: channelId,
       timestamp: messageTs,
     });
   }
 
-  async unpinMessage(channelId: string, messageTs: string): Promise<void> {
-    if (!this.client) {
+  async unpinMessage(
+    channelId: string,
+    messageTs: string,
+    accountId?: string | null,
+  ): Promise<void> {
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
       throw new Error("Slack client not initialized");
     }
 
-    await this.client.pins.remove({
+    await client.pins.remove({
       channel: channelId,
       timestamp: messageTs,
     });
   }
 
-  async listPins(channelId: string): Promise<SlackMessage[]> {
-    if (!this.client) {
+  async listPins(
+    channelId: string,
+    accountId?: string | null,
+  ): Promise<SlackMessage[]> {
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
       throw new Error("Slack client not initialized");
     }
 
-    const result = await this.client.pins.list({ channel: channelId });
+    const result = await client.pins.list({ channel: channelId });
 
     return (result.items || [])
       .filter(
@@ -1762,12 +3034,14 @@ export class SlackService extends Service implements ISlackService {
   async readHistory(
     channelId: string,
     options?: { limit?: number; before?: string; after?: string },
+    accountId?: string | null,
   ): Promise<SlackMessage[]> {
-    if (!this.client) {
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
       throw new Error("Slack client not initialized");
     }
 
-    const result = await this.client.conversations.history({
+    const result = await client.conversations.history({
       channel: channelId,
       limit: options?.limit || 100,
       latest: options?.before,
@@ -1793,15 +3067,19 @@ export class SlackService extends Service implements ISlackService {
     }));
   }
 
-  async listChannels(options?: {
-    types?: string;
-    limit?: number;
-  }): Promise<SlackChannel[]> {
-    if (!this.client) {
+  async listChannels(
+    options?: {
+      types?: string;
+      limit?: number;
+    },
+    accountId?: string | null,
+  ): Promise<SlackChannel[]> {
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
       throw new Error("Slack client not initialized");
     }
 
-    const result = await this.client.conversations.list({
+    const result = await client.conversations.list({
       types: options?.types || "public_channel,private_channel",
       limit: options?.limit || 1000,
     });
@@ -1839,12 +3117,15 @@ export class SlackService extends Service implements ISlackService {
     }));
   }
 
-  async getEmojiList(): Promise<Record<string, string>> {
-    if (!this.client) {
+  async getEmojiList(
+    accountId?: string | null,
+  ): Promise<Record<string, string>> {
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
       throw new Error("Slack client not initialized");
     }
 
-    const result = await this.client.emoji.list();
+    const result = await client.emoji.list();
     return (result.emoji || {}) as Record<string, string>;
   }
 
@@ -1853,12 +3134,14 @@ export class SlackService extends Service implements ISlackService {
     content: Buffer | string,
     filename: string,
     options?: { title?: string; initialComment?: string; threadTs?: string },
+    accountId?: string | null,
   ): Promise<{ fileId: string; permalink: string }> {
-    if (!this.client) {
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
       throw new Error("Slack client not initialized");
     }
 
-    const result = await this.client.files.uploadV2({
+    const result = await client.files.uploadV2({
       channel_id: channelId,
       content: typeof content === "string" ? content : undefined,
       file: typeof content !== "string" ? content : undefined,
@@ -1915,24 +3198,27 @@ export class SlackService extends Service implements ISlackService {
   /**
    * Add a channel to the dynamic allowed list
    */
-  addAllowedChannel(channelId: string): void {
+  addAllowedChannel(channelId: string, accountId?: string | null): void {
     if (isValidChannelId(channelId)) {
-      this.dynamicChannelIds.add(channelId);
+      this.getDynamicChannelIdsForAccount(accountId).add(channelId);
     }
   }
 
   /**
    * Remove a channel from the dynamic allowed list
    */
-  removeAllowedChannel(channelId: string): void {
-    this.dynamicChannelIds.delete(channelId);
+  removeAllowedChannel(channelId: string, accountId?: string | null): void {
+    this.getDynamicChannelIdsForAccount(accountId).delete(channelId);
   }
 
   /**
    * Get all currently allowed channel IDs
    */
-  getAllowedChannelIds(): string[] {
-    return [...this.allowedChannelIds, ...this.dynamicChannelIds];
+  getAllowedChannelIds(accountId?: string | null): string[] {
+    return [
+      ...this.getAllowedChannelIdsForAccount(accountId),
+      ...this.getDynamicChannelIdsForAccount(accountId),
+    ];
   }
 
   /**

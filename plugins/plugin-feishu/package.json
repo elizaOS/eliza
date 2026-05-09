@@ -15,8 +15,17 @@
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"auto-enable.ts"
 	],
+	"elizaos": {
+		"plugin": {
+			"autoEnableModule": "./auto-enable.ts",
+			"capabilities": [
+				"messaging"
+			]
+		}
+	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
 		"@larksuiteoapi/node-sdk": "^1.40.0",

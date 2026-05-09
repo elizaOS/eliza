@@ -10,11 +10,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "hono": "4.12.14"
+    "@elizaos/cloud-db": "workspace:*",
+    "@elizaos/cloud-lib": "workspace:*",
+    "hono": "4.12.16"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/node": "22.19.2",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   }
 }

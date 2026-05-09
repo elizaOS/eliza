@@ -1,7 +1,7 @@
 import {
   listTriggerTasks,
   readTriggerConfig,
-} from "@elizaos/agent/triggers/runtime";
+} from "@elizaos/agent";
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { ChannelType, stringToUuid } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-schema";
@@ -83,7 +83,7 @@ export default scenario({
       room: "main",
       text: "Mute the 'crypto signals' Telegram group for 24 hours.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_CHAT_THREAD"],
+        acceptedActions: ["CHAT_THREAD"],
         description: "targeted Telegram mute control",
         includesAny: ["telegram", "crypto signals", "mute"],
       }),
@@ -92,13 +92,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "OWNER_CHAT_THREAD",
+      actionName: "CHAT_THREAD",
     },
     {
       type: "custom",
       name: "telegram-mute-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_CHAT_THREAD"],
+        acceptedActions: ["CHAT_THREAD"],
         description: "targeted Telegram mute control",
         includesAny: ["telegram", "crypto signals", "mute"],
       }),
@@ -112,7 +112,7 @@ export default scenario({
           return "scenario runtime unavailable";
         }
         const hit = ctx.actionsCalled.find(
-          (entry) => entry.actionName === "OWNER_CHAT_THREAD",
+          (entry) => entry.actionName === "CHAT_THREAD",
         );
         const data =
           hit?.result?.data && typeof hit.result.data === "object"

@@ -1,7 +1,7 @@
 import { DashboardLoadingState } from "@elizaos/cloud-ui";
 import { Helmet } from "react-helmet-async";
-import { AffiliatesPageWrapper } from "@/packages/ui/src/components/affiliates/affiliates-page-wrapper";
 import { useRequireAuth } from "../../lib/auth-hooks";
+import { AffiliatesPageWrapper } from "./_components/affiliates-page-wrapper";
 
 /**
  * /dashboard/affiliates — the existing `AffiliatesPageClient` self-fetches

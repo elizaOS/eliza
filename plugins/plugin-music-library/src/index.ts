@@ -1,8 +1,5 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import downloadMusic from "./actions/downloadMusic";
-import playlistOp from "./actions/playlistOp";
-import playMusicQuery from "./actions/playMusicQuery";
-import searchYouTube from "./actions/searchYouTube";
+import musicLibraryAction from "./actions/musicLibrary";
 import { musicInfoProvider } from "./providers/musicInfoProvider";
 import musicLibraryProvider from "./providers/musicLibraryProvider";
 import musicPlaylistsProvider from "./providers/musicPlaylistsProvider";
@@ -108,10 +105,9 @@ const musicLibraryPlugin: Plugin = {
     musicLibraryProvider,
     musicPlaylistsProvider,
   ],
-  actions: [playlistOp, playMusicQuery, searchYouTube, downloadMusic],
+  actions: [musicLibraryAction],
   // Self-declared auto-enable: activate when any of the music service API
-  // keys are present. The hardcoded AUTH_PROVIDER_PLUGINS map still serves
-  // as fallback.
+  // keys are present. (Manifest-only auto-enable — see ./auto-enable.ts.)
   autoEnable: {
     envKeys: [
       "LASTFM_API_KEY",

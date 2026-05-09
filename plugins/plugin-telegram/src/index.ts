@@ -1,14 +1,16 @@
-import type { Plugin } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { getConnectorAccountManager, logger } from "@elizaos/core";
 import {
   stopTelegramAccountAuthSession,
   telegramAccountRoutes,
 } from "./account-setup-routes";
+import { createTelegramConnectorAccountProvider } from "./connector-account-provider";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
 import { MessageManager } from "./messageManager";
 import {
   TELEGRAM_OWNER_PAIRING_SERVICE_TYPE,
-  TelegramOwnerPairingServiceImpl,
   type TelegramOwnerPairingService,
+  TelegramOwnerPairingServiceImpl,
 } from "./owner-pairing-service";
 import { TelegramService } from "./service";
 import { telegramSetupRoutes } from "./setup-routes";
@@ -28,15 +30,37 @@ const telegramPlugin: Plugin = {
   autoEnable: {
     connectorKeys: ["telegram"],
   },
+  init: async (
+    _config: Record<string, string>,
+    runtime: IAgentRuntime,
+  ): Promise<void> => {
+    // Register with the ConnectorAccountManager so the generic HTTP CRUD
+    // surface can list, create, patch, and delete Telegram accounts. Telegram
+    // has no OAuth flow; only CRUD adapters are wired.
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createTelegramConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:telegram",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register Telegram provider with ConnectorAccountManager",
+      );
+    }
+  },
 };
 
+export * from "./account-auth-service";
+export * from "./accounts";
+export * from "./connector-account-provider";
 export {
   MessageManager,
   stopTelegramAccountAuthSession,
   TELEGRAM_OWNER_PAIRING_SERVICE_TYPE,
+  type TelegramOwnerPairingService,
   TelegramOwnerPairingServiceImpl,
   TelegramService,
-  type TelegramOwnerPairingService,
 };
-export * from "./account-auth-service";
 export default telegramPlugin;

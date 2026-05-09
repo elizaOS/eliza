@@ -10,18 +10,22 @@ import type {
 	State,
 } from "../../../../types/index.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
-import { parseTriageParams } from "./_shared.ts";
+import {
+	limitParameter,
+	messageSourceParameter,
+	parseTriageParams,
+	sinceMsParameter,
+	validateMessageAction,
+} from "./_shared.ts";
 
 export const triageMessagesAction: Action = {
-	name: "TRIAGE_MESSAGES",
+	name: "MESSAGE",
+	contexts: ["messaging", "email", "documents"],
+	roleGate: { minRole: "ADMIN" },
 	description:
 		"Fetch unread/recent messages across connected platforms (gmail, discord, telegram, twitter, imessage, signal, whatsapp), score each one with deterministic contact+urgency heuristics, and return a priority-ranked list.",
-	similes: [
-		"TRIAGE_INBOX",
-		"PRIORITIZE_MESSAGES",
-		"RANK_INBOX",
-		"SCAN_MESSAGES",
-	],
+	similes: ["PRIORITIZE_MESSAGES", "RANK_INBOX", "SCAN_MESSAGES"],
+	parameters: [messageSourceParameter, limitParameter, sinceMsParameter],
 	examples: [
 		[
 			{
@@ -32,7 +36,7 @@ export const triageMessagesAction: Action = {
 				name: "Agent",
 				content: {
 					text: "Scanning your inboxes and ranking by priority.",
-					action: "TRIAGE_MESSAGES",
+					action: "MESSAGE",
 				},
 			},
 		],
@@ -40,9 +44,10 @@ export const triageMessagesAction: Action = {
 
 	validate: async (
 		_runtime: IAgentRuntime,
-		_message: Memory,
-		_state?: State,
-	): Promise<boolean> => true,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> =>
+		validateMessageAction(message, state, ["messaging", "email", "documents"]),
 
 	handler: async (
 		runtime: IAgentRuntime,
@@ -69,7 +74,7 @@ export const triageMessagesAction: Action = {
 		if (callback) {
 			await callback({
 				text: summary,
-				action: "TRIAGE_MESSAGES",
+				action: "MESSAGE",
 			});
 		}
 

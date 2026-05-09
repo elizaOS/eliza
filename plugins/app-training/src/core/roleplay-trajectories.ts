@@ -3,10 +3,10 @@ import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import type { AgentContext } from "./context-types.js";
 import type {
-  GeminiTuningExample,
+  ElizaNativeTrainingExample,
   TrainingSample,
 } from "./dataset-generator.js";
-import { toGeminiFormat } from "./dataset-generator.js";
+import { toElizaNativeFormat } from "./dataset-generator.js";
 
 export interface RoleplayTurn {
   id: string;
@@ -139,7 +139,7 @@ export async function exportRoleplayEpisodes(
   await writeFile(manifestPath, `${manifestLines.join("\n")}\n`);
 
   const tuningLines = samples.map((sample) =>
-    JSON.stringify(toGeminiFormat(sample, true) as GeminiTuningExample),
+    JSON.stringify(toElizaNativeFormat(sample, true) as ElizaNativeTrainingExample),
   );
   await writeFile(tuningPath, `${tuningLines.join("\n")}\n`);
 

@@ -13,25 +13,18 @@ import type {
 	PairingChannel,
 	PairingRequest,
 } from "./pairing";
-import type { Metadata, UUID } from "./primitives";
-import type {
-	JsonValue,
-	ActionLogBody as ProtoActionLogBody,
-	ActionLogPrompt as ProtoActionLogPrompt,
-	ActionLogResult as ProtoActionLogResult,
-	AgentRunCounts as ProtoAgentRunCounts,
-	AgentRunSummary as ProtoAgentRunSummary,
-	AgentRunSummaryResult as ProtoAgentRunSummaryResult,
-	BaseLogBody as ProtoBaseLogBody,
-	DbRunStatus as ProtoDbRunStatus,
-	EmbeddingLogBody as ProtoEmbeddingLogBody,
-	EmbeddingSearchResult as ProtoEmbeddingSearchResult,
-	EvaluatorLogBody as ProtoEvaluatorLogBody,
-	Log as ProtoLog,
-	ModelActionContext as ProtoModelActionContext,
-	ModelLogBody as ProtoModelLogBody,
-} from "./proto.js";
+import type { JsonValue, Metadata, UUID } from "./primitives";
 import type { Task } from "./task";
+
+/** Run status enumeration (database). */
+export const DbRunStatus = {
+	UNSPECIFIED: "UNSPECIFIED",
+	STARTED: "STARTED",
+	COMPLETED: "COMPLETED",
+	TIMEOUT: "TIMEOUT",
+	ERROR: "ERROR",
+} as const;
+export type DbRunStatus = (typeof DbRunStatus)[keyof typeof DbRunStatus];
 
 /**
  * Allowed value types for log body fields
@@ -50,10 +43,10 @@ export type LogBodyValue =
 /**
  * Base log body type with common properties
  */
-export interface BaseLogBody
-	extends Omit<ProtoBaseLogBody, "$typeName" | "$unknown" | "metadata"> {
+export interface BaseLogBody {
 	runId?: string | UUID;
 	parentRunId?: string | UUID;
+	status?: string;
 	messageId?: UUID;
 	roomId?: UUID;
 	entityId?: UUID;
@@ -76,11 +69,9 @@ export interface ActionLogContent {
 /**
  * Action result structure for logging
  */
-export interface ActionLogResult
-	extends Omit<
-		ProtoActionLogResult,
-		"$typeName" | "$unknown" | "data" | "error"
-	> {
+export interface ActionLogResult {
+	success?: boolean;
+	text?: string;
 	data?: Record<string, LogBodyValue>;
 	error?: string | Error;
 }
@@ -88,27 +79,17 @@ export interface ActionLogResult
 /**
  * Prompt tracking for action logs
  */
-export interface ActionLogPrompt
-	extends Omit<ProtoActionLogPrompt, "$typeName" | "$unknown" | "timestamp"> {
+export interface ActionLogPrompt {
+	modelType: string;
+	prompt: string;
 	timestamp: number | bigint;
 }
 
 /**
  * Log body for action logs
  */
-export interface ActionLogBody
-	extends Omit<
-			ProtoActionLogBody,
-			| "$typeName"
-			| "$unknown"
-			| "base"
-			| "state"
-			| "responses"
-			| "content"
-			| "result"
-			| "prompts"
-		>,
-		BaseLogBody {
+export interface ActionLogBody extends BaseLogBody {
+	base?: BaseLogBody;
 	action?: string;
 	actionName?: string;
 	actionId?: UUID | string;
@@ -128,40 +109,31 @@ export interface ActionLogBody
 /**
  * Log body for evaluator logs
  */
-export interface EvaluatorLogBody
-	extends Omit<
-			ProtoEvaluatorLogBody,
-			"$typeName" | "$unknown" | "base" | "state"
-		>,
-		BaseLogBody {
-	messageId?: UUID;
+export interface EvaluatorLogBody extends BaseLogBody {
+	base?: BaseLogBody;
+	evaluator?: string;
+	message?: string;
 	state?: Record<string, LogBodyValue>;
 }
 
 /**
  * Action context for model logs
  */
-export type ModelActionContext = Omit<
-	ProtoModelActionContext,
-	"$typeName" | "$unknown"
->;
+export interface ModelActionContext {
+	actionName: string;
+	actionId: string;
+}
 
 /**
  * Log body for model logs
  */
-export interface ModelLogBody
-	extends Omit<
-			ProtoModelLogBody,
-			| "$typeName"
-			| "$unknown"
-			| "base"
-			| "params"
-			| "response"
-			| "actionContext"
-			| "timestamp"
-			| "executionTime"
-		>,
-		BaseLogBody {
+export interface ModelLogBody extends BaseLogBody {
+	base?: BaseLogBody;
+	modelType?: string;
+	modelKey?: string;
+	prompt?: string;
+	systemPrompt?: string;
+	provider?: string;
 	params?: Record<string, LogBodyValue>;
 	actionContext?: ModelActionContext;
 	timestamp?: number | bigint;
@@ -172,12 +144,9 @@ export interface ModelLogBody
 /**
  * Log body for embedding logs
  */
-export interface EmbeddingLogBody
-	extends Omit<
-			ProtoEmbeddingLogBody,
-			"$typeName" | "$unknown" | "base" | "duration"
-		>,
-		BaseLogBody {
+export interface EmbeddingLogBody extends BaseLogBody {
+	base?: BaseLogBody;
+	memoryId?: UUID;
 	duration?: number | bigint;
 	error?: string | Error;
 }
@@ -195,11 +164,9 @@ export type LogBody =
 /**
  * Represents a log entry
  */
-export interface Log
-	extends Omit<
-		ProtoLog,
-		"$typeName" | "$unknown" | "body" | "createdAt" | "entityId" | "roomId"
-	> {
+export interface Log {
+	id?: UUID;
+	type: string;
 	entityId: UUID;
 	roomId?: UUID;
 	body: LogBody;
@@ -277,29 +244,235 @@ export type PairingAllowlistsResult = Array<{
 	entries: PairingAllowlistEntry[];
 }>;
 
-export interface AgentRunCounts
-	extends Omit<ProtoAgentRunCounts, "$typeName" | "$unknown"> {}
+export type ConnectorAccountJsonObject = { [key: string]: JsonValue };
 
-export interface AgentRunSummary
-	extends Omit<
-		ProtoAgentRunSummary,
-		| "$typeName"
-		| "$unknown"
-		| "status"
-		| "startedAt"
-		| "endedAt"
-		| "durationMs"
-		| "metadata"
-	> {
-	status: RunStatus | ProtoDbRunStatus;
+export type ConnectorAccountStorageStatus = string;
+
+export type ConnectorAccountAuditOutcome = "success" | "failure";
+
+export interface ConnectorAccountRecord {
+	id: UUID;
+	agentId: UUID;
+	provider: string;
+	accountKey: string;
+	externalId?: string | null;
+	displayName?: string | null;
+	username?: string | null;
+	email?: string | null;
+	ownerBindingId?: string | null;
+	ownerIdentityId?: string | null;
+	role: string;
+	purpose: string[];
+	accessGate: string;
+	status: ConnectorAccountStorageStatus;
+	scopes: string[];
+	capabilities: string[];
+	profile: ConnectorAccountJsonObject;
+	metadata: ConnectorAccountJsonObject;
+	connectedAt: number;
+	lastSyncAt?: number | null;
+	deletedAt?: number | null;
+	createdAt: number;
+	updatedAt: number;
+}
+
+export interface ListConnectorAccountsParams {
+	agentId?: UUID;
+	provider?: string;
+	status?: ConnectorAccountStorageStatus;
+	limit?: number;
+	offset?: number;
+}
+
+export interface GetConnectorAccountParams {
+	id?: UUID;
+	agentId?: UUID;
+	provider?: string;
+	accountKey?: string;
+}
+
+export interface UpsertConnectorAccountParams {
+	id?: UUID;
+	agentId?: UUID;
+	provider: string;
+	accountKey: string;
+	externalId?: string | null;
+	displayName?: string | null;
+	username?: string | null;
+	email?: string | null;
+	ownerBindingId?: string | null;
+	ownerIdentityId?: string | null;
+	role?: string;
+	purpose?: string[];
+	accessGate?: string;
+	status?: ConnectorAccountStorageStatus;
+	scopes?: string[];
+	capabilities?: string[];
+	profile?: ConnectorAccountJsonObject;
+	metadata?: ConnectorAccountJsonObject;
+	connectedAt?: number | Date;
+	lastSyncAt?: number | Date | null;
+	deletedAt?: number | Date | null;
+}
+
+export interface DeleteConnectorAccountParams {
+	id?: UUID;
+	agentId?: UUID;
+	provider?: string;
+	accountKey?: string;
+}
+
+export interface ConnectorAccountCredentialRefRecord {
+	id: UUID;
+	accountId: UUID;
+	agentId: UUID;
+	provider: string;
+	credentialType: string;
+	vaultRef: string;
+	metadata: ConnectorAccountJsonObject;
+	expiresAt?: number | null;
+	lastVerifiedAt?: number | null;
+	createdAt: number;
+	updatedAt: number;
+}
+
+export interface SetConnectorAccountCredentialRefParams {
+	accountId: UUID;
+	credentialType: string;
+	vaultRef: string;
+	metadata?: ConnectorAccountJsonObject;
+	expiresAt?: number | Date | null;
+	lastVerifiedAt?: number | Date | null;
+}
+
+export interface GetConnectorAccountCredentialRefParams {
+	accountId: UUID;
+	credentialType: string;
+}
+
+export interface ListConnectorAccountCredentialRefsParams {
+	accountId: UUID;
+}
+
+export interface ConnectorAccountAuditEventRecord {
+	id: UUID;
+	accountId?: UUID | null;
+	agentId: UUID;
+	provider: string;
+	actorId?: string | null;
+	action: string;
+	outcome: ConnectorAccountAuditOutcome;
+	metadata: ConnectorAccountJsonObject;
+	createdAt: number;
+}
+
+export interface AppendConnectorAccountAuditEventParams {
+	accountId?: UUID | null;
+	agentId?: UUID;
+	provider?: string;
+	actorId?: string | null;
+	action: string;
+	outcome?: ConnectorAccountAuditOutcome;
+	metadata?: Record<string, unknown>;
+	createdAt?: number | Date;
+}
+
+export interface OAuthFlowRecord {
+	stateHash: string;
+	agentId: UUID;
+	provider: string;
+	accountId?: UUID | null;
+	redirectUri?: string | null;
+	codeVerifierRef?: string | null;
+	scopes: string[];
+	metadata: ConnectorAccountJsonObject;
+	createdAt: number;
+	expiresAt: number;
+	consumedAt?: number | null;
+	consumedBy?: string | null;
+}
+
+export interface CreateOAuthFlowStateParams {
+	state: string;
+	agentId?: UUID;
+	provider: string;
+	accountId?: UUID | null;
+	redirectUri?: string | null;
+	codeVerifierRef?: string | null;
+	scopes?: string[];
+	metadata?: ConnectorAccountJsonObject;
+	ttlMs?: number;
+	expiresAt?: number | Date;
+}
+
+export interface ConsumeOAuthFlowStateParams {
+	state: string;
+	agentId?: UUID;
+	provider?: string;
+	consumedBy?: string;
+	now?: number | Date;
+}
+
+export interface GetOAuthFlowStateParams {
+	state?: string;
+	stateHash?: string;
+	flowId?: string;
+	agentId?: UUID;
+	provider?: string;
+	includeConsumed?: boolean;
+	includeExpired?: boolean;
+	now?: number | Date;
+}
+
+export interface UpdateOAuthFlowStateParams {
+	state?: string;
+	stateHash?: string;
+	flowId?: string;
+	agentId?: UUID;
+	provider?: string;
+	accountId?: UUID | null;
+	redirectUri?: string | null;
+	codeVerifierRef?: string | null;
+	scopes?: string[];
+	metadata?: ConnectorAccountJsonObject;
+	expiresAt?: number | Date;
+	consumedAt?: number | Date | null;
+	consumedBy?: string | null;
+}
+
+export interface DeleteOAuthFlowStateParams {
+	state?: string;
+	stateHash?: string;
+	flowId?: string;
+	agentId?: UUID;
+	provider?: string;
+}
+
+export interface AgentRunCounts {
+	actions: number;
+	modelCalls: number;
+	errors: number;
+	evaluators: number;
+}
+
+export interface AgentRunSummary {
+	runId: string;
+	status: RunStatus | DbRunStatus;
 	startedAt: number | bigint | null;
 	endedAt: number | bigint | null;
 	durationMs: number | bigint | null;
+	messageId?: string;
+	roomId?: string;
+	entityId?: string;
 	metadata?: Record<string, JsonValue>;
+	counts?: AgentRunCounts;
 }
 
-export interface AgentRunSummaryResult
-	extends Omit<ProtoAgentRunSummaryResult, "$typeName" | "$unknown"> {}
+export interface AgentRunSummaryResult {
+	runs: AgentRunSummary[];
+	total: number;
+	hasMore: boolean;
+}
 
 /**
  * Interface for database operations.
@@ -580,7 +753,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 *
 	 * This is the highest-impact API addition, replacing patterns like:
 	 * - int_accounts.ts: "get accounts by pubkey" (240 lines → 10 lines)
-	 * - int_users.ts: "get users by type" (multi-step ID resolution)
+	 * - int_users.ts: "get users by type" (chained ID resolution)
 	 * - int_spartan.ts: master registry becomes unnecessary
 	 *
 	 * TWO-QUERY APPROACH (critical for correctness):
@@ -1188,6 +1361,62 @@ export interface IDatabaseAdapter<DB extends object = object> {
 
 	deletePairingAllowlistEntries(ids: UUID[]): Promise<void>;
 
+	// ── Connector account storage ────────────────────────────────────────
+	listConnectorAccounts(
+		params?: ListConnectorAccountsParams,
+	): Promise<ConnectorAccountRecord[]>;
+	getConnectorAccount(
+		params: GetConnectorAccountParams,
+	): Promise<ConnectorAccountRecord | null>;
+	upsertConnectorAccount(
+		params: UpsertConnectorAccountParams,
+	): Promise<ConnectorAccountRecord>;
+	deleteConnectorAccount(
+		params: DeleteConnectorAccountParams,
+	): Promise<boolean>;
+	findConnectorOwnerBinding?(params: {
+		connector: string;
+		externalId: string;
+		instanceId?: string;
+	}): Promise<{
+		id: string;
+		identityId: string;
+		connector: string;
+		externalId: string;
+		displayHandle: string;
+		instanceId: string;
+		verifiedAt: number;
+	} | null>;
+	setConnectorAccountCredentialRef(
+		params: SetConnectorAccountCredentialRefParams,
+	): Promise<ConnectorAccountCredentialRefRecord>;
+	getConnectorAccountCredentialRef(
+		params: GetConnectorAccountCredentialRefParams,
+	): Promise<ConnectorAccountCredentialRefRecord | null>;
+	listConnectorAccountCredentialRefs(
+		params: ListConnectorAccountCredentialRefsParams,
+	): Promise<ConnectorAccountCredentialRefRecord[]>;
+	/**
+	 * Append a connector account audit event. Implementations must redact
+	 * credential-like metadata values before persistence.
+	 */
+	appendConnectorAccountAuditEvent(
+		params: AppendConnectorAccountAuditEventParams,
+	): Promise<ConnectorAccountAuditEventRecord>;
+	createOAuthFlowState(
+		params: CreateOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord>;
+	consumeOAuthFlowState(
+		params: ConsumeOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null>;
+	getOAuthFlowState(
+		params: GetOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null>;
+	updateOAuthFlowState(
+		params: UpdateOAuthFlowStateParams,
+	): Promise<OAuthFlowRecord | null>;
+	deleteOAuthFlowState(params: DeleteOAuthFlowStateParams): Promise<boolean>;
+
 	// ── Plugin Schema Registration ──────────────────────────────────────────
 	// WHY: Plugins need custom tables (goals, todos) but shouldn't cast runtime.db
 	// to Drizzle types. This provides a generic, adapter-agnostic way for plugins
@@ -1246,8 +1475,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 /**
  * Result interface for embedding similarity searches
  */
-export interface EmbeddingSearchResult
-	extends Omit<ProtoEmbeddingSearchResult, "levenshteinScore"> {
+export interface EmbeddingSearchResult {
+	embedding: number[];
 	levenshtein_score?: number;
 }
 

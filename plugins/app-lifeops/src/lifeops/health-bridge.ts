@@ -18,10 +18,25 @@ import { execFile } from "node:child_process";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
-import { rewriteGoogleUrlForMock } from "./google-fetch.js";
 
 const execFileAsync = promisify(execFile);
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+function rewriteGoogleUrlForMock(url: string): string {
+  const mockBase = process.env.ELIZA_MOCK_GOOGLE_BASE;
+  if (!mockBase) return url;
+  const mockUrl = new URL(mockBase);
+  if (!["127.0.0.1", "localhost", "::1", "[::1]"].includes(mockUrl.hostname)) {
+    throw new HealthBridgeError(
+      "Google mock base must point to loopback for health mock tests.",
+      "google-fit",
+    );
+  }
+  return url.replace(
+    /^https:\/\/(?:fitness)\.googleapis\.com/,
+    mockUrl.toString().replace(/\/+$/, ""),
+  );
+}
 
 export type HealthBackend = "healthkit" | "google-fit" | "fixture" | "none";
 

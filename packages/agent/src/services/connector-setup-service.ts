@@ -16,7 +16,7 @@ import {
   setOwnerContact,
 } from "../api/owner-contact-helpers.js";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
-import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 import { registerEscalationChannel } from "./escalation.js";
 
 export type { OwnerContactUpdate };

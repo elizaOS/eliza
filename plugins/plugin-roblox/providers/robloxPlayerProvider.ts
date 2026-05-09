@@ -3,6 +3,7 @@ import type { RobloxService } from "../services/RobloxService";
 import { ROBLOX_SERVICE_NAME, type RobloxUser } from "../types";
 
 const providerName = "robloxPlayer";
+const PLAYER_TEXT_LIMIT = 160;
 
 type PlayerIdentifier = { type: "id"; value: number } | { type: "username"; value: string };
 
@@ -66,7 +67,7 @@ function extractIdentifier(text: string, params: Record<string, unknown>): Playe
   return null;
 }
 
-function formatPlayerToon(user: RobloxUser): string {
+function formatPlayerJson(user: RobloxUser): string {
   const lines: string[] = ["robloxPlayer:"];
   lines.push(`id: ${user.id}`);
   lines.push(`username: ${user.username}`);
@@ -86,8 +87,12 @@ function formatPlayerToon(user: RobloxUser): string {
 export const robloxPlayerProvider: Provider = {
   name: providerName,
   description:
-    "Resolve a Roblox player by ID or username from the current message and surface their public profile as TOON.",
+    "Resolve a Roblox player by ID or username from the current message and surface their public profile as JSON context.",
   descriptionCompressed: "Look up Roblox player by id or username.",
+  contexts: ["automation", "agent_internal"],
+  contextGate: { anyOf: ["automation", "agent_internal"] },
+  cacheStable: false,
+  cacheScope: "turn",
   get: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<ProviderResult> => {
     const service = runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
     if (!service) {
@@ -118,39 +123,55 @@ export const robloxPlayerProvider: Provider = {
       };
     }
 
-    const user =
-      identifier.type === "id"
-        ? await client.getUserById(identifier.value)
-        : await client.getUserByUsername(identifier.value);
+    try {
+      const user =
+        identifier.type === "id"
+          ? await client.getUserById(identifier.value)
+          : await client.getUserByUsername(identifier.value);
 
-    if (!user) {
+      if (!user) {
+        return {
+          text: `robloxPlayer:\nresolved: false\n${identifier.type}: ${identifier.value}`,
+          data: { resolved: false, identifier },
+          values: { resolved: false },
+        };
+      }
+
+      const avatarUrl = await client.getAvatarUrl(user.id);
+      user.avatarUrl = avatarUrl;
+
       return {
-        text: `robloxPlayer:\nresolved: false\n${identifier.type}: ${identifier.value}`,
-        data: { resolved: false, identifier },
+        text: formatPlayerJson({
+          ...user,
+          username: user.username.slice(0, PLAYER_TEXT_LIMIT),
+          displayName: user.displayName.slice(0, PLAYER_TEXT_LIMIT),
+        }),
+        data: {
+          resolved: true,
+          userId: user.id,
+          username: user.username,
+          displayName: user.displayName,
+          avatarUrl: avatarUrl || undefined,
+          isBanned: user.isBanned,
+          createdAt: user.createdAt ? user.createdAt.toISOString() : undefined,
+        },
+        values: {
+          resolved: true,
+          userId: user.id,
+          username: user.username,
+          displayName: user.displayName,
+        },
+      };
+    } catch (error) {
+      return {
+        text: `robloxPlayer:\nresolved: false\nreason: ${error instanceof Error ? error.message : String(error)}`,
+        data: {
+          resolved: false,
+          identifier,
+          error: error instanceof Error ? error.message : String(error),
+        },
         values: { resolved: false },
       };
     }
-
-    const avatarUrl = await client.getAvatarUrl(user.id);
-    user.avatarUrl = avatarUrl;
-
-    return {
-      text: formatPlayerToon(user),
-      data: {
-        resolved: true,
-        userId: user.id,
-        username: user.username,
-        displayName: user.displayName,
-        avatarUrl: avatarUrl || undefined,
-        isBanned: user.isBanned,
-        createdAt: user.createdAt ? user.createdAt.toISOString() : undefined,
-      },
-      values: {
-        resolved: true,
-        userId: user.id,
-        username: user.username,
-        displayName: user.displayName,
-      },
-    };
   },
 };

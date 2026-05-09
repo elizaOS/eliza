@@ -1,4 +1,5 @@
 import { APP_CONFIG } from "./app-config";
+import { normalizeEnvPrefix } from "./env-prefix.js";
 
 const ENV_ALIAS_SUFFIXES = [
   // API & auth
@@ -27,18 +28,6 @@ const ENV_ALIAS_SUFFIXES = [
   ["GATEWAY_PORT", "GATEWAY_PORT"],
   ["BRIDGE_PORT", "BRIDGE_PORT"],
 ] as const;
-
-function normalizeEnvPrefix(value: string): string {
-  const normalized = value
-    .trim()
-    .replace(/[^A-Za-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .toUpperCase();
-  if (!normalized) {
-    throw new Error("App envPrefix must resolve to a non-empty identifier");
-  }
-  return normalized;
-}
 
 export function buildBrandEnvAliases(prefix: string) {
   const normalizedPrefix = normalizeEnvPrefix(prefix);

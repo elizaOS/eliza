@@ -89,7 +89,7 @@ export default scenario({
       kind: "message",
       name: "morning-checkin",
       text: "Run my morning check-in.",
-      expectedActions: ["OWNER_CHECKIN"],
+      expectedActions: ["CHECKIN"],
     },
   ],
   finalChecks: [
@@ -98,7 +98,7 @@ export default scenario({
       name: "morning-checkin-report-includes-missed-streak",
       predicate: async (ctx) => {
         const action = ctx.actionsCalled.find(
-          (entry) => entry.actionName === "OWNER_CHECKIN",
+          (entry) => entry.actionName === "CHECKIN",
         );
         const data =
           action?.result?.data && typeof action.result.data === "object"

@@ -1,9 +1,15 @@
 import {
+	CONTEXT_OBJECT_TRAJECTORY_VERSION,
+	type ContextObjectTrajectoryExport,
+	type JsonValue,
+	type Trajectory,
+} from "./features/trajectories/types";
+import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
 } from "./trajectory-context";
+import type { ContextEvent, ContextObject } from "./types/context-object";
 import type { IAgentRuntime } from "./types/runtime";
-import { encodeToonValue } from "./utils/toon";
 
 export type TrajectoryFinalStatus =
 	| "completed"
@@ -26,9 +32,21 @@ export type TrajectoryLlmPurpose = (typeof TRAJECTORY_LLM_PURPOSES)[number];
 export type TrajectoryLlmCallDetails = {
 	model: string;
 	modelVersion?: string;
+	modelType?: string;
+	provider?: string;
 	systemPrompt: string;
 	userPrompt: string;
+	prompt?: string;
+	messages?: unknown[];
+	tools?: unknown;
+	toolChoice?: unknown;
+	output?: unknown;
+	responseSchema?: unknown;
+	providerOptions?: unknown;
 	response: string;
+	toolCalls?: unknown[];
+	finishReason?: string;
+	providerMetadata?: unknown;
 	reasoning?: string;
 	temperature: number;
 	maxTokens: number;
@@ -46,6 +64,37 @@ export type TrajectoryLlmCallDetails = {
 	latencyMs: number;
 	promptTokens?: number;
 	completionTokens?: number;
+	cacheReadInputTokens?: number;
+	cacheCreationInputTokens?: number;
+};
+
+export type TrajectoryProviderAccessParams = {
+	stepId: string;
+	providerName: string;
+	data: Record<string, string | number | boolean | null>;
+	purpose: string;
+	query?: Record<string, string | number | boolean | null>;
+	runId?: string;
+	roomId?: string;
+	messageId?: string;
+	executionTraceId?: string;
+};
+
+export type TrajectoryProviderAccessLogger = {
+	logProviderAccess: (params: TrajectoryProviderAccessParams) => void;
+};
+
+export type TrajectoryRuntimeLlmCallParams = {
+	stepId: string;
+	modelSlot?: string;
+	runId?: string;
+	roomId?: string;
+	messageId?: string;
+	executionTraceId?: string;
+} & TrajectoryLlmCallDetails;
+
+export type TrajectoryRuntimeLlmCallLogger = {
+	logLlmCall: (params: TrajectoryRuntimeLlmCallParams) => void;
 };
 
 /**
@@ -60,6 +109,242 @@ export type RecordLlmCallDetails = Omit<
 	/** Optional override for the recorded response string. */
 	response?: string;
 };
+
+/**
+ * Trajectory-shaped input for context-object export: either a slice of the
+ * canonical {@link Trajectory} type or a loosely-typed detail/DB row
+ * (`Record` metadata/metrics) used by trajectory services.
+ */
+export type ContextObjectTrajectoryExportTrajectoryInput =
+	| Partial<
+			Pick<Trajectory, "trajectoryId" | "agentId" | "metadata" | "metrics">
+	  >
+	| {
+			trajectoryId?: string;
+			agentId?: string;
+			source?: string;
+			status?: string;
+			startTime?: number;
+			endTime?: number;
+			durationMs?: number;
+			metadata?: Record<string, unknown>;
+			metrics?: Record<string, unknown>;
+	  };
+
+export type ContextObjectTrajectoryExportInput = {
+	trajectory?: ContextObjectTrajectoryExportTrajectoryInput | null;
+	contextObject?: ContextObject | null;
+	events?: readonly ContextEvent[];
+	trajectoryId?: string;
+	agentId?: string;
+	contextObjectId?: string;
+	createdAt?: number;
+	source?: string;
+	metadata?: Record<string, unknown>;
+	metrics?: Record<string, unknown>;
+};
+
+type JsonSanitizeResult = JsonValue | undefined;
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+	return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function sanitizeJsonValue(
+	value: unknown,
+	seen: WeakSet<object> = new WeakSet<object>(),
+): JsonSanitizeResult {
+	if (value === null) return null;
+	if (
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		return Number.isNaN(value) ? null : value;
+	}
+	if (typeof value === "bigint") {
+		return value.toString();
+	}
+	if (value instanceof Date) {
+		return value.toISOString();
+	}
+	if (Array.isArray(value)) {
+		if (seen.has(value)) return undefined;
+		seen.add(value);
+		const out: JsonValue[] = [];
+		for (const item of value) {
+			const sanitized = sanitizeJsonValue(item, seen);
+			out.push(sanitized === undefined ? null : sanitized);
+		}
+		seen.delete(value);
+		return out;
+	}
+	if (isPlainRecord(value)) {
+		if (seen.has(value)) return undefined;
+		seen.add(value);
+		const out: Record<string, JsonValue> = {};
+		for (const [key, entry] of Object.entries(value)) {
+			const sanitized = sanitizeJsonValue(entry, seen);
+			if (sanitized !== undefined) {
+				out[key] = sanitized;
+			}
+		}
+		seen.delete(value);
+		return out;
+	}
+	return undefined;
+}
+
+function sanitizeJsonObject(
+	value: unknown,
+): Record<string, JsonValue> | undefined {
+	const sanitized = sanitizeJsonValue(value);
+	return isPlainRecord(sanitized)
+		? (sanitized as Record<string, JsonValue>)
+		: undefined;
+}
+
+function hasContextEvents(
+	value: unknown,
+): value is { events: readonly unknown[] } {
+	return isPlainRecord(value) && Array.isArray(value.events);
+}
+
+function readContextObjectFromUnknown(value: unknown): ContextObject | null {
+	if (!hasContextEvents(value)) {
+		return null;
+	}
+	const record = value as Record<string, unknown> & {
+		events: readonly unknown[];
+	};
+	const version = record.version;
+	const id = record.id;
+	return {
+		...(record as unknown as Partial<ContextObject>),
+		id: typeof id === "string" && id.trim() ? id : "context-object",
+		version: typeof version === "string" ? version : "v5",
+		events: [...(record.events as ContextEvent[])],
+	};
+}
+
+export function extractContextObjectFromTrajectory(
+	trajectory: unknown,
+): ContextObject | null {
+	if (!isPlainRecord(trajectory)) {
+		return null;
+	}
+
+	const direct = readContextObjectFromUnknown(trajectory.contextObject);
+	if (direct) return direct;
+
+	const metadata = isPlainRecord(trajectory.metadata)
+		? trajectory.metadata
+		: undefined;
+	if (metadata) {
+		const fromMetadata = readContextObjectFromUnknown(metadata.contextObject);
+		if (fromMetadata) return fromMetadata;
+	}
+
+	return null;
+}
+
+export function extractContextEventsFromTrajectory(
+	trajectory: unknown,
+): ContextEvent[] | null {
+	const contextObject = extractContextObjectFromTrajectory(trajectory);
+	if (contextObject) {
+		return [...contextObject.events];
+	}
+
+	if (!isPlainRecord(trajectory)) {
+		return null;
+	}
+
+	if (Array.isArray(trajectory.events)) {
+		return [...(trajectory.events as ContextEvent[])];
+	}
+
+	const metadata = isPlainRecord(trajectory.metadata)
+		? trajectory.metadata
+		: undefined;
+	if (metadata && Array.isArray(metadata.contextEvents)) {
+		return [...(metadata.contextEvents as ContextEvent[])];
+	}
+
+	if (
+		trajectory.contextObjectVersion === CONTEXT_OBJECT_TRAJECTORY_VERSION &&
+		Array.isArray(trajectory.events)
+	) {
+		return [...(trajectory.events as ContextEvent[])];
+	}
+
+	return null;
+}
+
+export function buildContextObjectTrajectoryExport(
+	input: ContextObjectTrajectoryExportInput,
+): ContextObjectTrajectoryExport {
+	const trajectory = input.trajectory;
+	const contextObject =
+		input.contextObject ?? extractContextObjectFromTrajectory(trajectory);
+	const events =
+		input.events ??
+		contextObject?.events ??
+		extractContextEventsFromTrajectory(trajectory) ??
+		[];
+	const metadata = sanitizeJsonObject({
+		...(isPlainRecord(trajectory?.metadata) ? trajectory?.metadata : {}),
+		...(input.metadata ?? {}),
+	});
+	const metrics = sanitizeJsonObject(input.metrics ?? trajectory?.metrics);
+	const source =
+		input.source ??
+		(typeof metadata?.source === "string" ? metadata.source : undefined);
+	const contextObjectId =
+		input.contextObjectId ??
+		contextObject?.id ??
+		(typeof metadata?.contextObjectId === "string"
+			? metadata.contextObjectId
+			: undefined);
+	const createdAt =
+		input.createdAt ??
+		contextObject?.createdAt ??
+		(typeof metadata?.createdAt === "number" ? metadata.createdAt : undefined);
+	const sanitizedContextObject = contextObject
+		? sanitizeJsonObject({
+				...contextObject,
+				events: [...events],
+			})
+		: undefined;
+
+	const exportRecord: ContextObjectTrajectoryExport = {
+		contextObjectVersion: CONTEXT_OBJECT_TRAJECTORY_VERSION,
+		events: sanitizeJsonValue([...events]) as ContextEvent[],
+	};
+
+	const trajectoryId = input.trajectoryId ?? trajectory?.trajectoryId;
+	const agentId = input.agentId ?? trajectory?.agentId;
+	if (trajectoryId) exportRecord.trajectoryId = String(trajectoryId);
+	if (agentId) exportRecord.agentId = String(agentId);
+	if (contextObjectId) exportRecord.contextObjectId = contextObjectId;
+	if (typeof createdAt === "number") exportRecord.createdAt = createdAt;
+	if (source) exportRecord.source = source;
+	if (metadata) exportRecord.metadata = metadata;
+	if (metrics) exportRecord.metrics = metrics;
+	if (sanitizedContextObject) {
+		exportRecord.contextObject =
+			sanitizedContextObject as unknown as ContextObjectTrajectoryExport["contextObject"];
+	}
+
+	return exportRecord;
+}
+
+export function serializeContextObjectTrajectoryExport(
+	input: ContextObjectTrajectoryExportInput,
+	space?: number,
+): string {
+	return JSON.stringify(buildContextObjectTrajectoryExport(input), null, space);
+}
 
 type TrajectoryStartOptions = {
 	source?: string;
@@ -512,7 +797,7 @@ export async function recordLlmCall<T>(
 
 function tryStringify(value: unknown): string {
 	try {
-		return encodeToonValue({ response: value });
+		return JSON.stringify({ response: value });
 	} catch {
 		return String(value);
 	}
@@ -628,25 +913,6 @@ export async function withProviderStep<T>(
 	return withChildTrajectoryStep(
 		runtime,
 		{ stepIdPrefix: "provider", purpose: "provider", actionName: providerName },
-		fn,
-	);
-}
-
-/**
- * Same as {@link withActionStep} but for evaluator dispatch.
- */
-export async function withEvaluatorStep<T>(
-	runtime: IAgentRuntime | null | undefined,
-	evaluatorName: string,
-	fn: () => Promise<T> | T,
-): Promise<T> {
-	return withChildTrajectoryStep(
-		runtime,
-		{
-			stepIdPrefix: "evaluator",
-			purpose: "evaluator",
-			actionName: evaluatorName,
-		},
 		fn,
 	);
 }

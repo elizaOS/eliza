@@ -40,6 +40,18 @@ interface MockState {
     sandboxRecord?: MockSandbox;
   };
   safeUrlError: Error | null;
+  workerHealth:
+    | { ok: true; required: boolean; url?: string }
+    | {
+        ok: false;
+        required: true;
+        status: 502 | 503;
+        code:
+          | "PROVISIONING_WORKER_NOT_CONFIGURED"
+          | "PROVISIONING_WORKER_UNHEALTHY"
+          | "PROVISIONING_WORKER_UNREACHABLE";
+        error: string;
+      };
   creditChecks: string[];
   enqueueCalls: Array<{
     agentId: string;
@@ -92,6 +104,7 @@ function makeState(overrides: Partial<MockState> = {}): MockState {
       }),
     },
     safeUrlError: null,
+    workerHealth: { ok: true, required: false },
     creditChecks: [],
     enqueueCalls: [],
     getAgentCalls: [],
@@ -148,7 +161,18 @@ function installMocks(state: MockState): void {
         }
         return state.enqueueResult;
       },
+      triggerImmediate: async () => undefined,
     },
+  }));
+
+  mock.module("@/lib/services/provisioning-worker-health", () => ({
+    checkProvisioningWorkerHealth: async () => state.workerHealth,
+    provisioningWorkerFailureBody: (health: Extract<MockState["workerHealth"], { ok: false }>) => ({
+      success: false,
+      code: health.code,
+      error: health.error,
+      retryable: true,
+    }),
   }));
 
   mock.module("@/lib/services/proxy/cors", () => ({
@@ -362,7 +386,16 @@ describe("eliza agent provision route", () => {
   test("fails closed in production when the provisioning worker is not configured", async () => {
     process.env.NODE_ENV = "production";
     delete process.env.CONTAINER_CONTROL_PLANE_URL;
-    const state = makeState();
+    const state = makeState({
+      workerHealth: {
+        ok: false,
+        required: true,
+        status: 503,
+        code: "PROVISIONING_WORKER_NOT_CONFIGURED",
+        error:
+          "Agent provisioning worker is not configured. Set CONTAINER_CONTROL_PLANE_URL before accepting provisioning requests.",
+      },
+    });
     installMocks(state);
 
     const app = await loadProvisionRoute();

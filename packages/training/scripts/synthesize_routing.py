@@ -48,7 +48,7 @@ from lib.eliza_record import (  # noqa: E402
     ACTION_IGNORE, ACTION_RESPOND, ACTION_STOP,
     build, stable_id,
 )
-from lib.toon import ToonEncoder  # noqa: E402
+from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 RAW_DIR = ROOT / "data" / "raw"
 OUT_PATH = ROOT / "data" / "synthesized" / "dialogue_routing.jsonl"
@@ -228,7 +228,7 @@ def inject_name(text: str, agent: str, *, mode: str | None = None) -> tuple[str,
 def synthesize_one(
     *, recent: list[dict[str, Any]], all_chat: list[dict[str, Any]],
     agent: str, target_action: str, p_inject_name: float,
-    encoder: ToonEncoder, rng: random.Random,
+    encoder: ExpectedResponseEncoder, rng: random.Random,
 ) -> dict[str, Any] | None:
     """Build one canonical eliza record where the agent must decide whether
     to RESPOND, IGNORE, or STOP given the supplied conversation context."""
@@ -381,7 +381,7 @@ def main() -> int:
     rng.shuffle(all_msgs)
     log.info("total chat messages: %d", len(all_msgs))
 
-    encoder = ToonEncoder()
+    encoder = JsonExpectedResponseEncoder()
     n_respond = n_ignore = n_stop = 0
     n_skipped = 0
 

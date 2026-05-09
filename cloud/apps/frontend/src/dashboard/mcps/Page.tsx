@@ -4,9 +4,9 @@ import {
   DashboardPageStack,
 } from "@elizaos/cloud-ui";
 import { Helmet } from "react-helmet-async";
-import { MCPsPageWrapper } from "@/packages/ui/src/components/mcps/mcps-page-wrapper";
-import { MCPsSection } from "@/packages/ui/src/components/mcps/mcps-section";
 import { useRequireAuth } from "../../lib/auth-hooks";
+import { MCPsPageWrapper } from "./_components/mcps-page-wrapper";
+import { MCPsSection } from "./_components/mcps-section";
 
 const demoMcpServers = [
   {

@@ -20,14 +20,14 @@
     "cli": "bun src/index.tsx",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check . || true",
-    "typecheck": "tsc --noEmit || true"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.5",
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
-    "@elizaos/plugin-code": "2.0.0-alpha.6",
+    "@elizaos/plugin-coding-tools": "workspace:*",
     "@elizaos/plugin-goals": "2.0.0-alpha.10",
     "@elizaos/plugin-shell": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
@@ -51,7 +51,7 @@
     "@types/react": "19.2.3",
     "@vitest/coverage-v8": "^4.0.0",
     "react-devtools-core": "^7.0.1",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   }
 }

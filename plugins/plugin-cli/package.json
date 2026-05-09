@@ -33,7 +33,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
     "strip-literal": "^3.1.0",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.18"
   },
   "keywords": [

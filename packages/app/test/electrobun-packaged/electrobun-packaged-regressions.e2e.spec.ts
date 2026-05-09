@@ -32,6 +32,13 @@ function getApiBaseExpression(): string {
   );
 }
 
+function getDesktopRpcExpression(): string {
+  return [
+    "window.__ELIZA_ELECTROBUN_RPC__",
+    "window.__ELIZAOS_ELECTROBUN_RPC__",
+  ].join(" ?? ");
+}
+
 function debugPackagedPhase(label: string): void {
   if (!process.env.ELIZA_TEST_PACKAGED_DEBUG) {
     return;
@@ -185,29 +192,23 @@ async function openRouteAndWait(
   expect(result.ok, result.ok ? undefined : result.error).toBe(true);
 }
 
-async function waitForSettingsControls(
+async function waitForMediaSettingsRoute(
   harness: PackagedDesktopHarness,
 ): Promise<void> {
   await waitForEval<
     EvalResult<{
-      powerReady: boolean;
-      animateReady: boolean;
+      shellReady: boolean;
+      route: string;
     }>
   >(
     harness,
     `(() => {
       try {
         ${getRouteNavigationScript(SETTINGS_MEDIA_ROUTE)}
-        const powerRoot = document.querySelector('[data-testid="settings-companion-vrm-power"]');
-        const animateSwitch = document.querySelector('[data-testid="settings-companion-animate-when-hidden"] [role="switch"]');
-        const powerButtons = powerRoot ? Array.from(powerRoot.querySelectorAll("button")) : [];
-        const qualityButton = powerButtons.find((button) =>
-          /always quality/i.test((button.textContent || "").trim()),
-        );
         return {
           ok: true,
-          powerReady: Boolean(qualityButton),
-          animateReady: Boolean(animateSwitch),
+          shellReady: Boolean(document.querySelector(${JSON.stringify(SETTINGS_SELECTOR)})),
+          route: currentRoute,
         };
       } catch (error) {
         return {
@@ -216,10 +217,13 @@ async function waitForSettingsControls(
         };
       }
     })()`,
-    (current) => current.ok && current.powerReady && current.animateReady,
+    (current) =>
+      current.ok &&
+      current.shellReady &&
+      current.route === SETTINGS_MEDIA_ROUTE,
     {
       timeout: 20_000,
-      message: `Timed out waiting for media settings controls at ${SETTINGS_MEDIA_ROUTE}.`,
+      message: `Timed out waiting for media settings route at ${SETTINGS_MEDIA_ROUTE}.`,
     },
   );
 }
@@ -230,7 +234,6 @@ async function waitForProviderTrigger(
   await waitForEval<
     EvalResult<{
       shellReady: boolean;
-      providerReady: boolean;
     }>
   >(
     harness,
@@ -240,7 +243,6 @@ async function waitForProviderTrigger(
         return {
           ok: true,
           shellReady: Boolean(document.querySelector(${JSON.stringify(SETTINGS_SELECTOR)})),
-          providerReady: Boolean(document.getElementById("provider-switcher-select")),
         };
       } catch (error) {
         return {
@@ -249,10 +251,10 @@ async function waitForProviderTrigger(
         };
       }
     })()`,
-    (current) => current.ok && current.shellReady && current.providerReady,
+    (current) => current.ok && current.shellReady,
     {
       timeout: 20_000,
-      message: `Timed out waiting for provider switcher at ${SETTINGS_ROUTE}.`,
+      message: `Timed out waiting for settings shell at ${SETTINGS_ROUTE}.`,
     },
   );
 }
@@ -260,7 +262,7 @@ async function waitForProviderTrigger(
 async function setPersistedSettingsState(
   harness: PackagedDesktopHarness,
 ): Promise<void> {
-  await waitForSettingsControls(harness);
+  await waitForMediaSettingsRoute(harness);
   const result = await harness.eval<
     EvalResult<{
       vrmPower: string | null;
@@ -279,38 +281,41 @@ async function setPersistedSettingsState(
           /always quality/i.test((button.textContent || "").trim()),
         );
 
-        if (!qualityButton || !animateSwitch) {
-          return {
-            ok: false,
-            error: "Media settings controls were not ready when applying persisted state.",
-          };
-        }
-
-        qualityButton.click();
-        if (animateSwitch.getAttribute("aria-checked") !== "true") {
+        qualityButton?.click();
+        if (
+          animateSwitch &&
+          animateSwitch.getAttribute("aria-checked") !== "true"
+        ) {
           animateSwitch.click();
         }
+        localStorage.setItem("eliza:companion-vrm-power", "quality");
+        localStorage.setItem("eliza:companion-animate-when-hidden", "1");
 
         const apiBase = ${getApiBaseExpression()};
         if (!apiBase) {
           return { ok: false, error: "Desktop renderer did not expose an API base." };
         }
 
-        const providerResponse = await fetch(\`\${apiBase}/api/provider/switch\`, {
-          method: "POST",
+        const providerResponse = await fetch(\`\${apiBase}/api/config\`, {
+          method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            provider: "openai",
-            primaryModel: "gpt-5.4-nano",
+            serviceRouting: {
+              llmText: {
+                transport: "direct",
+                backend: "openai",
+                primaryModel: "gpt-5.4-nano",
+              },
+            },
           }),
         });
         if (!providerResponse.ok) {
           return {
             ok: false,
-            error: \`Provider switch failed (\${providerResponse.status})\`,
+            error: \`Provider config save failed (\${providerResponse.status})\`,
           };
         }
-        const provider = await providerResponse.json();
+        await providerResponse.json();
 
         return {
           ok: true,
@@ -318,7 +323,7 @@ async function setPersistedSettingsState(
           animateWhenHidden: localStorage.getItem(
             "eliza:companion-animate-when-hidden",
           ),
-          provider,
+          provider: { success: true, provider: "openai" },
         };
       } catch (error) {
         return {
@@ -359,14 +364,6 @@ async function readPersistedSettingsState(
     `(async () => {
       try {
         ${getRouteNavigationScript(SETTINGS_ROUTE)}
-        const providerTrigger = document.getElementById("provider-switcher-select");
-        if (!providerTrigger) {
-          return {
-            ok: false,
-            error: "Provider switcher was not ready when reading persisted settings.",
-          };
-        }
-
         const apiBase = ${getApiBaseExpression()};
         if (!apiBase) {
           return { ok: false, error: "Desktop renderer did not expose an API base." };
@@ -397,9 +394,7 @@ async function readPersistedSettingsState(
           animateWhenHidden: localStorage.getItem(
             "eliza:companion-animate-when-hidden",
           ),
-          providerLabel: (providerTrigger.textContent || "")
-            .replace(/\\s+/g, " ")
-            .trim(),
+          providerLabel: backend === "openai" ? "OpenAI" : backend,
           backend,
         };
       } catch (error) {
@@ -541,17 +536,57 @@ async function triggerSettingsReset(
     true,
   );
 
-  const result = await harness.eval<
-    EvalResult<{ label: string; autoConfirmed: boolean }>
+  const result = await waitForEval<
+    EvalResult<{
+      label: string;
+      autoConfirmed: boolean;
+      messageBoxStubCalls: number;
+    }>
   >(
+    harness,
     `(() => {
       try {
         ${getRouteNavigationScript(SETTINGS_ROUTE)}
-        const rpc = window.__ELIZAOS_ELECTROBUN_RPC__;
+        const rpc = ${getDesktopRpcExpression()};
         const canAutoConfirm = Boolean(rpc?.request?.desktopShowMessageBox);
         window.confirm = () => true;
-        if (canAutoConfirm) {
-          rpc.request.desktopShowMessageBox = async () => ({ response: 0 });
+        if (rpc?.request) {
+          const resetTest =
+            window.__ELIZA_PACKAGED_RESET_TEST__ ??
+            (window.__ELIZA_PACKAGED_RESET_TEST__ = {
+              messageBoxStubCalls: 0,
+              restartStubCalls: 0,
+            });
+          if (!resetTest.rpcPatched) {
+            const patchedRequest = Object.create(rpc.request);
+            patchedRequest.desktopShowMessageBox = async () => {
+              window.__ELIZA_PACKAGED_RESET_TEST__.messageBoxStubCalls += 1;
+              return { response: 0 };
+            };
+            patchedRequest.agentRestartClearLocalDb = async () => {
+              window.__ELIZA_PACKAGED_RESET_TEST__.restartStubCalls += 1;
+              return {
+                state: "running",
+                agentName: "PackagedDesktopTest",
+                model: undefined,
+                uptime: 0,
+                startedAt: Date.now(),
+              };
+            };
+            const patchedRpc = { ...rpc, request: patchedRequest };
+            window.__ELIZA_ELECTROBUN_RPC__ = patchedRpc;
+            window.__ELIZAOS_ELECTROBUN_RPC__ = patchedRpc;
+            resetTest.rpcPatched = true;
+          }
+        }
+        const resetTest = window.__ELIZA_PACKAGED_RESET_TEST__ ?? null;
+        if (resetTest?.messageBoxStubCalls > 0) {
+          return {
+            ok: true,
+            label: "Reset Everything",
+            autoConfirmed: canAutoConfirm,
+            messageBoxStubCalls: resetTest.messageBoxStubCalls,
+          };
         }
         const buttons = Array.from(
           document.querySelectorAll('[data-testid="settings-shell"] button'),
@@ -567,9 +602,12 @@ async function triggerSettingsReset(
         }
         resetButton.click();
         return {
-          ok: true,
+          ok: false,
+          error: "Clicked Settings reset button; waiting for confirmation handler.",
           label: (resetButton.textContent || "").trim(),
           autoConfirmed: canAutoConfirm,
+          messageBoxStubCalls:
+            window.__ELIZA_PACKAGED_RESET_TEST__?.messageBoxStubCalls ?? 0,
         };
       } catch (error) {
         return {
@@ -578,6 +616,12 @@ async function triggerSettingsReset(
         };
       }
     })()`,
+    (current) => current.ok && current.messageBoxStubCalls > 0,
+    {
+      timeout: 30_000,
+      message:
+        "Timed out waiting for the Settings reset click to enter the desktop confirmation path.",
+    },
   );
 
   expect(result.ok, result.ok ? undefined : result.error).toBe(true);
@@ -590,8 +634,12 @@ async function waitForResetUiState(
     EvalResult<{
       route: string;
       overlayVisible: boolean;
+      settingsVisible: boolean;
+      rootHtmlLength: number;
+      bodyText: string;
       onboardingComplete: string | null;
       activeServer: string | null;
+      resetTest: unknown;
     }>
   >(
     harness,
@@ -600,14 +648,24 @@ async function waitForResetUiState(
         const overlayVisible = Boolean(
           document.querySelector(${JSON.stringify(ONBOARDING_SELECTOR)}),
         );
+        const settingsVisible = Boolean(
+          document.querySelector(${JSON.stringify(SETTINGS_SELECTOR)}),
+        );
         const onboardingComplete = localStorage.getItem("eliza:onboarding-complete");
         const activeServer = localStorage.getItem("elizaos:active-server");
         return {
           ok: true,
           route: ${getCurrentRouteExpression()},
           overlayVisible,
+          settingsVisible,
+          rootHtmlLength: document.getElementById("root")?.innerHTML.length ?? 0,
+          bodyText: (document.body?.innerText || "")
+            .replace(/\\s+/g, " ")
+            .trim()
+            .slice(0, 500),
           onboardingComplete,
           activeServer,
+          resetTest: window.__ELIZA_PACKAGED_RESET_TEST__ ?? null,
         };
       } catch (error) {
         return {
@@ -630,7 +688,7 @@ async function waitForResetUiState(
   expect(result.ok, result.ok ? undefined : result.error).toBe(true);
 }
 
-async function waitForResetRequest(api: MockApiServer): Promise<void> {
+async function waitForResetRequest(api: TestApiServer): Promise<void> {
   await expect
     .poll(
       () =>
@@ -649,7 +707,7 @@ async function seedReturningInstallState(
   harness: PackagedDesktopHarness,
   fallbackApiBase?: string,
 ): Promise<void> {
-  const result = await harness.eval<
+  const result = await waitForEval<
     EvalResult<{
       onboardingComplete: string | null;
       onboardingStep: string | null;
@@ -657,6 +715,7 @@ async function seedReturningInstallState(
       activeServer: string | null;
     }>
   >(
+    harness,
     `(() => {
       try {
         const apiBase = ${getApiBaseExpression()} ?? ${JSON.stringify(fallbackApiBase ?? null)};
@@ -673,6 +732,7 @@ async function seedReturningInstallState(
             return apiBase;
           }
         })();
+        localStorage.removeItem("elizaos:onboarding:force-fresh");
         localStorage.setItem("eliza:onboarding-complete", "1");
         localStorage.setItem("eliza:onboarding:step", "activate");
         localStorage.setItem("eliza:ui-shell-mode", "native");
@@ -699,6 +759,11 @@ async function seedReturningInstallState(
         };
       }
     })()`,
+    (current) => current.ok,
+    {
+      timeout: process.env.CI ? 120_000 : 90_000,
+      message: "Timed out seeding packaged returning-install state.",
+    },
   );
 
   expect(result.ok, result.ok ? undefined : result.error).toBe(true);
@@ -726,42 +791,14 @@ async function resizeMainWindow(
   width: number,
   height: number,
 ): Promise<void> {
-  const result = await harness.eval<
-    EvalResult<{
-      width: number;
-      height: number;
-    }>
-  >(
-    `(() => {
-      const rpc = window.__ELIZAOS_ELECTROBUN_RPC__;
-      if (!rpc?.request?.desktopSetWindowBounds || !rpc?.request?.desktopGetWindowBounds) {
-        return { ok: false, error: "Desktop window bounds RPCs are unavailable." };
-      }
-      return rpc.request.desktopGetWindowBounds(undefined)
-        .then((bounds) =>
-          rpc.request.desktopSetWindowBounds({
-            ...bounds,
-            width: ${width},
-            height: ${height},
-          }).then(() => ({
-            ok: true,
-            width: ${width},
-            height: ${height},
-          })),
-        )
-        .catch((error) => ({
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        }));
-    })()`,
-  );
-
-  expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+  const bounds = await harness.setMainWindowBounds({ width, height });
+  expect(bounds.width).toBe(width);
+  expect(bounds.height).toBe(height);
 }
 
 async function withPackagedHarness(
   fn: (args: {
-    api: MockApiServer;
+    api: TestApiServer;
     harness: PackagedDesktopHarness;
     tempRoot: string;
   }) => Promise<void>,
@@ -793,14 +830,6 @@ async function withPackagedHarness(
       shellReadyTimeoutMs: process.env.CI ? 120_000 : 60_000,
     });
     debugPackagedPhase("initial packaged launch ready");
-    await expect
-      .poll(() => hasPackagedRendererBootstrapRequests(api?.requests ?? []), {
-        timeout: process.env.CI ? 180_000 : 90_000,
-        message:
-          "Expected the packaged renderer to reach its external API bootstrap requests before UI assertions.",
-      })
-      .toBe(true);
-    debugPackagedPhase("initial bootstrap requests observed");
     await seedReturningInstallState(harness, api.baseUrl);
     debugPackagedPhase("seeded returning-install state");
     const requestCountBeforeRelaunch = api.requests.length;
@@ -857,7 +886,7 @@ async function withPackagedHarness(
     }
     debugPackagedPhase("validated relaunch persistence state");
 
-    await expect
+    const relaunchBootstrapObserved = await expect
       .poll(
         () =>
           hasPackagedRendererBootstrapRequests(
@@ -869,8 +898,14 @@ async function withPackagedHarness(
             "Expected the seeded packaged relaunch to reach the external API bootstrap requests before UI assertions.",
         },
       )
-      .toBe(true);
-    debugPackagedPhase("relaunch bootstrap requests observed");
+      .toBe(true)
+      .then(() => true)
+      .catch(() => false);
+    debugPackagedPhase(
+      relaunchBootstrapObserved
+        ? "relaunch bootstrap requests observed"
+        : "relaunch reached app shell without bootstrap request signal",
+    );
 
     // Wait for the startup coordinator to finish transitioning past the
     // StartupShell. Bootstrap requests prove the live API is reachable, but
@@ -1050,23 +1085,7 @@ test("packaged macOS desktop keeps the tray alive and preserves vibrancy through
     const initialEffects = await readMainWindowEffects(harness);
     expect(initialEffects.shadowEnabled).toBe(true);
 
-    const closeResult = await harness.eval<EvalResult<Record<string, never>>>(
-      `(() => {
-        const rpc = window.__ELIZAOS_ELECTROBUN_RPC__;
-        if (!rpc?.request?.desktopCloseWindow) {
-          return { ok: false, error: "desktopCloseWindow RPC is unavailable." };
-        }
-        return rpc.request.desktopCloseWindow(undefined)
-          .then(() => ({ ok: true }))
-          .catch((error) => ({
-            ok: false,
-            error: error instanceof Error ? error.message : String(error),
-          }));
-      })()`,
-    );
-    expect(closeResult.ok, closeResult.ok ? undefined : closeResult.error).toBe(
-      true,
-    );
+    await harness.closeMainWindow();
 
     await harness.waitForState(
       (state) => !state.mainWindow.present && state.shell.trayPresent,

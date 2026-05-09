@@ -4,7 +4,7 @@
  * Script to promote wallet addresses to admin
  *
  * Usage:
- *   bun run scripts/promote-admin.ts <wallet_address> [role] [notes]
+ *   bun run packages/scripts/promote-admin.ts <wallet_address> [role] [notes]
  *
  * Arguments:
  *   wallet_address - The wallet address to promote (required)
@@ -12,13 +12,10 @@
  *   notes          - Optional notes about why this admin was added
  *
  * Examples:
- *   bun run scripts/promote-admin.ts 0x1234...5678
- *   bun run scripts/promote-admin.ts 0x1234...5678 super_admin
- *   bun run scripts/promote-admin.ts 0x1234...5678 moderator "Promoted by Shaw"
+ *   bun run packages/scripts/promote-admin.ts 0x1234...5678
+ *   bun run packages/scripts/promote-admin.ts 0x1234...5678 super_admin
+ *   bun run packages/scripts/promote-admin.ts 0x1234...5678 moderator "Promoted by Shaw"
  */
-
-import { adminService } from "@/lib/services/admin";
-
 async function main() {
   const args = process.argv.slice(2);
 
@@ -28,7 +25,7 @@ Admin Promotion Script
 ======================
 
 Usage:
-  bun run scripts/promote-admin.ts <wallet_address> [role] [notes]
+  bun run packages/scripts/promote-admin.ts <wallet_address> [role] [notes]
 
 Arguments:
   wallet_address  The wallet address to promote (required)
@@ -36,9 +33,9 @@ Arguments:
   notes           Optional notes about why this admin was added
 
 Examples:
-  bun run scripts/promote-admin.ts 0x1234...5678
-  bun run scripts/promote-admin.ts 0x1234...5678 super_admin
-  bun run scripts/promote-admin.ts 0x1234...5678 moderator "Promoted by Shaw"
+  bun run packages/scripts/promote-admin.ts 0x1234...5678
+  bun run packages/scripts/promote-admin.ts 0x1234...5678 super_admin
+  bun run packages/scripts/promote-admin.ts 0x1234...5678 moderator "Promoted by Shaw"
 
 Special Commands:
   --list          List all current admins
@@ -46,6 +43,8 @@ Special Commands:
 `);
     process.exit(0);
   }
+
+  const { adminService } = await import("@/lib/services/admin");
 
   // Handle --list command
   if (args[0] === "--list") {

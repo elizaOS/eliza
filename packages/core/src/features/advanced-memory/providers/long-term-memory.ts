@@ -10,10 +10,18 @@ import { addHeader } from "../../../utils.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 
+const MAX_LONG_TERM_MEMORY_TEXT_LENGTH = 5000;
+const MAX_LONG_TERM_MEMORY_CATEGORIES = 10;
+
 export const longTermMemoryProvider: Provider = {
 	name: "LONG_TERM_MEMORY",
 	description: "Persistent facts and preferences about the user",
 	position: 50,
+	contexts: ["general"],
+	contextGate: { anyOf: ["general"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
 
 	get: async (
 		runtime: IAgentRuntime,
@@ -69,7 +77,14 @@ export const longTermMemoryProvider: Provider = {
 
 			const formattedMemories =
 				await memoryService.getFormattedLongTermMemories(entityId);
-			const text = addHeader("# What I Know About You", formattedMemories);
+			const trimmedFormattedMemories =
+				formattedMemories.length > MAX_LONG_TERM_MEMORY_TEXT_LENGTH
+					? `${formattedMemories.slice(0, MAX_LONG_TERM_MEMORY_TEXT_LENGTH)}...`
+					: formattedMemories;
+			const text = addHeader(
+				"# What I Know About You",
+				trimmedFormattedMemories,
+			);
 
 			const categoryCounts = new Map<string, number>();
 			for (const memory of memories) {
@@ -78,6 +93,7 @@ export const longTermMemoryProvider: Provider = {
 			}
 
 			const categoryList = Array.from(categoryCounts.entries())
+				.slice(0, MAX_LONG_TERM_MEMORY_CATEGORIES)
 				.map(([cat, count]) => `${cat}: ${count}`)
 				.join(", ");
 			logAdvancedMemoryTrajectory({
@@ -98,6 +114,8 @@ export const longTermMemoryProvider: Provider = {
 				data: {
 					memoryCount: memories.length,
 					categories: categoryList,
+					truncated:
+						formattedMemories.length > MAX_LONG_TERM_MEMORY_TEXT_LENGTH,
 				},
 				values: {
 					longTermMemories: text,
@@ -112,7 +130,10 @@ export const longTermMemoryProvider: Provider = {
 				"Error in longTermMemoryProvider",
 			);
 			return {
-				data: { memoryCount: 0 },
+				data: {
+					memoryCount: 0,
+					error: err,
+				},
 				values: { longTermMemories: "" },
 				text: "",
 			};

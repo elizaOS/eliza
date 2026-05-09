@@ -18,13 +18,14 @@ import type {
 import { logger } from "@elizaos/core";
 import {
   buildResolvedClient,
+  describeSelection,
   isConfirmed,
   optionalStringArray,
+  resolveAccountSelection,
   type ResolvedClient,
   requireNumber,
   requireString,
   requireStringArray,
-  resolveIdentity,
   splitRepo,
 } from "../action-helpers.js";
 import {
@@ -290,6 +291,9 @@ function buildPreview(
 
 export const issueOpAction: Action = {
   name: GitHubActions.GITHUB_ISSUE_OP,
+  contexts: ["code", "tasks", "connectors", "automation"],
+  contextGate: { anyOf: ["code", "tasks", "connectors", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "CREATE_ISSUE",
     "OPEN_ISSUE",
@@ -310,6 +314,70 @@ export const issueOpAction: Action = {
     "Single router for GitHub issue ops: create, assign, close, reopen, comment, label. Requires confirmed:true.",
   descriptionCompressed:
     "GitHub issue ops: create, assign, close, reopen, comment, label.",
+  parameters: [
+    {
+      name: "op",
+      description:
+        "Issue operation: create, assign, close, reopen, comment, or label.",
+      required: true,
+      schema: { type: "string", enum: [...SUPPORTED_OPS] },
+    },
+    {
+      name: "repo",
+      description: "Repository in owner/name form.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "number",
+      description: "Issue number for existing-issue operations.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "title",
+      description: "Issue title for create.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "body",
+      description: "Issue body or comment body.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "assignees",
+      description: "GitHub usernames to assign.",
+      required: false,
+      schema: { type: "array", items: { type: "string" } },
+    },
+    {
+      name: "labels",
+      description: "Labels to apply on create or label.",
+      required: false,
+      schema: { type: "array", items: { type: "string" } },
+    },
+    {
+      name: "as",
+      description: "Identity to use: agent or user.",
+      required: false,
+      schema: { type: "string", enum: ["agent", "user"], default: "agent" },
+    },
+    {
+      name: "accountId",
+      description:
+        "Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "confirmed",
+      description: "Must be true to perform the write operation.",
+      required: false,
+      schema: { type: "boolean", default: false },
+    },
+  ],
 
   validate: async (
     runtime: IAgentRuntime,
@@ -334,7 +402,7 @@ export const issueOpAction: Action = {
       return { success: false, error: err };
     }
 
-    const identity = resolveIdentity(options, "agent");
+    const selection = resolveAccountSelection(options, "agent");
     const repo = requireString(options, "repo");
     if (!repo) {
       const err = "GITHUB_ISSUE_OP requires repo (owner/name)";
@@ -349,12 +417,12 @@ export const issueOpAction: Action = {
     }
 
     if (!isConfirmed(options)) {
-      const preview = buildPreview(op, repo, identity, options);
+      const preview = buildPreview(op, repo, describeSelection(selection), options);
       await callback?.({ text: preview });
       return { success: false, requiresConfirmation: true, preview };
     }
 
-    const resolved = buildResolvedClient(runtime, identity);
+    const resolved = buildResolvedClient(runtime, selection);
     if ("error" in resolved) {
       await callback?.({ text: resolved.error });
       return { success: false, error: resolved.error };

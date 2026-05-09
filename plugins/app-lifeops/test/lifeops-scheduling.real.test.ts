@@ -2,16 +2,16 @@
  * LifeOps scheduling-with-others tests.
  *
  * Covers:
- *   - OWNER_CALENDAR (subaction:"propose_times") pure slot computation
+ *   - CALENDAR (subaction:"propose_times") pure slot computation
  *     (computeProposedSlots): respects busy events, preferred hours,
  *     blackout windows, and travel buffer. Runs without DB or network.
- *   - OWNER_CALENDAR (subaction:"update_preferences") end-to-end against a
+ *   - CALENDAR (subaction:"update_preferences") end-to-end against a
  *     real PGLite runtime: the action handler persists the patch to the
  *     LifeOps scheduler task's metadata, and a subsequent read returns it.
- *   - OWNER_CALENDAR (subaction:"propose_times") handler reports a helpful
+ *   - CALENDAR (subaction:"propose_times") handler reports a helpful
  *     error when Google Calendar is not connected (exercises the
  *     LifeOpsServiceError path).
- *   - OWNER_CALENDAR (subaction:"check_availability") handler validates
+ *   - CALENDAR (subaction:"check_availability") handler validates
  *     its inputs.
  *
  * The handler tests that require a seeded calendar feed live in the LifeOps
@@ -247,7 +247,7 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
     await testResult.cleanup();
   });
 
-  it("OWNER_CALENDAR.update_preferences persists preferences to scheduler task metadata", async () => {
+  it("CALENDAR.update_preferences persists preferences to scheduler task metadata", async () => {
     const result = await updateMeetingPreferencesAction.handler!(
       runtime,
       makeMessage(runtime, "set my preferences") as never,
@@ -282,7 +282,7 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
     expect(readBack.blackoutWindows[0].label).toBe("Lunch");
   });
 
-  it("OWNER_CALENDAR.update_preferences rejects an empty patch", async () => {
+  it("CALENDAR.update_preferences rejects an empty patch", async () => {
     const result = await updateMeetingPreferencesAction.handler!(
       runtime,
       makeMessage(runtime, "set my preferences") as never,
@@ -296,7 +296,7 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
     ).toBe("NO_FIELDS");
   });
 
-  it("OWNER_CALENDAR.check_availability rejects an invalid window (end <= start)", async () => {
+  it("CALENDAR.check_availability rejects an invalid window (end <= start)", async () => {
     const result = await checkAvailabilityAction.handler!(
       runtime,
       makeMessage(runtime, "am I free") as never,

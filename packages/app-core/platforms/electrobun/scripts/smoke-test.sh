@@ -24,12 +24,72 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ELECTROBUN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-APP_DIR="$(cd "$ELECTROBUN_DIR/.." && pwd)"
-REPO_ROOT="$(cd "$ELECTROBUN_DIR/../../.." && pwd)"
+
+has_electrobun_workspace_root() {
+  local candidate="$1"
+  [[ -f "$candidate/bun.lock" ]] || return 1
+  [[ -f "$candidate/package.json" ]] || return 1
+  [[ -f "$candidate/packages/app/package.json" || -f "$candidate/apps/app/package.json" ]] || return 1
+  [[ -f "$candidate/packages/app-core/platforms/electrobun/package.json" || -f "$candidate/eliza/packages/app-core/platforms/electrobun/package.json" ]] || return 1
+}
+
+has_outer_eliza_electrobun_checkout() {
+  local candidate="$1"
+  [[ -f "$candidate/eliza/packages/app-core/platforms/electrobun/package.json" ]]
+}
+
+find_electrobun_workspace_root() {
+  local current="$ELECTROBUN_DIR"
+  local matches=()
+
+  while true; do
+    if has_electrobun_workspace_root "$current"; then
+      matches+=("$current")
+    fi
+
+    local parent
+    parent="$(dirname "$current")"
+    if [[ "$parent" == "$current" ]]; then
+      local match
+      for match in "${matches[@]}"; do
+        if has_outer_eliza_electrobun_checkout "$match"; then
+          printf "%s\n" "$match"
+          return 0
+        fi
+      done
+      if [[ "${#matches[@]}" -gt 0 ]]; then
+        printf "%s\n" "${matches[0]}"
+        return 0
+      fi
+      echo "ERROR: Could not locate Electrobun workspace root from $ELECTROBUN_DIR" >&2
+      return 1
+    fi
+
+    current="$parent"
+  done
+}
+
+REPO_ROOT="${ELIZA_ELECTROBUN_REPO_ROOT:-$(find_electrobun_workspace_root)}"
+if ! has_electrobun_workspace_root "$REPO_ROOT"; then
+  echo "ERROR: ELIZA_ELECTROBUN_REPO_ROOT is not an Electrobun workspace root: $REPO_ROOT" >&2
+  exit 1
+fi
+APP_DIR="${ELIZA_ELECTROBUN_APP_DIR:-}"
+if [[ -z "$APP_DIR" ]]; then
+  if [[ -f "$REPO_ROOT/packages/app/package.json" ]]; then
+    APP_DIR="$REPO_ROOT/packages/app"
+  else
+    APP_DIR="$REPO_ROOT/apps/app"
+  fi
+fi
+COMMON_BUILD_ENV=(ELIZA_ELECTROBUN_REPO_ROOT="$REPO_ROOT")
+if [[ -f "$REPO_ROOT/eliza/packages/app-core/package.json" && -z "${MILADY_ELIZA_SOURCE:-}" && -z "${ELIZA_SOURCE:-}" ]]; then
+  COMMON_BUILD_ENV+=(MILADY_ELIZA_SOURCE="local")
+fi
 BUILD_ENV="${BUILD_ENV:-canary}"
 SKIP_SIGNATURE_CHECK="${SKIP_SIGNATURE_CHECK:-0}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
-STARTUP_TIMEOUT="${STARTUP_TIMEOUT:-180}"
+STARTUP_TIMEOUT="${STARTUP_TIMEOUT:-900}"
 LIVENESS_TIMEOUT="${LIVENESS_TIMEOUT:-8}"
 PACKAGED_HANDOFF_GRACE_SECONDS="${PACKAGED_HANDOFF_GRACE_SECONDS:-90}"
 BUILD_SKIP_CODESIGN="${ELECTROBUN_SKIP_CODESIGN:-}"
@@ -40,10 +100,18 @@ EXPECTED_BUNDLE_IDENTIFIER="${EXPECTED_BUNDLE_IDENTIFIER:-com.elizaai.eliza}"
 MOUNT_POINT=""
 LAUNCH_APP_BUNDLE=""
 STARTUP_LOG="$HOME/.config/Eliza/eliza-startup.log"
+STARTUP_LOG_CANDIDATES=(
+  "$HOME/.config/elizaOS/eliza-startup.log"
+  "$HOME/.config/Eliza/eliza-startup.log"
+)
 STARTUP_SESSION_ID=""
 STARTUP_STATE_FILE=""
 STARTUP_EVENTS_FILE=""
 STARTUP_BOOTSTRAP_FILE=""
+STARTUP_CONTROL_BOOTSTRAP_FILES=(
+  "$HOME/.config/elizaOS/startup-session.json"
+  "$HOME/.config/Eliza/startup-session.json"
+)
 MAC_DIRECT_EXEC_PROBE_RC=""
 MAC_LAUNCH_MODE="${ELIZA_SMOKE_MAC_LAUNCH_MODE:-auto}"
 OPEN_LAUNCH_OUTPUT=""
@@ -88,6 +156,12 @@ cleanup() {
   if [[ -n "$STARTUP_BOOTSTRAP_FILE" ]]; then
     rm -f "$STARTUP_BOOTSTRAP_FILE"
   fi
+  local startup_control_file=""
+  for startup_control_file in "${STARTUP_CONTROL_BOOTSTRAP_FILES[@]}"; do
+    if [[ -n "$STARTUP_SESSION_ID" && -f "$startup_control_file" ]] && grep -q "$STARTUP_SESSION_ID" "$startup_control_file" 2>/dev/null; then
+      rm -f "$startup_control_file"
+    fi
+  done
   if [[ -n "$LAUNCH_APP_BUNDLE" && "$LAUNCH_APP_BUNDLE" == /tmp/* && -d "$LAUNCH_APP_BUNDLE" ]]; then
     rm -rf "$LAUNCH_APP_BUNDLE"
   fi
@@ -175,6 +249,12 @@ init_startup_session() {
     );
   ' "$bootstrap_temp" "$STARTUP_SESSION_ID" "$STARTUP_STATE_FILE" "$STARTUP_EVENTS_FILE"
   mv "$bootstrap_temp" "$STARTUP_BOOTSTRAP_FILE"
+
+  local startup_control_file=""
+  for startup_control_file in "${STARTUP_CONTROL_BOOTSTRAP_FILES[@]}"; do
+    mkdir -p "$(dirname "$startup_control_file")"
+    cp "$STARTUP_BOOTSTRAP_FILE" "$startup_control_file"
+  done
 }
 
 load_startup_state() {
@@ -253,9 +333,12 @@ collect_recent_crash_reports() {
 copy_supporting_diagnostics() {
   ensure_diagnostics_dir
 
-  if [[ -f "$STARTUP_LOG" ]]; then
-    cp "$STARTUP_LOG" "$SMOKE_DIAGNOSTICS_DIR/eliza-startup.log" 2>/dev/null || true
-  fi
+  local startup_log_candidate=""
+  for startup_log_candidate in "${STARTUP_LOG_CANDIDATES[@]}"; do
+    if [[ -f "$startup_log_candidate" ]]; then
+      cp "$startup_log_candidate" "$SMOKE_DIAGNOSTICS_DIR/$(basename "$(dirname "$startup_log_candidate")")-eliza-startup.log" 2>/dev/null || true
+    fi
+  done
   if [[ -f "$STARTUP_STATE_FILE" ]]; then
     cp "$STARTUP_STATE_FILE" "$SMOKE_DIAGNOSTICS_DIR/startup-state.json" 2>/dev/null || true
   fi
@@ -265,6 +348,12 @@ copy_supporting_diagnostics() {
   if [[ -f "$STARTUP_BOOTSTRAP_FILE" ]]; then
     cp "$STARTUP_BOOTSTRAP_FILE" "$SMOKE_DIAGNOSTICS_DIR/startup-session.json" 2>/dev/null || true
   fi
+  local startup_control_file=""
+  for startup_control_file in "${STARTUP_CONTROL_BOOTSTRAP_FILES[@]}"; do
+    if [[ -f "$startup_control_file" ]]; then
+      cp "$startup_control_file" "$SMOKE_DIAGNOSTICS_DIR/$(basename "$(dirname "$startup_control_file")")-startup-session.json" 2>/dev/null || true
+    fi
+  done
   if [[ -n "$OPEN_LAUNCH_OUTPUT" && -f "$OPEN_LAUNCH_OUTPUT" ]]; then
     cp "$OPEN_LAUNCH_OUTPUT" "$SMOKE_DIAGNOSTICS_DIR/open.stderr" 2>/dev/null || true
   fi
@@ -358,6 +447,7 @@ dump_failure_diagnostics() {
     echo "Startup state file: ${STARTUP_STATE_FILE:-<unset>}"
     echo "Startup events file: ${STARTUP_EVENTS_FILE:-<unset>}"
     echo "Startup bootstrap file: ${STARTUP_BOOTSTRAP_FILE:-<unset>}"
+    echo "Startup control bootstrap files: ${STARTUP_CONTROL_BOOTSTRAP_FILES[*]:-<unset>}"
     echo "Loaded startup state source: ${STATE_SOURCE_FILE:-<none>}"
     echo "Mac launch mode: ${MAC_LAUNCH_MODE:-<unset>}"
     echo "open(1) attempted: ${OPEN_LAUNCH_ATTEMPTED:-0}"
@@ -423,7 +513,7 @@ kill_stale_processes() {
       kill "$pid" >/dev/null 2>&1 || true
     fi
   done < <(
-    pgrep -f '/(Applications|tmp|private/tmp|Volumes)/.*Eliza[^/]*\.app/Contents/MacOS/launcher|eliza-dist/entry\.js' || true
+    pgrep -f '/(Applications|tmp|private/tmp|Volumes)/.*([Ee]liza|elizaOS)[^/]*\.app/Contents/.*(launcher|bun|main\.js|entry\.js)|eliza-dist/entry\.js' || true
   )
 
   pid="$(lsof -nP -tiTCP:2138 -sTCP:LISTEN 2>/dev/null | head -1 || true)"
@@ -754,6 +844,8 @@ echo "============================================================"
 echo " Eliza Electrobun Smoke Test"
 echo " Build env  : $BUILD_ENV"
 echo " Working dir: $ELECTROBUN_DIR"
+echo " Repo root  : $REPO_ROOT"
+echo " App dir    : $APP_DIR"
 echo "============================================================"
 echo ""
 
@@ -762,12 +854,12 @@ if [[ "$SKIP_BUILD" == "1" ]]; then
   echo "[1/7] Reusing existing packaged artifact (SKIP_BUILD=1)..."
 else
   echo "[1/7] Building core dist + renderer assets..."
-  (cd "$REPO_ROOT" && bunx tsdown && echo '{"type":"module"}' > dist/package.json && node --import tsx scripts/write-build-info.ts)
-  (cd "$APP_DIR" && npx vite build)
+  (cd "$REPO_ROOT" && env "${COMMON_BUILD_ENV[@]}" bunx tsdown && echo '{"type":"module"}' > dist/package.json && env "${COMMON_BUILD_ENV[@]}" node --import tsx scripts/write-build-info.ts)
+  (cd "$APP_DIR" && env "${COMMON_BUILD_ENV[@]}" npx vite build)
   echo ""
 
   echo "[2/7] Bundling runtime node_modules into dist/..."
-  (cd "$REPO_ROOT" && node --import tsx scripts/copy-runtime-node-modules.ts --scan-dir dist --target-dist dist)
+  (cd "$REPO_ROOT" && env "${COMMON_BUILD_ENV[@]}" node --import tsx scripts/copy-runtime-node-modules.ts --scan-dir dist --target-dist dist)
   echo ""
 
   if [[ "$(uname)" == "Darwin" ]]; then
@@ -785,7 +877,7 @@ else
   echo ""
 
   echo "[4/7] Building Electrobun app (env=$BUILD_ENV)..."
-  (cd "$ELECTROBUN_DIR" && ELECTROBUN_DEVELOPER_ID="$BUILD_DEVELOPER_ID" ELECTROBUN_SKIP_CODESIGN="$BUILD_SKIP_CODESIGN" bun run build -- --env="$BUILD_ENV")
+  (cd "$ELECTROBUN_DIR" && env "${COMMON_BUILD_ENV[@]}" ELECTROBUN_DEVELOPER_ID="$BUILD_DEVELOPER_ID" ELECTROBUN_SKIP_CODESIGN="$BUILD_SKIP_CODESIGN" bun run build -- --env="$BUILD_ENV")
 fi
 echo ""
 
@@ -926,6 +1018,12 @@ kill_stale_processes
 init_startup_session
 
 LOG_OFFSET=0
+for startup_log_candidate in "${STARTUP_LOG_CANDIDATES[@]}"; do
+  if [[ -f "$startup_log_candidate" ]]; then
+    STARTUP_LOG="$startup_log_candidate"
+    break
+  fi
+done
 if [[ -f "$STARTUP_LOG" ]]; then
   LOG_OFFSET="$(wc -c < "$STARTUP_LOG" | tr -d ' ')"
 fi

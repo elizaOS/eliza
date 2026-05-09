@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, logger } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 
 function sha256Utf8(s: string): string {
@@ -145,9 +145,8 @@ async function commitSqlReservations(
       RETURNING key
     `);
     if (!resultHadRows(result)) {
-      console.error(
-        "[x402] durable replay: failed to commit reserved replay key",
-        cacheKey,
+      logger.error(
+        `[x402] durable replay: failed to commit reserved replay key ${cacheKey}`,
       );
     }
   }
@@ -213,9 +212,10 @@ export async function durableReplayTryReserve(
       await releaseSqlReservations(db, resolvedAgentId, acquired, owner).catch(
         () => {},
       );
-      console.error(
-        "[x402] durable replay: atomic reservation failed:",
-        err instanceof Error ? err.message : String(err),
+      logger.error(
+        `[x402] durable replay: atomic reservation failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
       );
       return { ok: false };
     }
@@ -309,9 +309,11 @@ export async function durableReplayCommitReservation(
       payload,
     );
     if (!ok) {
-      console.error(
-        "[x402] durable replay: setCache failed for replay key (payment may be retryable if this persists)",
-        replayKey.slice(0, 80),
+      logger.error(
+        `[x402] durable replay: setCache failed for replay key ${replayKey.slice(
+          0,
+          80,
+        )} (payment may be retryable if this persists)`,
       );
     }
   }

@@ -11,15 +11,7 @@ export * from "./services/waypoints-service.js";
 export * from "./services/websocket-client.js";
 export * from "./types.js";
 
-import {
-  minecraftAttackAction,
-  minecraftBlockOpAction,
-  minecraftChatAction,
-  minecraftConnectAction,
-  minecraftDisconnectAction,
-  minecraftLocomoteOpAction,
-  minecraftWaypointOpAction,
-} from "./actions/index.js";
+import { minecraftAction } from "./actions/index.js";
 import {
   minecraftVisionProvider,
   minecraftWaypointsProvider,
@@ -62,15 +54,7 @@ export const minecraftPlugin: Plugin = {
     logger.info("Minecraft plugin initialized");
   },
   services: [MinecraftService, WaypointsService],
-  actions: [
-    minecraftConnectAction,
-    minecraftDisconnectAction,
-    minecraftAttackAction,
-    minecraftChatAction,
-    minecraftLocomoteOpAction,
-    minecraftBlockOpAction,
-    minecraftWaypointOpAction,
-  ],
+  actions: [minecraftAction],
   providers: [minecraftStateProvider, minecraftWaypointsProvider, minecraftVisionProvider],
 };
 

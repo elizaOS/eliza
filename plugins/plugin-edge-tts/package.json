@@ -40,8 +40,17 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "text-to-speech"
+      ]
+    }
+  },
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "node-edge-tts": "^1.0.7"
@@ -50,7 +59,7 @@
     "@biomejs/biome": "^2.4.14",
     "@types/bun": "^1.2.22",
     "@types/node": "^24.5.2",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   },
   "scripts": {
     "build": "bun run build.ts",

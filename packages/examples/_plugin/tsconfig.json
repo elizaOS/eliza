@@ -1,38 +1,46 @@
 {
-	"compilerOptions": {
-		"outDir": "dist",
-		"lib": ["ESNext", "dom"],
-		"types": ["node"],
-		"target": "ESNext",
-		"module": "Preserve",
-		"moduleResolution": "Bundler",
-		"strict": false,
-		"esModuleInterop": true,
-		"skipLibCheck": true,
-		"incremental": true,
-		"composite": true,
-		"declaration": true,
-		"declarationMap": true,
-		"forceConsistentCasingInFileNames": false,
-		"allowImportingTsExtensions": true,
-		"resolveJsonModule": true,
-		"noImplicitAny": false,
-		"allowJs": true,
-		"checkJs": false,
-		"noEmitOnError": false,
-		"moduleDetection": "force",
-		"allowArbitraryExtensions": true,
-		"jsx": "react",
-		"isolatedModules": false,
-		"noEmit": true
-	},
-	"include": ["src/**/*.ts"],
-	"exclude": [
-		"e2e/**/*",
-		"src/__tests__/**",
-		"**/*.test.ts",
-		"**/*.spec.ts",
-		"**/*.cy.tsx",
-		"**/cypress/**/*"
-	]
+  "compilerOptions": {
+    "outDir": "dist",
+    "lib": [
+      "ESNext",
+      "dom"
+    ],
+    "types": [
+      "node"
+    ],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "strict": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "incremental": true,
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "forceConsistentCasingInFileNames": false,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "noImplicitAny": false,
+    "allowJs": true,
+    "checkJs": false,
+    "noEmitOnError": false,
+    "moduleDetection": "force",
+    "allowArbitraryExtensions": true,
+    "jsx": "react",
+    "isolatedModules": false,
+    "noEmit": true
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "e2e/**/*",
+    "src/__tests__/**",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/*.cy.tsx",
+    "**/cypress/**/*"
+  ],
+  "extends": "../../../tsconfig.dist-paths.json"
 }

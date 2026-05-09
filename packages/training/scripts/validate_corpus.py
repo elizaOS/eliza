@@ -9,19 +9,19 @@ the eliza runtime actually parses for each `metadata.task_type`:
                                  availableActions, currentMessage role in
                                  {user, assistant}.
 
-  should_respond_with_context TOON expectedResponse decoding to one of
+  should_respond_with_context JSON expectedResponse decoding to one of
   (alias: routing /              {RESPOND, IGNORE, STOP}, with RESPOND+
    should_respond)               IGNORE+STOP in availableActions.
 
-  tool_call                   TOON expectedResponse with `tool_calls:` field
+  tool_call                   JSON expectedResponse with `tool_calls` field
                                  holding ≥1 `{name, arguments}` entry; the
                                  chosen action MUST be TASK_CALL or the tool
                                  name itself.
 
-  shell_command               TOON with `command:` field; SHELL_COMMAND must
+  shell_command               JSON with `command` field; SHELL_COMMAND must
                                  be in availableActions.
 
-  agent_trace (planning)      TOON envelope: `thought:` + `actions:[]`,
+  agent_trace (planning)      JSON envelope: `thought` + `actions`,
                                  each action with a `name`. When
                                  `simple: true` the actions list MUST be
                                  exactly one entry (REPLY-only / single).
@@ -73,9 +73,6 @@ from typing import Any, Iterable
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-
-# Lazy import — TOON decoder spawns a Bun process at first decode().
-from scripts.lib import toon as toon_lib  # noqa: E402
 
 # Canonical action vocabulary (mirrors lib/eliza_record.py).
 ACTION_RESPOND = "RESPOND"
@@ -145,24 +142,20 @@ SOURCE_ALLOWLIST: set[str] = _load_source_allowlist()
 # ──────────────────────── decode helpers ────────────────────────
 
 
-_decoder_singleton: toon_lib.ToonDecoder | None = None
-
-
-def _decoder() -> toon_lib.ToonDecoder:
-    global _decoder_singleton
-    if _decoder_singleton is None:
-        _decoder_singleton = toon_lib.ToonDecoder()
-    return _decoder_singleton
-
-
 def _try_decode_toon(text: str) -> tuple[bool, Any, str]:
-    """Best-effort TOON decode. Returns `(ok, value, error)`."""
+    """Structured decode for native v5 JSON expectedResponse values.
+
+    Returns `(ok, value, error)`.
+    """
     if not isinstance(text, str) or not text.strip():
         return False, None, "empty"
-    try:
-        return True, _decoder().decode(text), ""
-    except (ValueError, RuntimeError) as e:
-        return False, None, str(e)[:200]
+    stripped = text.strip()
+    if stripped.startswith("{") or stripped.startswith("["):
+        try:
+            return True, json.loads(stripped), ""
+        except json.JSONDecodeError as e:
+            return False, None, str(e)[:200]
+    return False, None, "not_json"
 
 
 def _action_names(actions: list[Any]) -> list[str]:
@@ -425,7 +418,7 @@ TASK_TYPE_VALIDATORS = {
 
 def _extract_thought(rec: dict, decoded: Any | None) -> str | None:
     """Pull a candidate `thought:` string out of the decoded envelope or the
-    raw expectedResponse (for adapters that didn't TOON-encode)."""
+    raw expectedResponse."""
     if isinstance(decoded, dict):
         t = decoded.get("thought")
         if isinstance(t, str):
@@ -502,8 +495,8 @@ def validate_record(rec: dict) -> list[tuple[str, str]]:
     task_type = md.get("task_type") or ""
     expected = rec.get("expectedResponse") or ""
 
-    # Decode TOON once if expected by the task_type — the per-task_type
-    # validators read from `decoded` rather than re-decoding.
+    # Decode the JSON expectedResponse once for task_types that need structured
+    # validation — validators read from `decoded` rather than re-decoding.
     decoded: Any | None = None
     if task_type in {"tool_call", "shell_command", "agent_trace",
                      "should_respond_with_context", "should_respond",

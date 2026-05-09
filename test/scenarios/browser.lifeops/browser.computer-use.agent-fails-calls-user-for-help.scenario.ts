@@ -32,7 +32,7 @@ export default scenario({
       room: "main",
       text: "If that browser task gets stuck on auth or page layout issues, call me for help instead of pretending it worked.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_VOICE_CALL", "OWNER_COMPUTER_USE"],
+        acceptedActions: ["VOICE_CALL", "COMPUTER_USE"],
         description: "failed browser-task escalation",
         includesAny: ["call", "browser", "stuck", "auth", "layout"],
       }),
@@ -47,7 +47,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["OWNER_VOICE_CALL", "OWNER_COMPUTER_USE"],
+      actionName: ["VOICE_CALL", "COMPUTER_USE"],
     },
     {
       type: "interventionRequestExists",
@@ -60,13 +60,13 @@ export default scenario({
     {
       type: "connectorDispatchOccurred",
       channel: "phone_call",
-      actionName: ["OWNER_VOICE_CALL"],
+      actionName: ["VOICE_CALL"],
     },
     {
       type: "custom",
       name: "browser-failure-escalation-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["OWNER_VOICE_CALL", "OWNER_COMPUTER_USE"],
+        acceptedActions: ["VOICE_CALL", "COMPUTER_USE"],
         description: "failed browser-task escalation",
         includesAny: ["call", "browser", "stuck", "auth", "layout"],
       }),
@@ -76,7 +76,7 @@ export default scenario({
       name: "browser-failure-escalation-dispatch",
       predicate: expectConnectorDispatch({
         channel: "phone_call",
-        actionName: ["OWNER_VOICE_CALL"],
+        actionName: ["VOICE_CALL"],
         description:
           "failed browser automation escalates through the phone dispatcher",
       }),

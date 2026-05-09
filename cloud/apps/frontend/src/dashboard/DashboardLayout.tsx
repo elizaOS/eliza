@@ -1,4 +1,4 @@
-import { DashboardShell } from "@elizaos/cloud-ui";
+import { DashboardShell } from "../components/layout/dashboard-shell";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
@@ -6,9 +6,8 @@ import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 /**
  * Free Mode Paths (accessible without auth):
  * - /dashboard/chat - AI agent chat
- * - /dashboard/build - AI agent builder
  */
-const FREE_MODE_PATHS = ["/dashboard/chat", "/dashboard/build"];
+const FREE_MODE_PATHS = ["/dashboard/chat"];
 const PLAYWRIGHT_TEST_AUTH_MARKER_COOKIE = "eliza-test-auth=1";
 const AUTH_LOSS_GRACE_MS = 5000;
 
@@ -90,8 +89,7 @@ export default function DashboardLayout() {
       ? `/login?returnTo=${encodeURIComponent(pathname + search)}`
       : undefined;
 
-  const minimalOutletChrome =
-    pathname?.startsWith("/dashboard/chat") || pathname?.startsWith("/dashboard/build");
+  const minimalOutletChrome = pathname?.startsWith("/dashboard/chat");
 
   return (
     <DashboardShell

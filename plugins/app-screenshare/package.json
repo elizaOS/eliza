@@ -7,17 +7,17 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./routes": {
-      "types": "./src/routes.ts",
+      "types": "./dist/routes.d.ts",
       "import": "./dist/routes.js",
       "default": "./dist/routes.js"
     },
     "./ui": {
-      "types": "./src/ui/index.ts",
+      "types": "./dist/ui/index.d.ts",
       "import": "./dist/ui/index.js",
       "default": "./dist/ui/index.js"
     }
@@ -26,6 +26,7 @@
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-computeruse": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0"
@@ -54,7 +55,7 @@
       ],
       "runtimePlugin": "@elizaos/app-screenshare",
       "bridgeExport": {
-        "types": "./src/index.ts",
+        "types": "./dist/index.d.ts",
         "import": "./dist/index.js",
         "default": "./dist/index.js"
       },
@@ -75,10 +76,12 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "clean": "rm -rf dist"
+    "build": "bun run build:js && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc -p tsconfig.build.json"
   },
   "files": [
     "dist"

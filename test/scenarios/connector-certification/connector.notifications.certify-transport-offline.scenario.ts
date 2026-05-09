@@ -21,7 +21,7 @@ export default buildConnectorCertificationScenario({
       name: "notifications-transport-offline",
       text: "Send the reminder to my desktop and phone, but if the push transport is offline, tell me that explicitly instead of pretending the ladder fired.",
       responseIncludesAny: ["desktop", "phone", "offline", "push"],
-      acceptedActions: ["OWNER_DEVICE_INTENT", "OWNER_DEVICE_INTENT"],
+      acceptedActions: ["DEVICE_INTENT", "DEVICE_INTENT"],
       includesAny: ["desktop", "phone", "offline", "push"],
     },
   ],

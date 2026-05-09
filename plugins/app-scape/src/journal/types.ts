@@ -9,9 +9,8 @@
  * journal captures NARRATIVE state: what the agent learned, what
  * it wanted, what it achieved.
  *
- * The journal is stored on disk as **TOON**, not JSON — we want
- * the provider to be able to read the file directly and stream it
- * into the LLM prompt with zero transcoding overhead.
+ * The journal is stored on disk as JSON so app tooling and trajectory
+ * viewers can inspect it directly.
  *
  * Shape rules:
  *   - Every record has a stable `id` for dedup / update
@@ -83,7 +82,7 @@ export interface JournalProgressEntry {
 
 /**
  * Top-level journal record, one per agent. Persisted as a single
- * TOON file at `<dataDir>/scape-journals/<agentId>.toon`.
+ * JSON file at `<dataDir>/scape-journals/<agentId>.json`.
  */
 export interface JournalState {
   /** Stable agent id — matches `SCAPE_AGENT_ID`. */

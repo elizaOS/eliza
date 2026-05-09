@@ -29,7 +29,6 @@ app.get("/", async (c) => {
         address: agentServerWallets.address,
         chainType: agentServerWallets.chain_type,
         clientAddress: agentServerWallets.client_address,
-        walletProvider: agentServerWallets.wallet_provider,
         stewardAgentId: agentServerWallets.steward_agent_id,
         createdAt: agentServerWallets.created_at,
       })

@@ -25,6 +25,11 @@ export const meteoraPositionProvider: Provider = {
   description: "Provides Meteora LP position information for the current wallet",
   descriptionCompressed: "provide Meteora LP position information current wallet",
   dynamic: true,
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "OWNER" },
   relevanceKeywords: [
     "degen",
     "meteora",

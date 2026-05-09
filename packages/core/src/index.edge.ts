@@ -12,6 +12,9 @@ export * from "./actions";
 export * from "./character";
 export * from "./character-utils";
 export * from "./connection";
+export * from "./connectors";
+export * from "./connectors/account-manager";
+export * from "./connectors/privacy";
 export {
 	CANONICAL_SECRET_KEYS,
 	type CanonicalSecretKey,
@@ -39,6 +42,7 @@ export * from "./providers/onboarding-progress";
 export * from "./providers/skill-eligibility";
 export * from "./roles";
 export * from "./runtime";
+export * from "./runtime/system-prompt";
 export * from "./schemas/character";
 export * from "./schemas/index";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
@@ -61,20 +65,19 @@ export * from "./services/trajectories";
 export * from "./settings";
 export * from "./streaming-context";
 export * from "./trajectory-context";
+export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
 export * from "./types";
+export {
+	ConnectorAccountHealth,
+	ConnectorAccountPurpose,
+	ConnectorAccountRole,
+	ConnectorAuthMethod,
+} from "./types";
 export * from "./types/agentEvent";
 export * from "./types/message-service";
 export * from "./types/onboarding";
 export * from "./types/plugin-manifest";
-// Keep proto JSON helpers as explicit runtime exports so edge/plugin bundles
-// don't depend on Bun preserving the ./types barrel namespace export.
-export * as proto from "./types/proto";
-export {
-	fromJson,
-	type JsonObject,
-	type JsonValue,
-	toJson,
-} from "./types/proto";
+export type { JsonObject, JsonValue } from "./types/primitives";
 export * from "./utils";
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";

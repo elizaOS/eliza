@@ -1,11 +1,12 @@
 import type { Logger } from "../logger";
+import type { ContextRegistry } from "../runtime/context-registry";
 import type { PromptBatcher } from "../utils/prompt-batcher";
 import type { Agent, Character } from "./agent";
 import type {
 	Action,
+	ActionMode,
 	ActionResult,
 	AgentContext,
-	Evaluator,
 	HandlerCallback,
 	Provider,
 	StreamChunkCallback,
@@ -19,12 +20,14 @@ import type {
 	Room,
 	World,
 } from "./environment";
+import type { Evaluator } from "./evaluator";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { Memory, MemoryMetadata } from "./memory";
 import type { IMessageService } from "./message-service";
 import type {
 	IMessagingAdapter,
 	SendHandlerFunction,
+	SendHandlerResult,
 	TargetInfo,
 } from "./messaging";
 import type {
@@ -44,8 +47,7 @@ import type {
 	RuntimeEventStorage,
 	ServiceClass,
 } from "./plugin";
-import type { ChannelType, Content, UUID } from "./primitives";
-import type { JsonValue } from "./proto.js";
+import type { ChannelType, Content, JsonValue, UUID } from "./primitives";
 import type {
 	SearchCategoryEnumerationOptions,
 	SearchCategoryLookupOptions,
@@ -79,13 +81,114 @@ export type MessageTargetKind =
 	| "phone"
 	| (string & {});
 
-export type MessageConnectorCapability = "send_message" | (string & {});
+export type MessageConnectorCapability =
+	| "send_message"
+	| "read_messages"
+	| "search_messages"
+	| "list_channels"
+	| "list_servers"
+	| "react_message"
+	| "edit_message"
+	| "delete_message"
+	| "pin_message"
+	| "join_channel"
+	| "leave_channel"
+	| "get_user"
+	| (string & {});
+
+export type PostConnectorCapability =
+	| "post"
+	| "read_feed"
+	| "search_posts"
+	| (string & {});
+
+export const ConnectorAccountPurpose = {
+	MESSAGING: "messaging",
+	POSTING: "posting",
+	READING: "reading",
+	ADMIN: "admin",
+	AUTOMATION: "automation",
+} as const;
+export type ConnectorAccountPurpose =
+	| (typeof ConnectorAccountPurpose)[keyof typeof ConnectorAccountPurpose]
+	| (string & {});
+
+export const ConnectorAccountRole = {
+	OWNER: "OWNER",
+	AGENT: "AGENT",
+	TEAM: "TEAM",
+} as const;
+export type ConnectorAccountRole =
+	(typeof ConnectorAccountRole)[keyof typeof ConnectorAccountRole];
+
+export const ConnectorAuthMethod = {
+	OAUTH: "OAUTH",
+	API_KEY: "API_KEY",
+	BOT_TOKEN: "BOT_TOKEN",
+	WEBHOOK: "WEBHOOK",
+	SESSION: "SESSION",
+	NONE: "NONE",
+} as const;
+export type ConnectorAuthMethod =
+	| (typeof ConnectorAuthMethod)[keyof typeof ConnectorAuthMethod]
+	| (string & {});
+
+export const ConnectorAccountHealth = {
+	UNKNOWN: "UNKNOWN",
+	HEALTHY: "HEALTHY",
+	DEGRADED: "DEGRADED",
+	REAUTH_REQUIRED: "REAUTH_REQUIRED",
+	DISABLED: "DISABLED",
+	ERROR: "ERROR",
+} as const;
+export type ConnectorAccountHealth =
+	| (typeof ConnectorAccountHealth)[keyof typeof ConnectorAccountHealth]
+	| (string & {});
+
+export interface ConnectorAccountCapability {
+	name: MessageConnectorCapability | PostConnectorCapability | (string & {});
+	enabled?: boolean;
+	targetKinds?: MessageTargetKind[];
+	scopes?: string[];
+	metadata?: Metadata;
+}
+
+export interface ConnectorAccountRef {
+	source: string;
+	accountId?: string;
+	purpose?: ConnectorAccountPurpose | ConnectorAccountPurpose[];
+	role?: ConnectorAccountRole;
+	/** Legacy display-name alias kept for connector registrations that have not migrated to label yet. */
+	name?: string;
+	label?: string;
+	authMethod?: ConnectorAuthMethod;
+	health?: ConnectorAccountHealth;
+	capabilities?: ConnectorAccountCapability[];
+	ownerEntityId?: UUID | string;
+	teamId?: UUID | string;
+	metadata?: Metadata;
+}
+
+export interface ConnectorContentShaping {
+	systemPromptFragment?: string;
+	template?: string;
+	postProcess?: (text: string) => string;
+	constraints?: {
+		maxLength?: number;
+		supportsMarkdown?: boolean;
+		supportsThreads?: boolean;
+		supportsAttachments?: boolean;
+		[key: string]: JsonValue | undefined;
+	};
+}
 
 export interface MessageConnectorQueryContext {
 	runtime: IAgentRuntime;
 	roomId?: UUID;
 	entityId?: UUID;
 	source?: string;
+	accountId?: string;
+	account?: ConnectorAccountRef;
 	target?: TargetInfo;
 	contexts?: AgentContext[];
 	metadata?: Metadata;
@@ -125,8 +228,63 @@ export interface MessageConnectorUserContext {
 	metadata?: Metadata;
 }
 
+export interface MessageConnectorFetchMessagesParams {
+	target: TargetInfo;
+	limit?: number;
+	cursor?: string;
+	before?: string;
+	after?: string;
+}
+
+export interface MessageConnectorSearchMessagesParams {
+	query: string;
+	target?: TargetInfo;
+	limit?: number;
+	cursor?: string;
+	before?: string;
+	after?: string;
+}
+
+export interface MessageConnectorMessageOpParams {
+	target: TargetInfo;
+	messageId: string;
+}
+
+export interface MessageConnectorReactionParams
+	extends MessageConnectorMessageOpParams {
+	emoji: string;
+}
+
+export interface MessageConnectorEditParams
+	extends MessageConnectorMessageOpParams {
+	content: Content;
+}
+
+export interface MessageConnectorPinParams
+	extends MessageConnectorMessageOpParams {
+	pin?: boolean;
+}
+
+export interface MessageConnectorChannelOpParams {
+	roomId?: UUID;
+	channelId?: string;
+	serverId?: string;
+	alias?: string;
+	invite?: string;
+	target?: TargetInfo;
+}
+
+export interface MessageConnectorGetUserParams {
+	userId?: UUID | string;
+	username?: string;
+	handle?: string;
+	target?: TargetInfo;
+}
+
 export interface MessageConnector {
 	source: string;
+	accountId?: string;
+	account?: ConnectorAccountRef;
 	label: string;
 	capabilities: MessageConnectorCapability[];
 	supportedTargetKinds: MessageTargetKind[];
@@ -157,6 +315,46 @@ export interface MessageConnector {
 		| Promise<MessageConnectorUserContext | null>
 		| MessageConnectorUserContext
 		| null;
+	listServers?: (
+		context: MessageConnectorQueryContext,
+	) => Promise<World[]> | World[];
+	fetchMessages?: (
+		context: MessageConnectorQueryContext,
+		params: MessageConnectorFetchMessagesParams,
+	) => Promise<Memory[]> | Memory[];
+	searchMessages?: (
+		context: MessageConnectorQueryContext,
+		params: MessageConnectorSearchMessagesParams,
+	) => Promise<Memory[]> | Memory[];
+	reactHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorReactionParams,
+	) => Promise<void>;
+	editHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorEditParams,
+	) => Promise<Memory> | Promise<void>;
+	deleteHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorMessageOpParams,
+	) => Promise<void>;
+	pinHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorPinParams,
+	) => Promise<void>;
+	joinHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorChannelOpParams,
+	) => Promise<Room> | Promise<void>;
+	leaveHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorChannelOpParams,
+	) => Promise<void>;
+	getUser?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorGetUserParams,
+	) => Promise<unknown>;
+	contentShaping?: ConnectorContentShaping;
 }
 
 export type MessageConnectorMetadata = Partial<
@@ -167,7 +365,66 @@ export type MessageConnectorMetadata = Partial<
 
 export type MessageConnectorRegistration = MessageConnectorMetadata & {
 	source: string;
-	sendHandler: SendHandlerFunction;
+	sendHandler?: SendHandlerFunction;
+};
+
+export interface PostConnectorQueryContext {
+	runtime: IAgentRuntime;
+	roomId?: UUID;
+	entityId?: UUID;
+	source?: string;
+	accountId?: string;
+	account?: ConnectorAccountRef;
+	contexts?: AgentContext[];
+	metadata?: Metadata;
+}
+
+export interface PostConnectorFeedParams {
+	feed?: string;
+	target?: TargetInfo;
+	limit?: number;
+	cursor?: string;
+	before?: string;
+	after?: string;
+}
+
+export interface PostConnectorSearchParams {
+	query: string;
+	limit?: number;
+	cursor?: string;
+	before?: string;
+	after?: string;
+}
+
+export interface PostConnector {
+	source: string;
+	accountId?: string;
+	account?: ConnectorAccountRef;
+	label: string;
+	capabilities: PostConnectorCapability[];
+	description?: string;
+	contexts: AgentContext[];
+	metadata?: Metadata;
+	postHandler?: (runtime: IAgentRuntime, content: Content) => SendHandlerResult;
+	fetchFeed?: (
+		context: PostConnectorQueryContext,
+		params: PostConnectorFeedParams,
+	) => Promise<Memory[]> | Memory[];
+	searchPosts?: (
+		context: PostConnectorQueryContext,
+		params: PostConnectorSearchParams,
+	) => Promise<Memory[]> | Memory[];
+	contentShaping?: ConnectorContentShaping;
+}
+
+export type PostConnectorMetadata = Partial<
+	Omit<PostConnector, "source" | "label">
+> & {
+	label?: string;
+};
+
+export type PostConnectorRegistration = PostConnectorMetadata & {
+	source: string;
 };
 
 /**
@@ -197,6 +454,12 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	routes: Route[];
 	logger: Logger;
 	stateCache: Map<string, State>;
+	/**
+	 * Per-runtime registry of context definitions. Seeded at runtime start with
+	 * the first-party taxonomy from PLAN.md §4.3 and extended by plugins via
+	 * `runtime.contexts.tryRegister(...)`.
+	 */
+	contexts: ContextRegistry;
 	promptBatcher?: PromptBatcher;
 	/** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. */
 	companionUrl?: string;
@@ -211,9 +474,9 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	): Promise<boolean>;
 	getPluginOwnership(pluginName: string): PluginOwnership | null;
 	getAllPluginOwnership(): PluginOwnership[];
-	enableKnowledge(): Promise<void>;
-	disableKnowledge(): Promise<void>;
-	isKnowledgeEnabled(): boolean;
+	enableDocuments(): Promise<void>;
+	disableDocuments(): Promise<void>;
+	isDocumentsEnabled(): boolean;
 	enableRelationships(): Promise<void>;
 	disableRelationships(): Promise<void>;
 	isRelationshipsEnabled(): boolean;
@@ -297,29 +560,35 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	 */
 	isCheckShouldRespondEnabled(): boolean;
 
-	processActions(
-		message: Memory,
-		responses: Memory[],
-		state?: State,
-		callback?: HandlerCallback,
-		options?: {
-			onStreamChunk?: StreamChunkCallback;
-		},
-	): Promise<void>;
-
 	getActionResults(messageId: UUID): ActionResult[];
 
-	evaluate(
+	/**
+	 * Run actions whose `mode` matches one of the 9 hook positions
+	 * (ALWAYS_x/CONTEXT_x/MESSAGE_x). The runtime fires this at fixed
+	 * positions in the message pipeline. CONTEXT_x hooks are gated by
+	 * `options.selectedContexts` overlapping the action's `contexts`.
+	 * x_DURING modes execute handlers in parallel; all other hook modes
+	 * run sequentially in `modePriority` order. ACTION_STARTED /
+	 * ACTION_COMPLETED events fire so the v5 dashboard surfaces hook runs.
+	 */
+	runActionsByMode(
+		mode: ActionMode,
 		message: Memory,
 		state?: State,
-		didRespond?: boolean,
-		callback?: HandlerCallback,
-		responses?: Memory[],
-	): Promise<Evaluator[] | null>;
+		options?: {
+			didRespond?: boolean;
+			callback?: HandlerCallback;
+			responses?: Memory[];
+			selectedContexts?: readonly AgentContext[];
+		},
+	): Promise<Action[]>;
 
 	registerProvider(provider: Provider): void;
 
 	registerAction(action: Action): void;
+	unregisterAction(name: string): boolean;
+	registerEvaluator(evaluator: Evaluator): void;
+	unregisterEvaluator(name: string): boolean;
 
 	/**
 	 * Get all registered actions.
@@ -361,8 +630,6 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	):
 		| { allowed: boolean; reason: string }
 		| Promise<{ allowed: boolean; reason: string }>;
-
-	registerEvaluator(evaluator: Evaluator): void;
 
 	ensureConnections(
 		entities: Entity[],
@@ -571,8 +838,6 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 			modelSize?: "nano" | "small" | "medium" | "large" | "mega";
 			modelType?: TextGenerationModelType;
 			model?: string;
-			preferredEncapsulation?: "json" | "toon";
-			forceFormat?: "json" | "toon";
 			requiredFields?: string[];
 			contextCheckLevel?: 0 | 1 | 2 | 3;
 			checkpointCodes?: boolean;
@@ -593,7 +858,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	 * Enrich an in-flight execution trace with an additional score signal.
 	 *
 	 * Traces are keyed by runId and held in memory until finalization (e.g. RUN_ENDED
-	 * in prompt-optimization plugins). Evaluators and actions can attach signals after DPE.
+	 * in prompt-optimization plugins). Hook actions can attach signals after DPE.
 	 */
 	enrichTrace(
 		runId: string,
@@ -670,8 +935,15 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
 	registerSendHandler(source: string, handler: SendHandlerFunction): void;
 	registerMessageConnector(registration: MessageConnectorRegistration): void;
+	unregisterMessageConnector(source: string, accountId?: string): boolean;
 	getMessageConnectors(): MessageConnector[];
-	sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
+	registerPostConnector(registration: PostConnectorRegistration): void;
+	unregisterPostConnector(source: string, accountId?: string): boolean;
+	getPostConnectors(): PostConnector[];
+	sendMessageToTarget(
+		target: TargetInfo,
+		content: Content,
+	): Promise<Memory | undefined>;
 
 	/**
 	 * Pipeline hooks: register with `registerPipelineHook`, run with `applyPipelineHooks`.

@@ -1,6 +1,8 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { formatToonScalar, formatToonTable } from "../utils";
+import { formatJsonScalar, formatJsonTable } from "../utils";
+
+const TRENDING_ROW_LIMIT = 18;
 
 interface TrendingToken {
   address: string;
@@ -55,6 +57,11 @@ export const trendingProvider: Provider = {
   description: "Birdeye's trending cryptocurrencies",
   descriptionCompressed: "Read Birdeye trending cryptocurrency tokens.",
   dynamic: true,
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
   //position: -1,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     try {
@@ -312,8 +319,9 @@ export const trendingProvider: Provider = {
 
       //console.log('intel:provider - cmc token text', rows)
 
+      const boundedRows = rows.slice(0, TRENDING_ROW_LIMIT);
       const data = {
-        tokens,
+        tokens: tokens.slice(0, TRENDING_ROW_LIMIT),
       };
 
       const values = {};
@@ -322,7 +330,7 @@ export const trendingProvider: Provider = {
       const text = [
         "birdeye_trending_tokens:",
         "  status: ok",
-        formatToonTable("  tokens", rows, [
+        formatJsonTable("  tokens", boundedRows, [
           "chain",
           "address",
           "symbol",
@@ -348,7 +356,7 @@ export const trendingProvider: Provider = {
         text: [
           "birdeye_trending_tokens:",
           "  status: error",
-          `  reason: ${formatToonScalar(error instanceof Error ? error.message : String(error))}`,
+          `  reason: ${formatJsonScalar(error instanceof Error ? error.message : String(error))}`,
         ].join("\n"),
         data: {},
       };

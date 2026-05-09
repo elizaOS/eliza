@@ -3,10 +3,10 @@
  * Renders background, header, hero chat input, and footer.
  */
 
+import { LandingFooter } from "./footer";
+import { HeroChatInput } from "./hero-chat-input";
 import { LandingBackground } from "./landing-background";
 import { LandingHeader } from "./landing-header";
-import { HeroChatInput } from "./hero-chat-input";
-import { LandingFooter } from "./footer";
 
 export function LandingPage() {
   return (

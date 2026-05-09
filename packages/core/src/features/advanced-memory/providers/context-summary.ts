@@ -10,10 +10,18 @@ import { addHeader } from "../../../utils.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 
+const MAX_SUMMARY_TEXT_LENGTH = 3000;
+const MAX_SUMMARY_TOPICS = 12;
+
 export const contextSummaryProvider: Provider = {
 	name: "SUMMARIZED_CONTEXT",
 	description: "Provides summarized context from previous conversations",
 	position: 96,
+	contexts: ["general"],
+	contextGate: { anyOf: ["general"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
 
 	get: async (
 		runtime: IAgentRuntime,
@@ -61,12 +69,19 @@ export const contextSummaryProvider: Provider = {
 			const messageRange = `${currentSummary.messageCount} messages`;
 			const timeRange = new Date(currentSummary.startTime).toLocaleDateString();
 
+			const trimmedSummary =
+				currentSummary.summary.length > MAX_SUMMARY_TEXT_LENGTH
+					? `${currentSummary.summary.slice(0, MAX_SUMMARY_TEXT_LENGTH)}...`
+					: currentSummary.summary;
+			const limitedTopics =
+				currentSummary.topics?.slice(0, MAX_SUMMARY_TOPICS) ?? [];
+
 			let summaryOnly = `**Previous Conversation** (${messageRange}, ${timeRange})\n`;
-			summaryOnly += currentSummary.summary;
+			summaryOnly += trimmedSummary;
 
 			let summaryWithTopics = summaryOnly;
-			if (currentSummary.topics && currentSummary.topics.length > 0) {
-				summaryWithTopics += `\n*Topics: ${currentSummary.topics.join(", ")}*`;
+			if (limitedTopics.length > 0) {
+				summaryWithTopics += `\n*Topics: ${limitedTopics.join(", ")}*`;
 			}
 
 			const sessionSummaries = addHeader("# Conversation Summary", summaryOnly);
@@ -91,9 +106,10 @@ export const contextSummaryProvider: Provider = {
 
 			return {
 				data: {
-					summaryText: currentSummary.summary,
+					summaryText: trimmedSummary,
 					messageCount: currentSummary.messageCount,
-					topics: currentSummary.topics?.join(", ") || "",
+					topics: limitedTopics.join(", "),
+					truncated: currentSummary.summary.length > MAX_SUMMARY_TEXT_LENGTH,
 				},
 				values: { sessionSummaries, sessionSummariesWithTopics },
 				text: sessionSummariesWithTopics,
@@ -105,7 +121,9 @@ export const contextSummaryProvider: Provider = {
 				"Error in contextSummaryProvider",
 			);
 			return {
-				data: {},
+				data: {
+					error: err,
+				},
 				values: { sessionSummaries: "", sessionSummariesWithTopics: "" },
 				text: "",
 			};

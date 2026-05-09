@@ -13,7 +13,7 @@ import { gateway } from "@ai-sdk/gateway";
 import { streamText } from "ai";
 import { Hono } from "hono";
 import { z } from "zod";
-import type { UserCharacter } from "@/db/schemas/user-characters";
+import type { UserCharacter } from "@/db/repositories/characters";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS } from "@/lib/cors-constants";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";

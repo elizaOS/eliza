@@ -8,7 +8,7 @@
 
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { Hono } from "hono";
-import type { AnonymousSession } from "@/db/schemas";
+import type { AnonymousSession } from "@/db/repositories/anonymous-sessions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import { checkAnonymousLimit, getAnonymousUser } from "@/lib/auth-anonymous";

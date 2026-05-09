@@ -631,15 +631,6 @@ export function parsePrice(
 }
 
 /**
- * Get token address for a Solana token
- * @deprecated Use getTokenAddress instead
- */
-export function getSolanaTokenAddress(asset: string): string | undefined {
-  const token = Object.values(SOLANA_TOKENS).find((t) => t.symbol === asset);
-  return token?.address;
-}
-
-/**
  * Get token address for any network and asset
  */
 export function getTokenAddress(

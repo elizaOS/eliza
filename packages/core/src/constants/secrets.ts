@@ -9,15 +9,69 @@
  */
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECRET KEY ALIASES (Backward Compatibility)
+// CANONICAL SECRET KEYS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * List of all canonical secret key names.
+ * These are the "official" key names that should be used throughout the codebase.
+ */
+export const CANONICAL_SECRET_KEYS = [
+	// Model Provider API Keys
+	"OPENAI_API_KEY",
+	"ANTHROPIC_API_KEY",
+	"GOOGLE_API_KEY",
+	"GROQ_API_KEY",
+	"XAI_API_KEY",
+	"OPENROUTER_API_KEY",
+	"MISTRAL_API_KEY",
+	"COHERE_API_KEY",
+	"TOGETHER_API_KEY",
+	"FIREWORKS_API_KEY",
+	"PERPLEXITY_API_KEY",
+	"DEEPSEEK_API_KEY",
+	"ZAI_API_KEY",
+	"MOONSHOT_API_KEY",
+
+	// Channel/Platform Tokens
+	"DISCORD_BOT_TOKEN",
+	"DISCORD_APPLICATION_ID",
+	"TELEGRAM_BOT_TOKEN",
+	"SLACK_BOT_TOKEN",
+	"SLACK_APP_TOKEN",
+	"WHATSAPP_TOKEN",
+	"SIGNAL_CLI_PATH",
+
+	// Twitter/X credentials
+	"TWITTER_USERNAME",
+	"TWITTER_PASSWORD",
+	"TWITTER_EMAIL",
+	"TWITTER_2FA_SECRET",
+
+	// Media/Voice Services
+	"ELEVENLABS_API_KEY",
+	"ELEVENLABS_VOICE_ID",
+
+	// Infrastructure
+	"ENCRYPTION_SALT",
+	"DATABASE_URL",
+
+	// Ollama (local inference)
+	"OLLAMA_BASE_URL",
+] as const;
+
+/**
+ * Type for canonical secret keys
+ */
+export type CanonicalSecretKey = (typeof CANONICAL_SECRET_KEYS)[number];
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECRET KEY ALIASES (BACKWARD COMPATIBILITY)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Maps legacy/alternative secret key names to their canonical names.
- * When looking up a secret, check if it's an alias first and resolve to canonical name.
- *
- * Key: Legacy/alternative name
- * Value: Canonical name
+ * Key: legacy/alternative name. Value: canonical name.
  */
 export const SECRET_KEY_ALIASES: Record<string, string> = {
 	// Discord aliases
@@ -90,63 +144,6 @@ export const SECRET_KEY_ALIASES: Record<string, string> = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// CANONICAL SECRET KEYS
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * List of all canonical secret key names.
- * These are the "official" key names that should be used throughout the codebase.
- */
-export const CANONICAL_SECRET_KEYS = [
-	// Model Provider API Keys
-	"OPENAI_API_KEY",
-	"ANTHROPIC_API_KEY",
-	"GOOGLE_API_KEY",
-	"GROQ_API_KEY",
-	"XAI_API_KEY",
-	"OPENROUTER_API_KEY",
-	"MISTRAL_API_KEY",
-	"COHERE_API_KEY",
-	"TOGETHER_API_KEY",
-	"FIREWORKS_API_KEY",
-	"PERPLEXITY_API_KEY",
-	"DEEPSEEK_API_KEY",
-	"ZAI_API_KEY",
-	"MOONSHOT_API_KEY",
-
-	// Channel/Platform Tokens
-	"DISCORD_BOT_TOKEN",
-	"DISCORD_APPLICATION_ID",
-	"TELEGRAM_BOT_TOKEN",
-	"SLACK_BOT_TOKEN",
-	"SLACK_APP_TOKEN",
-	"WHATSAPP_TOKEN",
-	"SIGNAL_CLI_PATH",
-
-	// Twitter/X credentials
-	"TWITTER_USERNAME",
-	"TWITTER_PASSWORD",
-	"TWITTER_EMAIL",
-	"TWITTER_2FA_SECRET",
-
-	// Media/Voice Services
-	"ELEVENLABS_API_KEY",
-	"ELEVENLABS_VOICE_ID",
-
-	// Infrastructure
-	"ENCRYPTION_SALT",
-	"DATABASE_URL",
-
-	// Ollama (local inference)
-	"OLLAMA_BASE_URL",
-] as const;
-
-/**
- * Type for canonical secret keys
- */
-export type CanonicalSecretKey = (typeof CANONICAL_SECRET_KEYS)[number];
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // MODEL PROVIDER SECRETS
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -215,30 +212,17 @@ export const CHANNEL_OPTIONAL_SECRETS: Record<string, string[]> = {
 /**
  * Resolve a secret key alias to its canonical name.
  * If the key is not an alias, returns the original key.
- *
- * @param key - The secret key to resolve
- * @returns The canonical key name
  */
 export function resolveSecretKeyAlias(key: string): string {
 	return SECRET_KEY_ALIASES[key] ?? key;
 }
 
-/**
- * Check if a key is a known alias.
- *
- * @param key - The key to check
- * @returns true if the key is an alias
- */
+/** Check whether a key is a known alias. */
 export function isSecretKeyAlias(key: string): boolean {
 	return key in SECRET_KEY_ALIASES;
 }
 
-/**
- * Get all aliases for a canonical key.
- *
- * @param canonicalKey - The canonical key name
- * @returns Array of alias names that map to this canonical key
- */
+/** Get all aliases that map to a canonical key. */
 export function getAliasesForKey(canonicalKey: string): string[] {
 	return Object.entries(SECRET_KEY_ALIASES)
 		.filter(([_, canonical]) => canonical === canonicalKey)

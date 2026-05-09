@@ -1,22 +1,75 @@
 import {
+  BaseMessageAdapter,
   type DraftRequest,
   type IAgentRuntime,
   type ListOptions,
+  type Memory,
   type MessageAdapterCapabilities,
   type MessageRef,
   type MessageSource,
   NotYetImplementedError,
 } from "@elizaos/core";
-import { BaseMessageAdapter } from "@elizaos/core";
-import { LifeOpsService } from "../../service.js";
-import { pullXInboundDms } from "../../x-dm-reader.js";
-import { readXPosterCredentialsFromEnv, sendXDm } from "../../x-poster.js";
+import {
+  fetchXDirectMessagesWithRuntimeService,
+  sendXDirectMessageWithRuntimeService,
+} from "../../runtime-service-delegates.js";
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function stringField(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function encodeDraftBody(body: string): string {
+  return Buffer.from(body, "utf8").toString("base64url");
+}
+
+function decodeDraftBody(encoded: string): string {
+  return Buffer.from(encoded, "base64url").toString("utf8");
+}
+
+function memoryToMessageRef(memory: Memory): MessageRef {
+  const metadata = record(memory.metadata);
+  const x = record(metadata.x);
+  const sender = record(metadata.sender);
+  const receivedAtMs = Number(memory.createdAt);
+  const senderId = stringField(
+    x.senderId ?? sender.id ?? memory.entityId,
+    "unknown",
+  );
+  const senderHandle = stringField(x.senderUsername ?? sender.username);
+  const body = stringField(memory.content?.text);
+  return {
+    id: `twitter:${stringField(x.dmEventId ?? metadata.messageIdFull ?? memory.id)}`,
+    source: "twitter",
+    externalId: stringField(x.dmEventId ?? metadata.messageIdFull ?? memory.id),
+    threadId: stringField(x.conversationId ?? memory.roomId, senderId),
+    from: {
+      identifier: senderId,
+      displayName: senderHandle,
+    },
+    to: [],
+    snippet: body.slice(0, 200),
+    body,
+    receivedAtMs: Number.isFinite(receivedAtMs) ? receivedAtMs : Date.now(),
+    hasAttachments: false,
+    isRead: false,
+    channelId: stringField(x.conversationId ?? memory.roomId, senderId),
+    metadata,
+  };
+}
 
 export class XDmAdapter extends BaseMessageAdapter {
   readonly source: MessageSource = "twitter";
 
-  isAvailable(_runtime: IAgentRuntime): boolean {
-    return readXPosterCredentialsFromEnv() != null;
+  isAvailable(runtime: IAgentRuntime): boolean {
+    const service =
+      runtime.getService?.("x") ?? runtime.getService?.("twitter") ?? null;
+    return Boolean(service);
   }
 
   capabilities(): MessageAdapterCapabilities {
@@ -31,43 +84,27 @@ export class XDmAdapter extends BaseMessageAdapter {
   }
 
   protected async listMessagesImpl(
-    _runtime: IAgentRuntime,
+    runtime: IAgentRuntime,
     opts: ListOptions,
   ): Promise<MessageRef[]> {
     const limit = opts.limit ?? 25;
     const sinceMs = opts.sinceMs;
-    const result = await pullXInboundDms({ limit });
-    if (!result.hasCredentials) return [];
-    const refs: MessageRef[] = [];
-    for (const dm of result.inbound) {
-      const receivedAtMs = Date.parse(dm.receivedAt);
+    const result = await fetchXDirectMessagesWithRuntimeService({
+      runtime,
+      limit,
+    });
+    if (result.status !== "handled") return [];
+    const refs = result.value.map(memoryToMessageRef);
+    return refs.filter((ref) => {
       if (
         sinceMs !== undefined &&
-        Number.isFinite(receivedAtMs) &&
-        receivedAtMs < sinceMs
+        Number.isFinite(ref.receivedAtMs) &&
+        ref.receivedAtMs < sinceMs
       ) {
-        continue;
+        return false;
       }
-      refs.push({
-        id: `twitter:${dm.id}`,
-        source: "twitter",
-        externalId: dm.externalDmId,
-        threadId: dm.conversationId,
-        from: {
-          identifier: dm.senderId,
-          displayName: dm.senderHandle,
-        },
-        to: [],
-        snippet: dm.text.slice(0, 200),
-        body: dm.text,
-        receivedAtMs: Number.isFinite(receivedAtMs) ? receivedAtMs : Date.now(),
-        hasAttachments: false,
-        isRead: false,
-        channelId: dm.conversationId,
-        metadata: dm.metadata,
-      });
-    }
-    return refs;
+      return true;
+    });
   }
 
   protected async getMessageImpl(
@@ -88,7 +125,7 @@ export class XDmAdapter extends BaseMessageAdapter {
         "[XDmAdapter] createDraft requires a recipient identifier",
       );
     }
-    const draftId = `twitter:${recipient}:${Date.now()}`;
+    const draftId = `twitter:${encodeURIComponent(recipient)}:${Date.now()}:${encodeDraftBody(draft.body)}`;
     const preview =
       draft.body.length > 200 ? `${draft.body.slice(0, 197)}...` : draft.body;
     return { draftId, preview };
@@ -98,35 +135,32 @@ export class XDmAdapter extends BaseMessageAdapter {
     runtime: IAgentRuntime,
     draftId: string,
   ): Promise<{ externalId: string }> {
-    const credentials = readXPosterCredentialsFromEnv();
-    if (!credentials) {
-      throw new Error("[XDmAdapter] X credentials are not configured");
-    }
-    // draftId format: "twitter:{participantId}:{ts}". Recipient is encoded.
     const parts = draftId.split(":");
-    const participantId = parts[1];
+    const participantId = parts[1] ? decodeURIComponent(parts[1]) : "";
+    const text = parts[3] ? decodeDraftBody(parts[3]) : "";
     if (!participantId) {
       throw new Error(
         `[XDmAdapter] cannot resolve recipient from draftId ${draftId}`,
       );
     }
-    // The triage service stores the body on the DraftRecord; we don't have that
-    // here, so fetch it from the runtime-level service if available.
-    const service = new LifeOpsService(runtime);
-    // Walk through the canonical X send path so cloud_managed mode is honored.
-    const result = await service.sendXDirectMessage({
-      participantId,
-      text: parts.slice(2).join(":"),
-      confirmSend: true,
-      side: "owner",
-    });
-    if (!result.ok) {
+    if (!text) {
       throw new Error(
-        `[XDmAdapter] sendXDirectMessage failed: ${result.error ?? "unknown error"}`,
+        `[XDmAdapter] cannot resolve body from draftId ${draftId}`,
       );
     }
-    void sendXDm; // direct sender retained for future fallback.
-    return { externalId: `${participantId}:${Date.now()}` };
+    const result = await sendXDirectMessageWithRuntimeService({
+      runtime,
+      participantId,
+      text,
+    });
+    if (result.status !== "handled") {
+      throw new Error(
+        `[XDmAdapter] sendXDirectMessage failed: ${result.reason}`,
+      );
+    }
+    return {
+      externalId: result.value.externalId ?? `${participantId}:${Date.now()}`,
+    };
   }
 
   protected scheduleSendImpl(

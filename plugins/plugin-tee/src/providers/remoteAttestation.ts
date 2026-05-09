@@ -59,6 +59,10 @@ export const phalaRemoteAttestationProvider: Provider = {
   name: "phala-remote-attestation",
 
   dynamic: true,
+  contexts: ["secrets", "agent_internal"],
+  contextGate: { anyOf: ["secrets", "agent_internal"] },
+  cacheStable: false,
+  cacheScope: "turn",
   get: async (
     runtime: IAgentRuntime,
     message: Memory,

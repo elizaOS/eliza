@@ -127,16 +127,16 @@ export class VisionRuntimeTestSuite {
     },
 
     {
-      name: "DESCRIBE_SCENE action execution",
+      name: "VISION action describe op execution",
       fn: async (runtime: IAgentRuntime) => {
-        logger.info("[Test] Testing DESCRIBE_SCENE action...");
+        logger.info("[Test] Testing VISION action with op=describe...");
 
         // Find the action
         const action = (runtime.actions as Action[]).find(
-          (a) => a.name === "DESCRIBE_SCENE",
+          (a) => a.name === "VISION",
         );
         if (!action) {
-          throw new Error("DESCRIBE_SCENE action not found");
+          throw new Error("VISION action not found");
         }
 
         // Create test message
@@ -154,7 +154,7 @@ export class VisionRuntimeTestSuite {
         // Validate action
         const isValid = await action.validate(runtime, message);
         if (!isValid) {
-          throw new Error("DESCRIBE_SCENE action validation failed");
+          throw new Error("VISION action validation failed");
         }
 
         // Execute action
@@ -173,15 +173,17 @@ export class VisionRuntimeTestSuite {
           runtime,
           message,
           { values: {}, data: {}, text: "" },
-          {},
+          { parameters: { op: "describe" } },
           callback,
         );
 
         if (!responseReceived) {
-          throw new Error("DESCRIBE_SCENE action did not produce a response");
+          throw new Error(
+            "VISION action with op=describe did not produce a response",
+          );
         }
 
-        logger.info("[Test] ✅ DESCRIBE_SCENE action test passed");
+        logger.info("[Test] ✅ VISION action describe op test passed");
       },
     },
 

@@ -3,19 +3,21 @@
  * handles via the Rolodex (relationships graph) and finding conversations
  * with a person across all connected platforms.
  *
- * Used by SEND_MESSAGE, READ_MESSAGES, READ_POSTS, and SEND_POST actions.
+ * Used by MESSAGE and POST connector operations.
  *
  * @module actions/connector-resolver
  */
 
-import type { IAgentRuntime, Memory, Room, UUID } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { formatSpeakerLabel } from "../providers/conversation-utils.js";
 import type {
+  IAgentRuntime,
+  Memory,
   RelationshipsGraphService,
   RelationshipsPersonSummary,
-} from "../services/relationships-graph.js";
-import { resolveRelationshipsGraphService } from "../services/relationships-graph.js";
+  Room,
+  UUID,
+} from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { formatSpeakerLabel } from "../shared/conversation-format.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -56,7 +58,11 @@ export type CrossPlatformConversationView = {
 export async function getGraphService(
   runtime: IAgentRuntime,
 ): Promise<RelationshipsGraphService | null> {
-  return resolveRelationshipsGraphService(runtime);
+  return (
+    (runtime.getService(
+      "relationships",
+    ) as unknown as RelationshipsGraphService | null) ?? null
+  );
 }
 
 /** Returns the set of connector source names that have active send handlers. */

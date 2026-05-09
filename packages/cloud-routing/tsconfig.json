@@ -25,10 +25,7 @@
       "../../node_modules/.bun/node_modules/@types",
       "../../../node_modules/@types",
       "../../../node_modules/.bun/node_modules/@types"
-    ],
-    "paths": {
-      "@elizaos/core": ["../../../node_modules/@elizaos/core/dist/index.d.ts"]
-    }
+    ]
   },
   "exclude": ["dist/**", "__tests__/**"],
   "include": ["src"]

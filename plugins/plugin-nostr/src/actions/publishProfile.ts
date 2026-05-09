@@ -9,9 +9,10 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseToonActionParams,
+  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import { normalizeNostrAccountId, readNostrAccountId } from "../accounts.js";
 import type { NostrService } from "../service.js";
 import { NOSTR_SERVICE_NAME, type NostrProfile } from "../types.js";
 
@@ -21,24 +22,56 @@ Based on the conversation, determine what profile information to update.
 Recent conversation:
 {{recentMessages}}
 
-Output a TOON action-call block listing only the fields to update:
+Respond with JSON only, no prose or fences, listing only the fields to update:
 
-actions: NOSTR_PUBLISH_PROFILE
-params:
-  NOSTR_PUBLISH_PROFILE:
-    name: optional display name
-    about: optional bio
-    picture: optional profile picture URL
-    banner: optional banner URL
-    nip05: optional user@domain.com
-    lud16: optional lightning address
-    website: optional website URL`;
+{
+  "name": "optional display name",
+  "about": "optional bio",
+  "picture": "optional profile picture URL",
+  "banner": "optional banner URL",
+  "nip05": "optional user@domain.com",
+  "lud16": "optional lightning address",
+  "website": "optional website URL"
+}`;
+
+const MAX_NOSTR_PROFILE_FIELD_CHARS = 500;
+const MAX_NOSTR_PROFILE_RELAYS = 10;
+const NOSTR_PROFILE_ACTION_TIMEOUT_MS = 30_000;
+
+function truncateProfileField(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim()
+    ? value.trim().slice(0, MAX_NOSTR_PROFILE_FIELD_CHARS)
+    : undefined;
+}
 
 export const publishProfile: Action = {
   name: "NOSTR_PUBLISH_PROFILE",
   similes: ["UPDATE_NOSTR_PROFILE", "SET_NOSTR_PROFILE", "NOSTR_PROFILE"],
   description: "Publish or update the bot's Nostr profile (kind:0 metadata)",
   descriptionCompressed: "publish update bot Nostr profile (kind: 0 metadata)",
+  contexts: ["social_posting", "connectors"],
+  contextGate: { anyOf: ["social_posting", "connectors"] },
+  roleGate: { minRole: "USER" },
+  parameters: [
+    {
+      name: "name",
+      description: "Display name for the Nostr profile.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "about",
+      description: "Profile bio/about text.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "picture",
+      description: "Profile picture URL.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "nostr";
   },
@@ -59,6 +92,10 @@ export const publishProfile: Action = {
       return { success: false, error: "Nostr service not available" };
     }
 
+    const requestedAccountId = normalizeNostrAccountId(
+      readNostrAccountId(_options, message.content) ?? nostrService.getAccountId(runtime)
+    );
+
     // Get or compose state
     const currentState = state ?? (await runtime.composeState(message));
 
@@ -75,18 +112,20 @@ export const publishProfile: Action = {
         prompt,
       });
 
-      const parsed = parseToonActionParams(String(response));
-      const actionParams = parsed.get("NOSTR_PUBLISH_PROFILE");
+      const actionParams = parseJSONObjectFromText(String(response)) as Record<
+        string,
+        unknown
+      > | null;
       if (actionParams) {
         profileInfo = {
-          name: actionParams.name ? String(actionParams.name) : undefined,
-          displayName: actionParams.displayName ? String(actionParams.displayName) : undefined,
-          about: actionParams.about ? String(actionParams.about) : undefined,
-          picture: actionParams.picture ? String(actionParams.picture) : undefined,
-          banner: actionParams.banner ? String(actionParams.banner) : undefined,
-          nip05: actionParams.nip05 ? String(actionParams.nip05) : undefined,
-          lud16: actionParams.lud16 ? String(actionParams.lud16) : undefined,
-          website: actionParams.website ? String(actionParams.website) : undefined,
+          name: truncateProfileField(actionParams.name),
+          displayName: truncateProfileField(actionParams.displayName),
+          about: truncateProfileField(actionParams.about),
+          picture: truncateProfileField(actionParams.picture),
+          banner: truncateProfileField(actionParams.banner),
+          nip05: truncateProfileField(actionParams.nip05),
+          lud16: truncateProfileField(actionParams.lud16),
+          website: truncateProfileField(actionParams.website),
         };
         break;
       }
@@ -103,7 +142,11 @@ export const publishProfile: Action = {
     }
 
     // Publish profile
-    const result = await nostrService.publishProfile(profileInfo);
+    const timeoutMs = NOSTR_PROFILE_ACTION_TIMEOUT_MS;
+    const result = await nostrService.publishProfile({
+      ...profileInfo,
+      accountId: requestedAccountId,
+    } as NostrProfile & { accountId: string });
 
     if (!result.success) {
       if (callback) {
@@ -126,8 +169,10 @@ export const publishProfile: Action = {
       success: true,
       data: {
         eventId: result.eventId,
-        relays: result.relays,
+        relays: result.relays?.slice(0, MAX_NOSTR_PROFILE_RELAYS),
         profile: profileInfo,
+        timeoutMs,
+        accountId: requestedAccountId,
       },
     };
   },

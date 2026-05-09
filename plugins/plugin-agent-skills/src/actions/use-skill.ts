@@ -164,7 +164,10 @@ function executeScript(
 
 export const useSkillAction: Action = {
 	name: "USE_SKILL",
-	similes: ["INVOKE_SKILL", "EXECUTE_SKILL", "RUN_SKILL", "CALL_SKILL"],
+	contexts: ["automation", "knowledge", "connectors"],
+	contextGate: { anyOf: ["automation", "knowledge", "connectors"] },
+	roleGate: { minRole: "USER" },
+	similes: [],
 	description:
 		"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
 	descriptionCompressed: "Invoke an enabled skill by slug.",
@@ -193,7 +196,15 @@ export const useSkillAction: Action = {
 			return { success: false, error: new Error(errorText) };
 		}
 
-		const opts = (options ?? {}) as UseSkillOptions;
+		const rawOptions = (options ?? {}) as UseSkillOptions & {
+			parameters?: UseSkillOptions;
+		};
+		const opts =
+			rawOptions.parameters &&
+			typeof rawOptions.parameters === "object" &&
+			!Array.isArray(rawOptions.parameters)
+				? rawOptions.parameters
+				: rawOptions;
 		const rawSlug = typeof opts.slug === "string" ? opts.slug.trim() : "";
 		if (!rawSlug) {
 			const errorText =
@@ -211,14 +222,14 @@ export const useSkillAction: Action = {
 			const errorText =
 				`Skill \`${rawSlug}\` is not installed. ` +
 				`Installed skills: ${installed.join(", ") || "(none)"}. ` +
-				`Use INSTALL_SKILL to install a skill from the registry.`;
+				`Use SKILL op=install to install a skill from the registry.`;
 			if (callback) await callback({ text: errorText });
 			return { success: false, error: new Error(errorText) };
 		}
 
 		const enabled = service.isSkillEnabled(skill.slug);
 		if (!enabled) {
-			const errorText = `Skill \`${skill.slug}\` is disabled. Use ENABLE_SKILL to enable it first.`;
+			const errorText = `Skill \`${skill.slug}\` is disabled. Use SKILL op=toggle enabled=true to enable it first.`;
 			if (callback) await callback({ text: errorText });
 			return { success: false, error: new Error(errorText) };
 		}

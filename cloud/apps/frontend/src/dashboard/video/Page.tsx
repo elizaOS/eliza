@@ -1,11 +1,11 @@
 import { DashboardErrorState, DashboardLoadingState } from "@elizaos/cloud-ui";
 import { useMemo } from "react";
 import { Helmet } from "react-helmet-async";
-import type { VideoModelOption } from "@/packages/ui/src/components/video/types";
-import { VideoPageClient } from "@/packages/ui/src/components/video/video-page-client";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { useGallery } from "../../lib/data/gallery";
 import { galleryItemToGeneratedVideo, useFeaturedVideo, useVideoUsage } from "../../lib/data/video";
+import type { VideoModelOption } from "./_components/types";
+import { VideoPageClient } from "./_components/video-page-client";
 
 const MODEL_PRESETS: VideoModelOption[] = [
   {

@@ -7,6 +7,10 @@ export const linearIssuesProvider: Provider = {
   description: "Provides context about recent Linear issues",
   descriptionCompressed: "provide context recent Linear issue",
   dynamic: true,
+  contexts: ["automation", "connectors"],
+  contextGate: { anyOf: ["automation", "connectors"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "ADMIN" },
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     try {
       const linearService = runtime.getService<LinearService>("linear");

@@ -135,12 +135,12 @@ export class DuplicateContainerNameError extends Error {
 /**
  * Repository for container deployment database operations.
  *
- * Read operations → dbRead (read replica)
- * Write operations → dbWrite (NA primary)
+ * Read operations → dbRead (read-intent connection)
+ * Write operations → dbWrite (primary)
  */
 export class ContainersRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -152,6 +152,47 @@ export class ContainersRepository {
       .from(containers)
       .where(eq(containers.organization_id, organizationId))
       .orderBy(desc(containers.created_at));
+  }
+
+  async listForAdminInfrastructure(limit: number): Promise<
+    Array<
+      Pick<
+        Container,
+        | "id"
+        | "name"
+        | "project_name"
+        | "organization_id"
+        | "user_id"
+        | "status"
+        | "public_hostname"
+        | "node_id"
+        | "cpu"
+        | "memory"
+        | "desired_count"
+        | "created_at"
+        | "updated_at"
+      >
+    >
+  > {
+    return dbRead
+      .select({
+        id: containers.id,
+        name: containers.name,
+        project_name: containers.project_name,
+        organization_id: containers.organization_id,
+        user_id: containers.user_id,
+        status: containers.status,
+        public_hostname: containers.public_hostname,
+        node_id: containers.node_id,
+        cpu: containers.cpu,
+        memory: containers.memory,
+        desired_count: containers.desired_count,
+        created_at: containers.created_at,
+        updated_at: containers.updated_at,
+      })
+      .from(containers)
+      .orderBy(desc(containers.created_at))
+      .limit(limit);
   }
 
   /**
@@ -250,7 +291,7 @@ export class ContainersRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**

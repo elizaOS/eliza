@@ -50,6 +50,11 @@ interface SkillWithSource {
 	sourceDir: string;
 }
 
+const MAX_SKILL_ELIGIBLE_LIST = 10;
+const MAX_SKILL_INELIGIBLE_LIST = 12;
+const MAX_SKILL_REASON_ITEMS = 5;
+const MAX_SKILL_COMPACT_LIST = 12;
+
 interface AgentSkillsServiceLike extends Service {
 	getLoadedSkills(): SkillWithSource[];
 	checkSkillEligibility(slug: string): Promise<SkillEligibility>;
@@ -81,6 +86,11 @@ export const skillEligibilityProvider: Provider = {
 		"Shows which skills are eligible and which have missing dependencies",
 	position: -5, // After skill metadata, before instructions
 	dynamic: true,
+	contexts: ["general", "agent_internal"],
+	contextGate: { anyOf: ["general", "agent_internal"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
 
 	get: async (
 		runtime: IAgentRuntime,
@@ -93,7 +103,7 @@ export const skillEligibilityProvider: Provider = {
 		);
 
 		if (!service) {
-			return { text: "" };
+			return { text: "", values: {}, data: {} };
 		}
 
 		try {
@@ -125,11 +135,13 @@ export const skillEligibilityProvider: Provider = {
 			// Eligible skills
 			if (eligible.length > 0) {
 				lines.push(`### Ready to Use (${eligible.length})`);
-				for (const skill of eligible.slice(0, 10)) {
+				for (const skill of eligible.slice(0, MAX_SKILL_ELIGIBLE_LIST)) {
 					lines.push(`- **${skill.name}** (${skill.slug})`);
 				}
-				if (eligible.length > 10) {
-					lines.push(`- ...and ${eligible.length - 10} more`);
+				if (eligible.length > MAX_SKILL_ELIGIBLE_LIST) {
+					lines.push(
+						`- ...and ${eligible.length - MAX_SKILL_ELIGIBLE_LIST} more`,
+					);
 				}
 				lines.push("");
 			}
@@ -138,7 +150,10 @@ export const skillEligibilityProvider: Provider = {
 			lines.push(`### Missing Dependencies (${ineligible.length})`);
 			lines.push("");
 
-			for (const { skill, eligibility } of ineligible) {
+			for (const { skill, eligibility } of ineligible.slice(
+				0,
+				MAX_SKILL_INELIGIBLE_LIST,
+			)) {
 				lines.push(`#### ${skill.name} (${skill.slug})`);
 
 				// Group reasons by type
@@ -150,7 +165,10 @@ export const skillEligibilityProvider: Provider = {
 
 				if (binReasons.length > 0) {
 					lines.push(
-						`- Missing binaries: ${binReasons.map((r) => r.missing).join(", ")}`,
+						`- Missing binaries: ${binReasons
+							.slice(0, MAX_SKILL_REASON_ITEMS)
+							.map((r) => r.missing)
+							.join(", ")}`,
 					);
 					// Show installation suggestions
 					for (const reason of binReasons) {
@@ -162,13 +180,19 @@ export const skillEligibilityProvider: Provider = {
 
 				if (envReasons.length > 0) {
 					lines.push(
-						`- Missing env vars: ${envReasons.map((r) => r.missing).join(", ")}`,
+						`- Missing env vars: ${envReasons
+							.slice(0, MAX_SKILL_REASON_ITEMS)
+							.map((r) => r.missing)
+							.join(", ")}`,
 					);
 				}
 
 				if (configReasons.length > 0) {
 					lines.push(
-						`- Missing config: ${configReasons.map((r) => r.missing).join(", ")}`,
+						`- Missing config: ${configReasons
+							.slice(0, MAX_SKILL_REASON_ITEMS)
+							.map((r) => r.missing)
+							.join(", ")}`,
 					);
 				}
 
@@ -212,15 +236,22 @@ export const skillEligibilityProvider: Provider = {
 				},
 				data: {
 					eligible: eligible.map((s) => s.slug),
-					ineligible: ineligible.map((i) => ({
-						slug: i.skill.slug,
-						reasons: i.eligibility.reasons,
-					})),
+					ineligible: ineligible
+						.slice(0, MAX_SKILL_INELIGIBLE_LIST)
+						.map((i) => ({
+							slug: i.skill.slug,
+							reasons: i.eligibility.reasons.slice(0, MAX_SKILL_REASON_ITEMS),
+						})),
+					truncated: ineligible.length > MAX_SKILL_INELIGIBLE_LIST,
 				},
 			};
 		} catch (_error) {
 			// Service might not support eligibility checking
-			return { text: "" };
+			return {
+				text: "",
+				values: { eligibleCount: 0, ineligibleCount: 0 },
+				data: { eligible: [], ineligible: [] },
+			};
 		}
 	},
 };
@@ -236,6 +267,11 @@ export const skillEligibilityCompactProvider: Provider = {
 	description: "Compact view of ineligible skills only",
 	position: -5,
 	dynamic: true,
+	contexts: ["general", "agent_internal"],
+	contextGate: { anyOf: ["general", "agent_internal"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
 
 	get: async (
 		runtime: IAgentRuntime,
@@ -247,28 +283,32 @@ export const skillEligibilityCompactProvider: Provider = {
 		);
 
 		if (!service) {
-			return { text: "" };
+			return { text: "", values: {}, data: {} };
 		}
 
 		try {
 			const ineligible = await service.getIneligibleSkills();
 
 			if (ineligible.length === 0) {
-				return { text: "" }; // All skills ready, no need to mention
+				return { text: "", values: {}, data: { ineligible: [] } }; // All skills ready, no need to mention
 			}
 
-			const skillNames = ineligible.map((i) => i.skill.slug).join(", ");
+			const visibleIneligible = ineligible.slice(0, MAX_SKILL_COMPACT_LIST);
+			const skillNames = visibleIneligible.map((i) => i.skill.slug).join(", ");
 			const missingBins = [
 				...new Set(
-					ineligible.flatMap((i) =>
+					visibleIneligible.flatMap((i) =>
 						i.eligibility.reasons
 							.filter((r) => r.type === "bin")
 							.map((r) => r.missing),
 					),
 				),
-			];
+			].slice(0, MAX_SKILL_REASON_ITEMS);
 
 			let text = `⚠️ Skills unavailable: ${skillNames}`;
+			if (ineligible.length > visibleIneligible.length) {
+				text += ` (+${ineligible.length - visibleIneligible.length} more)`;
+			}
 			if (missingBins.length > 0) {
 				text += ` (missing: ${missingBins.join(", ")})`;
 			}
@@ -279,12 +319,21 @@ export const skillEligibilityCompactProvider: Provider = {
 					ineligibleCount: ineligible.length,
 				},
 				data: {
-					ineligible: ineligible.map((i) => i.skill.slug),
+					ineligible: visibleIneligible.map((i) => i.skill.slug),
 					missingBins,
+					omittedCount: ineligible.length - visibleIneligible.length,
 				},
 			};
-		} catch {
-			return { text: "" };
+		} catch (error) {
+			return {
+				text: "",
+				values: { ineligibleCount: 0 },
+				data: {
+					ineligible: [],
+					missingBins: [],
+					error: error instanceof Error ? error.message : String(error),
+				},
+			};
 		}
 	},
 };

@@ -21,7 +21,7 @@
  * `ScapeGameService` and doesn't land until PR 4.
  */
 
-import { decodeServerFrame, encodeClientFrame } from "./toon.js";
+import { decodeServerFrame, encodeClientFrame } from "./json.js";
 import type {
   ActionFramePayload,
   AnyActionFrame,

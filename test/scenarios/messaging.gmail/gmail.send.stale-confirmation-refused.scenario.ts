@@ -65,7 +65,7 @@ export default scenario({
   finalChecks: [
     {
       type: "gmailActionArguments",
-      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+      actionName: ["MESSAGE", "MESSAGE"],
       subaction: "draft_reply",
     },
     {
@@ -77,7 +77,7 @@ export default scenario({
     },
     {
       type: "gmailActionArguments",
-      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+      actionName: ["MESSAGE", "MESSAGE"],
       subaction: ["search", "read"],
       minCount: 1,
     },

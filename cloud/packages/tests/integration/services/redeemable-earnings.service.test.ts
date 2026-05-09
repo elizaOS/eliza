@@ -21,12 +21,12 @@ import { v4 as uuidv4 } from "uuid";
 import { dbWrite } from "@/db/client";
 import { redeemableEarnings, redeemableEarningsLedger } from "@/db/schemas/redeemable-earnings";
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
-import { getConnectionString } from "@/tests/helpers/local-database";
+import { getConnectionString } from "@/tests/infrastructure/local-database";
 import {
   cleanupTestData,
   createTestDataSet,
   type TestDataSet,
-} from "@/tests/helpers/test-data-factory";
+} from "@/tests/infrastructure/test-data-factory";
 
 describe("RedeemableEarningsService", () => {
   let connectionString: string;

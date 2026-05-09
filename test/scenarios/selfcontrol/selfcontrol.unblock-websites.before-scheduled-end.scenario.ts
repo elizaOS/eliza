@@ -26,7 +26,7 @@ export default scenario({
       name: "start-timed-block",
       room: "main",
       text: "Block x.com for 30 minutes.",
-      expectedActions: ["OWNER_WEBSITE_BLOCK"],
+      expectedActions: ["WEBSITE_BLOCK"],
       responseIncludesAny: [/30/i, /x/i, /block/i],
     },
     {
@@ -34,19 +34,19 @@ export default scenario({
       name: "early-unblock",
       room: "main",
       text: "Unblock x.com right now.",
-      expectedActions: ["OWNER_WEBSITE_BLOCK"],
+      expectedActions: ["WEBSITE_BLOCK"],
       responseIncludesAny: [/before its scheduled end time/i, /x/i],
     },
   ],
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "OWNER_WEBSITE_BLOCK",
+      actionName: "WEBSITE_BLOCK",
       minCount: 1,
     },
     {
       type: "actionCalled",
-      actionName: "OWNER_WEBSITE_BLOCK",
+      actionName: "WEBSITE_BLOCK",
       minCount: 1,
     },
   ],

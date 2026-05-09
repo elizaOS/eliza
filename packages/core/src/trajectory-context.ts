@@ -5,6 +5,10 @@
  * synchronously to avoid race with first message processing).
  * Browser: stack-based fallback.
  */
+
+import type { RoleGateRole } from "./types/contexts";
+import { StackContextManager } from "./utils/stack-context-manager";
+
 export interface TrajectoryContext {
 	/** Active trajectory identifier, when the logger separates trajectory and step ids. */
 	trajectoryId?: string;
@@ -15,6 +19,8 @@ export interface TrajectoryContext {
 	roomId?: string;
 	/** Source message identifier associated with the active trajectory context. */
 	messageId?: string;
+	/** Sender role resolved for the active message, used for prompt identity and role-aware logging. */
+	userRole?: RoleGateRole;
 	/** Pipeline stage purpose for trajectory logging (e.g. "should_respond", "response", "action", "evaluation"). */
 	purpose?: string;
 	/**
@@ -32,28 +38,6 @@ export interface ITrajectoryContextManager {
 		fn: () => T | Promise<T>,
 	): T | Promise<T>;
 	active(): TrajectoryContext | undefined;
-}
-
-class StackContextManager implements ITrajectoryContextManager {
-	private stack: Array<TrajectoryContext | undefined> = [];
-
-	run<T>(
-		context: TrajectoryContext | undefined,
-		fn: () => T | Promise<T>,
-	): T | Promise<T> {
-		this.stack.push(context);
-		try {
-			return fn();
-		} finally {
-			this.stack.pop();
-		}
-	}
-
-	active(): TrajectoryContext | undefined {
-		return this.stack.length > 0
-			? this.stack[this.stack.length - 1]
-			: undefined;
-	}
 }
 
 // Initialize the context manager synchronously in Node.js so that
@@ -100,7 +84,7 @@ function initContextManagerSync(): ITrajectoryContextManager {
 			// AsyncLocalStorage unavailable — fall back to stack
 		}
 	}
-	return new StackContextManager();
+	return new StackContextManager<TrajectoryContext | undefined>();
 }
 
 function getOrCreateContextManager(): ITrajectoryContextManager {

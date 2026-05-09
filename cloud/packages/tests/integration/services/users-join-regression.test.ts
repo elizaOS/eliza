@@ -1,5 +1,5 @@
 /**
- * Regression test: Privy lookup hydration remains compatible with the
+ * Regression test: Steward lookup hydration remains compatible with the
  * relational Drizzle query shape used throughout the user auth flow.
  *
  * These assertions intentionally read from primary because they verify the
@@ -11,14 +11,14 @@ import { v4 as uuidv4 } from "uuid";
 import { dbWrite } from "@/db/helpers";
 import { users } from "@/db/schemas/users";
 import { usersService } from "@/lib/services/users";
-import { getConnectionString } from "@/tests/helpers/local-database";
+import { getConnectionString } from "@/tests/infrastructure/local-database";
 import {
   cleanupTestData,
   createTestDataSet,
   type TestDataSet,
-} from "@/tests/helpers/test-data-factory";
+} from "@/tests/infrastructure/test-data-factory";
 
-describe("Privy read-path regression (5c31c7732)", () => {
+describe("Steward read-path regression (5c31c7732)", () => {
   let connectionString: string;
   let testData: TestDataSet;
   let detachedUserId: string | undefined;
@@ -45,13 +45,13 @@ describe("Privy read-path regression (5c31c7732)", () => {
     }
   });
 
-  test("getByPrivyId returns organization numeric fields matching relational query format", async () => {
-    const privyId = `did:privy:${uuidv4()}`;
+  test("getByStewardId returns organization numeric fields matching relational query format", async () => {
+    const stewardId = `steward_${uuidv4()}`;
 
-    await usersService.update(testData.user.id, { privy_user_id: privyId });
-    await usersService.upsertPrivyIdentity(testData.user.id, privyId);
+    await usersService.update(testData.user.id, { steward_user_id: stewardId });
+    await usersService.upsertStewardIdentity(testData.user.id, stewardId);
 
-    const serviceUser = await usersService.getByPrivyIdForWrite(privyId);
+    const serviceUser = await usersService.getByStewardIdForWrite(stewardId);
     expect(serviceUser).toBeDefined();
 
     const relationalUser = await dbWrite.query.users.findFirst({
@@ -62,7 +62,7 @@ describe("Privy read-path regression (5c31c7732)", () => {
 
     expect(serviceUser!.id).toBe(relationalUser!.id);
     expect(serviceUser!.email).toBe(relationalUser!.email);
-    expect(serviceUser!.privy_user_id).toBe(relationalUser!.privy_user_id);
+    expect(serviceUser!.steward_user_id).toBe(relationalUser!.steward_user_id);
     expect(serviceUser!.organization_id).toBe(relationalUser!.organization_id);
 
     const serviceOrg = serviceUser!.organization!;
@@ -81,8 +81,8 @@ describe("Privy read-path regression (5c31c7732)", () => {
     expect(serviceKeys).toEqual(relationalKeys);
   });
 
-  test("getByPrivyId returns null organization when organization_id is null", async () => {
-    const privyId = `did:privy:${uuidv4()}`;
+  test("getByStewardId returns null organization when organization_id is null", async () => {
+    const stewardId = `steward_${uuidv4()}`;
 
     const detachedUser = await usersService.create({
       email: `detached-${uuidv4().slice(0, 8)}@test.local`,
@@ -91,13 +91,13 @@ describe("Privy read-path regression (5c31c7732)", () => {
       role: "member",
       is_anonymous: false,
       is_active: true,
-      privy_user_id: privyId,
+      steward_user_id: stewardId,
     });
     detachedUserId = detachedUser.id;
 
-    await usersService.upsertPrivyIdentity(detachedUser.id, privyId);
+    await usersService.upsertStewardIdentity(detachedUser.id, stewardId);
 
-    const serviceUser = await usersService.getByPrivyIdForWrite(privyId);
+    const serviceUser = await usersService.getByStewardIdForWrite(stewardId);
     expect(serviceUser).toBeDefined();
     expect(serviceUser!.id).toBe(detachedUser.id);
     expect(serviceUser!.organization_id).toBeNull();
@@ -112,13 +112,13 @@ describe("Privy read-path regression (5c31c7732)", () => {
     expect(relationalUser!.organization).toBeNull();
   });
 
-  test("getByPrivyId returns same org fields used by /api/v1/user route", async () => {
-    const privyId = `did:privy:${uuidv4()}`;
+  test("getByStewardId returns same org fields used by /api/v1/user route", async () => {
+    const stewardId = `steward_${uuidv4()}`;
 
-    await usersService.update(testData.user.id, { privy_user_id: privyId });
-    await usersService.upsertPrivyIdentity(testData.user.id, privyId);
+    await usersService.update(testData.user.id, { steward_user_id: stewardId });
+    await usersService.upsertStewardIdentity(testData.user.id, stewardId);
 
-    const user = await usersService.getByPrivyIdForWrite(privyId);
+    const user = await usersService.getByStewardIdForWrite(stewardId);
     expect(user).toBeDefined();
 
     expect(user!.id).toBeDefined();

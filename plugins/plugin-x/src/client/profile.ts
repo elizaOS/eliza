@@ -4,8 +4,7 @@ import type { TwitterAuth } from "./auth";
 import type { TwitterApiErrorRaw } from "./errors";
 
 /**
- * Interface representing a raw user object from a legacy system.
- * @typedef {Object} LegacyUserRaw
+ * Interface representing the raw user profile payload returned by X.
  * @property {string} [created_at] - The date the user was created.
  * @property {string} [description] - The user's description.
  * @property {Object} [entities] - Additional entities associated with the user.
@@ -34,7 +33,7 @@ import type { TwitterApiErrorRaw } from "./errors";
  * @property {string} [url] - The user's URL.
  * @property {boolean} [can_dm] - Indicates if direct messages are enabled for the user.
  */
-export interface LegacyUserRaw {
+export interface TwitterProfileRaw {
   created_at?: string;
   description?: string;
   entities?: {
@@ -131,7 +130,7 @@ export interface UserRaw {
       result: {
         rest_id?: string;
         is_blue_verified?: boolean;
-        legacy: LegacyUserRaw;
+        legacy: TwitterProfileRaw;
       };
     };
   };
@@ -143,7 +142,7 @@ function getAvatarOriginalSizeUrl(avatarUrl: string | undefined) {
 }
 
 export function parseProfile(
-  user: LegacyUserRaw,
+  user: TwitterProfileRaw,
   isBlueVerified?: boolean,
 ): Profile {
   const profile: Profile = {

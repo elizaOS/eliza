@@ -769,7 +769,7 @@ describeIf(LIVE_CHAT_SUITE_ENABLED)(
     );
 
     it(
-      "routes itinerary questions toward OWNER_CALENDAR instead of task agents",
+      "routes itinerary questions toward CALENDAR instead of task agents",
       async () => {
         const liveRuntime = requireStartedRuntime(runtime);
         const { conversationId } = await createConversation(liveRuntime.port, {
@@ -794,7 +794,7 @@ describeIf(LIVE_CHAT_SUITE_ENABLED)(
           prompt,
         );
         const plannerResponse = String(trajectory.llmCall.response ?? "");
-        expect(plannerResponse).toMatch(/OWNER_CALENDAR/i);
+        expect(plannerResponse).toMatch(/CALENDAR/i);
         expect(plannerResponse).not.toMatch(
           /CREATE_TASK|SPAWN_AGENT|SEND_TO_AGENT|LIST_AGENTS/i,
         );
@@ -803,7 +803,7 @@ describeIf(LIVE_CHAT_SUITE_ENABLED)(
     );
 
     it(
-      "routes sender-style Gmail searches toward TRIAGE_MESSAGES across name and address variants",
+      "routes sender-style Gmail searches toward MESSAGE across name and address variants",
       async () => {
         const liveRuntime = requireStartedRuntime(runtime);
         const cases = [
@@ -877,7 +877,7 @@ describeIf(LIVE_CHAT_SUITE_ENABLED)(
     );
 
     it(
-      "routes broad Gmail filters toward TRIAGE_MESSAGES and preserves the key search terms",
+      "routes broad Gmail filters toward MESSAGE and preserves the key search terms",
       async () => {
         const liveRuntime = requireStartedRuntime(runtime);
         const cases = [

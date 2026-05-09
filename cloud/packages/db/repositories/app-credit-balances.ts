@@ -11,12 +11,12 @@ export type { AppCreditBalance, NewAppCreditBalance };
 /**
  * Repository for app credit balance database operations.
  *
- * Read operations → dbRead (read replica)
- * Write operations → dbWrite (NA primary)
+ * Read operations → dbRead (read-intent connection)
+ * Write operations → dbWrite (primary)
  */
 export class AppCreditBalancesRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -95,7 +95,7 @@ export class AppCreditBalancesRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**
@@ -114,16 +114,33 @@ export class AppCreditBalancesRepository {
     userId: string,
     organizationId: string,
   ): Promise<AppCreditBalance> {
-    const existing = await this.findByAppAndUser(appId, userId);
-    if (existing) {
-      return existing;
+    const [created] = await dbWrite
+      .insert(appCreditBalances)
+      .values({
+        app_id: appId,
+        user_id: userId,
+        organization_id: organizationId,
+      })
+      .onConflictDoNothing({
+        target: [appCreditBalances.app_id, appCreditBalances.user_id],
+      })
+      .returning();
+
+    if (created) {
+      return created;
     }
 
-    return await this.create({
-      app_id: appId,
-      user_id: userId,
-      organization_id: organizationId,
+    const existing = await dbWrite.query.appCreditBalances.findFirst({
+      where: and(eq(appCreditBalances.app_id, appId), eq(appCreditBalances.user_id, userId)),
     });
+
+    if (!existing) {
+      throw new Error(
+        `App credit balance not found after conflict for app ${appId}, user ${userId}`,
+      );
+    }
+
+    return existing;
   }
 
   /**

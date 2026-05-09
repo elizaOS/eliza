@@ -457,28 +457,10 @@ jobs:
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
 
-      - name: Generate protobuf types
+      - name: Generate i18n keyword data
         run: |
           node packages/shared/scripts/generate-keywords.mjs --target ts
           test -f packages/shared/src/i18n/generated/validation-keyword-data.js
-          if [ -d packages/schemas ] && [ -f packages/schemas/buf.gen.yaml ]; then
-            pushd packages/schemas
-            for attempt in 1 2 3; do
-              node node_modules/@bufbuild/buf/install.js 2>/dev/null || true
-              if bunx @bufbuild/buf@1.67.0 generate; then
-                break
-              fi
-              if [ "$attempt" -eq 3 ]; then
-                echo "buf generate failed after ${attempt} attempts" >&2
-                exit 1
-              fi
-              echo "buf generate failed on attempt ${attempt}; retrying in 15 seconds" >&2
-              sleep 15
-            done
-            popd
-          fi
-          test -f packages/core/src/types/generated/eliza/v1/agent_pb.ts
-          test -f packages/core/src/types/generated/eliza/v1/components_pb.ts
 
       - name: Stage desktop bundle inputs
         run: |

@@ -65,8 +65,8 @@ TIER_B = {  # tool-call agent traces, structurally salvageable
 }
 TIER_C = {  # synthetic ChatML wrapping (single-turn tool calls)
     "glaive-fc-v2", "bitagent-tool-calling", "dolci-instruct-tool-use",
-    "glaive-fc-v2-reasoning", "regularizer-reasoning-tool",
-    "nemotron-rl-tool-use", "sharegpt-tool-calls", "toolhop",
+    "glaive-fc-v2-reasoning", "nemotron-rl-tool-use",
+    "sharegpt-tool-calls", "toolhop",
     "functions-53k", "deepfabric-github-mcp",
     "playwright-mcp-toolcalling", "mcp-flow-comprehensive",
     "ha-mcp-dataset", "limbic-eval-tool-use-mcp",

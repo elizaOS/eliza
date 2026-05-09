@@ -1,4 +1,4 @@
-import { type CodingAgentSession, useApp } from "@elizaos/app-core";
+import { type CodingAgentSession, useApp } from "@elizaos/ui";
 import { Z_OVERLAY } from "@elizaos/ui";
 import { PtyConsoleBase } from "./PtyConsoleBase";
 

@@ -7,6 +7,10 @@
     "moduleResolution": "bundler",
     "noEmit": true,
     "outDir": "./dist",
+    "paths": {
+      "@elizaos/core": ["./../../core/dist/index.node.d.ts"],
+      "@elizaos/core/*": ["./../../core/dist/*"]
+    },
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "strict": true,

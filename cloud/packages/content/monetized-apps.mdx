@@ -78,7 +78,7 @@ const response = await fetch(`${ELIZA_CLOUD_URL}/api/v1/apps/${APP_ID}/chat`, {
     Authorization: `Bearer ${userStewardJwt}`,
   },
   body: JSON.stringify({
-    model: "openai/gpt-5-mini",
+    model: "provider/model-id",
     messages: [{ role: "user", content: "Hello" }],
     stream: false,
   }),

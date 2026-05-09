@@ -1,4 +1,4 @@
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 
 // ---------------------------------------------------------------------------
@@ -92,10 +92,10 @@ export async function sendPush(
     Priority: String(normalizePriority(request.priority)),
   };
   if (request.tags && request.tags.length > 0) {
-    headers["Tags"] = request.tags.join(",");
+    headers.Tags = request.tags.join(",");
   }
   if (request.click) {
-    headers["Click"] = request.click;
+    headers.Click = request.click;
   }
 
   const span = createIntegrationTelemetrySpan({

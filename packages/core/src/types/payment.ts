@@ -1,4 +1,4 @@
-import type { JsonObject } from "./proto.js";
+import type { JsonObject } from "./primitives";
 
 /**
  * Payment configuration definition for x402-enabled routes.

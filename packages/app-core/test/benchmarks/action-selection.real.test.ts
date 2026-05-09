@@ -45,21 +45,63 @@ async function createBenchmarkRuntimeFactory(): Promise<{
         // @ts-expect-error — path is outside the package, resolved relative to repo root
         "../../../../test/mocks/helpers/mock-runtime.ts"
       );
+    const previousBackgroundEnv = {
+      ELIZA_DISABLE_LIFEOPS_SCHEDULER:
+        process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER,
+      ELIZA_DISABLE_PROACTIVE_AGENT: process.env.ELIZA_DISABLE_PROACTIVE_AGENT,
+      ELIZA_TEST_COMPUTERUSE_BACKEND: process.env.ELIZA_TEST_COMPUTERUSE_BACKEND,
+      COMPUTER_USE_ENABLED: process.env.COMPUTER_USE_ENABLED,
+    };
+    process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
+    process.env.ELIZA_DISABLE_PROACTIVE_AGENT = "1";
+    process.env.ELIZA_TEST_COMPUTERUSE_BACKEND = "1";
+    process.env.COMPUTER_USE_ENABLED = "1";
     const environment = await prepareMockedTestEnvironment();
-    const { appLifeOpsPlugin } = await import(
+    const { computerUsePlugin } = await import(
       // @ts-expect-error — workspace package resolved at runtime
-      "@elizaos/app-lifeops/plugin"
+      "@elizaos/plugin-computeruse"
+    );
+    const { browserPlugin } = await import(
+      // @ts-expect-error — workspace package resolved at runtime
+      "@elizaos/plugin-browser"
     );
     return {
       createCaseRuntime: async () =>
         createMockedTestRuntime({
           withLLM: true,
-          plugins: [appLifeOpsPlugin],
+          plugins: [computerUsePlugin, browserPlugin].filter(Boolean),
           preferredProvider,
           sharedEnvironment: environment,
         }),
       cleanup: async () => {
-        await environment.cleanup();
+        try {
+          await environment.cleanup();
+        } finally {
+          if (previousBackgroundEnv.ELIZA_DISABLE_LIFEOPS_SCHEDULER === undefined) {
+            delete process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
+          } else {
+            process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER =
+              previousBackgroundEnv.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
+          }
+          if (previousBackgroundEnv.ELIZA_DISABLE_PROACTIVE_AGENT === undefined) {
+            delete process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
+          } else {
+            process.env.ELIZA_DISABLE_PROACTIVE_AGENT =
+              previousBackgroundEnv.ELIZA_DISABLE_PROACTIVE_AGENT;
+          }
+          if (previousBackgroundEnv.ELIZA_TEST_COMPUTERUSE_BACKEND === undefined) {
+            delete process.env.ELIZA_TEST_COMPUTERUSE_BACKEND;
+          } else {
+            process.env.ELIZA_TEST_COMPUTERUSE_BACKEND =
+              previousBackgroundEnv.ELIZA_TEST_COMPUTERUSE_BACKEND;
+          }
+          if (previousBackgroundEnv.COMPUTER_USE_ENABLED === undefined) {
+            delete process.env.COMPUTER_USE_ENABLED;
+          } else {
+            process.env.COMPUTER_USE_ENABLED =
+              previousBackgroundEnv.COMPUTER_USE_ENABLED;
+          }
+        }
       },
     };
   }
@@ -71,13 +113,17 @@ async function createBenchmarkRuntimeFactory(): Promise<{
     // @ts-expect-error — workspace package resolved at runtime
     "@elizaos/app-lifeops/plugin"
   );
+  const { computerUsePlugin } = await import(
+    // @ts-expect-error — workspace package resolved at runtime
+    "@elizaos/plugin-computeruse"
+  );
   const { createRealTestRuntime } = await import("../helpers/real-runtime.ts");
 
   return {
     createCaseRuntime: async () =>
       createRealTestRuntime({
         withLLM: true,
-        plugins: [appLifeOpsPlugin],
+        plugins: [appLifeOpsPlugin, computerUsePlugin],
         preferredProvider,
       }),
     cleanup: async () => {},

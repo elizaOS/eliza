@@ -7,7 +7,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  *
  * POST /api/v1/voice/stt
  * Converts speech to text using the voice transcription service.
- * Supports both Privy session and API key authentication.
+ * Supports both session and API key authentication.
  *
  * WHY THIS EXISTS:
  * ----------------

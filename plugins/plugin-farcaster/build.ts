@@ -98,6 +98,9 @@ async function build() {
 export { default } from "../index.node";
 `;
   await writeFile(nodeIndexDtsPath, nodeAlias, "utf8");
+  // Adjacent to index.node.js: some TS (bundler + dynamic import) only look for
+  // index.node.d.ts here, not package.json "types".
+  await writeFile(join(nodeDir, "index.node.d.ts"), nodeAlias, "utf8");
 
   const browserIndexDtsPath = join(browserDir, "index.d.ts");
   const browserAlias = `export * from "../index.browser";

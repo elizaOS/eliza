@@ -1,4 +1,5 @@
 import type { BrowserWindow } from "electrobun/bun";
+import { logger } from "../logger";
 import type { SendToWebview } from "../types.js";
 import { getAgentManager } from "./agent";
 import { getBrowserWorkspaceManager } from "./browser-workspace";
@@ -62,9 +63,8 @@ export async function disposeNativeModules(): Promise<void> {
 		try {
 			await stopSteward();
 		} catch (err) {
-			console.warn(
-				"[Native] steward dispose failed:",
-				err instanceof Error ? err.message : err,
+			logger.warn(
+				`[Native] steward dispose failed: ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
 	}
@@ -74,9 +74,8 @@ export async function disposeNativeModules(): Promise<void> {
 			try {
 				await Promise.resolve(manager.dispose());
 			} catch (err) {
-				console.warn(
-					`[Native] ${name} dispose failed:`,
-					err instanceof Error ? err.message : err,
+				logger.warn(
+					`[Native] ${name} dispose failed: ${err instanceof Error ? err.message : String(err)}`,
 				);
 			}
 		}),
@@ -97,7 +96,7 @@ export async function disposeNativeModules(): Promise<void> {
 	}
 
 	if (timedOut) {
-		console.warn(
+		logger.warn(
 			`[Native] Timed out waiting ${NATIVE_DISPOSE_TIMEOUT_MS}ms for native module disposal`,
 		);
 	} else {

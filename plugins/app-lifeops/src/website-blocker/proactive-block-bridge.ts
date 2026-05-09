@@ -30,8 +30,8 @@ import {
   type EnforcementWindow,
   getCurrentEnforcementWindow,
 } from "../lifeops/enforcement-windows.js";
-import { BlockRuleReader } from "./chat-integration/block-rule-service.js";
 import type { BlockRule } from "./chat-integration/block-rule-schema.js";
+import { BlockRuleReader } from "./chat-integration/block-rule-service.js";
 import {
   buildSelfControlBlockPolicy,
   isWebsiteBlockedByPolicy,

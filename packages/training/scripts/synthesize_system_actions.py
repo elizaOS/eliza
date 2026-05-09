@@ -45,7 +45,7 @@ from lib.eliza_record import (  # noqa: E402
     build,
     stable_id,
 )
-from lib.toon import ToonEncoder  # noqa: E402
+from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 OUT_DIR = ROOT / "data" / "synthesized" / "action_examples"
 OUT_PATH = OUT_DIR / "system.jsonl"
@@ -938,7 +938,7 @@ REVIEW_PR_SCENARIOS = [
 
 def build_record(
     *,
-    encoder: ToonEncoder,
+    encoder: ExpectedResponseEncoder,
     user_msg: str,
     expected: dict[str, Any],
     available_actions: list[str],
@@ -1063,7 +1063,7 @@ SUBTLE_NULL_PROMPTS = {
 
 
 def gen_action_examples(
-    encoder: ToonEncoder,
+    encoder: ExpectedResponseEncoder,
     rng: random.Random,
     action_name: str,
     plugin: str,
@@ -1280,7 +1280,7 @@ def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     rng = random.Random(20260502)
 
-    encoder = ToonEncoder()
+    encoder = JsonExpectedResponseEncoder()
     n_total = 0
     per_action_counts: dict[str, int] = {}
     style_hist: dict[str, int] = {}

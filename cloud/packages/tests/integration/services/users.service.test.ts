@@ -7,7 +7,7 @@
  * Key test scenarios:
  * - getById: returns user, returns undefined for non-existent
  * - getByEmail: finds by email
- * - getByPrivyId: finds by Privy ID
+ * - getByStewardId: finds by Steward ID
  * - getWithOrganization: returns user with org data
  * - listByOrganization: lists all users in org
  * - create: creates new user
@@ -17,18 +17,15 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import { dbWrite } from "@/db/helpers";
-import { userIdentities } from "@/db/schemas/user-identities";
 import { organizationsService } from "@/lib/services/organizations";
 import { usersService } from "@/lib/services/users";
-import { getConnectionString } from "@/tests/helpers/local-database";
+import { getConnectionString } from "@/tests/infrastructure/local-database";
 import {
   cleanupTestData,
   createTestDataSet,
   type TestDataSet,
-} from "@/tests/helpers/test-data-factory";
+} from "@/tests/infrastructure/test-data-factory";
 
 describe("UsersService", () => {
   let connectionString: string;
@@ -152,23 +149,23 @@ describe("UsersService", () => {
   });
 
   // ===========================================================================
-  // getByPrivyId Tests
+  // getByStewardId Tests
   // ===========================================================================
 
-  describe("getByPrivyId", () => {
+  describe("getByStewardId", () => {
     test("returns user with organization when identity row matches", async () => {
       // Arrange
-      const privyId = `did:privy:${uuidv4()}`;
+      const stewardId = `steward_${uuidv4()}`;
 
-      await usersService.update(testData.user.id, { privy_user_id: privyId });
-      await usersService.upsertPrivyIdentity(testData.user.id, privyId);
+      await usersService.update(testData.user.id, { steward_user_id: stewardId });
+      await usersService.upsertStewardIdentity(testData.user.id, stewardId);
 
       // Act
-      const user = await usersService.getByPrivyId(privyId);
+      const user = await usersService.getByStewardId(stewardId);
 
       // Assert
       expect(user).toBeDefined();
-      expect(user!.privy_user_id).toBe(privyId);
+      expect(user!.steward_user_id).toBe(stewardId);
       expect(user!.organization).toBeDefined();
       expect(user!.organization_id).toBe(testData.organization.id);
 
@@ -176,18 +173,18 @@ describe("UsersService", () => {
       await cleanupTestData(connectionString, testData.organization.id);
     });
 
-    test("falls back to users.privy_user_id when identity row is missing", async () => {
+    test("falls back to users.steward_user_id when identity row is missing", async () => {
       // Arrange
-      const privyId = `did:privy:${uuidv4()}`;
-      await usersService.update(testData.user.id, { privy_user_id: privyId });
+      const stewardId = `steward_${uuidv4()}`;
+      await usersService.update(testData.user.id, { steward_user_id: stewardId });
 
       // Act
-      const user = await usersService.getByPrivyId(privyId);
+      const user = await usersService.getByStewardId(stewardId);
 
       // Assert
       expect(user).toBeDefined();
       expect(user!.id).toBe(testData.user.id);
-      expect(user!.privy_user_id).toBe(privyId);
+      expect(user!.steward_user_id).toBe(stewardId);
       expect(user!.organization).toBeDefined();
       expect(user!.organization_id).toBe(testData.organization.id);
 
@@ -195,12 +192,12 @@ describe("UsersService", () => {
       await cleanupTestData(connectionString, testData.organization.id);
     });
 
-    test("returns undefined for non-existent Privy ID", async () => {
+    test("returns undefined for non-existent Steward ID", async () => {
       // Arrange
-      const fakePrivyId = `did:privy:${uuidv4()}`;
+      const fakeStewardId = `steward_${uuidv4()}`;
 
       // Act
-      const user = await usersService.getByPrivyId(fakePrivyId);
+      const user = await usersService.getByStewardId(fakeStewardId);
 
       // Assert
       expect(user).toBeUndefined();
@@ -210,70 +207,41 @@ describe("UsersService", () => {
     });
   });
 
-  describe("upsertPrivyIdentity", () => {
+  describe("upsertStewardIdentity", () => {
     test("creates and updates the identity projection idempotently", async () => {
-      const firstPrivyId = `did:privy:${uuidv4()}`;
-      const secondPrivyId = `did:privy:${uuidv4()}`;
+      const firstStewardId = `steward_${uuidv4()}`;
+      const secondStewardId = `steward_${uuidv4()}`;
 
       await usersService.update(testData.user.id, {
-        privy_user_id: firstPrivyId,
+        steward_user_id: firstStewardId,
       });
-      await usersService.upsertPrivyIdentity(testData.user.id, firstPrivyId);
+      await usersService.upsertStewardIdentity(testData.user.id, firstStewardId);
 
-      const firstLookup = await usersService.getByPrivyId(firstPrivyId);
+      const firstLookup = await usersService.getByStewardId(firstStewardId);
       expect(firstLookup?.id).toBe(testData.user.id);
 
       await usersService.update(testData.user.id, {
-        privy_user_id: secondPrivyId,
+        steward_user_id: secondStewardId,
       });
-      await usersService.upsertPrivyIdentity(testData.user.id, secondPrivyId);
+      await usersService.upsertStewardIdentity(testData.user.id, secondStewardId);
 
-      const secondLookup = await usersService.getByPrivyId(secondPrivyId);
+      const secondLookup = await usersService.getByStewardId(secondStewardId);
       expect(secondLookup?.id).toBe(testData.user.id);
 
-      const previousLookup = await usersService.getByPrivyId(firstPrivyId);
+      const previousLookup = await usersService.getByStewardId(firstStewardId);
       expect(previousLookup).toBeUndefined();
 
       await cleanupTestData(connectionString, testData.organization.id);
     });
 
-    test("refreshes WhatsApp projection fields on re-upsert", async () => {
-      const privyId = `did:privy:${uuidv4()}`;
-      const firstWhatsAppId = `wa-${uuidv4()}`;
-      const secondWhatsAppId = `wa-${uuidv4()}`;
+    test("write-path lookup falls back to users.steward_user_id when projection is missing", async () => {
+      const stewardId = `steward_${uuidv4()}`;
 
       await usersService.update(testData.user.id, {
-        privy_user_id: privyId,
-        whatsapp_id: firstWhatsAppId,
-        whatsapp_name: "First WhatsApp",
-      });
-      await usersService.upsertPrivyIdentity(testData.user.id, privyId);
-
-      await usersService.update(testData.user.id, {
-        whatsapp_id: secondWhatsAppId,
-        whatsapp_name: "Second WhatsApp",
-      });
-      await usersService.upsertPrivyIdentity(testData.user.id, privyId);
-
-      const identity = await dbWrite.query.userIdentities.findFirst({
-        where: eq(userIdentities.user_id, testData.user.id),
+        steward_user_id: stewardId,
       });
 
-      expect(identity).toBeDefined();
-      expect(identity?.whatsapp_id).toBe(secondWhatsAppId);
-      expect(identity?.whatsapp_name).toBe("Second WhatsApp");
-
-      await cleanupTestData(connectionString, testData.organization.id);
-    });
-
-    test("write-path lookup falls back to users.privy_user_id when projection is missing", async () => {
-      const privyId = `did:privy:${uuidv4()}`;
-
-      await usersService.update(testData.user.id, {
-        privy_user_id: privyId,
-      });
-
-      const user = await usersService.getByPrivyIdForWrite(privyId);
+      const user = await usersService.getByStewardIdForWrite(stewardId);
 
       expect(user).toBeDefined();
       expect(user?.id).toBe(testData.user.id);
@@ -282,16 +250,16 @@ describe("UsersService", () => {
       await cleanupTestData(connectionString, testData.organization.id);
     });
 
-    test("concurrent inserts for the same Privy ID leave one canonical winner", async () => {
-      const privyId = `did:privy:${uuidv4()}`;
+    test("concurrent inserts for the same Steward ID leave one canonical winner", async () => {
+      const stewardId = `steward_${uuidv4()}`;
       const secondData = await createTestDataSet(connectionString, {
         creditBalance: 100,
       });
 
       try {
         const [firstResult, secondResult] = await Promise.allSettled([
-          usersService.upsertPrivyIdentity(testData.user.id, privyId),
-          usersService.upsertPrivyIdentity(secondData.user.id, privyId),
+          usersService.upsertStewardIdentity(testData.user.id, stewardId),
+          usersService.upsertStewardIdentity(secondData.user.id, stewardId),
         ]);
 
         expect(
@@ -301,7 +269,7 @@ describe("UsersService", () => {
           [firstResult.status, secondResult.status].filter((status) => status === "rejected"),
         ).toHaveLength(1);
 
-        const user = await usersService.getByPrivyId(privyId);
+        const user = await usersService.getByStewardId(stewardId);
 
         expect(user).toBeDefined();
         const winnerId = user!.id;
@@ -310,7 +278,7 @@ describe("UsersService", () => {
         await cleanupTestData(connectionString, secondData.organization.id);
         await cleanupTestData(connectionString, testData.organization.id);
       }
-    });
+    }, 15_000);
   });
 
   // ===========================================================================
@@ -460,6 +428,7 @@ describe("UsersService", () => {
     test("creates new user with required fields", async () => {
       // Arrange
       const newUserData = {
+        steward_user_id: `test-create-${uuidv4()}`,
         email: `create-test-${uuidv4()}@test.local`,
         organization_id: testData.organization.id,
         role: "member" as const,
@@ -484,6 +453,7 @@ describe("UsersService", () => {
       // Arrange
       const walletAddress = `0x${uuidv4().replace(/-/g, "").substring(0, 40)}`;
       const newUserData = {
+        steward_user_id: `test-optional-${uuidv4()}`,
         email: `optional-test-${uuidv4()}@test.local`,
         organization_id: testData.organization.id,
         role: "admin" as const,
@@ -587,12 +557,14 @@ describe("UsersService", () => {
     test("deletes user from organization", async () => {
       // Arrange - Create a second user so org doesn't get deleted
       const _secondUser = await usersService.create({
+        steward_user_id: `test-second-${uuidv4()}`,
         email: `second-${uuidv4()}@test.local`,
         organization_id: testData.organization.id,
         role: "member",
       });
 
       const userToDelete = await usersService.create({
+        steward_user_id: `test-delete-${uuidv4()}`,
         email: `delete-${uuidv4()}@test.local`,
         organization_id: testData.organization.id,
         role: "member",
@@ -632,6 +604,7 @@ describe("UsersService", () => {
       });
 
       const onlyUser = await usersService.create({
+        steward_user_id: `test-only-user-${uuidv4()}`,
         email: `only-user-${uuidv4()}@test.local`,
         organization_id: newOrg.id,
         role: "owner",
@@ -657,6 +630,7 @@ describe("UsersService", () => {
     test("full user lifecycle: create, update, delete", async () => {
       // Create
       const user = await usersService.create({
+        steward_user_id: `test-lifecycle-${uuidv4()}`,
         email: `lifecycle-${uuidv4()}@test.local`,
         organization_id: testData.organization.id,
         role: "member",

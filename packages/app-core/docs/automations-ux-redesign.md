@@ -251,7 +251,7 @@ Responsive rules:
 What each element does:
 
 - Header identifies title, status, start condition, and primary actions.
-- Graph canvas displays the directed n8n workflow.
+- Graph canvas displays the directed workflow.
 - Node inspector edits selected node details.
 - Data-flow strip summarizes how information moves from input to output.
 - Settings panel controls trigger, credentials, enablement, and advanced execution details.

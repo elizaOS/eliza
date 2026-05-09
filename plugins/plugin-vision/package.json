@@ -40,8 +40,17 @@
     "README.md",
     ".npmignore",
     "package.json",
-    "build.config.ts"
+    "build.config.ts",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "vision"
+      ]
+    }
+  },
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "axios": "^1.16.0",

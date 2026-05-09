@@ -1,6 +1,6 @@
 /**
- * Single source of truth for connector ↔ n8n credential type mappings, the
- * inverse map from n8n credential type back to a canonical provider id, and
+ * Single source of truth for connector ↔ workflow credential type mappings, the
+ * inverse map from workflow credential type back to a canonical provider id, and
  * user-facing display labels.
  *
  * Used by:
@@ -18,7 +18,7 @@
 
 /**
  * Connector name (as stored in `eliza.json` connectors block) →
- * the n8n credential type ids it owns. Disconnecting this connector should
+ * the workflow credential type ids it owns. Disconnecting this connector should
  * purge the credential cache for every credType in this list.
  */
 export const CONNECTOR_CRED_TYPES: Readonly<Record<string, readonly string[]>> =
@@ -36,7 +36,7 @@ export function credTypesForConnector(
 }
 
 /**
- * Canonical provider id for a given n8n credential type. Falls back to a
+ * Canonical provider id for a given workflow credential type. Falls back to a
  * lowercased credType when unknown so a forward-compatible response from a
  * new node still routes to *something* sensible.
  */

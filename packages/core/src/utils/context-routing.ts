@@ -18,7 +18,6 @@ const LIST_SPLIT_RE = /[\n,;]/;
 export interface ContextRoutingDecision {
 	primaryContext?: AgentContext;
 	secondaryContexts?: AgentContext[];
-	evidenceTurnIds?: string[];
 }
 
 function normalizeContext(value: unknown): AgentContext | undefined {
@@ -137,14 +136,10 @@ export function parseContextRoutingMetadata(
 	const value = raw as Record<string, unknown>;
 	const primaryContext = normalizeContext(value.primaryContext);
 	const secondaryContexts = parseContextList(value.secondaryContexts);
-	const evidenceTurnIds = dedupeStringValues(
-		parseDelimitedList(value.evidenceTurnIds),
-	);
 
 	return {
 		primaryContext,
 		secondaryContexts,
-		evidenceTurnIds,
 	};
 }
 
@@ -179,11 +174,6 @@ export function mergeContextRouting(
 		...(messageRouting.secondaryContexts || []),
 	]) as AgentContext[];
 
-	const mergedEvidenceTurnIds = dedupeStringValues([
-		...(stateRouting.evidenceTurnIds || []),
-		...(messageRouting.evidenceTurnIds || []),
-	]);
-
 	const primaryContext =
 		messageRouting.primaryContext || stateRouting.primaryContext || undefined;
 	if (primaryContext && !mergedSecondary.includes(primaryContext)) {
@@ -193,7 +183,6 @@ export function mergeContextRouting(
 	return {
 		primaryContext,
 		secondaryContexts: mergedSecondary,
-		evidenceTurnIds: mergedEvidenceTurnIds,
 	};
 }
 
@@ -310,9 +299,9 @@ const CONTEXT_SIGNALS: ContextSignal[] = [
 		],
 	},
 	{
-		context: "knowledge",
+		context: "documents",
 		patterns: [
-			/\b(uploaded|document|file|pdf|knowledge|remember|recall|search|lookup|find|summari[sz]e|analy[sz]e|research)\b/u,
+			/\b(uploaded|document|file|pdf|remember|recall|search|lookup|find|summari[sz]e|analy[sz]e|research)\b/u,
 			/\b(what is|what was|where is|tell me about|explain)\b/u,
 		],
 	},
@@ -323,13 +312,13 @@ const CONTEXT_SIGNALS: ContextSignal[] = [
 		],
 	},
 	{
-		context: "apps",
+		context: "connectors",
 		patterns: [
 			/\b(apps?|catalog app|launch app|relaunch app|app session|app viewer)\b/u,
 		],
 	},
 	{
-		context: "plugins",
+		context: "connectors",
 		patterns: [
 			/\b(plugins?|install plugin|eject plugin|plugin registry|plugin health|core status)\b/u,
 		],
@@ -341,19 +330,35 @@ const CONTEXT_SIGNALS: ContextSignal[] = [
 		],
 	},
 	{
-		context: "phone",
+		context: "messaging",
 		patterns: [
 			/\b(phone|call|sms|text message|dialer|voicemail|contact|vcard)\b/u,
 		],
 	},
 	{
-		context: "lifeops",
+		context: "email",
+		patterns: [/\b(email|gmail|mail|inbox|unread|draft reply)\b/u],
+	},
+	{
+		context: "calendar",
+		patterns: [/\b(calendar|meeting|schedule|event|availability)\b/u],
+	},
+	{
+		context: "tasks",
 		patterns: [
-			/\b(lifeops|life ops|reminder|goal|habit|inbox|calendar|sleep|screen time|subscription|travel)\b/u,
+			/\b(lifeops|life ops|reminder|goal|habit|task|todo|follow up)\b/u,
 		],
 	},
 	{
-		context: "character",
+		context: "screen_time",
+		patterns: [/\b(screen time|app usage|website usage|dwell time)\b/u],
+	},
+	{
+		context: "subscriptions",
+		patterns: [/\b(subscription|subscriptions|recurring charge|renewal)\b/u],
+	},
+	{
+		context: "settings",
 		patterns: [
 			/\b(character|persona|personality|bio|style rules|message examples|voice|identity)\b/u,
 		],
@@ -371,13 +376,11 @@ const CONTEXT_SIGNALS: ContextSignal[] = [
 		],
 	},
 	{
-		context: "social",
-		patterns: [
-			/\b(message|dm|email|inbox|contact|relationship|follow up|calendar|meeting|call|send .* to)\b/u,
-		],
+		context: "messaging",
+		patterns: [/\b(message|dm|inbox|contact|relationship|call|send .* to)\b/u],
 	},
 	{
-		context: "system",
+		context: "admin",
 		patterns: [
 			/\b(settings?|configure|configuration|plugin|secret|api key|model provider|oauth|login|auth)\b/u,
 		],

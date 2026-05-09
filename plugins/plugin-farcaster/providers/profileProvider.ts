@@ -2,9 +2,14 @@ import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@el
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { FarcasterService } from "../services/FarcasterService";
 import { FARCASTER_SERVICE_NAME } from "../types";
-import { getFarcasterFid } from "../utils/config";
+import { getFarcasterFid, readFarcasterAccountId } from "../utils/config";
 
 const spec = requireProviderSpec("farcasterProfile");
+const MAX_PROFILE_FIELD_LENGTH = 280;
+
+function truncateProfileField(value: string | undefined): string | undefined {
+  return value ? value.slice(0, MAX_PROFILE_FIELD_LENGTH) : value;
+}
 
 export const farcasterProfileProvider: Provider = {
   name: spec.name,
@@ -12,12 +17,19 @@ export const farcasterProfileProvider: Provider = {
   descriptionCompressed: "provide information agent Farcaster profile",
 
   dynamic: true,
-  get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
+  contexts: ["social_posting", "messaging", "connectors"],
+  contextGate: { anyOf: ["social_posting", "messaging", "connectors"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {
     try {
       const service = runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
-      const managers = service?.getActiveManagers();
+      const accountId = readFarcasterAccountId(message, state);
+      const manager =
+        service?.getManagerForAccount?.(accountId, runtime.agentId) ??
+        service?.getManagerForAccount?.(undefined, runtime.agentId);
 
-      if (!managers || managers.size === 0) {
+      if (!manager) {
         runtime.logger.debug("[FarcasterProfileProvider] No managers available");
         return {
           text: "Farcaster profile not available.",
@@ -25,16 +37,8 @@ export const farcasterProfileProvider: Provider = {
         };
       }
 
-      const manager = managers.get(runtime.agentId);
-      if (!manager) {
-        runtime.logger.debug("[FarcasterProfileProvider] No manager for this agent");
-        return {
-          text: "Farcaster profile not available for this agent.",
-          data: { available: false },
-        };
-      }
-
-      const fid = getFarcasterFid(runtime);
+      const selectedAccountId = manager.config.accountId;
+      const fid = getFarcasterFid(runtime, selectedAccountId);
       if (!fid) {
         runtime.logger.warn("[FarcasterProfileProvider] Invalid or missing FARCASTER_FID");
         return {
@@ -45,19 +49,22 @@ export const farcasterProfileProvider: Provider = {
 
       try {
         const profile = await manager.client.getProfile(fid);
+        const username = truncateProfileField(profile.username) ?? "";
+        const name = truncateProfileField(profile.name);
 
         return {
-          text: `Your Farcaster profile: @${profile.username} (FID: ${profile.fid}). ${profile.name ? `Display name: ${profile.name}` : ""}`,
+          text: `Your Farcaster profile: @${username} (FID: ${profile.fid}). ${name ? `Display name: ${name}` : ""}`,
           data: {
             available: true,
             fid: profile.fid,
-            username: profile.username,
-            name: profile.name,
+            username,
+            name,
             pfp: profile.pfp,
+            accountId: selectedAccountId,
           },
           values: {
             fid: profile.fid,
-            username: profile.username,
+            username,
           },
         };
       } catch (error) {

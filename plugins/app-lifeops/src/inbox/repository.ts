@@ -188,7 +188,7 @@ export class InboxTriageRepository {
 
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_inbox_triage_entries (
+      `INSERT INTO app_lifeops.life_inbox_triage_entries (
         id, agent_id, source, source_room_id, source_entity_id, source_message_id,
         channel_name, channel_type, deep_link, classification, urgency, confidence,
         snippet, sender_name, thread_context, triage_reasoning, suggested_response,
@@ -237,7 +237,7 @@ export class InboxTriageRepository {
     const limit = opts?.limit ?? 50;
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT * FROM life_inbox_triage_entries
+      `SELECT * FROM app_lifeops.life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
          AND resolved = FALSE
        ORDER BY
@@ -257,7 +257,7 @@ export class InboxTriageRepository {
     const resolvedClause = unresolvedOnly ? "AND resolved = FALSE" : "";
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT * FROM life_inbox_triage_entries
+      `SELECT * FROM app_lifeops.life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
          AND classification = ${sqlText(classification)}
          ${resolvedClause}
@@ -270,7 +270,7 @@ export class InboxTriageRepository {
   async getById(id: string): Promise<TriageEntry | null> {
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT * FROM life_inbox_triage_entries
+      `SELECT * FROM app_lifeops.life_inbox_triage_entries
        WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}
        LIMIT 1`,
     );
@@ -283,7 +283,7 @@ export class InboxTriageRepository {
   ): Promise<TriageEntry | null> {
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT * FROM life_inbox_triage_entries
+      `SELECT * FROM app_lifeops.life_inbox_triage_entries
        WHERE source_message_id = ${sqlText(sourceMessageId)}
          AND agent_id = ${sqlText(this.agentId)}
        LIMIT 1`,
@@ -299,7 +299,7 @@ export class InboxTriageRepository {
     const inClause = sourceMessageIds.map((id) => sqlText(id)).join(", ");
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT source_message_id FROM life_inbox_triage_entries
+      `SELECT source_message_id FROM app_lifeops.life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
          AND source_message_id IN (${inClause})`,
     );
@@ -324,7 +324,7 @@ export class InboxTriageRepository {
     }
     await executeRawSql(
       this.runtime,
-      `UPDATE life_inbox_triage_entries
+      `UPDATE app_lifeops.life_inbox_triage_entries
        SET ${sets.join(", ")}
        WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}`,
     );
@@ -333,7 +333,7 @@ export class InboxTriageRepository {
   async getRecentForDigest(sinceIso: string): Promise<TriageEntry[]> {
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT * FROM life_inbox_triage_entries
+      `SELECT * FROM app_lifeops.life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
          AND created_at >= ${sqlText(sinceIso)}
          AND classification != 'ignore'
@@ -347,7 +347,7 @@ export class InboxTriageRepository {
   async getRecentAutoReplies(limit = 5): Promise<TriageEntry[]> {
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT * FROM life_inbox_triage_entries
+      `SELECT * FROM app_lifeops.life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
          AND auto_replied = TRUE
        ORDER BY created_at DESC
@@ -359,7 +359,7 @@ export class InboxTriageRepository {
   async countAutoRepliesSince(sinceIso: string): Promise<number> {
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT COUNT(*) AS cnt FROM life_inbox_triage_entries
+      `SELECT COUNT(*) AS cnt FROM app_lifeops.life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
          AND auto_replied = TRUE
          AND created_at >= ${sqlText(sinceIso)}`,
@@ -370,7 +370,7 @@ export class InboxTriageRepository {
   async cleanupOlderThan(olderThanIso: string): Promise<number> {
     const rows = await executeRawSql(
       this.runtime,
-      `DELETE FROM life_inbox_triage_entries
+      `DELETE FROM app_lifeops.life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
          AND resolved = TRUE
          AND created_at < ${sqlText(olderThanIso)}
@@ -396,7 +396,7 @@ export class InboxTriageRepository {
 
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_inbox_triage_examples (
+      `INSERT INTO app_lifeops.life_inbox_triage_examples (
         id, agent_id, source, snippet, classification, owner_action,
         owner_classification, context_json, created_at
       ) VALUES (
@@ -423,7 +423,7 @@ export class InboxTriageRepository {
   async getExamples(limit = 10): Promise<TriageExample[]> {
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT * FROM life_inbox_triage_examples
+      `SELECT * FROM app_lifeops.life_inbox_triage_examples
        WHERE agent_id = ${sqlText(this.agentId)}
        ORDER BY created_at DESC
        LIMIT ${limit}`,

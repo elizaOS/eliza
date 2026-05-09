@@ -1,68 +1,63 @@
-import type { Memory } from "./memory";
-import type { Content } from "./primitives";
 import type {
-	JsonValue,
-	ActionExample as ProtoActionExample,
-	ActionParameter as ProtoActionParameter,
-	ActionParameterSchema as ProtoActionParameterSchema,
-	ActionParameters as ProtoActionParametersType,
-	EvaluationExample as ProtoEvaluationExample,
-} from "./proto.js";
+	AgentContext,
+	CacheScope,
+	ContextGate,
+	RoleGate,
+} from "./contexts";
+import type { Memory } from "./memory";
+import type { Content, JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { ActionPlan, State } from "./state";
 
-/**
- * Canonical domain contexts for routing and plugin/action gating.
- *
- * The shouldRespond + context-routing classifier assigns one primary context
- * and zero or more secondary contexts per turn.  Plugins, actions, and
- * providers declare which contexts they belong to so the planner can scope
- * its search space accordingly.
- */
-export type AgentContext =
-	| "general"
-	| "wallet"
-	| "knowledge"
-	| "browser"
-	| "code"
-	| "media"
-	| "automation"
-	| "social"
-	| "system"
-	| (string & {}); // extensible — plugins can declare custom contexts
+export type {
+	AgentContext,
+	CacheScope,
+	ContextGate,
+	RoleGate,
+} from "./contexts";
 
 /**
  * JSON Schema type for action parameter validation.
  * Supports basic JSON Schema properties for parameter definition.
  */
-export interface ActionParameterSchema
-	extends Omit<
-		ProtoActionParameterSchema,
-		| "$typeName"
-		| "$unknown"
-		| "defaultValue"
-		| "properties"
-		| "items"
-		| "enumValues"
-	> {
+export interface ActionParameterSchema {
+	type: string;
+	description?: string;
 	/** Default value if parameter is not provided */
 	default?: JsonValue | null;
 	/** For object types, define nested properties */
 	properties?: Record<string, ActionParameterSchema>;
+	/** Required child property names for object-valued parameters */
+	required?: string[];
+	/** Whether object-valued parameters allow undeclared properties */
+	additionalProperties?: boolean | ActionParameterSchema;
 	/** For array types, define the item schema */
 	items?: ActionParameterSchema;
 	/** Enumerated allowed values (schema-compatible) */
 	enumValues?: string[];
 	/** Enumerated allowed values */
 	enum?: string[];
+	/** Minimum string length for string-valued parameters */
+	minLength?: number;
+	/** Maximum string length for string-valued parameters */
+	maxLength?: number;
+	/** Regular expression pattern for string-valued parameters */
+	pattern?: string;
+	/** Numeric minimum */
+	minimum?: number;
+	/** Numeric maximum */
+	maximum?: number;
+	/** JSON Schema `oneOf`: value must match exactly one sub-schema */
+	oneOf?: ReadonlyArray<ActionParameterSchema>;
+	/** JSON Schema `anyOf`: value must match at least one sub-schema */
+	anyOf?: ReadonlyArray<ActionParameterSchema>;
 }
 
 /**
  * Defines a single parameter for an action.
  * Parameters are extracted from the conversation by the LLM and passed to the action handler.
  */
-export interface ActionParameter
-	extends Omit<ProtoActionParameter, "$typeName" | "$unknown" | "schema"> {
+export interface ActionParameter {
 	/** Parameter name (used as the key in the parameters object) */
 	name: string;
 	/** Human-readable description for LLM guidance */
@@ -94,6 +89,7 @@ export type ActionParameterValue = string | number | boolean | null;
 export type ActionParameterExampleValue =
 	| ActionParameterValue
 	| ActionParameters
+	| JsonValue
 	| ActionParameterValue[]
 	| ActionParameters[];
 
@@ -111,19 +107,72 @@ export interface ActionParameters {
 		| JsonValue;
 }
 
-export type ProtoActionParameters = ProtoActionParametersType;
-
 /**
  * Example content with associated user for demonstration purposes
  */
-export interface ActionExample
-	extends Omit<ProtoActionExample, "$typeName" | "$unknown" | "content"> {
+export interface ActionExample {
+	name: string;
 	content: Content;
 }
 
-export interface EvaluationExample
-	extends Omit<ProtoEvaluationExample, "$typeName" | "$unknown" | "messages"> {
-	messages: ActionExample[];
+export type MessageHandlerAction = "RESPOND" | "IGNORE" | "STOP";
+
+export interface MessageHandlerPlan {
+	contexts: AgentContext[];
+	reply?: string;
+	/**
+	 * When true, Stage 1 marks this turn as requiring a tool call. The router
+	 * upgrades empty / simple-only plans to planning against `general` and the
+	 * planner loop will retry if the planner returns terminal output before any
+	 * non-terminal tool has executed.
+	 */
+	requiresTool?: boolean;
+	/** Legacy flag (pre-`contexts: ["simple"]`); honored as a back-compat hint. */
+	simple?: boolean;
+	contextSlices?: string[];
+	candidateActions?: string[];
+	parentActionHints?: string[];
+	[key: string]: JsonValue | undefined;
+}
+
+export interface MessageHandlerExtractedRelationship {
+	subject: string;
+	predicate: string;
+	object: string;
+}
+
+export interface MessageHandlerExtract {
+	facts?: string[];
+	relationships?: MessageHandlerExtractedRelationship[];
+	/**
+	 * Entities the inbound message is directed at — entity UUIDs or
+	 * participant names that the post-parse pipeline resolves to UUIDs.
+	 * Empty / omitted means "unknown / not directed at anyone in particular".
+	 * Drives the "addressed" relationship edge from speaker → target.
+	 */
+	addressedTo?: string[];
+}
+
+export interface MessageHandlerResult {
+	processMessage: MessageHandlerAction;
+	plan: MessageHandlerPlan;
+	thought: string;
+	extract?: MessageHandlerExtract;
+}
+
+export type EvaluationDecision = "FINISH" | "NEXT_RECOMMENDED" | "CONTINUE";
+
+export interface EvaluationResult {
+	success: boolean;
+	decision: EvaluationDecision;
+	thought: string;
+	messageToUser?: string;
+	copyToClipboard?: {
+		title: string;
+		content: string;
+		tags?: string[];
+	};
+	recommendedToolCallId?: string;
 }
 
 /**
@@ -149,12 +198,70 @@ export type Handler = (
 
 /**
  * Validator function type for actions/evaluators
+ *
+ * `options` mirrors {@link Handler}: runtimes may omit it; actions that read
+ * structured parameters should treat it as optional.
  */
 export type Validator = (
 	runtime: IAgentRuntime,
 	message: Memory,
 	state?: State,
+	options?: HandlerOptions | Record<string, JsonValue | undefined>,
 ) => Promise<boolean>;
+
+/**
+ * When an action should fire.
+ *
+ * Three trigger scopes (ALWAYS / CONTEXT / MESSAGE) × three lifecycle phases
+ * (BEFORE / DURING / AFTER) plus the default planner mode. All non-PLANNER
+ * modes are hooks; the runtime fires them at fixed positions in the message
+ * pipeline.
+ *
+ * - ALWAYS_*: every message, regardless of routing decision.
+ * - CONTEXT_*: only when one of the action's `contexts` was selected by Stage 1.
+ * - MESSAGE_*: hooks specifically on the messageHandler model call.
+ * - PLANNER (default): planner picks based on user intent.
+ *
+ * `*_DURING` modes are non-blocking (parallel with the corresponding pipeline
+ * step). All other hook modes are blocking.
+ *
+ * Cache contract: any hook that wants to influence the model prompt MUST use
+ * the v5 staged-prefix renderer so Cerebras-style prompt-cache hits stay
+ * intact across iterations.
+ */
+export const ActionMode = {
+	PLANNER: "PLANNER",
+	ALWAYS_BEFORE: "ALWAYS_BEFORE",
+	ALWAYS_DURING: "ALWAYS_DURING",
+	ALWAYS_AFTER: "ALWAYS_AFTER",
+	CONTEXT_BEFORE: "CONTEXT_BEFORE",
+	CONTEXT_DURING: "CONTEXT_DURING",
+	CONTEXT_AFTER: "CONTEXT_AFTER",
+	RESPONSE_HANDLER_BEFORE: "RESPONSE_HANDLER_BEFORE",
+	RESPONSE_HANDLER_DURING: "RESPONSE_HANDLER_DURING",
+	RESPONSE_HANDLER_AFTER: "RESPONSE_HANDLER_AFTER",
+} as const;
+export type ActionMode = (typeof ActionMode)[keyof typeof ActionMode];
+
+/** Hook modes that run in parallel with the corresponding pipeline step. */
+export const NON_BLOCKING_MODES = new Set<ActionMode>([
+	ActionMode.ALWAYS_DURING,
+	ActionMode.CONTEXT_DURING,
+	ActionMode.RESPONSE_HANDLER_DURING,
+]);
+
+/** All non-PLANNER hook modes, in canonical pipeline order. */
+export const HOOK_MODES: readonly ActionMode[] = [
+	ActionMode.ALWAYS_BEFORE,
+	ActionMode.RESPONSE_HANDLER_BEFORE,
+	ActionMode.RESPONSE_HANDLER_DURING,
+	ActionMode.RESPONSE_HANDLER_AFTER,
+	ActionMode.CONTEXT_BEFORE,
+	ActionMode.CONTEXT_DURING,
+	ActionMode.CONTEXT_AFTER,
+	ActionMode.ALWAYS_DURING,
+	ActionMode.ALWAYS_AFTER,
+];
 
 /**
  * Represents an action the agent can perform
@@ -190,8 +297,20 @@ export interface Action {
 	tags?: string[];
 
 	/**
-	 * When true, the message service should stop after executing this action
-	 * instead of running a post-action continuation LLM turn.
+	 * One-line routing hint surfaced to the planner. Replaces hand-written
+	 * domain-routing prose in the v5 planner template. Format:
+	 *   "<TRIGGER> -> <action> [+ secondary contexts]; <do/don't note>"
+	 * Examples:
+	 *   - BOOK_TRAVEL: "real flight/hotel/trip booking -> BOOK_TRAVEL; no browse-first or web-search-first"
+	 *   - VOICE_CALL:  "explicit call/phone/dial a person/business -> VOICE_CALL first; calendar/email secondary"
+	 * Surfaced into the planner prompt via {{actionRoutingHints}} so each
+	 * action carries its own routing rule alongside its description.
+	 */
+	routingHint?: string;
+
+	/**
+	 * When true, the message service treats this action as owning the turn
+	 * instead of adding extra planner follow-up text after execution.
 	 *
 	 * Use this for actions that already emit a complete user-facing reply or
 	 * that launch asynchronous background work whose progress will continue
@@ -240,38 +359,53 @@ export interface Action {
 	 * "wallet" and "automation").
 	 */
 	contexts?: AgentContext[];
-}
 
-/**
- * Evaluator for assessing agent responses
- */
-export interface Evaluator {
-	/** Whether to always run */
-	alwaysRun?: boolean;
+	/** Declarative context gate for v5 native tool planning. */
+	contextGate?: ContextGate;
 
-	/** Detailed description */
-	description: string;
+	/** Whether prompt/tool metadata for this action is stable enough to cache. */
+	cacheStable?: boolean;
 
-	/** Compressed description for prompt-optimized evaluator selection */
-	descriptionCompressed?: string;
+	/** Cache partition hint for stable action metadata. */
+	cacheScope?: CacheScope;
 
-	/** Alias accepted for plugin compatibility; canonical output uses descriptionCompressed */
-	compressedDescription?: string;
+	/** Optional role gate checked by planners before exposing this action. */
+	roleGate?: RoleGate;
 
-	/** Similar evaluator descriptions */
-	similes?: string[];
+	/**
+	 * Optional connector account policy checked by planner tool exposure and
+	 * again immediately before handler execution. This must not be implemented
+	 * only inside validate(); validate is advisory and can be bypassed by native
+	 * tool calls.
+	 */
+	connectorAccountPolicy?:
+		| import("../connectors/account-manager").ConnectorAccountPolicy
+		| readonly import("../connectors/account-manager").ConnectorAccountPolicy[];
 
-	/** Example evaluations */
-	examples: EvaluationExample[];
+	/** Compatibility alias for early adopters of connectorAccountPolicy. */
+	accountPolicy?:
+		| import("../connectors/account-manager").ConnectorAccountPolicy
+		| readonly import("../connectors/account-manager").ConnectorAccountPolicy[];
 
-	/** Handler function */
-	handler: Handler;
+	/** Child tool/action names or inline definitions exposed beneath this action. */
+	subActions?: Array<string | Action>;
 
-	/** Evaluator name */
-	name: string;
+	/** Whether this action should delegate selection to a sub-planner. */
+	subPlanner?: boolean | { name?: string; description?: string };
 
-	/** Validation function */
-	validate: Validator;
+	/**
+	 * When this action should fire. Defaults to {@link ActionMode.PLANNER}.
+	 * Non-PLANNER values turn the action into a hook that fires at a fixed
+	 * pipeline position; see {@link ActionMode} for the full taxonomy.
+	 */
+	mode?: ActionMode;
+
+	/**
+	 * Ordering hint for hook actions sharing the same mode. Lower priority
+	 * runs first. Default: 100. Ignored for `*_DURING` modes (parallel) and
+	 * for `PLANNER`.
+	 */
+	modePriority?: number;
 }
 
 /**
@@ -368,6 +502,24 @@ export interface Provider {
 	 */
 	contexts?: AgentContext[];
 
+	/** Declarative context gate for v5 provider selection. */
+	contextGate?: ContextGate;
+
+	/** Whether this provider's prompt contribution is stable enough to cache. */
+	cacheStable?: boolean;
+
+	/** Cache partition hint for stable provider content. */
+	cacheScope?: CacheScope;
+
+	/** Optional role gate checked before including this provider. */
+	roleGate?: RoleGate;
+
+	/** Child provider/action names exposed beneath this provider, if any. */
+	subActions?: string[];
+
+	/** Whether this provider should be composed through a sub-planner. */
+	subPlanner?: boolean | { name?: string; description?: string };
+
 	/**
 	 * Additional providers that should run alongside this provider when it is
 	 * selected by the planner. Use this for provider composition, not semantic
@@ -386,10 +538,9 @@ export interface Provider {
 /**
  * Error codes an action handler may set on `ActionResult.values.error` or
  * `ActionResult.data.error` to signal that the next step requires a fresh
- * confirmation message from the user. The post-action continuation loop in
- * `MessagingService` checks for these (alongside the canonical
- * `requiresConfirmation: true` flag) and breaks the chain so the agent does
- * not spin re-running the same step until `MAX_MULTISTEP_ITERATIONS`.
+ * confirmation message from the user. Native planner execution checks for
+ * these (alongside the canonical `requiresConfirmation: true` flag) and
+ * pauses the chain so the agent does not spin re-running the same step.
  *
  * Keep this list aligned with `ACTION_CONFIRMATION_STATUS_VALUES` below —
  * both the type and the runtime set are exported so callers (actions,
@@ -493,7 +644,7 @@ export interface ActionContext {
  * @param chunk - Delta text since the last emission for this field.
  * @param messageId - Streaming session / message identifier (UUID or opaque string).
  * @param accumulated - Full extracted text so far for the streaming field.
- *   Present when the emission originates from a TOON field extractor.
+ *   Present when the emission originates from a structured field extractor.
  *   Undefined for raw-token streams (useModel without an extractor) where no
  *   field-level accumulation exists.
  */
@@ -505,7 +656,7 @@ export type StreamChunkCallback = (
 
 /**
  * Options passed to action handlers during execution
- * Provides context about the current execution and multi-step plans
+ * Provides context about the current execution and queued action plans
  */
 export interface HandlerOptions {
 	/** Context with previous action results and utilities */

@@ -1,4 +1,4 @@
-"""Build /home/shaw/milady/training/PROMPT_COVERAGE.md.
+"""Build PROMPT_COVERAGE.md for the training package.
 
 Samples 1000 records from data/final/train.jsonl (reservoir sample) and reports,
 for every entry in registry-v2.json and every action in actions-catalog.json,
@@ -21,10 +21,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-TRAIN_JSONL = Path("/home/shaw/milady/training/data/final/train.jsonl")
-REGISTRY_V2 = Path("/home/shaw/milady/training/data/prompts/registry-v2.json")
-ACTIONS_CATALOG = Path("/home/shaw/milady/training/data/prompts/actions-catalog.json")
-OUT_PATH = Path("/home/shaw/milady/training/PROMPT_COVERAGE.md")
+_TRAINING_ROOT = Path(__file__).parent.parent.resolve()
+TRAIN_JSONL = _TRAINING_ROOT / "data" / "final" / "train.jsonl"
+REGISTRY_V2 = _TRAINING_ROOT / "data" / "prompts" / "registry-v2.json"
+ACTIONS_CATALOG = _TRAINING_ROOT / "data" / "prompts" / "actions-catalog.json"
+OUT_PATH = _TRAINING_ROOT / "PROMPT_COVERAGE.md"
 
 SAMPLE_SIZE = 1000
 

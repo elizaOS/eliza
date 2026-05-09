@@ -25,7 +25,7 @@ describe("formatSkillsForPrompt", () => {
     assert.strictEqual(formatSkillsForPrompt(skills), "");
   });
 
-  it("formats visible skills as TOON-style text", () => {
+  it("formats visible skills as structured text", () => {
     const skills: Skill[] = [
       {
         name: "test-skill",

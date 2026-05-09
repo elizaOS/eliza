@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { ChannelType, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { createUniqueUuid, logger, stringToUuid } from "@elizaos/core";
-import { blockWebsitesAction } from "../../actions/owner-website-block.js";
+import { websiteBlockAction } from "../../actions/website-block.js";
 import { executeRawSql, sqlQuote, sqlText } from "../../lifeops/sql.js";
 import {
   BLOCK_RULES_TABLE,
@@ -194,18 +194,17 @@ export class BlockRuleWriter {
     const message = makeSyntheticMessage(this.runtime, input.websites);
     await ensureSyntheticMessageContext(this.runtime, message);
     const durationMinutes = computeHandlerOptionsForCreate(input);
-    const result = await blockWebsitesAction.handler(
-      this.runtime,
-      message,
-      undefined,
-      {
-        parameters: {
-          websites: input.websites,
-          durationMinutes,
-          confirmed: true,
-        },
-      },
-    );
+    const handler = websiteBlockAction.handler;
+    const result = handler
+      ? await handler(this.runtime, message, undefined, {
+          parameters: {
+            subaction: "block",
+            hostnames: input.websites,
+            durationMinutes,
+            confirmed: true,
+          },
+        })
+      : { success: false, text: "WEBSITE_BLOCK handler unavailable." };
 
     if (result?.success === false) {
       // The rule is the source of truth. Activation failures

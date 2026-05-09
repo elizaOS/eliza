@@ -5,6 +5,8 @@ import {
   WalletBackendNotConfiguredError,
 } from "../wallet/errors.js";
 
+const MAX_WALLET_TEXT_CHARS = 1000;
+
 /**
  * Injects live addresses into planner context. Always-on (200-token budget in spec).
  */
@@ -14,6 +16,11 @@ export const unifiedWalletProvider: Provider = {
     "Unified non-custodial wallet — EVM + Solana addresses (@elizaos/plugin-wallet).",
   descriptionCompressed:
     "unifi non-custodial wallet EVM + Solana address (elizaos/plugin-wallet)",
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "OWNER" },
   position: -5,
   dynamic: true,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
@@ -35,8 +42,12 @@ export const unifiedWalletProvider: Provider = {
       const solLine = solana
         ? `- Solana: ${solana.toBase58()}`
         : "- Solana: (not configured)";
+      const text = `## Wallet\n${evmLine}\n${solLine}`.slice(
+        0,
+        MAX_WALLET_TEXT_CHARS,
+      );
       return {
-        text: `## Wallet\n${evmLine}\n${solLine}`,
+        text,
         values: {
           walletReady: evm !== null || solana !== null,
           evmAddress: evm ?? null,
@@ -54,7 +65,15 @@ export const unifiedWalletProvider: Provider = {
           values: { walletReady: false, walletError: e.name },
         };
       }
-      throw e;
+      return {
+        text: `## Wallet\nWallet backend error: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+        values: {
+          walletReady: false,
+          walletError: e instanceof Error ? e.name : "WalletBackendError",
+        },
+      };
     }
   },
 };

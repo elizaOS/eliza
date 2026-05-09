@@ -191,7 +191,7 @@ async function readPendingIntentRow(
 ): Promise<PendingIntentRow | null> {
   const selectSql = `
     SELECT id, created_at, metadata_json
-    FROM life_intents
+    FROM app_lifeops.life_intents
     WHERE agent_id = ${sqlText(runtime.agentId)}
       AND id = ${sqlText(intentId)}
       AND acknowledged_at IS NULL
@@ -221,7 +221,7 @@ async function suppressPendingLadderRungs(
   const currentRung = extractIntentLadderRung(currentIntent.metadata);
   const selectSql = `
     SELECT id, created_at, metadata_json
-    FROM life_intents
+    FROM app_lifeops.life_intents
     WHERE agent_id = ${sqlText(runtime.agentId)}
       AND acknowledged_at IS NULL
       AND id <> ${sqlText(currentIntent.id)}`;
@@ -252,7 +252,7 @@ async function suppressPendingLadderRungs(
   }
 
   const updateSql = `
-    UPDATE life_intents
+    UPDATE app_lifeops.life_intents
     SET acknowledged_at = ${sqlText(acknowledgedAt)},
         acknowledged_by = ${sqlText(deviceId)}
     WHERE agent_id = ${sqlText(runtime.agentId)}
@@ -286,7 +286,7 @@ export async function broadcastIntent(
     target === "specific" ? (input.targetDeviceId ?? null) : null;
 
   const insertSql = `
-    INSERT INTO life_intents (
+    INSERT INTO app_lifeops.life_intents (
       id, agent_id, kind, target, target_device_id,
       title, body, action_url, priority,
       created_at, expires_at, acknowledged_at, acknowledged_by, metadata_json
@@ -361,7 +361,7 @@ export async function receivePendingIntents(
     SELECT id, agent_id, kind, target, target_device_id,
            title, body, action_url, priority,
            created_at, expires_at, acknowledged_at, metadata_json
-    FROM life_intents
+    FROM app_lifeops.life_intents
     WHERE agent_id = ${sqlText(runtime.agentId)}
       AND acknowledged_at IS NULL
       AND (expires_at IS NULL OR expires_at > ${sqlText(nowIso)})
@@ -384,7 +384,7 @@ export async function acknowledgeIntent(
   const currentIntent = await readPendingIntentRow(runtime, intentId);
   const nowIso = new Date().toISOString();
   const updateSql = `
-    UPDATE life_intents
+    UPDATE app_lifeops.life_intents
     SET acknowledged_at = ${sqlText(nowIso)},
         acknowledged_by = ${sqlText(deviceId)}
     WHERE id = ${sqlText(intentId)}
@@ -402,7 +402,7 @@ export async function pruneExpiredIntents(
   const nowIso = new Date().toISOString();
 
   const countSql = `
-    SELECT COUNT(*) AS cnt FROM life_intents
+    SELECT COUNT(*) AS cnt FROM app_lifeops.life_intents
     WHERE agent_id = ${sqlText(runtime.agentId)}
       AND expires_at IS NOT NULL
       AND expires_at <= ${sqlText(nowIso)}`;
@@ -411,7 +411,7 @@ export async function pruneExpiredIntents(
   const pruned = Number(cntRaw) || 0;
 
   const deleteSql = `
-    DELETE FROM life_intents
+    DELETE FROM app_lifeops.life_intents
     WHERE agent_id = ${sqlText(runtime.agentId)}
       AND expires_at IS NOT NULL
       AND expires_at <= ${sqlText(nowIso)}`;
@@ -432,7 +432,7 @@ export async function escalateUnacknowledgedIntents(
     SELECT id, agent_id, kind, target, target_device_id,
            title, body, action_url, priority,
            created_at, expires_at, acknowledged_at, metadata_json
-    FROM life_intents
+    FROM app_lifeops.life_intents
     WHERE agent_id = ${sqlText(runtime.agentId)}
       AND target = 'desktop'
       AND acknowledged_at IS NULL

@@ -19,6 +19,7 @@ export interface CreateMemoryInput {
   agentId: string;
   type: string;
   content: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   unique?: boolean;
   worldId?: string;
 }
@@ -40,7 +41,7 @@ export interface SearchMemoriesOptions {
  */
 export class MemoriesRepository {
   // ============================================================================
-  // READ OPERATIONS (use read replica)
+  // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
   /**
@@ -298,7 +299,7 @@ export class MemoriesRepository {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (use NA primary)
+  // WRITE OPERATIONS (use primary)
   // ============================================================================
 
   /**
@@ -328,6 +329,7 @@ export class MemoriesRepository {
         agentId: input.agentId,
         type: input.type,
         content: input.content,
+        metadata: input.metadata ?? {},
         unique: input.unique ?? false,
         worldId: input.worldId,
         createdAt: new Date(),
@@ -349,6 +351,20 @@ export class MemoriesRepository {
       .returning({ id: memoryTable.id });
 
     return result.length > 0;
+  }
+
+  async deleteDocumentFragments(documentId: string): Promise<number> {
+    const result = await dbWrite
+      .delete(memoryTable)
+      .where(
+        and(
+          eq(memoryTable.type, "document_fragments"),
+          sql`${memoryTable.metadata}->>'documentId' = ${documentId}`,
+        ),
+      )
+      .returning({ id: memoryTable.id });
+
+    return result.length;
   }
 
   /**

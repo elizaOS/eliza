@@ -1,5 +1,4 @@
 import {
-  encodeToonValue,
   type IAgentRuntime,
   type Memory,
   type Provider,
@@ -79,6 +78,11 @@ const KNOWN_AREAS: KnownArea[] = [
   },
 ];
 
+const MAX_AREA_FEATURES = 8;
+const MAX_AREA_NPCS = 8;
+const MAX_ADJACENT_AREAS = 6;
+const MAX_TRAVEL_COORDS = 6;
+
 function identifyArea(x: number, z: number): KnownArea | null {
   return (
     KNOWN_AREAS.find(
@@ -91,53 +95,71 @@ function identifyArea(x: number, z: number): KnownArea | null {
 export const mapAreaProvider: Provider = {
   name: "RS_SDK_MAP_AREA",
   description:
-    "TOON current 2004scape map area with features, NPCs, and travel destinations.",
-  descriptionCompressed: "TOON current area, features, NPCs, destinations.",
+    "JSON current 2004scape map area with features, NPCs, and travel destinations.",
+  descriptionCompressed: "JSON current area, features, NPCs, destinations.",
+  contexts: ["game", "automation", "world", "state"],
+  contextGate: { anyOf: ["game", "automation", "world", "state"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "ADMIN" },
+  cacheStable: false,
 
   async get(
     runtime: IAgentRuntime,
     _message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    const service = runtime.getService("rs_2004scape") as unknown as {
-      getBotState(): BotState | null;
-    } | null;
-    const state = service?.getBotState?.();
-    if (!state?.connected || !state.inGame || !state.player) {
+    try {
+      const service = runtime.getService("rs_2004scape") as unknown as {
+        getBotState(): BotState | null;
+      } | null;
+      const state = service?.getBotState?.();
+      if (!state?.connected || !state.inGame || !state.player) {
+        return {
+          text: JSON.stringify({
+            rs_2004_map_area: { status: "not_in_game" },
+          }, null, 2),
+        };
+      }
+
+      const { worldX: x, worldZ: z } = state.player;
+      const area = identifyArea(x, z);
+
       return {
-        text: encodeToonValue({
-          rs_2004_map_area: { status: "not_in_game" },
-        }),
+        text: JSON.stringify({
+          rs_2004_map_area: area
+            ? {
+                status: "known",
+                name: area.name,
+                position: { x, z },
+                features: area.features.slice(0, MAX_AREA_FEATURES),
+                notableNpcs: area.npcs.slice(0, MAX_AREA_NPCS),
+                adjacentAreas: area.adjacentAreas.slice(0, MAX_ADJACENT_AREAS),
+                travelCoords: area.travelCoords
+                  .slice(0, MAX_TRAVEL_COORDS)
+                  .map((coord) => ({
+                    ...coord,
+                    distance: Math.max(
+                      Math.abs(coord.x - x),
+                      Math.abs(coord.z - z),
+                    ),
+                  })),
+              }
+            : {
+                status: "unknown",
+                position: { x, z },
+                instruction: "Explore cautiously and update nearby context.",
+              },
+        }, null, 2),
+      };
+    } catch (error) {
+      return {
+        text: JSON.stringify({
+          rs_2004_map_area: {
+            status: "error",
+            reason: error instanceof Error ? error.message : String(error),
+          },
+        }, null, 2),
       };
     }
-
-    const { worldX: x, worldZ: z } = state.player;
-    const area = identifyArea(x, z);
-
-    return {
-      text: encodeToonValue({
-        rs_2004_map_area: area
-          ? {
-              status: "known",
-              name: area.name,
-              position: { x, z },
-              features: area.features,
-              notableNpcs: area.npcs,
-              adjacentAreas: area.adjacentAreas,
-              travelCoords: area.travelCoords.map((coord) => ({
-                ...coord,
-                distance: Math.max(
-                  Math.abs(coord.x - x),
-                  Math.abs(coord.z - z),
-                ),
-              })),
-            }
-          : {
-              status: "unknown",
-              position: { x, z },
-              instruction: "Explore cautiously and update nearby context.",
-            },
-      }),
-    };
   },
 };

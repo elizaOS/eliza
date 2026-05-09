@@ -1,8 +1,21 @@
-import { createUniqueUuid, type IAgentRuntime, ModelType, type UUID } from "@elizaos/core";
+import {
+  ChannelType,
+  type Content,
+  createUniqueUuid,
+  type IAgentRuntime,
+  type Memory,
+  ModelType,
+  type UUID,
+} from "@elizaos/core";
 import type { FarcasterClient } from "../client/FarcasterClient";
 import { type Cast, FARCASTER_SOURCE } from "../types";
 import { castUuid, neynarCastToCast } from "../utils";
-import { getFarcasterFid } from "../utils/config";
+import {
+  DEFAULT_FARCASTER_ACCOUNT_ID,
+  getFarcasterFid,
+  normalizeFarcasterAccountId,
+  readFarcasterAccountId,
+} from "../utils/config";
 
 interface FarcasterCast {
   id: string;
@@ -15,6 +28,33 @@ interface FarcasterCast {
   inReplyTo?: string;
   media?: Array<Record<string, string | number | boolean>>;
   metadata?: Record<string, string | number | boolean>;
+}
+
+interface PostConnectorQueryContext {
+  runtime: IAgentRuntime;
+  roomId?: UUID;
+  source?: string;
+  accountId?: string;
+  target?: { entityId?: UUID | string; channelId?: string; threadId?: string };
+  metadata?: Record<string, unknown>;
+}
+
+function clampLimit(value: number | undefined, fallback: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(Math.max(1, Math.floor(value as number)), max);
+}
+
+function readContentString(content: Content, keys: string[]): string | undefined {
+  const record = content as Content & Record<string, unknown>;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
 }
 
 export interface CastServiceInterface {
@@ -39,8 +79,13 @@ export class FarcasterCastService implements CastServiceInterface {
 
   constructor(
     private client: FarcasterClient,
-    private runtime: IAgentRuntime
+    private runtime: IAgentRuntime,
+    private accountId: string = DEFAULT_FARCASTER_ACCOUNT_ID
   ) {}
+
+  getAccountId(): string {
+    return normalizeFarcasterAccountId(this.accountId);
+  }
 
   async getCasts(params: {
     agentId: UUID;
@@ -48,7 +93,7 @@ export class FarcasterCastService implements CastServiceInterface {
     cursor?: string;
   }): Promise<FarcasterCast[]> {
     try {
-      const fid = getFarcasterFid(this.runtime);
+      const fid = getFarcasterFid(this.runtime, this.getAccountId());
       if (!fid) {
         this.runtime.logger.error("FARCASTER_FID is not configured");
         return [];
@@ -107,6 +152,7 @@ export class FarcasterCastService implements CastServiceInterface {
         inReplyTo: params.replyTo?.hash,
         media: [],
         metadata: {
+          accountId: this.getAccountId(),
           castHash: cast.hash,
           authorFid: cast.authorFid,
           source: FARCASTER_SOURCE,
@@ -121,6 +167,93 @@ export class FarcasterCastService implements CastServiceInterface {
       this.runtime.logger.error(`Failed to create cast: ${JSON.stringify({ params, error })}`);
       throw error;
     }
+  }
+
+  async handleSendPost(runtime: IAgentRuntime, content: Content): Promise<Memory> {
+    const requestedAccountId = normalizeFarcasterAccountId(
+      readFarcasterAccountId(content) ?? this.getAccountId()
+    );
+    if (requestedAccountId !== this.getAccountId()) {
+      throw new Error(
+        `Farcaster account '${requestedAccountId}' is not available in this service instance`
+      );
+    }
+
+    const text = typeof content.text === "string" ? content.text.trim() : "";
+    if (!text) {
+      throw new Error("Farcaster post connector requires non-empty text content.");
+    }
+
+    const parentHash = readContentString(content, ["parentHash", "replyTo", "replyToHash"]);
+    const fid = getFarcasterFid(this.runtime, this.getAccountId());
+    const cast = await this.createCast({
+      agentId: runtime.agentId,
+      roomId: createUniqueUuid(runtime, `farcaster:feed:${fid ?? runtime.agentId}`),
+      text,
+      ...(parentHash && fid ? { replyTo: { hash: parentHash, fid } } : {}),
+    });
+
+    return this.farcasterCastToMemory(runtime, cast);
+  }
+
+  async fetchFeed(
+    context: PostConnectorQueryContext,
+    params: {
+      feed?: string;
+      target?: PostConnectorQueryContext["target"];
+      limit?: number;
+      cursor?: string;
+    } = {}
+  ): Promise<Memory[]> {
+    const requestedAccountId = normalizeFarcasterAccountId(
+      context.accountId ?? context.metadata?.accountId ?? this.getAccountId()
+    );
+    if (requestedAccountId !== this.getAccountId()) {
+      throw new Error(
+        `Farcaster account '${requestedAccountId}' is not available in this service instance`
+      );
+    }
+
+    const casts = await this.getCasts({
+      agentId: context.runtime.agentId,
+      limit: clampLimit(params.limit, 25, 100),
+      cursor: params.cursor,
+    });
+    return casts.map((cast) => this.farcasterCastToMemory(context.runtime, cast));
+  }
+
+  async searchPosts(
+    context: PostConnectorQueryContext,
+    params: { query: string; limit?: number; cursor?: string }
+  ): Promise<Memory[]> {
+    const requestedAccountId = normalizeFarcasterAccountId(
+      context.accountId ?? context.metadata?.accountId ?? this.getAccountId()
+    );
+    if (requestedAccountId !== this.getAccountId()) {
+      throw new Error(
+        `Farcaster account '${requestedAccountId}' is not available in this service instance`
+      );
+    }
+
+    const query = params.query.trim().toLowerCase();
+    if (!query) {
+      return [];
+    }
+
+    const limit = clampLimit(params.limit, 25, 100);
+    const casts = await this.getCasts({
+      agentId: context.runtime.agentId,
+      limit: 100,
+      cursor: params.cursor,
+    });
+    return casts
+      .filter((cast) => {
+        const text = cast.text.toLowerCase();
+        const username = cast.username.toLowerCase();
+        return text.includes(query) || username.includes(query);
+      })
+      .slice(0, limit)
+      .map((cast) => this.farcasterCastToMemory(context.runtime, cast));
   }
 
   async deleteCast(params: { agentId: UUID; castHash: string }): Promise<void> {
@@ -203,7 +336,7 @@ export class FarcasterCastService implements CastServiceInterface {
 
   async getMentions(params: { agentId: UUID; limit?: number }): Promise<FarcasterCast[]> {
     try {
-      const fid = getFarcasterFid(this.runtime);
+      const fid = getFarcasterFid(this.runtime, this.getAccountId());
       if (!fid) {
         this.runtime.logger.error("FARCASTER_FID is not configured");
         return [];
@@ -275,6 +408,10 @@ export class FarcasterCastService implements CastServiceInterface {
           castId: cast.id,
           author: cast.username,
           timestamp: cast.timestamp,
+          accountId: this.getAccountId(),
+        },
+        metadata: {
+          accountId: this.getAccountId(),
         },
         roomId,
         createdAt: Date.now(),
@@ -285,6 +422,60 @@ export class FarcasterCastService implements CastServiceInterface {
     } catch (error) {
       this.runtime.logger.error(`Failed to store cast in memory: ${JSON.stringify({ error })}`);
     }
+  }
+
+  private farcasterCastToMemory(runtime: IAgentRuntime, cast: FarcasterCast): Memory {
+    const authorId = cast.userId || "unknown";
+    const entityId =
+      authorId === runtime.agentId
+        ? runtime.agentId
+        : createUniqueUuid(runtime, `farcaster:user:${authorId}`);
+    const roomId = cast.roomId || createUniqueUuid(runtime, `farcaster:feed:${authorId}`);
+    const castHash = typeof cast.metadata?.castHash === "string" ? cast.metadata.castHash : cast.id;
+
+    return {
+      id: createUniqueUuid(runtime, `farcaster:cast:${castHash}`),
+      agentId: runtime.agentId,
+      entityId,
+      roomId,
+      createdAt: cast.timestamp || Date.now(),
+      content: {
+        text: cast.text,
+        source: FARCASTER_SOURCE,
+        channelType: ChannelType.FEED,
+        ...(cast.inReplyTo
+          ? { inReplyTo: createUniqueUuid(runtime, `farcaster:cast:${cast.inReplyTo}`) }
+          : {}),
+      },
+      metadata: {
+        type: "message",
+        source: FARCASTER_SOURCE,
+        accountId: this.getAccountId(),
+        provider: FARCASTER_SOURCE,
+        timestamp: cast.timestamp,
+        fromBot: entityId === runtime.agentId,
+        messageIdFull: castHash,
+        chatType: ChannelType.FEED,
+        sender: {
+          id: authorId,
+          username: cast.username,
+        },
+        farcaster: {
+          accountId: this.getAccountId(),
+          castId: cast.id,
+          castHash,
+          authorFid: cast.metadata?.authorFid,
+          username: cast.username,
+          inReplyTo: cast.inReplyTo,
+          metrics: {
+            recasts: cast.metadata?.recasts,
+            replies: cast.metadata?.replies,
+            likes: cast.metadata?.likes,
+          },
+          ...(cast.metadata ?? {}),
+        },
+      } as unknown as Memory["metadata"],
+    };
   }
 
   private castToFarcasterCast(cast: Cast, agentId: UUID): FarcasterCast {
@@ -301,6 +492,7 @@ export class FarcasterCastService implements CastServiceInterface {
         castHash: cast.hash,
         authorFid: cast.authorFid,
         source: FARCASTER_SOURCE,
+        accountId: this.getAccountId(),
         ...(cast.threadId ? { threadId: cast.threadId } : {}),
         ...(cast.stats
           ? {

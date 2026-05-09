@@ -9,7 +9,6 @@ import type {
 	Relationship,
 	UUID,
 } from "../../../types/index.ts";
-import { encodeToonValue } from "../../../utils/toon";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("RELATIONSHIPS");
@@ -83,7 +82,7 @@ async function formatRelationships(
 		for (const [key, value] of Object.entries(metadata)) {
 			if (value && typeof value === "object") {
 				try {
-					lines.push(encodeToonValue({ [key]: value }).trim());
+					lines.push(JSON.stringify({ [key]: value }));
 				} catch {
 					lines.push(`${key}: ${String(value)}`);
 				}
@@ -131,6 +130,12 @@ const relationshipsProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	dynamic: spec.dynamic ?? true,
+	contexts: ["contacts", "memory"],
+	contextGate: { anyOf: ["contacts", "memory"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
 	get: async (runtime: IAgentRuntime, message: Memory) => {
 		const relatedEntityIds = await getRelatedEntityIds(
 			runtime,

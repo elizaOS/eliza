@@ -29,19 +29,17 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AccountCredentialRecord } from "@elizaos/agent/auth/account-storage";
-import {
-  getAccessToken as getAccountAccessToken,
-  listProviderAccounts,
-} from "@elizaos/agent/auth/credentials";
+import type { AccountCredentialRecord } from "@elizaos/agent";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
   DIRECT_ACCOUNT_PROVIDER_ENV,
   DIRECT_ACCOUNT_PROVIDER_IDS,
   type DirectAccountProvider,
+  getAccessToken as getAccountAccessToken,
   isSubscriptionProvider,
+  listProviderAccounts,
   type SubscriptionProvider,
-} from "@elizaos/agent/auth/types";
+} from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import type {
   LinkedAccountConfig,
@@ -242,8 +240,11 @@ export class AccountPool {
     return all.filter((a) => a.providerId === providerId);
   }
 
-  get(accountId: string): LinkedAccountConfig | null {
-    return findAccountById(this.deps.readAccounts(), accountId);
+  get(
+    accountId: string,
+    providerId?: PoolProviderId,
+  ): LinkedAccountConfig | null {
+    return findAccountById(this.deps.readAccounts(), accountId, providerId);
   }
 
   async upsert(account: LinkedAccountConfig): Promise<void> {
@@ -269,8 +270,13 @@ export class AccountPool {
       errorCode?: string;
       model?: string;
     },
+    opts?: { providerId?: PoolProviderId },
   ): Promise<void> {
-    const account = findAccountById(this.deps.readAccounts(), accountId);
+    const account = findAccountById(
+      this.deps.readAccounts(),
+      accountId,
+      opts?.providerId,
+    );
     if (!account) return;
     recordUsageEntry(account.providerId, account.id, result);
     const next: LinkedAccountConfig = {
@@ -283,9 +289,17 @@ export class AccountPool {
   async refreshUsage(
     accountId: string,
     accessToken: string,
-    opts?: { codexAccountId?: string; fetch?: typeof fetch },
+    opts?: {
+      codexAccountId?: string;
+      fetch?: typeof fetch;
+      providerId?: PoolProviderId;
+    },
   ): Promise<void> {
-    const account = findAccountById(this.deps.readAccounts(), accountId);
+    const account = findAccountById(
+      this.deps.readAccounts(),
+      accountId,
+      opts?.providerId,
+    );
     if (!account) return;
 
     let usage: LinkedAccountUsage;
@@ -315,8 +329,13 @@ export class AccountPool {
     accountId: string,
     untilMs: number,
     detail?: string,
+    opts?: { providerId?: PoolProviderId },
   ): Promise<void> {
-    const account = findAccountById(this.deps.readAccounts(), accountId);
+    const account = findAccountById(
+      this.deps.readAccounts(),
+      accountId,
+      opts?.providerId,
+    );
     if (!account) return;
     const healthDetail: LinkedAccountHealthDetail = {
       until:
@@ -333,8 +352,16 @@ export class AccountPool {
     });
   }
 
-  async markNeedsReauth(accountId: string, detail?: string): Promise<void> {
-    const account = findAccountById(this.deps.readAccounts(), accountId);
+  async markNeedsReauth(
+    accountId: string,
+    detail?: string,
+    opts?: { providerId?: PoolProviderId },
+  ): Promise<void> {
+    const account = findAccountById(
+      this.deps.readAccounts(),
+      accountId,
+      opts?.providerId,
+    );
     if (!account) return;
     await this.deps.writeAccount({
       ...account,
@@ -346,8 +373,16 @@ export class AccountPool {
     });
   }
 
-  async markInvalid(accountId: string, detail?: string): Promise<void> {
-    const account = findAccountById(this.deps.readAccounts(), accountId);
+  async markInvalid(
+    accountId: string,
+    detail?: string,
+    opts?: { providerId?: PoolProviderId },
+  ): Promise<void> {
+    const account = findAccountById(
+      this.deps.readAccounts(),
+      accountId,
+      opts?.providerId,
+    );
     if (!account) return;
     await this.deps.writeAccount({
       ...account,
@@ -359,8 +394,15 @@ export class AccountPool {
     });
   }
 
-  async markHealthy(accountId: string): Promise<void> {
-    const account = findAccountById(this.deps.readAccounts(), accountId);
+  async markHealthy(
+    accountId: string,
+    opts?: { providerId?: PoolProviderId },
+  ): Promise<void> {
+    const account = findAccountById(
+      this.deps.readAccounts(),
+      accountId,
+      opts?.providerId,
+    );
     if (!account) return;
     if (account.health === "ok") return;
     await this.deps.writeAccount({
@@ -399,7 +441,18 @@ function poolRecordKey(providerId: PoolProviderId, accountId: string): string {
 function findAccountById(
   all: Record<string, LinkedAccountConfig>,
   accountId: string,
+  providerId?: PoolProviderId,
 ): LinkedAccountConfig | null {
+  if (providerId) {
+    const scoped = all[poolRecordKey(providerId, accountId)];
+    if (scoped) return scoped;
+    return (
+      Object.values(all).find(
+        (account) =>
+          account.id === accountId && account.providerId === providerId,
+      ) ?? null
+    );
+  }
   const direct = all[accountId];
   if (direct) return direct;
   return Object.values(all).find((account) => account.id === accountId) ?? null;
@@ -569,15 +622,15 @@ async function deleteAccountMeta(
 }
 
 /**
- * Symbol-keyed shim contract consumed by plugin-anthropic's
+ * Symbol-keyed bridge contract consumed by plugin-anthropic's
  * `credential-store.ts`. Kept narrow so the plugin doesn't have to import
  * the full pool surface (or the rest of `@elizaos/app-core`).
  */
-const ANTHROPIC_POOL_SHIM_SYMBOL: unique symbol = Symbol.for(
+const ANTHROPIC_POOL_BRIDGE_SYMBOL: unique symbol = Symbol.for(
   "eliza.account-pool.anthropic.v1",
 );
 
-interface AnthropicPoolShim {
+interface AnthropicPoolBridge {
   selectAnthropicSubscription(opts?: {
     sessionKey?: string;
     exclude?: string[];
@@ -595,34 +648,15 @@ interface AnthropicPoolShim {
 }
 
 /**
- * Shim used by plugin-agent-orchestrator. The orchestrator can't depend on
- * `@elizaos/app-core`, so it discovers the pool via this symbol on
- * `globalThis`. Returns the picked account + access token in one shot
- * because the orchestrator only needs to inject the env vars and forget.
- */
-const ORCHESTRATOR_POOL_SHIM_SYMBOL: unique symbol = Symbol.for(
-  "eliza.account-pool.orchestrator.v1",
-);
-
-interface OrchestratorPoolShim {
-  pickAnthropicTokenForSpawn(opts: {
-    sessionKey: string;
-  }): Promise<{ accessToken: string; accountId: string } | null>;
-  markRateLimited(accountId: string, untilMs: number, detail?: string): void;
-  markInvalid(accountId: string, detail?: string): void;
-  markNeedsReauth(accountId: string, detail?: string): void;
-}
-
-/**
- * Shim used by `applySubscriptionCredentials` in `@elizaos/agent` to pick
+ * Bridge used by `applySubscriptionCredentials` in `@elizaos/agent` to pick
  * the active Codex account when applying `OPENAI_API_KEY`. Lives behind
  * a symbol so the agent package doesn't need to depend on app-core.
  */
-const SUBSCRIPTION_SELECTOR_SHIM_SYMBOL: unique symbol = Symbol.for(
+const SUBSCRIPTION_SELECTOR_BRIDGE_SYMBOL: unique symbol = Symbol.for(
   "eliza.account-pool.subscription-selector.v1",
 );
 
-interface SubscriptionSelectorShim {
+interface SubscriptionSelectorBridge {
   /** Pick an enabled, healthy account; returns its id or null. */
   pickAccountId(providerId: SubscriptionProvider): Promise<string | null>;
 }
@@ -724,9 +758,8 @@ export function getDefaultAccountPool(): AccountPool {
       writeAccount: persistAccount,
       deleteAccount: deleteAccountMeta,
     });
-    installAnthropicShim(cachedDefaultPool);
-    installOrchestratorShim(cachedDefaultPool);
-    installSubscriptionSelectorShim(cachedDefaultPool);
+    installAnthropicBridge(cachedDefaultPool);
+    installSubscriptionSelectorBridge(cachedDefaultPool);
   }
   return cachedDefaultPool;
 }
@@ -823,7 +856,9 @@ export async function sweepAccountPoolKeepAlive(): Promise<AccountPoolKeepAliveR
       const token = await getAccountAccessToken(providerId, record.id);
       if (!token) {
         result.failed += 1;
-        await pool.markNeedsReauth(record.id, "No valid credential available");
+        await pool.markNeedsReauth(record.id, "No valid credential available", {
+          providerId,
+        });
         continue;
       }
 
@@ -833,6 +868,7 @@ export async function sweepAccountPoolKeepAlive(): Promise<AccountPoolKeepAliveR
 
       try {
         await pool.refreshUsage(record.id, token, {
+          providerId,
           ...(record.organizationId
             ? { codexAccountId: record.organizationId }
             : {}),
@@ -842,15 +878,16 @@ export async function sweepAccountPoolKeepAlive(): Promise<AccountPoolKeepAliveR
         result.failed += 1;
         const message = err instanceof Error ? err.message : String(err);
         if (/401|403|invalid|unauthor/i.test(message)) {
-          await pool.markNeedsReauth(record.id, message);
+          await pool.markNeedsReauth(record.id, message, { providerId });
         } else if (/429|rate.?limit/i.test(message)) {
           await pool.markRateLimited(
             record.id,
             Date.now() + DEFAULT_RATE_LIMIT_BACKOFF_MS,
             message,
+            { providerId },
           );
         } else {
-          await pool.markInvalid(record.id, message);
+          await pool.markInvalid(record.id, message, { providerId });
         }
       }
     }
@@ -903,13 +940,13 @@ export function stopAccountPoolKeepAliveForTests(): void {
 }
 
 /**
- * Install the `globalThis`-keyed shim that plugin-anthropic's
+ * Install the `globalThis`-keyed bridge that plugin-anthropic's
  * credential-store reads. Idempotent — repeated installs replace the
- * previous shim.
+ * previous bridge.
  */
-function installAnthropicShim(pool: AccountPool): void {
+function installAnthropicBridge(pool: AccountPool): void {
   if (typeof globalThis === "undefined") return;
-  const shim: AnthropicPoolShim = {
+  const bridge: AnthropicPoolBridge = {
     selectAnthropicSubscription: async (opts) => {
       const account = await pool.select({
         providerId: "anthropic-subscription",
@@ -926,46 +963,22 @@ function installAnthropicShim(pool: AccountPool): void {
     },
     getAccessToken: (providerId, accountId) =>
       getAccountAccessToken(providerId, accountId),
-    markInvalid: (accountId, detail) => pool.markInvalid(accountId, detail),
-    markRateLimited: (accountId, untilMs, detail) =>
-      pool.markRateLimited(accountId, untilMs, detail),
-  };
-  (globalThis as Record<symbol, unknown>)[ANTHROPIC_POOL_SHIM_SYMBOL] = shim;
-}
-
-function installOrchestratorShim(pool: AccountPool): void {
-  if (typeof globalThis === "undefined") return;
-  const shim: OrchestratorPoolShim = {
-    pickAnthropicTokenForSpawn: async ({ sessionKey }) => {
-      const account = await pool.select({
+    markInvalid: (accountId, detail) =>
+      pool.markInvalid(accountId, detail, {
         providerId: "anthropic-subscription",
-        sessionKey,
-        ...selectionForProvider("anthropic-subscription"),
-      });
-      if (!account) return null;
-      const token = await getAccountAccessToken(
-        "anthropic-subscription",
-        account.id,
-      );
-      if (!token) return null;
-      return { accessToken: token, accountId: account.id };
-    },
-    markRateLimited: (accountId, untilMs, detail) => {
-      void pool.markRateLimited(accountId, untilMs, detail);
-    },
-    markInvalid: (accountId, detail) => {
-      void pool.markInvalid(accountId, detail);
-    },
-    markNeedsReauth: (accountId, detail) => {
-      void pool.markNeedsReauth(accountId, detail);
-    },
+      }),
+    markRateLimited: (accountId, untilMs, detail) =>
+      pool.markRateLimited(accountId, untilMs, detail, {
+        providerId: "anthropic-subscription",
+      }),
   };
-  (globalThis as Record<symbol, unknown>)[ORCHESTRATOR_POOL_SHIM_SYMBOL] = shim;
+  (globalThis as Record<symbol, unknown>)[ANTHROPIC_POOL_BRIDGE_SYMBOL] =
+    bridge;
 }
 
-function installSubscriptionSelectorShim(pool: AccountPool): void {
+function installSubscriptionSelectorBridge(pool: AccountPool): void {
   if (typeof globalThis === "undefined") return;
-  const shim: SubscriptionSelectorShim = {
+  const bridge: SubscriptionSelectorBridge = {
     pickAccountId: async (providerId) => {
       const account = await pool.select({
         providerId,
@@ -974,16 +987,8 @@ function installSubscriptionSelectorShim(pool: AccountPool): void {
       return account?.id ?? null;
     },
   };
-  (globalThis as Record<symbol, unknown>)[SUBSCRIPTION_SELECTOR_SHIM_SYMBOL] =
-    shim;
-}
-
-/**
- * @deprecated kept for compatibility with the WS2 spec naming. Use
- * {@link getDefaultAccountPool}.
- */
-export function createDefaultAccountPool(): AccountPool {
-  return getDefaultAccountPool();
+  (globalThis as Record<symbol, unknown>)[SUBSCRIPTION_SELECTOR_BRIDGE_SYMBOL] =
+    bridge;
 }
 
 /**

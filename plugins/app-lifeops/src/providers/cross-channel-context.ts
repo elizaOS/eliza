@@ -15,7 +15,7 @@
  * than running a speculative search on every turn.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,
@@ -24,7 +24,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { encodeToonValue, logger } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   CROSS_CHANNEL_SEARCH_CHANNELS,
   type CrossChannelSearchChannel,
@@ -32,6 +32,12 @@ import {
   type CrossChannelSearchQuery,
   runCrossChannelSearch,
 } from "../lifeops/cross-channel-search.js";
+import {
+  createLifeOpsEgressContext,
+  type LifeOpsEgressContext,
+  redactTextForEgress,
+  redactUrlForEgress,
+} from "../lifeops/privacy-egress.js";
 
 const EMPTY: ProviderResult = {
   text: "",
@@ -124,13 +130,19 @@ function normalizeRequest(
   };
 }
 
-function compactHit(hit: CrossChannelSearchHit) {
+function compactHit(
+  hit: CrossChannelSearchHit,
+  egressContext: LifeOpsEgressContext,
+) {
   const citation: Record<string, string> = {
     platform: hit.citation.platform,
     label: hit.citation.label,
   };
-  if (hit.citation.url) {
-    citation.url = hit.citation.url;
+  const citationUrl = redactUrlForEgress(hit.citation.url, {
+    context: egressContext,
+  });
+  if (citationUrl) {
+    citation.url = citationUrl;
   }
   return {
     channel: hit.channel,
@@ -139,26 +151,33 @@ function compactHit(hit: CrossChannelSearchHit) {
     timestamp: hit.timestamp,
     speaker: hit.speaker,
     ...(hit.subject ? { subject: hit.subject } : {}),
-    text: hit.text.replace(/\s+/g, " ").trim().slice(0, 180),
+    text: redactTextForEgress(
+      hit.text.replace(/\s+/g, " ").trim().slice(0, 180),
+      {
+        context: egressContext,
+        dataClass: "body",
+      },
+    ),
     citation,
   };
 }
 
-function renderCrossChannelContextToon(args: {
+function renderCrossChannelContextJson(args: {
   query: string;
   hits: CrossChannelSearchHit[];
   unsupported: unknown[];
   degraded: unknown[];
   channelsWithHits: CrossChannelSearchChannel[];
+  egressContext: LifeOpsEgressContext;
 }): string {
-  return encodeToonValue({
+  return JSON.stringify({
     cross_channel_context: {
       query: args.query,
       hitCount: args.hits.length,
       unsupportedCount: args.unsupported.length,
       degradedCount: args.degraded.length,
       channelsWithHits: args.channelsWithHits,
-      hits: args.hits.map(compactHit),
+      hits: args.hits.map((hit) => compactHit(hit, args.egressContext)),
     },
   });
 }
@@ -175,6 +194,10 @@ export const crossChannelContextProvider: Provider = {
   dynamic: true,
   // After inboxTriage (14) and before escalation (15).
   position: 14.5,
+  contexts: ["email", "messaging", "contacts", "memory"],
+  contextGate: { anyOf: ["email", "messaging", "contacts", "memory"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "OWNER" },
 
   async get(
     runtime: IAgentRuntime,
@@ -184,6 +207,11 @@ export const crossChannelContextProvider: Provider = {
     if (!(await hasOwnerAccess(runtime, message))) {
       return EMPTY;
     }
+    const egressContext = createLifeOpsEgressContext({
+      isOwner: true,
+      agentId: runtime.agentId,
+      entityId: message.entityId,
+    });
 
     const request = pickRequestFromState(state);
     if (!request) {
@@ -243,12 +271,13 @@ export const crossChannelContextProvider: Provider = {
       }
 
       return {
-        text: renderCrossChannelContextToon({
+        text: renderCrossChannelContextJson({
           query: result.query,
           hits: injected,
           unsupported: result.unsupported,
           degraded: result.degraded,
           channelsWithHits: result.channelsWithHits,
+          egressContext,
         }),
         values: {
           crossChannelHits: injected.length,
@@ -259,7 +288,7 @@ export const crossChannelContextProvider: Provider = {
         data: {
           crossChannelContext: {
             query: result.query,
-            hits: injected,
+            hits: injected.map((hit) => compactHit(hit, egressContext)),
             unsupported: result.unsupported,
             degraded: result.degraded,
             resolvedPerson: result.resolvedPerson

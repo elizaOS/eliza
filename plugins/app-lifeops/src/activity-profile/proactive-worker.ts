@@ -1,16 +1,16 @@
 import {
   loadOwnerContactsConfig,
   resolveOwnerContactWithFallback,
-} from "@elizaos/agent/config/owner-contacts";
-import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
+} from "@elizaos/agent";
+import { getAgentEventService } from "@elizaos/agent";
 import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
 import {
   logger,
   ModelType,
-  parseToonKeyValue,
   runWithTrajectoryContext,
   stringToUuid,
 } from "@elizaos/core";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { loadLifeOpsAppState } from "../lifeops/app-state.js";
 import {
   type BackgroundJobContext,
@@ -205,7 +205,7 @@ function normalizeCalendarEventProactiveDecisions(
 function parseCalendarEventProactiveOutput(
   raw: string,
 ): Record<string, unknown> | null {
-  return parseToonKeyValue<Record<string, unknown>>(raw);
+  return parseJsonModelRecord<Record<string, unknown>>(raw);
 }
 
 export async function classifyCalendarEventsForProactivePlanning(
@@ -243,11 +243,7 @@ export async function classifyCalendarEventsForProactivePlanning(
     "Meetings, calls, interviews, appointments, therapy, coffee or dinner with people, and other short scheduled social/professional events usually deserve a check-in.",
     "Hotel stays, flights, travel blocks, reservations, check-in/check-out, passive itinerary items, and long all-day or near-all-day logistics usually do not deserve a check-in.",
     "If an event would be extremely hard to forget or has no clear actionability, mark shouldCheckIn=false.",
-    "Return TOON only with one events[n] record per input event:",
-    "events[0]:",
-    "  id: matching event id",
-    "  shouldCheckIn: true or false",
-    "  reason: short reason",
+    'Return JSON only, for example {"events":[{"id":"matching event id","shouldCheckIn":true,"reason":"short reason"}]}.',
     "No prose, markdown, code fences, or <think>.",
     "",
     `Current timezone: ${timezone}`,

@@ -1,4 +1,4 @@
-import { Badge, Button, client, useApp } from "@elizaos/app-core";
+import { Badge, Button, client, useApp } from "@elizaos/ui";
 import { Search, ShieldBan, Smartphone } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppBlockerSettingsCardProps } from "../types";

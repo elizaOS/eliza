@@ -29,7 +29,12 @@ import {
   type AgentRuntime,
   type IAgentRuntime,
   logger,
+  readJsonBody as parseJsonBody,
+  type ReadJsonBodyOptions,
   type Route,
+  readRequestBody,
+  sendJson,
+  sendJsonError,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -44,20 +49,76 @@ import {
 } from "@elizaos/shared";
 import { type WebSocket, WebSocketServer } from "ws";
 import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
+
+const WALLET_OS_STORE_TRUE_VALUES = new Set(["1", "true", "on", "yes"]);
+const WALLET_OS_STORE_FALSE_VALUES = new Set(["0", "false", "off", "no"]);
+
+function executableOnPathSync(binaryName: string): boolean {
+  if (process.platform === "win32") return false;
+  const pathEnv = process.env.PATH ?? "";
+  for (const dir of pathEnv.split(path.delimiter)) {
+    if (!dir) continue;
+    try {
+      fs.accessSync(path.join(dir, binaryName), fs.constants.X_OK);
+      return true;
+    } catch {
+      // keep scanning PATH
+    }
+  }
+  return false;
+}
+
+function isWalletOsStoreDefaultAvailable(): boolean {
+  if (process.platform === "darwin") return true;
+  if (process.platform === "linux") return executableOnPathSync("secret-tool");
+  return false;
+}
+
+function isWalletOsStoreEnabledForStartup(): boolean {
+  const raw = process.env.ELIZA_WALLET_OS_STORE?.trim().toLowerCase();
+  if (raw) {
+    if (WALLET_OS_STORE_TRUE_VALUES.has(raw)) return true;
+    if (WALLET_OS_STORE_FALSE_VALUES.has(raw)) return false;
+  }
+  return isWalletOsStoreDefaultAvailable();
+}
+
+function isPlaintextWalletPrivateKeyConfigValue(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  return Boolean(trimmed && !trimmed.startsWith("vault://"));
+}
+
+function isVaultConfigRef(value: string): boolean {
+  return value.startsWith("vault://") && value.length > "vault://".length;
+}
+
+import { handleComputerUseRoutes } from "@elizaos/plugin-computeruse";
+import {
+  handleCloudStatusRoutes,
+  isCloudProvisionedContainer,
+} from "@elizaos/plugin-elizacloud";
+// BlueBubbles routes extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
+// resolveBlueBubblesWebhookPath stays in @elizaos/plugin-imessage so the auth gate can compute
+// the webhook path before the runtime plugin route dispatcher runs.
+import { resolveBlueBubblesWebhookPath } from "@elizaos/plugin-imessage";
+// signal-routes: handleSignalRoute dispatch and applySignalQrOverride extracted to @elizaos/plugin-signal (setup-routes.ts)
+import { applySignalQrOverride } from "@elizaos/plugin-signal";
+// WhatsApp route dispatch extracted to @elizaos/plugin-whatsapp setup-routes.ts (Plugin.routes).
+// applyWhatsAppQrOverride remains for plugin-discovery's QR override flow.
+import { applyWhatsAppQrOverride } from "@elizaos/plugin-whatsapp";
+import { isStreamingDestinationConfigured } from "@elizaos/shared";
 import {
   type ElizaConfig,
   loadElizaConfig,
   saveElizaConfig,
 } from "../config/config.js";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
-import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.js";
 import { CharacterSchema } from "../config/zod-schema.js";
-// ONBOARDING_CLOUD_PROVIDER_OPTIONS, ONBOARDING_PROVIDER_CATALOG moved to server-helpers-config.ts
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
+// ONBOARDING_CLOUD_PROVIDER_OPTIONS, ONBOARDING_PROVIDER_CATALOG moved to server-helpers-config.ts
 import { validateX402Startup } from "../middleware/x402/startup-validator.js";
-import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
 import {
-  type AgentEventPayloadLike,
   type AgentEventServiceLike,
   getAgentEventService,
 } from "../runtime/agent-event-service.js";
@@ -99,9 +160,9 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
-// signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout extracted to @elizaos/plugin-signal
-import { signalAuthExists } from "../services/signal-pairing.js";
+// signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout, signalAuthExists owned by @elizaos/plugin-signal
 import { streamManager } from "../services/stream-manager.js";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 // telegram-account-auth helpers moved to @elizaos/plugin-telegram (account-setup-routes.ts).
 // WhatsApp pairing service helpers (sanitizeAccountId, WhatsAppPairingSession,
 // whatsappAuthExists, whatsappLogout) are owned by @elizaos/plugin-whatsapp now;
@@ -135,45 +196,25 @@ import { handleAppPackageRoutes } from "./app-package-routes.js";
 import { handleAppsRoutes } from "./apps-routes.js";
 import { handleAuthRoutes } from "./auth-routes.js";
 import { handleAvatarRoutes } from "./avatar-routes.js";
-// BlueBubbles routes extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
-// resolveBlueBubblesWebhookPath stays here so the auth gate can compute the webhook path
-// before the runtime plugin route dispatcher runs.
-import { resolveBlueBubblesWebhookPath } from "./bluebubbles-routes.js";
 import { handleBugReportRoutes } from "./bug-report-routes.js";
 import { handleCharacterRoutes } from "./character-routes.js";
 import {
-  handleChatRoutes,
   initSse as initSseFromChatRoutes,
   writeSseJson as writeSseJsonFromChatRoutes,
 } from "./chat-routes.js";
-import { handleCloudBillingRoute } from "./cloud-billing-routes.js";
-import { handleCloudCompatRoute } from "./cloud-compat-routes.js";
-import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
-import { handleCloudRelayRoute } from "./cloud-relay-routes.js";
-import { type CloudRouteState, handleCloudRoute } from "./cloud-routes.js";
-import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
-import { handleComputerUseRoutes } from "./computer-use-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
+import { handleConnectorAccountRoutes } from "./connector-account-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
+import { isConnectorOAuthCallbackEndpoint } from "./connector-oauth-callback-auth.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.js";
-import { handleConversationRoutes } from "./conversation-routes.js";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.js";
 import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
-import { handleDatabaseRoute } from "./database.js";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.js";
 import { handleHealthRoutes } from "./health-routes.js";
-import {
-  readJsonBody as parseJsonBody,
-  type ReadJsonBodyOptions,
-  readRequestBody,
-  sendJson,
-  sendJsonError,
-} from "./http-helpers.js";
 // iMessage routes extracted to @elizaos/plugin-imessage setup-routes.ts (Plugin.routes)
-// import { handleIMessageRoute } from "./imessage-routes.js";
-import { handleInboxRoute } from "./inbox-routes.js";
+// import { handleIMessageRoute } from "@elizaos/plugin-imessage";
 import {
   getLocalInferenceActiveModelId,
   handleLocalInferenceRoutes,
@@ -197,7 +238,6 @@ import {
   isPublicRuntimePluginRoute,
   tryHandleRuntimePluginRoute,
 } from "./runtime-plugin-routes.js";
-import { handleSandboxRoute } from "./sandbox-routes.js";
 import {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
@@ -206,8 +246,14 @@ import {
   isUuidLike,
   patchTouchesProviderSelection,
 } from "./server-helpers.js";
-// signal-routes: handleSignalRoute dispatch extracted to @elizaos/plugin-signal (setup-routes.ts)
-import { applySignalQrOverride } from "./signal-routes.js";
+import {
+  handleCloudAndCoreRouteGroup,
+  handleConversationRouteGroup,
+  handleDatabaseRouteGroup,
+  handleInboxAndCloudRelayRouteGroup,
+  handleLifeOpsRuntimePluginRoute,
+  handleSandboxRouteGroup,
+} from "./server-route-dispatch.js";
 import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
@@ -230,11 +276,7 @@ import {
 } from "./wallet-capability.js";
 import { handleWalletRoutes } from "./wallet-routes.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
-// WhatsApp route dispatch extracted to @elizaos/plugin-whatsapp setup-routes.ts (Plugin.routes).
-// applyWhatsAppQrOverride remains for plugin-discovery's QR override flow.
-import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
 import { handleWorkbenchRoutes } from "./workbench-routes.js";
-import { handleXRelayRoute } from "./x-relay-routes.js";
 
 export {
   executeFallbackParsedActions,
@@ -252,8 +294,6 @@ type TtsRouteArg = Parameters<typeof handleTtsRoutes>[0];
 type PermissionsExtraRouteArg = Parameters<
   typeof handlePermissionsExtraRoutes
 >[0];
-type ConversationRouteArg = Parameters<typeof handleConversationRoutes>[0];
-type ChatRouteArg = Parameters<typeof handleChatRoutes>[0];
 type WorkbenchRouteArg = Parameters<typeof handleWorkbenchRoutes>[0];
 // LifeOpsRouteArg removed — routes extracted to lifeopsPlugin
 type MiscRouteArg = Parameters<typeof handleMiscRoutes>[0];
@@ -277,7 +317,7 @@ export {
   IMAGE_ONLY_CHAT_FALLBACK_PROMPT,
   isUuidLike,
   isWalletActionRequiredIntent,
-  maybeAugmentChatMessageWithKnowledge,
+  maybeAugmentChatMessageWithDocuments,
   maybeAugmentChatMessageWithLanguage,
   maybeAugmentChatMessageWithWalletContext,
   normalizeIncomingChatPrompt,
@@ -672,7 +712,7 @@ function coerce<T>(value: unknown): T {
 // maybeAugmentChatMessageWithLanguage and getErrorMessage moved to server-helpers.ts;
 // imported in the consolidated import at the top
 
-// Knowledge + wallet context augmentation moved to server-helpers.ts;
+// Documents + wallet context augmentation moved to server-helpers.ts;
 // imported in the consolidated import at the top
 
 // ChatImageAttachment, image validation, chat attachments, normalizeIncomingChatPrompt,
@@ -1028,6 +1068,7 @@ import {
   isAllowedHost as _isAllowedHost,
   isAuthorized as _isAuthorized,
   isSharedTerminalClientId as _isSharedTerminalClientId,
+  isTrustedLocalRequest as _isTrustedLocalRequest,
   isWebSocketAuthorized as _isWebSocketAuthorized,
   normalizePairingCode as _normalizePairingCode,
   normalizeWsClientId as _normalizeWsClientId,
@@ -1056,6 +1097,7 @@ export {
 const isAllowedHost = _isAllowedHost;
 const applyCors = _applyCors;
 const isAuthorized = _isAuthorized;
+const isTrustedLocalRequest = _isTrustedLocalRequest;
 const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
 const normalizeWsClientId = _normalizeWsClientId;
 const resolveTerminalRunClientId = _resolveTerminalRunClientId;
@@ -1067,13 +1109,6 @@ const isWebSocketAuthorized = _isWebSocketAuthorized;
 const getConfiguredApiToken = _getConfiguredApiToken;
 const pairingEnabled = _pairingEnabled;
 
-function isLifeOpsCloudPluginRoute(pathname: string): boolean {
-  return (
-    pathname === "/api/cloud/features" ||
-    pathname === "/api/cloud/features/sync" ||
-    pathname.startsWith("/api/cloud/travel-providers/")
-  );
-}
 const ensurePairingCode = _ensurePairingCode;
 const normalizePairingCode = _normalizePairingCode;
 const rateLimitPairing = _rateLimitPairing;
@@ -1130,8 +1165,11 @@ function getOrCreateRuntimeOperationManager(
 // decodePathComponent imported in the consolidated import at the top
 
 import {
+  isLifeOpsCloudPluginRoute,
+  maybeRouteAutonomyEventToConversation,
+} from "./server-autonomy-helpers.js";
+import {
   getPtyConsoleBridge,
-  routeAutonomyTextToUser,
   wireCodingAgentChatBridge,
   wireCodingAgentSwarmSynthesis,
   wireCodingAgentWsBridge,
@@ -1152,43 +1190,6 @@ export {
   handleSwarmSynthesis,
   routeAutonomyTextToUser,
 } from "./server-helpers-swarm.js";
-
-async function maybeRouteAutonomyEventToConversation(
-  state: ServerState,
-  event: AgentEventPayloadLike,
-): Promise<void> {
-  if (event.stream !== "assistant") return;
-
-  const payload =
-    event.data && typeof event.data === "object"
-      ? (event.data as Record<string, unknown>)
-      : null;
-  const text = typeof payload?.text === "string" ? payload.text.trim() : "";
-  if (!text) return;
-
-  const explicitSource =
-    typeof payload?.source === "string" ? payload.source : null;
-  const hasExplicitSource =
-    explicitSource !== null && explicitSource.trim().length > 0;
-  const source = hasExplicitSource ? explicitSource.trim() : "autonomy";
-
-  // Regular user conversation turns should never be re-routed as proactive.
-  // Some AGENT_EVENT payloads may omit roomId metadata, so rely on source too.
-  if (source === "client_chat") return;
-  if (!hasExplicitSource && !event.roomId) return;
-
-  // Keep regular conversation messages in their own room only.
-  if (
-    event.roomId &&
-    Array.from(state.conversations.values()).some(
-      (c) => c.roomId === event.roomId,
-    )
-  ) {
-    return;
-  }
-
-  await routeAutonomyTextToUser(state, text, source);
-}
 
 async function handleRequest(
   req: http.IncomingMessage,
@@ -1225,6 +1226,10 @@ async function handleRequest(
           }
         : undefined,
     });
+  const isConnectorOAuthCallbackRoute = isConnectorOAuthCallbackEndpoint(
+    method,
+    pathname,
+  );
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
 
   const canonicalizeRestartReason = (reason: string): string => {
@@ -1347,6 +1352,7 @@ async function handleRequest(
     !isCloudOnboardingStatusEndpoint &&
     !isWhatsAppWebhookEndpoint &&
     !isBlueBubblesWebhookEndpoint &&
+    !isConnectorOAuthCallbackRoute &&
     !isPublicRuntimePluginRoute({
       runtime: state.runtime,
       method,
@@ -1582,8 +1588,8 @@ async function handleRequest(
   // (/api/trajectories/*) are now provided by the @elizaos/app-training
   // plugin via the runtime route registry.
 
-  // Knowledge routes (/api/knowledge/*) are now provided by the
-  // @elizaos/app-knowledge plugin via the runtime route registry.
+  // Document routes (/api/documents/*) are now provided by the
+  // @elizaos/app-documents plugin via the runtime route registry.
 
   if (
     pathname.startsWith("/api/memory") ||
@@ -1779,7 +1785,6 @@ async function handleRequest(
         EVM_PLUGIN_PACKAGE,
         applyWhatsAppQrOverride,
         applySignalQrOverride,
-        signalAuthExists,
         resolvePluginConfigMutationRejections,
         requirePluginManager,
         requireCoreManager,
@@ -2019,7 +2024,24 @@ async function handleRequest(
     return;
   }
 
-  // ── Connector routes (extracted to connector-routes.ts) ──────────────
+  // ── Connector account routes (/api/connectors/:provider/accounts, oauth) ──
+  if (
+    await handleConnectorAccountRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      state,
+      json,
+      error,
+      readJsonBody,
+      authorize: () => isTrustedLocalRequest(req) || isCloudProvisioned,
+    })
+  ) {
+    return;
+  }
+
+  // ── Connector config routes (extracted to connector-routes.ts) ─────────
   if (
     await handleConnectorRoutes({
       req,
@@ -2035,15 +2057,15 @@ async function handleRequest(
       isBlockedObjectKey,
       cloneWithoutBlockedObjectKeys,
       onConnectorDisconnect: async (connectorName) => {
-        // Disconnect cascades to the n8n credential cache: without this,
-        // credStore.get() returns a stale n8n credential id and the next
+        // Disconnect cascades to the workflow credential cache: without this,
+        // credStore.get() returns a stale credential id and the next
         // workflow generation silently bypasses the missing-credentials
         // banner.
         const credTypes = credTypesForConnector(connectorName);
         if (credTypes.length === 0) return;
         const runtime = state.runtime;
         if (!runtime) return;
-        const credStore = runtime.getService("n8n_credential_store") as {
+        const credStore = runtime.getService("workflow_credential_store") as {
           delete?: (userId: string, credType: string) => Promise<void>;
         } | null;
         const deleteCred = credStore?.delete;
@@ -2072,43 +2094,25 @@ async function handleRequest(
   // Cross-channel read-only feed that merges connector messages
   // (imessage, telegram, discord, whatsapp, etc.) into a single
   // time-ordered view. See api/inbox-routes.ts for details.
-  if (pathname.startsWith("/api/inbox")) {
-    const handled = await handleInboxRoute(
+  if (
+    await handleInboxAndCloudRelayRouteGroup({
       req,
       res,
-      pathname,
       method,
-      { runtime: state.runtime ?? null },
-      { json, error, readJsonBody },
-    );
-    if (handled) return;
+      pathname,
+      url,
+      state,
+      json,
+      error,
+      readJsonBody,
+    })
+  ) {
+    return;
   }
 
   // ── iMessage routes (/api/imessage/*) ─────────────────────────────────
   // Extracted to @elizaos/plugin-imessage setup-routes.ts (Plugin.routes).
   // The plugin registers rawPath routes that serve the same legacy paths.
-
-  // ── Cloud relay status (/api/cloud/relay-status) ──────────────────────
-  if (pathname === "/api/cloud/relay-status") {
-    const handled = await handleCloudRelayRoute(
-      req,
-      res,
-      pathname,
-      method,
-      {
-        runtime: state.runtime
-          ? {
-              getService: (type: string) =>
-                (
-                  state.runtime as { getService: (t: string) => unknown }
-                ).getService(type),
-            }
-          : undefined,
-      },
-      { json, error, readJsonBody },
-    );
-    if (handled) return;
-  }
 
   // ── Telegram setup routes (/api/telegram-setup/*) ────────────────────
   // Extracted to @elizaos/plugin-telegram setup-routes.ts (Plugin.routes).
@@ -2265,7 +2269,7 @@ async function handleRequest(
   }
 
   // Browser workspace routes (/api/browser-workspace/*) are served by the
-  // @elizaos/app-browser plugin via Plugin.routes.
+  // @elizaos/plugin-browser plugin via Plugin.routes.
 
   // Agent self-status, Privy, and ERC-8004 registry routes are now handled
   // by handleAgentStatusRoutes above.
@@ -2286,119 +2290,55 @@ async function handleRequest(
 
   if (
     isLifeOpsCloudPluginRoute(pathname) &&
-    (await tryHandleRuntimePluginRoute({
+    (await handleLifeOpsRuntimePluginRoute({
       req,
       res,
       method,
       pathname,
       url,
-      runtime: state.runtime,
-      isAuthorized: () => isAuthorized(req),
+      state,
+      isAuthorizedRequest: isAuthorized,
     }))
   ) {
     return;
   }
 
-  // ── Cloud routes (/api/cloud/*) ─────────────────────────────────────────
-  if (pathname.startsWith("/api/cloud/")) {
-    const xRelayHandled = await handleXRelayRoute(req, res, pathname, method, {
-      config: state.config,
-      runtime: state.runtime,
-    });
-    if (xRelayHandled) return;
-
-    const billingHandled = await handleCloudBillingRoute(
+  if (
+    await handleCloudAndCoreRouteGroup({
       req,
       res,
-      pathname,
       method,
-      { config: state.config, runtime: state.runtime },
-    );
-    if (billingHandled) return;
-
-    // Compat proxy routes — transparent proxy to Eliza Cloud v2 /api/compat/*
-    const compatHandled = await handleCloudCompatRoute(
-      req,
-      res,
       pathname,
-      method,
-      { config: state.config, runtime: state.runtime },
-    );
-    if (compatHandled) return;
-
-    const cloudState: CloudRouteState = {
-      config: state.config,
-      cloudManager: state.cloudManager,
-      runtime: state.runtime,
-      saveConfig: saveElizaConfig,
-      createTelemetrySpan: createIntegrationTelemetrySpan,
+      state,
       restartRuntime,
-    };
-    const handled = await handleCloudRoute(
-      req,
-      res,
-      pathname,
-      method,
-      cloudState,
-    );
-    if (handled) return;
+      saveConfig: saveElizaConfig,
+    })
+  ) {
+    return;
   }
 
-  // ── Sandbox routes (/api/sandbox/*) ────────────────────────────────────
-  if (pathname.startsWith("/api/sandbox")) {
-    const handled = await handleSandboxRoute(req, res, pathname, method, {
-      sandboxManager: state.sandboxManager,
-    });
-    if (handled) return;
+  if (await handleSandboxRouteGroup({ req, res, method, pathname, state })) {
+    return;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Conversation routes (/api/conversations/*) — delegated to conversation-routes.ts
-  // ═══════════════════════════════════════════════════════════════════════
-
-  if (pathname.startsWith("/api/conversations")) {
-    // Cast state — ConversationRouteState is a compatible subset of ServerState
-    const handled = await handleConversationRoutes({
+  if (
+    await handleConversationRouteGroup({
       req,
       res,
       method,
       pathname,
-      readJsonBody,
+      url,
+      state,
       json,
       error,
-      state: coerce<ConversationRouteArg["state"]>(state),
-    });
-    if (handled) return;
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // OpenAI-compatible routes (/v1/*) — delegated to chat-routes.ts
-  // ═══════════════════════════════════════════════════════════════════════
-
-  if (pathname.startsWith("/v1/")) {
-    // Cast state — ChatRouteState is a compatible subset of ServerState
-    const handled = await handleChatRoutes({
-      req,
-      res,
-      method,
-      pathname,
       readJsonBody,
-      json,
-      error,
-      state: coerce<ChatRouteArg["state"]>(state),
-    });
-    if (handled) return;
+    })
+  ) {
+    return;
   }
 
-  // ── Database management API ─────────────────────────────────────────────
-  if (pathname.startsWith("/api/database/")) {
-    const handled = await handleDatabaseRoute(
-      req,
-      res,
-      state.runtime,
-      pathname,
-    );
-    if (handled) return;
+  if (await handleDatabaseRouteGroup({ req, res, pathname, state })) {
+    return;
   }
 
   // Trajectory routes (/api/trajectories/*) are now provided by the
@@ -2631,6 +2571,20 @@ async function handleRequest(
       url,
       runtime: state.runtime,
       isAuthorized: () => isAuthorized(req),
+      hostContext: {
+        config: state.config as unknown as Record<string, unknown>,
+        saveConfig: (nextConfig) =>
+          saveElizaConfig(nextConfig as unknown as ElizaConfig),
+        restartRuntime,
+        createTelemetrySpan: (meta) =>
+          meta.boundary === "cloud"
+            ? createIntegrationTelemetrySpan({
+                boundary: "cloud",
+                operation: meta.operation,
+                timeoutMs: meta.timeoutMs,
+              })
+            : undefined,
+      },
     })
   ) {
     return;
@@ -2736,8 +2690,12 @@ export async function startApiServer(opts?: {
   ] as const;
   for (const key of envKeysToHydrate) {
     const value = persistedEnv?.[key];
-    if (typeof value === "string" && value.trim() && !process.env[key]) {
-      process.env[key] = value.trim();
+    if (typeof value !== "string") {
+      continue;
+    }
+    const trimmed = value.trim();
+    if (trimmed && !isVaultConfigRef(trimmed) && !process.env[key]) {
+      process.env[key] = trimmed;
     }
   }
 
@@ -2764,24 +2722,17 @@ export async function startApiServer(opts?: {
   // available synchronously from the start (cloud-provisioned containers).
   await initStewardWalletCache();
 
-  // Warn when wallet private keys live in plaintext config and the OS secure
-  // store is not enabled.  This nudges operators toward ELIZA_WALLET_OS_STORE=1.
+  // Warn when wallet private keys live in plaintext config and no secure local
+  // store is active. Vault sentinels are not plaintext and should not trigger it.
   {
     const hasPlaintextKeys =
-      (typeof persistedEnv?.EVM_PRIVATE_KEY === "string" &&
-        persistedEnv.EVM_PRIVATE_KEY.trim()) ||
-      (typeof persistedEnv?.SOLANA_PRIVATE_KEY === "string" &&
-        persistedEnv.SOLANA_PRIVATE_KEY.trim());
-    const osStoreRaw = process.env.ELIZA_WALLET_OS_STORE?.trim().toLowerCase();
-    const osStoreEnabled =
-      osStoreRaw === "1" ||
-      osStoreRaw === "true" ||
-      osStoreRaw === "on" ||
-      osStoreRaw === "yes";
+      isPlaintextWalletPrivateKeyConfigValue(persistedEnv?.EVM_PRIVATE_KEY) ||
+      isPlaintextWalletPrivateKeyConfigValue(persistedEnv?.SOLANA_PRIVATE_KEY);
+    const osStoreEnabled = isWalletOsStoreEnabledForStartup();
     if (hasPlaintextKeys && !osStoreEnabled) {
       logger.warn(
         "[wallet] Private keys are stored in plaintext config. " +
-          "Set ELIZA_WALLET_OS_STORE=1 to use the OS secure store instead.",
+          "Use the vault or enable ELIZA_WALLET_OS_STORE=1 on a supported desktop.",
       );
     }
   }
@@ -4002,7 +3953,7 @@ export async function startApiServer(opts?: {
       );
     }
     for (const w of result.warnings) {
-      logger.warn(`[x402] ${w}`);
+      logger.debug(`[x402] ${w}`);
     }
   };
 

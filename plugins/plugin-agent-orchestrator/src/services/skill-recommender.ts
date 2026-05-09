@@ -5,7 +5,7 @@
  *  1. Cheap keyword/category match against installed skill metadata. Returns
  *     up to 10 candidate slugs sorted by overlap score.
  *  2. Optional LLM scoring pass over the surviving candidates that returns a
- *     small TOON scores table. Skipped when any keyword
+ *     small JSON scores array. Skipped when any keyword
  *     match already scores ≥ 0.9 (no need to spend a model call) or when the
  *     runtime model is unavailable.
  *
@@ -15,12 +15,8 @@
  * @module services/skill-recommender
  */
 
-import {
-  type IAgentRuntime,
-  type Logger,
-  ModelType,
-  parseToonKeyValue,
-} from "@elizaos/core";
+import { type IAgentRuntime, type Logger, ModelType } from "@elizaos/core";
+import { parseJsonObjectResponse } from "./json-model-output.js";
 import { withTrajectoryContext } from "./trajectory-context.js";
 
 const LOG_PREFIX = "[SkillRecommender]";
@@ -283,11 +279,18 @@ function buildLlmScoringPrompt(
     "  irrelevant: 0",
     "  perfectFit: 1",
     "  reasonLength: one short sentence",
-    "outputShape:",
-    "  scores[2]{slug,score,reason}:",
-    "    first-skill,0.9,One short sentence.",
-    "    second-skill,0.1,One short sentence.",
-    "response: TOON only; no preamble; no markdown fences",
+    "Return JSON only with this shape:",
+    JSON.stringify(
+      {
+        scores: [
+          { slug: "first-skill", score: 0.9, reason: "One short sentence." },
+          { slug: "second-skill", score: 0.1, reason: "One short sentence." },
+        ],
+      },
+      null,
+      2,
+    ),
+    "No preamble; no markdown fences.",
   ].join("\n");
 }
 
@@ -318,14 +321,14 @@ function parseLlmScores(raw: string): LlmScoreEntry[] {
   const trimmed = raw.trim();
   if (!trimmed) return [];
 
-  const parsedToon = parseToonKeyValue<Record<string, unknown>>(trimmed);
-  const toonScores = Array.isArray(parsedToon?.scores)
-    ? parsedToon.scores
+  const parsedJson = parseJsonObjectResponse<Record<string, unknown>>(trimmed);
+  const jsonScores = Array.isArray(parsedJson?.scores)
+    ? parsedJson.scores
         .map(normalizeLlmScoreEntry)
         .filter((entry): entry is LlmScoreEntry => Boolean(entry))
     : [];
-  if (toonScores.length > 0) {
-    return toonScores;
+  if (jsonScores.length > 0) {
+    return jsonScores;
   }
 
   // Strip a leading code fence if the model added one despite instructions.

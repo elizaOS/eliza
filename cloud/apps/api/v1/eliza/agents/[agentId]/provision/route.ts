@@ -1,6 +1,8 @@
 import { Hono } from "hono";
+import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { containersEnv } from "@/lib/config/containers-env";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
@@ -12,7 +14,7 @@ import {
 } from "@/lib/services/provisioning-worker-health";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 // Reduced from 120s — async path returns 202 immediately.
 // Sync fallback (?sync=true) still needs headroom for legacy callers.
@@ -55,8 +57,13 @@ function createFailureId(): string {
  *
  * Provision (or re-provision) the sandbox for an Agent cloud agent.
  *
- * **Default (async):** Creates a provisioning job and returns 202 with a jobId.
- * Poll GET /api/v1/jobs/{jobId} for status.
+ * **Warm pool fast path:** When `WARM_POOL_ENABLED=true`, attempts to claim
+ * a pre-warmed container atomically and returns 200 with running info.
+ *
+ * **Default (async):** Creates a provisioning job and returns 202 with a
+ * jobId. Poll GET /api/v1/jobs/{jobId} for status. The endpoint also
+ * fires a fire-and-forget kick at the worker so we don't wait up to 60s
+ * for the next cron tick.
  *
  * **Sync fallback:** Pass `?sync=true` to get the old blocking behaviour
  * (useful during migration). Will be removed in a future release.
@@ -64,7 +71,11 @@ function createFailureId(): string {
  * Idempotent: if the sandbox is already running, returns 200 with
  * existing connection info (no job created).
  */
-async function __hono_POST(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
+async function __hono_POST(
+  request: Request,
+  { params }: { params: Promise<{ agentId: string }> },
+  ctx?: AppContext,
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { agentId } = await params;
@@ -126,6 +137,52 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
         ),
         CORS_METHODS,
       );
+    }
+
+    // ── Warm pool fast path ───────────────────────────────────────────
+    // Attempt to atomically claim a pre-warmed container. Falls through
+    // (returns null) when the pool is empty, disabled, or the user's row
+    // already has a database (re-provision).
+    if (containersEnv.warmPoolEnabled() && !sync) {
+      try {
+        const claimed = await agentSandboxesRepository.claimWarmContainer({
+          userAgentId: agentId,
+          organizationId: user.organization_id!,
+          image: containersEnv.defaultAgentImage(),
+          agentName: existing.agent_name ?? agentId,
+          agentConfig: (existing.agent_config as Record<string, unknown> | undefined) ?? undefined,
+          characterId: existing.character_id,
+          expectedUpdatedAt: existing.updated_at,
+        });
+        if (claimed) {
+          logger.info("[agent-api] Warm pool claim succeeded", {
+            agentId,
+            orgId: user.organization_id,
+            poolNodeId: claimed.node_id,
+          });
+          return applyCorsHeaders(
+            Response.json({
+              success: true,
+              data: {
+                id: claimed.id,
+                agentName: claimed.agent_name,
+                status: claimed.status,
+                bridgeUrl: claimed.bridge_url,
+                healthUrl: claimed.health_url,
+              },
+              source: "warm_pool",
+            }),
+            CORS_METHODS,
+          );
+        }
+      } catch (err) {
+        // Don't block on claim errors — fall through to the normal path.
+        logger.warn("[agent-api] Warm pool claim threw; falling back", {
+          agentId,
+          orgId: user.organization_id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     // ── Sync fallback (legacy) ────────────────────────────────────────
@@ -245,6 +302,24 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
 
     const { job, created } = enqueueResult;
 
+    // Inline trigger: kick the worker now instead of waiting up to a minute
+    // for the next cron tick. Fire-and-forget; the cron is the safety net.
+    if (created) {
+      const triggerEnv = ctx?.env;
+      const triggerPromise = provisioningJobService.triggerImmediate(triggerEnv);
+      let executionCtx: AppContext["executionCtx"] | undefined;
+      try {
+        executionCtx = ctx?.executionCtx;
+      } catch {
+        executionCtx = undefined;
+      }
+      if (typeof executionCtx?.waitUntil === "function") {
+        executionCtx.waitUntil(triggerPromise);
+      } else {
+        triggerPromise.catch(() => undefined);
+      }
+    }
+
     return applyCorsHeaders(
       Response.json(
         {
@@ -278,6 +353,6 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }),
+  __hono_POST(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }, c),
 );
 export default __hono_app;

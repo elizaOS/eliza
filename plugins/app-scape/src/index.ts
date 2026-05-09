@@ -22,10 +22,10 @@ export function createAppScapePlugin(): Plugin {
   return {
     name: "@elizaos/app-scape",
     description:
-      "'scape — first-class agent integration for xRSPS. Autonomous RuneScape-alike agent with TOON-encoded state, a Scape Journal, and directed-prompt operator control.",
+      "'scape — first-class agent integration for xRSPS. Autonomous RuneScape-alike agent with JSON-encoded state, a Scape Journal, and directed-prompt operator control.",
     // Service + routers + providers all register on plugin load.
     // The runtime boots ScapeGameService, discovers the compressed game
-    // routers and TOON providers, and the game-service kicks off its autonomous
+    // routers and JSON providers, and the game-service kicks off its autonomous
     // LLM loop as soon as the first perception snapshot arrives.
     services: [ScapeGameService as ServiceClass],
     actions: scapeActions,

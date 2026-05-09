@@ -20,6 +20,15 @@ const CHAINS: Record<string, Chain> = {
   polygon,
 };
 
+/** Asserts the viem wallet client has a selected account (required for writes). */
+export function requireWalletAccount(client: WalletClient) {
+  const { account } = client;
+  if (!account) {
+    throw new Error("WalletClient.account is required for this operation");
+  }
+  return account;
+}
+
 /** Native ETH token address (zero address) */
 export const NATIVE_TOKEN: Address = zeroAddress;
 
@@ -66,7 +75,7 @@ export async function setSpendPolicy(
 
   const hash = await wallet.contract.write.setSpendPolicy(
     [policy.token, policy.perTxLimit, policy.periodLimit, BigInt(periodLength)],
-    { account: wallet.walletClient.account!, chain: wallet.chain },
+    { account: requireWalletAccount(wallet.walletClient), chain: wallet.chain },
   );
 
   return hash;
@@ -98,6 +107,9 @@ export async function agentTransferToken(
 ): Promise<Hash> {
   return wallet.contract.write.agentTransferToken(
     [params.token, params.to, params.amount],
-    { account: wallet.walletClient.account!, chain: wallet.chain },
+    {
+      account: requireWalletAccount(wallet.walletClient),
+      chain: wallet.chain,
+    },
   );
 }

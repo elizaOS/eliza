@@ -3,23 +3,24 @@
  *
  * Single entry point for tunnel lifecycle: start, stop. Replaces the prior
  * START_TAILSCALE and STOP_TAILSCALE actions. Status reads were demoted to
- * the `tailscaleStatus` provider (TOON-rendered, available every turn).
+ * the `tailscaleStatus` provider (JSON-rendered, available every turn).
  *
- * Operation is selected from `parameters.op`. The TOON-in-prompt extraction
- * for the optional `port` argument on `start` is preserved.
+ * Operation is selected from `parameters.op`. Optional `parameters.port` is
+ * preferred for start; JSON extraction from the message is the fallback.
  */
 
 import {
-  ModelType,
-  elizaLogger,
   type Action,
   type ActionResult,
+  elizaLogger,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   type Memory,
-  parseToonKeyValue,
+  ModelType,
 } from "@elizaos/core";
 import { z } from "zod";
+import { resolveTailscaleAccountId } from "../accounts";
 import { getTunnelService } from "../types";
 
 type TailscaleOp = "start" | "stop";
@@ -38,8 +39,8 @@ The user said: "{{userMessage}}"
 
 Extract the port number from their message, or use the default port 3000 if not specified.
 
-Respond with TOON only:
-port: 3000`;
+Respond with JSON only:
+{"port":3000}`;
 
 const DEFAULT_PORT = 3000;
 
@@ -47,25 +48,40 @@ function isValidPort(value: number): boolean {
   return Number.isInteger(value) && value >= 1 && value <= 65535;
 }
 
-function parsePort(value: string): number {
-  const toonParsed = parseToonKeyValue<Record<string, unknown>>(value);
-  const toonResult = portPayloadSchema.safeParse(toonParsed);
-  if (toonResult.success && isValidPort(toonResult.data.port))
-    return toonResult.data.port;
-
+function parseJsonObject(value: string): Record<string, unknown> | null {
   try {
     const parsed: unknown = JSON.parse(value);
-    const result = portPayloadSchema.safeParse(parsed);
-    if (result.success && isValidPort(result.data.port))
-      return result.data.port;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
   } catch {
-    // fall through
+    return null;
   }
-  const match = value.match(/\b(\d{1,5})\b/);
-  const captured = match?.[1];
-  if (!captured) return DEFAULT_PORT;
-  const num = Number.parseInt(captured, 10);
-  return isValidPort(num) ? num : DEFAULT_PORT;
+}
+
+function parsePort(value: string): number {
+  const parsed = parseJsonObject(value.trim());
+  const result = portPayloadSchema.safeParse(parsed);
+  return result.success && isValidPort(result.data.port)
+    ? result.data.port
+    : DEFAULT_PORT;
+}
+
+function readPort(options?: HandlerOptions): number | null {
+  const direct =
+    options && typeof options === "object"
+      ? (options as Record<string, unknown>)
+      : {};
+  const params =
+    direct.parameters && typeof direct.parameters === "object"
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  const result = portPayloadSchema.safeParse({
+    port: params.port ?? direct.port,
+  });
+  return result.success && isValidPort(result.data.port)
+    ? result.data.port
+    : null;
 }
 
 function readOp(options: unknown): TailscaleOp | null {
@@ -87,12 +103,26 @@ function readOp(options: unknown): TailscaleOp | null {
   return null;
 }
 
+function readOptions(options?: HandlerOptions): Record<string, unknown> {
+  const direct =
+    options && typeof options === "object"
+      ? (options as Record<string, unknown>)
+      : {};
+  const params =
+    direct.parameters && typeof direct.parameters === "object"
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  return { ...direct, ...params };
+}
+
 async function handleStart(
   runtime: IAgentRuntime,
   message: Memory,
+  options?: HandlerOptions,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const tunnelService = getTunnelService(runtime);
+  const accountId = resolveTailscaleAccountId(runtime, readOptions(options));
   if (!tunnelService) {
     if (callback) {
       await callback({
@@ -114,13 +144,18 @@ async function handleStart(
   elizaLogger.info("[tailscale] starting tunnel");
 
   const userMessage = message.content.text ?? "";
-  const portResponse = await runtime.useModel(ModelType.TEXT_SMALL, {
-    prompt: PORT_PROMPT_TEMPLATE.replace("{{userMessage}}", userMessage),
-    temperature: 0.3,
-  });
-
-  const port = parsePort(String(portResponse));
-  const url = await tunnelService.startTunnel(port);
+  const directPort = readPort(options);
+  const port =
+    directPort ??
+    parsePort(
+      String(
+        await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt: PORT_PROMPT_TEMPLATE.replace("{{userMessage}}", userMessage),
+          temperature: 0.3,
+        }),
+      ),
+    );
+  const url = await tunnelService.startTunnel(port, { accountId });
   const publicUrl = typeof url === "string" ? url : tunnelService.getUrl();
 
   if (callback) {
@@ -136,15 +171,18 @@ async function handleStart(
       action: "tunnel_started",
       tunnelUrl: publicUrl ?? "",
       port,
+      accountId,
     },
   };
 }
 
 async function handleStop(
   runtime: IAgentRuntime,
+  options?: HandlerOptions,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const tunnelService = getTunnelService(runtime);
+  const accountId = resolveTailscaleAccountId(runtime, readOptions(options));
   if (!tunnelService) {
     if (callback) {
       await callback({ text: "Tunnel service is not available." });
@@ -160,7 +198,7 @@ async function handleStop(
     return {
       success: true,
       text: "no active tunnel",
-      data: { action: "tunnel_not_active" },
+      data: { action: "tunnel_not_active", accountId },
     };
   }
 
@@ -168,7 +206,7 @@ async function handleStop(
   const previousUrl = status.url;
   const previousPort = status.port;
 
-  await tunnelService.stopTunnel();
+  await tunnelService.stopTunnel({ accountId });
 
   if (callback) {
     await callback({
@@ -182,24 +220,17 @@ async function handleStop(
       action: "tunnel_stopped",
       previousUrl: previousUrl ?? "",
       previousPort: previousPort ?? 0,
+      accountId,
     },
   };
 }
 
 export const tailscaleAction: Action = {
   name: "TAILSCALE",
-  similes: [
-    "TAILSCALE_OP",
-    "START_TAILSCALE",
-    "STOP_TAILSCALE",
-    "START_TUNNEL",
-    "STOP_TUNNEL",
-    "OPEN_TUNNEL",
-    "CLOSE_TUNNEL",
-    "CREATE_TUNNEL",
-    "TAILSCALE_UP",
-    "TAILSCALE_DOWN",
-  ],
+  contexts: ["connectors", "settings", "admin"],
+  contextGate: { anyOf: ["connectors", "settings", "admin"] },
+  roleGate: { minRole: "USER" },
+  similes: [],
   description:
     "Tailscale tunnel router. Operations: start (open tunnel for a local port), stop (close active tunnel). Status reads come from the tailscaleStatus provider.",
   descriptionCompressed: "Tailscale: start tunnel, stop tunnel.",
@@ -209,6 +240,19 @@ export const tailscaleAction: Action = {
       description: "Tunnel operation. One of: start, stop.",
       required: true,
       schema: { type: "string", enum: [...ALL_OPS] },
+    },
+    {
+      name: "port",
+      description: "Local port to expose when op is start.",
+      required: false,
+      schema: { type: "number", default: DEFAULT_PORT },
+    },
+    {
+      name: "accountId",
+      description:
+        "Optional Tailscale account id from TAILSCALE_ACCOUNTS. Defaults to TAILSCALE_DEFAULT_ACCOUNT_ID or legacy settings.",
+      required: false,
+      schema: { type: "string" },
     },
   ],
   validate: async (runtime: IAgentRuntime) =>
@@ -231,9 +275,9 @@ export const tailscaleAction: Action = {
 
     switch (op) {
       case "start":
-        return handleStart(runtime, message, callback);
+        return handleStart(runtime, message, options, callback);
       case "stop":
-        return handleStop(runtime, callback);
+        return handleStop(runtime, options, callback);
     }
   },
   examples: [

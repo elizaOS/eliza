@@ -13,5 +13,6 @@
     "types": ["bun-types", "node"]
   },
   "include": ["*.ts", "__tests__/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules"],
+  "extends": "../../../tsconfig.dist-paths.json"
 }

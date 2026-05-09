@@ -32,6 +32,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "trajectories", // trajectory logging for debugging and RL training
   "@elizaos/plugin-agent-orchestrator",// multi-agent orchestration (PTY, SwarmCoordinator, workspace provisioning)
   "@elizaos/plugin-shell",             // shell command execution
+  "@elizaos/plugin-coding-tools",      // native Read/Write/Edit/Bash/Grep/Glob (desktop; CODING_TOOLS_DISABLE)
   "@elizaos/plugin-agent-skills",      // skill execution and marketplace runtime
   "@elizaos/plugin-commands",          // slash command handling (skills auto-register as /commands)
   "roles",                            // internal role-based access control (OWNER/ADMIN/NONE)
@@ -53,9 +54,7 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-pdf",                   // PDF processing
   "@elizaos/plugin-cua",                   // CUA computer-use agent (cloud sandbox automation)
   "@elizaos/plugin-obsidian",              // Obsidian vault CLI integration
-  "@elizaos/plugin-code",                  // code writing and file operations
   "@elizaos/plugin-repoprompt",            // RepoPrompt CLI integration
-  "@elizaos/plugin-claude-code-workbench", // Claude Code companion workflows
   "@elizaos/plugin-computeruse",           // computer use automation (platform-specific)
   "@elizaos/plugin-browser",              // browser automation (requires stagehand-server)
   "@elizaos/plugin-vision",               // vision/image understanding (feature-gated)
@@ -178,7 +177,6 @@ const AUTH_PROVIDER_PLUGINS = {
   CUA_HOST:                       "@elizaos/plugin-cua",
   OBSIDIAN_VAULT_PATH:            "@elizaos/plugin-obsidian",
   REPOPROMPT_CLI_PATH:            "@elizaos/plugin-repoprompt",
-  CLAUDE_CODE_WORKBENCH_ENABLED:  "@elizaos/plugin-claude-code-workbench",
 };
 ```
 
@@ -243,7 +241,6 @@ const FEATURE_PLUGINS = {
   vision:               "@elizaos/plugin-vision",
   computeruse:          "@elizaos/plugin-computeruse",
   repoprompt:           "@elizaos/plugin-repoprompt",
-  claudeCodeWorkbench:  "@elizaos/plugin-claude-code-workbench",
 };
 ```
 

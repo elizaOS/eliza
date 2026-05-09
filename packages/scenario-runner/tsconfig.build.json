@@ -8,8 +8,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "dist",
-    "rootDir": "./src",
-    "paths": {}
+    "rootDir": "./src"
   },
   "include": ["src/**/*.ts"],
   "exclude": [

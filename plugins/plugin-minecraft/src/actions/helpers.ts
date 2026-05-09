@@ -9,6 +9,10 @@ import type {
 import type { JsonValue } from "../protocol.js";
 import { extractVec3, type Vec3 } from "./utils.js";
 
+const MINECRAFT_ACTION_TIMEOUT_MS = 15_000;
+const MAX_MINECRAFT_TEXT_LENGTH = 2000;
+const MAX_MINECRAFT_ARRAY_ITEMS = 25;
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -110,7 +114,21 @@ export async function emit(
   source: unknown,
   result: Omit<ActionResult, "text">
 ): Promise<ActionResult> {
-  const content = callbackContent(actionName, text, source);
+  const content = callbackContent(actionName, text.slice(0, MAX_MINECRAFT_TEXT_LENGTH), source);
   await callback?.(content, actionName);
   return { text: content.text ?? text, ...result };
+}
+
+export async function withMinecraftTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out`)), MINECRAFT_ACTION_TIMEOUT_MS)
+    ),
+  ]);
+}
+
+export function capMinecraftData<T>(value: T): T {
+  if (Array.isArray(value)) return value.slice(0, MAX_MINECRAFT_ARRAY_ITEMS) as T;
+  return value;
 }

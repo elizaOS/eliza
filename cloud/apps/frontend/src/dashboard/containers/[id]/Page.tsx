@@ -8,12 +8,12 @@ import {
 import { AlertCircle, ArrowLeft, Clock, Cpu, ExternalLink, HardDrive, Server } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { Link, Navigate, useParams } from "react-router-dom";
-import { ContainerDeploymentHistory } from "@/packages/ui/src/components/containers/container-deployment-history";
-import { ContainerLogsViewer } from "@/packages/ui/src/components/containers/container-logs-viewer";
-import { ContainerMetrics } from "@/packages/ui/src/components/containers/container-metrics";
 import { ApiError } from "../../../lib/api-client";
 import { useRequireAuth } from "../../../lib/auth-hooks";
 import { useContainer } from "../../../lib/data/containers";
+import { ContainerDeploymentHistory } from "../_components/container-deployment-history";
+import { ContainerLogsViewer } from "../_components/container-logs-viewer";
+import { ContainerMetrics } from "../_components/container-metrics";
 
 const STATUS_COLORS: Record<string, string> = {
   running: "bg-green-500",

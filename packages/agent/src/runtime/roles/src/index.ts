@@ -14,8 +14,12 @@
  *   }
  */
 
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import { updateRoleAction } from "./action.js";
+import {
+  type IAgentRuntime,
+  logger,
+  type Plugin,
+  roleAction,
+} from "@elizaos/core";
 import { rolesProvider } from "./provider.js";
 import type { RolesConfig, RolesWorldMetadata } from "./types.js";
 import {
@@ -35,7 +39,7 @@ type RuntimeWithBootstrapRetries = IAgentRuntime & {
   [BOOTSTRAP_RETRY_TIMERS_KEY]?: Map<string, ReturnType<typeof setTimeout>>;
 };
 
-export { updateRoleAction } from "./action.js";
+export { roleAction } from "@elizaos/core";
 export { rolesProvider } from "./provider.js";
 export type {
   ConnectorAdminWhitelist,
@@ -325,7 +329,7 @@ const rolesPlugin: Plugin = {
     "connector whitelisting and /role command.",
 
   providers: [rolesProvider],
-  actions: [updateRoleAction],
+  actions: [roleAction],
 
   async init(pluginConfig: Record<string, unknown>, runtime: IAgentRuntime) {
     logger.info("[roles] Initializing roles");

@@ -14,12 +14,13 @@
  * outbound RPC probe runs.
  */
 
-import { RegistryService } from "@elizaos/agent/api/registry-service";
 import {
+  loadElizaConfig,
   normalizeJsonRpcUrl,
   probeJsonRpcEndpoint,
+  RegistryService,
   TxService,
-} from "@elizaos/agent/api/tx-service";
+} from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { DropService } from "./drop-service.js";
@@ -56,7 +57,6 @@ export async function initializeRegistryAndDropServices(
 ): Promise<void> {
   initializeOGCode();
 
-  const { loadElizaConfig } = await import("@elizaos/agent/config/config");
   const config = loadElizaConfig() as ElizaConfigShape;
 
   const evmKey =

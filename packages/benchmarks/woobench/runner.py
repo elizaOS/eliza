@@ -157,6 +157,7 @@ class WooBenchRunner:
                         persona_engaged=False,
                         payment_converted=False,
                         crisis_handled=False,
+                        agent_responsive=False,
                         notes=f"ERROR: {e}",
                         revenue=RevenueResult(0, False, False, -1, 0, True),
                     )

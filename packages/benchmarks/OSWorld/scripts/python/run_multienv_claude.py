@@ -80,9 +80,9 @@ def config() -> argparse.Namespace:
     
     # thinking mode config
     parser.add_argument("--no-thinking", action="store_true", 
-                       help="Disable thinking mode (no scratchpad)")
+                       help="Disable thinking mode (no working notes)")
     parser.add_argument("--use-isp", action="store_true", 
-                       help="Use interleaved scratchpad (ISP) mode")
+                       help="Use interleaved working notes (ISP) mode")
 
     # example config
     parser.add_argument("--domain", type=str, default="all")
@@ -136,9 +136,9 @@ if not validate_model_support(args.model, **validation_kwargs):
 if args.no_thinking and args.use_isp:
     print("ERROR: --no-thinking and --use-isp are mutually exclusive")
     print("Choose one of:")
-    print("  (default): Regular scratchpad mode")
-    print("  --no-thinking: Disable thinking/scratchpad")
-    print("  --use-isp: Use interleaved scratchpad (ISP)")
+    print("  (default): Regular working notes mode")
+    print("  --no-thinking: Disable thinking/working notes")
+    print("  --use-isp: Use interleaved working notes (ISP)")
     sys.exit(1)
 
 logger = logging.getLogger()

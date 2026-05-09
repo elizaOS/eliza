@@ -354,9 +354,37 @@ const MCP_REGISTRY: McpRegistryEntry[] = [
 
 const app = new Hono<AppEnv>();
 
+const OPTIONAL_REGISTRY_LOOKUP_TIMEOUT_MS = 2_000;
+
+function withRegistryTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(
+          new Error(
+            `[MCP Registry] ${label} timed out after ${OPTIONAL_REGISTRY_LOOKUP_TIMEOUT_MS}ms`,
+          ),
+        );
+      }, OPTIONAL_REGISTRY_LOOKUP_TIMEOUT_MS);
+    }),
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 app.get("/", async (c) => {
   try {
-    const user = await getCurrentUser(c);
+    const user = await withRegistryTimeout(getCurrentUser(c), "optional auth lookup").catch(
+      (error) => {
+        logger.warn("[MCP Registry] Optional auth lookup failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+      },
+    );
     const isAuthenticated = user !== null;
 
     const baseUrl =
@@ -414,11 +442,14 @@ app.get("/", async (c) => {
     // Fetch user MCPs (public, live)
     let userMcpRegistry: UserRegistryEntry[] = [];
     try {
-      const userMcps = await userMcpsService.listPublic({
-        category: category !== "all" ? category : undefined,
-        search,
-        limit: 50,
-      });
+      const userMcps = await withRegistryTimeout(
+        userMcpsService.listPublic({
+          category: category !== "all" ? category : undefined,
+          search,
+          limit: 50,
+        }),
+        "community MCP lookup",
+      );
 
       userMcpRegistry = userMcps.map((mcp) => {
         const formatted = userMcpsService.toRegistryFormat(mcp, baseUrl);
@@ -430,7 +461,9 @@ app.get("/", async (c) => {
       });
     } catch (error) {
       // If user MCPs fail to load, continue with built-in only
-      console.warn("[MCP Registry] Failed to load user MCPs:", error);
+      logger.warn("[MCP Registry] Failed to load user MCPs", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     // Combine registries

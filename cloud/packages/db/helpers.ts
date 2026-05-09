@@ -1,5 +1,5 @@
 /**
- * Database Helper Utilities for Read/Write Splitting
+ * Database Helper Utilities for Read/Write Intent
  *
  * Provides clean APIs for repositories to use the correct database connection
  * based on the operation type (read vs write).
@@ -9,7 +9,7 @@
  * import { useReadDb, useWriteDb } from "../helpers";
  *
  * class MyRepository {
- *   // Read operations → uses read replica
+ *   // Read operations → uses the read-intent connection
  *   async findById(id: string) {
  *     return useReadDb((db) =>
  *       db.query.myTable.findFirst({ where: eq(myTable.id, id) })
@@ -35,7 +35,6 @@ import {
   db,
   dbRead,
   dbWrite,
-  getCurrentRegion,
   getDbConnectionInfo,
 } from "./client";
 
@@ -44,7 +43,7 @@ import {
 // ============================================================================
 
 /**
- * Execute a read operation using the read replica
+ * Execute a read operation using the read-intent connection.
  *
  * @example
  * const user = await useReadDb((db) =>
@@ -72,7 +71,7 @@ export function useWriteDb<T>(fn: (db: Database) => T): T {
 // ============================================================================
 
 /**
- * Execute an async read operation using the read replica
+ * Execute an async read operation using the read-intent connection.
  *
  * @example
  * const users = await readQuery(async (db) => {
@@ -144,11 +143,7 @@ export function getWriteDb(): Database {
 export function logDbRouting(): void {
   const info = getDbConnectionInfo();
   logger.info("[DB Routing]", {
-    region: info.currentRegion,
-    deployRegion: info.region || "local",
-    hasEuReadReplica: info.hasEuReadReplica,
-    readsRouteToEu: info.readsRouteToEu,
-    writesRouteTo: info.writesRouteTo,
+    databaseUrlConfigured: info.databaseUrlConfigured,
   });
 }
 
@@ -167,4 +162,4 @@ export function getDbRoutingInfo() {
 // ============================================================================
 
 export type { Database };
-export { db, dbRead, dbWrite, getCurrentRegion, getDbConnectionInfo };
+export { db, dbRead, dbWrite, getDbConnectionInfo };

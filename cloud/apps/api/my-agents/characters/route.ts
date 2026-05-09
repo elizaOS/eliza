@@ -123,6 +123,10 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const elizaCharacter = (await c.req.json()) as ElizaCharacter;
+    const documentSources = [
+      ...(elizaCharacter.documents ?? []),
+      ...(elizaCharacter.knowledge ?? []),
+    ];
 
     // Normalize isPublic to ensure consistency between is_public column and character_data
     const isPublic = typeof elizaCharacter.isPublic === "boolean" ? elizaCharacter.isPublic : false;
@@ -131,6 +135,7 @@ app.post("/", async (c) => {
     for (const [key, value] of Object.entries(elizaCharacter)) {
       characterDataRecord[key] = value;
     }
+    characterDataRecord.documents = documentSources;
     characterDataRecord.isPublic = isPublic;
 
     const newCharacter: NewUserCharacter = {
@@ -144,7 +149,7 @@ app.post("/", async (c) => {
       post_examples: elizaCharacter.postExamples ?? [],
       topics: elizaCharacter.topics ?? [],
       adjectives: elizaCharacter.adjectives ?? [],
-      knowledge: elizaCharacter.knowledge ?? [],
+      knowledge: documentSources,
       plugins: elizaCharacter.plugins ?? [],
       settings: elizaCharacter.settings ?? {},
       secrets: elizaCharacter.secrets ?? {},

@@ -1,17 +1,9 @@
-import type {
-	JsonValue,
-	OnboardingConfig as ProtoOnboardingConfig,
-	RuntimeSettings as ProtoRuntimeSettings,
-	Setting as ProtoSetting,
-	SettingDefinition as ProtoSettingDefinition,
-	WorldSettings as ProtoWorldSettings,
-} from "./proto.js";
+import type { JsonValue } from "./primitives";
 
 /**
  * Runtime settings provided as key/value strings.
  */
-export interface RuntimeSettings
-	extends Omit<ProtoRuntimeSettings, "$typeName" | "$unknown" | "values"> {
+export interface RuntimeSettings {
 	values?: Record<string, string>;
 	[key: string]: JsonValue | undefined;
 }
@@ -19,16 +11,24 @@ export interface RuntimeSettings
 /**
  * Definition metadata for a setting (without value).
  */
-export type SettingDefinition = Omit<
-	ProtoSettingDefinition,
-	"$typeName" | "$unknown"
->;
+export interface SettingDefinition {
+	name: string;
+	description: string;
+	usageDescription: string;
+	required: boolean;
+	public?: boolean;
+	secret?: boolean;
+	dependsOn: string[];
+}
 
 /**
  * Concrete setting value with runtime-only callbacks.
  */
-export interface Setting
-	extends Omit<ProtoSetting, "$typeName" | "$unknown" | "value"> {
+export interface Setting {
+	name: string;
+	description: string;
+	usageDescription: string;
+	required: boolean;
 	value: string | boolean | null;
 	public?: boolean;
 	secret?: boolean;
@@ -41,8 +41,7 @@ export interface Setting
 /**
  * World settings configuration map.
  */
-export interface WorldSettings
-	extends Omit<ProtoWorldSettings, "$typeName" | "$unknown" | "settings"> {
+export interface WorldSettings {
 	settings?: Record<string, Setting>;
 	[key: string]: Setting | Record<string, Setting> | undefined;
 }
@@ -50,7 +49,6 @@ export interface WorldSettings
 /**
  * Onboarding configuration with setting definitions.
  */
-export type OnboardingConfig = Omit<
-	ProtoOnboardingConfig,
-	"$typeName" | "$unknown"
->;
+export interface OnboardingConfig {
+	settings: Record<string, SettingDefinition>;
+}

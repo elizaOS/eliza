@@ -59,10 +59,10 @@ export default scenario({
           actionNames.has("READ_ENTITY")
         ) {
           const fallbackActions = [
-            "OWNER_HEALTH",
-            "OWNER_VOICE_CALL",
-            "TRIAGE_MESSAGES",
-            "OWNER_RELATIONSHIP",
+            "HEALTH",
+            "VOICE_CALL",
+            "MESSAGE",
+            "RELATIONSHIP",
           ].filter((actionName) => actionNames.has(actionName));
           if (fallbackActions.length > 0) {
             return `unexpected fallback action(s) used alongside Rolodex lookup: ${fallbackActions.join(", ")}`;

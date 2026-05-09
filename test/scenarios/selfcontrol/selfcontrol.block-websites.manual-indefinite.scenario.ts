@@ -26,14 +26,14 @@ export default scenario({
       name: "start-manual-block",
       room: "main",
       text: "Block x.com so I stop doomscrolling.",
-      expectedActions: ["OWNER_WEBSITE_BLOCK"],
+      expectedActions: ["WEBSITE_BLOCK"],
       responseIncludesAny: [/until/i, /unblock/i, /x/i],
       assertTurn: (turn) => {
         const hit = turn.actionsCalled.find(
-          (action) => action.actionName === "OWNER_WEBSITE_BLOCK",
+          (action) => action.actionName === "WEBSITE_BLOCK",
         );
         if (!hit) {
-          return "Expected BLOCK_WEBSITES to fire for the manual block request.";
+          return "Expected WEBSITE_BLOCK to fire for the manual block request.";
         }
         const blob = JSON.stringify({
           parameters: hit.parameters ?? null,
@@ -49,7 +49,7 @@ export default scenario({
       name: "remove-manual-block",
       room: "main",
       text: "Okay, unblock x.com now.",
-      expectedActions: ["OWNER_WEBSITE_BLOCK"],
+      expectedActions: ["WEBSITE_BLOCK"],
       responseIncludesAny: [/removed/i, /x/i, /block/i],
       assertTurn: (turn) => {
         if (/scheduled end time/i.test(turn.responseText ?? "")) {
@@ -61,12 +61,12 @@ export default scenario({
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "OWNER_WEBSITE_BLOCK",
+      actionName: "WEBSITE_BLOCK",
       minCount: 1,
     },
     {
       type: "actionCalled",
-      actionName: "OWNER_WEBSITE_BLOCK",
+      actionName: "WEBSITE_BLOCK",
       minCount: 1,
     },
   ],

@@ -2,11 +2,18 @@ import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import type { Team } from "@linear/sdk";
 import type { LinearService } from "../services/linear";
 
+const MAX_LINEAR_TEAMS = 20;
+const MAX_DESCRIPTION_CHARS = 180;
+
 export const linearTeamsProvider: Provider = {
   name: "LINEAR_TEAMS",
   description: "Provides context about Linear teams",
   descriptionCompressed: "provide context Linear team",
   dynamic: true,
+  contexts: ["automation", "connectors"],
+  contextGate: { anyOf: ["automation", "connectors"] },
+  cacheScope: "agent",
+  roleGate: { minRole: "ADMIN" },
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     try {
       const linearService = runtime.getService<LinearService>("linear");
@@ -17,6 +24,7 @@ export const linearTeamsProvider: Provider = {
       }
 
       const teams = await linearService.getTeams();
+      const listedTeams = teams.slice(0, MAX_LINEAR_TEAMS);
 
       if (teams.length === 0) {
         return {
@@ -24,8 +32,9 @@ export const linearTeamsProvider: Provider = {
         };
       }
 
-      const teamsList = teams.map(
-        (team: Team) => `- ${team.name} (${team.key}): ${team.description || "No description"}`
+      const teamsList = listedTeams.map(
+        (team: Team) =>
+          `- ${team.name} (${team.key}): ${(team.description || "No description").slice(0, MAX_DESCRIPTION_CHARS)}`
       );
 
       const text = `Linear Teams:\n${teamsList.join("\n")}`;
@@ -33,11 +42,12 @@ export const linearTeamsProvider: Provider = {
       return {
         text,
         data: {
-          teams: teams.map((team: Team) => ({
+          teams: listedTeams.map((team: Team) => ({
             id: team.id,
             name: team.name,
             key: team.key,
           })),
+          truncated: teams.length > listedTeams.length,
         },
       };
     } catch (_error) {
