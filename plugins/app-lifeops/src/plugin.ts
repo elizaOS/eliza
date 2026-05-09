@@ -10,6 +10,7 @@ import { appBlockAction } from "./actions/app-block.js";
 import { autofillAction } from "./actions/autofill.js";
 import { bookTravelAction } from "./actions/book-travel.js";
 import { calendarAction } from "./actions/calendar.js";
+import { calendlyAction } from "./actions/lib/calendly-handler.js";
 import { checkinAction } from "./actions/checkin.js";
 import { connectorAction } from "./actions/connector.js";
 import { deviceIntentAction } from "./actions/device-intent.js";
@@ -25,6 +26,7 @@ import { relationshipAction } from "./actions/relationship.js";
 import { remoteDesktopAction } from "./actions/remote-desktop.js";
 import { resolveRequestAction } from "./actions/resolve-request.js";
 import { scheduleAction } from "./actions/schedule.js";
+import { schedulingNegotiationAction } from "./actions/scheduling-negotiation.js";
 import { screenTimeAction } from "./actions/screen-time.js";
 import { subscriptionsAction } from "./actions/subscriptions.js";
 import { toggleFeatureAction } from "./actions/toggle-feature.js";
@@ -293,6 +295,8 @@ const rawAppLifeOpsPlugin: Plugin = {
     releaseBlockAction,
     appBlockAction,
     calendarAction,
+    calendlyAction,
+    schedulingNegotiationAction,
     checkinAction,
     resolveRequestAction,
     deviceIntentAction,
@@ -355,14 +359,14 @@ const rawAppLifeOpsPlugin: Plugin = {
       );
     }
 
-    // W1-F — register the connector / channel / send-policy registries.
-    // Empty in Wave 1; W1-B (`plugin-health`) and Wave 2 (W2-B) populate them.
+    // W1-F connector / channel / send-policy registries; W2-B populates the
+    // default packs with the 10 connector contributions and the 13 channels.
     const connectorRegistry = createConnectorRegistry();
-    registerDefaultConnectorPack(connectorRegistry);
+    registerDefaultConnectorPack(connectorRegistry, runtime);
     registerConnectorRegistry(runtime, connectorRegistry);
 
     const channelRegistry = createChannelRegistry();
-    registerDefaultChannelPack(channelRegistry);
+    registerDefaultChannelPack(channelRegistry, runtime);
     registerChannelRegistry(runtime, channelRegistry);
 
     const sendPolicyRegistry = createSendPolicyRegistry();
