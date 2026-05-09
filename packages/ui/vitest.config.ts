@@ -59,6 +59,10 @@ export default defineConfig({
         find: /^discord\.js$/,
         replacement: resolve(packageRoot, "test/stubs/discord-js.ts"),
       },
+      {
+        find: /^node-llama-cpp$/,
+        replacement: resolve(packageRoot, "test/stubs/node-llama-cpp.ts"),
+      },
     ],
   },
   test: {
@@ -77,6 +81,15 @@ export default defineConfig({
       "src/**/*.test.ts",
       "src/**/*.test.tsx",
     ],
-    exclude: ["dist/**", "**/node_modules/**"],
+    exclude: [
+      "dist/**",
+      "**/node_modules/**",
+      "**/*.live.test.{ts,tsx}",
+      "**/*.real.test.{ts,tsx}",
+      "**/*.integration.test.{ts,tsx}",
+      "**/*.e2e.test.{ts,tsx}",
+      "**/*.e2e.spec.{ts,tsx}",
+      "**/*.spec.{ts,tsx}",
+    ],
   },
 });
