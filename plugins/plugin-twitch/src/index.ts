@@ -37,6 +37,13 @@ const twitchPlugin: Plugin = {
 
   tests: [],
 
+  // Self-declared auto-enable: activate when the "twitch" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["twitch"],
+  },
+
   init: async (
     _config: Record<string, string>,
     runtime: IAgentRuntime,

@@ -48,6 +48,18 @@ export interface Plugin {
     config: Record<string, unknown>,
     runtime: unknown,
   ) => Promise<void | (() => Promise<void>)>;
+  /**
+   * Declarative auto-enable conditions consumed by the runtime's
+   * plugin-auto-enable engine. Mirrors the shape on `@elizaos/core` Plugin.
+   */
+  autoEnable?: {
+    envKeys?: string[];
+    connectorKeys?: string[];
+    shouldEnable?: (
+      env: Record<string, string | undefined>,
+      config: Record<string, unknown>,
+    ) => boolean;
+  };
 }
 
 let channel: WechatChannel | null = null;
@@ -343,6 +355,13 @@ function registerWechatMessageConnector(
 const wechatPlugin: Plugin = {
   name: "wechat",
   description: "WeChat messaging via proxy API",
+
+  // Self-declared auto-enable: activate when the "wechat" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["wechat"],
+  },
 
   async init(config: Record<string, unknown>, runtime: unknown) {
     try {

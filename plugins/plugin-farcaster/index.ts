@@ -41,6 +41,12 @@ export const farcasterPlugin: Plugin = {
   actions: [],
   providers: farcasterProviders,
   routes: farcasterWebhookRoutes,
+  // Self-declared auto-enable: activate when the "farcaster" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["farcaster"],
+  },
   async init(_config, runtime) {
     try {
       const manager = getConnectorAccountManager(runtime);

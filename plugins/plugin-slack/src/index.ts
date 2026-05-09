@@ -14,6 +14,12 @@ const slackPlugin: Plugin = {
   services: [SlackService],
   actions: [],
   providers: [],
+  // Self-declared auto-enable: activate when the "slack" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["slack"],
+  },
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     // Register with the ConnectorAccountManager so the generic HTTP CRUD +
     // OAuth surface can list, create, patch, delete, and run OAuth v2 install
