@@ -234,7 +234,7 @@ async function loadRequiredPluginSql(): Promise<
   } catch (err) {
     const sourceEntry = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
-      "../../../../plugins/plugin-sql/typescript/index.node.ts",
+      "../../../../plugins/plugin-sql/src/index.node.ts",
     );
     if (!isPluginSqlResolutionError(err) || !existsSync(sourceEntry)) {
       throw err;

@@ -366,7 +366,7 @@ type TrajectoryStepState = {
 	openPositions: number;
 };
 
-type TrajectoryStepKindLike = "llm" | "action" | "executeCode";
+type TrajectoryStepKindLike = "llm" | "action";
 
 export type TrajectoryAnnotateParams = {
 	stepId: string;
@@ -394,9 +394,7 @@ type TrajectoryLoggerLike = {
 	/**
 	 * Optional. When implemented (DatabaseTrajectoryLogger does), lets a caller
 	 * extend an existing step row with the new schema fields (kind, script,
-	 * childSteps, usedSkills). The plugin-executecode action uses this to
-	 * record its parent step + collected child step IDs without depending
-	 * directly on @elizaos/agent.
+	 * childSteps, usedSkills) without depending directly on @elizaos/agent.
 	 */
 	annotateStep?: (params: TrajectoryAnnotateParams) => Promise<void> | void;
 };

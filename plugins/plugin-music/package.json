@@ -1,0 +1,59 @@
+{
+  "name": "@elizaos/plugin-music",
+  "version": "2.0.0-beta.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-music"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@vookav2/play-dl": "^1.9.9",
+    "buffer": "^6.0.3",
+    "ffmpeg-static": "^5.3.0",
+    "ffprobe-static": "^3.1.0",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/node": "^22.19.17",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
+    "test:live": "bun run test:e2e"
+  },
+  "peerDependencies": {
+    "whatwg-url": "^16.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  }
+}

@@ -6,6 +6,7 @@
 
 import type http from 'node:http';
 import type { Plugin, Route } from '@elizaos/core';
+import { handleAutomationsRoutes } from './routes/automations';
 import { handleWorkflowRoutes, type WorkflowRouteContext } from './routes/workflow-routes';
 
 type AnyRuntime = WorkflowRouteContext['runtime'];
@@ -16,6 +17,15 @@ interface WorkflowCompatState {
 
 function buildState(runtime: unknown): WorkflowCompatState {
   return { current: runtime as AnyRuntime } as WorkflowCompatState;
+}
+
+function jsonResponder(httpRes: http.ServerResponse) {
+  return (_res: http.ServerResponse, body: unknown, status = 200) => {
+    if (httpRes.headersSent) return;
+    httpRes.statusCode = status;
+    httpRes.setHeader('content-type', 'application/json; charset=utf-8');
+    httpRes.end(JSON.stringify(body));
+  };
 }
 
 function makeWorkflowHandler() {
@@ -32,17 +42,32 @@ function makeWorkflowHandler() {
       method,
       pathname: url.pathname,
       runtime: state.current,
-      json: (_res, body, status = 200) => {
-        if (httpRes.headersSent) return;
-        httpRes.statusCode = status;
-        httpRes.setHeader('content-type', 'application/json; charset=utf-8');
-        httpRes.end(JSON.stringify(body));
-      },
+      json: jsonResponder(httpRes),
+    });
+  };
+}
+
+function makeAutomationsHandler() {
+  return async (req: unknown, res: unknown, runtime: unknown): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const url = new URL(httpReq.url ?? '/', 'http://localhost');
+    const method = (httpReq.method ?? 'GET').toUpperCase();
+    const state = buildState(runtime);
+
+    await handleAutomationsRoutes({
+      req: httpReq,
+      res: httpRes,
+      method,
+      pathname: url.pathname,
+      runtime: state.current,
+      json: jsonResponder(httpRes),
     });
   };
 }
 
 const workflowHandler = makeWorkflowHandler();
+const automationsHandler = makeAutomationsHandler();
 
 const workflowRouteList: Route[] = [
   // Status surface
@@ -119,6 +144,14 @@ const workflowRouteList: Route[] = [
     path: '/api/workflow/workflows/:id/executions',
     rawPath: true,
     handler: workflowHandler,
+  },
+  // Cross-cutting `/api/automations` surface — combines workflows, triggers,
+  // workbench tasks, and draft conversations into a single list view.
+  {
+    type: 'GET',
+    path: '/api/automations',
+    rawPath: true,
+    handler: automationsHandler,
   },
 ];
 

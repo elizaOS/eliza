@@ -3,7 +3,6 @@ import { logger } from "../logger.ts";
 import { setTrajectoryPurpose } from "../trajectory-context.ts";
 import type {
 	ActionResult,
-	Evaluator,
 	EvaluatorRunContext,
 	EvaluatorRunOptions,
 	EvaluatorRunResult,
@@ -11,6 +10,7 @@ import type {
 	JSONSchema,
 	JsonValue,
 	Memory,
+	RegisteredEvaluator,
 	Service,
 	State,
 } from "../types/index.ts";
@@ -18,7 +18,7 @@ import { EventType, ModelType } from "../types/index.ts";
 import { Service as BaseService } from "../types/service.ts";
 
 type PreparedEntry = {
-	evaluator: Evaluator;
+	evaluator: RegisteredEvaluator;
 	prepared: unknown;
 };
 
@@ -177,11 +177,11 @@ export class EvaluatorService extends BaseService {
 		// Stateless service.
 	}
 
-	list(): Evaluator[] {
+	list(): RegisteredEvaluator[] {
 		return [...this.runtime.evaluators];
 	}
 
-	register(evaluator: Evaluator): void {
+	register(evaluator: RegisteredEvaluator): void {
 		this.runtime.registerEvaluator(evaluator);
 	}
 
@@ -220,7 +220,7 @@ export class EvaluatorService extends BaseService {
 			};
 		}
 
-		const active: Evaluator[] = [];
+		const active: RegisteredEvaluator[] = [];
 		const errors: EvaluatorRunResult["errors"] = [];
 		await Promise.all(
 			candidates.map(async (evaluator) => {
