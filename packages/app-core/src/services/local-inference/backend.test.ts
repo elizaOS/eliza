@@ -311,9 +311,9 @@ describe("decideBackend kernel-availability probe", () => {
     const catalog = withRuntime(BASE_CATALOG, {
       optimizations: { requiresKernel: ["turbo3_tcq"] },
     });
-    await expect(
-      d.load({ modelPath: "/m.gguf", catalog }),
-    ).rejects.toThrow(/turbo3_tcq.*does not advertise/);
+    await expect(d.load({ modelPath: "/m.gguf", catalog })).rejects.toThrow(
+      /turbo3_tcq.*does not advertise/,
+    );
     expect(server.loaded).toBe(false);
     expect(node.loaded).toBe(false);
   });
