@@ -149,8 +149,8 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "X402_ENABLED",
     "X402_DB_PATH",
     // n8n workflow plugin (resolved by applyN8nConfigToEnv)
-    "N8N_HOST",
-    "N8N_API_KEY",
+    "WORKFLOW_HOST",
+    "WORKFLOW_API_KEY",
     // GitHub access for coding agent plugin
     "GITHUB_TOKEN",
     "GITHUB_OAUTH_CLIENT_ID",
@@ -200,7 +200,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   const capabilityHints: string[] = [];
   const n8nMasterEnabled = config.n8n?.enabled !== false;
   const n8nExplicitlyDisabled =
-    config.plugins?.entries?.["n8n-workflow"]?.enabled === false;
+    config.plugins?.entries?.["workflow"]?.enabled === false;
   const n8nCloudAuthed = Boolean(
     config.cloud?.apiKey && config.cloud?.enabled !== false,
   );

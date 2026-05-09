@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import type { Command } from "commander";
-import { theme } from "..//shared";
+import { theme } from "@elizaos/shared";
 import { runCommandWithRuntime } from "../cli-utils";
 import type { CheckCategory, CheckResult, CheckStatus } from "../doctor/checks";
 

@@ -1,19 +1,19 @@
 /**
  * n8n domain methods — status, workflow CRUD, sidecar start.
  *
- * All routes hit `/api/n8n/*` on the local agent server.
+ * All routes hit `/api/workflow/*` on the local agent server.
  * The workflow CRUD routes are served by the n8n plugin itself
  * but exposed through the same base URL via the plugin's route registration.
  */
 
 import { ElizaClient } from "./client-base";
 import type {
-  N8nStatusResponse,
-  N8nWorkflow,
-  N8nWorkflowGenerateRequest,
-  N8nWorkflowGenerateResponse,
-  N8nWorkflowResolveClarificationRequest,
-  N8nWorkflowWriteRequest,
+  WorkflowStatusResponse,
+  WorkflowDefinition,
+  WorkflowDefinitionGenerateRequest,
+  WorkflowDefinitionGenerateResponse,
+  WorkflowDefinitionResolveClarificationRequest,
+  WorkflowDefinitionWriteRequest,
 } from "./client-types-chat";
 
 // ---------------------------------------------------------------------------
@@ -22,23 +22,23 @@ import type {
 
 declare module "./client-base" {
   interface ElizaClient {
-    getN8nStatus(): Promise<N8nStatusResponse>;
-    getN8nWorkflow(id: string): Promise<N8nWorkflow>;
-    listN8nWorkflows(): Promise<N8nWorkflow[]>;
-    createN8nWorkflow(request: N8nWorkflowWriteRequest): Promise<N8nWorkflow>;
-    updateN8nWorkflow(
+    getN8nStatus(): Promise<WorkflowStatusResponse>;
+    getWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
+    listWorkflowDefinitions(): Promise<WorkflowDefinition[]>;
+    createWorkflowDefinition(request: WorkflowDefinitionWriteRequest): Promise<WorkflowDefinition>;
+    updateWorkflowDefinition(
       id: string,
-      request: N8nWorkflowWriteRequest,
-    ): Promise<N8nWorkflow>;
-    generateN8nWorkflow(
-      request: N8nWorkflowGenerateRequest,
-    ): Promise<N8nWorkflowGenerateResponse>;
+      request: WorkflowDefinitionWriteRequest,
+    ): Promise<WorkflowDefinition>;
+    generateWorkflowDefinition(
+      request: WorkflowDefinitionGenerateRequest,
+    ): Promise<WorkflowDefinitionGenerateResponse>;
     resolveN8nClarification(
-      request: N8nWorkflowResolveClarificationRequest,
-    ): Promise<N8nWorkflowGenerateResponse>;
-    activateN8nWorkflow(id: string): Promise<N8nWorkflow>;
-    deactivateN8nWorkflow(id: string): Promise<N8nWorkflow>;
-    deleteN8nWorkflow(id: string): Promise<{ ok: boolean }>;
+      request: WorkflowDefinitionResolveClarificationRequest,
+    ): Promise<WorkflowDefinitionGenerateResponse>;
+    activateWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
+    deactivateWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
+    deleteWorkflowDefinition(id: string): Promise<{ ok: boolean }>;
     startN8nSidecar(): Promise<{ ok: boolean }>;
   }
 }
@@ -49,45 +49,45 @@ declare module "./client-base" {
 
 ElizaClient.prototype.getN8nStatus = async function (
   this: ElizaClient,
-): Promise<N8nStatusResponse> {
-  return this.fetch<N8nStatusResponse>("/api/n8n/status");
+): Promise<WorkflowStatusResponse> {
+  return this.fetch<WorkflowStatusResponse>("/api/workflow/status");
 };
 
-ElizaClient.prototype.getN8nWorkflow = async function (
+ElizaClient.prototype.getWorkflowDefinition = async function (
   this: ElizaClient,
   id: string,
-): Promise<N8nWorkflow> {
-  return this.fetch<N8nWorkflow>(
-    `/api/n8n/workflows/${encodeURIComponent(id)}`,
+): Promise<WorkflowDefinition> {
+  return this.fetch<WorkflowDefinition>(
+    `/api/workflow/workflows/${encodeURIComponent(id)}`,
   );
 };
 
-ElizaClient.prototype.listN8nWorkflows = async function (
+ElizaClient.prototype.listWorkflowDefinitions = async function (
   this: ElizaClient,
-): Promise<N8nWorkflow[]> {
-  const res = await this.fetch<{ workflows: N8nWorkflow[] }>(
-    "/api/n8n/workflows",
+): Promise<WorkflowDefinition[]> {
+  const res = await this.fetch<{ workflows: WorkflowDefinition[] }>(
+    "/api/workflow/workflows",
   );
   return res.workflows ?? [];
 };
 
-ElizaClient.prototype.createN8nWorkflow = async function (
+ElizaClient.prototype.createWorkflowDefinition = async function (
   this: ElizaClient,
-  request: N8nWorkflowWriteRequest,
-): Promise<N8nWorkflow> {
-  return this.fetch<N8nWorkflow>("/api/n8n/workflows", {
+  request: WorkflowDefinitionWriteRequest,
+): Promise<WorkflowDefinition> {
+  return this.fetch<WorkflowDefinition>("/api/workflow/workflows", {
     method: "POST",
     body: JSON.stringify(request),
   });
 };
 
-ElizaClient.prototype.updateN8nWorkflow = async function (
+ElizaClient.prototype.updateWorkflowDefinition = async function (
   this: ElizaClient,
   id: string,
-  request: N8nWorkflowWriteRequest,
-): Promise<N8nWorkflow> {
-  return this.fetch<N8nWorkflow>(
-    `/api/n8n/workflows/${encodeURIComponent(id)}`,
+  request: WorkflowDefinitionWriteRequest,
+): Promise<WorkflowDefinition> {
+  return this.fetch<WorkflowDefinition>(
+    `/api/workflow/workflows/${encodeURIComponent(id)}`,
     {
       method: "PUT",
       body: JSON.stringify(request),
@@ -95,18 +95,18 @@ ElizaClient.prototype.updateN8nWorkflow = async function (
   );
 };
 
-ElizaClient.prototype.generateN8nWorkflow = async function (
+ElizaClient.prototype.generateWorkflowDefinition = async function (
   this: ElizaClient,
-  request: N8nWorkflowGenerateRequest,
-): Promise<N8nWorkflowGenerateResponse> {
+  request: WorkflowDefinitionGenerateRequest,
+): Promise<WorkflowDefinitionGenerateResponse> {
   // LLM-driven workflow generation runs keyword extraction, node search,
   // generation, multiple correction passes, and feasibility assessment
   // sequentially — easily 30-90s on a cold cache. The 10s default fetch
   // timeout is far too aggressive and surfaces as
   // "Request timed out after 10000ms" in the Automations UI even when
   // the backend would have succeeded a few seconds later.
-  return this.fetch<N8nWorkflowGenerateResponse>(
-    "/api/n8n/workflows/generate",
+  return this.fetch<WorkflowDefinitionGenerateResponse>(
+    "/api/workflow/workflows/generate",
     {
       method: "POST",
       body: JSON.stringify(request),
@@ -117,14 +117,14 @@ ElizaClient.prototype.generateN8nWorkflow = async function (
 
 ElizaClient.prototype.resolveN8nClarification = async function (
   this: ElizaClient,
-  request: N8nWorkflowResolveClarificationRequest,
-): Promise<N8nWorkflowGenerateResponse> {
+  request: WorkflowDefinitionResolveClarificationRequest,
+): Promise<WorkflowDefinitionGenerateResponse> {
   // Patch + deploy is server-side and synchronous from the user's view, but
   // it still runs validateAndRepair + a deploy round-trip. Reuse the same
   // generous timeout as the generate call so a slow n8n write does not
   // surface as a misleading "Request timed out" toast.
-  return this.fetch<N8nWorkflowGenerateResponse>(
-    "/api/n8n/workflows/resolve-clarification",
+  return this.fetch<WorkflowDefinitionGenerateResponse>(
+    "/api/workflow/workflows/resolve-clarification",
     {
       method: "POST",
       body: JSON.stringify(request),
@@ -133,34 +133,34 @@ ElizaClient.prototype.resolveN8nClarification = async function (
   );
 };
 
-ElizaClient.prototype.activateN8nWorkflow = async function (
+ElizaClient.prototype.activateWorkflowDefinition = async function (
   this: ElizaClient,
   id: string,
-): Promise<N8nWorkflow> {
-  return this.fetch<N8nWorkflow>(
-    `/api/n8n/workflows/${encodeURIComponent(id)}/activate`,
+): Promise<WorkflowDefinition> {
+  return this.fetch<WorkflowDefinition>(
+    `/api/workflow/workflows/${encodeURIComponent(id)}/activate`,
     {
       method: "POST",
     },
   );
 };
 
-ElizaClient.prototype.deactivateN8nWorkflow = async function (
+ElizaClient.prototype.deactivateWorkflowDefinition = async function (
   this: ElizaClient,
   id: string,
-): Promise<N8nWorkflow> {
-  return this.fetch<N8nWorkflow>(
-    `/api/n8n/workflows/${encodeURIComponent(id)}/deactivate`,
+): Promise<WorkflowDefinition> {
+  return this.fetch<WorkflowDefinition>(
+    `/api/workflow/workflows/${encodeURIComponent(id)}/deactivate`,
     { method: "POST" },
   );
 };
 
-ElizaClient.prototype.deleteN8nWorkflow = async function (
+ElizaClient.prototype.deleteWorkflowDefinition = async function (
   this: ElizaClient,
   id: string,
 ): Promise<{ ok: boolean }> {
   return this.fetch<{ ok: boolean }>(
-    `/api/n8n/workflows/${encodeURIComponent(id)}`,
+    `/api/workflow/workflows/${encodeURIComponent(id)}`,
     { method: "DELETE" },
   );
 };
@@ -168,7 +168,7 @@ ElizaClient.prototype.deleteN8nWorkflow = async function (
 ElizaClient.prototype.startN8nSidecar = async function (
   this: ElizaClient,
 ): Promise<{ ok: boolean }> {
-  return this.fetch<{ ok: boolean }>("/api/n8n/sidecar/start", {
+  return this.fetch<{ ok: boolean }>("/api/workflow/sidecar/start", {
     method: "POST",
   });
 };

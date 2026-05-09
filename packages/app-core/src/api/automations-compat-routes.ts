@@ -23,7 +23,7 @@ import {
 import { asRecord } from "@elizaos/shared";
 import { ensureRouteAuthorized } from "./auth";
 import { listAutomationNodeContributors } from "./automation-node-contributors";
-import type { N8nStatusResponse, N8nWorkflow } from "./client-types-chat";
+import type { WorkflowStatusResponse, WorkflowDefinition } from "@elizaos/ui/api/client-types-chat";
 import type {
   AutomationItem,
   AutomationNodeCatalogResponse,
@@ -31,7 +31,7 @@ import type {
   AutomationRoomBinding,
   AutomationSummary,
   WorkbenchTask,
-} from "./client-types-config";
+} from "@elizaos/ui/api/client-types-config";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import {
   sendJsonError as sendJsonErrorResponse,
@@ -41,7 +41,7 @@ import {
 interface AutomationListResponse {
   automations: AutomationItem[];
   summary: AutomationSummary;
-  n8nStatus: N8nStatusResponse | null;
+  n8nStatus: WorkflowStatusResponse | null;
   workflowFetchError: string | null;
 }
 
@@ -64,7 +64,7 @@ type N8nJsonResponder = (
   status?: number,
 ) => void;
 
-interface N8nRouteContext {
+interface WorkflowRouteContext {
   req: http.IncomingMessage;
   res: http.ServerResponse;
   method: string;
@@ -74,11 +74,11 @@ interface N8nRouteContext {
   json: N8nJsonResponder;
 }
 
-type N8nRouteHandler = (context: N8nRouteContext) => Promise<void> | void;
+type N8nRouteHandler = (context: WorkflowRouteContext) => Promise<void> | void;
 
 const WORKFLOW_DRAFT_TITLE = "New Workflow Draft";
 const N8N_ROUTES_MODULE: string =
-  "@elizaos/plugin-n8n-workflow/routes/n8n-routes";
+  "@elizaos/plugin-workflow/routes/n8n-routes";
 const SYSTEM_TASK_NAMES = new Set([
   "EMBEDDING_DRAIN",
   "PROACTIVE_AGENT",
@@ -366,7 +366,7 @@ let n8nRouteHandlerPromise: Promise<N8nRouteHandler | null> | null = null;
 async function loadN8nRouteHandler(): Promise<N8nRouteHandler | null> {
   n8nRouteHandlerPromise ??= import(N8N_ROUTES_MODULE)
     .then((mod: unknown) => {
-      const handler = (mod as { handleN8nRoutes?: unknown }).handleN8nRoutes;
+      const handler = (mod as { handleWorkflowRoutes?: unknown }).handleWorkflowRoutes;
       return typeof handler === "function"
         ? (handler as N8nRouteHandler)
         : null;
@@ -394,8 +394,8 @@ async function invokeN8nCompatRoute<T>(
   runtime: AgentRuntime,
   pathname: string,
 ): Promise<N8nRouteCapture<T>> {
-  const handleN8nRoutes = await loadN8nRouteHandler();
-  if (!handleN8nRoutes) {
+  const handleWorkflowRoutes = await loadN8nRouteHandler();
+  if (!handleWorkflowRoutes) {
     return {
       status: 503,
       payload: { error: "n8n workflow routes are unavailable" } as T,
@@ -405,7 +405,7 @@ async function invokeN8nCompatRoute<T>(
   let payload: T | null = null;
   let status = 200;
 
-  await handleN8nRoutes({
+  await handleWorkflowRoutes({
     req,
     res,
     method: "GET",
@@ -527,7 +527,7 @@ function buildAutomationDraftItem(room: AutomationRoomRecord): AutomationItem {
 }
 
 function buildWorkflowItem(
-  workflow: N8nWorkflow | undefined,
+  workflow: WorkflowDefinition | undefined,
   room: AutomationRoomRecord | undefined,
   fallback: {
     workflowId: string;
@@ -640,19 +640,19 @@ async function buildAutomationListResponse(
     .filter((task) => !triggerTaskIds.has(task.id))
     .map((task) => buildCoordinatorTaskItem(task, taskRooms.get(task.id)));
 
-  const n8nStatusResult = await invokeN8nCompatRoute<N8nStatusResponse>(
+  const n8nStatusResult = await invokeN8nCompatRoute<WorkflowStatusResponse>(
     req,
     res,
     runtime,
-    "/api/n8n/status",
+    "/api/workflow/status",
   );
   const n8nStatus =
     n8nStatusResult.status === 200 ? n8nStatusResult.payload : null;
 
   const n8nWorkflowsResult = await invokeN8nCompatRoute<{
-    workflows?: N8nWorkflow[];
+    workflows?: WorkflowDefinition[];
     error?: string;
-  }>(req, res, runtime, "/api/n8n/workflows");
+  }>(req, res, runtime, "/api/workflow/workflows");
   const workflowFetchError =
     n8nWorkflowsResult.status === 200
       ? null

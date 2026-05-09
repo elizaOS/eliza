@@ -108,7 +108,7 @@ const AVAILABLE_PLUGINS: Record<string, Plugin> = {
   elizaOSCloud: cloudModelProviderPlugin,
   "eliza-cloud-model-provider": cloudModelProviderPlugin,
   "@elizaos/plugin-mcp": asPlugin(mcpPlugin),
-  "@elizaos/plugin-n8n-workflow": cloudN8nPlugin,
+  "@elizaos/plugin-workflow": cloudN8nPlugin,
 };
 
 export class AgentLoader {

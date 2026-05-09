@@ -1,4 +1,4 @@
-import "/shared";
+import "@elizaos/shared";
 import { existsSync } from "node:fs";
 import { rename } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -46,10 +46,10 @@ import {
   resolveServerOnlyPort,
   syncResolvedApiPort,
 } from "@elizaos/shared";
-import { isNativeServerPlatform } from "/shared";
+import { isNativeServerPlatform } from "@elizaos/shared";
 import { getApps, loadRegistry } from "../registry";
-import { syncAppEnvToEliza, syncElizaEnvAliases } from "/shared";
-import { ensureRuntimeSqlCompatibility } from "/shared";
+import { syncAppEnvToEliza, syncElizaEnvAliases } from "@elizaos/shared";
+import { ensureRuntimeSqlCompatibility } from "@elizaos/shared";
 import {
   type AppRoutePluginRegistryEntry,
   listAppRoutePluginLoaders,
@@ -538,20 +538,20 @@ async function repairRuntimeAfterBoot(
   // start. Runs after the auth bridge so the bridge owns dispose-on-signin.
   await ensureN8nAutoStart(runtime);
 
-  // Register the N8N_DISPATCH service so trigger dispatchers carrying
-  // `kind: "workflow"` can call runtime.getService("N8N_DISPATCH").execute(id).
+  // Register the WORKFLOW_DISPATCH service so trigger dispatchers carrying
+  // `kind: "workflow"` can call runtime.getService("WORKFLOW_DISPATCH").execute(id).
   // Mode selection (cloud / local / disabled) is deferred to each dispatch
   // call via resolveN8nMode, so this does not depend on autostart readiness.
   await ensureN8nDispatchService(runtime);
 
   // Subscribe the trigger event bridge to the runtime event bus so
   // event-kind triggers fire on real MESSAGE_RECEIVED / REACTION_RECEIVED /
-  // etc. emissions. Runs after N8N_DISPATCH so workflow-kind event
+  // etc. emissions. Runs after WORKFLOW_DISPATCH so workflow-kind event
   // triggers can dispatch immediately on first emit.
   await ensureTriggerEventBridge(runtime);
 
   // Register the n8n runtime-context provider so the patched
-  // `@elizaos/plugin-n8n-workflow` can pull real Discord guild/channel IDs
+  // `@elizaos/plugin-workflow` can pull real Discord guild/channel IDs
   // and the user's Gmail email into the workflow-generation prompt — closing
   // the placeholder + missing-credentials-block gaps. The plugin treats this
   // service as advisory; if it isn't registered the prompt simply omits the
@@ -574,7 +574,7 @@ let _n8nAutoStart: {
   poke: () => Promise<void>;
 } | null = null;
 
-// Module-level handle for the N8N_DISPATCH service instance. Kept across
+// Module-level handle for the WORKFLOW_DISPATCH service instance. Kept across
 // hot-reloads so we can clear the runtime.services slot on shutdown without
 // leaking closures that hold a stale runtime reference.
 let _n8nDispatch: { execute: (workflowId: string) => Promise<unknown> } | null =
@@ -665,7 +665,7 @@ async function ensureN8nDispatchService(runtime: AgentRuntime): Promise<void> {
   // closure binding to a discarded AgentRuntime.
   if (_n8nDispatch) {
     try {
-      runtime.services.delete("N8N_DISPATCH" as never);
+      runtime.services.delete("WORKFLOW_DISPATCH" as never);
     } catch {
       /* ignore */
     }
@@ -692,7 +692,7 @@ async function ensureN8nDispatchService(runtime: AgentRuntime): Promise<void> {
       stop: async () => {},
       capabilityDescription: "Executes n8n workflows by id.",
     };
-    runtime.services.set("N8N_DISPATCH" as never, [serviceEntry as never]);
+    runtime.services.set("WORKFLOW_DISPATCH" as never, [serviceEntry as never]);
     logger.info("[eliza] n8n dispatch service registered");
   } catch (err) {
     logger.warn(
@@ -748,13 +748,13 @@ async function ensureN8nRuntimeContextProvider(
     const { startElizaN8nRuntimeContextProvider } = await import(
       "../services/n8n-runtime-context-provider.js"
     );
-    // If a sibling `n8n_credential_provider` is registered (Eliza ships one
+    // If a sibling `workflow_credential_provider` is registered (Eliza ships one
     // separately), reach into the runtime services map for its `resolve` so
     // the context provider can filter `supportedCredentials` to types that
     // actually have data right now. Optional — without it the context
     // provider falls back to "config has connector token" heuristics.
     const credEntries =
-      runtime.services.get("n8n_credential_provider" as never) ?? [];
+      runtime.services.get("workflow_credential_provider" as never) ?? [];
     const credProviderInstance = credEntries[0] as
       | {
           resolve?: (userId: string, credType: string) => Promise<unknown>;

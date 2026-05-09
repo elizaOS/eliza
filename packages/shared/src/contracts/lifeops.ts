@@ -963,7 +963,7 @@ export type LifeOpsWorkflowAction =
       request?: GetLifeOpsHealthSummaryRequest;
     })
   | (LifeOpsWorkflowActionBase & {
-      kind: "dispatch_n8n_workflow";
+      kind: "dispatch_workflow";
       workflowId: string;
       payload?: Record<string, unknown>;
     })

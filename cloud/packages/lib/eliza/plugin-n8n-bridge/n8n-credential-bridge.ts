@@ -1,7 +1,7 @@
 /**
  * N8N Credential Bridge
  *
- * Bridges cloud credentials to plugin-n8n-workflow's CredentialProvider interface.
+ * Bridges cloud credentials to plugin-workflow's CredentialProvider interface.
  * This service does NOT touch the n8n API.
  *
  * Two resolution strategies (mutually exclusive):
@@ -15,8 +15,8 @@
  * The plugin then uses the credential data to create the n8n credential itself
  * via its own apiClient.createCredential().
  *
- * Registered as serviceType "n8n_credential_provider" — the plugin discovers it
- * via runtime.getService("n8n_credential_provider").
+ * Registered as serviceType "workflow_credential_provider" — the plugin discovers it
+ * via runtime.getService("workflow_credential_provider").
  */
 
 import { type IAgentRuntime, Service } from "@elizaos/core";
@@ -34,12 +34,12 @@ import { logger } from "@/lib/utils/logger";
 import { API_KEY_CRED_TYPES } from "./apikey-cred-map";
 import { mapCredTypeToCloudPlatform } from "./oauth-cred-map";
 
-const SERVICE_TYPE = "n8n_credential_provider";
+const SERVICE_TYPE = "workflow_credential_provider";
 
 const TELEGRAM_CRED_TYPES = new Set(["telegramApi"]);
 
 /**
- * Result type matching plugin-n8n-workflow's CredentialProviderResult.
+ * Result type matching plugin-workflow's CredentialProviderResult.
  * Duplicated here to avoid a direct dependency on the plugin package.
  */
 type CredentialProviderResult =
@@ -47,14 +47,14 @@ type CredentialProviderResult =
   | { status: "needs_auth"; authUrl: string }
   | null;
 
-export class N8nCredentialBridge extends Service {
+export class WorkflowCredentialBridge extends Service {
   static serviceType = SERVICE_TYPE;
   capabilityDescription =
     "Bridges cloud credentials (OAuth + API keys) to n8n workflow credentials";
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
-    const service = new N8nCredentialBridge(runtime);
-    logger.info("[N8nCredentialBridge] Bridge active");
+    const service = new WorkflowCredentialBridge(runtime);
+    logger.info("[WorkflowCredentialBridge] Bridge active");
     return service;
   }
 
@@ -64,7 +64,7 @@ export class N8nCredentialBridge extends Service {
   /**
    * Dispatch to the correct resolution strategy based on credential type.
    *
-   * Called by plugin-n8n-workflow's credentialResolver during workflow deployment.
+   * Called by plugin-workflow's credentialResolver during workflow deployment.
    * Returns credential data — the plugin creates the n8n credential itself.
    */
   async resolve(userId: string, credType: string): Promise<CredentialProviderResult> {
@@ -104,7 +104,7 @@ export class N8nCredentialBridge extends Service {
       }
     }
 
-    logger.info("[N8nCredentialBridge] checkCredentialTypes", {
+    logger.info("[WorkflowCredentialBridge] checkCredentialTypes", {
       requested: credTypes,
       supported,
       unsupported,
@@ -129,7 +129,7 @@ export class N8nCredentialBridge extends Service {
 
     const userResult = await lookupUser(userId, "N8N_CREDENTIAL_BRIDGE");
     if (isUserLookupError(userResult)) {
-      logger.warn("[N8nCredentialBridge] User lookup failed", { userId });
+      logger.warn("[WorkflowCredentialBridge] User lookup failed", { userId });
       return null;
     }
     const { user, organizationId } = userResult;
@@ -156,7 +156,7 @@ export class N8nCredentialBridge extends Service {
       }));
     } catch (error) {
       // Connection revoked between isPlatformConnected check and token retrieval
-      logger.warn("[N8nCredentialBridge] Token retrieval failed after connection check", {
+      logger.warn("[WorkflowCredentialBridge] Token retrieval failed after connection check", {
         platform,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -191,7 +191,7 @@ export class N8nCredentialBridge extends Service {
         },
       );
     } else {
-      logger.debug("[N8nCredentialBridge] No refresh token for connection", {
+      logger.debug("[WorkflowCredentialBridge] No refresh token for connection", {
         connectionId,
         platform,
       });
@@ -212,7 +212,7 @@ export class N8nCredentialBridge extends Service {
       oauthTokenData.expiry_date = token.expiresAt.getTime();
     }
 
-    logger.info("[N8nCredentialBridge] OAuth credential resolved", {
+    logger.info("[WorkflowCredentialBridge] OAuth credential resolved", {
       credType,
       platform,
     });
@@ -245,7 +245,7 @@ export class N8nCredentialBridge extends Service {
 
     const userResult = await lookupUser(userId, "N8N_CREDENTIAL_BRIDGE");
     if (isUserLookupError(userResult)) {
-      logger.warn("[N8nCredentialBridge] User lookup failed", { userId });
+      logger.warn("[WorkflowCredentialBridge] User lookup failed", { userId });
       return null;
     }
     const { user, organizationId } = userResult;
@@ -255,7 +255,7 @@ export class N8nCredentialBridge extends Service {
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
 
-    logger.info("[N8nCredentialBridge] API key credential resolved", {
+    logger.info("[WorkflowCredentialBridge] API key credential resolved", {
       credType,
     });
 
@@ -275,7 +275,7 @@ export class N8nCredentialBridge extends Service {
   private async resolveTelegramCredential(userId: string): Promise<CredentialProviderResult> {
     const userResult = await lookupUser(userId, "N8N_CREDENTIAL_BRIDGE");
     if (isUserLookupError(userResult)) {
-      logger.warn("[N8nCredentialBridge] User lookup failed, cannot resolve Telegram credential", {
+      logger.warn("[WorkflowCredentialBridge] User lookup failed, cannot resolve Telegram credential", {
         userId,
       });
       return null;
@@ -283,7 +283,7 @@ export class N8nCredentialBridge extends Service {
 
     const orgBotToken = await telegramAutomationService.getBotToken(userResult.organizationId);
     if (orgBotToken) {
-      logger.info("[N8nCredentialBridge] Telegram credential resolved from org bot token");
+      logger.info("[WorkflowCredentialBridge] Telegram credential resolved from org bot token");
       return {
         status: "credential_data",
         data: { accessToken: orgBotToken },
@@ -293,7 +293,7 @@ export class N8nCredentialBridge extends Service {
     const appBotToken = elizaAppConfig.telegram.botToken;
     if (appBotToken) {
       logger.info(
-        "[N8nCredentialBridge] Telegram credential resolved from app bot token (fallback)",
+        "[WorkflowCredentialBridge] Telegram credential resolved from app bot token (fallback)",
       );
       return {
         status: "credential_data",
@@ -301,7 +301,7 @@ export class N8nCredentialBridge extends Service {
       };
     }
 
-    logger.warn("[N8nCredentialBridge] No Telegram bot token available", {
+    logger.warn("[WorkflowCredentialBridge] No Telegram bot token available", {
       userId,
     });
     return null;
@@ -319,7 +319,7 @@ export class N8nCredentialBridge extends Service {
     );
 
     if (!userKey) {
-      logger.warn("[N8nCredentialBridge] No active API key found", {
+      logger.warn("[WorkflowCredentialBridge] No active API key found", {
         userId,
         organizationId,
       });

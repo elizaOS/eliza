@@ -4,6 +4,7 @@ import { formatEther, parseEther } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { itIf } from "../../../../../../../packages/app-core/test/helpers/conditional-tests";
 import { TransferAction } from "../../actions/transfer";
 import { type ChainRpcConfig, WalletProvider } from "../../providers/wallet";
 import { initRPCProviderManager } from "../../rpc-providers";
@@ -11,10 +12,16 @@ import { cleanupTestRuntime, createTestRuntime } from "../test-utils";
 import {
   ELIZA_CLOUD_API_KEY,
   ELIZA_CLOUD_BASE_URL,
+  HAS_ELIZA_CLOUD_RPC_KEY,
   PUBLIC_FALLBACK_RPC_URLS,
   resolveHealthyPublicRpcUrl,
   shouldUseElizaCloudRpc,
 } from "./live-rpc";
+
+if (!HAS_ELIZA_CLOUD_RPC_KEY) {
+  process.env.SKIP_REASON ||=
+    "ELIZAOS_CLOUD_API_KEY required to verify Eliza Cloud RPC routing";
+}
 
 // Test environment - use a funded wallet private key for real testing
 const TEST_PRIVATE_KEY = process.env.TEST_PRIVATE_KEY || generatePrivateKey();
@@ -104,12 +111,7 @@ describe("Transfer Action", () => {
       expect(wp.getSupportedChains()).toEqual(expect.arrayContaining(["mainnet", "base", "bsc"]));
     });
 
-    it("should prefer Eliza Cloud RPCs when configured", () => {
-      if (!useElizaCloudRpc) {
-        expect(useElizaCloudRpc).toBe(false);
-        return;
-      }
-
+    itIf(HAS_ELIZA_CLOUD_RPC_KEY)("should prefer Eliza Cloud RPCs when configured", () => {
       const chainConfigs = wp.getChainConfigs("mainnet");
       expect(chainConfigs.rpcUrls.custom?.http[0]).toBe(
         `${ELIZA_CLOUD_BASE_URL}/proxy/evm-rpc/mainnet`

@@ -1137,7 +1137,7 @@ registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
     hasRecursiveObjectMatch(
       action.result?.data ?? action.result?.raw,
       (record) => {
-        if (record.kind !== "dispatch_n8n_workflow") {
+        if (record.kind !== "dispatch_workflow") {
           return false;
         }
         return workflowId === undefined || record.workflowId === workflowId;
@@ -1146,7 +1146,7 @@ registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
   );
   const matchedWrites = (ctx.memoryWrites ?? []).filter((write) =>
     hasRecursiveObjectMatch(write.content, (record) => {
-      if (record.kind !== "dispatch_n8n_workflow") {
+      if (record.kind !== "dispatch_workflow") {
         return false;
       }
       return workflowId === undefined || record.workflowId === workflowId;

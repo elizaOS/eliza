@@ -14,7 +14,7 @@ export function getApiBase(): string {
   return `http://localhost:${port}`;
 }
 
-export interface N8nWorkflowResponse {
+export interface WorkflowDefinitionResponse {
   id: string;
   name: string;
   active: boolean;
@@ -47,10 +47,10 @@ export async function fetchJson<T>(
 
 export async function findWorkflowById(
   workflowId: string,
-): Promise<N8nWorkflowResponse | null> {
+): Promise<WorkflowDefinitionResponse | null> {
   const base = getApiBase();
-  const result = await fetchJson<N8nWorkflowResponse>(
-    `${base}/api/n8n/workflows/${encodeURIComponent(workflowId)}`,
+  const result = await fetchJson<WorkflowDefinitionResponse>(
+    `${base}/api/workflow/workflows/${encodeURIComponent(workflowId)}`,
     { method: "GET" },
   );
   if (result.status === 404) return null;

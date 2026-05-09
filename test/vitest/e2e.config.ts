@@ -68,7 +68,7 @@ export const baselineE2EExcludedPaths = [
 
 export const nonVitestE2EExcludedPaths = [
   // Bun test and Playwright suites are executed by package/cloud scripts.
-  "eliza/plugins/plugin-n8n-workflow/__tests__/e2e/**/*.e2e.test.ts",
+  "eliza/plugins/plugin-workflow/__tests__/e2e/**/*.e2e.test.ts",
   "eliza/packages/elizaos/templates/**",
   "eliza/.claude/**",
 ];

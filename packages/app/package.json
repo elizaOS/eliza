@@ -76,7 +76,7 @@
     "@elizaos/capacitor-websiteblocker": "workspace:*",
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
-    "@elizaos/plugin-n8n-workflow": "workspace:*",
+    "@elizaos/plugin-workflow": "workspace:*",
     "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@pixiv/three-vrm": "^3.4.5",

@@ -6,8 +6,8 @@ import {
   resolveStylePresetById,
   resolveStylePresetByName,
 } from "@elizaos/shared";
-import { normalizeCharacterMessageExamples } from "/shared";
-import { syncAppEnvToEliza, syncElizaEnvAliases } from "/shared";
+import { normalizeCharacterMessageExamples } from "@elizaos/shared";
+import { syncAppEnvToEliza, syncElizaEnvAliases } from "@elizaos/shared";
 
 function syncBrandEnvAliases(): void {
   syncElizaEnvAliases();

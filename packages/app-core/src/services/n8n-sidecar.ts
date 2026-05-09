@@ -1,11 +1,11 @@
 /**
  * n8n local sidecar: lifecycle + readiness + API-key provisioning.
  *
- * Fallback for the @elizaos/plugin-n8n-workflow plugin when the user has
+ * Fallback for the @elizaos/plugin-workflow plugin when the user has
  * no Eliza Cloud session. Spawns `bunx n8n@<pinned>` (no package.json
  * dependency on n8n — that tree is ~300MB), polls `/rest/login` until
  * the instance is reachable, then provisions a personal API key via
- * `/rest/me/api-keys` so the plugin has `N8N_HOST` + `N8N_API_KEY` to
+ * `/rest/me/api-keys` so the plugin has `WORKFLOW_HOST` + `WORKFLOW_API_KEY` to
  * talk to.
  *
  * ── Lifecycle state diagram ─────────────────────────────────────────
@@ -58,7 +58,7 @@ export interface N8nSidecarState {
   retries: number;
   /**
    * Last ~40 lines of the child's stdout+stderr, most recent last. Surfaced
-   * so the UI / `/api/n8n/status` can show the real n8n boot output when
+   * so the UI / `/api/workflow/status` can show the real n8n boot output when
    * the supervisor is stuck in "starting" or has landed in "error". Without
    * this, the sidecar was a black box: we'd see "not ready" forever with
    * no way to tell whether bunx was downloading, n8n was migrating, or the
@@ -807,7 +807,7 @@ export class N8nSidecar {
       // process's NODE_ENV is untouched — this only shapes the child env.
       NODE_ENV: "production",
       N8N_PORT: String(port),
-      N8N_HOST: this.config.host,
+      WORKFLOW_HOST: this.config.host,
       N8N_PROTOCOL: "http",
       N8N_USER_MANAGEMENT_DISABLED: "true",
       N8N_DIAGNOSTICS_ENABLED: "false",
@@ -1179,7 +1179,7 @@ export class N8nSidecar {
   private async provisionApiKey(host: string): Promise<string | null> {
     const log = (msg: string) => {
       // Route through both the central logger and the sidecar's recentOutput
-      // ring so operators can see the failure in /api/n8n/status even if the
+      // ring so operators can see the failure in /api/workflow/status even if the
       // dev-server log rotates or gets lost. The strings never contain the
       // raw API key (that's fingerprinted at the ensureApiKey callsite).
       logger.warn(`[n8n-sidecar] ${msg}`);

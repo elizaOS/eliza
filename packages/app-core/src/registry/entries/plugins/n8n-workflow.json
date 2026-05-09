@@ -1,13 +1,13 @@
 {
-  "id": "n8n-workflow",
+  "id": "workflow",
   "name": "N8n Workflow",
-  "description": "Natural-language n8n workflow actions (create, activate, deactivate, delete). Eliza auto-resolves N8N_HOST and N8N_API_KEY by minting a short-lived token from the Eliza Cloud n8n gateway when paired (the cloud key itself is never passed through), or by booting the local n8n sidecar otherwise. Explicit env/config values override both.",
-  "npmName": "@elizaos/plugin-n8n-workflow",
+  "description": "Natural-language n8n workflow actions (create, activate, deactivate, delete). Eliza auto-resolves WORKFLOW_HOST and WORKFLOW_API_KEY by minting a short-lived token from the Eliza Cloud n8n gateway when paired (the cloud key itself is never passed through), or by booting the local n8n sidecar otherwise. Explicit env/config values override both.",
+  "npmName": "@elizaos/plugin-workflow",
   "version": "1.2.10",
   "source": "bundled",
   "tags": ["n8n", "workflow", "automation"],
   "config": {
-    "N8N_HOST": {
+    "WORKFLOW_HOST": {
       "type": "string",
       "required": false,
       "sensitive": false,
@@ -15,7 +15,7 @@
       "help": "n8n instance URL. Leave blank — Eliza auto-resolves this via the Eliza Cloud n8n gateway when cloud is authenticated, or via the local n8n sidecar when it is running.",
       "advanced": false
     },
-    "N8N_API_KEY": {
+    "WORKFLOW_API_KEY": {
       "type": "secret",
       "required": false,
       "sensitive": true,

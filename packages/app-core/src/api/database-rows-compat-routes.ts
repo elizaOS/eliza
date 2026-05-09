@@ -4,7 +4,7 @@ import {
   quoteIdent,
   sanitizeIdentifier,
   sqlLiteral,
-} from "/shared";
+} from "@elizaos/shared";
 import { ensureRouteAuthorized } from "./auth";
 import {
   type CompatRuntimeState,

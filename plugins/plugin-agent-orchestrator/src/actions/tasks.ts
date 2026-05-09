@@ -59,7 +59,6 @@ import {
   labelFor,
   listSessionsWithin,
   logger,
-  looksLikeTaskAgentRequest,
   messageText,
   newestSession,
   paramsRecord,
@@ -138,15 +137,6 @@ function readOp(
   return (SUPPORTED_OPS as readonly string[]).includes(normalized)
     ? (normalized as TaskOp)
     : null;
-}
-
-function looksLikeLifeOpsRequest(text: string | undefined | null): boolean {
-  if (!text) return false;
-  const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
-  if (normalized.length === 0) return false;
-  return /^(?:@\S+\s+)?(?:add|set|schedule|remind|track|log)\b[^.!?]{0,40}\b(todo|habit|reminder|goal|routine|alarm|chore|tasks?\s+for\s+(?:today|tomorrow|this\s+week))\b/i.test(
-    normalized,
-  );
 }
 
 // ── op: create (CREATE_AGENT_TASK) ──────────────────────────────────────
@@ -2471,10 +2461,7 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
       ])
     )
       return true;
-    const text = messageText(message);
-    if (!text.trim()) return true;
-    if (looksLikeLifeOpsRequest(text)) return false;
-    return looksLikeTaskAgentRequest(text);
+    return true;
   },
   handler: async (
     runtime: IAgentRuntime,

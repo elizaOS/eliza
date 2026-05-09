@@ -1,4 +1,4 @@
-import { parsePositiveInteger } from "/shared";
+import { parsePositiveInteger } from "@elizaos/shared";
 
 const HELP_FLAGS = new Set(["-h", "--help"]);
 const VERSION_FLAGS = new Set(["-v", "-V", "--version"]);

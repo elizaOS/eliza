@@ -6,10 +6,10 @@
  * It bootstraps the CLI: normalizes env, applies profile settings,
  * and delegates to the Commander-based CLI.
  */
-import "./utils/namespace-defaults";
+import "@elizaos/shared";
 import process from "node:process";
 import { applyCliProfileEnv, parseCliProfileArgs } from "./cli/profile";
-import { getLogPrefix } from "./utils/log-prefix";
+import { getLogPrefix } from "@elizaos/shared";
 
 process.title = process.env.APP_CLI_NAME?.trim() || "eliza";
 

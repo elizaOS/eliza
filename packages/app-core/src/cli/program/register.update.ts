@@ -10,7 +10,7 @@
 
 import type { ReleaseChannel } from "@elizaos/agent";
 import type { Command } from "commander";
-import { theme } from "..//shared";
+import { theme } from "@elizaos/shared";
 import { CLI_VERSION } from "../version";
 
 const ALL_CHANNELS: readonly ReleaseChannel[] = ["stable", "beta", "nightly"];

@@ -1,6 +1,6 @@
 import type { Command } from "commander";
-import { formatDocsLink } from "..//shared";
-import { isRich, theme } from "..//shared";
+import { formatDocsLink } from "@elizaos/shared";
+import { isRich, theme } from "@elizaos/shared";
 import { formatCliBannerLine, hasEmittedCliBanner } from "../banner";
 import { replaceCliName, resolveCliName } from "../cli-name";
 

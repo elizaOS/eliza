@@ -1,6 +1,6 @@
 /**
  * Eliza n8n runtime-context provider — registers as service type
- * `n8n_runtime_context_provider` so the patched `@elizaos/plugin-n8n-workflow`
+ * `workflow_runtime_context_provider` so the patched `@elizaos/plugin-workflow`
  * can pull connector facts (Discord guilds + channels, Gmail email, supported
  * credential types) into the workflow-generation prompt.
  *
@@ -35,7 +35,7 @@ import {
   formatDiscordEnumerationAsFacts,
 } from "./discord-target-source";
 
-const SERVICE_TYPE = "n8n_runtime_context_provider";
+const SERVICE_TYPE = "workflow_runtime_context_provider";
 
 /**
  * Subset of `ElizaConfig.connectors` the provider reads. Inlined so this
@@ -111,7 +111,7 @@ interface PluginNodeDefinition {
  * so the LLM can target "this channel" / "back to me" without the user
  * naming an ID.
  *
- * Mirrors the shape introduced upstream in `@elizaos/plugin-n8n-workflow` —
+ * Mirrors the shape introduced upstream in `@elizaos/plugin-workflow` —
  * the host duplicates the type so it doesn't need to import from the plugin.
  */
 export interface TriggerContext {

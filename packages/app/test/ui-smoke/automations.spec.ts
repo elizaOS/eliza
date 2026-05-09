@@ -416,19 +416,19 @@ async function installAutomationsApi(
     await fulfillJson(route, { ok: true });
   });
 
-  await page.route("**/api/n8n/workflows**", async (route) => {
+  await page.route("**/api/workflow/workflows**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname;
 
-    if (request.method() === "GET" && path === "/api/n8n/workflows") {
+    if (request.method() === "GET" && path === "/api/workflow/workflows") {
       await fulfillJson(route, {
         workflows: [...workflows.values()],
       });
       return;
     }
 
-    if (request.method() === "POST" && path === "/api/n8n/workflows") {
+    if (request.method() === "POST" && path === "/api/workflow/workflows") {
       createdWorkflow = request.postDataJSON() as Record<string, unknown>;
       const copy = workflowFixture(
         "workflow-copy",
@@ -440,7 +440,7 @@ async function installAutomationsApi(
       return;
     }
 
-    if (request.method() === "POST" && path === "/api/n8n/workflows/generate") {
+    if (request.method() === "POST" && path === "/api/workflow/workflows/generate") {
       generatedWorkflow = request.postDataJSON() as Record<string, unknown>;
       const workflow = workflowFixture(
         "workflow-generated",

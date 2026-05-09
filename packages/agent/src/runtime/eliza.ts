@@ -1616,18 +1616,18 @@ export function applyX402ConfigToEnv(config: ElizaConfig): void {
 }
 
 /**
- * Resolve N8N_HOST + N8N_API_KEY for @elizaos/plugin-n8n-workflow.
+ * Resolve WORKFLOW_HOST + WORKFLOW_API_KEY for @elizaos/plugin-workflow.
  *
  * Resolution order (first match wins, later sources are not consulted):
  *
- *   1. Explicit process.env (user override) — both N8N_HOST and N8N_API_KEY
+ *   1. Explicit process.env (user override) — both WORKFLOW_HOST and WORKFLOW_API_KEY
  *      already set. Respected as-is.
  *
  *   2. Eliza Cloud minted token. When `cloud.apiKey` is set and
  *      `cloud.enabled !== false`, mint a short-lived scoped n8n token via
  *      `POST {cloudBaseUrl}/api/v1/n8n/tokens` (auth: `Bearer <cloud.apiKey>`,
  *      body: `{ purpose: "milady-runtime" }`). The full Cloud key is NEVER
- *      passed through as `N8N_API_KEY`. The minted token is cached at
+ *      passed through as `WORKFLOW_API_KEY`. The minted token is cached at
  *      `<stateDir>/n8n/cloud-token.json` and reused while it has more than
  *      60s of life remaining. See `docs/cloud/n8n-gateway-contract.md` (§4).
  *
@@ -1655,7 +1655,7 @@ export async function applyN8nConfigToEnv(
 ): Promise<void> {
   // 1. Respect existing process.env overrides — the power-user path
   //    (their own n8n on their own VPS).
-  if (process.env.N8N_HOST && process.env.N8N_API_KEY) return;
+  if (process.env.WORKFLOW_HOST && process.env.WORKFLOW_API_KEY) return;
 
   // Master gate — when config.n8n.enabled is false, do not pump anything.
   if (config.n8n?.enabled === false) return;
@@ -1673,9 +1673,9 @@ export async function applyN8nConfigToEnv(
         stateDir,
       );
       if (resolved) {
-        if (!process.env.N8N_HOST) process.env.N8N_HOST = resolved.host;
-        if (!process.env.N8N_API_KEY) {
-          process.env.N8N_API_KEY = resolved.apiKey;
+        if (!process.env.WORKFLOW_HOST) process.env.WORKFLOW_HOST = resolved.host;
+        if (!process.env.WORKFLOW_API_KEY) {
+          process.env.WORKFLOW_API_KEY = resolved.apiKey;
         }
         return;
       }
@@ -1696,8 +1696,8 @@ export async function applyN8nConfigToEnv(
   //     prefer that over re-booting through the bridge.
   const n8n = config.n8n;
   if (n8n?.host && n8n?.apiKey) {
-    if (!process.env.N8N_HOST) process.env.N8N_HOST = n8n.host;
-    if (!process.env.N8N_API_KEY) process.env.N8N_API_KEY = n8n.apiKey;
+    if (!process.env.WORKFLOW_HOST) process.env.WORKFLOW_HOST = n8n.host;
+    if (!process.env.WORKFLOW_API_KEY) process.env.WORKFLOW_API_KEY = n8n.apiKey;
     return;
   }
 
@@ -1718,8 +1718,8 @@ export async function applyN8nConfigToEnv(
       startPort: n8n?.startPort,
     });
     if (booted) {
-      if (!process.env.N8N_HOST) process.env.N8N_HOST = booted.host;
-      if (!process.env.N8N_API_KEY) process.env.N8N_API_KEY = booted.apiKey;
+      if (!process.env.WORKFLOW_HOST) process.env.WORKFLOW_HOST = booted.host;
+      if (!process.env.WORKFLOW_API_KEY) process.env.WORKFLOW_API_KEY = booted.apiKey;
       return;
     }
   } catch (err) {
@@ -1730,8 +1730,8 @@ export async function applyN8nConfigToEnv(
     );
   }
 
-  // 4. Fallback — leave unset. Legacy `config.env.vars` entries (N8N_HOST /
-  //    N8N_API_KEY) still flow through the generic env-var pump in startEliza.
+  // 4. Fallback — leave unset. Legacy `config.env.vars` entries (WORKFLOW_HOST /
+  //    WORKFLOW_API_KEY) still flow through the generic env-var pump in startEliza.
 }
 
 function resolveDefaultPgliteDataDir(config: ElizaConfig): string {
@@ -3053,8 +3053,8 @@ export async function startEliza(
     return startInCloudMode(config, config.cloud.agentId, opts);
   }
 
-  // 2i. Pump N8N_HOST + N8N_API_KEY into process.env for
-  //     @elizaos/plugin-n8n-workflow. Must run BEFORE
+  // 2i. Pump WORKFLOW_HOST + WORKFLOW_API_KEY into process.env for
+  //     @elizaos/plugin-workflow. Must run BEFORE
   //     buildCharacterFromConfig — that function snapshots
   //     `process.env.N8N_*` into character.secrets, which is what
   //     `runtime.getSetting()` reads. Setting env after the snapshot would

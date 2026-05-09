@@ -3,7 +3,7 @@
  *
  * Consumed by the trigger dispatcher (Track F1) at boot: triggers carrying
  * `kind: "workflow"` resolve a workflow id and call
- *   runtime.getService("N8N_DISPATCH").execute(workflowId).
+ *   runtime.getService("WORKFLOW_DISPATCH").execute(workflowId).
  *
  * Mode selection mirrors n8n-routes proxy:
  *   - Cloud mode → POST ${cloudBaseUrl}/api/v1/agents/${agentId}/n8n/workflows/{id}/execute
@@ -25,7 +25,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { isNativeServerPlatform } from "/shared";
+import { isNativeServerPlatform } from "@elizaos/shared";
 import { type N8nModeConfigLike, resolveN8nMode } from "./n8n-mode.js";
 import { peekN8nSidecar } from "./n8n-sidecar.js";
 
@@ -218,7 +218,7 @@ function extractWorkflowBody(body: unknown): Record<string, unknown> | null {
 
 /**
  * Construct the dispatch service. The returned value is registered under
- * `"N8N_DISPATCH"` on the runtime by `ensureN8nDispatchService` in
+ * `"WORKFLOW_DISPATCH"` on the runtime by `ensureN8nDispatchService` in
  * runtime/eliza.ts.
  */
 export function createN8nDispatchService(

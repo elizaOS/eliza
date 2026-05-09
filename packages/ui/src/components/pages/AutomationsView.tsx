@@ -69,13 +69,13 @@ import {
   type Conversation,
   isMissingCredentialsResponse,
   isNeedsClarificationResponse,
-  type N8nClarificationRequest,
-  type N8nClarificationTargetGroup,
-  type N8nStatusResponse,
-  type N8nWorkflow,
-  type N8nWorkflowMissingCredential,
-  type N8nWorkflowNeedsClarificationResponse,
-  type N8nWorkflowWriteRequest,
+  type WorkflowClarificationRequest,
+  type WorkflowClarificationTargetGroup,
+  type WorkflowStatusResponse,
+  type WorkflowDefinition,
+  type WorkflowDefinitionMissingCredential,
+  type WorkflowDefinitionNeedsClarificationResponse,
+  type WorkflowDefinitionWriteRequest,
   type TriggerSummary,
   type WorkbenchTask,
 } from "../../api/client";
@@ -206,9 +206,9 @@ function prefillPageChat(text: string, options?: { select?: boolean }): void {
 }
 
 function buildWorkflowCopyRequest(
-  workflow: N8nWorkflow,
+  workflow: WorkflowDefinition,
   name: string,
-): N8nWorkflowWriteRequest {
+): WorkflowDefinitionWriteRequest {
   return {
     name,
     nodes:
@@ -608,7 +608,7 @@ function useAutomationsViewController() {
   const [automationsLoading, setAutomationsLoading] = useState(false);
   const [automationsLoaded, setAutomationsLoaded] = useState(false);
   const [automationsError, setAutomationsError] = useState<string | null>(null);
-  const [n8nStatus, setN8nStatus] = useState<N8nStatusResponse | null>(null);
+  const [n8nStatus, setN8nStatus] = useState<WorkflowStatusResponse | null>(null);
   const [workflowFetchError, setWorkflowFetchError] = useState<string | null>(
     null,
   );
@@ -1697,7 +1697,7 @@ function ClarificationPanel({
   onDismiss,
 }: {
   state: {
-    response: N8nWorkflowNeedsClarificationResponse;
+    response: WorkflowDefinitionNeedsClarificationResponse;
     currentIndex: number;
     busy: boolean;
     error?: string;
@@ -1776,8 +1776,8 @@ function ClarificationPanel({
  * value clarifications fall back to a text input (returns []).
  */
 function optionsForClarification(
-  catalog: ReadonlyArray<N8nClarificationTargetGroup>,
-  clarification: N8nClarificationRequest,
+  catalog: ReadonlyArray<WorkflowClarificationTargetGroup>,
+  clarification: WorkflowClarificationRequest,
 ): Array<{ value: string; label: string }> {
   const platform = clarification.platform;
   if (!platform) return [];
@@ -1873,7 +1873,7 @@ function WorkflowRuntimeNotice({
   onRefresh,
   onStartLocal,
 }: {
-  status: N8nStatusResponse | null;
+  status: WorkflowStatusResponse | null;
   workflowFetchError: string | null;
   busy: boolean;
   onRefresh: () => void;
@@ -3481,7 +3481,7 @@ function DetailFactList({
   );
 }
 
-function getWorkflowFlowNodes(workflow: N8nWorkflow | null): Array<{
+function getWorkflowFlowNodes(workflow: WorkflowDefinition | null): Array<{
   id: string;
   label: string;
   type: string;
@@ -3504,7 +3504,7 @@ function getWorkflowFlowNodes(workflow: N8nWorkflow | null): Array<{
     }));
 }
 
-function WorkflowDataFlowStrip({ workflow }: { workflow: N8nWorkflow | null }) {
+function WorkflowDataFlowStrip({ workflow }: { workflow: WorkflowDefinition | null }) {
   const flowNodes = getWorkflowFlowNodes(workflow);
   if (flowNodes.length === 0) {
     return (
@@ -3834,7 +3834,7 @@ function WorkflowAutomationDetailPane({
   onToggleWorkflowActive,
 }: {
   automation: AutomationItem;
-  n8nStatus: N8nStatusResponse | null;
+  n8nStatus: WorkflowStatusResponse | null;
   workflowFetchError: string | null;
   workflowBusyId: string | null;
   workflowOpsBusy: boolean;
@@ -3849,7 +3849,7 @@ function WorkflowAutomationDetailPane({
 }) {
   const { t, uiLanguage } = useApp();
   const chatChrome = useAppWorkspaceChatChrome();
-  const [fullWorkflow, setFullWorkflow] = useState<N8nWorkflow | null>(
+  const [fullWorkflow, setFullWorkflow] = useState<WorkflowDefinition | null>(
     automation.workflow ?? null,
   );
   const [workflowLoading, setWorkflowLoading] = useState(false);
@@ -3922,7 +3922,7 @@ function WorkflowAutomationDetailPane({
 
     setWorkflowLoading(true);
     void client
-      .getN8nWorkflow(automation.workflowId)
+      .getWorkflowDefinition(automation.workflowId)
       .then((workflow) => {
         if (!cancelled) {
           setFullWorkflow(workflow);
@@ -4553,7 +4553,7 @@ function AutomationsLayout() {
   }, []);
   const [pageNotice, setPageNotice] = useState<string | null>(null);
   const [missingCredentials, setMissingCredentials] = useState<
-    N8nWorkflowMissingCredential[] | null
+    WorkflowDefinitionMissingCredential[] | null
   >(null);
   // Active clarification state — populated when /generate or
   // /resolve-clarification returns `needs_clarification`. The draft is the
@@ -4562,7 +4562,7 @@ function AutomationsLayout() {
   // currentIndex chains successive pickers (server-then-channel etc.) by
   // surfacing one clarification at a time.
   const [clarification, setClarification] = useState<{
-    response: N8nWorkflowNeedsClarificationResponse;
+    response: WorkflowDefinitionNeedsClarificationResponse;
     currentIndex: number;
     busy: boolean;
     error?: string;
@@ -4877,7 +4877,7 @@ function AutomationsLayout() {
   const bindConversationToWorkflow = useCallback(
     async (
       conversation: Conversation,
-      workflow: N8nWorkflow,
+      workflow: WorkflowDefinition,
       bridgeConversationId?: string | null,
     ): Promise<Conversation> => {
       const reboundMetadata = buildWorkflowConversationMetadata(
@@ -4921,13 +4921,13 @@ function AutomationsLayout() {
       conversation?: Conversation | null;
       bridgeConversationId?: string | null;
       workflowId?: string | null;
-    }): Promise<N8nWorkflow | null> => {
+    }): Promise<WorkflowDefinition | null> => {
       setWorkflowOpsBusy(true);
       setPageNotice(null);
       setMissingCredentials(null);
       setClarification(null);
       try {
-        const result = await client.generateN8nWorkflow({
+        const result = await client.generateWorkflowDefinition({
           prompt,
           ...(title?.trim() ? { name: title.trim() } : {}),
           ...(workflowId ? { workflowId } : {}),
@@ -5207,9 +5207,9 @@ function AutomationsLayout() {
       setPageNotice(null);
       try {
         if (item.enabled) {
-          await client.deactivateN8nWorkflow(item.workflowId);
+          await client.deactivateWorkflowDefinition(item.workflowId);
         } else {
-          await client.activateN8nWorkflow(item.workflowId);
+          await client.activateWorkflowDefinition(item.workflowId);
         }
         await ctx.refreshAutomations();
       } catch (error) {
@@ -5310,7 +5310,7 @@ function AutomationsLayout() {
       setWorkflowBusyId(item.workflowId);
       setPageNotice(null);
       try {
-        await client.deleteN8nWorkflow(item.workflowId);
+        await client.deleteWorkflowDefinition(item.workflowId);
         await Promise.all(
           item.schedules.map((schedule) => client.deleteTrigger(schedule.id)),
         );
@@ -5377,8 +5377,8 @@ function AutomationsLayout() {
 
       setPageNotice(null);
       try {
-        const workflow = await client.getN8nWorkflow(item.workflowId);
-        const copy = await client.createN8nWorkflow(
+        const workflow = await client.getWorkflowDefinition(item.workflowId);
+        const copy = await client.createWorkflowDefinition(
           buildWorkflowCopyRequest(workflow, `${item.title} Copy`),
         );
         await ctx.refreshAutomations();

@@ -390,19 +390,19 @@ export interface ShareIngestItem {
 export type N8nMode = "cloud" | "local" | "disabled";
 export type N8nSidecarStatus = "stopped" | "starting" | "ready" | "error";
 
-export interface N8nStatusResponse {
+export interface WorkflowStatusResponse {
   mode: N8nMode;
   host: string | null;
   status: N8nSidecarStatus;
   cloudConnected: boolean;
   localEnabled: boolean;
-  /** Track B: populated by /api/n8n/status once backend lands. */
+  /** Track B: populated by /api/workflow/status once backend lands. */
   platform?: "desktop" | "mobile";
-  /** Track C: populated by /api/n8n/status once backend lands. */
+  /** Track C: populated by /api/workflow/status once backend lands. */
   cloudHealth?: "ok" | "degraded" | "unknown";
 }
 
-export interface N8nWorkflowNode {
+export interface WorkflowDefinitionNode {
   id: string;
   name: string;
   type: string;
@@ -429,13 +429,13 @@ export interface N8nConnection {
  */
 export type N8nConnectionMap = Record<string, { main?: N8nConnection[][] }>;
 
-export interface N8nWorkflow {
+export interface WorkflowDefinition {
   id: string;
   name: string;
   active: boolean;
   description?: string;
   nodeCount?: number;
-  nodes?: N8nWorkflowNode[];
+  nodes?: WorkflowDefinitionNode[];
   lastExecutionAt?: string;
   /** Connection graph. Present on single-workflow GET; absent on list. */
   connections?: N8nConnectionMap;
@@ -445,22 +445,22 @@ export interface N8nWorkflow {
  * One missing credential entry on a workflow generate response. `authUrl` is
  * a `eliza://settings/connectors/<provider>` deep-link the UI may surface.
  */
-export interface N8nWorkflowMissingCredential {
+export interface WorkflowDefinitionMissingCredential {
   credType: string;
   authUrl?: string;
 }
 
 /**
- * Returned by `POST /api/n8n/workflows/generate` when the deployed workflow
+ * Returned by `POST /api/workflow/workflows/generate` when the deployed workflow
  * references credentials the user hasn't connected yet. Carries the deployed
  * workflow's identity plus the list of unmet credential requirements so the
  * UI can render a CTA banner.
  */
-export interface N8nWorkflowMissingCredentialsResponse {
+export interface WorkflowDefinitionMissingCredentialsResponse {
   id: string;
   name: string;
   active: boolean;
-  missingCredentials: N8nWorkflowMissingCredential[];
+  missingCredentials: WorkflowDefinitionMissingCredential[];
   warning: "missing credentials";
 }
 
@@ -468,14 +468,14 @@ export interface N8nWorkflowMissingCredentialsResponse {
  * Structured clarification request emitted by the plugin's workflow generator
  * when a node parameter cannot be resolved from the runtime context. The host
  * surfaces these as quick-pick buttons; on click the host calls
- * `/api/n8n/workflows/resolve-clarification` with the chosen value, which
+ * `/api/workflow/workflows/resolve-clarification` with the chosen value, which
  * patches the draft at `paramPath` and deploys — no LLM regeneration.
  *
  * Mirrors the plugin's `ClarificationRequest` (see
- * @elizaos/plugin-n8n-workflow `src/types/index.ts`). Re-declared here to
+ * @elizaos/plugin-workflow `src/types/index.ts`). Re-declared here to
  * avoid a host → plugin import cycle.
  */
-export interface N8nClarificationRequest {
+export interface WorkflowClarificationRequest {
   kind:
     | "target_channel"
     | "target_server"
@@ -489,7 +489,7 @@ export interface N8nClarificationRequest {
 }
 
 /** One server / workspace / contact-collection from a connector catalog. */
-export interface N8nClarificationTargetGroup {
+export interface WorkflowClarificationTargetGroup {
   platform: string;
   groupId: string;
   groupName: string;
@@ -501,42 +501,42 @@ export interface N8nClarificationTargetGroup {
 }
 
 /**
- * Returned by `POST /api/n8n/workflows/generate` when the LLM emitted one or
+ * Returned by `POST /api/workflow/workflows/generate` when the LLM emitted one or
  * more `ClarificationRequest`s and the host needs the user to pick a target
  * before deploying. The `draft` is the unmodified workflow JSON from the
  * plugin (with the unresolved parameters left absent); `catalog` is a
  * snapshot of the relevant connector-target-catalog scoped to the
  * platforms referenced by the clarifications.
  */
-export interface N8nWorkflowNeedsClarificationResponse {
+export interface WorkflowDefinitionNeedsClarificationResponse {
   status: "needs_clarification";
   draft: Record<string, unknown>;
-  clarifications: N8nClarificationRequest[];
-  catalog: N8nClarificationTargetGroup[];
+  clarifications: WorkflowClarificationRequest[];
+  catalog: WorkflowClarificationTargetGroup[];
 }
 
-/** Resolution payload sent to /api/n8n/workflows/resolve-clarification. */
-export interface N8nClarificationResolution {
+/** Resolution payload sent to /api/workflow/workflows/resolve-clarification. */
+export interface WorkflowClarificationResolution {
   paramPath: string;
   value: string;
 }
 
-export interface N8nWorkflowResolveClarificationRequest {
+export interface WorkflowDefinitionResolveClarificationRequest {
   draft: Record<string, unknown>;
-  resolutions: N8nClarificationResolution[];
+  resolutions: WorkflowClarificationResolution[];
   name?: string;
   workflowId?: string;
 }
 
-export type N8nWorkflowGenerateResponse =
-  | N8nWorkflow
-  | N8nWorkflowMissingCredentialsResponse
-  | N8nWorkflowNeedsClarificationResponse;
+export type WorkflowDefinitionGenerateResponse =
+  | WorkflowDefinition
+  | WorkflowDefinitionMissingCredentialsResponse
+  | WorkflowDefinitionNeedsClarificationResponse;
 
 export function isMissingCredentialsResponse(
-  res: N8nWorkflowGenerateResponse,
-): res is N8nWorkflowMissingCredentialsResponse {
-  const candidate = res as N8nWorkflowMissingCredentialsResponse;
+  res: WorkflowDefinitionGenerateResponse,
+): res is WorkflowDefinitionMissingCredentialsResponse {
+  const candidate = res as WorkflowDefinitionMissingCredentialsResponse;
   return (
     candidate.warning === "missing credentials" &&
     Array.isArray(candidate.missingCredentials)
@@ -544,9 +544,9 @@ export function isMissingCredentialsResponse(
 }
 
 export function isNeedsClarificationResponse(
-  res: N8nWorkflowGenerateResponse,
-): res is N8nWorkflowNeedsClarificationResponse {
-  const candidate = res as N8nWorkflowNeedsClarificationResponse;
+  res: WorkflowDefinitionGenerateResponse,
+): res is WorkflowDefinitionNeedsClarificationResponse {
+  const candidate = res as WorkflowDefinitionNeedsClarificationResponse;
   return (
     candidate.status === "needs_clarification" &&
     Array.isArray(candidate.clarifications) &&
@@ -556,7 +556,7 @@ export function isNeedsClarificationResponse(
   );
 }
 
-export interface N8nWorkflowWriteNode {
+export interface WorkflowDefinitionWriteNode {
   id?: string;
   name: string;
   type: string;
@@ -577,14 +577,14 @@ export interface N8nWorkflowWriteNode {
   onError?: "continueErrorOutput" | "continueRegularOutput" | "stopWorkflow";
 }
 
-export interface N8nWorkflowWriteRequest {
+export interface WorkflowDefinitionWriteRequest {
   name: string;
-  nodes: N8nWorkflowWriteNode[];
+  nodes: WorkflowDefinitionWriteNode[];
   connections: N8nConnectionMap;
   settings?: Record<string, unknown>;
 }
 
-export interface N8nWorkflowGenerateRequest {
+export interface WorkflowDefinitionGenerateRequest {
   prompt: string;
   name?: string;
   workflowId?: string;

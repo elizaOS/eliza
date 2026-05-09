@@ -1,4 +1,4 @@
-import { isRich, theme } from "/shared";
+import { isRich, theme } from "@elizaos/shared";
 import { resolveCommitHash } from "./git-commit";
 
 type BannerOptions = {

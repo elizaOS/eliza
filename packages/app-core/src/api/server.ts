@@ -1,4 +1,4 @@
-import "/shared";
+import "@elizaos/shared";
 import fs from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
@@ -118,7 +118,7 @@ import {
   executeRawSql,
   sanitizeIdentifier,
   sqlLiteral,
-} from "/shared";
+} from "@elizaos/shared";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
 import { handleAuthSessionRoutes } from "./auth-session-routes";
@@ -143,7 +143,7 @@ import { handleWorkbenchCompatRoutes } from "./workbench-compat-routes";
 
 const _require = createRequire(import.meta.url);
 
-import { syncAppEnvToEliza, syncElizaEnvAliases } from "/shared";
+import { syncAppEnvToEliza, syncElizaEnvAliases } from "@elizaos/shared";
 
 // Lazy-imported to avoid circular dependency with runtime/eliza.ts
 const lazyEnsureTTS = () =>
@@ -632,7 +632,7 @@ async function handleCompatRoute(
   if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
   if (await handleAutomationsCompatRoutes(req, res, state)) return true;
 
-  // n8n routes — extracted to plugins/plugin-n8n-workflow/src/plugin-routes.ts.
+  // n8n routes — extracted to plugins/plugin-workflow/src/plugin-routes.ts.
   // Now served via n8nWorkflowRoutePlugin.routes (rawPath) on the runtime
   // plugin route system.
 
@@ -769,7 +769,7 @@ async function handleCompatRoute(
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const pluginId = decodeURIComponent(uiSpecMatch[1]);
     const { buildPluginConfigUiSpec } = await import(
-      "/shared"
+      "@elizaos/shared"
     );
     const { buildPluginListResponse } = await import("./plugins-compat-routes");
     const pluginList = buildPluginListResponse(state.current);
