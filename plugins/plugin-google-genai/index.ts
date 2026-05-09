@@ -303,20 +303,6 @@ export const googleGenAIPlugin: Plugin = {
     ): Promise<{ title: string; description: string }> => {
       return handleImageDescription(runtime, params);
     },
-
-    [OBJECT_SMALL_MODEL_TYPE]: async (
-      runtime: IAgentRuntime,
-      params: ObjectGenerationParams,
-    ): Promise<Record<string, string | number | boolean | null>> => {
-      return handleObjectSmall(runtime, params);
-    },
-
-    [OBJECT_LARGE_MODEL_TYPE]: async (
-      runtime: IAgentRuntime,
-      params: ObjectGenerationParams,
-    ): Promise<Record<string, string | number | boolean | null>> => {
-      return handleObjectLarge(runtime, params);
-    },
   },
 
   tests: pluginTests,
