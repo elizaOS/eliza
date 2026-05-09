@@ -76,7 +76,7 @@ export async function runAutonomousCli(
     ) {
       console.log("[cli] importing mobile-device-bridge-bootstrap…");
       const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-        "../runtime/mobile-device-bridge-bootstrap.js"
+        "@elizaos/plugin-capacitor-bridge"
       );
       console.log(
         "[cli] calling ensureMobileDeviceBridgeInferenceHandlers(runtime)…",

@@ -63,7 +63,7 @@ import {
   type AgentEventServiceLike,
   getAgentEventService,
 } from "../runtime/agent-event-service.js";
-import { attachMobileDeviceBridgeToServer } from "../runtime/mobile-device-bridge-bootstrap.js";
+import { attachMobileDeviceBridgeToServer } from "@elizaos/plugin-capacitor-bridge";
 import {
   resolvePreferredProviderId,
   resolvePrimaryModel,
