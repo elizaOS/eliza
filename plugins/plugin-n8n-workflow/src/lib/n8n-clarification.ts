@@ -25,6 +25,29 @@ const VALID_KINDS: ReadonlySet<N8nClarificationRequest['kind']> = new Set([
   'free_text',
 ]);
 
+/**
+ * Stable sort priority for clarification kinds. Lower number = asked first.
+ *
+ * `target_server` MUST come before `target_channel` because the channel
+ * picker reads `scope.guildId` from the server pick to narrow its options.
+ * If the LLM emits them in reverse order (which it sometimes does), the
+ * user picks a channel first against an unscoped catalog, which is bad UX
+ * (every channel from every guild they belong to) and can land the wrong
+ * id when channel names collide across guilds.
+ *
+ * `recipient` shares the server-scoped concern — DMs/contacts belong to a
+ * platform context — so it sorts after `target_server` too. `value` and
+ * `free_text` don't depend on prior picks; relative order is preserved
+ * because Array.prototype.sort is stable as of ES2019.
+ */
+const KIND_SORT_PRIORITY: Readonly<Record<N8nClarificationRequest['kind'], number>> = {
+  target_server: 0,
+  target_channel: 1,
+  recipient: 1,
+  value: 2,
+  free_text: 3,
+};
+
 function isStructuredClarification(v: unknown): v is N8nClarificationRequest {
   if (!v || typeof v !== 'object') {
     return false;
@@ -80,6 +103,9 @@ export function coerceClarifications(raw: unknown): N8nClarificationRequest[] {
       paramPath,
     });
   }
+  // Stable-sort so dependency-bearing kinds come first. Within the same
+  // priority bucket the LLM's emission order is preserved.
+  out.sort((a, b) => KIND_SORT_PRIORITY[a.kind] - KIND_SORT_PRIORITY[b.kind]);
   return out;
 }
 
