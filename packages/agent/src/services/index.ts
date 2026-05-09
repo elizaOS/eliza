@@ -68,11 +68,11 @@ export * from "./tts-stream-bridge.js";
 export * from "./update-checker.js";
 export * from "./version-compat.js";
 export {
-  sanitizeAccountId as sanitizeWhatsAppAccountId,
+  sanitizeWhatsAppAccountId,
   type WhatsAppPairingEvent,
   type WhatsAppPairingOptions,
   WhatsAppPairingSession,
   type WhatsAppPairingStatus,
   whatsappAuthExists,
   whatsappLogout,
-} from "./whatsapp-pairing.js";
+} from "@elizaos/plugin-whatsapp";
