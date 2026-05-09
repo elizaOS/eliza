@@ -8,7 +8,7 @@ import type {
   WalletExportRejection,
   WalletExportRequestBody,
 } from "@elizaos/shared";
-import type { FallbackParsedAction } from "@elizaos/plugin-agent-skills";
+import type { FallbackParsedAction } from "./binance-skill-helpers.js";
 
 export type { WalletExportRejection };
 

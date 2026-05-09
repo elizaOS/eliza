@@ -9,8 +9,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { type AgentRuntime, logger } from "@elizaos/core";
-import { resolveStateDir } from "@elizaos/agent";
-import type { ElizaConfig } from "@elizaos/shared";
+import type { ElizaConfig } from "../config/config.js";
+import { resolveStateDir } from "../config/paths.js";
 import type { SkillEntry } from "./skills-routes.js";
 
 /** Cache key for persisting skill enable/disable state in the agent database. */

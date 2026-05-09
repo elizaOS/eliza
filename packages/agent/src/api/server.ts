@@ -187,7 +187,7 @@ import { handleConnectorRoutes } from "./connector-routes.js";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.js";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.js";
-import { handleCuratedSkillsRoutes } from "@elizaos/plugin-agent-skills";
+import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.js";
 import { handleHealthRoutes } from "./health-routes.js";
 import {
@@ -238,10 +238,10 @@ import {
   handleLifeOpsRuntimePluginRoute,
   handleSandboxRouteGroup,
 } from "./server-route-dispatch.js";
-import {
-  discoverSkills,
-  handleSkillsRoutes,
-} from "@elizaos/plugin-agent-skills";
+// signal-routes: handleSignalRoute dispatch extracted to @elizaos/plugin-signal (setup-routes.ts)
+import { applySignalQrOverride } from "./signal-routes.js";
+import { discoverSkills } from "./skill-discovery-helpers.js";
+import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
 // Telegram account routes extracted to @elizaos/plugin-telegram account-setup-routes.ts (Plugin.routes).
 import { handleTriggerRoutes } from "@elizaos/plugin-workflow";
@@ -276,7 +276,7 @@ export {
   maybeHandleDirectBinanceSkillRequest,
   parseFallbackActionBlocks,
   shouldForceCheckBalanceFallback,
-} from "@elizaos/plugin-agent-skills";
+} from "./binance-skill-helpers.js";
 
 type OnboardingRouteArg = Parameters<typeof handleOnboardingRoutes>[0];
 type AgentStatusRouteArg = Parameters<typeof handleAgentStatusRoutes>[0];

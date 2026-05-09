@@ -64,10 +64,17 @@ export * from "./registry-client.js";
 export { resolveAppHeroImage } from "./registry-client-queries.js";
 export * from "./mcp-marketplace.js";
 export * from "./remote-signing-service.js";
+export { ResearchTaskExecutor } from "./research-task-executor.js";
 export * from "./sandbox-engine.js";
 export * from "./sandbox-manager.js";
 export * from "./self-updater.js";
 export * from "./signing-policy.js";
+<<<<<<< HEAD
+=======
+export * from "./skill-catalog-client.js";
+export * from "./skill-marketplace.js";
+export * from "./stream-manager.js";
+>>>>>>> parent of 8a9cb5dfa9 (migrate(skills): move skills-routes + binance-helpers + curated-skills + skill-marketplace + skill-catalog-client + research-task-executor from agent to plugin-agent-skills)
 export * from "./task-executor.js";
 export * from "./update-checker.js";
 export * from "./version-compat.js";
