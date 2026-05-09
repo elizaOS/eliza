@@ -39,6 +39,12 @@ export * from "./personality/index.ts";
 export * from "./providers/index.ts";
 export * from "./todos/index.ts";
 
+// Explicit named re-exports for symbols that are also referenced from
+// runtime capability lists below — this defeats Bun.build's tree-shaking
+// of the underlying module so the symbols stay defined when external
+// consumers import them via `@elizaos/core`.
+export { roleAction } from "./actions/role.ts";
+
 // Import for local use.
 //
 // We deliberately bypass the local barrels (`./actions/index.ts`,
@@ -54,7 +60,7 @@ export * from "./todos/index.ts";
 import { messageAction } from "./actions/message.ts";
 import { postAction } from "./actions/post.ts";
 import { roomOpAction } from "./actions/room.ts";
-import { updateRoleAction } from "./actions/role.ts";
+import { roleAction, updateRoleAction } from "./actions/role.ts";
 import { reflectionItems } from "./evaluators/reflection-items.ts";
 import { skillItems } from "./evaluators/skill-items.ts";
 import { advancedContactsProvider } from "./providers/contacts.ts";

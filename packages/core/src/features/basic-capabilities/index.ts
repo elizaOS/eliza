@@ -1337,10 +1337,10 @@ export interface CapabilityConfig {
 // Autonomy capabilities - opt-in
 // Provides autonomous operation with continuous agent thinking loop
 const autonomyCapabilities = {
-	providers: [autonomy.adminChatProvider, autonomy.autonomyStatusProvider],
-	actions: [withCanonicalActionDocs(autonomy.sendToAdminAction)],
-	services: [autonomy.AutonomyService] as ServiceClass[],
-	routes: autonomy.autonomyRoutes,
+	providers: [adminChatProvider, autonomyStatusProvider],
+	actions: [withCanonicalActionDocs(sendToAdminAction)],
+	services: [AutonomyService] as ServiceClass[],
+	routes: autonomyRoutes,
 };
 
 // Legacy alias exports for backwards compatibility
