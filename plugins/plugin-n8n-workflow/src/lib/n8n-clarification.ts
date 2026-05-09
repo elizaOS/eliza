@@ -285,18 +285,33 @@ export function applyResolutions(
       appendUserNote(draft, r.value);
       continue;
     }
+    // Surface structural parse errors (unterminated bracket, empty
+     // identifier, etc.) up to the caller as a 400 — these signal a
+     // malformed LLM emission and cannot be silently recovered into
+     // userNotes without losing the failure mode in the metrics pipeline.
+    try {
+      parseParamPath(r.paramPath);
+    } catch (err) {
+      return {
+        ok: false,
+        error: `paramPath is structurally invalid: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        paramPath: r.paramPath,
+      };
+    }
     try {
       setByDotPath(draft, r.paramPath, r.value);
     } catch (err) {
-      // The LLM occasionally emits a paramPath that references a node it
-      // didn't actually create (e.g. "Placeholder Notification") or points
-      // at a parent scope rather than a leaf field. Failing the whole
-      // resolution batch with a 400 is a dead-end — the user has no way to
-      // recover without re-prompting from scratch. Instead, log a warn and
-      // record the answer as a free-form note so the next regeneration
-      // round can use it. The clarification still gets pruned by
-      // `pruneResolvedClarifications` because we keep the original
-      // paramPath in the resolutions list.
+      // Lookup-time failure: the path parsed cleanly but didn't resolve
+      // against the current draft (e.g. references a node the LLM didn't
+      // actually create, or points at a parent scope rather than a leaf
+      // field). Failing the whole resolution batch with a 400 is a
+      // dead-end — the user has no way to recover without re-prompting
+      // from scratch. Log a warn and record the answer as a free-form
+      // note so the next regeneration round can use it. The clarification
+      // still gets pruned by `pruneResolvedClarifications` because we
+      // keep the original paramPath in the resolutions list.
       const errMsg = err instanceof Error ? err.message : String(err);
       logger.warn(
         {
@@ -304,7 +319,7 @@ export function applyResolutions(
           err: errMsg,
           paramPath: r.paramPath,
         },
-        `setByDotPath failed for paramPath "${r.paramPath}"; recording "${r.value}" as a free-form note instead: ${errMsg}`
+        `setByDotPath failed for paramPath "${r.paramPath}"; recording "${r.value}" as a free-form note instead`
       );
       appendUserNote(draft, r.value);
       continue;

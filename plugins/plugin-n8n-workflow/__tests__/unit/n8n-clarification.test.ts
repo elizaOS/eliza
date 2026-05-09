@@ -153,4 +153,17 @@ describe("applyResolutions", () => {
       expect(result.error).toContain("must be a string");
     }
   });
+
+  test("structurally invalid paramPath fails the batch (does not silently fall through to userNotes)", () => {
+    const draft: Record<string, unknown> = { nodes: [] };
+    const result = applyResolutions(draft, [
+      { paramPath: 'nodes["Unclosed', value: "X" },
+    ]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("structurally invalid");
+      expect(result.paramPath).toBe('nodes["Unclosed');
+    }
+    expect((draft as any)._meta).toBeUndefined();
+  });
 });
