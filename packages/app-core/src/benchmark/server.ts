@@ -375,9 +375,32 @@ export async function startBenchmarkServer() {
   // Trust is now a built-in core capability — enable via ENABLE_TRUST character setting.
   // No need to load as a separate plugin.
 
-  // Load LLM provider plugins based on environment
+  // Load LLM provider plugins based on environment.
+  //
+  // Multi-plugin guard: when both Groq and another OpenAI-compatible
+  // provider are configured (e.g. Cerebras via OPENAI_BASE_URL), Groq's
+  // TEXT_LARGE handler races to register first and the runtime then calls
+  // it with whatever LARGE_MODEL is set. With cerebras runs the model
+  // name is `gpt-oss-120b`, which Groq exposes only as
+  // `openai/gpt-oss-120b` — Groq's handler errors and the v5 runtime
+  // falls back to the structured-failure template ("Something went
+  // wrong on my end. Please try again."). Suppress Groq when the
+  // explicit intent is a different provider.
   const groqApiKey = process.env.GROQ_API_KEY?.trim();
-  if (groqApiKey) {
+  const _openAiBaseUrl = process.env.OPENAI_BASE_URL?.trim();
+  const _cerebrasIntent =
+    !!_openAiBaseUrl && /(^|\.)cerebras\.ai(\/|$)/i.test(_openAiBaseUrl);
+  const _explicitProvider = process.env.MILADY_PROVIDER?.trim().toLowerCase();
+  const _benchProvider = process.env.BENCHMARK_MODEL_PROVIDER?.trim().toLowerCase();
+  const _suppressGroqForOtherProvider =
+    _cerebrasIntent ||
+    (_explicitProvider !== undefined &&
+      _explicitProvider !== "" &&
+      _explicitProvider !== "groq") ||
+    (_benchProvider !== undefined &&
+      _benchProvider !== "" &&
+      _benchProvider !== "groq");
+  if (groqApiKey && !_suppressGroqForOtherProvider) {
     process.env.GROQ_API_KEY = groqApiKey;
     try {
       const { default: groqPlugin } = await import("@elizaos/plugin-groq");
@@ -388,6 +411,11 @@ export async function startBenchmarkServer() {
         `[bench] Groq plugin not available: ${formatUnknownError(error)}`,
       );
     }
+  } else if (groqApiKey && _suppressGroqForOtherProvider) {
+    elizaLogger.info(
+      "[bench] Skipping @elizaos/plugin-groq: another provider is the explicit intent " +
+        `(cerebras=${_cerebrasIntent}, MILADY_PROVIDER=${_explicitProvider ?? ""}, BENCHMARK_MODEL_PROVIDER=${_benchProvider ?? ""})`,
+    );
   }
 
   // Load the OpenAI plugin when either:
