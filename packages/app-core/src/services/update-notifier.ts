@@ -8,7 +8,7 @@ import {
   loadElizaConfig,
   resolveChannel,
 } from "@elizaos/agent";
-import { theme } from "/shared";
+import { theme } from "@elizaos/shared";
 
 let notified = false;
 

@@ -130,6 +130,12 @@ const uiSourceRoot = fs.existsSync(path.join(workspaceUiSourceRoot, "index.ts"))
   ? workspaceUiSourceRoot
   : getUiSourceRoot(repoRoot);
 const pluginOpenAiRoot = path.join(elizaWorkspaceRoot, "plugins", "plugin-openai");
+const pluginGoogleRoot = path.join(
+  elizaWorkspaceRoot,
+  "plugins",
+  "plugin-google",
+  "src",
+);
 const pluginIMessageRoot = path.join(elizaWorkspaceRoot, "plugins", "plugin-imessage");
 const pluginDiscordRoot = path.join(elizaWorkspaceRoot, "plugins", "plugin-discord");
 const pluginBrowserRoot = path.join(
@@ -205,6 +211,14 @@ const realResolveAlias: ModuleAlias[] = [
   {
     find: /^@elizaos\/plugin-openai\/(.+)$/,
     replacement: path.join(pluginOpenAiRoot, "$1"),
+  },
+  {
+    find: /^@elizaos\/plugin-google$/,
+    replacement: path.join(pluginGoogleRoot, "index.ts"),
+  },
+  {
+    find: /^@elizaos\/plugin-google\/(.+)$/,
+    replacement: path.join(pluginGoogleRoot, "$1"),
   },
   {
     find: /^@elizaos\/plugin-imessage$/,

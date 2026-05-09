@@ -1,8 +1,8 @@
 // Timing: Track when the script starts
 const SCRIPT_START = Date.now();
 
-import "/shared";
-import { getLogPrefix } from "/shared";
+import "@elizaos/shared";
+import { getLogPrefix } from "@elizaos/shared";
 import {
   formatUncaughtError,
   shouldIgnoreUnhandledRejection,

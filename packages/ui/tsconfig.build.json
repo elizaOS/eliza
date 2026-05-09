@@ -6,7 +6,7 @@
     "declarationMap": true,
     "noEmit": false,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": "../../",
     "rewriteRelativeImportExtensions": true,
     "stripInternal": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
@@ -48,5 +48,5 @@
     "src/**/*.test.ts",
     "src/**/*.test.tsx"
   ],
-  "include": ["src"]
+  "include": ["src", "../agent/src/external-modules.d.ts"]
 }

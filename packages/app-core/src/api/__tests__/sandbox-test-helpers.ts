@@ -6,7 +6,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   createMockHttpResponse,
   createMockIncomingMessage,
-} from "..//shared";
+} from "@elizaos/shared";
 
 export function createMockReq(method: string, body?: string): IncomingMessage {
   return createMockIncomingMessage({

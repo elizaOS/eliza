@@ -8,7 +8,7 @@ import {
 import { type IAgentRuntime, PluginManagerService } from "@elizaos/core";
 import chalk from "chalk";
 import type { Command } from "commander";
-import { parseClampedInteger } from "/shared";
+import { parseClampedInteger } from "@elizaos/shared";
 
 /** Validate that a resolved plugin path is within allowed boundaries. */
 export function validatePluginPath(resolved: string): void {
@@ -533,7 +533,7 @@ export function registerPluginsCli(program: Command): void {
         const { resolveStateDir, resolveUserPath } = await import(
           "@elizaos/agent/config/paths"
         );
-        const { loadElizaConfig } = await import("../config/config");
+        const { loadElizaConfig } = await import("@elizaos/agent/config/config");
         const {
           CUSTOM_PLUGINS_DIRNAME,
           scanDropInPlugins,
@@ -687,7 +687,7 @@ export function registerPluginsCli(program: Command): void {
         const nodeFs = await import("node:fs");
         const { resolveUserPath } = await import("@elizaos/agent/config/paths");
         const { loadElizaConfig, saveElizaConfig } = await import(
-          "../config/config"
+          "@elizaos/agent/config/config"
         );
 
         const resolved = resolveUserPath(rawPath);
@@ -750,7 +750,7 @@ export function registerPluginsCli(program: Command): void {
         const { resolveStateDir, resolveUserPath } = await import(
           "@elizaos/agent/config/paths"
         );
-        const { loadElizaConfig } = await import("../config/config");
+        const { loadElizaConfig } = await import("@elizaos/agent/config/config");
         const { CUSTOM_PLUGINS_DIRNAME, scanDropInPlugins } = await import(
           "../runtime/eliza"
         );
@@ -953,7 +953,7 @@ export function registerPluginsCli(program: Command): void {
 
         // Save to config and env
         const { loadElizaConfig, saveElizaConfig } = await import(
-          "../config/config"
+          "@elizaos/agent/config/config"
         );
 
         let config: ReturnType<typeof loadElizaConfig>;

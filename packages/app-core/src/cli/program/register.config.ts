@@ -1,7 +1,7 @@
 import type { ElizaConfig } from "@elizaos/agent";
 import type { Command } from "commander";
-import { theme } from "..//shared";
-import { getLogPrefix } from "..//shared";
+import { theme } from "@elizaos/shared";
+import { getLogPrefix } from "@elizaos/shared";
 
 export function registerConfigCli(program: Command) {
   const config = program

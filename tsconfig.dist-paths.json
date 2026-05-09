@@ -594,11 +594,11 @@
       "@elizaos/app-wallet/*": [
         "./plugins/app-wallet/dist/*"
       ],
-      "@elizaos/plugin-n8n-workflow": [
-        "./plugins/plugin-n8n-workflow/dist/index.d.ts"
+      "@elizaos/plugin-workflow": [
+        "./plugins/plugin-workflow/dist/index.d.ts"
       ],
-      "@elizaos/plugin-n8n-workflow/*": [
-        "./plugins/plugin-n8n-workflow/dist/*"
+      "@elizaos/plugin-workflow/*": [
+        "./plugins/plugin-workflow/dist/*"
       ],
       "@elizaos/plugin-inmemorydb": [
         "./plugins/plugin-inmemorydb/dist/index.d.ts"

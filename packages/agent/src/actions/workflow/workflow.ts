@@ -5,9 +5,9 @@
  * Replaces the former CREATE_WORKFLOW / DELETE_WORKFLOW / TOGGLE_WORKFLOW_ACTIVE /
  * PROMOTE_TASK_TO_WORKFLOW / CREATE_TRIGGER_TASK / UPDATE_TRIGGER_TASK /
  * DELETE_TRIGGER_TASK / RUN_TRIGGER_NOW / N8N / CREATE_N8N_WORKFLOW /
- * MODIFY_EXISTING_N8N_WORKFLOW / GET_N8N_EXECUTIONS actions. Op-based dispatch:
+ * MODIFY_EXISTING_N8N_WORKFLOW / GET_WORKFLOW_EXECUTIONS actions. Op-based dispatch:
  *
- *   Workflow ops (n8n via local HTTP routes — plugin-n8n-workflow):
+ *   Workflow ops (n8n via local HTTP routes — plugin-workflow):
  *     create        — generate + create a new n8n workflow from a seed prompt
  *     modify        — load a deployed workflow into the draft editor by id
  *     activate      — activate a workflow by id
@@ -129,7 +129,7 @@ interface AutonomyServiceLike {
   getAutonomousRoomId?(): UUID;
 }
 
-interface N8nWorkflowResponse {
+interface WorkflowDefinitionResponse {
   id: string;
   name: string;
   active: boolean;
@@ -295,8 +295,8 @@ async function handleCreate(
       text: "seedPrompt parameter is required to generate a workflow.",
     };
   }
-  const result = await fetchJson<N8nWorkflowResponse>(
-    `${getApiBase()}/api/n8n/workflows/generate`,
+  const result = await fetchJson<WorkflowDefinitionResponse>(
+    `${getApiBase()}/api/workflow/workflows/generate`,
     {
       method: "POST",
       body: JSON.stringify({
@@ -380,8 +380,8 @@ async function handleToggleActive(
     return { success: false, text: `Workflow not found: ${workflowId}` };
   }
   const verb = explicitActive ? "activate" : "deactivate";
-  const result = await fetchJson<N8nWorkflowResponse>(
-    `${getApiBase()}/api/n8n/workflows/${encodeURIComponent(workflowId)}/${verb}`,
+  const result = await fetchJson<WorkflowDefinitionResponse>(
+    `${getApiBase()}/api/workflow/workflows/${encodeURIComponent(workflowId)}/${verb}`,
     { method: "POST" },
   );
   if (!result.ok || !result.data) {
@@ -422,7 +422,7 @@ async function handleDeleteWorkflow(
     return { success: false, text: `Workflow not found: ${workflowId}` };
   }
   const result = await fetchJson<{ ok?: boolean }>(
-    `${getApiBase()}/api/n8n/workflows/${encodeURIComponent(workflowId)}`,
+    `${getApiBase()}/api/workflow/workflows/${encodeURIComponent(workflowId)}`,
     { method: "DELETE" },
   );
   if (!result.ok) {
@@ -445,7 +445,7 @@ async function handleDeleteWorkflow(
   };
 }
 
-interface N8nExecutionResponse {
+interface WorkflowExecutionResponse {
   executions: Array<{
     id: string;
     status: string;
@@ -466,8 +466,8 @@ async function handleExecutions(
     };
   }
   const limit = readNumber(params.limit) ?? 10;
-  const result = await fetchJson<N8nExecutionResponse>(
-    `${getApiBase()}/api/n8n/workflows/${encodeURIComponent(workflowId)}/executions?limit=${encodeURIComponent(String(limit))}`,
+  const result = await fetchJson<WorkflowExecutionResponse>(
+    `${getApiBase()}/api/workflow/workflows/${encodeURIComponent(workflowId)}/executions?limit=${encodeURIComponent(String(limit))}`,
     { method: "GET" },
   );
   if (!result.ok || !result.data) {
@@ -558,8 +558,8 @@ async function handlePromoteTask(
   const trigger = readTriggerConfig(task);
   const summary = taskToTriggerSummary(task);
   const { prompt, title } = buildPromotePrompt(task, trigger, summary);
-  const result = await fetchJson<N8nWorkflowResponse>(
-    `${getApiBase()}/api/n8n/workflows/generate`,
+  const result = await fetchJson<WorkflowDefinitionResponse>(
+    `${getApiBase()}/api/workflow/workflows/generate`,
     {
       method: "POST",
       body: JSON.stringify({ prompt, name: title }),
@@ -1055,7 +1055,7 @@ export const workflowAction: Action = {
     "ACTIVATE_N8N_WORKFLOW",
     "DEACTIVATE_N8N_WORKFLOW",
     "DELETE_N8N_WORKFLOW",
-    "GET_N8N_EXECUTIONS",
+    "GET_WORKFLOW_EXECUTIONS",
     "GET_EXECUTIONS",
     "SHOW_EXECUTIONS",
     "EXECUTION_HISTORY",

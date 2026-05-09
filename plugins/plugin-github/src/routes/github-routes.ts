@@ -195,7 +195,7 @@ async function handleDeleteToken(ctx: GitHubRouteContext): Promise<boolean> {
 
 /**
  * Dispatch entry point. Returns `true` when this module owned the request.
- * Caller is responsible for auth (mirrors `/api/n8n/*` in server.ts).
+ * Caller is responsible for auth (mirrors `/api/workflow/*` in server.ts).
  */
 export async function handleGitHubRoutes(
   ctx: GitHubRouteContext,

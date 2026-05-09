@@ -4,7 +4,7 @@
  * Mints a short-lived n8n API token from the Eliza Cloud gateway via
  * `POST {cloudBaseUrl}/api/v1/n8n/tokens` (auth: `Bearer <ELIZAOS_CLOUD_API_KEY>`).
  * The full Cloud key is NEVER passed through to the n8n plugin as
- * `N8N_API_KEY` — only the minted token. See
+ * `WORKFLOW_API_KEY` — only the minted token. See
  * `docs/cloud/n8n-gateway-contract.md` (§4) for the wire shape.
  *
  * Cache file: `<stateDir>/n8n/cloud-token.json` containing
@@ -41,9 +41,9 @@ export interface MintedN8nToken {
 }
 
 export interface ResolvedN8nCloud {
-  /** Gateway URL the n8n plugin should use as `N8N_HOST`. */
+  /** Gateway URL the n8n plugin should use as `WORKFLOW_HOST`. */
   host: string;
-  /** Minted scoped token to use as `N8N_API_KEY`. NOT the cloud key. */
+  /** Minted scoped token to use as `WORKFLOW_API_KEY`. NOT the cloud key. */
   apiKey: string;
 }
 

@@ -3,7 +3,7 @@
  *
  * Motivation: previously the local n8n sidecar was only spawned lazily
  * when the renderer opened the Workflows tab and POSTed
- * `/api/n8n/sidecar/start`. That meant the first workflow action paid
+ * `/api/workflow/sidecar/start`. That meant the first workflow action paid
  * a cold-start tax (~10-20s of `bunx n8n@<pinned>`) and any scheduled
  * job that tried to dispatch a workflow before the user ever visited
  * the tab would fail. We now kick the sidecar off at agent boot when
@@ -26,7 +26,7 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { isNativeServerPlatform } from "/shared";
+import { isNativeServerPlatform } from "@elizaos/shared";
 import { type N8nModeConfigLike, resolveN8nMode } from "./n8n-mode.js";
 import {
   getN8nSidecarAsync,

@@ -94,6 +94,7 @@ export * from "./settings/permission-types";
 export * from "./settings/SubscriptionStatus";
 export * from "./settings/VoiceConfigView";
 export * from "./shared/confirm-delete-control";
+export * from "./shared/AppPageSidebar";
 export * from "./shared/LanguageDropdown";
 export * from "./shared/ThemeToggle";
 export * from "./shell/BugReportModal";

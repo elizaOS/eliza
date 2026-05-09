@@ -35,7 +35,7 @@ import {
 } from "@elizaos/agent/services/registry-client";
 import { logger } from "@elizaos/core";
 import { requestRestart } from "@elizaos/shared";
-import { createSerialise } from "/shared";
+import { createSerialise } from "@elizaos/shared";
 
 const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);

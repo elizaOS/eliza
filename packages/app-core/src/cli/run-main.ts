@@ -4,7 +4,7 @@ import {
   formatUncaughtError,
   shouldIgnoreUnhandledRejection,
 } from "../runtime/error-handlers";
-import { getLogPrefix } from "/shared";
+import { getLogPrefix } from "@elizaos/shared";
 import { getPrimaryCommand, hasHelpOrVersion } from "./argv";
 import { registerSubCliByName } from "./program/register.subclis";
 

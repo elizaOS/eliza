@@ -121,7 +121,7 @@ export function normalizeWorkflowActionPlan(
         "get_gmail_triage",
         "get_gmail_unresponded",
         "get_health_summary",
-        "dispatch_n8n_workflow",
+        "dispatch_workflow",
         "summarize",
         "browser",
       ] as const,
@@ -211,7 +211,7 @@ export function normalizeWorkflowActionPlan(
         ) as unknown as GetLifeOpsHealthSummaryRequest | undefined,
       };
     }
-    if (kind === "dispatch_n8n_workflow") {
+    if (kind === "dispatch_workflow") {
       return {
         kind,
         id,

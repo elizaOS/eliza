@@ -1,5 +1,5 @@
 export { API_KEY_CRED_TYPES } from "./apikey-cred-map";
-export { N8nCredentialBridge } from "./n8n-credential-bridge";
+export { WorkflowCredentialBridge } from "./n8n-credential-bridge";
 export {
   getCredPrefixesForPlatform,
   mapCredTypeToCloudPlatform,

@@ -11,7 +11,7 @@ import {
 } from "@elizaos/ui";
 import { useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
-import type { N8nWorkflow, TriggerSummary } from "../../api/client";
+import type { WorkflowDefinition, TriggerSummary } from "../../api/client";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import {
   DURATION_UNITS,
@@ -461,7 +461,7 @@ function TriggerKindSection({
   t: TranslateFn;
   onGoToWorkflows: () => void;
 }) {
-  const [workflows, setWorkflows] = useState<N8nWorkflow[]>([]);
+  const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([]);
   const [workflowsError, setWorkflowsError] = useState<"unavailable" | null>(
     null,
   );
@@ -473,7 +473,7 @@ function TriggerKindSection({
     setWorkflowsLoading(true);
     setWorkflowsError(null);
     client
-      .listN8nWorkflows()
+      .listWorkflowDefinitions()
       .then((list) => {
         if (cancelled) return;
         setWorkflows([...list].sort((a, b) => a.name.localeCompare(b.name)));

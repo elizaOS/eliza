@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveOAuthDir } from "@elizaos/agent/config/paths";
-import type { IAgentRuntime } from "@elizaos/core";
+import { getConnectorAccountManager, type IAgentRuntime } from "@elizaos/core";
 import {
   LIFEOPS_X_CAPABILITIES,
   type LifeOpsConnectorSide,
@@ -36,6 +36,12 @@ function buildMockGoogleTokenRef(
   );
 }
 
+function buildMockGoogleAccessToken(grantId?: string): string {
+  return grantId
+    ? `mock-google-access-token-${sanitizePathSegment(grantId)}`
+    : "mock-google-access-token";
+}
+
 function writeMockGoogleToken(args: {
   agentId: string;
   side: LifeOpsConnectorSide;
@@ -62,9 +68,7 @@ function writeMockGoogleToken(args: {
     mode: "local" as const,
     clientId: "mock-google-client",
     redirectUri: "http://127.0.0.1/mock-google/callback",
-    accessToken: args.grantId
-      ? `mock-google-access-token-${sanitizePathSegment(args.grantId)}`
-      : "mock-google-access-token",
+    accessToken: buildMockGoogleAccessToken(args.grantId),
     refreshToken: "mock-google-refresh-token",
     tokenType: "Bearer",
     grantedScopes: args.grantedScopes,
@@ -128,6 +132,8 @@ export async function seedGoogleConnectorGrant(
   });
   const now = new Date().toISOString();
   const id = opts?.grantId ?? crypto.randomUUID();
+  const accessToken = buildMockGoogleAccessToken(id);
+  const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
 
   await repo.upsertConnectorGrant({
     ...createLifeOpsConnectorGrant({
@@ -145,6 +151,48 @@ export async function seedGoogleConnectorGrant(
     id,
     createdAt: now,
     updatedAt: now,
+  });
+
+  const manager = getConnectorAccountManager(runtime);
+  if (!manager.getProvider("google")) {
+    manager.registerProvider({ provider: "google", label: "Google" });
+  }
+  await manager.upsertAccount("google", {
+    id,
+    provider: "google",
+    label: email,
+    role: side === "agent" ? "AGENT" : "OWNER",
+    purpose: ["messaging", "calendar", "automation"],
+    accessGate: "open",
+    status: "connected",
+    externalId: email,
+    displayHandle: email,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    metadata: {
+      isDefault: true,
+      mocked: true,
+      email,
+      identity: { email },
+      grantedCapabilities: ["google.basic_identity", ...capabilities],
+      grantedScopes,
+      hasRefreshToken: false,
+      expiresAt,
+      oauthCredentialVersion: String(expiresAt),
+      credentialRefs: [
+        {
+          credentialType: "oauth.tokens",
+          value: JSON.stringify({
+            access_token: accessToken,
+            token_type: "Bearer",
+            scope: grantedScopes.join(" "),
+            expiry_date: expiresAt,
+          }),
+          expiresAt,
+          metadata: { provider: "google", mocked: true },
+        },
+      ],
+    },
   });
 }
 

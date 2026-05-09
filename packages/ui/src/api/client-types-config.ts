@@ -556,7 +556,7 @@ export interface AutomationItem {
   draftId?: string;
   task?: WorkbenchTask;
   trigger?: TriggerSummary;
-  workflow?: import("./client-types-chat").N8nWorkflow;
+  workflow?: import("./client-types-chat").WorkflowDefinition;
   schedules: TriggerSummary[];
   room?: AutomationRoomBinding | null;
 }
@@ -572,7 +572,7 @@ export interface AutomationSummary {
 export interface AutomationListResponse {
   automations: AutomationItem[];
   summary: AutomationSummary;
-  n8nStatus: import("./client-types-chat").N8nStatusResponse | null;
+  n8nStatus: import("./client-types-chat").WorkflowStatusResponse | null;
   workflowFetchError: string | null;
 }
 

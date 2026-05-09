@@ -42,7 +42,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { client } from "@elizaos/app-core";
+import { client } from "@elizaos/ui";
 import {
   type ActivityEvent,
   useActivityEvents,

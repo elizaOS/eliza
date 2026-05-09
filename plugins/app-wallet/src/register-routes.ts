@@ -8,9 +8,8 @@
  * mounts.
  */
 
-import { registerAppShellPage } from "@elizaos/app-core";
 import { registerAppRoutePluginLoader } from "@elizaos/core";
-import { registerBuiltinWidgets } from "@elizaos/ui";
+import { registerAppShellPage, registerBuiltinWidgets } from "@elizaos/ui";
 import { InventoryView } from "./InventoryView";
 import { WALLET_STATUS_WIDGET } from "./widgets/wallet-status";
 

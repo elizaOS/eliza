@@ -26,9 +26,9 @@ import {
 } from "react";
 import type {
   N8nConnectionMap,
-  N8nStatusResponse,
-  N8nWorkflow,
-  N8nWorkflowNode,
+  WorkflowStatusResponse,
+  WorkflowDefinition,
+  WorkflowDefinitionNode,
 } from "../../api/client-types-chat";
 import { getBootConfig } from "../../config/boot-config";
 import { useApp } from "../../state";
@@ -102,7 +102,7 @@ function autoLayoutPositions(
 
 // ── Conversion helpers ────────────────────────────────────────────────────────
 
-function workflowToReactFlow(workflow: N8nWorkflow | null): {
+function workflowToReactFlow(workflow: WorkflowDefinition | null): {
   nodes: Node[];
   edges: Edge[];
 } {
@@ -479,8 +479,8 @@ function ParamValue({ value }: { value: unknown }) {
 }
 
 function buildEditorUrl(
-  workflow: N8nWorkflow,
-  status: N8nStatusResponse,
+  workflow: WorkflowDefinition,
+  status: WorkflowStatusResponse,
   cloudAgentId: string | null | undefined,
   uiTheme: "light" | "dark",
 ): string | null {
@@ -503,9 +503,9 @@ function buildEditorUrl(
 }
 
 interface NodeDetailDrawerProps {
-  node: N8nWorkflowNode | null;
-  workflow: N8nWorkflow | null;
-  status: N8nStatusResponse | null | undefined;
+  node: WorkflowDefinitionNode | null;
+  workflow: WorkflowDefinition | null;
+  status: WorkflowStatusResponse | null | undefined;
   onClose: () => void;
   labelId: string;
 }
@@ -726,7 +726,7 @@ function GraphPanel({
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface WorkflowGraphViewerProps {
-  workflow: N8nWorkflow | null;
+  workflow: WorkflowDefinition | null;
   loading?: boolean;
   isGenerating?: boolean;
   emptyStateActionLabel?: string;
@@ -734,7 +734,7 @@ interface WorkflowGraphViewerProps {
   onNodeClick?: (nodeName: string) => void;
   onEmptyStateAction?: () => void;
   /** n8n status — drives the "Open in editor" button URL and enabled state. */
-  status?: N8nStatusResponse | null;
+  status?: WorkflowStatusResponse | null;
 }
 
 export function WorkflowGraphViewer({
@@ -749,7 +749,7 @@ export function WorkflowGraphViewer({
 }: WorkflowGraphViewerProps) {
   const { activeAgentProfile, uiTheme } = useApp();
   const [fullScreen, setFullScreen] = useState(false);
-  const [selectedNode, setSelectedNode] = useState<N8nWorkflowNode | null>(
+  const [selectedNode, setSelectedNode] = useState<WorkflowDefinitionNode | null>(
     null,
   );
   const containerRef = useRef<HTMLDivElement>(null);

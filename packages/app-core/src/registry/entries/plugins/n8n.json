@@ -1,7 +1,7 @@
 {
   "id": "n8n",
   "name": "N8n",
-  "description": "DEPRECATED: replaced by @elizaos/plugin-n8n-workflow. N8n workflow integration plugin with AI-powered plugin creation for ElizaOS.",
+  "description": "DEPRECATED: replaced by @elizaos/plugin-workflow. N8n workflow integration plugin with AI-powered plugin creation for ElizaOS.",
   "npmName": "@elizaos/plugin-n8n",
   "version": "2.0.0-beta.0",
   "source": "bundled",
@@ -14,7 +14,7 @@
     "deprecated"
   ],
   "config": {
-    "N8N_HOST": {
+    "WORKFLOW_HOST": {
       "type": "string",
       "required": false,
       "sensitive": false,
@@ -22,7 +22,7 @@
       "help": "n8n instance URL (e.g., https://your.n8n.cloud) (required for workflow features)",
       "advanced": false
     },
-    "N8N_API_KEY": {
+    "WORKFLOW_API_KEY": {
       "type": "secret",
       "required": false,
       "sensitive": true,

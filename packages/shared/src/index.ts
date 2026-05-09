@@ -226,6 +226,7 @@ export * from "./config/wechat-config";
 export * from "./config/zod-schema.agent-runtime";
 export * from "./config/zod-schema.core";
 export * from "./events";
+export * from "./platform/is-native-server";
 export * from "./test-support/process-helpers";
 export * from "./test-support/test-helpers";
 export * from "./types";

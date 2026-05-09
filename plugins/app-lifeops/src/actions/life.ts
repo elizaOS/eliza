@@ -78,7 +78,6 @@ import {
   messageText,
   toActionData,
 } from "./lifeops-google-helpers.js";
-import { looksLikeCodingTaskRequest } from "./non-actionable-request.js";
 import { normalizeExplicitTimeZoneToken } from "./timezone-normalization.js";
 
 // ── Types ─────────────────────────────────────────────
@@ -400,31 +399,6 @@ function normalizeLifeInputText(value: string): string {
     .replace(/[\u00a0\u1680\u2000-\u200b\u202f\u205f\u3000]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function shouldRouteToRelationshipAction(value: string): boolean {
-  const normalized = normalizeIntentText(value);
-  return (
-    /\bfollow\s+up\s+with\b/u.test(normalized) ||
-    /\bhow\s+long\b[\s\S]*\b(since|last)\b[\s\S]*\b(talked|spoke|called|texted|messaged)\b/u.test(
-      normalized,
-    )
-  );
-}
-
-function shouldRouteToDeviceIntentAction(value: string): boolean {
-  const normalized = normalizeIntentText(value);
-  const asksForReminder =
-    /\b(remind|reminder|routine|alarm|notify|notification|nudge)\b/u.test(
-      normalized,
-    );
-  const targetsDevice =
-    /\bbroadcast\b/u.test(normalized) ||
-    /\ball\s+(?:my\s+)?devices\b/u.test(normalized) ||
-    /\b(?:to|on)\s+(?:my\s+)?(?:mobile|phone|mac|desktop)\b/u.test(
-      normalized,
-    );
-  return asksForReminder && targetsDevice;
 }
 
 function normalizeTitle(value: string): string {
@@ -2004,16 +1978,6 @@ export const lifeAction: Action & {
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
-    const text = messageText(message);
-    if (looksLikeCodingTaskRequest(text)) {
-      return false;
-    }
-    if (shouldRouteToRelationshipAction(text)) {
-      return false;
-    }
-    if (shouldRouteToDeviceIntentAction(text)) {
-      return false;
-    }
     if (await isForeignPageScope(runtime, message)) {
       return false;
     }

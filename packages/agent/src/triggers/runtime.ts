@@ -42,7 +42,7 @@ export interface TriggerExecutionResult {
   taskDeleted: boolean;
   runRecord?: TriggerRunRecord;
   trigger?: TriggerSummary | null;
-  // Present when a workflow-kind trigger dispatches to N8N_DISPATCH and
+  // Present when a workflow-kind trigger dispatches to WORKFLOW_DISPATCH and
   // the service returns an execution id.
   executionId?: string;
 }
@@ -253,7 +253,7 @@ async function dispatchWorkflow(
     return { ok: false, error: "workflow trigger missing workflowId" };
   }
   const svc = runtime.getService<Service & N8nDispatchServiceLike>(
-    "N8N_DISPATCH",
+    "WORKFLOW_DISPATCH",
   ) as (Service & N8nDispatchServiceLike) | null;
   if (!svc) {
     runtime.logger.warn?.(
@@ -262,9 +262,9 @@ async function dispatchWorkflow(
         triggerId: trigger.triggerId,
         workflowId: trigger.workflowId,
       },
-      "[triggers] workflow dispatch requested but N8N_DISPATCH service not registered",
+      "[triggers] workflow dispatch requested but WORKFLOW_DISPATCH service not registered",
     );
-    return { ok: false, error: "N8N_DISPATCH service not registered" };
+    return { ok: false, error: "WORKFLOW_DISPATCH service not registered" };
   }
   const result = event
     ? await svc.execute(trigger.workflowId, {

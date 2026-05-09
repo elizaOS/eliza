@@ -693,7 +693,7 @@ export function applyPluginAutoEnable(
   }
 
   // n8n workflow plugin — auto-enable when EITHER Eliza Cloud is authenticated
-  // (cloud supplies N8N_HOST + N8N_API_KEY via its gateway) OR the local n8n
+  // (cloud supplies WORKFLOW_HOST + WORKFLOW_API_KEY via its gateway) OR the local n8n
   // sidecar is permitted (config.n8n.localEnabled !== false, default true).
   // The authoritative boot-config shape is `config.n8n` (N8nConfig in
   // types.eliza.ts); the sidecar lifecycle writes `config.n8n.host` and
@@ -704,8 +704,8 @@ export function applyPluginAutoEnable(
   // process, so auto-enable is gated on `cloudAuthed` alone regardless of
   // `localEnabled`.
   {
-    const n8nPluginName = "@elizaos/plugin-n8n-workflow";
-    const n8nPluginId = "n8n-workflow";
+    const n8nPluginName = "@elizaos/plugin-workflow";
+    const n8nPluginId = "workflow";
     const n8nConfig = updatedConfig.n8n;
     const n8nMasterEnabled = n8nConfig?.enabled !== false;
     const cloudAuthed = Boolean(

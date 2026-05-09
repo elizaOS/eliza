@@ -9,7 +9,7 @@ type AutomationsCompatRoutesModule =
 const toWorkbenchTaskMock = vi.fn();
 const listTriggerTasksMock = vi.fn();
 const taskToTriggerSummaryMock = vi.fn();
-const handleN8nRoutesMock = vi.fn();
+const handleWorkflowRoutesMock = vi.fn();
 const ensureRouteAuthorizedMock = vi.fn();
 
 vi.doMock("@elizaos/agent/config/config", () => ({
@@ -31,8 +31,8 @@ vi.doMock("@elizaos/agent/triggers/runtime", () => ({
     taskToTriggerSummaryMock(...args),
 }));
 
-vi.doMock("@elizaos/plugin-n8n-workflow/routes/n8n-routes", () => ({
-  handleN8nRoutes: (...args: unknown[]) => handleN8nRoutesMock(...args),
+vi.doMock("@elizaos/plugin-workflow/routes/n8n-routes", () => ({
+  handleWorkflowRoutes: (...args: unknown[]) => handleWorkflowRoutesMock(...args),
 }));
 
 vi.doMock("../../src/api/auth", () => ({
@@ -274,7 +274,7 @@ describe("automations compat routes", () => {
     ]);
     taskToTriggerSummaryMock.mockImplementation((task) => task);
 
-    handleN8nRoutesMock.mockImplementation(
+    handleWorkflowRoutesMock.mockImplementation(
       async ({
         pathname,
         json,
@@ -288,7 +288,7 @@ describe("automations compat routes", () => {
         ) => void;
         res: http.ServerResponse;
       }) => {
-        if (pathname === "/api/n8n/status") {
+        if (pathname === "/api/workflow/status") {
           json(
             res,
             {
@@ -305,7 +305,7 @@ describe("automations compat routes", () => {
           return true;
         }
 
-        if (pathname === "/api/n8n/workflows") {
+        if (pathname === "/api/workflow/workflows") {
           json(
             res,
             {
