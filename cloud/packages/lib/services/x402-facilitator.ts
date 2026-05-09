@@ -43,6 +43,27 @@ interface PaymentAuthorization {
   nonce: string;
 }
 
+interface PaymentPermit {
+  meta: {
+    kind: "PAYMENT_ONLY" | string;
+    paymentId: string;
+    nonce: string;
+    validAfter: number | string;
+    validBefore: number | string;
+  };
+  buyer: string;
+  caller: string;
+  payment: {
+    payToken: string;
+    payAmount: string;
+    payTo: string;
+  };
+  fee: {
+    feeTo: string;
+    feeAmount: string;
+  };
+}
+
 /** Decoded payment payload from the X-PAYMENT header */
 interface PaymentPayload {
   x402Version: number;
@@ -55,7 +76,8 @@ interface PaymentPayload {
   };
   payload: {
     signature: string;
-    authorization: PaymentAuthorization;
+    authorization?: PaymentAuthorization;
+    paymentPermit?: PaymentPermit;
   };
 }
 
@@ -198,6 +220,127 @@ const PERMIT_TYPES = {
   ],
 } as const;
 
+const PAYMENT_PERMIT_TYPES = {
+  PermitMeta: [
+    { name: "kind", type: "uint8" },
+    { name: "paymentId", type: "bytes16" },
+    { name: "nonce", type: "uint256" },
+    { name: "validAfter", type: "uint256" },
+    { name: "validBefore", type: "uint256" },
+  ],
+  Payment: [
+    { name: "payToken", type: "address" },
+    { name: "payAmount", type: "uint256" },
+    { name: "payTo", type: "address" },
+  ],
+  Fee: [
+    { name: "feeTo", type: "address" },
+    { name: "feeAmount", type: "uint256" },
+  ],
+  PaymentPermitDetails: [
+    { name: "meta", type: "PermitMeta" },
+    { name: "buyer", type: "address" },
+    { name: "caller", type: "address" },
+    { name: "payment", type: "Payment" },
+    { name: "fee", type: "Fee" },
+  ],
+} as const;
+
+const PAYMENT_PERMIT_ABI = [
+  {
+    inputs: [
+      {
+        name: "permit",
+        type: "tuple",
+        components: [
+          {
+            name: "meta",
+            type: "tuple",
+            components: [
+              { name: "kind", type: "uint8" },
+              { name: "paymentId", type: "bytes16" },
+              { name: "nonce", type: "uint256" },
+              { name: "validAfter", type: "uint256" },
+              { name: "validBefore", type: "uint256" },
+            ],
+          },
+          { name: "buyer", type: "address" },
+          { name: "caller", type: "address" },
+          {
+            name: "payment",
+            type: "tuple",
+            components: [
+              { name: "payToken", type: "address" },
+              { name: "payAmount", type: "uint256" },
+              { name: "payTo", type: "address" },
+            ],
+          },
+          {
+            name: "fee",
+            type: "tuple",
+            components: [
+              { name: "feeTo", type: "address" },
+              { name: "feeAmount", type: "uint256" },
+            ],
+          },
+        ],
+      },
+      { name: "owner", type: "address" },
+      { name: "signature", type: "bytes" },
+    ],
+    name: "permitTransferFrom",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+] as const;
+
+const PAYMENT_PERMIT_ADDRESSES: Record<string, Hex> = {
+  "eip155:56": "0x1825bB32db3443dEc2cc7508b2D818fc13EaD878",
+  "eip155:97": "0x1825bB32db3443dEc2cc7508b2D818fc13EaD878",
+};
+
+function getPaymentPermitAddress(network: string): Hex | null {
+  const envKey =
+    network === "eip155:56"
+      ? "X402_PAYMENT_PERMIT_ADDRESS_BSC"
+      : network === "eip155:97"
+        ? "X402_PAYMENT_PERMIT_ADDRESS_BSC_TESTNET"
+        : "";
+  const configured = envKey ? process.env[envKey] : undefined;
+  return (configured as Hex | undefined) ?? PAYMENT_PERMIT_ADDRESSES[network] ?? null;
+}
+
+function isExactPermitNetwork(network: string): boolean {
+  return network === "eip155:56" || network === "eip155:97";
+}
+
+function normalizePermitForTypedData(permit: PaymentPermit) {
+  if (!/^0x[0-9a-fA-F]{32}$/.test(permit.meta.paymentId)) {
+    throw new Error("invalid_payment_permit_payment_id");
+  }
+  return {
+    meta: {
+      kind: permit.meta.kind === "PAYMENT_ONLY" ? 0 : Number(permit.meta.kind),
+      paymentId: permit.meta.paymentId as Hex,
+      nonce: BigInt(permit.meta.nonce),
+      validAfter: BigInt(permit.meta.validAfter),
+      validBefore: BigInt(permit.meta.validBefore),
+    },
+    buyer: permit.buyer as Hex,
+    caller: permit.caller as Hex,
+    payment: {
+      payToken: permit.payment.payToken as Hex,
+      payAmount: BigInt(permit.payment.payAmount),
+      payTo: permit.payment.payTo as Hex,
+    },
+    fee: {
+      feeTo: permit.fee.feeTo as Hex,
+      feeAmount: BigInt(permit.fee.feeAmount),
+    },
+  };
+}
+
 // Service Implementation
 
 class X402FacilitatorService {
@@ -275,7 +418,11 @@ class X402FacilitatorService {
     const signers: Record<string, string[]> = {};
 
     for (const network of this.enabledNetworks) {
-      kinds.push({ x402Version: 2, scheme: "exact", network });
+      kinds.push({
+        x402Version: 2,
+        scheme: isExactPermitNetwork(network) ? "exact_permit" : "exact",
+        network,
+      });
 
       if (this.account) {
         signers[network] = [this.account.address];
@@ -312,7 +459,7 @@ class X402FacilitatorService {
     }
 
     const { accepted, payload } = paymentPayload;
-    const { authorization, signature } = payload;
+    const { signature } = payload;
 
     // 1. Check network
     if (!this.enabledNetworks.includes(accepted.network)) {
@@ -323,10 +470,21 @@ class X402FacilitatorService {
     }
 
     // 2. Check scheme
-    if (accepted.scheme !== "exact" && accepted.scheme !== "upto") {
+    if (
+      accepted.scheme !== "exact" &&
+      accepted.scheme !== "upto" &&
+      accepted.scheme !== "exact_permit"
+    ) {
       return {
         isValid: false,
         invalidReason: `scheme_not_supported: ${accepted.scheme}`,
+      };
+    }
+
+    if (accepted.asset.toLowerCase() !== paymentRequirements.asset.toLowerCase()) {
+      return {
+        isValid: false,
+        invalidReason: "asset_mismatch",
       };
     }
 
@@ -335,7 +493,6 @@ class X402FacilitatorService {
       return {
         isValid: false,
         invalidReason: "insufficient_amount",
-        payer: authorization.from,
       };
     }
 
@@ -344,30 +501,111 @@ class X402FacilitatorService {
       return {
         isValid: false,
         invalidReason: "payto_mismatch",
-        payer: authorization.from,
       };
     }
 
     // 5. Validate deadline
     const now = Math.floor(Date.now() / 1000);
-    if (BigInt(authorization.validBefore) <= BigInt(now)) {
-      return {
-        isValid: false,
-        invalidReason: "payment_expired",
-        payer: authorization.from,
-      };
-    }
-
     // 6. Verify signature (recover signer from EIP-712 typed data)
     const networkConfig = this.networks[accepted.network];
     if (!networkConfig) {
       return { isValid: false, invalidReason: "network_config_missing" };
     }
 
+    let payerForError: string | undefined;
+
     try {
       const client = this.clients.get(accepted.network);
       if (!client) {
         return { isValid: false, invalidReason: "no_rpc_client" };
+      }
+
+      if (accepted.scheme === "exact_permit") {
+        const permit = payload.paymentPermit;
+        if (!permit) {
+          return { isValid: false, invalidReason: "missing_payment_permit" };
+        }
+        payerForError = permit.buyer;
+        if (BigInt(permit.meta.validBefore) <= BigInt(now)) {
+          return {
+            isValid: false,
+            invalidReason: "payment_expired",
+            payer: permit.buyer,
+          };
+        }
+        if (permit.payment.payToken.toLowerCase() !== paymentRequirements.asset.toLowerCase()) {
+          return { isValid: false, invalidReason: "permit_asset_mismatch", payer: permit.buyer };
+        }
+        if (BigInt(permit.payment.payAmount) < BigInt(paymentRequirements.amount)) {
+          return { isValid: false, invalidReason: "insufficient_amount", payer: permit.buyer };
+        }
+        if (permit.payment.payTo.toLowerCase() !== paymentRequirements.payTo.toLowerCase()) {
+          return { isValid: false, invalidReason: "payto_mismatch", payer: permit.buyer };
+        }
+        const expectedFee = paymentRequirements.extra?.fee as
+          | { feeTo?: string; feeAmount?: string }
+          | undefined;
+        if (
+          expectedFee?.feeTo &&
+          permit.fee.feeTo.toLowerCase() !== expectedFee.feeTo.toLowerCase()
+        ) {
+          return { isValid: false, invalidReason: "fee_to_mismatch", payer: permit.buyer };
+        }
+        if (
+          expectedFee?.feeAmount &&
+          BigInt(permit.fee.feeAmount) < BigInt(expectedFee.feeAmount)
+        ) {
+          return { isValid: false, invalidReason: "fee_amount_too_low", payer: permit.buyer };
+        }
+
+        const permitContract = getPaymentPermitAddress(accepted.network);
+        if (!permitContract) {
+          return { isValid: false, invalidReason: "payment_permit_contract_missing" };
+        }
+
+        const permitMessage = normalizePermitForTypedData(permit);
+        const isValidSig = await client.verifyTypedData({
+          address: permit.buyer as Hex,
+          domain: {
+            name: "PaymentPermit",
+            chainId: BigInt(networkConfig.chainId),
+            verifyingContract: permitContract,
+          },
+          types: PAYMENT_PERMIT_TYPES,
+          primaryType: "PaymentPermitDetails",
+          message: permitMessage,
+          signature: signature as Hex,
+        });
+
+        if (!isValidSig) {
+          return {
+            isValid: false,
+            invalidReason: "invalid_signature",
+            payer: permit.buyer,
+          };
+        }
+
+        return { isValid: true, payer: permit.buyer };
+      }
+
+      const authorization = payload.authorization;
+      if (!authorization) {
+        return { isValid: false, invalidReason: "missing_authorization" };
+      }
+      payerForError = authorization.from;
+      if (BigInt(authorization.validBefore) <= BigInt(now)) {
+        return {
+          isValid: false,
+          invalidReason: "payment_expired",
+          payer: authorization.from,
+        };
+      }
+      if (authorization.to.toLowerCase() !== paymentRequirements.payTo.toLowerCase()) {
+        return {
+          isValid: false,
+          invalidReason: "authorization_to_mismatch",
+          payer: authorization.from,
+        };
       }
 
       // Scheme-aware signature verification
@@ -427,14 +665,15 @@ class X402FacilitatorService {
       return {
         isValid: false,
         invalidReason: `signature_verification_error: ${msg}`,
-        payer: authorization.from,
+        payer: payerForError,
       };
     }
 
     // 7. Check USDC balance (optional but recommended)
     try {
       const client = this.clients.get(accepted.network);
-      if (client) {
+      const balanceAddress = payload.authorization?.from ?? payload.paymentPermit?.buyer;
+      if (client && balanceAddress) {
         const balance = await client.readContract({
           address: networkConfig.usdcAddress,
           abi: [
@@ -447,14 +686,14 @@ class X402FacilitatorService {
             },
           ],
           functionName: "balanceOf",
-          args: [authorization.from as Hex],
+          args: [balanceAddress as Hex],
         });
 
         if ((balance as bigint) < BigInt(accepted.amount)) {
           return {
             isValid: false,
             invalidReason: "insufficient_balance",
-            payer: authorization.from,
+            payer: balanceAddress,
           };
         }
       }
@@ -464,7 +703,7 @@ class X402FacilitatorService {
       logger.warn(`[x402-facilitator] Balance check failed: ${msg}`);
     }
 
-    return { isValid: true, payer: authorization.from };
+    return { isValid: true, payer: payload.authorization?.from ?? payload.paymentPermit?.buyer };
   }
 
   /**
@@ -500,7 +739,7 @@ class X402FacilitatorService {
     }
 
     const { accepted, payload } = paymentPayload;
-    const { authorization, signature } = payload;
+    const { signature } = payload;
     const networkConfig = this.networks[accepted.network];
 
     if (!networkConfig) {
@@ -523,7 +762,7 @@ class X402FacilitatorService {
         transport: viemHttp(networkConfig.rpcUrl),
       });
 
-      // Parse v, r, s from the compact signature
+      // Parse v, r, s from the compact signature when the token method needs it.
       const sigHex = signature.startsWith("0x") ? signature.slice(2) : signature;
       const r = `0x${sigHex.slice(0, 64)}` as Hex;
       const s = `0x${sigHex.slice(64, 128)}` as Hex;
@@ -531,7 +770,43 @@ class X402FacilitatorService {
 
       let txHash: Hex;
 
-      if (accepted.scheme === "upto") {
+      if (accepted.scheme === "exact_permit") {
+        const permit = payload.paymentPermit;
+        if (!permit) {
+          return {
+            success: false,
+            transaction: "",
+            network: accepted.network,
+            errorReason: "missing_payment_permit",
+          };
+        }
+        const permitContract = getPaymentPermitAddress(accepted.network);
+        if (!permitContract) {
+          return {
+            success: false,
+            transaction: "",
+            network: accepted.network,
+            payer: permit.buyer,
+            errorReason: "payment_permit_contract_missing",
+          };
+        }
+
+        txHash = await walletClient.writeContract({
+          address: permitContract,
+          abi: PAYMENT_PERMIT_ABI,
+          functionName: "permitTransferFrom",
+          args: [normalizePermitForTypedData(permit), permit.buyer as Hex, signature as Hex],
+        });
+      } else if (accepted.scheme === "upto") {
+        const authorization = payload.authorization;
+        if (!authorization) {
+          return {
+            success: false,
+            transaction: "",
+            network: accepted.network,
+            errorReason: "missing_authorization",
+          };
+        }
         // ERC-2612: permit() then transferFrom()
         const permitAbi = [
           {
@@ -589,6 +864,15 @@ class X402FacilitatorService {
           args: [authorization.from as Hex, authorization.to as Hex, BigInt(authorization.value)],
         });
       } else {
+        const authorization = payload.authorization;
+        if (!authorization) {
+          return {
+            success: false,
+            transaction: "",
+            network: accepted.network,
+            errorReason: "missing_authorization",
+          };
+        }
         // EIP-3009: transferWithAuthorization()
         const transferWithAuthorizationAbi = [
           {
@@ -630,9 +914,9 @@ class X402FacilitatorService {
 
       logger.info("[x402-facilitator] Settlement TX submitted", {
         txHash,
-        payer: authorization.from,
-        payTo: authorization.to,
-        amount: authorization.value,
+        payer: payload.authorization?.from ?? payload.paymentPermit?.buyer,
+        payTo: payload.authorization?.to ?? payload.paymentPermit?.payment.payTo,
+        amount: payload.authorization?.value ?? payload.paymentPermit?.payment.payAmount,
         network: accepted.network,
       });
 
@@ -640,7 +924,7 @@ class X402FacilitatorService {
         success: true,
         transaction: txHash,
         network: accepted.network,
-        payer: authorization.from,
+        payer: payload.authorization?.from ?? payload.paymentPermit?.buyer,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -660,7 +944,7 @@ class X402FacilitatorService {
         success: false,
         transaction: "",
         network: accepted.network,
-        payer: authorization.from,
+        payer: payload.authorization?.from ?? payload.paymentPermit?.buyer,
         errorReason,
       };
     }

@@ -20,6 +20,16 @@ import {
  */
 
 type EventHandler = (payload: EventPayload) => Promise<void>;
+type CredentialStoreRuntime = Pick<
+  IAgentRuntime,
+  | 'agentId'
+  | 'db'
+  | 'getService'
+  | 'getSetting'
+  | 'registerEvent'
+  | 'unregisterEvent'
+>;
+type DeleteMethod = typeof WorkflowCredentialStore.prototype.delete;
 
 interface EventBusRuntime {
   agentId: string;
@@ -46,16 +56,16 @@ function createEventBusRuntime(agentId = 'agent-001'): {
     emit: async (eventName, payload) => {
       const handlers = events.get(eventName) ?? [];
       // Mirror the real runtime's auto-injection of `runtime` + `source`.
-      const fullPayload = {
+      const fullPayload: ConnectorDisconnectedPayload = {
         ...payload,
         runtime,
         source: 'test',
-      } as unknown as EventPayload;
+      };
       await Promise.all(handlers.map((handler) => handler(fullPayload)));
     },
   };
 
-  const runtime = {
+  const runtimeDouble: CredentialStoreRuntime = {
     agentId,
     // The credential store reads `runtime.db` only inside DB methods we don't
     // call here (delete is spied on). A throwing getter would still satisfy
@@ -77,7 +87,8 @@ function createEventBusRuntime(agentId = 'agent-001'): {
       if (idx >= 0) list.splice(idx, 1);
       if (list.length === 0) events.delete(eventName);
     }) as IAgentRuntime['unregisterEvent'],
-  } as unknown as IAgentRuntime;
+  };
+  const runtime = runtimeDouble as IAgentRuntime;
 
   return { runtime, bus };
 }
@@ -85,11 +96,11 @@ function createEventBusRuntime(agentId = 'agent-001'): {
 describe('WorkflowCredentialStore event-driven eviction', () => {
   test('start() subscribes and emit invokes delete() for every credType', async () => {
     const { runtime, bus } = createEventBusRuntime('agent-evict-1');
-    const deleteSpy = mock(() => Promise.resolve());
+    const deleteSpy = mock<DeleteMethod>(() => Promise.resolve());
     // Spy on the prototype so the subscriber's `this.delete(...)` call routes
     // to the mock without touching the real DB-backed implementation.
     const originalDelete = WorkflowCredentialStore.prototype.delete;
-    WorkflowCredentialStore.prototype.delete = deleteSpy as unknown as typeof originalDelete;
+    WorkflowCredentialStore.prototype.delete = deleteSpy;
 
     try {
       const store = await WorkflowCredentialStore.start(runtime);
@@ -113,9 +124,9 @@ describe('WorkflowCredentialStore event-driven eviction', () => {
 
   test('empty credTypes payload is a no-op', async () => {
     const { runtime, bus } = createEventBusRuntime('agent-evict-2');
-    const deleteSpy = mock(() => Promise.resolve());
+    const deleteSpy = mock<DeleteMethod>(() => Promise.resolve());
     const originalDelete = WorkflowCredentialStore.prototype.delete;
-    WorkflowCredentialStore.prototype.delete = deleteSpy as unknown as typeof originalDelete;
+    WorkflowCredentialStore.prototype.delete = deleteSpy;
 
     try {
       const store = await WorkflowCredentialStore.start(runtime);
@@ -133,9 +144,9 @@ describe('WorkflowCredentialStore event-driven eviction', () => {
 
   test('stop() unsubscribes — subsequent emits do not invoke delete', async () => {
     const { runtime, bus } = createEventBusRuntime('agent-evict-3');
-    const deleteSpy = mock(() => Promise.resolve());
+    const deleteSpy = mock<DeleteMethod>(() => Promise.resolve());
     const originalDelete = WorkflowCredentialStore.prototype.delete;
-    WorkflowCredentialStore.prototype.delete = deleteSpy as unknown as typeof originalDelete;
+    WorkflowCredentialStore.prototype.delete = deleteSpy;
 
     try {
       const store = await WorkflowCredentialStore.start(runtime);
@@ -158,14 +169,14 @@ describe('WorkflowCredentialStore event-driven eviction', () => {
   test('a delete failure for one credType does not block sibling deletes', async () => {
     const { runtime, bus } = createEventBusRuntime('agent-evict-4');
     const calls: Array<[string, string]> = [];
-    const deleteSpy = mock(async (userId: string, credType: string) => {
+    const deleteSpy = mock<DeleteMethod>(async (userId: string, credType: string) => {
       calls.push([userId, credType]);
       if (credType === 'discordApi') {
         throw new Error('boom');
       }
     });
     const originalDelete = WorkflowCredentialStore.prototype.delete;
-    WorkflowCredentialStore.prototype.delete = deleteSpy as unknown as typeof originalDelete;
+    WorkflowCredentialStore.prototype.delete = deleteSpy;
 
     try {
       const store = await WorkflowCredentialStore.start(runtime);

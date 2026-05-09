@@ -5,10 +5,43 @@ import { agentTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
 
+type AgentRow = typeof agentTable.$inferSelect;
+type AgentMessageExamples = NonNullable<Agent["messageExamples"]>;
+type AgentKnowledge = NonNullable<Agent["knowledge"]>;
+
 function normalizeAgentBio(bio: string | string[] | null | undefined): string[] {
   if (Array.isArray(bio)) return bio;
   if (typeof bio === "string" && bio.length > 0) return [bio];
   return [];
+}
+
+function normalizeAgentMessageExamples(messageExamples: unknown): AgentMessageExamples {
+  if (!Array.isArray(messageExamples)) return [];
+  return messageExamples.flatMap((entry): AgentMessageExamples => {
+    if (Array.isArray(entry)) {
+      return [{ examples: entry }];
+    }
+    if (
+      entry &&
+      typeof entry === "object" &&
+      Array.isArray((entry as { examples?: unknown }).examples)
+    ) {
+      return [entry as AgentMessageExamples[number]];
+    }
+    return [];
+  });
+}
+
+function normalizeAgentKnowledge(knowledge: AgentRow["knowledge"]): AgentKnowledge {
+  return knowledge.flatMap((item): AgentKnowledge => {
+    if (typeof item === "string") {
+      return [{ item: { case: "path", value: item } }];
+    }
+    if (item && typeof item === "object" && typeof item.path === "string") {
+      return [{ item: { case: "path", value: item.path } }];
+    }
+    return [];
+  });
 }
 
 function toEpochMillis(value: number | bigint | undefined): number {
@@ -40,6 +73,8 @@ export class AgentStore implements Store {
         id: row.id as UUID,
         system: !row.system ? undefined : row.system,
         bio: normalizeAgentBio(row.bio),
+        messageExamples: normalizeAgentMessageExamples(row.messageExamples),
+        knowledge: normalizeAgentKnowledge(row.knowledge),
         createdAt: row.createdAt.getTime(),
         updatedAt: row.updatedAt.getTime(),
         messageExamples: messageExamplesFromDb(row.messageExamples),

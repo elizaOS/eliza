@@ -17,7 +17,7 @@ import type {
   JsonValue,
   UUID,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { EvaluatorPriority, logger } from "@elizaos/core";
 import {
   buildFormExtractorPromptSection,
   buildFormExtractorSchema,
@@ -273,7 +273,7 @@ export const formEvaluator: Evaluator<
     "Extracts form field values and detects form lifecycle/UX intents from the user message",
   similes: ["FORM_EXTRACTION", "FORM_HANDLER", "form_evaluator"],
   // Run before reflection/memory so downstream evaluators see updated form state.
-  priority: 50,
+  priority: EvaluatorPriority.FORM,
   providers: ["RECENT_MESSAGES"],
   schema: buildFormExtractorSchema(),
 

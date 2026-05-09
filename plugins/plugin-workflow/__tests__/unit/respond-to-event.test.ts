@@ -40,6 +40,11 @@ interface RuntimeMockOptions {
   db?: unknown;
 }
 
+type RespondToEventRuntime = Pick<
+  IAgentRuntime,
+  'agentId' | 'db' | 'getSetting' | 'getService' | 'createMemory' | 'logger'
+>;
+
 function buildRuntime(options: RuntimeMockOptions = {}): {
   runtime: IAgentRuntime;
   capturedMemories: CapturedMemory[];
@@ -52,7 +57,7 @@ function buildRuntime(options: RuntimeMockOptions = {}): {
     services[options.serviceKey ?? 'AUTONOMY'] = buildAutonomyService(options.autonomy);
   }
 
-  const runtime = {
+  const runtimeDouble: RespondToEventRuntime = {
     agentId: 'agent-respond-to-event' as UUID,
     db: options.db,
     getSetting: () => null,
@@ -69,9 +74,9 @@ function buildRuntime(options: RuntimeMockOptions = {}): {
       error: () => {},
       debug: () => {},
     },
-  } as unknown as IAgentRuntime;
+  };
 
-  return { runtime, capturedMemories, warnings };
+  return { runtime: runtimeDouble as IAgentRuntime, capturedMemories, warnings };
 }
 
 interface PersistentHarness {

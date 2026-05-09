@@ -478,13 +478,15 @@ async function seedClaudeTrustForWorkdirUnsafe(
  * Retrieve the SwarmCoordinator from the PTYService registered on the runtime.
  * Returns undefined if PTYService or coordinator is not available.
  */
+export function getPtyService(runtime: IAgentRuntime): PTYService | null {
+  const service = runtime.getService("PTY_SERVICE");
+  return service instanceof PTYService ? service : null;
+}
+
 export function getCoordinator(
   runtime: IAgentRuntime,
 ): SwarmCoordinator | undefined {
-  const ptyService = runtime.getService("PTY_SERVICE") as
-    | (Service & PTYService)
-    | undefined;
-  return ptyService?.coordinator ?? undefined;
+  return getPtyService(runtime)?.coordinator ?? undefined;
 }
 
 export class PTYService {
@@ -649,9 +651,7 @@ export class PTYService {
   }
 
   static async stopRuntime(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService("PTY_SERVICE") as
-      | (Service & PTYService)
-      | undefined;
+    const service = getPtyService(runtime);
     if (service) {
       await service.stop();
     }

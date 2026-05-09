@@ -44,8 +44,8 @@ export function setElizaApiBase(value: string): void {
 export function clearElizaApiBase(): void {
   const elizaWindow = getElizaWindow();
   if (elizaWindow) {
-    delete elizaWindow.__ELIZAOS_API_BASE__;
-    delete elizaWindow.__ELIZA_API_BASE__;
+    Reflect.deleteProperty(elizaWindow, "__ELIZAOS_API_BASE__");
+    Reflect.deleteProperty(elizaWindow, "__ELIZA_API_BASE__");
   }
 }
 
@@ -60,7 +60,7 @@ export function setElizaApiToken(value: string): void {
 export function clearElizaApiToken(): void {
   const elizaWindow = getElizaWindow();
   if (elizaWindow) {
-    delete elizaWindow.__ELIZAOS_API_TOKEN__;
-    delete elizaWindow.__ELIZA_API_TOKEN__;
+    Reflect.deleteProperty(elizaWindow, "__ELIZAOS_API_TOKEN__");
+    Reflect.deleteProperty(elizaWindow, "__ELIZA_API_TOKEN__");
   }
 }

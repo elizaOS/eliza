@@ -56,8 +56,8 @@
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/app-companion": ["../../plugins/app-companion/src/index.ts"],
       "@elizaos/app-companion/*": ["../../plugins/app-companion/src/*"],
-      "@elizaos/app-documents": ["../../plugins/app-documents/src/index.ts"],
-      "@elizaos/app-documents/*": ["../../plugins/app-documents/src/*"],
+      "@elizaos/app-knowledge": ["../../plugins/app-knowledge/src/index.ts"],
+      "@elizaos/app-knowledge/*": ["../../plugins/app-knowledge/src/*"],
       "@elizaos/app-training": ["../../plugins/app-training/src/index.ts"],
       "@elizaos/app-training/*": ["../../plugins/app-training/src/*"],
       "@elizaos/app-task-coordinator": [
@@ -70,10 +70,12 @@
       "@elizaos/app-contacts/*": ["../../plugins/app-contacts/src/*"],
       "@elizaos/agent": ["./src/index.ts"],
       "@elizaos/agent/*": ["./src/*"],
-      "@elizaos/plugin-elizacloud": [
-        "../../plugins/plugin-elizacloud/src/index.node.ts"
+      "@elizaos/plugin-browser-bridge": [
+        "../../plugins/plugin-browser-bridge/src/index.ts"
       ],
-      "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
+      "@elizaos/plugin-browser-bridge/*": [
+        "../../plugins/plugin-browser-bridge/src/*"
+      ],
       "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
       "@elizaos/plugin-computeruse": [
@@ -82,6 +84,8 @@
       "@elizaos/plugin-computeruse/*": [
         "../../plugins/plugin-computeruse/src/*"
       ],
+      "@elizaos/plugin-music": ["../../plugins/plugin-music/src/index.ts"],
+      "@elizaos/plugin-music/*": ["../../plugins/plugin-music/src/*"],
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"
       ],

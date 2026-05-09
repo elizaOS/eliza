@@ -13,30 +13,36 @@ import { x402FacilitatorService } from "@/lib/services/x402-facilitator";
 import type { UserWithOrganization } from "@/lib/types";
 import { logger } from "@/lib/utils/logger";
 
-const USDC_ASSETS_BY_NETWORK: Record<string, { caip2: string; asset: string }> = {
+const USDC_ASSETS_BY_NETWORK: Record<string, { caip2: string; asset: string; decimals: number }> = {
   base: {
     caip2: "eip155:8453",
     asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    decimals: 6,
   },
   "base-sepolia": {
     caip2: "eip155:84532",
     asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    decimals: 6,
   },
   ethereum: {
     caip2: "eip155:1",
     asset: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    decimals: 6,
   },
   sepolia: {
     caip2: "eip155:11155111",
     asset: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+    decimals: 6,
   },
   bsc: {
     caip2: "eip155:56",
     asset: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+    decimals: 18,
   },
   "bsc-testnet": {
     caip2: "eip155:97",
     asset: "0x64544969ed7EBf5f083679233325356EBe738930",
+    decimals: 18,
   },
 };
 
@@ -78,6 +84,23 @@ interface PaymentRequirements {
   payTo: string;
   maxTimeoutSeconds: number;
   extra: Record<string, unknown>;
+}
+
+interface PaymentRequiredExtensions {
+  paymentPermitContext?: {
+    meta: {
+      kind: "PAYMENT_ONLY";
+      paymentId: string;
+      nonce: string;
+      validAfter: number;
+      validBefore: number;
+    };
+  };
+}
+
+interface PaymentRequirementBundle {
+  requirements: PaymentRequirements;
+  extensions?: PaymentRequiredExtensions;
 }
 
 interface TopupRecipient {
@@ -145,14 +168,32 @@ function readEnvString(env: TopupEnv, key: string): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function normalizeNetwork(rawNetwork?: string): { caip2: string; asset: string } {
+function normalizeNetwork(rawNetwork?: string): {
+  caip2: string;
+  asset: string;
+  decimals: number;
+} {
   const network = rawNetwork?.trim() || "base";
   const direct = Object.values(USDC_ASSETS_BY_NETWORK).find((entry) => entry.caip2 === network);
   return direct ?? USDC_ASSETS_BY_NETWORK[network] ?? USDC_ASSETS_BY_NETWORK.base;
 }
 
-function amountToUsdcBaseUnits(amount: number): string {
-  return Math.round(amount * 1_000_000).toString();
+function amountToUsdcBaseUnits(amount: number, decimals: number): string {
+  const cents = BigInt(Math.round(amount * 100));
+  const scale = 10n ** BigInt(decimals);
+  return ((cents * scale) / 100n).toString();
+}
+
+function randomHex(bytes: number): string {
+  const data = new Uint8Array(bytes);
+  crypto.getRandomValues(data);
+  return Array.from(data)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function getScheme(network: { caip2: string }): "exact" | "exact_permit" {
+  return network.caip2 === "eip155:56" || network.caip2 === "eip155:97" ? "exact_permit" : "exact";
 }
 
 async function resolvePaymentRecipient(env: TopupEnv): Promise<string | null> {
@@ -167,7 +208,7 @@ async function createPaymentRequirements(
   req: Request,
   amount: number,
   env: TopupEnv,
-): Promise<PaymentRequirements | { error: string; status: number }> {
+): Promise<PaymentRequirementBundle | { error: string; status: number }> {
   const payTo = await resolvePaymentRecipient(env);
   if (!payTo || !isAddress(payTo)) {
     return {
@@ -177,10 +218,23 @@ async function createPaymentRequirements(
   }
 
   const network = normalizeNetwork(readEnvString(env, "X402_NETWORK"));
-  const amountBaseUnits = amountToUsdcBaseUnits(amount);
+  const amountBaseUnits = amountToUsdcBaseUnits(amount, network.decimals);
+  const scheme = getScheme(network);
+  const now = Math.floor(Date.now() / 1000);
+  let facilitatorCaller: string | null = null;
+  if (scheme === "exact_permit") {
+    await x402FacilitatorService.initialize();
+    facilitatorCaller = x402FacilitatorService.getSignerAddress();
+    if (!facilitatorCaller) {
+      return {
+        error: "x402 facilitator signer is not configured",
+        status: 503,
+      };
+    }
+  }
 
-  return {
-    scheme: "exact",
+  const requirements: PaymentRequirements = {
+    scheme,
     network: network.caip2,
     asset: network.asset,
     amount: amountBaseUnits,
@@ -195,7 +249,31 @@ async function createPaymentRequirements(
       version: "1",
       amountUsd: amount,
       endpoint: new URL(req.url).pathname,
+      ...(facilitatorCaller && {
+        fee: {
+          caller: facilitatorCaller,
+          feeTo: "0x0000000000000000000000000000000000000000",
+          feeAmount: "0",
+        },
+      }),
     },
+  };
+
+  return {
+    requirements,
+    ...(scheme === "exact_permit" && {
+      extensions: {
+        paymentPermitContext: {
+          meta: {
+            kind: "PAYMENT_ONLY",
+            paymentId: `0x${randomHex(16)}`,
+            nonce: BigInt(`0x${randomHex(16)}`).toString(),
+            validAfter: now,
+            validBefore: now + 300,
+          },
+        },
+      },
+    }),
   };
 }
 
@@ -209,20 +287,26 @@ function decodePaymentHeader(headerValue: string): PaymentPayload {
   }
 }
 
-function paymentRequiredResponse(requirements: PaymentRequirements): Response {
-  return Response.json(
-    {
-      x402Version: 2,
-      error: "payment_required",
-      accepts: [requirements],
+function paymentRequiredResponse(
+  requirements: PaymentRequirements,
+  extensions?: PaymentRequiredExtensions,
+): Response {
+  const paymentRequired = {
+    x402Version: 2,
+    error: "payment_required",
+    accepts: [requirements],
+    ...(extensions && { extensions }),
+  };
+  const encoded = Buffer.from(JSON.stringify(paymentRequired)).toString("base64");
+  return Response.json(paymentRequired, {
+    status: 402,
+    headers: {
+      "PAYMENT-REQUIRED": encoded,
+      "Payment-Required": encoded,
+      "X-PAYMENT-STATUS": "required",
+      "Access-Control-Expose-Headers": "PAYMENT-REQUIRED, Payment-Required, X-PAYMENT-STATUS",
     },
-    {
-      status: 402,
-      headers: {
-        "X-PAYMENT-STATUS": "required",
-      },
-    },
-  );
+  });
 }
 
 export function createTopupHandler(options: CreateTopupHandlerOptions) {
@@ -242,21 +326,22 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
       return Response.json({ error: "Valid EVM walletAddress is required" }, { status: 400 });
     }
 
-    const requirements = await createPaymentRequirements(req, amount, env);
-    if ("error" in requirements) {
+    const paymentRequirementBundle = await createPaymentRequirements(req, amount, env);
+    if ("error" in paymentRequirementBundle) {
       return Response.json(
         {
           success: false,
-          error: requirements.error,
+          error: paymentRequirementBundle.error,
           code: "x402_not_configured",
         },
-        { status: requirements.status },
+        { status: paymentRequirementBundle.status },
       );
     }
+    const { requirements, extensions } = paymentRequirementBundle;
 
     const paymentHeader = req.headers.get("X-PAYMENT");
     if (!paymentHeader) {
-      return paymentRequiredResponse(requirements);
+      return paymentRequiredResponse(requirements, extensions);
     }
 
     let paymentPayload: PaymentPayload;

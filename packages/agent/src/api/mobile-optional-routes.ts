@@ -1,11 +1,11 @@
 import type http from "node:http";
-import { readRequestBody, sendJson, sendJsonError } from "@elizaos/core";
 import { isMobilePlatform } from "@elizaos/shared";
+import { readRequestBody, sendJson, sendJsonError } from "./http-helpers.js";
 import {
   readStreamSettings,
   validateStreamSettings,
   writeStreamSettings,
-} from "./stream-persistence.js";
+} from "@elizaos/plugin-streaming";
 
 function mobileLocalCompatibilityEnabled(): boolean {
   return (

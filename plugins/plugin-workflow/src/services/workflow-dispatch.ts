@@ -1,5 +1,5 @@
 /**
- * Workflow dispatch service — executes a workflow by id via the in-process
+ * Workflow dispatch service - executes a workflow by id via the in-process
  * EmbeddedWorkflowService registered by `@elizaos/plugin-workflow`.
  *
  * Consumed by the trigger dispatcher: triggers carrying `kind: "workflow"`
@@ -9,14 +9,17 @@
  * Registered into the runtime services map by the plugin's `init` (see
  * `plugins/plugin-workflow/src/index.ts`).
  *
- * The dispatch service is a thin routing layer — it looks up the embedded
+ * The dispatch service is a thin routing layer - it looks up the embedded
  * workflow service on the runtime and delegates to its `executeWorkflow`
  * method. There is no HTTP boundary and no sidecar lifecycle.
  */
 
 import type { IAgentRuntime } from '@elizaos/core';
 import { logger } from '@elizaos/core';
-import { EMBEDDED_WORKFLOW_SERVICE_TYPE } from './embedded-workflow-service';
+import {
+  EMBEDDED_WORKFLOW_SERVICE_TYPE,
+  type EmbeddedWorkflowService,
+} from './embedded-workflow-service';
 
 export const WORKFLOW_DISPATCH_SERVICE_TYPE = 'WORKFLOW_DISPATCH' as const;
 
@@ -27,30 +30,60 @@ export interface WorkflowDispatchResult {
 }
 
 export interface WorkflowDispatchService {
-  execute(workflowId: string, payload?: Record<string, unknown>): Promise<WorkflowDispatchResult>;
+  execute(
+    workflowId: string,
+    payload?: Record<string, unknown>
+  ): Promise<WorkflowDispatchResult>;
 }
 
-interface EmbeddedWorkflowServiceLike {
-  executeWorkflow(id: string, options?: { mode?: string }): Promise<{ id?: string }>;
+interface WorkflowDispatchServiceEntry extends WorkflowDispatchService {
+  stop(): Promise<void>;
+  capabilityDescription: string;
 }
 
-function resolveEmbeddedService(runtime: IAgentRuntime): EmbeddedWorkflowServiceLike | null {
-  const service = runtime.getService?.(EMBEDDED_WORKFLOW_SERVICE_TYPE) as
-    | Partial<EmbeddedWorkflowServiceLike>
-    | null
-    | undefined;
+interface RuntimeServiceRegistry {
+  set(serviceType: string, services: WorkflowDispatchServiceEntry[]): void;
+}
+
+function resolveEmbeddedService(
+  runtime: IAgentRuntime
+): EmbeddedWorkflowService | null {
+  const service = runtime.getService<EmbeddedWorkflowService>(
+    EMBEDDED_WORKFLOW_SERVICE_TYPE
+  );
   if (service && typeof service.executeWorkflow === 'function') {
-    return service as EmbeddedWorkflowServiceLike;
+    return service;
   }
   return null;
 }
 
+function getRuntimeServiceRegistry(
+  runtime: IAgentRuntime
+): RuntimeServiceRegistry | null {
+  const services: unknown = Reflect.get(runtime, 'services');
+  if (!services || typeof services !== 'object') {
+    return null;
+  }
+
+  const set: unknown = Reflect.get(services, 'set');
+  if (typeof set !== 'function') {
+    return null;
+  }
+
+  return {
+    set(serviceType, serviceEntries) {
+      Reflect.apply(set, services, [serviceType, serviceEntries]);
+    },
+  };
+}
+
 /**
  * Construct the dispatch service. Registered under `WORKFLOW_DISPATCH` on the
- * runtime by the plugin's `init` lifecycle hook (see
- * `registerWorkflowDispatchService`).
+ * runtime by the plugin's `init` lifecycle hook.
  */
-export function createWorkflowDispatchService(runtime: IAgentRuntime): WorkflowDispatchService {
+export function createWorkflowDispatchService(
+  runtime: IAgentRuntime
+): WorkflowDispatchService {
   return {
     async execute(
       workflowId: string,
@@ -66,7 +99,9 @@ export function createWorkflowDispatchService(runtime: IAgentRuntime): WorkflowD
       }
       try {
         const execution = await service.executeWorkflow(id, { mode: 'trigger' });
-        return execution.id ? { ok: true, executionId: execution.id } : { ok: true };
+        return execution.id
+          ? { ok: true, executionId: execution.id }
+          : { ok: true };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         logger.warn(
@@ -90,11 +125,13 @@ export function createWorkflowDispatchService(runtime: IAgentRuntime): WorkflowD
  */
 export function registerWorkflowDispatchService(runtime: IAgentRuntime): void {
   const dispatch = createWorkflowDispatchService(runtime);
-  const serviceEntry = {
+  const serviceEntry: WorkflowDispatchServiceEntry = {
     execute: dispatch.execute,
     stop: async () => {},
-    capabilityDescription: 'Executes embedded workflows by id via the in-process workflow service.',
+    capabilityDescription:
+      'Executes embedded workflows by id via the in-process workflow service.',
   };
-  // biome-ignore lint/suspicious/noExplicitAny: runtime services map is loosely typed.
-  (runtime as any).services?.set?.(WORKFLOW_DISPATCH_SERVICE_TYPE, [serviceEntry]);
+  getRuntimeServiceRegistry(runtime)?.set(WORKFLOW_DISPATCH_SERVICE_TYPE, [
+    serviceEntry,
+  ]);
 }

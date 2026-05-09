@@ -514,7 +514,7 @@ export const rs2004Action: Action = {
       description: "Operation to run.",
       descriptionCompressed: "Op.",
       required: true,
-      schema: { type: "string", enum: RS_2004_OPS as unknown as string[] },
+      schema: { type: "string", enum: [...RS_2004_OPS] },
     },
     {
       name: "params",
