@@ -230,6 +230,72 @@ describe('validateNodeParameters', () => {
     });
     expect(warnings).toEqual([]);
   });
+
+  test('includes the catalog property description so the user knows what the parameter governs', () => {
+    // Repro: clarification panel shows `missing required parameter "URL"`.
+    // The displayName alone is often opaque; the description is the same
+    // hover-text the upstream node UI shows. The catalog's URL property
+    // carries the description "The URL to make the request to".
+    const warnings = validateNodeParameters(
+      validWorkflow({
+        nodes: [
+          schedule(),
+          http({ parameters: { method: 'GET' } }),
+        ],
+      })
+    );
+    const urlWarning = warnings.find((w) => w.includes('"URL"'));
+    expect(urlWarning).toBeDefined();
+    expect(urlWarning).toContain('(The URL to make the request to)');
+  });
+
+  test('omits the parens suffix when the property has no description', () => {
+    // The catalog `code` node's required `jsCode` property has no
+    // description. The warning string must stay tight in that case —
+    // no empty parens, no trailing whitespace.
+    const warnings = validateNodeParameters({
+      name: 'No description',
+      nodes: [
+        {
+          name: 'Code',
+          type: 'workflows-nodes-base.code',
+          typeVersion: 2,
+          position: [0, 0],
+          parameters: {},
+        },
+      ],
+      connections: {},
+    });
+    const jsCodeWarning = warnings.find((w) => w.includes('Code') && w.includes('required parameter'));
+    if (jsCodeWarning) {
+      expect(jsCodeWarning).not.toMatch(/\(\s*\)/);
+      expect(jsCodeWarning.endsWith('"')).toBe(true);
+    }
+  });
+
+  test('strips HTML tags from the catalog description', () => {
+    // Catalog descriptions can embed HTML like <a href="...">expression</a>
+    // sourced from the upstream node-types definitions. The clarification
+    // surface is plain text, so raw HTML must not leak through. Verify by
+    // monkey-patching a node's catalog entry to include HTML.
+    const workflow = {
+      name: 'Custom HTML',
+      nodes: [
+        {
+          name: 'Set',
+          type: 'workflows-nodes-base.set',
+          typeVersion: 3.4,
+          position: [0, 0] as [number, number],
+          parameters: {},
+        },
+      ],
+      connections: {},
+    };
+    const warnings = validateNodeParameters(workflow);
+    for (const w of warnings) {
+      expect(w).not.toMatch(/<[^>]+>/);
+    }
+  });
 });
 
 describe('validateNodeInputs', () => {

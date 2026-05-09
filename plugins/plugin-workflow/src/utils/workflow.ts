@@ -174,7 +174,20 @@ export function validateNodeParameters(workflow: WorkflowDefinition): string[] {
       const value = node.parameters?.[prop.name];
       if (value === undefined || value === null || value === '') {
         const label = prop.displayName || prop.name;
-        warnings.push(`Node "${node.name}": missing required parameter "${label}"`);
+        // Include the catalog property description in parentheses when
+        // present. The displayName alone is often opaque ("Name", "Type",
+        // "Mode") and the user has no way to know what the parameter
+        // actually governs. The description is the same hover-text the
+        // upstream node UI shows, so it carries real semantic information.
+        // Catalog descriptions sometimes contain raw HTML (e.g.
+        // <a href="...">expression</a>) sourced from the upstream
+        // node-types definitions; strip tags before interpolation so the
+        // clarification surfaces in plain-text contexts cleanly.
+        const description = prop.description?.replace(/<[^>]*>/g, '').trim();
+        const detail = description ? ` (${description})` : '';
+        warnings.push(
+          `Node "${node.name}": missing required parameter "${label}"${detail}`
+        );
       }
     }
   }
