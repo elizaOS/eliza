@@ -5,7 +5,7 @@ import {
   isElectrobunRuntime,
   openExternalUrl,
   useApp,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import type {
   LifeOpsOwnerBrowserAccessStatus,
   LifeOpsTelegramAuthState,

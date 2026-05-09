@@ -88,8 +88,8 @@ import "@elizaos/app-defense-of-the-agents";
 import "@clawville/app-clawville/ui";
 import {
   AppBlockerSettingsCard,
+  dispatchQueuedLifeOpsGithubCallbackFromUrl as dispatchQueuedLifeOpsGithubCallback,
   LifeOpsBrowserSetupPanel as BrowserBridgeSetupPanel,
-  dispatchQueuedLifeOpsGithubCallbackFromUrl,
   LifeOpsActivitySignalsEffect,
   LifeOpsPageView,
   WebsiteBlockerSettingsCard,
@@ -498,11 +498,11 @@ function handleDeepLink(url: string): void {
       break;
     case "lifeops":
       window.location.hash = "#lifeops";
-      dispatchQueuedLifeOpsGithubCallbackFromUrl(url);
+      dispatchQueuedLifeOpsGithubCallback(url);
       break;
     case "settings":
       window.location.hash = "#settings";
-      dispatchQueuedLifeOpsGithubCallbackFromUrl(url);
+      dispatchQueuedLifeOpsGithubCallback(url);
       break;
     case "connect": {
       const gatewayUrl = parsed.searchParams.get("url");

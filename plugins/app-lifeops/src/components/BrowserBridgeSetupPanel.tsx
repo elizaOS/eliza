@@ -15,7 +15,7 @@ import {
   Switch,
   Textarea,
   useApp,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import {
   CheckCircle2,
   Circle,

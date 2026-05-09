@@ -1,6 +1,3 @@
-// Side-effect: register the wallet UI plugin with @elizaos/app-core registries.
-import "./register-routes";
-
 // Re-exports for hosts that import directly from "@elizaos/app-wallet".
 export { walletAppPlugin } from "./plugin";
 export { InventoryView } from "./InventoryView";

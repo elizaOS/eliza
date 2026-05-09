@@ -297,6 +297,13 @@ function generateTypeScript(prompts) {
 }
 
 function main() {
+  if (!fs.existsSync(PROMPTS_DIR)) {
+    console.warn(
+      `Prompt source directory not found at ${PROMPTS_DIR}; keeping existing generated outputs.`,
+    );
+    return;
+  }
+
   console.log("Loading prompts...");
   const prompts = loadPrompts();
   console.log(`Found ${prompts.length} prompt templates`);

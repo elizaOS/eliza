@@ -10,7 +10,8 @@ import type {
   InstalledModel,
   ModelBucket,
 } from "../../api/client-local-inference";
-import { assessFit } from "../../services/local-inference/hardware";
+import { MODEL_CATALOG } from "../../services/local-inference/catalog";
+import { assessCatalogModelFit } from "../../services/local-inference/recommendation";
 
 export type FitLevel = "fits" | "tight" | "wontfit";
 
@@ -59,7 +60,7 @@ export function computeFit(
   model: CatalogModel,
   hardware: HardwareProbe,
 ): FitLevel {
-  return assessFit(hardware, model.sizeGb, model.minRamGb);
+  return assessCatalogModelFit(hardware, model, MODEL_CATALOG);
 }
 
 /**

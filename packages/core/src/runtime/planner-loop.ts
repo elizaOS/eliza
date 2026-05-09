@@ -1185,19 +1185,19 @@ function extractUsage(
 		completionTokens,
 		totalTokens,
 	};
-	const cacheRead = (usage as Record<string, unknown>).cacheReadInputTokens;
+	const usageRecord = usage as unknown as Record<string, unknown>;
+	const cacheRead = usageRecord.cacheReadInputTokens;
 	if (typeof cacheRead === "number") {
 		out.cacheReadInputTokens = cacheRead;
 	} else {
 		// Fall back to OpenAI plugin's `cachedPromptTokens` shape, which adapters
 		// emitted before the shared schema landed.
-		const cachedPrompt = (usage as Record<string, unknown>).cachedPromptTokens;
+		const cachedPrompt = usageRecord.cachedPromptTokens;
 		if (typeof cachedPrompt === "number") {
 			out.cacheReadInputTokens = cachedPrompt;
 		}
 	}
-	const cacheCreation = (usage as Record<string, unknown>)
-		.cacheCreationInputTokens;
+	const cacheCreation = usageRecord.cacheCreationInputTokens;
 	if (typeof cacheCreation === "number") {
 		out.cacheCreationInputTokens = cacheCreation;
 	}

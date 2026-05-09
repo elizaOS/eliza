@@ -40,6 +40,7 @@ interface LlamaCppPluginLike {
   }) => Promise<NativeLlamaContext>;
   releaseContext: (options: { contextId: number }) => Promise<void>;
   releaseAllContexts: () => Promise<void>;
+  getHardwareInfo?: () => Promise<Partial<HardwareInfo>>;
   completion?: (options: {
     contextId: number;
     params: NativeCompletionParams;
@@ -112,6 +113,10 @@ function toPlainLlamaCppPlugin(plugin: LlamaCppPluginLike): LlamaCppPluginLike {
     initContext: (options) => plugin.initContext(options),
     releaseContext: (options) => plugin.releaseContext(options),
     releaseAllContexts: () => plugin.releaseAllContexts(),
+    getHardwareInfo:
+      typeof plugin.getHardwareInfo === "function"
+        ? () => plugin.getHardwareInfo?.() as Promise<Partial<HardwareInfo>>
+        : undefined,
     completion:
       typeof plugin.completion === "function"
         ? (options) =>
@@ -159,6 +164,120 @@ function resolveMobileMaxTokens(requested?: number): number {
     return DEFAULT_MAX_TOKENS;
   }
   return Math.min(Math.floor(requested), MOBILE_MAX_TOKENS_CAP);
+}
+
+function numberFromUnknown(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return value;
+}
+
+function booleanFromUnknown(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function stringFromUnknown(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function fallbackHardwareInfo(
+  platform = detectPlatform(),
+  reason = "native hardware probe unavailable",
+): HardwareInfo {
+  const nav = (
+    globalThis as {
+      navigator?: { hardwareConcurrency?: number; deviceMemory?: number };
+    }
+  ).navigator;
+  const totalRamGb = numberFromUnknown(nav?.deviceMemory) ?? 0;
+  const gpu =
+    platform === "ios"
+      ? ({ backend: "metal", available: true } as const)
+      : platform === "android"
+        ? ({ backend: "vulkan", available: true } as const)
+        : null;
+  return {
+    platform,
+    deviceModel: platform,
+    totalRamGb,
+    availableRamGb: null,
+    cpuCores: nav?.hardwareConcurrency ?? 0,
+    gpu,
+    gpuSupported: platform !== "web",
+    dflashSupported: false,
+    dflashReason: reason,
+    source: "adapter-fallback",
+  };
+}
+
+function normalizeHardwareInfo(
+  value: Partial<HardwareInfo> | null | undefined,
+  platform = detectPlatform(),
+): HardwareInfo {
+  const fallback = fallbackHardwareInfo(platform);
+  if (!value) return fallback;
+  const totalRamGb = numberFromUnknown(value.totalRamGb) ?? fallback.totalRamGb;
+  const availableRamGb =
+    value.availableRamGb === null
+      ? null
+      : numberFromUnknown(value.availableRamGb) ?? fallback.availableRamGb;
+  const gpu =
+    value.gpu && isObject(value.gpu)
+      ? {
+          backend:
+            value.gpu.backend === "metal" ||
+            value.gpu.backend === "vulkan" ||
+            value.gpu.backend === "gpu-delegate"
+              ? value.gpu.backend
+              : fallback.gpu?.backend ?? "gpu-delegate",
+          available: Boolean(value.gpu.available),
+        }
+      : fallback.gpu;
+  return {
+    platform:
+      value.platform === "ios" ||
+      value.platform === "android" ||
+      value.platform === "web"
+        ? value.platform
+        : platform,
+    deviceModel: stringFromUnknown(value.deviceModel) ?? fallback.deviceModel,
+    ...(stringFromUnknown(value.machineId)
+      ? { machineId: stringFromUnknown(value.machineId) }
+      : {}),
+    ...(stringFromUnknown(value.osVersion)
+      ? { osVersion: stringFromUnknown(value.osVersion) }
+      : {}),
+    ...(typeof value.isSimulator === "boolean"
+      ? { isSimulator: value.isSimulator }
+      : {}),
+    totalRamGb,
+    availableRamGb,
+    ...(numberFromUnknown(value.freeStorageGb) !== null
+      ? { freeStorageGb: numberFromUnknown(value.freeStorageGb) }
+      : {}),
+    cpuCores: numberFromUnknown(value.cpuCores) ?? fallback.cpuCores,
+    gpu,
+    gpuSupported:
+      booleanFromUnknown(value.gpuSupported) ?? fallback.gpuSupported,
+    ...(typeof value.lowPowerMode === "boolean"
+      ? { lowPowerMode: value.lowPowerMode }
+      : {}),
+    ...(value.thermalState === "nominal" ||
+    value.thermalState === "fair" ||
+    value.thermalState === "serious" ||
+    value.thermalState === "critical" ||
+    value.thermalState === "unknown"
+      ? { thermalState: value.thermalState }
+      : {}),
+    dflashSupported: Boolean(value.dflashSupported),
+    dflashReason:
+      stringFromUnknown(value.dflashReason) ??
+      (value.dflashSupported
+        ? undefined
+        : "native plugin did not report DFlash support"),
+    source: value.source === "native" ? "native" : "adapter-fallback",
+  };
 }
 
 class CapacitorLlamaAdapter implements LlamaAdapter {
@@ -212,17 +331,16 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
 
   async getHardwareInfo(): Promise<HardwareInfo> {
     const platform = detectPlatform();
-    const nav = (globalThis as { navigator?: { hardwareConcurrency?: number } })
-      .navigator;
-    return {
-      platform,
-      deviceModel: platform,
-      totalRamGb: 0,
-      availableRamGb: null,
-      cpuCores: nav?.hardwareConcurrency ?? 0,
-      gpu: null,
-      gpuSupported: platform !== "web",
-    };
+    if (!isCapacitorNative()) return fallbackHardwareInfo(platform);
+    try {
+      const plugin = await this.loadPlugin();
+      return normalizeHardwareInfo(await plugin.getHardwareInfo?.(), platform);
+    } catch (error) {
+      return fallbackHardwareInfo(
+        platform,
+        error instanceof Error ? error.message : "native hardware probe failed",
+      );
+    }
   }
 
   async isLoaded(): Promise<{ loaded: boolean; modelPath: string | null }> {
@@ -249,16 +367,22 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
       this.loadedPath = null;
     }
 
+    const speculativeSamples = options.mobileSpeculative
+      ? Math.min(options.speculativeSamples ?? options.draftMax ?? 3, 4)
+      : (options.speculativeSamples ?? 3);
     const params: NativeContextParams & Record<string, unknown> = {
       model: options.modelPath,
       n_ctx: options.contextSize ?? 4096,
       n_gpu_layers: options.useGpu === false ? 0 : 99,
       n_threads: options.maxThreads ?? 0,
       use_mmap: true,
+      flash_attn: options.useGpu !== false,
+      n_batch: options.mobileSpeculative ? 128 : 512,
+      n_ubatch: options.mobileSpeculative ? 64 : 512,
       ...(options.draftModelPath
         ? {
             draft_model: options.draftModelPath,
-            speculative_samples: options.speculativeSamples ?? 3,
+            speculative_samples: speculativeSamples,
             mobile_speculative: options.mobileSpeculative ?? true,
           }
         : {}),

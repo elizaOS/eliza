@@ -48,6 +48,7 @@ export {
   type PersistedStewardCredentials,
   saveStewardCredentials,
 } from "./services/steward-credentials";
+export * from "./services/steward-evm-account";
 export * from "./services/steward-evm-bridge";
 export * from "./services/steward-sidecar";
 export * from "./services/steward-wallet";

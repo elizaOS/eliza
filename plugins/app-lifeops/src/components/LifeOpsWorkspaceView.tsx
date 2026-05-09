@@ -6,7 +6,7 @@ import {
   SegmentedControl,
   Textarea,
   useApp,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import {
   type ReactNode,
   useCallback,

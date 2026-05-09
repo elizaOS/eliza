@@ -4331,7 +4331,7 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 			totalTokens: number;
 	  }
 	| undefined {
-	const usage = raw.usage as Record<string, unknown> | undefined;
+	const usage = raw.usage as unknown as Record<string, unknown> | undefined;
 	if (!usage) return undefined;
 	const promptTokens = (usage.promptTokens as number | undefined) ?? 0;
 	const completionTokens = (usage.completionTokens as number | undefined) ?? 0;

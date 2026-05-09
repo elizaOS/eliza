@@ -60,8 +60,13 @@ export interface HardwareInfo {
   platform: "ios" | "android" | "web";
   /** Human-readable device model when the OS exposes one. */
   deviceModel: string;
+  /** Stable OS machine identifier when available, e.g. iPhone16,2. */
+  machineId?: string;
+  osVersion?: string;
+  isSimulator?: boolean;
   totalRamGb: number;
   availableRamGb: number | null;
+  freeStorageGb?: number | null;
   cpuCores: number;
   gpu: {
     backend: "metal" | "vulkan" | "gpu-delegate";
@@ -69,6 +74,12 @@ export interface HardwareInfo {
   } | null;
   /** True when the underlying llama.cpp build has GPU support compiled in. */
   gpuSupported: boolean;
+  lowPowerMode?: boolean;
+  thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
+  /** True only when the native build can load a drafter and run DFlash/spec decode. */
+  dflashSupported?: boolean;
+  dflashReason?: string;
+  source?: "native" | "adapter-fallback";
 }
 
 export interface EmbedOptions {

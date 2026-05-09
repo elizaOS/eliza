@@ -5,7 +5,7 @@ import {
   type TriggerSummary,
   useApp,
   WidgetSection,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,

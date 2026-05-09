@@ -4179,7 +4179,7 @@ export class AgentRuntime implements IAgentRuntime {
 				modelParams = {
 					...modelSettings, // Apply model settings first (includes defaults and model-specific)
 					...(paramsClone as Record<string, JsonValue | object>), // Then apply specific params (allowing overrides)
-				} as ModelParamsMap[T];
+				} as unknown as ModelParamsMap[T];
 			} else {
 				// No model settings configured, use params as-is
 				modelParams = paramsClone as ModelParamsMap[T];

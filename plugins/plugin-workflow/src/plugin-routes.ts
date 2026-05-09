@@ -5,9 +5,6 @@
  */
 
 import type http from 'node:http';
-import { loadElizaConfig } from '@elizaos/agent';
-import type { CompatRuntimeState } from '@elizaos/app-core';
-import { ensureRouteAuthorized, sendJson } from '@elizaos/app-core';
 import type { Plugin, Route } from '@elizaos/core';
 import { handleWorkflowRoutes, type WorkflowRouteContext } from './routes/workflow-routes';
 
@@ -29,19 +26,17 @@ function makeWorkflowHandler() {
     const method = (httpReq.method ?? 'GET').toUpperCase();
     const state = buildState(runtime);
 
-    if (!(await ensureRouteAuthorized(httpReq, httpRes, state as unknown as CompatRuntimeState))) {
-      return;
-    }
-
     await handleWorkflowRoutes({
       req: httpReq,
       res: httpRes,
       method,
       pathname: url.pathname,
-      config: loadElizaConfig(),
       runtime: state.current,
       json: (_res, body, status = 200) => {
-        sendJson(httpRes, status, body);
+        if (httpRes.headersSent) return;
+        httpRes.statusCode = status;
+        httpRes.setHeader('content-type', 'application/json; charset=utf-8');
+        httpRes.end(JSON.stringify(body));
       },
     });
   };

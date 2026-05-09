@@ -51,9 +51,19 @@
       "@elizaos/app-wallet/*": ["../../plugins/app-wallet/src/*"],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
       "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
+      "@elizaos/plugin-sql": [
+        "../../plugins/plugin-sql/typescript/index.node.ts"
+      ],
+      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/typescript/*"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/agent/*": ["../agent/src/*"],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
+      "@elizaos/plugin-elizacloud": [
+        "../../plugins/plugin-elizacloud/src/index.node.ts"
+      ],
+      "@elizaos/plugin-elizacloud/*": [
+        "../../plugins/plugin-elizacloud/src/*"
+      ],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],

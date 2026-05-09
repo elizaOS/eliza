@@ -1369,6 +1369,9 @@ export default defineConfig({
       "@napi-rs/keyring",
       // Pulls `@napi-rs/keyring` dynamically; excluding avoids the optimizer crawling native bindings.
       "@elizaos/vault",
+      // Vite occasionally invalidates zod's optimized chunk during dev startup,
+      // which leaves the UI serving a missing .vite/deps file.
+      "zod",
     ],
   },
   build: {

@@ -11,8 +11,7 @@
  * and is interpreted by TaskService as “do not auto-pause this drain” (see CHANGELOG).
  */
 
-import type { UUID } from "../../types/primitives.js";
-import type { JsonValue } from "../../types/proto";
+import type { JsonValue, UUID } from "../../types/primitives.js";
 import type { IAgentRuntime } from "../../types/runtime.js";
 import type { Task } from "../../types/task.js";
 

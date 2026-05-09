@@ -1,5 +1,4 @@
 import type http from 'node:http';
-import { readCompatJsonBody } from '@elizaos/app-core';
 import type { AgentRuntime } from '@elizaos/core';
 import {
   applyResolutions,
@@ -37,7 +36,6 @@ export interface WorkflowRouteContext {
   res: http.ServerResponse;
   method: string;
   pathname: string;
-  config: Record<string, unknown>;
   runtime: AgentRuntime | null;
   agentId?: string;
   json: WorkflowJsonResponder;
@@ -87,6 +85,40 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+async function readJsonBody(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  maxBytes = 1_048_576
+): Promise<Record<string, unknown> | null> {
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.length;
+    if (totalBytes > maxBytes) {
+      res.statusCode = 413;
+      res.setHeader('content-type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify({ error: 'request body too large' }));
+      return null;
+    }
+    chunks.push(buffer);
+  }
+
+  if (chunks.length === 0) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    res.statusCode = 400;
+    res.setHeader('content-type', 'application/json; charset=utf-8');
+    res.end(JSON.stringify({ error: 'invalid JSON body' }));
+    return null;
+  }
+}
+
 function asWorkflow(value: unknown): WorkflowDefinition | null {
   if (!isRecord(value)) {
     return null;
@@ -104,7 +136,7 @@ function asWorkflow(value: unknown): WorkflowDefinition | null {
 async function readWorkflowPayload(
   ctx: WorkflowRouteContext
 ): Promise<{ workflow: WorkflowDefinition; activate?: boolean } | null> {
-  const body = await readCompatJsonBody(ctx.req, ctx.res);
+  const body = await readJsonBody(ctx.req, ctx.res);
   if (!body) {
     return null;
   }
@@ -214,7 +246,7 @@ async function handleGet(
 }
 
 async function handleGenerate(ctx: WorkflowRouteContext, service: WorkflowService): Promise<void> {
-  const body = await readCompatJsonBody(ctx.req, ctx.res);
+  const body = await readJsonBody(ctx.req, ctx.res);
   if (!isRecord(body)) {
     sendJson(ctx, 400, { error: 'request body required' });
     return;
@@ -261,7 +293,7 @@ async function handleResolveClarification(
   ctx: WorkflowRouteContext,
   service: WorkflowService
 ): Promise<void> {
-  const body = await readCompatJsonBody(ctx.req, ctx.res);
+  const body = await readJsonBody(ctx.req, ctx.res);
   if (!isRecord(body) || !isRecord(body.draft) || !Array.isArray(body.resolutions)) {
     sendJson(ctx, 400, { error: 'draft and resolutions required' });
     return;

@@ -47,8 +47,7 @@ import type {
 	RuntimeEventStorage,
 	ServiceClass,
 } from "./plugin";
-import type { ChannelType, Content, UUID } from "./primitives";
-import type { JsonValue } from "./proto.js";
+import type { ChannelType, Content, JsonValue, UUID } from "./primitives";
 import type {
 	SearchCategoryEnumerationOptions,
 	SearchCategoryLookupOptions,
