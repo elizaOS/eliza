@@ -31,6 +31,8 @@ const SKIP_DIRS = new Set([
 ]);
 
 const KEYWORD_FILES = [
+	"packages/shared/src/i18n/keywords/action-search.generated.keywords.json",
+	"packages/shared/src/i18n/keywords/context-search.keywords.json",
 	"packages/shared/src/i18n/keywords/shared.keywords.json",
 	"packages/shared/src/i18n/keywords/typescript.keywords.json",
 	"packages/shared/src/i18n/keywords/validate.keywords.json",

@@ -43,6 +43,8 @@ const SHARED_TSCONFIG_CONTENT = `{
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
     "declaration": true,
     "declarationMap": true,
     "emitDeclarationOnly": true,

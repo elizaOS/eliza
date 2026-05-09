@@ -28,6 +28,7 @@ const pluginBrowserBridgeSrc = path.join(
 const pluginElizaCloudSrc = path.join(
   monorepoRoot,
   "plugins/plugin-elizacloud",
+  "src",
 );
 const pluginEdgeTtsSrc = path.join(monorepoRoot, "plugins/plugin-edge-tts");
 const pluginIMessageSrc = path.join(monorepoRoot, "plugins/plugin-imessage/src");
