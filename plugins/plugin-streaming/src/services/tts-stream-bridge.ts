@@ -13,7 +13,7 @@ import { spawn } from "node:child_process";
 import type { Writable } from "node:stream";
 import { logger } from "@elizaos/core";
 import { sanitizeSpeechText } from "@elizaos/shared";
-import type { TtsConfig, TtsProvider } from "../config/types.messages.js";
+import type { TtsConfig, TtsProvider } from "@elizaos/shared";
 
 const TAG = "[TtsStreamBridge]";
 
