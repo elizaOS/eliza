@@ -9,7 +9,14 @@
  * - Types: dist/index.d.ts + dist/node/index.d.ts + dist/cjs/index.d.ts
  */
 
-const externalDeps = ["@elizaos/core", "@modelcontextprotocol/sdk", "ajv", "json5"];
+const externalDeps = [
+  "@elizaos/core",
+  "@elizaos/agent",
+  "@elizaos/shared",
+  "@modelcontextprotocol/sdk",
+  "ajv",
+  "json5",
+];
 
 async function build(): Promise<void> {
   const totalStart = Date.now();
