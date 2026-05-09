@@ -3,10 +3,8 @@ import {
   type IAgentRuntime,
   type ImageDescriptionParams,
   type ImageGenerationParams,
-  type JsonValue,
   logger,
   ModelType,
-  type ObjectGenerationParams,
   type Plugin,
   type TextEmbeddingParams,
 } from "@elizaos/core";
@@ -14,7 +12,6 @@ import {
 import { initializeOpenRouter } from "./init";
 import { handleTextEmbedding } from "./models/embedding";
 import { handleImageDescription, handleImageGeneration } from "./models/image";
-import { handleObjectLarge, handleObjectSmall } from "./models/object";
 import {
   handleActionPlanner,
   handleResponseHandler,
@@ -113,20 +110,6 @@ export const openrouterPlugin: Plugin = {
       return handleActionPlanner(runtime, params);
     },
 
-    [ModelType.OBJECT_SMALL]: async (
-      runtime: IAgentRuntime,
-      params: ObjectGenerationParams
-    ): Promise<Record<string, JsonValue>> => {
-      return handleObjectSmall(runtime, params);
-    },
-
-    [ModelType.OBJECT_LARGE]: async (
-      runtime: IAgentRuntime,
-      params: ObjectGenerationParams
-    ): Promise<Record<string, JsonValue>> => {
-      return handleObjectLarge(runtime, params);
-    },
-
     [ModelType.IMAGE_DESCRIPTION]: async (
       runtime: IAgentRuntime,
       params: ImageDescriptionParams | string
@@ -191,21 +174,25 @@ export const openrouterPlugin: Plugin = {
           },
         },
         {
-          name: "openrouter_test_object_small",
+          name: "openrouter_test_structured_output_via_text_large",
           fn: async (runtime: IAgentRuntime) => {
             try {
               const runModel = runtime.useModel.bind(runtime);
-              const result = await runModel(ModelType.OBJECT_SMALL, {
+              const result = await runModel(ModelType.TEXT_LARGE, {
                 prompt: "Create a simple JSON object with a message field saying hello",
-                schema: { type: "object" },
-              });
-              logger.log({ result }, "Generated object with test_object_small");
-              if (!result || (typeof result === "object" && "error" in result)) {
-                throw new Error("Failed to generate object");
+                responseSchema: {
+                  type: "object",
+                  properties: { message: { type: "string" } },
+                  required: ["message"],
+                },
+              } as Parameters<typeof runModel>[1]);
+              logger.log({ result }, "Generated structured output via TEXT_LARGE");
+              if (!result) {
+                throw new Error("Failed to generate structured output");
               }
             } catch (error: unknown) {
               const message = error instanceof Error ? error.message : String(error);
-              logger.error(`Error in test_object_small: ${message}`);
+              logger.error(`Error in test_structured_output_via_text_large: ${message}`);
               throw error;
             }
           },
