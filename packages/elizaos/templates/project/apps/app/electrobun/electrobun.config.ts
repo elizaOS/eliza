@@ -3,6 +3,22 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ElectrobunConfig } from "electrobun";
 
+type ChromiumFlags = Record<string, string | boolean>;
+type RuntimeConfigKey = "linux" | "win";
+type ElectrobunConfigWithRuntimeChromiumFlags = Omit<
+  ElectrobunConfig,
+  "build"
+> & {
+  build: Omit<ElectrobunConfig["build"], RuntimeConfigKey> & {
+    [K in RuntimeConfigKey]: Omit<
+      NonNullable<ElectrobunConfig["build"][K]>,
+      "chromiumFlags"
+    > & {
+      chromiumFlags: ChromiumFlags;
+    };
+  };
+};
+
 const electrobunDir = path.dirname(fileURLToPath(import.meta.url));
 const libMacWindowEffectsDylib = path.join(
   electrobunDir,
@@ -112,9 +128,6 @@ export default {
       // Enable WebGPU in CEF. The Electrobun Linux defaults disable GPU for VM
       // compatibility; override those with `false` so the GPU pipeline stays active
       // and WebGPU can be used via navigator.gpu.
-      // Note: The native C++ code supports `false` to skip default flags, but
-      // the published TypeScript types only allow `string | true`. Cast needed
-      // until upstream fixes the type definition.
       chromiumFlags: {
         "enable-unsafe-webgpu": true,
         "enable-features": "Vulkan",
@@ -128,7 +141,7 @@ export default {
         "disable-accelerated-video-decode": false,
         "disable-accelerated-video-encode": false,
         "disable-gpu-memory-buffer-video-frames": false,
-      } as unknown as Record<string, string | true>,
+      },
     },
     win: {
       bundleCEF: true,
@@ -147,11 +160,11 @@ export default {
         "in-process-gpu": true,
         "disable-gpu-sandbox": true,
         "no-sandbox": true,
-      } as unknown as Record<string, string | true>,
+      },
     },
   },
   release: {
     baseUrl: "__RELEASE_BASE_URL__",
     generatePatch: true,
   },
-} satisfies ElectrobunConfig;
+} satisfies ElectrobunConfigWithRuntimeChromiumFlags;

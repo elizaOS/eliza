@@ -7,7 +7,7 @@
     "preview": "vite preview",
     "design-review": "node --import tsx test/design-review/run-design-review.ts",
     "lint": "bunx @biomejs/biome check src scripts vite.config.ts vitest.config.ts vitest.e2e.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.web-views.config.ts package.json capacitor.config.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "vitest run --config vitest.config.ts",
     "test:e2e": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts",
     "test:e2e:cloud-wallet": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts test/ui-smoke/cloud-wallet-import.spec.ts",

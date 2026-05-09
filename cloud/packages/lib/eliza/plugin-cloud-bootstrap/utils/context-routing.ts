@@ -233,7 +233,7 @@ export function setContextRoutingMetadata(message: Memory, routing: ContextRouti
       ...existingMetadata,
       [CONTEXT_ROUTING_METADATA_KEY]: routing,
     },
-  } as unknown as Content;
+  } as Content;
 }
 
 export function resolveActionContexts(action: Action): AgentContext[] {

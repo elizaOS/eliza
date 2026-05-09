@@ -33,6 +33,16 @@ import {
   type TriggerWakeMode,
   type UUID,
 } from "@elizaos/core";
+
+type AutonomyRoomService = {
+  getAutonomousRoomId?(): UUID;
+};
+
+function isAutonomyRoomService(
+  service: unknown,
+): service is AutonomyRoomService {
+  return typeof service === "object" && service !== null;
+}
 import { v4 as uuidv4 } from "uuid";
 import {
   executeTriggerTask,
@@ -303,9 +313,8 @@ async function opCreate(
     );
   }
 
-  const autonomyService = runtime.getService("AUTONOMY") as unknown as {
-    getAutonomousRoomId?(): UUID;
-  } | null;
+  const service = runtime.getService("AUTONOMY");
+  const autonomyService = isAutonomyRoomService(service) ? service : null;
   const roomId = autonomyService?.getAutonomousRoomId?.() ?? message.roomId;
 
   const taskId = await runtime.createTask({

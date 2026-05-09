@@ -610,7 +610,7 @@ async function sendToRuntime(
       dialogueType: "message",
       visibility: "visible",
       discord: message.metadata,
-    } as unknown as NonNullable<Memory["metadata"]>,
+    } satisfies NonNullable<Memory["metadata"]>,
   };
 
   // Save user message to maintain conversation history

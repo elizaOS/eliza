@@ -165,4 +165,32 @@ describe("handleIosLocalAgentRequest", () => {
       },
     });
   });
+
+  it("resets local iOS agent state and keeps the kernel running", async () => {
+    const localStorage = stubLocalStorage();
+    vi.stubGlobal("window", { localStorage });
+
+    const opened = await postJson("/api/conversations", {
+      title: "Reset candidate",
+    });
+    expect(opened).toMatchObject({
+      conversation: { title: "Reset candidate" },
+    });
+
+    await expect(getJson("/api/conversations")).resolves.toMatchObject({
+      conversations: [expect.objectContaining({ title: "Reset candidate" })],
+    });
+
+    await expect(postJson("/api/agent/reset", {})).resolves.toEqual({
+      ok: true,
+    });
+
+    await expect(getJson("/api/conversations")).resolves.toEqual({
+      conversations: [],
+    });
+    await expect(getJson("/api/status")).resolves.toMatchObject({
+      state: "running",
+      model: undefined,
+    });
+  });
 });

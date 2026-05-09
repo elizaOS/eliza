@@ -118,12 +118,9 @@ class HandlerRegistry {
     // If the runtime already inherited the patched prototype method the
     // prototype handles every call. Nothing to do per-instance.
     const protoMethod = Object.getPrototypeOf(rt)?.registerModel as
-      | HandlerRegistration["handler"]
+      | RegisterModelMethod
       | undefined;
-    if (
-      protoMethod &&
-      (protoMethod as unknown as { [PATCH_MARK]?: true })[PATCH_MARK]
-    ) {
+    if (protoMethod && isPatchedRegisterModel(protoMethod)) {
       return;
     }
 
@@ -161,6 +158,27 @@ class HandlerRegistry {
 const PATCH_MARK = Symbol.for("eliza.local-inference.registerModel.patched");
 let prototypePatched = false;
 
+type RegisterModelMethod = (
+  this: AgentRuntime,
+  modelType: string,
+  handler: HandlerRegistration["handler"],
+  provider: string,
+  priority?: number,
+) => void;
+
+type PatchedRegisterModelMethod = RegisterModelMethod & {
+  [PATCH_MARK]?: true;
+};
+
+function isPatchedRegisterModel(
+  method: unknown,
+): method is PatchedRegisterModelMethod {
+  return (
+    typeof method === "function" &&
+    (method as { [PATCH_MARK]?: true })[PATCH_MARK] === true
+  );
+}
+
 /**
  * One-shot patch of `AgentRuntime.prototype.registerModel` so every runtime
  * instance — including ones constructed later in boot — records through
@@ -168,18 +186,12 @@ let prototypePatched = false;
  */
 function installPrototypePatch(): void {
   if (prototypePatched) return;
-  const proto = AgentRuntime.prototype as unknown as {
-    registerModel: (
-      this: AgentRuntime,
-      modelType: string,
-      handler: HandlerRegistration["handler"],
-      provider: string,
-      priority?: number,
-    ) => void;
+  const proto = AgentRuntime.prototype as {
+    registerModel: RegisterModelMethod;
   };
   const original = proto.registerModel;
   if (typeof original !== "function") return;
-  if ((original as unknown as { [PATCH_MARK]?: true })[PATCH_MARK]) {
+  if (isPatchedRegisterModel(original)) {
     prototypePatched = true;
     return;
   }

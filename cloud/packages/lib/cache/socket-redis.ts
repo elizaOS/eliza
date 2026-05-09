@@ -648,7 +648,7 @@ export class Pipeline {
   }
 
   async exec<T extends unknown[] = unknown[]>(): Promise<T> {
-    if (this.commands.length === 0) return [] as unknown as T;
+    if (this.commands.length === 0) return [] as T;
     const replies = await this.conn.send(this.commands);
     return replies.map((r) => unwrap(r)) as T;
   }

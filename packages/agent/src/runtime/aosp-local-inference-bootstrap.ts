@@ -142,9 +142,10 @@ async function callRegisterAndCaptureLoader(
   }) as (typeof target)["registerService"];
   let ok = false;
   try {
-    ok = await registerAospLlamaLoader(
-      runtime as unknown as Parameters<typeof registerAospLlamaLoader>[0],
-    );
+    const registrationRuntime: Parameters<typeof registerAospLlamaLoader>[0] = {
+      registerService: target.registerService,
+    };
+    ok = await registerAospLlamaLoader(registrationRuntime);
   } finally {
     target.registerService = originalRegisterService;
   }

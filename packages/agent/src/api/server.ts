@@ -674,6 +674,64 @@ const BROWSER_BRIDGE_PACKAGE_PATH_TARGETS = new Set([
   "safari_package",
 ]);
 
+function emptyTrainingTaskCounters(): Record<string, number> {
+  return {
+    should_respond: 0,
+    context_routing: 0,
+    action_planner: 0,
+    response: 0,
+    media_description: 0,
+  };
+}
+
+type OptionalTrainingConfig = {
+  autoTrain: boolean;
+  triggerThreshold: number;
+  triggerCooldownHours: number;
+  backends: string[];
+};
+
+type OptionalTrainingConfigApi = {
+  loadTrainingConfig: () => OptionalTrainingConfig;
+  normalizeTrainingConfig: (input: unknown) => OptionalTrainingConfig;
+  saveTrainingConfig: (config: OptionalTrainingConfig) => void;
+};
+
+const TRAINING_CONFIG_MODULE =
+  "@elizaos/app-training/core/training-config";
+
+function defaultTrainingConfig(): OptionalTrainingConfig {
+  return {
+    autoTrain: true,
+    triggerThreshold: 100,
+    triggerCooldownHours: 12,
+    backends: ["native"],
+  };
+}
+
+async function loadOptionalTrainingConfigApi(): Promise<OptionalTrainingConfigApi | null> {
+  try {
+    const loaded = (await import(
+      /* @vite-ignore */ TRAINING_CONFIG_MODULE
+    )) as Partial<OptionalTrainingConfigApi>;
+    if (
+      typeof loaded.loadTrainingConfig === "function" &&
+      typeof loaded.normalizeTrainingConfig === "function" &&
+      typeof loaded.saveTrainingConfig === "function"
+    ) {
+      return loaded as OptionalTrainingConfigApi;
+    }
+  } catch {
+    // app-training is optional in this server path.
+  }
+  return null;
+}
+
+async function readOptionalTrainingConfig(): Promise<OptionalTrainingConfig> {
+  const api = await loadOptionalTrainingConfigApi();
+  return api?.loadTrainingConfig() ?? defaultTrainingConfig();
+}
+
 function parseBrowserBridgeKind(
   value: string | undefined,
 ): BrowserBridgeKind | null {
@@ -699,6 +757,60 @@ async function handleBuiltinOptionalRoutes(
   pathname: string,
   method: string,
 ): Promise<boolean> {
+  if (method === "GET" && pathname === "/api/wallet/steward-status") {
+    const addresses = getWalletAddresses();
+    json(res, {
+      configured: false,
+      available: false,
+      connected: false,
+      error: "Steward wallet service is not loaded.",
+      walletAddresses: {
+        evm: addresses.evmAddress ?? null,
+        solana: addresses.solanaAddress ?? null,
+      },
+      evmAddress: addresses.evmAddress ?? undefined,
+      vaultHealth: "degraded",
+    });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/training/auto/config") {
+    json(res, { config: await readOptionalTrainingConfig() });
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/training/auto/config") {
+    const body =
+      (await readJsonBody<Record<string, unknown>>(req, res)) ?? null;
+    if (!body) return true;
+    const api = await loadOptionalTrainingConfigApi();
+    const currentConfig = api?.loadTrainingConfig() ?? defaultTrainingConfig();
+    const config = api
+      ? api.normalizeTrainingConfig({
+          ...currentConfig,
+          ...body,
+        })
+      : currentConfig;
+    api?.saveTrainingConfig(config);
+    json(res, { config });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/training/auto/status") {
+    const config = await readOptionalTrainingConfig();
+    json(res, {
+      autoTrainEnabled: config.autoTrain,
+      triggerThreshold: config.triggerThreshold,
+      cooldownHours: config.triggerCooldownHours,
+      counters: emptyTrainingTaskCounters(),
+      lastTrain: {},
+      perTaskThresholds: emptyTrainingTaskCounters(),
+      perTaskCooldownMs: emptyTrainingTaskCounters(),
+      serviceRegistered: false,
+    });
+    return true;
+  }
+
   if (
     method === "GET" &&
     pathname === "/api/coding-agents/coordinator/status"

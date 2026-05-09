@@ -65,6 +65,23 @@ export const transactionSchema = z.object({
 	timestamp: z.string(),
 });
 
+type TransactionSchemaOutput = z.output<typeof transactionSchema>;
+
+function toTransaction(output: TransactionSchemaOutput): Transaction {
+	return {
+		id: output.id,
+		positionId: output.positionId,
+		chain: output.chain,
+		tokenAddress: output.tokenAddress,
+		transactionHash: output.transactionHash,
+		type: output.type,
+		amount: output.amount.toString(),
+		price: output.price?.toString() ?? "0",
+		isSimulation: output.isSimulation,
+		timestamp: new Date(output.timestamp),
+	};
+}
+
 // Define RecommenderMetrics schema
 export const recommenderMetricsSchema = z.object({
 	entityId: z.string(),
@@ -243,7 +260,7 @@ export function transformTransaction(
 					: new Date().toISOString(),
 	};
 
-	return transactionSchema.parse(input) as unknown as Transaction;
+	return toTransaction(transactionSchema.parse(input));
 }
 
 export function transformPosition(dbPos: Record<string, unknown>): Position {

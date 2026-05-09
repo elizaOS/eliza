@@ -74,6 +74,7 @@ module.exports = defineConfig({
       PLAYWRIGHT_TEST_AUTH: process.env.PLAYWRIGHT_TEST_AUTH ?? "true",
       NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH: process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH ?? "true",
       VITE_PLAYWRIGHT_TEST_AUTH: process.env.VITE_PLAYWRIGHT_TEST_AUTH ?? "true",
+      NEXT_PUBLIC_STEWARD_API_URL: "/steward",
       PLAYWRIGHT_TEST_AUTH_SECRET:
         process.env.PLAYWRIGHT_TEST_AUTH_SECRET ?? "playwright-local-auth-secret",
       AGENT_TEST_BOOTSTRAP_ADMIN: process.env.AGENT_TEST_BOOTSTRAP_ADMIN,

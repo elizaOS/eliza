@@ -23,6 +23,7 @@ type LogsOp = (typeof LOGS_OPS)[number];
 
 const LOG_LEVELS = ["trace", "debug", "info", "warn", "error"] as const;
 type LogLevel = (typeof LOG_LEVELS)[number];
+type RuntimeLoggerWithLevel = typeof logger & { level: string };
 
 const SEARCH_LEVELS: readonly LogLevel[] = [
   "debug",
@@ -41,6 +42,10 @@ interface LogsParams {
   limit?: number;
   // set_level-only
   roomId?: string;
+}
+
+function hasMutableLogLevel(value: typeof logger): value is RuntimeLoggerWithLevel {
+  return "level" in value && typeof value.level === "string";
 }
 
 interface LogEntry {
@@ -212,7 +217,9 @@ function setLogLevel(
   overrides.set(String(targetRoomId), level);
   // Also raise the process-wide pino logger so emitted records are not filtered
   // out before they reach the per-room override listener.
-  (logger as unknown as { level: string }).level = level;
+  if (hasMutableLogLevel(logger)) {
+    logger.level = level;
+  }
   elizaLogger.info(`[LOGS] level set to ${level} for room ${targetRoomId}`);
 
   if (callback) {

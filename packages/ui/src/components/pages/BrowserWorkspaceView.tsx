@@ -94,6 +94,16 @@ type WebviewTagElement = HTMLElement & {
   toggleHidden(value?: boolean): void;
 };
 
+function isWebviewTagElement(value: EventTarget | null): value is WebviewTagElement {
+  if (!(value instanceof HTMLElement)) return false;
+  const candidate = value as Partial<WebviewTagElement>;
+  return (
+    typeof candidate.loadURL === "function" &&
+    typeof candidate.reload === "function" &&
+    typeof candidate.executeJavascript === "function"
+  );
+}
+
 // JSX intrinsic for the Electrobun custom element. Augments the React module
 // so the modern `react-jsx` transform picks it up without app-core's
 // ambient-modules.d.ts being on every consumer's include list.
@@ -1274,8 +1284,9 @@ export function BrowserWorkspaceView(): JSX.Element {
         typeof detail.protocol === "string" &&
         typeof detail.method === "string"
       ) {
-        const tag =
-          (event.currentTarget as unknown as WebviewTagElement | null) ?? null;
+        const tag = isWebviewTagElement(event.currentTarget)
+          ? event.currentTarget
+          : null;
         const tabId =
           [...electrobunWebviewRefs.current.entries()].find(
             ([, el]) => el === tag,
@@ -1299,8 +1310,9 @@ export function BrowserWorkspaceView(): JSX.Element {
         typeof detail.url === "string" &&
         Array.isArray(detail.fieldHints)
       ) {
-        const tag =
-          (event.currentTarget as unknown as WebviewTagElement | null) ?? null;
+        const tag = isWebviewTagElement(event.currentTarget)
+          ? event.currentTarget
+          : null;
         const tabId =
           [...electrobunWebviewRefs.current.entries()].find(
             ([, el]) => el === tag,

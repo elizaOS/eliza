@@ -13,11 +13,20 @@ import type {
   OnboardingOptions,
 } from "../api";
 import { type AgentStatus, client, type StreamEventEnvelope } from "../api";
+import { isIosInProcessLocalAgentBase } from "../api/ios-local-agent-transport";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../bridge";
 import { dispatchElizaCloudStatusUpdated } from "../events";
-import { persistMobileRuntimeModeForServerTarget } from "../onboarding/mobile-runtime-mode";
+import {
+  persistMobileRuntimeModeForServerTarget,
+  readPersistedMobileRuntimeMode,
+} from "../onboarding/mobile-runtime-mode";
 import { enableForceFreshOnboarding } from "../platform";
-import { alertDesktopMessage, confirmDesktopAction } from "../utils";
+import {
+  alertDesktopMessage,
+  confirmDesktopAction,
+  yieldHttpAfterNativeMessageBox,
+} from "../utils";
+import { inferAgentRuntimeTarget } from "./agent-runtime-target";
 import { completeResetLocalStateAfterServerWipe as runCompleteResetLocalStateAfterServerWipe } from "./complete-reset-local-state-after-wipe";
 import { handleResetAppliedFromMainCore } from "./handle-reset-applied-from-main";
 import type { AppState, LifecycleAction } from "./internal";
@@ -25,6 +34,7 @@ import {
   clearAvatarIndex,
   clearPersistedActiveServer,
   LIFECYCLE_MESSAGES,
+  loadPersistedActiveServer,
   parseAgentStatusFromMainMenuResetPayload,
 } from "./internal";
 import type { OnboardingMode, OnboardingStep } from "./types";
@@ -772,8 +782,58 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     ],
   );
 
+  const completeConnectedAgentStateAfterServerWipe = useCallback(
+    async (postResetAgentStatus: AgentStatus | null): Promise<void> => {
+      if (postResetAgentStatus != null) {
+        setAgentStatus(postResetAgentStatus);
+      } else {
+        try {
+          setAgentStatus(await client.getStatus());
+        } catch {
+          /* remote/cloud agent may still be restarting */
+        }
+      }
+      client.resetConnection();
+      setConversationMessages([]);
+      setActiveConversationId(null);
+      activeConversationIdRef.current = null;
+      setConversations([]);
+      setPlugins([]);
+      setSkills([]);
+      setLogs([]);
+      setPendingRestart(false);
+      setPendingRestartReasons([]);
+      void loadPlugins();
+    },
+    [
+      activeConversationIdRef,
+      loadPlugins,
+      setActiveConversationId,
+      setAgentStatus,
+      setConversationMessages,
+      setConversations,
+      setLogs,
+      setPendingRestart,
+      setPendingRestartReasons,
+      setPlugins,
+      setSkills,
+    ],
+  );
+
   const handleReset = useCallback(async () => {
     logResetInfo("handleReset: invoked");
+    const activeServer = loadPersistedActiveServer();
+    const resetTarget = inferAgentRuntimeTarget({
+      activeServer,
+      mobileRuntimeMode: readPersistedMobileRuntimeMode(),
+      clientBaseUrl: client.getBaseUrl(),
+    });
+    const resetTargetName =
+      resetTarget.kind === "local"
+        ? "local agent"
+        : resetTarget.kind === "cloud"
+          ? "cloud agent"
+          : "remote agent";
     if (lifecycleBusyRef.current) {
       const activeAction =
         lifecycleActionRef.current ?? lifecycleAction ?? "reset";
@@ -801,12 +861,14 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       }
     }
     logResetInfo("handleReset: showing confirm dialog");
+    const confirmDetail =
+      resetTarget.kind === "local"
+        ? "Downloaded GGUF embedding models are kept. You will return to the runtime picker."
+        : "Local app settings and other runtime choices stay on this device. Only the selected agent is reset.";
     const confirmed = await confirmDesktopAction({
-      title: "Reset Agent",
-      message:
-        "This will reset the agent: config, cloud keys, and local agent database (conversations / memory).",
-      detail:
-        "Downloaded GGUF embedding models are kept. You will return to the onboarding wizard.",
+      title: `Reset ${resetTarget.label}`,
+      message: `This will reset the ${resetTargetName}: config, keys, conversations, and memory.`,
+      detail: confirmDetail,
       confirmLabel: "Reset",
       cancelLabel: "Cancel",
       type: "warning",
@@ -819,11 +881,9 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     // process network/RPC on the same turn — `fetch` and bridge requests then appear
     // to "never run" until something else wakes the loop. Yield once before reset work.
     logResetInfo(
-      "handleReset: confirmed — scheduling reset on next event-loop turn (native dialog)",
+      "handleReset: confirmed — yielding after native dialog before reset",
     );
-    await new Promise<void>((resolve) => {
-      window.setTimeout(() => resolve(), 0);
-    });
+    await yieldHttpAfterNativeMessageBox();
 
     if (!beginLifecycleAction("reset")) {
       logResetInfo(
@@ -870,6 +930,8 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       "handleReset: starting (POST /api/agent/reset + restart path)",
       {
         electrobun: isElectrobunRuntime(),
+        target: resetTarget.kind,
+        targetLabel: resetTarget.label,
         apiBase:
           client.getBaseUrl() || "(empty — will resolve after reconnect)",
       },
@@ -878,13 +940,79 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       "handleReset: tip — reset logs also appear in this window (filter [eliza][reset]); API terminal only shows server-side routes",
     );
     try {
-      logResetDebug("handleReset: calling client.resetAgent()");
-      await client.resetAgent();
-      logResetDebug("handleReset: client.resetAgent() completed");
+      const resetApiBase = client.getBaseUrl();
+      const resetViaCurrentRuntime = async (): Promise<void> => {
+        if (isElectrobunRuntime()) {
+          const desktopResult = await invokeDesktopBridgeRequest<{
+            ok: boolean;
+            error?: string;
+          }>({
+            rpcMethod: "agentPostReset",
+            ipcChannel: "agent:postReset",
+            params: {
+              apiBase: resetApiBase || undefined,
+              bearerToken: activeServer?.accessToken,
+            },
+          });
+          if (desktopResult != null) {
+            if (!desktopResult.ok) {
+              throw new Error(desktopResult.error || "Desktop reset failed");
+            }
+            return;
+          }
+        }
+
+        logResetDebug("handleReset: calling client.resetAgent()");
+        await client.resetAgent();
+        logResetDebug("handleReset: client.resetAgent() completed");
+      };
+
+      await resetViaCurrentRuntime();
+
+      if (resetTarget.kind !== "local") {
+        let postResetAgentStatus: AgentStatus | null = null;
+        try {
+          postResetAgentStatus = await client.restartAndWait(120_000);
+          logResetDebug(
+            "handleReset: connected-agent restartAndWait completed",
+            {
+              state: postResetAgentStatus.state,
+              port: postResetAgentStatus.port,
+            },
+          );
+        } catch (httpErr) {
+          logResetWarn(
+            "handleReset: connected-agent restartAndWait failed — preserving connection and clearing local lists",
+            httpErr,
+          );
+        }
+        await completeConnectedAgentStateAfterServerWipe(postResetAgentStatus);
+        const elapsedMs = Math.round(performance.now() - resetStartedAt);
+        logResetInfo("handleReset: success — connected agent reset", {
+          elapsedMs,
+          target: resetTarget.kind,
+          finalAgentState: postResetAgentStatus?.state ?? null,
+        });
+        setActionNotice(`Reset ${resetTargetName}.`, "success", 3200);
+        return;
+      }
+
       logResetDebug(
-        "handleReset: applying local UI reset before desktop restart wait",
+        "handleReset: applying local UI reset before local restart wait",
       );
       await completeResetLocalStateAfterServerWipe(null);
+
+      const isIosLocalInProcessReset =
+        resetTarget.kind === "local" &&
+        isIosInProcessLocalAgentBase(resetApiBase);
+      if (isIosLocalInProcessReset) {
+        const elapsedMs = Math.round(performance.now() - resetStartedAt);
+        logResetInfo("handleReset: success — iOS local reset", {
+          elapsedMs,
+        });
+        setActionNotice(LIFECYCLE_MESSAGES.reset.success, "success", 3200);
+        return;
+      }
 
       let postResetAgentStatus: AgentStatus | null = null;
       logResetDebug(
@@ -981,7 +1109,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       );
       setActionNotice(LIFECYCLE_MESSAGES.reset.success, "success", 3200);
     } catch (err) {
-      logResetWarn("handleReset: failed before local UI could reset", err);
+      logResetWarn("handleReset: failed before reset could complete", err);
       setActionNotice(
         `Failed to ${LIFECYCLE_MESSAGES.reset.verb} agent: ${
           err instanceof Error ? err.message : "unknown error"
@@ -1004,6 +1132,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     setActionNotice,
     setAgentStatus,
     completeResetLocalStateAfterServerWipe,
+    completeConnectedAgentStateAfterServerWipe,
     lifecycleActionRef,
     lifecycleBusyRef,
   ]);

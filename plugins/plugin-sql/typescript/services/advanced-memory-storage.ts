@@ -34,6 +34,14 @@ type EntityResolutionService = {
   getConfirmedLinks: (entityId: UUID) => Promise<EntityLink[]>;
 };
 
+function isEntityResolutionService(service: unknown): service is EntityResolutionService {
+  return (
+    typeof service === "object" &&
+    service !== null &&
+    typeof (service as { getConfirmedLinks?: unknown }).getConfirmedLinks === "function"
+  );
+}
+
 type AdvancedMemoryEnvelope = {
   kind: "long_term_memory" | "session_summary";
   originalEntityId?: UUID;
@@ -247,19 +255,16 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
   }
 
   private async getEntityResolutionService(): Promise<EntityResolutionService | null> {
-    const existing = this.runtime.getService(
-      ENTITY_RESOLUTION_SERVICE
-    ) as unknown as EntityResolutionService | null;
-    if (existing) {
+    const existing = this.runtime.getService(ENTITY_RESOLUTION_SERVICE);
+    if (isEntityResolutionService(existing)) {
       return existing;
     }
     if (!this.runtime.hasService(ENTITY_RESOLUTION_SERVICE)) {
       return null;
     }
     try {
-      return (await this.runtime.getServiceLoadPromise(
-        ENTITY_RESOLUTION_SERVICE
-      )) as unknown as EntityResolutionService;
+      const loaded = await this.runtime.getServiceLoadPromise(ENTITY_RESOLUTION_SERVICE);
+      return isEntityResolutionService(loaded) ? loaded : null;
     } catch {
       return null;
     }

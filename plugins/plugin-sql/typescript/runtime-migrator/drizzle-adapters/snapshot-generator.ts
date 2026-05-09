@@ -51,6 +51,14 @@ interface DrizzleColumnWithConfig {
   };
 }
 
+function hasDrizzleColumnConfig(column: PgColumn): column is PgColumn & DrizzleColumnWithConfig {
+  return (
+    "config" in column &&
+    (typeof (column as { isUnique?: unknown }).isUnique === "boolean" ||
+      (column as { isUnique?: unknown }).isUnique === undefined)
+  );
+}
+
 /**
  * Utility functions from Drizzle's code
  */
@@ -114,7 +122,7 @@ const sqlToStr = (sql: SQL, _casing: string | undefined) => {
   };
   // Type assertion needed: SQL.toQuery expects internal Drizzle types
   type ToQueryParam = Parameters<SQL["toQuery"]>[0];
-  return sql.toQuery(config as unknown as ToQueryParam).sql;
+  return sql.toQuery(config as ToQueryParam).sql;
 };
 
 /**
@@ -217,9 +225,8 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
       // IMPORTANT: Check isUnique, not just uniqueName presence!
       // Drizzle sets uniqueName for all columns but only unique ones should have constraints
       // Type assertion: accessing internal Drizzle column properties not in public types
-      const columnWithConfig = column as unknown as DrizzleColumnWithConfig;
-      const columnConfig = columnWithConfig.config;
-      if (columnWithConfig.isUnique && columnConfig?.uniqueName) {
+      const columnConfig = hasDrizzleColumnConfig(column) ? column.config : undefined;
+      if (hasDrizzleColumnConfig(column) && column.isUnique && columnConfig?.uniqueName) {
         uniqueConstraintObject[columnConfig.uniqueName] = {
           name: columnConfig.uniqueName,
           columns: [name],

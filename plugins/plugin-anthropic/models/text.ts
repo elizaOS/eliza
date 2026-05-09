@@ -22,7 +22,7 @@ import {
   type UserContent,
 } from "ai";
 import { createAnthropicClientWithTopPSupport } from "../providers";
-import type { ModelName, ModelSize, ProviderOptions } from "../types";
+import type { ModelName, ModelSize, ProviderOptions, ProviderOptionValue } from "../types";
 import { generateViaCli, streamViaCli } from "../utils/claude-cli";
 import {
   getActionPlannerModel,
@@ -59,7 +59,10 @@ interface ResolvedTextParams {
 }
 
 interface GenerateTextParamsWithProviderOptions
-  extends Omit<GenerateTextParams, "messages" | "tools" | "toolChoice" | "responseSchema"> {
+  extends Omit<
+    GenerateTextParams,
+    "messages" | "tools" | "toolChoice" | "responseSchema" | "providerOptions"
+  > {
   attachments?: ChatAttachment[];
   messages?: ModelMessage[];
   tools?: ToolSet;
@@ -144,6 +147,44 @@ type AnthropicFilePart = {
   filename?: string;
 };
 type AnthropicUserContentPart = AnthropicTextPart | AnthropicFilePart;
+
+function isProviderOptionValue(value: unknown): value is ProviderOptionValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.every(isProviderOptionValue);
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.values(value).every((entry) => entry === undefined || isProviderOptionValue(entry));
+  }
+  return false;
+}
+
+function readProviderOptions(value: unknown): ProviderOptions | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const entries = Object.entries(value);
+  if (!entries.every(([, entry]) => entry === undefined || isProviderOptionValue(entry))) {
+    return undefined;
+  }
+
+  return Object.fromEntries(entries) as ProviderOptions;
+}
+
+function toAnthropicTextParams(params: GenerateTextParams): GenerateTextParamsWithProviderOptions {
+  return {
+    ...params,
+    providerOptions: readProviderOptions(params.providerOptions),
+  } as GenerateTextParamsWithProviderOptions;
+}
 
 function isOpus4Model(modelName: ModelName): boolean {
   return modelName.toLowerCase().includes("opus-4");
@@ -479,8 +520,7 @@ function resolveTextParams(
     isOpus4Model(modelName) ? 32_000 : 64_000
   );
 
-  const rawProviderOptions = (params as unknown as GenerateTextParamsWithProviderOptions)
-    .providerOptions;
+  const rawProviderOptions = params.providerOptions;
   const baseProviderOptions: ProviderOptions = rawProviderOptions
     ? {
         ...rawProviderOptions,
@@ -518,7 +558,7 @@ async function generateTextWithModel(
   modelSize: ModelSize,
   modelType: TextModelType
 ): Promise<string | TextStreamResult> {
-  const paramsWithAttachments = params as unknown as GenerateTextParamsWithProviderOptions;
+  const paramsWithAttachments = toAnthropicTextParams(params);
   const shouldReturnNativeResult = usesNativeTextResult(paramsWithAttachments);
   const systemPrompt = resolveEffectiveSystemPrompt({
     params: paramsWithAttachments,
@@ -721,7 +761,7 @@ async function generateTextWithModel(
     }
 
     if (shouldReturnNativeResult) {
-      return buildNativeTextResult(response) as unknown as string;
+      return buildNativeTextResult(response) as string & NativeGenerateTextResult;
     }
 
     return response.text;

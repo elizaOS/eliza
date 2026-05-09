@@ -10,7 +10,7 @@ import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { CheckinService } from "../lifeops/checkin/checkin-service.js";
 import type { CheckinKind } from "../lifeops/checkin/types.js";
 import { LifeOpsService } from "../lifeops/service.js";
-import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
+import { hasLifeOpsAccess, toActionData } from "./lifeops-google-helpers.js";
 
 type CheckinParams = {
   kind?: CheckinKind | string;
@@ -131,17 +131,16 @@ export const checkinAction: Action = {
         ? await service.runNightCheckin({ timezone })
         : await service.runMorningCheckin({ timezone });
 
+    const data = toActionData(report);
     await callback?.({
       text: report.summaryText,
-      data: report as unknown as Parameters<
-        NonNullable<typeof callback>
-      >[0]["data"],
+      data,
     });
 
     return {
       text: report.summaryText,
       success: true,
-      data: report as unknown as ActionResult["data"],
+      data,
     };
   },
 };

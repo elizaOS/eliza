@@ -33,7 +33,7 @@ export class AgentStore implements Store {
       if (rows.length === 0) return null;
 
       const row = rows[0];
-      return {
+      const agent: Agent = {
         ...row,
         username: row.username || "",
         id: row.id as UUID,
@@ -42,7 +42,8 @@ export class AgentStore implements Store {
         createdAt: row.createdAt.getTime(),
         updatedAt: row.updatedAt.getTime(),
         settings: row.settings as Agent["settings"],
-      } as unknown as Agent;
+      };
+      return agent;
     }, "AgentStore.get");
   }
 

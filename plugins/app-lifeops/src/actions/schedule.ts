@@ -9,7 +9,7 @@ import type {
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import type { LifeOpsScheduleInspection } from "../lifeops/schedule-insight.js";
 import { LifeOpsService } from "../lifeops/service.js";
-import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
+import { hasLifeOpsAccess, toActionData } from "./lifeops-google-helpers.js";
 
 type ScheduleSubaction = "summary" | "inspect";
 
@@ -210,20 +210,15 @@ export const scheduleAction: Action = {
       subaction === "inspect"
         ? formatScheduleInspection(inspection)
         : formatScheduleSummary(inspection);
-    const data = scheduleInspectionActionData(inspection);
-    // Domain shapes; the runtime callback/result accept structured data and
-    // cannot statically prove the inspection schema is JSON-safe. Cast
-    // through unknown — these fields are produced by LifeOpsService and
-    // never contain non-serializable values.
-    type CallbackData = Parameters<NonNullable<typeof callback>>[0]["data"];
+    const data = toActionData(scheduleInspectionActionData(inspection));
     await callback?.({
       text,
-      data: data as unknown as CallbackData,
+      data,
     });
     return {
       text,
       success: true,
-      data: data as unknown as ActionResult["data"],
+      data,
     };
   },
 };

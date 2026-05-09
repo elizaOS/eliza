@@ -52,6 +52,10 @@ import {
 } from "../../onboarding/mobile-runtime-mode";
 import { shouldShowLocalOption } from "../../onboarding/probe-local-agent";
 import {
+  RUNTIME_PICKER_TARGET_QUERY_NAME,
+  type RuntimePickerTarget,
+} from "../../onboarding/reload-into-runtime-picker";
+import {
   isAndroid,
   isDesktopPlatform,
   isElizaOS,
@@ -148,6 +152,21 @@ export function hasPickerOverride(): boolean {
     );
   } catch {
     return false;
+  }
+}
+
+export function readPickerTargetOverride(): RuntimePickerTarget | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const search = window.location?.search ?? "";
+    const hashSearch = window.location?.hash?.split("?")[1] ?? "";
+    const params = new URLSearchParams(search || hashSearch);
+    const target = params.get(RUNTIME_PICKER_TARGET_QUERY_NAME);
+    return target === "cloud" || target === "local" || target === "remote"
+      ? target
+      : null;
+  } catch {
+    return null;
   }
 }
 
@@ -445,6 +464,7 @@ export function RuntimeGate() {
   // user-agent suffix) falls through to the regular picker — those users
   // pick Cloud / Remote / Local themselves.
   const pickerOverride = hasPickerOverride();
+  const pickerTargetOverride = readPickerTargetOverride();
   const elizaOSAutoLocal = isElizaOS() && !pickerOverride;
 
   useEffect(() => {
@@ -497,6 +517,15 @@ export function RuntimeGate() {
     [isDesktop, isDev, showLocalOption, localProbePending],
   );
   const runtimeChoiceKey = runtimeChoices.join("|");
+
+  useEffect(() => {
+    if (!pickerOverride || !pickerTargetOverride) return;
+    if (!runtimeChoices.includes(pickerTargetOverride)) return;
+    setSubView((current) =>
+      current === "chooser" ? pickerTargetOverride : current,
+    );
+  }, [pickerOverride, pickerTargetOverride, runtimeChoiceKey, runtimeChoices]);
+
   // ── Gateway discovery (LAN autodetect) ────────────────────────────
   useEffect(() => {
     if (subView !== "chooser" && subView !== "remote") return;

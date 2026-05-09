@@ -23,6 +23,14 @@ interface TorrentSearchService {
   ): Promise<TorrentSearchResult[]>;
 }
 
+function isTorrentSearchService(service: unknown): service is TorrentSearchService {
+  return (
+    typeof service === "object" &&
+    service !== null &&
+    typeof (service as { search?: unknown }).search === "function"
+  );
+}
+
 interface TorrentInfo {
   id: string;
   done?: boolean;
@@ -44,6 +52,15 @@ interface TorrentService {
     [key: string]: unknown;
   }): Promise<TorrentInfo>;
   getTorrent(id: string): TorrentInfo | null;
+}
+
+function isTorrentService(service: unknown): service is TorrentService {
+  return (
+    typeof service === "object" &&
+    service !== null &&
+    typeof (service as { addTorrent?: unknown }).addTorrent === "function" &&
+    typeof (service as { getTorrent?: unknown }).getTorrent === "function"
+  );
 }
 
 interface MusicLibraryTrack {
@@ -311,10 +328,8 @@ export class SmartMusicFetchService extends Service {
     preferredQuality: string,
   ): Promise<TorrentSearchResult[]> {
     try {
-      const torrentSearch = this.runtime?.getService(
-        "torrent-search",
-      ) as unknown as TorrentSearchService;
-      if (!torrentSearch) {
+      const torrentSearch = this.runtime?.getService("torrent-search");
+      if (!isTorrentSearchService(torrentSearch)) {
         logger.warn("Torrent search service not available");
         return [];
       }
@@ -429,10 +444,8 @@ export class SmartMusicFetchService extends Service {
     requestedBy?: UUID,
   ): Promise<{ success: boolean; files?: string[]; error?: string }> {
     try {
-      const torrentService = this.runtime?.getService(
-        "torrent",
-      ) as unknown as TorrentService;
-      if (!torrentService) {
+      const torrentService = this.runtime?.getService("torrent");
+      if (!isTorrentService(torrentService)) {
         return { success: false, error: "Torrent service not available" };
       }
 

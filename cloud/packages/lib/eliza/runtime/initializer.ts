@@ -322,7 +322,7 @@ async function initializeRuntime(
 }
 
 function resolveInitPromise(runtime: AgentRuntime): void {
-  const runtimeAny = runtime as unknown as { initResolver?: () => void };
+  const runtimeAny = runtime as AgentRuntime & { initResolver?: () => void };
   if (typeof runtimeAny.initResolver === "function") {
     runtimeAny.initResolver();
     runtimeAny.initResolver = undefined;

@@ -10,8 +10,11 @@ import {
 } from "@elizaos/core";
 
 type ElizaConfig = Record<string, unknown> & {
-  cloud?: { apiKey?: string | null } | null;
-  env?: Record<string, string | undefined> | null;
+  cloud?: (Record<string, unknown> & {
+    apiKey?: string | null;
+    baseUrl?: string | null;
+  }) | null;
+  env?: Record<string, unknown> | null;
 };
 
 export const DEFAULT_CLOUD_API_BASE_URL = "https://elizacloud.ai/api/v1";

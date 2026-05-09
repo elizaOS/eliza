@@ -86,6 +86,17 @@ interface DrizzleDb {
   execute(query: { queryChunks: unknown[] }): Promise<RawExecuteResult>;
 }
 
+function hasDrizzleDb(
+  adapter: unknown,
+): adapter is { db: DrizzleDb } {
+  return (
+    typeof adapter === "object" &&
+    adapter !== null &&
+    typeof (adapter as { db?: { execute?: unknown } }).db?.execute ===
+      "function"
+  );
+}
+
 let cachedSqlHelper: DrizzleSqlHelper | null = null;
 
 async function getDrizzleSql(): Promise<DrizzleSqlHelper> {
@@ -104,7 +115,10 @@ async function executeRawSql(
   sqlText: string,
 ): Promise<{ rows: Record<string, unknown>[]; columns: string[] }> {
   const sql = await getDrizzleSql();
-  const db = (runtime.adapter as unknown as { db: DrizzleDb }).db;
+  if (!hasDrizzleDb(runtime.adapter)) {
+    throw new Error("Runtime adapter does not expose a Drizzle database");
+  }
+  const db = runtime.adapter.db;
   const result = await db.execute(sql.raw(sqlText));
   const rows = Array.isArray(result.rows) ? result.rows.filter(isQueryRow) : [];
   const columns =

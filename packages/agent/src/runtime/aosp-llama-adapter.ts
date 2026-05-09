@@ -108,12 +108,18 @@ type FFITypeEnum = {
   cstring: number;
 };
 
+type BunSymbolMap<TSymbols extends object> = {
+  [K in keyof TSymbols]: TSymbols[K] extends (...args: infer A) => infer R
+    ? (...args: A) => R
+    : never;
+};
+
 interface BunFFIModule {
-  dlopen: (
+  dlopen: <TSymbols extends object = Record<string, (...args: unknown[]) => unknown>>(
     path: string,
     symbols: Record<string, { args: readonly number[]; returns: number }>,
   ) => {
-    symbols: Record<string, (...args: unknown[]) => unknown>;
+    symbols: BunSymbolMap<TSymbols>;
     close: () => void;
   };
   FFIType: FFITypeEnum;
@@ -136,6 +142,16 @@ interface BunFFIModule {
     byteOffset?: number,
     byteLength?: number,
   ) => string;
+}
+
+function isBunFFIModule(value: unknown): value is BunFFIModule {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { dlopen?: unknown }).dlopen === "function" &&
+    typeof (value as { ptr?: unknown }).ptr === "function" &&
+    typeof (value as { toArrayBuffer?: unknown }).toArrayBuffer === "function"
+  );
 }
 
 type Pointer = number;
@@ -601,7 +617,10 @@ async function loadBunFfi(): Promise<BunFfiLoadResult> {
      * weakly-typed runtime shape. */
     // biome-ignore lint/suspicious/noTsIgnore: bun:ffi is a Bun runtime builtin loaded only on AOSP.
     // @ts-ignore
-    const mod = (await import("bun:ffi")) as unknown as BunFFIModule;
+    const mod = await import("bun:ffi");
+    if (!isBunFFIModule(mod)) {
+      throw new Error("bun:ffi module did not expose the expected FFI API");
+    }
     return { ok: true, mod };
   } catch (err) {
     return {
@@ -613,7 +632,7 @@ async function loadBunFfi(): Promise<BunFfiLoadResult> {
 
 function dlopenLlama(ffi: BunFFIModule, libPath: string): LlamaSymbols {
   const T = ffi.FFIType;
-  const handle = ffi.dlopen(libPath, {
+  const handle = ffi.dlopen<LlamaSymbols>(libPath, {
     llama_backend_init: { args: [], returns: T.void },
     llama_backend_free: { args: [], returns: T.void },
 
@@ -655,8 +674,7 @@ function dlopenLlama(ffi: BunFFIModule, libPath: string): LlamaSymbols {
     llama_sampler_accept: { args: [T.ptr, T.i32], returns: T.void },
     llama_sampler_free: { args: [T.ptr], returns: T.void },
   });
-  /* Deliberate boundary cast: bun:ffi.dlopen returns weakly-typed callable map */
-  return handle.symbols as unknown as LlamaSymbols;
+  return handle.symbols;
 }
 
 /**
@@ -670,7 +688,7 @@ function dlopenLlama(ffi: BunFFIModule, libPath: string): LlamaSymbols {
  */
 function dlopenShim(ffi: BunFFIModule, shimPath: string): ShimSymbols {
   const T = ffi.FFIType;
-  const handle = ffi.dlopen(shimPath, {
+  const handle = ffi.dlopen<ShimSymbols>(shimPath, {
     eliza_llama_model_params_default: { args: [], returns: T.ptr },
     eliza_llama_model_params_free: { args: [T.ptr], returns: T.void },
     eliza_llama_model_params_set_n_gpu_layers: {
@@ -736,8 +754,7 @@ function dlopenShim(ffi: BunFFIModule, shimPath: string): ShimSymbols {
     eliza_llama_batch_free: { args: [T.ptr], returns: T.void },
     eliza_llama_decode: { args: [T.ptr, T.ptr], returns: T.i32 },
   });
-  /* Deliberate boundary cast: bun:ffi.dlopen returns weakly-typed callable map */
-  return handle.symbols as unknown as ShimSymbols;
+  return handle.symbols;
 }
 
 function encodeCString(text: string): Uint8Array {

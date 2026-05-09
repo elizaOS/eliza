@@ -30,7 +30,7 @@ export async function refreshStateAfterAction(
  * Returns empty array on failure with warning logged.
  */
 export function getActionResultsFromCache(runtime: IAgentRuntime, messageId: string): unknown[] {
-  const runtimeWithCache = runtime as unknown as RuntimeWithStateCache;
+  const runtimeWithCache = runtime as IAgentRuntime & RuntimeWithStateCache;
 
   if (!runtimeWithCache.stateCache) {
     logger.warn(
