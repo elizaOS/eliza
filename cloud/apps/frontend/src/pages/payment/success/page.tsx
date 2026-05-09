@@ -25,6 +25,20 @@ function PaymentSuccessContent() {
 
     const trackId = searchParams.get("trackId");
     const status = searchParams.get("status");
+    const appId = searchParams.get("app_id");
+    const chargeRequestId = searchParams.get("charge_request_id");
+
+    if (appId && chargeRequestId) {
+      const chargeParams = new URLSearchParams();
+      chargeParams.set("payment", "success");
+      if (trackId) chargeParams.set("trackId", trackId);
+      if (status) chargeParams.set("status", status);
+      navigate(
+        `/payment/app-charge/${encodeURIComponent(appId)}/${encodeURIComponent(chargeRequestId)}?${chargeParams.toString()}`,
+        { replace: true },
+      );
+      return;
+    }
 
     const targetParams = new URLSearchParams();
     targetParams.set("tab", "billing");
