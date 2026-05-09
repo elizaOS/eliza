@@ -106,6 +106,5 @@ Latest message:
 {{message}}
 
 Output:
-JSON only. Return exactly one JSON object. No prose, no fences, no XML, no <think>.
 If nothing should change, return:
 {"ops":[]}

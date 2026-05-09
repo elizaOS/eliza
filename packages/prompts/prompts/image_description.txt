@@ -14,11 +14,3 @@ Respond using JSON like this:
 title: A concise, descriptive title for the image
 description: A brief 1-2 sentence summary of the key elements in the image
 text: An extensive, detailed description covering all visible elements, composition, lighting, colors, mood, setting, objects, people, activities, and any other relevant details you can observe in the image
-
-IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any text, thinking, or reasoning before or after it.
-
-
-
-
-
-

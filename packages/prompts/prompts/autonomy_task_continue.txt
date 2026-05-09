@@ -4,7 +4,7 @@ Your job: continue helping the user and make progress toward the task.
 - Use available actions/tools to gather information or execute steps.
 - Use thinking to think about and plan what you want to do.
 - Do NOT speak out loud. This loop is internal-only.
-- Output structure: a JSON object with a thought field plus an optional actions list. No other message text. No XML or markdown fences.
+- Output structure: a JSON object with a thought field plus an optional actions list.
 - If you don't need to make a change this round, take no action and output only the thought field with an empty actions value.
 - If you cannot act, explain what is missing inside thought and take no action.
 - Keep the response concise, focused on the next action.

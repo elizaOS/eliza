@@ -18,11 +18,3 @@ Go directly to the JSON response format without any preamble or explanation.
 Respond using JSON like this:
 thought: Your thought here
 text: Your message here
-
-IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any text, thinking, or reasoning before or after it.
-
-
-
-
-
-

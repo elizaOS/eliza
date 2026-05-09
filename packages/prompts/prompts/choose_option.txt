@@ -12,11 +12,3 @@ Provide your reasoning and the selected option ID.
 Respond using JSON like this:
 thought: Your reasoning for the selection
 selected_id: The ID of the selected option
-
-IMPORTANT: Your response must ONLY contain the JSON object above.
-
-
-
-
-
-

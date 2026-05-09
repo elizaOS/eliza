@@ -23,8 +23,6 @@ fields:
 - reply: optional direct response for simple turns with no contexts
 
 output:
-JSON only. Return exactly one JSON object with the keys above. No prose before or after it. No <think>. No XML or markdown fences.
-
 Example:
 {
   "action": "RESPOND",

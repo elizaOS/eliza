@@ -1,6 +1,6 @@
 # Task: Extract Long-Term Memory (Strict Criteria)
 
-You are analyzing a conversation to extract ONLY the most critical, persistent information about the user using cognitive science memory categories.
+Analyze the conversation and extract ONLY the most critical, persistent information about the user.
 
 # Recent Messages
 {{recentMessages}}
@@ -8,49 +8,23 @@ You are analyzing a conversation to extract ONLY the most critical, persistent i
 # Current Long-Term Memories
 {{existingMemories}}
 
-# Memory Categories (Based on Cognitive Science)
+# Memory Categories
 
-## 1. EPISODIC Memory
-Personal experiences and specific events with temporal/spatial context.
-**Examples:**
+Categories: episodic (events tied to a specific time/place), semantic (general knowledge), procedural (how-to).
+
+**Episodic examples:**
 - "User completed migration project from MongoDB to PostgreSQL in Q2 2024"
 - "User encountered authentication bug in production on March 15th"
-- "User had a negative experience with Docker networking in previous job"
 
-**Requirements:**
-- Must include WHO did WHAT, WHEN/WHERE
-- Must be a specific, concrete event (not a pattern)
-- Must have significant impact or relevance to future work
-
-## 2. SEMANTIC Memory
-General facts, concepts, knowledge, and established truths about the user.
-**Examples:**
+**Semantic examples:**
 - "User is a senior backend engineer with 8 years experience"
 - "User specializes in distributed systems and microservices architecture"
-- "User's primary programming language is TypeScript"
-- "User works at Acme Corp as technical lead"
 
-**Requirements:**
-- Must be factual, timeless information
-- Must be explicitly stated or demonstrated conclusively
-- No speculation or inference from single instances
-- Core identity, expertise, or knowledge only
-
-## 3. PROCEDURAL Memory
-Skills, workflows, methodologies, and how-to knowledge.
-**Examples:**
+**Procedural examples:**
 - "User follows strict TDD workflow: write tests first, then implementation"
 - "User prefers git rebase over merge to maintain linear history"
-- "User's debugging process: check logs → reproduce locally → binary search"
-- "User always writes JSDoc comments before implementing functions"
 
-**Requirements:**
-- Must describe HOW user does something
-- Must be a repeated, consistent pattern (seen 3+ times or explicitly stated as standard practice)
-- Must be a workflow, methodology, or skill application
-- Not one-off preferences
-
-# ULTRA-STRICT EXTRACTION CRITERIA
+# Extraction Criteria
 
 ## DO EXTRACT (Only These):
 
@@ -70,21 +44,11 @@ Skills, workflows, methodologies, and how-to knowledge.
 - Consistent workflows demonstrated 3+ times or explicitly stated
 - Standard practices user always follows
 - Methodology preferences with clear rationale
-- Debugging, testing, or development processes
 
 ## NEVER EXTRACT:
 
-- **One-time requests or tasks** (e.g., "can you generate an image", "help me debug this")
-- **Casual conversations** without lasting significance
-- **Exploratory questions** (e.g., "how does X work?")
-- **Temporary context** (current bug, today's task)
-- **Preferences from single occurrence** (e.g., user asked for code once)
-- **Social pleasantries** (thank you, greetings)
-- **Testing or experimentation** (trying out a feature)
-- **Common patterns everyone has** (likes clear explanations)
-- **Situational information** (working on feature X today)
-- **Opinions without persistence** (single complaint, isolated praise)
-- **General knowledge** (not specific to user)
+Skip ephemeral state, one-time requests, social pleasantries, and exploratory Q&A.
+This includes temporary context, single-occurrence preferences, generic patterns, and opinions without persistence.
 
 # Quality Gates (ALL Must Pass)
 
@@ -92,25 +56,17 @@ Skills, workflows, methodologies, and how-to knowledge.
 2. **Specificity Test**: Is this concrete and actionable?
 3. **Evidence Test**: Is there strong evidence (3+ instances OR explicit self-identification)?
 4. **Uniqueness Test**: Is this specific to THIS user (not generic)?
-5. **Confidence Test**: Confidence must be >= 0.85 (be VERY conservative)
+5. **Confidence Test**: Confidence must be >= 0.85.
 6. **Non-Redundancy Test**: Does this add NEW information not in existing memories?
 
-# Confidence Scoring (Be Conservative)
+# Confidence Scoring
 
 - **0.95-1.0**: User explicitly stated as core identity/practice AND demonstrated multiple times
 - **0.85-0.94**: User explicitly stated OR consistently demonstrated 5+ times
 - **0.75-0.84**: Strong pattern (3-4 instances) with supporting context
 - **Below 0.75**: DO NOT EXTRACT (insufficient evidence)
 
-# Critical Instructions
-
-1. **Default to NOT extracting** - When in doubt, skip it
-2. **Require overwhelming evidence** - One or two mentions is NOT enough
-3. **Focus on what's PERSISTENT** - Not what's temporary or situational
-4. **Verify against existing memories** - Don't duplicate or contradict
-5. **Maximum 2-3 extractions per run** - Quality over quantity
-
-**If there are no qualifying facts (which is common), return no memories entries.**
+Default to NOT extracting. Maximum 2-3 extractions per run. If there are no qualifying facts (which is common), return no memories entries.
 
 # Response Format
 

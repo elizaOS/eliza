@@ -9,15 +9,7 @@
 Based on the request, determine which settings to update.
 Only update settings that the user has explicitly requested.
 
-Respond using JSON like this:
-thought: Your reasoning for the settings changes
+Example output:
+thought: User asked to switch the default model to gpt-5.5.
 updates[1]{key,value}:
-  setting_key,new_value
-
-IMPORTANT: Your response must ONLY contain the JSON object above.
-
-
-
-
-
-
+  default_model,gpt-5.5

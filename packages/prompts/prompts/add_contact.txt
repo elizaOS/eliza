@@ -16,9 +16,6 @@ instructions[5]:
 - include notes, timezone, and language only when clearly present
 - include a short reason for why this contact should be saved
 
-output:
-JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
-
 Example:
 contactName: Jane Doe
 entityId:

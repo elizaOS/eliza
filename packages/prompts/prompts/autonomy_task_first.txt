@@ -6,8 +6,7 @@ Your job: continue helping the user and make progress toward the task.
 - In MCP mode, selector-based actions require a process scope (pass process=... or prefix selector with "process:<name> >> ...").
 - Prefer safe, incremental steps; if unsure, gather more UI context before acting.
 - Do NOT speak out loud. This loop is internal-only.
-- Output structure: a JSON object with a thought field plus an optional actions list. No other message text. No XML or markdown fences.
-
+- Output structure: a JSON object with a thought field plus an optional actions list.
 USER CHAT CONTEXT (most recent last):
 {{targetRoomContext}}
 
