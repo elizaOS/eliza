@@ -1,11 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { LinkedAccountConfig } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AccountsRouteContext } from "./accounts-routes";
+import type { AccountsRouteContext } from "../../src/api/accounts-routes";
 import {
   _resetAccountsRoutesPoolCache,
   handleAccountsRoutes,
-} from "./accounts-routes";
+} from "../../src/api/accounts-routes";
 
 const poolMock = vi.hoisted(() => ({
   list: vi.fn(),
@@ -19,7 +19,7 @@ vi.mock("@elizaos/app-core/account-pool", () => ({
   getDefaultAccountPool: () => poolMock,
 }));
 
-vi.mock("../auth/account-storage.js", () => ({
+vi.mock("../../src/auth/account-storage.js", () => ({
   deleteAccount: vi.fn(),
   listAccounts: vi.fn(() => []),
   loadAccount: vi.fn(() => null),

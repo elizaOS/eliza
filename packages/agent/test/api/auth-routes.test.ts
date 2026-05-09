@@ -1,6 +1,6 @@
 import type http from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { handleAuthRoutes } from "./auth-routes";
+import { handleAuthRoutes } from "../../src/api/auth-routes";
 
 type CapturedResponse = {
   status: number;
