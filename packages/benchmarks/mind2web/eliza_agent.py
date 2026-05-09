@@ -299,16 +299,34 @@ class OpenAICompatibleMind2WebAgent:
             f"- {action.operation.value} element_id={action.element_id} value={action.value!r}"
             for action in previous_actions
         )
+        # Mind2Web evaluates each step independently against the dataset's
+        # ground-truth operation, so the model needs to match step N's annotated
+        # micro-action — not skip ahead. Anchor the prompt on action_reprs[N]
+        # specifically and warn against merging steps.
+        current_repr = (
+            task.action_reprs[step_index]
+            if task.action_reprs and step_index < len(task.action_reprs)
+            else None
+        )
         sections = [
-            "You are completing a Mind2Web browser task.",
+            "You are completing a Mind2Web browser task one step at a time.",
             f"Instruction: {task.confirmed_task}",
             f"Website: {task.website}",
             f"Domain: {task.domain}",
             f"Current step: {step_index + 1} of {len(task.actions)}",
             "Available elements:\n" + _format_element(step_index, task),
         ]
+        if current_repr:
+            sections.append(
+                "Target micro-action for THIS step (do not skip or merge):\n"
+                f"- {current_repr}\n\n"
+                "Pick the operation that matches the verb in the micro-action: "
+                "'Click' -> CLICK, 'Type' -> TYPE, 'Select' -> SELECT, "
+                "'Hover' -> HOVER, 'Press Enter' -> ENTER. If 'Type X' the value "
+                "MUST be the literal X. Do not type/submit until the step says so."
+            )
         if task.action_reprs:
-            sections.append("High-level task notes:\n" + "\n".join(f"- {x}" for x in task.action_reprs[:8]))
+            sections.append("Full plan (for context only):\n" + "\n".join(f"- {x}" for x in task.action_reprs[:8]))
         if previous:
             sections.append("Previous actions:\n" + previous)
         sections.append(
