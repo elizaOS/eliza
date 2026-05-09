@@ -16,11 +16,12 @@ import {
 } from "../features/advanced-capabilities/evaluators/task-completion";
 import { looksLikeNonActionableChatter } from "../features/basic-capabilities/providers/non-actionable-chatter";
 import { logger } from "../logger";
-import { imageDescriptionTemplate } from "../prompts";
+import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
 import {
 	createV5MessageHandlerTool,
-	v5MessageHandlerTemplate,
+	V5_MESSAGE_HANDLER_TOOL_NAME,
 } from "../prompts/message-handler";
+import { composePrompt } from "../utils";
 import { checkSenderRole } from "../roles";
 import {
 	buildActionCatalog,
@@ -48,6 +49,7 @@ import {
 	type EvaluatorOutput,
 	runEvaluator,
 } from "../runtime/evaluator";
+import { runPostTurnEvaluators } from "./evaluator";
 import {
 	type ExecutePlannedToolCallContext,
 	type ExecutePlannedToolCallOptions,
@@ -1392,9 +1394,13 @@ async function collectV5PlannerCandidateActions(args: {
 			return false;
 		}
 		try {
-			const accountPolicy = await evaluateConnectorAccountPolicies(args.runtime, action, {
-				message: args.message,
-			});
+			const accountPolicy = await evaluateConnectorAccountPolicies(
+				args.runtime,
+				action,
+				{
+					message: args.message,
+				},
+			);
 			if (!accountPolicy.allowed) {
 				return false;
 			}
@@ -1560,16 +1566,16 @@ function buildV5PlannerActionSurface(params: {
 	const catalog = buildActionCatalog(
 		params.actions as unknown as RuntimeActionLike[],
 	);
-		const retrieval = retrieveActions({
-			catalog,
-			messageText: getUserMessageText(params.message) ?? "",
-			recentConversationText: getRecentConversationSearchText(
-				params.state,
-				params.message,
-			),
-			candidateActions,
-			parentActionHints,
-		});
+	const retrieval = retrieveActions({
+		catalog,
+		messageText: getUserMessageText(params.message) ?? "",
+		recentConversationText: getRecentConversationSearchText(
+			params.state,
+			params.message,
+		),
+		candidateActions,
+		parentActionHints,
+	});
 	const tieredSurface = tierActionResults({
 		catalog,
 		results: retrieval.results,
@@ -1785,6 +1791,105 @@ function filterSelectedContextsForRole(
 	return selected;
 }
 
+function contextAvailableForRepair(
+	context: AgentContext,
+	availableContexts: readonly ContextDefinition[],
+): boolean {
+	return (
+		availableContexts.length === 0 ||
+		availableContexts.some((definition) => definition.id === context)
+	);
+}
+
+function appendStage1PlanHints(
+	messageHandler: MessageHandlerResult,
+	args: {
+		contexts?: readonly AgentContext[];
+		candidateActions?: readonly string[];
+		parentActionHints?: readonly string[];
+	},
+): void {
+	if (args.contexts?.length) {
+		messageHandler.plan.contexts = mergeAgentContexts(
+			messageHandler.plan.contexts.filter((context) => context !== "simple"),
+			args.contexts,
+		);
+	}
+	if (args.candidateActions?.length) {
+		messageHandler.plan.candidateActions = [
+			...new Set([
+				...getMessageHandlerCandidateActions(messageHandler),
+				...args.candidateActions,
+			]),
+		];
+	}
+	if (args.parentActionHints?.length) {
+		messageHandler.plan.parentActionHints = [
+			...new Set([
+				...getMessageHandlerParentActionHints(messageHandler),
+				...args.parentActionHints,
+			]),
+		];
+	}
+	messageHandler.plan.requiresTool = true;
+	messageHandler.plan.simple = false;
+	delete messageHandler.plan.reply;
+}
+
+function repairStage1PlanForKnownToolRequests(args: {
+	message: Memory;
+	messageHandler: MessageHandlerResult;
+	availableContexts: readonly ContextDefinition[];
+}): void {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	if (!text) {
+		return;
+	}
+
+	const lower = text.toLowerCase();
+	const targetLookupReplyIntent =
+		/\b(draft|prepare|write|compose)\b[\s\S]{0,80}\brepl(?:y|ies|ied|ying)\b/.test(
+			lower,
+		) ||
+		/\brepl(?:y|ies|ied|ying|respond)\b[\s\S]{0,80}\b(to|from|latest|last|recent|email|message|dm|text)\b/.test(
+			lower,
+		);
+	const mentionsMailOrMessageTarget =
+		/\b(e-?mail|inbox|message|dm|direct message|text|sms|slack|discord|telegram|signal|whatsapp|imessage|from\s+[a-z][\w'-]*)\b/.test(
+			lower,
+		);
+	if (targetLookupReplyIntent && mentionsMailOrMessageTarget) {
+		const contexts = (
+			["email", "messaging", "connectors"] as AgentContext[]
+		).filter((context) =>
+			contextAvailableForRepair(context, args.availableContexts),
+		);
+		appendStage1PlanHints(args.messageHandler, {
+			contexts,
+			candidateActions: ["draft_reply", "message_draft_reply", "send_email"],
+			parentActionHints: ["MESSAGE"],
+		});
+	}
+
+	const desktopScreenshotIntent =
+		/\b(screen\s*shot|screenshot|capture\s+(?:my\s+|the\s+|current\s+)?screen|see\s+(?:my\s+|the\s+)?screen)\b/.test(
+			lower,
+		) &&
+		!/\b(generate|create|draw|make)\b[\s\S]{0,40}\b(image|picture|art|graphic)\b/.test(
+			lower,
+		);
+	if (desktopScreenshotIntent) {
+		const contexts = (["browser", "automation"] as AgentContext[]).filter(
+			(context) => contextAvailableForRepair(context, args.availableContexts),
+		);
+		appendStage1PlanHints(args.messageHandler, {
+			contexts,
+			candidateActions: ["take_screenshot", "capture_screen"],
+			parentActionHints: ["COMPUTER_USE"],
+		});
+	}
+}
+
 async function generateDirectReplyOnce(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -1836,8 +1941,12 @@ export function formatAvailableContextsForPrompt(
 					: definition.parents?.length
 						? `parents=${definition.parents.join(",")}`
 						: undefined,
-				definition.roleGate ? formatRoleGateForPrompt(definition.roleGate) : undefined,
-				definition.sensitivity ? `sensitivity=${definition.sensitivity}` : undefined,
+				definition.roleGate
+					? formatRoleGateForPrompt(definition.roleGate)
+					: undefined,
+				definition.sensitivity
+					? `sensitivity=${definition.sensitivity}`
+					: undefined,
 				definition.cacheScope ? `cache=${definition.cacheScope}` : undefined,
 			].filter(Boolean);
 			const suffix = metadata.length > 0 ? ` [${metadata.join("; ")}]` : "";
@@ -1871,24 +1980,14 @@ function renderV5MessageHandlerInstructions(
 	availableContexts: readonly ContextDefinition[],
 	options?: { directMessage?: boolean },
 ): string {
-	const template = options?.directMessage
-		? v5MessageHandlerTemplate
-				.replace(
-					"task: Decide processMessage and the plan for this message.",
-					"task: Decide the plan for this direct message.",
-				)
-				.replace(
-					"- choose processMessage=RESPOND only when the agent should answer or perform work for this message\n- choose processMessage=IGNORE when the message should be ignored\n- choose processMessage=STOP when the user asks the agent to stop or disengage\n",
-					"- this is a direct message, so processMessage is already hardcoded to RESPOND\n- do not include processMessage; only choose plan and thought\n",
-				)
-		: v5MessageHandlerTemplate;
-	return template
-		.replace("context:\n{{contextObject}}\n\n", "")
-		.replace(
-			"{{availableContexts}}",
-			formatAvailableContextsForPrompt(availableContexts),
-		)
-		.trim();
+	return composePrompt({
+		state: {
+			directMessage: options?.directMessage ? "true" : "",
+			availableContexts: formatAvailableContextsForPrompt(availableContexts),
+			handleResponseToolName: V5_MESSAGE_HANDLER_TOOL_NAME,
+		},
+		template: messageHandlerTemplate,
+	}).trim();
 }
 
 function renderV5MessageHandlerModelInput(
@@ -2458,7 +2557,9 @@ function shouldTreatPlannerDeviceIntentAsLifeReminder(
 		return false;
 	}
 	const text = getUserMessageText(message) ?? "";
-	if (/\b(?:device|devices|phone|mobile|desktop|broadcast|push)\b/i.test(text)) {
+	if (
+		/\b(?:device|devices|phone|mobile|desktop|broadcast|push)\b/i.test(text)
+	) {
 		return false;
 	}
 	return (
@@ -2564,7 +2665,13 @@ function normalizeMessagePlannerParams(
 		stringParam(params.source) ??
 		stringParam(params.platform) ??
 		stringParam(params.connector);
-	const source = rawSource === "twitter" ? "x" : rawSource;
+	const source =
+		rawSource === "twitter"
+			? "x"
+			: /^(?:google|email|mail)$/i.test(rawSource ?? "")
+				? "gmail"
+				: rawSource;
+	const sender = stringParam(params.sender) ?? stringParam(params.from);
 	const target =
 		stringParam(params.target) ??
 		stringParam(params.recipient) ??
@@ -2574,6 +2681,15 @@ function normalizeMessagePlannerParams(
 		stringParam(params.email) ??
 		stringParam(params.emailAddress) ??
 		stringParam(params.address);
+	const id = stringParam(params.id);
+	const messageId =
+		stringParam(params.messageId) ??
+		stringParam(params.inReplyToId) ??
+		(rawOperation !== "send_draft" ? id : undefined);
+	const inReplyToId = stringParam(params.inReplyToId);
+	const draftId =
+		stringParam(params.draftId) ??
+		(rawOperation === "send_draft" ? id : undefined);
 	const messageBody =
 		stringParam(params.message) ??
 		stringParam(params.text) ??
@@ -2589,24 +2705,25 @@ function normalizeMessagePlannerParams(
 		(directChatSend || source || target || messageBody)
 			? "send"
 			: rawOperation;
-	const inferredOperation =
-		directChatSend
+	const inferredOperation = operation
+		? undefined
+		: directChatSend
 			? "send"
 			: /\bdraft\b.*\breply\b/i.test(text)
-			? "draft_reply"
-			: /\b(?:unread|inbox|digest|summarize).*?\b(?:email|gmail|mail|inbox)\b/i.test(
-						text,
-					) ||
-					/\b(?:email|gmail|mail|inbox)\b.*?\b(?:unread|digest|summarize)\b/i.test(
-						text,
-					)
-				? "list_inbox"
-				: /\b(?:x|twitter)\b/i.test(text) &&
-						/\b(?:dm|dms|direct messages?|messages?)\b/i.test(text)
-					? "read_channel"
-					: undefined;
+				? "draft_reply"
+				: /\b(?:unread|inbox|digest|summarize).*?\b(?:email|gmail|mail|inbox)\b/i.test(
+							text,
+						) ||
+						/\b(?:email|gmail|mail|inbox)\b.*?\b(?:unread|digest|summarize)\b/i.test(
+							text,
+						)
+					? "list_inbox"
+					: /\b(?:x|twitter)\b/i.test(text) &&
+							/\b(?:dm|dms|direct messages?|messages?)\b/i.test(text)
+						? "read_channel"
+						: undefined;
 	return {
-		...(inferredOperation ?? operation
+		...((inferredOperation ?? operation)
 			? { operation: inferredOperation ?? operation }
 			: {}),
 		...(source
@@ -2614,11 +2731,13 @@ function normalizeMessagePlannerParams(
 			: /\b(?:x|twitter)\b/i.test(text)
 				? { source: "x" }
 				: {}),
-		...(target ? { target, sender: target } : {}),
+		...(target ? { target } : {}),
+		...(sender || target ? { sender: sender ?? target } : {}),
+		...(messageId ? { messageId } : {}),
+		...(inReplyToId ? { inReplyToId } : {}),
+		...(draftId ? { draftId } : {}),
 		...(messageBody ? { message: messageBody, body: messageBody } : {}),
-		...(target && stringParam(params.channel)
-			? { targetKind: "channel" }
-			: {}),
+		...(target && stringParam(params.channel) ? { targetKind: "channel" } : {}),
 		...(manageIntent
 			? {
 					manageOperation: /\bunsubscribe\b/i.test(manageIntent)
@@ -2628,6 +2747,14 @@ function normalizeMessagePlannerParams(
 			: {}),
 		...(stringParam(params.query) ? { query: params.query } : {}),
 		...(stringParam(params.channel) ? { channel: params.channel } : {}),
+		...(params.sources !== undefined ? { sources: params.sources } : {}),
+		...(params.worldIds !== undefined ? { worldIds: params.worldIds } : {}),
+		...(params.channelIds !== undefined
+			? { channelIds: params.channelIds }
+			: {}),
+		...(params.limit !== undefined ? { limit: params.limit } : {}),
+		...(params.since !== undefined ? { since: params.since } : {}),
+		...(params.until !== undefined ? { until: params.until } : {}),
 	};
 }
 
@@ -2897,19 +3024,20 @@ async function executeV5PlannedToolCall(
 								: forceConnectorToMessage
 									? "MESSAGE"
 									: resolvedName;
-	const toolCallForNormalization = forceContactReminderToLife || forceDeviceIntentToLife
-		? {
-				...unwrappedToolCall,
-				params: {
-					intent: getUserMessageText(args.executorCtx.message),
-					details: {
-						contactName: stringParam(unwrappedToolCall.params?.name),
-						relationship: stringParam(unwrappedToolCall.params?.relationship),
-						originalPlannerAction: unwrappedToolCall.name,
+	const toolCallForNormalization =
+		forceContactReminderToLife || forceDeviceIntentToLife
+			? {
+					...unwrappedToolCall,
+					params: {
+						intent: getUserMessageText(args.executorCtx.message),
+						details: {
+							contactName: stringParam(unwrappedToolCall.params?.name),
+							relationship: stringParam(unwrappedToolCall.params?.relationship),
+							originalPlannerAction: unwrappedToolCall.name,
+						},
 					},
-				},
-			}
-		: unwrappedToolCall;
+				}
+			: unwrappedToolCall;
 	const toolCall = normalizeAliasedPlannerToolCall(
 		toolCallForNormalization,
 		effectiveResolvedName,
@@ -3239,6 +3367,11 @@ export async function runV5MessageRuntimeStage1(args: {
 			});
 		}
 
+		repairStage1PlanForKnownToolRequests({
+			message: args.message,
+			messageHandler,
+			availableContexts,
+		});
 		messageHandler.plan.contexts = filterSelectedContextsForRole(
 			messageHandler.plan.contexts,
 			availableContexts,
@@ -3302,25 +3435,25 @@ export async function runV5MessageRuntimeStage1(args: {
 			attachAvailableContexts(recomposedPlannerState, args.runtime),
 			selectedContextRoutingState,
 		);
-			const plannerCandidateActions = await collectV5PlannerCandidateActions({
-				runtime: args.runtime,
-				message: args.message,
-				state: plannerState,
-				selectedContexts,
-				userRoles: [senderRole],
-			});
-				const actionSurface = buildV5PlannerActionSurface({
-					actions: plannerCandidateActions,
-					message: args.message,
-					state: plannerState,
-					messageHandler,
-				});
-			const exposedPlannerActions = plannerCandidateActions.filter((action) =>
-				actionSurface.exposedActionNames.has(
-					normalizeActionIdentifier(action.name),
-				),
-			);
-			args.runtime.logger.debug?.(
+		const plannerCandidateActions = await collectV5PlannerCandidateActions({
+			runtime: args.runtime,
+			message: args.message,
+			state: plannerState,
+			selectedContexts,
+			userRoles: [senderRole],
+		});
+		const actionSurface = buildV5PlannerActionSurface({
+			actions: plannerCandidateActions,
+			message: args.message,
+			state: plannerState,
+			messageHandler,
+		});
+		const exposedPlannerActions = plannerCandidateActions.filter((action) =>
+			actionSurface.exposedActionNames.has(
+				normalizeActionIdentifier(action.name),
+			),
+		);
+		args.runtime.logger.debug?.(
 			{
 				src: "service:message",
 				actionSurface: actionSurface.summary,
@@ -3332,11 +3465,11 @@ export async function runV5MessageRuntimeStage1(args: {
 			state: plannerState,
 			selectedContexts,
 			includeTools: true,
-				userRoles: [senderRole],
-				availableContexts,
-				preselectedActions: exposedPlannerActions,
-				actionSurface,
-			});
+			userRoles: [senderRole],
+			availableContexts,
+			preselectedActions: exposedPlannerActions,
+			actionSurface,
+		});
 		const plannerContextWithDecision = appendContextEvent(plannerContext, {
 			id: `message-handler:${messageHandlerEndedAt}`,
 			type: "message_handler",
@@ -3344,13 +3477,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			createdAt: messageHandlerEndedAt,
 			metadata: {
 				processMessage: messageHandler.processMessage,
-					plan: {
-						contexts: messageHandler.plan.contexts,
-						...(messageHandler.plan.requiresTool !== undefined
-							? { requiresTool: messageHandler.plan.requiresTool }
-							: {}),
-						candidateActions: getMessageHandlerCandidateActions(messageHandler),
-						parentActionHints: getMessageHandlerParentActionHints(messageHandler),
+				plan: {
+					contexts: messageHandler.plan.contexts,
+					...(messageHandler.plan.requiresTool !== undefined
+						? { requiresTool: messageHandler.plan.requiresTool }
+						: {}),
+					candidateActions: getMessageHandlerCandidateActions(messageHandler),
+					parentActionHints: getMessageHandlerParentActionHints(messageHandler),
 					...(messageHandler.plan.reply !== undefined
 						? { reply: messageHandler.plan.reply }
 						: {}),
@@ -3367,25 +3500,25 @@ export async function runV5MessageRuntimeStage1(args: {
 					provider,
 				),
 			logger: args.runtime.logger as PlannerRuntime["logger"],
-			};
-			const plannerTools = collectPlannerTools(plannerContextWithDecision);
-			const requireNonTerminalToolCall =
-				messageHandler.plan.requiresTool === true && plannerTools.length > 0;
-			const effectivePlannerContext = requireNonTerminalToolCall
-				? appendContextEvent(plannerContextWithDecision, {
-						id: `tool-required:${messageHandlerEndedAt}`,
-						type: "instruction",
-						source: "message-service",
-						createdAt: messageHandlerEndedAt,
-						content:
-							"The Stage 1 router marked this current turn as requiring a tool. " +
-							"Do not answer directly from memory, chat history, prior attachments, or prior tool output. " +
-							"Call at least one exposed non-terminal tool that can attempt the current request.",
-					})
-				: plannerContextWithDecision;
-			const evaluatorEffects: EvaluatorEffects = {
-				copyToClipboard: () => undefined,
-				messageToUser: () => undefined,
+		};
+		const plannerTools = collectPlannerTools(plannerContextWithDecision);
+		const requireNonTerminalToolCall =
+			messageHandler.plan.requiresTool === true && plannerTools.length > 0;
+		const effectivePlannerContext = requireNonTerminalToolCall
+			? appendContextEvent(plannerContextWithDecision, {
+					id: `tool-required:${messageHandlerEndedAt}`,
+					type: "instruction",
+					source: "message-service",
+					createdAt: messageHandlerEndedAt,
+					content:
+						"The Stage 1 router marked this current turn as requiring a tool. " +
+						"Do not answer directly from memory, chat history, prior attachments, or prior tool output. " +
+						"Call at least one exposed non-terminal tool that can attempt the current request.",
+				})
+			: plannerContextWithDecision;
+		const evaluatorEffects: EvaluatorEffects = {
+			copyToClipboard: () => undefined,
+			messageToUser: () => undefined,
 		};
 
 		// CONTEXT_BEFORE (blocking): hooks tagged with one of the selected
@@ -3403,31 +3536,31 @@ export async function runV5MessageRuntimeStage1(args: {
 			})
 			.catch(() => {});
 
-			const plannerResult = await runPlannerLoop({
-				runtime: plannerRuntime,
-				context: effectivePlannerContext,
-				config: args.plannerLoopConfig,
-				tools: plannerTools.length > 0 ? plannerTools : undefined,
-				requireNonTerminalToolCall,
-				evaluatorEffects,
-				recorder,
-				trajectoryId,
+		const plannerResult = await runPlannerLoop({
+			runtime: plannerRuntime,
+			context: effectivePlannerContext,
+			config: args.plannerLoopConfig,
+			tools: plannerTools.length > 0 ? plannerTools : undefined,
+			requireNonTerminalToolCall,
+			evaluatorEffects,
+			recorder,
+			trajectoryId,
 			executeToolCall: (toolCall, ctx) =>
 				executeV5PlannedToolCall({
-						runtime: args.runtime,
-						toolCall,
-						plannerContext: effectivePlannerContext,
-						executorCtx: {
-							message: args.message,
-							state: plannerState,
+					runtime: args.runtime,
+					toolCall,
+					plannerContext: effectivePlannerContext,
+					executorCtx: {
+						message: args.message,
+						state: plannerState,
 						activeContexts: selectedContexts,
 						userRoles: [senderRole],
 						previousResults: collectPreviousActionResults(ctx.trajectory),
 					},
-						plannerRuntime,
-						executorOptions: { actions: exposedPlannerActions },
-						evaluatorEffects,
-						recorder,
+					plannerRuntime,
+					executorOptions: { actions: exposedPlannerActions },
+					evaluatorEffects,
+					recorder,
 					trajectoryId,
 					plannerLoopConfig: args.plannerLoopConfig,
 				}),
@@ -7403,13 +7536,15 @@ export class DefaultMessageService implements IMessageService {
 		// Clean up the response ID
 		clearLatestResponseId(runtime.agentId, message.roomId, responseId);
 
-		// ALWAYS_AFTER (blocking): post-message hook actions fire here, after
-		// the response is delivered (or the routing decision is final for
-		// IGNORE/STOP). This is the canonical way to do post-turn work — the
-		// legacy `Evaluator` plugin component was removed in favor of
-		// `Action` with `mode: ActionMode.ALWAYS_AFTER`.
+		// Post-turn evaluation runs first as one structured call over registered
+		// evaluator items. ALWAYS_AFTER actions remain available for plugin hooks
+		// that are not part of the unified evaluator service.
 		const didRespondGate =
 			shouldRespondToMessage && !isStopResponse(responseContent);
+		await runPostTurnEvaluators(runtime, message, state, {
+			didRespond: didRespondGate,
+			responses: responseMessages,
+		});
 		await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
 			didRespond: didRespondGate,
 			responses: responseMessages,
