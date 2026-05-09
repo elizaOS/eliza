@@ -106,6 +106,24 @@ interface LlamaCppPluginLike {
 
 const CONTEXT_ID = 1;
 const DEFAULT_MAX_TOKENS = 256;
+
+/**
+ * Mobile-side parallel slot count. Mirrors `DEFAULT_CACHE_PARALLEL` in
+ * `cache-bridge.ts`; on devices with constrained KV memory we keep a small
+ * fixed pool so distinct cacheKey values still get prefix reuse without
+ * blowing memory.
+ */
+const MOBILE_PARALLEL = 4;
+
+/** FNV-1a 32-bit, deterministic across platforms — matches the agent side. */
+function deriveCacheSlotId(key: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < key.length; i += 1) {
+    hash ^= key.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return Math.abs(hash | 0) % MOBILE_PARALLEL;
+}
 const MOBILE_MAX_TOKENS_CAP = 256;
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -562,6 +580,17 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
     }
     if (options.stream) {
       params.emit_partial_completion = true;
+    }
+    // Cache key threading: surface the slot id derived from
+    // ProviderCachePlan.promptCacheKey to the native side. Stock
+    // llama-cpp-capacitor builds ignore the field; the patched fork build
+    // reads it via setCacheType / completion params and pins KV slots.
+    if (options.cacheKey) {
+      const slotId = deriveCacheSlotId(options.cacheKey);
+      (params as NativeGenerateParams & { cache_prompt?: boolean; slot_id?: number }).cache_prompt =
+        true;
+      (params as NativeGenerateParams & { cache_prompt?: boolean; slot_id?: number }).slot_id =
+        slotId;
     }
 
     const started = Date.now();
