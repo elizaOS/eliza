@@ -7,7 +7,7 @@ const modelPath = process.env.LOCAL_AI_TEST_MODEL_PATH;
 const describeIfModel = modelPath ? describe : describe.skip;
 
 describeIfModel("plugin-local-ai integration (real model)", () => {
-  let cleanup: Array<() => Promise<void> | void> = [];
+  const cleanup: Array<() => Promise<void> | void> = [];
   afterAll(async () => {
     for (const fn of cleanup) {
       await fn();

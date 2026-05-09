@@ -2,10 +2,10 @@
 // rest of plugin-local-ai under nocheck pending a core-types pass.
 import type { JSONSchema, ToolDefinition } from "@elizaos/core";
 import {
+  type ChatModelFunctionCall,
+  type ChatSessionModelFunctions,
   defineChatSessionFunction,
   type GbnfJsonSchema,
-  type ChatSessionModelFunctions,
-  type ChatModelFunctionCall,
   type Llama,
   LlamaGrammar,
   LlamaJsonSchemaGrammar,
@@ -43,9 +43,7 @@ export function toGbnfJsonSchema(schema: JSONSchema | undefined): GbnfJsonSchema
  * raw call objects back from `promptWithMeta`, not in-loop tool execution.
  * The runtime is responsible for executing the tool and looping back.
  */
-export function buildLlamaFunctions(
-  tools: readonly ToolDefinition[]
-): ChatSessionModelFunctions {
+export function buildLlamaFunctions(tools: readonly ToolDefinition[]): ChatSessionModelFunctions {
   const out: Record<string, ReturnType<typeof defineChatSessionFunction>> = {};
   for (const tool of tools) {
     if (!tool?.name) continue;
@@ -138,7 +136,11 @@ export async function planStructuredRequest(
     const grammar = buildJsonSchemaGrammar(ctx.llama, params.responseSchema);
     return { kind: "schema", grammar };
   }
-  if (params.responseFormat && typeof params.responseFormat === "object" && params.responseFormat.type === "json_object") {
+  if (
+    params.responseFormat &&
+    typeof params.responseFormat === "object" &&
+    params.responseFormat.type === "json_object"
+  ) {
     const grammar = await buildGenericJsonGrammar(ctx.llama);
     return { kind: "json_object", grammar };
   }

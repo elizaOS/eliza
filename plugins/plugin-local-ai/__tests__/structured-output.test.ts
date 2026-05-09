@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildLlamaFunctions,
-  extractToolCalls,
-  toGbnfJsonSchema,
-} from "../structured-output.js";
+import { buildLlamaFunctions, extractToolCalls, toGbnfJsonSchema } from "../structured-output.js";
 
 describe("structured-output", () => {
   describe("toGbnfJsonSchema", () => {
