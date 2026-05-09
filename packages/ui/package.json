@@ -37,7 +37,8 @@
     "pack:dry-run": "cd dist && npm pack --dry-run"
   },
   "exports": {
-    ".": "./dist/index.js"
+    ".": "./dist/index.js",
+    "./platform/native-plugin-entrypoints": "./dist/platform/native-plugin-entrypoints.js"
   },
   "peerDependencies": {
     "react": "^19.0.0",
