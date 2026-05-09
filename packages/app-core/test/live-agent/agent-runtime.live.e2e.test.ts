@@ -388,6 +388,7 @@ describe("Agent Runtime E2E", () => {
 
   const corePluginNames = [
     "@elizaos/plugin-agent-skills",
+    "@elizaos/plugin-workflow",
     // NOTE: @elizaos/plugin-commands is excluded — commented out as "not yet ready" in core-plugins.ts
   ];
 

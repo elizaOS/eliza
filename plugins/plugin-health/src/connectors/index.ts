@@ -93,11 +93,7 @@ const HEALTH_CONNECTOR_CAPABILITIES: Record<
     "health.vitals.read",
     "health.readiness.read",
   ],
-  withings: [
-    "health.sleep.read",
-    "health.body.read",
-    "health.vitals.read",
-  ],
+  withings: ["health.sleep.read", "health.body.read", "health.vitals.read"],
   oura: [
     "health.sleep.read",
     "health.activity.read",
@@ -194,9 +190,7 @@ function getConnectorRegistry(
     .connectorRegistry;
 }
 
-function getAnchorRegistry(
-  runtime: IAgentRuntime,
-): AnchorRegistry | undefined {
+function getAnchorRegistry(runtime: IAgentRuntime): AnchorRegistry | undefined {
   return (runtime as IAgentRuntime & RuntimeWithHealthRegistries)
     .anchorRegistry;
 }

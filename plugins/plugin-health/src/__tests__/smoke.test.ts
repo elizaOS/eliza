@@ -25,14 +25,6 @@
  * not by this smoke test.
  */
 import { describe, expect, it } from "vitest";
-import {
-  HEALTH_ANCHORS,
-  HEALTH_BUS_FAMILIES,
-  HEALTH_CONNECTOR_KINDS,
-  registerHealthAnchors,
-  registerHealthBusFamilies,
-  registerHealthConnectors,
-} from "../connectors/index.js";
 import type {
   AnchorContribution,
   AnchorRegistry,
@@ -43,13 +35,21 @@ import type {
   RuntimeWithHealthRegistries,
 } from "../connectors/contract-stubs.js";
 import {
+  HEALTH_ANCHORS,
+  HEALTH_BUS_FAMILIES,
+  HEALTH_CONNECTOR_KINDS,
+  registerHealthAnchors,
+  registerHealthBusFamilies,
+  registerHealthConnectors,
+} from "../connectors/index.js";
+import {
   bedtimeDefaultPack,
   HEALTH_DEFAULT_PACKS,
   sleepRecapDefaultPack,
   wakeUpDefaultPack,
 } from "../default-packs/index.js";
-import { deriveSleepWakeEvents } from "../sleep/sleep-wake-events.js";
 import type { LifeOpsScheduleMergedStateRecord } from "../sleep/sleep-wake-events.js";
+import { deriveSleepWakeEvents } from "../sleep/sleep-wake-events.js";
 
 function makeStateRecord(
   overrides: Partial<LifeOpsScheduleMergedStateRecord> = {},
