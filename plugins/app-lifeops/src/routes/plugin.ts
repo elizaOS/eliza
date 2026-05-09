@@ -18,8 +18,13 @@ import {
   resolveEntityRole,
   stringToUuid,
 } from "@elizaos/core";
+import { createRuntimeScheduledTaskRunner } from "../lifeops/scheduled-task/runtime-wiring.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { handleLifeOpsRoutes } from "./lifeops-routes.js";
+import {
+  makeScheduledTasksRouteHandler,
+  SCHEDULED_TASKS_ROUTE_PATHS,
+} from "./scheduled-tasks.js";
 import { handleSleepRoutes } from "./sleep-routes.js";
 import type { WebsiteBlockerRouteContext } from "./website-blocker-routes.js";
 import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
@@ -574,6 +579,39 @@ function lifeOpsRouteHandler(): PluginRouteHandler {
   };
 }
 
+function scheduledTasksRouteHandler(): PluginRouteHandler {
+  // The runner is created per-request because it depends on the
+  // runtime which is only available inside the route call. The runtime
+  // wiring registers the built-in gates / completion-checks / ladders
+  // and uses the LifeOpsRepository for storage.
+  const handle = makeScheduledTasksRouteHandler({
+    async resolveRunner(ctx) {
+      const runtime = ctx.state.runtime;
+      if (!runtime) {
+        ctx.error(ctx.res, "Agent runtime is not available", 503);
+        return null;
+      }
+      return createRuntimeScheduledTaskRunner({
+        runtime,
+        agentId: runtime.agentId,
+      });
+    },
+  });
+  return async (req, res, runtime): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const ctx = buildLifeOpsContext(
+      httpReq,
+      httpRes,
+      (runtime as AgentRuntime) ?? null,
+    );
+    const handled = await handle(ctx);
+    if (!handled) {
+      error(httpRes, "Scheduled-tasks route not found", 404);
+    }
+  };
+}
+
 function sleepRouteHandler(): PluginRouteHandler {
   return async (
     req: unknown,
@@ -696,6 +734,11 @@ const lifeOpsPluginRoutes: Route[] = [
   ),
   ...buildRawRoutes(LIFEOPS_STATIC_ROUTES, lifeOpsRouteHandler()),
   ...buildRawRoutes(LIFEOPS_DYNAMIC_ROUTES, lifeOpsRouteHandler()),
+  // W1-A — ScheduledTask spine REST surface (`docs/audit/wave1-interfaces.md` §1.6).
+  ...buildRawRoutes(
+    SCHEDULED_TASKS_ROUTE_PATHS,
+    scheduledTasksRouteHandler(),
+  ),
   ...buildRawRoutes(LIFEOPS_SLEEP_ROUTES, sleepRouteHandler()),
   ...buildRawRoutes(WEBSITE_BLOCKER_ROUTES, websiteBlockerRouteHandler()),
 ];

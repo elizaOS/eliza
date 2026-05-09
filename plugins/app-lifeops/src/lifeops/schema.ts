@@ -1471,6 +1471,81 @@ export const lifeBlockRules = appLifeopsPgSchema.table("life_block_rules", {
 });
 
 // ---------------------------------------------------------------------------
+// W1-A — ScheduledTask spine + state log (`docs/audit/IMPLEMENTATION_PLAN.md`
+// §3.1, `docs/audit/wave1-interfaces.md` §1).
+//
+// `life_scheduled_tasks` stores the typed ScheduledTask record. The
+// runner is the only writer; each row's `state_json` carries the
+// `ScheduledTaskState` fields (status, firedAt, …). `idempotency_key`
+// is unique per agent and dedupes schedule() calls.
+//
+// `life_scheduled_task_log` is the append-only state-log; the nightly
+// rollup pass folds expired raw rows into a daily summary row keyed by
+// (task, day, transition).
+// ---------------------------------------------------------------------------
+
+export const lifeScheduledTasks = appLifeopsPgSchema.table(
+  "life_scheduled_tasks",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    kind: text("kind").notNull(),
+    promptInstructions: text("prompt_instructions").notNull(),
+    contextRequestJson: text("context_request_json"),
+    triggerJson: text("trigger_json").notNull(),
+    priority: text("priority").notNull().default("medium"),
+    shouldFireJson: text("should_fire_json"),
+    completionCheckJson: text("completion_check_json"),
+    escalationJson: text("escalation_json"),
+    outputJson: text("output_json"),
+    pipelineJson: text("pipeline_json"),
+    subjectKind: text("subject_kind"),
+    subjectId: text("subject_id"),
+    idempotencyKey: text("idempotency_key"),
+    respectsGlobalPause: boolean("respects_global_pause")
+      .notNull()
+      .default(true),
+    stateJson: text("state_json").notNull().default("{}"),
+    source: text("source").notNull().default("user_chat"),
+    createdBy: text("created_by").notNull().default(""),
+    ownerVisible: boolean("owner_visible").notNull().default(true),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.idempotencyKey),
+    index("idx_life_scheduled_tasks_agent_kind").on(t.agentId, t.kind),
+    index("idx_life_scheduled_tasks_subject").on(
+      t.agentId,
+      t.subjectKind,
+      t.subjectId,
+    ),
+  ],
+);
+
+export const lifeScheduledTaskLog = appLifeopsPgSchema.table(
+  "life_scheduled_task_log",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    taskId: text("task_id").notNull(),
+    occurredAt: text("occurred_at").notNull(),
+    transition: text("transition").notNull(),
+    reason: text("reason"),
+    rolledUp: boolean("rolled_up").notNull().default(false),
+    detailJson: text("detail_json"),
+  },
+  (t) => [
+    index("idx_life_scheduled_task_log_agent_task").on(t.agentId, t.taskId),
+    index("idx_life_scheduled_task_log_agent_time").on(
+      t.agentId,
+      t.occurredAt,
+    ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Aggregate export for plugin schema property
 // ---------------------------------------------------------------------------
 
@@ -1530,5 +1605,282 @@ export const lifeOpsSchema = {
   lifeSchedulingNegotiations,
   lifeSchedulingProposals,
   lifeBlockRules,
+  lifeScheduledTasks,
+  lifeScheduledTaskLog,
   lifeopsFeaturesTable,
 } as const;
+
+// ---------------------------------------------------------------------------
+// W1-A — Zod schemas for `ScheduledTask`
+//
+// These are runtime validators used at the REST boundary
+// (`src/routes/scheduled-tasks.ts`). The runtime types live in
+// `./scheduled-task/types.ts`; Zod is the validator at the
+// untyped-input edge.
+//
+// IMPLEMENTATION_PLAN.md §3.1 explicitly assigns this file as the home
+// for the ScheduledTask Zod schemas. The file's other content is the
+// drizzle-orm table catalog; the two coexist.
+// ---------------------------------------------------------------------------
+import { z } from "zod";
+
+const isoString = z
+  .string()
+  .min(1)
+  .refine(
+    (v) => !Number.isNaN(new Date(v).getTime()),
+    "must be an ISO timestamp",
+  );
+
+const terminalStateSchema = z.enum([
+  "completed",
+  "skipped",
+  "expired",
+  "failed",
+  "dismissed",
+]);
+
+const scheduledTaskKindSchema = z.enum([
+  "reminder",
+  "checkin",
+  "followup",
+  "approval",
+  "recap",
+  "watcher",
+  "output",
+  "custom",
+]);
+
+const scheduledTaskPrioritySchema = z.enum(["low", "medium", "high"]);
+
+const scheduledTaskSourceSchema = z.enum([
+  "default_pack",
+  "user_chat",
+  "first_run",
+  "plugin",
+]);
+
+const scheduledTaskSubjectSchema = z.object({
+  kind: z.enum([
+    "entity",
+    "relationship",
+    "thread",
+    "document",
+    "calendar_event",
+    "self",
+  ]),
+  id: z.string().min(1),
+});
+
+const scheduledTaskTriggerSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("once"), atIso: isoString }),
+  z.object({
+    kind: z.literal("cron"),
+    expression: z.string().min(1),
+    tz: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal("interval"),
+    everyMinutes: z.number().int().positive(),
+    from: isoString.optional(),
+    until: isoString.optional(),
+  }),
+  z.object({
+    kind: z.literal("relative_to_anchor"),
+    anchorKey: z.string().min(1),
+    offsetMinutes: z.number().int(),
+  }),
+  z.object({
+    kind: z.literal("during_window"),
+    windowKey: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal("event"),
+    eventKind: z.string().min(1),
+    filter: z.unknown().optional(),
+  }),
+  z.object({ kind: z.literal("manual") }),
+  z.object({
+    kind: z.literal("after_task"),
+    taskId: z.string().min(1),
+    outcome: terminalStateSchema,
+  }),
+]);
+
+const scheduledTaskShouldFireSchema = z.object({
+  compose: z.enum(["all", "any", "first_deny"]).optional(),
+  gates: z
+    .array(
+      z.object({
+        kind: z.string().min(1),
+        params: z.unknown().optional(),
+      }),
+    )
+    .min(1),
+});
+
+const scheduledTaskCompletionCheckSchema = z.object({
+  kind: z.string().min(1),
+  params: z.unknown().optional(),
+  followupAfterMinutes: z.number().int().positive().optional(),
+});
+
+const escalationStepSchema = z.object({
+  delayMinutes: z.number().int().min(0),
+  channelKey: z.string().min(1),
+  intensity: z.enum(["soft", "normal", "urgent"]).optional(),
+});
+
+const scheduledTaskEscalationSchema = z.object({
+  ladderKey: z.string().min(1).optional(),
+  steps: z.array(escalationStepSchema).optional(),
+});
+
+const scheduledTaskOutputSchema = z.object({
+  destination: z.enum([
+    "in_app_card",
+    "channel",
+    "apple_notes",
+    "gmail_draft",
+    "memory",
+  ]),
+  target: z.string().min(1).optional(),
+  persistAs: z.enum(["task_metadata", "external_only"]).optional(),
+});
+
+const scheduledTaskRefSchema: z.ZodType<unknown> = z.lazy(() =>
+  z.union([z.string().min(1), scheduledTaskInputBaseSchema]),
+);
+
+const scheduledTaskPipelineSchema = z.object({
+  onComplete: z.array(scheduledTaskRefSchema).optional(),
+  onSkip: z.array(scheduledTaskRefSchema).optional(),
+  onFail: z.array(scheduledTaskRefSchema).optional(),
+});
+
+const scheduledTaskContextRequestSchema = z.object({
+  includeOwnerFacts: z
+    .array(
+      z.enum([
+        "preferredName",
+        "timezone",
+        "morningWindow",
+        "eveningWindow",
+        "locale",
+      ]),
+    )
+    .optional(),
+  includeEntities: z
+    .object({
+      entityIds: z.array(z.string().min(1)),
+      fields: z
+        .array(
+          z.enum([
+            "preferredName",
+            "type",
+            "identities",
+            "state.lastInteractionPlatform",
+          ]),
+        )
+        .optional(),
+    })
+    .optional(),
+  includeRelationships: z
+    .object({
+      relationshipIds: z.array(z.string().min(1)).optional(),
+      forEntityIds: z.array(z.string().min(1)).optional(),
+      types: z.array(z.string().min(1)).optional(),
+    })
+    .optional(),
+  includeRecentTaskStates: z
+    .object({
+      kind: scheduledTaskKindSchema.optional(),
+      lookbackHours: z.number().int().positive().optional(),
+    })
+    .optional(),
+  includeEventPayload: z.boolean().optional(),
+});
+
+/**
+ * The "input shape" for `runner.schedule()` — omits server-managed
+ * `taskId` and `state` so callers cannot fabricate a state. The route
+ * layer accepts this shape; the runner generates the rest.
+ */
+const scheduledTaskInputBaseSchema = z.object({
+  kind: scheduledTaskKindSchema,
+  promptInstructions: z.string().min(1),
+  contextRequest: scheduledTaskContextRequestSchema.optional(),
+  trigger: scheduledTaskTriggerSchema,
+  priority: scheduledTaskPrioritySchema,
+  shouldFire: scheduledTaskShouldFireSchema.optional(),
+  completionCheck: scheduledTaskCompletionCheckSchema.optional(),
+  escalation: scheduledTaskEscalationSchema.optional(),
+  output: scheduledTaskOutputSchema.optional(),
+  pipeline: scheduledTaskPipelineSchema.optional(),
+  subject: scheduledTaskSubjectSchema.optional(),
+  idempotencyKey: z.string().min(1).optional(),
+  respectsGlobalPause: z.boolean(),
+  source: scheduledTaskSourceSchema,
+  createdBy: z.string().min(1),
+  ownerVisible: z.boolean(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const scheduledTaskInputSchema = scheduledTaskInputBaseSchema;
+
+export const scheduledTaskStateSchema = z.object({
+  status: z.enum([
+    "completed",
+    "skipped",
+    "expired",
+    "failed",
+    "dismissed",
+    "scheduled",
+    "fired",
+    "acknowledged",
+  ]),
+  firedAt: isoString.optional(),
+  acknowledgedAt: isoString.optional(),
+  completedAt: isoString.optional(),
+  followupCount: z.number().int().min(0),
+  lastFollowupAt: isoString.optional(),
+  pipelineParentId: z.string().min(1).optional(),
+  lastDecisionLog: z.string().optional(),
+});
+
+export const scheduledTaskSchema = scheduledTaskInputBaseSchema.extend({
+  taskId: z.string().min(1),
+  state: scheduledTaskStateSchema,
+});
+
+export const scheduledTaskVerbSchema = z.enum([
+  "snooze",
+  "skip",
+  "complete",
+  "dismiss",
+  "escalate",
+  "acknowledge",
+  "edit",
+  "reopen",
+]);
+
+export const scheduledTaskSnoozePayloadSchema = z
+  .object({
+    minutes: z.number().int().positive().optional(),
+    untilIso: isoString.optional(),
+  })
+  .refine(
+    (v) => typeof v.minutes === "number" || typeof v.untilIso === "string",
+    "snooze: provide minutes or untilIso",
+  );
+
+export const scheduledTaskFilterSchema = z.object({
+  kind: scheduledTaskKindSchema.optional(),
+  status: z
+    .union([scheduledTaskStateSchema.shape.status, z.array(scheduledTaskStateSchema.shape.status)])
+    .optional(),
+  subject: scheduledTaskSubjectSchema.optional(),
+  source: scheduledTaskSourceSchema.optional(),
+  firedSince: isoString.optional(),
+  ownerVisibleOnly: z.boolean().optional(),
+});
