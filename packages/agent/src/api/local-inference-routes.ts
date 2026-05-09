@@ -6,8 +6,12 @@ import * as http from "node:http";
 import * as https from "node:https";
 import os from "node:os";
 import path from "node:path";
-import { sendJson, sendJsonError } from "@elizaos/core";
-import { type ContentValue, logger } from "@elizaos/core";
+import {
+  type ContentValue,
+  logger,
+  sendJson,
+  sendJsonError,
+} from "@elizaos/core";
 import { readJsonBody } from "@elizaos/shared";
 import {
   getMobileDeviceBridgeStatus,

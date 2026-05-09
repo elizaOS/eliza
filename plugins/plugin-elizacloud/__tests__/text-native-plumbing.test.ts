@@ -13,7 +13,7 @@
  * Skips with a yellow warning when `ELIZAOS_CLOUD_API_KEY` is not set.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/shared";
+import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleActionPlanner, handleResponseHandler } from "../src/models/text";

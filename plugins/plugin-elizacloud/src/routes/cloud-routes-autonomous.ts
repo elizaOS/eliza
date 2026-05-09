@@ -1,11 +1,11 @@
 import fs from "node:fs/promises";
 import type http from "node:http";
 import path from "node:path";
-import { logger } from "@elizaos/core";
 import {
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
-} from "@elizaos/shared";
+} from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import type {
   CloudChainType,

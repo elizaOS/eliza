@@ -49,6 +49,8 @@
       "@elizaos/app-vincent/*": ["../../plugins/app-vincent/src/*"],
       "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
       "@elizaos/app-wallet/*": ["../../plugins/app-wallet/src/*"],
+      "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
+      "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/agent/*": ["../agent/src/*"],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],

@@ -205,7 +205,11 @@ async function loadModelProviderPlugin(): Promise<Plugin | null> {
           // at cerebras so the local-embedding fallback can take over.
           const baseUrl = process.env.OPENAI_BASE_URL?.trim() ?? "";
           const isCerebras = /(^|\.)cerebras\.ai(\/|$)/i.test(baseUrl);
-          if (isCerebras && plugin.models && "TEXT_EMBEDDING" in plugin.models) {
+          if (
+            isCerebras &&
+            plugin.models &&
+            "TEXT_EMBEDDING" in plugin.models
+          ) {
             const filteredModels = { ...plugin.models } as Record<
               string,
               unknown
@@ -731,8 +735,11 @@ export const elizaHandler: Handler = {
       // eslint-disable-next-line no-console
       console.error(
         `[configbench-debug] scenario=${scenario.id} channelType=${room.type} userId=${userId} worldRoles=${JSON.stringify(
-          (world as unknown as { metadata?: { roles?: Record<string, string> } })
-            .metadata?.roles ?? {},
+          (
+            world as unknown as {
+              metadata?: { roles?: Record<string, string> };
+            }
+          ).metadata?.roles ?? {},
         )} actions.count=${actions.length} SET_SECRET=${setSecretPresent} actions=${actions.join(",")}`,
       );
       try {
@@ -748,7 +755,11 @@ export const elizaHandler: Handler = {
           agentId: runtime.agentId,
           entityId: userId,
           roomId: room.id,
-          content: { text: "probe", source: "configbench", channelType: room.type },
+          content: {
+            text: "probe",
+            source: "configbench",
+            channelType: room.type,
+          },
           createdAt: Date.now(),
         };
         const senderResult = await rolesMod.checkSenderRole?.(

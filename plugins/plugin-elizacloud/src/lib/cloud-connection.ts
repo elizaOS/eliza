@@ -1,13 +1,13 @@
-import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "../cloud/base-url.js";
-import { validateCloudBaseUrl } from "../cloud/validate-url.js";
-import type { AgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import {
   isCloudInferenceSelectedInConfig,
   isElizaSettingsDebugEnabled,
   migrateLegacyRuntimeConfig,
   settingsDebugCloudSummary,
-} from "@elizaos/shared";
+} from "@elizaos/core";
+import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "../cloud/base-url.js";
+import { validateCloudBaseUrl } from "../cloud/validate-url.js";
+import type { AgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   applyCanonicalOnboardingConfig,
   type ElizaConfig,

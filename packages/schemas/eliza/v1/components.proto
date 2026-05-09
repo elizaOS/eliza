@@ -1,4 +1,4 @@
-// components.proto - Action, Provider, Evaluator types for elizaOS
+// components.proto - Action, Provider types for elizaOS
 syntax = "proto3";
 
 package eliza.v1;
@@ -94,18 +94,12 @@ message ProviderManifest {
   optional bool private = 5;
 }
 
-// Example for evaluating agent behavior
-message EvaluationExample {
-  string prompt = 1;
-  repeated ActionExample messages = 2;
-  string outcome = 3;
-}
-
 // Evaluator manifest (metadata only, for cross-language interop)
 message EvaluatorManifest {
   string name = 1;
   string description = 2;
-  optional bool always_run = 3;
-  repeated string similes = 4;
-  repeated EvaluationExample examples = 5;
+  repeated string similes = 3;
+  optional int32 priority = 4;
+  repeated string tags = 5;
 }
+

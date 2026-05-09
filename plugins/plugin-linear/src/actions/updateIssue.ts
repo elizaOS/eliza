@@ -9,7 +9,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { updateIssueTemplate } from "../generated/prompts/typescript/prompts.js";
+import { updateIssueTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import type { LinearIssueInput } from "../types";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";

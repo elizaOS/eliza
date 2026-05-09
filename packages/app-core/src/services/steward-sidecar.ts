@@ -58,6 +58,16 @@ export type {
   StewardWalletInfo,
 } from "./steward-sidecar/types";
 
+// Re-export helpers for external consumers (used by @elizaos/app-steward).
+export {
+  allocateFirstFreeLoopbackPort,
+  fingerprintRandomToken,
+  generateApiKey,
+  generateMasterPassword,
+  resolveDataDir,
+  resolveEffectiveStewardConfig,
+} from "./steward-sidecar/helpers";
+
 interface BunSubprocessLike {
   kill: (signal?: string) => void;
   pid?: number | null;

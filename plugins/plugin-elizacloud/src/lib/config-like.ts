@@ -1,12 +1,9 @@
 import type {
   DeploymentTargetConfig,
-  ElizaConfig,
   LinkedAccountFlagsConfig,
   ServiceCapability,
   ServiceRoutingConfig,
-} from "@elizaos/shared";
-
-export type { ElizaConfig };
+} from "@elizaos/core";
 
 export interface CloudProxyConfigLike {
   cloud?: {
@@ -14,8 +11,23 @@ export interface CloudProxyConfigLike {
     baseUrl?: string;
     enabled?: boolean;
     serviceKey?: string;
+    backup?: {
+      autoBackupIntervalMs?: number;
+    };
+    bridge?: {
+      heartbeatIntervalMs?: number;
+    };
   };
 }
+
+export type CloudConfig = NonNullable<CloudProxyConfigLike["cloud"]>;
+
+export type ElizaConfig = Record<string, unknown> &
+  CloudProxyConfigLike & {
+    deploymentTarget?: DeploymentTargetConfig;
+    linkedAccounts?: LinkedAccountFlagsConfig;
+    serviceRouting?: ServiceRoutingConfig;
+  };
 
 export interface AutonomousConfigLike {
   [key: string]: unknown;

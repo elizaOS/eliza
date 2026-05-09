@@ -8,7 +8,7 @@ import type {
   WalletMarketOverviewSource,
   WalletMarketPrediction,
   WalletMarketPriceSnapshot,
-} from "@elizaos/shared";
+} from "../contracts.js";
 
 const MARKET_OVERVIEW_PATH = "/api/wallet/market-overview";
 const CLOUD_MARKET_OVERVIEW_PREVIEW_PATH = "/market/preview/wallet-overview";

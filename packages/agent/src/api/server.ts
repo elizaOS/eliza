@@ -29,7 +29,12 @@ import {
   type AgentRuntime,
   type IAgentRuntime,
   logger,
+  readJsonBody as parseJsonBody,
+  type ReadJsonBodyOptions,
   type Route,
+  readRequestBody,
+  sendJson,
+  sendJsonError,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -42,7 +47,6 @@ import {
   resolveServerOnlyPort,
   resolveStylePresetByAvatarIndex,
 } from "@elizaos/shared";
-import { readJsonBody as parseJsonBody, type ReadJsonBodyOptions, readRequestBody, sendJson, sendJsonError } from "@elizaos/core";
 import { type WebSocket, WebSocketServer } from "ws";
 import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
 
@@ -90,9 +94,10 @@ function isVaultConfigRef(value: string): boolean {
 }
 
 import {
-  handleCloudStatusRoutes, isCloudProvisionedContainer, } from "@elizaos/plugin-elizacloud";
-import {
-  isStreamingDestinationConfigured } from "@elizaos/shared";
+  handleCloudStatusRoutes,
+  isCloudProvisionedContainer,
+} from "@elizaos/plugin-elizacloud";
+import { isStreamingDestinationConfigured } from "@elizaos/shared";
 import {
   type ElizaConfig,
   loadElizaConfig,

@@ -9,10 +9,26 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import { sendJsonError } from "@elizaos/core";
-import { type AgentRuntime, type ChannelType, type Content, ContentType, createMessageMemory, logger, type Media, type UUID, } from "@elizaos/core";
 import {
-  normalizeCharacterLanguage, normalizeOnboardingProviderId, resolveDeploymentTargetInConfig, resolveServiceRoutingInConfig, resolveStylePresetByAvatarIndex, resolveStylePresetById, resolveStylePresetByName } from "@elizaos/shared";
+  type AgentRuntime,
+  type ChannelType,
+  type Content,
+  ContentType,
+  createMessageMemory,
+  logger,
+  type Media,
+  sendJsonError,
+  type UUID,
+} from "@elizaos/core";
+import {
+  normalizeCharacterLanguage,
+  normalizeOnboardingProviderId,
+  resolveDeploymentTargetInConfig,
+  resolveServiceRoutingInConfig,
+  resolveStylePresetByAvatarIndex,
+  resolveStylePresetById,
+  resolveStylePresetByName,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import {

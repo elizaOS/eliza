@@ -62,7 +62,7 @@
     "@biomejs/biome": "^2.4.14",
     "@types/node": "^25.0.3",
     "@types/qrcode": "^1.5.5",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",

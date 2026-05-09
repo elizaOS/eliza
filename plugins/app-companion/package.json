@@ -114,7 +114,7 @@
     "@types/three": "^0.184.0",
     "storybook": "^10.0.0",
     "three": "^0.184.0",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "tsup": "^8.5.1"
   },
   "peerDependencies": {

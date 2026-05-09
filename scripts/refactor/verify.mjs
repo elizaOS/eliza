@@ -53,6 +53,11 @@ const ALL_CHECKS = [
     cmd: ["bun", ["scripts/refactor/audit-barrel-imports.mjs"]],
   },
   {
+    id: "plugin-boundaries",
+    title: "Runtime plugin boundary audit (core-only internal deps)",
+    cmd: ["bun", ["scripts/refactor/audit-plugin-boundaries.mjs"]],
+  },
+  {
     id: "test",
     title: "bun run test",
     cmd: ["bun", ["run", "test"]],

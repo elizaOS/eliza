@@ -73,7 +73,7 @@
     "@types/node": "^25.0.3",
     "@types/pg": "^8.15.6",
     "@types/ws": "^8.18.1",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "scripts": {

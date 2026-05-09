@@ -1,16 +1,13 @@
 import type http from "node:http";
 import {
-  type CloudRouteState as AutonomousCloudRouteState,
-  handleCloudRoute as handleAutonomousCloudRoute,
-} from "./cloud-routes-autonomous.js";
+  isCloudInferenceSelectedInConfig,
+  migrateLegacyRuntimeConfig,
+} from "@elizaos/core";
+import { type CloudRouteState as AutonomousCloudRouteState, handleCloudRoute as handleAutonomousCloudRoute, } from "./cloud-routes-autonomous.js";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import type { CloudManager } from "../cloud/cloud-manager.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import { type AgentRuntime, logger } from "@elizaos/core";
-import {
-  isCloudInferenceSelectedInConfig,
-  migrateLegacyRuntimeConfig,
-} from "@elizaos/shared";
 import {
   clearCloudAuthService,
   disconnectUnifiedCloudConnection,

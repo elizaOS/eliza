@@ -7,6 +7,6 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   }
 }

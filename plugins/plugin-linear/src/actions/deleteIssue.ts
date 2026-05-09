@@ -10,7 +10,7 @@ import {
   requireConfirmation,
   type State,
 } from "@elizaos/core";
-import { deleteIssueTemplate } from "../generated/prompts/typescript/prompts.js";
+import { deleteIssueTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import type { DeleteIssueParameters } from "../types/index.js";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";

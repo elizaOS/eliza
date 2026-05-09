@@ -8,7 +8,7 @@
  */
 
 import { logger } from "@elizaos/core";
-import type { StylePreset } from "@elizaos/shared";
+import type { StylePreset } from "@elizaos/core";
 import { type CloudLoginResult, cloudLogin } from "./cloud/auth.js";
 import { normalizeCloudSiteUrl } from "./cloud/base-url.js";
 import {

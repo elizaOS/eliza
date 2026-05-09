@@ -263,79 +263,30 @@ try {
   pluginLocalEmbedding = null;
 }
 // Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package.
-// Use top-level dynamic import because the package is ESM-only and fails under
-// createRequire() in bun runtime; the await is resolved before module consumers read the binding.
-let pluginAgentOrchestrator: unknown = null;
-try {
-  const packageName = "@elizaos/plugin-agent-orchestrator";
-  pluginAgentOrchestrator = await import(packageName);
-} catch {
-  pluginAgentOrchestrator = null;
-}
-// Keep plugin-shell behind a guarded runtime require too. The published alpha
-// tarball can declare dist/index.js without actually shipping it, which breaks
-// CLI/bootstrap in published-only CI.
-let pluginShell: unknown = null;
-try {
-  pluginShell = require("@elizaos/plugin-shell");
-} catch {
-  pluginShell = null;
-}
-// Keep plugin-commands behind a guarded runtime require. Some published alpha
-// builds advertise dist/index.js without actually shipping it, and a static
-// ESM import here makes the CLI fail before it can print --help/--version.
-let pluginCommands: unknown = null;
-try {
-  pluginCommands = require("@elizaos/plugin-commands");
-} catch {
-  pluginCommands = null;
-}
-// Keep plugin-video behind a guarded runtime require. plugin-video's main
-// points at dist/index.js, which is not built in test/CI flows that do not
-// run a full plugin build first; a static ESM import then crashes vitest at
-// resolution time. Same pattern as plugin-shell / plugin-commands above.
-let pluginVideo: unknown = null;
-try {
-  pluginVideo = require("@elizaos/plugin-video");
-} catch {
-  pluginVideo = null;
-}
-// Keep plugin-elizacloud behind a guarded runtime require as well. Some
-// published alpha builds advertise dist/node/index.node.js but do not ship
-// that ESM entry, which breaks CLI bootstrap in published-only CI.
-let pluginElizacloud: unknown = null;
-try {
-  pluginElizacloud = require("@elizaos/plugin-elizacloud");
-} catch {
-  pluginElizacloud = null;
-}
-// Keep plugin-ollama behind a guarded runtime require as well. Some published
-// alpha builds advertise dist/node/index.node.js but do not ship that ESM
-// entry, which breaks CLI bootstrap and startup smokes in published-only CI.
-let pluginOllama: unknown = null;
-try {
-  pluginOllama = require("@elizaos/plugin-ollama");
-} catch {
-  pluginOllama = null;
-}
-// Keep plugin-anthropic behind a guarded runtime require too. Some published
-// alpha builds advertise dist/node/index.node.js without shipping that entry,
-// which breaks no-credential Docker startup smokes before provider selection.
-let pluginAnthropic: unknown = null;
-try {
-  pluginAnthropic = require("@elizaos/plugin-anthropic");
-} catch {
-  pluginAnthropic = null;
-}
-// Keep plugin-openai behind a guarded runtime require too. Some published
-// alpha builds advertise dist/node/index.node.js without shipping that entry,
-// which breaks CLI bootstrap and validation in published-only CI.
-let pluginOpenai: unknown = null;
-try {
-  pluginOpenai = require("@elizaos/plugin-openai");
-} catch {
-  pluginOpenai = null;
-}
+const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
+  try {
+    return await import(packageName);
+  } catch {
+    return null;
+  }
+};
+
+let pluginAgentOrchestrator: unknown = await loadOptionalPlugin(
+  "@elizaos/plugin-agent-orchestrator",
+);
+let pluginShell: unknown = await loadOptionalPlugin("@elizaos/plugin-shell");
+let pluginCommands: unknown = await loadOptionalPlugin(
+  "@elizaos/plugin-commands",
+);
+let pluginVideo: unknown = await loadOptionalPlugin("@elizaos/plugin-video");
+let pluginElizacloud: unknown = await loadOptionalPlugin(
+  "@elizaos/plugin-elizacloud",
+);
+let pluginOllama: unknown = await loadOptionalPlugin("@elizaos/plugin-ollama");
+let pluginAnthropic: unknown = await loadOptionalPlugin(
+  "@elizaos/plugin-anthropic",
+);
+let pluginOpenai: unknown = await loadOptionalPlugin("@elizaos/plugin-openai");
 // Personality is bundled in @elizaos/core advanced capabilities (advancedCapabilities).
 
 type SignalShutdownContext = {

@@ -558,7 +558,7 @@ Acknowledges the security scan findings for a skill. Required before the skill c
 
 1. Confirm skills directory (`~/.eliza/workspace/skills/`) is readable and writable by the runtime.
 2. Confirm marketplace registry/network access is available (default: `https://clawhub.ai`). Check `SKILLS_REGISTRY`, `CLAWHUB_REGISTRY`, or `SKILLS_MARKETPLACE_URL` environment variables.
-3. Confirm plugin installer prerequisites (`npm`/`pnpm`/`bun` and `git`) are present in runtime PATH.
+3. Confirm plugin installer prerequisites (`bun` and `git`) are present in runtime PATH.
 4. For legacy SkillsMP marketplace, set `SKILLSMP_API_KEY` in the environment.
 5. Verify the catalog file exists at one of the expected paths (bundled with `@elizaos/plugin-agent-skills`).
 

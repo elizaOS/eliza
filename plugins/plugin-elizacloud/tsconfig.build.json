@@ -10,9 +10,7 @@
     "paths": {
       "@elizaos/cloud-sdk": ["../../cloud/packages/sdk/dist/index.d.ts"],
       "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
-      "@elizaos/core/*": ["../../packages/core/dist/*"],
-      "@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/dist/*"]
+      "@elizaos/core/*": ["../../packages/core/dist/*"]
     },
     "types": ["node", "bun-types"]
   },

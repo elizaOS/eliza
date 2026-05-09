@@ -177,7 +177,7 @@ function processEnv(): RuntimeEnvRecord {
 /**
  * Build the local SSO callback URL the cloud issuer will redirect back to.
  *
- * Reads `ELIZA_API_BIND` and the desktop API port from `@elizaos/shared`'s
+ * Reads `ELIZA_API_BIND` and the desktop API port from `@elizaos/core`'s
  * runtime-env helper so the redirect_uri matches whatever the dashboard
  * is actually serving on. Loopback binds default to `http://127.0.0.1:<port>`;
  * non-loopback binds (cloud-provisioned containers) use `https://`.

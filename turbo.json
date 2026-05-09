@@ -18,6 +18,8 @@
         "@elizaos/core#build",
         "@elizaos/shared#build",
         "@elizaos/plugin-agent-skills#build",
+        "@elizaos/plugin-browser#build",
+        "@elizaos/plugin-elizacloud#build",
         "@elizaos/plugin-pdf#build",
         "@elizaos/capacitor-contacts#build",
         "@elizaos/capacitor-phone#build",
@@ -370,6 +372,12 @@
     "@elizaos/scenario-runner#typecheck": {
       "dependsOn": [
         "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/agent#build",
+        "@elizaos/ui#build",
+        "@elizaos/app-core#build",
+        "@elizaos/plugin-browser#build",
+        "@elizaos/plugin-elizacloud#build",
         "@elizaos/plugin-streaming#build"
       ],
       "outputs": []

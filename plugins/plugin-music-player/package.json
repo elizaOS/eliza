@@ -28,12 +28,11 @@
     "@biomejs/biome": "^2.4.14",
     "@types/node": "^25.0.6",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "scripts": {
     "build": "tsup",
-    "prepare": "tsup",
     "dev": "tsup --watch",
     "test": "bunx vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",

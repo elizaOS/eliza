@@ -123,11 +123,10 @@ export async function runAutonomyPostResponse(
 		},
 	];
 
-	// WHY: Same provider list as message pipeline before planned tool execution/evaluate so action names and evaluator context are available.
+	// Same provider list as message pipeline before planned tool execution.
 	const state: State = await runtime.composeState(autonomousMessage, [
 		"ACTIONS",
 		"RECENT_MESSAGES",
-		"EVALUATORS",
 	]);
 
 	// WHY: Mirror message pipeline logic so we take the same branch (simple = callback only, actions = planned tools).

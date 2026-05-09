@@ -67,7 +67,7 @@ CONCEPTUAL_TASKS = {
         "description": "Test understanding of Node.js/TypeScript project initialization",
         "prompt": "Set up a new Node.js project with TypeScript. Create the basic project structure with src/, tests/, and configuration files (package.json, tsconfig.json). Initialize git.",
         "expected_concepts": [
-            ("npm init", ["npm init", "package.json", "npm", "pnpm", "yarn"]),
+            ("npm init", ["npm init", "package.json", "npm", "bun", "yarn"]),
             ("typescript config", ["tsconfig", "typescript", "tsc"]),
             ("git init", ["git init", "git", ".gitignore"]),
             ("directory structure", ["src/", "src", "mkdir", "directory", "folder"]),

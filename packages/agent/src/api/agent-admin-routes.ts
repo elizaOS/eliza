@@ -1,6 +1,5 @@
 import path from "node:path";
-import type { RouteRequestMeta } from "@elizaos/core";
-import type { AgentRuntime, UUID } from "@elizaos/core";
+import type { AgentRuntime, RouteRequestMeta, UUID } from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";
 import {
   getDefaultStylePreset,

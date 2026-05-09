@@ -7,10 +7,7 @@
  */
 import fs from "node:fs";
 import type http from "node:http";
-import {
-  isElizaCloudServiceSelectedInConfig,
-  sanitizeSpeechText,
-} from "@elizaos/shared";
+import { isElizaCloudServiceSelectedInConfig, sanitizeSpeechText } from "@elizaos/core";
 import { getCloudSecret } from "./cloud-secrets";
 import { resolveConfigPath } from "./state-paths";
 import { ttsDebug, ttsDebugTextPreview } from "./tts-debug";

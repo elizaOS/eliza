@@ -1,11 +1,21 @@
 import type http from "node:http";
-import type { RouteRequestMeta } from "@elizaos/core";
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, RouteRequestMeta } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
-  type CloudWalletDescriptor, type CloudWalletProvider, ElizaCloudClient, getOrCreateClientAddressKey, normalizeCloudSiteUrl, persistCloudWalletCache, provisionCloudWalletsBestEffort, resolveCloudApiKey, } from "@elizaos/plugin-elizacloud";
+  type CloudWalletDescriptor,
+  type CloudWalletProvider,
+  ElizaCloudClient,
+  getOrCreateClientAddressKey,
+  normalizeCloudSiteUrl,
+  persistCloudWalletCache,
+  provisionCloudWalletsBestEffort,
+  resolveCloudApiKey,
+} from "@elizaos/plugin-elizacloud";
 import type {
-  RouteHelpers, WalletExportRejection as WalletExportRejectionLike, WalletExportRequestBody } from "@elizaos/shared";
+  RouteHelpers,
+  WalletExportRejection as WalletExportRejectionLike,
+  WalletExportRequestBody,
+} from "@elizaos/shared";
 import {
   normalizeWalletRpcSelections,
   type WalletConfigUpdateRequest,

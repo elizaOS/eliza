@@ -153,10 +153,18 @@ if (TEST_SHARD) {
   if (parts.length === 2) {
     const index = parseInt(parts[0], 10);
     const total = parseInt(parts[1], 10);
-    if (!isNaN(index) && !isNaN(total) && total > 0 && index >= 1 && index <= total) {
+    if (
+      !isNaN(index) &&
+      !isNaN(total) &&
+      total > 0 &&
+      index >= 1 &&
+      index <= total
+    ) {
       shardConfig = { index, total };
     } else {
-      console.warn(`[eliza-test] WARN invalid TEST_SHARD "${TEST_SHARD}" — expected N/M (1-indexed). Ignoring.`);
+      console.warn(
+        `[eliza-test] WARN invalid TEST_SHARD "${TEST_SHARD}" — expected N/M (1-indexed). Ignoring.`,
+      );
     }
   }
 }
@@ -330,7 +338,7 @@ function resolveScriptCommand(scriptName, scripts, seen = new Set()) {
   seen.add(scriptName);
 
   const aliasMatch = raw.match(
-    /^(?:bun|npm|pnpm|yarn)(?:\s+run)?\s+([A-Za-z0-9:_-]+)$/,
+    /^(?:bun|npm|yarn)(?:\s+run)?\s+([A-Za-z0-9:_-]+)$/,
   );
   if (aliasMatch?.[1] && scripts?.[aliasMatch[1]]) {
     return resolveScriptCommand(aliasMatch[1], scripts, seen);
@@ -440,7 +448,7 @@ function scriptReferencesScript(command, scriptName) {
   }
   const escapedName = escapeForRegex(scriptName);
   const referencePattern = new RegExp(
-    `(?:^|[;&|]\\s*|&&\\s*|\\|\\|\\s*)(?:bun|npm|pnpm|yarn)(?:\\s+run)?\\s+${escapedName}(?:\\s|$)`,
+    `(?:^|[;&|]\\s*|&&\\s*|\\|\\|\\s*)(?:bun|npm|yarn)(?:\\s+run)?\\s+${escapedName}(?:\\s|$)`,
   );
   return referencePattern.test(command);
 }
@@ -451,8 +459,7 @@ function getReferencedScriptNames(command, scripts) {
   }
 
   const matches = [];
-  const invocationPattern =
-    /(?:bun|npm|pnpm|yarn)(?:\s+run)?\s+([A-Za-z0-9:_-]+)/g;
+  const invocationPattern = /(?:bun|npm|yarn)(?:\s+run)?\s+([A-Za-z0-9:_-]+)/g;
   for (const match of command.matchAll(invocationPattern)) {
     const scriptName = match[1];
     if (scriptName && scripts?.[scriptName]) {
@@ -476,7 +483,9 @@ function isE2EScriptName(scriptName) {
 }
 
 function isE2ELikeScriptName(scriptName) {
-  return isE2EScriptName(scriptName) || E2E_COMPANION_SCRIPT_NAMES.has(scriptName);
+  return (
+    isE2EScriptName(scriptName) || E2E_COMPANION_SCRIPT_NAMES.has(scriptName)
+  );
 }
 
 function orderScriptCandidates(scriptNames) {
@@ -571,10 +580,7 @@ function isCoveredBySelectedScript(scriptName, selectedScriptNames, scripts) {
     if (scriptInvokesScript(selectedScriptName, scriptName, scripts)) {
       return true;
     }
-    if (
-      selectedScriptName === "test:e2e:all" &&
-      isE2EScriptName(scriptName)
-    ) {
+    if (selectedScriptName === "test:e2e:all" && isE2EScriptName(scriptName)) {
       return true;
     }
     if (
@@ -588,7 +594,12 @@ function isCoveredBySelectedScript(scriptName, selectedScriptNames, scripts) {
   return false;
 }
 
-function appendScriptIfRunnable(scriptNames, seenCommands, scriptName, scripts) {
+function appendScriptIfRunnable(
+  scriptNames,
+  seenCommands,
+  scriptName,
+  scripts,
+) {
   const raw = normalizeWhitespace(scripts[scriptName] ?? "");
   if (!raw) {
     return;
@@ -917,7 +928,9 @@ async function runRepoVitestE2E(extraEnv = {}) {
   );
   const durationMs = Date.now() - startedAt;
   if (result.skipped) {
-    console.log(`[eliza-test] SKIP ${label} (${durationMs}ms, no test files found)`);
+    console.log(
+      `[eliza-test] SKIP ${label} (${durationMs}ms, no test files found)`,
+    );
     return;
   }
   console.log(`[eliza-test] PASS ${label} (${durationMs}ms)`);
@@ -963,11 +976,17 @@ function runCloudTests() {
     let capturedOutput = "";
     child.stdout?.on("data", (chunk) => {
       process.stdout.write(chunk);
-      capturedOutput = appendCapturedOutput(capturedOutput, chunk.toString("utf8"));
+      capturedOutput = appendCapturedOutput(
+        capturedOutput,
+        chunk.toString("utf8"),
+      );
     });
     child.stderr?.on("data", (chunk) => {
       process.stderr.write(chunk);
-      capturedOutput = appendCapturedOutput(capturedOutput, chunk.toString("utf8"));
+      capturedOutput = appendCapturedOutput(
+        capturedOutput,
+        chunk.toString("utf8"),
+      );
     });
 
     child.on("error", reject);
@@ -979,7 +998,9 @@ function runCloudTests() {
         return;
       }
       if (outputIndicatesNoTests(capturedOutput)) {
-        console.log(`[eliza-test] SKIP cloud#${scriptName} (${durationMs}ms, no test files found)`);
+        console.log(
+          `[eliza-test] SKIP cloud#${scriptName} (${durationMs}ms, no test files found)`,
+        );
         resolve({ skipped: true });
         return;
       }

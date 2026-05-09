@@ -150,6 +150,7 @@
     "@capacitor/core": "8.3.1",
     "@elizaos/capacitor-appblocker": "workspace:*",
     "@elizaos/capacitor-mobile-signals": "workspace:*",
+    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/native-activity-tracker": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",

@@ -19,3 +19,5 @@ export {
   registerPhoneApp,
 } from "./components/phone-app";
 export { appPhonePlugin, default } from "./plugin";
+export { placeCallAction } from "./actions/place-call";
+export { phoneCallLogProvider } from "./providers/call-log";

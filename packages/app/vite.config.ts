@@ -1231,15 +1231,15 @@ export default defineConfig({
             find: /^@elizaos\/app-core\/(.+)$/,
             replacement: `${appCorePkgDir}/src/$1`,
           },
-      {
-        find: /^@elizaos\/ui$/,
-        replacement: path.join(uiSource, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/ui\/(.*)$/,
-        replacement: `${uiSource}/$1`,
-        customResolver: resolveExistingTsSourceModule,
-      },
+          {
+            find: /^@elizaos\/ui$/,
+            replacement: path.join(uiSource, "index.ts"),
+          },
+          {
+            find: /^@elizaos\/ui\/(.*)$/,
+            replacement: `${uiSource}/$1`,
+            customResolver: resolveExistingTsSourceModule,
+          },
           // NOTE: App and UI code should import `@elizaos/agent/<subpath>` only.
           // The package root still resolves to `./src/index.ts`, which pulls in
           // server-only modules. Map the bare specifier to a no-op so the client

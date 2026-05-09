@@ -1,9 +1,9 @@
-import type { AgentRuntime, Service } from "@elizaos/core";
 import {
   isCloudInferenceSelectedInConfig,
   isElizaCloudServiceSelectedInConfig,
   migrateLegacyRuntimeConfig,
-} from "@elizaos/shared";
+} from "@elizaos/core";
+import type { AgentRuntime, Service } from "@elizaos/core";
 import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "../cloud/base-url.js";
 import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";

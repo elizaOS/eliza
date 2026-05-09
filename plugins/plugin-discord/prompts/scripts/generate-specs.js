@@ -22,11 +22,10 @@ const PROMPTS_ROOT = path.resolve(__dirname, "..");
 
 const ACTIONS_SPEC_PATH = path.join(PROMPTS_ROOT, "actions.json");
 const PROVIDERS_SPEC_PATH = path.join(PROMPTS_ROOT, "providers.json");
-const EVALUATORS_SPEC_PATH = path.join(PROMPTS_ROOT, "evaluators.json");
 
 function readJson(filePath) {
 	if (!fs.existsSync(filePath)) {
-		return { version: "1.0.0", actions: [], providers: [], evaluators: [] };
+		return { version: "1.0.0", actions: [], providers: [] };
 	}
 	const raw = fs.readFileSync(filePath, "utf-8");
 	return JSON.parse(raw);
@@ -65,12 +64,7 @@ function loadSpecs(specPath, kind) {
 	}
 
 	const root = readJson(specPath);
-	const items =
-		kind === "actions"
-			? root.actions
-			: kind === "providers"
-				? root.providers
-				: root.evaluators || [];
+	const items = kind === "actions" ? root.actions : root.providers;
 
 	return {
 		core: {
@@ -108,7 +102,7 @@ function escapePythonTripleQuoted(content) {
 	return content.replace(/\\/g, "\\\\").replace(/"""/g, '\\"\\"\\"');
 }
 
-function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
+function generateTypeScript(actionsSpec, providersSpec) {
 	const tsRoot = fs.existsSync(path.join(PLUGIN_ROOT, "typescript"))
 		? path.join(PLUGIN_ROOT, "typescript")
 		: PLUGIN_ROOT;
@@ -138,25 +132,9 @@ function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
 		null,
 		2,
 	);
-	const evaluatorsJson = JSON.stringify(
-		{
-			version: evaluatorsSpec.core.version,
-			evaluators: evaluatorsSpec.core.items,
-		},
-		null,
-		2,
-	);
-	const evaluatorsAllJson = JSON.stringify(
-		{
-			version: evaluatorsSpec.all.version,
-			evaluators: evaluatorsSpec.all.items,
-		},
-		null,
-		2,
-	);
 
 	const content = `/**
- * Auto-generated canonical action/provider/evaluator docs for plugin-discord.
+ * Auto-generated canonical action/provider docs for plugin-discord.
  * DO NOT EDIT - Generated from prompts/specs/**.
  */
 
@@ -177,51 +155,35 @@ export type ProviderDoc = {
   dynamic?: boolean;
 };
 
-export type EvaluatorDoc = {
-  name: string;
-  description: string;
-  descriptionCompressed?: string;
-  similes?: readonly string[];
-  alwaysRun?: boolean;
-  examples?: readonly unknown[];
-};
-
 export const coreActionsSpec = ${actionsJson} as const;
 export const allActionsSpec = ${actionsAllJson} as const;
 export const coreProvidersSpec = ${providersJson} as const;
 export const allProvidersSpec = ${providersAllJson} as const;
-export const coreEvaluatorsSpec = ${evaluatorsJson} as const;
-export const allEvaluatorsSpec = ${evaluatorsAllJson} as const;
 
 export const coreActionDocs: readonly ActionDoc[] = coreActionsSpec.actions;
 export const allActionDocs: readonly ActionDoc[] = allActionsSpec.actions;
 export const coreProviderDocs: readonly ProviderDoc[] = coreProvidersSpec.providers;
 export const allProviderDocs: readonly ProviderDoc[] = allProvidersSpec.providers;
-export const coreEvaluatorDocs: readonly EvaluatorDoc[] = coreEvaluatorsSpec.evaluators;
-export const allEvaluatorDocs: readonly EvaluatorDoc[] = allEvaluatorsSpec.evaluators;
 `;
 
 	fs.writeFileSync(path.join(outDir, "specs.ts"), content);
 
 	// Generate spec-helpers.ts
 	const helpersContent = `/**
- * Helper functions to lookup action/provider/evaluator specs by name.
+ * Helper functions to lookup action/provider specs by name.
  * These allow language-specific implementations to import their text content
  * (description, similes, examples) from the centralized specs.
  *
- * DO NOT EDIT the spec data - update prompts/actions.json, prompts/providers.json, prompts/evaluators.json and regenerate.
+ * DO NOT EDIT the spec data - update prompts/actions.json, prompts/providers.json and regenerate.
  */
 
 import {
   coreActionDocs,
   coreProviderDocs,
-  coreEvaluatorDocs,
   allActionDocs,
   allProviderDocs,
-  allEvaluatorDocs,
   type ActionDoc,
   type ProviderDoc,
-  type EvaluatorDoc,
 } from "./specs";
 
 // Build lookup maps for O(1) access
@@ -236,12 +198,6 @@ const coreProviderMap = new Map<string, ProviderDoc>(
 );
 const allProviderMap = new Map<string, ProviderDoc>(
   allProviderDocs.map((doc) => [doc.name, doc])
-);
-const coreEvaluatorMap = new Map<string, EvaluatorDoc>(
-  coreEvaluatorDocs.map((doc) => [doc.name, doc])
-);
-const allEvaluatorMap = new Map<string, EvaluatorDoc>(
-  allEvaluatorDocs.map((doc) => [doc.name, doc])
 );
 
 /**
@@ -290,37 +246,14 @@ export function requireProviderSpec(name: string): ProviderDoc {
   return spec;
 }
 
-/**
- * Get an evaluator spec by name from the core specs.
- * @param name - The evaluator name
- * @returns The evaluator spec or undefined if not found
- */
-export function getEvaluatorSpec(name: string): EvaluatorDoc | undefined {
-  return coreEvaluatorMap.get(name) ?? allEvaluatorMap.get(name);
-}
-
-/**
- * Get an evaluator spec by name, throwing if not found.
- * @param name - The evaluator name
- * @returns The evaluator spec
- * @throws Error if the evaluator is not found
- */
-export function requireEvaluatorSpec(name: string): EvaluatorDoc {
-  const spec = getEvaluatorSpec(name);
-  if (!spec) {
-    throw new Error(\`Evaluator spec not found: \${name}\`);
-  }
-  return spec;
-}
-
 // Re-export types for convenience
-export type { ActionDoc, ProviderDoc, EvaluatorDoc };
+export type { ActionDoc, ProviderDoc };
 `;
 
 	fs.writeFileSync(path.join(outDir, "spec-helpers.ts"), helpersContent);
 }
 
-function generatePython(actionsSpec, providersSpec, evaluatorsSpec) {
+function generatePython(actionsSpec, providersSpec) {
 	if (!fs.existsSync(path.join(PLUGIN_ROOT, "python"))) {
 		return;
 	}
@@ -361,25 +294,9 @@ function generatePython(actionsSpec, providersSpec, evaluatorsSpec) {
 		null,
 		2,
 	);
-	const evaluatorsJson = JSON.stringify(
-		{
-			version: evaluatorsSpec.core.version,
-			evaluators: evaluatorsSpec.core.items,
-		},
-		null,
-		2,
-	);
-	const evaluatorsAllJson = JSON.stringify(
-		{
-			version: evaluatorsSpec.all.version,
-			evaluators: evaluatorsSpec.all.items,
-		},
-		null,
-		2,
-	);
 
 	const content = `"""
-Auto-generated canonical action/provider/evaluator docs for plugin-discord.
+Auto-generated canonical action/provider docs for plugin-discord.
 DO NOT EDIT - Generated from prompts/specs/**.
 """
 
@@ -403,45 +320,31 @@ class ProviderDoc(TypedDict, total=False):
     position: int
     dynamic: bool
 
-class EvaluatorDoc(TypedDict, total=False):
-    name: str
-    description: str
-    descriptionCompressed: str
-    similes: list[str]
-    alwaysRun: bool
-    examples: list[object]
 
 _CORE_ACTION_DOCS_JSON = """${escapePythonTripleQuoted(actionsJson)}"""
 _ALL_ACTION_DOCS_JSON = """${escapePythonTripleQuoted(actionsAllJson)}"""
 _CORE_PROVIDER_DOCS_JSON = """${escapePythonTripleQuoted(providersJson)}"""
 _ALL_PROVIDER_DOCS_JSON = """${escapePythonTripleQuoted(providersAllJson)}"""
-_CORE_EVALUATOR_DOCS_JSON = """${escapePythonTripleQuoted(evaluatorsJson)}"""
-_ALL_EVALUATOR_DOCS_JSON = """${escapePythonTripleQuoted(evaluatorsAllJson)}"""
 
 core_action_docs: dict[str, object] = json.loads(_CORE_ACTION_DOCS_JSON)
 all_action_docs: dict[str, object] = json.loads(_ALL_ACTION_DOCS_JSON)
 core_provider_docs: dict[str, object] = json.loads(_CORE_PROVIDER_DOCS_JSON)
 all_provider_docs: dict[str, object] = json.loads(_ALL_PROVIDER_DOCS_JSON)
-core_evaluator_docs: dict[str, object] = json.loads(_CORE_EVALUATOR_DOCS_JSON)
-all_evaluator_docs: dict[str, object] = json.loads(_ALL_EVALUATOR_DOCS_JSON)
 
 __all__ = [
     "ActionDoc",
     "ProviderDoc",
-    "EvaluatorDoc",
     "core_action_docs",
     "all_action_docs",
     "core_provider_docs",
     "all_provider_docs",
-    "core_evaluator_docs",
-    "all_evaluator_docs",
 ]
 `;
 
 	fs.writeFileSync(path.join(outDir, "specs.py"), content);
 }
 
-function generateRust(actionsSpec, providersSpec, evaluatorsSpec) {
+function generateRust(actionsSpec, providersSpec) {
 	if (!fs.existsSync(path.join(PLUGIN_ROOT, "rust"))) {
 		return;
 	}
@@ -471,22 +374,6 @@ function generateRust(actionsSpec, providersSpec, evaluatorsSpec) {
 		null,
 		2,
 	);
-	const evaluatorsJson = JSON.stringify(
-		{
-			version: evaluatorsSpec.core.version,
-			evaluators: evaluatorsSpec.core.items,
-		},
-		null,
-		2,
-	);
-	const evaluatorsAllJson = JSON.stringify(
-		{
-			version: evaluatorsSpec.all.version,
-			evaluators: evaluatorsSpec.all.items,
-		},
-		null,
-		2,
-	);
 
 	const { content: actionsContent, hashCount: actionsHashCount } =
 		escapeRustRawString(actionsJson);
@@ -496,27 +383,19 @@ function generateRust(actionsSpec, providersSpec, evaluatorsSpec) {
 		escapeRustRawString(providersJson);
 	const { content: providersAllContent, hashCount: providersAllHashCount } =
 		escapeRustRawString(providersAllJson);
-	const { content: evalContent, hashCount: evalHashCount } =
-		escapeRustRawString(evaluatorsJson);
-	const { content: evalAllContent, hashCount: evalAllHashCount } =
-		escapeRustRawString(evaluatorsAllJson);
 
 	const actionsDelim = "#".repeat(actionsHashCount);
 	const actionsAllDelim = "#".repeat(actionsAllHashCount);
 	const providersDelim = "#".repeat(providersHashCount);
 	const providersAllDelim = "#".repeat(providersAllHashCount);
-	const evalDelim = "#".repeat(evalHashCount);
-	const evalAllDelim = "#".repeat(evalAllHashCount);
 
-	const content = `//! Auto-generated canonical action/provider/evaluator docs for plugin-discord.
+	const content = `//! Auto-generated canonical action/provider docs for plugin-discord.
 //! DO NOT EDIT - Generated from prompts/specs/**.
 
 pub const CORE_ACTION_DOCS_JSON: &str = r${actionsDelim}"${actionsContent}"${actionsDelim};
 pub const ALL_ACTION_DOCS_JSON: &str = r${actionsAllDelim}"${actionsAllContent}"${actionsAllDelim};
 pub const CORE_PROVIDER_DOCS_JSON: &str = r${providersDelim}"${providersContent}"${providersDelim};
 pub const ALL_PROVIDER_DOCS_JSON: &str = r${providersAllDelim}"${providersAllContent}"${providersAllDelim};
-pub const CORE_EVALUATOR_DOCS_JSON: &str = r${evalDelim}"${evalContent}"${evalDelim};
-pub const ALL_EVALUATOR_DOCS_JSON: &str = r${evalAllDelim}"${evalAllContent}"${evalAllDelim};
 `;
 
 	fs.writeFileSync(path.join(outDir, "specs.rs"), content);
@@ -529,13 +408,12 @@ pub const ALL_EVALUATOR_DOCS_JSON: &str = r${evalAllDelim}"${evalAllContent}"${e
 function main() {
 	const actionsSpec = loadSpecs(ACTIONS_SPEC_PATH, "actions");
 	const providersSpec = loadSpecs(PROVIDERS_SPEC_PATH, "providers");
-	const evaluatorsSpec = loadSpecs(EVALUATORS_SPEC_PATH, "evaluators");
 
-	generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec);
-	generatePython(actionsSpec, providersSpec, evaluatorsSpec);
-	generateRust(actionsSpec, providersSpec, evaluatorsSpec);
+	generateTypeScript(actionsSpec, providersSpec);
+	generatePython(actionsSpec, providersSpec);
+	generateRust(actionsSpec, providersSpec);
 
-	console.log("Generated plugin-discord action/provider/evaluator docs.");
+	console.log("Generated plugin-discord action/provider docs.");
 }
 
 main();

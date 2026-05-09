@@ -29,7 +29,7 @@
     "@types/uuid": "^11.0.0",
     "esbuild": "^0.28.0",
     "tsx": "^4.19.0",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   },
   "engines": {
     "node": ">=24.0.0"
