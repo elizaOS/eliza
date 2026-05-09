@@ -48,8 +48,13 @@
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json",
-    "./*": ["./src/*.ts", "./src/*/index.ts"],
-    "./*.js": ["./src/*.ts", "./src/*/index.ts"]
+    "./config": "./src/config/index.ts",
+    "./config/*": "./src/config/*.ts",
+    "./services/*": "./src/services/*.ts",
+    "./api/*": "./src/api/*.ts",
+    "./runtime/*": "./src/runtime/*.ts",
+    "./*": "./src/*.ts",
+    "./*.js": "./src/*.ts"
   },
   "publishConfig": {
     "access": "public",
