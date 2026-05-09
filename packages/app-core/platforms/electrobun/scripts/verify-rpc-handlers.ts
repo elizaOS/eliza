@@ -60,14 +60,32 @@ function extractSchemaMethods(source: string, side: "bun" | "webview"): Set<stri
 	return methods;
 }
 
-/** Extract top-level handler keys from the registerRpcHandlers setRequestHandler call. */
+/** Extract top-level handler keys from the buildBunRpcHandlers return block. */
 function extractHandlerKeys(source: string): Set<string> {
-	const anchor = "rpc?.setRequestHandler?.({";
-	const start = source.indexOf(anchor);
-	if (start < 0) {
-		throw new Error("Could not find setRequestHandler call");
+	// Prefer the new pure factory; fall back to the legacy setRequestHandler call.
+	const anchors = [
+		"export function buildBunRpcHandlers",
+		"rpc?.setRequestHandler?.({",
+	];
+	let cursor = -1;
+	for (const anchor of anchors) {
+		const idx = source.indexOf(anchor);
+		if (idx < 0) continue;
+		// For the factory, find the `return {` after the function signature.
+		if (anchor.startsWith("export function")) {
+			const returnIdx = source.indexOf("return {", idx);
+			if (returnIdx < 0) continue;
+			cursor = returnIdx + "return {".length;
+		} else {
+			cursor = idx + anchor.length;
+		}
+		break;
 	}
-	const cursor = start + anchor.length;
+	if (cursor < 0) {
+		throw new Error(
+			"Could not find handler block (buildBunRpcHandlers or setRequestHandler)",
+		);
+	}
 	let depth = 1;
 	let i = cursor;
 	while (i < source.length && depth > 0) {
