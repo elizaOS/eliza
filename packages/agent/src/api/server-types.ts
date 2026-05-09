@@ -287,7 +287,7 @@ export interface ServerState {
   /** Active WhatsApp pairing sessions (QR code flow). */
   whatsappPairingSessions?: Map<
     string,
-    import("../services/whatsapp-pairing.js").WhatsAppPairingSession
+    import("@elizaos/plugin-whatsapp").WhatsAppPairingSession
   >;
   /** Active Signal pairing sessions (device linking flow). */
   signalPairingSessions?: Map<

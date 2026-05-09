@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
-import { logger, sendJson } from "@elizaos/core";
-import { readJsonBody as parseJsonBody } from "@elizaos/shared";
+import { logger } from "@elizaos/core";
+import { readJsonBody as parseJsonBody, sendJson } from "@elizaos/agent/api/http-helpers";
+import { setOwnerContact } from "@elizaos/agent/api/owner-contact-helpers";
 import type { WhatsAppPairingEvent } from "../services/whatsapp-pairing.js";
-import { setOwnerContact } from "./owner-contact-helpers.js";
 
 export type WhatsAppPairingEventLike = WhatsAppPairingEvent;
 

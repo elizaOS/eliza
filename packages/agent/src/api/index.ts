@@ -66,5 +66,5 @@ export {
   type WhatsAppPairingSessionLike,
   type WhatsAppRouteDeps,
   type WhatsAppRouteState,
-} from "./whatsapp-routes.js";
+} from "@elizaos/plugin-whatsapp";
 export * from "./zip-utils.js";

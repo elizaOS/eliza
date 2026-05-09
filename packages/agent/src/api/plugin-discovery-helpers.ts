@@ -21,7 +21,7 @@ import {
 } from "./plugin-validation.js";
 import { findOwnPackageRoot } from "./server-helpers.js";
 import { applySignalQrOverride } from "./signal-routes.js";
-import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
+import { applyWhatsAppQrOverride } from "@elizaos/plugin-whatsapp";
 
 const require = createRequire(import.meta.url);
 

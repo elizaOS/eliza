@@ -280,7 +280,7 @@ import { handleWalletRoutes } from "./wallet-routes.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
 // WhatsApp route dispatch extracted to @elizaos/plugin-whatsapp setup-routes.ts (Plugin.routes).
 // applyWhatsAppQrOverride remains for plugin-discovery's QR override flow.
-import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
+import { applyWhatsAppQrOverride } from "@elizaos/plugin-whatsapp";
 import { handleWorkbenchRoutes } from "./workbench-routes.js";
 
 export {
