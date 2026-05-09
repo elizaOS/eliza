@@ -1,4 +1,5 @@
 import { logger } from "../../../../logger.ts";
+import { EvaluatorPriority } from "../../../../services/evaluator-priorities.ts";
 import type {
 	Evaluator,
 	IAgentRuntime,
@@ -222,7 +223,7 @@ export const experiencePatternEvaluator: Evaluator<
 	name: "experiencePatterns",
 	description:
 		"Periodically extracts novel agent learning experiences from the room conversation.",
-	priority: 320,
+	priority: EvaluatorPriority.EXPERIENCE,
 	schema: experienceSchema,
 	async shouldRun({ runtime, message }) {
 		if (!message.roomId || !message.content?.text) return false;
