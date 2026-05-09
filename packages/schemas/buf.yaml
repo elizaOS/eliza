@@ -5,6 +5,7 @@ modules:
     name: buf.build/elizaos/eliza
     excludes:
       - node_modules
+      - v3
 lint:
   use:
     - STANDARD
