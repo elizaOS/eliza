@@ -1,12 +1,12 @@
 # Action Selection Benchmark
 
-**Selection Accuracy:** 98.7% (75/76)
-**Latency:** avg 6906ms · p50 6375ms · p95 12288ms
-**Planner Accuracy:** 97.4% (74/76)
-**Execution Accuracy:** 97.4% (74/76)
-**LLM Token Usage:** input 1476301 · output 149106 · total 1625407 (318/452 calls reported usage)
-**Cache Read:** 28.6% (422144/1476301 input tokens)
-**Cache Write:** 0.0% (0/1476301 input tokens)
+**Selection Accuracy:** 100.0% (76/76)
+**Latency:** avg 4477ms · p50 4188ms · p95 6976ms
+**Planner Accuracy:** 100.0% (76/76)
+**Execution Accuracy:** 100.0% (76/76)
+**LLM Token Usage:** input 1355011 · output 120126 · total 1475137 (317/439 calls reported usage)
+**Cache Read:** 32.4% (439168/1355011 input tokens)
+**Cache Write:** 0.0% (0/1355011 input tokens)
 
 ## By tag
 
@@ -18,7 +18,7 @@
 | calendar | 5 | 5 | 100.0% |
 | calendly | 2 | 2 | 100.0% |
 | chat | 11 | 11 | 100.0% |
-| checkin | 1 | 2 | 50.0% |
+| checkin | 2 | 2 | 100.0% |
 | computer-use | 2 | 2 | 100.0% |
 | credentials | 2 | 2 | 100.0% |
 | critical | 14 | 14 | 100.0% |
@@ -37,7 +37,7 @@
 | remote-desktop | 2 | 2 | 100.0% |
 | scheduling | 4 | 4 | 100.0% |
 | screen-time | 2 | 2 | 100.0% |
-| standard | 50 | 51 | 98.0% |
+| standard | 51 | 51 | 100.0% |
 | subscriptions | 4 | 4 | 100.0% |
 | todos | 3 | 3 | 100.0% |
 | travel | 1 | 1 | 100.0% |
@@ -48,21 +48,9 @@
 
 | Mode | Count |
 | --- | ---: |
-| passed | 75 |
+| passed | 76 |
 | validate_filtered | 0 |
-| llm_chose_reply | 1 |
+| llm_chose_reply | 0 |
 | llm_chose_other_action | 0 |
 | no_response | 0 |
 | error | 0 |
-
-## Failures (1)
-
-| Case | Expected | Planned | Completed | Failure Mode | Error |
-| --- | --- | --- | --- | --- | --- |
-| checkin-night | CHECKIN | (none) | (none) | llm_chose_reply |  |
-
-## Execution Issues (1)
-
-| Case | Planned | Started | Completed | Error |
-| --- | --- | --- | --- | --- |
-| calendly-create-single-use-link | CALENDAR | (none) | (none) |  |

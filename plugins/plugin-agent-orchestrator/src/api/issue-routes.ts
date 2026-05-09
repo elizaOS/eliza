@@ -12,14 +12,6 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./route-utils.js";
 import { parseBody, sendError, sendJson } from "./route-utils.js";
 
-type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
-
 /**
  * Handle issue routes (/api/issues/*)
  * Returns true if the route was handled, false otherwise
@@ -60,7 +52,7 @@ export async function handleIssueRoutes(
         state: state ?? "open",
         labels,
       });
-      sendJson(res, issues as unknown as JsonValue);
+      sendJson(res, issues);
     } catch (error) {
       sendError(
         res,
@@ -91,7 +83,7 @@ export async function handleIssueRoutes(
         body: (issueBody as string) ?? "",
         labels: labels as string[] | undefined,
       });
-      sendJson(res, issue as unknown as JsonValue, 201);
+      sendJson(res, issue, 201);
     } catch (error) {
       sendError(
         res,
@@ -116,7 +108,7 @@ export async function handleIssueRoutes(
       const repo = `${issueGetMatch[1]}/${issueGetMatch[2]}`;
       const issueNumber = parseInt(issueGetMatch[3], 10);
       const issue = await ctx.workspaceService.getIssue(repo, issueNumber);
-      sendJson(res, issue as unknown as JsonValue);
+      sendJson(res, issue);
     } catch (error) {
       sendError(
         res,
@@ -150,7 +142,7 @@ export async function handleIssueRoutes(
         issueNumber,
         body.body as string,
       );
-      sendJson(res, comment as unknown as JsonValue, 201);
+      sendJson(res, comment, 201);
     } catch (error) {
       sendError(
         res,
@@ -175,7 +167,7 @@ export async function handleIssueRoutes(
       const repo = `${closeMatch[1]}/${closeMatch[2]}`;
       const issueNumber = parseInt(closeMatch[3], 10);
       const issue = await ctx.workspaceService.closeIssue(repo, issueNumber);
-      sendJson(res, issue as unknown as JsonValue);
+      sendJson(res, issue);
     } catch (error) {
       sendError(
         res,

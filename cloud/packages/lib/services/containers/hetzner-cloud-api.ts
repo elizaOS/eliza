@@ -422,7 +422,7 @@ export class HetznerCloudClient {
     }
 
     if (response.status === 204) {
-      return undefined as unknown as T;
+      return undefined as T;
     }
 
     const text = await response.text();

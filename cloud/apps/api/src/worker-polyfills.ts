@@ -34,7 +34,11 @@ class FinalizationRegistryPolyfill {
   unregister(_unregisterToken: object): void {}
 }
 
-const root = globalThis as unknown as Record<string, unknown>;
+const root = globalThis as unknown as {
+  MessagePort?: unknown;
+  MessageChannel?: unknown;
+  FinalizationRegistry?: unknown;
+};
 
 if (root.MessagePort === undefined) {
   root.MessagePort = MessagePortPolyfill;

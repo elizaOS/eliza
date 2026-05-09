@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
-import type http from "node:http";
-import { Readable } from "node:stream";
+import * as http from "node:http";
+import { Socket } from "node:net";
 import {
   afterEach,
   beforeAll,
@@ -95,22 +95,22 @@ let resetAuthPairingStateForTests: typeof import("./auth-pairing-compat-routes")
 
 function fakeRes(): FakeRes {
   let bodyText = "";
-  const res = {
-    headersSent: false,
-    statusCode: 200,
-    setHeader() {},
-    end(chunk?: string | Buffer) {
-      if (typeof chunk === "string") bodyText += chunk;
-      else if (chunk) bodyText += chunk.toString("utf8");
-    },
-  } as unknown as http.ServerResponse;
+  const req = new http.IncomingMessage(new Socket());
+  const res = new http.ServerResponse(req);
+  res.statusCode = 200;
+  res.setHeader = () => res;
+  res.end = ((chunk?: string | Buffer) => {
+    if (typeof chunk === "string") bodyText += chunk;
+    else if (chunk) bodyText += chunk.toString("utf8");
+    return res;
+  }) as typeof res.end;
   return {
     res,
     body() {
       return bodyText.length > 0 ? JSON.parse(bodyText) : null;
     },
     status() {
-      return (res as unknown as { statusCode: number }).statusCode;
+      return res.statusCode;
     },
   };
 }
@@ -122,16 +122,15 @@ function fakeReq(opts: {
   host?: string;
   headers?: http.IncomingHttpHeaders;
 }): http.IncomingMessage {
-  const stream = Readable.from([]) as unknown as http.IncomingMessage;
-  Object.assign(stream, {
-    method: opts.method,
-    url: opts.pathname,
-    headers: { host: opts.host ?? "example.com", ...(opts.headers ?? {}) },
-    socket: {
-      remoteAddress: opts.ip ?? "203.0.113.10",
-    },
+  const req = new http.IncomingMessage(new Socket());
+  req.method = opts.method;
+  req.url = opts.pathname;
+  req.headers = { host: opts.host ?? "example.com", ...(opts.headers ?? {}) };
+  Object.defineProperty(req.socket, "remoteAddress", {
+    value: opts.ip ?? "203.0.113.10",
+    configurable: true,
   });
-  return stream;
+  return req;
 }
 
 describe("auth pairing pair-code route", () => {

@@ -2439,8 +2439,7 @@ function parseMessageHandlerModelOutput(
 		);
 	}
 	return (
-		parseMessageHandlerOutput(raw) ??
-		synthesizeSimpleReplyFromPlainText(raw)
+		parseMessageHandlerOutput(raw) ?? synthesizeSimpleReplyFromPlainText(raw)
 	);
 }
 
@@ -4483,13 +4482,11 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 			totalTokens: number;
 	  }
 	| undefined {
-	const usage = raw.usage as unknown as Record<string, unknown> | undefined;
+	const usage = raw.usage;
 	if (!usage) return undefined;
-	const promptTokens = (usage.promptTokens as number | undefined) ?? 0;
-	const completionTokens = (usage.completionTokens as number | undefined) ?? 0;
-	const totalTokens =
-		(usage.totalTokens as number | undefined) ??
-		promptTokens + completionTokens;
+	const promptTokens = usage.promptTokens ?? 0;
+	const completionTokens = usage.completionTokens ?? 0;
+	const totalTokens = usage.totalTokens ?? promptTokens + completionTokens;
 	const out: {
 		promptTokens: number;
 		completionTokens: number;
@@ -4499,8 +4496,12 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 	} = { promptTokens, completionTokens, totalTokens };
 	if (typeof usage.cacheReadInputTokens === "number") {
 		out.cacheReadInputTokens = usage.cacheReadInputTokens;
-	} else if (typeof usage.cachedPromptTokens === "number") {
-		out.cacheReadInputTokens = usage.cachedPromptTokens;
+	} else {
+		const cachedPromptTokens =
+			"cachedPromptTokens" in usage ? usage.cachedPromptTokens : undefined;
+		if (typeof cachedPromptTokens === "number") {
+			out.cacheReadInputTokens = cachedPromptTokens;
+		}
 	}
 	if (typeof usage.cacheCreationInputTokens === "number") {
 		out.cacheCreationInputTokens = usage.cacheCreationInputTokens;

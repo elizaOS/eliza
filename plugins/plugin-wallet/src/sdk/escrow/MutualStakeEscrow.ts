@@ -134,6 +134,14 @@ const StakeVaultAbi = [
   },
 ] as const;
 
+function toTaskStatus(value: unknown): TaskStatus {
+  const status = Number(value);
+  if (!Number.isInteger(status) || !(status in TaskStatus)) {
+    throw new Error(`Invalid escrow task status: ${String(value)}`);
+  }
+  return status as TaskStatus;
+}
+
 const ERC20ApproveAbi = [
   {
     name: "approve",
@@ -467,6 +475,6 @@ export class MutualStakeEscrow {
       args: [],
     });
 
-    return result as unknown as TaskStatus;
+    return toTaskStatus(result);
   }
 }

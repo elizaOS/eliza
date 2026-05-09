@@ -99,7 +99,7 @@ function getMaxRetries(runtime: IAgentRuntime): number {
   const rawSettings = runtime.getSetting("mcp");
 
   if (rawSettings && typeof rawSettings === "object") {
-    const settings = rawSettings as McpSettings;
+    const settings = rawSettings as unknown as McpSettings;
     if (typeof settings.maxRetries === "number" && settings.maxRetries >= 0) {
       return settings.maxRetries;
     }

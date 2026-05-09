@@ -335,11 +335,11 @@ export class LogStore implements Store {
           errors: 0,
           evaluators: 0,
         };
-        run.counts = counts as unknown as typeof run.counts;
+        run.counts = counts;
       }
 
       return {
-        runs: limitedRuns as unknown as import("@elizaos/core").AgentRunSummary[],
+        runs: limitedRuns,
         total,
         hasMore,
       } as AgentRunSummaryResult;

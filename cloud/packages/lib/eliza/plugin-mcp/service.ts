@@ -494,7 +494,7 @@ export class McpService extends Service {
 
       for (const action of actions) {
         if (!this.registeredActions.has(String(action.name))) {
-          this.runtime.registerAction(action as unknown as Action);
+          this.runtime.registerAction(action as Action);
           this.registeredActions.set(String(action.name), action);
         }
       }

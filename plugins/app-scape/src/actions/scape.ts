@@ -300,7 +300,7 @@ export const scapeAction: Action = {
       description: "Operation to run.",
       descriptionCompressed: "Op.",
       required: true,
-      schema: { type: "string", enum: SCAPE_OPS as unknown as string[] },
+      schema: { type: "string", enum: SCAPE_OPS as string[] },
     },
     {
       name: "params",
@@ -323,7 +323,7 @@ export const scapeAction: Action = {
   ): Promise<ActionResult> => {
     const service = runtime.getService(
       "scape_game",
-    ) as unknown as ScapeGameService | null;
+    ) as ScapeGameService | null;
     if (!service) {
       const text = "'scape game service not available.";
       callback?.({ text, action: "SCAPE" });

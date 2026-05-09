@@ -13,6 +13,12 @@ import { ngrokSafeDelay } from '../test-helpers';
 // Load environment variables
 config({ path: path.resolve(process.cwd(), '.env') });
 
+type PortExtractionParams = {
+  context?: {
+    userMessage?: string;
+  };
+};
+
 describe('Real ngrok API E2E Tests', () => {
   let runtime: IAgentRuntime;
   let service: NgrokService;
@@ -91,14 +97,14 @@ describe('Real ngrok API E2E Tests', () => {
       agentId: 'test-agent',
       getSetting: (key: string) => process.env[key],
       getService: (name: string) => (name === 'tunnel' ? service : undefined),
-      registerService: (_service: any) => {},
-      useModel: async (_model: any, params: any) => {
+      registerService: (_service: unknown) => {},
+      useModel: async (_model: string, params: PortExtractionParams) => {
         // Return the port from the message content
         const portMatch = params.context?.userMessage?.match(/port (\d+)/);
         const port = portMatch ? parseInt(portMatch[1], 10) : 3000;
         return JSON.stringify({ port });
       },
-    } as any;
+    } as IAgentRuntime;
 
     // Initialize service
     service = new NgrokService(runtime);

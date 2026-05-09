@@ -29,7 +29,7 @@ function makeRuntime(
 		getRoom: vi.fn(async () => null),
 		getMemoryById: vi.fn(async () => null),
 		createMemory: vi.fn(async () => undefined),
-	} as unknown as IAgentRuntime;
+	} as IAgentRuntime;
 }
 
 function makeDirectChat(): BlueBubblesChat {
@@ -72,7 +72,7 @@ describe("BlueBubbles message connector registration", () => {
 				hasUnread: false,
 			})),
 			sendMessage: vi.fn(async () => ({ guid: "bb-1", dateCreated: 123 })),
-		} as unknown as BlueBubblesService;
+		} as BlueBubblesService;
 
 		BlueBubblesService.registerSendHandlers(runtime, service);
 

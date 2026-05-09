@@ -99,10 +99,10 @@ export class MemoryService extends Service {
 		// If none exists, storage-backed features are disabled.
 		let provider: MemoryStorageProvider | null = null;
 		if (runtime.hasService("memoryStorage")) {
-			try {
-				provider = (await runtime.getServiceLoadPromise(
-					"memoryStorage",
-				)) as unknown as MemoryStorageProvider | null;
+				try {
+					provider = (await runtime.getServiceLoadPromise(
+						"memoryStorage",
+					)) as unknown as MemoryStorageProvider | null;
 			} catch (error) {
 				const err = error instanceof Error ? error.message : String(error);
 				logger.warn(
@@ -219,10 +219,10 @@ export class MemoryService extends Service {
 
 	private async getStorage(): Promise<MemoryStorageProvider | null> {
 		if (!this.storage && this.runtime.hasService("memoryStorage")) {
-			try {
-				this.storage = (await this.runtime.getServiceLoadPromise(
-					"memoryStorage",
-				)) as unknown as MemoryStorageProvider | null;
+				try {
+					this.storage = (await this.runtime.getServiceLoadPromise(
+						"memoryStorage",
+					)) as unknown as MemoryStorageProvider | null;
 			} catch (error) {
 				const err = error instanceof Error ? error.message : String(error);
 				logger.warn(
@@ -256,7 +256,7 @@ export class MemoryService extends Service {
 			tableName?: string,
 		) => Promise<number>;
 
-		const counter = this.runtime.countMemories as unknown as
+		const counter = this.runtime.countMemories as
 			| ModernCounter
 			| LegacyCounter;
 		if (counter.length >= 2) {

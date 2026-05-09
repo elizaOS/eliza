@@ -841,14 +841,13 @@ export class MessageManager {
             username: ctx.from.username,
           },
           telegram: {
-            accountId: this.accountId,
             chatId: telegramChatId,
             messageId: telegramMessageId,
             threadId,
           },
           telegramUserId,
           telegramChatId,
-        } as unknown as Memory["metadata"],
+        } satisfies Memory["metadata"],
         createdAt: message.date * 1000,
       };
 
@@ -919,12 +918,11 @@ export class MessageManager {
                 chatType: chat.type,
                 messageIdFull: sentMessage.message_id.toString(),
                 telegram: {
-                  accountId: this.accountId,
                   chatId: sentMessage.chat.id,
                   messageId: sentMessage.message_id.toString(),
                   threadId,
                 },
-              } as unknown as Memory["metadata"],
+              } satisfies Memory["metadata"],
               createdAt: sentMessage.date * 1000,
             };
 
@@ -1067,16 +1065,16 @@ export class MessageManager {
           metadata: { accountId: this.accountId },
         },
         metadata: {
-          type: "reaction",
+          type: "custom",
+          eventType: "reaction",
           source: "telegram",
           accountId: this.accountId,
           provider: "telegram",
           telegram: {
-            accountId: this.accountId,
             chatId: reaction.chat.id.toString(),
             messageId: reaction.message_id.toString(),
           },
-        } as unknown as Memory["metadata"],
+        } satisfies Memory["metadata"],
         createdAt: Date.now(),
       };
 
@@ -1104,7 +1102,7 @@ export class MessageManager {
               source: "telegram",
               accountId: this.accountId,
               provider: "telegram",
-            } as unknown as Memory["metadata"],
+            } satisfies Memory["metadata"],
             createdAt: sentMessage.date * 1000,
           };
           return [responseMemory];
@@ -1249,12 +1247,11 @@ export class MessageManager {
             sourceId: this.runtime.agentId,
             messageIdFull: sentMessage.message_id.toString(),
             telegram: {
-              accountId: this.accountId,
               chatId: sentMessage.chat.id.toString(),
               messageId: sentMessage.message_id.toString(),
               threadId: messageThreadId?.toString(),
             },
-          } as unknown as Memory["metadata"],
+          } satisfies Memory["metadata"],
           createdAt: sentMessage.date * 1000,
         };
 

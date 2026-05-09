@@ -29,6 +29,21 @@ interface MusicLibraryService {
   ): Promise<void>;
 }
 
+interface DiscordAudioSink {
+  status?: "connected" | "disconnected" | string;
+  _musicServiceListenerAttached?: boolean;
+  feed(stream: NodeJS.ReadableStream): Promise<unknown>;
+  listenerCount?(event: "statusChange"): number;
+  on(event: "statusChange", listener: (status: string) => void): void;
+}
+
+interface DiscordMusicIntegrationService {
+  clearActivity?(): Promise<void> | void;
+  getAudioSink?(guildId: string): DiscordAudioSink | null;
+  getDefaultRoomIdForGuild?(guildId: string): Promise<UUID | null> | UUID | null;
+  setListeningActivity?(trackTitle: string): Promise<void> | void;
+}
+
 interface RoutingTarget {
   id: string;
   type: string;
@@ -546,7 +561,9 @@ export class MusicService extends Service {
     if (!this.runtime) return null;
 
     try {
-      const discordService = this.runtime.getService("discord") as any;
+      const discordService = this.runtime.getService(
+        "discord",
+      ) as DiscordMusicIntegrationService | null;
       if (discordService?.getDefaultRoomIdForGuild) {
         return discordService.getDefaultRoomIdForGuild(guildId);
       }
@@ -566,7 +583,9 @@ export class MusicService extends Service {
     if (!this.runtime) return;
 
     try {
-      const discordService = this.runtime.getService("discord") as any;
+      const discordService = this.runtime.getService(
+        "discord",
+      ) as DiscordMusicIntegrationService | null;
       if (discordService?.setListeningActivity) {
         await discordService.setListeningActivity(trackTitle);
         logger.debug(`Updated Discord activity: Listening to "${trackTitle}"`);
@@ -583,7 +602,9 @@ export class MusicService extends Service {
     if (!this.runtime) return;
 
     try {
-      const discordService = this.runtime.getService("discord") as any;
+      const discordService = this.runtime.getService(
+        "discord",
+      ) as DiscordMusicIntegrationService | null;
       if (discordService?.clearActivity) {
         await discordService.clearActivity();
         logger.debug("Cleared Discord activity");
@@ -639,7 +660,9 @@ export class MusicService extends Service {
 
     try {
       // Check if Discord service is available
-      const discordService = this.runtime.getService("discord") as any;
+      const discordService = this.runtime.getService(
+        "discord",
+      ) as DiscordMusicIntegrationService | null;
       if (!discordService) {
         logger.debug(
           `[MusicService] Discord service not available for guild ${guildId}`,

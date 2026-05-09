@@ -119,7 +119,7 @@ function toMetadataValue(value: unknown): MetadataValue {
 		typeof value === "number" ||
 		typeof value === "boolean"
 	) {
-		return value;
+		return value as MetadataValue;
 	}
 	if (Array.isArray(value)) {
 		return value.map(toMetadataValue);
@@ -701,16 +701,21 @@ export class TrustEngine extends Service {
 	): Promise<TrustProfile["trend"]> {
 		// Load historical trust scores
 		const components = await this.runtime.getComponents(entityId);
-		const historicalProfiles = components
+		const candidateProfiles = components
 			.filter(
 				(c) => c.type === "trust_profile" && c.agentId === context.evaluatorId,
 			)
-			.map((c) => c.data)
-			.filter(isTrustProfile)
+			.map((c) => c.data as unknown);
+		const historicalProfiles: TrustProfile[] = (
+			candidateProfiles.filter(isTrustProfile) as TrustProfile[]
+		)
 			.sort((a, b) => b.lastCalculated - a.lastCalculated)
 			.slice(0, 10);
 
-		if (historicalProfiles.length < 2) {
+		const firstProfile = historicalProfiles[0];
+		const lastProfile = historicalProfiles[historicalProfiles.length - 1];
+
+		if (historicalProfiles.length < 2 || !firstProfile || !lastProfile) {
 			return {
 				direction: "stable",
 				changeRate: 0,
@@ -719,13 +724,12 @@ export class TrustEngine extends Service {
 		}
 
 		// Calculate trend
-		const previousScore = historicalProfiles[0].overallTrust;
-		const oldestScore =
-			historicalProfiles[historicalProfiles.length - 1].overallTrust;
-		const timeSpanDays =
-			(Date.now() -
-				historicalProfiles[historicalProfiles.length - 1].lastCalculated) /
-			(24 * 60 * 60 * 1000);
+		const previousScore = firstProfile.overallTrust;
+		const oldestScore = lastProfile.overallTrust;
+		const timeSpanDays = Math.max(
+			(Date.now() - lastProfile.lastCalculated) / (24 * 60 * 60 * 1000),
+			1 / (24 * 60),
+		);
 
 		const changeRate = (currentScore - oldestScore) / timeSpanDays;
 
@@ -738,13 +742,16 @@ export class TrustEngine extends Service {
 			direction = "decreasing";
 		}
 
+		const trendLastChangeAt = firstProfile.trend.lastChangeAt;
 		return {
 			direction,
 			changeRate: Math.round(changeRate * 10) / 10,
 			lastChangeAt:
 				currentScore !== previousScore
 					? Date.now()
-					: historicalProfiles[0].trend?.lastChangeAt || Date.now(),
+					: typeof trendLastChangeAt === "number"
+						? trendLastChangeAt
+						: Date.now(),
 		};
 	}
 

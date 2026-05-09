@@ -85,7 +85,7 @@ function makeContextRegistry(): ContextRegistry {
 				gate: { minRole: "GUEST" as const },
 			},
 		],
-	} as unknown as ContextRegistry;
+	} as ContextRegistry;
 }
 
 function makeRuntime(opts: {
@@ -134,7 +134,7 @@ function makeRuntime(opts: {
 			error: vi.fn(),
 			trace: vi.fn(),
 		},
-	} as unknown as IAgentRuntime & { __calls: typeof calls };
+	} as IAgentRuntime & { __calls: typeof calls };
 	runtime.__calls = calls;
 	return runtime;
 }
@@ -145,7 +145,7 @@ function getCalls(runtime: IAgentRuntime): Array<{
 	provider: unknown;
 }> {
 	return (
-		runtime as unknown as {
+		runtime as {
 			__calls: Array<{
 				modelType: unknown;
 				params: unknown;
@@ -175,7 +175,7 @@ function makeAction(opts: {
 		parameters: opts.parameters ?? [],
 		validate: async () => true,
 		handler: opts.handler,
-	} as unknown as Action;
+	} as Action;
 }
 
 function readRecordedTrajectories(agentId: string, rootDir: string): unknown[] {

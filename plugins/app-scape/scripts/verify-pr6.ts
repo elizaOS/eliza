@@ -43,11 +43,11 @@ function makeTestDir(): string {
 function mockRuntimeWith(service: unknown): IAgentRuntime {
   return {
     getService: (name: string) => (name === "scape_game" ? service : null),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 function dummyMemory(): Memory {
-  return { content: { text: "" } } as unknown as Memory;
+  return { content: { text: "" } } as Memory;
 }
 
 function samplePerception(x = 3222, z = 3218): PerceptionSnapshot {

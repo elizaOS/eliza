@@ -12,7 +12,7 @@ function createRuntime(modelResponse: string): IAgentRuntime {
 			expect(modelType).toBe(ModelType.TEXT_LARGE);
 			return modelResponse;
 		}),
-	} as unknown as IAgentRuntime;
+	} as IAgentRuntime;
 }
 
 function createMessage(): Memory {
@@ -22,7 +22,7 @@ function createMessage(): Memory {
 		entityId: "user-id",
 		roomId: "room-id",
 		content: { text: "hello" },
-	} as unknown as Memory;
+	} as Memory;
 }
 
 describe("REPLY action", () => {

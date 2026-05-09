@@ -908,7 +908,7 @@ export function withHealth<TBase extends Constructor<LifeOpsServiceBase>>(
     }
   }
 
-  return LifeOpsHealthServiceMixin as unknown as MixinClass<
+  return LifeOpsHealthServiceMixin as MixinClass<
     TBase,
     LifeOpsHealthServicePublic
   >;

@@ -399,10 +399,11 @@ describe("Email Validation - ACTUAL isValidEmail()", () => {
   });
 
   test("invalid email formats - empty/null", () => {
+    const validateUnknownEmail = isValidEmail as (value: unknown) => boolean;
     expect(isValidEmail("")).toBe(false);
     expect(isValidEmail("   ")).toBe(false);
-    expect(isValidEmail(null as unknown as string)).toBe(false);
-    expect(isValidEmail(undefined as unknown as string)).toBe(false);
+    expect(validateUnknownEmail(null)).toBe(false);
+    expect(validateUnknownEmail(undefined)).toBe(false);
   });
 
   test("invalid email formats - too short/long", () => {

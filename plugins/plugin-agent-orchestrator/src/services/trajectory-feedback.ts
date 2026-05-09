@@ -68,7 +68,7 @@ export interface TrajectoryFeedbackOptions {
 function getTrajectoryLogger(
   runtime: IAgentRuntime,
 ): TrajectoryLoggerRef | null {
-  const runtimeAny = runtime as unknown as {
+  const runtimeAny = runtime as {
     getService?: (serviceType: string) => unknown;
     getServicesByType?: (serviceType: string) => unknown[];
   };

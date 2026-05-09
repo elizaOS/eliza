@@ -694,5 +694,5 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         null;
       return buildNextCalendarEventContext(nextEvent, now);
     }
-  } as unknown as MixinClass<TBase, LifeOpsCalendarService>;
+  } as MixinClass<TBase, LifeOpsCalendarService>;
 }

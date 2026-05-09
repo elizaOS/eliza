@@ -15,7 +15,7 @@ describe("Twitter memory metadata", () => {
       },
       "entity-1" as UUID,
       "secondary",
-    ) as unknown as {
+    ) as {
       accountId?: string;
       twitter?: { accountId?: string };
     };

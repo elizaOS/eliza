@@ -425,7 +425,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					pluginState.components?.eventHandlers
 						.get(eventName)
 						?.add(
-							eventHandler as unknown as (
+							eventHandler as (
 								params: EventPayload,
 							) => Promise<void>,
 						);

@@ -146,7 +146,7 @@ function buildService(
 ): DocumentService {
 	// DocumentService constructor accepts runtime as first param
 	const svc = new (
-		DocumentService as unknown as new (
+		DocumentService as new (
 			runtime: unknown,
 		) => DocumentService
 	)(runtime);
@@ -205,7 +205,7 @@ describe("DocumentService.searchDocuments", () => {
 
 		it("filters out fragments with no id", async () => {
 			const frag = makeFragment("", "orphan fragment", 0.8);
-			frag.id = undefined as unknown as UUID;
+			frag.id = undefined as UUID;
 			const rt = buildRuntime({ hasEmbedding: true, fragments: [frag] });
 			const svc = buildService(rt);
 

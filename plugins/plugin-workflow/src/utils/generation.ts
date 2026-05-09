@@ -54,10 +54,10 @@ async function useStructuredModel<T>(
   schema: unknown
 ): Promise<T> {
   const structuredRuntime = runtime as IAgentRuntime & StructuredModelRunner;
-  return await structuredRuntime.useModel<T>(ModelType.TEXT_SMALL, {
+  return (await structuredRuntime.useModel<T>(ModelType.TEXT_SMALL, {
     prompt,
-    responseSchema: schema,
-  });
+    responseSchema: schema as never,
+  })) as T;
 }
 
 /**

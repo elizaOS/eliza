@@ -13,11 +13,10 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     this.manager = manager;
     // The PGlite class identity differs across @electric-sql/pglite minor
     // versions when this workspace is nested under a parent that pins an
-    // older copy. Cast through `any` for the call site only; the runtime
+    // older copy. Type the call site explicitly; the runtime
     // shape is identical and drizzle just calls .query() on the client.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const drizzleAny = drizzle as unknown as (client: unknown) => PgliteDatabase;
-    this.db = drizzleAny(this.manager.getConnection());
+    const drizzlePglite = drizzle as (client: unknown) => PgliteDatabase;
+    this.db = drizzlePglite(this.manager.getConnection());
   }
 
   public async withEntityContext<T>(

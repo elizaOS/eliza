@@ -29,11 +29,13 @@ function createRuntime(): IAgentRuntime {
     OLLAMA_API_ENDPOINT: OLLAMA_ENDPOINT,
     OLLAMA_SMALL_MODEL,
   };
-  return {
+  const runtime = {
     character: { system: "You are a concise test agent." },
     emitEvent: async () => undefined,
     getSetting: (key: string) => settings[key] ?? null,
-  } as unknown as IAgentRuntime;
+  };
+
+  return runtime as IAgentRuntime;
 }
 
 async function pingOllama(endpoint: string): Promise<boolean> {

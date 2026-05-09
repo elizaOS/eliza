@@ -95,7 +95,8 @@ export function WorkflowEditor({
 
   const handleSave = useCallback(async () => {
     if (!parseState.ok) {
-      setSaveError(parseState.message);
+      const invalid = parseState as Extract<WorkflowJsonResult, { ok: false }>;
+      setSaveError(invalid.message);
       return;
     }
     setSaveError(null);
@@ -175,8 +176,9 @@ export function WorkflowEditor({
 
   const lineErrorBanner = useMemo(() => {
     if (parseState.ok) return null;
-    const where = parseState.line ? ` (line ${parseState.line})` : "";
-    return `${parseState.message}${where}`;
+    const invalid = parseState as Extract<WorkflowJsonResult, { ok: false }>;
+    const where = invalid.line ? ` (line ${invalid.line})` : "";
+    return `${invalid.message}${where}`;
   }, [parseState]);
 
   return (

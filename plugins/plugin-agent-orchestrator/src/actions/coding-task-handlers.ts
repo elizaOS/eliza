@@ -93,6 +93,11 @@ const KNOWN_AGENT_PREFIXES = [
 const SHELL_COMMAND_RE =
   /(?:^|[:\s])(?:awk|bun|cat|curl|cut|echo|find|gh|git|grep|head|jq|node|npm|sed|tail|tee|tr|xargs|yarn)\b\s+(?:[-./~"'({[<>&|]|https?:\/\/|\w+=|\w+\.(?:cjs|css|html|js|json|md|mjs|ts|tsx|yaml|yml)\b|\b(?:add|build|commit|diff|exec|fetch|install|log|pull|push|rebase|run|show|status|test)\b)/;
 
+function getMessageUserId(message: Memory): string | undefined {
+  const value = (message as Memory & { userId?: unknown }).userId;
+  return typeof value === "string" ? value : undefined;
+}
+
 function isShellPipelineBoundary(
   left: string,
   right: string,
@@ -890,10 +895,7 @@ export async function handleMultiAgent(
         originalRequest: userRequest,
         roomId: message.roomId,
         worldId: message.worldId,
-        ownerUserId:
-          ((message as unknown as Record<string, unknown>).userId as
-            | string
-            | undefined) ?? message.entityId,
+        ownerUserId: getMessageUserId(message) ?? message.entityId,
         scenarioId: evalMetadata.scenarioId,
         batchId: evalMetadata.batchId,
         currentPlan:
@@ -1127,7 +1129,7 @@ export async function handleMultiAgent(
           taskNodeId,
           requestedType: specRequestedType,
           messageId: message.id,
-          userId: (message as unknown as Record<string, unknown>).userId,
+          userId: getMessageUserId(message),
           workspaceId,
           label: specLabel,
           multiAgentIndex: i,

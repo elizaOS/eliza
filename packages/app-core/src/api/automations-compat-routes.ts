@@ -337,16 +337,14 @@ function buildRoomBinding(
 }
 
 function readAutomationRoomRecord(
-  room: Record<string, unknown>,
+  room: Room & { updatedAt?: unknown },
 ): AutomationRoomRecord | null {
   const roomId = asString(room.id);
   if (!roomId) {
     return null;
   }
 
-  const metadata = extractConversationMetadataFromRoom(
-    room as unknown as Pick<Room, "metadata">,
-  );
+  const metadata = extractConversationMetadataFromRoom(room);
   if (!metadata || !isAutomationConversationMetadata(metadata)) {
     return null;
   }
@@ -385,9 +383,7 @@ async function listAutomationRooms(
   const worldId = stringToUuid(`${agentName}-web-chat-world`) as UUID;
   const rooms = await runtime.getRooms(worldId);
   return rooms
-    .map((room) =>
-      readAutomationRoomRecord(room as unknown as Record<string, unknown>),
-    )
+    .map((room) => readAutomationRoomRecord(room))
     .filter((room): room is AutomationRoomRecord => room !== null);
 }
 

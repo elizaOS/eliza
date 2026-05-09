@@ -5,7 +5,7 @@
  * Provides database access to elizaOS tables.
  */
 
-import plugin from "@elizaos/plugin-sql";
+import * as elizaSchema from "@elizaos/plugin-sql";
 
 /**
  * Re-exported elizaOS plugin-sql tables.
@@ -23,9 +23,11 @@ export const {
   logTable,
   cacheTable,
   worldTable,
-  serverAgentsTable,
+  messageServerAgentsTable,
   messageTable,
   messageServerTable,
   channelTable,
   channelParticipantsTable,
-} = (plugin as unknown as { schema: Record<string, any> }).schema as Record<string, any>;
+} = elizaSchema;
+
+export const serverAgentsTable = messageServerAgentsTable;

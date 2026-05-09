@@ -385,7 +385,7 @@ export const openaiPlugin: Plugin = {
                 },
                 required: ["name", "age", "active"],
               },
-            } as unknown as GenerateTextParams);
+            } as GenerateTextParams);
 
             if (!result || (typeof result !== "object" && typeof result !== "string")) {
               throw new Error("Structured output should return an object or text");

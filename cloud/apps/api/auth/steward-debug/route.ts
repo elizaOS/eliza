@@ -15,7 +15,7 @@ const app = new Hono<AppEnv>();
 // without leaking its value. Returns first/last 2 chars + length, plus
 // where the value is sourced from. Remove after the auth flow is verified.
 app.get("/", (c) => {
-  const fromProcess = (process as unknown as { env: Record<string, string | undefined> })?.env;
+  const fromProcess = process.env;
   const pSecret = fromProcess?.STEWARD_SESSION_SECRET ?? "";
   const cSecret = c.env.STEWARD_SESSION_SECRET ?? "";
   const fingerprint = (s: string) =>

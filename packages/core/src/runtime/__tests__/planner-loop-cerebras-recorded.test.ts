@@ -2,6 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import type { GenerateTextResult, ToolDefinition } from "../../types/model";
 import { runPlannerLoop } from "../planner-loop";
 
+type CerebrasRecordedToolCall = NonNullable<
+	GenerateTextResult["toolCalls"]
+>[number] & {
+	toolName: string;
+	input: Record<string, string>;
+};
+
 /**
  * Integration regression: drive the planner with a recorded Cerebras response
  * shape (AI SDK v6 native tool-call format: finishReason="tool-calls",
@@ -20,15 +27,15 @@ import { runPlannerLoop } from "../planner-loop";
 const RECORDED_CEREBRAS_RESPONSE: GenerateTextResult = {
 	text: "",
 	finishReason: "tool-calls",
-	toolCalls: [
-		{
-			id: "call_recorded_abc123",
-			// AI SDK v6 Cerebras adapter returns `toolName` and `input`
-			// normalizeToolCall in planner-loop handles both shapes.
-			toolName: "DOCUMENT",
-			input: { query: "elizaOS architecture" },
-		} as unknown as GenerateTextResult["toolCalls"][number],
-	],
+		toolCalls: [
+			{
+				id: "call_recorded_abc123",
+				// AI SDK v6 Cerebras adapter returns `toolName` and `input`
+				// normalizeToolCall in planner-loop handles both shapes.
+				toolName: "DOCUMENT",
+				input: { query: "elizaOS architecture" },
+			} as CerebrasRecordedToolCall,
+		],
 	usage: {
 		promptTokens: 526,
 		completionTokens: 42,

@@ -49,7 +49,7 @@ const nestedAction = makeAction({
 							days: { type: "integer", minimum: 1 },
 							timezone: { type: "string", default: "UTC" },
 						},
-					} as unknown as ActionParameterSchema,
+					} as ActionParameterSchema,
 					labels: { type: "array", items: { type: "string" } },
 					mode: { type: "string", enum: ["once", "repeat"], default: "once" },
 				},

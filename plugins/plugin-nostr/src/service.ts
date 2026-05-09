@@ -17,7 +17,14 @@ import {
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
-import { type Event, finalizeEvent, getPublicKey, SimplePool, verifyEvent } from "nostr-tools";
+import {
+  type Event,
+  type Filter,
+  finalizeEvent,
+  getPublicKey,
+  SimplePool,
+  verifyEvent,
+} from "nostr-tools";
 import { decrypt, encrypt } from "nostr-tools/nip04";
 import {
   listNostrAccountIds,
@@ -404,10 +411,10 @@ export class NostrService extends Service implements INostrService {
     const since = Math.floor(Date.now() / 1000) - 120; // Last 2 minutes
 
     // Subscribe to DMs (kind:4)
-    const filter = { kinds: [4], "#p": [pk], since };
+    const filter: Filter = { kinds: [4], "#p": [pk], since };
     pool.subscribeMany(
       settings.relays,
-      [filter] as unknown as Parameters<typeof pool.subscribeMany>[1],
+      [filter],
       {
         onevent: async (event: Event) => {
           await this.handleEvent(event);
@@ -623,7 +630,7 @@ export class NostrService extends Service implements INostrService {
       throw new Error(result.error ?? "Failed to publish Nostr note");
     }
 
-    return this.nostrEventToPostMemory(runtime, {
+    const event: Event = {
       id: result.eventId,
       pubkey: this.getPublicKey(),
       kind: 1,
@@ -631,7 +638,9 @@ export class NostrService extends Service implements INostrService {
       created_at: Math.floor(Date.now() / 1000),
       tags: [],
       sig: "",
-    } as unknown as Event);
+    };
+
+    return this.nostrEventToPostMemory(runtime, event);
   }
 
   async fetchConnectorFeed(
@@ -650,14 +659,14 @@ export class NostrService extends Service implements INostrService {
       (typeof metadata?.nostrPubkey === "string" ? metadata.nostrPubkey : undefined) ??
       (typeof target?.entityId === "string" ? target.entityId : undefined);
     const normalizedAuthor = author ? normalizePubkey(author) : undefined;
-    const filter = {
+    const filter: Filter = {
       kinds: [1],
       limit: clampLimit(params.limit, 25, 100),
       ...(normalizedAuthor ? { authors: [normalizedAuthor] } : {}),
       ...(params.cursor && Number.isFinite(Number(params.cursor))
         ? { until: Number(params.cursor) }
         : {}),
-    } as unknown as Parameters<SimplePool["querySync"]>[1];
+    };
 
     const events = await pool.querySync(settings.relays, filter, { maxWait: 3000 });
     return events
@@ -680,14 +689,14 @@ export class NostrService extends Service implements INostrService {
       return [];
     }
 
-    const filter = {
+    const filter: Filter = {
       kinds: [1],
       search: query,
       limit: clampLimit(params.limit, 25, 100),
       ...(params.cursor && Number.isFinite(Number(params.cursor))
         ? { until: Number(params.cursor) }
         : {}),
-    } as unknown as Parameters<SimplePool["querySync"]>[1];
+    };
 
     const events = await pool.querySync(settings.relays, filter, { maxWait: 3000 });
     return events
@@ -713,7 +722,7 @@ export class NostrService extends Service implements INostrService {
       (typeof target?.entityId === "string" ? target.entityId : undefined);
     const targetPubkey = targetPubkeyRaw ? normalizePubkey(targetPubkeyRaw) : undefined;
     const limit = clampLimit(params.limit, 25, 100);
-    const filters = [
+    const filters: Filter[] = [
       {
         kinds: [4],
         "#p": [settings.publicKey],
@@ -730,7 +739,7 @@ export class NostrService extends Service implements INostrService {
             },
           ]
         : []),
-    ] as unknown as Parameters<SimplePool["querySync"]>[1][];
+    ];
 
     const byId = new Map<string, Event>();
     for (const filter of filters) {
@@ -864,7 +873,7 @@ export class NostrService extends Service implements INostrService {
           kind: event.kind,
           tags: event.tags,
         },
-      } as unknown as Memory["metadata"],
+      } satisfies Memory["metadata"],
     };
   }
 
@@ -916,7 +925,7 @@ export class NostrService extends Service implements INostrService {
           kind: event.kind,
           tags: event.tags,
         },
-      } as unknown as Memory["metadata"],
+      } satisfies Memory["metadata"],
     };
   }
 

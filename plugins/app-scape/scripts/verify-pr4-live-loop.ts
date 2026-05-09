@@ -71,7 +71,7 @@ function makeRuntime(): {
 
   const runtime: Partial<IAgentRuntime> = {
     getSetting: ((key: string) =>
-      settings[key]) as unknown as IAgentRuntime["getSetting"],
+      settings[key]) as IAgentRuntime["getSetting"],
     useModel: (async (size: string, opts: { prompt: string }) => {
       useModelCalls.push({ size, prompt: opts.prompt });
       const current = perceptionSource();
@@ -86,8 +86,8 @@ function makeRuntime(): {
       const x = current.self.x + 1;
       const z = current.self.z;
       return `action: WALK_TO\nx: ${x}\nz: ${z}`;
-    }) as unknown as IAgentRuntime["useModel"],
-    getService: (() => null) as unknown as IAgentRuntime["getService"],
+    }) as IAgentRuntime["useModel"],
+    getService: (() => null) as IAgentRuntime["getService"],
   };
 
   return {

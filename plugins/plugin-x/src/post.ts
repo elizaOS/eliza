@@ -439,7 +439,7 @@ Generate a single tweet that sounds like YOU would actually write it:`;
               messageIdFull: tweetId,
               chatType: ChannelType.FEED,
               fromBot: true,
-            } as unknown as Memory["metadata"],
+            } satisfies Memory["metadata"],
             createdAt: Date.now(),
           };
 

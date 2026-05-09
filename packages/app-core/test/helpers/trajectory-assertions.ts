@@ -137,17 +137,13 @@ export async function stampPageScopedRoomMetadata(
     sourceConversationId?: string;
   } = {},
 ): Promise<void> {
-  const adapter = (
-    runtime as unknown as {
-      adapter?: {
-        updateRoom?: (room: {
-          id: UUID;
-          metadata: Record<string, unknown>;
-        }) => Promise<void>;
-        getRoom?: (id: UUID) => Promise<{ metadata?: unknown } | null>;
-      };
-    }
-  ).adapter;
+  const adapter = runtime.adapter as typeof runtime.adapter & {
+    updateRoom?: (room: {
+      id: UUID;
+      metadata: Record<string, unknown>;
+    }) => Promise<void>;
+    getRoom?: (id: UUID) => Promise<{ metadata?: unknown } | null>;
+  };
   if (!adapter?.updateRoom) {
     throw new Error("runtime.adapter.updateRoom is unavailable");
   }

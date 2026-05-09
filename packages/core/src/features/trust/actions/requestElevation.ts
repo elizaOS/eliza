@@ -146,9 +146,9 @@ export const requestElevationAction: ElizaAction = {
 					elevationRequest,
 				);
 
-			if (result.allowed) {
-				const expiryTime = result.ttl
-					? new Date(Date.now() + result.ttl).toLocaleString()
+			if (result.granted) {
+				const expiryTime = result.expiresAt
+					? new Date(result.expiresAt).toLocaleString()
 					: "session end";
 				return {
 					success: true,
@@ -158,8 +158,7 @@ Please use these permissions responsibly. All actions will be logged for audit.`
 					data: {
 						actionName: "REQUEST_ELEVATION",
 						approved: true,
-						expiresAt: result.ttl ? Date.now() + result.ttl : undefined,
-						method: result.method,
+						expiresAt: result.expiresAt,
 					},
 				};
 			} else {

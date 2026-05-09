@@ -281,7 +281,7 @@ async function dispatchCodingAgent({
 		roomId: runtime.agentId,
 		agentId: runtime.agentId,
 		content: { text: prompt },
-	} as unknown as Memory;
+	} as Memory;
 
 	const handlerOptions: HandlerOptions = {
 		parameters: {

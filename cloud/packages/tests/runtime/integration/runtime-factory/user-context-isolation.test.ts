@@ -37,7 +37,7 @@ type McpSettings = {
   };
 };
 
-type RuntimeMcpCarrier = TestRuntime & {
+type RuntimeMcpCarrier = {
   character?: {
     settings?: {
       mcp?: McpSettings;
@@ -270,8 +270,9 @@ describe.skipIf(!hasDatabaseUrl)("User Context Isolation", () => {
   it("should not leak MCP settings between users with different OAuth states", async () => {
     // Helper to get MCP settings the way McpService does
     const getMcpSettings = (runtime: TestRuntime): McpSettings | undefined => {
-      const carrier = runtime as RuntimeMcpCarrier;
-      return carrier.character?.settings?.mcp || carrier.settings?.mcp;
+      const character = Reflect.get(runtime, "character") as RuntimeMcpCarrier["character"];
+      const settings = Reflect.get(runtime, "settings") as RuntimeMcpCarrier["settings"];
+      return character?.settings?.mcp || settings?.mcp;
     };
 
     // User 1: Has Google OAuth

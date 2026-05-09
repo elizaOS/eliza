@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
 import { SwarmCoordinator } from "@elizaos/plugin-agent-orchestrator";
 import { createTestRuntime } from "../helpers/pglite-runtime";
 
@@ -148,7 +148,7 @@ async function cleanup(): Promise<void> {
 async function main(): Promise<void> {
   ({ runtime, cleanup: cleanupRuntime } = await createTestRuntime());
 
-  const coordinator = new SwarmCoordinator(runtime as unknown as IAgentRuntime);
+  const coordinator = new SwarmCoordinator(runtime);
   const thread = await coordinator.createTaskThread({
     title: "Live Codex research report",
     originalRequest: RESEARCH_PROMPT,

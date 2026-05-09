@@ -46,6 +46,23 @@ interface TorrentService {
   getTorrent(id: string): TorrentInfo | null;
 }
 
+interface MusicLibraryTrack {
+  filePath?: string;
+  title?: string;
+  url?: string;
+}
+
+interface SmartFetchMusicLibraryService {
+  searchTracks?(
+    query: string,
+    options?: { limit?: number },
+  ): Promise<MusicLibraryTrack[]>;
+  searchYouTube?(
+    query: string,
+    options?: { limit?: number; includeShorts?: boolean },
+  ): Promise<Array<{ title: string; url: string }>>;
+}
+
 const SMART_FETCH_SERVICE_NAME = "smart-music-fetch";
 
 export interface FetchProgress {
@@ -58,7 +75,7 @@ export interface FetchProgress {
     | "ready"
     | "failed";
   message: string;
-  details?: any;
+  details?: unknown;
 }
 
 export interface FetchResult {
@@ -230,9 +247,11 @@ export class SmartMusicFetchService extends Service {
    */
   private async checkMusicLibrary(
     query: string,
-  ): Promise<{ found: boolean; url?: string; tracks?: any[] }> {
+  ): Promise<{ found: boolean; url?: string; tracks?: MusicLibraryTrack[] }> {
     try {
-      const musicLibrary = this.runtime?.getService("musicLibrary") as any;
+      const musicLibrary = this.runtime?.getService(
+        "musicLibrary",
+      ) as SmartFetchMusicLibraryService | null;
       if (!musicLibrary?.searchTracks) {
         return { found: false };
       }
@@ -261,7 +280,9 @@ export class SmartMusicFetchService extends Service {
   ): Promise<{ success: boolean; url?: string; title?: string }> {
     try {
       // Try YouTube search service
-      const musicLibrary = this.runtime?.getService("musicLibrary") as any;
+      const musicLibrary = this.runtime?.getService(
+        "musicLibrary",
+      ) as SmartFetchMusicLibraryService | null;
       if (!musicLibrary?.searchYouTube) {
         return { success: false };
       }

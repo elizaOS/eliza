@@ -24,19 +24,13 @@
       "@/components/*": ["../../packages/ui/src/components/*"],
       "@/packages/*": ["../../packages/*"],
       "@elizaos/cloud-ui": ["../../packages/ui/src/index.ts"],
-      "@elizaos/cloud-ui/primitives": [
-        "../../packages/ui/src/components/primitives.ts"
-      ],
-      "@elizaos/cloud-ui/brand": [
-        "../../packages/ui/src/components/brand/index.ts"
-      ],
-      "@elizaos/cloud-ui/layout": [
-        "../../packages/ui/src/components/layout/index.ts"
-      ],
+      "@elizaos/cloud-ui/primitives": ["../../packages/ui/src/components/primitives.ts"],
+      "@elizaos/cloud-ui/brand": ["../../packages/ui/src/components/brand/index.ts"],
+      "@elizaos/cloud-ui/layout": ["../../packages/ui/src/components/layout/index.ts"],
       "@elizaos/cloud-ui/*": ["../../packages/ui/src/*"],
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "vite.config.ts", "../../packages/types/plugin-sql.d.ts"],
+  "include": ["src", "vite.config.ts"],
   "exclude": ["node_modules", "dist", "src/legacy"]
 }

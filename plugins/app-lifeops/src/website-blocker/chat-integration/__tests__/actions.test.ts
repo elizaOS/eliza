@@ -55,7 +55,7 @@ const EMPTY_MESSAGE = {
   agentId: AGENT_ID,
   roomId: "00000000-0000-0000-0000-00000000eeee" as UUID,
   content: { text: "" },
-} as unknown as Memory;
+} as Memory;
 
 function isActionResult(value: unknown): value is ActionResult {
   return (

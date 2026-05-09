@@ -42,7 +42,7 @@ export class AgentStore implements Store {
         createdAt: row.createdAt.getTime(),
         updatedAt: row.updatedAt.getTime(),
         settings: row.settings as Agent["settings"],
-      } as unknown as Agent;
+      } as Agent;
     }, "AgentStore.get");
   }
 

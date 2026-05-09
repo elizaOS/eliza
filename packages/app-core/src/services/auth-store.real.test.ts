@@ -36,7 +36,7 @@ async function open(): Promise<Harness> {
   const adapter = createDatabaseAdapter(
     { dataDir },
     "00000000-0000-0000-0000-000000000001" as `${string}-${string}-${string}-${string}-${string}`,
-  ) as unknown as AdapterWithDb;
+  ) as AdapterWithDb;
   if (typeof adapter.initialize === "function") {
     await adapter.initialize();
   } else if (typeof adapter.init === "function") {

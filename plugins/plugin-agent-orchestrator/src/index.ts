@@ -29,10 +29,8 @@ export const agentOrchestratorPlugin: Plugin = {
   services: [
     AcpService as unknown as ServiceClass,
     SubAgentRouter as unknown as ServiceClass,
-    // biome-ignore lint/suspicious/noExplicitAny: PTY/workspace services don't extend Service base class
-    PTYService as any,
-    // biome-ignore lint/suspicious/noExplicitAny: PTY/workspace services don't extend Service base class
-    CodingWorkspaceService as any,
+    PTYService as unknown as ServiceClass,
+    CodingWorkspaceService as unknown as ServiceClass,
   ],
   actions: [tasksAction],
   providers: [

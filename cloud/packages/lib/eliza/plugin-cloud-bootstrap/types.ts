@@ -1,11 +1,8 @@
-import type { Action, Content, Memory, State, UUID } from "@elizaos/core";
+import type { Action, ActionResult, Content, Memory, State, UUID } from "@elizaos/core";
 
-export interface NativePlannerActionResult {
-  data: { actionName: string };
-  success: boolean;
+export interface NativePlannerActionResult extends ActionResult {
+  data: NonNullable<ActionResult["data"]> & { actionName: string };
   text?: string;
-  error?: string | Error;
-  values?: Record<string, unknown>;
 }
 
 export type StrategyMode = "simple" | "actions" | "none";

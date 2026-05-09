@@ -139,7 +139,7 @@ export class WalletProvider {
   ): PublicClient<HttpTransport, Chain, Account | undefined> {
     assertChainConfigured(this._chains, chainName);
     const transport = this.createHttpTransport(chainName);
-    const publicClientFactory = createPublicClient as unknown as (parameters: {
+    const publicClientFactory = createPublicClient as (parameters: {
       chain: Chain;
       transport: HttpTransport;
     }) => PublicClient<HttpTransport, Chain, Account | undefined>;

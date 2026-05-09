@@ -39,10 +39,21 @@ interface ConnectorSetupService {
   updateConfig(updater: (config: Record<string, unknown>) => void): void;
 }
 
+function isConnectorSetupService(service: unknown): service is ConnectorSetupService {
+  if (!service || typeof service !== "object") {
+    return false;
+  }
+  const candidate = service as Partial<ConnectorSetupService>;
+  return (
+    typeof candidate.getConfig === "function" &&
+    typeof candidate.updateConfig === "function" &&
+    typeof candidate.persistConfig === "function"
+  );
+}
+
 function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
-  return runtime.getService(
-    "connector-setup",
-  ) as unknown as ConnectorSetupService | null;
+  const service = runtime.getService("connector-setup");
+  return isConnectorSetupService(service) ? service : null;
 }
 
 // ── Module-level auth session state ────────────────────────────────────

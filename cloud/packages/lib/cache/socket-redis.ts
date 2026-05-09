@@ -32,10 +32,8 @@ async function getConnect(): Promise<ConnectFn> {
   if (cachedConnect) return cachedConnect;
 
   if (typeof globalThis !== "undefined" && "WebSocketPair" in globalThis) {
-    // `cloudflare:sockets` only resolves inside the Workers bundler. Cast
-    // through `unknown` so packages/lib's plain Node tsconfig still compiles
-    // — the Worker tsconfig pulls in the real types via `@cloudflare/workers-types`.
-    const mod = (await import(/* @vite-ignore */ "cloudflare:sockets" as string)) as unknown as {
+    // `cloudflare:sockets` only resolves inside the Workers bundler.
+    const mod = (await import(/* @vite-ignore */ "cloudflare:sockets" as string)) as {
       connect: ConnectFn;
     };
     cachedConnect = mod.connect;
@@ -570,7 +568,7 @@ function decodeMaybeJson<T>(s: string): T {
   try {
     return JSON.parse(s) as T;
   } catch {
-    return s as unknown as T;
+    return s as T;
   }
 }
 

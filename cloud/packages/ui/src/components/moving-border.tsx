@@ -30,7 +30,7 @@ export function Button({
   className,
   ...otherProps
 }: MovingBorderButtonProps) {
-  const Component = (as ?? "button") as any;
+  const Component = as ?? "button";
   return (
     <Component
       className={cn(

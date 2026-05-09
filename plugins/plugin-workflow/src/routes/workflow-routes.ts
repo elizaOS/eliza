@@ -138,7 +138,7 @@ function asWorkflow(value: unknown): WorkflowDefinition | null {
   ) {
     return null;
   }
-  return value as WorkflowDefinition;
+  return value as unknown as WorkflowDefinition;
 }
 
 async function readWorkflowPayload(

@@ -58,7 +58,7 @@ Total: **32**
 - `plugins/app-wallet`
 - `plugins/app-wifi`
 - `plugins/plugin-action-bench`
-- `plugins/plugin-browser-bridge`
+- `plugins/plugin-browser`
 - `plugins/plugin-calendly`
 - `plugins/plugin-cli`
 - `plugins/plugin-elevenlabs`

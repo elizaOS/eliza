@@ -142,10 +142,7 @@ async function waitForTrackedSession(
 		| undefined;
 	await waitFor(
 		async () => {
-			listResult = await listAgentsAction.handler(
-				runtime as unknown as IAgentRuntime,
-				createMessage({}) as never,
-			);
+			listResult = await listAgentsAction.handler(runtime, createMessage({}) as never);
 			if (!listResult?.success) {
 				return false;
 			}
@@ -175,7 +172,7 @@ async function waitForTrackedSession(
 async function runSequentialSmoke(agentType: Framework): Promise<void> {
 	const workdir = createWorkdir(agentType, "reuse");
 	const { runtime, cleanup } = await createRuntime({ SERVER_PORT: "31337" });
-	const service = await PTYService.start(runtime as unknown as IAgentRuntime);
+	const service = await PTYService.start(runtime);
 	runtime.services.set("PTY_SERVICE", [service]);
 
 	const events: Array<{ event: string; data: unknown }> = [];
@@ -194,9 +191,9 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 		const [preflight] = await service.checkAvailableAgents([agentType]);
 		assert.equal(preflight?.installed, true);
 
-		const spawnResult = await spawnAgentAction.handler(
-			runtime as unknown as IAgentRuntime,
-			createMessage({
+			const spawnResult = await spawnAgentAction.handler(
+				runtime,
+				createMessage({
 				agentType,
 				workdir,
 				task:
@@ -254,9 +251,9 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 		);
 
 		const secondTaskEventStart = events.length;
-		const sendResult = await sendToAgentAction.handler(
-			runtime as unknown as IAgentRuntime,
-			createMessage({
+			const sendResult = await sendToAgentAction.handler(
+				runtime,
+				createMessage({
 				sessionId,
 				task:
 					`Now create a second file named ${secondFileName} containing exactly "${agentType}-second". ` +
@@ -283,10 +280,10 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 			3000,
 		);
 
-		const finalList = await listAgentsAction.handler(
-			runtime as unknown as IAgentRuntime,
-			createMessage({}) as never,
-		);
+			const finalList = await listAgentsAction.handler(
+				runtime,
+				createMessage({}) as never,
+			);
 		assert.equal(finalList?.success, true);
 		assert.ok(finalList?.text.includes(sessionId));
 	} finally {
@@ -302,7 +299,7 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 async function runWebSmoke(agentType: Framework): Promise<void> {
 	const workdir = createWorkdir(agentType, "web");
 	const { runtime, cleanup } = await createRuntime({ SERVER_PORT: "31337" });
-	const service = await PTYService.start(runtime as unknown as IAgentRuntime);
+	const service = await PTYService.start(runtime);
 	runtime.services.set("PTY_SERVICE", [service]);
 
 	const events: Array<{ event: string; data: unknown }> = [];
@@ -325,9 +322,9 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
 		const [preflight] = await service.checkAvailableAgents([agentType]);
 		assert.equal(preflight?.installed, true);
 
-		const spawnResult = await spawnAgentAction.handler(
-			runtime as unknown as IAgentRuntime,
-			createMessage({
+			const spawnResult = await spawnAgentAction.handler(
+				runtime,
+				createMessage({
 				agentType,
 				workdir,
 				task:
@@ -390,10 +387,10 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
 			3000,
 		);
 
-		const finalList = await listAgentsAction.handler(
-			runtime as unknown as IAgentRuntime,
-			createMessage({}) as never,
-		);
+			const finalList = await listAgentsAction.handler(
+				runtime,
+				createMessage({}) as never,
+			);
 		assert.equal(finalList?.success, true);
 		assert.ok(finalList?.text.includes(sessionId));
 	} finally {

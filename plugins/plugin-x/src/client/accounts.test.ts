@@ -10,7 +10,7 @@ function createRuntime(settings: Record<string, string>): IAgentRuntime {
   return {
     agentId: "agent-1",
     getSetting: (key: string) => settings[key],
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 describe("X account config", () => {

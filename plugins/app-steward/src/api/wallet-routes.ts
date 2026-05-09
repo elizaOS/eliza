@@ -1,8 +1,7 @@
 import type http from "node:http";
 import { RouteRequestMeta } from "@elizaos/core";
 import { persistConfigEnv } from "@elizaos/agent";
-import type {
-  RouteHelpers } from "@elizaos/shared";
+import type { RouteHelpers } from "@elizaos/shared";
 import type { ElizaConfig } from "@elizaos/agent";
 import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
@@ -455,7 +454,8 @@ export async function handleWalletRoutes(
               };
             };
             const agent =
-              agentBody.data ?? (agentBody as unknown as typeof agentBody.data);
+              agentBody.data ??
+              (agentBody as unknown as NonNullable<typeof agentBody.data>);
             agentEvm =
               agent?.walletAddresses?.evm?.trim() ||
               agent?.walletAddress?.trim() ||
@@ -490,7 +490,7 @@ export async function handleWalletRoutes(
           };
           const created =
             createBody.data ??
-            (createBody as unknown as typeof createBody.data);
+            (createBody as unknown as NonNullable<typeof createBody.data>);
           agentEvm =
             created?.walletAddresses?.evm?.trim() ||
             created?.walletAddress?.trim() ||

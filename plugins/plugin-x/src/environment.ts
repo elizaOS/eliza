@@ -321,10 +321,10 @@ export async function validateTwitterConfig(
   } catch (error) {
     if (error instanceof z.ZodError) {
       // zod v3 uses `issues`; some builds also expose `errors`.
-      const zodLike = error as unknown as {
+      const zodLike: {
         issues?: unknown;
         errors?: unknown;
-      };
+      } = error;
       const raw = Array.isArray(zodLike.issues)
         ? zodLike.issues
         : Array.isArray(zodLike.errors)

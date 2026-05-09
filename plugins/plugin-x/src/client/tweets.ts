@@ -21,6 +21,15 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+type TweetMediaIds = NonNullable<SendTweetV2Params["media"]>["media_ids"];
+
+function toTweetMediaIds(mediaIds: string[]): TweetMediaIds {
+  if (mediaIds.length < 1 || mediaIds.length > 4) {
+    throw new Error("Twitter media_ids must contain between 1 and 4 ids");
+  }
+  return mediaIds as TweetMediaIds;
+}
+
 /**
  * Default options for Twitter API v2 request parameters.
  * @typedef {Object} defaultOptions
@@ -591,9 +600,7 @@ export async function createCreateTweetRequest(
     // boundary since upstream validation handles arity.
     if (mediaIds && mediaIds.length > 0) {
       tweetConfig.media = {
-        media_ids: mediaIds as unknown as NonNullable<
-          SendTweetV2Params["media"]
-        >["media_ids"],
+        media_ids: toTweetMediaIds(mediaIds),
       };
     }
 

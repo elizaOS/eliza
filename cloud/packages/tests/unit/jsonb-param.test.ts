@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { StringChunk } from "drizzle-orm";
 import { jsonbParam } from "@/db/utils/jsonb";
 
 describe("jsonbParam", () => {
@@ -6,16 +7,16 @@ describe("jsonbParam", () => {
     const q = jsonbParam({});
 
     // Drizzle SQL objects expose `queryChunks` which include string chunks and param values.
-    const chunks = (q as any).queryChunks as any[];
+    const chunks = q.queryChunks;
 
     // Includes the cast token.
     const hasJsonbCast = chunks.some(
-      (c) => c?.constructor?.name === "StringChunk" && c?.value?.[0] === "::jsonb",
+      (chunk) => chunk instanceof StringChunk && chunk.value.includes("::jsonb"),
     );
     expect(hasJsonbCast).toBe(true);
 
     // The param should be JSON string, not a raw object.
-    const hasJsonStringParam = chunks.some((c) => typeof c === "string" && c === "{}");
+    const hasJsonStringParam = chunks.some((chunk) => typeof chunk === "string" && chunk === "{}");
     expect(hasJsonStringParam).toBe(true);
   });
 });

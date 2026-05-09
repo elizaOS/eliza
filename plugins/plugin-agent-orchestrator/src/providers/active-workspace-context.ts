@@ -9,7 +9,13 @@
  * @module providers/active-workspace-context
  */
 
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  Service,
+  State,
+} from "@elizaos/core";
 import type { PTYService } from "../services/pty-service.js";
 import { getCoordinator } from "../services/pty-service.js";
 import type { SessionInfo } from "../services/pty-types.js";
@@ -70,12 +76,12 @@ export const activeWorkspaceContextProvider: Provider = {
   cacheScope: "turn",
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
-    const ptyService = runtime.getService("PTY_SERVICE") as unknown as
-      | PTYService
+    const ptyService = runtime.getService("PTY_SERVICE") as
+      | (Service & PTYService)
       | undefined;
     const wsService = runtime.getService(
       "CODING_WORKSPACE_SERVICE",
-    ) as unknown as CodingWorkspaceService | undefined;
+    ) as (Service & CodingWorkspaceService) | undefined;
     const coordinator = getCoordinator(runtime);
     let frameworkState = FALLBACK_FRAMEWORK_STATE;
     try {

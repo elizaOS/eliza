@@ -1515,12 +1515,17 @@ export function patchAutonomousTypeError(root, log = console.log) {
   for (const filePath of candidates) {
     if (!existsSync(filePath)) continue;
     let source = readFileSync(filePath, "utf8");
-    // Skip if already fixed (contains "as unknown as SubscriptionAuthApi")
-    if (source.includes("as unknown as SubscriptionAuthApi")) continue;
+    // Skip if already fixed by widening through the generated API surface.
+    if (
+      source.includes(
+        "as Partial<SubscriptionAuthApi> as SubscriptionAuthApi",
+      )
+    )
+      continue;
     if (source.includes("as SubscriptionAuthApi")) {
       source = source.replaceAll(
         "as SubscriptionAuthApi",
-        "as unknown as SubscriptionAuthApi",
+        "as Partial<SubscriptionAuthApi> as SubscriptionAuthApi",
       );
       writeFileSync(filePath, source, "utf8");
       patched = true;

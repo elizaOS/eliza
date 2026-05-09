@@ -662,7 +662,7 @@ export class PredictionMarketService extends Service {
         data: {
           actionName: POLYMARKET_ACTION_NAME,
           error: "UNSUPPORTED_PROVIDER",
-          providers: this.listProviders() as any,
+          providers: this.listProviders(),
         },
       });
       return {
@@ -671,7 +671,7 @@ export class PredictionMarketService extends Service {
         error: "UNSUPPORTED_PROVIDER",
         data: {
           actionName: POLYMARKET_ACTION_NAME,
-          providers: this.listProviders() as any,
+          providers: this.listProviders(),
         },
       };
     }

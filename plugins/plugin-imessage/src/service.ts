@@ -85,6 +85,9 @@ function appleScriptStringLiteral(value: string): string {
 type RuntimeWithOptionalConnectorRegistry = IAgentRuntime & {
   registerMessageConnector?: (registration: MessageConnectorRegistration) => void;
 };
+type RuntimeWithTaskLookup = IAgentRuntime & {
+  getTasksByName(name: string): Promise<unknown[]>;
+};
 type AccountTargetInfo = TargetInfo & { accountId?: string };
 type AccountQueryContext = MessageConnectorQueryContext & { accountId?: string };
 
@@ -125,6 +128,10 @@ function registerMessageConnectorIfAvailable(
     throw new Error("iMessage connector registration requires a send handler");
   }
   runtime.registerSendHandler(registration.source, registration.sendHandler);
+}
+
+function hasTaskLookup(runtime: IAgentRuntime): runtime is RuntimeWithTaskLookup {
+  return "getTasksByName" in runtime && typeof runtime.getTasksByName === "function";
 }
 
 function readTargetAccountId(target?: TargetInfo | null): string | undefined {
@@ -1813,29 +1820,14 @@ export class IMessageService extends Service implements IIMessageService {
   private async registerHeartbeat(): Promise<void> {
     if (!this.runtime) return;
 
-    type TaskCapableRuntime = {
-      registerTaskWorker?: (worker: {
-        name: string;
-        execute: (
-          runtime: IAgentRuntime,
-          options: Record<string, unknown>,
-          task: unknown
-        ) => Promise<void>;
-        validate?: () => Promise<boolean>;
-      }) => void;
-      createTask?: (task: Record<string, unknown>) => Promise<unknown>;
-      getTasksByName?: (name: string) => Promise<unknown[]>;
-    };
-    const taskRuntime = this.runtime as unknown as TaskCapableRuntime;
-
-    if (typeof taskRuntime.registerTaskWorker !== "function") {
+    if (typeof this.runtime.registerTaskWorker !== "function") {
       logger.debug("[imessage][heartbeat] runtime does not support registerTaskWorker — skipping");
       return;
     }
 
     const heartbeatIntervalMs = Number(process.env.IMESSAGE_HEARTBEAT_INTERVAL_MS) || 60_000;
 
-    taskRuntime.registerTaskWorker({
+    this.runtime.registerTaskWorker({
       name: "IMESSAGE_HEARTBEAT",
       execute: async (runtime, _options, _task) => {
         let ok = true;
@@ -1878,15 +1870,15 @@ export class IMessageService extends Service implements IIMessageService {
           } as EventPayload
         );
       },
-      validate: async () => true,
+      shouldRun: async () => true,
     });
 
     // Only create the task if one doesn't already exist. This is safe
     // across restarts — on a cold boot no task exists yet, on a warm
     // restart the previous one is still in the queue and we skip.
-    if (typeof taskRuntime.getTasksByName === "function") {
+    if (hasTaskLookup(this.runtime)) {
       try {
-        const existing = await taskRuntime.getTasksByName("IMESSAGE_HEARTBEAT");
+        const existing = await this.runtime.getTasksByName("IMESSAGE_HEARTBEAT");
         if (Array.isArray(existing) && existing.length > 0) {
           logger.debug(
             `[imessage][heartbeat] task already registered (${existing.length} existing) — skipping createTask`
@@ -1898,9 +1890,9 @@ export class IMessageService extends Service implements IIMessageService {
       }
     }
 
-    if (typeof taskRuntime.createTask === "function") {
+    if (typeof this.runtime.createTask === "function") {
       try {
-        await taskRuntime.createTask({
+        await this.runtime.createTask({
           name: "IMESSAGE_HEARTBEAT",
           description:
             "Periodic health probe for the iMessage connector (chat.db reader, contacts, polling cursor).",

@@ -24,7 +24,7 @@ interface TriggerSchemaIndex {
   triggers?: Record<string, { outputSchema: SchemaContent }>;
 }
 
-const SCHEMA_INDEX: SchemaIndex = schemaIndex;
+const SCHEMA_INDEX = schemaIndex as Partial<SchemaIndex>;
 const TRIGGER_SCHEMA_INDEX: TriggerSchemaIndex = triggerSchemaIndex;
 const TRIGGER_SCHEMAS = TRIGGER_SCHEMA_INDEX.triggers ?? {};
 

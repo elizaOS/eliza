@@ -32,24 +32,36 @@ Most plugin tests need a mock `IAgentRuntime`. Create a shared helper:
 ```typescript
 // tests/helpers.ts
 import { vi } from 'vitest';
-import type { IAgentRuntime, Memory, State } from '@elizaos/core';
+import {
+  AgentRuntime,
+  createCharacter,
+  createMessageMemory,
+  InMemoryDatabaseAdapter,
+  stringToUuid,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+} from '@elizaos/core';
 
 export function createMockRuntime(
   overrides?: Partial<IAgentRuntime>
 ): IAgentRuntime {
-  return {
-    agentId: 'test-agent-00000000-0000-0000-0000-000000000000',
-    getSetting: vi.fn((key: string) => process.env[key]),
-    getService: vi.fn(),
-    logger: {
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
-    },
-    composeState: vi.fn().mockResolvedValue({} as State),
-    ...overrides,
-  } as unknown as IAgentRuntime;
+  const runtime = new AgentRuntime({
+    agentId: stringToUuid('test-agent'),
+    character: createCharacter({ name: 'Test Agent' }),
+    adapter: new InMemoryDatabaseAdapter(),
+    plugins: [],
+    logLevel: 'error',
+  });
+
+  runtime.getSetting = vi.fn((key: string) => process.env[key]);
+  runtime.getService = vi.fn();
+  runtime.composeState = vi
+    .fn()
+    .mockResolvedValue({ values: {}, data: {}, text: '' } satisfies State);
+
+  Object.assign(runtime, overrides);
+  return runtime;
 }
 
 export function createMockMessage(
@@ -57,13 +69,14 @@ export function createMockMessage(
   overrides?: Partial<Memory>
 ): Memory {
   return {
-    id: 'msg-00000000-0000-0000-0000-000000000000',
-    entityId: 'user-00000000-0000-0000-0000-000000000000',
-    roomId: 'room-00000000-0000-0000-0000-000000000000',
-    content: { text },
-    createdAt: Date.now(),
+    ...createMessageMemory({
+      id: stringToUuid('test-message'),
+      entityId: stringToUuid('test-user'),
+      roomId: stringToUuid('test-room'),
+      content: { text },
+    }),
     ...overrides,
-  } as Memory;
+  };
 }
 ```
 
@@ -115,7 +128,7 @@ describe('checkWeatherAction', () => {
       });
 
       const message = createMockMessage('Weather in Tokyo');
-      const state = {} as any;
+      const state: State = { values: {}, data: {}, text: '' };
       const result = await checkWeatherAction.handler(
         runtime,
         message,
@@ -131,7 +144,7 @@ describe('checkWeatherAction', () => {
       globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
 
       const message = createMockMessage('Weather in Tokyo');
-      const state = {} as any;
+      const state: State = { values: {}, data: {}, text: '' };
       const result = await checkWeatherAction.handler(
         runtime,
         message,
@@ -168,7 +181,8 @@ describe('pluginStatusProvider', () => {
     const runtime = createMockRuntime();
     const message = createMockMessage('hello');
 
-    const result = await pluginStatusProvider.get(runtime, message, {} as any);
+    const state: State = { values: {}, data: {}, text: '' };
+    const result = await pluginStatusProvider.get(runtime, message, state);
 
     expect(result).toBeDefined();
     expect(typeof result.text).toBe('string');
@@ -182,7 +196,8 @@ describe('pluginStatusProvider', () => {
     const runtime = createMockRuntime();
     const message = createMockMessage('hello');
 
-    const result = await pluginStatusProvider.get(runtime, message, {} as any);
+    const state: State = { values: {}, data: {}, text: '' };
+    const result = await pluginStatusProvider.get(runtime, message, state);
 
     expect(result.text).toContain('missing');
   });
@@ -206,14 +221,14 @@ describe('WeatherCacheService', () => {
 
   it('starts without errors', async () => {
     const runtime = createMockRuntime();
-    service = await WeatherCacheService.start(runtime) as any;
+    service = await WeatherCacheService.start(runtime);
     expect(service).toBeDefined();
     expect(service.stop).toBeTypeOf('function');
   });
 
   it('stops cleanly', async () => {
     const runtime = createMockRuntime();
-    service = await WeatherCacheService.start(runtime) as any;
+    service = await WeatherCacheService.start(runtime);
     await expect(service.stop()).resolves.toBeUndefined();
     service = undefined;
   });
@@ -325,7 +340,7 @@ globalThis.fetch = vi.fn()
 Plugins can embed tests via the `tests` field. These run when users execute `eliza plugins test <name>`:
 
 ```typescript
-import type { Plugin, TestSuite, Memory } from '@elizaos/core';
+import type { Plugin, TestSuite, Memory, State } from '@elizaos/core';
 import { checkWeatherAction } from './actions/weather';
 import { pluginStatusProvider } from './providers/status';
 
@@ -344,7 +359,8 @@ const weatherTests: TestSuite = {
       name: 'provider returns context',
       fn: async (runtime) => {
         const msg = { content: { text: 'status' } } as Memory;
-        const result = await pluginStatusProvider.get(runtime, msg, {} as any);
+        const state: State = { values: {}, data: {}, text: '' };
+        const result = await pluginStatusProvider.get(runtime, msg, state);
         if (!result.text) throw new Error('Expected non-empty text');
       },
     },

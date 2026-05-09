@@ -240,7 +240,7 @@ export class RoomsService {
         name: input.name,
         metadata: input.metadata,
         createdAt: new Date(),
-      })
+      } as typeof roomTable.$inferInsert)
       .returning()) as Room[];
 
     return roomResult[0];
@@ -271,9 +271,9 @@ export class RoomsService {
           name: roomInput.name,
           metadata: roomInput.metadata,
           createdAt: new Date(),
-        })
+        } as typeof roomTable.$inferInsert)
         .returning();
-      const room = (rows as unknown as Room[])[0];
+      const room = rows[0] as Room;
 
       // Create entity (upsert - ignore if exists)
       // Must use tx so the insert is visible within this transaction

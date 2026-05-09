@@ -50,7 +50,7 @@ function createInlineRuntime(captured: CapturedEvent[]): IAgentRuntime {
 		},
 		getService: () => null,
 		getServicesByType: () => [],
-	} as unknown as IAgentRuntime;
+	} as IAgentRuntime;
 }
 
 if (missing.length > 0) {

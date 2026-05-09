@@ -35,7 +35,7 @@ import {
 } from "@/lib/services/credits";
 import { generationsService } from "@/lib/services/generations";
 import { usageService } from "@/lib/services/usage";
-import type { ApiKey, UserWithOrganization } from "@/lib/types";
+import type { ApiKey } from "@/lib/types";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
@@ -45,6 +45,10 @@ const ROUTE_MAX_DURATION = 800;
 
 const VALID_MESSAGE_ROLES = ["user", "assistant", "system", "tool"] as const;
 type ValidRole = (typeof VALID_MESSAGE_ROLES)[number];
+type ChatBillingUser = {
+  id: string;
+  organization_id?: string | null;
+};
 
 function isValidRole(role: string): role is ValidRole {
   return VALID_MESSAGE_ROLES.includes(role as ValidRole);
@@ -118,14 +122,14 @@ app.post("/", async (c) => {
   let settleReservation: ((actualCost: number) => Promise<void>) | null = null;
 
   try {
-    let user: UserWithOrganization;
+    let user: ChatBillingUser;
     let apiKey: ApiKey | undefined;
     let isAnonymous = false;
     let anonymousSession: AnonymousSession | null = null;
 
     const authedUser = await getCurrentUser(c);
     if (authedUser) {
-      user = authedUser as unknown as UserWithOrganization;
+      user = authedUser;
       apiKey = await getRequestApiKey(c);
     } else {
       const anonData = await getAnonymousUser(c.req.raw);

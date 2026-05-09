@@ -1,7 +1,12 @@
 import type { IAgentRuntime, Memory, State } from '@elizaos/core';
 
+type MockRuntimeOverrides = Partial<IAgentRuntime> & {
+  settings?: Record<string, string>;
+  services?: Record<string, unknown>;
+};
+
 // Local mock implementations until core test-utils build issue is resolved
-const createCoreMockRuntime = (overrides: any = {}) => ({
+const createCoreMockRuntime = (overrides: MockRuntimeOverrides = {}) => ({
   agentId: 'test-agent-id',
   character: { name: 'TestAgent', bio: ['Test agent'], ...overrides.character },
   getSetting: overrides.getSetting || (() => null),
@@ -56,7 +61,7 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
         NGROK_DOMAIN: process.env.NGROK_DOMAIN || '',
         NGROK_REGION: 'us',
         LOG_LEVEL: 'info',
-        ...(overrides as any)?.settings,
+        ...overrides.settings,
       };
       // Pass through environment variables for real integration tests
       return settings[key] || process.env[key];
@@ -64,7 +69,7 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
 
     // Ngrok-specific services
     getService: (name: string) => {
-      const services: Record<string, any> = {
+      const services: Record<string, unknown> = {
         'ngrok-tunnel': {
           start: async () => {},
           stop: async () => {},
@@ -72,13 +77,13 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
           getUrl: () => null,
           getStatus: () => ({ active: false, url: null }),
         },
-        ...(overrides as any)?.services,
+        ...overrides.services,
       };
       return services[name];
     },
 
     ...overrides,
-  }) as unknown as IAgentRuntime;
+  }) as IAgentRuntime;
 }
 
 /**

@@ -55,7 +55,7 @@ async function main(): Promise<void> {
   );
   assertTrue(
     "ScapeGameService.serviceType = 'scape_game'",
-    (ScapeGameService as unknown as { serviceType: string }).serviceType ===
+    (ScapeGameService as { serviceType: string }).serviceType ===
       "scape_game",
   );
 
@@ -113,7 +113,7 @@ async function main(): Promise<void> {
     message: "ok",
   };
   const encodedServer = encodeClientFrame(
-    serverFrame as unknown as typeof clientFrame,
+    serverFrame as typeof clientFrame,
   );
   const decoded = decodeServerFrame(encodedServer);
   assertTrue("decode returned ok=true", decoded.ok === true);

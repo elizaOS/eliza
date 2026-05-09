@@ -136,7 +136,7 @@ export async function createBlockRuleHarness(
     createTask: async () => `00000000-0000-0000-0000-0000000000aa` as UUID,
     updateTask: async () => undefined,
     deleteTask: async () => undefined,
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 
   return {
     runtime,

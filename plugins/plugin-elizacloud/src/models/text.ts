@@ -97,6 +97,8 @@ type NativeGenerateTextResult = {
   providerMetadata?: unknown;
 };
 
+type NativeGenerateTextModelResult = NativeGenerateTextResult & string;
+
 type NativeToolCall = {
   type: "tool-call";
   toolCallId: string;
@@ -687,7 +689,7 @@ async function generateTextWithModel(
       systemPrompt,
     });
     return shouldReturnNativeResult(paramsWithNative)
-      ? (nativeResult as string)
+      ? (nativeResult as NativeGenerateTextModelResult)
       : nativeResult.text;
   }
 

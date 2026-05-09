@@ -980,7 +980,7 @@ function toPersistedTrajectory(traj: Trajectory): PersistedTrajectory {
       llmCalls: (step.llmCalls ?? []).map((call, callIndex) => {
         const normalizedCall = enrichTrajectoryLlmCall(
           call as Record<string, unknown>,
-        ) as unknown as TrajectoryLlmCall;
+        ) as TrajectoryLlmCall;
         return {
           callId:
             typeof normalizedCall.callId === "string" &&
@@ -1134,7 +1134,7 @@ function trajectoryToUIDetail(traj: Trajectory): UITrajectoryDetailResult {
   for (const entry of listTrajectoryCallEntries(traj)) {
     const call = enrichTrajectoryLlmCall(
       entry.call as Record<string, unknown>,
-    ) as unknown as TrajectoryLlmCall;
+    ) as TrajectoryLlmCall;
     llmCalls.push({
       id: call.callId || `${entry.stepId}-call-${entry.callIndex}`,
       trajectoryId,

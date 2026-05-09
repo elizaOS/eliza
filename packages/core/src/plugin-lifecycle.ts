@@ -78,19 +78,20 @@ type AsyncContextStorage<T> = {
 	getStore(): T | undefined;
 };
 
-type RuntimeWithPluginLifecycle = IAgentRuntime & {
-	__elizaPluginLifecycleInstalled?: boolean;
-	__elizaPluginOwnership?: Map<string, PluginOwnership>;
-	registerDatabaseAdapter: (adapter: IAgentRuntime["adapter"]) => void;
+type RuntimeWithPluginLifecycle = IAgentRuntime &
+	RuntimePrivateState & {
+		__elizaPluginLifecycleInstalled?: boolean;
+		__elizaPluginOwnership?: Map<string, PluginOwnership>;
+		registerDatabaseAdapter: (adapter: IAgentRuntime["adapter"]) => void;
 	unloadPlugin?: (pluginName: string) => Promise<PluginOwnership | null>;
 	reloadPlugin?: (plugin: Plugin) => Promise<void>;
 	applyPluginConfig?: (
 		pluginName: string,
 		config: Record<string, string>,
 	) => Promise<boolean>;
-	getPluginOwnership?: (pluginName: string) => PluginOwnership | null;
-	getAllPluginOwnership?: () => PluginOwnership[];
-};
+		getPluginOwnership?: (pluginName: string) => PluginOwnership | null;
+		getAllPluginOwnership?: () => PluginOwnership[];
+	};
 
 type RuntimePrivateState = {
 	serviceTypes: Map<ServiceTypeName, RuntimeServiceClass[]>;
@@ -207,8 +208,10 @@ function warnOnDuplicateServiceTypeRegistration(
 	);
 }
 
-function getRuntimePrivateState(runtime: IAgentRuntime): RuntimePrivateState {
-	return runtime as unknown as RuntimePrivateState;
+function getRuntimePrivateState(
+	runtime: RuntimeWithPluginLifecycle,
+): RuntimePrivateState {
+	return runtime;
 }
 
 function getPluginOwnershipStore(
@@ -474,7 +477,7 @@ async function stopOwnedServices(
 
 		for (const ownedClass of ownedClasses) {
 			if (typeof ownedClass.stopRuntime === "function") {
-				await ownedClass.stopRuntime(runtime as unknown as IAgentRuntime);
+				await ownedClass.stopRuntime(runtime);
 			}
 			serviceClassOwners.delete(ownedClass);
 		}
@@ -552,10 +555,10 @@ function removeOwnedEvents(
 	for (const [eventName, ownedHandlers] of eventGroups) {
 		const currentHandlers = runtime.events[eventName];
 		if (!currentHandlers || currentHandlers.length === 0) continue;
-		const ownedSet = new Set(ownedHandlers);
-		const remainingHandlers = currentHandlers.filter(
-			(handler) => !ownedSet.has(handler as unknown as RuntimeEventHandler),
-		);
+			const ownedSet = new Set(ownedHandlers);
+			const remainingHandlers = currentHandlers.filter(
+				(handler) => !ownedSet.has(handler),
+			);
 		if (remainingHandlers.length > 0) {
 			runtime.events[eventName] = remainingHandlers;
 		} else {
@@ -831,12 +834,12 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		originalRegisterEvent(event as never, handler as never);
 		if (!capture) return;
 		const nextHandlers = runtimeWithLifecycle.events[event] ?? [];
-		for (const registeredHandler of nextHandlers.slice(handlersBefore)) {
-			pushUniqueEvent(capture.ownership.events, {
-				eventName: event,
-				handler: registeredHandler as unknown as RuntimeEventHandler,
-			});
-		}
+			for (const registeredHandler of nextHandlers.slice(handlersBefore)) {
+				pushUniqueEvent(capture.ownership.events, {
+					eventName: event,
+					handler: registeredHandler,
+				});
+			}
 	}) as typeof runtimeWithLifecycle.registerEvent;
 
 	runtimeWithLifecycle.registerService = (async (

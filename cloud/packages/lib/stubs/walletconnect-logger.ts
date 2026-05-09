@@ -10,6 +10,7 @@
 type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
 
 interface Logger {
+  context?: string;
   trace: (...args: unknown[]) => void;
   debug: (...args: unknown[]) => void;
   info: (...args: unknown[]) => void;
@@ -28,8 +29,9 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   fatal: 60,
 };
 
-function createLogger(level: LogLevel = "info", _bindings?: Record<string, unknown>): Logger {
+function createLogger(level: LogLevel = "info", bindings?: Record<string, unknown>): Logger {
   const minLevel = LOG_LEVELS[level] || LOG_LEVELS.info;
+  const context = typeof bindings?.context === "string" ? bindings.context : undefined;
 
   const log =
     (logLevel: LogLevel, method: "log" | "warn" | "error") =>
@@ -40,6 +42,7 @@ function createLogger(level: LogLevel = "info", _bindings?: Record<string, unkno
     };
 
   return {
+    context,
     trace: log("trace", "log"),
     debug: log("debug", "log"),
     info: log("info", "log"),
@@ -74,7 +77,7 @@ export function generatePlatformLogger(level: LogLevel = "info"): {
  * Get the logger context (namespace)
  */
 export function getLoggerContext(logger: Logger): string {
-  return (logger as unknown as { context?: string }).context || "";
+  return logger.context || "";
 }
 
 /**

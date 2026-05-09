@@ -81,7 +81,7 @@ function makeRuntime(opts: {
 			error: vi.fn(),
 			trace: vi.fn(),
 		},
-	} as unknown as IAgentRuntime & { __calls: typeof calls };
+	} as IAgentRuntime & { __calls: typeof calls };
 	runtime.__calls = calls;
 	return runtime;
 }
@@ -92,7 +92,7 @@ function getCalls(runtime: IAgentRuntime): Array<{
 	provider: unknown;
 }> {
 	return (
-		runtime as unknown as {
+		runtime as {
 			__calls: Array<{
 				modelType: unknown;
 				params: unknown;
@@ -137,7 +137,7 @@ function makeAction(opts: {
 				text: `${opts.name} completed`,
 				data: { actionName: opts.name },
 			})),
-	} as unknown as Action;
+	} as Action;
 }
 
 function stage1Response(plan: Record<string, unknown>): CannedResponse {

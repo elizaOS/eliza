@@ -32,7 +32,7 @@ function runtimeWithServices(services: Record<string, unknown>): IAgentRuntime {
     agentId: "agent-1",
     getService: vi.fn((serviceType: string) => services[serviceType] ?? null),
     setSetting: vi.fn(),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 function grant(

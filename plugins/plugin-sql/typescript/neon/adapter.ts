@@ -24,7 +24,7 @@ export class NeonDatabaseAdapter extends BaseDrizzleAdapter {
     this.manager = manager;
     // Neon and node-postgres adapters expose compatible drizzle APIs, but
     // BaseDrizzleAdapter expects the shared DrizzleDatabase union type.
-    this.db = manager.getDatabase() as unknown as DrizzleDatabase;
+    this.db = manager.getDatabase() as DrizzleDatabase;
   }
 
   getManager(): NeonConnectionManager {

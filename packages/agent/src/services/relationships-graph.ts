@@ -74,7 +74,7 @@ export async function resolveRelationshipsGraphService(
   if (!service || typeof service !== "object") {
     return null;
   }
-  const graphService = service as RelationshipsServiceWithGraph;
+  const graphService = service as unknown as RelationshipsServiceWithGraph;
 
   if (typeof graphService.setGraphResolvers === "function") {
     graphService.setGraphResolvers({

@@ -74,7 +74,7 @@ ensureElectrobunGlobal();
 function updateBootConfig(
 	updates: Pick<BootConfig, "apiBase" | "apiToken">,
 ): void {
-	const globalObject = window as unknown as Record<PropertyKey, unknown> & {
+	const globalObject = window as Window & Record<PropertyKey, unknown> & {
 		[BOOT_CONFIG_WINDOW_KEY]?: BootConfig;
 	};
 	const currentConfig =

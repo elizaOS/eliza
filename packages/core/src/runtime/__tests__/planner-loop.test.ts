@@ -484,11 +484,15 @@ describe("v5 planner loop skeleton", () => {
 				};
 			}),
 			logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
-		};
-		const recordStage = vi.fn(async () => undefined);
-		const recorder = {
-			recordStage,
-		} as unknown as TrajectoryRecorder;
+			};
+			const recordStage = vi.fn(async () => undefined);
+			const recorder: TrajectoryRecorder = {
+				startTrajectory: vi.fn(() => "trajectory-1"),
+				recordStage,
+				endTrajectory: vi.fn(async () => undefined),
+				load: vi.fn(async () => null),
+				list: vi.fn(async () => []),
+			};
 
 		await runPlannerLoop({
 			runtime,

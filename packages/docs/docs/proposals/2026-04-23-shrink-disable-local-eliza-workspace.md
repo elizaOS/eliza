@@ -55,7 +55,7 @@ doing the following:
 1. Read root `package.json`.
 2. Remove `eliza/*` workspace globs.
 3. Merge CI override specifiers (the `@elizaos/shared` /
-   `@elizaos/ui` / `@elizaos/plugin-browser-bridge` file-overrides
+   `@elizaos/ui` / `@elizaos/plugin-browser` file-overrides
    already in `CI_OVERRIDE_SPECIFIERS`) into `overrides`.
 4. Write `package.json` back.
 5. Move `eliza/` out of the way (keep existing logic).

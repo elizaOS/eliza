@@ -253,7 +253,7 @@ function installSyntheticContext(
 	runtime.log = async () => undefined;
 	runtime.queueEmbeddingGeneration = async () => undefined;
 
-	const runtimeInternal = runtime as unknown as {
+	const runtimeInternal = runtime as {
 		adapter?: {
 			log?: (...args: unknown[]) => Promise<void>;
 		};
@@ -294,7 +294,7 @@ async function createProfileRuntime(
 }
 
 function getDynamicPromptMetricsSize(): number {
-	const runtimeClass = AgentRuntime as unknown as {
+	const runtimeClass = AgentRuntime as {
 		dynamicPromptMetrics?: Map<string, unknown>;
 	};
 	return runtimeClass.dynamicPromptMetrics?.size ?? 0;

@@ -15,6 +15,8 @@ import { stableSerialize } from "../stable-serialize";
 
 type CompatDatabaseMethod = (...args: any[]) => Promise<any> | any;
 type CompatDatabaseAdapter = IDatabaseAdapter & Record<string, unknown>;
+type LegacyDeleteAllMemories = (roomId: UUID, tableName: string) => Promise<void>;
+type LegacyCountMemories = (roomId: UUID, unique?: boolean, tableName?: string) => Promise<number>;
 type LegacyRelationshipQueryParams = {
   entityId: UUID;
   entityIds: UUID[];
@@ -286,12 +288,12 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
   defineCompatMethod(
     compat,
     "updateEntities",
-    async (entities: Array<Record<string, unknown> & { id: UUID }>) => {
+    async (entities: Entity[]) => {
       if (!hasAdapterMethod(compat, "updateEntity")) {
         return;
       }
 
-      await Promise.all(entities.map((entity) => compat.updateEntity(entity as unknown as Entity)));
+      await Promise.all(entities.map((entity) => compat.updateEntity(entity)));
     },
     addedMethods,
   );
@@ -312,8 +314,8 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
   defineCompatMethod(
     compat,
     "upsertEntities",
-    async (entities: Array<Record<string, unknown> & { id?: UUID }>) => {
-      const entityIds = entities.flatMap((entity: any) => (entity.id ? [entity.id] : []));
+    async (entities: Entity[]) => {
+      const entityIds = entities.flatMap((entity) => (entity.id ? [entity.id] : []));
       const existingById = new Set<string>();
 
       if (hasAdapterMethod(compat, "getEntitiesByIds") && entityIds.length > 0) {
@@ -330,18 +332,18 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
         entities.map(async (entity) => {
           if (!entity.id) {
             if (hasAdapterMethod(compat, "createEntities")) {
-              await compat.createEntities([entity as any]);
+              await compat.createEntities([entity]);
             }
             return;
           }
 
-          if (existingById.has(entity.id as string) && hasAdapterMethod(compat, "updateEntity")) {
-            await compat.updateEntity(entity as any);
+          if (existingById.has(entity.id) && hasAdapterMethod(compat, "updateEntity")) {
+            await compat.updateEntity(entity);
             return;
           }
 
           if (hasAdapterMethod(compat, "createEntities")) {
-            await compat.createEntities([entity as any]);
+            await compat.createEntities([entity]);
           }
         }),
       );
@@ -392,14 +394,12 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
   defineCompatMethod(
     compat,
     "createComponents",
-    async (components: Array<Record<string, unknown> & { id?: UUID }>) => {
+    async (components: Component[]) => {
       if (!hasAdapterMethod(compat, "createComponent")) {
         return [];
       }
 
-      await Promise.all(
-        components.map((component) => compat.createComponent(component as unknown as Component)),
-      );
+      await Promise.all(components.map((component) => compat.createComponent(component)));
       return components.flatMap((component) => (component.id ? [component.id] : []));
     },
     addedMethods,
@@ -410,14 +410,12 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
   defineCompatMethod(
     compat,
     "updateComponents",
-    async (components: Array<Record<string, unknown>>) => {
+    async (components: Component[]) => {
       if (!hasAdapterMethod(compat, "updateComponent")) {
         return;
       }
 
-      await Promise.all(
-        components.map((component) => compat.updateComponent(component as unknown as Component)),
-      );
+      await Promise.all(components.map((component) => compat.updateComponent(component)));
     },
     addedMethods,
   );
@@ -438,9 +436,7 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
   defineCompatMethod(
     compat,
     "upsertComponents",
-    async (
-      components: Array<Record<string, unknown> & { entityId: UUID; type: string; id?: UUID }>,
-    ) => {
+    async (components: Component[]) => {
       await Promise.all(
         components.map(async (component) => {
           if (
@@ -453,12 +449,12 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
               component.sourceEntityId as UUID | undefined,
             ))
           ) {
-            await compat.updateComponent(component as unknown as Component);
+            await compat.updateComponent(component);
             return;
           }
 
           if (hasAdapterMethod(compat, "createComponent")) {
-            await compat.createComponent(component as unknown as Component);
+            await compat.createComponent(component);
           }
         }),
       );
@@ -580,7 +576,7 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
     "createMemories",
     async (
       entries: Array<{
-        memory: Record<string, unknown>;
+        memory: Memory;
         tableName: string;
         unique?: boolean;
       }>,
@@ -591,7 +587,7 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
 
       const ids = await Promise.all(
         entries.map(({ memory, tableName, unique }) =>
-          compat.createMemory(memory as unknown as Memory, tableName, unique),
+          compat.createMemory(memory, tableName, unique),
         ),
       );
       return ids.filter(Boolean);
@@ -602,16 +598,12 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
   defineCompatMethod(
     compat,
     "updateMemories",
-    async (memories: Array<Record<string, unknown> & { id: UUID }>) => {
+    async (memories: Array<Partial<Memory> & { id: UUID }>) => {
       if (!hasAdapterMethod(compat, "updateMemory")) {
         return;
       }
 
-      await Promise.all(
-        memories.map((memory) =>
-          compat.updateMemory(memory as unknown as Partial<Memory> & { id: UUID }),
-        ),
-      );
+      await Promise.all(memories.map((memory) => compat.updateMemory(memory)));
     },
     addedMethods,
   );
@@ -634,7 +626,7 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
     "upsertMemories",
     async (
       entries: Array<{
-        memory: Record<string, unknown> & { id?: UUID };
+        memory: Memory;
         tableName: string;
       }>,
     ) => {
@@ -646,12 +638,12 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
             hasAdapterMethod(compat, "updateMemory") &&
             (await compat.getMemoryById(memory.id))
           ) {
-            await compat.updateMemory(memory as unknown as Partial<Memory> & { id: UUID });
+            await compat.updateMemory(memory as Partial<Memory> & { id: UUID });
             return;
           }
 
           if (hasAdapterMethod(compat, "createMemory")) {
-            await compat.createMemory(memory as unknown as Memory, tableName);
+            await compat.createMemory(memory, tableName);
           }
         }),
       );
@@ -660,7 +652,9 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
   );
 
   if (hasAdapterMethod(compat, "deleteAllMemories")) {
-    const deleteAllMemories = compat.deleteAllMemories.bind(compat);
+    const deleteAllMemoriesByRoom = compat.deleteAllMemories.bind(
+      compat,
+    ) as unknown as LegacyDeleteAllMemories;
     Object.defineProperty(compat, "deleteAllMemories", {
       configurable: true,
       enumerable: false,
@@ -668,18 +662,18 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
       value: async (roomIdsOrRoomId: UUID[] | UUID, tableName: string) => {
         if (Array.isArray(roomIdsOrRoomId)) {
           await Promise.all(
-            roomIdsOrRoomId.map((roomId: UUID) => deleteAllMemories(roomId as any, tableName)),
+            roomIdsOrRoomId.map((roomId: UUID) => deleteAllMemoriesByRoom(roomId, tableName)),
           );
           return;
         }
 
-        return deleteAllMemories(roomIdsOrRoomId as any, tableName);
+        return deleteAllMemoriesByRoom(roomIdsOrRoomId, tableName);
       },
     });
   }
 
   if (hasAdapterMethod(compat, "countMemories")) {
-    const countMemories = compat.countMemories.bind(compat);
+    const countMemoriesByRoom = compat.countMemories.bind(compat) as LegacyCountMemories;
     Object.defineProperty(compat, "countMemories", {
       configurable: true,
       enumerable: false,
@@ -708,17 +702,13 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
 
           const counts = await Promise.all(
             roomIds.map((roomId: UUID) =>
-              (countMemories as any)(
-                roomId,
-                params.unique ?? false,
-                params.tableName ?? "messages",
-              ),
+              countMemoriesByRoom(roomId, params.unique ?? false, params.tableName ?? "messages"),
             ),
           );
           return counts.reduce((sum, value) => sum + Number(value ?? 0), 0);
         }
 
-        return (countMemories as any)(roomIdOrParams, unique, tableName);
+        return countMemoriesByRoom(roomIdOrParams as UUID, unique, tableName);
       },
     });
   }
@@ -740,14 +730,12 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
   defineCompatMethod(
     compat,
     "createWorlds",
-    async (worlds: Array<Record<string, unknown> & { id?: UUID }>) => {
+    async (worlds: World[]) => {
       if (!hasAdapterMethod(compat, "createWorld")) {
         return [];
       }
 
-      const ids = await Promise.all(
-        worlds.map((world) => compat.createWorld(world as unknown as World)),
-      );
+      const ids = await Promise.all(worlds.map((world) => compat.createWorld(world)));
       return ids.filter(Boolean);
     },
     addedMethods,
@@ -769,12 +757,12 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
   defineCompatMethod(
     compat,
     "updateWorlds",
-    async (worlds: Array<Record<string, unknown>>) => {
+    async (worlds: World[]) => {
       if (!hasAdapterMethod(compat, "updateWorld")) {
         return;
       }
 
-      await Promise.all(worlds.map((world) => compat.updateWorld(world as unknown as World)));
+      await Promise.all(worlds.map((world) => compat.updateWorld(world)));
     },
     addedMethods,
   );
@@ -782,7 +770,7 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
   defineCompatMethod(
     compat,
     "upsertWorlds",
-    async (worlds: Array<Record<string, unknown> & { id?: UUID }>) => {
+    async (worlds: World[]) => {
       const worldIds = worlds.flatMap((world) => (world.id ? [world.id] : []));
       const existingIds = new Set<string>();
 
@@ -800,18 +788,18 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
         worlds.map(async (world) => {
           if (!world.id) {
             if (hasAdapterMethod(compat, "createWorld")) {
-              await compat.createWorld(world as unknown as World);
+              await compat.createWorld(world);
             }
             return;
           }
 
           if (existingIds.has(world.id as string) && hasAdapterMethod(compat, "updateWorld")) {
-            await compat.updateWorld(world as unknown as World);
+            await compat.updateWorld(world);
             return;
           }
 
           if (hasAdapterMethod(compat, "createWorld")) {
-            await compat.createWorld(world as unknown as World);
+            await compat.createWorld(world);
           }
         }),
       );
@@ -852,12 +840,12 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
   defineCompatMethod(
     compat,
     "updateRooms",
-    async (rooms: Array<Record<string, unknown>>) => {
+    async (rooms: Room[]) => {
       if (!hasAdapterMethod(compat, "updateRoom")) {
         return;
       }
 
-      await Promise.all(rooms.map((room) => compat.updateRoom(room as unknown as Room)));
+      await Promise.all(rooms.map((room) => compat.updateRoom(room)));
     },
     addedMethods,
   );
@@ -878,7 +866,7 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
   defineCompatMethod(
     compat,
     "upsertRooms",
-    async (rooms: Array<Record<string, unknown> & { id?: UUID }>) => {
+    async (rooms: Room[]) => {
       const existingIds = new Set<string>();
 
       if (hasAdapterMethod(compat, "getRoomsByIds")) {
@@ -897,18 +885,18 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
         rooms.map(async (room) => {
           if (!room.id) {
             if (hasAdapterMethod(compat, "createRooms")) {
-              await compat.createRooms([room as any]);
+              await compat.createRooms([room]);
             }
             return;
           }
 
-          if (existingIds.has(room.id as string) && hasAdapterMethod(compat, "updateRoom")) {
-            await compat.updateRoom(room as any);
+          if (existingIds.has(room.id) && hasAdapterMethod(compat, "updateRoom")) {
+            await compat.updateRoom(room);
             return;
           }
 
           if (hasAdapterMethod(compat, "createRooms")) {
-            await compat.createRooms([room as any]);
+            await compat.createRooms([room]);
           }
         }),
       );
@@ -1086,7 +1074,7 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
       if (hasAdapterMethod(compat, "createRelationship")) {
         await Promise.all(
           relationships.map((relationship) =>
-            compat.createRelationship(relationship as unknown as Relationship),
+            compat.createRelationship(relationship as Relationship),
           ),
         );
       }
@@ -1103,15 +1091,13 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
   defineCompatMethod(
     compat,
     "updateRelationships",
-    async (relationships: Array<Record<string, unknown>>) => {
+    async (relationships: Relationship[]) => {
       if (!hasAdapterMethod(compat, "updateRelationship")) {
         return;
       }
 
       await Promise.all(
-        relationships.map((relationship) =>
-          compat.updateRelationship(relationship as unknown as Relationship),
-        ),
+        relationships.map((relationship) => compat.updateRelationship(relationship)),
       );
     },
     addedMethods,
@@ -1166,14 +1152,12 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
   defineCompatMethod(
     compat,
     "createTasks",
-    async (tasks: Array<Record<string, unknown> & { id?: UUID }>) => {
+    async (tasks: Task[]) => {
       if (!hasAdapterMethod(compat, "createTask")) {
         return [];
       }
 
-      const ids = await Promise.all(
-        tasks.map((task) => compat.createTask(task as unknown as Task)),
-      );
+      const ids = await Promise.all(tasks.map((task) => compat.createTask(task)));
       return ids.filter(Boolean);
     },
     addedMethods,

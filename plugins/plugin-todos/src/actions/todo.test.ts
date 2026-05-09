@@ -184,7 +184,7 @@ function mockRuntime(service: FakeTodosService): IAgentRuntime {
     getSetting: () => undefined,
     getService: (name: string) =>
       name === TODOS_SERVICE_TYPE ? (service as unknown) : null,
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 function makeMessage(
@@ -194,8 +194,9 @@ function makeMessage(
     entityId: ENTITY,
     roomId: ROOM,
     worldId: WORLD,
+    content: { text: "" },
     ...overrides,
-  } as unknown as Memory;
+  } as Memory;
 }
 
 async function invoke(
@@ -425,7 +426,7 @@ describe("TODO action", () => {
       const result = await invoke(
         runtime,
         { op: "list" },
-        { entityId: undefined, roomId: ROOM } as unknown as Memory,
+        makeMessage({ entityId: undefined }),
       );
       expect(result.success).toBe(false);
       expect(result.text).toContain("entityId");
