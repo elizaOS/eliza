@@ -131,14 +131,32 @@ async function generateObjectByModelType(
     content: [{ type: "input_text", text: params.prompt }],
   });
 
+  // Enforce JSON output at the API layer. Without this, the model can return
+  // prose ("I'll help you...") or markdown-fenced JSON, both of which choke
+  // the JSON.parse below.
+  //
+  // When the caller passes a `schema`, inject it into the prompt so the
+  // model receives the exact shape it must produce. The previous
+  // `json_object`-only mode silently dropped `params.schema`, so callers that
+  // asked for `{ keywords: [...] }` would get back `keywords: [...]` (no
+  // braces) or a free-form prose answer that fails downstream `JSON.parse`.
+  // Schema-in-prompt works across the whole cloud provider matrix (OpenAI,
+  // Anthropic, etc.) where the Responses API `json_schema` format is not
+  // uniformly supported.
+  if (params.schema) {
+    const lastUserMsg = input[input.length - 1];
+    if (lastUserMsg && lastUserMsg.role === "user") {
+      const schemaDirective = `\n\nReturn ONLY a valid JSON value (no prose, no markdown fences) that matches this JSON Schema exactly:\n${JSON.stringify(params.schema)}`;
+      lastUserMsg.content = lastUserMsg.content.map((part) => ({
+        ...part,
+        text: part.text + schemaDirective,
+      }));
+    }
+  }
   const requestBody: Record<string, unknown> = {
     model: modelName,
     input,
     max_output_tokens: params.maxTokens ?? 8192,
-    // Enforce JSON output at the API layer. Without this, the model
-    // can ignore the caller's `schema` parameter and return prose
-    // ("I'll help you...") or markdown-fenced JSON, both of which
-    // choke the JSON.parse below.
     text: { format: { type: "json_object" } },
   };
   if (!reasoning && typeof params.temperature === "number") {
