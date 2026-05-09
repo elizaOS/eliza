@@ -11,10 +11,7 @@ export interface FeedRowSummary {
   active: boolean;
 }
 
-export function passesFilter(
-  row: FeedRowSummary,
-  filter: FeedFilter,
-): boolean {
+export function passesFilter(row: FeedRowSummary, filter: FeedFilter): boolean {
   switch (filter) {
     case "all":
       return true;

@@ -23,7 +23,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  Input,
   PagePanel,
   Spinner,
   StatusBadge,
@@ -128,7 +127,9 @@ export function WorkflowEditor({
       setLastValidWorkflow(updated);
       setText(workflowToJsonText(updated));
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : "Failed to activate workflow.");
+      setSaveError(
+        e instanceof Error ? e.message : "Failed to activate workflow.",
+      );
     } finally {
       setSaving(false);
     }

@@ -61,12 +61,7 @@ export function describeCron(expression: string): string | null {
 
   // Every-N-minutes form
   const everyN = minPart.match(/^\*\/(\d+)$/);
-  if (
-    everyN &&
-    hourPart === "*" &&
-    domPart === "*" &&
-    dowPart === "*"
-  ) {
+  if (everyN && hourPart === "*" && domPart === "*" && dowPart === "*") {
     return `Every ${everyN[1]} minutes`;
   }
 

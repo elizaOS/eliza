@@ -28,8 +28,11 @@ import {
   type TaskScheduleKind,
 } from "../../utils/task-schedule";
 
-export { decodeScheduleTags, encodeScheduleTags } from "../../utils/task-schedule";
 export type { TaskScheduleKind } from "../../utils/task-schedule";
+export {
+  decodeScheduleTags,
+  encodeScheduleTags,
+} from "../../utils/task-schedule";
 
 export interface TaskEditorInitialValue {
   id?: string;
@@ -63,7 +66,9 @@ export function TaskEditor({
   const [scheduleKind, setScheduleKind] = useState<TaskScheduleKind>(
     initial?.scheduleKind ?? "once",
   );
-  const [cron, setCron] = useState(initial?.cronExpression ?? CRON_PRESETS[1].expression);
+  const [cron, setCron] = useState(
+    initial?.cronExpression ?? CRON_PRESETS[1].expression,
+  );
   const [eventName, setEventName] = useState(
     initial?.eventName ?? availableEvents[0]?.id ?? "",
   );
@@ -104,15 +109,7 @@ export function TaskEditor({
     } finally {
       setBusy(false);
     }
-  }, [
-    name,
-    prompt,
-    scheduleKind,
-    cron,
-    eventName,
-    initial?.id,
-    onSaved,
-  ]);
+  }, [name, prompt, scheduleKind, cron, eventName, initial?.id, onSaved]);
 
   return (
     <PagePanel variant="padded" className="space-y-5">
@@ -121,8 +118,8 @@ export function TaskEditor({
           {initial?.id ? "Edit task" : "New task"}
         </h2>
         <p className="text-sm text-muted-strong">
-          A task is a single prompt the agent runs — once, on a schedule,
-          or in response to an event.
+          A task is a single prompt the agent runs — once, on a schedule, or in
+          response to an event.
         </p>
       </div>
 
@@ -208,7 +205,8 @@ export function TaskEditor({
             />
             {cronPreview && (
               <div className="text-xs text-muted-strong">
-                Runs <span className="text-txt">{cronPreview.toLowerCase()}</span>.
+                Runs{" "}
+                <span className="text-txt">{cronPreview.toLowerCase()}</span>.
               </div>
             )}
           </div>
