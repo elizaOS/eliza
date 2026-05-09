@@ -50,26 +50,55 @@ async function loadOpenAIPlugin(): Promise<Plugin> {
   return mod.openaiPlugin ?? mod.default;
 }
 
+interface ResolvedLlm {
+  llmPlugin: Plugin;
+  isRealLlm: boolean;
+  providerLabel: string;
+}
+
 /**
  * Resolve which LLM plugin to use based on the --real-llm flag.
- * Returns the plugin and a boolean indicating real-LLM mode.
+ *
+ * Real-LLM mode accepts either OPENAI_API_KEY or CEREBRAS_API_KEY. When the
+ * Cerebras key is present (and OPENAI_API_KEY is not), the OpenAI plugin is
+ * auto-configured to point at Cerebras's OpenAI-compatible endpoint with a
+ * default Cerebras model — Cerebras serves Llama / Qwen / GPT-OSS at very
+ * high tokens/sec, so it's well-suited to live-agent benchmarking.
  */
-async function resolveLlmPlugin(
-  useRealLlm: boolean,
-): Promise<{ llmPlugin: Plugin; isRealLlm: boolean }> {
+async function resolveLlmPlugin(useRealLlm: boolean): Promise<ResolvedLlm> {
   if (!useRealLlm) {
-    return { llmPlugin: mockLlmPlugin, isRealLlm: false };
+    return {
+      llmPlugin: mockLlmPlugin,
+      isRealLlm: false,
+      providerLabel: "mock (deterministic)",
+    };
   }
 
-  if (!process.env.OPENAI_API_KEY) {
+  const hasOpenAi = !!process.env.OPENAI_API_KEY;
+  const hasCerebras = !!process.env.CEREBRAS_API_KEY;
+
+  if (!hasOpenAi && !hasCerebras) {
     console.error(
-      "ERROR: --real-llm requires OPENAI_API_KEY to be set in the environment.",
+      "ERROR: --real-llm requires OPENAI_API_KEY or CEREBRAS_API_KEY to be set.",
     );
     process.exit(1);
   }
 
+  if (hasCerebras && !hasOpenAi) {
+    process.env.MILADY_PROVIDER = process.env.MILADY_PROVIDER ?? "cerebras";
+    process.env.OPENAI_BASE_URL =
+      process.env.OPENAI_BASE_URL ?? "https://api.cerebras.ai/v1";
+    process.env.OPENAI_LARGE_MODEL =
+      process.env.OPENAI_LARGE_MODEL ?? "llama3.1-8b";
+    process.env.OPENAI_SMALL_MODEL =
+      process.env.OPENAI_SMALL_MODEL ?? "llama3.1-8b";
+    process.env.OPENAI_EMBEDDING_MODEL =
+      process.env.OPENAI_EMBEDDING_MODEL ?? "none";
+  }
+
   const plugin = await loadOpenAIPlugin();
-  return { llmPlugin: plugin, isRealLlm: true };
+  const providerLabel = hasCerebras && !hasOpenAi ? "real (Cerebras)" : "real (OpenAI)";
+  return { llmPlugin: plugin, isRealLlm: true, providerLabel };
 }
 
 // ─── Path resolution ────────────────────────────────────────────────────────
@@ -626,7 +655,8 @@ async function main(): Promise<void> {
   const outputPath = args.find((a) => a.startsWith("--output="))?.split("=")[1];
 
   // Resolve which LLM plugin to use
-  const { llmPlugin, isRealLlm } = await resolveLlmPlugin(useRealLlm);
+  const { llmPlugin, isRealLlm, providerLabel } =
+    await resolveLlmPlugin(useRealLlm);
 
   const allScenarios = loadScenarios();
   const character = loadCharacter();
@@ -675,9 +705,7 @@ async function main(): Promise<void> {
     `System: ${sysInfo.os} ${sysInfo.arch} | ${sysInfo.cpus} CPUs | ${sysInfo.memory_gb}GB RAM`,
   );
   console.log(`Runtime: ${sysInfo.runtime_version}`);
-  console.log(
-    `LLM Mode: ${isRealLlm ? "real (OpenAI)" : "mock (deterministic)"}`,
-  );
+  console.log(`LLM Mode: ${providerLabel}`);
   console.log(`Scenarios: ${selectedScenarios.length} selected`);
   console.log();
 

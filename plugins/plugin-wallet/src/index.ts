@@ -27,6 +27,10 @@ export {
   resolveTradePermissionMode,
   resolveWalletExportRejection,
 } from "./lib/server-wallet-trade.js";
+export {
+  _resetForTesting,
+  getWalletExportAuditLog,
+} from "./lib/wallet-export-guard.js";
 // Consolidated LP management surface (formerly @elizaos/plugin-lp-manager).
 // Includes Solana DEX adapters (Raydium / Orca / Meteora) under
 // chains/solana/dex/* and EVM DEX adapters (Uniswap / PancakeSwap / Aerodrome)

@@ -1,24 +1,6 @@
-import { defineConfig } from "tsup";
+import sharedConfig from "../tsup.plugin-packages.shared";
 
-export default defineConfig({
-  entry: ["src/index.ts"],
-  outDir: "dist",
-  tsconfig: "./tsconfig.build.json",
-  sourcemap: true,
-  clean: true,
-  format: ["esm"],
+export default {
+  ...sharedConfig,
   dts: true,
-  external: [
-    "@elizaos/cloud-routing",
-    "@elizaos/core",
-    "dotenv",
-    "fs",
-    "path",
-    "@reflink/reflink",
-    "@node-llama-cpp",
-    "https",
-    "http",
-    "agentkeepalive",
-    "zod",
-  ],
-});
+};

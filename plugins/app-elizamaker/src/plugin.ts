@@ -70,7 +70,7 @@ function toHttpServerResponse(res: RouteResponse): http.ServerResponse {
   ) {
     throw new TypeError("ElizaMaker routes require a Node HTTP response");
   }
-  return res as http.ServerResponse;
+  return res as unknown as http.ServerResponse;
 }
 
 function getOptionalWalletAddresses(): {
