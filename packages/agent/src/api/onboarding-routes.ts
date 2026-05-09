@@ -14,7 +14,7 @@ import {
 import type { ElizaConfig } from "../config/config.js";
 import { configFileExists, loadElizaConfig } from "../config/config.js";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   applyCanonicalOnboardingConfig,
   applyOnboardingCredentialPersistence,

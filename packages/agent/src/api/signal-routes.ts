@@ -6,7 +6,7 @@ import type {
   SignalPairingSnapshot,
   SignalPairingStatus,
 } from "../services/signal-pairing.js";
-import { readJsonBody as parseJsonBody, sendJson } from "./http-helpers.js";
+import { readJsonBody as parseJsonBody, sendJson } from "@elizaos/shared";
 import { setOwnerContact } from "./owner-contact-helpers.js";
 
 export type SignalPairingEventLike = SignalPairingEvent;

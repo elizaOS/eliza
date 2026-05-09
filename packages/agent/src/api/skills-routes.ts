@@ -13,7 +13,7 @@ import {
 } from "../services/skill-marketplace.js";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 import { parseClampedInteger } from "../utils/number-parsing.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // Types shared with server.ts (kept lean to avoid circular deps)

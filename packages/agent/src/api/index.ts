@@ -15,7 +15,7 @@ export * from "./diagnostics-routes.js";
 export * from "./documents-routes.js";
 export * from "./documents-service-loader.js";
 export * from "./early-logs.js";
-export * from "./http-helpers.js";
+export * from "@elizaos/shared";
 export * from "./memory-bounds.js";
 export * from "./memory-routes.js";
 export * from "./models-routes.js";
@@ -27,7 +27,7 @@ export * from "./provider-switch-config.js";
 export * from "./rate-limiter.js";
 export * from "./registry-routes.js";
 export * from "./registry-service.js";
-export * from "./route-helpers.js";
+export * from "@elizaos/shared";
 // `runtime-plugin-routes.ts` exports `matchPluginRoutePath` (used by plugin
 // authors and their tests, e.g. plugins/app-vincent/src/vincent-plugin-dispatch.test.ts)
 // and the request-handling helper `tryHandleRuntimePluginRoute` (used by

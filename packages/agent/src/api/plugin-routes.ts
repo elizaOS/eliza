@@ -30,7 +30,7 @@ import type {
   PluginManagerLike,
 } from "../services/plugin-manager-types.js";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { applyPluginRuntimeMutation } from "./plugin-runtime-apply.js";
 import {
   type PluginParamInfo,

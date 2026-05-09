@@ -41,7 +41,7 @@ import {
   normalizeConnectorSource,
 } from "@elizaos/shared";
 import { cacheDiscordAvatarUrl } from "./discord-avatar-cache.js";
-import type { RouteHelpers } from "./route-helpers.js";
+import type { RouteHelpers } from "@elizaos/shared";
 
 /**
  * Source tags we consider "inbox-worthy". Messages whose content.source

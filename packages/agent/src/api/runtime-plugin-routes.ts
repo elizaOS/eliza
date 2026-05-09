@@ -16,7 +16,7 @@ import {
   type RuntimeRouteHostContext,
   setRuntimeRouteHostContext,
 } from "@elizaos/core";
-import { readJsonBody } from "./http-helpers.js";
+import { readJsonBody } from "@elizaos/shared";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 

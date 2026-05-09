@@ -16,7 +16,7 @@ import {
   type WalletExportRejection,
   type WalletExportRequestBody,
 } from "@elizaos/shared";
-import { sendJsonError } from "./http-helpers.js";
+import { sendJsonError } from "@elizaos/shared";
 import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.js";
 import type { ConversationMeta } from "./server-helpers.js";
 

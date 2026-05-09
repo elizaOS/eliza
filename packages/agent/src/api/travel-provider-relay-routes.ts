@@ -4,7 +4,7 @@ import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud/base-url
 import { resolveCloudApiKey } from "@elizaos/plugin-elizacloud/cloud/cloud-api-key";
 import { validateCloudBaseUrl } from "@elizaos/plugin-elizacloud/cloud/validate-url";
 import type { CloudProxyConfigLike } from "../types/config-like.js";
-import { sendJson, sendJsonError } from "./http-helpers.js";
+import { sendJson, sendJsonError } from "@elizaos/shared";
 
 export interface TravelProviderRelayRouteState {
   config: CloudProxyConfigLike;

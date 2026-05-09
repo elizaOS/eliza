@@ -26,7 +26,7 @@ import type { ElizaConfig } from "../config/config.js";
 import { isCloudWalletEnabled } from "../config/feature-flags.js";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
 import { persistConfigEnv } from "./config-env.js";
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
 import {
   fetchEvmBalances,
   fetchSolanaBalances,

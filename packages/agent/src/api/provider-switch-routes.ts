@@ -9,7 +9,7 @@ import {
   persistProviderApiKey,
   type RuntimeOperationManager,
 } from "../runtime/operations/index.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   applyOnboardingConnectionConfig,
   createProviderSwitchConnection,

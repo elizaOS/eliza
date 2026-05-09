@@ -1,4 +1,4 @@
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
 
 export interface ModelsRouteContext
   extends RouteRequestMeta,

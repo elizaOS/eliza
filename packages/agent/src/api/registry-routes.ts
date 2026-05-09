@@ -3,7 +3,7 @@ import type {
   RegistrySearchResult,
 } from "../services/plugin-manager-types.js";
 import { parseClampedInteger } from "../utils/number-parsing.js";
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
 
 interface InstalledRegistryPluginLike {
   name: string;

@@ -1,5 +1,5 @@
 import os from "node:os";
-import type { RouteRequestContext } from "./route-helpers.js";
+import type { RouteRequestContext } from "@elizaos/shared";
 
 export const DEFAULT_BUG_REPORT_REPO = "eliza-ai/eliza";
 export const BUG_REPORT_REPO_ENV_KEY = "ELIZA_BUG_REPORT_REPO";

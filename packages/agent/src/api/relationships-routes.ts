@@ -4,7 +4,7 @@ import type {
   RelationshipsGraphService,
   RelationshipsMergeProposalEvidence,
 } from "@elizaos/core/services/relationships-graph-builder";
-import type { RouteRequestContext } from "./route-helpers.js";
+import type { RouteRequestContext } from "@elizaos/shared";
 
 type RelationshipsFeatureRuntime = IAgentRuntime & {
   enableRelationships?: () => Promise<void>;

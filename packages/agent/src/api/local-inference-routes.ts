@@ -12,7 +12,7 @@ import {
   loadMobileDeviceBridgeModel,
   unloadMobileDeviceBridgeModel,
 } from "../runtime/mobile-device-bridge-bootstrap.js";
-import { readJsonBody, sendJson, sendJsonError } from "./http-helpers.js";
+import { readJsonBody, sendJson, sendJsonError } from "@elizaos/shared";
 
 type ModelRole = "chat" | "embedding";
 type DownloadState =

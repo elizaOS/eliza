@@ -18,7 +18,7 @@ import {
   readRequestBodyBuffer,
   sendJson,
   sendJsonError,
-} from "./http-helpers.js";
+} from "@elizaos/shared";
 import {
   getHeadlessCaptureConfig,
   readStreamSettings,

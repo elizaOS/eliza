@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { logger } from "@elizaos/core";
 import type { WhatsAppPairingEvent } from "../services/whatsapp-pairing.js";
-import { readJsonBody as parseJsonBody, sendJson } from "./http-helpers.js";
+import { readJsonBody as parseJsonBody, sendJson } from "@elizaos/shared";
 import { setOwnerContact } from "./owner-contact-helpers.js";
 
 export type WhatsAppPairingEventLike = WhatsAppPairingEvent;

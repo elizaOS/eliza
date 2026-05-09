@@ -20,7 +20,7 @@ import type {
   TriggerSummary,
   TriggerTaskMetadata,
 } from "../triggers/types.js";
-import type { RouteHelpers, RouteRequestContext } from "./route-helpers.js";
+import type { RouteHelpers, RouteRequestContext } from "@elizaos/shared";
 
 export type TriggerRouteHelpers = RouteHelpers;
 

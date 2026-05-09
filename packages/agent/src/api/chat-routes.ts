@@ -58,8 +58,8 @@ import {
   isInsufficientCreditsError,
   isInsufficientCreditsMessage,
 } from "./credit-detection.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
-import type { RouteRequestContext } from "./route-helpers.js";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import type { RouteRequestContext } from "@elizaos/shared";
 import {
   buildWalletActionNotExecutedReply,
   cloneWithoutBlockedObjectKeys,

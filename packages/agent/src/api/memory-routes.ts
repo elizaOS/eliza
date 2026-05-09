@@ -15,7 +15,7 @@ import {
   type DocumentsServiceResult,
   getDocumentsService,
 } from "./documents-service-loader.js";
-import type { RouteRequestContext } from "./route-helpers.js";
+import type { RouteRequestContext } from "@elizaos/shared";
 
 const HASH_MEMORY_SOURCE = "hash_memory";
 const UUID_REGEX =

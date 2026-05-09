@@ -13,7 +13,7 @@ import {
   ONBOARDING_PROVIDER_CATALOG,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
-import { sendJsonError } from "./http-helpers.js";
+import { sendJsonError } from "@elizaos/shared";
 import { generateWalletKeys, setSolanaWalletEnv } from "./wallet.js";
 
 // ---------------------------------------------------------------------------
