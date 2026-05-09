@@ -39,7 +39,6 @@ type RuntimeWithBootstrapRetries = IAgentRuntime & {
   [BOOTSTRAP_RETRY_TIMERS_KEY]?: Map<string, ReturnType<typeof setTimeout>>;
 };
 
-export { roleAction };
 export { rolesProvider } from "./provider.ts";
 export type {
   ConnectorAdminWhitelist,
@@ -67,6 +66,7 @@ export {
   setConnectorAdminWhitelist,
   setEntityRole,
 } from "./utils.ts";
+export { roleAction };
 
 async function updateWorldMetadata(
   runtime: IAgentRuntime,

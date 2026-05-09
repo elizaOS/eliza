@@ -3,10 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": [
-      "ES2022",
-      "DOM"
-    ],
+    "lib": ["ES2022", "DOM"],
     "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -23,21 +20,11 @@
     "isolatedModules": true,
     "allowSyntheticDefaultImports": true,
     "allowImportingTsExtensions": true,
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "paths": {
-      "@elizaos/core": [
-        "../../../packages/core/dist/node"
-      ]
+      "@elizaos/core": ["../../../packages/core/dist/node"]
     }
   },
-  "include": [
-    "**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "__tests__"
-  ]
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist", "__tests__"]
 }

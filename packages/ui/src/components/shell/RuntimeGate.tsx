@@ -69,13 +69,13 @@ import {
   resolveAppAssetUrl,
 } from "../../utils";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
+import { ThemeToggle } from "../shared/ThemeToggle";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
 import { TooltipHint } from "../ui/tooltip";
-import { ThemeToggle } from "../shared/ThemeToggle";
 
 const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 
@@ -407,7 +407,9 @@ export function RuntimeGate() {
   const [agents, setAgents] = React.useState<CloudCompatAgent[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [provisionStatus, setProvisionStatus] = React.useState("");
-  const pollTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
 
   // Remote sub-view
   const [remoteUrl, setRemoteUrl] = React.useState("");
@@ -423,14 +425,18 @@ export function RuntimeGate() {
   // their first send hits the no_provider gate (commit 28e19c8023) and
   // they have to backtrack to Settings. The wizard saves the round-trip.
   const [localStage, setLocalStage] = React.useState<LocalStage>("provider");
-  const [localProviderId, setLocalProviderId] = React.useState<string | null>(null);
+  const [localProviderId, setLocalProviderId] = React.useState<string | null>(
+    null,
+  );
   const [localApiKey, setLocalApiKey] = React.useState("");
   const [localSaving, setLocalSaving] = React.useState(false);
   const [localError, setLocalError] = React.useState<string | null>(null);
 
   // Filter catalog to direct API-key providers (group:"local" excludes
   // managed cloud + subscription paths — those have their own flows).
-  const localProviderCatalog = React.useMemo<readonly OnboardingProviderOption[]>(
+  const localProviderCatalog = React.useMemo<
+    readonly OnboardingProviderOption[]
+  >(
     () =>
       ONBOARDING_PROVIDER_CATALOG.filter(
         (provider) =>
@@ -448,9 +454,9 @@ export function RuntimeGate() {
   const isDesktop = isDesktopPlatform();
   const isDev = Boolean(import.meta.env.DEV);
   const synchronousLocal = isDesktop || isDev;
-  const [localProbeResult, setLocalProbeResult] = React.useState<boolean | null>(
-    synchronousLocal ? true : isAndroid || isIOS ? null : false,
-  );
+  const [localProbeResult, setLocalProbeResult] = React.useState<
+    boolean | null
+  >(synchronousLocal ? true : isAndroid || isIOS ? null : false);
 
   // ElizaOS: the picker is bypassed entirely unless the user explicitly asks
   // for it via `?runtime=picker` (Settings ▸ Runtime is the only legitimate

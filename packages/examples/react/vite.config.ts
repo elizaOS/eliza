@@ -1,5 +1,5 @@
-import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 const nodeStub = fileURLToPath(
@@ -50,7 +50,11 @@ const nodeBuiltinAliases = [
   })),
 ];
 
-function isPgliteEvalWarning(log: { code?: string; id?: string; message?: string }) {
+function isPgliteEvalWarning(log: {
+  code?: string;
+  id?: string;
+  message?: string;
+}) {
   const source = `${log.id ?? ""} ${log.message ?? ""}`;
   return log.code === "EVAL" && source.includes("@electric-sql/pglite");
 }

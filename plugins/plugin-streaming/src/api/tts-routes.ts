@@ -1,5 +1,5 @@
 import type http from "node:http";
-import { sanitizeSpeechText, type ReadJsonBodyOptions } from "@elizaos/core";
+import { type ReadJsonBodyOptions, sanitizeSpeechText } from "@elizaos/core";
 
 // ---------------------------------------------------------------------------
 // Types

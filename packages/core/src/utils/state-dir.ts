@@ -40,5 +40,7 @@ export function resolveOAuthDir(
 	stateDirPath: string = resolveStateDir(env),
 ): string {
 	const explicit = env.ELIZA_OAUTH_DIR?.trim();
-	return explicit ? resolveUserPath(explicit) : join(stateDirPath, "credentials");
+	return explicit
+		? resolveUserPath(explicit)
+		: join(stateDirPath, "credentials");
 }

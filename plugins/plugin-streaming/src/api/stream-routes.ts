@@ -11,8 +11,8 @@
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
-  logger,
   formatError,
+  logger,
   readRequestBody,
   readRequestBodyBuffer,
   sendJson,

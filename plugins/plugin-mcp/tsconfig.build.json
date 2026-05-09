@@ -9,17 +9,9 @@
     "emitDeclarationOnly": true,
     "rootDir": "src",
     "paths": {
-      "@elizaos/core": [
-        "../../packages/core/dist/index.node.d.ts"
-      ]
+      "@elizaos/core": ["../../packages/core/dist/index.node.d.ts"]
     }
   },
-  "include": [
-    "src/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "__tests__",
-    "../dist"
-  ]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "__tests__", "../dist"]
 }

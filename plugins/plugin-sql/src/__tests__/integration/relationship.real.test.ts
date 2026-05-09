@@ -68,6 +68,22 @@ describe("Relationship Integration Tests", () => {
       expect(retrieved?.tags).toContain("friend");
     });
 
+    it("should ignore duplicate relationship creation for the same pair", async () => {
+      const relationshipData = {
+        sourceEntityId: testEntityId,
+        targetEntityId: testTargetEntityId,
+        tags: ["friend"],
+      };
+
+      await expect(adapter.createRelationship(relationshipData)).resolves.toBe(true);
+      await expect(adapter.createRelationship(relationshipData)).resolves.toBe(false);
+
+      const relationships = await adapter.getRelationships({
+        entityIds: [testEntityId, testTargetEntityId],
+      });
+      expect(relationships).toHaveLength(1);
+    });
+
     it("should update an existing relationship", async () => {
       const relationshipData = {
         sourceEntityId: testEntityId,
