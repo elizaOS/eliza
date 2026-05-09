@@ -394,12 +394,15 @@ async function sendMessageAndWaitForResponse(
     throw new Error("Cannot send benchmark message without a user entity id");
   }
 
+  // Pass the room's channel type through `content.channelType` so DM-gated
+  // actions (e.g. SET_SECRET) see the right value. The default-message path
+  // does not hydrate this from the room.
   const message: Memory = {
     id: createUniqueUuid(rt, `${user.id}-${Date.now()}-${Math.random()}`),
     agentId: rt.agentId,
     entityId: user.id,
     roomId: room.id,
-    content: { text, source: "configbench" },
+    content: { text, source: "configbench", channelType: room.type },
     createdAt: Date.now(),
   };
 
@@ -632,11 +635,20 @@ export const elizaHandler: Handler = {
 
     // Create room with appropriate channel type
     const worldId = asUUID(crypto.randomUUID());
+    // SET_SECRET (and most settings actions) gate on `roleGate.minRole = OWNER`,
+    // which is enforced via the world's `metadata.roles[entityId]`. Without an
+    // OWNER role the planner filters the action out and the agent answers with
+    // a generic dialogue prompt — that's why scenarios scored 0.6 instead of
+    // 1.0 (security checks pass, capability fails). Grant OWNER on world
+    // creation so the planner exposes the action like a real owner DM would.
     const world = {
       id: worldId,
       name: "ConfigBench World",
       agentId: runtime.agentId,
       serverId: "configbench",
+      metadata: {
+        roles: { [userId]: "OWNER" },
+      },
     } as unknown as World;
     await runtime.createWorld(world);
 
