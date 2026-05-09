@@ -7,7 +7,7 @@ import type { ServiceTypeName } from "../../types/service.ts";
  * This module provides extensions to the core runtime for plugin management.
  * `unregisterEvent` is now a first-class method on `AgentRuntime` / `IAgentRuntime`,
  * so this file only retains component unregistration helpers (action/provider/
- * evaluator/service) that are not yet part of the runtime contract.
+ * service) that are not yet part of the runtime contract.
  */
 
 /**
@@ -16,7 +16,6 @@ import type { ServiceTypeName } from "../../types/service.ts";
 export interface ExtendedRuntime extends IAgentRuntime {
 	unregisterAction: (actionName: string) => boolean;
 	unregisterProvider?: (providerName: string) => void;
-	unregisterEvaluator?: (evaluatorName: string) => void;
 	unregisterService?: (serviceType: string) => Promise<void>;
 }
 
@@ -47,16 +46,6 @@ export function extendRuntimeWithComponentUnregistration(
 			const index = this.providers.findIndex((p) => p.name === providerName);
 			if (index !== -1) {
 				this.providers.splice(index, 1);
-			}
-		};
-	}
-
-	// Add unregisterEvaluator method if it doesn't exist
-	if (!extendedRuntime.unregisterEvaluator) {
-		extendedRuntime.unregisterEvaluator = function (evaluatorName: string) {
-			const index = this.evaluators.findIndex((e) => e.name === evaluatorName);
-			if (index !== -1) {
-				this.evaluators.splice(index, 1);
 			}
 		};
 	}
