@@ -282,13 +282,11 @@ async function handleStatus(
 
   let serviceConnected = false;
   try {
-    const sigService = runtime.getService("signal") as
-      | {
-          connected?: unknown;
-          isConnected?: unknown;
-          isServiceConnected?: () => boolean;
-        }
-      | null;
+    const sigService = runtime.getService("signal") as {
+      connected?: unknown;
+      isConnected?: unknown;
+      isServiceConnected?: () => boolean;
+    } | null;
     if (sigService) {
       serviceConnected =
         Boolean(sigService.connected) ||

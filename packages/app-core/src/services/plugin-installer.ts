@@ -29,8 +29,7 @@ export type {
   UninstallResult,
 };
 
-let cached: typeof import("@elizaos/agent") | null =
-  null;
+let cached: typeof import("@elizaos/agent") | null = null;
 
 async function load() {
   if (cached) return cached;
@@ -39,56 +38,36 @@ async function load() {
 }
 
 export async function installPlugin(
-  ...args: Parameters<
-    typeof import("@elizaos/agent").installPlugin
-  >
-): ReturnType<
-  typeof import("@elizaos/agent").installPlugin
-> {
+  ...args: Parameters<typeof import("@elizaos/agent").installPlugin>
+): ReturnType<typeof import("@elizaos/agent").installPlugin> {
   const mod = await load();
   return mod.installPlugin(...args);
 }
 
 export async function installAndRestart(
-  ...args: Parameters<
-    typeof import("@elizaos/agent").installAndRestart
-  >
-): ReturnType<
-  typeof import("@elizaos/agent").installAndRestart
-> {
+  ...args: Parameters<typeof import("@elizaos/agent").installAndRestart>
+): ReturnType<typeof import("@elizaos/agent").installAndRestart> {
   const mod = await load();
   return mod.installAndRestart(...args);
 }
 
 export async function uninstallPlugin(
-  ...args: Parameters<
-    typeof import("@elizaos/agent").uninstallPlugin
-  >
-): ReturnType<
-  typeof import("@elizaos/agent").uninstallPlugin
-> {
+  ...args: Parameters<typeof import("@elizaos/agent").uninstallPlugin>
+): ReturnType<typeof import("@elizaos/agent").uninstallPlugin> {
   const mod = await load();
   return mod.uninstallPlugin(...args);
 }
 
 export async function uninstallAndRestart(
-  ...args: Parameters<
-    typeof import("@elizaos/agent").uninstallAndRestart
-  >
-): ReturnType<
-  typeof import("@elizaos/agent").uninstallAndRestart
-> {
+  ...args: Parameters<typeof import("@elizaos/agent").uninstallAndRestart>
+): ReturnType<typeof import("@elizaos/agent").uninstallAndRestart> {
   const mod = await load();
   return mod.uninstallAndRestart(...args);
 }
 
 export async function listInstalledPlugins(
-  ...args: Parameters<
-    typeof import("@elizaos/agent").listInstalledPlugins
-  >
-): ReturnType<
-  typeof import("@elizaos/agent").listInstalledPlugins
-> {
+  ...args: Parameters<typeof import("@elizaos/agent").listInstalledPlugins>
+): Promise<ReturnType<typeof import("@elizaos/agent").listInstalledPlugins>> {
   const mod = await load();
   return mod.listInstalledPlugins(...args);
 }
