@@ -49,7 +49,7 @@ interface SkillCallbackResult {
 }
 
 function getLogger(runtime: IAgentRuntime): Logger | Console {
-  const candidate = (runtime as unknown as { logger?: Logger }).logger;
+  const candidate = (runtime as { logger?: Logger }).logger;
   return candidate ?? console;
 }
 
@@ -111,7 +111,7 @@ function formatResultForChild(
  * skills plugin is not loaded — in that case the bridge stays inert.
  */
 function resolveUseSkillAction(runtime: IAgentRuntime): SkillUseAction | null {
-  const actions = (runtime as unknown as { actions?: Action[] }).actions;
+  const actions = (runtime as { actions?: Action[] }).actions;
   if (!Array.isArray(actions)) return null;
   for (const action of actions) {
     if (!action || typeof action.name !== "string") continue;
@@ -183,7 +183,7 @@ const installedRuntimes = new WeakSet<object>();
  * passed in to register per-session slugs.
  */
 export function ensureSkillCallbackBridge(deps: BridgeDeps): void {
-  const runtimeKey = deps.runtime as unknown as object;
+  const runtimeKey = deps.runtime as object;
   if (installedRuntimes.has(runtimeKey)) return;
   installedRuntimes.add(runtimeKey);
   installSkillCallbackBridge(deps);

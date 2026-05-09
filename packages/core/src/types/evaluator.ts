@@ -38,7 +38,7 @@ export interface EvaluatorProcessor<TOutput = JsonValue, TPrepared = unknown> {
 	priority?: number;
 	process(
 		context: EvaluatorProcessorContext<TOutput, TPrepared>,
-	): Promise<ActionResult | undefined | void>;
+	): Promise<ActionResult | undefined>;
 }
 
 export interface Evaluator<TOutput = JsonValue, TPrepared = unknown> {
@@ -56,6 +56,13 @@ export interface Evaluator<TOutput = JsonValue, TPrepared = unknown> {
 	parse?(output: unknown): TOutput | null;
 	processors?: Array<EvaluatorProcessor<TOutput, TPrepared>>;
 }
+
+/**
+ * Heterogeneous evaluators on the runtime or from plugins. Output/prepared
+ * generics are erased to `unknown` so concrete `Evaluator<YourOutput, ...>`
+ * instances are assignable without `any`.
+ */
+export type RegisteredEvaluator = Evaluator<unknown, unknown>;
 
 export interface EvaluatorRunResult {
 	skipped: boolean;

@@ -8,10 +8,42 @@ import {
   validateActionKeywords,
   validateActionRegex,
 } from "@elizaos/core";
-import { Clmm, type ClmmPoolInfo, Position } from "@raydium-io/raydium-sdk";
+import type { ClmmPoolInfo } from "@raydium-io/raydium-sdk";
 import { Connection, type PublicKey } from "@solana/web3.js";
 
 const POSITION_LIMIT = 20;
+
+async function loadRaydiumPositionApi(): Promise<{
+  clmm: { getPool: (connection: Connection, poolId: PublicKey) => Promise<ClmmPoolInfo> };
+  position: {
+    getPositionsByOwner: (
+      connection: Connection,
+      ownerAddress: PublicKey
+    ) => Promise<Array<Record<string, unknown>>>;
+  };
+}> {
+  const sdk = (await import("@raydium-io/raydium-sdk")) as Record<string, unknown>;
+  const clmm = sdk.Clmm as
+    | { getPool?: (connection: Connection, poolId: PublicKey) => Promise<ClmmPoolInfo> }
+    | undefined;
+  const position = sdk.Position as
+    | {
+        getPositionsByOwner?: (
+          connection: Connection,
+          ownerAddress: PublicKey
+        ) => Promise<Array<Record<string, unknown>>>;
+      }
+    | undefined;
+
+  if (typeof clmm?.getPool !== "function" || typeof position?.getPositionsByOwner !== "function") {
+    throw new Error("Raydium position helpers are unavailable in the installed Raydium SDK");
+  }
+
+  return {
+    clmm: { getPool: clmm.getPool.bind(clmm) },
+    position: { getPositionsByOwner: position.getPositionsByOwner.bind(position) },
+  };
+}
 
 export interface FetchedPositionStatistics {
   poolAddress: PublicKey;
@@ -135,8 +167,10 @@ const fetchPositions = async (
   ownerAddress: PublicKey
 ): Promise<FetchedPositionStatistics[]> => {
   try {
+    const { clmm, position: positionApi } = await loadRaydiumPositionApi();
+
     // Get all positions for the owner
-    const positions = await Position.getPositionsByOwner(connection, ownerAddress);
+    const positions = await positionApi.getPositionsByOwner(connection, ownerAddress);
 
     // Fetch all unique pools
     const poolsMap = new Map<string, ClmmPoolInfo>();
@@ -144,7 +178,7 @@ const fetchPositions = async (
     // First pass: collect all pool addresses
     for (const position of positions) {
       if (!poolsMap.has(position.poolId.toString())) {
-        const poolInfo = await Clmm.getPool(connection, position.poolId);
+        const poolInfo = await clmm.getPool(connection, position.poolId);
         poolsMap.set(position.poolId.toString(), poolInfo);
       }
     }

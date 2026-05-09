@@ -429,7 +429,7 @@ function validateUsage(
     );
   }
 
-  return usage as unknown as UsageBreakdown;
+  return usage as UsageBreakdown;
 }
 
 function validateModel(
@@ -575,7 +575,7 @@ function validateModel(
     }
   }
 
-  return model as unknown as ModelCallRecord;
+  return model as ModelCallRecord;
 }
 
 function validateStageSequence(
@@ -808,9 +808,7 @@ function validateMetrics(
   issues: ValidationIssue[],
   opts: ValidateTrajectoryOptions,
 ): void {
-  const metrics = trajectory.metrics as unknown as
-    | Record<string, unknown>
-    | undefined;
+  const metrics = trajectory.metrics;
   if (!isRecord(metrics)) {
     pushIssue(issues, "error", "$.metrics", "must be an object");
     return;
@@ -986,7 +984,7 @@ export function validateTrajectory(
       );
     }
 
-    const typedStage = stage as unknown as RecordedStage;
+    const typedStage = stage as RecordedStage;
     if (
       (MODEL_STAGE_KINDS.has(typedStage.kind) && typedStage.kind !== "tool") ||
       stage.model !== undefined
@@ -1090,7 +1088,7 @@ export function validateTrajectory(
     }
   }
 
-  const trajectory = value as unknown as RecordedTrajectory;
+  const trajectory = value as RecordedTrajectory;
   const computedRollup = rollupTrajectory(trajectory);
   validateStageSequence(trajectory.stages, issues, opts.expectedStages);
   validateMetrics(trajectory, computedRollup, issues, opts);

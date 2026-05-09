@@ -7,6 +7,10 @@ import {
 	runSubPlanner,
 } from "../sub-planner";
 
+type SubPlannerTestRuntime = Pick<IAgentRuntime, "actions" | "useModel"> & {
+	logger: Pick<IAgentRuntime["logger"], "debug" | "warn" | "error">;
+};
+
 function makeAction(overrides: Partial<Action>): Action {
 	return {
 		name: "TEST_ACTION",
@@ -18,15 +22,16 @@ function makeAction(overrides: Partial<Action>): Action {
 }
 
 function makeRuntime(actions: Action[], useModel = vi.fn()): IAgentRuntime {
-	return {
+	const runtime: SubPlannerTestRuntime = {
 		actions,
-		useModel,
+		useModel: useModel as IAgentRuntime["useModel"],
 		logger: {
 			debug: vi.fn(),
 			warn: vi.fn(),
 			error: vi.fn(),
 		},
-	} as unknown as IAgentRuntime;
+	};
+	return runtime as IAgentRuntime;
 }
 
 function makeMessage(): Memory {

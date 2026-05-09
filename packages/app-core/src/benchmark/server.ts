@@ -310,7 +310,7 @@ export async function startBenchmarkServer() {
         }
         const fallbackPath = path.resolve(
           process.cwd(),
-          "../../plugins/plugin-sql/typescript/index.ts",
+          "../../plugins/plugin-sql/src/index.ts",
         );
         elizaLogger.warn(
           `[bench] @elizaos/plugin-sql package entry is unavailable; falling back to workspace source at ${fallbackPath}`,
@@ -739,14 +739,12 @@ export async function startBenchmarkServer() {
   // time per session and sessions don't run concurrent handleMessage calls.
   let activeUsageBuffer: BenchmarkLlmCallUsage[] | null = null;
   try {
-    const eventRuntime = runtime as unknown as {
-      registerEvent: (
-        type: string,
-        handler: (payload: unknown) => void | Promise<void>,
-      ) => void;
-    };
-    if (typeof eventRuntime.registerEvent === "function") {
-      eventRuntime.registerEvent("MODEL_USED", (payload: unknown) => {
+    const registerEvent = runtime.registerEvent.bind(runtime) as (
+      type: string,
+      handler: (payload: unknown) => void | Promise<void>,
+    ) => void;
+    if (typeof registerEvent === "function") {
+      registerEvent("MODEL_USED", (payload: unknown) => {
         if (!activeUsageBuffer) return;
         if (!payload || typeof payload !== "object") return;
         const p = payload as {

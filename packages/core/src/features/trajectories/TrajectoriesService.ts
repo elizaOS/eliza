@@ -28,6 +28,7 @@ import { Service } from "../../types/service";
 import type {
 	ActionAttempt,
 	EnvironmentState,
+	JsonObject,
 	JsonValue,
 	LLMCall,
 	ProviderAccess,
@@ -163,6 +164,389 @@ function pickCell(row: SqlRow, ...keys: string[]): SqlCell | undefined {
 		}
 	}
 	return undefined;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+	if (
+		value === null ||
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		return true;
+	}
+	if (Array.isArray(value)) {
+		return value.every(isJsonValue);
+	}
+	if (isPlainRecord(value)) {
+		return Object.values(value).every(isJsonValue);
+	}
+	return false;
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+	return isPlainRecord(value) && isJsonValue(value);
+}
+
+function stringValue(value: unknown): string | null {
+	return typeof value === "string" ? value : null;
+}
+
+function numberValue(value: unknown): number | null {
+	return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function booleanValue(value: unknown): boolean | null {
+	return typeof value === "boolean" ? value : null;
+}
+
+function stringArrayValue(value: unknown): string[] | undefined {
+	return Array.isArray(value) &&
+		value.every((entry) => typeof entry === "string")
+		? value
+		: undefined;
+}
+
+function parseJsonCell(cell: SqlCell | undefined): JsonValue | undefined {
+	if (typeof cell === "string") {
+		try {
+			const parsed: unknown = JSON.parse(cell);
+			return isJsonValue(parsed) ? parsed : undefined;
+		} catch {
+			return undefined;
+		}
+	}
+	return isJsonValue(cell) ? cell : undefined;
+}
+
+function parseJsonObjectCell(
+	cell: SqlCell | undefined,
+): JsonObject | undefined {
+	const value = parseJsonCell(cell);
+	return isJsonObject(value) ? value : undefined;
+}
+
+function normalizeEnvironmentState(value: unknown): EnvironmentState | null {
+	if (!isPlainRecord(value)) return null;
+	const timestamp = numberValue(value.timestamp);
+	const agentBalance = numberValue(value.agentBalance);
+	const agentPoints = numberValue(value.agentPoints);
+	const agentPnL = numberValue(value.agentPnL);
+	const openPositions = numberValue(value.openPositions);
+	if (
+		timestamp === null ||
+		agentBalance === null ||
+		agentPoints === null ||
+		agentPnL === null ||
+		openPositions === null
+	) {
+		return null;
+	}
+	const state: EnvironmentState = {
+		timestamp,
+		agentBalance,
+		agentPoints,
+		agentPnL,
+		openPositions,
+	};
+	for (const key of [
+		"activeMarkets",
+		"portfolioValue",
+		"unreadMessages",
+		"recentEngagement",
+	] as const) {
+		const numericValue = numberValue(value[key]);
+		if (numericValue !== null) {
+			state[key] = numericValue;
+		}
+	}
+	if (isJsonObject(value.custom)) {
+		state.custom = value.custom;
+	}
+	return state;
+}
+
+function normalizeLlmCall(value: unknown): LLMCall | null {
+	if (!isPlainRecord(value)) return null;
+	const callId = stringValue(value.callId);
+	const timestamp = numberValue(value.timestamp);
+	const model = stringValue(value.model);
+	const systemPrompt = stringValue(value.systemPrompt);
+	const userPrompt = stringValue(value.userPrompt);
+	const response = stringValue(value.response);
+	const temperature = numberValue(value.temperature);
+	const maxTokens = numberValue(value.maxTokens);
+	const purpose = stringValue(value.purpose);
+	if (
+		!callId ||
+		timestamp === null ||
+		!model ||
+		systemPrompt === null ||
+		userPrompt === null ||
+		response === null ||
+		temperature === null ||
+		maxTokens === null ||
+		!purpose
+	) {
+		return null;
+	}
+	const call: LLMCall = {
+		callId,
+		timestamp,
+		model,
+		systemPrompt,
+		userPrompt,
+		response,
+		temperature,
+		maxTokens,
+		purpose,
+	};
+	for (const key of [
+		"modelVersion",
+		"modelType",
+		"provider",
+		"prompt",
+		"finishReason",
+		"reasoning",
+		"actionType",
+		"stepType",
+		"modelSlot",
+		"runId",
+		"roomId",
+		"messageId",
+		"executionTraceId",
+	] as const) {
+		const textValue = stringValue(value[key]);
+		if (textValue !== null) {
+			call[key] = textValue;
+		}
+	}
+	for (const key of [
+		"topP",
+		"promptTokens",
+		"completionTokens",
+		"latencyMs",
+		"cacheReadInputTokens",
+		"cacheCreationInputTokens",
+	] as const) {
+		const numericValue = numberValue(value[key]);
+		if (numericValue !== null) {
+			call[key] = numericValue;
+		}
+	}
+	const tags = stringArrayValue(value.tags);
+	if (tags) call.tags = tags;
+	if (Array.isArray(value.messages)) call.messages = value.messages;
+	if (Array.isArray(value.toolCalls)) call.toolCalls = value.toolCalls;
+	if ("tools" in value) call.tools = value.tools;
+	if ("toolChoice" in value) call.toolChoice = value.toolChoice;
+	if ("responseSchema" in value) call.responseSchema = value.responseSchema;
+	if ("providerOptions" in value) call.providerOptions = value.providerOptions;
+	if ("providerMetadata" in value)
+		call.providerMetadata = value.providerMetadata;
+	return call;
+}
+
+function normalizeProviderAccess(value: unknown): ProviderAccess | null {
+	if (!isPlainRecord(value)) return null;
+	const providerId = stringValue(value.providerId);
+	const providerName = stringValue(value.providerName);
+	const timestamp = numberValue(value.timestamp);
+	const data = isJsonObject(value.data) ? value.data : null;
+	const purpose = stringValue(value.purpose);
+	if (!providerId || !providerName || timestamp === null || !data || !purpose) {
+		return null;
+	}
+	const access: ProviderAccess = {
+		providerId,
+		providerName,
+		timestamp,
+		data,
+		purpose,
+	};
+	if (isJsonObject(value.query)) access.query = value.query;
+	for (const key of [
+		"runId",
+		"roomId",
+		"messageId",
+		"executionTraceId",
+	] as const) {
+		const textValue = stringValue(value[key]);
+		if (textValue !== null) {
+			access[key] = textValue;
+		}
+	}
+	return access;
+}
+
+function normalizeActionAttempt(value: unknown): ActionAttempt | null {
+	if (!isPlainRecord(value)) return null;
+	const attemptId = stringValue(value.attemptId);
+	const timestamp = numberValue(value.timestamp);
+	const actionType = stringValue(value.actionType);
+	const actionName = stringValue(value.actionName);
+	const parameters = isJsonObject(value.parameters) ? value.parameters : null;
+	const success = booleanValue(value.success);
+	if (
+		!attemptId ||
+		timestamp === null ||
+		!actionType ||
+		!actionName ||
+		!parameters ||
+		success === null
+	) {
+		return null;
+	}
+	const action: ActionAttempt = {
+		attemptId,
+		timestamp,
+		actionType,
+		actionName,
+		parameters,
+		success,
+	};
+	const reasoning = stringValue(value.reasoning);
+	if (reasoning !== null) action.reasoning = reasoning;
+	const llmCallId = stringValue(value.llmCallId);
+	if (llmCallId !== null) action.llmCallId = llmCallId;
+	if (isJsonObject(value.result)) action.result = value.result;
+	const error = stringValue(value.error);
+	if (error !== null) action.error = error;
+	const immediateReward = numberValue(value.immediateReward);
+	if (immediateReward !== null) action.immediateReward = immediateReward;
+	return action;
+}
+
+function normalizeTrajectoryStep(value: unknown): TrajectoryStep | null {
+	if (!isPlainRecord(value)) return null;
+	const stepId = stringValue(value.stepId);
+	const stepNumber = numberValue(value.stepNumber);
+	const timestamp = numberValue(value.timestamp);
+	const environmentState = normalizeEnvironmentState(value.environmentState);
+	const observation = isJsonObject(value.observation)
+		? value.observation
+		: null;
+	const action = normalizeActionAttempt(value.action);
+	const reward = numberValue(value.reward);
+	const done = booleanValue(value.done);
+	if (
+		!stepId ||
+		stepNumber === null ||
+		timestamp === null ||
+		!environmentState ||
+		!observation ||
+		!Array.isArray(value.llmCalls) ||
+		!Array.isArray(value.providerAccesses) ||
+		!action ||
+		reward === null ||
+		done === null
+	) {
+		return null;
+	}
+	const llmCalls: LLMCall[] = [];
+	for (const callValue of value.llmCalls) {
+		const call = normalizeLlmCall(callValue);
+		if (!call) return null;
+		llmCalls.push(call);
+	}
+	const providerAccesses: ProviderAccess[] = [];
+	for (const accessValue of value.providerAccesses) {
+		const access = normalizeProviderAccess(accessValue);
+		if (!access) return null;
+		providerAccesses.push(access);
+	}
+	const step: TrajectoryStep = {
+		stepId,
+		stepNumber,
+		timestamp,
+		environmentState,
+		observation,
+		llmCalls,
+		providerAccesses,
+		action,
+		reward,
+		done,
+	};
+	const reasoning = stringValue(value.reasoning);
+	if (reasoning !== null) step.reasoning = reasoning;
+	if (isJsonObject(value.metadata)) step.metadata = value.metadata;
+	return step;
+}
+
+function parseTrajectorySteps(cell: SqlCell | undefined): TrajectoryStep[] {
+	const value = parseJsonCell(cell);
+	if (!Array.isArray(value)) return [];
+	const steps: TrajectoryStep[] = [];
+	for (const stepValue of value) {
+		const step = normalizeTrajectoryStep(stepValue);
+		if (!step) return [];
+		steps.push(step);
+	}
+	return steps;
+}
+
+function parseRewardComponents(cell: SqlCell | undefined): RewardComponents {
+	const value = parseJsonObjectCell(cell);
+	if (!value || typeof value.environmentReward !== "number") {
+		return { environmentReward: 0 };
+	}
+	const reward: RewardComponents = {
+		environmentReward: value.environmentReward,
+	};
+	if (typeof value.aiJudgeReward === "number") {
+		reward.aiJudgeReward = value.aiJudgeReward;
+	}
+	if (isJsonObject(value.components)) {
+		const components: NonNullable<RewardComponents["components"]> = {};
+		for (const [key, componentValue] of Object.entries(value.components)) {
+			if (typeof componentValue === "number") {
+				components[key] = componentValue;
+			}
+		}
+		reward.components = components;
+	}
+	const judgeModel = stringValue(value.judgeModel);
+	if (judgeModel !== null) reward.judgeModel = judgeModel;
+	const judgeReasoning = stringValue(value.judgeReasoning);
+	if (judgeReasoning !== null) reward.judgeReasoning = judgeReasoning;
+	if (typeof value.judgeTimestamp === "number") {
+		reward.judgeTimestamp = value.judgeTimestamp;
+	}
+	return reward;
+}
+
+function parseTrajectoryMetrics(
+	cell: SqlCell | undefined,
+): Trajectory["metrics"] {
+	const value = parseJsonObjectCell(cell);
+	const finalStatus = value?.finalStatus;
+	const metrics: Trajectory["metrics"] = {
+		episodeLength:
+			typeof value?.episodeLength === "number" ? value.episodeLength : 0,
+		finalStatus:
+			finalStatus === "completed" ||
+			finalStatus === "terminated" ||
+			finalStatus === "error" ||
+			finalStatus === "timeout"
+				? finalStatus
+				: "completed",
+	};
+	if (!value) return metrics;
+	for (const [key, metricValue] of Object.entries(value)) {
+		metrics[key] = metricValue;
+	}
+	return metrics;
+}
+
+function parseTrajectoryMetadata(
+	cell: SqlCell | undefined,
+): Trajectory["metadata"] {
+	const value = parseJsonObjectCell(cell);
+	return value ?? {};
 }
 
 function sqlLiteral(v: unknown): string {
@@ -1951,23 +2335,6 @@ export class TrajectoriesService extends Service {
 	// ─────────────────────────────────────────────────────────────────────────
 
 	private rowToTrajectory(row: SqlRow): Trajectory {
-		const parseJson = <T>(cell: SqlCell | undefined, fallback: T): T => {
-			if (typeof cell === "string") {
-				try {
-					return JSON.parse(cell) as T;
-				} catch {
-					return fallback;
-				}
-			}
-			if (Array.isArray(cell)) {
-				return cell as unknown as T;
-			}
-			if (typeof cell === "object" && cell !== null) {
-				return cell as unknown as T;
-			}
-			return fallback;
-		};
-
 		return {
 			trajectoryId: (asString(pickCell(row, "id")) ??
 				"") as `${string}-${string}-${string}-${string}-${string}`,
@@ -1980,20 +2347,15 @@ export class TrajectoriesService extends Service {
 			episodeId: asString(pickCell(row, "episode_id")) ?? undefined,
 			batchId: asString(pickCell(row, "batch_id")) ?? undefined,
 			groupIndex: asNumber(pickCell(row, "group_index")) ?? undefined,
-			steps: parseJson<TrajectoryStep[]>(
-				pickCell(row, "steps_json", "steps"),
-				[],
-			),
+			steps: parseTrajectorySteps(pickCell(row, "steps_json", "steps")),
 			totalReward: asNumber(pickCell(row, "total_reward")) ?? 0,
-			rewardComponents: parseJson<RewardComponents>(
+			rewardComponents: parseRewardComponents(
 				pickCell(row, "reward_components_json", "reward_components"),
-				{ environmentReward: 0 },
 			),
-			metrics: parseJson(pickCell(row, "metrics_json", "metrics"), {
-				episodeLength: 0,
-				finalStatus: "completed" as const,
-			}),
-			metadata: parseJson(pickCell(row, "metadata_json", "metadata"), {}),
+			metrics: parseTrajectoryMetrics(pickCell(row, "metrics_json", "metrics")),
+			metadata: parseTrajectoryMetadata(
+				pickCell(row, "metadata_json", "metadata"),
+			),
 		};
 	}
 

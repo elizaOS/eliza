@@ -1,8 +1,9 @@
 import {
-  type ChildProcessWithoutNullStreams,
+  type ChildProcessByStdio,
   execFile as execFileCallback,
   spawn as spawnChildProcess,
 } from "node:child_process";
+import type { Readable } from "node:stream";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { PreflightResult } from "coding-agent-adapters";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
@@ -567,7 +568,8 @@ export async function launchTaskAgentAuthFlow(
     stdio: ["ignore", "pipe", "pipe"],
     // On Windows, .cmd files require the shell to resolve PATHEXT extensions.
     shell: process.platform === "win32",
-  }) as unknown as ChildProcessWithoutNullStreams;
+  });
+  const childProcess: ChildProcessByStdio<null, Readable, Readable> = child;
 
   let current: TaskAgentAuthLaunchResult = {
     launched: true,
@@ -603,10 +605,10 @@ export async function launchTaskAgentAuthFlow(
     }
   };
 
-  child.stdout.setEncoding("utf8");
-  child.stderr.setEncoding("utf8");
-  child.stdout.on("data", (chunk: string) => applyOutput(chunk));
-  child.stderr.on("data", (chunk: string) => applyOutput(chunk));
+  childProcess.stdout.setEncoding("utf8");
+  childProcess.stderr.setEncoding("utf8");
+  childProcess.stdout.on("data", (chunk: string) => applyOutput(chunk));
+  childProcess.stderr.on("data", (chunk: string) => applyOutput(chunk));
 
   const completion = new Promise<{
     code: number | null;
@@ -803,7 +805,7 @@ export async function augmentTaskAgentPreflightResults(
       return {
         ...result,
         auth,
-      } as unknown as PreflightResult;
+      } satisfies PreflightResult;
     }),
   );
 }

@@ -21,7 +21,20 @@ interface YtDlpFactory {
   create: (binaryPath: string) => YtDlpRunner;
 }
 
-const ytDlpModule = youtubeDl as unknown as YtDlpRunner & YtDlpFactory;
+type YtDlpModule = YtDlpRunner & YtDlpFactory;
+
+function isYtDlpModule(value: unknown): value is YtDlpModule {
+  return (
+    typeof value === "function" &&
+    typeof (value as { create?: unknown }).create === "function"
+  );
+}
+
+if (!isYtDlpModule(youtubeDl)) {
+  throw new TypeError("youtube-dl-exec did not expose the expected runner API");
+}
+
+const ytDlpModule = youtubeDl;
 
 const YT_DLP_RELEASE_URL =
   "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
@@ -221,8 +234,13 @@ export class BinaryResolver {
     }
 
     try {
-      const mod: { default?: string | null } = await import("ffmpeg-static");
-      const staticPath = mod.default ?? (mod as unknown as string | null);
+      const mod: unknown = await import("ffmpeg-static");
+      const staticPath =
+        typeof mod === "string"
+          ? mod
+          : mod && typeof mod === "object" && "default" in mod
+            ? (mod.default as string | null | undefined)
+            : null;
       if (
         typeof staticPath === "string" &&
         staticPath.length > 0 &&

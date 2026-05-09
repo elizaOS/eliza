@@ -55,7 +55,7 @@ function getTriggerEntry(
 ): RegisteredTrainingTriggerEntry | null {
   if (!runtime) return null;
   const services = (
-    runtime as unknown as {
+    runtime as {
       services?: Map<string, unknown[]>;
     }
   ).services;

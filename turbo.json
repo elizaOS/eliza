@@ -338,65 +338,31 @@
       "outputs": []
     },
     "typecheck": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "^build",
-        "@elizaos/plugin-groq#build",
-        "@elizaos/plugin-inmemorydb#build",
-        "@elizaos/plugin-sql#build",
-        "@elizaos/plugin-video#build"
-      ],
+      "dependsOn": [],
       "outputs": []
     },
     "@elizaos/app-core#typecheck": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/plugin-video#build"
-      ],
+      "dependsOn": [],
       "outputs": []
     },
     "@elizaos/scenario-runner#typecheck": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/shared#build",
-        "@elizaos/agent#build",
-        "@elizaos/ui#build",
-        "@elizaos/app-core#build",
-        "@elizaos/plugin-browser#build",
-        "@elizaos/plugin-elizacloud#build",
-        "@elizaos/plugin-streaming#build"
-      ],
+      "dependsOn": [],
       "outputs": []
     },
     "@elizaos/ui#typecheck": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/plugin-video#build"
-      ],
+      "dependsOn": [],
       "outputs": []
     },
     "@elizaos/app#typecheck": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/plugin-video#build"
-      ],
+      "dependsOn": [],
       "outputs": []
     },
     "@elizaos/example-autonomous#typecheck": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/plugin-inmemorydb#build",
-        "@elizaos/plugin-local-ai#build",
-        "@elizaos/plugin-shell#build"
-      ],
+      "dependsOn": [],
       "outputs": []
     },
     "@elizaos/gcp-examples#typecheck": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/plugin-openai#build",
-        "@elizaos/plugin-sql#build"
-      ],
+      "dependsOn": [],
       "outputs": []
     },
     "@elizaos/example-farcaster#build": {
@@ -426,10 +392,7 @@
       ]
     },
     "@elizaos/plugin-streaming#typecheck": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/cloud-routing#build"
-      ],
+      "dependsOn": [],
       "outputs": []
     },
     "format": {

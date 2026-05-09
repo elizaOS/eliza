@@ -280,7 +280,9 @@ async function tryRegisterAospLlamaLoader(
 ): Promise<boolean> {
   if (process.env.ELIZA_LOCAL_LLAMA?.trim() !== "1") return false;
   try {
-    const mod = (await import("@elizaos/agent")) as unknown as {
+    const mod = (await import(
+      "@elizaos/agent"
+    )) as typeof import("@elizaos/agent") & {
       registerAospLlamaLoader?: (r: AgentRuntime) => Promise<boolean> | boolean;
     };
     if (typeof mod.registerAospLlamaLoader !== "function") {
@@ -310,16 +312,16 @@ async function tryRegisterCapacitorLoader(
     | undefined;
   if (!cap?.isNativePlatform?.()) return false;
   try {
-    const mod = (await import("@elizaos/capacitor-llama")) as unknown as {
-      registerCapacitorLlamaLoader?: (r: AgentRuntime) => void;
-    };
-    if (typeof mod.registerCapacitorLlamaLoader === "function") {
-      mod.registerCapacitorLlamaLoader(runtime);
-      logger.info(
-        "[local-inference] Registered capacitor-llama loader for mobile on-device inference",
-      );
-      return true;
-    }
+    const { registerCapacitorLlamaLoader } = await import(
+      "@elizaos/capacitor-llama"
+    );
+    registerCapacitorLlamaLoader(
+      runtime as unknown as Parameters<typeof registerCapacitorLlamaLoader>[0],
+    );
+    logger.info(
+      "[local-inference] Registered capacitor-llama loader for mobile on-device inference",
+    );
+    return true;
   } catch (err) {
     logger.debug(
       "[local-inference] capacitor-llama not available:",

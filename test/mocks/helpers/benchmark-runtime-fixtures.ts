@@ -96,7 +96,7 @@ async function startFixtureServer(): Promise<{
 }
 
 function installAppBlockerFixture(): Cleanup {
-  const capacitor = Capacitor as unknown as {
+  const capacitor = Capacitor as {
     Plugins?: Record<string, unknown>;
   };
   const previousPlugins = capacitor.Plugins;

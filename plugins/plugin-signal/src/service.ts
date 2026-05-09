@@ -27,6 +27,12 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  DEFAULT_ACCOUNT_ID,
+  listEnabledSignalAccounts,
+  normalizeAccountId as normalizeSignalAccountId,
+  resolveDefaultSignalAccountId,
+} from "./accounts";
+import {
   createSignalEventStream,
   parseSignalEventData,
   signalCheck,
@@ -37,15 +43,13 @@ import {
   signalSendReaction,
   signalSendTyping,
 } from "./rpc";
-import {
-  DEFAULT_ACCOUNT_ID,
-  listEnabledSignalAccounts,
-  normalizeAccountId as normalizeSignalAccountId,
-  resolveDefaultSignalAccountId,
-} from "./accounts";
 
 type MessageService = Pick<IMessageService, "handleMessage">;
 type MessageConnectorRegistration = Parameters<IAgentRuntime["registerMessageConnector"]>[0];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 type ConnectorFetchMessagesParams = {
   target?: TargetInfo;
@@ -361,8 +365,8 @@ class SignalApiClient {
     return groups.find((g) => g.id === groupId) || null;
   }
 
-  async receive(): Promise<SignalMessage[]> {
-    return signalRpcRequest<SignalMessage[]>(
+  async receive(): Promise<Record<string, unknown>[]> {
+    return signalRpcRequest<Record<string, unknown>[]>(
       "receive",
       { account: this.accountNumber },
       this.rpcOptions(1_500)
@@ -607,8 +611,7 @@ export class SignalService extends Service implements ISignalService {
       const baseUrl = normalizeBaseUrl(account.baseUrl);
       const explicitHttpUrl = Boolean(account.config.httpUrl?.trim());
       const authDir = account.config.authDir?.trim() || defaultAuthDir;
-      const accountCliPath =
-        (account.config.cliPath && account.config.cliPath.trim()) || configuredCliPath;
+      const accountCliPath = account.config.cliPath?.trim() || configuredCliPath;
 
       if (!explicitHttpUrl) {
         // authDir is now guaranteed non-empty (falls back to defaultSignalAuthDir()).
@@ -718,7 +721,6 @@ export class SignalService extends Service implements ISignalService {
         messageIdFull: String(result.timestamp),
         signalTimestamp: result.timestamp,
         signal: {
-          accountId,
           timestamp: result.timestamp,
         },
       } as unknown as Memory["metadata"];
@@ -1169,7 +1171,24 @@ export class SignalService extends Service implements ISignalService {
    * but the plugin expects flat `{sender, message, timestamp, ...}` objects.
    */
   static unwrapEnvelope(raw: Record<string, unknown>): SignalMessage | null {
-    if (!raw || !("envelope" in raw)) return raw as unknown as SignalMessage;
+    if (!("envelope" in raw)) {
+      if (typeof raw.sender !== "string" || typeof raw.timestamp !== "number") {
+        return null;
+      }
+      return {
+        sender: raw.sender,
+        senderUuid: typeof raw.senderUuid === "string" ? raw.senderUuid : undefined,
+        message: typeof raw.message === "string" ? raw.message : undefined,
+        timestamp: raw.timestamp,
+        groupId: typeof raw.groupId === "string" ? raw.groupId : undefined,
+        attachments: Array.isArray(raw.attachments) ? (raw.attachments as SignalAttachment[]) : [],
+        reaction: raw.reaction as SignalReactionInfo | undefined,
+        expiresInSeconds:
+          typeof raw.expiresInSeconds === "number" ? raw.expiresInSeconds : undefined,
+        viewOnce: raw.viewOnce === true,
+        quote: raw.quote as SignalQuote | undefined,
+      };
+    }
 
     const env = raw.envelope as Record<string, unknown>;
     const dm = (env.dataMessage || {}) as Record<string, unknown>;
@@ -1216,7 +1235,15 @@ export class SignalService extends Service implements ISignalService {
 
         for (const raw of rawMessages) {
           try {
-            const msg = SignalService.unwrapEnvelope(raw as unknown as Record<string, unknown>);
+            if (!isRecord(raw)) {
+              this.runtime.logger.warn(
+                { src: "plugin:signal", accountId: entryAccountId },
+                "Skipping malformed envelope (not an object)"
+              );
+              continue;
+            }
+
+            const msg = SignalService.unwrapEnvelope(raw);
             if (!msg) {
               this.runtime.logger.warn(
                 { src: "plugin:signal", accountId: entryAccountId },
@@ -1312,7 +1339,7 @@ export class SignalService extends Service implements ISignalService {
       roomId,
       worldId,
       worldName: "Signal",
-      userId: msg.sender as unknown as UUID,
+      userId: msg.sender,
       userName: displayName,
       name: displayName,
       source: "signal",
@@ -1342,7 +1369,7 @@ export class SignalService extends Service implements ISignalService {
         source: "signal",
         accountId: normalizedAccountId,
         message: memory,
-      } as unknown as EventPayload
+      } as EventPayload
     );
 
     // Get the room for processMessage; fall back to ensureRoomExists if
@@ -1378,7 +1405,7 @@ export class SignalService extends Service implements ISignalService {
         runtime: this.runtime,
         source: "signal",
         accountId: this.normalizeAccountId(accountId),
-      } as unknown as EventPayload
+      } as EventPayload
     );
   }
 
@@ -1417,10 +1444,9 @@ export class SignalService extends Service implements ISignalService {
           source: "signal",
           provider: "signal",
           signal: {
-            accountId: normalizedAccountId,
             groupId,
           },
-        } as unknown as Memory["metadata"],
+        } satisfies Memory["metadata"],
         createdAt: Date.now(),
       };
 
@@ -1432,7 +1458,7 @@ export class SignalService extends Service implements ISignalService {
           runtime: this.runtime,
           source: "signal",
           accountId: normalizedAccountId,
-        } as unknown as EventPayload
+        } as EventPayload
       );
 
       return [responseMemory];
@@ -1496,17 +1522,11 @@ export class SignalService extends Service implements ISignalService {
           username: msg.sender,
         },
         signal: {
-          accountId: normalizedAccountId,
-          id: msg.sender,
-          userId: msg.sender,
-          username: msg.sender,
-          userName: msg.sender,
-          name: displayName,
           senderId: msg.sender,
           groupId: msg.groupId,
           timestamp: msg.timestamp,
         },
-      } as unknown as Memory["metadata"],
+      } satisfies Memory["metadata"],
       createdAt: msg.timestamp,
     };
 
@@ -1739,7 +1759,6 @@ export class SignalService extends Service implements ISignalService {
           timestamp: args.timestamp,
           messageIdFull: String(args.timestamp),
           signal: {
-            accountId,
             timestamp: args.timestamp,
           },
         } as unknown as Memory["metadata"],

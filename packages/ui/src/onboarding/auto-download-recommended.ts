@@ -27,12 +27,12 @@
  * `completeOnboarding()` before this helper is invoked.
  */
 
+import { client } from "../api";
 import type {
   CatalogModel,
   ModelBucket,
   ModelHubSnapshot,
 } from "../services/local-inference/types";
-import { client } from "../api";
 
 const AUTO_DOWNLOAD_MARKER_KEY = "eliza.localInference.autoDownloadAttempted";
 const HEALTH_POLL_INTERVAL_MS = 2_000;

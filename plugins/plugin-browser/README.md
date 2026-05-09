@@ -1,4 +1,4 @@
-# @elizaos/plugin-browser-bridge
+# @elizaos/plugin-browser
 
 Agent Browser Bridge plugin: schema, contracts, HTTP routes, and packaging
 utilities for Chrome/Safari browser companions.
@@ -43,7 +43,7 @@ Eliza loads `browserBridgePlugin` as a core runtime plugin so the Browser
 Workspace UI, agent actions, and companion extension use the same API surface.
 
 ```ts
-import { browserBridgePlugin } from "@elizaos/plugin-browser-bridge/plugin";
+import { browserBridgePlugin } from "@elizaos/plugin-browser/plugin";
 ```
 
 ## Authentication

@@ -66,7 +66,6 @@ const ROLE_OWNER: Role = "OWNER";
 
 // Re-export action and provider modules
 export * from "./actions/index.ts";
-export * from "./providers/index.ts";
 // Generic scheduled-prompt TaskWorker (registered automatically by TaskService).
 export {
 	PROMPT_RUNNER_TASK_KIND,
@@ -74,6 +73,7 @@ export {
 	type PromptRunnerTaskMetadata,
 	promptRunnerTaskWorker,
 } from "./prompt-runner-task.ts";
+export * from "./providers/index.ts";
 
 import { generateMediaAction } from "../advanced-capabilities/actions/generateMedia.ts";
 // Import advanced capabilities

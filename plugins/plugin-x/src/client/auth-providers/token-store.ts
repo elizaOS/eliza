@@ -19,10 +19,16 @@ export interface TokenStore {
   clear(): Promise<void>;
 }
 
+interface RuntimeTokenCache {
+  agentId: IAgentRuntime["agentId"];
+  getCache<T>(key: string): Promise<T | undefined | null>;
+  setCache<T>(key: string, value: T): Promise<unknown>;
+}
+
 export class RuntimeCacheTokenStore implements TokenStore {
   private readonly key: string;
   constructor(
-    private readonly runtime: IAgentRuntime,
+    private readonly runtime: RuntimeTokenCache,
     accountId: string = DEFAULT_X_ACCOUNT_ID,
     key?: string,
   ) {
@@ -45,14 +51,9 @@ export class RuntimeCacheTokenStore implements TokenStore {
   }
 
   async clear(): Promise<void> {
-    // Prefer deleting semantics without relying on null (some runtimes/types
-    // disallow null). If the runtime doesn't support true deletion, setting
-    // `undefined` should be treated as "not set". The runtime cache typing
-    // requires a defined value, but every real implementation accepts
-    // `undefined` as a tombstone.
-    await this.runtime.setCache(
+    await this.runtime.setCache<StoredOAuth2Tokens | undefined>(
       this.key,
-      undefined as unknown as StoredOAuth2Tokens,
+      undefined,
     );
   }
 }

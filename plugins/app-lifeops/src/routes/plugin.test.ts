@@ -67,7 +67,7 @@ function createRuntime(options?: {
     ]),
     getEntityById: vi.fn(async () => null),
     getRelationships: vi.fn(async () => []),
-  } as unknown as AgentRuntime;
+  } as AgentRuntime;
 }
 
 function findRoute(

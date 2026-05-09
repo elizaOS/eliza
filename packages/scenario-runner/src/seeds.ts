@@ -6,26 +6,80 @@ import type {
   ScenarioSeedStep,
 } from "@elizaos/scenario-schema";
 
+type LifeOpsOccurrenceState =
+  | "completed"
+  | "visible"
+  | "pending"
+  | "expired"
+  | "snoozed"
+  | "skipped"
+  | "muted";
+
+type LifeOpsTaskDefinitionInput = Record<string, unknown>;
+
+type LifeOpsTaskDefinition = LifeOpsTaskDefinitionInput & {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type LifeOpsOccurrence = Record<string, unknown> & {
+  occurrenceKey: string;
+  state: LifeOpsOccurrenceState;
+};
+
+type LifeOpsRepositoryInstance = {
+  createDefinition: (definition: LifeOpsTaskDefinition) => Promise<unknown>;
+  upsertOccurrence: (occurrence: LifeOpsOccurrence) => Promise<unknown>;
+};
+
+type LifeOpsRepositoryConstructor = {
+  new (runtime: AgentRuntime): LifeOpsRepositoryInstance;
+  bootstrapSchema: (runtime: AgentRuntime) => Promise<void>;
+};
+
+type LifeOpsDefaultsModule = {
+  resolveDefaultWindowPolicy: (
+    timeZone?: string | null,
+  ) => Record<string, unknown>;
+};
+
+type LifeOpsEngineModule = {
+  materializeDefinitionOccurrences: (
+    definition: LifeOpsTaskDefinition,
+    existingOccurrences: LifeOpsOccurrence[],
+    options?: { now?: Date; lookbackDays?: number; lookaheadDays?: number },
+  ) => LifeOpsOccurrence[];
+};
+
+type LifeOpsRepositoryModule = {
+  createLifeOpsTaskDefinition: (
+    params: LifeOpsTaskDefinitionInput,
+  ) => LifeOpsTaskDefinition;
+  LifeOpsRepository: LifeOpsRepositoryConstructor;
+};
+
 // Loaded lazily so this module can be built without pulling app-lifeops into the
 // scenario-runner rootDir (app-lifeops is only available at runtime).
 async function loadLifeOps() {
-  // Cast to `string` so TypeScript does not statically resolve these paths for
-  // rootDir validation — they live outside this package's src/ rootDir.
-  // biome-ignore lint/suspicious/noExplicitAny: dynamic imports outside rootDir
+  const defaultsSpecifier: string =
+    "../../../plugins/app-lifeops/src/lifeops/defaults.ts";
+  const engineSpecifier: string =
+    "../../../plugins/app-lifeops/src/lifeops/engine.ts";
+  const repositorySpecifier: string =
+    "../../../plugins/app-lifeops/src/lifeops/repository.ts";
   const [
     { resolveDefaultWindowPolicy },
     { materializeDefinitionOccurrences },
     repo,
+  ]: [
+    LifeOpsDefaultsModule,
+    LifeOpsEngineModule,
+    LifeOpsRepositoryModule,
   ] = await Promise.all([
-    import(
-      "../../../plugins/app-lifeops/src/lifeops/defaults.ts" as string
-    ) as any,
-    import(
-      "../../../plugins/app-lifeops/src/lifeops/engine.ts" as string
-    ) as any,
-    import(
-      "../../../plugins/app-lifeops/src/lifeops/repository.ts" as string
-    ) as any,
+    import(defaultsSpecifier),
+    import(engineSpecifier),
+    import(repositorySpecifier),
   ]);
   return {
     resolveDefaultWindowPolicy,

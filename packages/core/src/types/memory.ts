@@ -254,22 +254,50 @@ export interface MessageMetadata {
 		guildId?: string;
 		channelId?: string;
 		messageId?: string;
+		discordGuildId?: string;
+		discordChannelId?: string;
+		discordMessageId?: string;
+		discordAuthor?: {
+			id?: string;
+			username?: string;
+			discriminator?: string;
+			avatar?: string | null;
+			bot?: boolean;
+			global_name?: string | null;
+		};
 	};
 
 	slack?: {
+		accountId?: string;
 		teamId?: string;
 		channelId?: string;
+		userId?: string;
+		/** Slack message timestamp (event `ts`). */
+		messageId?: string;
 		messageTs?: string;
 		threadTs?: string;
 	};
 
 	whatsapp?: {
+		accountId?: string;
+		id?: string;
+		userId?: string;
+		username?: string;
+		userName?: string;
+		name?: string;
+		chatId?: string;
 		phoneNumberId?: string;
 		contactId?: string;
 		messageId?: string;
 	};
 
 	signal?: {
+		accountId?: string;
+		id?: string;
+		userId?: string;
+		username?: string;
+		userName?: string;
+		name?: string;
 		groupId?: string;
 		senderId?: string;
 		timestamp?: number;

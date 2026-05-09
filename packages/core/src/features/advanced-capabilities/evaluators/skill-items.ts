@@ -13,6 +13,7 @@ import type {
 	IAgentRuntime,
 	JSONSchema,
 	Memory,
+	RegisteredEvaluator,
 } from "../../../types/index.ts";
 import { MemoryType } from "../../../types/memory.ts";
 import { resolveStateDir } from "../../../utils/state-dir.ts";
@@ -575,10 +576,10 @@ ${prepared.trajectoryDigest}`;
 	],
 };
 
-export const skillItems = [
+export const skillItems: RegisteredEvaluator[] = [
 	skillProposalEvaluator,
 	skillRefinementEvaluator,
-] as unknown as Evaluator[];
+];
 
 export function _countProposedSkills(): number {
 	const dir = getProposedSkillsDir();

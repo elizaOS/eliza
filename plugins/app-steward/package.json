@@ -72,7 +72,6 @@
     "@stwd/sdk": "^0.8.1",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-wallet": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "ethers": "^6.16.0",
     "lucide-react": "^1.0.0",

@@ -1,12 +1,26 @@
 import { Hono } from "hono";
 import { requireAdmin, requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { vertexModelRegistryService } from "@/lib/services/vertex-model-registry";
+import type { VertexTuningSlot } from "@/lib/services/vertex-tuning";
 import type { AppEnv } from "@/types/cloud-worker-env";
+
+const VERTEX_TUNING_SLOTS = [
+  "should_respond",
+  "response_handler",
+  "action_planner",
+  "planner",
+  "response",
+  "media_description",
+] as const satisfies readonly VertexTuningSlot[];
 
 function parseScope(value: unknown): "global" | "organization" | "user" {
   return value === "global" || value === "organization" || value === "user"
     ? value
     : "organization";
+}
+
+function parseSlot(value: unknown): VertexTuningSlot | undefined {
+  return typeof value === "string" ? VERTEX_TUNING_SLOTS.find((slot) => slot === value) : undefined;
 }
 
 async function ensureGlobalAccess(request: Request): Promise<void> {
@@ -21,8 +35,13 @@ async function __hono_GET(request: Request) {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { searchParams } = new URL(request.url);
     const scope = parseScope(searchParams.get("scope"));
-    const slot = searchParams.get("slot") || undefined;
+    const rawSlot = searchParams.get("slot");
+    const slot = parseSlot(rawSlot);
     const activeOnly = searchParams.get("active") !== "false";
+
+    if (rawSlot && !slot) {
+      return Response.json({ error: "Invalid slot." }, { status: 400 });
+    }
 
     const assignments = await vertexModelRegistryService.listVisibleAssignments(
       {
@@ -31,7 +50,7 @@ async function __hono_GET(request: Request) {
       },
       {
         scope: searchParams.get("scope") ? scope : undefined,
-        slot: slot as any,
+        slot,
         activeOnly,
       },
     );
@@ -57,8 +76,12 @@ async function __hono_POST(request: Request) {
       await ensureGlobalAccess(request);
     }
 
-    const slot = typeof body.slot === "string" ? body.slot : undefined;
+    const slot = parseSlot(body.slot);
     const tunedModelId = typeof body.tunedModelId === "string" ? body.tunedModelId : undefined;
+
+    if (typeof body.slot === "string" && !slot) {
+      return Response.json({ error: "Invalid slot." }, { status: 400 });
+    }
 
     if (!slot || !tunedModelId) {
       return Response.json(
@@ -71,7 +94,7 @@ async function __hono_POST(request: Request) {
 
     const assignment = await vertexModelRegistryService.activateAssignment({
       scope,
-      slot: slot as any,
+      slot,
       tunedModelId,
       organizationId: scope === "global" ? undefined : user.organization_id,
       userId: scope === "user" ? user.id : undefined,
@@ -105,7 +128,11 @@ async function __hono_DELETE(request: Request) {
       await ensureGlobalAccess(request);
     }
 
-    const slot = typeof body.slot === "string" ? body.slot : undefined;
+    const slot = parseSlot(body.slot);
+    if (typeof body.slot === "string" && !slot) {
+      return Response.json({ error: "Invalid slot." }, { status: 400 });
+    }
+
     if (!slot) {
       return Response.json(
         {
@@ -117,7 +144,7 @@ async function __hono_DELETE(request: Request) {
 
     const deactivatedCount = await vertexModelRegistryService.deactivateAssignment({
       scope,
-      slot: slot as any,
+      slot,
       organizationId: scope === "global" ? undefined : user.organization_id,
       userId: scope === "user" ? user.id : undefined,
     });

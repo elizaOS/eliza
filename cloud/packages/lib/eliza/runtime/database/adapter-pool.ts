@@ -1,20 +1,11 @@
 import { elizaLogger, type IDatabaseAdapter, type UUID } from "@elizaos/core";
-import * as sqlPluginNode from "@elizaos/plugin-sql";
+import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 import { getStaticEmbeddingDimension } from "@/lib/cache/edge-runtime-cache";
 import { resolveRuntimeDatabaseAdapterConfig } from "../../database-adapter-config";
 import { safeClose } from "../lifecycle";
 import { applyLegacyDatabaseAdapterCompat } from "./adapter-compat";
 
 const adapterEmbeddingDimensions = new Map<string, number>();
-
-const createDatabaseAdapter = (
-  sqlPluginNode as unknown as {
-    createDatabaseAdapter: (
-      config: { dataDir?: string; postgresUrl?: string },
-      agentId: UUID,
-    ) => IDatabaseAdapter;
-  }
-).createDatabaseAdapter;
 
 export class DbAdapterPool {
   private adapters = new Map<string, IDatabaseAdapter>();

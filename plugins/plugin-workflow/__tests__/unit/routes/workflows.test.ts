@@ -45,13 +45,24 @@ function createRouteResponse(): {
 // Routes: [0]=GET /workflows, [1]=POST /workflows, [2]=GET /workflows/:id,
 //         [3]=PUT /workflows/:id, [4]=DELETE /workflows/:id,
 //         [5]=POST /workflows/:id/activate, [6]=POST /workflows/:id/deactivate
-const listHandler = workflowRoutes[0].handler!;
-const createHandler = workflowRoutes[1].handler!;
-const getHandler = workflowRoutes[2].handler!;
-const updateHandler = workflowRoutes[3].handler!;
-const deleteHandler = workflowRoutes[4].handler!;
-const activateHandler = workflowRoutes[5].handler!;
-const deactivateHandler = workflowRoutes[6].handler!;
+const listHandler = workflowRoutes[0].handler;
+const createHandler = workflowRoutes[1].handler;
+const getHandler = workflowRoutes[2].handler;
+const updateHandler = workflowRoutes[3].handler;
+const deleteHandler = workflowRoutes[4].handler;
+const activateHandler = workflowRoutes[5].handler;
+const deactivateHandler = workflowRoutes[6].handler;
+if (
+  !listHandler ||
+  !createHandler ||
+  !getHandler ||
+  !updateHandler ||
+  !deleteHandler ||
+  !activateHandler ||
+  !deactivateHandler
+) {
+  throw new Error('expected workflow route handlers');
+}
 
 function runtimeWithService(serviceOverrides?: Record<string, unknown>) {
   const service = createMockService(serviceOverrides);

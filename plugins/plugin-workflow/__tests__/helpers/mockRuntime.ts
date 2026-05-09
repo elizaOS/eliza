@@ -92,10 +92,14 @@ export function createMockCallback() {
 /**
  * Helper to get the last callback result with both text and success status
  */
+type MockWithCalls = MockFn & {
+  mock: { calls: Array<[{ text: string; success?: boolean }]> };
+};
+
 export function getLastCallbackResult(
   callback: MockFn
 ): { text: string; success?: boolean } | undefined {
-  const calls = (callback as any).mock.calls;
+  const calls = (callback as MockWithCalls).mock.calls;
   if (calls.length === 0) return undefined;
   return calls[calls.length - 1][0];
 }

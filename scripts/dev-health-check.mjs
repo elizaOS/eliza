@@ -522,10 +522,14 @@ async function run() {
     cwd: process.cwd(),
     detached: process.platform !== "win32",
     env: executionEnv,
-    stdio: ["ignore", "pipe", "pipe"],
+    // Keep stdin open because dev-ui passes inherited stdin to Vite. Some
+    // dev servers treat closed stdin as a shutdown signal even when stdout
+    // and stderr are still healthy.
+    stdio: ["pipe", "pipe", "pipe"],
   });
 
   let childExit = null;
+  child.stdin?.on("error", () => {});
   child.stdout.on("data", (chunk) =>
     appendLog(logChunks, logStream, "stdout", chunk),
   );

@@ -12,7 +12,7 @@
 "use client";
 
 import { BrandButton, MonacoEditorSkeleton } from "@elizaos/cloud-ui";
-import dynamic from "@elizaos/cloud-ui";
+import dynamic from "@elizaos/cloud-ui/runtime/dynamic";
 import { AlertCircle, CheckCircle, Save, Upload } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";

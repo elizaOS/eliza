@@ -7,6 +7,16 @@ import {
 import { raydiumPositionProvider } from "./providers/positionProvider.ts";
 import { RaydiumService } from "./services/srv_raydium.ts";
 
+function hasExchangeRegistry(
+  service: unknown
+): service is { registerExchange: (exchange: { name: string }) => void } {
+  return (
+    service !== null &&
+    typeof service === "object" &&
+    typeof (service as { registerExchange?: unknown }).registerExchange === "function"
+  );
+}
+
 export const raydiumPlugin: Plugin = {
   name: "@elizaos/plugin-lp-manager/raydium",
   description: "Raydium CLMM LP management plugin for Solana",
@@ -30,18 +40,11 @@ export const raydiumPlugin: Plugin = {
     // Try to register with Solana service if available
     const serviceType = "solana";
     const solanaService = runtime.getService(serviceType);
-    if (
-      solanaService &&
-      typeof (solanaService as unknown as Record<string, unknown>).registerExchange === "function"
-    ) {
+    if (hasExchangeRegistry(solanaService)) {
       const me = {
         name: "Raydium DEX services",
       };
-      (
-        solanaService as unknown as {
-          registerExchange: (exchange: { name: string }) => void;
-        }
-      ).registerExchange(me);
+      solanaService.registerExchange(me);
       console.info("Raydium registered with Solana service");
     }
   },

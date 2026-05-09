@@ -10,11 +10,7 @@
     "typeRoots": [
       "./node_modules/@types",
       "../../node_modules/@types",
-      "../../../node_modules/@types",
-      "../../../node_modules/.bun/node_modules/@types",
-      "../../node_modules",
-      "../../../node_modules",
-      "../../../node_modules/.bun/node_modules"
+      "../../node_modules"
     ],
     "allowImportingTsExtensions": true,
     "declaration": false,
@@ -57,6 +53,12 @@
       "@elizaos/plugin-whatsapp/*": ["../../plugins/plugin-whatsapp/src/*"],
       "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
       "@elizaos/plugin-signal/*": ["../../plugins/plugin-signal/src/*"],
+      "@elizaos/app-task-coordinator": [
+        "../../plugins/app-task-coordinator/src/index.ts"
+      ],
+      "@elizaos/app-task-coordinator/*": [
+        "../../plugins/app-task-coordinator/src/*"
+      ],
       "@elizaos/plugin-google": ["../../plugins/plugin-google/src/index.ts"],
       "@elizaos/plugin-google/*": ["../../plugins/plugin-google/src/*"],
       "@elizaos/plugin-telegram": [
@@ -64,9 +66,9 @@
       ],
       "@elizaos/plugin-telegram/*": ["../../plugins/plugin-telegram/src/*"],
       "@elizaos/plugin-sql": [
-        "../../plugins/plugin-sql/typescript/index.node.ts"
+        "../../plugins/plugin-sql/src/index.node.ts"
       ],
-      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/typescript/*"],
+      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/skills": ["../skills/src/index.ts"],

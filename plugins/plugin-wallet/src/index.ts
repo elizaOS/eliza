@@ -61,4 +61,4 @@ export {
 export * from "./types/wallet-router.js";
 export * from "./wallet/index.js";
 
-/** ERC-6551 / x402 / CCTP / swaps live under `import "@elizaos/plugin-wallet/sdk"`. */
+/** ERC-6551 / x402 / CCTP / swaps are available from the package barrel. */

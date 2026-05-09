@@ -52,11 +52,14 @@ function getSecretsService(rt: IAgentRuntime): SecretsServiceApi | null {
   const svc = rt.getService(SECRETS_SERVICE_TYPE);
   if (!svc) return null;
   // Verify the methods exist at runtime rather than blindly casting
-  const obj = svc as unknown as Record<string, unknown>;
-  if (typeof obj.getGlobal !== "function" || typeof obj.list !== "function") {
+  const service = svc as typeof svc & Partial<SecretsServiceApi>;
+  if (
+    typeof service.getGlobal !== "function" ||
+    typeof service.list !== "function"
+  ) {
     return null;
   }
-  return svc as unknown as SecretsServiceApi;
+  return service as SecretsServiceApi;
 }
 
 async function collectSecrets(
@@ -80,11 +83,11 @@ async function tryImportDeps(): Promise<boolean> {
     console.error("[ElizaHandler] @elizaos/core does not export AgentRuntime");
     return false;
   }
-  AgentRuntimeCtor = core.AgentRuntime as unknown as typeof AgentRuntimeCtor;
+  AgentRuntimeCtor = core.AgentRuntime as typeof AgentRuntimeCtor;
   InMemoryDatabaseAdapterCtor =
     "InMemoryDatabaseAdapter" in core &&
     typeof core.InMemoryDatabaseAdapter === "function"
-      ? (core.InMemoryDatabaseAdapter as unknown as typeof InMemoryDatabaseAdapterCtor)
+      ? (core.InMemoryDatabaseAdapter as typeof InMemoryDatabaseAdapterCtor)
       : null;
   if (!InMemoryDatabaseAdapterCtor) {
     try {
@@ -98,7 +101,7 @@ async function tryImportDeps(): Promise<boolean> {
         typeof mod.InMemoryDatabaseAdapter === "function"
       ) {
         InMemoryDatabaseAdapterCtor =
-          mod.InMemoryDatabaseAdapter as unknown as typeof InMemoryDatabaseAdapterCtor;
+          mod.InMemoryDatabaseAdapter as typeof InMemoryDatabaseAdapterCtor;
         console.log(
           "[ElizaHandler] Loaded in-memory database adapter from workspace source",
         );
@@ -248,7 +251,7 @@ async function loadSqlPlugin(): Promise<Plugin | null> {
     try {
       const mod = (await import(
         pathToFileURL(
-          resolve(REPO_ROOT, "plugins/plugin-sql/typescript/index.node.ts"),
+          resolve(REPO_ROOT, "plugins/plugin-sql/src/index.node.ts"),
         ).href
       )) as Record<string, unknown>;
       return (mod.default ?? mod.pluginSql ?? null) as Plugin | null;
@@ -264,6 +267,7 @@ async function loadSqlPlugin(): Promise<Plugin | null> {
 function addLegacyAdapterMethods(
   adapter: Record<string, unknown>,
 ): Record<string, unknown> {
+  // biome-ignore lint/suspicious/noExplicitAny: adapter is dynamically patched with legacy DB methods; DatabaseAdapter has no stable structural type here.
   const a = adapter as Record<string, any>;
 
   a.getAgent ??= async (agentId: string) =>
@@ -441,7 +445,7 @@ async function sendMessageAndWaitForResponse(
   // generates a response via the model provider plugin. emitEvent alone only
   // triggers logging/trajectory hooks and never produces a reply.
   const messageService = (
-    rt as unknown as {
+    rt as IAgentRuntime & {
       messageService?: {
         handleMessage(
           runtime: IAgentRuntime,
@@ -630,15 +634,11 @@ export const elizaHandler: Handler = {
       // as choices and falls back to a default REPLY with roleplay text.
       disableBasicCapabilities: false,
     });
-    if (
-      typeof (runtime as unknown as Record<string, unknown>).initialize ===
-      "function"
-    ) {
-      await (
-        runtime as unknown as {
-          initialize(opts?: Record<string, unknown>): Promise<void>;
-        }
-      ).initialize({ allowNoDatabase: true });
+    const initializableRuntime = runtime as typeof runtime & {
+      initialize?: (opts?: Record<string, unknown>) => Promise<void>;
+    };
+    if (typeof initializableRuntime.initialize === "function") {
+      await initializableRuntime.initialize({ allowNoDatabase: true });
     }
     console.log(
       "[ElizaHandler] Runtime initialized with plugins:",
@@ -647,11 +647,11 @@ export const elizaHandler: Handler = {
   },
 
   async teardown(): Promise<void> {
-    if (
-      runtime &&
-      typeof (runtime as unknown as Record<string, unknown>).stop === "function"
-    ) {
-      await (runtime as unknown as { stop(): Promise<void> }).stop();
+    const stoppableRuntime = runtime as
+      | (IAgentRuntime & { stop?: () => Promise<void> })
+      | null;
+    if (typeof stoppableRuntime?.stop === "function") {
+      await stoppableRuntime.stop();
     }
     runtime = null;
   },
@@ -705,7 +705,7 @@ export const elizaHandler: Handler = {
       metadata: {
         roles: { [userId]: "OWNER" },
       },
-    } as unknown as World;
+    } satisfies World & { serverId: string };
     await runtime.createWorld(world);
 
     const room: Room = {
@@ -725,22 +725,17 @@ export const elizaHandler: Handler = {
     // Diagnostic — dump action list once per scenario so we can confirm
     // SET_SECRET is wired and that the role pipeline resolves OWNER.
     if (process.env.CONFIGBENCH_DEBUG_ROLES === "1") {
-      const actions =
-        (runtime as unknown as { actions?: Array<{ name?: string }> }).actions
-          ?.map((a) => a?.name ?? "")
-          .filter((n) => n.length > 0) ?? [];
-      const setSecretPresent = actions.some(
+      const actions = runtime.actions
+        .map((a) => a?.name ?? "")
+        .filter((n) => n.length > 0);
+      const _setSecretPresent = actions.some(
         (n) => n.toUpperCase() === "SET_SECRET",
       );
       // eslint-disable-next-line no-console
       console.error(
         `[configbench-debug] scenario=${scenario.id} channelType=${room.type} userId=${userId} worldRoles=${JSON.stringify(
-          (
-            world as unknown as {
-              metadata?: { roles?: Record<string, string> };
-            }
-          ).metadata?.roles ?? {},
-        )} actions.count=${actions.length} SET_SECRET=${setSecretPresent} actions=${actions.join(",")}`,
+          world.metadata?.roles ?? {},
+        )} actions.count=${actions.length} SET_SECRET=${_setSecretPresent} actions=${actions.join(",")}`,
       );
       try {
         const rolesMod = (await import("@elizaos/core")) as {

@@ -540,12 +540,12 @@ export class ScapeGameService extends Service {
     // (runtime, message, state → ProviderResult).
     const dummyMemory = {
       content: { text: "" },
-    } as unknown as import("@elizaos/core").Memory;
+    } as import("@elizaos/core").Memory;
     const dummyState = {
       values: {},
       data: {},
       text: "",
-    } as unknown as import("@elizaos/core").State;
+    } as import("@elizaos/core").State;
     const sections: string[] = [];
     // Order matters for prompt readability: self / inventory
     // come first (short), nearby next (variable), then the

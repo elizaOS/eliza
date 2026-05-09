@@ -53,7 +53,7 @@ describeLive(
             properties: { ok: { type: "boolean" } },
             required: ["ok"],
           },
-        } as unknown as Parameters<typeof handleTextLarge>[1]);
+        } as Parameters<typeof handleTextLarge>[1]);
       });
 
       expect(calls).toHaveLength(2);
@@ -106,7 +106,7 @@ describe.skipIf(!hasRealOpenAI)("OpenAI image/audio trajectory (real OpenAI)", (
               ]
             : [],
         getSetting: (key: string) => process.env[key],
-      } as unknown as IAgentRuntime;
+      } as IAgentRuntime;
 
       await runWithTrajectoryContext({ trajectoryStepId: "step-openai-real" }, async () => {
         await handleImageGeneration(runtime, {

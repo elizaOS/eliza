@@ -186,8 +186,11 @@ export function installBrowserWorkspaceWebRuntime(
   const state = getBrowserWorkspaceRuntimeState("web", tab.id);
   applyBrowserWorkspaceDomSettings(dom, state);
 
-  const windowRecord = dom.window as Record<string, unknown>;
-  windowRecord.__elizaBrowserWorkspaceState = state;
+  Object.defineProperty(dom.window, "__elizaBrowserWorkspaceState", {
+    value: state,
+    writable: true,
+    configurable: true,
+  });
 
   const consoleTarget = dom.window.console as Console & Record<string, unknown>;
   if (!consoleTarget.__elizaWrapped) {

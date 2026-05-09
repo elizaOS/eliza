@@ -148,7 +148,7 @@ async function cleanup(): Promise<void> {
 async function main(): Promise<void> {
 	({ runtime, cleanup: cleanupRuntime } = await createTestRuntime());
 
-	const coordinator = new SwarmCoordinator(runtime as unknown as IAgentRuntime);
+	const coordinator = new SwarmCoordinator(runtime);
 	const thread = await coordinator.createTaskThread({
 		title: "Live Codex research report",
 		originalRequest: RESEARCH_PROMPT,

@@ -82,9 +82,11 @@ export function validateAudioFile(
  */
 export function createAudioContext(sampleRate?: number): AudioContext {
   const contextOptions = sampleRate ? { sampleRate } : undefined;
-  const AudioContextClass =
-    window.AudioContext ||
-    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  const audioWindow: Window & { webkitAudioContext?: typeof AudioContext } = window;
+  const AudioContextClass = window.AudioContext || audioWindow.webkitAudioContext;
+  if (!AudioContextClass) {
+    throw new Error("AudioContext is not supported in this browser");
+  }
   return new AudioContextClass(contextOptions);
 }
 

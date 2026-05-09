@@ -335,7 +335,7 @@ async function handleSearchActions(
       continue;
     }
     const action = createMcpToolAction(entry.serverName, entry.tool, existingNames);
-    runtime.registerAction(action as unknown as Action);
+    runtime.registerAction(action as Action);
     existingNames.add(String(action.name));
     newlyRegistered.push(String(action.name));
     promotedTier2Names.push(entry.actionName);

@@ -16,6 +16,7 @@ import type {
   LifeOpsWorkflowAction,
   LifeOpsWorkflowActionPlan,
 } from "../contracts/index.js";
+import { LIFEOPS_DEFINITION_KINDS } from "../contracts/index.js";
 import { DAY_MINUTES } from "./service-constants.js";
 import {
   fail,
@@ -43,6 +44,79 @@ function normalizeOptionalRecord(
 ): Record<string, unknown> | undefined {
   if (value === undefined) return undefined;
   return requireRecord(value, field);
+}
+
+function normalizeCreateTaskRequest(
+  value: unknown,
+  field: string,
+): CreateLifeOpsDefinitionRequest {
+  const input = requireRecord(value, field);
+  const request: CreateLifeOpsDefinitionRequest = {
+    kind: normalizeEnumValue(
+      input.kind,
+      `${field}.kind`,
+      LIFEOPS_DEFINITION_KINDS,
+    ),
+    title: requireNonEmptyString(input.title, `${field}.title`),
+    cadence: requireRecord(input.cadence, `${field}.cadence`) as LifeOpsCadence,
+  };
+  const ownership = normalizeOptionalRecord(
+    input.ownership,
+    `${field}.ownership`,
+  );
+  if (ownership) request.ownership = ownership;
+  const description = normalizeOptionalString(input.description);
+  if (description !== undefined) request.description = description;
+  const originalIntent = normalizeOptionalString(input.originalIntent);
+  if (originalIntent !== undefined) request.originalIntent = originalIntent;
+  const timezone = normalizeOptionalString(input.timezone);
+  if (timezone !== undefined) request.timezone = timezone;
+  if (input.priority !== undefined) {
+    request.priority = normalizeFiniteNumber(
+      input.priority,
+      `${field}.priority`,
+    );
+  }
+  const windowPolicy = normalizeOptionalRecord(
+    input.windowPolicy,
+    `${field}.windowPolicy`,
+  );
+  if (windowPolicy) {
+    request.windowPolicy = windowPolicy as unknown as LifeOpsWindowPolicy;
+  }
+  const progressionRule = normalizeOptionalRecord(
+    input.progressionRule,
+    `${field}.progressionRule`,
+  );
+  if (progressionRule) {
+    request.progressionRule = progressionRule as LifeOpsProgressionRule;
+  }
+  if (input.websiteAccess !== undefined) {
+    request.websiteAccess =
+      input.websiteAccess === null
+        ? null
+        : (requireRecord(
+            input.websiteAccess,
+            `${field}.websiteAccess`,
+          ) as unknown as LifeOpsWebsiteAccessPolicy);
+  }
+  if (input.reminderPlan !== undefined) {
+    request.reminderPlan =
+      input.reminderPlan === null
+        ? null
+        : (requireRecord(
+            input.reminderPlan,
+            `${field}.reminderPlan`,
+          ) as CreateLifeOpsDefinitionRequest["reminderPlan"]);
+  }
+  if (input.goalId !== undefined) {
+    request.goalId = normalizeOptionalString(input.goalId) ?? null;
+  }
+  const source = normalizeOptionalString(input.source);
+  if (source !== undefined) request.source = source;
+  const metadata = normalizeOptionalRecord(input.metadata, `${field}.metadata`);
+  if (metadata) request.metadata = metadata;
+  return request;
 }
 
 export function normalizeBrowserActionInput(
@@ -133,10 +207,10 @@ export function normalizeWorkflowActionPlan(
         kind,
         id,
         resultKey,
-        request: requireRecord(
+        request: normalizeCreateTaskRequest(
           step.request,
           `actionPlan.steps[${index}].request`,
-        ) as unknown as CreateLifeOpsDefinitionRequest,
+        ),
       };
     }
     if (kind === "relock_website_access") {
@@ -175,7 +249,7 @@ export function normalizeWorkflowActionPlan(
         request: normalizeOptionalRecord(
           step.request,
           `actionPlan.steps[${index}].request`,
-        ) as unknown as GetLifeOpsCalendarFeedRequest | undefined,
+        ) as GetLifeOpsCalendarFeedRequest | undefined,
       };
     }
     if (kind === "get_gmail_triage") {
@@ -186,7 +260,7 @@ export function normalizeWorkflowActionPlan(
         request: normalizeOptionalRecord(
           step.request,
           `actionPlan.steps[${index}].request`,
-        ) as unknown as GetLifeOpsGmailTriageRequest | undefined,
+        ) as GetLifeOpsGmailTriageRequest | undefined,
       };
     }
     if (kind === "get_gmail_unresponded") {
@@ -197,7 +271,7 @@ export function normalizeWorkflowActionPlan(
         request: normalizeOptionalRecord(
           step.request,
           `actionPlan.steps[${index}].request`,
-        ) as unknown as GetLifeOpsGmailUnrespondedRequest | undefined,
+        ) as GetLifeOpsGmailUnrespondedRequest | undefined,
       };
     }
     if (kind === "get_health_summary") {
@@ -208,7 +282,7 @@ export function normalizeWorkflowActionPlan(
         request: normalizeOptionalRecord(
           step.request,
           `actionPlan.steps[${index}].request`,
-        ) as unknown as GetLifeOpsHealthSummaryRequest | undefined,
+        ) as GetLifeOpsHealthSummaryRequest | undefined,
       };
     }
     if (kind === "dispatch_workflow") {
@@ -242,7 +316,7 @@ export function normalizeWorkflowActionPlan(
       );
     }
     return {
-      kind,
+      kind: "browser",
       id,
       resultKey,
       sessionTitle: requireNonEmptyString(

@@ -1,7 +1,7 @@
 import type {
   WalletConfigStatus,
   WalletEntry,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 import type { StewardStatusResponse } from "./types/steward";
 
 export interface StewardUiState {

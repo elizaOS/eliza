@@ -3,9 +3,9 @@ import type {
   CreateEscrowParams,
   EscrowCreated,
   EscrowDetails,
-  TaskStatus,
   TxResult,
 } from "./types.js";
+import { TaskStatus } from "./types.js";
 import {
   encodeOptimisticVerifierData,
   resolveVerifierAddress,
@@ -133,6 +133,14 @@ const StakeVaultAbi = [
     outputs: [{ name: "", type: "uint8" }],
   },
 ] as const;
+
+function toTaskStatus(value: unknown): TaskStatus {
+  const status = Number(value);
+  if (!Number.isInteger(status) || !(status in TaskStatus)) {
+    throw new Error(`Invalid escrow task status: ${String(value)}`);
+  }
+  return status as TaskStatus;
+}
 
 const ERC20ApproveAbi = [
   {
@@ -467,6 +475,6 @@ export class MutualStakeEscrow {
       args: [],
     });
 
-    return result as unknown as TaskStatus;
+    return toTaskStatus(result);
   }
 }

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { TelegramService } from "./service";
 
 function createRuntime() {
-  return {
+  const runtime = {
     agentId: "agent-1",
     character: { name: "Agent One" },
     registerMessageConnector: vi.fn(),
@@ -12,7 +12,9 @@ function createRuntime() {
     getRoom: vi.fn().mockResolvedValue(null),
     getMemories: vi.fn().mockResolvedValue([]),
     getEntityById: vi.fn().mockResolvedValue(null),
-  } as unknown as IAgentRuntime & {
+  };
+
+  return runtime as IAgentRuntime & {
     registerMessageConnector: ReturnType<typeof vi.fn>;
     registerSendHandler: ReturnType<typeof vi.fn>;
   };
@@ -270,10 +272,10 @@ describe("Telegram message connector adapter", () => {
         },
       },
       getSetting: vi.fn().mockReturnValue(undefined),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     const initializeBot = vi
       .spyOn(
-        TelegramService.prototype as unknown as {
+        TelegramService.prototype as TelegramService & {
           initializeBot: (state: unknown) => Promise<void>;
         },
         "initializeBot",
@@ -290,7 +292,7 @@ describe("Telegram message connector adapter", () => {
     };
     const createAccountRuntime = vi
       .spyOn(
-        TelegramService.prototype as unknown as {
+        TelegramService.prototype as TelegramService & {
           createAccountRuntime: (account: unknown) => unknown;
         },
         "createAccountRuntime",
@@ -315,7 +317,7 @@ describe("Telegram message connector adapter", () => {
     expect(
       Array.from(
         (
-          service as unknown as {
+          service as TelegramService & {
             accountStates: Map<string, unknown>;
           }
         ).accountStates.keys(),

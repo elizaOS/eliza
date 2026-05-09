@@ -94,6 +94,30 @@ function isVaultConfigRef(value: string): boolean {
 }
 
 import { isStreamingDestinationConfigured } from "@elizaos/core";
+import type {
+  BrowserBridgeKind,
+  BrowserBridgePackagePathTarget,
+} from "@elizaos/plugin-browser/contracts";
+import {
+  buildBrowserBridgeCompanionPackage,
+  getBrowserBridgeCompanionPackageStatus,
+  openBrowserBridgeCompanionManager,
+  openBrowserBridgeCompanionPackagePath,
+} from "@elizaos/plugin-browser/packaging";
+import {
+  type BrowserWorkspaceCommand,
+  type BrowserWorkspaceTabKind,
+  closeBrowserWorkspaceTab,
+  evaluateBrowserWorkspaceTab,
+  executeBrowserWorkspaceCommand,
+  getBrowserWorkspaceSnapshot,
+  hideBrowserWorkspaceTab,
+  listBrowserWorkspaceTabs,
+  navigateBrowserWorkspaceTab,
+  openBrowserWorkspaceTab,
+  showBrowserWorkspaceTab,
+  snapshotBrowserWorkspaceTab,
+} from "@elizaos/plugin-browser/workspace";
 import { handleComputerUseRoutes } from "@elizaos/plugin-computeruse";
 import {
   handleCloudStatusRoutes,
@@ -638,6 +662,330 @@ function json(res: http.ServerResponse, data: unknown, status = 200): void {
 
 function error(res: http.ServerResponse, message: string, status = 400): void {
   sendJsonError(res, message, status);
+}
+
+const BROWSER_BRIDGE_KINDS = new Set(["chrome", "safari"]);
+const BROWSER_BRIDGE_PACKAGE_PATH_TARGETS = new Set([
+  "extension_root",
+  "chrome_build",
+  "chrome_package",
+  "safari_web_extension",
+  "safari_app",
+  "safari_package",
+]);
+
+function emptyTrainingTaskCounters(): Record<string, number> {
+  return {
+    should_respond: 0,
+    context_routing: 0,
+    action_planner: 0,
+    response: 0,
+    media_description: 0,
+  };
+}
+
+type OptionalTrainingConfig = {
+  autoTrain: boolean;
+  triggerThreshold: number;
+  triggerCooldownHours: number;
+  backends: string[];
+};
+
+type OptionalTrainingConfigApi = {
+  loadTrainingConfig: () => OptionalTrainingConfig;
+  normalizeTrainingConfig: (input: unknown) => OptionalTrainingConfig;
+  saveTrainingConfig: (config: OptionalTrainingConfig) => void;
+};
+
+const TRAINING_CONFIG_MODULE = "@elizaos/app-training/core/training-config";
+
+function defaultTrainingConfig(): OptionalTrainingConfig {
+  return {
+    autoTrain: true,
+    triggerThreshold: 100,
+    triggerCooldownHours: 12,
+    backends: ["native"],
+  };
+}
+
+async function loadOptionalTrainingConfigApi(): Promise<OptionalTrainingConfigApi | null> {
+  try {
+    const loaded = (await import(
+      /* @vite-ignore */ TRAINING_CONFIG_MODULE
+    )) as Partial<OptionalTrainingConfigApi>;
+    if (
+      typeof loaded.loadTrainingConfig === "function" &&
+      typeof loaded.normalizeTrainingConfig === "function" &&
+      typeof loaded.saveTrainingConfig === "function"
+    ) {
+      return loaded as OptionalTrainingConfigApi;
+    }
+  } catch {
+    // app-training is optional in this server path.
+  }
+  return null;
+}
+
+async function readOptionalTrainingConfig(): Promise<OptionalTrainingConfig> {
+  const api = await loadOptionalTrainingConfigApi();
+  return api?.loadTrainingConfig() ?? defaultTrainingConfig();
+}
+
+function parseBrowserBridgeKind(
+  value: string | undefined,
+): BrowserBridgeKind | null {
+  if (!value) return null;
+  const decoded = decodeURIComponent(value);
+  return BROWSER_BRIDGE_KINDS.has(decoded)
+    ? (decoded as BrowserBridgeKind)
+    : null;
+}
+
+function parseBrowserBridgePackageTarget(
+  value: unknown,
+): BrowserBridgePackagePathTarget | null {
+  return typeof value === "string" &&
+    BROWSER_BRIDGE_PACKAGE_PATH_TARGETS.has(value)
+    ? (value as BrowserBridgePackagePathTarget)
+    : null;
+}
+
+async function handleBuiltinOptionalRoutes(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  method: string,
+): Promise<boolean> {
+  if (method === "GET" && pathname === "/api/wallet/steward-status") {
+    const addresses = getWalletAddresses();
+    json(res, {
+      configured: false,
+      available: false,
+      connected: false,
+      error: "Steward wallet service is not loaded.",
+      walletAddresses: {
+        evm: addresses.evmAddress ?? null,
+        solana: addresses.solanaAddress ?? null,
+      },
+      evmAddress: addresses.evmAddress ?? undefined,
+      vaultHealth: "degraded",
+    });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/training/auto/config") {
+    json(res, { config: await readOptionalTrainingConfig() });
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/training/auto/config") {
+    const body =
+      (await readJsonBody<Record<string, unknown>>(req, res)) ?? null;
+    if (!body) return true;
+    const api = await loadOptionalTrainingConfigApi();
+    const currentConfig = api?.loadTrainingConfig() ?? defaultTrainingConfig();
+    const config = api
+      ? api.normalizeTrainingConfig({
+          ...currentConfig,
+          ...body,
+        })
+      : currentConfig;
+    api?.saveTrainingConfig(config);
+    json(res, { config });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/training/auto/status") {
+    const config = await readOptionalTrainingConfig();
+    json(res, {
+      autoTrainEnabled: config.autoTrain,
+      triggerThreshold: config.triggerThreshold,
+      cooldownHours: config.triggerCooldownHours,
+      counters: emptyTrainingTaskCounters(),
+      lastTrain: {},
+      perTaskThresholds: emptyTrainingTaskCounters(),
+      perTaskCooldownMs: emptyTrainingTaskCounters(),
+      serviceRegistered: false,
+    });
+    return true;
+  }
+
+  if (
+    method === "GET" &&
+    pathname === "/api/coding-agents/coordinator/status"
+  ) {
+    json(res, {
+      supervisionLevel: "unavailable",
+      taskCount: 0,
+      tasks: [],
+      pendingConfirmations: 0,
+      taskThreadCount: 0,
+      taskThreads: [],
+      frameworks: [],
+    });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/browser-bridge/companions") {
+    json(res, { companions: [] });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/browser-bridge/packages") {
+    json(res, { status: getBrowserBridgeCompanionPackageStatus() });
+    return true;
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/browser-bridge/packages/open-path"
+  ) {
+    const body =
+      (await readJsonBody<{ target?: unknown; revealOnly?: unknown }>(
+        req,
+        res,
+      )) ?? null;
+    if (!body) return true;
+    const target = parseBrowserBridgePackageTarget(body.target);
+    if (!target) {
+      error(res, "Invalid browser bridge package target", 400);
+      return true;
+    }
+    json(
+      res,
+      await openBrowserBridgeCompanionPackagePath(target, {
+        revealOnly: body.revealOnly === true,
+      }),
+    );
+    return true;
+  }
+
+  const packageBuildMatch = pathname.match(
+    /^\/api\/browser-bridge\/packages\/([^/]+)\/build$/,
+  );
+  if (method === "POST" && packageBuildMatch) {
+    const browser = parseBrowserBridgeKind(packageBuildMatch[1]);
+    if (!browser) {
+      error(res, "Invalid browser bridge package browser", 400);
+      return true;
+    }
+    json(res, { status: await buildBrowserBridgeCompanionPackage(browser) });
+    return true;
+  }
+
+  const packageManagerMatch = pathname.match(
+    /^\/api\/browser-bridge\/packages\/([^/]+)\/open-manager$/,
+  );
+  if (method === "POST" && packageManagerMatch) {
+    const browser = parseBrowserBridgeKind(packageManagerMatch[1]);
+    if (!browser) {
+      error(res, "Invalid browser bridge package browser", 400);
+      return true;
+    }
+    json(res, await openBrowserBridgeCompanionManager(browser));
+    return true;
+  }
+
+  if (pathname === "/api/browser-workspace" && method === "GET") {
+    json(res, await getBrowserWorkspaceSnapshot());
+    return true;
+  }
+
+  if (pathname === "/api/browser-workspace/command" && method === "POST") {
+    const body =
+      (await readJsonBody<BrowserWorkspaceCommand>(req, res)) ?? null;
+    if (!body?.subaction) {
+      error(res, "subaction is required", 400);
+      return true;
+    }
+    json(res, await executeBrowserWorkspaceCommand(body));
+    return true;
+  }
+
+  if (pathname === "/api/browser-workspace/tabs" && method === "GET") {
+    json(res, { tabs: await listBrowserWorkspaceTabs() });
+    return true;
+  }
+
+  if (pathname === "/api/browser-workspace/tabs" && method === "POST") {
+    const body =
+      (await readJsonBody<{
+        url?: string;
+        title?: string;
+        show?: boolean;
+        partition?: string;
+        kind?: BrowserWorkspaceTabKind;
+      }>(req, res)) ?? {};
+    json(res, { tab: await openBrowserWorkspaceTab(body) });
+    return true;
+  }
+
+  const tabMatch = pathname.match(
+    /^\/api\/browser-workspace\/tabs\/([^/]+)(?:\/(navigate|eval|show|hide|snapshot))?$/,
+  );
+  if (!tabMatch) {
+    return false;
+  }
+
+  const tabId = decodeURIComponent(tabMatch[1]).trim();
+  const action = tabMatch[2] ?? null;
+
+  if (!action && method === "DELETE") {
+    const closed = await closeBrowserWorkspaceTab(tabId);
+    json(res, { closed }, closed ? 200 : 404);
+    return true;
+  }
+
+  if (action === "show" && method === "POST") {
+    json(res, { tab: await showBrowserWorkspaceTab(tabId) });
+    return true;
+  }
+
+  if (action === "hide" && method === "POST") {
+    json(res, { tab: await hideBrowserWorkspaceTab(tabId) });
+    return true;
+  }
+
+  if (action === "snapshot" && method === "GET") {
+    json(res, await snapshotBrowserWorkspaceTab(tabId));
+    return true;
+  }
+
+  if (action === "navigate" && method === "POST") {
+    const body =
+      (await readJsonBody<{ url?: string; partition?: string }>(req, res)) ??
+      null;
+    if (!body?.url) {
+      error(res, "url is required", 400);
+      return true;
+    }
+    json(res, {
+      tab: await navigateBrowserWorkspaceTab({
+        id: tabId,
+        url: body.url,
+      }),
+    });
+    return true;
+  }
+
+  if (action === "eval" && method === "POST") {
+    const body =
+      (await readJsonBody<{ script?: string; partition?: string }>(req, res)) ??
+      null;
+    if (!body?.script) {
+      error(res, "script is required", 400);
+      return true;
+    }
+    json(res, {
+      value: await evaluateBrowserWorkspaceTab({
+        id: tabId,
+        script: body.script,
+      }),
+    });
+    return true;
+  }
+
+  return false;
 }
 
 function isModuleResolutionFailure(err: unknown): boolean {
@@ -2587,6 +2935,10 @@ async function handleRequest(
       },
     })
   ) {
+    return;
+  }
+
+  if (await handleBuiltinOptionalRoutes(req, res, pathname, method)) {
     return;
   }
 

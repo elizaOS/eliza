@@ -6,14 +6,7 @@ import { nextStyleParams } from "@/lib/api/hono-next-style-params";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import type { AppEnv } from "@/types/cloud-worker-env";
-import { resolveDocumentScope, toDocumentRecord } from "../_worker-documents";
-
-interface DocumentMemoryRef {
-  id: string;
-  agentId?: string;
-  roomId?: string;
-  type?: string;
-}
+import { isStoredDocumentMemory, resolveDocumentScope, toDocumentRecord } from "../_worker-documents";
 
 const ROUTE_PARAM_SPEC = [{ name: "id", splat: false }] as const;
 const app = new Hono<AppEnv>();
@@ -27,8 +20,8 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
     const scope = await resolveDocumentScope(user, c.req.query("characterId"));
     if (scope instanceof Response) return scope;
 
-    const memory = (await memoriesRepository.findById(id)) as unknown as DocumentMemoryRef | null;
-    if (!memory || memory.type !== "documents") {
+    const memory = await memoriesRepository.findById(id);
+    if (!isStoredDocumentMemory(memory)) {
       return c.json({ success: false, error: "Document not found" }, 404);
     }
     if (memory.agentId !== scope.agentId || memory.roomId !== scope.roomId) {
@@ -50,8 +43,8 @@ app.delete("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
     const scope = await resolveDocumentScope(user, c.req.query("characterId"));
     if (scope instanceof Response) return scope;
 
-    const memory = (await memoriesRepository.findById(id)) as unknown as DocumentMemoryRef | null;
-    if (!memory || memory.type !== "documents") {
+    const memory = await memoriesRepository.findById(id);
+    if (!isStoredDocumentMemory(memory)) {
       return c.json({ success: false, error: "Document not found" }, 404);
     }
     if (memory.agentId !== scope.agentId || memory.roomId !== scope.roomId) {

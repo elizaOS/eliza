@@ -4,7 +4,7 @@ import type {
 	IAgentRuntime,
 	JSONSchema,
 	Memory,
-	State,
+	RegisteredEvaluator,
 	UUID,
 } from "../../../types/index.ts";
 import type { MemoryService } from "../services/memory-service.ts";
@@ -505,7 +505,7 @@ ${formatMessages(runtime, prepared.recentMessages)}`;
 	],
 };
 
-export const memoryItems = [
+export const memoryItems: RegisteredEvaluator[] = [
 	summaryEvaluator,
 	longTermMemoryEvaluator,
-] as unknown as Evaluator[];
+];

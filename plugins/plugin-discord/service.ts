@@ -63,6 +63,7 @@ import {
 	GatewayIntentBits,
 	type Guild,
 	type GuildMember,
+	type GuildTextBasedChannel,
 	type Interaction,
 	type Message,
 	type MessageReaction,
@@ -92,18 +93,24 @@ import {
 	isGuildOnlyCommand,
 	transformCommandToDiscordApi,
 } from "./discord-commands";
-import { setupDiscordEventListeners } from "./discord-events";
+import {
+	type DiscordServiceInternals,
+	setupDiscordEventListeners,
+} from "./discord-events";
 import {
 	buildMemoryFromMessage as buildMemoryFromMessageExtracted,
 	fetchChannelHistory as fetchChannelHistoryExtracted,
+	type HistoryServiceInternals,
 } from "./discord-history";
 import {
 	handleInteractionCreate as handleInteractionCreateExtracted,
+	type InteractionServiceInternals,
 	onReady as onReadyExtracted,
 } from "./discord-interactions";
 import {
 	handleReactionAdd as handleReactionAddExtracted,
 	handleReactionRemove as handleReactionRemoveExtracted,
+	type ReactionServiceInternals,
 } from "./discord-reactions";
 import { getDiscordSettings } from "./environment";
 import {
@@ -114,6 +121,7 @@ import {
 } from "./identity";
 import { MessageManager } from "./messages";
 import type {
+	BuildMemoryFromMessageOptions,
 	ChannelHistoryOptions,
 	ChannelHistoryResult,
 	DiscordSettings,
@@ -133,6 +141,34 @@ const DISCORD_SNOWFLAKE_PATTERN = /^\d{15,20}$/;
 type MessageConnectorRegistration = Parameters<
 	IAgentRuntime["registerMessageConnector"]
 >[0];
+
+type DiscordSettingsForEvents = DiscordSettings & {
+	shouldIgnoreBotMessages: boolean;
+};
+
+type DiscordAccountServiceFacade = IDiscordService &
+	DiscordServiceInternals &
+	HistoryServiceInternals &
+	InteractionServiceInternals &
+	ReactionServiceInternals & {
+		client: DiscordJsClient;
+		discordSettings: DiscordSettingsForEvents;
+		commandRegistrationQueue: Promise<void>;
+		addAllowedChannel(channelId: string): boolean;
+		removeAllowedChannel(channelId: string): boolean;
+		getAllowedChannels(): string[];
+	};
+
+function isGuildTextBasedChannel(
+	channel: Channel | null,
+): channel is GuildTextBasedChannel {
+	if (!channel) return false;
+	const candidate = channel as Channel & {
+		isTextBased?: () => boolean;
+		guild?: unknown;
+	};
+	return candidate.isTextBased?.() === true && Boolean(candidate.guild);
+}
 
 type ConnectorFetchMessagesParams = {
 	target?: TargetInfo;
@@ -914,19 +950,38 @@ export class DiscordService extends Service implements IDiscordService {
 	}
 
 	private createAccountServiceFacade(
-		state: DiscordAccountClientState,
-	): DiscordService {
+		state?: DiscordAccountClientState | null,
+	): DiscordAccountServiceFacade {
 		const parent = this;
-		const facade = {
+		const accountId = () => state?.accountId ?? parent.accountId;
+		const accountClient = (): DiscordJsClient => {
+			const client = state?.client ?? parent.client;
+			if (!client) {
+				throw new Error(
+					`Discord client is not available for account ${accountId()}`,
+				);
+			}
+			return client;
+		};
+		const accountSettings = (): DiscordSettingsForEvents => {
+			const settings = state?.settings ?? parent.discordSettings;
+			return {
+				...settings,
+				shouldIgnoreBotMessages: settings.shouldIgnoreBotMessages ?? false,
+			};
+		};
+		const facade: DiscordAccountServiceFacade = {
 			get accountId() {
-				return state.accountId;
+				return accountId();
 			},
 			get client() {
-				return state.client;
+				return accountClient();
 			},
 			set client(value: DiscordJsClient | null) {
-				state.client = value;
-				if (state.accountId === parent.defaultAccountId) {
+				if (state) {
+					state.client = value;
+				}
+				if (!state || state.accountId === parent.defaultAccountId) {
 					parent.client = value;
 				}
 			},
@@ -937,61 +992,73 @@ export class DiscordService extends Service implements IDiscordService {
 				return parent.character;
 			},
 			get discordSettings() {
-				return state.settings;
+				return accountSettings();
 			},
-			set discordSettings(value: DiscordSettings) {
-				state.settings = value;
-				if (state.accountId === parent.defaultAccountId) {
+			set discordSettings(value: DiscordSettingsForEvents) {
+				if (state) {
+					state.settings = value;
+				}
+				if (!state || state.accountId === parent.defaultAccountId) {
 					parent.discordSettings = value;
 				}
 			},
 			get messageManager() {
-				return state.messageManager;
+				return state?.messageManager ?? parent.messageManager;
 			},
 			set messageManager(value: MessageManager | undefined) {
-				state.messageManager = value;
-				if (state.accountId === parent.defaultAccountId) {
+				if (state) {
+					state.messageManager = value;
+				}
+				if (!state || state.accountId === parent.defaultAccountId) {
 					parent.messageManager = value;
 				}
 			},
 			get voiceManager() {
-				return state.voiceManager;
+				return state?.voiceManager ?? parent.voiceManager;
 			},
 			set voiceManager(value: VoiceManager | undefined) {
-				state.voiceManager = value;
-				if (state.accountId === parent.defaultAccountId) {
+				if (state) {
+					state.voiceManager = value;
+				}
+				if (!state || state.accountId === parent.defaultAccountId) {
 					parent.voiceManager = value;
 				}
 			},
 			get messageDebouncer() {
-				return state.messageDebouncer;
+				return state?.messageDebouncer ?? parent.messageDebouncer;
 			},
 			set messageDebouncer(value: MessageDebouncer | undefined) {
-				state.messageDebouncer = value;
-				if (state.accountId === parent.defaultAccountId) {
+				if (state) {
+					state.messageDebouncer = value;
+				}
+				if (!state || state.accountId === parent.defaultAccountId) {
 					parent.messageDebouncer = value;
 				}
 			},
 			get channelDebouncer() {
-				return state.channelDebouncer;
+				return state?.channelDebouncer ?? parent.channelDebouncer;
 			},
 			set channelDebouncer(value: ChannelDebouncer | undefined) {
-				state.channelDebouncer = value;
-				if (state.accountId === parent.defaultAccountId) {
+				if (state) {
+					state.channelDebouncer = value;
+				}
+				if (!state || state.accountId === parent.defaultAccountId) {
 					parent.channelDebouncer = value;
 				}
 			},
 			get allowedChannelIds() {
-				return state.allowedChannelIds;
+				return state?.allowedChannelIds ?? parent.allowedChannelIds;
 			},
 			set allowedChannelIds(value: string[] | undefined) {
-				state.allowedChannelIds = value;
-				if (state.accountId === parent.defaultAccountId) {
+				if (state) {
+					state.allowedChannelIds = value;
+				}
+				if (!state || state.accountId === parent.defaultAccountId) {
 					parent.allowedChannelIds = value;
 				}
 			},
 			get listenChannelIds() {
-				return state.listenChannelIds;
+				return state?.listenChannelIds;
 			},
 			get allowAllSlashCommands() {
 				return parent.allowAllSlashCommands;
@@ -1015,50 +1082,51 @@ export class DiscordService extends Service implements IDiscordService {
 				return parent.timeouts;
 			},
 			isChannelAllowed: (channelId: string) =>
-				parent.isChannelAllowed(channelId, state.accountId),
+				parent.isChannelAllowed(channelId, state?.accountId),
 			addAllowedChannel: (channelId: string) =>
-				parent.addAllowedChannel(channelId, state.accountId),
+				parent.addAllowedChannel(channelId, state?.accountId),
 			removeAllowedChannel: (channelId: string) =>
-				parent.removeAllowedChannel(channelId, state.accountId),
-			getAllowedChannels: () => parent.getAllowedChannels(state.accountId),
+				parent.removeAllowedChannel(channelId, state?.accountId),
+			getAllowedChannels: () => parent.getAllowedChannels(state?.accountId),
 			resolveDiscordEntityId: (userId: string) =>
 				parent.resolveDiscordEntityId(userId),
 			getChannelType: (channel: Channel) => parent.getChannelType(channel),
+			isGuildTextBasedChannel,
 			buildMemoryFromMessage: (
 				message: Message,
-				options?: {
-					processedContent?: string;
-					processedAttachments?: Media[];
-					extraContent?: Record<string, unknown>;
-					extraMetadata?: Record<string, unknown>;
-				},
+				options?: BuildMemoryFromMessageOptions,
 			) =>
 				parent.buildMemoryFromMessage(message, {
 					...options,
-					accountId: state.accountId,
+					accountId: state?.accountId ?? parent.accountId,
 				}),
 			handleInteractionCreate: (interaction: Interaction) =>
-				parent.handleInteractionCreateForAccount(state.accountId, interaction),
-			handleGuildCreate: (guild: Guild) => parent.handleGuildCreate(guild),
+				parent.handleInteractionCreateForAccount(accountId(), interaction),
+			handleGuildCreate: (guild: Guild) =>
+				parent.handleGuildCreateForAccount(accountId(), guild),
 			handleGuildMemberAdd: (member: GuildMember) =>
-				parent.handleGuildMemberAddForAccount(state.accountId, member),
+				parent.handleGuildMemberAddForAccount(accountId(), member),
 			handleReactionAdd: (
 				reaction: MessageReaction | PartialMessageReaction,
 				user: User | PartialUser,
-			) => parent.handleReactionAddForAccount(state.accountId, reaction, user),
+			) => parent.handleReactionAddForAccount(accountId(), reaction, user),
 			handleReactionRemove: (
 				reaction: MessageReaction | PartialMessageReaction,
 				user: User | PartialUser,
-			) =>
-				parent.handleReactionRemoveForAccount(state.accountId, reaction, user),
-			refreshOwnerDiscordUserIds: (client: DiscordJsClient) =>
-				parent.refreshOwnerDiscordUserIds(client),
+			) => parent.handleReactionRemoveForAccount(accountId(), reaction, user),
+			refreshOwnerDiscordUserIds: (client: unknown) => {
+				if (!(client instanceof DiscordJsClient)) {
+					throw new Error("Discord client is not available for owner refresh");
+				}
+				return parent.refreshOwnerDiscordUserIds(client);
+			},
 			registerSlashCommands: (commands: DiscordSlashCommand[]) =>
-				parent.registerSlashCommands(commands, state.accountId),
-			clientReadyPromise: state.clientReadyPromise,
-			accountToken: state.account.token,
+				parent.registerSlashCommands(commands, state?.accountId),
+			clientReadyPromise:
+				state?.clientReadyPromise ?? parent.clientReadyPromise,
+			accountToken: state?.account.token,
 		};
-		return facade as DiscordService;
+		return facade;
 	}
 
 	private initializeAccount(account: ResolvedDiscordAccount): void {
@@ -1078,10 +1146,7 @@ export class DiscordService extends Service implements IDiscordService {
 
 		this.accountPool.set(state);
 		const facade = this.createAccountServiceFacade(state);
-		state.voiceManager = new VoiceManager(
-			facade as DiscordService,
-			this.runtime,
-		);
+		state.voiceManager = new VoiceManager(facade, this.runtime);
 		state.messageManager = new MessageManager(facade, this.runtime);
 
 		const client = state.client;
@@ -2321,7 +2386,7 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 
 		const { messageDebouncer, channelDebouncer } = setupDiscordEventListeners(
-			this.createAccountServiceFacade(state) as any,
+			this.createAccountServiceFacade(state),
 		);
 
 		state.messageDebouncer = messageDebouncer;
@@ -2339,7 +2404,7 @@ export class DiscordService extends Service implements IDiscordService {
 	private async onReadyForAccount(accountId: string, readyClient: any) {
 		const state = this.requireAccountState(accountId);
 		return onReadyExtracted(
-			this.createAccountServiceFacade(state) as any,
+			this.createAccountServiceFacade(state),
 			readyClient,
 		);
 	}
@@ -2793,7 +2858,7 @@ export class DiscordService extends Service implements IDiscordService {
 	): Promise<ChannelHistoryResult> {
 		const state = this.getAccountState(options.accountId);
 		return fetchChannelHistoryExtracted(
-			(state ? this.createAccountServiceFacade(state) : this) as any,
+			this.createAccountServiceFacade(state),
 			channelId,
 			options,
 		);
@@ -2818,7 +2883,11 @@ export class DiscordService extends Service implements IDiscordService {
 			...options,
 			accountId: options?.accountId ?? this.accountId,
 		};
-		return buildMemoryFromMessageExtracted(this as any, message, merged);
+		return buildMemoryFromMessageExtracted(
+			this.createAccountServiceFacade(this.getAccountState(merged.accountId)),
+			message,
+			merged,
+		);
 	}
 
 	/**
@@ -2854,7 +2923,7 @@ export class DiscordService extends Service implements IDiscordService {
 	): Promise<void> {
 		const state = this.requireAccountState(accountId);
 		await handleReactionAddExtracted(
-			this.createAccountServiceFacade(state) as any,
+			this.createAccountServiceFacade(state),
 			reaction,
 			user,
 		);
@@ -2881,7 +2950,7 @@ export class DiscordService extends Service implements IDiscordService {
 	): Promise<void> {
 		const state = this.requireAccountState(accountId);
 		await handleReactionRemoveExtracted(
-			this.createAccountServiceFacade(state) as any,
+			this.createAccountServiceFacade(state),
 			reaction,
 			user,
 		);
@@ -2891,7 +2960,17 @@ export class DiscordService extends Service implements IDiscordService {
 	 * Handles guild creation (bot joined a guild). Delegates to extracted module.
 	 */
 	public async handleGuildCreate(guild: Guild): Promise<void> {
-		await handleGuildCreateExtracted(this as any, guild);
+		await this.handleGuildCreateForAccount(this.defaultAccountId, guild);
+	}
+
+	private async handleGuildCreateForAccount(
+		accountId: string,
+		guild: Guild,
+	): Promise<void> {
+		await handleGuildCreateExtracted(
+			this.createAccountServiceFacade(this.getAccountState(accountId)),
+			guild,
+		);
 	}
 
 	/**
@@ -2913,7 +2992,7 @@ export class DiscordService extends Service implements IDiscordService {
 	): Promise<void> {
 		const state = this.requireAccountState(accountId);
 		await handleInteractionCreateExtracted(
-			this.createAccountServiceFacade(state) as any,
+			this.createAccountServiceFacade(state),
 			interaction,
 		);
 	}

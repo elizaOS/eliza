@@ -6,8 +6,14 @@ import {
 } from "./complete-reset-local-state-after-wipe";
 
 const okOptions = {
+  names: [],
   styles: [{ id: "a", name: "A", avatarIndex: 0 }],
-} as unknown as OnboardingOptions;
+  providers: [],
+  cloudProviders: [],
+  models: {},
+  inventoryProviders: [],
+  sharedStyleRules: "",
+} satisfies OnboardingOptions;
 
 function buildSpyDeps(overrides: Partial<CompleteResetLocalStateDeps> = {}): {
   deps: CompleteResetLocalStateDeps;
@@ -77,7 +83,13 @@ describe("completeResetLocalStateAfterServerWipe", () => {
   it("forwards the post-reset agent status to setAgentStatus", async () => {
     const setAgentStatus = vi.fn();
     const { deps } = buildSpyDeps({ setAgentStatus });
-    const status = { state: "stopped" } as unknown as AgentStatus;
+    const status = {
+      state: "stopped",
+      agentName: "test-agent",
+      model: undefined,
+      uptime: undefined,
+      startedAt: undefined,
+    } satisfies AgentStatus;
     await completeResetLocalStateAfterServerWipe(status, deps);
     expect(setAgentStatus).toHaveBeenCalledWith(status);
   });

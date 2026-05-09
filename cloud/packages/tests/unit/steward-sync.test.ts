@@ -59,21 +59,21 @@ describe("syncUserFromSteward", () => {
     })) as typeof organizationsService.update;
     organizationsService.delete = (async () => {}) as typeof organizationsService.delete;
 
-    creditsService.addCredits = (async () => {}) as unknown as typeof creditsService.addCredits;
+    creditsService.addCredits = (async () => {}) as typeof creditsService.addCredits;
     emailService.sendWelcomeEmail =
-      (async () => {}) as unknown as typeof emailService.sendWelcomeEmail;
+      (async () => {}) as typeof emailService.sendWelcomeEmail;
     discordService.logUserSignup =
-      (async () => {}) as unknown as typeof discordService.logUserSignup;
+      (async () => {}) as typeof discordService.logUserSignup;
     apiKeysService.listByOrganization =
       (async () => []) as typeof apiKeysService.listByOrganization;
     apiKeysService.create = (async () => ({
       id: "api-key-1",
-    })) as unknown as typeof apiKeysService.create;
+    })) as typeof apiKeysService.create;
     charactersService.listByOrganization =
       (async () => []) as typeof charactersService.listByOrganization;
     charactersService.create = (async () => ({
       id: "char-1",
-    })) as unknown as typeof charactersService.create;
+    })) as typeof charactersService.create;
   });
 
   test("links an existing wallet user for wallet-only Steward sessions", async () => {
@@ -92,7 +92,7 @@ describe("syncUserFromSteward", () => {
       ...existingUser,
       steward_user_id: "stwd-wallet-1",
       organization: BASE_ORG,
-    } as unknown as UserWithOrganization;
+    } as UserWithOrganization;
 
     let linked = false;
     let upserted = false;
@@ -100,7 +100,7 @@ describe("syncUserFromSteward", () => {
     usersService.getByWalletAddress = (async (address: string) => {
       expect(address).toBe("0xabc123");
       return existingUser;
-    }) as unknown as typeof usersService.getByWalletAddress;
+    }) as typeof usersService.getByWalletAddress;
     usersService.linkStewardId = (async (userId, stewardUserId) => {
       expect(userId).toBe(existingUser.id);
       expect(stewardUserId).toBe("stwd-wallet-1");
@@ -151,7 +151,7 @@ describe("syncUserFromSteward", () => {
         slug: "wallet-0xdef456-test",
         billing_email: null,
       },
-    } as unknown as UserWithOrganization;
+    } as UserWithOrganization;
 
     organizationsService.create = (async (data) => ({
       id: "new-org",
@@ -163,7 +163,7 @@ describe("syncUserFromSteward", () => {
       return { id: "wallet-new-user", ...data };
     }) as typeof usersService.create;
     usersService.getByStewardIdForWrite = (async () =>
-      createdUserWithOrg) as unknown as typeof usersService.getByStewardIdForWrite;
+      createdUserWithOrg) as typeof usersService.getByStewardIdForWrite;
 
     const result = await syncUserFromSteward({
       stewardUserId: "stwd-wallet-2",
@@ -193,14 +193,14 @@ describe("syncUserFromSteward", () => {
     const linkedUser = {
       ...existingByEmail,
       steward_user_id: "stwd-email-1",
-    } as unknown as UserWithOrganization;
+    } as UserWithOrganization;
 
     let updatedPayload: Parameters<typeof usersService.update>[1] | undefined;
 
     usersService.getByEmailWithOrganization = (async (email: string) => {
       expect(email).toBe("shadow@example.com");
       return existingByEmail;
-    }) as unknown as typeof usersService.getByEmailWithOrganization;
+    }) as typeof usersService.getByEmailWithOrganization;
     usersService.update = (async (id, data) => {
       expect(id).toBe(existingByEmail.id);
       updatedPayload = data;

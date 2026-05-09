@@ -47,7 +47,7 @@ export const tailscalePlugin: Plugin = {
 
     if (!tunnelSlotIsFree(runtime)) {
       elizaLogger.info(
-        '[plugin-tailscale] another tunnel service already registered — skipping Tailscale backend',
+        "[plugin-tailscale] another tunnel service already registered — skipping Tailscale backend",
       );
       return;
     }

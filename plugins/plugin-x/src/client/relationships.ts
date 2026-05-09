@@ -305,7 +305,7 @@ export async function followUser(
       status: result.data?.following ? 200 : 400,
       headers: new Headers({
         "Content-Type": "application/json",
-      }) as unknown as HeadersInit,
+      }),
     });
   } catch (error) {
     console.error("Error following user:", error);

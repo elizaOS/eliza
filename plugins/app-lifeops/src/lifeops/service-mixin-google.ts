@@ -539,5 +539,5 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         side ?? googleSideForAccount(account),
       );
     }
-  } as unknown as MixinClass<TBase, LifeOpsGoogleService>;
+  } as MixinClass<TBase, LifeOpsGoogleService>;
 }

@@ -4,6 +4,7 @@ import {
   parseJSONObjectFromText,
   Service,
   setTrajectoryPurpose,
+  type TextGenerationModelType,
   withStandaloneTrajectory,
 } from "@elizaos/core";
 import {
@@ -25,7 +26,7 @@ const DEFAULT_LOOP_INTERVAL_MS = 15_000;
 const MAX_EVENT_LOG = 30;
 
 /** Map user-facing size names to ModelType constants. */
-const MODEL_SIZE_MAP: Record<string, string> = {
+const MODEL_SIZE_MAP: Record<string, TextGenerationModelType> = {
   TEXT_NANO: ModelType.TEXT_NANO,
   TEXT_SMALL: ModelType.TEXT_SMALL,
   TEXT_MEDIUM: ModelType.TEXT_MEDIUM,
@@ -51,7 +52,7 @@ export class RsSdkGameService extends Service {
   private stepNumber = 0;
   private eventLog: EventLogEntry[] = [];
   private stopped = false;
-  private modelSize: string = DEFAULT_MODEL_SIZE;
+  private modelSize: TextGenerationModelType = DEFAULT_MODEL_SIZE;
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new RsSdkGameService(runtime);
@@ -233,7 +234,7 @@ export class RsSdkGameService extends Service {
           // 3. Call the LLM with the configured model size
           setTrajectoryPurpose("background");
           this.log(`Step ${this.stepNumber} - calling ${this.modelSize}`);
-          const response = await this.runtime.useModel(this.modelSize as any, {
+          const response = await this.runtime.useModel(this.modelSize, {
             prompt,
             maxTokens: 400,
           });

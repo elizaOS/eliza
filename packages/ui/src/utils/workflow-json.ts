@@ -153,7 +153,9 @@ export function workflowToJsonText(
  * types honest and surfaces missing fields as soon as the user clicks
  * Save rather than after a round-trip.
  */
-function toWriteNode(node: WorkflowDefinitionNode): WorkflowDefinitionWriteNode {
+function toWriteNode(
+  node: WorkflowDefinitionNode,
+): WorkflowDefinitionWriteNode {
   return {
     id: node.id,
     name: node.name,

@@ -424,11 +424,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					);
 					pluginState.components?.eventHandlers
 						.get(eventName)
-						?.add(
-							eventHandler as unknown as (
-								params: EventPayload,
-							) => Promise<void>,
-						);
+						?.add(eventHandler as (params: EventPayload) => Promise<void>);
 					this.trackComponentRegistration(
 						pluginState.id,
 						"eventHandler",

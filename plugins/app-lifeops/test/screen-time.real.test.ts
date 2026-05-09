@@ -21,7 +21,7 @@ const DAY_MS = 24 * 60 * 60_000;
 
 function makeMessage(runtime: IAgentRuntime, text: string) {
   return {
-    id: `msg-${Math.random()}` as unknown as string,
+    id: `msg-${Math.random()}` as string,
     entityId: runtime.agentId,
     roomId: runtime.agentId,
     content: { text },
@@ -391,8 +391,8 @@ describe("screen-time handler — real PGLite", () => {
       async () => {},
     );
     expect(result?.success).toBe(true);
-    expect(typeof (result as unknown as { text?: string }).text).toBe("string");
-    const data = (result as unknown as { data?: { date?: string } }).data;
+    expect(typeof (result as { text?: string }).text).toBe("string");
+    const data = (result as { data?: { date?: string } }).data;
     expect(data?.date).toBe(today);
   });
 
@@ -406,7 +406,7 @@ describe("screen-time handler — real PGLite", () => {
     );
     expect(result?.success).toBe(true);
     const data = (
-      result as unknown as {
+      result as {
         data?: { summary?: { items: unknown[]; totalSeconds: number } };
       }
     ).data;

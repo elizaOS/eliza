@@ -40,7 +40,7 @@ export const steerLiquidityProvider: Provider = {
       // Get Steer liquidity service with proper type casting
       const steerLiquidityService = runtime.getService(
         "STEER_LIQUIDITY_SERVICE",
-      ) as unknown as SteerLiquidityService;
+      ) as SteerLiquidityService;
       if (!steerLiquidityService) {
         console.log("Steer liquidity service not available");
         return {

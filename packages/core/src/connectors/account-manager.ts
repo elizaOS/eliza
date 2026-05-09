@@ -1146,7 +1146,7 @@ function resolveStorage(runtime?: IAgentRuntime): ConnectorAccountStorage {
 		} catch {
 			// Fall through to in-memory fallback.
 		}
-		const adapter = (runtime as unknown as { adapter?: unknown }).adapter;
+		const adapter = (runtime as { adapter?: unknown }).adapter;
 		if (isConnectorAccountDatabaseAdapter(adapter)) {
 			return new DatabaseConnectorAccountStorage(adapter);
 		}

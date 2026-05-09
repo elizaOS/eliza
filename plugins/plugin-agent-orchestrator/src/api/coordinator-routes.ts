@@ -21,14 +21,6 @@ import { discoverTaskShareOptions } from "../services/task-share.js";
 import type { RouteContext } from "./route-utils.js";
 import { parseBody, sendError, sendJson } from "./route-utils.js";
 
-type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
-
 const COORDINATOR_PREFIX = "/api/coding-agents/coordinator";
 
 /**
@@ -173,7 +165,7 @@ export async function handleCoordinatorRoutes(
       preferredAgentType: frameworkState.preferred.id,
       preferredAgentReason: frameworkState.preferred.reason,
       frameworks: frameworkState.frameworks,
-    } as unknown as JsonValue);
+    });
     return true;
   }
 
@@ -243,7 +235,7 @@ export async function handleCoordinatorRoutes(
       search,
       limit,
     });
-    sendJson(res, threads as unknown as JsonValue);
+    sendJson(res, threads);
     return true;
   }
 
@@ -317,7 +309,7 @@ export async function handleCoordinatorRoutes(
       sendError(res, "Task thread not found", 404);
       return true;
     }
-    sendJson(res, thread as unknown as JsonValue);
+    sendJson(res, thread);
     return true;
   }
 
@@ -328,7 +320,7 @@ export async function handleCoordinatorRoutes(
       sendError(res, "Task thread not found", 404);
       return true;
     }
-    sendJson(res, share as unknown as JsonValue);
+    sendJson(res, share);
     return true;
   }
 
@@ -419,7 +411,7 @@ export async function handleCoordinatorRoutes(
       sendError(res, "Task context not found", 404);
       return true;
     }
-    sendJson(res, task as unknown as JsonValue);
+    sendJson(res, task);
     return true;
   }
 
@@ -438,7 +430,7 @@ export async function handleCoordinatorRoutes(
         agentType: p.taskContext.agentType,
         label: p.taskContext.label,
         createdAt: p.createdAt,
-      })) as unknown as JsonValue,
+      })),
     );
     return true;
   }

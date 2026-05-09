@@ -23,7 +23,7 @@ describeLive(
           { role: "system", content: "Reply with one short sentence." },
           { role: "user", content: "Say hello." },
         ],
-      } as never)) as unknown as TextResult;
+      } as never)) as TextResult;
 
       expect(typeof result.text).toBe("string");
       expect((result.text ?? "").length).toBeGreaterThan(0);

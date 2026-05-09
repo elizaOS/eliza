@@ -87,6 +87,17 @@ export interface SnapshotResult {
 const MAX_BACKUPS = 10;
 type LifecycleTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
+function isDockerSandboxMetadata(value: unknown): value is DockerSandboxMetadata {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { provider?: unknown }).provider === "docker" &&
+    typeof (value as { nodeId?: unknown }).nodeId === "string" &&
+    typeof (value as { hostname?: unknown }).hostname === "string" &&
+    typeof (value as { containerName?: unknown }).containerName === "string"
+  );
+}
+
 type RuntimeAgentSummary = {
   id?: string;
   name?: string;
@@ -665,7 +676,7 @@ export class ElizaSandboxService {
           throw new Error("Sandbox health check timed out");
         }
 
-        const dockerMeta = handle.metadata as unknown as DockerSandboxMetadata | undefined;
+        const dockerMeta = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : undefined;
         const runtimeRec = {
           ...rec,
           sandbox_id: handle.sandboxId,

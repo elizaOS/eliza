@@ -11,8 +11,7 @@ import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 
 function useModelCalls(runtime: IAgentRuntime): unknown[][] {
-	return (runtime.useModel as unknown as { mock: { calls: unknown[][] } }).mock
-		.calls;
+	return (runtime.useModel as { mock: { calls: unknown[][] } }).mock.calls;
 }
 
 function makeMessage(): Memory {
@@ -61,7 +60,7 @@ function makeRuntimeWithContexts(
 			error: vi.fn(),
 			trace: vi.fn(),
 		},
-	} as unknown as IAgentRuntime;
+	} as IAgentRuntime;
 }
 
 const FIXTURE_CONTEXTS: readonly ContextDefinition[] = [
@@ -171,7 +170,7 @@ describe("Stage 1 prompt — available contexts catalog", () => {
 				error: vi.fn(),
 				trace: vi.fn(),
 			},
-		} as unknown as IAgentRuntime;
+		} as IAgentRuntime;
 
 		await runV5MessageRuntimeStage1({
 			runtime,

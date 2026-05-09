@@ -11,15 +11,14 @@
       "./node_modules/@types",
       "../app-core/node_modules/@types",
       "../ui/node_modules/@types",
-      "../../node_modules/@types",
-      "../../../node_modules/@types",
-      "../../../node_modules/.bun/node_modules/@types"
+      "../../node_modules/@types"
     ],
     "declaration": false,
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
       "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/core/testing": ["../core/src/testing/index.ts"],
       "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/native-activity-tracker": [
         "../native-plugins/activity-tracker/src/index.ts"
@@ -96,9 +95,9 @@
       ],
       "@elizaos/plugin-telegram/*": ["../../plugins/plugin-telegram/src/*"],
       "@elizaos/plugin-sql": [
-        "../../plugins/plugin-sql/typescript/index.node.ts"
+        "../../plugins/plugin-sql/src/index.node.ts"
       ],
-      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/typescript/*"],
+      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/skills": ["../skills/src/index.ts"],

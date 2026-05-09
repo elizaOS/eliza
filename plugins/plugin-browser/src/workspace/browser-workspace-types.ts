@@ -269,11 +269,13 @@ export interface OpenBrowserWorkspaceTabRequest {
 export interface NavigateBrowserWorkspaceTabRequest {
   id: string;
   url: string;
+  partition?: string;
 }
 
 export interface EvaluateBrowserWorkspaceTabRequest {
   id: string;
   script: string;
+  partition?: string;
 }
 
 export interface BrowserWorkspaceDomElementSummary {

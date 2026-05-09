@@ -52,6 +52,14 @@ interface SetupSession {
 	startedAt: number;
 }
 
+function readRoomChannelId(room: unknown): string | undefined {
+	if (!room || typeof room !== "object" || !("channelId" in room)) {
+		return undefined;
+	}
+	const channelId = room.channelId;
+	return typeof channelId === "string" ? channelId : undefined;
+}
+
 function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -555,10 +563,7 @@ export const setupCredentials: Action = {
 		const text = message.content.text?.trim() ?? "";
 		const userId = message.entityId as string;
 		const room = state?.data?.room || (await runtime.getRoom(message.roomId));
-		const channelId =
-			((room as Record<string, unknown> | undefined)?.channelId as
-				| string
-				| undefined) || (message.roomId as string);
+		const channelId = readRoomChannelId(room) || (message.roomId as string);
 
 		cleanExpiredSessions();
 

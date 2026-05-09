@@ -11,11 +11,11 @@ describe("OAuth token store", () => {
     const cache = new Map<string, unknown>();
     const runtime = {
       agentId: "agent-1",
-      getCache: async (key: string) => cache.get(key),
-      setCache: async (key: string, value: unknown) => {
+      getCache: async <T>(key: string) => cache.get(key) as T | undefined,
+      setCache: async <T>(key: string, value: T) => {
         cache.set(key, value);
       },
-    } as unknown as IAgentRuntime;
+    };
 
     const store = new RuntimeCacheTokenStore(runtime, "secondary");
     await store.save({
@@ -87,7 +87,7 @@ describe("OAuth token store", () => {
         if (serviceType === "vault") return vault;
         return null;
       },
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     const secondaryStore: TokenStore = {
       load: vi.fn(async () => null),
       save: vi.fn(async () => undefined),

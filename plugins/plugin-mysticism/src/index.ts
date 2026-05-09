@@ -1,10 +1,11 @@
 /** Mystical reading systems for ElizaOS agents (tarot, I Ching, astrology). */
 
-import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger, validateActionKeywords, validateActionRegex } from "@elizaos/core";
 import { paymentOpAction } from "./actions/payment-op";
 import { readingOpAction } from "./actions/reading-op";
 import { createReadingRoutes } from "./routes/readings";
+import { MysticismService } from "./services/mysticism-service";
 
 export { paymentOpAction } from "./actions/payment-op";
 export { readingOpAction } from "./actions/reading-op";
@@ -28,15 +29,7 @@ export const mysticismPlugin: Plugin = {
   description:
     "Mystical reading systems (tarot, I Ching, astrology) with progressive revelation and emotional attunement",
 
-  services: [
-    {
-      serviceType: "MYSTICISM",
-      start: async (runtime: IAgentRuntime) => {
-        const { MysticismService } = await import("./services/mysticism-service");
-        return MysticismService.start(runtime);
-      },
-    } as unknown as ServiceClass,
-  ],
+  services: [MysticismService],
 
   init: async (config: Record<string, string>, _runtime: IAgentRuntime) => {
     for (const key of [

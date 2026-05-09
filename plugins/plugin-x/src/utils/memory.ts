@@ -74,7 +74,7 @@ export function buildTwitterMessageMetadata(
       tweetId: tweet.id,
       conversationId: tweet.conversationId,
     },
-  } as unknown as Memory["metadata"];
+  } satisfies Memory["metadata"];
 }
 
 /**
@@ -129,7 +129,7 @@ export async function ensureTwitterContext(
     await runtime.ensureConnection({
       entityId,
       roomId,
-      userId: userId as unknown as UUID,
+      userId,
       userName: username,
       name: name,
       source: "twitter",

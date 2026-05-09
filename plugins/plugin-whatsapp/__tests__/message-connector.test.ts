@@ -11,7 +11,7 @@ type ConnectorContent = Parameters<RuntimeSendHandler>[2];
 type MessageConnectorRegistration = Parameters<IAgentRuntime["registerMessageConnector"]>[0];
 
 function makeRuntime(registrations: MessageConnectorRegistration[]): IAgentRuntime {
-  return {
+  const runtime = {
     agentId: "agent-1" as UUID,
     registerMessageConnector: vi.fn((registration: MessageConnectorRegistration) => {
       registrations.push(registration);
@@ -19,7 +19,9 @@ function makeRuntime(registrations: MessageConnectorRegistration[]): IAgentRunti
     registerSendHandler: vi.fn(),
     getRoom: vi.fn(async () => null),
     getMemoryById: vi.fn(async () => null),
-  } as unknown as IAgentRuntime;
+  };
+
+  return runtime as IAgentRuntime;
 }
 
 describe("WhatsApp message connector registration", () => {
@@ -46,7 +48,7 @@ describe("WhatsApp message connector registration", () => {
       searchConnectorMessages: vi.fn(async () => []),
       reactConnectorMessage: vi.fn(async () => undefined),
       getConnectorUser: vi.fn(async () => null),
-    } as unknown as WhatsAppConnectorService;
+    } as WhatsAppConnectorService;
 
     WhatsAppConnectorService.registerSendHandlers(runtime, service);
 
@@ -99,7 +101,7 @@ describe("WhatsApp message connector registration", () => {
       searchConnectorMessages: vi.fn(async () => []),
       reactConnectorMessage: vi.fn(async () => undefined),
       getConnectorUser: vi.fn(async () => null),
-    } as unknown as WhatsAppConnectorService;
+    } as WhatsAppConnectorService;
 
     WhatsAppConnectorService.registerSendHandlers(runtime, service);
     await registrations[0].sendHandler?.(

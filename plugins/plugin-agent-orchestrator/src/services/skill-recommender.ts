@@ -15,7 +15,12 @@
  * @module services/skill-recommender
  */
 
-import { type IAgentRuntime, type Logger, ModelType } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  type Logger,
+  ModelType,
+  type Service,
+} from "@elizaos/core";
 import { parseJsonObjectResponse } from "./json-model-output.js";
 import { withTrajectoryContext } from "./trajectory-context.js";
 
@@ -138,7 +143,7 @@ interface SkillsServiceShape {
 }
 
 function getLogger(runtime: IAgentRuntime): Logger | Console {
-  const candidate = (runtime as unknown as { logger?: Logger }).logger;
+  const candidate = (runtime as { logger?: Logger }).logger;
   return candidate ?? console;
 }
 
@@ -374,8 +379,8 @@ export async function recommendSkillsForTask(
   const max = opts.max ?? DEFAULT_MAX;
   if (max <= 0) return [];
 
-  const service = runtime.getService("AGENT_SKILLS_SERVICE") as unknown as
-    | SkillsServiceShape
+  const service = runtime.getService("AGENT_SKILLS_SERVICE") as
+    | (Service & SkillsServiceShape)
     | undefined;
   if (!service) {
     log.debug?.(

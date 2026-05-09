@@ -130,6 +130,28 @@ function scheduleBootstrapRetry(
   timers.set(label, timer);
 }
 
+function isExpectedRuntimeStateBootstrapError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    /Failed query:\s*select\b.*\bfrom "worlds"/i.test(message) ||
+    /relation .*worlds.*does not exist/i.test(message) ||
+    /no such table:?\s*worlds/i.test(message)
+  );
+}
+
+function logRuntimeStateBootstrapDeferral(label: string, err: unknown): void {
+  if (isExpectedRuntimeStateBootstrapError(err)) {
+    logger.info(
+      `[roles] Deferring ${label} bootstrap until runtime worlds are available`,
+    );
+    return;
+  }
+
+  logger.info(
+    `[roles] Deferring ${label} bootstrap until runtime worlds are available: ${String(err)}`,
+  );
+}
+
 /**
  * Ensure the world owner has OWNER role in metadata.
  * Called on plugin init — guarantees the app-local user is always OWNER.
@@ -202,9 +224,7 @@ async function ensureOwnerRole(
     }
     return true;
   } catch (err) {
-    logger.info(
-      `[roles] Deferring owner role bootstrap until worlds are available: ${err}`,
-    );
+    logRuntimeStateBootstrapDeferral("owner role", err);
     return false;
   }
 }
@@ -287,9 +307,7 @@ async function applyConnectorAdminWhitelists(
     }
     return true;
   } catch (err) {
-    logger.info(
-      `[roles] Deferring connector admin bootstrap until worlds are available: ${String(err)}`,
-    );
+    logRuntimeStateBootstrapDeferral("connector admin", err);
     return false;
   }
 }

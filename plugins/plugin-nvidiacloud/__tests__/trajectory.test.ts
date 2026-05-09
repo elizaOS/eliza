@@ -26,7 +26,7 @@ function createInlineRuntime(calls: CapturedLlmCall[]): IAgentRuntime {
     NVIDIA_SMALL_MODEL:
       process.env.NVIDIA_SMALL_MODEL ?? "meta/llama-3.1-8b-instruct",
   };
-  return {
+  const runtime = {
     agentId: "agent-nvidia",
     character: { system: "You are a concise assistant." },
     emitEvent: async () => undefined,
@@ -35,7 +35,9 @@ function createInlineRuntime(calls: CapturedLlmCall[]): IAgentRuntime {
     getServicesByType: (type: string) =>
       type === "trajectories" ? [trajectoryLogger] : [],
     getSetting: (key: string) => settings[key] ?? process.env[key] ?? null,
-  } as unknown as IAgentRuntime;
+  };
+
+  return runtime as IAgentRuntime;
 }
 
 if (!SHOULD_RUN) {

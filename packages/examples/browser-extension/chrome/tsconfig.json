@@ -23,7 +23,7 @@
       ],
       "@elizaos/*": ["./../../../../packages/*", "./../../../../plugins/*"]
     },
-    "types": ["chrome"]
+    "types": ["chrome", "node"]
   },
   "include": ["src/**/*", "../shared/**/*"],
   "exclude": ["node_modules", "dist"]

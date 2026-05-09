@@ -19,7 +19,7 @@ import { DEFAULT_CLOUD_CONFIG } from "../types/cloud";
 import type { CloudAuthService } from "./cloud-auth";
 
 interface ActiveConnection {
-  ws: WebSocket;
+  ws: WebSocket | null;
   state: BridgeConnectionState;
   connectedAt: number | null;
   lastHeartbeat: number | null;
@@ -36,6 +36,13 @@ interface ActiveConnection {
     }
   >;
   nextRequestId: number;
+}
+
+function requireWebSocket(conn: ActiveConnection, containerId: string): WebSocket {
+  if (!conn.ws) {
+    throw new Error(`WebSocket not connected for container ${containerId}`);
+  }
+  return conn.ws;
 }
 
 export class CloudBridgeService extends Service {
@@ -97,8 +104,9 @@ export class CloudBridgeService extends Service {
     }
     conn.pendingRequests.clear();
 
-    if (conn.ws.readyState === WebSocket.OPEN || conn.ws.readyState === WebSocket.CONNECTING) {
-      conn.ws.close(1000, "Client disconnect");
+    const ws = conn.ws;
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+      ws.close(1000, "Client disconnect");
     }
 
     this.connections.delete(containerId);
@@ -112,9 +120,10 @@ export class CloudBridgeService extends Service {
 
     // Append API key as query parameter for WebSocket auth
     const authUrl = apiKey ? `${wsUrl}?token=${encodeURIComponent(apiKey)}` : wsUrl;
+    const ws = new WebSocket(authUrl);
 
     const conn: ActiveConnection = {
-      ws: new WebSocket(authUrl),
+      ws,
       state: "connecting",
       connectedAt: null,
       lastHeartbeat: null,
@@ -128,7 +137,7 @@ export class CloudBridgeService extends Service {
 
     this.connections.set(containerId, conn);
 
-    conn.ws.addEventListener("open", () => {
+    ws.addEventListener("open", () => {
       conn.state = "connected";
       conn.connectedAt = Date.now();
       conn.reconnectAttempts = 0;
@@ -140,7 +149,7 @@ export class CloudBridgeService extends Service {
       }, this.bridgeConfig.heartbeatIntervalMs);
     });
 
-    conn.ws.addEventListener("message", (event) => {
+    ws.addEventListener("message", (event) => {
       const raw = event.data;
       const data =
         typeof raw === "string" ? raw : raw instanceof Buffer ? raw.toString("utf-8") : String(raw);
@@ -173,7 +182,7 @@ export class CloudBridgeService extends Service {
       }
     });
 
-    conn.ws.addEventListener("close", (event: CloseEvent) => {
+    ws.addEventListener("close", (event: CloseEvent) => {
       conn.state = "disconnected";
       if (conn.heartbeatTimer) clearInterval(conn.heartbeatTimer);
 
@@ -189,7 +198,7 @@ export class CloudBridgeService extends Service {
       this.scheduleReconnect(containerId, conn.reconnectAttempts + 1);
     });
 
-    conn.ws.addEventListener("error", () => {
+    ws.addEventListener("error", () => {
       logger.error(`[CloudBridge] WebSocket error for ${containerId}`);
     });
   }
@@ -231,7 +240,7 @@ export class CloudBridgeService extends Service {
       params: { timestamp: Date.now() },
     };
 
-    conn.ws.send(JSON.stringify(message));
+    requireWebSocket(conn, containerId).send(JSON.stringify(message));
   }
 
   // ─── Messaging ─────────────────────────────────────────────────────────
@@ -265,7 +274,7 @@ export class CloudBridgeService extends Service {
       }, timeoutMs);
 
       conn.pendingRequests.set(id, { resolve, reject, timeout });
-      conn.ws.send(JSON.stringify(message));
+      requireWebSocket(conn, containerId).send(JSON.stringify(message));
     });
   }
 
@@ -284,7 +293,7 @@ export class CloudBridgeService extends Service {
       params,
     };
 
-    conn.ws.send(JSON.stringify(message));
+    requireWebSocket(conn, containerId).send(JSON.stringify(message));
   }
 
   /**
@@ -326,7 +335,7 @@ export class CloudBridgeService extends Service {
     if (!conn) {
       // Pre-register handler before connection is established
       conn = {
-        ws: null as WebSocket,
+        ws: null,
         state: "disconnected",
         connectedAt: null,
         lastHeartbeat: null,

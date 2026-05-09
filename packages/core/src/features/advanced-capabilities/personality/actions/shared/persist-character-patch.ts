@@ -1,16 +1,6 @@
 import { logger } from "../../../../../logger.ts";
 import type { Character, IAgentRuntime } from "../../../../../types/index.ts";
-
-type CharacterPersistenceServiceLike = {
-	persistCharacter: (params?: {
-		character?: Record<string, unknown>;
-		previousCharacter?: Record<string, unknown>;
-		previousName?: string;
-		source?: "manual" | "agent" | "restore";
-	}) => Promise<{ success: boolean; error?: string }>;
-};
-
-const CHARACTER_PERSISTENCE_SERVICE = "eliza_character_persistence";
+import { getCharacterPersistenceService } from "../../character-persistence.ts";
 
 /**
  * Apply a partial replacement patch to the runtime character and persist it
@@ -43,9 +33,7 @@ export async function persistCharacterPatch(
 		...patch,
 	} as Record<string, unknown>;
 
-	const persistenceService = runtime.getService(
-		CHARACTER_PERSISTENCE_SERVICE,
-	) as unknown as CharacterPersistenceServiceLike | null;
+	const persistenceService = getCharacterPersistenceService(runtime);
 
 	if (persistenceService) {
 		const result = await persistenceService.persistCharacter({

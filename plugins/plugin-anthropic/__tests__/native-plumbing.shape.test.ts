@@ -12,7 +12,7 @@ function createRuntime() {
       };
       return settings[key];
     }),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 afterEach(() => {
@@ -56,7 +56,7 @@ describe("Anthropic native text plumbing", () => {
         agentName: "Claude Agent",
         anthropic: { cacheControl: { type: "ephemeral", ttl: "5m" } },
       },
-    } as never)) as unknown as Record<string, unknown>;
+    } as never)) as Record<string, unknown>;
 
     const call = generateText.mock.calls[0][0] as {
       messages: Array<{ content: Array<Record<string, unknown>> }>;
@@ -211,7 +211,7 @@ describe("Anthropic native text plumbing", () => {
         };
         return settings[key] ?? null;
       }),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
 
     const { handleTextSmall } = await import("../models/text");
     await handleTextSmall(runtimeNoCacheTtl, {
@@ -319,7 +319,7 @@ describe("Anthropic native text plumbing", () => {
         };
         return settings[key] ?? null;
       }),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
 
     const { handleTextSmall } = await import("../models/text");
     await handleTextSmall(runtime1h, {
@@ -348,7 +348,7 @@ describe("Anthropic model defaults", () => {
     const { getActionPlannerModel, getResponseHandlerModel } = await import("../utils/config");
     const runtime = {
       getSetting: vi.fn(() => undefined),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
 
     expect(getResponseHandlerModel(runtime)).toBe("claude-haiku-4-5-20251001");
     expect(getActionPlannerModel(runtime)).toBe("claude-opus-4-7");
@@ -361,7 +361,7 @@ describe("Anthropic model defaults", () => {
         };
         return settings[key];
       }),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     expect(getResponseHandlerModel(overrideRuntime)).toBe("custom-haiku");
     expect(getActionPlannerModel(overrideRuntime)).toBe("custom-opus");
   });

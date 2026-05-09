@@ -12,6 +12,28 @@ import { currentPlatform } from "../platform/helpers.js";
 import { captureScreenshot } from "../platform/screenshot.js";
 import { ComputerUseService } from "../services/computer-use-service.js";
 
+type RawActionParams = { action: string };
+
+function executeRawDesktopAction(
+  service: ComputerUseService,
+  params: RawActionParams,
+): ReturnType<ComputerUseService["executeDesktopAction"]> {
+  const execute = service.executeDesktopAction as (
+    rawParams: RawActionParams,
+  ) => ReturnType<ComputerUseService["executeDesktopAction"]>;
+  return execute.call(service, params);
+}
+
+function executeRawWindowAction(
+  service: ComputerUseService,
+  params: RawActionParams,
+): ReturnType<ComputerUseService["executeWindowAction"]> {
+  const execute = service.executeWindowAction as (
+    rawParams: RawActionParams,
+  ) => ReturnType<ComputerUseService["executeWindowAction"]>;
+  return execute.call(service, params);
+}
+
 const os = currentPlatform();
 
 // Check if screenshot/desktop tools actually work (permissions may be missing)
@@ -313,8 +335,8 @@ describeIfDesktop("ComputerUseService desktop actions (real)", () => {
   });
 
   it("returns error for unknown action", async () => {
-    const result = await service.executeDesktopAction({
-      action: "nonexistent" as any,
+    const result = await executeRawDesktopAction(service, {
+      action: "nonexistent",
     });
 
     expect(result.success).toBe(false);
@@ -360,8 +382,8 @@ describe("ComputerUseService window actions (real)", () => {
   });
 
   it("returns error for unknown window action", async () => {
-    const result = await service.executeWindowAction({
-      action: "nonexistent" as any,
+    const result = await executeRawWindowAction(service, {
+      action: "nonexistent",
     });
 
     expect(result.success).toBe(false);

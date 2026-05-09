@@ -66,9 +66,12 @@ async function checkIfPayAsYouGo(): Promise<boolean> {
   }
 
   return new Promise((resolve) => {
+    const envWithoutDomain: NodeJS.ProcessEnv = { ...process.env };
+    delete envWithoutDomain.NGROK_DOMAIN;
+
     const checkProcess = spawn('ngrok', ['http', '8080'], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, NGROK_DOMAIN: undefined as any } as any,
+      env: envWithoutDomain,
     });
 
     let isPayAsYouGo = false;

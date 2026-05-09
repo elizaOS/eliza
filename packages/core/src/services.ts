@@ -65,7 +65,7 @@ export class ServiceBuilder<TService extends Service = Service> {
 		const stopFn = this.stopFn;
 
 		// Build the service class using Object.assign to properly set static properties
-		// This avoids the need for 'as unknown as' by structuring the class correctly
+		// This avoids double assertions by structuring the class correctly
 		const ServiceClassImpl = class extends Service {
 			capabilityDescription = description;
 

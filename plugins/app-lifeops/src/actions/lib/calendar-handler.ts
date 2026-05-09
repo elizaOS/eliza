@@ -2321,6 +2321,11 @@ function buildCreateEventRequest(
 function createEventRequestFingerprint(
   request: CreateLifeOpsCalendarEventRequest,
 ): string {
+  const grantId =
+    "grantId" in request
+      ? (request as CreateLifeOpsCalendarEventRequest & { grantId?: unknown })
+          .grantId
+      : null;
   return JSON.stringify({
     title: request.title,
     description: request.description ?? null,
@@ -2333,7 +2338,7 @@ function createEventRequestFingerprint(
     calendarId: request.calendarId ?? null,
     side: request.side ?? null,
     mode: request.mode ?? null,
-    grantId: (request as unknown as Record<string, unknown>).grantId ?? null,
+    grantId: grantId ?? null,
   });
 }
 

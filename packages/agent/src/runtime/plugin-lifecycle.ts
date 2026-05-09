@@ -1,8 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
   Action,
-  AgentRuntime,
   AgentContext,
+  AgentRuntime,
   Evaluator,
   Plugin,
   PluginModelRegistration,
@@ -214,11 +214,7 @@ function applyEffectiveActionContexts(
 
   return {
     ...inherited,
-    contexts: [
-      ...resolveActionContexts(
-        inherited,
-      ),
-    ],
+    contexts: [...resolveActionContexts(inherited)],
   };
 }
 
@@ -233,11 +229,7 @@ function applyEffectiveProviderContexts(
 
   return {
     ...inherited,
-    contexts: [
-      ...resolveProviderContexts(
-        inherited,
-      ),
-    ],
+    contexts: [...resolveProviderContexts(inherited)],
   };
 }
 

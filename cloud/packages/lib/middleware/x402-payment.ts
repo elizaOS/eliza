@@ -70,6 +70,26 @@ export function withX402Payment<T = Record<string, string>>(
 ) {
   type FacilitatorPaymentPayload = Parameters<typeof x402FacilitatorService.verify>[0];
 
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null;
+
+  const isFacilitatorPaymentPayload = (
+    value: Record<string, unknown>,
+  ): value is FacilitatorPaymentPayload => {
+    if (typeof value.x402Version !== "number" || !isRecord(value.accepted)) return false;
+    if (!isRecord(value.payload) || typeof value.payload.signature !== "string") return false;
+    const authorization = value.payload.authorization;
+    return (
+      isRecord(authorization) &&
+      typeof authorization.from === "string" &&
+      typeof authorization.to === "string" &&
+      typeof authorization.value === "string" &&
+      typeof authorization.validAfter === "string" &&
+      typeof authorization.validBefore === "string" &&
+      typeof authorization.nonce === "string"
+    );
+  };
+
   const network = config.network ?? "eip155:8453";
   const description = config.description ?? "Paid API endpoint";
   const mimeType = config.mimeType ?? "application/json";
@@ -117,7 +137,17 @@ export function withX402Payment<T = Record<string, string>>(
     }
 
     // 3. Build payment requirements
-    const parsedPaymentPayload = paymentPayload as unknown as FacilitatorPaymentPayload;
+    if (!isFacilitatorPaymentPayload(paymentPayload)) {
+      return Response.json(
+        {
+          success: false,
+          error: "Invalid X-PAYMENT header: missing required payment fields",
+          code: "INVALID_PAYMENT_HEADER",
+        },
+        { status: 400 },
+      );
+    }
+    const parsedPaymentPayload = paymentPayload;
     const paymentRequirements = {
       scheme: "upto",
       network,

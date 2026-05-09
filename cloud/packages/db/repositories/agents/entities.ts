@@ -191,7 +191,7 @@ export class EntitiesRepository {
         names: input.names,
         metadata: input.metadata,
         createdAt: new Date(),
-      })
+      } as typeof entityTable.$inferInsert)
       .returning();
     const [entity] = result as (typeof entityTable.$inferSelect)[];
 
@@ -217,7 +217,7 @@ export class EntitiesRepository {
   async updateMetadata(entityId: string, metadata: Record<string, unknown>): Promise<Entity> {
     const [entity] = await dbWrite
       .update(entityTable)
-      .set({ metadata })
+      .set({ metadata: metadata as typeof entityTable.$inferInsert.metadata })
       .where(eq(entityTable.id, entityId))
       .returning();
 

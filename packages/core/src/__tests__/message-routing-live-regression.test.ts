@@ -23,10 +23,7 @@ describe("live routing regressions", () => {
 	it("collapses duplicate visible REPLY planner actions", () => {
 		expect(
 			stripReplyWhenActionOwnsTurn(
-				{ actions: [], logger } as unknown as Pick<
-					IAgentRuntime,
-					"actions" | "logger"
-				>,
+				{ actions: [], logger } as Pick<IAgentRuntime, "actions" | "logger">,
 				["REPLY", "REPLY"],
 			),
 		).toEqual(["REPLY"]);
@@ -38,7 +35,7 @@ describe("live routing regressions", () => {
 				{
 					actions: [{ name: "REPLY", similes: ["RESPOND"] }],
 					logger,
-				} as unknown as Pick<IAgentRuntime, "actions" | "logger">,
+				} as Pick<IAgentRuntime, "actions" | "logger">,
 				["RESPOND", "REPLY"],
 			),
 		).toEqual(["RESPOND"]);
@@ -48,7 +45,7 @@ describe("live routing regressions", () => {
 		const runtime = {
 			actions: [{ name: "LIFE" }, { name: "CALENDAR" }],
 			logger,
-		} as unknown as Pick<IAgentRuntime, "actions" | "logger">;
+		} as Pick<IAgentRuntime, "actions" | "logger">;
 
 		expect(
 			resolvePlannerActionName(runtime, undefined, "LIFE.add_goal"),
@@ -71,7 +68,7 @@ describe("live routing regressions", () => {
 				{ name: "COMPUTER_USE" },
 			],
 			logger,
-		} as unknown as Pick<IAgentRuntime, "actions" | "logger">;
+		} as Pick<IAgentRuntime, "actions" | "logger">;
 
 		expect(
 			resolvePlannerActionName(runtime, undefined, "TASKS_ADD_TODO"),
@@ -112,7 +109,7 @@ describe("live routing regressions", () => {
 		const runtime = {
 			actions: [{ name: "MESSAGE" }, { name: "CONNECTOR" }],
 			logger,
-		} as unknown as Pick<IAgentRuntime, "actions" | "logger">;
+		} as Pick<IAgentRuntime, "actions" | "logger">;
 		const exposedLookup = new Map<string, Action>([
 			["CONNECTOR", { name: "CONNECTOR" } as Action],
 		]);
@@ -165,7 +162,7 @@ describe("live routing regressions", () => {
 					description: "Search the web or other registered backends",
 				},
 			],
-		} as unknown as Pick<IAgentRuntime, "actions">;
+		} as Pick<IAgentRuntime, "actions">;
 
 		const suggestion = suggestOwnedActionFromMetadata(runtime, {
 			content: {
@@ -228,7 +225,7 @@ describe("live routing regressions", () => {
 					description: "Run local shell commands",
 				},
 			],
-		} as unknown as Pick<IAgentRuntime, "actions">;
+		} as Pick<IAgentRuntime, "actions">;
 		const text = "explain how df -h checks disk space on this VPS";
 		const howToRunText = "explain how to run df -h on this VPS";
 
@@ -277,7 +274,7 @@ describe("live routing regressions", () => {
 					description: "Search the web or other registered backends",
 				},
 			],
-		} as unknown as Pick<IAgentRuntime, "actions">;
+		} as Pick<IAgentRuntime, "actions">;
 
 		expect(
 			suggestOwnedActionFromMetadata(runtime, {
@@ -309,7 +306,7 @@ describe("live routing regressions", () => {
 				content: {
 					text: "can you explain the uploaded document?",
 				},
-			} as unknown as Parameters<typeof shouldSkipDocumentProviderRescue>[0]),
+			} as Parameters<typeof shouldSkipDocumentProviderRescue>[0]),
 		).toBe(false);
 	});
 
@@ -319,7 +316,7 @@ describe("live routing regressions", () => {
 				content: {
 					text: "what workflow should you use for processing documents in your knowledge base?",
 				},
-			} as unknown as Parameters<typeof shouldSkipDocumentProviderRescue>[0]),
+			} as Parameters<typeof shouldSkipDocumentProviderRescue>[0]),
 		).toBe(false);
 	});
 

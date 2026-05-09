@@ -16,7 +16,7 @@ import type {
   BscTradeSide,
   BscUnsignedApprovalTx,
   BscUnsignedTradeTx,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 import { ethers } from "ethers";
 import {
   normalizeRpcUrl,

@@ -134,7 +134,8 @@ function normalizeViewerConfig(value: unknown): AppViewerConfig | null {
       ? { postMessageAuth: value.postMessageAuth }
       : {}),
     ...(typeof value.sandbox === "string" ? { sandbox: value.sandbox } : {}),
-    ...(isRecord(value.authMessage) && typeof value.authMessage.type === "string"
+    ...(isRecord(value.authMessage) &&
+    typeof value.authMessage.type === "string"
       ? {
           authMessage: {
             type: value.authMessage.type,
@@ -201,10 +202,10 @@ function normalizeSessionState(value: unknown): AppSessionState | null {
         }
       : {}),
     ...(typeof value.summary === "string" || value.summary === null
-      ? { summary: value.summary }
+      ? { summary: value.summary as string | null }
       : {}),
     ...(typeof value.goalLabel === "string" || value.goalLabel === null
-      ? { goalLabel: value.goalLabel }
+      ? { goalLabel: value.goalLabel as string | null }
       : {}),
     ...(Array.isArray(value.suggestedPrompts)
       ? {

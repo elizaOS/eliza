@@ -27,10 +27,22 @@ import {
 import { RLMClient, stubResult } from "./client";
 import { estimateTokenCount } from "./cost";
 import type { RLMConfig } from "./types";
-import { DEFAULT_CONFIG, ENV_VARS } from "./types";
+import { DEFAULT_CONFIG, ENV_VARS, VALID_BACKENDS, VALID_ENVIRONMENTS } from "./types";
 
 // Safe env access for browser/non-Node environments
 const env: Record<string, string | undefined> = typeof process !== "undefined" ? process.env : {};
+
+function resolveBackend(value: string | undefined): RLMConfig["backend"] {
+  return VALID_BACKENDS.includes(value as RLMConfig["backend"])
+    ? (value as RLMConfig["backend"])
+    : DEFAULT_CONFIG.backend;
+}
+
+function resolveEnvironment(value: string | undefined): RLMConfig["environment"] {
+  return VALID_ENVIRONMENTS.includes(value as RLMConfig["environment"])
+    ? (value as RLMConfig["environment"])
+    : DEFAULT_CONFIG.environment;
+}
 
 // ============================================================================
 // Thread-safe Singleton Client Management
@@ -47,6 +59,18 @@ interface ClientState {
   client: RLMClient | null;
   initPromise: Promise<RLMClient> | null;
   configHash: string | null;
+}
+
+type RuntimeWithRLMConfig = IAgentRuntime & {
+  rlmConfig?: Partial<RLMConfig>;
+};
+
+function getRuntimeConfig(runtime: IAgentRuntime): Partial<RLMConfig> | undefined {
+  return (runtime as RuntimeWithRLMConfig).rlmConfig;
+}
+
+function setRuntimeConfig(runtime: IAgentRuntime, config: Partial<RLMConfig>): void {
+  (runtime as RuntimeWithRLMConfig).rlmConfig = config;
 }
 
 const clientState: ClientState = {
@@ -79,9 +103,7 @@ function computeConfigHash(config: Partial<RLMConfig>): string {
  */
 function getOrCreateClient(runtime: IAgentRuntime): RLMClient {
   // Get config from runtime or environment
-  const runtimeConfig = (runtime as unknown as Record<string, unknown>).rlmConfig as
-    | Partial<RLMConfig>
-    | undefined;
+  const runtimeConfig = getRuntimeConfig(runtime);
   const configHash = computeConfigHash(runtimeConfig ?? {});
 
   // Check if config changed - need to recreate client
@@ -144,9 +166,7 @@ async function handleTextGeneration(
   // Remove undefined values
   const cleanOpts = Object.fromEntries(Object.entries(opts).filter(([, v]) => v !== undefined));
 
-  const runtimeConfig = (runtime as unknown as Record<string, unknown>).rlmConfig as
-    | Partial<RLMConfig>
-    | undefined;
+  const runtimeConfig = getRuntimeConfig(runtime);
   const backend = runtimeConfig?.backend ?? DEFAULT_CONFIG.backend;
   const model = `${backend}:rlm`;
   const details: RecordLlmCallDetails = {
@@ -194,15 +214,15 @@ export const rlmPlugin: Plugin = {
     logger.info("[RLM] Initializing RLM plugin");
 
     // Store config on runtime
-    (runtime as unknown as Record<string, unknown>).rlmConfig = {
-      backend: config[ENV_VARS.BACKEND] ?? DEFAULT_CONFIG.backend,
-      environment: config[ENV_VARS.ENVIRONMENT] ?? DEFAULT_CONFIG.environment,
+    setRuntimeConfig(runtime, {
+      backend: resolveBackend(config[ENV_VARS.BACKEND]),
+      environment: resolveEnvironment(config[ENV_VARS.ENVIRONMENT]),
       maxIterations:
         Number.parseInt(config[ENV_VARS.MAX_ITERATIONS] ?? "", 10) || DEFAULT_CONFIG.maxIterations,
       maxDepth: Number.parseInt(config[ENV_VARS.MAX_DEPTH] ?? "", 10) || DEFAULT_CONFIG.maxDepth,
       verbose: ["1", "true", "yes"].includes((config[ENV_VARS.VERBOSE] ?? "").toLowerCase()),
       pythonPath: config[ENV_VARS.PYTHON_PATH] ?? DEFAULT_CONFIG.pythonPath,
-    };
+    });
 
     // Pre-initialize client
     const client = getOrCreateClient(runtime);

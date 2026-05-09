@@ -1509,7 +1509,7 @@ export class DocumentService extends Service {
 			roomId: finalScope.roomId,
 			worldId: finalScope.worldId,
 			entityId: finalScope.entityId,
-			content: item.content as unknown as Content,
+			content: item.content as Content,
 			metadata: documentMetadata,
 			createdAt: Date.now(),
 		};

@@ -234,6 +234,12 @@ function mockTextHandler(params: Record<string, unknown>): string {
   return MOCK_MESSAGE_HANDLER_TOON;
 }
 
+function readModelParams(params: unknown): Record<string, unknown> {
+  return params && typeof params === "object"
+    ? (params as Record<string, unknown>)
+    : {};
+}
+
 const mockVoicebenchPlugin: Plugin = {
   name: "voicebench-mock-models",
   description:
@@ -255,15 +261,15 @@ const mockVoicebenchPlugin: Plugin = {
   ],
   models: {
     [ModelType.TEXT_SMALL]: async (_runtime, params) =>
-      mockTextHandler(params as unknown as Record<string, unknown>),
+      mockTextHandler(readModelParams(params)),
     [ModelType.TEXT_LARGE]: async (_runtime, params) =>
-      mockTextHandler(params as unknown as Record<string, unknown>),
+      mockTextHandler(readModelParams(params)),
     [ModelType.RESPONSE_HANDLER]: async (_runtime, params) =>
-      mockTextHandler(params as unknown as Record<string, unknown>),
+      mockTextHandler(readModelParams(params)),
     [ModelType.ACTION_PLANNER]: async (_runtime, params) =>
-      mockTextHandler(params as unknown as Record<string, unknown>),
+      mockTextHandler(readModelParams(params)),
     [ModelType.TEXT_COMPLETION]: async (_runtime, params) =>
-      mockTextHandler(params as unknown as Record<string, unknown>),
+      mockTextHandler(readModelParams(params)),
     [ModelType.TEXT_EMBEDDING]: async () => [...ZERO_EMBEDDING],
     [ModelType.TRANSCRIPTION]: async () => MOCK_TRANSCRIPT,
     [ModelType.TEXT_TO_SPEECH]: async (_runtime, input) => {
@@ -533,13 +539,11 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
   // fall back to the sibling source-checkout layout that some workspaces use.
   let groqModule: GroqPluginModule;
   try {
-    groqModule = (await import(
-      "@elizaos/plugin-groq"
-    )) as unknown as GroqPluginModule;
+    groqModule = (await import("@elizaos/plugin-groq")) as GroqPluginModule;
   } catch {
     groqModule = (await import(
       "../../../../../plugins/plugin-groq/index.ts"
-    )) as unknown as GroqPluginModule;
+    )) as GroqPluginModule;
   }
   const groq = groqModule?.groqPlugin ?? groqModule?.default;
   if (!groq) {
@@ -554,11 +558,11 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
   try {
     elevenLabsModule = (await import(
       "@elizaos/plugin-elevenlabs"
-    )) as unknown as ElevenLabsPluginModule;
+    )) as ElevenLabsPluginModule;
   } catch {
     elevenLabsModule = (await import(
       "../../../../../plugins/plugin-elevenlabs/src/index.ts"
-    )) as unknown as ElevenLabsPluginModule;
+    )) as ElevenLabsPluginModule;
   }
   const elevenLabs =
     elevenLabsModule?.elevenLabsPlugin ?? elevenLabsModule?.default;

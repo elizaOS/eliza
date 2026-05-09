@@ -117,6 +117,13 @@ function toRequestHeaders(headers: Headers): Record<string, string> {
 	return normalized;
 }
 
+/** Node's `Readable.toWeb` stream is valid `fetch` `BodyInit`; lib.dom and `node:stream/web` disagree in TypeScript. */
+function incomingMessageToWebBody(stream: IncomingMessage): BodyInit {
+	const webStream = Readable.toWeb(stream);
+	// @ts-expect-error Node stream/web ReadableStream is accepted by Response; DOM vs Node declarations diverge.
+	return webStream;
+}
+
 function responseFromIncomingMessage(response: IncomingMessage): Response {
 	const headers = new Headers();
 	for (const [key, value] of Object.entries(response.headers)) {
@@ -128,16 +135,15 @@ function responseFromIncomingMessage(response: IncomingMessage): Response {
 	}
 
 	const status = response.statusCode ?? 500;
-	const body =
-		status === 204 || status === 205 || status === 304
-			? null
-			: (Readable.toWeb(response) as unknown as ReadableStream<Uint8Array>);
-
-	return new Response(body, {
+	const init = {
 		status,
 		statusText: response.statusMessage,
 		headers,
-	});
+	} satisfies ResponseInit;
+	if (status === 204 || status === 205 || status === 304) {
+		return new Response(null, init);
+	}
+	return new Response(incomingMessageToWebBody(response), init);
 }
 
 async function requestWithPinnedAddress(

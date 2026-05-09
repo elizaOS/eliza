@@ -37,6 +37,23 @@ import {
   useAuth,
 } from "@/lib/context/auth-context";
 
+type TelegramLoginWindow = Window & {
+  Telegram?: {
+    Login?: {
+      auth: (
+        options: { bot_id: string; request_access?: string },
+        callback: (data: TelegramAuthData | false) => void,
+      ) => void;
+    };
+  };
+};
+
+declare global {
+  interface Window {
+    Telegram?: TelegramLoginWindow["Telegram"];
+  }
+}
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -582,18 +599,7 @@ export default function GetStartedPage() {
       return;
     }
 
-    const telegram = (
-      window as unknown as {
-        Telegram?: {
-          Login?: {
-            auth: (
-              options: { bot_id: string; request_access?: string },
-              callback: (data: TelegramAuthData | false) => void,
-            ) => void;
-          };
-        };
-      }
-    ).Telegram;
+    const telegram = window.Telegram;
 
     if (telegram?.Login?.auth) {
       setIsTelegramLoading(true);

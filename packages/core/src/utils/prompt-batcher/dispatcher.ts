@@ -49,14 +49,15 @@ export class PromptDispatcher {
 							.join("\n\n"),
 					);
 					const modelSize = callPlan.model;
+					const params = {
+						prompt,
+						...mergedExecOptions,
+					} satisfies Omit<GenerateTextParams, "prompt"> & {
+						prompt: string;
+					};
 					const response = await runtime.dynamicPromptExecFromState({
 						state,
-						params: {
-							prompt,
-							...mergedExecOptions,
-						} as unknown as Omit<GenerateTextParams, "prompt"> & {
-							prompt: string;
-						},
+						params,
 						schema,
 						options: {
 							modelSize,

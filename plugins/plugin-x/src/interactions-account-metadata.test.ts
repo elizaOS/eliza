@@ -9,24 +9,26 @@ import type { ClientBase } from "./base";
 import { TwitterInteractionClient } from "./interactions";
 import type { TwitterClientState, TwitterInteractionPayload } from "./types";
 
+function asRuntime<T extends object>(runtime: T): IAgentRuntime & T {
+  return runtime as IAgentRuntime & T;
+}
+
 function createRuntime(): IAgentRuntime & {
   createMemory: ReturnType<typeof vi.fn>;
   emitEvent: ReturnType<typeof vi.fn>;
 } {
-  return {
+  const runtime = asRuntime({
     agentId: "agent-1" as UUID,
     createMemory: vi.fn(async () => undefined),
     emitEvent: vi.fn(),
     getSetting: vi.fn(),
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  } as unknown as IAgentRuntime & {
-    createMemory: ReturnType<typeof vi.fn>;
-    emitEvent: ReturnType<typeof vi.fn>;
-  };
+  });
+  return runtime;
 }
 
 function createClient(accountId: string): ClientBase {
-  return { accountId } as unknown as ClientBase;
+  return { accountId } as ClientBase;
 }
 
 describe("Twitter interaction memory account metadata", () => {
@@ -49,7 +51,7 @@ describe("Twitter interaction memory account metadata", () => {
         text: "hello",
         conversationId: "conversation-1",
       },
-    } as unknown as TwitterInteractionPayload;
+    } as TwitterInteractionPayload;
 
     await client.handleInteraction(interaction);
 

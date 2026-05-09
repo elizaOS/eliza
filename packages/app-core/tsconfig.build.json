@@ -35,9 +35,9 @@
         "../../plugins/plugin-elizacloud/dist/*"
       ],
       "@elizaos/plugin-sql": [
-        "../../plugins/plugin-sql/typescript/dist/index.node.d.ts"
+        "../../plugins/plugin-sql/src/dist/index.node.d.ts"
       ],
-      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/typescript/dist/*"],
+      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/dist/*"],
       "@elizaos/plugin-wechat": ["../../plugins/plugin-wechat/dist/index.d.ts"],
       "@elizaos/plugin-wechat/*": ["../../plugins/plugin-wechat/dist/*"],
       "@elizaos/capacitor-*": ["../native-plugins/*/dist/index.d.ts"],

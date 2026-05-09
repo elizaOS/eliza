@@ -200,10 +200,16 @@ function parseSourceFilter(raw: string | null): Set<string> | null {
   return expandConnectorSourceFilter(tags);
 }
 
-function runtimeHasSendHandler(runtime: AgentRuntime, source: string): boolean {
+function getRuntimeSendHandlers(
+  runtime: AgentRuntime,
+): Map<string, unknown> | null {
   const sendHandlers = (runtime as unknown as { sendHandlers?: unknown })
     .sendHandlers;
-  return sendHandlers instanceof Map && sendHandlers.has(source);
+  return sendHandlers instanceof Map ? sendHandlers : null;
+}
+
+function runtimeHasSendHandler(runtime: AgentRuntime, source: string): boolean {
+  return getRuntimeSendHandlers(runtime)?.has(source) ?? false;
 }
 
 /**

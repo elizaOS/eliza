@@ -25,6 +25,24 @@ export interface AgentLifecycleRouteContext
   state: AgentLifecycleRouteState;
 }
 
+type AutonomyToggleService = {
+  enableAutonomy(): Promise<void>;
+  disableAutonomy(): Promise<void>;
+};
+
+function isAutonomyToggleService(
+  service: unknown,
+): service is AutonomyToggleService {
+  return (
+    typeof service === "object" &&
+    service !== null &&
+    typeof (service as { enableAutonomy?: unknown }).enableAutonomy ===
+      "function" &&
+    typeof (service as { disableAutonomy?: unknown }).disableAutonomy ===
+      "function"
+  );
+}
+
 export async function handleAgentLifecycleRoutes(
   ctx: AgentLifecycleRouteContext,
 ): Promise<boolean> {
@@ -115,14 +133,11 @@ export async function handleAgentLifecycleRoutes(
     // section is actually registered/unregistered.
     const autonomySvc =
       runtime.getService?.("AUTONOMY") ?? runtime.getService?.("autonomy");
-    const svcAny = autonomySvc as unknown as
-      | { enableAutonomy(): Promise<void>; disableAutonomy(): Promise<void> }
-      | undefined;
-    if (svcAny && typeof svcAny.enableAutonomy === "function") {
+    if (isAutonomyToggleService(autonomySvc)) {
       if (body.enabled) {
-        await svcAny.enableAutonomy();
+        await autonomySvc.enableAutonomy();
       } else {
-        await svcAny.disableAutonomy();
+        await autonomySvc.disableAutonomy();
       }
     }
     // Always sync the property — enableAutonomy()/disableAutonomy() set it

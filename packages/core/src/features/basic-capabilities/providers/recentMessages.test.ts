@@ -46,7 +46,7 @@ function makeRuntime(memories: Memory[]): IAgentRuntime {
 		getMemories: vi.fn(async () => memories),
 		getRoomsForParticipants: vi.fn(async () => []),
 		getService: vi.fn(() => null),
-	} as unknown as IAgentRuntime;
+	} as IAgentRuntime;
 }
 
 describe("recentMessagesProvider", () => {

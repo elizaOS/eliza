@@ -99,6 +99,7 @@ import type {
 } from "./schedule-sync-contracts.js";
 import { lifeOpsSchema } from "./schema.js";
 import {
+  DEFAULT_WORKFLOW_PERMISSION_POLICY,
   REMINDER_REVIEW_AT_METADATA_KEY,
   REMINDER_REVIEW_STATUS_METADATA_KEY,
 } from "./service-constants.js";
@@ -106,6 +107,7 @@ import {
   executeRawSql,
   parseJsonArray,
   parseJsonRecord,
+  parseJsonValue,
   sqlBoolean,
   sqlInteger,
   sqlJson,
@@ -290,19 +292,23 @@ function parseTaskDefinition(
     timezone: toText(row.timezone),
     status: toText(row.status) as LifeOpsTaskDefinition["status"],
     priority: toNumber(row.priority, 3),
-    cadence: parseJsonRecord(
+    cadence: parseJsonValue<LifeOpsTaskDefinition["cadence"]>(
       row.cadence_json,
-    ) as unknown as LifeOpsTaskDefinition["cadence"],
-    windowPolicy: parseJsonRecord(
+      { kind: "once", dueAt: "" },
+    ),
+    windowPolicy: parseJsonValue<LifeOpsTaskDefinition["windowPolicy"]>(
       row.window_policy_json,
-    ) as unknown as LifeOpsTaskDefinition["windowPolicy"],
-    progressionRule: parseJsonRecord(
+      { timezone: "UTC", windows: [] },
+    ),
+    progressionRule: parseJsonValue<LifeOpsTaskDefinition["progressionRule"]>(
       row.progression_rule_json,
-    ) as unknown as LifeOpsTaskDefinition["progressionRule"],
+      { kind: "none" },
+    ),
     websiteAccess: row.website_access_json
-      ? (parseJsonRecord(
+      ? parseJsonValue<LifeOpsTaskDefinition["websiteAccess"]>(
           row.website_access_json,
-        ) as unknown as LifeOpsTaskDefinition["websiteAccess"])
+          null,
+        )
       : null,
     reminderPlanId: row.reminder_plan_id ? toText(row.reminder_plan_id) : null,
     goalId: row.goal_id ? toText(row.goal_id) : null,
@@ -352,7 +358,7 @@ function parseOccurrenceView(
     ) as LifeOpsOccurrenceView["definitionStatus"],
     cadence: parseJsonRecord(
       row.definition_cadence_json,
-    ) as unknown as LifeOpsOccurrenceView["cadence"],
+    ) as LifeOpsOccurrenceView["cadence"],
     title: toText(row.definition_title),
     description: toText(row.definition_description),
     priority: toNumber(row.definition_priority, 3),
@@ -479,7 +485,7 @@ function parseFollowUp(row: Record<string, unknown>): LifeOpsFollowUp {
     status: toText(row.status) as LifeOpsFollowUp["status"],
     priority: toNumber(row.priority, 3),
     draft: row.draft_json
-      ? (parseJsonRecord(row.draft_json) as unknown as LifeOpsCrossChannelDraft)
+      ? parseJsonValue<LifeOpsCrossChannelDraft | null>(row.draft_json, null)
       : null,
     completedAt: row.completed_at ? toText(row.completed_at) : null,
     metadata: parseJsonRecord(row.metadata_json),
@@ -1023,7 +1029,7 @@ function parseCalendarEvent(
     organizer: row.organizer_json ? parseJsonRecord(row.organizer_json) : null,
     attendees: parseJsonArray(
       row.attendees_json,
-    ) as unknown as LifeOpsCalendarEvent["attendees"],
+    ) as LifeOpsCalendarEvent["attendees"],
     metadata: parseJsonRecord(row.metadata_json),
     syncedAt: toText(row.synced_at),
     updatedAt: toText(row.updated_at),
@@ -1310,15 +1316,20 @@ function parseWorkflowDefinition(
     triggerType: toText(
       row.trigger_type,
     ) as LifeOpsWorkflowDefinition["triggerType"],
-    schedule: parseJsonRecord(
+    schedule: parseJsonValue<LifeOpsWorkflowDefinition["schedule"]>(
       row.schedule_json,
-    ) as unknown as LifeOpsWorkflowDefinition["schedule"],
-    actionPlan: parseJsonRecord(
+      { kind: "manual" },
+    ),
+    actionPlan: parseJsonValue<LifeOpsWorkflowDefinition["actionPlan"]>(
       row.action_plan_json,
-    ) as unknown as LifeOpsWorkflowDefinition["actionPlan"],
-    permissionPolicy: parseJsonRecord(
+      { steps: [] },
+    ),
+    permissionPolicy: parseJsonValue<
+      LifeOpsWorkflowDefinition["permissionPolicy"]
+    >(
       row.permission_policy_json,
-    ) as unknown as LifeOpsWorkflowDefinition["permissionPolicy"],
+      DEFAULT_WORKFLOW_PERMISSION_POLICY,
+    ),
     status: toText(row.status) as LifeOpsWorkflowDefinition["status"],
     createdBy: toText(row.created_by) as LifeOpsWorkflowDefinition["createdBy"],
     metadata: parseJsonRecord(row.metadata_json),
@@ -1405,7 +1416,7 @@ function parseBrowserSession(
         : (rawStatus as LifeOpsBrowserSession["status"]),
     actions: parseJsonArray(
       row.actions_json,
-    ) as unknown as LifeOpsBrowserSession["actions"],
+    ) as LifeOpsBrowserSession["actions"],
     currentActionIndex: toNumber(row.current_action_index, 0),
     awaitingConfirmationForActionId: row.awaiting_confirmation_for_action_id
       ? toText(row.awaiting_confirmation_for_action_id)
@@ -1875,9 +1886,15 @@ function parseScheduleRegularity(value: unknown): LifeOpsScheduleRegularity {
 function parseTelemetryEventRow(
   row: Record<string, unknown>,
 ): LifeOpsTelemetryEvent {
-  const payload = parseJsonRecord(
+  const payload = parseJsonValue<LifeOpsTelemetryPayload>(
     row.payload_json,
-  ) as unknown as LifeOpsTelemetryPayload;
+    {
+      family: "manual_override_event",
+      platform: "macos_desktop",
+      kind: "going_to_bed",
+      note: null,
+    },
+  );
   return {
     id: toText(row.id),
     agentId: toText(row.agent_id),

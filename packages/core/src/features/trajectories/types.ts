@@ -1,5 +1,5 @@
 import type { UUID } from "../../types";
-import type { ContextEvent, ContextObject } from "../../types/context-object";
+import type { ContextEvent } from "../../types/context-object";
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
@@ -22,8 +22,9 @@ export interface ContextObjectTrajectoryExport {
 	events: ContextEvent[];
 	metrics?: JsonObject;
 	metadata?: JsonObject;
-	contextObject?: Omit<ContextObject, "events"> & {
-		events?: ContextEvent[];
+	/** Snapshot of context object plus optional events; JSON-sanitized for export */
+	contextObject?: JsonObject & {
+		id: string;
 	};
 }
 

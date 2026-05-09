@@ -145,22 +145,17 @@ const BRANDED_WINDOW_KEYS = {
   shareQueue: `__${APP_ENV_PREFIX}_SHARE_QUEUE__`,
 } as const;
 
-type AppCompatWindow = Window &
-  Record<string, unknown> & {
-    __ELIZA_APP_SHARE_QUEUE__?: ShareTargetPayload[];
-    __ELIZA_APP_CHARACTER_EDITOR__?: typeof CharacterEditor;
-    __ELIZA_APP_API_BASE__?: string;
-  };
-
-function getAppWindow(): AppCompatWindow {
-  return window as unknown as AppCompatWindow;
+function isShareTargetQueue(value: unknown): value is ShareTargetPayload[] {
+  return Array.isArray(value);
 }
 
 function getInjectedAppApiBase(): string | undefined {
-  const appWindow = getAppWindow();
-  const brandedApiBase = appWindow[BRANDED_WINDOW_KEYS.apiBase];
+  const brandedApiBase: unknown = Reflect.get(
+    window,
+    BRANDED_WINDOW_KEYS.apiBase,
+  );
   return (
-    appWindow.__ELIZA_APP_API_BASE__ ??
+    window.__ELIZA_APP_API_BASE__ ??
     (typeof brandedApiBase === "string" ? brandedApiBase : undefined)
   );
 }
@@ -248,7 +243,7 @@ if (isElizaOS() && !hasRuntimePickerOverride()) {
 
 // Register custom character editor for app-core's ViewRouter to pick up
 window.__ELIZA_APP_CHARACTER_EDITOR__ = CharacterEditor;
-getAppWindow()[BRANDED_WINDOW_KEYS.characterEditor] = CharacterEditor;
+Reflect.set(window, BRANDED_WINDOW_KEYS.characterEditor, CharacterEditor);
 
 import { getStylePresets } from "@elizaos/shared";
 
@@ -304,21 +299,21 @@ const appBootConfig: AppBootConfig = {
 setBootConfig(appBootConfig);
 
 function getShareQueue(): ShareTargetPayload[] {
-  const appWindow = getAppWindow();
-  const brandedQueue = appWindow[BRANDED_WINDOW_KEYS.shareQueue];
+  const brandedQueue: unknown = Reflect.get(
+    window,
+    BRANDED_WINDOW_KEYS.shareQueue,
+  );
   const existing =
-    appWindow.__ELIZA_APP_SHARE_QUEUE__ ??
-    (Array.isArray(brandedQueue)
-      ? (brandedQueue as ShareTargetPayload[])
-      : undefined);
+    window.__ELIZA_APP_SHARE_QUEUE__ ??
+    (isShareTargetQueue(brandedQueue) ? brandedQueue : undefined);
   if (existing) {
-    appWindow.__ELIZA_APP_SHARE_QUEUE__ = existing;
-    appWindow[BRANDED_WINDOW_KEYS.shareQueue] = existing;
+    window.__ELIZA_APP_SHARE_QUEUE__ = existing;
+    Reflect.set(window, BRANDED_WINDOW_KEYS.shareQueue, existing);
     return existing;
   }
   const queue: ShareTargetPayload[] = [];
-  appWindow.__ELIZA_APP_SHARE_QUEUE__ = queue;
-  appWindow[BRANDED_WINDOW_KEYS.shareQueue] = queue;
+  window.__ELIZA_APP_SHARE_QUEUE__ = queue;
+  Reflect.set(window, BRANDED_WINDOW_KEYS.shareQueue, queue);
   return queue;
 }
 

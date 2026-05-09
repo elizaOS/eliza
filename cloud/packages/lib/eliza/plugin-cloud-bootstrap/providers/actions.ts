@@ -27,6 +27,14 @@ type NativeToolDefinition = {
   };
 };
 
+type McpTier2IndexService = {
+  getTier2Index?: () => { getToolCount: () => number };
+};
+
+function hasTier2IndexService(value: unknown): value is McpTier2IndexService {
+  return typeof value === "object" && value !== null && "getTier2Index" in value;
+}
+
 function buildNativeToolDefinition(action: Action): NativeToolDefinition {
   const params = (action as ActionWithOptionalParams).parameters ?? [];
   const properties: Record<string, unknown> = {};
@@ -134,10 +142,8 @@ export const actionsProvider: Provider = {
 
         let discoverableToolCount = 0;
         try {
-          const mcpSvc = runtime.getService("mcp") as unknown as
-            | { getTier2Index?: () => { getToolCount: () => number } }
-            | undefined;
-          if (mcpSvc && typeof mcpSvc.getTier2Index === "function") {
+          const mcpSvc = runtime.getService("mcp");
+          if (hasTier2IndexService(mcpSvc) && typeof mcpSvc.getTier2Index === "function") {
             const index = mcpSvc.getTier2Index();
             const count = index?.getToolCount?.();
             if (typeof count === "number") discoverableToolCount = count;

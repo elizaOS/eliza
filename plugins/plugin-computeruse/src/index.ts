@@ -64,8 +64,7 @@ export const computerUsePlugin: Plugin = {
     "automate web browsers via CDP, manage desktop windows, read/write files, and use a local terminal. " +
     "Ported from open-computer-use (Apache 2.0).",
 
-  // biome-ignore lint/suspicious/noExplicitAny: ElizaOS Plugin type expects Service[] but our class uses static start()
-  services: [ComputerUseService as any],
+  services: [ComputerUseService],
 
   // COMPUTER_USE (canonical desktop interaction: screenshot/click/key/etc.)
   // and DESKTOP (parent action dispatching file/window/terminal ops) stay

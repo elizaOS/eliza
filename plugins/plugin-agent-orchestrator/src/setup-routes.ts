@@ -6,7 +6,7 @@
  */
 
 import type http from "node:http";
-import type { IAgentRuntime, Plugin, Route } from "@elizaos/core";
+import type { IAgentRuntime, Plugin, Route, Service } from "@elizaos/core";
 import type { RouteContext } from "./api/route-utils.js";
 import { handleCodingAgentRoutes } from "./api/routes.js";
 import { getCoordinator, type PTYService } from "./services/pty-service.js";
@@ -17,12 +17,12 @@ type PluginRouteHandler = NonNullable<Route["handler"]>;
 function buildRouteContext(runtime: IAgentRuntime): RouteContext {
   return {
     runtime,
-    ptyService: runtime.getService(
-      "PTY_SERVICE",
-    ) as unknown as PTYService | null,
-    workspaceService: runtime.getService(
-      "CODING_WORKSPACE_SERVICE",
-    ) as unknown as CodingWorkspaceService | null,
+    ptyService: runtime.getService("PTY_SERVICE") as
+      | (Service & PTYService)
+      | null,
+    workspaceService: runtime.getService("CODING_WORKSPACE_SERVICE") as
+      | (Service & CodingWorkspaceService)
+      | null,
     coordinator: getCoordinator(runtime),
   };
 }
