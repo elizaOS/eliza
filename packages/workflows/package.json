@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/workflows",
   "version": "0.1.0",
-  "description": "workflows workflow type contracts and helpers for elizaOS workflow plugins.",
+  "description": "Workflow type contracts consumed by elizaOS workflow plugins.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,59 +19,17 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
+    "test": "bun test __tests__",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "clean": "rm -rf dist"
   },
-  "dependencies": {
-    "ast-types": "^0.15.2",
-    "axios": "^1.6.0",
-    "callsites": "^4.0.0",
-    "esprima-next": "^5.8.4",
-    "form-data": "^4.0.0",
-    "jmespath": "^0.16.0",
-    "js-base64": "^3.7.5",
-    "jsonrepair": "^3.5.0",
-    "jssha": "^3.3.1",
-    "lodash": "^4.17.21",
-    "luxon": "^3.4.0",
-    "md5": "^2.3.0",
-    "recast": "^0.22.0",
-    "title-case": "^3.0.3",
-    "transliteration": "^2.3.5",
-    "uuid": "^14.0.0",
-    "xml2js": "^0.6.2",
-    "zod": "^4.4.3"
-  },
-  "peerDependencies": {
-    "@codemirror/autocomplete": "*",
-    "@types/express": "*"
-  },
-  "peerDependenciesMeta": {
-    "@codemirror/autocomplete": {
-      "optional": true
-    },
-    "@types/express": {
-      "optional": true
-    }
-  },
   "devDependencies": {
-    "@types/jmespath": "^0.15.2",
-    "@types/lodash": "^4.17.0",
-    "@types/luxon": "^3.4.0",
-    "@types/md5": "^2.3.5",
+    "@biomejs/biome": "^2.4.14",
     "@types/node": "^25.1.0",
-    "@types/ssh2": "^1.15.0",
-    "@types/xml2js": "^0.4.14",
-    "@codemirror/autocomplete": "^6.10.0",
-    "@types/express": "^4.17.21",
-    "jsdom": "^25.0.0",
-    "nock": "^14.0.14",
-    "ssh2": "^1.16.0",
-    "typescript": "^6.0.3",
-    "@biomejs/biome": "^2.4.14"
+    "typescript": "^6.0.3"
   },
   "engines": {
     "node": ">=22.0.0"

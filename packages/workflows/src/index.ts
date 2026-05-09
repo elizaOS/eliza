@@ -413,7 +413,13 @@ export type ThemeIconColor =
 	| 'purple'
 	| 'crimson';
 
-export type NodeGroupType = 'input' | 'output' | 'organization' | 'schedule' | 'transform' | 'trigger';
+export type NodeGroupType =
+	| 'input'
+	| 'output'
+	| 'organization'
+	| 'schedule'
+	| 'transform'
+	| 'trigger';
 
 export type CodexData = {
 	categories?: string[];
@@ -515,14 +521,7 @@ export type WebhookResponseMode =
 
 export type WebhookResponseData = 'allEntries' | 'firstEntryJson' | 'firstEntryBinary' | 'noData';
 
-export type IHttpRequestMethods =
-	| 'DELETE'
-	| 'GET'
-	| 'HEAD'
-	| 'OPTIONS'
-	| 'PATCH'
-	| 'POST'
-	| 'PUT';
+export type IHttpRequestMethods = 'DELETE' | 'GET' | 'HEAD' | 'OPTIONS' | 'PATCH' | 'POST' | 'PUT';
 
 export interface IWebhookDescription {
 	[key: string]: IHttpRequestMethods | WebhookResponseMode | boolean | string | undefined;
