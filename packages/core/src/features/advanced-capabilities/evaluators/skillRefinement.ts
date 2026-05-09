@@ -21,12 +21,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { logger } from "../../../logger.ts";
 import type {
+	Action,
 	ActionResult,
-	EvaluationExample,
-	Evaluator,
 	IAgentRuntime,
 } from "../../../types/index.ts";
-import { ModelType } from "../../../types/index.ts";
+import { ActionMode, ModelType } from "../../../types/index.ts";
 import { resolveStateDir } from "../../../utils/state-dir.ts";
 import {
 	formatTrajectoryForPrompt,
@@ -267,12 +266,13 @@ function locateActiveSkill(name: string): string | null {
 	return null;
 }
 
-export const skillRefinementEvaluator: Evaluator = {
+export const skillRefinementAction: Action = {
 	name: EVAL_NAME,
 	description: EVAL_DESCRIPTION,
 	similes: [],
-	alwaysRun: false,
-	examples: [] as EvaluationExample[],
+	mode: ActionMode.ALWAYS_AFTER,
+	modePriority: 210,
+	examples: [],
 
 	validate: async (runtime: IAgentRuntime): Promise<boolean> => {
 		const service = getTrajectoryService(runtime);

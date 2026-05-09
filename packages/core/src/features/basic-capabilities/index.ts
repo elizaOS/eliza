@@ -35,8 +35,6 @@ import type {
 	Content,
 	ControlMessagePayload,
 	EntityPayload,
-	Evaluator,
-	EvaluatorEventPayload,
 	IAgentRuntime,
 	IMessageBusService,
 	InvokePayload,
@@ -74,7 +72,6 @@ import { generateMediaAction } from "../advanced-capabilities/actions/generateMe
 import {
 	advancedActions,
 	advancedCapabilities,
-	advancedEvaluators,
 	advancedProviders,
 	advancedServices,
 } from "../advanced-capabilities/index.ts";
@@ -90,12 +87,10 @@ import * as providers from "./providers/index.ts";
 
 // Re-export advanced capability modules
 export * from "../advanced-capabilities/actions/index.ts";
-export * from "../advanced-capabilities/evaluators/index.ts";
 // Re-export advanced capabilities
 export {
 	advancedActions,
 	advancedCapabilities,
-	advancedEvaluators,
 	advancedProviders,
 	advancedServices,
 } from "../advanced-capabilities/index.ts";
@@ -1105,37 +1100,6 @@ const events: PluginEvents = {
 		},
 	],
 
-	[EventType.EVALUATOR_STARTED]: [
-		async (payload: EvaluatorEventPayload) => {
-			logger.debug(
-				{
-					src: "basic-capabilities:evaluator",
-					agentId: payload.runtime.agentId,
-					evaluatorName: payload.evaluatorName,
-					evaluatorId: payload.evaluatorId,
-				},
-				"Evaluator started",
-			);
-		},
-	],
-
-	[EventType.EVALUATOR_COMPLETED]: [
-		async (payload: EvaluatorEventPayload) => {
-			const status = payload.error ? "failed" : "completed";
-			logger.debug(
-				{
-					src: "basic-capabilities:evaluator",
-					agentId: payload.runtime.agentId,
-					status,
-					evaluatorName: payload.evaluatorName,
-					evaluatorId: payload.evaluatorId,
-					error: payload.error?.message || undefined,
-				},
-				"Evaluator completed",
-			);
-		},
-	],
-
 	[EventType.RUN_STARTED]: [
 		async (payload: RunEventPayload) => {
 			await payload.runtime.createLogs([
@@ -1260,7 +1224,6 @@ export const basicProviders = [
 	providers.contextBenchProvider,
 	providers.currentTimeProvider,
 	providers.entitiesProvider,
-	providers.evaluatorsProvider,
 	providers.platformChatContextProvider,
 	providers.platformUserContextProvider,
 	providers.providersProvider,
@@ -1281,11 +1244,6 @@ export const basicActions = [
 ];
 
 /**
- * Basic evaluators - none by default (evaluators are typically advanced features)
- */
-export const basicEvaluators: never[] = [];
-
-/**
  * Basic services - essential infrastructure services
  */
 export const basicServices: ServiceClass[] = [
@@ -1299,7 +1257,6 @@ export const basicServices: ServiceClass[] = [
 export const basicCapabilities = {
 	providers: basicProviders,
 	actions: basicActions,
-	evaluators: basicEvaluators,
 	services: basicServices,
 };
 
@@ -1340,7 +1297,6 @@ export interface CapabilityConfig {
 const autonomyCapabilities = {
 	providers: [autonomy.adminChatProvider, autonomy.autonomyStatusProvider],
 	actions: [withCanonicalActionDocs(autonomy.sendToAdminAction)],
-	evaluators: [] as Evaluator[],
 	services: [autonomy.AutonomyService] as ServiceClass[],
 	routes: autonomy.autonomyRoutes,
 };
@@ -1370,7 +1326,7 @@ export function createBasicCapabilitiesPlugin(
 
 	return {
 		name: "basic-capabilities",
-		description: "Agent basic capabilities with core actions and evaluators",
+		description: "Agent basic capabilities with core actions",
 		actions: [
 			...(config.disableBasic ? [] : basicActions),
 			...(useAdvanced ? advancedActions : []),
@@ -1386,11 +1342,6 @@ export function createBasicCapabilitiesPlugin(
 			...(config.enableTrust ? trustCapability.providers : []),
 			...(config.enableSecretsManager ? secretsCapability.providers : []),
 			...(config.enablePluginManager ? pluginManagerCapability.providers : []),
-		],
-		evaluators: [
-			...(config.disableBasic ? [] : basicEvaluators),
-			...(useAdvanced ? advancedEvaluators : []),
-			...(config.enableAutonomy ? autonomyCapabilities.evaluators : []),
 		],
 		services: [
 			...(config.disableBasic ? [] : basicServices),

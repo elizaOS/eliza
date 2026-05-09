@@ -1,7 +1,8 @@
 import { requireEvaluatorSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import {
-	type Evaluator,
+	type Action,
+	ActionMode,
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
@@ -15,7 +16,6 @@ import {
 	composePromptFromState,
 	parseJSONObjectFromText,
 } from "../../../utils.ts";
-import { toEvaluationExamples } from "../../evaluator-doc-examples.ts";
 import { longTermExtractionTemplate } from "../prompts.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
@@ -102,12 +102,13 @@ function parseMemoryExtractionResponse(text: string): MemoryExtraction[] {
 	return extractions;
 }
 
-export const longTermExtractionEvaluator: Evaluator = {
+export const longTermExtractionAction: Action = {
 	name: spec.name,
 	description: spec.description,
 	similes: spec.similes ? [...spec.similes] : [],
-	alwaysRun: spec.alwaysRun ?? true,
-	examples: toEvaluationExamples(spec.examples),
+	mode: ActionMode.ALWAYS_AFTER,
+	modePriority: 410,
+	examples: [],
 
 	validate: async (
 		runtime: IAgentRuntime,

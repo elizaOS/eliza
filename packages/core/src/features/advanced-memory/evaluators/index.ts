@@ -1,2 +1,2 @@
-export { longTermExtractionEvaluator } from "./long-term-extraction.ts";
-export { summarizationEvaluator } from "./summarization.ts";
+export { longTermExtractionAction } from "./long-term-extraction.ts";
+export { summarizationAction } from "./summarization.ts";

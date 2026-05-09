@@ -12,7 +12,6 @@ import type {
 	ActionParameter as ProtoActionParameter,
 	ActionParameterSchema as ProtoActionParameterSchema,
 	ActionParameters as ProtoActionParametersType,
-	EvaluationExample as ProtoEvaluationExample,
 } from "./proto.js";
 import type { IAgentRuntime } from "./runtime";
 import type { ActionPlan, State } from "./state";
@@ -130,11 +129,6 @@ export type ProtoActionParameters = ProtoActionParametersType;
 export interface ActionExample
 	extends Omit<ProtoActionExample, "$typeName" | "$unknown" | "content"> {
 	content: Content;
-}
-
-export interface EvaluationExample
-	extends Omit<ProtoEvaluationExample, "$typeName" | "$unknown" | "messages"> {
-	messages: ActionExample[];
 }
 
 export type MessageHandlerAction = "RESPOND" | "IGNORE" | "STOP";
@@ -402,38 +396,6 @@ export interface Action {
 	 * for `PLANNER`.
 	 */
 	modePriority?: number;
-}
-
-/**
- * Evaluator for assessing agent responses
- */
-export interface Evaluator {
-	/** Whether to always run */
-	alwaysRun?: boolean;
-
-	/** Detailed description */
-	description: string;
-
-	/** Compressed description for prompt-optimized evaluator selection */
-	descriptionCompressed?: string;
-
-	/** Alias accepted for plugin compatibility; canonical output uses descriptionCompressed */
-	compressedDescription?: string;
-
-	/** Similar evaluator descriptions */
-	similes?: string[];
-
-	/** Example evaluations */
-	examples: EvaluationExample[];
-
-	/** Handler function */
-	handler: Handler;
-
-	/** Evaluator name */
-	name: string;
-
-	/** Validation function */
-	validate: Validator;
 }
 
 /**

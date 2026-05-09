@@ -6,8 +6,9 @@
  *
  * These provide additional agent features:
  * - Extended providers (facts, contacts, relationships, roles, settings, todos, personality)
- * - Advanced actions (contacts management, room management, todos, personality, etc.)
- * - Evaluators (reflection, relationship extraction, experience learning, character evolution)
+ * - Advanced actions (contacts management, room management, todos, personality,
+ *   plus post-message ALWAYS_AFTER actions: experience, skill extraction/refinement,
+ *   fact extraction, reflection)
  * - Additional services (experience, todos, personality)
  */
 
@@ -15,7 +16,7 @@ import { withCanonicalActionDocs } from "../../action-docs.ts";
 import type { IAgentRuntime } from "../../types/index.ts";
 import type { ServiceClass } from "../../types/plugin.ts";
 import {
-	experienceEvaluator,
+	experienceAction,
 	experienceProvider,
 	searchExperiencesAction,
 } from "./experience/index.ts";
@@ -23,7 +24,6 @@ import {
 // Personality imports
 import {
 	characterAction,
-	characterEvolutionEvaluator,
 	userPersonalityProvider,
 } from "./personality/index.ts";
 
@@ -38,7 +38,7 @@ import {
 	todosProvider,
 } from "./todos/index.ts";
 
-// Re-export action, provider, and evaluator modules
+// Re-export action, provider, and post-message-action modules
 export * from "./actions/index.ts";
 export * from "./evaluators/index.ts";
 export * from "./experience/index.ts";
@@ -49,7 +49,7 @@ export * from "./todos/index.ts";
 
 // Import for local use
 import * as actions from "./actions/index.ts";
-import * as evaluators from "./evaluators/index.ts";
+import * as postMessageActions from "./evaluators/index.ts";
 import * as providers from "./providers/index.ts";
 
 /**
@@ -68,7 +68,11 @@ export const advancedProviders = [
 ];
 
 /**
- * Advanced actions - extended agent capabilities
+ * Advanced actions - extended agent capabilities.
+ *
+ * Includes both planner actions and post-message `ALWAYS_AFTER` hooks
+ * (formerly evaluators) for fact extraction, reflection, relationship
+ * extraction, skill extraction/refinement, and experience learning.
  */
 export const advancedActions = [
 	withCanonicalActionDocs(actions.roomOpAction),
@@ -85,17 +89,13 @@ export const advancedActions = [
 	deleteTodoAction,
 	// Personality actions
 	characterAction,
-];
-
-/**
- * Advanced evaluators - memory, relationships, experience learning, form, personality
- */
-export const advancedEvaluators = [
-	evaluators.factExtractorEvaluator,
-	evaluators.skillExtractionEvaluator,
-	evaluators.skillRefinementEvaluator,
-	experienceEvaluator,
-	characterEvolutionEvaluator,
+	// Post-message ALWAYS_AFTER hooks (replaces legacy evaluators)
+	postMessageActions.factExtractorAction,
+	postMessageActions.reflectionAction,
+	postMessageActions.relationshipExtractionAction,
+	postMessageActions.skillExtractionAction,
+	postMessageActions.skillRefinementAction,
+	experienceAction,
 ];
 
 /**
@@ -126,7 +126,6 @@ export const advancedServices: ServiceClass[] = [
 export const advancedCapabilities = {
 	providers: advancedProviders,
 	actions: advancedActions,
-	evaluators: advancedEvaluators,
 	services: advancedServices,
 };
 

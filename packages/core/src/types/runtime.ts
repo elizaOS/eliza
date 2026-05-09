@@ -7,7 +7,6 @@ import type {
 	ActionMode,
 	ActionResult,
 	AgentContext,
-	Evaluator,
 	HandlerCallback,
 	Provider,
 	StreamChunkCallback,
@@ -447,7 +446,6 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	messageService: IMessageService | null;
 	providers: Provider[];
 	actions: Action[];
-	evaluators: Evaluator[];
 	plugins: Plugin[];
 	services: Map<ServiceTypeName, Service[]>;
 	events: RuntimeEventStorage;
@@ -563,14 +561,6 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
 	getActionResults(messageId: UUID): ActionResult[];
 
-	evaluate(
-		message: Memory,
-		state?: State,
-		didRespond?: boolean,
-		callback?: HandlerCallback,
-		responses?: Memory[],
-	): Promise<Evaluator[] | null>;
-
 	/**
 	 * Run actions whose `mode` matches one of the 9 hook positions
 	 * (ALWAYS_x/CONTEXT_x/MESSAGE_x). The runtime fires this at fixed
@@ -637,8 +627,6 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	):
 		| { allowed: boolean; reason: string }
 		| Promise<{ allowed: boolean; reason: string }>;
-
-	registerEvaluator(evaluator: Evaluator): void;
 
 	ensureConnections(
 		entities: Entity[],
@@ -867,7 +855,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	 * Enrich an in-flight execution trace with an additional score signal.
 	 *
 	 * Traces are keyed by runId and held in memory until finalization (e.g. RUN_ENDED
-	 * in prompt-optimization plugins). Evaluators and actions can attach signals after DPE.
+	 * in prompt-optimization plugins). Hook actions can attach signals after DPE.
 	 */
 	enrichTrace(
 		runId: string,

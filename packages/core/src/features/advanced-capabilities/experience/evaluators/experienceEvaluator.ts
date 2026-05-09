@@ -1,10 +1,11 @@
 import { logger } from "../../../../logger.ts";
 import type {
+	Action,
 	ActionResult,
-	Evaluator,
 	HandlerCallback,
 	HandlerOptions,
 } from "../../../../types/components.ts";
+import { ActionMode } from "../../../../types/components.ts";
 import type { Memory } from "../../../../types/memory.ts";
 import { ModelType } from "../../../../types/model.ts";
 import type { IAgentRuntime } from "../../../../types/runtime.ts";
@@ -58,54 +59,14 @@ const PASSIVE_ACTIONS = new Set([
 	"WAIT",
 ]);
 
-export const experienceEvaluator: Evaluator = {
+export const experienceAction: Action = {
 	name: "EXPERIENCE_EVALUATOR",
 	similes: ["experience recorder", "learning evaluator", "self-reflection"],
 	description:
 		"Periodically analyzes conversation patterns to extract novel learning experiences",
-	alwaysRun: false,
-
-	examples: [
-		{
-			prompt:
-				"The agent successfully executed a shell command after initially failing",
-			messages: [
-				{
-					name: "Autoliza",
-					content: {
-						text: "Let me try to run this Python script.",
-					},
-				},
-				{
-					name: "Autoliza",
-					content: {
-						text: "Error: ModuleNotFoundError for pandas. I need to install it first.",
-					},
-				},
-				{
-					name: "Autoliza",
-					content: {
-						text: "After installing pandas, the script ran successfully and produced the expected output.",
-					},
-				},
-			],
-			outcome:
-				"Record a CORRECTION experience about needing to install dependencies before running Python scripts",
-		},
-		{
-			prompt: "The agent discovered a new system capability",
-			messages: [
-				{
-					name: "Autoliza",
-					content: {
-						text: "I found that the system has jq installed, which is perfect for parsing JSON data.",
-					},
-				},
-			],
-			outcome:
-				"Record a DISCOVERY experience about the availability of jq for JSON processing",
-		},
-	],
+	mode: ActionMode.ALWAYS_AFTER,
+	modePriority: 220,
+	examples: [],
 
 	async validate(
 		runtime: IAgentRuntime,
