@@ -75,11 +75,6 @@ const MAX_STASHED_FOR_CONTEXT = 10;
  * Injects the current form state into the agent's context,
  * allowing the agent to respond naturally about form progress
  * and nudge for missing fields (one or several at once).
- *
- * WHY a provider (not an ALWAYS_AFTER hook):
- * - Providers run BEFORE response generation
- * - Agent needs context to generate appropriate response
- * - ALWAYS_AFTER hooks run after the response, too late
  */
 export const formContextProvider: Provider = {
   name: "FORM_CONTEXT",

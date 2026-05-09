@@ -1,49 +1,12 @@
 /**
  * @module actions/restore
- * @description Action for restoring stashed form sessions
+ * @description Planner action for restoring stashed form sessions.
  *
- * ## Why a planner Action (not an ALWAYS_AFTER hook)
- *
- * The restore operation is unique among form intents because:
- *
- * 1. **Timing matters**: The restored form context must be available
- *    to the agent BEFORE it generates a response. ALWAYS_AFTER hooks
- *    run after response generation.
- *
- * 2. **Preemption**: When the user says "resume my form", FORM_RESTORE
- *    should preempt REPLY, generate its own response with the restored
- *    context, and let the agent continue naturally.
- *
- * 3. **Immediate context**: After restore, the provider runs and gives
- *    the agent the restored form context for its response.
- *
- * ## Flow comparison
- *
- * ### Other intents (via the ALWAYS_AFTER form hook):
- * ```
- * Message → Provider (no context) → REPLY → form hook (updates state)
- *                                              ↓
- *                                    Next message has updated context
- * ```
- *
- * ### Restore intent (via this action):
- * ```
- * Message → FORM_RESTORE.validate() → true
- *                    ↓
- *         FORM_RESTORE.handler() → Restore session → Generate response
- *                                        ↓
- *                               Next message has restored context immediately
- * ```
- *
- * ## Handling Multiple Stashed Forms
- *
- * If user has multiple stashed forms, this action restores the most recent.
- * Future enhancement: Let user choose which form to restore.
- *
- * ## Conflicts with Active Forms
- *
- * If user has an active form in the current room and tries to restore,
- * the action asks them to either continue or stash the current one.
+ * Restore is a planner-driven Action (not part of the post-message form
+ * evaluator) because the restored form context must reach the provider
+ * BEFORE the agent generates its response. If the user has an active form
+ * in the current room, the action asks them to continue or stash the
+ * current one. Multiple stashed forms restore the most recent.
  */
 
 import {
