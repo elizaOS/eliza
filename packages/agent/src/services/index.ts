@@ -7,8 +7,6 @@ export {
   type EscalationState,
   registerEscalationChannel,
 } from "./escalation.js";
-export { createDefaultExecutorRegistry } from "./executor-registry.js";
-export * from "./media-generation.js";
 export * from "./overlay-app-presence.js";
 // `plugin-manager-types` re-exports `RegistryPluginInfo` and
 // `RegistrySearchResult` from `./registry-client-types.js`, which collide with
