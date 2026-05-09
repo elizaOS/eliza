@@ -55,7 +55,6 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.0.0",
-    "@elizaos/app-elizamaker": "workspace:*",
     "@elizaos/capacitor-contacts": "workspace:*",
     "@elizaos/capacitor-phone": "workspace:*",
     "@elizaos/capacitor-wifi": "workspace:*",

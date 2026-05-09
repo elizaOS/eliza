@@ -62,7 +62,7 @@
         "../app-core/src/index.ts"
       ],
       "@elizaos/agent": [
-        "../agent/src/index.ts"
+        "./src/api/agent-client-type-shim.ts"
       ],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"

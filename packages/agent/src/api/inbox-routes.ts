@@ -35,13 +35,19 @@
  */
 
 import type http from "node:http";
-import type { AgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
+import type {
+  AgentRuntime,
+  Memory,
+  Room,
+  RouteHelpers,
+  UUID,
+  World,
+} from "@elizaos/core";
 import { cacheDiscordAvatarUrl } from "@elizaos/plugin-discord";
 import {
   expandConnectorSourceFilter,
   normalizeConnectorSource,
 } from "@elizaos/shared";
-import type { RouteHelpers } from "./route-helpers.ts";
 
 /**
  * Source tags we consider "inbox-worthy". Messages whose content.source

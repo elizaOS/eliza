@@ -27,7 +27,7 @@ import type {
   WalletPrimaryMap,
   WalletSource,
 } from "@elizaos/shared";
-import type { PromptOptions } from "@elizaos/ui";
+import type { PromptOptions } from "../components/ui/confirm-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   client,
@@ -36,8 +36,8 @@ import {
   type RegistryStatus,
   type WalletExportResult,
   type WhitelistStatus,
-} from "@elizaos/ui";
-import { confirmDesktopAction } from "@elizaos/ui";
+} from "../api";
+import { confirmDesktopAction } from "../utils/desktop-dialogs";
 import {
   loadBrowserEnabled,
   loadComputerUseEnabled,
@@ -45,8 +45,8 @@ import {
   saveBrowserEnabled,
   saveComputerUseEnabled,
   saveWalletEnabled,
-} from "@elizaos/ui";
-import type { InventoryChainFilters } from "@elizaos/ui";
+} from "./persistence";
+import type { InventoryChainFilters } from "./types";
 
 // ── Types ──────────────────────────────────────────────────────────────
 

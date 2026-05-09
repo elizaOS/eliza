@@ -1,8 +1,7 @@
 /**
- * @elizaos/shared — Browser-safe code shared between agent and app-core.
+ * @elizaos/shared — Shared code between agent, app-core, and UI packages.
  *
- * Public surface: re-exports every module listed in `package.json#exports`,
- * excluding modules that pull in node-only dependencies (figlet heading).
+ * Public surface: barrel exports for the shared workspace contract.
  */
 
 export * from "./api/http-helpers.js";
@@ -200,6 +199,7 @@ export {
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "./contracts/service-routing.js";
 export * from "./dev-settings-banner-style.js";
+export * from "./dev-settings-figlet-heading.js";
 export * from "./dev-settings-table.js";
 export * from "./env-utils.js";
 export * from "./events/index.js";

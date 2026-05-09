@@ -69,7 +69,7 @@
     "@elizaos/core": "workspace:*",
     "@types/bun": "^1.3.9",
     "@types/node": "^25.2.3",
-    "bun-types": "latest",
+    "bun-types": "1.3.13",
     "git-workspace-service": "0.4.5",
     "pty-manager": "1.11.0",
     "typescript": "^6.0.3",

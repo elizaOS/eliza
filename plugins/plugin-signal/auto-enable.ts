@@ -8,8 +8,7 @@ import type { PluginAutoEnableContext } from "@elizaos/core";
 
 /** Enable when a `signal` connector block is present and not explicitly disabled. */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
-  const c = (ctx.config?.connectors as Record<string, unknown> | undefined)
-    ?.signal;
+  const c = (ctx.config?.connectors as Record<string, unknown> | undefined)?.signal;
   if (!c || typeof c !== "object") return false;
   const config = c as Record<string, unknown>;
   if (config.enabled === false) return false;

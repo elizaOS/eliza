@@ -44,6 +44,9 @@
     "react-dom": "^19.0.0"
   },
   "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-browser": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "@radix-ui/react-checkbox": "^1.3.3",
     "@xyflow/react": "^12.10.2",
     "cron-parser": "^5.5.0",

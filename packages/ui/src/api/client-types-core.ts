@@ -5,8 +5,9 @@
 
 import type {
   DatabaseProviderType,
+  StreamEventType,
   TradePermissionMode as WalletTradePermissionMode,
-} from "@elizaos/agent";
+} from "./agent-client-type-shim";
 
 // Use server-types / types only — do not re-export from api/server or
 // api/trajectory-routes (those modules pull the full API + app-training into Vite).
@@ -16,7 +17,7 @@ export type {
   TriggerLastStatus,
   TriggerType,
   TriggerWakeMode,
-} from "@elizaos/agent";
+} from "./agent-client-type-shim";
 
 export interface DatabaseStatus {
   provider: DatabaseProviderType;
@@ -353,7 +354,7 @@ export interface SandboxWindowInfo {
 }
 
 export interface StreamEventEnvelope {
-  type: import("@elizaos/agent").StreamEventType;
+  type: StreamEventType;
   version: 1;
   eventId: string;
   ts: number;

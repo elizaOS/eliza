@@ -66,7 +66,6 @@ const result = await Bun.build({
     "tailwindcss",
     "zlib-sync",
     // Runtime dependencies (resolved from node_modules at runtime)
-    "axios",
     "@hapi/boom",
     "@whiskeysockets/baileys",
     "pino",

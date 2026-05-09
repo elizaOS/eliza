@@ -13,6 +13,7 @@
     }
   },
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "ethers": "^6.15.0"
   },

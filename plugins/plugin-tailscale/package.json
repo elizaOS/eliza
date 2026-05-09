@@ -7,14 +7,12 @@
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    "./package.json": "./package.json",
     ".": {
-      "import": {
-        "@elizaos/source": "./dist/index.js",
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
-    }
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist"
@@ -39,7 +37,6 @@
     "@elizaos/cloud-routing": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-tunnel": "workspace:*",
-    "undici": "^8.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

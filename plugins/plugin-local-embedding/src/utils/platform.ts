@@ -229,7 +229,7 @@ export class PlatformManager {
     // Server 2025; PowerShell + Get-CimInstance works there.
     const psCmd =
       "powershell -NoProfile -NonInteractive -Command " +
-      "\"Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name\"";
+      '"Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name"';
     try {
       const { stdout } = await execAsync(psCmd);
       const first = stdout
@@ -241,9 +241,7 @@ export class PlatformManager {
       // Fall through to wmic.
     }
     try {
-      const { stdout } = await execAsync(
-        "wmic path win32_VideoController get name"
-      );
+      const { stdout } = await execAsync("wmic path win32_VideoController get name");
       const lines = stdout
         .split(/\r?\n/)
         .map((line) => line.trim())

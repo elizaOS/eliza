@@ -2,10 +2,12 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import ts from "typescript";
 
 const args = new Set(process.argv.slice(2));
 const check = args.has("--check");
 const asJson = args.has("--json");
+const includeTests = args.has("--include-tests");
 
 const repoRoot = process.cwd();
 const ignoredPath = /(^|\/)(node_modules|dist|build|\.turbo|\.next|coverage|\.vite)(\/|$)/;
@@ -53,12 +55,6 @@ function packageOwnerForPath(absPath, packages) {
   return owner;
 }
 
-function stripComments(text) {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
-
 function getManifestDeps(manifest) {
   return {
     dependencies: manifest.dependencies ?? {},
@@ -77,13 +73,22 @@ function hasDeclaredDependency(manifest, packageName) {
 
 function shouldScanPackageJson(file) {
   return (
-    /^(?:package|cloud\/package)\.json$/.test(file) ||
     /^packages\/[^/]+\/package\.json$/.test(file) ||
     /^packages\/examples\/[^/]+(?:\/[^/]+){0,2}\/package\.json$/.test(file) ||
     /^packages\/native-plugins\/[^/]+\/package\.json$/.test(file) ||
     /^packages\/app-core\/platforms\/[^/]+\/package\.json$/.test(file) ||
     /^plugins\/[^/]+\/package\.json$/.test(file) ||
     /^cloud\/packages\/sdk\/package\.json$/.test(file)
+  );
+}
+
+function isTestLikeFile(file) {
+  const normalized = normalize(file);
+  return (
+    /(^|\/)(__tests__|test|tests|fixtures|mocks)(\/|$)/.test(normalized) ||
+    /\.(?:test|spec|e2e|live)\.[cm]?[jt]sx?$/.test(normalized) ||
+    /(^|\/)(vitest|playwright|jest)\.config\.[cm]?[jt]s$/.test(normalized) ||
+    /(^|\/)test-/.test(normalized)
   );
 }
 
@@ -164,10 +169,67 @@ const sourceFiles = shellLines("rg", [
   .filter((file) => sourceExtensions.has(path.extname(file)))
   .filter((file) => !ignoredPath.test(file))
   .map((file) => path.join(repoRoot, file))
-  .filter((file) => packageOwnerForPath(file, packages));
+  .filter((file) => packageOwnerForPath(file, packages))
+  .filter((file) => includeTests || !isTestLikeFile(relative(file)));
 
-const importPattern =
-  /(?:import|export)\s+(?:type\s+)?(?:[^'";]*?\s+from\s+)?["']([^"']+)["']|import\s*\(\s*["']([^"']+)["']\s*\)|require\s*\(\s*["']([^"']+)["']\s*\)/g;
+function scriptKindForFile(file) {
+  switch (path.extname(file)) {
+    case ".tsx":
+      return ts.ScriptKind.TSX;
+    case ".jsx":
+      return ts.ScriptKind.JSX;
+    case ".json":
+      return ts.ScriptKind.JSON;
+    case ".js":
+    case ".mjs":
+    case ".cjs":
+      return ts.ScriptKind.JS;
+    case ".ts":
+    case ".mts":
+    case ".cts":
+    default:
+      return ts.ScriptKind.TS;
+  }
+}
+
+function literalText(node) {
+  return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) ? node.text : null;
+}
+
+function getImportSpecifiers(file, source) {
+  const sourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    scriptKindForFile(file),
+  );
+  const specifiers = [];
+
+  function visit(node) {
+    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) {
+      const specifier = literalText(node.moduleSpecifier);
+      if (specifier) specifiers.push(specifier);
+    } else if (ts.isCallExpression(node)) {
+      if (node.arguments.length === 1) {
+        const firstArg = node.arguments[0];
+        const specifier = literalText(firstArg);
+        if (
+          specifier &&
+          (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+            (ts.isIdentifier(node.expression) && node.expression.text === "require"))
+        ) {
+          specifiers.push(specifier);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return specifiers;
+}
+
 
 const relativeCrossPackageImports = [];
 const relativeOutsidePackageImports = [];
@@ -177,10 +239,8 @@ const pluginDependencyViolations = [];
 for (const file of sourceFiles) {
   const owner = packageOwnerForPath(file, packages);
   if (!owner) continue;
-  const source = stripComments(fs.readFileSync(file, "utf8"));
-  let match;
-  while ((match = importPattern.exec(source))) {
-    const specifier = match[1] || match[2] || match[3];
+  const source = fs.readFileSync(file, "utf8");
+  for (const specifier of getImportSpecifiers(file, source)) {
     if (!specifier) continue;
 
     if (specifier.startsWith(".")) {
@@ -191,6 +251,7 @@ for (const file of sourceFiles) {
       const target = packageOwnerForPath(resolved, packages);
       const record = {
         file: relative(file),
+        isTestLike: isTestLikeFile(relative(file)),
         owner: owner.name,
         ownerDir: owner.dir,
         specifier,
@@ -212,6 +273,7 @@ for (const file of sourceFiles) {
     if (!hasDeclaredDependency(owner.manifest, packageName)) {
       undeclaredWorkspaceImports.push({
         file: relative(file),
+        isTestLike: isTestLikeFile(relative(file)),
         owner: owner.name,
         packageName,
         specifier,

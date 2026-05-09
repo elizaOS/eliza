@@ -54,7 +54,7 @@
     "ai": "^6.0.30",
     "jose": "^6.2.2",
     "js-tiktoken": "^1.0.21",
-    "undici": "^8.0.0",
+    "undici": "8.2.0",
     "viem": "^2.48.8"
   },
   "devDependencies": {

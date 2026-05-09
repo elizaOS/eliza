@@ -1,3 +1,8 @@
+export {
+  readJsonBody,
+  sendJson,
+  sendJsonError,
+} from "@elizaos/core";
 export type { CloudConfigLike } from "@elizaos/plugin-elizacloud";
 export {
   handleCloudBillingRoute,
@@ -13,11 +18,6 @@ export * from "./actions/index.ts";
 export * from "./api/config-env.ts";
 export { handleConnectorAccountRoutes } from "./api/connector-account-routes.ts";
 export * from "./api/conversation-metadata.ts";
-export {
-  readJsonBody,
-  sendJson,
-  sendJsonError,
-} from "./api/http-helpers.ts";
 export * from "./api/index.ts";
 export { setOwnerContact } from "./api/owner-contact-helpers.ts";
 export {
@@ -146,6 +146,7 @@ export {
   setStewardEvmBridgeActive,
 } from "./services/external-bridge-state.ts";
 export * from "./services/index.ts";
+export * from "./services/plugin-installer";
 export {
   type ClusterMemoriesQuery,
   type ClusterSearchQuery,
@@ -172,4 +173,3 @@ export * from "./triggers/types.ts";
 export * from "./types/index.ts";
 export * from "./utils/number-parsing.ts";
 export * from "./version-resolver.ts";
-export * from "./services/plugin-installer";

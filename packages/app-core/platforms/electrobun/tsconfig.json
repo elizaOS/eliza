@@ -40,6 +40,9 @@
       "@elizaos/ui": [
         "../../../ui/src/index.ts"
       ],
+      "@elizaos/app-wallet": [
+        "../../../../plugins/app-wallet/src/index.ts"
+      ],
       "@elizaos/plugin-elizacloud": [
         "../../../../plugins/plugin-elizacloud/src/index.node.ts"
       ],

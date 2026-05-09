@@ -600,6 +600,8 @@ const ANDROID_PERMISSIONS = [
   "FOREGROUND_SERVICE_SPECIAL_USE",
   "POST_NOTIFICATIONS",
   "WAKE_LOCK",
+  "RECEIVE_BOOT_COMPLETED",
+  "SYSTEM_ALERT_WINDOW",
   // PACKAGE_USAGE_STATS is granted via the privapp-permissions whitelist;
   // MANAGE_APP_OPS_MODES is what ElizaBootReceiver actually needs to
   // reflectively flip the GET_USAGE_STATS appop to ALLOWED at boot.

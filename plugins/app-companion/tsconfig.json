@@ -88,8 +88,7 @@
     "src/**/*.tsx",
     "src/**/*.d.ts",
     "../../packages/agent/src/external-modules.d.ts",
-    "../../packages/app-core/src/ambient-modules.d.ts",
-    "../../packages/app-core/src/platform/capacitor-plugin-modules.d.ts"
+    "../../packages/app-core/src/ambient-modules.d.ts"
   ],
   "exclude": [
     "src/**/*.stories.ts",

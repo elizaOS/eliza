@@ -21,7 +21,9 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*"
   },
   "peerDependencies": {

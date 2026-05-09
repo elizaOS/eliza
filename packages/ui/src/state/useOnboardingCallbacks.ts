@@ -11,7 +11,10 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { getDefaultStylePreset } from "@elizaos/shared";
+import {
+  buildWalletRpcUpdateRequest,
+  getDefaultStylePreset,
+} from "@elizaos/shared";
 import { type RefObject, useCallback } from "react";
 import type { StylePreset } from "../api";
 import { ElizaClient, type VoiceConfig } from "../api";
@@ -49,7 +52,6 @@ async function startNativeAgentIfAvailable(): Promise<void> {
   }
 }
 
-import { buildWalletRpcUpdateRequest } from "@elizaos/app-wallet";
 import {
   getDesktopRuntimeMode,
   invokeDesktopBridgeRequest,

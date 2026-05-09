@@ -35,7 +35,12 @@ import {
   type IAgentRuntime,
   isStreamingDestinationConfigured,
   logger,
+  readJsonBody as parseJsonBody,
+  type ReadJsonBodyOptions,
   type Route,
+  readRequestBody,
+  sendJson,
+  sendJsonError,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -203,13 +208,6 @@ import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
 import { handleCuratedSkillsRoutes } from "./curated-skills-routes.ts";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.ts";
 import { handleHealthRoutes } from "./health-routes.ts";
-import {
-  readJsonBody as parseJsonBody,
-  type ReadJsonBodyOptions,
-  readRequestBody,
-  sendJson,
-  sendJsonError,
-} from "./http-helpers.ts";
 import { pushWithBatchEvict } from "./memory-bounds.ts";
 import { handleMemoryRoutes } from "./memory-routes.ts";
 import { handleMiscRoutes } from "./misc-routes.ts";

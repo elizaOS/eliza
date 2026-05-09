@@ -30,7 +30,6 @@ export * from "./diagnostics-routes.ts";
 export * from "./documents-routes.ts";
 export * from "./documents-service-loader.ts";
 export * from "./early-logs.ts";
-export * from "./http-helpers.ts";
 export * from "./memory-bounds.ts";
 export * from "./memory-routes.ts";
 export * from "./models-routes.ts";
@@ -42,7 +41,6 @@ export * from "./provider-switch-config.ts";
 export * from "./rate-limiter.ts";
 export * from "./registry-routes.ts";
 export * from "./registry-service.ts";
-export * from "./route-helpers.ts";
 // `runtime-plugin-routes.ts` exports `matchPluginRoutePath` (used by plugin
 // authors and their tests, e.g. plugins/app-vincent/src/vincent-plugin-dispatch.test.ts)
 // and the request-handling helper `tryHandleRuntimePluginRoute` (used by

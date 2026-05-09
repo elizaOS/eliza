@@ -541,14 +541,19 @@ def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[
     ]
     provider_lower = ctx.request.provider.strip().lower()
     agent_lower = ctx.request.agent.strip().lower()
+    payment_mode = ctx.request.extra_config.get("payment") is True or ctx.request.extra_config.get("payments") is True
     if ctx.request.extra_config.get("mock") is True or provider_lower == "mock" or agent_lower == "dummy":
-        args.extend(["--agent", "dummy"])
+        args.extend(["--agent", "dummy-charge" if payment_mode else "dummy"])
         args.extend(["--evaluator", "heuristic"])
     else:
         args.extend(["--agent", "eliza"])
         evaluator = ctx.request.extra_config.get("evaluator")
         if isinstance(evaluator, str) and evaluator in {"llm", "heuristic"}:
             args.extend(["--evaluator", evaluator])
+
+    payment_mock_url = ctx.request.extra_config.get("payment_mock_url")
+    if isinstance(payment_mock_url, str) and payment_mock_url.strip():
+        args.extend(["--payment-mock-url", payment_mock_url.strip()])
 
     for extra_key, cli_key in (
         ("scenario", "--scenario"),
