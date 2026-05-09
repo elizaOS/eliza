@@ -1066,7 +1066,7 @@ export async function handleAppsRoutes(
         // ~/.eliza/plugins/installed without depending on a plugin-manager
         // service. The runtime plugin resolver already searches that dir.
         const { installPlugin: installPluginDirect } = await import(
-          /* webpackIgnore: true */ "@elizaos/app-core"
+          /* webpackIgnore: true */ "../services/plugin-installer.js"
         );
         result = await installPluginDirect(name, recordProgress, body.version);
       }

@@ -42,7 +42,8 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    }
+    },
+    "./config/allowed-hosts": "./dist/config/allowed-hosts.js"
   },
   "publishConfig": {
     "access": "public",

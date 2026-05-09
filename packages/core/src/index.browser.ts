@@ -72,12 +72,12 @@ export * from "./types/message-service";
 export type { JsonObject, JsonValue } from "./types/primitives";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
-export { formatError } from "./utils/format-error";
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 export * from "./utils/description-compressed-lint";
 // Export browser-compatible utilities
 export * from "./utils/environment";
+export { formatError } from "./utils/format-error";
 
 export function resolveStateDir(): string {
 	return "/.eliza";

@@ -29,6 +29,7 @@ import {
 	type Message as DiscordMessage,
 	type TextChannel,
 } from "discord.js";
+import { isDiscordUserAddressed } from "./addressing";
 import { AttachmentManager } from "./attachments";
 // See service.ts for detailed documentation on Discord ID handling.
 // Key point: Discord snowflake IDs (e.g., "1253563208833433701") are NOT valid UUIDs.
@@ -38,7 +39,10 @@ import { createDraftStreamController } from "./draft-stream";
 import { getDiscordSettings } from "./environment";
 import { buildDiscordWorldMetadata } from "./identity";
 import { formatInboundEnvelope } from "./inbound-envelope";
-import { appendCoalescedDiscordMetadata } from "./message-coalesce";
+import {
+	appendCoalescedDiscordMetadata,
+	type DiscordMessageWithCoalescedMetadata,
+} from "./message-coalesce";
 import { stripReasoningTags } from "./reasoning-tags";
 import {
 	applyDiscordStalenessGuard,
@@ -112,32 +116,6 @@ function compactJsonObject(record: Record<string, unknown>): JsonObject {
 	return json;
 }
 
-function escapeRegex(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function textMentionsAnyName(
-	text: string | undefined,
-	names: Array<string | null | undefined>,
-): boolean {
-	if (!text) {
-		return false;
-	}
-
-	return names.some((name) => {
-		const candidate = name?.trim();
-		if (!candidate) {
-			return false;
-		}
-
-		const pattern = new RegExp(
-			`(^|[^\\p{L}\\p{N}])${escapeRegex(candidate)}(?=$|[^\\p{L}\\p{N}])`,
-			"iu",
-		);
-		return pattern.test(text);
-	});
-}
-
 function normalizeReplyToMode(
 	replyToMode: DiscordSettings["replyToMode"],
 ): "off" | "first" | "all" {
@@ -146,6 +124,13 @@ function normalizeReplyToMode(
 	}
 
 	return "first";
+}
+
+function getAddressingContent(message: DiscordMessage): string {
+	return (
+		(message as DiscordMessageWithCoalescedMetadata)
+			.__discordAddressingContent ?? message.content
+	);
 }
 
 function fetchedUrlToAttachment(
