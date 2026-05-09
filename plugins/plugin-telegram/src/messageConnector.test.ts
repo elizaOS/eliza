@@ -1,11 +1,11 @@
-import type { IAgentRuntime } from '@elizaos/core';
-import { describe, expect, it, vi } from 'vitest';
-import { TelegramService } from './service';
+import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
+import { TelegramService } from "./service";
 
 function createRuntime() {
   return {
-    agentId: 'agent-1',
-    character: { name: 'Agent One' },
+    agentId: "agent-1",
+    character: { name: "Agent One" },
     registerMessageConnector: vi.fn(),
     registerSendHandler: vi.fn(),
     logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -27,8 +27,8 @@ function createTelegramService(
   );
 }
 
-describe('Telegram message connector adapter', () => {
-  it('registers connector metadata with chat and thread support', () => {
+describe("Telegram message connector adapter", () => {
+  it("registers connector metadata with chat and thread support", () => {
     const runtime = createRuntime();
     const service = createTelegramService({
       bot: {},
@@ -44,41 +44,41 @@ describe('Telegram message connector adapter', () => {
     TelegramService.registerSendHandlers(runtime, service);
 
     expect(runtime.registerMessageConnector.mock.calls[0][0]).toMatchObject({
-      source: 'telegram',
-      label: 'Telegram',
+      source: "telegram",
+      label: "Telegram",
       capabilities: expect.arrayContaining([
-        'send_message',
-        'resolve_targets',
-        'chat_context',
-        'user_context',
+        "send_message",
+        "resolve_targets",
+        "chat_context",
+        "user_context",
       ]),
-      supportedTargetKinds: ['channel', 'group', 'thread', 'user'],
-      contexts: ['social', 'connectors'],
+      supportedTargetKinds: ["channel", "group", "thread", "user"],
+      contexts: ["social", "connectors"],
     });
   });
 
-  it('registers account-scoped and legacy connector routes', () => {
+  it("registers account-scoped and legacy connector routes", () => {
     const runtime = createRuntime();
     const service = createTelegramService({
       bot: {},
       handleSendMessage: vi.fn(),
       accountStates: new Map([
         [
-          'acct-a',
+          "acct-a",
           {
-            accountId: 'acct-a',
-            account: { accountId: 'acct-a', name: 'A' },
+            accountId: "acct-a",
+            account: { accountId: "acct-a", name: "A" },
           },
         ],
         [
-          'acct-b',
+          "acct-b",
           {
-            accountId: 'acct-b',
-            account: { accountId: 'acct-b', name: 'B' },
+            accountId: "acct-b",
+            account: { accountId: "acct-b", name: "B" },
           },
         ],
       ]),
-      defaultAccountId: 'acct-a',
+      defaultAccountId: "acct-a",
     });
 
     TelegramService.registerSendHandlers(runtime, service);
@@ -87,17 +87,17 @@ describe('Telegram message connector adapter', () => {
       (call) => call[0],
     );
     expect(registrations.map((registration) => registration.accountId)).toEqual(
-      [undefined, 'acct-a', 'acct-b'],
+      [undefined, "acct-a", "acct-b"],
     );
     expect(registrations[2]).toMatchObject({
-      source: 'telegram',
-      accountId: 'acct-b',
-      account: { accountId: 'acct-b' },
-      metadata: { accountId: 'acct-b' },
+      source: "telegram",
+      accountId: "acct-b",
+      account: { accountId: "acct-b" },
+      metadata: { accountId: "acct-b" },
     });
   });
 
-  it('parses forum-topic channel IDs for unified sends', async () => {
+  it("parses forum-topic channel IDs for unified sends", async () => {
     const runtime = createRuntime();
     const sendMessage = vi.fn().mockResolvedValue([]);
     const service = createTelegramService({
@@ -107,99 +107,99 @@ describe('Telegram message connector adapter', () => {
 
     await service.handleSendMessage(
       runtime,
-      { source: 'telegram', channelId: '-1001234567890-42' },
-      { text: 'hello' },
+      { source: "telegram", channelId: "-1001234567890-42" },
+      { text: "hello" },
     );
 
     expect(sendMessage).toHaveBeenCalledWith(
-      '-1001234567890',
-      { text: 'hello', metadata: { accountId: 'default' } },
+      "-1001234567890",
+      { text: "hello", metadata: { accountId: "default" } },
       undefined,
       42,
     );
   });
 
-  it('routes outbound sends through the requested account manager', async () => {
+  it("routes outbound sends through the requested account manager", async () => {
     const runtime = createRuntime();
     const managerA = { sendMessage: vi.fn().mockResolvedValue([]) };
     const managerB = { sendMessage: vi.fn().mockResolvedValue([]) };
     const service = createTelegramService({
       bot: {},
       messageManager: managerA,
-      defaultAccountId: 'acct-a',
+      defaultAccountId: "acct-a",
       accountStates: new Map([
-        ['acct-a', { accountId: 'acct-a', messageManager: managerA, bot: {} }],
-        ['acct-b', { accountId: 'acct-b', messageManager: managerB, bot: {} }],
+        ["acct-a", { accountId: "acct-a", messageManager: managerA, bot: {} }],
+        ["acct-b", { accountId: "acct-b", messageManager: managerB, bot: {} }],
       ]),
     });
 
     await service.handleSendMessage(
       runtime,
-      { source: 'telegram', accountId: 'acct-b', channelId: '-100123' },
-      { text: 'hello' },
+      { source: "telegram", accountId: "acct-b", channelId: "-100123" },
+      { text: "hello" },
     );
 
     expect(managerA.sendMessage).not.toHaveBeenCalled();
     expect(managerB.sendMessage).toHaveBeenCalledWith(
-      '-100123',
-      { text: 'hello', metadata: { accountId: 'acct-b' } },
+      "-100123",
+      { text: "hello", metadata: { accountId: "acct-b" } },
       undefined,
       undefined,
     );
   });
 
-  it('resolves known chats into connector targets', async () => {
+  it("resolves known chats into connector targets", async () => {
     const runtime = createRuntime();
     const service = createTelegramService({
       runtime,
       bot: null,
       knownChats: new Map([
         [
-          '-100123',
+          "-100123",
           {
             id: -100123,
-            type: 'supergroup',
-            title: 'Ops Room',
+            type: "supergroup",
+            title: "Ops Room",
             is_forum: true,
           },
         ],
       ]),
     });
 
-    const targets = await service.resolveConnectorTargets('ops', { runtime });
+    const targets = await service.resolveConnectorTargets("ops", { runtime });
 
     expect(targets[0]).toMatchObject({
-      label: 'Ops Room',
-      kind: 'group',
-      target: { source: 'telegram', channelId: '-100123' },
+      label: "Ops Room",
+      kind: "group",
+      target: { source: "telegram", channelId: "-100123" },
     });
   });
 
-  it('does not stamp known chats onto the wrong account', async () => {
+  it("does not stamp known chats onto the wrong account", async () => {
     const runtime = createRuntime();
     const service = createTelegramService({
       runtime,
       bot: null,
-      defaultAccountId: 'acct-a',
+      defaultAccountId: "acct-a",
       accountStates: new Map([
-        ['acct-a', { accountId: 'acct-a' }],
-        ['acct-b', { accountId: 'acct-b' }],
+        ["acct-a", { accountId: "acct-a" }],
+        ["acct-b", { accountId: "acct-b" }],
       ]),
       knownChats: new Map([
         [
-          'acct-a:-100111',
+          "acct-a:-100111",
           {
             id: -100111,
-            type: 'supergroup',
-            title: 'A Room',
+            type: "supergroup",
+            title: "A Room",
           },
         ],
         [
-          'acct-b:-100222',
+          "acct-b:-100222",
           {
             id: -100222,
-            type: 'supergroup',
-            title: 'B Room',
+            type: "supergroup",
+            title: "B Room",
           },
         ],
       ]),
@@ -213,28 +213,28 @@ describe('Telegram message connector adapter', () => {
         channelId: target.target.channelId,
       })),
     ).toEqual([
-      { accountId: 'acct-a', channelId: '-100111' },
-      { accountId: 'acct-b', channelId: '-100222' },
+      { accountId: "acct-a", channelId: "-100111" },
+      { accountId: "acct-b", channelId: "-100222" },
     ]);
   });
 
-  it('does not use legacy unscoped known chats for non-default accounts', async () => {
+  it("does not use legacy unscoped known chats for non-default accounts", async () => {
     const runtime = createRuntime();
     const service = createTelegramService({
       runtime,
       bot: null,
-      defaultAccountId: 'acct-a',
+      defaultAccountId: "acct-a",
       accountStates: new Map([
-        ['acct-a', { accountId: 'acct-a' }],
-        ['acct-b', { accountId: 'acct-b' }],
+        ["acct-a", { accountId: "acct-a" }],
+        ["acct-b", { accountId: "acct-b" }],
       ]),
       knownChats: new Map([
         [
-          '-100111',
+          "-100111",
           {
             id: -100111,
-            type: 'supergroup',
-            title: 'Legacy Default Room',
+            type: "supergroup",
+            title: "Legacy Default Room",
           },
         ],
       ]),
@@ -242,29 +242,29 @@ describe('Telegram message connector adapter', () => {
 
     const context = {
       runtime,
-      accountId: 'acct-b',
-      target: { source: 'telegram', accountId: 'acct-b' },
+      accountId: "acct-b",
+      target: { source: "telegram", accountId: "acct-b" },
     };
     const result = await service.getConnectorChatContext(
-      { source: 'telegram', accountId: 'acct-b', channelId: '-100111' },
+      { source: "telegram", accountId: "acct-b", channelId: "-100111" },
       context,
     );
 
     expect(result?.summary).toBeUndefined();
-    expect(result?.label).toBe('-100111');
-    expect(result?.metadata).toMatchObject({ accountId: 'acct-b' });
+    expect(result?.label).toBe("-100111");
+    expect(result?.metadata).toMatchObject({ accountId: "acct-b" });
   });
 
-  it('starts non-default accounts when the default account has no token', async () => {
+  it("starts non-default accounts when the default account has no token", async () => {
     const runtime = {
       ...createRuntime(),
       character: {
-        name: 'Agent One',
+        name: "Agent One",
         settings: {
           telegram: {
             accounts: {
               default: { enabled: true },
-              'acct-b': { enabled: true, botToken: 'token-b' },
+              "acct-b": { enabled: true, botToken: "token-b" },
             },
           },
         },
@@ -276,11 +276,11 @@ describe('Telegram message connector adapter', () => {
         TelegramService.prototype as unknown as {
           initializeBot: (state: unknown) => Promise<void>;
         },
-        'initializeBot',
+        "initializeBot",
       )
       .mockResolvedValue(undefined);
     const fakeBot = {
-      botInfo: { username: 'acct_b_bot' },
+      botInfo: { username: "acct_b_bot" },
       launch: vi.fn(),
       on: vi.fn(),
       start: vi.fn(),
@@ -293,7 +293,7 @@ describe('Telegram message connector adapter', () => {
         TelegramService.prototype as unknown as {
           createAccountRuntime: (account: unknown) => unknown;
         },
-        'createAccountRuntime',
+        "createAccountRuntime",
       )
       .mockImplementation((account: unknown) => {
         const scopedAccount = account as { accountId: string };
@@ -309,7 +309,7 @@ describe('Telegram message connector adapter', () => {
 
     expect(createAccountRuntime).toHaveBeenCalledTimes(1);
     expect(createAccountRuntime).toHaveBeenCalledWith(
-      expect.objectContaining({ accountId: 'acct-b', botToken: 'token-b' }),
+      expect.objectContaining({ accountId: "acct-b", botToken: "token-b" }),
     );
     expect(initializeBot).toHaveBeenCalledTimes(1);
     expect(
@@ -320,7 +320,7 @@ describe('Telegram message connector adapter', () => {
           }
         ).accountStates.keys(),
       ),
-    ).toEqual(['acct-b']);
+    ).toEqual(["acct-b"]);
 
     initializeBot.mockRestore();
     createAccountRuntime.mockRestore();
