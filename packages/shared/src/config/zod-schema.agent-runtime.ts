@@ -1,5 +1,5 @@
 import z from "zod";
-import { parseDurationMs } from "../cli/parse-duration";
+import { parseDurationMs } from "../cli/parse-duration.js";
 import {
   BlockStreamingChunkSchema,
   BlockStreamingCoalesceSchema,
@@ -9,7 +9,7 @@ import {
   IdentitySchema,
   ToolsLinksSchema,
   ToolsMediaSchema,
-} from "./zod-schema.core";
+} from "./zod-schema.core.js";
 
 const AgentMessageExampleContentSchema = z
   .object({

@@ -8,3 +8,4 @@ export * from "./polymarket-contracts";
 export { polymarketStatusProvider } from "./provider";
 export * from "./routes";
 export * from "./usePolymarketState";
+export * from "./register";

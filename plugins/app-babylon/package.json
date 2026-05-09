@@ -10,21 +10,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./routes": {
-      "types": "./dist/routes.d.ts",
-      "import": "./dist/routes.js",
-      "default": "./dist/routes.js"
-    },
-    "./ui": {
-      "types": "./dist/ui/index.d.ts",
-      "import": "./dist/ui/index.js",
-      "default": "./dist/ui/index.js"
-    },
-    "./ui/babylon-data": {
-      "types": "./dist/ui/babylon-data.d.ts",
-      "import": "./dist/ui/babylon-data.js",
-      "default": "./dist/ui/babylon-data.js"
     }
   },
   "repository": {

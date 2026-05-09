@@ -30,10 +30,7 @@ export interface WorkflowDispatchResult {
 }
 
 export interface WorkflowDispatchService {
-  execute(
-    workflowId: string,
-    payload?: Record<string, unknown>
-  ): Promise<WorkflowDispatchResult>;
+  execute(workflowId: string, payload?: Record<string, unknown>): Promise<WorkflowDispatchResult>;
 }
 
 interface WorkflowDispatchServiceEntry extends WorkflowDispatchService {
@@ -45,21 +42,15 @@ interface RuntimeServiceRegistry {
   set(serviceType: string, services: WorkflowDispatchServiceEntry[]): void;
 }
 
-function resolveEmbeddedService(
-  runtime: IAgentRuntime
-): EmbeddedWorkflowService | null {
-  const service = runtime.getService<EmbeddedWorkflowService>(
-    EMBEDDED_WORKFLOW_SERVICE_TYPE
-  );
+function resolveEmbeddedService(runtime: IAgentRuntime): EmbeddedWorkflowService | null {
+  const service = runtime.getService<EmbeddedWorkflowService>(EMBEDDED_WORKFLOW_SERVICE_TYPE);
   if (service && typeof service.executeWorkflow === 'function') {
     return service;
   }
   return null;
 }
 
-function getRuntimeServiceRegistry(
-  runtime: IAgentRuntime
-): RuntimeServiceRegistry | null {
+function getRuntimeServiceRegistry(runtime: IAgentRuntime): RuntimeServiceRegistry | null {
   const services: unknown = Reflect.get(runtime, 'services');
   if (!services || typeof services !== 'object') {
     return null;
@@ -81,9 +72,7 @@ function getRuntimeServiceRegistry(
  * Construct the dispatch service. Registered under `WORKFLOW_DISPATCH` on the
  * runtime by the plugin's `init` lifecycle hook.
  */
-export function createWorkflowDispatchService(
-  runtime: IAgentRuntime
-): WorkflowDispatchService {
+export function createWorkflowDispatchService(runtime: IAgentRuntime): WorkflowDispatchService {
   return {
     async execute(
       workflowId: string,
@@ -99,9 +88,7 @@ export function createWorkflowDispatchService(
       }
       try {
         const execution = await service.executeWorkflow(id, { mode: 'trigger' });
-        return execution.id
-          ? { ok: true, executionId: execution.id }
-          : { ok: true };
+        return execution.id ? { ok: true, executionId: execution.id } : { ok: true };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         logger.warn(
@@ -128,10 +115,7 @@ export function registerWorkflowDispatchService(runtime: IAgentRuntime): void {
   const serviceEntry: WorkflowDispatchServiceEntry = {
     execute: dispatch.execute,
     stop: async () => {},
-    capabilityDescription:
-      'Executes embedded workflows by id via the in-process workflow service.',
+    capabilityDescription: 'Executes embedded workflows by id via the in-process workflow service.',
   };
-  getRuntimeServiceRegistry(runtime)?.set(WORKFLOW_DISPATCH_SERVICE_TYPE, [
-    serviceEntry,
-  ]);
+  getRuntimeServiceRegistry(runtime)?.set(WORKFLOW_DISPATCH_SERVICE_TYPE, [serviceEntry]);
 }

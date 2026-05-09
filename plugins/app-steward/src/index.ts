@@ -39,6 +39,7 @@ export {
   signViaSteward,
   tryRegisterStewardWebhook,
 } from "./routes/steward-bridge";
+export * from "./routes/wallet-core-routes";
 export * from "./StewardLogo.tsx";
 export * from "./StewardView";
 export * from "./security/hydrate-wallet-keys-from-platform-store";
@@ -53,3 +54,5 @@ export * from "./services/steward-evm-bridge";
 export * from "./services/steward-wallet";
 export * from "./TransactionHistory";
 export * from "./types";
+export * from "./ui";
+export * from "./browser-workspace-wallet";

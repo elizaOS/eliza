@@ -95,7 +95,11 @@ export interface ScheduledTask {
   promptInstructions: string;
   contextRequest?: {
     includeOwnerFacts?: ReadonlyArray<
-      "preferredName" | "timezone" | "morningWindow" | "eveningWindow" | "locale"
+      | "preferredName"
+      | "timezone"
+      | "morningWindow"
+      | "eveningWindow"
+      | "locale"
     >;
     includeEntities?: {
       entityIds: string[];

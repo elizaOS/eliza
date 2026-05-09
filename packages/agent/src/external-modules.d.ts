@@ -318,7 +318,6 @@ declare module "@elizaos/plugin-discord" {
   export default discordPlugin;
 }
 declare module "@elizaos/plugin-edge-tts";
-declare module "@elizaos/plugin-edge-tts/node";
 declare module "@elizaos/plugin-imessage" {
   export function resolveBlueBubblesWebhookPath(...args: unknown[]): string;
   const imessagePlugin: unknown;

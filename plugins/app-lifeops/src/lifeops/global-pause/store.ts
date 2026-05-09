@@ -14,6 +14,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { asCacheRuntime } from "../runtime-cache.js";
 
 export interface GlobalPauseWindow {
   startIso: string;
@@ -35,25 +36,6 @@ export interface GlobalPauseStore {
 }
 
 export const GLOBAL_PAUSE_CACHE_KEY = "eliza:lifeops:global-pause:v1";
-
-interface RuntimeCacheLike {
-  getCache<T>(key: string): Promise<T | null | undefined>;
-  setCache<T>(key: string, value: T): Promise<boolean | undefined>;
-  deleteCache?(key: string): Promise<boolean | undefined>;
-}
-
-function asCacheRuntime(runtime: IAgentRuntime): RuntimeCacheLike {
-  const candidate = runtime as unknown as Partial<RuntimeCacheLike>;
-  if (
-    typeof candidate.getCache !== "function" ||
-    typeof candidate.setCache !== "function"
-  ) {
-    throw new Error(
-      "[global-pause] runtime does not expose getCache/setCache — refusing to operate without persistence",
-    );
-  }
-  return candidate as RuntimeCacheLike;
-}
 
 function isValidIso(value: unknown): value is string {
   if (typeof value !== "string" || value.length === 0) {
@@ -114,16 +96,7 @@ export function createGlobalPauseStore(
       );
     },
     async clear(): Promise<void> {
-      if (typeof cache.deleteCache === "function") {
-        await cache.deleteCache(GLOBAL_PAUSE_CACHE_KEY);
-        return;
-      }
-      // Fall back to writing a sentinel "cleared" record. The active check
-      // treats missing/null as inactive, so writing null is equivalent.
-      await cache.setCache<GlobalPauseWindow | null>(
-        GLOBAL_PAUSE_CACHE_KEY,
-        null,
-      );
+      await cache.deleteCache(GLOBAL_PAUSE_CACHE_KEY);
     },
     async current(now: Date = new Date()): Promise<GlobalPauseStatus> {
       const stored = await cache.getCache<GlobalPauseWindow | null>(

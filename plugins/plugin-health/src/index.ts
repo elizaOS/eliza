@@ -28,20 +28,23 @@ import {
   registerHealthBusFamilies,
   registerHealthConnectors,
 } from "./connectors/index.js";
-import { HEALTH_DEFAULT_PACKS, registerHealthDefaultPacks } from "./default-packs/index.js";
+import {
+  HEALTH_DEFAULT_PACKS,
+  registerHealthDefaultPacks,
+} from "./default-packs/index.js";
 
 // Public surface — consumers (app-lifeops + future plugins) import the
 // helpers they need by name from `@elizaos/plugin-health`.
 
+export * from "./actions/index.js";
+export * from "./anchors/index.js";
+export * from "./connectors/index.js";
 export * from "./contracts/health.js";
-export * from "./sleep/index.js";
+export * from "./default-packs/index.js";
 export * from "./health-bridge/index.js";
 export * from "./screen-time/index.js";
+export * from "./sleep/index.js";
 export * from "./util/index.js";
-export * from "./connectors/index.js";
-export * from "./anchors/index.js";
-export * from "./default-packs/index.js";
-export * from "./actions/index.js";
 
 export const HEALTH_PLUGIN_NAME = "plugin-health";
 
@@ -81,3 +84,7 @@ export const healthPlugin: Plugin = {
 };
 
 export default healthPlugin;
+export * from "./sleep.js";
+export * from "./health-bridge.js";
+export * from "./screen-time.js";
+export * from "./actions.js";

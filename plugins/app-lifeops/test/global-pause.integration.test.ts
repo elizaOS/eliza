@@ -26,7 +26,7 @@ function makeMessage(runtime: IAgentRuntime) {
 
 describe("global pause integration", () => {
   it("pause + current + clear lifecycle works", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const store = createGlobalPauseStore(runtime);
 
     expect((await store.current()).active).toBe(false);
@@ -50,7 +50,7 @@ describe("global pause integration", () => {
   });
 
   it("LIFEOPS verb=pause through the action handler sets the window", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     let lastText: string | undefined;
     const callback = async (p: { text?: string }) => {
       lastText = p.text;
@@ -73,7 +73,7 @@ describe("global pause integration", () => {
   });
 
   it("LIFEOPS verb=wipe requires confirmation", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     let lastData: { requiresConfirmation?: boolean } | undefined;
     const callback = async (p: { text?: string; data?: unknown }) => {
       lastData = p.data as { requiresConfirmation?: boolean } | undefined;
@@ -103,7 +103,7 @@ describe("global pause integration", () => {
 
   it("respectsGlobalPause contract: gate fn skips true tasks, fires false tasks", async () => {
     // The runner is W1-A; we assert the helper a runner would write.
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const store = createGlobalPauseStore(runtime);
     await store.set({ startIso: new Date(Date.now() - 60_000).toISOString() });
 

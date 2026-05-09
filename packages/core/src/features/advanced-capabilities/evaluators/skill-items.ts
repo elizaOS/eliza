@@ -8,6 +8,7 @@ import {
 import { join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { logger } from "../../../logger.ts";
+import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import type {
 	Evaluator,
 	IAgentRuntime,
@@ -15,9 +16,7 @@ import type {
 	Memory,
 	RegisteredEvaluator,
 } from "../../../types/index.ts";
-import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import { MemoryType } from "../../../types/memory.ts";
-import type { Plugin } from "../../../types/plugin.ts";
 import { resolveStateDir } from "../../../utils/state-dir.ts";
 import {
 	formatTrajectoryForPrompt,

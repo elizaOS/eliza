@@ -21,6 +21,7 @@
         "@elizaos/plugin-browser#build",
         "@elizaos/plugin-elizacloud#build",
         "@elizaos/plugin-pdf#build",
+        "@elizaos/plugin-streaming#build",
         "@elizaos/capacitor-contacts#build",
         "@elizaos/capacitor-phone#build",
         "@elizaos/capacitor-wifi#build"

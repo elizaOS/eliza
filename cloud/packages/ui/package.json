@@ -66,13 +66,7 @@
     "build-storybook": "storybook build"
   },
   "exports": {
-    ".": "./dist/index.js",
-    "./brand": "./dist/components/brand/index.js",
-    "./layout": "./dist/components/layout/index.js",
-    "./primitives": "./dist/components/primitives.js",
-    "./components/*": "./dist/components/*",
-    "./runtime/*": "./dist/runtime/*",
-    "./styles/docs.css": "./dist/styles/docs.css"
+    ".": "./dist/index.js"
   },
   "types": "./dist/index.d.ts",
   "files": [

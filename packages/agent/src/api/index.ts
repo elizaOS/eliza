@@ -1,3 +1,5 @@
+export { handleSandboxRoute } from "@elizaos/plugin-computeruse";
+export { applySignalQrOverride } from "@elizaos/plugin-signal";
 export {
   applyWhatsAppQrOverride,
   handleWhatsAppRoute,
@@ -6,6 +8,11 @@ export {
   type WhatsAppRouteDeps,
   type WhatsAppRouteState,
 } from "@elizaos/plugin-whatsapp";
+export {
+  handleTriggerRoutes,
+  type TriggerRouteContext,
+  type TriggerRouteHelpers,
+} from "@elizaos/plugin-workflow";
 export * from "./accounts-routes.js";
 export * from "./agent-admin-routes.js";
 export * from "./agent-lifecycle-routes.js";
@@ -44,17 +51,10 @@ export {
   matchPluginRoutePath,
   tryHandleRuntimePluginRoute,
 } from "./runtime-plugin-routes.js";
-export { handleSandboxRoute } from "@elizaos/plugin-computeruse";
-export { applySignalQrOverride } from "@elizaos/plugin-signal";
 export * from "./subscription-routes.js";
 export * from "./terminal-run-limits.js";
 export * from "./training-backend-check.js";
 export * from "./training-service-like.js";
-export {
-  handleTriggerRoutes,
-  type TriggerRouteContext,
-  type TriggerRouteHelpers,
-} from "@elizaos/plugin-workflow";
 export * from "./tx-service.js";
 export * from "./wallet.js";
 export * from "./wallet-evm-balance.js";

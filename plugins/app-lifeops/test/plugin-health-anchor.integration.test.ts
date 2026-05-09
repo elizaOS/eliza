@@ -24,6 +24,11 @@ import {
   HEALTH_CONNECTOR_KINDS,
   registerHealthAnchors,
   registerHealthBusFamilies,
+  type AnchorContribution as HealthAnchorContribution,
+  type AnchorRegistry as HealthAnchorRegistry,
+  type BusFamilyContribution,
+  type BusFamilyRegistry,
+  type RuntimeWithHealthRegistries,
 } from "@elizaos/plugin-health";
 import {
   createAnchorRegistry,
@@ -71,41 +76,65 @@ describe("J16 — plugin-health anchor + bus integration with the spine", () => 
   it("anchorRegistry receives plugin-health contributions when wired in", () => {
     const anchorRegistry = createAnchorRegistry();
     const recorded: string[] = [];
-    const captured = new Proxy(anchorRegistry, {
-      get(target, prop, receiver) {
-        if (prop === "register") {
-          return (contribution: { anchorKey: string }) => {
-            recorded.push(contribution.anchorKey);
-            return (
-              target as unknown as {
-                register: (c: { anchorKey: string }) => void;
-              }
-            ).register(contribution);
-          };
-        }
-        return Reflect.get(target, prop, receiver);
+    const captured: HealthAnchorRegistry = {
+      register(contribution: HealthAnchorContribution) {
+        recorded.push(contribution.anchorKey);
+        anchorRegistry.register(
+          {
+            anchorKey: contribution.anchorKey,
+            describe: {
+              label: contribution.description,
+              provider: contribution.source,
+            },
+            resolve: async () => null,
+          },
+          { override: true },
+        );
       },
-    });
+      list() {
+        return anchorRegistry.list().map(
+          (anchor): HealthAnchorContribution => ({
+            anchorKey: anchor.anchorKey,
+            description: anchor.describe.label,
+            source: anchor.describe.provider,
+          }),
+        );
+      },
+      get(anchorKey: string) {
+        const anchor = anchorRegistry.get(anchorKey);
+        if (!anchor) return null;
+        return {
+          anchorKey: anchor.anchorKey,
+          description: anchor.describe.label,
+          source: anchor.describe.provider,
+        };
+      },
+    };
 
     // Adapter shim: plugin-health expects `runtime.anchorRegistry` on the
     // runtime. Build a minimal stub.
-    const runtimeStub = {
+    const runtimeStub: RuntimeWithHealthRegistries = {
       anchorRegistry: captured,
-    } as unknown as Parameters<typeof registerHealthAnchors>[0];
+    };
     registerHealthAnchors(runtimeStub);
     expect(recorded).toEqual([...HEALTH_ANCHORS]);
   });
 
   it("busFamilyRegistry receives plugin-health contributions when wired in", () => {
     const busRecorded: string[] = [];
-    const busFamilyRegistry = {
-      register(contribution: { family: string }) {
+    const contributions: BusFamilyContribution[] = [];
+    const busFamilyRegistry: BusFamilyRegistry = {
+      register(contribution) {
         busRecorded.push(contribution.family);
+        contributions.push(contribution);
+      },
+      list() {
+        return contributions.slice();
       },
     };
-    const runtimeStub = {
+    const runtimeStub: RuntimeWithHealthRegistries = {
       busFamilyRegistry,
-    } as unknown as Parameters<typeof registerHealthBusFamilies>[0];
+    };
     registerHealthBusFamilies(runtimeStub);
     expect(busRecorded).toEqual([...HEALTH_BUS_FAMILIES]);
   });

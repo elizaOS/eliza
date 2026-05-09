@@ -12,25 +12,25 @@ export * from "./app-hero-art.js";
 // Awareness + themes barrels
 export * from "./awareness/index.js";
 // Re-export moved app-core modules so consumers can import the package barrel.
-export * from "./config";
-export * from "./config/allowed-hosts";
-export * from "./config/api-key-prefix-hints";
-export * from "./config/app-config";
-export * from "./config/boot-config";
+export * from "./config/index.js";
+export * from "./config/allowed-hosts.js";
+export * from "./config/api-key-prefix-hints.js";
+export * from "./config/app-config.js";
+export * from "./config/boot-config.js";
 // boot-config-react.tsx and branding-react.tsx are not barrel-exported
 // from the package root because they pull in React at module load time.
 // This keeps node-side benchmark / agent boot paths React-free.
-export * from "./config/boot-config-store";
-export * from "./config/branding";
-export * from "./config/cloud-only";
-export * from "./config/config";
-export * from "./config/config-catalog";
-export * from "./config/config-paths";
-export * from "./config/env-vars";
-export * from "./config/plugin-auto-enable";
-export * from "./config/plugin-ui-spec";
-export * from "./config/runtime-overrides";
-export * from "./config/schema";
+export * from "./config/boot-config-store.js";
+export * from "./config/branding.js";
+export * from "./config/cloud-only.js";
+export * from "./config/config.js";
+export * from "./config/config-catalog.js";
+export * from "./config/config-paths.js";
+export * from "./config/env-vars.js";
+export * from "./config/plugin-auto-enable.js";
+export * from "./config/plugin-ui-spec.js";
+export * from "./config/runtime-overrides.js";
+export * from "./config/schema.js";
 // Config barrel — collides with `contracts/inbox` on `InboxAutoReplyConfig`
 // and `InboxTriageRules`. Surface those config-level shapes under aliased
 // names; the canonical shapes remain in `./contracts`.
@@ -182,10 +182,10 @@ export type {
   WorkflowConfig,
   X402Config,
 } from "./config/types.js";
-export * from "./config/ui-spec";
-export * from "./config/wechat-config";
-export * from "./config/zod-schema.agent-runtime";
-export * from "./config/zod-schema.core";
+export * from "./config/ui-spec.js";
+export * from "./config/wechat-config.js";
+export * from "./config/zod-schema.agent-runtime.js";
+export * from "./config/zod-schema.core.js";
 export * from "./connector-cred-types.js";
 export * from "./connectors.js";
 // Contracts barrel — exposes apps/awareness/cloud-topology/config/content-pack/
@@ -203,11 +203,11 @@ export * from "./dev-settings-table.js";
 // Callers that need the vendored role helpers must import them through the
 // dedicated subpath: `import { ROLE_RANK } from "@elizaos/shared/eliza-core-roles"`.
 export * from "./env-utils.js";
-export * from "./events";
+export * from "./events/index.js";
 export * from "./format-error.js";
 export * from "./onboarding-presets.characters.js";
 export * from "./onboarding-presets.js";
-export * from "./platform/is-native-server";
+export * from "./platform/is-native-server.js";
 export * from "./recent-messages-state.js";
 export * from "./restart.js";
 export * from "./runtime-env.js";
@@ -221,38 +221,38 @@ export {
 export * from "./spoken-text.js";
 export * from "./terminal/links.js";
 export * from "./terminal/theme.js";
-export * from "./test-support/process-helpers";
-export * from "./test-support/test-helpers";
+export * from "./test-support/process-helpers.js";
+export * from "./test-support/test-helpers.js";
 export * from "./themes/index.js";
 export * from "./type-guards.js";
-export * from "./types";
-export * from "./utils";
-export * from "./utils/asset-url";
-export * from "./utils/assistant-text";
-export * from "./utils/browser-tab-kit-types";
-export * from "./utils/browser-tabs-renderer-registry";
-export * from "./utils/character-message-examples";
-export * from "./utils/cloud-status";
-export * from "./utils/documents-upload-image";
-export * from "./utils/eliza-cloud-model-route";
-export * from "./utils/eliza-globals";
-export * from "./utils/eliza-root";
-export * from "./utils/env";
-export * from "./utils/errors";
-export * from "./utils/exec-safety";
-export * from "./utils/format";
-export * from "./utils/labels";
-export * from "./utils/log-prefix";
-export * from "./utils/name-tokens";
-export * from "./utils/namespace-defaults";
-export * from "./utils/number-parsing";
-export * from "./utils/owner-name";
-export * from "./utils/rate-limiter";
-export * from "./utils/serialise";
-export * from "./utils/sql-compat";
-export * from "./utils/streaming-text";
-export * from "./utils/subscription-auth";
-export * from "./utils/trajectory-format";
-export * from "./utils/tts-debug";
+export * from "./types/index.js";
+export * from "./utils/index.js";
+export * from "./utils/asset-url.js";
+export * from "./utils/assistant-text.js";
+export * from "./utils/browser-tab-kit-types.js";
+export * from "./utils/browser-tabs-renderer-registry.js";
+export * from "./utils/character-message-examples.js";
+export * from "./utils/cloud-status.js";
+export * from "./utils/documents-upload-image.js";
+export * from "./utils/eliza-cloud-model-route.js";
+export * from "./utils/eliza-globals.js";
+export * from "./utils/eliza-root.js";
+export * from "./utils/env.js";
+export * from "./utils/errors.js";
+export * from "./utils/exec-safety.js";
+export * from "./utils/format.js";
+export * from "./utils/labels.js";
+export * from "./utils/log-prefix.js";
+export * from "./utils/name-tokens.js";
+export * from "./utils/namespace-defaults.js";
+export * from "./utils/number-parsing.js";
+export * from "./utils/owner-name.js";
+export * from "./utils/rate-limiter.js";
+export * from "./utils/serialise.js";
+export * from "./utils/sql-compat.js";
+export * from "./utils/streaming-text.js";
+export * from "./utils/subscription-auth.js";
+export * from "./utils/trajectory-format.js";
+export * from "./utils/tts-debug.js";
 export * from "./validation-keywords.js";
 export * from "./voice.js";

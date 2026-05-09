@@ -9,21 +9,6 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./routes": {
-      "types": "./dist/routes.d.ts",
-      "import": "./dist/routes.js",
-      "default": "./dist/routes.js"
-    },
-    "./service-loader": {
-      "types": "./dist/service-loader.d.ts",
-      "import": "./dist/service-loader.js",
-      "default": "./dist/service-loader.js"
-    },
-    "./setup-routes": {
-      "types": "./dist/setup-routes.d.ts",
-      "import": "./dist/setup-routes.js",
-      "default": "./dist/setup-routes.js"
-    },
     "./package.json": "./package.json"
   },
   "dependencies": {

@@ -5,11 +5,7 @@
   "type": "module",
   "private": true,
   "exports": {
-    "./package.json": "./package.json",
-    "./cloud-api": "./cloud-api.ts",
-    "./cloud-worker-env": "./cloud-worker-env.ts",
-    "./global": "./global.d.ts",
-    "./stripe-queue-message": "./stripe-queue-message.ts"
+    "./package.json": "./package.json"
   },
   "scripts": {
     "lint": "biome check .",

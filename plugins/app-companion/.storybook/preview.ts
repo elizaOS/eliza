@@ -1,6 +1,6 @@
 import { withThemeByClassName } from "@storybook/addon-themes";
 import type { Preview } from "@storybook/react";
-import "@elizaos/ui/styles/styles.css";
+import "@elizaos/ui";
 
 const preview: Preview = {
   parameters: {

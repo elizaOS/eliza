@@ -173,4 +173,7 @@ export {
   handleTriggerRoutes,
   type TriggerRouteContext,
   type TriggerRouteHelpers,
-} from "./trigger-routes.js";
+} from './trigger-routes.js';
+export * from "./plugin-routes.js";
+export * from "./register-routes.js";
+export * from "./services/workflow-dispatch.js";

@@ -29,6 +29,7 @@
       },
       "bun": {
         "types": "./dist/index.d.ts",
+        "import": "./dist/node/index.node.js",
         "default": "./dist/node/index.node.js"
       },
       "default": "./dist/node/index.node.js"

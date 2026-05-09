@@ -123,7 +123,7 @@ describe("first-run config validation", () => {
   });
 
   it("validateChannel falls back to in_app + warning for unconnected channels", () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const result = validateChannel("telegram", runtime);
     expect(result.fallbackToInApp).toBe(true);
     expect(result.warning).toMatch(/fall back/i);
@@ -134,7 +134,7 @@ describe("first-run config validation", () => {
       isRegistered: () => true,
       isConnected: () => true,
     });
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const result = validateChannel("telegram", runtime);
     expect(result.fallbackToInApp).toBe(false);
     expect(result.warning).toBeUndefined();
@@ -142,7 +142,7 @@ describe("first-run config validation", () => {
   });
 
   it("rejects an unregistered channel with the right warning", () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const result = validateChannel("morse_code", runtime);
     expect(result.channel).toBe("in_app");
     expect(result.fallbackToInApp).toBe(true);
@@ -150,7 +150,7 @@ describe("first-run config validation", () => {
   });
 
   it("FirstRunService produces shape-valid tasks via the in-memory runner", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const stateStore = createFirstRunStateStore(runtime);
     const factStore = createOwnerFactStore(runtime);
     const recorded: ScheduledTask[] = [];

@@ -25,7 +25,7 @@ import {
   type GitHubCredentialMetadata,
   loadMetadata,
   saveCredentials,
-} from "@elizaos/app-core/services/github-credentials";
+} from "@elizaos/app-core";
 import { logger } from "@elizaos/core";
 
 const GITHUB_USER_URL = "https://api.github.com/user";

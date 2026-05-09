@@ -6,7 +6,7 @@ import type {
   HyperliquidStatusResponse,
 } from "./hyperliquid-contracts";
 
-declare module "@elizaos/app-core/api/client-base" {
+declare module "@elizaos/app-core" {
   interface ElizaClient {
     hyperliquidStatus(): Promise<HyperliquidStatusResponse>;
     hyperliquidMarkets(): Promise<HyperliquidMarketsResponse>;

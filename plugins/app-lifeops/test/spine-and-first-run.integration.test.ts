@@ -91,7 +91,7 @@ function makeFreshRunner() {
 
 describe("J2 — spine + first-run integration", () => {
   it("first-run defaults seed four task records → spine runner can apply verbs", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const service = new FirstRunService(runtime);
 
     // Step 1: ask wake time → status=needs_more_input.
@@ -121,9 +121,7 @@ describe("J2 — spine + first-run integration", () => {
     const runner = makeFreshRunner();
     const scheduled: ScheduledTask[] = [];
     for (const cachedRec of cached) {
-      const t = await runner.schedule(
-        cachedRec.input as unknown as Omit<ScheduledTask, "taskId" | "state">,
-      );
+      const t = await runner.schedule(cachedRec.input);
       scheduled.push(t);
     }
     expect(scheduled.length).toBe(4);
@@ -154,7 +152,7 @@ describe("J2 — spine + first-run integration", () => {
   });
 
   it("first-run replay path leaves scheduled inputs idempotent under the runner", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const service = new FirstRunService(runtime);
     await service.runDefaultsPath({ wakeTime: "6:30am" });
     const cached = await readFallbackScheduledTasks(runtime);
@@ -162,18 +160,14 @@ describe("J2 — spine + first-run integration", () => {
     const runner = makeFreshRunner();
     const firstPass: string[] = [];
     for (const rec of cached) {
-      const t = await runner.schedule(
-        rec.input as unknown as Omit<ScheduledTask, "taskId" | "state">,
-      );
+      const t = await runner.schedule(rec.input);
       firstPass.push(t.taskId);
     }
 
     // Replay: schedule same inputs again — idempotency key should dedupe.
     const secondPass: string[] = [];
     for (const rec of cached) {
-      const t = await runner.schedule(
-        rec.input as unknown as Omit<ScheduledTask, "taskId" | "state">,
-      );
+      const t = await runner.schedule(rec.input);
       secondPass.push(t.taskId);
     }
 

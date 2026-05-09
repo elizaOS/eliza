@@ -1,5 +1,7 @@
 // Signal pairing helpers live in @elizaos/plugin-signal. Re-exported here
 // for backward compatibility with code that imports them from @elizaos/agent.
+
+export { CodingTaskExecutor } from "@elizaos/plugin-coding-tools";
 export {
   classifySignalPairingErrorStatus,
   extractSignalCliProvisioningUrl,
@@ -25,12 +27,12 @@ export {
 export * from "./agent-export.js";
 export * from "./app-manager.js";
 export * from "./app-session-gate.js";
-export { CodingTaskExecutor } from "@elizaos/plugin-coding-tools";
 export {
   EscalationService,
   type EscalationState,
   registerEscalationChannel,
 } from "./escalation.js";
+export * from "./mcp-marketplace.js";
 export * from "./overlay-app-presence.js";
 // `plugin-manager-types` re-exports `RegistryPluginInfo` and
 // `RegistrySearchResult` from `./registry-client-types.js`, which collide with
@@ -62,7 +64,6 @@ export {
 } from "./plugin-manager-types.js";
 export * from "./registry-client.js";
 export { resolveAppHeroImage } from "./registry-client-queries.js";
-export * from "./mcp-marketplace.js";
 export * from "./remote-signing-service.js";
 export { ResearchTaskExecutor } from "./research-task-executor.js";
 export * from "./sandbox-engine.js";

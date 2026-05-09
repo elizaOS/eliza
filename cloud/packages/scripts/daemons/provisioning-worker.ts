@@ -12,10 +12,10 @@
  *   npx tsx packages/scripts/daemons/provisioning-worker.ts --once
  */
 
-import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { HeartbeatResult, ProcessingResult } from "../../lib/services/provisioning-jobs";
+import { loadLocalEnv } from "./shared/load-env";
 
 type WorkerLogger = typeof import("../../lib/utils/logger").logger;
 type WorkerService = typeof import("../../lib/services/provisioning-jobs").provisioningJobService;
@@ -33,38 +33,6 @@ export interface ProvisioningWorkerConfig {
 
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const DEFAULT_BATCH_SIZE = 3;
-
-function loadEnvFile(filePath: string): void {
-  if (!fs.existsSync(filePath)) return;
-
-  const content = fs.readFileSync(filePath, "utf-8");
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-
-    const eqIdx = trimmed.indexOf("=");
-    if (eqIdx < 0) continue;
-
-    const key = trimmed.slice(0, eqIdx);
-    let value = trimmed.slice(eqIdx + 1);
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    if (!(key in process.env)) {
-      process.env[key] = value;
-    }
-  }
-}
-
-function loadLocalEnv(): void {
-  const scriptPath = fileURLToPath(import.meta.url);
-  const projectRoot = path.resolve(path.dirname(scriptPath), "../../..");
-  loadEnvFile(path.join(projectRoot, ".env.local"));
-  loadEnvFile(path.join(projectRoot, ".env"));
-}
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -158,7 +126,7 @@ async function pollCycle(logger: WorkerLogger, config: ProvisioningWorkerConfig)
 }
 
 async function main(): Promise<void> {
-  loadLocalEnv();
+  loadLocalEnv(import.meta.url);
 
   const config = readWorkerConfig();
   const { logger } = await loadDeps();
