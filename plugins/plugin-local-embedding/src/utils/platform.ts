@@ -224,25 +224,60 @@ export class PlatformManager {
    *
    * @returns {Promise<SystemGPU | null>} A promise that resolves with the detected GPU information or null if detection fails.
    */
+  private async queryWindowsGpuName(): Promise<string | null> {
+    // Prefer PowerShell + CIM. wmic.exe is removed in Windows 11 24H2 /
+    // Server 2025; PowerShell + Get-CimInstance works there.
+    const psCmd =
+      "powershell -NoProfile -NonInteractive -Command " +
+      "\"Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name\"";
+    try {
+      const { stdout } = await execAsync(psCmd);
+      const first = stdout
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)[0];
+      if (first) return first;
+    } catch {
+      // Fall through to wmic.
+    }
+    try {
+      const { stdout } = await execAsync(
+        "wmic path win32_VideoController get name"
+      );
+      const lines = stdout
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line && line.toLowerCase() !== "name");
+      return lines[0] ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   private async detectWindowsGPU(): Promise<SystemGPU | null> {
     try {
-      const { stdout } = await execAsync("wmic path win32_VideoController get name");
-      const gpuName = stdout.split("\n")[1].trim();
+      const gpuName = await this.queryWindowsGpuName();
+      if (!gpuName) return null;
 
       // Check for NVIDIA GPU
       if (gpuName.toLowerCase().includes("nvidia")) {
-        const { stdout: nvidiaInfo } = await execAsync(
-          "nvidia-smi --query-gpu=name,memory.total --format=csv,noheader"
-        );
-        const [name, memoryStr] = nvidiaInfo.split(",").map((s) => s.trim());
-        const memory = Number.parseInt(memoryStr, 10);
+        try {
+          const { stdout: nvidiaInfo } = await execAsync(
+            "nvidia-smi --query-gpu=name,memory.total --format=csv,noheader"
+          );
+          const firstLine = nvidiaInfo.split(/\r?\n/)[0] ?? "";
+          const [name, memoryStr] = firstLine.split(",").map((s) => s.trim());
+          const memory = Number.parseInt(memoryStr, 10);
 
-        return {
-          name,
-          memory,
-          type: "cuda",
-          version: await this.getNvidiaDriverVersion(),
-        };
+          return {
+            name: name || gpuName,
+            memory: Number.isFinite(memory) ? memory : undefined,
+            type: "cuda",
+            version: await this.getNvidiaDriverVersion(),
+          };
+        } catch {
+          return { name: gpuName, type: "cuda" };
+        }
       }
 
       // Default to DirectML for other GPUs

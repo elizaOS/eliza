@@ -66,7 +66,7 @@ async function build() {
       (async () => {
         console.log("Generating TypeScript declarations...");
         try {
-          await $`bunx tsc --emitDeclarationOnly --incremental --project ./tsconfig.build.json`;
+          await $`bunx tsc --noCheck --emitDeclarationOnly --incremental --project ./tsconfig.build.json`;
           console.log("TypeScript declarations generated");
           return { success: true };
         } catch (e) {

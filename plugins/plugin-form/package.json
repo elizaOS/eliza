@@ -42,7 +42,7 @@
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:types": "tsc -p tsconfig.build.json"
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "files": [
     "dist",
