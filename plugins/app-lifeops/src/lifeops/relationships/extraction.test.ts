@@ -5,8 +5,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { managerOfAtCompany } from "./extraction.js";
 import { SELF_ENTITY_ID } from "../entities/types.js";
+import { managerOfAtCompany } from "./extraction.js";
 
 describe("managerOfAtCompany extractor", () => {
   it("produces three edges: self→manager:managed_by, self→company:works_at, manager→company:works_at", () => {

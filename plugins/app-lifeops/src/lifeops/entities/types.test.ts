@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EntityTypeRegistry, BUILT_IN_ENTITY_TYPES } from "./types.js";
+import { BUILT_IN_ENTITY_TYPES, EntityTypeRegistry } from "./types.js";
 
 describe("EntityTypeRegistry", () => {
   it("includes all built-ins on construction", () => {
@@ -21,8 +21,8 @@ describe("EntityTypeRegistry", () => {
   it("rejects re-registration with conflicting metadata", () => {
     const registry = new EntityTypeRegistry();
     registry.register("vehicle", { label: "Vehicle" });
-    expect(() =>
-      registry.register("vehicle", { label: "Different" }),
-    ).toThrow(/already registered/);
+    expect(() => registry.register("vehicle", { label: "Different" })).toThrow(
+      /already registered/,
+    );
   });
 });

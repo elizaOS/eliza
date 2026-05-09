@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  RelationshipTypeRegistry,
   BUILT_IN_RELATIONSHIP_TYPES,
+  RelationshipTypeRegistry,
 } from "./types.js";
 
 describe("RelationshipTypeRegistry", () => {

@@ -15,7 +15,6 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   executeRawSql,
   parseJsonArray,
-  parseJsonRecord,
   parseJsonValue,
   sqlInteger,
   sqlJson,
@@ -96,15 +95,18 @@ function identityRowToIdentity(row: Record<string, unknown>): EntityIdentity {
     verified: toBoolean(row.verified),
     confidence: toNumber(row.confidence, 0),
     addedAt: toText(row.added_at),
-    addedVia: toText(row.added_via, "platform_observation") as
-      EntityIdentityAddedVia,
+    addedVia: toText(
+      row.added_via,
+      "platform_observation",
+    ) as EntityIdentityAddedVia,
     evidence,
   };
 }
 
-function attributeRowToAttribute(
-  row: Record<string, unknown>,
-): { key: string; attribute: EntityAttribute } {
+function attributeRowToAttribute(row: Record<string, unknown>): {
+  key: string;
+  attribute: EntityAttribute;
+} {
   return {
     key: toText(row.key),
     attribute: {
@@ -217,7 +219,9 @@ export class EntityStore {
 
     const fetched = await this.get(entityId);
     if (!fetched) {
-      throw new Error(`[EntityStore] failed to read back upserted entity ${entityId}`);
+      throw new Error(
+        `[EntityStore] failed to read back upserted entity ${entityId}`,
+      );
     }
     return fetched;
   }

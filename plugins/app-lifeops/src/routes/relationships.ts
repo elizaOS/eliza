@@ -37,13 +37,16 @@ function makeStore(ctx: LifeOpsRouteContext): RelationshipStore | null {
 
 function parseRelationshipFilter(url: URL): RelationshipFilter {
   const filter: RelationshipFilter = {};
-  const from = url.searchParams.get("from") ?? url.searchParams.get("fromEntityId");
+  const from =
+    url.searchParams.get("from") ?? url.searchParams.get("fromEntityId");
   if (from) filter.fromEntityId = from;
   const to = url.searchParams.get("to") ?? url.searchParams.get("toEntityId");
   if (to) filter.toEntityId = to;
   const type = url.searchParams.get("type");
   if (type) {
-    filter.type = type.includes(",") ? type.split(",").map((s) => s.trim()) : type;
+    filter.type = type.includes(",")
+      ? type.split(",").map((s) => s.trim())
+      : type;
   }
   const cadenceOverdueAsOf = url.searchParams.get("cadenceOverdueAsOf");
   if (cadenceOverdueAsOf) filter.cadenceOverdueAsOf = cadenceOverdueAsOf;
@@ -151,9 +154,7 @@ export async function handleRelationshipRoutes(
   }
 
   // PATCH /api/lifeops/relationships/:id
-  const patchMatch = pathname.match(
-    /^\/api\/lifeops\/relationships\/([^/]+)$/,
-  );
+  const patchMatch = pathname.match(/^\/api\/lifeops\/relationships\/([^/]+)$/);
   if (method === "PATCH" && patchMatch) {
     const store = makeStore(ctx);
     if (!store) return true;
@@ -227,11 +228,7 @@ export async function handleRelationshipRoutes(
     }>(req, res);
     if (!body) return true;
     if (!body.fromEntityId || !body.toEntityId || !body.type) {
-      ctx.error(
-        res,
-        "fromEntityId, toEntityId, and type are required",
-        400,
-      );
+      ctx.error(res, "fromEntityId, toEntityId, and type are required", 400);
       return true;
     }
     const relationship = await store.upsert({

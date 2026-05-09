@@ -188,7 +188,12 @@ describe("mergeEntities", () => {
       id: "t",
       name: "Target",
       identities: [
-        makeIdentity({ platform: "email", handle: "t@example.com", confidence: 1, verified: true }),
+        makeIdentity({
+          platform: "email",
+          handle: "t@example.com",
+          confidence: 1,
+          verified: true,
+        }),
       ],
       tags: ["original"],
     });
@@ -196,7 +201,12 @@ describe("mergeEntities", () => {
       id: "s",
       name: "Source",
       identities: [
-        makeIdentity({ platform: "telegram", handle: "@s", confidence: 0.9, verified: false }),
+        makeIdentity({
+          platform: "telegram",
+          handle: "@s",
+          confidence: 0.9,
+          verified: false,
+        }),
       ],
       tags: ["folded"],
     });
