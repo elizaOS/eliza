@@ -141,15 +141,11 @@
     "@elizaos/capacitor-wifi": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-agent-skills": "workspace:*",
-<<<<<<< HEAD
-    "@elizaos/plugin-browser-bridge": "workspace:*",
     "@elizaos/plugin-coding-tools": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",
-    "@elizaos/plugin-music-player": "workspace:*",
+    "@elizaos/plugin-music": "workspace:*",
     "@elizaos/plugin-workflow": "workspace:*",
-=======
     "@elizaos/plugin-browser": "workspace:*",
->>>>>>> 11155d894b957ecc97fd49a34bea517fc3072228
     "@elizaos/plugin-computeruse": "workspace:*",
     "@elizaos/plugin-local-embedding": "workspace:*",
     "@elizaos/plugin-ollama": "workspace:*",

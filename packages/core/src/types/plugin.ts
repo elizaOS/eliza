@@ -1,7 +1,7 @@
 import type { Character } from "./agent";
 import type { Action, AgentContext, Provider } from "./components";
 import type { IDatabaseAdapter } from "./database";
-import type { Evaluator } from "./evaluator";
+import type { RegisteredEvaluator } from "./evaluator";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { ModelParamsMap, PluginModelResult } from "./model";
 import type { X402Config, X402RequestValidator } from "./payment";
@@ -446,7 +446,7 @@ export interface PluginOwnership {
 	registeredPlugin: Plugin | null;
 	actions: Action[];
 	providers: Provider[];
-	evaluators: Evaluator<any, any>[];
+	evaluators: RegisteredEvaluator[];
 	routes: Route[];
 	events: PluginEventRegistration[];
 	models: PluginModelRegistration[];
@@ -497,7 +497,7 @@ export interface Plugin {
 	// Optional plugin features
 	actions?: Action[];
 	providers?: Provider[];
-	evaluators?: Evaluator<any, any>[];
+	evaluators?: RegisteredEvaluator[];
 
 	/**
 	 * Database adapter factory. When set, this plugin provides the database

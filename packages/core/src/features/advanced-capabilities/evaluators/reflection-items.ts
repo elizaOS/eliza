@@ -9,6 +9,7 @@ import type {
 	JSONSchema,
 	Memory,
 	MemoryMetadata,
+	RegisteredEvaluator,
 	State,
 	UUID,
 } from "../../../types/index.ts";
@@ -193,10 +194,6 @@ interface EmbeddedMemory {
 
 function nowIso(): string {
 	return new Date().toISOString();
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function toJsonObject(value: Record<string, unknown>): {
@@ -1126,9 +1123,9 @@ ${JSON.stringify(prepared.actionResults, null, 2)}`;
 	],
 };
 
-export const reflectionItems = [
+export const reflectionItems: RegisteredEvaluator[] = [
 	factMemoryEvaluator,
 	relationshipEvaluator,
 	identityEvaluator,
 	successEvaluator,
-] as Evaluator[];
+];

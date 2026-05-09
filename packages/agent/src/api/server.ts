@@ -174,7 +174,7 @@ import { handleMemoryRoutes } from "./memory-routes.js";
 import { handleMiscRoutes } from "./misc-routes.js";
 import { handleMobileOptionalRoutes } from "./mobile-optional-routes.js";
 import { handleModelsRoutes } from "./models-routes.js";
-import { tryHandleMusicPlayerStatusFallback } from "@elizaos/plugin-music-player";
+import { tryHandleMusicPlayerStatusFallback } from "@elizaos/plugin-music";
 import { handleOnboardingRoutes } from "./onboarding-routes.js";
 import { handlePermissionRoutes } from "./permissions-routes.js";
 import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.js";

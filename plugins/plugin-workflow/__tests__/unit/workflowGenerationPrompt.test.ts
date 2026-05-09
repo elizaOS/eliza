@@ -87,9 +87,7 @@ describe('WORKFLOW_GENERATION_SYSTEM_PROMPT — verb→operation discrimination'
   });
 
   test('explains the resource is the *object* of the verb', () => {
-    expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(
-      /resource.*is the \*object\* of the verb/
-    );
+    expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(/resource.*is the \*object\* of the verb/);
     expect(WORKFLOW_GENERATION_SYSTEM_PROMPT).toMatch(/Send a meow message/);
   });
 

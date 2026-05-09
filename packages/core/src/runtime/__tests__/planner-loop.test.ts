@@ -528,3 +528,294 @@ describe("v5 planner loop skeleton", () => {
 		expect(recordedKinds).toContain("planner");
 	});
 });
+
+describe("v5 planner loop — evaluator gate", () => {
+	// Conservative gate: when a successful tool drained the queue and the most
+	// recent planner output supplied an EXPLICIT `messageToUser` field, the
+	// planner loop synthesizes a FINISH evaluator output and skips the
+	// evaluator's full LLM call. The six tests below pin the fire/withhold
+	// contract — including the discriminator that native-mode tool-call returns
+	// (which fall back to `text`) do NOT trigger the gate, because `text` can
+	// be a pre-tool thought rather than a final answer.
+
+	function plannerJsonWith(opts: {
+		messageToUser?: string;
+		toolCalls: Array<{ name: string; args?: Record<string, unknown> }>;
+	}) {
+		// JSON-mode return: parsePlannerOutput goes through parseJsonPlannerOutput
+		// which carries `messageToUser` into `raw.messageToUser` — the explicit
+		// field the gate requires.
+		return vi.fn(async () =>
+			JSON.stringify({
+				thought: "ready",
+				toolCalls: opts.toolCalls,
+				...(opts.messageToUser ? { messageToUser: opts.messageToUser } : {}),
+			}),
+		);
+	}
+
+	function plannerNativeWith(opts: {
+		text?: string;
+		toolCalls: Array<{
+			id: string;
+			name: string;
+			arguments?: Record<string, unknown>;
+		}>;
+	}) {
+		// Native-mode return: parsePlannerOutput's native branch infers
+		// messageToUser from `text` but does NOT carry it as an explicit field.
+		// The gate must withhold even if `text` is a clean string, because in
+		// native mode `text` is ambiguous (thought vs final answer).
+		return vi.fn(async () => ({
+			text: opts.text ?? "",
+			toolCalls: opts.toolCalls,
+		}));
+	}
+
+	it("FIRES: explicit messageToUser + drained queue + success — evaluator LLM call is skipped", async () => {
+		const runtime = {
+			useModel: plannerJsonWith({
+				messageToUser: "Status check passed.",
+				toolCalls: [{ name: "LOOKUP", args: { query: "status" } }],
+			}),
+		};
+		const executeToolCall = vi.fn(async () => ({ success: true, text: "ok" }));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "should not be called",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(evaluate).not.toHaveBeenCalled();
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("Status check passed.");
+		expect(result.evaluator?.decision).toBe("FINISH");
+		expect(result.evaluator?.success).toBe(true);
+		expect(result.evaluator?.thought).toContain("Gated FINISH");
+
+		// Consumer-shape contract: `subPlannerResultToPlannerToolResult` in
+		// services/message.ts reads `evaluator.success` and `evaluator.messageToUser`
+		// off the loop's return value. The gate's synthesized output must carry both
+		// in the shape that consumer expects, so downstream behavior is identical to
+		// a model-produced FINISH/success=true result.
+		expect(result.evaluator?.success).toBe(true);
+		expect(result.evaluator?.messageToUser).toBe("Status check passed.");
+		// Trajectory observability: the loop still records the gated decision in
+		// `evaluatorOutputs` and as a context event so trajectory dumps and replay
+		// tools see the iteration's outcome (just no recorder evaluation stage).
+		expect(result.trajectory.evaluatorOutputs).toHaveLength(1);
+		expect(result.trajectory.evaluatorOutputs[0]?.thought).toContain(
+			"Gated FINISH",
+		);
+		const evalEvents = (result.trajectory.context.events ?? []).filter(
+			(event) => event.type === "evaluation",
+		);
+		expect(evalEvents).toHaveLength(1);
+	});
+
+	it("FIRES: emits a recorder evaluation stage marked gated for trajectory-replay parity", async () => {
+		// Gated iterations must still surface on the recorder timeline so replay
+		// tools see a stage at the same slot a model-produced evaluation would
+		// occupy. The synthesized stage is `kind: "evaluation"` and carries
+		// `gated: true` / `llmCallSkipped: true` / `reason: "explicit_terminal_reply"`
+		// so reviewers can distinguish gated decisions from real evaluator calls.
+		const runtime = {
+			useModel: plannerJsonWith({
+				messageToUser: "Status check passed.",
+				toolCalls: [{ name: "LOOKUP", args: { query: "status" } }],
+			}),
+		};
+		const executeToolCall = vi.fn(async () => ({ success: true, text: "ok" }));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "should not be called",
+		}));
+		const recordedStages: Array<Record<string, unknown>> = [];
+		const recorder = {
+			recordStage: vi.fn(
+				async (_trajectoryId: string, stage: Record<string, unknown>) => {
+					recordedStages.push(stage);
+				},
+			),
+		} as unknown as TrajectoryRecorder;
+
+		await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+			recorder,
+			trajectoryId: "trj-gated",
+		});
+
+		// The model evaluator was NOT called.
+		expect(evaluate).not.toHaveBeenCalled();
+
+		// The recorder DID receive an evaluation stage for the gated iteration.
+		const evalStages = recordedStages.filter((s) => s.kind === "evaluation");
+		expect(evalStages).toHaveLength(1);
+		const evalStage = evalStages[0] as Record<string, unknown>;
+		expect((evalStage.evaluation as Record<string, unknown>).gated).toBe(true);
+		expect(
+			(evalStage.evaluation as Record<string, unknown>).llmCallSkipped,
+		).toBe(true);
+		expect((evalStage.evaluation as Record<string, unknown>).reason).toBe(
+			"explicit_terminal_reply",
+		);
+		// The decision and message reach the recorder so timeline UIs render them.
+		expect((evalStage.evaluation as Record<string, unknown>).decision).toBe(
+			"FINISH",
+		);
+		expect(
+			(evalStage.evaluation as Record<string, unknown>).messageToUser,
+		).toBe("Status check passed.");
+		// No `model` block — there was no LLM call to attribute.
+		expect(evalStage.model).toBeUndefined();
+	});
+
+	it("WITHHOLDS in native-mode (text fallback, no explicit messageToUser) — evaluator IS called", async () => {
+		// Native tool-call returns infer messageToUser from `text`. That path is
+		// ambiguous (thought vs final answer), so the gate must withhold.
+		const runtime = {
+			useModel: plannerNativeWith({
+				text: "thinking",
+				toolCalls: [{ id: "call-1", name: "LOOKUP", arguments: {} }],
+			}),
+		};
+		const executeToolCall = vi.fn(async () => ({ success: true, text: "ok" }));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Real evaluator decision.",
+			messageToUser: "Status: ok.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(evaluate).toHaveBeenCalledTimes(1);
+		expect(result.finalMessage).toBe("Status: ok.");
+	});
+
+	it("WITHHOLDS on tool failure — evaluator IS called", async () => {
+		const runtime = {
+			useModel: plannerJsonWith({
+				messageToUser: "Should not be used because tool failed.",
+				toolCalls: [{ name: "LOOKUP", args: {} }],
+			}),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: false,
+			error: "boom",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: false,
+			decision: "FINISH" as const,
+			thought: "Halted after failure.",
+			messageToUser: "Could not check status.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(evaluate).toHaveBeenCalledTimes(1);
+		expect(result.evaluator?.thought).toBe("Halted after failure.");
+	});
+
+	it("WITHHOLDS when more tools remain queued — evaluator IS called", async () => {
+		const runtime = {
+			useModel: plannerJsonWith({
+				messageToUser: "Will not be used while plan is incomplete.",
+				toolCalls: [
+					{ name: "LOOKUP", args: {} },
+					{ name: "FOLLOW_UP", args: {} },
+				],
+			}),
+		};
+		const executeToolCall = vi.fn(async () => ({ success: true, text: "ok" }));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Real evaluator called.",
+		}));
+
+		await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(evaluate).toHaveBeenCalled();
+	});
+
+	it("WITHHOLDS when planner produced no messageToUser — evaluator IS called", async () => {
+		const runtime = {
+			useModel: plannerJsonWith({
+				// No messageToUser field at all.
+				toolCalls: [{ name: "LOOKUP", args: {} }],
+			}),
+		};
+		const executeToolCall = vi.fn(async () => ({ success: true, text: "ok" }));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Real evaluator decision.",
+			messageToUser: "Status: ok.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(evaluate).toHaveBeenCalledTimes(1);
+		expect(result.finalMessage).toBe("Status: ok.");
+	});
+
+	it("WITHHOLDS when explicit messageToUser contains tool-call syntax — evaluator IS called", async () => {
+		// isUnsafeUserVisibleText (reused by the gate) catches tool/function
+		// syntax leakage. The evaluator's own prompt rules force CONTINUE on
+		// leaked syntax; the gate honors the same constraint.
+		const runtime = {
+			useModel: plannerJsonWith({
+				messageToUser: "I'll need to call to=functions.LOOKUP next to verify.",
+				toolCalls: [{ name: "LOOKUP", args: {} }],
+			}),
+		};
+		const executeToolCall = vi.fn(async () => ({ success: true, text: "ok" }));
+		const evaluate = vi.fn(async () => ({
+			success: false,
+			decision: "CONTINUE" as const,
+			thought: "Real evaluator caught the leaked syntax.",
+		}));
+
+		await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			config: { maxPlannerIterations: 2 },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(evaluate).toHaveBeenCalled();
+	});
+});

@@ -124,7 +124,12 @@ function normalizeLastExecution(
     const error = resultData?.error as Record<string, unknown> | undefined;
     return typeof error?.message === "string" ? error.message : undefined;
   })();
-  return { status, startedAt, stoppedAt, ...(errorMessage ? { errorMessage } : {}) };
+  return {
+    status,
+    startedAt,
+    stoppedAt,
+    ...(errorMessage ? { errorMessage } : {}),
+  };
 }
 
 interface StaticAutomationNodeSpec {
@@ -780,7 +785,10 @@ async function buildAutomationListResponse(
           runtime,
           `/api/workflow/workflows/${encodeURIComponent(workflowId)}/executions?limit=1`,
         );
-        if (result.status !== 200 || !Array.isArray(result.payload?.executions)) {
+        if (
+          result.status !== 200 ||
+          !Array.isArray(result.payload?.executions)
+        ) {
           return;
         }
         if (result.payload.executions.length === 0) {

@@ -101,9 +101,9 @@ export type PersistedStep = TrajectoryStep & {
    * `"llm"` by readers.
    */
   kind?: TrajectoryStepKind;
-  /** Step IDs of nested steps (used by `executeCode`). */
+  /** Step IDs of nested trajectory steps. */
   childSteps?: string[];
-  /** Inline script source for `executeCode` steps (capped). */
+  /** Inline script source for script-backed steps (capped). */
   script?: string;
   /** sha256 hex digest of the original script when it exceeded the cap. */
   scriptHash?: string;
@@ -442,7 +442,7 @@ export function truncateRecord(
 }
 
 // ---------------------------------------------------------------------------
-// Script capture helpers (used by executeCode trajectory steps)
+// Script capture helpers
 // ---------------------------------------------------------------------------
 
 /**

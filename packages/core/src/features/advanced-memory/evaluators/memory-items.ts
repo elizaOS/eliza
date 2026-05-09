@@ -4,10 +4,9 @@ import type {
 	IAgentRuntime,
 	JSONSchema,
 	Memory,
-	State,
+	RegisteredEvaluator,
 	UUID,
 } from "../../../types/index.ts";
-import type { Plugin } from "../../../types/plugin.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 import { LongTermMemoryCategory, type MemoryExtraction } from "../types.ts";
@@ -506,7 +505,7 @@ ${formatMessages(runtime, prepared.recentMessages)}`;
 	],
 };
 
-export const memoryItems: NonNullable<Plugin["evaluators"]> = [
+export const memoryItems: RegisteredEvaluator[] = [
 	summaryEvaluator,
 	longTermMemoryEvaluator,
 ];

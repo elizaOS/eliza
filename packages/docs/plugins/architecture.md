@@ -207,7 +207,6 @@ const FEATURE_PLUGINS = {
   cua:                  "@elizaos/plugin-cua",                   // * upstream-only
   obsidian:             "@elizaos/plugin-obsidian",              // * upstream-only
   shell:                "@elizaos/plugin-shell",
-  executeCode:          "@elizaos/plugin-executecode",
   imageGen:             "@elizaos/plugin-image-generation",
   tts:                  "@elizaos/plugin-edge-tts",
   stt:                  "@elizaos/plugin-stt",

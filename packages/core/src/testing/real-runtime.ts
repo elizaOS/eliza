@@ -26,7 +26,6 @@ import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
 /** Workspace plugins may resolve `@elizaos/core` from npm while this package uses source types. */
 type RegisterablePlugin = Parameters<AgentRuntime["registerPlugin"]>[0];
 
-import { configureLocalEmbeddingPlugin } from "../../../agent/src/runtime/eliza";
 import {
 	type LiveProviderConfig,
 	type LiveProviderName,
@@ -80,14 +79,23 @@ type TrajectoryWriteService = {
 	writeQueues?: Map<string, Promise<void>>;
 };
 
+type TrajectoryStorageModule = {
+	flushTrajectoryWrites?: (runtime: AgentRuntime) => Promise<void>;
+};
+
+type AgentRuntimeModule = {
+	configureLocalEmbeddingPlugin?: (plugin: Plugin) => void;
+};
+
 async function flushPendingTrajectoryWrites(
 	runtime: AgentRuntime,
 ): Promise<void> {
 	try {
-		const { flushTrajectoryWrites } = await import(
-			"../../../agent/src/runtime/trajectory-storage"
-		);
-		await flushTrajectoryWrites(runtime);
+		const modulePath = "../../../agent/src/runtime/trajectory-storage";
+		const { flushTrajectoryWrites } = (await import(
+			modulePath
+		)) as TrajectoryStorageModule;
+		await flushTrajectoryWrites?.(runtime);
 	} catch {
 		// Best effort only. Some test runtimes do not register this helper.
 	}
@@ -160,7 +168,11 @@ export async function createRealTestRuntime(
 			};
 			const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
 			if (plugin) {
-				configureLocalEmbeddingPlugin(plugin);
+				const modulePath = "../../../agent/src/runtime/eliza";
+				const agentRuntimeModule = (await import(
+					modulePath
+				)) as AgentRuntimeModule;
+				agentRuntimeModule.configureLocalEmbeddingPlugin?.(plugin);
 				await runtime.registerPlugin(plugin as RegisterablePlugin);
 				logger.info(
 					"[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",

@@ -285,7 +285,7 @@ async function loadSqlPlugin(): Promise<Plugin | null> {
     try {
       const mod = (await import(
         pathToFileURL(
-          resolve(REPO_ROOT, "plugins/plugin-sql/typescript/index.node.ts"),
+          resolve(REPO_ROOT, "plugins/plugin-sql/src/index.node.ts"),
         ).href
       )) as Record<string, unknown>;
       return (mod.default ?? mod.pluginSql ?? null) as Plugin | null;

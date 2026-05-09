@@ -1,9 +1,9 @@
 import { randomUUID } from "crypto";
 import Decimal from "decimal.js";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { type CryptoPayment, cryptoPaymentsRepository } from "@/db/repositories/crypto-payments";
-import { type App, appsRepository } from "@/db/repositories/apps";
 import { dbRead } from "@/db/helpers";
+import { type App, appsRepository } from "@/db/repositories/apps";
+import { type CryptoPayment, cryptoPaymentsRepository } from "@/db/repositories/crypto-payments";
 import { cryptoPayments } from "@/db/schemas/crypto-payments";
 import {
   assertAllowedAbsoluteRedirectUrl,
@@ -70,8 +70,8 @@ function toChargeRequest(payment: CryptoPayment): AppChargeRequest | null {
   }
 
   const providers = Array.isArray(metadata.providers)
-    ? metadata.providers.filter((provider): provider is AppChargeProvider =>
-        provider === "stripe" || provider === "oxapay",
+    ? metadata.providers.filter(
+        (provider): provider is AppChargeProvider => provider === "stripe" || provider === "oxapay",
       )
     : (["stripe", "oxapay"] satisfies AppChargeProvider[]);
 
@@ -116,11 +116,10 @@ function allowedRedirectOrigins(app: App): string[] {
   ].filter((origin): origin is string => Boolean(origin));
 }
 
-function validateRedirects(params: {
-  app: App;
-  successUrl?: string;
-  cancelUrl?: string;
-}): { successUrl: string; cancelUrl: string } {
+function validateRedirects(params: { app: App; successUrl?: string; cancelUrl?: string }): {
+  successUrl: string;
+  cancelUrl: string;
+} {
   const origins = allowedRedirectOrigins(params.app);
   const rawSuccessUrl = params.successUrl || defaultRedirectUrl("/payment/success");
   const rawCancelUrl = params.cancelUrl || defaultRedirectUrl("/payment/cancel");

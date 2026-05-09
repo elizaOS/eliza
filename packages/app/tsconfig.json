@@ -52,9 +52,9 @@
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
       "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
       "@elizaos/plugin-sql": [
-        "../../plugins/plugin-sql/typescript/index.node.ts"
+        "../../plugins/plugin-sql/src/index.node.ts"
       ],
-      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/typescript/*"],
+      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/agent/*": ["../agent/src/*"],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],

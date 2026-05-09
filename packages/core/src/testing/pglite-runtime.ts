@@ -49,14 +49,19 @@ type TrajectoryWriteService = {
 	writeQueues?: Map<string, Promise<void>>;
 };
 
+type TrajectoryStorageModule = {
+	flushTrajectoryWrites?: (runtime: AgentRuntime) => Promise<void>;
+};
+
 async function flushPendingTrajectoryWrites(
 	runtime: AgentRuntime,
 ): Promise<void> {
 	try {
-		const { flushTrajectoryWrites } = await import(
-			"../../../agent/src/runtime/trajectory-storage"
-		);
-		await flushTrajectoryWrites(runtime);
+		const modulePath = "../../../agent/src/runtime/trajectory-storage";
+		const { flushTrajectoryWrites } = (await import(
+			modulePath
+		)) as TrajectoryStorageModule;
+		await flushTrajectoryWrites?.(runtime);
 	} catch {
 		// Best effort only. Some test runtimes do not register this helper.
 	}

@@ -123,7 +123,7 @@ export interface TrajectoryProviderAccessRecord {
 	createdAt?: string;
 }
 
-export type TrajectoryStepKind = "llm" | "action" | "executeCode";
+export type TrajectoryStepKind = "llm" | "action";
 
 export type TrajectoryStepId = string;
 
