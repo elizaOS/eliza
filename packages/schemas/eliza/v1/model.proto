@@ -29,8 +29,7 @@ enum ModelType {
   MODEL_TYPE_TEXT_TO_SPEECH = 12;
   MODEL_TYPE_AUDIO = 13;
   MODEL_TYPE_VIDEO = 14;
-  MODEL_TYPE_OBJECT_SMALL = 15;
-  MODEL_TYPE_OBJECT_LARGE = 16;
+  reserved 15, 16; // removed: OBJECT_SMALL, OBJECT_LARGE — structured output now flows through TEXT_* with tools/responseFormat
   MODEL_TYPE_TEXT_NANO = 17;
   MODEL_TYPE_TEXT_MEDIUM = 18;
   MODEL_TYPE_TEXT_MEGA = 19;

@@ -151,7 +151,7 @@ function baselinePlaceholder(task: TrajectoryTrainingTask): string {
   return `# baseline placeholder for ${task}`;
 }
 
-const V5_PLANNER_BASELINE = `task: Plan the next native tool calls for the current ContextObject.
+const PLANNER_BASELINE = `task: Plan the next native tool calls for the current ContextObject.
 
 context_object:
 {{contextObject}}
@@ -379,7 +379,7 @@ async function loadBaselineForTask(
   const prompts = await import("@elizaos/core").catch(() => null);
   if (!prompts) {
     return task === "action_planner"
-      ? V5_PLANNER_BASELINE
+      ? PLANNER_BASELINE
       : baselinePlaceholder(task);
   }
   const promptModule = prompts as Record<string, unknown>;
@@ -402,9 +402,9 @@ async function loadBaselineForTask(
     case "action_planner":
       return (
         firstStringExport(promptModule, [
-          "v5PlannerTemplate",
           "plannerTemplate",
-        ]) ?? V5_PLANNER_BASELINE
+          "plannerTemplate",
+        ]) ?? PLANNER_BASELINE
       );
     case "media_description":
       return (

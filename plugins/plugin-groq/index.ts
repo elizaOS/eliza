@@ -324,6 +324,44 @@ function buildGroqStructuredOutput(responseSchema: unknown): NativeOutput {
   }) as NativeOutput;
 }
 
+type GroqUsage = {
+  inputTokens?: number;
+  outputTokens?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+};
+
+interface GroqNativeTextResult {
+  text: string;
+  toolCalls: unknown[];
+  finishReason?: string;
+  usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+}
+
+function buildGroqNativeTextResult(result: {
+  text: string;
+  toolCalls?: unknown[];
+  finishReason?: string;
+  usage?: GroqUsage;
+}): GroqNativeTextResult {
+  const inputTokens = result.usage?.inputTokens ?? result.usage?.promptTokens ?? 0;
+  const outputTokens = result.usage?.outputTokens ?? result.usage?.completionTokens ?? 0;
+  const usage = result.usage
+    ? {
+        promptTokens: inputTokens,
+        completionTokens: outputTokens,
+        totalTokens: result.usage.totalTokens ?? inputTokens + outputTokens,
+      }
+    : undefined;
+  return {
+    text: result.text,
+    toolCalls: result.toolCalls ?? [],
+    finishReason: result.finishReason,
+    ...(usage ? { usage } : {}),
+  };
+}
+
 async function generateWithRetry(
   runtime: IAgentRuntime,
   groq: ReturnType<typeof createGroq>,
@@ -341,8 +379,9 @@ async function generateWithRetry(
     tools?: ToolSet;
     toolChoice?: ToolChoice<ToolSet>;
     responseSchema?: unknown;
+    returnNative?: boolean;
   }
-): Promise<string> {
+): Promise<string | GroqNativeTextResult> {
   const generate = () => {
     const details: RecordLlmCallDetails = {
       model,
@@ -395,6 +434,9 @@ async function generateWithRetry(
       const result = await generate();
       const usage = normalizeTokenUsage(result.usage) ?? estimateUsage(params.prompt, result.text);
       emitModelUsed(runtime, modelType, model, usage);
+      if (params.returnNative) {
+        return buildGroqNativeTextResult(result);
+      }
       const { text } = result;
       return text;
     } catch (error) {
@@ -449,6 +491,7 @@ function buildGroqGenerateParams(
   tools?: ToolSet;
   toolChoice?: ToolChoice<ToolSet>;
   responseSchema?: unknown;
+  returnNative?: boolean;
 } {
   const paramsWithNative = params as GenerateTextParams & {
     messages?: ModelMessage[];
@@ -456,6 +499,12 @@ function buildGroqGenerateParams(
     toolChoice?: ToolChoice<ToolSet>;
     responseSchema?: unknown;
   };
+  const returnNative = Boolean(
+    paramsWithNative.messages ||
+      paramsWithNative.tools ||
+      paramsWithNative.toolChoice ||
+      paramsWithNative.responseSchema
+  );
   return {
     prompt: promptText,
     system: systemPrompt,
@@ -468,7 +517,31 @@ function buildGroqGenerateParams(
     ...(paramsWithNative.tools ? { tools: paramsWithNative.tools } : {}),
     ...(paramsWithNative.toolChoice ? { toolChoice: paramsWithNative.toolChoice } : {}),
     ...(paramsWithNative.responseSchema ? { responseSchema: paramsWithNative.responseSchema } : {}),
+    ...(returnNative ? { returnNative } : {}),
   };
+}
+
+async function handleTextModel(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams,
+  modelType: ModelTypeName
+): Promise<string> {
+  const groq = createGroqClient(runtime);
+  const model = getTextModelForType(runtime, modelType);
+  const system = resolveGroqSystemPrompt(runtime, params);
+  const result = await generateWithRetry(
+    runtime,
+    groq,
+    modelType,
+    model,
+    buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system))
+  );
+  // Native result (with toolCalls / usage / finishReason) is cast through the
+  // string return type because elizaOS's plugin Model handler signature is
+  // `(runtime, params) => Promise<string | TextStreamResult>`. The runtime
+  // unwraps the native shape via `useModel` consumers that pass `tools` /
+  // `messages` / `responseSchema` / `toolChoice`.
+  return result as unknown as string;
 }
 
 function getTextModelForType(runtime: IAgentRuntime, modelType: string): string {
@@ -540,103 +613,26 @@ export const groqPlugin: Plugin = {
   },
 
   models: {
-    [ModelType.TEXT_NANO]: async (runtime, params: GenerateTextParams) => {
-      const groq = createGroqClient(runtime);
-      const model = getTextModelForType(runtime, ModelType.TEXT_NANO);
+    [ModelType.TEXT_NANO]: (runtime, params: GenerateTextParams) =>
+      handleTextModel(runtime, params, ModelType.TEXT_NANO),
 
-      const system = resolveGroqSystemPrompt(runtime, params);
-      return generateWithRetry(
-        runtime,
-        groq,
-        ModelType.TEXT_NANO,
-        model,
-        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system))
-      );
-    },
+    [ModelType.TEXT_SMALL]: (runtime, params: GenerateTextParams) =>
+      handleTextModel(runtime, params, ModelType.TEXT_SMALL),
 
-    [ModelType.TEXT_SMALL]: async (runtime, params: GenerateTextParams) => {
-      const groq = createGroqClient(runtime);
-      const model = getTextModelForType(runtime, ModelType.TEXT_SMALL);
+    [ModelType.TEXT_MEDIUM]: (runtime, params: GenerateTextParams) =>
+      handleTextModel(runtime, params, ModelType.TEXT_MEDIUM),
 
-      const system = resolveGroqSystemPrompt(runtime, params);
-      return generateWithRetry(
-        runtime,
-        groq,
-        ModelType.TEXT_SMALL,
-        model,
-        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system))
-      );
-    },
+    [ModelType.TEXT_LARGE]: (runtime, params: GenerateTextParams) =>
+      handleTextModel(runtime, params, ModelType.TEXT_LARGE),
 
-    [ModelType.TEXT_MEDIUM]: async (runtime, params: GenerateTextParams) => {
-      const groq = createGroqClient(runtime);
-      const model = getTextModelForType(runtime, ModelType.TEXT_MEDIUM);
+    [ModelType.TEXT_MEGA]: (runtime, params: GenerateTextParams) =>
+      handleTextModel(runtime, params, ModelType.TEXT_MEGA),
 
-      const system = resolveGroqSystemPrompt(runtime, params);
-      return generateWithRetry(
-        runtime,
-        groq,
-        ModelType.TEXT_MEDIUM,
-        model,
-        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system))
-      );
-    },
+    [ModelType.RESPONSE_HANDLER]: (runtime, params: GenerateTextParams) =>
+      handleTextModel(runtime, params, ModelType.RESPONSE_HANDLER),
 
-    [ModelType.TEXT_LARGE]: async (runtime, params: GenerateTextParams) => {
-      const groq = createGroqClient(runtime);
-      const model = getTextModelForType(runtime, ModelType.TEXT_LARGE);
-
-      const system = resolveGroqSystemPrompt(runtime, params);
-      return generateWithRetry(
-        runtime,
-        groq,
-        ModelType.TEXT_LARGE,
-        model,
-        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system))
-      );
-    },
-
-    [ModelType.TEXT_MEGA]: async (runtime, params: GenerateTextParams) => {
-      const groq = createGroqClient(runtime);
-      const model = getTextModelForType(runtime, ModelType.TEXT_MEGA);
-
-      const system = resolveGroqSystemPrompt(runtime, params);
-      return generateWithRetry(
-        runtime,
-        groq,
-        ModelType.TEXT_MEGA,
-        model,
-        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system))
-      );
-    },
-
-    [ModelType.RESPONSE_HANDLER]: async (runtime, params: GenerateTextParams) => {
-      const groq = createGroqClient(runtime);
-      const model = getTextModelForType(runtime, ModelType.RESPONSE_HANDLER);
-
-      const system = resolveGroqSystemPrompt(runtime, params);
-      return generateWithRetry(
-        runtime,
-        groq,
-        ModelType.RESPONSE_HANDLER,
-        model,
-        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system))
-      );
-    },
-
-    [ModelType.ACTION_PLANNER]: async (runtime, params: GenerateTextParams) => {
-      const groq = createGroqClient(runtime);
-      const model = getTextModelForType(runtime, ModelType.ACTION_PLANNER);
-
-      const system = resolveGroqSystemPrompt(runtime, params);
-      return generateWithRetry(
-        runtime,
-        groq,
-        ModelType.ACTION_PLANNER,
-        model,
-        buildGroqGenerateParams(params, system, resolveGroqPrompt(params, system))
-      );
-    },
+    [ModelType.ACTION_PLANNER]: (runtime, params: GenerateTextParams) =>
+      handleTextModel(runtime, params, ModelType.ACTION_PLANNER),
 
     [ModelType.TRANSCRIPTION]: async (runtime, params) => {
       type AudioDataShape = { audioData: Uint8Array };

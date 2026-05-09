@@ -8,7 +8,7 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./typescript/dist/index.d.ts",
+      "types": "./typescript/dist/index.node.d.ts",
       "bun": {
         "types": "./typescript/index.ts",
         "default": "./typescript/index.ts"

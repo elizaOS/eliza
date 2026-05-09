@@ -1,6 +1,6 @@
+import type http from 'node:http';
 import { readCompatJsonBody } from '@elizaos/app-core';
 import type { AgentRuntime } from '@elizaos/core';
-import type { RouteHelpers, RouteRequestMeta } from '@elizaos/shared';
 import {
   applyResolutions,
   buildCatalogSnapshot,
@@ -30,24 +30,25 @@ export interface WorkflowStatusResponse {
   errorMessage?: string | null;
 }
 
-export interface WorkflowRouteContext extends RouteRequestMeta, Pick<RouteHelpers, 'json'> {
-  config: Record<string, unknown>;
-  runtime: AgentRuntime | null;
-  agentId?: string;
-}
-
 type WorkflowJsonResponder = (
-  res: WorkflowRouteContext['res'],
+  res: http.ServerResponse,
   body: unknown,
   status?: number
 ) => void;
 
-function sendJson(
-  ctx: Pick<WorkflowRouteContext, 'res' | 'json'>,
-  status: number,
-  body: unknown
-): void {
-  (ctx.json as unknown as WorkflowJsonResponder)(ctx.res, body, status);
+export interface WorkflowRouteContext {
+  req: http.IncomingMessage;
+  res: http.ServerResponse;
+  method: string;
+  pathname: string;
+  config: Record<string, unknown>;
+  runtime: AgentRuntime | null;
+  agentId?: string;
+  json: WorkflowJsonResponder;
+}
+
+function sendJson(ctx: Pick<WorkflowRouteContext, 'res' | 'json'>, status: number, body: unknown): void {
+  ctx.json(ctx.res, body, status);
 }
 
 function normalizePath(pathname: string): string {

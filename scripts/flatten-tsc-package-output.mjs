@@ -46,8 +46,12 @@ if (!(await pathExists(nestedSourceDir))) {
 
 const entries = await fs.readdir(nestedSourceDir);
 for (const entry of entries) {
+  const nestedEntry = path.join(nestedSourceDir, entry);
+  if (!(await pathExists(nestedEntry))) {
+    continue;
+  }
   await fs.rm(path.join(distDir, entry), { recursive: true, force: true });
-  await fs.rename(path.join(nestedSourceDir, entry), path.join(distDir, entry));
+  await fs.rename(nestedEntry, path.join(distDir, entry));
 }
 
 await fs.rm(path.join(distDir, "packages"), { recursive: true, force: true });

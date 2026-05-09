@@ -5,6 +5,7 @@ import { BINARY_MODE_COMBINED, SCRIPTING_NODE_TYPES } from './constants.js';
 import { ExpressionError, type ExpressionErrorOptions } from './errors/expression.error.js';
 import { getGlobalState } from './global-state.js';
 import type {
+	IBinaryKeyData,
 	IDataObject,
 	IExecuteData,
 	INodeExecutionData,
@@ -110,23 +111,23 @@ export class WorkflowDataProxy {
 	 * @param {string} nodeName The name of the node to get the context from
 	 */
 	private nodeContextGetter(nodeName: string) {
-		const that = this;
 		const node = this.workflow.nodes[nodeName];
 
-		if (!that.runExecutionData?.executionData && that.connectionInputData.length > 0) {
+		if (!this.runExecutionData?.executionData && this.connectionInputData.length > 0) {
 			return {}; // incoming connection has pinned data, so stub context object
 		}
 
-		if (!that.runExecutionData?.executionData && !that.runExecutionData?.resultData) {
+		if (!this.runExecutionData?.executionData && !this.runExecutionData?.resultData) {
 			throw new ExpressionError(
 				"The workflow hasn't been executed yet, so you can't reference any context data",
 				{
-					runIndex: that.runIndex,
-					itemIndex: that.itemIndex,
+					runIndex: this.runIndex,
+					itemIndex: this.itemIndex,
 					type: 'no_execution_data',
 				}
 			);
 		}
+		const runExecutionData = this.runExecutionData;
 
 		return new Proxy(
 			{},
@@ -135,7 +136,7 @@ export class WorkflowDataProxy {
 				ownKeys(target) {
 					if (Reflect.ownKeys(target).length === 0) {
 						// Target object did not get set yet
-						Object.assign(target, NodeHelpers.getContext(that.runExecutionData!, 'node', node));
+						Object.assign(target, NodeHelpers.getContext(runExecutionData, 'node', node));
 					}
 
 					return Reflect.ownKeys(target);
@@ -150,7 +151,7 @@ export class WorkflowDataProxy {
 					if (name === 'isProxy') return true;
 
 					name = name.toString();
-					const contextData = NodeHelpers.getContext(that.runExecutionData!, 'node', node);
+					const contextData = NodeHelpers.getContext(runExecutionData, 'node', node);
 
 					return contextData[name];
 				},
@@ -360,7 +361,8 @@ export class WorkflowDataProxy {
 				});
 			}
 
-			const taskData = this.runExecutionData.resultData.runData[nodeName][runIndex].data!;
+			const taskData = this.runExecutionData.resultData.runData[nodeName][runIndex]
+				.data as NonNullable<ITaskData['data']>;
 
 			if (!taskData.main?.length || taskData.main[0] === null) {
 				// throw new ApplicationError('No data found for item-index', { extra: { itemIndex } });
@@ -496,16 +498,15 @@ export class WorkflowDataProxy {
 						if (name === 'binary') {
 							// Binary-Data
 							const returnData: IDataObject = {};
+							const binaryKeyData: IBinaryKeyData = executionData[that.itemIndex].binary ?? {};
 
-							if (!executionData[that.itemIndex].binary) {
-								return returnData;
-							}
-
-							const binaryKeyData = executionData[that.itemIndex].binary!;
 							for (const keyName of Object.keys(binaryKeyData)) {
 								returnData[keyName] = {};
 
 								const binaryData = binaryKeyData[keyName];
+								if (!binaryData) {
+									continue;
+								}
 								for (const propertyName in binaryData) {
 									if (propertyName === 'data') {
 										// Skip the data property
@@ -1033,7 +1034,7 @@ export class WorkflowDataProxy {
 
 				const ensureNodeExecutionData = () => {
 					if (
-						!that?.runExecutionData?.resultData?.runData.hasOwnProperty(nodeName) &&
+						!Object.hasOwn(that.runExecutionData?.resultData?.runData ?? {}, nodeName) &&
 						!getPinDataIfManualExecution(that.workflow, nodeName, that.mode)
 					) {
 						throw createExpressionError(`Node '${nodeName}' hasn't been executed`, {
@@ -1072,9 +1073,7 @@ export class WorkflowDataProxy {
 							if (property === 'isProxy') return true;
 
 							if (property === 'isExecuted') {
-								return (
-									that?.runExecutionData?.resultData?.runData.hasOwnProperty(nodeName) ?? false
-								);
+								return Object.hasOwn(that.runExecutionData?.resultData?.runData ?? {}, nodeName);
 							}
 
 							if (

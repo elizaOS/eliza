@@ -1,6 +1,6 @@
 import type { JSONSchema } from "../types/model";
 
-export const v5EvaluatorTemplate = `task: Evaluate the just-executed action and route the next planner-loop step.
+export const evaluatorTemplate = `task: Evaluate the just-executed action and route the next planner-loop step.
 
 routes:
 - FINISH: the task is complete or should stop
@@ -34,9 +34,7 @@ context_object:
 trajectory:
 {{trajectory}}`;
 
-export const V5_EVALUATOR_TEMPLATE = v5EvaluatorTemplate;
-
-export const v5EvaluatorSchema: JSONSchema = {
+export const evaluatorSchema: JSONSchema = {
 	type: "object",
 	additionalProperties: false,
 	properties: {
@@ -64,5 +62,3 @@ export const v5EvaluatorSchema: JSONSchema = {
 	},
 	required: ["success", "decision", "thought"],
 };
-
-export const V5_EVALUATOR_SCHEMA = v5EvaluatorSchema;

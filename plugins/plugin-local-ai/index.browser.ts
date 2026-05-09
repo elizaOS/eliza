@@ -25,8 +25,14 @@ const warnUnsupported = (modelType: string): void => {
   logger.warn(`[plugin-${pluginName}] ${modelType} is not available in browsers.`);
 };
 
-const unsupportedText = (modelType: string): string => {
+const unsupportedText = (modelType: string, params?: GenerateTextParams): string => {
   warnUnsupported(modelType);
+  if (params && (params.tools || params.responseSchema || params.toolChoice)) {
+    throw new Error(
+      `[plugin-${pluginName}] Tool calling and structured output require the Node runtime. ` +
+        "Browsers cannot execute llama.cpp directly — switch providers or proxy through a server."
+    );
+  }
   return unsupportedMessage;
 };
 
@@ -49,12 +55,12 @@ export const localAiPlugin: Plugin = {
   models: {
     [ModelType.TEXT_SMALL]: async (
       _runtime: IAgentRuntime,
-      _params: GenerateTextParams
-    ): Promise<string> => unsupportedText(ModelType.TEXT_SMALL),
+      params: GenerateTextParams
+    ): Promise<string> => unsupportedText(ModelType.TEXT_SMALL, params),
     [ModelType.TEXT_LARGE]: async (
       _runtime: IAgentRuntime,
-      _params: GenerateTextParams
-    ): Promise<string> => unsupportedText(ModelType.TEXT_LARGE),
+      params: GenerateTextParams
+    ): Promise<string> => unsupportedText(ModelType.TEXT_LARGE, params),
     [ModelType.TEXT_REASONING_SMALL]: async (
       _runtime: IAgentRuntime,
       _params: GenerateTextParams

@@ -47,13 +47,6 @@ type StructuredModelRunner = {
   ): Promise<T>;
 };
 
-/**
- * Route structured-output requests through TEXT_SMALL with `responseSchema`.
- * Provider plugins (anthropic, openai, openrouter, google-genai, ollama, groq,
- * etc.) translate `responseSchema` into native tool calling / structured output
- * APIs. The dedicated OBJECT_SMALL / OBJECT_LARGE model types were removed —
- * all text models support JSON-shaped output via tools or response_format.
- */
 async function useStructuredModel<T>(
   runtime: IAgentRuntime,
   prompt: string,

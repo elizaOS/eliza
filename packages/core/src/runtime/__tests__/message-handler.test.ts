@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { V5_MESSAGE_HANDLER_SCHEMA } from "../../prompts/message-handler";
+import { HANDLE_RESPONSE_SCHEMA } from "../../actions/to-tool";
 import {
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,
@@ -108,7 +108,7 @@ describe("v5 message handler routing", () => {
 	});
 
 	it("keeps requiresTool optional in the Stage 1 tool schema", () => {
-		const planSchema = V5_MESSAGE_HANDLER_SCHEMA.properties?.plan as {
+		const planSchema = HANDLE_RESPONSE_SCHEMA.properties?.plan as {
 			required?: string[];
 		};
 
