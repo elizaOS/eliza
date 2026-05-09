@@ -48,13 +48,122 @@ type ChatAttachment = {
   filename?: string;
 };
 
+/**
+ * Native Google GenAI tool input. Each function declaration carries a name,
+ * description, and JSON Schema parameters object that the model can choose to
+ * invoke.
+ */
+type GoogleFunctionDeclaration = {
+  name: string;
+  description?: string;
+  parameters?: Record<string, unknown>;
+};
+
+type GoogleToolDeclaration = {
+  functionDeclarations?: GoogleFunctionDeclaration[];
+};
+
+type GenericToolDescriptor = {
+  name?: string;
+  description?: string;
+  parameters?: unknown;
+  inputSchema?: unknown;
+  function?: { name?: string; description?: string; parameters?: unknown };
+};
+
 type GenerateTextParamsWithAttachments = GenerateTextParams & {
   attachments?: ChatAttachment[];
+  /** Native or generic tool definitions; converted to Google functionDeclarations. */
+  tools?: GenericToolDescriptor[] | GoogleToolDeclaration[] | Record<string, GenericToolDescriptor>;
+  /** Tool selection hint: "auto" | "required" | "none" | { type: "tool"; toolName }. */
+  toolChoice?:
+    | "auto"
+    | "required"
+    | "none"
+    | { type: "tool"; toolName?: string; name?: string };
+  /** JSON Schema for structured output; routes through responseJsonSchema. */
+  responseSchema?: Record<string, unknown> | { schema: Record<string, unknown> };
 };
 type GoogleGenAIClient = NonNullable<ReturnType<typeof createGoogleGenAI>>;
 type GenerateContentParams = Parameters<
   GoogleGenAIClient["models"]["generateContent"]
 >[0];
+
+function normalizeToolsForGoogle(
+  tools: GenerateTextParamsWithAttachments["tools"],
+): GoogleToolDeclaration[] | undefined {
+  if (!tools) return undefined;
+
+  // Already-shaped Google tools: array of { functionDeclarations: [...] }.
+  if (
+    Array.isArray(tools) &&
+    tools.length > 0 &&
+    typeof tools[0] === "object" &&
+    tools[0] !== null &&
+    "functionDeclarations" in (tools[0] as object)
+  ) {
+    return tools as GoogleToolDeclaration[];
+  }
+
+  const flat: GenericToolDescriptor[] = Array.isArray(tools)
+    ? (tools as GenericToolDescriptor[])
+    : Object.entries(tools).map(([name, value]) => ({ name, ...value }));
+
+  const declarations: GoogleFunctionDeclaration[] = [];
+  for (const tool of flat) {
+    const name = tool.name ?? tool.function?.name;
+    if (!name) {
+      throw new Error("[GoogleGenAI] Tool definition is missing a name.");
+    }
+    const description = tool.description ?? tool.function?.description;
+    const parameters = (tool.parameters ??
+      tool.inputSchema ??
+      tool.function?.parameters ??
+      { type: "object", properties: {} }) as Record<string, unknown>;
+    declarations.push({
+      name,
+      ...(description ? { description } : {}),
+      parameters,
+    });
+  }
+
+  return declarations.length > 0 ? [{ functionDeclarations: declarations }] : undefined;
+}
+
+function normalizeToolConfigForGoogle(
+  toolChoice: GenerateTextParamsWithAttachments["toolChoice"],
+): { functionCallingConfig: { mode: "AUTO" | "ANY" | "NONE"; allowedFunctionNames?: string[] } } | undefined {
+  if (!toolChoice) return undefined;
+  if (toolChoice === "auto") {
+    return { functionCallingConfig: { mode: "AUTO" } };
+  }
+  if (toolChoice === "required") {
+    return { functionCallingConfig: { mode: "ANY" } };
+  }
+  if (toolChoice === "none") {
+    return { functionCallingConfig: { mode: "NONE" } };
+  }
+  const toolName = toolChoice.toolName ?? toolChoice.name;
+  if (toolName) {
+    return {
+      functionCallingConfig: {
+        mode: "ANY",
+        allowedFunctionNames: [toolName],
+      },
+    };
+  }
+  return undefined;
+}
+
+function resolveResponseJsonSchema(
+  responseSchema: GenerateTextParamsWithAttachments["responseSchema"],
+): Record<string, unknown> | undefined {
+  if (!responseSchema) return undefined;
+  if ("schema" in responseSchema && responseSchema.schema) {
+    return responseSchema.schema as Record<string, unknown>;
+  }
+  return responseSchema as Record<string, unknown>;
+}
 
 function buildPromptParts(prompt: string, attachments?: ChatAttachment[]) {
   const parts: Array<
@@ -154,6 +263,38 @@ function getModelNameForType(
     default:
       return getLargeModel(runtime);
   }
+}
+
+function buildGoogleGenerationConfig(
+  params: GenerateTextParamsWithAttachments,
+  systemInstruction: string | undefined,
+  temperature: number,
+  maxTokens: number,
+  stopSequences: string[],
+): NonNullable<GenerateContentParams["config"]> {
+  const tools = normalizeToolsForGoogle(params.tools);
+  const toolConfig = normalizeToolConfigForGoogle(params.toolChoice);
+  const responseJsonSchema = resolveResponseJsonSchema(params.responseSchema);
+
+  const baseConfig: Record<string, unknown> = {
+    temperature,
+    topK: 40,
+    topP: 0.95,
+    maxOutputTokens: maxTokens,
+    stopSequences,
+    safetySettings: getSafetySettings(),
+    ...(systemInstruction && { systemInstruction }),
+    ...(tools ? { tools } : {}),
+    ...(toolConfig ? { toolConfig } : {}),
+    ...(responseJsonSchema
+      ? {
+          responseMimeType: "application/json",
+          responseJsonSchema,
+        }
+      : {}),
+  };
+
+  return baseConfig as NonNullable<GenerateContentParams["config"]>;
 }
 
 function createLlmCallDetails(
@@ -259,15 +400,13 @@ export async function handleTextSmall(
                 },
               ]
             : promptText,
-        config: {
+        config: buildGoogleGenerationConfig(
+          params,
+          systemInstruction,
           temperature,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: maxTokens,
+          maxTokens,
           stopSequences,
-          safetySettings: getSafetySettings(),
-          ...(systemInstruction && { systemInstruction }),
-        },
+        ),
       },
     );
   } catch (error) {
@@ -320,15 +459,13 @@ export async function handleTextLarge(
                 },
               ]
             : promptText,
-        config: {
+        config: buildGoogleGenerationConfig(
+          params,
+          systemInstruction,
           temperature,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: maxTokens,
+          maxTokens,
           stopSequences,
-          safetySettings: getSafetySettings(),
-          ...(systemInstruction && { systemInstruction }),
-        },
+        ),
       },
     );
   } catch (error) {
@@ -417,15 +554,13 @@ async function handleTextWithType(
                 },
               ]
             : promptText,
-        config: {
+        config: buildGoogleGenerationConfig(
+          params,
+          systemInstruction,
           temperature,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: maxTokens,
+          maxTokens,
           stopSequences,
-          safetySettings: getSafetySettings(),
-          ...(systemInstruction && { systemInstruction }),
-        },
+        ),
       },
     );
   } catch (error) {

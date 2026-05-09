@@ -6236,7 +6236,8 @@ export class LifeOpsRepository {
          ${sqlQuote(rel.createdAt)},
          ${sqlQuote(rel.updatedAt)}
        )
-       ON CONFLICT (id) DO UPDATE SET
+       ON CONFLICT (agent_id, primary_channel, primary_handle) DO UPDATE SET
+         id = EXCLUDED.id,
          name = EXCLUDED.name,
          primary_channel = EXCLUDED.primary_channel,
          primary_handle = EXCLUDED.primary_handle,

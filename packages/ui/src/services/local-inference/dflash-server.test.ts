@@ -35,14 +35,24 @@ describe("DFlash runtime discovery", () => {
     process.env.ELIZA_STATE_DIR = root;
     delete process.env.ELIZA_DFLASH_ENABLED;
     delete process.env.ELIZA_DFLASH_DISABLED;
+    delete process.env.ELIZA_DFLASH_METAL_AUTO;
+    delete process.env.ELIZA_DFLASH_METAL_ENABLED;
     delete process.env.HIP_VISIBLE_DEVICES;
     delete process.env.ROCR_VISIBLE_DEVICES;
     delete process.env.CUDA_VISIBLE_DEVICES;
     const binary = makeManagedBinary(root);
+    const isMetalRuntime = process.platform === "darwin";
 
-    expect(dflashEnabled()).toBe(true);
     expect(resolveDflashBinary()).toBe(binary);
-    expect(getDflashRuntimeStatus().enabled).toBe(true);
+    expect(dflashEnabled()).toBe(!isMetalRuntime);
+    expect(getDflashRuntimeStatus().enabled).toBe(!isMetalRuntime);
+
+    if (isMetalRuntime) {
+      expect(getDflashRuntimeStatus().reason).toContain("auto-disabled");
+      process.env.ELIZA_DFLASH_METAL_AUTO = "1";
+      expect(dflashEnabled()).toBe(true);
+      expect(getDflashRuntimeStatus().enabled).toBe(true);
+    }
   });
 
   it("does not use PATH llama-server unless explicitly enabled", () => {

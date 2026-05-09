@@ -109,7 +109,7 @@ function resolvePackageExportTarget(value: unknown): string | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 
   const record = value as Record<string, unknown>;
-  for (const condition of ["source", "types", "import", "default"]) {
+  for (const condition of ["source", "import", "default"]) {
     const target = record[condition];
     if (typeof target === "string") return target;
   }

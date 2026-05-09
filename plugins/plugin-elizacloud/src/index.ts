@@ -11,8 +11,6 @@ import {
   handleActionPlanner,
   handleImageDescription,
   handleImageGeneration,
-  handleObjectLarge,
-  handleObjectSmall,
   handleResearch,
   handleResponseHandler,
   handleTextEmbedding,
@@ -146,8 +144,6 @@ export const elizaOSCloudPlugin: Plugin = {
     [ModelType.RESEARCH]: handleResearch,
     [ModelType.IMAGE]: handleImageGeneration,
     [ModelType.IMAGE_DESCRIPTION]: handleImageDescription,
-    [ModelType.OBJECT_SMALL]: handleObjectSmall,
-    [ModelType.OBJECT_LARGE]: handleObjectLarge,
   },
 
   tests: [

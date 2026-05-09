@@ -39,6 +39,25 @@ import {
 } from './outputSchema';
 import type { UnknownParamDetection } from './workflow';
 
+type ObjectModelRunner = {
+  useModel<T>(
+    modelType: string,
+    params: { prompt: string; schema: unknown },
+    provider?: string
+  ): Promise<T>;
+};
+
+async function useStructuredModel<T>(
+  runtime: IAgentRuntime,
+  prompt: string,
+  schema: unknown
+): Promise<T> {
+  return await (runtime as unknown as ObjectModelRunner).useModel<T>('OBJECT_SMALL', {
+    prompt,
+    schema,
+  });
+}
+
 /**
  * Build an optional bias directive that nudges keyword extraction toward
  * providers the host has already declared it can satisfy. The directive is
@@ -61,10 +80,11 @@ export async function extractKeywords(
 ): Promise<string[]> {
   let result: KeywordExtractionResult;
   try {
-    result = (await runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt: `${KEYWORD_EXTRACTION_SYSTEM_PROMPT}${buildPreferredProvidersDirective(preferredProviders)}\n\nUser request: ${userPrompt}`,
-      schema: keywordExtractionSchema,
-    })) as KeywordExtractionResult;
+    result = await useStructuredModel<KeywordExtractionResult>(
+      runtime,
+      `${KEYWORD_EXTRACTION_SYSTEM_PROMPT}${buildPreferredProvidersDirective(preferredProviders)}\n\nUser request: ${userPrompt}`,
+      keywordExtractionSchema
+    );
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     logger.error(
@@ -128,10 +148,11 @@ ${workflowList}`;
 
     let result: WorkflowMatchResult;
     try {
-      result = (await runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt: `${WORKFLOW_MATCHING_SYSTEM_PROMPT}\n\n${userPrompt}`,
-        schema: workflowMatchingSchema,
-      })) as WorkflowMatchResult;
+      result = await useStructuredModel<WorkflowMatchResult>(
+        runtime,
+        `${WORKFLOW_MATCHING_SYSTEM_PROMPT}\n\n${userPrompt}`,
+        workflowMatchingSchema
+      );
     } catch (innerError) {
       const errMsg = innerError instanceof Error ? innerError.message : String(innerError);
       logger.error(
@@ -184,8 +205,9 @@ Original prompt: "${draft.prompt}"`;
 
   let result: DraftIntentResult;
   try {
-    result = (await runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt: `${DRAFT_INTENT_SYSTEM_PROMPT}
+    result = await useStructuredModel<DraftIntentResult>(
+      runtime,
+      `${DRAFT_INTENT_SYSTEM_PROMPT}
 
 ## Current Draft
 
@@ -194,8 +216,8 @@ ${draftSummary}
 ## User Message
 
 ${userMessage}`,
-      schema: draftIntentSchema,
-    })) as DraftIntentResult;
+      draftIntentSchema
+    );
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     logger.error(
@@ -659,14 +681,14 @@ export async function assessFeasibility(
     .join(', ');
 
   try {
-    const result = (await runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt:
+    const result = await useStructuredModel<FeasibilityResult>(
+      runtime,
         `${FEASIBILITY_CHECK_PROMPT}\n\n## User Request\n${userPrompt}` +
-        `\n\n## Removed Integrations (unavailable)\n${removedList}` +
-        `\n\n## Available Service Integrations\n${availableList}` +
-        `\n\n## Available Utility Nodes\n${utilityList}`,
-      schema: feasibilitySchema,
-    })) as FeasibilityResult;
+          `\n\n## Removed Integrations (unavailable)\n${removedList}` +
+          `\n\n## Available Service Integrations\n${availableList}` +
+          `\n\n## Available Utility Nodes\n${utilityList}`,
+      feasibilitySchema
+    );
 
     return result;
   } catch (error) {

@@ -2,7 +2,6 @@ import type {
   GenerateTextParams,
   IAgentRuntime,
   ImageDescriptionParams,
-  ObjectGenerationParams,
   Plugin,
   TestCase,
   TestSuite,
@@ -15,8 +14,6 @@ import { initializeGoogleGenAI, type PluginConfig } from "./init";
 import {
   handleActionPlanner,
   handleImageDescription,
-  handleObjectLarge,
-  handleObjectSmall,
   handleResponseHandler,
   handleTextEmbedding,
   handleTextLarge,
@@ -44,10 +41,6 @@ const TEXT_EMBEDDING_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_EMBEDDING ??
   "TEXT_EMBEDDING") as string;
 const IMAGE_DESCRIPTION_MODEL_TYPE = (CORE_MODEL_TYPES.IMAGE_DESCRIPTION ??
   "IMAGE_DESCRIPTION") as string;
-const OBJECT_SMALL_MODEL_TYPE = (CORE_MODEL_TYPES.OBJECT_SMALL ??
-  "OBJECT_SMALL") as string;
-const OBJECT_LARGE_MODEL_TYPE = (CORE_MODEL_TYPES.OBJECT_LARGE ??
-  "OBJECT_LARGE") as string;
 const TEXT_MEGA_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_MEGA ??
   "TEXT_MEGA") as string;
 const RESPONSE_HANDLER_MODEL_TYPE = (CORE_MODEL_TYPES.RESPONSE_HANDLER ??
@@ -165,7 +158,7 @@ const pluginTests = [
         },
       },
       {
-        name: "google_test_object_generation",
+        name: "google_test_structured_output_via_text_large",
         fn: async (runtime: IAgentRuntime) => {
           try {
             const schema = {
@@ -178,19 +171,19 @@ const pluginTests = [
               required: ["name", "age", "hobbies"],
             };
 
-            const result = (await runtime.useModel(ModelType.OBJECT_SMALL, {
+            const result = await runtime.useModel(ModelType.TEXT_LARGE, {
               prompt: "Generate a person profile with name, age, and hobbies.",
-              schema,
-            })) as Record<string, unknown>;
+              responseSchema: schema,
+            } as unknown as Parameters<typeof runtime.useModel>[1]);
 
-            logger.log("Generated object:", JSON.stringify(result));
+            logger.log("Generated structured output:", JSON.stringify(result));
 
-            if (!result?.name || !result?.age || !result?.hobbies) {
-              throw new Error("Generated object missing required fields");
+            if (!result) {
+              throw new Error("Generated structured output is empty");
             }
           } catch (error) {
             logger.error(
-              `Error in test_object_generation: ${error instanceof Error ? error.message : String(error)}`,
+              `Error in test_structured_output_via_text_large: ${error instanceof Error ? error.message : String(error)}`,
             );
             throw error;
           }

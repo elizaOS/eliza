@@ -4,7 +4,7 @@ import type {
   INodeProperties,
   INodeTypeDescription,
   IWorkflowSettings,
-} from '@elizaos/p1p3s';
+} from '@elizaos/workflows';
 
 // Core workflow types
 
@@ -171,7 +171,14 @@ export interface WorkflowTag {
 export interface NodeDefinition
   extends Omit<
     INodeTypeDescription,
-    'credentials' | 'group' | 'icon' | 'iconUrl' | 'inputs' | 'outputs' | 'properties'
+    | 'credentials'
+    | 'group'
+    | 'icon'
+    | 'iconUrl'
+    | 'inputs'
+    | 'outputs'
+    | 'polling'
+    | 'properties'
   > {
   icon?: string;
   iconUrl?: string;
