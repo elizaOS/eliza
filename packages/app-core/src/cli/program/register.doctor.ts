@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import type { Command } from "commander";
-import { theme } from "../../terminal/theme";
+import { theme } from "..//shared";
 import { runCommandWithRuntime } from "../cli-utils";
 import type { CheckCategory, CheckResult, CheckStatus } from "../doctor/checks";
 

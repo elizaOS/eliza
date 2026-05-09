@@ -1,4 +1,4 @@
-import "../utils/namespace-defaults.js";
+import "/shared";
 import fs from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
@@ -118,7 +118,7 @@ import {
   executeRawSql,
   sanitizeIdentifier,
   sqlLiteral,
-} from "../utils/sql-compat";
+} from "/shared";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
 import { handleAuthSessionRoutes } from "./auth-session-routes";
@@ -143,7 +143,7 @@ import { handleWorkbenchCompatRoutes } from "./workbench-compat-routes";
 
 const _require = createRequire(import.meta.url);
 
-import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
+import { syncAppEnvToEliza, syncElizaEnvAliases } from "/shared";
 
 // Lazy-imported to avoid circular dependency with runtime/eliza.ts
 const lazyEnsureTTS = () =>
@@ -769,7 +769,7 @@ async function handleCompatRoute(
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const pluginId = decodeURIComponent(uiSpecMatch[1]);
     const { buildPluginConfigUiSpec } = await import(
-      "../config/plugin-ui-spec"
+      "/shared"
     );
     const { buildPluginListResponse } = await import("./plugins-compat-routes");
     const pluginList = buildPluginListResponse(state.current);

@@ -160,6 +160,10 @@ function readActionObject(source, node) {
   const modeText = getPropertyInitializer(node, "mode")?.getText(source) ?? "";
   const contexts = getStringArrayProperty(node, "contexts");
   const similes = getStringArrayProperty(node, "similes");
+  const description = getStringProperty(node, "description");
+  const descriptionCompressed =
+    getStringProperty(node, "descriptionCompressed") ??
+    getStringProperty(node, "compressedDescription");
   const line =
     source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
   const keywordStem = actionNameToKeywordStem(name);
@@ -175,6 +179,8 @@ function readActionObject(source, node) {
     line,
     contexts,
     similes,
+    description,
+    descriptionCompressed,
     hasRoleGate: Boolean(getProperty(node, "roleGate")),
     hasContextGate: Boolean(getProperty(node, "contextGate")),
     hasSubActions: Boolean(getProperty(node, "subActions")),
@@ -228,11 +234,14 @@ function classifyValidate(text, hasValidate) {
     "getValidationKeywordTerms",
     "findKeywordTermMatch",
     "collectKeywordTermMatches",
+    "hasSelectedContextOrSignal",
+    "hasMediaActionSignal",
     "looksLike[A-Za-z0-9_]*Intent",
     "KEYWORD_HEURISTIC",
     "recentMessages",
     "message\\.content\\.text",
     "content\\.text",
+    "messageText\\(",
   ]);
   const stateSignals = matchAll(compact, [
     "getService",
@@ -351,6 +360,8 @@ function buildSummary(items) {
     keywordOrIntentValidate: items.filter(
       (item) => item.validate.kind === "keyword_or_intent",
     ).length,
+    unclearValidate: items.filter((item) => item.validate.kind === "unclear")
+      .length,
     stateBasedValidate: items.filter(
       (item) => item.validate.kind === "state_based",
     ).length,
@@ -378,6 +389,7 @@ function renderMarkdown(summary, items) {
     `- Missing explicit roleGate: ${summary.missingRoleGate}`,
     `- Missing validate(): ${summary.missingValidate}`,
     `- Keyword/intent validate(): ${summary.keywordOrIntentValidate}`,
+    `- Unclear validate(): ${summary.unclearValidate}`,
     `- State-based validate(): ${summary.stateBasedValidate}`,
     `- Always-available validate(): ${summary.alwaysAvailableValidate}`,
     `- Missing external action keyword keys: ${summary.missingExternalActionKeywords}`,

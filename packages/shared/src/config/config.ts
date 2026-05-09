@@ -3,7 +3,7 @@
 // server boot. Consumers should import these directly from
 // `@elizaos/agent` instead. Type-only forwarder kept so existing
 // `import type { ElizaConfig } from "@elizaos/shared"` still resolves.
-export type { ElizaConfig } from "@elizaos/agent";
+export type { ElizaConfig } from "./types.eliza.js";
 
 export interface LegacyCloudConfig {
   cloud?: { enabled?: boolean } | null;

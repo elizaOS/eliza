@@ -1,4 +1,4 @@
-import "../utils/namespace-defaults.js";
+import "/shared";
 import { existsSync } from "node:fs";
 import { rename } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -46,10 +46,10 @@ import {
   resolveServerOnlyPort,
   syncResolvedApiPort,
 } from "@elizaos/shared";
-import { isNativeServerPlatform } from "../platform/is-native-server.js";
+import { isNativeServerPlatform } from "/shared";
 import { getApps, loadRegistry } from "../registry";
-import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
-import { ensureRuntimeSqlCompatibility } from "../utils/sql-compat.js";
+import { syncAppEnvToEliza, syncElizaEnvAliases } from "/shared";
+import { ensureRuntimeSqlCompatibility } from "/shared";
 import {
   type AppRoutePluginRegistryEntry,
   listAppRoutePluginLoaders,

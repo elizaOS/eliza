@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { getLogPrefix } from "../../utils/log-prefix";
+import { getLogPrefix } from "..//shared";
 
 export function registerModelsCli(program: Command) {
   program

@@ -8,7 +8,7 @@ import {
 import { type IAgentRuntime, PluginManagerService } from "@elizaos/core";
 import chalk from "chalk";
 import type { Command } from "commander";
-import { parseClampedInteger } from "../utils/number-parsing";
+import { parseClampedInteger } from "/shared";
 
 /** Validate that a resolved plugin path is within allowed boundaries. */
 export function validatePluginPath(resolved: string): void {

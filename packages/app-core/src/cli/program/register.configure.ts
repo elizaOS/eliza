@@ -1,6 +1,6 @@
 import type { Command } from "commander";
-import { formatDocsLink } from "../../terminal/links";
-import { theme } from "../../terminal/theme";
+import { formatDocsLink } from "..//shared";
+import { theme } from "..//shared";
 
 export function registerConfigureCommand(program: Command) {
   program

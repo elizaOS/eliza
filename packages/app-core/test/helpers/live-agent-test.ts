@@ -34,7 +34,12 @@ export type LiveProviderId =
 	| "anthropic"
 	| "google"
 	| "groq"
-	| "openrouter";
+	| "openrouter"
+	| "ollama"
+	| "xai"
+	| "nvidiacloud"
+	| "elizacloud"
+	| "cerebras";
 
 export interface LiveAgentTestOptions {
 	/** Required env vars. If any is missing, the suite skips with a warning. */
@@ -59,6 +64,79 @@ export interface LiveAgentHarness {
 const DEFAULT_SYSTEM_PROMPT =
 	"You are a concise, helpful assistant used for end-to-end testing. " +
 	"Always respond in plain text. Keep answers short (1-3 sentences) unless asked otherwise.";
+
+interface ProviderConfig {
+	pluginPath: string;
+	bareSpecifier: string;
+	pluginExportNames: string[];
+	defaultRequiredEnv: string[];
+}
+
+const PROVIDER_CONFIG: Record<LiveProviderId, ProviderConfig> = {
+	openai: {
+		pluginPath: "../../../../plugins/plugin-openai/index.ts",
+		bareSpecifier: "@elizaos/plugin-openai",
+		pluginExportNames: ["openaiPlugin", "default"],
+		defaultRequiredEnv: ["OPENAI_API_KEY"],
+	},
+	anthropic: {
+		pluginPath: "../../../../plugins/plugin-anthropic/index.ts",
+		bareSpecifier: "@elizaos/plugin-anthropic",
+		pluginExportNames: ["anthropicPlugin", "default"],
+		defaultRequiredEnv: ["ANTHROPIC_API_KEY"],
+	},
+	google: {
+		pluginPath: "../../../../plugins/plugin-google-genai/index.ts",
+		bareSpecifier: "@elizaos/plugin-google-genai",
+		pluginExportNames: ["default"],
+		defaultRequiredEnv: ["GOOGLE_GENERATIVE_AI_API_KEY"],
+	},
+	groq: {
+		pluginPath: "../../../../plugins/plugin-groq/index.ts",
+		bareSpecifier: "@elizaos/plugin-groq",
+		pluginExportNames: ["groqPlugin", "default"],
+		defaultRequiredEnv: ["GROQ_API_KEY"],
+	},
+	openrouter: {
+		pluginPath: "../../../../plugins/plugin-openrouter/index.ts",
+		bareSpecifier: "@elizaos/plugin-openrouter",
+		pluginExportNames: ["openrouterPlugin", "default"],
+		defaultRequiredEnv: ["OPENROUTER_API_KEY"],
+	},
+	ollama: {
+		pluginPath: "../../../../plugins/plugin-ollama/index.ts",
+		bareSpecifier: "@elizaos/plugin-ollama",
+		pluginExportNames: ["ollamaPlugin", "default"],
+		defaultRequiredEnv: ["OLLAMA_API_ENDPOINT"],
+	},
+	xai: {
+		pluginPath: "../../../../plugins/plugin-xai/index.ts",
+		bareSpecifier: "@elizaos/plugin-xai",
+		pluginExportNames: ["XAIPlugin", "default"],
+		defaultRequiredEnv: ["XAI_API_KEY"],
+	},
+	nvidiacloud: {
+		pluginPath: "../../../../plugins/plugin-nvidiacloud/dist/index.js",
+		bareSpecifier: "@elizaos/plugin-nvidiacloud",
+		pluginExportNames: ["nvidiaCloudPlugin", "default"],
+		defaultRequiredEnv: ["NVIDIA_API_KEY"],
+	},
+	elizacloud: {
+		pluginPath: "../../../../plugins/plugin-elizacloud/src/index.ts",
+		bareSpecifier: "@elizaos/plugin-elizacloud",
+		pluginExportNames: ["elizaOSCloudPlugin", "default"],
+		defaultRequiredEnv: ["ELIZAOS_CLOUD_API_KEY"],
+	},
+	// Cerebras is an alias for the openai plugin pre-configured to talk to
+	// the Cerebras OpenAI-compatible endpoint. Useful for tests that explicitly
+	// want Cerebras even when OPENAI_API_KEY is set to a real OpenAI key.
+	cerebras: {
+		pluginPath: "../../../../plugins/plugin-openai/index.ts",
+		bareSpecifier: "@elizaos/plugin-openai",
+		pluginExportNames: ["openaiPlugin", "default"],
+		defaultRequiredEnv: ["CEREBRAS_API_KEY"],
+	},
+};
 
 /**
  * Resolve the workspace plugin via explicit relative file import first, falling
@@ -85,52 +163,14 @@ async function importWorkspacePlugin(
 async function resolveProviderPlugin(
 	provider: LiveProviderId,
 ): Promise<Plugin | null> {
-	switch (provider) {
-		case "openai": {
-			const mod = await importWorkspacePlugin(
-				"../../../../plugins/plugin-openai/index.ts",
-				"@elizaos/plugin-openai",
-			);
-			if (!mod) return null;
-			return ((mod.openaiPlugin ?? mod.default) as Plugin | undefined) ?? null;
-		}
-		case "anthropic": {
-			const mod = await importWorkspacePlugin(
-				"../../../../plugins/plugin-anthropic/index.ts",
-				"@elizaos/plugin-anthropic",
-			);
-			if (!mod) return null;
-			return (
-				((mod.anthropicPlugin ?? mod.default) as Plugin | undefined) ?? null
-			);
-		}
-		case "google": {
-			const mod = await importWorkspacePlugin(
-				"../../../../plugins/plugin-google-genai/index.ts",
-				"@elizaos/plugin-google-genai",
-			);
-			if (!mod) return null;
-			return (mod.default as Plugin | undefined) ?? null;
-		}
-		case "groq": {
-			const mod = await importWorkspacePlugin(
-				"../../../../plugins/plugin-groq/index.ts",
-				"@elizaos/plugin-groq",
-			);
-			if (!mod) return null;
-			return ((mod.groqPlugin ?? mod.default) as Plugin | undefined) ?? null;
-		}
-		case "openrouter": {
-			const mod = await importWorkspacePlugin(
-				"../../../../plugins/plugin-openrouter/index.ts",
-				"@elizaos/plugin-openrouter",
-			);
-			if (!mod) return null;
-			return (
-				((mod.openrouterPlugin ?? mod.default) as Plugin | undefined) ?? null
-			);
-		}
+	const cfg = PROVIDER_CONFIG[provider];
+	const mod = await importWorkspacePlugin(cfg.pluginPath, cfg.bareSpecifier);
+	if (!mod) return null;
+	for (const name of cfg.pluginExportNames) {
+		const candidate = mod[name];
+		if (candidate) return candidate as Plugin;
 	}
+	return null;
 }
 
 async function loadExtraPlugin(
@@ -203,6 +243,114 @@ function applyProviderSettings(
 				true,
 			);
 			break;
+		case "ollama": {
+			const endpoint =
+				process.env.OLLAMA_API_ENDPOINT?.trim() ||
+				process.env.OLLAMA_API_URL?.trim() ||
+				"";
+			runtime.setSetting("OLLAMA_API_ENDPOINT", endpoint, true);
+			if (process.env.OLLAMA_SMALL_MODEL) {
+				runtime.setSetting(
+					"OLLAMA_SMALL_MODEL",
+					process.env.OLLAMA_SMALL_MODEL,
+				);
+			}
+			if (process.env.OLLAMA_LARGE_MODEL) {
+				runtime.setSetting(
+					"OLLAMA_LARGE_MODEL",
+					process.env.OLLAMA_LARGE_MODEL,
+				);
+			}
+			if (process.env.OLLAMA_EMBEDDING_MODEL) {
+				runtime.setSetting(
+					"OLLAMA_EMBEDDING_MODEL",
+					process.env.OLLAMA_EMBEDDING_MODEL,
+				);
+			}
+			break;
+		}
+		case "xai":
+			runtime.setSetting("XAI_API_KEY", process.env.XAI_API_KEY ?? "", true);
+			if (process.env.XAI_BASE_URL) {
+				runtime.setSetting("XAI_BASE_URL", process.env.XAI_BASE_URL);
+			}
+			if (process.env.XAI_LARGE_MODEL) {
+				runtime.setSetting("XAI_LARGE_MODEL", process.env.XAI_LARGE_MODEL);
+			}
+			if (process.env.XAI_SMALL_MODEL) {
+				runtime.setSetting("XAI_SMALL_MODEL", process.env.XAI_SMALL_MODEL);
+			}
+			break;
+		case "nvidiacloud":
+			runtime.setSetting(
+				"NVIDIA_API_KEY",
+				process.env.NVIDIA_API_KEY ?? process.env.NVIDIA_CLOUD_API_KEY ?? "",
+				true,
+			);
+			if (process.env.NVIDIA_BASE_URL) {
+				runtime.setSetting("NVIDIA_BASE_URL", process.env.NVIDIA_BASE_URL);
+			}
+			if (process.env.NVIDIA_LARGE_MODEL) {
+				runtime.setSetting(
+					"NVIDIA_LARGE_MODEL",
+					process.env.NVIDIA_LARGE_MODEL,
+				);
+			}
+			if (process.env.NVIDIA_SMALL_MODEL) {
+				runtime.setSetting(
+					"NVIDIA_SMALL_MODEL",
+					process.env.NVIDIA_SMALL_MODEL,
+				);
+			}
+			break;
+		case "elizacloud":
+			runtime.setSetting(
+				"ELIZAOS_CLOUD_API_KEY",
+				process.env.ELIZAOS_CLOUD_API_KEY ?? "",
+				true,
+			);
+			if (process.env.ELIZAOS_CLOUD_BASE_URL) {
+				runtime.setSetting(
+					"ELIZAOS_CLOUD_BASE_URL",
+					process.env.ELIZAOS_CLOUD_BASE_URL,
+				);
+			}
+			if (process.env.ELIZAOS_CLOUD_LARGE_MODEL) {
+				runtime.setSetting(
+					"ELIZAOS_CLOUD_LARGE_MODEL",
+					process.env.ELIZAOS_CLOUD_LARGE_MODEL,
+				);
+			}
+			if (process.env.ELIZAOS_CLOUD_SMALL_MODEL) {
+				runtime.setSetting(
+					"ELIZAOS_CLOUD_SMALL_MODEL",
+					process.env.ELIZAOS_CLOUD_SMALL_MODEL,
+				);
+			}
+			break;
+		case "cerebras": {
+			// Cerebras = OpenAI plugin pinned at the Cerebras endpoint. Pick the
+			// dedicated key first; fall back to OPENAI_API_KEY if a caller is
+			// already aliasing it themselves.
+			const key =
+				process.env.CEREBRAS_API_KEY?.trim() ||
+				process.env.OPENAI_API_KEY?.trim() ||
+				"";
+			runtime.setSetting("OPENAI_API_KEY", key, true);
+			runtime.setSetting(
+				"OPENAI_BASE_URL",
+				process.env.OPENAI_BASE_URL || "https://api.cerebras.ai/v1",
+			);
+			runtime.setSetting(
+				"OPENAI_LARGE_MODEL",
+				process.env.OPENAI_LARGE_MODEL || "gpt-oss-120b",
+			);
+			runtime.setSetting(
+				"OPENAI_SMALL_MODEL",
+				process.env.OPENAI_SMALL_MODEL || "gpt-oss-120b",
+			);
+			break;
+		}
 	}
 }
 
@@ -259,6 +407,26 @@ function effectiveRequiredEnv(opts: LiveAgentTestOptions): {
 		: missing;
 
 	return { missing: filtered, hasCerebrasFallback };
+}
+
+/**
+ * Ping the Ollama server's `/api/tags` endpoint with a 2-second timeout.
+ * Returns true if the server responds 2xx, false otherwise. Used to skip
+ * Ollama live tests cleanly when OLLAMA_API_ENDPOINT is set but no server
+ * is actually running.
+ */
+export async function pingOllamaReachable(endpoint: string): Promise<boolean> {
+	const base = endpoint.replace(/\/api\/?$/, "").replace(/\/$/, "");
+	if (!base) return false;
+	try {
+		const res = await fetch(`${base}/api/tags`, {
+			method: "GET",
+			signal: AbortSignal.timeout(2000),
+		});
+		return res.ok;
+	} catch {
+		return false;
+	}
 }
 
 export async function buildLiveHarness(
@@ -374,28 +542,65 @@ export async function buildLiveHarness(
 	return { agentId, runtime, runAgentTurn, close };
 }
 
-export function describeLive(
+/**
+ * Resolve the auto-defaulted required env for a provider. Callers may pass
+ * `requiredEnv: []` to fall back entirely on the provider's defaults.
+ */
+function defaultedRequiredEnv(opts: LiveAgentTestOptions): string[] {
+	const provider = opts.provider ?? "openai";
+	if (opts.requiredEnv.length > 0) return opts.requiredEnv;
+	return PROVIDER_CONFIG[provider].defaultRequiredEnv;
+}
+
+function emitSkip(name: string, reason: string): void {
+	process.env.SKIP_REASON ||= reason;
+	console.warn(
+		`${YELLOW}[live-agent-test] ${name} skipped — ${reason}${RESET}`,
+	);
+	describe(name, () => {
+		it.skip(`[live] suite skipped — ${reason}`, () => {});
+	});
+}
+
+/**
+ * Register a vitest `describe` block that boots a real AgentRuntime against a
+ * live LLM provider. When required env is missing, the suite is skipped with
+ * a yellow warning.
+ *
+ * This function is async because some providers (currently `ollama`) need a
+ * pre-flight network reachability check before tests are registered. Callers
+ * should `await describeLive(...)` at module top level — vitest supports
+ * top-level await in test files.
+ */
+export async function describeLive(
 	name: string,
 	opts: LiveAgentTestOptions,
 	body: (ctx: { harness: () => LiveAgentHarness }) => void,
-): void {
-	const { missing } = effectiveRequiredEnv(opts);
+): Promise<void> {
+	const provider = opts.provider ?? "openai";
+	const required = defaultedRequiredEnv({ ...opts, requiredEnv: opts.requiredEnv });
+	const { missing } = effectiveRequiredEnv({ ...opts, requiredEnv: required });
+
 	if (missing.length > 0) {
-		const reason = `missing required env: ${missing.join(", ")}`;
-		// Annotate so fail-on-silent-skip allows it.
-		process.env.SKIP_REASON ||= reason;
-		console.warn(
-			`${YELLOW}[live-agent-test] ${name} skipped — ${reason} (set ${missing.join(
-				", ",
-			)} to enable)${RESET}`,
-		);
-		describe(name, () => {
-			it.skip(
-				`[live] suite skipped — set ${missing.join(", ")} to enable`,
-				() => {},
-			);
-		});
+		const reason = `missing required env: ${missing.join(", ")} (set ${missing.join(", ")} to enable)`;
+		emitSkip(name, reason);
 		return;
+	}
+
+	// Ollama-specific: env is set, but the server might not be running.
+	// Do a 2s reachability ping before registering tests so unreachable
+	// servers produce a clean skip instead of long timeouts.
+	if (provider === "ollama") {
+		const endpoint =
+			process.env.OLLAMA_API_ENDPOINT?.trim() ||
+			process.env.OLLAMA_API_URL?.trim() ||
+			"";
+		const reachable = await pingOllamaReachable(endpoint);
+		if (!reachable) {
+			const reason = `OLLAMA_API_ENDPOINT=${endpoint} unreachable (start ollama or unset OLLAMA_API_ENDPOINT to skip cleanly)`;
+			emitSkip(name, reason);
+			return;
+		}
 	}
 
 	describe(name, () => {

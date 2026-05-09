@@ -8,7 +8,7 @@
  * Or: `cd eliza/packages/agent && bun run training:cli` (delegates to this file).
  */
 
-import { readFile } from "fs/promises";
+import { readFile, writeFile } from "fs/promises";
 import { parseArgs } from "util";
 import { AGENT_CONTEXTS, type AgentContext } from "./context-types.js";
 import {
@@ -20,12 +20,19 @@ import {
   type TeacherModel,
   type TrainingSample,
 } from "./dataset-generator.js";
+import {
+  type CompareMode,
+  comparePrompts,
+  formatComparisonSummary,
+  type ScorerKind,
+} from "./prompt-compare.js";
 import { formatQualityReport, validateDataset } from "./replay-validator.js";
 import {
   buildRoleplayEpisodes,
   exportRoleplayEpisodes,
 } from "./roleplay-trajectories.js";
 import { ALL_BLUEPRINTS, BLUEPRINT_STATS } from "./scenario-blueprints.js";
+import type { TrajectoryTrainingTask } from "./trajectory-task-datasets.js";
 const AGENT_DECISIONS = ["RESPOND", "IGNORE", "STOP"] as const;
 type AgentDecision = (typeof AGENT_DECISIONS)[number];
 
@@ -165,6 +172,119 @@ async function cmdGenerate(args: string[]) {
   console.log("\nDone!");
 }
 
+async function cmdCompare(args: string[]) {
+  const { values } = parseArgs({
+    args,
+    options: {
+      baseline: { type: "string" },
+      variant: { type: "string" },
+      dataset: { type: "string" },
+      task: { type: "string" },
+      scorer: { type: "string" },
+      mode: { type: "string" },
+      "max-examples": { type: "string" },
+      tolerance: { type: "string" },
+      output: { type: "string", short: "o" },
+      temperature: { type: "string" },
+      "max-tokens": { type: "string" },
+    },
+  });
+
+  if (!values.baseline || !values.variant || !values.dataset) {
+    console.error(
+      "Usage: compare --baseline <prompt.txt> --variant <prompt.txt> --dataset <dataset.jsonl> [options]",
+    );
+    console.error("");
+    console.error("Options:");
+    console.error(
+      "  --task <task>          One of: should_respond, context_routing, action_planner, response, media_description",
+    );
+    console.error(
+      "  --scorer <kind>        agreement | planner_action (default: derived from --task)",
+    );
+    console.error(
+      "  --mode <mode>          vs_historical (default) | pairwise",
+    );
+    console.error("  --max-examples N       Cap evaluations (default: all)");
+    console.error("  --tolerance N          Pass threshold delta (default: 0.02)");
+    console.error("  --temperature N        Sampling temperature (default: 0)");
+    console.error("  --max-tokens N         Per-completion cap (default: 512)");
+    console.error("  -o, --output <path>    Write JSON result to file");
+    console.error("");
+    console.error(
+      "Requires ANTHROPIC_API_KEY or OPENAI_API_KEY for the model adapter.",
+    );
+    process.exit(1);
+  }
+
+  const [baselinePrompt, variantPrompt] = await Promise.all([
+    readFile(values.baseline, "utf-8"),
+    readFile(values.variant, "utf-8"),
+  ]);
+
+  const teacher = getTeacherModel();
+  const adapter = {
+    async complete(input: {
+      system?: string;
+      user: string;
+      temperature?: number;
+      maxTokens?: number;
+    }): Promise<string> {
+      // Teacher model fixes its own temperature/max_tokens, but the
+      // scorer asks for 0/512 by default. Re-using the teacher here
+      // keeps adapter wiring trivial; if you need stricter
+      // determinism, plug a different adapter via the API.
+      return await teacher.generate(input.system ?? "", input.user);
+    },
+  };
+
+  const task = values.task as TrajectoryTrainingTask | undefined;
+  const scorer = values.scorer as ScorerKind | undefined;
+  const mode = values.mode as CompareMode | undefined;
+  const maxExamples = values["max-examples"]
+    ? Number.parseInt(values["max-examples"], 10)
+    : undefined;
+  const temperature = values.temperature
+    ? Number.parseFloat(values.temperature)
+    : undefined;
+  const maxTokens = values["max-tokens"]
+    ? Number.parseInt(values["max-tokens"], 10)
+    : undefined;
+
+  console.log(
+    `[compare] baseline=${values.baseline} variant=${values.variant}`,
+  );
+  console.log(
+    `[compare] dataset=${values.dataset} task=${task ?? "(any)"} mode=${mode ?? "vs_historical"}`,
+  );
+  console.log(`[compare] adapter=${teacher.name}`);
+
+  const result = await comparePrompts({
+    baselinePrompt,
+    variantPrompt,
+    dataset: values.dataset,
+    task,
+    scorer,
+    mode,
+    maxExamples,
+    temperature,
+    maxTokens,
+    adapter,
+  });
+
+  console.log("");
+  console.log(formatComparisonSummary(result));
+
+  if (values.output) {
+    await writeFile(values.output, JSON.stringify(result, null, 2));
+    console.log(`[compare] wrote result to ${values.output}`);
+  }
+
+  if (!result.passed) {
+    process.exit(2);
+  }
+}
+
 async function cmdValidate(args: string[]) {
   const { values } = parseArgs({
     args,
@@ -202,6 +322,9 @@ async function main() {
     case "validate":
       await cmdValidate(restArgs);
       break;
+    case "compare":
+      await cmdCompare(restArgs);
+      break;
     default:
       console.log(`Usage: cli.ts <command> [options]
 
@@ -215,6 +338,20 @@ Commands:
 
   validate          Validate a generated dataset
     --input PATH    Path to raw_samples.json
+
+  compare           A/B compare two prompts on a trajectory dataset
+    --baseline PATH    Path to baseline prompt (.txt)
+    --variant PATH     Path to variant prompt (.txt)
+    --dataset PATH     Path to JSONL dataset (eliza_native_v1)
+    --task NAME        should_respond | context_routing | action_planner | response | media_description
+    --scorer KIND      agreement | planner_action (default: from --task)
+    --mode MODE        vs_historical (default) | pairwise
+    --max-examples N   Cap evaluations
+    --tolerance F      Pass threshold delta (default: 0.02)
+    --temperature F    Sampling temperature (default: 0)
+    --max-tokens N     Per-completion cap (default: 512)
+    -o, --output PATH  Write JSON result to file
+    Exits with code 2 if variant regresses beyond --tolerance.
 
 Environment:
   ANTHROPIC_API_KEY   Use Claude as teacher model

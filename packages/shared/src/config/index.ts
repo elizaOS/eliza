@@ -13,4 +13,5 @@ export {
   buildPluginConfigUiSpec,
   buildPluginListUiSpec,
 } from "./plugin-ui-spec";
+export * from "./types.eliza";
 export * from "./ui-spec";

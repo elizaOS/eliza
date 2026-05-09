@@ -26,7 +26,7 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { isNativeServerPlatform } from "../platform/is-native-server.js";
+import { isNativeServerPlatform } from "/shared";
 import { type N8nModeConfigLike, resolveN8nMode } from "./n8n-mode.js";
 import {
   getN8nSidecarAsync,

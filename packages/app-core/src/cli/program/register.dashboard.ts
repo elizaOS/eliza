@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { theme } from "../../terminal/theme";
+import { theme } from "..//shared";
 
 async function isPortListening(
   port: number,

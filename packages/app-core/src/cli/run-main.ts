@@ -4,7 +4,7 @@ import {
   formatUncaughtError,
   shouldIgnoreUnhandledRejection,
 } from "../runtime/error-handlers";
-import { getLogPrefix } from "../utils/log-prefix";
+import { getLogPrefix } from "/shared";
 import { getPrimaryCommand, hasHelpOrVersion } from "./argv";
 import { registerSubCliByName } from "./program/register.subclis";
 

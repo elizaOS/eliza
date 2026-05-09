@@ -42,6 +42,7 @@
     "./components/*/*": "./dist/components/*/*",
     "./components/*/*/*": "./dist/components/*/*/*",
     "./components/ui/*": "./dist/components/ui/*.js",
+    "./api/*": "./dist/api/*.js",
     "./components/composites/page-panel": "./dist/components/composites/page-panel/index.js",
     "./components/composites/*": "./dist/components/composites/*",
     "./components/composites/*/*": "./dist/components/composites/*/*.js",
@@ -49,6 +50,7 @@
     "./hooks/*": "./dist/hooks/*",
     "./layouts": "./dist/layouts/index.js",
     "./layouts/*": "./dist/layouts/*",
+    "./bridge/*": "./dist/bridge/*.js",
     "./lib/*": "./dist/lib/*",
     "./styles/*": "./dist/styles/*"
   },

@@ -120,7 +120,15 @@ const elizaCoreSourceRoot = path.join(elizaWorkspaceRoot, "packages", "core", "s
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
 const sharedSourceRoot = getSharedSourceRoot(repoRoot);
-const uiSourceRoot = getUiSourceRoot(repoRoot);
+const workspaceUiSourceRoot = path.join(
+  elizaWorkspaceRoot,
+  "packages",
+  "ui",
+  "src",
+);
+const uiSourceRoot = fs.existsSync(path.join(workspaceUiSourceRoot, "index.ts"))
+  ? workspaceUiSourceRoot
+  : getUiSourceRoot(repoRoot);
 const pluginOpenAiRoot = path.join(elizaWorkspaceRoot, "plugins", "plugin-openai");
 const pluginIMessageRoot = path.join(elizaWorkspaceRoot, "plugins", "plugin-imessage");
 const pluginDiscordRoot = path.join(elizaWorkspaceRoot, "plugins", "plugin-discord");

@@ -23,7 +23,7 @@ import {
   normalizeServiceRoutingConfig,
   type ServiceRoutingConfig,
 } from "@elizaos/shared";
-import { PREMADE_VOICES } from "../voice/types";
+import { PREMADE_VOICES } from "/ui";
 import { resolveProviderCredential } from "./credential-resolver";
 
 // ---------------------------------------------------------------------------
