@@ -14,7 +14,7 @@ import {
   isDiscordPluginServiceLike,
   type MusicPlayerDiscordVoiceManager,
 } from "../discordVoice";
-import { MUSIC_PLAYER_ACTION_DOCS } from "../prompts/musicPlayerInstructions";
+import { MUSIC_PLAYER_ACTION_DOCS } from "./music-player-action-docs";
 import { MusicService } from "../service";
 import { isPlaybackTransportControlOnlyMessage } from "../utils/playbackTransportIntent";
 import { ProgressiveMessage } from "../utils/progressiveMessage";

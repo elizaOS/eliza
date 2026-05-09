@@ -20,6 +20,13 @@
       "@elizaos/core/*": ["../../../packages/core/dist/*"]
     }
   },
-  "include": ["./**/*.ts"],
-  "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts", "build.ts"]
+  "include": ["src/**/*.ts", "auto-enable.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "build.ts",
+    "vitest.config.ts"
+  ]
 }
