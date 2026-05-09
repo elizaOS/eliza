@@ -15,12 +15,13 @@ afterEach(() => {
 });
 
 function makeManagedBinary(root: string): string {
+  const backend = process.platform === "darwin" ? "metal" : "cpu";
   const managed = path.join(
     root,
     "local-inference",
     "bin",
     "dflash",
-    `${process.platform}-${process.arch}-${process.platform === "darwin" ? "metal" : "cuda"}`,
+    `${process.platform}-${process.arch}-${backend}`,
     "llama-server",
   );
   fs.mkdirSync(path.dirname(managed), { recursive: true });

@@ -12,8 +12,8 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import process from "node:process";
 import { performance } from "node:perf_hooks";
+import process from "node:process";
 
 const HOST = "127.0.0.1";
 const DEFAULT_PROMPT =
@@ -83,15 +83,22 @@ const DEFAULT_VARIANTS = [
 ];
 
 function stateDir() {
-  return process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza");
+  return (
+    process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza")
+  );
 }
 
 function detectBackend() {
   const forced = process.env.ELIZA_DFLASH_BACKEND?.trim().toLowerCase();
   if (forced) return forced;
   if (process.platform === "darwin") return "metal";
-  if (process.env.HIP_VISIBLE_DEVICES || process.env.ROCR_VISIBLE_DEVICES) return "rocm";
-  if (process.env.CUDA_VISIBLE_DEVICES !== "-1") return "cuda";
+  if (process.env.HIP_VISIBLE_DEVICES || process.env.ROCR_VISIBLE_DEVICES)
+    return "rocm";
+  if (
+    process.env.CUDA_VISIBLE_DEVICES &&
+    process.env.CUDA_VISIBLE_DEVICES !== "-1"
+  )
+    return "cuda";
   return "cpu";
 }
 
@@ -143,7 +150,8 @@ function parseArgs(argv) {
     const arg = argv[i];
     const next = () => {
       const value = argv[i + 1];
-      if (!value || value.startsWith("--")) throw new Error(`${arg} requires a value`);
+      if (!value || value.startsWith("--"))
+        throw new Error(`${arg} requires a value`);
       i += 1;
       return value;
     };
@@ -152,27 +160,46 @@ function parseArgs(argv) {
     else if (arg === "--model") args.model = path.resolve(next());
     else if (arg === "--drafter") args.drafter = path.resolve(next());
     else if (arg === "--runs") args.runs = Number.parseInt(next(), 10);
-    else if (arg === "--max-tokens") args.maxTokens = Number.parseInt(next(), 10);
-    else if (arg === "--warmup-tokens") args.warmupTokens = Number.parseInt(next(), 10);
-    else if (arg === "--ctx-size") args.contextSize = Number.parseInt(next(), 10);
-    else if (arg === "--ctx-size-draft") args.draftContextSize = Number.parseInt(next(), 10);
+    else if (arg === "--max-tokens")
+      args.maxTokens = Number.parseInt(next(), 10);
+    else if (arg === "--warmup-tokens")
+      args.warmupTokens = Number.parseInt(next(), 10);
+    else if (arg === "--ctx-size")
+      args.contextSize = Number.parseInt(next(), 10);
+    else if (arg === "--ctx-size-draft")
+      args.draftContextSize = Number.parseInt(next(), 10);
     else if (arg === "--draft-min") args.draftMin = Number.parseInt(next(), 10);
     else if (arg === "--draft-max") args.draftMax = Number.parseInt(next(), 10);
-    else if (arg === "--batch-size" || arg === "-b") args.batchSize = Number.parseInt(next(), 10);
-    else if (arg === "--ubatch-size" || arg === "-ub") args.ubatchSize = Number.parseInt(next(), 10);
-    else if (arg === "--gpu-layers") args.gpuLayers = Number.parseInt(next(), 10);
-    else if (arg === "--draft-gpu-layers") args.draftGpuLayers = Number.parseInt(next(), 10);
-    else if (arg === "--timeout-ms") args.timeoutMs = Number.parseInt(next(), 10);
-    else if (arg === "--start-timeout-ms") args.startTimeoutMs = Number.parseInt(next(), 10);
+    else if (arg === "--batch-size" || arg === "-b")
+      args.batchSize = Number.parseInt(next(), 10);
+    else if (arg === "--ubatch-size" || arg === "-ub")
+      args.ubatchSize = Number.parseInt(next(), 10);
+    else if (arg === "--gpu-layers")
+      args.gpuLayers = Number.parseInt(next(), 10);
+    else if (arg === "--draft-gpu-layers")
+      args.draftGpuLayers = Number.parseInt(next(), 10);
+    else if (arg === "--timeout-ms")
+      args.timeoutMs = Number.parseInt(next(), 10);
+    else if (arg === "--start-timeout-ms")
+      args.startTimeoutMs = Number.parseInt(next(), 10);
     else if (arg === "--prompt") args.prompt = next();
-    else if (arg === "--variants") args.variants = next().split(",").map((v) => v.trim()).filter(Boolean);
+    else if (arg === "--variants")
+      args.variants = next()
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean);
     else if (arg === "--out-dir") args.outDir = path.resolve(next());
     else if (arg === "--config") args.config = path.resolve(next());
     else if (arg === "--quick") {
       args.runs = 1;
       args.maxTokens = 96;
       args.warmupTokens = 16;
-      args.variants = ["baseline_f16_kv", "turbo4_polar_kv", "qjl_tcq_forced", "dflash_only"];
+      args.variants = [
+        "baseline_f16_kv",
+        "turbo4_polar_kv",
+        "qjl_tcq_forced",
+        "dflash_only",
+      ];
     } else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
@@ -209,7 +236,9 @@ function loadVariants(args) {
     const wanted = new Set(args.variants);
     variants = variants.filter((variant) => wanted.has(variant.name));
   }
-  return variants.filter((variant) => !variant.needsDrafter || fs.existsSync(args.drafter));
+  return variants.filter(
+    (variant) => !variant.needsDrafter || fs.existsSync(args.drafter),
+  );
 }
 
 function runCapture(cmd, cmdArgs) {
@@ -240,7 +269,10 @@ function hardwareInfo(args) {
     info.cpuBrand = chip.stdout || null;
     info.gpu = (gpu.stdout.match(/Chipset Model: (.+)/) || [])[1] || null;
   } else {
-    const nvidia = runCapture("nvidia-smi", ["--query-gpu=name,memory.total,driver_version", "--format=csv,noheader"]);
+    const nvidia = runCapture("nvidia-smi", [
+      "--query-gpu=name,memory.total,driver_version",
+      "--format=csv,noheader",
+    ]);
     const rocm = runCapture("rocminfo", []);
     info.nvidiaSmi = nvidia.ok ? nvidia.stdout : null;
     info.rocminfo = rocm.ok ? rocm.stdout.slice(0, 2000) : null;
@@ -273,7 +305,9 @@ async function fetchJson(url, init, timeoutMs) {
   try {
     const response = await fetch(url, { ...init, signal: controller.signal });
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${await response.text().catch(() => "")}`);
+      throw new Error(
+        `HTTP ${response.status}: ${await response.text().catch(() => "")}`,
+      );
     }
     return await response.json();
   } finally {
@@ -285,7 +319,9 @@ async function waitReady(baseUrl, state, logs, timeoutMs) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     if (state.exited) {
-      throw new Error(`server exited ${state.exited.code ?? state.exited.signal}: ${logs.slice(-80).join("\n")}`);
+      throw new Error(
+        `server exited ${state.exited.code ?? state.exited.signal}: ${logs.slice(-80).join("\n")}`,
+      );
     }
     try {
       await fetchJson(`${baseUrl}/health`, { method: "GET" }, 1500);
@@ -294,13 +330,18 @@ async function waitReady(baseUrl, state, logs, timeoutMs) {
       await sleep(500);
     }
   }
-  throw new Error(`server not ready after ${timeoutMs}ms:\n${logs.slice(-120).join("\n")}`);
+  throw new Error(
+    `server not ready after ${timeoutMs}ms:\n${logs.slice(-120).join("\n")}`,
+  );
 }
 
 async function stopServer(child, state) {
   if (state.exited) return;
   child.kill("SIGTERM");
-  await Promise.race([new Promise((resolve) => child.once("exit", resolve)), sleep(5000)]);
+  await Promise.race([
+    new Promise((resolve) => child.once("exit", resolve)),
+    sleep(5000),
+  ]);
   if (!state.exited) child.kill("SIGKILL");
 }
 
@@ -447,15 +488,19 @@ function printSummary(results) {
         `${row.name.padEnd(24)} ${row.avgTokPerSec.toFixed(2).padStart(8)} tok/s  (${row.label})`,
       );
     } else {
-      console.log(`${row.name.padEnd(24)} FAILED   ${row.error?.split("\n")[0] ?? "unknown"}`);
+      console.log(
+        `${row.name.padEnd(24)} FAILED   ${row.error?.split("\n")[0] ?? "unknown"}`,
+      );
     }
   }
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  if (!fs.existsSync(args.binary)) throw new Error(`missing llama-server: ${args.binary}`);
-  if (!fs.existsSync(args.model)) throw new Error(`missing target model: ${args.model}`);
+  if (!fs.existsSync(args.binary))
+    throw new Error(`missing llama-server: ${args.binary}`);
+  if (!fs.existsSync(args.model))
+    throw new Error(`missing target model: ${args.model}`);
   const variants = loadVariants(args);
   if (variants.length === 0) throw new Error("no variants selected");
   fs.mkdirSync(args.outDir, { recursive: true });
