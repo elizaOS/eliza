@@ -46,6 +46,9 @@
       "@elizaos/agent": [
         "../agent/src/index.ts"
       ],
+      "@elizaos/agent/*": [
+        "../agent/src/*"
+      ],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
       ],

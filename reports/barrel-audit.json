@@ -1,18 +1,534 @@
 {
-  "generatedAt": "2026-05-09T21:45:11.619Z",
+  "generatedAt": "2026-05-09T22:04:30.321Z",
   "summary": {
     "packages": 147,
-    "sourceSubpathImports": 0,
-    "sourceSubpathStringReferences": 0,
-    "nonRootExports": 0,
-    "importRewrites": 0,
-    "rootBarrelAdds": 0,
-    "exportMapCollapses": 0,
-    "manual": 0
+    "sourceSubpathImports": 14,
+    "sourceSubpathStringReferences": 14,
+    "nonRootExports": 29,
+    "importRewrites": 14,
+    "rootBarrelAdds": 7,
+    "exportMapCollapses": 29,
+    "manual": 5
   },
-  "imports": [],
-  "stringReferences": [],
-  "exports": [],
+  "imports": [
+    {
+      "file": "packages/app/src/main.tsx",
+      "owner": "@elizaos/app",
+      "packageName": "@elizaos/app-wallet",
+      "specifier": "@elizaos/app-wallet/register",
+      "subpath": "register",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    }
+  ],
+  "stringReferences": [
+    {
+      "file": "packages/app/src/main.tsx",
+      "owner": "@elizaos/app",
+      "packageName": "@elizaos/app-wallet",
+      "specifier": "@elizaos/app-wallet/register",
+      "subpath": "register",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    }
+  ],
+  "exports": [
+    {
+      "packageName": "@elizaos/agent",
+      "packageJson": "packages/agent/package.json",
+      "key": "./api/*",
+      "target": "./src/api/*.ts",
+      "asset": false,
+      "wildcard": true,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/agent",
+      "packageJson": "packages/agent/package.json",
+      "key": "./services/plugin-installer",
+      "target": "./src/services/plugin-installer.ts",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./api/auth",
+      "target": "./dist/api/auth.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./api/automation-node-contributors",
+      "target": "./dist/api/automation-node-contributors.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./api/client-base",
+      "target": "./dist/api/client-base.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./api/compat-route-shared",
+      "target": "./dist/api/compat-route-shared.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./api/response",
+      "target": "./dist/api/response.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./platform/empty-node-module",
+      "target": "./dist/platform/empty-node-module.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./runtime/app-route-plugin-registry",
+      "target": "./dist/runtime/app-route-plugin-registry.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./services/plugin-installer",
+      "target": "./dist/services/plugin-installer.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./services/steward-sidecar",
+      "target": "./dist/services/steward-sidecar.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./services/steward-sidecar/helpers",
+      "target": "./dist/services/steward-sidecar/helpers.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./ui",
+      "target": "./dist/ui.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./plugin",
+      "target": "./dist/plugin.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./register",
+      "target": "./dist/register.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./inventory/ChainIcon",
+      "target": "./dist/inventory/ChainIcon.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./inventory/TokenLogo",
+      "target": "./dist/inventory/TokenLogo.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./widgets/wallet-status",
+      "target": "./dist/widgets/wallet-status.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./wallet-rpc",
+      "target": "./dist/wallet-rpc.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./state/*",
+      "target": "./dist/state/*.js",
+      "asset": false,
+      "wildcard": true,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./inventory/*",
+      "target": "./dist/inventory/*.js",
+      "asset": false,
+      "wildcard": true,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./*",
+      "target": "./dist/*.js",
+      "asset": false,
+      "wildcard": true,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/plugin-browser",
+      "packageJson": "plugins/plugin-browser/package.json",
+      "key": "./contracts",
+      "target": "./dist/contracts.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/plugin-browser",
+      "packageJson": "plugins/plugin-browser/package.json",
+      "key": "./packaging",
+      "target": "./dist/packaging.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/plugin-browser",
+      "packageJson": "plugins/plugin-browser/package.json",
+      "key": "./plugin",
+      "target": "./dist/plugin.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/plugin-browser",
+      "packageJson": "plugins/plugin-browser/package.json",
+      "key": "./schema",
+      "target": "./dist/schema.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/plugin-browser",
+      "packageJson": "plugins/plugin-browser/package.json",
+      "key": "./workspace",
+      "target": "./dist/workspace/index.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/shared",
+      "packageJson": "packages/shared/package.json",
+      "key": "./config/allowed-hosts",
+      "target": "./dist/config/allowed-hosts.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/ui",
+      "packageJson": "packages/ui/package.json",
+      "key": "./platform/native-plugin-entrypoints",
+      "target": "./dist/platform/native-plugin-entrypoints.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    }
+  ],
   "rootBarrels": [
     {
       "packageName": "@clawville/app-clawville",
@@ -35,9 +551,9 @@
     {
       "packageName": "@elizaos/agent",
       "root": "packages/agent/src/index.ts",
-      "nonRootExports": 0,
-      "explicitExports": 0,
-      "wildcardExports": 0,
+      "nonRootExports": 2,
+      "explicitExports": 1,
+      "wildcardExports": 1,
       "assetExports": 0,
       "platformExports": 0
     },
@@ -89,8 +605,8 @@
     {
       "packageName": "@elizaos/app-core",
       "root": "packages/app-core/src/index.ts",
-      "nonRootExports": 0,
-      "explicitExports": 0,
+      "nonRootExports": 10,
+      "explicitExports": 10,
       "wildcardExports": 0,
       "assetExports": 0,
       "platformExports": 0
@@ -242,9 +758,9 @@
     {
       "packageName": "@elizaos/app-wallet",
       "root": "plugins/app-wallet/src/index.ts",
-      "nonRootExports": 0,
-      "explicitExports": 0,
-      "wildcardExports": 0,
+      "nonRootExports": 10,
+      "explicitExports": 7,
+      "wildcardExports": 3,
       "assetExports": 0,
       "platformExports": 0
     },
@@ -629,8 +1145,8 @@
     {
       "packageName": "@elizaos/plugin-browser",
       "root": "plugins/plugin-browser/src/index.ts",
-      "nonRootExports": 0,
-      "explicitExports": 0,
+      "nonRootExports": 5,
+      "explicitExports": 5,
       "wildcardExports": 0,
       "assetExports": 0,
       "platformExports": 0
@@ -1277,8 +1793,8 @@
     {
       "packageName": "@elizaos/shared",
       "root": "packages/shared/src/index.ts",
-      "nonRootExports": 0,
-      "explicitExports": 0,
+      "nonRootExports": 1,
+      "explicitExports": 1,
       "wildcardExports": 0,
       "assetExports": 0,
       "platformExports": 0
@@ -1295,8 +1811,8 @@
     {
       "packageName": "@elizaos/ui",
       "root": "packages/ui/src/index.ts",
-      "nonRootExports": 0,
-      "explicitExports": 0,
+      "nonRootExports": 1,
+      "explicitExports": 1,
       "wildcardExports": 0,
       "assetExports": 0,
       "platformExports": 0
@@ -1339,9 +1855,237 @@
     }
   ],
   "plan": {
-    "importRewrites": [],
-    "rootBarrelAdds": [],
-    "exportMapCollapses": [],
-    "manual": []
+    "importRewrites": [
+      {
+        "file": "packages/app/src/main.tsx",
+        "from": "@elizaos/app-wallet/register",
+        "to": "@elizaos/app-wallet",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      }
+    ],
+    "rootBarrelAdds": [
+      {
+        "packageName": "@elizaos/agent",
+        "file": "packages/agent/src/index.ts",
+        "specifier": "./services/plugin-installer",
+        "line": "export * from \"./services/plugin-installer\";",
+        "key": "./services/plugin-installer"
+      },
+      {
+        "packageName": "@elizaos/app-core",
+        "file": "packages/app-core/src/index.ts",
+        "specifier": "./platform/empty-node-module",
+        "line": "export * from \"./platform/empty-node-module\";",
+        "key": "./platform/empty-node-module"
+      },
+      {
+        "packageName": "@elizaos/app-core",
+        "file": "packages/app-core/src/index.ts",
+        "specifier": "./runtime/app-route-plugin-registry",
+        "line": "export * from \"./runtime/app-route-plugin-registry\";",
+        "key": "./runtime/app-route-plugin-registry"
+      },
+      {
+        "packageName": "@elizaos/app-core",
+        "file": "packages/app-core/src/index.ts",
+        "specifier": "./services/plugin-installer",
+        "line": "export * from \"./services/plugin-installer\";",
+        "key": "./services/plugin-installer"
+      },
+      {
+        "packageName": "@elizaos/app-core",
+        "file": "packages/app-core/src/index.ts",
+        "specifier": "./services/steward-sidecar/helpers",
+        "line": "export * from \"./services/steward-sidecar/helpers\";",
+        "key": "./services/steward-sidecar/helpers"
+      },
+      {
+        "packageName": "@elizaos/plugin-browser",
+        "file": "plugins/plugin-browser/src/index.ts",
+        "specifier": "./workspace.js",
+        "line": "export * from \"./workspace.js\";",
+        "key": "./workspace"
+      },
+      {
+        "packageName": "@elizaos/ui",
+        "file": "packages/ui/src/index.ts",
+        "specifier": "./platform/native-plugin-entrypoints",
+        "line": "export * from \"./platform/native-plugin-entrypoints\";",
+        "key": "./platform/native-plugin-entrypoints"
+      }
+    ],
+    "exportMapCollapses": [
+      {
+        "packageName": "@elizaos/agent",
+        "packageJson": "packages/agent/package.json",
+        "remove": [
+          "./services/plugin-installer",
+          "./api/*"
+        ]
+      },
+      {
+        "packageName": "@elizaos/app-core",
+        "packageJson": "packages/app-core/package.json",
+        "remove": [
+          "./api/auth",
+          "./api/automation-node-contributors",
+          "./api/client-base",
+          "./api/compat-route-shared",
+          "./api/response",
+          "./platform/empty-node-module",
+          "./runtime/app-route-plugin-registry",
+          "./services/plugin-installer",
+          "./services/steward-sidecar",
+          "./services/steward-sidecar/helpers"
+        ]
+      },
+      {
+        "packageName": "@elizaos/app-wallet",
+        "packageJson": "plugins/app-wallet/package.json",
+        "remove": [
+          "./ui",
+          "./plugin",
+          "./register",
+          "./inventory/ChainIcon",
+          "./inventory/TokenLogo",
+          "./widgets/wallet-status",
+          "./wallet-rpc",
+          "./state/*",
+          "./inventory/*",
+          "./*"
+        ]
+      },
+      {
+        "packageName": "@elizaos/plugin-browser",
+        "packageJson": "plugins/plugin-browser/package.json",
+        "remove": [
+          "./contracts",
+          "./packaging",
+          "./plugin",
+          "./schema",
+          "./workspace"
+        ]
+      },
+      {
+        "packageName": "@elizaos/shared",
+        "packageJson": "packages/shared/package.json",
+        "remove": [
+          "./config/allowed-hosts"
+        ]
+      },
+      {
+        "packageName": "@elizaos/ui",
+        "packageJson": "packages/ui/package.json",
+        "remove": [
+          "./platform/native-plugin-entrypoints"
+        ]
+      }
+    ],
+    "manual": [
+      {
+        "packageName": "@elizaos/agent",
+        "key": "./api/*",
+        "reason": "wildcard export needs a package-level barrel decision"
+      },
+      {
+        "packageName": "@elizaos/app-core",
+        "key": "./api/client-base",
+        "target": "./dist/api/client-base.js",
+        "reason": "could not resolve export target to a source module"
+      },
+      {
+        "packageName": "@elizaos/app-wallet",
+        "key": "./state/*",
+        "reason": "wildcard export needs a package-level barrel decision"
+      },
+      {
+        "packageName": "@elizaos/app-wallet",
+        "key": "./inventory/*",
+        "reason": "wildcard export needs a package-level barrel decision"
+      },
+      {
+        "packageName": "@elizaos/app-wallet",
+        "key": "./*",
+        "reason": "wildcard export needs a package-level barrel decision"
+      }
+    ]
   }
 }

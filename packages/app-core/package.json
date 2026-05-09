@@ -45,56 +45,6 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    },
-    "./api/auth": {
-      "types": "./dist/api/auth.d.ts",
-      "import": "./dist/api/auth.js",
-      "default": "./dist/api/auth.js"
-    },
-    "./api/automation-node-contributors": {
-      "types": "./dist/api/automation-node-contributors.d.ts",
-      "import": "./dist/api/automation-node-contributors.js",
-      "default": "./dist/api/automation-node-contributors.js"
-    },
-    "./api/client-base": {
-      "types": "./dist/api/client-base.d.ts",
-      "import": "./dist/api/client-base.js",
-      "default": "./dist/api/client-base.js"
-    },
-    "./api/compat-route-shared": {
-      "types": "./dist/api/compat-route-shared.d.ts",
-      "import": "./dist/api/compat-route-shared.js",
-      "default": "./dist/api/compat-route-shared.js"
-    },
-    "./api/response": {
-      "types": "./dist/api/response.d.ts",
-      "import": "./dist/api/response.js",
-      "default": "./dist/api/response.js"
-    },
-    "./platform/empty-node-module": {
-      "types": "./dist/platform/empty-node-module.d.ts",
-      "import": "./dist/platform/empty-node-module.js",
-      "default": "./dist/platform/empty-node-module.js"
-    },
-    "./runtime/app-route-plugin-registry": {
-      "types": "./dist/runtime/app-route-plugin-registry.d.ts",
-      "import": "./dist/runtime/app-route-plugin-registry.js",
-      "default": "./dist/runtime/app-route-plugin-registry.js"
-    },
-    "./services/plugin-installer": {
-      "types": "./dist/services/plugin-installer.d.ts",
-      "import": "./dist/services/plugin-installer.js",
-      "default": "./dist/services/plugin-installer.js"
-    },
-    "./services/steward-sidecar": {
-      "types": "./dist/services/steward-sidecar.d.ts",
-      "import": "./dist/services/steward-sidecar.js",
-      "default": "./dist/services/steward-sidecar.js"
-    },
-    "./services/steward-sidecar/helpers": {
-      "types": "./dist/services/steward-sidecar/helpers.d.ts",
-      "import": "./dist/services/steward-sidecar/helpers.js",
-      "default": "./dist/services/steward-sidecar/helpers.js"
     }
   },
   "peerDependencies": {
