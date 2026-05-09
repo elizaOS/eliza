@@ -7631,14 +7631,31 @@ export class DefaultMessageService implements IMessageService {
 					state = outcome.result.state;
 				}
 			} catch (error) {
+				const errMsg = error instanceof Error ? error.message : String(error);
+				const errStack = error instanceof Error ? error.stack : undefined;
 				runtime.logger.warn(
 					{
 						src: "service:message",
 						agentId: runtime.agentId,
-						error: error instanceof Error ? error.message : String(error),
+						error: errMsg,
+						stack: errStack,
 					},
 					"v5 message runtime failed; returning structured failure reply",
 				);
+				// Mirror to process.stderr so bench / orchestrator runs can see
+				// the underlying cause when runtime.logger output is buffered or
+				// silenced. The previous behavior swallowed the stack and only
+				// the user-facing "something flaked" template appeared in
+				// trajectories — making the cold-start failure-fallback issue
+				// invisible in bench server logs.
+				try {
+					process.stderr.write(
+						`[v5-runtime-failed] agentId=${runtime.agentId} ` +
+							`error=${errMsg}\n${errStack ?? ""}\n`,
+					);
+				} catch {
+					// stderr write must never throw the runtime.
+				}
 				shouldRespondToMessage = true;
 				terminalDecision = null;
 				strategyResult = await this.buildStructuredFailureReply(
