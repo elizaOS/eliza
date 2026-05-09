@@ -240,25 +240,25 @@ export const MODEL_CATALOG: CatalogModel[] = [
       '1-bit weights with TurboQuant KV-cache compression (~4-4.6x KV memory cut) on phone CPU via the apothic/llama.cpp-1bit-turboquant fork. Auto-enabled when the AOSP runtime loads any GGUF whose filename contains "bonsai" (k=tbq4_0, v=tbq3_0); override with ELIZA_LLAMA_CACHE_TYPE_K/_V. Apple Silicon (Metal) and Vulkan GPU still run at full fp16 KV cache.',
   },
   {
-    // DFlash variant of Bonsai-8B-1bit that pairs with the SmolLM2-360M
-    // drafter. Same target weights as `bonsai-8b-1bit` (still 1.2 GB on
-    // disk), but the runtime block declares a DFlash drafter so the AOSP
-    // dispatcher routes it through the spawn-and-route llama-server path
-    // (see aosp-dflash-adapter.ts).
+    // DFlash variant of Bonsai-8B-1bit. Same target weights as
+    // `bonsai-8b-1bit` (still 1.2 GB on disk), but the runtime block
+    // declares a DFlash drafter so the AOSP dispatcher routes it through
+    // the spawn-and-route llama-server path (see aosp-dflash-adapter.ts).
     //
-    // Why SmolLM2-360M as drafter:
-    //   * It's already in the catalog (bartowski/SmolLM2-360M-Instruct-GGUF
-    //     Q4_K_M, ~225 MB), so we get a paired DFlash setup without adding
-    //     a new download.
-    //   * Tokenizer mismatch with Bonsai is handled by the
-    //     `maybeRepairDflashDrafter` step in dflash-server.ts when the
-    //     adapter detects a missing `tokenizer.ggml.merges` field.
+    // Drafter: Qwen3-0.6B (Q4_K_M, ~485 MB). Picked because Bonsai-8B is a
+    // Qwen3-8B 1-bit quant — it inherits the Qwen3 tokenizer (vocab
+    // 151,936). DFlash speculative decoding requires the drafter to share
+    // the target's exact vocabulary; SmolLM2-360M (vocab 49,152, GPT-2
+    // tokenizer family) was the previous pairing and is fundamentally
+    // incompatible. See docs/porting/dflash-drafter-strategy.md for the
+    // verified tokenizer state and rationale.
     //
     // Activation: install both bonsai-8b-1bit-dflash and
-    // smol-lm2-360m-instruct, then the dispatcher picks DFlash automatically
-    // when `ELIZA_DFLASH=1` is set or when a chat session is opened against
-    // this model id. Without llama-server staged for the active ABI, the
-    // adapter logs a warning and falls back to the in-process FFI loader.
+    // bonsai-8b-dflash-drafter, then the dispatcher picks DFlash
+    // automatically when `ELIZA_DFLASH=1` is set or when a chat session is
+    // opened against this model id. Without llama-server staged for the
+    // active ABI, the adapter logs a warning and falls back to the
+    // in-process FFI loader.
     id: "bonsai-8b-1bit-dflash",
     displayName: "Bonsai 8B 1-bit + DFlash (TurboQuant)",
     hfRepo: "apothic/bonsai-8B-1bit-turboquant",
@@ -269,7 +269,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 8,
     category: "chat",
     bucket: "mid",
-    companionModelIds: ["smol-lm2-360m-instruct"],
+    companionModelIds: ["bonsai-8b-dflash-drafter"],
     runtime: {
       preferredBackend: "llama-server",
       kvCache: {
@@ -281,7 +281,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
         requiresKernel: ["dflash"],
       },
       dflash: {
-        drafterModelId: "smol-lm2-360m-instruct",
+        drafterModelId: "bonsai-8b-dflash-drafter",
         specType: "dflash",
         contextSize: 4096,
         draftContextSize: 256,
@@ -293,7 +293,26 @@ export const MODEL_CATALOG: CatalogModel[] = [
       },
     },
     blurb:
-      "Bonsai-8B 1-bit with the cross-compiled AOSP llama-server speculative decoder; SmolLM2-360M drafter accelerates token decode while target verifies. CPU-only on phone (gpuLayers=0) — phone GPUs do not back DFlash.",
+      "Bonsai-8B 1-bit with the cross-compiled AOSP llama-server speculative decoder; Qwen3-0.6B drafter (matched Qwen3 vocab) accelerates token decode while target verifies. CPU-only on phone (gpuLayers=0) — phone GPUs do not back DFlash.",
+  },
+  {
+    id: "bonsai-8b-dflash-drafter",
+    displayName: "Bonsai 8B DFlash drafter (Qwen3-0.6B Q4_K_M)",
+    hfRepo: "bartowski/Qwen_Qwen3-0.6B-GGUF",
+    ggufFile: "Qwen_Qwen3-0.6B-Q4_K_M.gguf",
+    // Catalog enum has no "0.6B" — the existing Qwen3.5 drafter entries
+    // also round their sub-1B drafters to "1B" for the same reason.
+    params: "1B",
+    quant: "Q4_K_M",
+    sizeGb: 0.49,
+    minRamGb: 2,
+    category: "drafter",
+    bucket: "small",
+    hiddenFromCatalog: true,
+    runtimeRole: "dflash-drafter",
+    companionForModelId: "bonsai-8b-1bit-dflash",
+    blurb:
+      "Hidden DFlash drafter companion for bonsai-8b-1bit-dflash. Qwen3-0.6B shares the target's Qwen3 tokenizer (vocab 151,936) so llama.cpp speculative-decoding accepts drafted tokens directly — no tokenizer.ggml.merges injection required. CPU-only on phone.",
   },
 
   // ─── large (8-20 GB) ────────────────────────────────────────────────
