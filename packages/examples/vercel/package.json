@@ -9,7 +9,7 @@
     "deploy": "vercel deploy",
     "deploy:prod": "vercel deploy --prod",
     "test": "bun run test-client.ts || echo 'Vercel edge tests require running API endpoint - skipping'",
-    "clean": "rm -rf dist .vercel node_modules",
+    "clean": "rm -rf dist .vercel",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit"

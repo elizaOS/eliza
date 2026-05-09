@@ -34,7 +34,7 @@ import type {
 	UUID,
 } from "../../../types/index.ts";
 import { ChannelType, ModelType } from "../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 import { getActiveRoutingContextsForTurn } from "../../../utils/context-routing.ts";
 import { stringToUuid } from "../../../utils.ts";
 import { draftFollowupAction } from "../../messaging/triage/actions/draftFollowup.ts";
@@ -3587,7 +3587,7 @@ export const messageAction: Action = {
 	examples: (spec?.examples ?? []) as ActionExample[][],
 	validate: async (runtime, message, state) => {
 		refreshDescriptions(messageAction, runtime);
-		return hasActionContextOrKeyword(message, state, {
+		return hasActionContext(message, state, {
 			contexts: MESSAGE_CONTEXTS,
 			keywords: [
 				"message",

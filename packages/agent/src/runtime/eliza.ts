@@ -270,9 +270,8 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
 // Solution: lazy-load and memoize each module, and register the static map
 // inside `ensureCoreStaticPluginsRegistered()` which is awaited from every
 // runtime entry point (`startEliza`, `startInCloudMode`).
-let _pluginSqlPromise:
-  | Promise<typeof import("@elizaos/plugin-sql")>
-  | null = null;
+let _pluginSqlPromise: Promise<typeof import("@elizaos/plugin-sql")> | null =
+  null;
 async function getPluginSql(): Promise<typeof import("@elizaos/plugin-sql")> {
   if (!_pluginSqlPromise) {
     _pluginSqlPromise = loadRequiredPluginSql();
@@ -280,9 +279,9 @@ async function getPluginSql(): Promise<typeof import("@elizaos/plugin-sql")> {
   return _pluginSqlPromise;
 }
 
-let _pluginLocalEmbeddingPromise:
-  | Promise<typeof import("@elizaos/plugin-local-embedding") | null>
-  | null = null;
+let _pluginLocalEmbeddingPromise: Promise<
+  typeof import("@elizaos/plugin-local-embedding") | null
+> | null = null;
 async function getPluginLocalEmbedding(): Promise<
   typeof import("@elizaos/plugin-local-embedding") | null
 > {
