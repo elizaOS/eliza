@@ -158,6 +158,7 @@ export type {
   UpdateConfig,
   WebConfig,
   WebReconnectConfig,
+  WorkflowConfig,
   X402Config,
 } from "./config/types.js";
 export * from "./connector-cred-types.js";

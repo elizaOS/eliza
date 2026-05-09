@@ -241,13 +241,25 @@ function classifyValidate(text, hasValidate) {
     "recentMessages",
     "message\\.content\\.text",
     "content\\.text",
+    "getMessageText\\(",
+    "textOf\\(",
     "messageText\\(",
+    "selectRoute\\(",
+    "extractSkillSlug\\(",
   ]);
   const stateSignals = matchAll(compact, [
     "getService",
+    "get[A-Za-z0-9_]*Service",
     "getSetting",
+    "hasConnectedCapability",
+    "hasShopifyConfig",
+    "runtime\\.getCache",
+    "runtime\\.getRoom",
+    "runtime\\.getService",
     "process\\.env",
     "createEvmActionValidator",
+    "create[A-Za-z0-9_]*ActionValidator",
+    "createVisionProvider",
     "extractId",
     "extractTitle",
     "connectorAccountPolicy",
@@ -262,11 +274,18 @@ function classifyValidate(text, hasValidate) {
     "hasLinearAccess",
     "checkSenderRole",
     "hasRoleAccess",
+    "hasExplicitPayload",
+    "content\\.source",
+    "character\\?\\.settings",
+    "registeredSkillSlugs",
     "triggersFeatureEnabled",
     "selectedContextMatches",
     "serviceFromRuntime",
+    "validate[A-Za-z0-9_]*Availability",
     "validateLinearActionIntent",
+    "validateMessageAction",
     "validateRouter",
+    "listConversationAttachments",
     "runtime\\.agentId",
     "message\\.entityId",
     "state\\.data",
@@ -282,14 +301,18 @@ function classifyValidate(text, hasValidate) {
     "MUTED",
   ]);
   const alwaysTrue =
-    /^(?:async\s*)?\(?[^)]*\)?\s*=>\s*true$/.test(compact) ||
-    /return true;?\s*}?$/.test(compact);
+    /^(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][A-Za-z0-9_$]*)\s*(?::[^=]+)?=>\s*true$/.test(
+      compact,
+    ) || /return true;?\s*}?$/.test(compact);
 
   let kind = "unclear";
   const notes = [];
   if (intentKeywordSignals.length > 0) {
     kind = "keyword_or_intent";
     notes.push("move keyword/intent matching to action retrieval");
+  } else if (/^validate(?:\s+as\s+.+)?$/.test(compact)) {
+    kind = "external_reference";
+    notes.push("validate() is referenced outside this object literal");
   } else if (stateSignals.length > 0) {
     kind = "state_based";
     notes.push("has hard state/service/account signals");
@@ -362,6 +385,9 @@ function buildSummary(items) {
     ).length,
     unclearValidate: items.filter((item) => item.validate.kind === "unclear")
       .length,
+    externalReferenceValidate: items.filter(
+      (item) => item.validate.kind === "external_reference",
+    ).length,
     stateBasedValidate: items.filter(
       (item) => item.validate.kind === "state_based",
     ).length,
@@ -390,6 +416,7 @@ function renderMarkdown(summary, items) {
     `- Missing validate(): ${summary.missingValidate}`,
     `- Keyword/intent validate(): ${summary.keywordOrIntentValidate}`,
     `- Unclear validate(): ${summary.unclearValidate}`,
+    `- External-reference validate(): ${summary.externalReferenceValidate}`,
     `- State-based validate(): ${summary.stateBasedValidate}`,
     `- Always-available validate(): ${summary.alwaysAvailableValidate}`,
     `- Missing external action keyword keys: ${summary.missingExternalActionKeywords}`,

@@ -237,7 +237,7 @@ async function dispatchInstruction(
   // the single execution path for all autonomous instructions.
 }
 
-interface N8nDispatchServiceLike {
+interface WorkflowDispatchServiceLike {
   execute(
     workflowId: string,
     payload?: Record<string, unknown>,
@@ -252,9 +252,9 @@ async function dispatchWorkflow(
   if (!trigger.workflowId) {
     return { ok: false, error: "workflow trigger missing workflowId" };
   }
-  const svc = runtime.getService<Service & N8nDispatchServiceLike>(
+  const svc = runtime.getService<Service & WorkflowDispatchServiceLike>(
     "WORKFLOW_DISPATCH",
-  ) as (Service & N8nDispatchServiceLike) | null;
+  ) as (Service & WorkflowDispatchServiceLike) | null;
   if (!svc) {
     runtime.logger.warn?.(
       {

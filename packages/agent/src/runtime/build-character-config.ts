@@ -148,7 +148,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "X402_MAX_TOTAL_USD",
     "X402_ENABLED",
     "X402_DB_PATH",
-    // n8n workflow plugin (resolved by applyN8nConfigToEnv)
+    // workflow plugin (user override for external n8n; embedded mode ignores)
     "WORKFLOW_HOST",
     "WORKFLOW_API_KEY",
     // GitHub access for coding agent plugin
@@ -198,20 +198,12 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   // the user to hand-edit the system prompt. Kept terse (one sentence per
   // capability) to stay out of the way of the preset's voice.
   const capabilityHints: string[] = [];
-  const n8nMasterEnabled = config.n8n?.enabled !== false;
-  const n8nExplicitlyDisabled =
+  const workflowMasterEnabled = config.n8n?.enabled !== false;
+  const workflowExplicitlyDisabled =
     config.plugins?.entries?.["workflow"]?.enabled === false;
-  const n8nCloudAuthed = Boolean(
-    config.cloud?.apiKey && config.cloud?.enabled !== false,
-  );
-  const n8nLocalEnabled = config.n8n?.localEnabled !== false;
-  if (
-    n8nMasterEnabled &&
-    !n8nExplicitlyDisabled &&
-    (n8nCloudAuthed || n8nLocalEnabled)
-  ) {
+  if (workflowMasterEnabled && !workflowExplicitlyDisabled) {
     capabilityHints.push(
-      "You can create, activate, deactivate, and delete n8n workflows via natural language using the n8n workflow actions.",
+      "You can create, activate, deactivate, and delete workflows via natural language using the workflow actions.",
     );
   }
   capabilityHints.push(

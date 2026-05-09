@@ -104,9 +104,6 @@ bun add @elizaos/plugin-shell
 
 # Using npm
 npm install @elizaos/plugin-shell
-
-# Using pnpm
-pnpm add @elizaos/plugin-shell
 ```
 ## Configuration
 

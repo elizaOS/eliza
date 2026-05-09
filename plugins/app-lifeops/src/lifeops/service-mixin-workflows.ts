@@ -894,19 +894,19 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
           } else if (step.kind === "get_health_summary") {
             value = await this.getHealthSummary(step.request ?? {});
           } else if (step.kind === "dispatch_workflow") {
-            const n8n = this.runtime.getService("WORKFLOW_DISPATCH") as {
+            const workflow = this.runtime.getService("WORKFLOW_DISPATCH") as {
               execute?: (
                 workflowId: string,
                 payload?: Record<string, unknown>,
               ) => Promise<unknown>;
             } | null;
-            if (!n8n || typeof n8n.execute !== "function") {
+            if (!workflow || typeof workflow.execute !== "function") {
               value = {
                 ok: false,
                 error: "WORKFLOW_DISPATCH service not registered",
               };
             } else {
-              value = await n8n.execute(step.workflowId, {
+              value = await workflow.execute(step.workflowId, {
                 ...(step.payload ?? {}),
                 request: args.request,
                 outputs,

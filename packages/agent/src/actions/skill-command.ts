@@ -83,11 +83,9 @@ export const skillCommandAction: Action = {
 
   validate: async (
     _runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
   ): Promise<boolean> => {
-    const text = (message.content as Record<string, unknown>)?.text;
-    if (typeof text !== "string") return false;
-    return extractSkillSlug(text) !== null;
+    return registeredSkillSlugs.size > 0;
   },
 
   handler: async (

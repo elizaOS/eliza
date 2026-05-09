@@ -2059,15 +2059,15 @@ async function handleRequest(
       isBlockedObjectKey,
       cloneWithoutBlockedObjectKeys,
       onConnectorDisconnect: async (connectorName) => {
-        // Disconnect cascades to the n8n credential cache: without this,
-        // credStore.get() returns a stale n8n credential id and the next
+        // Disconnect cascades to the workflow credential cache: without this,
+        // credStore.get() returns a stale credential id and the next
         // workflow generation silently bypasses the missing-credentials
         // banner.
         const credTypes = credTypesForConnector(connectorName);
         if (credTypes.length === 0) return;
         const runtime = state.runtime;
         if (!runtime) return;
-        const credStore = runtime.getService("n8n_credential_store") as {
+        const credStore = runtime.getService("workflow_credential_store") as {
           delete?: (userId: string, credType: string) => Promise<void>;
         } | null;
         const deleteCred = credStore?.delete;

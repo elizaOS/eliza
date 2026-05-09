@@ -53,9 +53,6 @@ const character = {
       getDefaultModels().large,
     // Note: ELIZAOS_API_KEY will be set at runtime with user's auto-generated key
     // ElevenLabs Voice Configuration
-    // n8n Workflow Configuration
-    WORKFLOW_API_KEY: process.env.WORKFLOW_API_KEY!,
-    WORKFLOW_HOST: process.env.WORKFLOW_HOST!,
     ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY!,
     ELEVENLABS_VOICE_ID: process.env.ELEVENLABS_VOICE_ID || "EXAVITQu4vr4xnSDxMaL", // Rachel voice (default)
     ELEVENLABS_MODEL_ID: process.env.ELEVENLABS_MODEL_ID || "eleven_multilingual_v2",

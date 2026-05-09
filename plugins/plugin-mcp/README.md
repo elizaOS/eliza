@@ -23,12 +23,6 @@ Install the plugin in your elizaOS project:
 npm install @elizaos/plugin-mcp
 ```
 
-- **pnpm**
-
-```bash
-pnpm install @elizaos/plugin-mcp
-```
-
 - **yarn**
 
 ```bash

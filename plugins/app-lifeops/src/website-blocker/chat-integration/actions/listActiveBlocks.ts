@@ -10,15 +10,6 @@ import {
 } from "../../../website-blocker/engine.js";
 import { BlockRuleReader } from "../block-rule-service.js";
 
-const BLOCK_STATUS_INTENT_RE =
-  /\b(block|blocking|blocked|unblock|website block|site block|focus block|selfcontrol|self-control|distracting sites?|blocked websites?|blocked sites?|app block)\b/i;
-
-function getMessageText(
-  message: { content?: { text?: unknown } } | undefined,
-): string {
-  return typeof message?.content?.text === "string" ? message.content.text : "";
-}
-
 interface ListActiveBlocksParams {
   includeLiveStatus?: unknown;
   includeManagedRules?: unknown;
@@ -68,8 +59,7 @@ export const listActiveBlocksAction: Action = {
     "list-website-blocks: live hosts/SelfControl status + managed rules (gateType, target, websites)",
   contexts: ["screen_time", "browser", "tasks", "automation"],
   roleGate: { minRole: "OWNER" },
-  validate: async (_runtime, message) =>
-    BLOCK_STATUS_INTENT_RE.test(getMessageText(message)),
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     _message,

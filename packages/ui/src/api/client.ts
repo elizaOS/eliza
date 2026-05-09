@@ -232,7 +232,7 @@ import "./client-cloud";
 import "./client-computeruse";
 import "./client-imessage";
 import "./client-local-inference";
-import "./client-n8n";
+import "./client-workflow";
 import "./client-skills";
 import "./client-vault";
 import "./client-wallet";

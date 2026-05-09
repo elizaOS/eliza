@@ -40,46 +40,46 @@ const SYSTEM_TYPE_NOTES: Record<ContentType, string> = {
 };
 
 const BASE_RULES = [
-	"Keep the original chunk text COMPLETELY INTACT and UNCHANGED in your response",
-	"The total length should be between {min_tokens} and {max_tokens} tokens",
-	"Format the response as a single coherent paragraph",
+	"Keep chunk verbatim",
+	"{min_tokens}–{max_tokens} tokens total",
+	"Single coherent paragraph",
 ];
 
 const CONTENT_TYPE_RULES: Record<ContentType, string[]> = {
 	default: [
-		"Identify the document's main topic and key information relevant to understanding this chunk",
-		"Include 2-3 sentences before the chunk that provide essential context",
-		"Include 2-3 sentences after the chunk that complete thoughts or provide resolution",
-		"For technical documents, include any definitions or explanations of terms used in the chunk",
-		"For narrative content, include character or setting information needed to understand the chunk",
-		'Do not use phrases like "this chunk discusses" - directly present the context',
+		"Identify the document's topic and info needed to understand this chunk",
+		"2-3 sentences of preceding context",
+		"2-3 sentences of following context that complete thoughts",
+		"Include definitions of terms used in the chunk",
+		"For narrative content: character/setting info needed for the chunk",
+		"Present context directly; no \"this chunk discusses\" phrasing",
 	],
 	code: [
-		"Preserve ALL code syntax, indentation, and comments exactly as they appear",
-		"Include any import statements, function definitions, or class declarations that this code depends on",
-		"Add necessary type definitions or interfaces that are referenced in this chunk",
-		"Include any crucial comments from elsewhere in the document that explain this code",
-		"If there are key variable declarations or initializations earlier in the document, include those",
-		"Do NOT include implementation details for functions that are only called but not defined in this chunk",
+		"Preserve syntax, indentation, and comments verbatim",
+		"Include imports, function/class definitions this code depends on",
+		"Add type definitions or interfaces referenced in the chunk",
+		"Include explanatory comments from elsewhere in the document",
+		"Include key variable declarations/initializations from earlier",
+		"Skip implementation of functions only called (not defined) here",
 	],
 	pdf: [
-		"Identify the document's main topic and key information relevant to understanding this chunk",
-		"Include section headings, references, or figure captions that situate this chunk",
-		"Include text that immediately precedes and follows the chunk",
+		"Identify the document's topic and info needed to understand this chunk",
+		"Include section headings, references, or figure captions that situate it",
+		"Include immediately preceding and following text",
 	],
 	math: [
-		"Preserve ALL mathematical notation exactly as it appears in the chunk",
-		"Include any defining equations, variables, or parameters mentioned earlier in the document that relate to this chunk",
-		"Add section/subsection names or figure references if they help situate the chunk",
-		"If variables or symbols are defined elsewhere in the document, include these definitions",
-		"If mathematical expressions appear corrupted, try to infer their meaning from context",
+		"Preserve mathematical notation verbatim",
+		"Include defining equations, variables, parameters from earlier that relate",
+		"Add section/subsection names or figure refs if they situate the chunk",
+		"Include definitions of variables or symbols defined elsewhere",
+		"For corrupted expressions, infer meaning from context",
 	],
 	technical: [
-		"Preserve ALL technical terminology, product names, and version numbers exactly as they appear",
-		"Include any prerequisite information or requirements mentioned earlier in the document",
-		"Add section/subsection headings or navigation path to situate this chunk within the document structure",
-		"Include any definitions of technical terms, acronyms, or jargon used in this chunk",
-		"If this chunk references specific configurations, include relevant parameter explanations",
+		"Preserve terminology, product names, version numbers verbatim",
+		"Include prerequisites/requirements mentioned earlier",
+		"Add section headings or navigation path that situate the chunk",
+		"Include definitions of technical terms, acronyms, or jargon used",
+		"For referenced configurations: include relevant parameter explanations",
 	],
 };
 
@@ -120,16 +120,16 @@ export function buildEnrichmentPrompt(args: BuildPromptArgs): string {
 	const chunkLabel = CHUNK_LABEL[contentType];
 	const outputLabel = OUTPUT_LABEL[contentType];
 
-	return `${docBlock}Here is the ${chunkLabel} we want to situate within the whole document:
+	return `${docBlock}Situate this ${chunkLabel} within the document by adding surrounding context.
+
 <chunk>
 {chunk_content}
 </chunk>
 
-Create an enriched version of this ${chunkLabel} by adding critical surrounding context. Follow these guidelines:
-
+Guidelines:
 ${numbered}
 
-Provide ONLY the ${outputLabel} in your response:`;
+Output: ${outputLabel} only.`;
 }
 
 // Back-compat shim exports — all derived from the builders above.
