@@ -209,7 +209,7 @@ export class N8nWorkflowService extends Service {
     logger.info({ src: 'plugin:n8n-workflow:service:main' }, 'N8n Workflow Service stopped');
   }
 
-  private filterForEmbeddedBackend(results: Array<{ node: NodeDefinition }>): typeof results {
+  private filterForEmbeddedBackend<T extends { node: NodeDefinition }>(results: T[]): T[] {
     if (this.serviceConfig?.backend !== 'embedded') {
       return results;
     }
