@@ -44,6 +44,7 @@ export interface DflashRuntimeStatus {
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_START_TIMEOUT_MS = 120_000;
+const METAL_UNSUPPORTED_CACHE_TYPES = new Set(["turbo2_tcq", "turbo3_tcq"]);
 
 function readBool(name: string): boolean {
   const raw = process.env[name]?.trim().toLowerCase();
@@ -69,6 +70,17 @@ function dflashMetalAutoEnabled(): boolean {
     readBool("ELIZA_DFLASH_METAL_AUTO") ||
     readBool("ELIZA_DFLASH_METAL_ENABLED")
   );
+}
+
+function assertCacheTypeSupportedOnBackend(name: string, value: string): void {
+  if (
+    isMetalDflashRuntime() &&
+    METAL_UNSUPPORTED_CACHE_TYPES.has(value.toLowerCase())
+  ) {
+    throw new Error(
+      `${name}=${value} requires TCQ/QJL kernels that are implemented for CUDA/ROCm in the DFlash fork, but not Metal. Use turbo4 on Metal or run this variant on CUDA/ROCm.`,
+    );
+  }
 }
 
 export function dflashEnabled(): boolean {
@@ -375,10 +387,25 @@ export class DflashLlamaServer {
     }
     const cacheTypeK = process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim();
     const cacheTypeV = process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim();
-    if (cacheTypeK) args.push("--cache-type-k", cacheTypeK);
-    if (cacheTypeV) args.push("--cache-type-v", cacheTypeV);
+    if (cacheTypeK) {
+      assertCacheTypeSupportedOnBackend("ELIZA_DFLASH_CACHE_TYPE_K", cacheTypeK);
+      args.push("--cache-type-k", cacheTypeK);
+    }
+    if (cacheTypeV) {
+      assertCacheTypeSupportedOnBackend("ELIZA_DFLASH_CACHE_TYPE_V", cacheTypeV);
+      args.push("--cache-type-v", cacheTypeV);
+    }
 
     const extra = process.env.ELIZA_DFLASH_LLAMA_ARGS?.trim();
+    if (extra && isMetalDflashRuntime()) {
+      for (const cacheType of METAL_UNSUPPORTED_CACHE_TYPES) {
+        if (extra.toLowerCase().split(/\s+/).includes(cacheType)) {
+          throw new Error(
+            `ELIZA_DFLASH_LLAMA_ARGS includes ${cacheType}, but Metal TCQ/QJL kernels are not implemented in the DFlash fork. Use turbo4 on Metal or run this variant on CUDA/ROCm.`,
+          );
+        }
+      }
+    }
     if (extra) args.push(...extra.split(/\s+/).filter(Boolean));
 
     fs.mkdirSync(path.join(localInferenceRoot(), "logs"), { recursive: true });

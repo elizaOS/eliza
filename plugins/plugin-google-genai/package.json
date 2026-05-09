@@ -48,7 +48,6 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@elizaos/shared": "workspace:*",
     "@google/genai": "^1.5.1",
     "undici": "^8.0.0"
   },

@@ -33,7 +33,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@elizaos/shared": "workspace:*",
     "matrix-js-sdk": "^41.4.0",
     "zod": "^4.4.3"
   },

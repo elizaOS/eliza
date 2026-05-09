@@ -38,7 +38,7 @@
   },
   "scripts": {
     "build": "bun run clean && bunx tsc -p tsconfig.json && bun --bun rollup -c rollup.config.mjs",
-    "clean": "rimraf ./dist",
+    "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
     "test": "vitest run",
     "validate:ios-screen-time": "node scripts/validate-ios-screen-time.mjs",

@@ -47,7 +47,6 @@
   "sideEffects": false,
   "dependencies": {
     "@ai-sdk/ui-utils": "^1.2.8",
-    "@elizaos/shared": "workspace:*",
     "ai": "^6.0.174",
     "js-tiktoken": "^1.0.18",
     "ollama-ai-provider-v2": "^3.5.0"

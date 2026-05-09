@@ -401,7 +401,10 @@ function parseEvaluatorText(text: string): ParsedEvaluatorObject {
 	try {
 		const parsed = JSON.parse(candidate);
 		if (!isEvaluatorShapedObject(parsed)) {
-			return { object: null, parseError: "JSON object is not evaluator-shaped" };
+			return {
+				object: null,
+				parseError: "JSON object is not evaluator-shaped",
+			};
 		}
 		return { object: parsed };
 	} catch {

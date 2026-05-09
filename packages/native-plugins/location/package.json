@@ -31,7 +31,7 @@
   "scripts": {
     "build": "bun run clean && tsc && bun --bun rollup -c rollup.config.mjs",
     "build:docs": "bun run clean && bun run docgen && tsc && bun --bun rollup -c rollup.config.mjs",
-    "clean": "rimraf ./dist",
+    "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
     "docgen": "docgen --api LocationPlugin --output-readme README.md --output-json dist/docs.json"
   },

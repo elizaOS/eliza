@@ -14,7 +14,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "uuid": "^14.0.0"
   },
   "agentConfig": {

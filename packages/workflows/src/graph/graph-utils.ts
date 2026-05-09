@@ -100,10 +100,7 @@ function difference<T>(minuend: Set<T>, subtrahend: Set<T>): Set<T> {
 	return result;
 }
 
-function getRootNodes(
-	graphIds: Set<string>,
-	adjacencyList: IConnectionAdjacencyList
-): Set<string> {
+function getRootNodes(graphIds: Set<string>, adjacencyList: IConnectionAdjacencyList): Set<string> {
 	// Inner nodes are all nodes with an incoming edge from another node in the graph
 	let innerNodes = new Set<string>();
 	for (const nodeId of graphIds) {
@@ -120,10 +117,7 @@ function getRootNodes(
 	return difference(graphIds, innerNodes);
 }
 
-function getLeafNodes(
-	graphIds: Set<string>,
-	adjacencyList: IConnectionAdjacencyList
-): Set<string> {
+function getLeafNodes(graphIds: Set<string>, adjacencyList: IConnectionAdjacencyList): Set<string> {
 	const result = new Set<string>();
 	for (const nodeId of graphIds) {
 		if (

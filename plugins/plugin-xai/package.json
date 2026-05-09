@@ -71,8 +71,7 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
