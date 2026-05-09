@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { findCatalogModel } from "./catalog";
 import {
   assessCatalogModelFit,
   chooseSmallerFallbackModel,
   classifyRecommendationPlatform,
   selectRecommendedModels,
 } from "./recommendation";
-import { findCatalogModel } from "./catalog";
 import type { HardwareProbe } from "./types";
 
 function hardware(overrides: Partial<HardwareProbe>): HardwareProbe {
@@ -109,8 +109,8 @@ describe("local inference recommendations", () => {
     });
     const model = findCatalogModel("qwen3.5-9b-dflash");
 
-    expect(model).toBeDefined();
-    expect(assessCatalogModelFit(probe, model!)).toBe("wontfit");
+    if (!model) throw new Error("qwen3.5-9b-dflash missing from catalog");
+    expect(assessCatalogModelFit(probe, model)).toBe("wontfit");
   });
 
   it("chooses a smaller fitting fallback from the same platform ladder", () => {
