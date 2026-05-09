@@ -2,8 +2,8 @@
  * Plugin config/form helpers extracted from server.ts.
  */
 
-import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.js";
-import type { ServerState } from "./server-types.js";
+import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.ts";
+import type { ServerState } from "./server-types.ts";
 
 // ---------------------------------------------------------------------------
 // Plugin config intent detection

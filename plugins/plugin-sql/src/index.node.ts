@@ -52,7 +52,7 @@ export * from "./pglite/errors";
 export * from "./schema";
 export type { DrizzleDatabase } from "./types";
 
-const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-sql/global-singletons");
+const GLOBAL_SINGLETONS = Symbol.for("elizaos.plugin-sql.global-singletons");
 
 interface GlobalSingletons {
   pgLiteClientManager?: PGliteClientManager;

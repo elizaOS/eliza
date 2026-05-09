@@ -23,4 +23,24 @@ export default defineConfig({
     clearMocks: true,
     restoreMocks: true,
   },
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: "react-vendor",
+              test: /node_modules[\\/](?:\.bun[\\/])?(?:react|react-dom|scheduler)/,
+              priority: 3,
+            },
+            {
+              name: "farcaster-sdk",
+              test: /node_modules[\\/](?:\.bun[\\/])?@farcaster[\\/]/,
+              priority: 2,
+            },
+          ],
+        },
+      },
+    },
+  },
 });

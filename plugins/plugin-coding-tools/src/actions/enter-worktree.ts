@@ -73,12 +73,7 @@ export const enterWorktreeAction: Action = {
       schema: { type: "string" },
     },
   ],
-  validate: async (runtime: IAgentRuntime) => {
-    return Boolean(
-      runtime.getService(SANDBOX_SERVICE) &&
-        runtime.getService(SESSION_CWD_SERVICE),
-    );
-  },
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -120,7 +115,7 @@ export const enterWorktreeAction: Action = {
         conversationId,
         explicitPath,
       );
-      if (!validation.ok) {
+      if (validation.ok === false) {
         const reason =
           validation.reason === "blocked" ? "path_blocked" : "invalid_param";
         return failureToActionResult({ reason, message: validation.message });

@@ -228,7 +228,28 @@ function isIgnorableLine(line) {
   ].some((pattern) => pattern.test(line));
 }
 
-function analyzeLogs(logText) {
+function lineTimestampMs(line) {
+  const match = line.match(/^\[([^\]]+)\]/);
+  if (!match?.[1]) return null;
+  const parsed = Date.parse(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isExpectedShutdownLine(line, expectedShutdownStartedAt) {
+  if (!expectedShutdownStartedAt) return false;
+  const lineAt = lineTimestampMs(line);
+  if (lineAt !== null && lineAt < expectedShutdownStartedAt - 250) {
+    return false;
+  }
+  return [
+    /\berror:\s+"vite" exited with code 143\b/i,
+    /\bFailed to run "vite" due to signal SIGTERM\b/i,
+    /script "dev" was terminated by signal SIGTERM/i,
+    /Polite quit request/i,
+  ].some((pattern) => pattern.test(line));
+}
+
+function analyzeLogs(logText, { expectedShutdownStartedAt = null } = {}) {
   const lines = splitLines(logText);
   const readinessPatterns = [
     /\bAPI port open\b/i,
@@ -244,7 +265,11 @@ function analyzeLogs(logText) {
     if (readinessPatterns.some((pattern) => pattern.test(line))) {
       readinessLines.push(line);
     }
-    if (!isIgnorableLine(line) && isSuspiciousLogLine(line)) {
+    if (
+      !isExpectedShutdownLine(line, expectedShutdownStartedAt) &&
+      !isIgnorableLine(line) &&
+      isSuspiciousLogLine(line)
+    ) {
       suspectLines.push(line);
     }
   }
@@ -273,6 +298,25 @@ function isSuspiciousLogLine(line) {
     return true;
   }
   if (/\]\s+\[(?:stdout|stderr)\]\s+Error\b/i.test(line)) {
+    return true;
+  }
+  if (/\bWallet core route bridge failed\b/i.test(line)) {
+    return true;
+  }
+  if (
+    /\b(Failed to register app route plugin|Missing plugin export|Cannot find module|Export named .* not found|not installed, skipping runtime hooks)\b/i.test(
+      line,
+    )
+  ) {
+    return true;
+  }
+  if (/\b(API exited with|vite exited with)\b/i.test(line)) {
+    return true;
+  }
+  if (
+    /\b(registry-client|integration|marketplace|generated-registry)\b/i.test(line) &&
+    /\b(index\.json:\s*404|404 Not Found|fetch_generated_registry|fetch_index_registry|generated-registry\/index fallback failed|Falling back to local registry discovery)\b/i.test(line)
+  ) {
     return true;
   }
   if (/\b(Runtime bootstrap failed|Migration failed|Task execution failed|failed to load model|proxy error|crashed during init)\b/i.test(line)) {
@@ -473,6 +517,214 @@ async function terminateProcessTree(child) {
   }
 }
 
+function parseLsofPids(output) {
+  const pids = new Set();
+  for (const line of output.split(/\r?\n/)) {
+    const match = line.match(/^p(\d+)$/);
+    if (match?.[1]) pids.add(Number(match[1]));
+  }
+  return [...pids];
+}
+
+async function findListeningPids(ports) {
+  const args = [
+    "-nP",
+    ...ports.map((port) => `-iTCP:${port}`),
+    "-sTCP:LISTEN",
+    "-Fp",
+  ];
+  const result = await execFileResult("lsof", args, {
+    timeout: 5000,
+    maxBuffer: 512 * 1024,
+  });
+  if (!result.ok && !result.stdout) return [];
+  return parseLsofPids(result.stdout);
+}
+
+async function getPidCommand(pid) {
+  const result = await execFileResult("ps", ["-p", String(pid), "-o", "command="], {
+    timeout: 5000,
+  });
+  return result.ok ? result.stdout.trim() : "";
+}
+
+async function getPidCwd(pid) {
+  const result = await execFileResult("lsof", [
+    "-a",
+    "-p",
+    String(pid),
+    "-d",
+    "cwd",
+    "-Fn",
+  ], {
+    timeout: 5000,
+    maxBuffer: 64 * 1024,
+  });
+  if (!result.ok && !result.stdout) return "";
+  const line = result.stdout
+    .split(/\r?\n/)
+    .find((entry) => entry.startsWith("n"));
+  return line ? line.slice(1) : "";
+}
+
+async function getPidGroupId(pid) {
+  const result = await execFileResult("ps", [
+    "-p",
+    String(pid),
+    "-o",
+    "pgid=",
+  ], {
+    timeout: 5000,
+  });
+  if (!result.ok) return null;
+  const pgid = Number.parseInt(result.stdout.trim(), 10);
+  return Number.isFinite(pgid) && pgid > 0 ? pgid : null;
+}
+
+async function findProcessGroupPids(pgid) {
+  const result = await execFileResult("ps", ["axo", "pid=,pgid="], {
+    timeout: 5000,
+    maxBuffer: 1024 * 1024,
+  });
+  if (!result.ok && !result.stdout) return [];
+  const pids = [];
+  for (const line of result.stdout.split(/\r?\n/)) {
+    const [pidText, pgidText] = line.trim().split(/\s+/);
+    const pid = Number.parseInt(pidText, 10);
+    const linePgid = Number.parseInt(pgidText, 10);
+    if (Number.isFinite(pid) && linePgid === pgid) {
+      pids.push(pid);
+    }
+  }
+  return pids;
+}
+
+async function describePid(pid) {
+  const [command, cwd] = await Promise.all([
+    getPidCommand(pid),
+    getPidCwd(pid),
+  ]);
+  return { pid, command, cwd };
+}
+
+function isRepoProcess({ command, cwd }) {
+  const repoRoot = process.cwd();
+  return (
+    cwd === repoRoot ||
+    cwd.startsWith(`${repoRoot}${path.sep}`) ||
+    command.includes(repoRoot)
+  );
+}
+
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function terminatePid(pid) {
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return;
+  }
+  for (let i = 0; i < 10; i += 1) {
+    await wait(250);
+    if (!isAlive(pid)) return;
+  }
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // Already gone.
+  }
+}
+
+async function terminatePidGroup(pgid) {
+  try {
+    process.kill(-pgid, "SIGTERM");
+  } catch {
+    return;
+  }
+  for (let i = 0; i < 10; i += 1) {
+    await wait(250);
+    const groupPids = await findProcessGroupPids(pgid);
+    if (groupPids.length === 0) return;
+  }
+  try {
+    process.kill(-pgid, "SIGKILL");
+  } catch {
+    // Already gone.
+  }
+}
+
+function canTerminateRepoGroup(pgid, processDescriptions) {
+  if (!pgid || pgid === process.pid || pgid === process.ppid) {
+    return false;
+  }
+  if (
+    processDescriptions.some(
+      (entry) => entry.pid === process.pid || entry.pid === process.ppid,
+    )
+  ) {
+    return false;
+  }
+  return (
+    processDescriptions.length > 0 &&
+    processDescriptions.every((entry) => isRepoProcess(entry))
+  );
+}
+
+async function clearRepoPortListeners(ports) {
+  const pids = await findListeningPids(ports);
+  if (pids.length === 0) return [];
+
+  const cleared = [];
+  const clearedGroups = new Set();
+  for (const pid of pids) {
+    if (!isAlive(pid)) continue;
+
+    const { command, cwd } = await describePid(pid);
+    if (!isRepoProcess({ command, cwd })) {
+      throw new Error(
+        `port preflight found non-repo listener pid=${pid} cwd=${cwd || "(unknown)"} command=${command || "(unknown)"}`,
+      );
+    }
+
+    const pgid = await getPidGroupId(pid);
+    const groupPids = pgid ? await findProcessGroupPids(pgid) : [];
+    const groupDescriptions = await Promise.all(groupPids.map(describePid));
+    if (
+      pgid &&
+      !clearedGroups.has(pgid) &&
+      canTerminateRepoGroup(pgid, groupDescriptions)
+    ) {
+      console.log(
+        `[dev-health-check] clearing existing repo listener pid=${pid} pgid=${pgid} cwd=${cwd || "(unknown)"}`,
+      );
+      await terminatePidGroup(pgid);
+      clearedGroups.add(pgid);
+      cleared.push({
+        pid,
+        pgid,
+        command,
+        cwd,
+        groupPids,
+        terminated: "process-group",
+      });
+    } else if (!pgid || !clearedGroups.has(pgid)) {
+      console.log(
+        `[dev-health-check] clearing existing repo listener pid=${pid} cwd=${cwd || "(unknown)"}`,
+      );
+      await terminatePid(pid);
+      cleared.push({ pid, pgid, command, cwd, terminated: "pid" });
+    }
+  }
+  return cleared;
+}
+
 async function run() {
   const options = parseArgs(process.argv.slice(2));
   const durationMs = Math.round(options.seconds * 1000);
@@ -489,6 +741,11 @@ async function run() {
     `[dev-health-check] probing UI :${options.uiPort} and API :${options.apiPort}; log: ${logPath}`,
   );
 
+  const clearedPortListeners = await clearRepoPortListeners([
+    options.uiPort,
+    options.apiPort,
+  ]);
+
   const executionEnv = prependPath(
     {
       ...process.env,
@@ -496,6 +753,7 @@ async function run() {
       ELIZA_DEV_NO_WATCH: process.env.ELIZA_DEV_NO_WATCH || "1",
       ELIZA_DEV_PLUGIN_BUILD: process.env.ELIZA_DEV_PLUGIN_BUILD || "0",
       ELIZA_SKIP_PLUGIN_BUILD: process.env.ELIZA_SKIP_PLUGIN_BUILD || "1",
+      SKIP_NATIVE_PLUGINS: process.env.SKIP_NATIVE_PLUGINS || "1",
       ELIZA_DISABLE_PROACTIVE_AGENT:
         process.env.ELIZA_DISABLE_PROACTIVE_AGENT || "1",
       ELIZA_DISABLE_TRAINING_CRONS:
@@ -581,16 +839,39 @@ async function run() {
     );
   }
 
+  const childExitedBeforeShutdown = Boolean(childExit);
+  const shutdownStartedAt = Date.now();
   await terminateProcessTree(child);
+  await wait(1000);
+  let postRunClearedPortListeners = [];
+  let postRunCleanupError = null;
+  try {
+    postRunClearedPortListeners = await clearRepoPortListeners([
+      options.uiPort,
+      options.apiPort,
+    ]);
+  } catch (error) {
+    postRunCleanupError = error instanceof Error ? error.message : String(error);
+  }
 
   const logText = allLogText(logChunks);
   await new Promise((resolve) => logStream.end(resolve));
   writeFileSync(logPath, logText, "utf8");
 
-  const logAnalysis = analyzeLogs(logText);
+  const logAnalysis = analyzeLogs(logText, {
+    expectedShutdownStartedAt: childExitedBeforeShutdown
+      ? null
+      : shutdownStartedAt,
+  });
   const uiEverReady = probes.some((probe) => probe.uiReady);
   const apiEverReady = probes.some((probe) => probe.apiReady);
   const firstReadyProbe = probes.find((probe) => probe.uiReady && probe.apiReady);
+  const readinessDropsAfterReady = firstReadyProbe
+    ? probes.filter(
+        (probe) =>
+          probe.at > firstReadyProbe.at && (!probe.uiReady || !probe.apiReady),
+      )
+    : [];
   const probeTimeoutsAfterReady = firstReadyProbe
     ? probes.filter((probe) => probe.at >= firstReadyProbe.at && probeHasTimeout(probe))
     : [];
@@ -628,8 +909,16 @@ async function run() {
       `${probeTimeoutsAfterReady.length} probe timeout(s) after UI and API first became ready`,
     );
   }
+  if (readinessDropsAfterReady.length > 0) {
+    failures.push(
+      `${readinessDropsAfterReady.length} readiness drop(s) after UI and API first became ready`,
+    );
+  }
   if (logAnalysis.suspectLines.length > 0) {
     failures.push(`${logAnalysis.suspectLines.length} suspicious log line(s) found`);
+  }
+  if (postRunCleanupError) {
+    failures.push(`post-run port cleanup failed: ${postRunCleanupError}`);
   }
 
   const report = {
@@ -641,6 +930,9 @@ async function run() {
     apiPort: options.apiPort,
     logPath,
     runState,
+    clearedPortListeners,
+    postRunClearedPortListeners,
+    postRunCleanupError,
     childExit,
     finalProbe,
     uiEverReady,
@@ -648,6 +940,10 @@ async function run() {
     firstReadyAt: firstReadyProbe
       ? new Date(firstReadyProbe.at).toISOString()
       : null,
+    readinessDropsAfterReady: readinessDropsAfterReady.map((probe) => ({
+      at: new Date(probe.at).toISOString(),
+      summary: summarizeProbe(probe),
+    })),
     probeTimeoutsAfterReady: probeTimeoutsAfterReady.map((probe) => ({
       at: new Date(probe.at).toISOString(),
       summary: summarizeProbe(probe),

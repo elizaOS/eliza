@@ -6,6 +6,9 @@
  */
 
 import { execSync } from "node:child_process";
+import { rmSync } from "node:fs";
+
+rmSync("dist", { force: true, recursive: true });
 
 const result = await Bun.build({
   entrypoints: ["src/index.ts"],

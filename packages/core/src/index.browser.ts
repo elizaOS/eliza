@@ -22,7 +22,6 @@ export * from "./database/inMemoryAdapter";
 export * from "./entities";
 export * from "./features/advanced-memory";
 export { AutonomyService } from "./features/autonomy/index";
-export { createBasicCapabilitiesPlugin } from "./features/basic-capabilities/index";
 export {
 	__setDocumentUrlFetchImplForTests,
 	type FetchDocumentFromUrlOptions,
@@ -78,6 +77,7 @@ export * from "./utils/buffer";
 export * from "./utils/description-compressed-lint";
 // Export browser-compatible utilities
 export * from "./utils/environment";
+export { formatError } from "./utils/format-error";
 
 export function resolveStateDir(): string {
 	return "/.eliza";

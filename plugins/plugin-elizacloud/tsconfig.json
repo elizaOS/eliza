@@ -22,8 +22,7 @@
     "allowImportingTsExtensions": true,
     "paths": {
       "@elizaos/cloud-sdk": ["../../cloud/packages/sdk/dist/index.d.ts"],
-      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"]
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"]
     }
   },
   "include": ["src/**/*.ts", "__tests__/**/*.ts", "build.ts", "vitest.config.ts"],

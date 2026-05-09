@@ -135,13 +135,13 @@ export const checkinAction: Action = {
     const data = toActionData(report);
     await callback?.({
       text: report.summaryText,
-      data,
+      data: data as any,
     });
 
     return {
       text: report.summaryText,
       success: true,
-      data,
+      data: data as any,
     };
   },
 };

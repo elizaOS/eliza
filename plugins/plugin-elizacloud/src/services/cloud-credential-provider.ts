@@ -159,7 +159,7 @@ export class CloudCredentialProvider extends Service {
     if (!isCloudAuthLike(cloudAuth)) {
       return null;
     }
-    const client = cloudAuth.getClient();
+    const client = cloudAuth.getClient?.();
     if (!isCloudClientLike(client)) {
       return null;
     }

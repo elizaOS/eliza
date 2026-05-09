@@ -18,16 +18,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./plugin": {
-      "types": "./dist/plugin.d.ts",
-      "import": "./dist/plugin.js",
-      "default": "./dist/plugin.js"
-    },
-    "./public": {
-      "types": "./dist/public.d.ts",
-      "import": "./dist/public.js",
-      "default": "./dist/public.js"
     }
   },
   "scripts": {
@@ -49,6 +39,7 @@
     "@elizaos/capacitor-appblocker": "workspace:*",
     "@elizaos/capacitor-mobile-signals": "workspace:*",
     "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/native-activity-tracker": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",

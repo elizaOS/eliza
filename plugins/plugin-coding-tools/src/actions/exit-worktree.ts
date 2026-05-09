@@ -46,12 +46,7 @@ export const exitWorktreeAction: Action = {
       schema: { type: "boolean" },
     },
   ],
-  validate: async (runtime: IAgentRuntime) => {
-    return Boolean(
-      runtime.getService(SANDBOX_SERVICE) &&
-        runtime.getService(SESSION_CWD_SERVICE),
-    );
-  },
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,

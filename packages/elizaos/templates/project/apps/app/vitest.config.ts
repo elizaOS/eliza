@@ -64,18 +64,11 @@ const vitestInlineDeps = [
 ];
 
 /**
- * Redirects `@elizaos/app-core` bridge entrypoints to the test shim so the
- * unit suite never touches the real Electrobun RPC modules.
+ * Redirects the app-core barrel to the test shim so the unit suite never
+ * touches the real Electrobun RPC modules.
  */
 function appCoreBridgeStubPlugin(): Plugin {
-  const stubbed = new Set([
-    "@elizaos/app-core",
-    "@elizaos/app-core/bridge",
-    "@elizaos/app-core/bridge/electrobun-rpc",
-    "@elizaos/app-core/bridge/electrobun-runtime",
-    "@elizaos/app-core/electrobun-rpc",
-    "@elizaos/app-core/electrobun-runtime",
-  ]);
+  const stubbed = new Set(["@elizaos/app-core"]);
   return {
     name: "app-core-bridge-stub",
     enforce: "pre",

@@ -41,7 +41,7 @@ import {
   expandConnectorSourceFilter,
   normalizeConnectorSource,
 } from "@elizaos/shared";
-import type { RouteHelpers } from "./route-helpers.js";
+import type { RouteHelpers } from "./route-helpers.ts";
 
 /**
  * Source tags we consider "inbox-worthy". Messages whose content.source

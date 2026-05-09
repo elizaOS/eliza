@@ -110,7 +110,7 @@ function gateProvider(provider: Provider, gate: RoleGate): void {
     message: Memory,
     state: State,
   ): Promise<ProviderResult> => {
-    const { checkSenderRole } = await import("./roles.js");
+    const { checkSenderRole } = await import("./roles.ts");
 
     const check = await checkSenderRole(runtime, message);
     if (!check || !roleCheckPasses(check, gate)) {

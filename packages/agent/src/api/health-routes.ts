@@ -5,8 +5,8 @@ import {
   resolveCloudApiKey,
 } from "@elizaos/plugin-elizacloud";
 import { getLocalInferenceActiveSnapshot } from "@elizaos/plugin-local-inference";
-import type { ElizaConfig } from "../config/config.js";
-import type { ConnectorHealthMonitor } from "./connector-health.js";
+import type { ElizaConfig } from "../config/config.ts";
+import type { ConnectorHealthMonitor } from "./connector-health.ts";
 
 // ---------------------------------------------------------------------------
 // Types

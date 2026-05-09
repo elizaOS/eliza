@@ -102,7 +102,11 @@ describe("W2-C: SCHEDULING_NEGOTIATION owns the 7-verb lifecycle", () => {
     // The 7 verbs are documented in HARDCODING_AUDIT.md §7. Each must
     // appear in the action's user-facing description so the planner knows
     // it can route every lifecycle step here.
+    const subactionParam = (
+      schedulingNegotiationAction.parameters ?? []
+    ).find((p) => p.name === "subaction");
     const description =
+      subactionParam?.description ??
       schedulingNegotiationAction.description ??
       schedulingNegotiationAction.descriptionCompressed ??
       "";

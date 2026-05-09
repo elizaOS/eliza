@@ -92,4 +92,4 @@ export { BotManager } from "./services/bot-manager.js";
 export { ScapeGameService } from "./services/game-service.js";
 export { JournalService } from "./services/journal-service.js";
 export * from "./routes.js";
-export * from "./ui.js";
+export * from "./ui/index.js";

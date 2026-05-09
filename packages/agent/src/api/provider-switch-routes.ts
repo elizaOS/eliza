@@ -3,17 +3,17 @@ import { logger } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { normalizeOnboardingProviderId } from "@elizaos/shared";
 import type { SecretsManager } from "@elizaos/vault";
-import type { ElizaConfig } from "../config/config.js";
+import type { ElizaConfig } from "../config/config.ts";
 import {
   defaultSecretsManager,
   type ProviderSwitchIntent,
   persistProviderApiKey,
   type RuntimeOperationManager,
-} from "../runtime/operations/index.js";
+} from "../runtime/operations/index.ts";
 import {
   applyOnboardingConnectionConfig,
   createProviderSwitchConnection,
-} from "./provider-switch-config.js";
+} from "./provider-switch-config.ts";
 
 // ---------------------------------------------------------------------------
 // Types

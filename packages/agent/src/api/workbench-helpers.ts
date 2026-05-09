@@ -7,7 +7,7 @@
  */
 
 import type { Task } from "@elizaos/core";
-import { readTriggerConfig } from "../triggers/runtime.js";
+import { readTriggerConfig } from "../triggers/runtime.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -151,8 +151,7 @@ export function toWorkbenchTask(task: Task): WorkbenchTaskView | null {
       typeof task.name === "string" && task.name.trim().length > 0
         ? task.name
         : "Task",
-    description:
-      typeof task.description === "string" ? task.description : "",
+    description: typeof task.description === "string" ? task.description : "",
     tags,
     isCompleted: readTaskCompleted(task),
     ...(updatedAt !== undefined ? { updatedAt } : {}),

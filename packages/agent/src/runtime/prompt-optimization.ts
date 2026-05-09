@@ -15,21 +15,21 @@ import {
   isLlmGenerationModelType,
   normalizeTrajectoryLlmPurpose,
 } from "@elizaos/core";
-import { detectRuntimeModel } from "../api/agent-model.js";
+import { detectRuntimeModel } from "../api/agent-model.ts";
 import {
   type ModelTokenMetadata,
   resolveModelTokenMetadata,
-} from "../config/model-metadata.js";
-import type { ElizaConfig } from "../config/types.js";
+} from "../config/model-metadata.ts";
+import type { ElizaConfig } from "../config/types.ts";
 
-import type { TrajectoryLlmCall } from "../types/trajectory.js";
+import type { TrajectoryLlmCall } from "../types/trajectory.ts";
 import {
   compactActionsForIntent,
   compactCodingExamplesForIntent,
   compactConversationHistory,
   compactModelPrompt,
   validateIntentActionMap,
-} from "./prompt-compaction.js";
+} from "./prompt-compaction.ts";
 import {
   enrichTrajectoryLlmCall,
   ensureTrajectoriesTable,
@@ -38,13 +38,13 @@ import {
   saveTrajectory,
   toOptionalNumber,
   toText,
-} from "./trajectory-internals.js";
+} from "./trajectory-internals.ts";
 
 export {
   buildFullParamActionSet,
   compactActionsForIntent,
   detectIntentCategories,
-} from "./prompt-compaction.js";
+} from "./prompt-compaction.ts";
 
 // ---------------------------------------------------------------------------
 // Env-var driven configuration (evaluated once at import time)

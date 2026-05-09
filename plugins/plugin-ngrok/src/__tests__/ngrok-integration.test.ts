@@ -71,7 +71,7 @@ describe('Ngrok Integration Tests', () => {
 
     // Create a test HTTP server
     testServer = http.createServer((req, res) => {
-      const body: any[] = [];
+      const body: Buffer[] = [];
       req.on('data', (chunk) => body.push(chunk));
       req.on('end', () => {
         const data = Buffer.concat(body).toString();
@@ -131,10 +131,21 @@ describe('Ngrok Integration Tests', () => {
     }
   });
 
+  async function shouldSkipNgrokTest(): Promise<boolean> {
+    if (skipTests) {
+      console.log('Test skipped - ngrok credentials unavailable or tests disabled');
+      return true;
+    }
+    if (!(await isNgrokInstalled())) {
+      console.log('Skipping test: ngrok not installed');
+      return true;
+    }
+    return false;
+  }
+
   describe('Basic Tunnel Operations', () => {
     it('should start and stop a tunnel successfully', async () => {
-      if (!(await isNgrokInstalled())) {
-        console.log('Skipping test: ngrok not installed');
+      if (await shouldSkipNgrokTest()) {
         return;
       }
 
@@ -164,8 +175,7 @@ describe('Ngrok Integration Tests', () => {
     }, 30000); // 30 second timeout for tunnel operations
 
     it('should handle multiple start/stop cycles', async () => {
-      if (!(await isNgrokInstalled())) {
-        console.log('Skipping test: ngrok not installed');
+      if (await shouldSkipNgrokTest()) {
         return;
       }
 
@@ -184,8 +194,7 @@ describe('Ngrok Integration Tests', () => {
 
   describe('Webhook Testing', () => {
     it('should receive webhook calls through ngrok tunnel', async () => {
-      if (!(await isNgrokInstalled())) {
-        console.log('Skipping test: ngrok not installed');
+      if (await shouldSkipNgrokTest()) {
         return;
       }
 
@@ -225,8 +234,7 @@ describe('Ngrok Integration Tests', () => {
     }, 45000);
 
     it('should handle concurrent webhook requests', async () => {
-      if (!(await isNgrokInstalled())) {
-        console.log('Skipping test: ngrok not installed');
+      if (await shouldSkipNgrokTest()) {
         return;
       }
 
@@ -260,8 +268,7 @@ describe('Ngrok Integration Tests', () => {
 
   describe('Error Handling', () => {
     it('should handle tunnel start failure gracefully', async () => {
-      if (!(await isNgrokInstalled())) {
-        console.log('Skipping test: ngrok not installed');
+      if (await shouldSkipNgrokTest()) {
         return;
       }
 
@@ -276,8 +283,7 @@ describe('Ngrok Integration Tests', () => {
     });
 
     it('should handle network interruptions', async () => {
-      if (!(await isNgrokInstalled())) {
-        console.log('Skipping test: ngrok not installed');
+      if (await shouldSkipNgrokTest()) {
         return;
       }
 
@@ -286,7 +292,7 @@ describe('Ngrok Integration Tests', () => {
       // Simulate network request with timeout
       try {
         await makeHttpRequest(`${tunnelUrl}/test`, 'GET', null, 5000);
-      } catch (_error: any) {
+      } catch (_error) {
         // Network errors are expected in some cases
         console.log('⚠️  Network request failed (expected in some test scenarios)');
       }
@@ -300,8 +306,7 @@ describe('Ngrok Integration Tests', () => {
 
   describe('Real-world Scenarios', () => {
     it('should handle a simulated GitHub webhook', async () => {
-      if (!(await isNgrokInstalled())) {
-        console.log('Skipping test: ngrok not installed');
+      if (await shouldSkipNgrokTest()) {
         return;
       }
 
@@ -356,8 +361,7 @@ describe('Ngrok Integration Tests', () => {
     }, 30000);
 
     it('should handle a simulated Stripe webhook', async () => {
-      if (!(await isNgrokInstalled())) {
-        console.log('Skipping test: ngrok not installed');
+      if (await shouldSkipNgrokTest()) {
         return;
       }
 
@@ -406,8 +410,7 @@ describe('Ngrok Integration Tests', () => {
 
   describe('Performance Testing', () => {
     it('should handle sustained traffic', async () => {
-      if (!(await isNgrokInstalled())) {
-        console.log('Skipping test: ngrok not installed');
+      if (await shouldSkipNgrokTest()) {
         return;
       }
 
@@ -458,10 +461,10 @@ describe('Ngrok Integration Tests', () => {
 async function makeHttpRequest(
   url: string,
   method: string,
-  body: any,
+  body: unknown,
   timeout: number = 10000,
   headers: Record<string, string> = {}
-): Promise<any> {
+): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
     const requestHeaders: Record<string, string> = {
@@ -493,8 +496,12 @@ async function makeHttpRequest(
           const responseBody = Buffer.concat(chunks).toString();
           const response = JSON.parse(responseBody);
           resolve(response);
-        } catch (error: any) {
-          reject(new Error(`Failed to parse response: ${error.message}`));
+        } catch (error) {
+          reject(
+            new Error(
+              `Failed to parse response: ${error instanceof Error ? error.message : String(error)}`
+            )
+          );
         }
       });
     });

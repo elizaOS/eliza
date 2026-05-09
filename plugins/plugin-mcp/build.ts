@@ -14,12 +14,17 @@ const externalDeps = [
   "@elizaos/shared",
   "@elizaos/agent",
   "@modelcontextprotocol/sdk",
+  "@node-llama-cpp",
   "ajv",
   "json5",
+  "node-llama-cpp",
 ];
 
 async function build(): Promise<void> {
   const totalStart = Date.now();
+  const { rm } = await import("node:fs/promises");
+
+  await rm("dist", { recursive: true, force: true });
 
   // Wipe dist first so leftover .d.ts files from prior runs don't get
   // picked up by tsc as inputs (TS5055).

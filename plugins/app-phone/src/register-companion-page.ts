@@ -6,8 +6,7 @@
  * specifier as a fallback for hosts that don't side-effect-import this file,
  * but bundling the component directly avoids the lazy-load placeholder.
  *
- * Usage:
- *   import "@elizaos/app-phone/register-companion-page";
+ * Load this module once during app startup to register the page.
  */
 
 import { registerAppShellPage } from "@elizaos/ui";

@@ -1,4 +1,4 @@
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 
 export const OWNER_NAME_MAX_LENGTH = 60;
 

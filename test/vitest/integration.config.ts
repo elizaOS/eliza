@@ -10,7 +10,6 @@ import { repoRoot } from "./repo-root";
 import {
   getAgentSourceAliases,
   getAppCoreSourceAliases,
-  getElizaCoreRolesEntry,
   getElizaWorkspaceRoot,
   getOptionalInstalledPackageAliases,
   getOptionalPluginSdkAliases,
@@ -20,17 +19,12 @@ import {
 } from "./workspace-aliases";
 
 const elizaCoreEntry = getElizaCoreEntry(repoRoot);
-const elizaCoreRolesEntry = getElizaCoreRolesEntry(repoRoot);
 const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
 const sharedSourceRoot = getSharedSourceRoot(repoRoot);
 const integrationResolveAlias: ModuleAlias[] = [
   ...getOptionalPluginSdkAliases(repoRoot),
-  {
-    find: "@elizaos/core/roles",
-    replacement: elizaCoreRolesEntry,
-  },
   ...(elizaCoreEntry
     ? [
         {

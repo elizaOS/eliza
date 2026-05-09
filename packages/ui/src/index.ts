@@ -10,7 +10,7 @@ export * from "./bridge";
 // plugins on a Capacitor / mobile host. It MUST NOT be in the shared barrel
 // because it pulls in @elizaos/capacitor-* packages that are not present
 // outside Capacitor / Android builds. Host entries that need it must import
-// it explicitly (`import "@elizaos/ui/capacitor-shell"` or similar).
+// it explicitly from the host-specific startup path.
 // export * from "./capacitor-shell";
 export * from "./character-catalog";
 export * from "./chat";
@@ -44,4 +44,7 @@ export * from "./types";
 export * from "./utils";
 export * from "./voice";
 export * from "./widgets";
+export * from "./widgets";
 export * from "./widgets/registry-store";
+export * from "./widgets/registry-store";
+export * from "./platform/native-plugin-entrypoints";

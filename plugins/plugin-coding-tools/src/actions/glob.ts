@@ -160,16 +160,7 @@ export const globAction: Action = {
       schema: { type: "string" },
     },
   ],
-  validate: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state?: State,
-  ) => {
-    return Boolean(
-      runtime.getService(SANDBOX_SERVICE) &&
-        runtime.getService(SESSION_CWD_SERVICE),
-    );
-  },
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -213,7 +204,7 @@ export const globAction: Action = {
     const targetPath = requestedPath ?? session.getCwd(conversationId);
 
     const validation = await sandbox.validatePath(conversationId, targetPath);
-    if (!validation.ok) {
+    if (validation.ok === false) {
       const reason =
         validation.reason === "blocked" ? "path_blocked" : "invalid_param";
       return failureToActionResult({ reason, message: validation.message });

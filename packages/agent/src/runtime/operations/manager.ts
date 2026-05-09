@@ -18,8 +18,8 @@
 import crypto from "node:crypto";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { ClassifyContext } from "./classifier.js";
-import type { HealthChecker } from "./health.js";
+import type { ClassifyContext } from "./classifier.ts";
+import type { HealthChecker } from "./health.ts";
 import type {
   OperationError,
   OperationErrorCode,
@@ -33,7 +33,7 @@ import type {
   RuntimeOperationRepository,
   StartOperationOutcome,
   StartOperationRequest,
-} from "./types.js";
+} from "./types.ts";
 
 export type IntentClassifier = (
   intent: OperationIntent,

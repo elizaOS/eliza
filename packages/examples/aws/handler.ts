@@ -100,6 +100,14 @@ async function initializeRuntime(): Promise<AgentRuntime> {
   return runtime;
 }
 
+async function shutdownRuntime(): Promise<void> {
+  if (runtime) {
+    await runtime.stop();
+  }
+  runtime = null;
+  initializationPromise = null;
+}
+
 /**
  * Parse and validate the incoming request body
  */
@@ -268,4 +276,4 @@ export async function handler(
 }
 
 // Export for testing
-export { handleChat, initializeRuntime, parseRequestBody };
+export { handleChat, initializeRuntime, parseRequestBody, shutdownRuntime };

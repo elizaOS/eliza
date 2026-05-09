@@ -6,6 +6,11 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "bun": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     }

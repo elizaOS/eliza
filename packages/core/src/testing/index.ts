@@ -13,7 +13,7 @@
  *   createIntegrationTestRuntime,
  *   withTestRuntime,
  *   requireInferenceProvider,
- * } from '@elizaos/core/testing';
+ * } from '@elizaos/core';
  *
  * describe('My Integration Tests', () => {
  *   it('should process a message with real inference', async () => {

@@ -10,28 +10,28 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { logger } from "@elizaos/core";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
-import { resolveStateDir } from "../config/paths.js";
-import type { RegistryEndpoint } from "../config/types.eliza.js";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
+import { resolveStateDir } from "../config/paths.ts";
+import type { RegistryEndpoint } from "../config/types.eliza.ts";
 import {
   LOCAL_APP_DEFAULT_SANDBOX,
   resolveAppOverride,
   sanitizeSandbox,
-} from "./registry-client-app-meta.js";
+} from "./registry-client-app-meta.ts";
 import {
   isDefaultEndpoint as isDefaultEndpointForUrl,
   mergeCustomEndpoints,
   normaliseEndpointUrl,
   parseRegistryEndpointUrl,
-} from "./registry-client-endpoints.js";
+} from "./registry-client-endpoints.ts";
 import {
   applyLocalWorkspaceApps,
   applyNodeModulePlugins,
-} from "./registry-client-local.js";
+} from "./registry-client-local.ts";
 import {
   fetchFromNetwork as fetchRegistryFromNetwork,
   isExpectedRegistryNetworkFallback,
-} from "./registry-client-network.js";
+} from "./registry-client-network.ts";
 import {
   getPluginInfoFromRegistry,
   normalizePluginLookupAlias,
@@ -40,13 +40,13 @@ import {
   toAppInfo,
   toPluginListItem,
   toSearchResults,
-} from "./registry-client-queries.js";
+} from "./registry-client-queries.ts";
 import type {
   RegistryAppInfo,
   RegistryPluginInfo,
   RegistryPluginListItem,
   RegistrySearchResult,
-} from "./registry-client-types.js";
+} from "./registry-client-types.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -83,7 +83,7 @@ export type {
   RegistryPluginInfo,
   RegistryPluginListItem,
   RegistrySearchResult,
-} from "./registry-client-types.js";
+} from "./registry-client-types.ts";
 
 // ---------------------------------------------------------------------------
 // Cache state

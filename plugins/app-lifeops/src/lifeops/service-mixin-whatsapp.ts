@@ -11,6 +11,10 @@ import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent";
 import { whatsappAuthExists } from "@elizaos/plugin-whatsapp";
 import type { Plugin } from "@elizaos/core";
 import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared";
+import {
+  fetchWhatsAppMessagesWithRuntimeService,
+  sendWhatsAppMessageWithRuntimeService,
+} from "./runtime-service-delegates.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 

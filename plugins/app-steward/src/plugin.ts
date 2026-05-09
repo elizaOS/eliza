@@ -20,7 +20,7 @@
 import type http from "node:http";
 import type { CompatRuntimeState } from "@elizaos/app-core";
 import type { Plugin, Route } from "@elizaos/core";
-import { walletRouterAction } from "@elizaos/plugin-wallet/wallet-action";
+import { walletRouterAction } from "@elizaos/plugin-wallet";
 import { stewardBalanceProvider } from "./providers/steward-balance";
 import { stewardReceiveAddressProvider } from "./providers/steward-receive-address";
 import { handleStewardCompatRoutes } from "./routes/steward-compat-routes";

@@ -33,6 +33,7 @@ const nextConfig = {
         "@electric-sql/pglite/vector": "commonjs @electric-sql/pglite/vector",
         "@electric-sql/pglite/contrib/fuzzystrmatch":
           "commonjs @electric-sql/pglite/contrib/fuzzystrmatch",
+        "zlib-sync": "commonjs zlib-sync",
       });
     }
     return config;

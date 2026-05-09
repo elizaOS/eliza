@@ -29,7 +29,13 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."
   },
-  "keywords": ["elizaos", "plugin", "tunnel", "tailscale", "networking"],
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "tunnel",
+    "tailscale",
+    "networking"
+  ],
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
   },

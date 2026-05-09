@@ -22,13 +22,13 @@ import {
   resolveElizaCloudTopology,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
+import type { ElizaConfig } from "../config/config.ts";
 import {
   CORE_PLUGINS,
   ELIZAOS_ANDROID_CORE_PLUGINS,
   MOBILE_CORE_PLUGINS,
   OPTIONAL_CORE_PLUGINS,
-} from "./core-plugins.js";
+} from "./core-plugins.ts";
 
 const OPTIONAL_CORE_PLUGIN_NAMES = new Set<string>(OPTIONAL_CORE_PLUGINS);
 

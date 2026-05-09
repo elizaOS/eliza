@@ -7,6 +7,9 @@
 		"emitDeclarationOnly": true,
 		"outDir": "dist",
 		"rootDir": ".",
+		"paths": {
+			"@elizaos/plugin-browser": ["../plugin-browser/dist/index.d.ts"]
+		},
 		"types": ["node", "bun-types"]
 	},
 	"include": ["**/*.ts"],
@@ -15,6 +18,8 @@
 		"**/*.test.ts",
 		"**/*.spec.ts",
 		"test/**",
+		"dist",
+		"node_modules",
 		"build.ts"
 	]
 }

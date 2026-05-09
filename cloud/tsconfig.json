@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -14,47 +18,32 @@
     "jsx": "react-jsx",
     "incremental": true,
     "tsBuildInfoFile": ".tsbuildinfo",
-    "types": ["node", "vite/client"],
+    "types": [
+      "node",
+      "vite/client"
+    ],
     "paths": {
-      "@/lib/*": ["./packages/lib/*"],
-      "@/db/*": ["./packages/db/*"],
-      "@/tests/*": ["./packages/tests/*"],
-      "@/types/*": ["./packages/types/*"],
-      "@/*": ["./*"],
-      "@/components/*": ["./packages/ui/src/components/*"],
-      "@elizaos/cloud-db/client": ["./packages/db/client.ts"],
-      "@elizaos/cloud-db/database-url": ["./packages/db/database-url.ts"],
-      "@elizaos/cloud-db/execute-helpers": ["./packages/db/execute-helpers.ts"],
-      "@elizaos/cloud-db/helpers": ["./packages/db/helpers.ts"],
-      "@elizaos/cloud-db/worker-neon-http": ["./packages/db/worker-neon-http.ts"],
-      "@elizaos/cloud-db/repositories": ["./packages/db/repositories/index.ts"],
-      "@elizaos/cloud-db/repositories/*": ["./packages/db/repositories/*"],
-      "@elizaos/cloud-db/repositories/agents/*": ["./packages/db/repositories/agents/*"],
-      "@elizaos/cloud-db/schemas": ["./packages/db/schemas/index.ts"],
-      "@elizaos/cloud-db/schemas/*": ["./packages/db/schemas/*"],
-      "@elizaos/cloud-lib/types": ["./packages/lib/types.ts"],
-      "@elizaos/cloud-lib/types/*": ["./packages/lib/types/*"],
-      "@elizaos/cloud-lib/blog": ["./packages/lib/blog.ts"],
-      "@elizaos/cloud-lib/pricing": ["./packages/lib/pricing.ts"],
-      "@elizaos/cloud-lib/pricing-constants": ["./packages/lib/pricing-constants.ts"],
-      "@elizaos/cloud-lib/promotion-pricing": ["./packages/lib/promotion-pricing.ts"],
-      "@elizaos/cloud-lib/utils": ["./packages/lib/utils.ts"],
-      "@elizaos/cloud-lib/utils/*": ["./packages/lib/utils/*"],
-      "@elizaos/cloud-lib/constants/*": ["./packages/lib/constants/*"],
-      "@elizaos/cloud-lib/config/*": ["./packages/lib/config/*"],
-      "@elizaos/cloud-lib/hooks/*": ["./packages/lib/hooks/*"],
-      "@elizaos/cloud-lib/providers/*": ["./packages/lib/providers/*"],
-      "@elizaos/cloud-lib/internal/api/*": ["./packages/lib/api/*"],
-      "@elizaos/cloud-lib/internal/auth/*": ["./packages/lib/auth/*"],
-      "@elizaos/cloud-lib/internal/cache/*": ["./packages/lib/cache/*"],
-      "@elizaos/cloud-lib/internal/runtime/*": ["./packages/lib/runtime/*"],
-      "@elizaos/cloud-lib/internal/services/*": ["./packages/lib/services/*"],
-      "@elizaos/cloud-types/cloud-api": ["./packages/types/cloud-api.ts"],
-      "@elizaos/cloud-types/cloud-worker-env": ["./packages/types/cloud-worker-env.ts"],
-      "@elizaos/cloud-types/global": ["./packages/types/global.d.ts"],
-      "@elizaos/cloud-types/stripe-queue-message": ["./packages/types/stripe-queue-message.ts"],
-      "@elizaos/cloud-ui": ["./packages/ui/src/index.ts"],
-      "@elizaos/cloud-ui/*": ["./packages/ui/src/*"]
+      "@/lib/*": [
+        "./packages/lib/*"
+      ],
+      "@/db/*": [
+        "./packages/db/*"
+      ],
+      "@/tests/*": [
+        "./packages/tests/*"
+      ],
+      "@/types/*": [
+        "./packages/types/*"
+      ],
+      "@/*": [
+        "./*"
+      ],
+      "@/components/*": [
+        "./packages/ui/src/components/*"
+      ],
+      "@elizaos/cloud-ui": [
+        "./packages/ui/src/index.ts"
+      ]
     }
   },
   "include": [

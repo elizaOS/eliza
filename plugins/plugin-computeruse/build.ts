@@ -27,38 +27,40 @@ async function build() {
     const [buildResult, declResult] = await Promise.all([
       (async () => {
         console.log("Bundling with Bun...");
-        const result = await Bun.build({
-          entrypoints: ["./src/index.ts", "./src/register-routes.ts"],
-          outdir: "./dist",
-          target: "node",
-          format: "esm",
-          sourcemap: "linked",
-          minify: false,
-          external: [
-            "node:*",
-            "@elizaos/core",
-            "@elizaos/app-core",
-            "@elizaos/app-core/*",
-            "puppeteer-core",
-          ],
-          naming: {
-            entry: "[dir]/[name].[ext]",
-          },
-        });
+        const outputs: BuildArtifact[] = [];
+        for (const entrypoint of ["./src/index.ts", "./src/register-routes.ts"]) {
+          const result = await Bun.build({
+            entrypoints: [entrypoint],
+            outdir: "./dist",
+            target: "node",
+            format: "esm",
+            sourcemap: "linked",
+            minify: false,
+            external: [
+              "node:*",
+              "@elizaos/core",
+              "puppeteer-core",
+            ],
+            naming: {
+              entry: "[dir]/[name].[ext]",
+            },
+          });
 
-        if (!result.success) {
-          console.error("Build failed:", result.logs);
-          return { success: false, outputs: [] };
+          if (!result.success) {
+            console.error("Build failed:", result.logs);
+            return { success: false, outputs };
+          }
+          outputs.push(...result.outputs);
         }
 
-        const totalSize = result.outputs.reduce(
+        const totalSize = outputs.reduce(
           (sum, output) => sum + output.size,
           0,
         );
         const sizeMB = (totalSize / 1024 / 1024).toFixed(2);
-        console.log(`Built ${result.outputs.length} file(s) - ${sizeMB}MB`);
+        console.log(`Built ${outputs.length} file(s) - ${sizeMB}MB`);
 
-        return result;
+        return { success: true, outputs };
       })(),
 
       (async () => {

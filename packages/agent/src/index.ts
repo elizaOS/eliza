@@ -8,23 +8,24 @@ export {
   type ExtractActionParamsArgs,
   extractActionParamsViaLlm,
   type ParamSchemaDescriptor,
-} from "./actions/extract-params.js";
-export * from "./actions/index.js";
-export * from "./api/config-env.js";
-export * from "./api/conversation-metadata.js";
+} from "./actions/extract-params.ts";
+export * from "./actions/index.ts";
+export * from "./api/config-env.ts";
+export { handleConnectorAccountRoutes } from "./api/connector-account-routes.ts";
+export * from "./api/conversation-metadata.ts";
 export {
   readJsonBody,
   sendJson,
   sendJsonError,
-} from "./api/http-helpers.js";
-export * from "./api/index.js";
-export { setOwnerContact } from "./api/owner-contact-helpers.js";
+} from "./api/http-helpers.ts";
+export * from "./api/index.ts";
+export { setOwnerContact } from "./api/owner-contact-helpers.ts";
 export {
   findPrimaryEnvKey,
   readBundledPluginPackageMetadata,
-} from "./api/plugin-discovery-helpers.js";
-export * from "./api/plugin-runtime-apply.js";
-export { RegistryService } from "./api/registry-service.js";
+} from "./api/plugin-discovery-helpers.ts";
+export * from "./api/plugin-runtime-apply.ts";
+export { RegistryService } from "./api/registry-service.ts";
 export {
   AGENT_EVENT_ALLOWED_STREAMS,
   CONFIG_WRITE_ALLOWED_TOP_KEYS,
@@ -55,7 +56,7 @@ export {
   startApiServer,
   streamResponseBodyWithByteLimit,
   validateMcpServerConfig,
-} from "./api/server.js";
+} from "./api/server.ts";
 // Re-export non-colliding helpers from `./api/server-auth.js`. Names that
 // `./api/server.js` already re-exports are intentionally omitted here so the
 // canonical `server.js` definitions remain authoritative.
@@ -65,7 +66,7 @@ export {
   isTrustedLocalRequest,
   type PluginConfigMutationRejection,
   tokenMatches,
-} from "./api/server-auth.js";
+} from "./api/server-auth.ts";
 // `server-helpers.ts` exposes auth/conversation/wallet helpers that the
 // canonical `server.ts` already re-exports for backwards compat. Re-exporting
 // the entire file would clash with those re-exports, so only surface helpers
@@ -79,7 +80,7 @@ export {
   readOGCodeFromState,
   requireCoreManager,
   requirePluginManager,
-} from "./api/server-helpers.js";
+} from "./api/server-helpers.ts";
 // `server-types.ts` is the canonical source for conversation/server type
 // shapes. `server.ts` already re-exports the bulk of these (see line ~520
 // over there); the additional exports below cover names that aren't already
@@ -95,56 +96,56 @@ export type {
   PluginParamDef,
   StreamEventType,
   TradePermissionMode,
-} from "./api/server-types.js";
+} from "./api/server-types.ts";
 export {
   normalizeJsonRpcUrl,
   probeJsonRpcEndpoint,
   TxService,
-} from "./api/tx-service.js";
-export { getWalletAddresses } from "./api/wallet.js";
-export * from "./api/wallet-capability.js";
-export * from "./api/workbench-helpers.js";
-export * from "./auth/index.js";
-export * from "./awareness/index.js";
-export { runBenchmark } from "./cli/benchmark.js";
-export { CharacterSchema } from "./config/character-schema.js";
-export * from "./config/index.js";
+} from "./api/tx-service.ts";
+export { getWalletAddresses } from "./api/wallet.ts";
+export * from "./api/wallet-capability.ts";
+export * from "./api/workbench-helpers.ts";
+export * from "./auth/index.ts";
+export * from "./awareness/index.ts";
+export { runBenchmark } from "./cli/benchmark.ts";
+export { CharacterSchema } from "./config/character-schema.ts";
+export * from "./config/index.ts";
 // `contracts/awareness.js` adds the local-only (non-shared) contract surface.
 // Config media/custom-action contract types are exported from `./config/index.js`
 // (via `@elizaos/shared`); do not re-export `./contracts/config.js` here or
 // `tsc` reports duplicate symbol errors (TS2308).
-export * from "./contracts/awareness.js";
-export * from "./diagnostics/integration-observability.js";
-export * from "./hooks/index.js";
-export * from "./providers/workspace.js";
-export * from "./runtime/advanced-capabilities-config.js";
-export * from "./runtime/agent-event-service.js";
-export * from "./runtime/core-plugins.js";
-export * from "./runtime/eliza.js";
-export * from "./runtime/eliza-plugin.js";
-export * from "./runtime/embedding-presets.js";
-export * from "./runtime/onboarding-names.js";
-export * from "./runtime/operations/vault-bridge.js";
-export * from "./runtime/owner-entity.js";
-export * from "./runtime/plugin-collector.js";
-export * from "./runtime/plugin-lifecycle.js";
+export * from "./contracts/awareness.ts";
+export * from "./diagnostics/integration-observability.ts";
+export * from "./hooks/index.ts";
+export * from "./providers/workspace.ts";
+export * from "./runtime/advanced-capabilities-config.ts";
+export * from "./runtime/agent-event-service.ts";
+export * from "./runtime/core-plugins.ts";
+export * from "./runtime/eliza.ts";
+export * from "./runtime/eliza-plugin.ts";
+export * from "./runtime/embedding-presets.ts";
+export * from "./runtime/onboarding-names.ts";
+export * from "./runtime/operations/vault-bridge.ts";
+export * from "./runtime/owner-entity.ts";
+export * from "./runtime/plugin-collector.ts";
+export * from "./runtime/plugin-lifecycle.ts";
 export {
   getLastFailedPluginNames,
   resolvePlugins,
-} from "./runtime/plugin-resolver.js";
-export * from "./runtime/plugin-types.js";
-export * from "./runtime/release-plugin-policy.js";
-export * from "./runtime/restart.js";
-export * from "./runtime/trajectory-internals.js";
-export * from "./runtime/trajectory-persistence.js";
-export * from "./runtime/trajectory-query.js";
-export * from "./runtime/version.js";
-export * from "./security/index.js";
+} from "./runtime/plugin-resolver.ts";
+export * from "./runtime/plugin-types.ts";
+export * from "./runtime/release-plugin-policy.ts";
+export * from "./runtime/restart.ts";
+export * from "./runtime/trajectory-internals.ts";
+export * from "./runtime/trajectory-persistence.ts";
+export * from "./runtime/trajectory-query.ts";
+export * from "./runtime/version.ts";
+export * from "./security/index.ts";
 export {
   isStewardEvmBridgeActive,
   setStewardEvmBridgeActive,
-} from "./services/external-bridge-state.js";
-export * from "./services/index.js";
+} from "./services/external-bridge-state.ts";
+export * from "./services/index.ts";
 export {
   type ClusterMemoriesQuery,
   type ClusterSearchQuery,
@@ -160,14 +161,15 @@ export {
   type RelationshipsPersonSummary,
   resolveRelationshipsGraphService,
   searchMemoriesForCluster,
-} from "./services/relationships-graph.js";
-export * from "./test-support/index.js";
-export * from "./test-utils/sqlite-compat.js";
-export * from "./triggers/runtime.js";
-export * from "./triggers/scheduling.js";
-export * from "./triggers/text-to-workflow.js";
-export * from "./triggers/types.js";
+} from "./services/relationships-graph.ts";
+export * from "./test-support/index.ts";
+export * from "./test-utils/sqlite-compat.ts";
+export * from "./triggers/runtime.ts";
+export * from "./triggers/scheduling.ts";
+export * from "./triggers/text-to-workflow.ts";
+export * from "./triggers/types.ts";
 // `types/index.js` aggregates `agent-skills`, `config-like`, and `trajectory`.
-export * from "./types/index.js";
-export * from "./utils/number-parsing.js";
-export * from "./version-resolver.js";
+export * from "./types/index.ts";
+export * from "./utils/number-parsing.ts";
+export * from "./version-resolver.ts";
+export * from "./services/plugin-installer";

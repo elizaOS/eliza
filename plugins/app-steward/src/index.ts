@@ -55,4 +55,3 @@ export * from "./services/steward-wallet";
 export * from "./TransactionHistory";
 export * from "./types";
 export * from "./ui";
-export * from "./browser-workspace-wallet";

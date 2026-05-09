@@ -20,7 +20,7 @@
 
 import type { WalletChain } from "@elizaos/shared";
 import { removeEntryMeta, setEntryMeta, type Vault } from "@elizaos/vault";
-import { deriveEvmAddress, generateWalletForChain } from "../api/wallet.js";
+import { deriveEvmAddress, generateWalletForChain } from "../api/wallet.ts";
 
 const PREFIX = "agent";
 const SEGMENT = "wallet";

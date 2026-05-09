@@ -1,8 +1,8 @@
 export {
   type LoadHooksOptions,
   loadHooks,
-} from "./loader.js";
+} from "./loader.ts";
 export {
   createHookEvent,
   triggerHook,
-} from "./registry.js";
+} from "./registry.ts";

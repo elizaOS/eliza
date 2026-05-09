@@ -140,28 +140,10 @@ function getPackageSourceAliases(
     includeElizaAlias?: boolean;
     rootReplacement: string;
   },
-): ModuleAlias[] {
+	): ModuleAlias[] {
   return [
-    {
-      find: new RegExp(`^@elizaos/${escapeRegExp(packageName)}/(.*)\\.js$`),
-      replacement: path.join(sourceRoot, "$1.ts"),
-    },
-    {
-      find: new RegExp(`^@elizaos/${escapeRegExp(packageName)}/(.*)`),
-      replacement: path.join(sourceRoot, "$1"),
-    },
     ...(includeElizaAlias
       ? [
-          {
-            find: new RegExp(
-              `^@elizaai/${escapeRegExp(packageName)}/(.*)\\.js$`,
-            ),
-            replacement: path.join(sourceRoot, "$1.ts"),
-          },
-          {
-            find: new RegExp(`^@elizaai/${escapeRegExp(packageName)}/(.*)`),
-            replacement: path.join(sourceRoot, "$1"),
-          },
           {
             find: `@elizaai/${packageName}`,
             replacement: rootReplacement,
@@ -291,7 +273,7 @@ export function getAgentSourceAliases(
   return options.fallbackReplacement
     ? [
         {
-          find: /^@elizaos\/agent(\/.*)?$/,
+          find: /^@elizaos\/agent$/,
           replacement: options.fallbackReplacement,
         },
       ]
@@ -303,24 +285,11 @@ export function getAppCoreSourceAliases(
   options: AppCoreSourceAliasOptions = {},
 ): ModuleAlias[] {
   if (sourceRoot) {
-    const bridgeSpecifiers = [
-      "@elizaos/app-core/bridge/electrobun-rpc.js",
-      "@elizaos/app-core/bridge/electrobun-rpc",
-      "@elizaos/app-core/bridge/electrobun-runtime",
-      "@elizaos/app-core/bridge",
-      "@elizaos/app-core/electrobun-rpc.js",
-      "@elizaos/app-core/electrobun-rpc",
-      "@elizaos/app-core/electrobun-runtime",
-    ] as const;
     const bridgeReplacement = options.bridgeReplacement;
 
     return [
       ...(bridgeReplacement
         ? [
-            ...bridgeSpecifiers.map((find) => ({
-              find: new RegExp(`^${escapeRegExp(find)}$`),
-              replacement: bridgeReplacement,
-            })),
             ...(options.stubRootSpecifier
               ? [
                   {
@@ -331,18 +300,6 @@ export function getAppCoreSourceAliases(
               : []),
           ]
         : []),
-      {
-        find: /^@elizaos\/app-core\/(.*)/,
-        replacement: path.join(sourceRoot, "$1"),
-      },
-      {
-        find: /^@elizaai\/app-core\/src\/(.*)/,
-        replacement: path.join(sourceRoot, "$1"),
-      },
-      {
-        find: /^@elizaai\/app-core\/(.*)/,
-        replacement: path.join(sourceRoot, "$1"),
-      },
       ...(!options.stubRootSpecifier
         ? [
             {
@@ -357,7 +314,7 @@ export function getAppCoreSourceAliases(
   return options.fallbackReplacement
     ? [
         {
-          find: /^@elizaos\/app-core(\/.*)?$/,
+          find: /^@elizaos\/app-core$/,
           replacement: options.fallbackReplacement,
         },
       ]
@@ -376,14 +333,6 @@ export function getSharedSourceAliases(
 
   return [
     ...getWorkspacePackageExportAliases("shared", packageRoot),
-    ...(options.includeConfigAlias
-      ? [
-          {
-            find: /^@elizaos\/shared\/config$/,
-            replacement: path.join(sourceRoot, "config", "types.ts"),
-          },
-        ]
-      : []),
     ...getPackageSourceAliases("shared", sourceRoot, {
       includeElizaAlias: options.includeElizaAlias,
       rootReplacement: path.join(sourceRoot, "index.ts"),

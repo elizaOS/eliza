@@ -294,10 +294,6 @@ export function validateX402Startup(
   const allErrors: string[] = [];
   const allWarnings: string[] = [];
 
-  const envValidation = validateEnvironment();
-  allErrors.push(...envValidation.errors);
-  allWarnings.push(...envValidation.warnings);
-
   let protectedRouteCount = 0;
   for (const route of routes) {
     const x402Route = route as PaymentEnabledRoute;
@@ -314,6 +310,10 @@ export function validateX402Startup(
   }
 
   if (protectedRouteCount > 0) {
+    const envValidation = validateEnvironment();
+    allErrors.push(...envValidation.errors);
+    allWarnings.push(...envValidation.warnings);
+
     logger.info(
       `[x402] validated ${protectedRouteCount}/${routes.length} protected route(s); ` +
         `configs=${listX402Configs(options?.agentId).length}, ` +

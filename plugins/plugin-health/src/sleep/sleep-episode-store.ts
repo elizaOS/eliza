@@ -1,7 +1,7 @@
 import type {
   LifeOpsSleepCycleEvidenceSource,
   LifeOpsSleepCycleType,
-} from "@elizaos/shared";
+} from "../contracts/health.js";
 import {
   classifyLifeOpsSleepCycleType,
   type LifeOpsSleepEpisode,
