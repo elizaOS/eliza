@@ -1,4 +1,5 @@
 import { type IAgentRuntime, logger, Service } from '@elizaos/core';
+import { peekN8nSidecar } from '@elizaos/app-core/services/n8n-sidecar';
 import { N8nApiClient } from '../utils/api';
 import { searchNodes, filterNodesByIntegrationSupport } from '../utils/catalog';
 import { getUserTagName } from '../utils/context';
@@ -55,6 +56,87 @@ export interface N8nWorkflowServiceConfig {
 }
 
 /**
+ * Probe a candidate API key against `${host}/api/v1/workflows?limit=1`.
+ * Returns true on 2xx, false on 401/403/network error.
+ */
+async function probeApiKey(host: string, key: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${host.replace(/\/$/, '')}/api/v1/workflows?limit=1`, {
+      method: 'GET',
+      headers: { 'X-N8N-API-KEY': key },
+      signal: AbortSignal.timeout(5_000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Pick the API key the workflow service should use.
+ *
+ * The local n8n sidecar provisions a fresh API key at every boot and
+ * persists it under `${stateDir}/api-key` (see
+ * `@elizaos/app-core/services/n8n-sidecar`). The plugin's settings
+ * `N8N_API_KEY` is read from `.env` / config and can drift independently
+ * — e.g. a previous sidecar instance was reset, or the user copied a key
+ * from a stale install. When both are set but disagree, the env value
+ * wins by default and every deploy gets 401 from n8n until someone
+ * rewrites `.env` by hand.
+ *
+ * Resolution order:
+ *   1. If a sidecar service is registered AND has provisioned a key, prefer
+ *      that key — it is the freshest and is rotated by the sidecar itself.
+ *   2. Otherwise fall back to the env / config value.
+ *   3. If the chosen candidate fails a probe but the other candidate
+ *      passes, use the working one.
+ *   4. If both fail (or only one is present and it fails), return the
+ *      best-available so the existing failure path produces a real
+ *      diagnostic instead of a missing-config error.
+ *
+ * Returns null only when no candidates exist at all.
+ */
+export async function resolveN8nApiKey(
+  host: string,
+  envKey: string | null,
+  deps: {
+    getSidecarKey?: () => string | null;
+    probe?: (host: string, key: string) => Promise<boolean>;
+  } = {},
+): Promise<string | null> {
+  const getSidecarKey = deps.getSidecarKey ?? (() => peekN8nSidecar()?.getApiKey() ?? null);
+  const probe = deps.probe ?? probeApiKey;
+
+  const sidecarKey = getSidecarKey();
+
+  if (!sidecarKey && !envKey) return null;
+
+  // Single-candidate fast path: nothing to disambiguate.
+  if (!envKey && sidecarKey) return sidecarKey;
+  if (!sidecarKey && envKey) return envKey;
+
+  // Both present. Prefer the sidecar key, but fall through to env if it
+  // does not validate (e.g. sidecar still provisioning, or its host
+  // differs from the configured N8N_HOST so the cached key doesn't apply).
+  if (sidecarKey && (await probe(host, sidecarKey))) {
+    if (envKey && envKey !== sidecarKey) {
+      logger.info(
+        { src: 'plugin:n8n-workflow:service:main' },
+        'Using sidecar-provisioned N8N_API_KEY; the env-configured key did not match',
+      );
+    }
+    return sidecarKey;
+  }
+  if (envKey && (await probe(host, envKey))) {
+    return envKey;
+  }
+  // Neither validated. Return the sidecar key if we have it (it is the
+  // canonical source); otherwise fall back to env so the upstream error
+  // has *something* to report.
+  return sidecarKey ?? envKey;
+}
+
+/**
  * N8n Workflow Service - Orchestrates the RAG pipeline for workflow generation.
  *
  * generateWorkflowDraft(): keywords → node search → LLM generation → validation → positioning
@@ -74,15 +156,17 @@ export class N8nWorkflowService extends Service {
     logger.info({ src: 'plugin:n8n-workflow:service:main' }, 'Starting N8n Workflow Service...');
 
     // Validate configuration
-    const apiKey = runtime.getSetting('N8N_API_KEY');
     const host = runtime.getSetting('N8N_HOST');
-
-    if (!apiKey || typeof apiKey !== 'string') {
-      throw new Error('N8N_API_KEY is required in settings');
-    }
-
     if (!host || typeof host !== 'string') {
       throw new Error('N8N_HOST is required in settings (e.g., https://your.n8n.cloud)');
+    }
+
+    const envKeySetting = runtime.getSetting('N8N_API_KEY');
+    const envKey =
+      typeof envKeySetting === 'string' && envKeySetting.length > 0 ? envKeySetting : null;
+    const apiKey = await resolveN8nApiKey(host, envKey);
+    if (!apiKey) {
+      throw new Error('N8N_API_KEY is required in settings');
     }
 
     // Get optional pre-configured credentials from character.settings.workflows
