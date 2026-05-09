@@ -1,7 +1,7 @@
 import type http from "node:http";
 import type { ReadJsonBodyOptions } from "@elizaos/core";
-import { sanitizeSpeechText } from "@elizaos/shared";
 import type { ElizaConfig } from "@elizaos/shared";
+import { sanitizeSpeechText } from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // Types

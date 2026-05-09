@@ -24,8 +24,7 @@ function isPatchedAudioConstructor(
 	value: unknown,
 ): value is PatchedAudioConstructor {
 	return (
-		typeof value === "function" &&
-		Reflect.get(value, AUDIO_PATCH_MARK) === true
+		typeof value === "function" && Reflect.get(value, AUDIO_PATCH_MARK) === true
 	);
 }
 

@@ -17,7 +17,6 @@ import type {
 	RegisteredEvaluator,
 } from "../../../types/index.ts";
 import { MemoryType } from "../../../types/memory.ts";
-import type { Plugin } from "../../../types/plugin.ts";
 import { resolveStateDir } from "../../../utils/state-dir.ts";
 import {
 	formatTrajectoryForPrompt,
