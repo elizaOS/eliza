@@ -33,6 +33,11 @@ import { TravelTimeUnavailableError } from "../../travel-time/service.js";
 import {
   calendarReadUnavailableMessage,
   calendarWriteUnavailableMessage,
+  getGoogleCapabilityStatus,
+  hasLifeOpsAccess,
+  INTERNAL_URL,
+} from "../../lifeops/access.js";
+import {
   detailArray,
   detailBoolean,
   detailNumber,
@@ -40,15 +45,12 @@ import {
   formatCalendarEventDateTime,
   formatCalendarFeed,
   formatNextEventContext,
-  getGoogleCapabilityStatus,
-  hasLifeOpsAccess,
-  INTERNAL_URL,
   messageText,
   parseLifeOpsJsonRecord,
   runLifeOpsJsonModel,
   runLifeOpsTextModel,
   toActionData,
-} from "../lifeops-google-helpers.js";
+} from "../../lifeops/google/format-helpers.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
 
 type CalendarSubaction =

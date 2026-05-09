@@ -77,8 +77,8 @@ import {
   formatOverviewForQuery,
   messageText,
   toActionData,
-} from "./lifeops-google-helpers.js";
-import { normalizeExplicitTimeZoneToken } from "./timezone-normalization.js";
+} from "../lifeops/google/format-helpers.js";
+import { normalizeExplicitTimeZoneToken } from "../lifeops/time/timezone.js";
 
 // ── Types ─────────────────────────────────────────────
 
