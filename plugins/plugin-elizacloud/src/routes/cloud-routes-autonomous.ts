@@ -259,11 +259,11 @@ async function readJsonBody<T = Record<string, unknown>>(
   req: http.IncomingMessage,
   res: http.ServerResponse,
 ): Promise<T | null> {
-  return parseJsonBody(req, res, {
+  return (await parseJsonBody(req, res, {
     maxBytes: 1_048_576,
     tooLargeMessage: "Request body too large",
     destroyOnTooLarge: true,
-  });
+  })) as T | null;
 }
 
 function isRedirectResponse(response: Response): boolean {

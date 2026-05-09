@@ -90,6 +90,7 @@ describe('EmbeddedN8nService', () => {
   });
 
   test('runs a schedule -> HTTP Request -> Set workflow in a child process', async () => {
+    const pluginRoot = join(import.meta.dir, '../..');
     const script = `
       import { mkdtemp, rm } from 'node:fs/promises';
       import { tmpdir } from 'node:os';
@@ -133,7 +134,7 @@ describe('EmbeddedN8nService', () => {
     `;
 
     const proc = Bun.spawn([process.execPath, '-e', script], {
-      cwd: process.cwd(),
+      cwd: pluginRoot,
       env: { ...process.env, N8N_DIAGNOSTICS_ENABLED: 'false' },
       stdout: 'pipe',
       stderr: 'pipe',

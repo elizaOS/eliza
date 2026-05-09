@@ -99,6 +99,13 @@ Use a fork image that understands `--spec-type dflash`, then set the target
 and drafter artifacts:
 
 ```bash
+# Build/push once. Use --build-arg BASE_IMAGE=rocm/dev-ubuntu-22.04:6.3
+# --build-arg BACKEND=rocm for AMD hosts.
+docker build -f cloud/services/vast-pyworker/Dockerfile.dflash \
+  --build-arg BACKEND=cuda \
+  -t ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-dflash .
+docker push ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-dflash
+
 VAST_TEMPLATE_NAME=eliza-cloud-qwen3.6-27b-dflash \
 VAST_IMAGE=ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-dflash \
 MODEL_REPO=bartowski/Qwen_Qwen3.6-27B-GGUF \

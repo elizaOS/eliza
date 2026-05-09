@@ -205,6 +205,35 @@ class ASTEvaluator:
                 for p, e in zip(predicted, expected, strict=True)
             )
 
+        # BFCL nested-arguments singleton-list convention: each leaf value in
+        # the possible_answer ground truth is wrapped in a list of acceptable
+        # values, even inside nested objects. _parse_ground_truth_calls only
+        # unwraps the top-level list. When the model emits a scalar that
+        # matches the single allowed value, accept it. Mirror it for the
+        # opposite direction so the matcher is symmetric.
+        if not self.strict_type_matching:
+            if isinstance(expected, list) and len(expected) == 1:
+                if self._values_match(predicted, expected[0]):
+                    return True
+            if isinstance(predicted, list) and len(predicted) == 1:
+                if self._values_match(predicted[0], expected):
+                    return True
+
+        # Comma-separated string vs list-of-strings tolerance — common when
+        # the model returns SQL-style "a, b, c" for a parameter the schema
+        # actually defines as list[str]. Only meaningful for primitive lists.
+        if not self.strict_type_matching:
+            if isinstance(predicted, str) and isinstance(expected, list):
+                pred_split = [part.strip().strip("'\"") for part in predicted.split(",")]
+                if len(pred_split) == len(expected):
+                    if all(self._values_match(p, e) for p, e in zip(pred_split, expected, strict=True)):
+                        return True
+            if isinstance(expected, str) and isinstance(predicted, list):
+                exp_split = [part.strip().strip("'\"") for part in expected.split(",")]
+                if len(exp_split) == len(predicted):
+                    if all(self._values_match(p, e) for p, e in zip(predicted, exp_split, strict=True)):
+                        return True
+
         # Dict comparison
         if isinstance(predicted, dict) and isinstance(expected, dict):
             return self._arguments_match(predicted, expected)

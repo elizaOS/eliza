@@ -84,7 +84,24 @@ function flipPackage({ name, dir, packageJsonPath, pkg }, flags, log, stats) {
     }
   }
 
-  // 4) ensure files: ["dist"] for npm publish hygiene
+  // 4) bin entries must also point at built JS, not src/*.ts
+  if (typeof pkg.bin === "string" && isSrcPath(pkg.bin)) {
+    pkg.bin = transformSrcToDist(pkg.bin);
+    changed = true;
+  } else if (pkg.bin && typeof pkg.bin === "object") {
+    const nextBin = {};
+    for (const [key, val] of Object.entries(pkg.bin)) {
+      nextBin[key] = typeof val === "string" && isSrcPath(val)
+        ? transformSrcToDist(val)
+        : val;
+    }
+    if (JSON.stringify(nextBin) !== JSON.stringify(pkg.bin)) {
+      pkg.bin = nextBin;
+      changed = true;
+    }
+  }
+
+  // 5) ensure files: ["dist"] for npm publish hygiene
   if (Array.isArray(pkg.files)) {
     if (!pkg.files.includes("dist") && pkg.private !== true) {
       pkg.files = [...pkg.files, "dist"];

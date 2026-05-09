@@ -7,9 +7,7 @@
 
 async function registerCodingAgentRoutePluginLoader(): Promise<void> {
   try {
-    const { registerAppRoutePluginLoader } = await import(
-      "@elizaos/app-core/runtime/app-route-plugin-registry"
-    );
+    const { registerAppRoutePluginLoader } = await import("@elizaos/core");
     registerAppRoutePluginLoader(
       "@elizaos/plugin-agent-orchestrator",
       async () => {

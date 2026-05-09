@@ -627,6 +627,97 @@ export async function startBenchmarkServer() {
     `[bench] Runtime initialized — agent=${runtime.character.name}, plugins=${plugins.length}`,
   );
 
+  // ── LLM usage capture ────────────────────────────────────────────────────
+  // Plugins (currently @elizaos/plugin-openai, @elizaos/plugin-anthropic) emit
+  // a MODEL_USED event for each LLM call with token usage and provider-side
+  // cache hit info. We collect those into a per-turn buffer that handle-message
+  // installs at the start of a turn and snapshots into the trajectory at end.
+  // Buffer is `null` when no turn is in flight; events outside a turn are
+  // ignored. This is safe because the bench server processes one turn at a
+  // time per session and sessions don't run concurrent handleMessage calls.
+  let activeUsageBuffer: BenchmarkLlmCallUsage[] | null = null;
+  try {
+    const eventRuntime = runtime as unknown as {
+      registerEvent: (
+        type: string,
+        handler: (payload: unknown) => void | Promise<void>,
+      ) => void;
+    };
+    if (typeof eventRuntime.registerEvent === "function") {
+      eventRuntime.registerEvent("MODEL_USED", (payload: unknown) => {
+        if (!activeUsageBuffer) return;
+        if (!payload || typeof payload !== "object") return;
+        const p = payload as {
+          type?: unknown;
+          source?: unknown;
+          provider?: unknown;
+          tokens?: {
+            prompt?: unknown;
+            completion?: unknown;
+            total?: unknown;
+            cached?: unknown;
+          };
+        };
+        const tokens = p.tokens ?? {};
+        const promptTokens =
+          typeof tokens.prompt === "number" ? tokens.prompt : 0;
+        const completionTokens =
+          typeof tokens.completion === "number" ? tokens.completion : 0;
+        const totalTokens =
+          typeof tokens.total === "number"
+            ? tokens.total
+            : promptTokens + completionTokens;
+        const cachedTokens =
+          typeof tokens.cached === "number" ? tokens.cached : undefined;
+        activeUsageBuffer.push({
+          modelType: typeof p.type === "string" ? p.type : "unknown",
+          provider: typeof p.provider === "string" ? p.provider : undefined,
+          source: typeof p.source === "string" ? p.source : undefined,
+          promptTokens,
+          completionTokens,
+          totalTokens,
+          ...(cachedTokens !== undefined ? { cachedTokens } : {}),
+        });
+      });
+      elizaLogger.info("[bench] Registered MODEL_USED listener for trajectory usage capture");
+    } else {
+      elizaLogger.warn(
+        "[bench] runtime.registerEvent is not available; trajectory usage will be unset",
+      );
+    }
+  } catch (err: unknown) {
+    elizaLogger.warn(
+      `[bench] Could not register MODEL_USED listener: ${formatUnknownError(err)}`,
+    );
+  }
+
+  const summarizeUsage = (
+    calls: BenchmarkLlmCallUsage[],
+  ): BenchmarkTurnUsage => {
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let totalTokens = 0;
+    let cachedTokens = 0;
+    for (const call of calls) {
+      promptTokens += call.promptTokens;
+      completionTokens += call.completionTokens;
+      totalTokens += call.totalTokens;
+      if (typeof call.cachedTokens === "number") {
+        cachedTokens += call.cachedTokens;
+      }
+    }
+    const cacheHitRatio = promptTokens > 0 ? cachedTokens / promptTokens : 0;
+    return {
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      cachedTokens,
+      cacheHitRatio,
+      callCount: calls.length,
+      calls,
+    };
+  };
+
   const roomToSession = new Map<string, string>();
   const entityToSession = new Map<string, string>();
   const trajectoriesBySession = new Map<string, BenchmarkTrajectoryStep[]>();
@@ -1052,6 +1143,8 @@ export async function startBenchmarkServer() {
 
           clearCapturedAction();
           setBenchmarkContext(benchmarkContext);
+          const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
+          activeUsageBuffer = turnUsageBuffer;
           const result = await (async () => {
             try {
               return await messageService.handleMessage(
@@ -1061,8 +1154,10 @@ export async function startBenchmarkServer() {
               );
             } finally {
               setBenchmarkContext(null);
+              activeUsageBuffer = null;
             }
           })();
+          const turnUsage = summarizeUsage(turnUsageBuffer);
 
           const capturedAction = getCapturedAction();
 
@@ -1099,6 +1194,7 @@ export async function startBenchmarkServer() {
             responseText,
             actions,
             params,
+            usage: turnUsage,
           });
           trajectoriesBySession.set(key, trajectory);
 

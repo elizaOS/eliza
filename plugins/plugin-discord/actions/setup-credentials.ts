@@ -445,12 +445,6 @@ function detectSetupIntent(text: string): string | null | undefined {
 	return undefined;
 }
 
-function isSetupTrigger(text: string): boolean {
-	return TRIGGER_PATTERNS.some((pattern) =>
-		pattern.test(text.toLowerCase().trim()),
-	);
-}
-
 function buildServiceListMessage(): string {
 	const services = listPresets()
 		.filter((presetName) => presetName !== "generic")
@@ -534,9 +528,8 @@ export const setupCredentials: Action = {
 		if (message.content.source !== "discord") {
 			return false;
 		}
-		const text = message.content.text?.trim() ?? "";
 		const userId = message.entityId as string;
-		return activeSessions.has(userId) || isSetupTrigger(text);
+		return activeSessions.has(userId) || Boolean(userId);
 	},
 	handler: async (
 		runtime: IAgentRuntime,
