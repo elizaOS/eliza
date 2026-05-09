@@ -3940,7 +3940,7 @@ export async function startApiServer(opts?: {
       );
     }
     for (const w of result.warnings) {
-      logger.warn(`[x402] ${w}`);
+      logger.debug(`[x402] ${w}`);
     }
   };
 
