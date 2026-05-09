@@ -9,7 +9,7 @@ function runtime(settings: Record<string, unknown>): IAgentRuntime {
   return {
     character: {},
     getSetting: vi.fn((key: string) => settings[key]),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 describe("Tailscale ConnectorAccountManager provider", () => {

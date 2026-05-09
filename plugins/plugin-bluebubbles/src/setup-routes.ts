@@ -63,7 +63,7 @@ interface BlueBubblesServiceLike {
 
 function resolveService(runtime: IAgentRuntime): BlueBubblesServiceLike | null {
 	const raw = runtime.getService(BLUEBUBBLES_SERVICE_NAME);
-	return (raw as unknown as BlueBubblesServiceLike | null | undefined) ?? null;
+	return (raw as BlueBubblesServiceLike | null | undefined) ?? null;
 }
 
 /**

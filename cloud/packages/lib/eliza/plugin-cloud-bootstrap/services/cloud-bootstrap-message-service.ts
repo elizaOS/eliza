@@ -3,7 +3,6 @@
  */
 
 import {
-  type ActionResult,
   asUUID,
   ChannelType,
   type Content,
@@ -74,6 +73,40 @@ type RuntimeWithEvaluators = IAgentRuntime & {
     responseMessages: Memory[],
   ) => Promise<unknown>;
 };
+
+function isStateValue(value: unknown): value is NonNullable<State["values"][string]> {
+  return (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint" ||
+    typeof value === "object"
+  );
+}
+
+function getContentMetadata(content: Content): Record<string, unknown> {
+  const metadata = content.metadata;
+  return metadata && typeof metadata === "object" && !Array.isArray(metadata)
+    ? (metadata as Record<string, unknown>)
+    : {};
+}
+
+function withActionResultsMetadata(
+  message: Memory,
+  actionResults: NativePlannerActionResult[],
+): Memory {
+  return {
+    ...message,
+    content: {
+      ...message.content,
+      metadata: {
+        ...getContentMetadata(message.content),
+        actionResults,
+      },
+    } as unknown as Content,
+  };
+}
 
 const RETRY_CONFIG = {
   baseDelayMs: 200,
@@ -754,7 +787,7 @@ export class CloudBootstrapMessageService implements IMessageService {
         ],
         true,
       );
-      (accumulatedState.data as any).actionResults = traceActionResult;
+      accumulatedState.data.actionResults = traceActionResult;
 
       // Snapshot provider values for use in the decision loop. ACTIONS and USER_AUTH_STATUS
       // are truly stable. RECENT_MESSAGES is intentionally frozen here so the decision LLM
@@ -766,7 +799,7 @@ export class CloudBootstrapMessageService implements IMessageService {
       // recall, and (b) refreshing recentMessages per iteration would add ~200-400ms each.
       // If a future action requires cross-iteration memory visibility, fetch fresh
       // recentMessages inside that specific iteration instead of using the cached snapshot.
-      const cachedStableValues: Record<string, unknown> = {};
+      const cachedStableValues: State["values"] = {};
       const stableProviderKeys = [
         "recentMessages",
         "actions",
@@ -776,16 +809,16 @@ export class CloudBootstrapMessageService implements IMessageService {
         "userAuthStatus",
       ];
       for (const key of stableProviderKeys) {
-        const val =
-          accumulatedState.values?.[key] ?? (accumulatedState as Record<string, unknown>)[key];
-        if (val !== undefined) {
+        const val = accumulatedState.values?.[key] ?? accumulatedState[key];
+        if (val !== undefined && isStateValue(val)) {
           cachedStableValues[key] = val;
         }
       }
       // Also cache provider data (used by action execution, not templates)
-      const cachedStableData = accumulatedState.data
-        ? { actionsData: accumulatedState.data.actionsData }
-        : {};
+      const cachedStableData: State["data"] =
+        accumulatedState.data.actionsData !== undefined
+          ? { actionsData: accumulatedState.data.actionsData }
+          : {};
 
       const streamThinking = async (phase: string, content: string): Promise<void> => {
         if (options?.onReasoningChunk) {
@@ -811,16 +844,7 @@ export class CloudBootstrapMessageService implements IMessageService {
 
         // Inject actionResults into message metadata BEFORE composeState
         // so ACTION_STATE provider can read it during state composition
-        const messageWithResults = {
-          ...message,
-          content: {
-            ...message.content,
-            metadata: {
-              ...((message.content as any).metadata || {}),
-              actionResults: traceActionResult,
-            },
-          },
-        };
+        const messageWithResults = withActionResultsMetadata(message, traceActionResult);
 
         // Only refresh ACTION_STATE + CHARACTER per iteration. ACTIONS, USER_AUTH_STATUS,
         // and RECENT_MESSAGES are stable for the request lifetime and reused from cache.
@@ -832,11 +856,11 @@ export class CloudBootstrapMessageService implements IMessageService {
         // Merge: start with fresh ACTION_STATE, overlay cached stable provider values
         accumulatedState = {
           ...actionOnlyState,
-          values: { ...actionOnlyState.values, ...cachedStableValues } as any,
+          values: { ...actionOnlyState.values, ...cachedStableValues },
           data: { ...actionOnlyState.data, ...cachedStableData },
         };
         // Also set on state.data for consistency
-        (accumulatedState.data as any).actionResults = traceActionResult;
+        accumulatedState.data.actionResults = traceActionResult;
 
         const remainingSteps = maxIterations - iterationCount;
         const stateWithIterationContext = {
@@ -1085,7 +1109,7 @@ export class CloudBootstrapMessageService implements IMessageService {
               message: actionMessage,
               state: accumulatedState,
               activeContexts,
-              previousResults: traceActionResult as ActionResult[],
+              previousResults: traceActionResult,
               callback: async (content) => {
                 capturedCallback = content;
                 return [];
@@ -1117,7 +1141,7 @@ export class CloudBootstrapMessageService implements IMessageService {
             data: { actionName: action },
             success,
             text: resultText,
-            values: result?.values as Record<string, unknown> | undefined,
+            values: result?.values,
             error: success ? undefined : resultText,
           };
 
@@ -1248,16 +1272,7 @@ export class CloudBootstrapMessageService implements IMessageService {
 
       // Inject actionResults into message metadata BEFORE composeState
       // so ACTION_STATE provider can read them during state composition
-      const summaryMessageWithResults = {
-        ...message,
-        content: {
-          ...message.content,
-          metadata: {
-            ...((message.content as any).metadata || {}),
-            actionResults: traceActionResult,
-          },
-        },
-      };
+      const summaryMessageWithResults = withActionResultsMetadata(message, traceActionResult);
 
       // Fetch all providers fresh for the summary. RECENT_MESSAGES will include
       // messages created by action execution, which the summary LLM needs to see.
@@ -1277,11 +1292,11 @@ export class CloudBootstrapMessageService implements IMessageService {
       // changed after actions executed, so the stale cached copy must NOT win.
       accumulatedState = {
         ...summaryFreshState,
-        values: { ...cachedStableValues, ...summaryFreshState.values } as any,
+        values: { ...cachedStableValues, ...summaryFreshState.values },
         data: { ...cachedStableData, ...summaryFreshState.data },
       };
       // Also set on state.data for consistency
-      (accumulatedState.data as any).actionResults = traceActionResult;
+      accumulatedState.data.actionResults = traceActionResult;
       accumulatedState.totalActionsExecuted = totalActionsExecuted;
       accumulatedState.values.totalActionsExecuted = totalActionsExecuted;
       accumulatedState.values.hasActionResults = traceActionResult.length > 0;

@@ -75,7 +75,7 @@ function makeRuntimeWithService(mockService: unknown): IAgentRuntime {
       name === "scape_game"
         ? (mockService as ReturnType<IAgentRuntime["getService"]>)
         : null,
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 async function postPrompt(
@@ -180,7 +180,7 @@ async function main(): Promise<void> {
     const r4 = await postPrompt(
       {
         getService: () => null,
-      } as unknown as IAgentRuntime,
+      } as IAgentRuntime,
       { text: "anything" },
     );
     assertTrue("status 503", r4.statusCode === 503);
@@ -239,7 +239,7 @@ async function main(): Promise<void> {
     });
     // Access the private handleMessage via cast — this is test-only.
     (
-      sdk as unknown as { handleMessage: (e: { data: string }) => void }
+      sdk as { handleMessage: (e: { data: string }) => void }
     ).handleMessage?.({
       data: frame,
     });

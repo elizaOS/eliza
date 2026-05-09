@@ -8,8 +8,8 @@ function polymarketRouteHandler(
   pathname: string,
 ): NonNullable<Route["handler"]> {
   return async (req, res, _runtime) => {
-    const httpReq = req as unknown as http.IncomingMessage;
-    const httpRes = res as unknown as http.ServerResponse;
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
     const method = (httpReq.method ?? "GET").toUpperCase();
     await handlePolymarketRoute(httpReq, httpRes, pathname, method);
   };

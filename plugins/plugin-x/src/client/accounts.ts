@@ -19,6 +19,7 @@ export interface XAccountCredentials {
 }
 
 export interface XConnectorAccountRecord {
+  [key: string]: unknown;
   accountId: string;
   source?: "x" | "twitter";
   credentials?: XAccountCredentials;
@@ -353,7 +354,7 @@ export async function resolveTwitterAccountConfig(
   if (record) {
     return {
       ...options.state,
-      ...buildStateFromRecord(accountId, record as unknown as RawAccountRecord),
+      ...buildStateFromRecord(accountId, record),
     };
   }
 

@@ -1,4 +1,4 @@
-import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+import type { AgentRuntime, Content, Memory, UUID } from "@elizaos/core";
 import { ChannelType, stringToUuid } from "@elizaos/core";
 import { streamText } from "ai";
 import { createHash } from "crypto";
@@ -488,7 +488,7 @@ export class MemoryService {
     };
 
     // Convert summary to Memory content format
-    const summaryContent: Record<string, unknown> = {
+    const summaryContent: Content = {
       summary: summary.summary,
       tokenCount: summary.tokenCount,
       keyTopics: summary.keyTopics,
@@ -501,7 +501,7 @@ export class MemoryService {
       entityId: context.participants[0] || ("system" as UUID),
       agentId: (await this.getSystemRuntime()).agentId,
       createdAt: Date.now(),
-      content: summaryContent as any,
+      content: summaryContent,
     };
 
     await memoryCache.cacheMemory(

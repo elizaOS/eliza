@@ -153,11 +153,11 @@ function createConnection(url: string): Database {
       neonConfig.webSocketConstructor = ws;
     }
     const pool = new NeonPool({ connectionString: url });
-    return drizzleNeon(pool, { schema }) as unknown as Database;
+    return drizzleNeon(pool, { schema }) as Database;
   }
 
   const pool = createPgPool(url);
-  return drizzleNode(pool, { schema }) as unknown as Database;
+  return drizzleNode(pool, { schema }) as Database;
 }
 
 // ============================================================================

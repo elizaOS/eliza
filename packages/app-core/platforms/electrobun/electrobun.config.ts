@@ -315,7 +315,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
 				bundleWGPU: true,
 				defaultRenderer: "cef",
 				icon: "assets/appIcon.png",
-				chromiumFlags: {
+				chromiumFlags: ({
 					"enable-unsafe-webgpu": true,
 					"enable-features": "Vulkan",
 					"disable-gpu": false,
@@ -327,20 +327,26 @@ export function createElectrobunConfig(): ElectrobunConfig {
 					"disable-accelerated-video-decode": false,
 					"disable-accelerated-video-encode": false,
 					"disable-gpu-memory-buffer-video-frames": false,
-				} as unknown as Record<string, string | true>,
+				} satisfies Record<string, string | boolean>) as Record<
+					string,
+					string | true
+				>,
 			},
 			win: {
 				bundleCEF: true,
 				bundleWGPU: true,
 				defaultRenderer: "cef",
 				icon: "assets/appIcon.ico",
-				chromiumFlags: {
+				chromiumFlags: ({
 					"enable-unsafe-webgpu": true,
 					"enable-features": "Vulkan",
 					"in-process-gpu": true,
 					"disable-gpu-sandbox": true,
 					"no-sandbox": true,
-				} as unknown as Record<string, string | true>,
+				} satisfies Record<string, string | boolean>) as Record<
+					string,
+					string | true
+				>,
 			},
 		},
 		...(releaseUrl

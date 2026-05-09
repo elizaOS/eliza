@@ -207,9 +207,21 @@ export async function sendTweet(
     }
     await client.cacheLatestCheckedTweetId();
 
-    // The v2 send-tweet response is a subset of Tweet; cache only exposes
-    // `tweet.id`, so the shape is compatible at runtime.
-    await client.cacheTweet(tweetResult as unknown as Tweet);
+    await client.cacheTweet({
+      ...tweetResult,
+      userId: "",
+      username: "",
+      name: "",
+      conversationId: tweetResult.id,
+      timestamp: Date.now(),
+      photos: [],
+      mentions: [],
+      hashtags: [],
+      urls: [],
+      videos: [],
+      thread: [],
+      permanentUrl: "",
+    });
 
     logger.log("Successfully posted a tweet", tweetResult.id);
   } catch (error) {

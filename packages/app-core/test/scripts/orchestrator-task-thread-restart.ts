@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
 import type { SwarmCoordinator } from "@elizaos/plugin-agent-orchestrator";
 import { PTYService } from "@elizaos/plugin-agent-orchestrator";
 import { createTestRuntime } from "../helpers/pglite-runtime";
@@ -76,7 +76,7 @@ async function startRuntime(): Promise<SwarmCoordinator> {
   runtime = created.runtime;
   cleanupRuntime = created.cleanup;
   pgliteDir = created.pgliteDir;
-  service = await PTYService.start(runtime as unknown as IAgentRuntime);
+  service = await PTYService.start(runtime);
   (runtime.services as Map<string, unknown[]>).set("PTY_SERVICE", [
     service as unknown,
   ]);

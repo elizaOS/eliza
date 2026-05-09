@@ -61,7 +61,7 @@ export function getTrajectoryService(
 ): SkillTrajectoryService | null {
 	const svc = runtime.getService("trajectories");
 	if (!svc) return null;
-	const shape = svc as unknown as SkillTrajectoryService;
+	const shape = svc as SkillTrajectoryService;
 	if (
 		typeof shape.listTrajectories !== "function" ||
 		typeof shape.getTrajectoryDetail !== "function"

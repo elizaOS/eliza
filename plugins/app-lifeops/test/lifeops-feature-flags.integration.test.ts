@@ -33,7 +33,7 @@ function withMockCloudAuth(
       if (prop === "getService") {
         return <T extends Service>(serviceType: string): T | null => {
           if (serviceType === "CLOUD_AUTH") {
-            return mockAuth as unknown as T;
+            return mockAuth as T;
           }
           return original<T>(serviceType);
         };

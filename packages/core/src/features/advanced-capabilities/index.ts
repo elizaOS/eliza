@@ -94,7 +94,7 @@ export const advancedEvaluators = [
 	...postMessageActions.reflectionItems,
 	...postMessageActions.skillItems,
 	experiencePatternEvaluator,
-] as unknown as Evaluator[];
+] as Evaluator[];
 
 /**
  * Advanced services - extended service infrastructure
@@ -106,7 +106,7 @@ export const advancedServices: ServiceClass[] = [
 			const { ExperienceService } = await import("./experience/service.ts");
 			return ExperienceService.start(runtime);
 		},
-	} as unknown as ServiceClass,
+		} as unknown as ServiceClass,
 	{
 		serviceType: "CHARACTER_MANAGEMENT",
 		start: async (runtime: IAgentRuntime) => {
@@ -115,7 +115,7 @@ export const advancedServices: ServiceClass[] = [
 			);
 			return CharacterFileManager.start(runtime);
 		},
-	} as unknown as ServiceClass,
+		} as unknown as ServiceClass,
 ];
 
 /**

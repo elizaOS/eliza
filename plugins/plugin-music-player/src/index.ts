@@ -37,6 +37,11 @@ export type {
 } from "./services/smartMusicFetch";
 export { SmartMusicFetchService } from "./services/smartMusicFetch";
 
+interface DiscordMusicBridgeService {
+  clientReadyPromise?: Promise<void> | null;
+  voiceManager?: Parameters<MusicService["setVoiceManager"]>[0];
+}
+
 const musicPlayerPlugin: Plugin = {
   name: "music-player",
   description:
@@ -51,8 +56,9 @@ const musicPlayerPlugin: Plugin = {
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     // Don't block init - set up services after initialization completes
     runtime
-      .getServiceLoadPromise("discord" as any)
-      .then(async (discordService) => {
+      .getServiceLoadPromise("discord")
+      .then(async (service) => {
+        const discordService = service as DiscordMusicBridgeService | null;
         if (!discordService) {
           logger.warn(
             "Discord service not found - Music Player plugin will work in web-only mode",
@@ -61,16 +67,17 @@ const musicPlayerPlugin: Plugin = {
         }
 
         // Wait for Discord client to be ready before accessing voiceManager
-        if ((discordService as any).clientReadyPromise) {
+        if (discordService.clientReadyPromise) {
           logger.debug(
             "Music Player waiting for Discord client to be ready...",
           );
-          await (discordService as any).clientReadyPromise;
+          await discordService.clientReadyPromise;
         }
 
         runtime
-          .getServiceLoadPromise("music" as any)
-          .then((musicService: any) => {
+          .getServiceLoadPromise("music")
+          .then((service) => {
+            const musicService = service as MusicService | null;
             if (!musicService) {
               logger.warn(
                 "Music service not available - Music Player plugin initialization incomplete",
@@ -79,7 +86,7 @@ const musicPlayerPlugin: Plugin = {
             }
 
             // Initialize music service with voice manager from Discord service
-            const voiceManager = (discordService as any).voiceManager;
+            const voiceManager = discordService.voiceManager;
             if (voiceManager) {
               musicService.setVoiceManager(voiceManager);
               logger.debug(

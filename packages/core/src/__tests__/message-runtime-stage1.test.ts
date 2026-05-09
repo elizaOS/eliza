@@ -7,7 +7,7 @@ import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 
 function useModelCalls(runtime: IAgentRuntime): unknown[][] {
-	return (runtime.useModel as unknown as { mock: { calls: unknown[][] } }).mock
+	return (runtime.useModel as { mock: { calls: unknown[][] } }).mock
 		.calls;
 }
 
@@ -62,7 +62,7 @@ function makeRuntime(responses: unknown[]): IAgentRuntime {
 			error: vi.fn(),
 			trace: vi.fn(),
 		},
-	} as unknown as IAgentRuntime;
+	} as IAgentRuntime;
 }
 
 describe("runV5MessageRuntimeStage1", () => {
@@ -296,7 +296,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				contexts: ["documents"],
 				get: vi.fn(),
 			},
-		] as unknown as IAgentRuntime["providers"];
+		] as IAgentRuntime["providers"];
 
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
@@ -310,7 +310,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		});
 
 		expect(result.kind).toBe("planned_reply");
-		const composeState = runtime.composeState as unknown as {
+		const composeState = runtime.composeState as {
 			mock: { calls: unknown[][] };
 		};
 		expect(composeState.mock.calls).toHaveLength(1);
@@ -375,7 +375,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				validate: validateDenied,
 				handler: vi.fn(),
 			},
-		] as unknown as IAgentRuntime["actions"];
+		] as IAgentRuntime["actions"];
 
 		const result = await runV5MessageRuntimeStage1({
 			runtime,

@@ -608,6 +608,17 @@ function getServiceClassLabel(serviceClass: ServiceClass): string {
 	);
 }
 
+function isMessagingAdapter(
+	adapter: IDatabaseAdapter,
+): adapter is IDatabaseAdapter & IMessagingAdapter {
+	const candidate = adapter as Partial<IMessagingAdapter>;
+	return (
+		typeof candidate.createMessageServer === "function" &&
+		typeof candidate.createChannel === "function" &&
+		typeof candidate.createMessage === "function"
+	);
+}
+
 export class AgentRuntime implements IAgentRuntime {
 	#conversationLength = 100 as number;
 	readonly agentId: UUID;
@@ -1073,7 +1084,7 @@ export class AgentRuntime implements IAgentRuntime {
 		if (!hooks.length) {
 			return;
 		}
-		const runtime = this as unknown as IAgentRuntime;
+		const runtime: IAgentRuntime = this;
 		const roomId = pipelineHookMetricRoomId(ctx);
 
 		const runOne = async (entry: ResolvedPipelineHook) => {
@@ -1494,7 +1505,7 @@ export class AgentRuntime implements IAgentRuntime {
 					}
 				}
 			}
-			await pluginToRegister.init(config, this as unknown as IAgentRuntime);
+			await pluginToRegister.init(config, this);
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId, plugin: pluginToRegister.name },
 				"Plugin initialized",
@@ -2488,17 +2499,9 @@ export class AgentRuntime implements IAgentRuntime {
 	getMessagingAdapter(): IMessagingAdapter | null {
 		// Check if the adapter implements IMessagingAdapter interface
 		// by checking for presence of messaging-specific methods
-		if (
-			this.adapter &&
-			typeof (this.adapter as Partial<IMessagingAdapter>)
-				.createMessageServer === "function" &&
-			typeof (this.adapter as Partial<IMessagingAdapter>).createChannel ===
-				"function" &&
-			typeof (this.adapter as Partial<IMessagingAdapter>).createMessage ===
-				"function"
-		) {
-			return this.adapter as unknown as IMessagingAdapter;
-		}
+			if (this.adapter && isMessagingAdapter(this.adapter)) {
+				return this.adapter;
+			}
 		return null;
 	}
 
@@ -2685,7 +2688,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		setTrajectoryPurpose(mode === "ALWAYS_AFTER" ? "evaluation" : "hook");
 
-		const runtimeRef = this as unknown as IAgentRuntime;
+		const runtimeRef: IAgentRuntime = this;
 		const validated: Action[] = [];
 		await Promise.all(
 			candidates.map(async (action) => {
@@ -3215,7 +3218,7 @@ export class AgentRuntime implements IAgentRuntime {
 				const start = Date.now();
 				let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 				let timedOut = false;
-				const providerRuntime = this as unknown as IAgentRuntime;
+				const providerRuntime: IAgentRuntime = this;
 				try {
 					const result = await Promise.race([
 						withProviderStep(providerRuntime, provider.name, () =>
@@ -3458,9 +3461,7 @@ export class AgentRuntime implements IAgentRuntime {
 			return null;
 		}
 		try {
-			const serviceInstance = await serviceDef.start(
-				this as unknown as IAgentRuntime,
-			);
+			const serviceInstance = await serviceDef.start(this);
 			if (!serviceInstance) {
 				this.serviceRegistrationStatus.set(key, "failed");
 				return null;
@@ -3478,10 +3479,7 @@ export class AgentRuntime implements IAgentRuntime {
 				this.servicePromiseHandlers.delete(serviceType);
 			}
 			if (serviceDef.registerSendHandlers) {
-				serviceDef.registerSendHandlers(
-					this as unknown as IAgentRuntime,
-					serviceInstance,
-				);
+				serviceDef.registerSendHandlers(this, serviceInstance);
 			}
 			this.serviceRegistrationStatus.set(key, "registered");
 			return serviceInstance;
@@ -4174,13 +4172,13 @@ export class AgentRuntime implements IAgentRuntime {
 			// Include model settings from character configuration if available
 			const modelSettings = this.getModelSettings(requestedModelKey);
 
-			if (modelSettings) {
-				// Apply model settings if configured
-				modelParams = {
-					...modelSettings, // Apply model settings first (includes defaults and model-specific)
-					...(paramsClone as Record<string, JsonValue | object>), // Then apply specific params (allowing overrides)
-				} as unknown as ModelParamsMap[T];
-			} else {
+				if (modelSettings) {
+					// Apply model settings if configured
+					modelParams = {
+						...modelSettings, // Apply model settings first (includes defaults and model-specific)
+						...(paramsClone as Record<string, JsonValue | object>), // Then apply specific params (allowing overrides)
+					} as unknown as ModelParamsMap[T];
+				} else {
 				// No model settings configured, use params as-is
 				modelParams = paramsClone as ModelParamsMap[T];
 			}
@@ -4269,10 +4267,10 @@ export class AgentRuntime implements IAgentRuntime {
 			"Pre-model pipeline hook",
 		);
 
-		const rawResponse = await handler(
-			this as unknown as IAgentRuntime,
-			modelParams as Record<string, JsonValue | object>,
-		);
+			const rawResponse = await handler(
+				this,
+				modelParams as Record<string, JsonValue | object>,
+			);
 
 		const resultRef: { current: unknown } = { current: rawResponse };
 		const modelOutToTrajectoryString = (v: unknown) =>
@@ -6619,17 +6617,17 @@ ${section_end}`;
 			let paramsWithRuntime:
 				| EventPayloadMap[keyof EventPayloadMap]
 				| EventPayload = {
-				runtime: this as unknown as IAgentRuntime,
+				runtime: this,
 				source: "runtime",
 			};
 			if (typeof params === "object" && params && params !== null) {
 				const paramsObj = params as Record<string, JsonValue | object>;
-				paramsWithRuntime = {
-					...paramsObj,
-					runtime: this as unknown as IAgentRuntime,
-					source:
-						typeof paramsObj.source === "string" ? paramsObj.source : "runtime",
-				} as EventPayloadMap[keyof EventPayloadMap] | EventPayload;
+					paramsWithRuntime = {
+						...paramsObj,
+						runtime: this,
+						source:
+							typeof paramsObj.source === "string" ? paramsObj.source : "runtime",
+					} as EventPayloadMap[keyof EventPayloadMap] | EventPayload;
 			}
 			await Promise.all(
 				eventHandlers.map((handler) =>
@@ -8228,11 +8226,7 @@ ${section_end}`;
 			);
 			throw new Error(errorMsg);
 		}
-		const result = await handler(
-			this as unknown as IAgentRuntime,
-			target,
-			content,
-		);
+			const result = await handler(this, target, content);
 		return result as Memory | undefined;
 	}
 	async getMemoriesByWorldId(params: {

@@ -18,7 +18,6 @@ export type RuntimeActionLike = {
 	cacheStable?: boolean;
 	cacheScope?: string;
 	routingHint?: string;
-	[key: string]: unknown;
 };
 
 export type ActionCatalogWarningCode =

@@ -66,10 +66,10 @@ function makeRuntime(service: unknown): IAgentRuntime {
   };
   return {
     getSetting: ((key: string) =>
-      settings[key]) as unknown as IAgentRuntime["getSetting"],
-    useModel: (async () => "") as unknown as IAgentRuntime["useModel"],
-    getService: (() => service) as unknown as IAgentRuntime["getService"],
-  } as unknown as IAgentRuntime;
+      settings[key]) as IAgentRuntime["getSetting"],
+    useModel: (async () => "") as IAgentRuntime["useModel"],
+    getService: (() => service) as IAgentRuntime["getService"],
+  } as IAgentRuntime;
 }
 
 async function main(): Promise<void> {

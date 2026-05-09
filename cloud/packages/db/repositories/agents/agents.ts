@@ -120,6 +120,10 @@ export class AgentsRepository {
    * @throws Error if creation fails for reasons other than duplicate ID.
    */
   async create(agent: Partial<Agent>): Promise<boolean> {
+    if (!agent.name) {
+      throw new Error("[AgentsRepository] Cannot create agent without a name");
+    }
+
     // Check for existing agent with the same ID only (names can be duplicated)
     // Use the write connection so the duplicate check sees the latest row.
     if (agent.id) {
@@ -139,9 +143,10 @@ export class AgentsRepository {
 
     await dbWrite.insert(agentTable).values({
       ...agent,
+      name: agent.name,
       createdAt: toDate(agent.createdAt),
       updatedAt: toDate(agent.updatedAt),
-    });
+    } as typeof agentTable.$inferInsert);
 
     logger.debug("[AgentsRepository] Created agent", {
       agentId: agent.id,

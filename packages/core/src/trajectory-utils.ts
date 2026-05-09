@@ -220,7 +220,7 @@ function readContextObjectFromUnknown(value: unknown): ContextObject | null {
 	const version = record.version;
 	const id = record.id;
 	return {
-		...(record as unknown as Partial<ContextObject>),
+		...(record as Partial<ContextObject>),
 		id: typeof id === "string" && id.trim() ? id : "context-object",
 		version: typeof version === "string" ? version : "v5",
 		events: [...(record.events as ContextEvent[])],

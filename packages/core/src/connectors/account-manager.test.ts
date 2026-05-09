@@ -39,7 +39,7 @@ class TestRuntime {
 			(candidate) => candidate.source === target.source,
 		);
 		await connector?.sendHandler?.(
-			this as unknown as IAgentRuntime,
+			this as IAgentRuntime,
 			target,
 			content,
 		);
@@ -47,7 +47,7 @@ class TestRuntime {
 }
 
 function makeRuntime(adapter?: InMemoryDatabaseAdapter): IAgentRuntime {
-	return new TestRuntime(adapter) as unknown as IAgentRuntime;
+	return new TestRuntime(adapter) as IAgentRuntime;
 }
 
 function makeTarget(source: string): TargetInfo {

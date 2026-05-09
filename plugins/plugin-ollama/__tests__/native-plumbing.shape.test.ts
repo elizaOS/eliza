@@ -34,11 +34,17 @@ import { handleResponseHandler, handleTextLarge, handleTextSmall } from "../mode
 import { normalizeNativeTools } from "../utils/ai-sdk-wire";
 
 function createRuntime() {
-  return {
+  const runtime = {
     character: { system: "system prompt" },
     emitEvent: vi.fn(),
     getSetting: vi.fn(() => undefined),
-  } as unknown as IAgentRuntime;
+  };
+
+  return runtime as IAgentRuntime;
+}
+
+function expectGenerateTextResult(value: unknown): asserts value is GenerateTextResult {
+  expect(value).toEqual(expect.objectContaining({ text: expect.any(String) }));
 }
 
 function createFailingTextStream(message: string): AsyncIterable<string> {
@@ -73,10 +79,11 @@ describe("Ollama native text plumbing", () => {
       usage: { inputTokens: 1, outputTokens: 2 },
     });
 
-    const result = (await handleTextSmall(createRuntime(), {
+    const result = await handleTextSmall(createRuntime(), {
       prompt: "use a tool",
       tools: { lookup: { description: "Lookup", inputSchema: { type: "object" } } },
-    } as never)) as unknown as GenerateTextResult;
+    } as never);
+    expectGenerateTextResult(result);
 
     expect(generateTextMock).toHaveBeenCalledTimes(1);
     const callArg = generateTextMock.mock.calls[0][0] as Record<string, unknown>;
@@ -163,9 +170,10 @@ describe("Ollama native text plumbing", () => {
       usage: undefined,
     });
 
-    const result = (await handleTextSmall(createRuntime(), {
+    const result = await handleTextSmall(createRuntime(), {
       messages: [{ role: "user", content: "hi" }],
-    } as never)) as unknown as GenerateTextResult;
+    } as never);
+    expectGenerateTextResult(result);
 
     const callArg = generateTextMock.mock.calls[0][0] as Record<string, unknown>;
     expect(callArg.messages).toEqual([{ role: "user", content: "hi" }]);

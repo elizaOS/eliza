@@ -240,7 +240,7 @@ export class ConversationHarness {
     }
 
     const messageService = (
-      this.runtime as unknown as {
+      this.runtime as AgentRuntime & {
         messageService?: {
           handleMessage: (
             runtime: AgentRuntime,

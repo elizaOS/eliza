@@ -155,7 +155,7 @@ export async function handleStewardCompatRoutes(
     try {
       await stewardClient.setPolicies(
         agentId,
-        policies as unknown as import("@stwd/sdk").PolicyRule[],
+        policies as import("@stwd/sdk").PolicyRule[],
       );
       sendJsonResponse(res, 200, { ok: true });
     } catch (err) {

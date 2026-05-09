@@ -647,8 +647,7 @@ export function analyzePluginStateDrift(
 function buildPluginDriftDiagnostics(
   runtime: AgentRuntime | null,
 ): PluginDriftDiagnosticsReport {
-  const pluginList = buildPluginListResponse(runtime)
-    .plugins as unknown as CompatPluginRecord[];
+  const pluginList = buildPluginListResponse(runtime).plugins;
   const config = loadElizaConfig();
   const configRecord = config as Record<string, unknown>;
   const configEntries = config.plugins?.entries ?? {};

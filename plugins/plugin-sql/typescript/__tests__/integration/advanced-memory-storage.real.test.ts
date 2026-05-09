@@ -117,8 +117,8 @@ async function createConversationRoom(
     agentId: runtime.agentId,
     name: "Test World",
     metadata: {},
-    createdAt: new Date() as unknown as number,
-  };
+    createdAt: new Date(),
+  } as World & { createdAt: Date };
   await runtime.createWorld(world);
 
   const room: Room = {
@@ -129,8 +129,8 @@ async function createConversationRoom(
     type: "dm",
     name: "Test Room",
     metadata: {},
-    createdAt: new Date() as unknown as number,
-  };
+    createdAt: new Date(),
+  } as Room & { createdAt: Date };
   await runtime.createRooms([room]);
 
   return { roomId, worldId };
@@ -222,7 +222,7 @@ describe("plugin-sql advanced memory storage", () => {
 
     const memoryService = (await runtime.getServiceLoadPromise(
       "memory"
-    )) as unknown as RuntimeMemoryService;
+    )) as RuntimeMemoryService;
 
     const stored = await memoryService.storeLongTermMemory({
       agentId: runtime.agentId,
@@ -257,7 +257,7 @@ describe("plugin-sql advanced memory storage", () => {
 
     const memoryService = (await runtime.getServiceLoadPromise(
       "memory"
-    )) as unknown as RuntimeMemoryService;
+    )) as RuntimeMemoryService;
 
     await memoryService.storeSessionSummary({
       agentId: runtime.agentId,

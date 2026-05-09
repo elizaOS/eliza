@@ -11,6 +11,10 @@ import type {
 } from "../../types";
 import { executePlannedToolCall } from "../execute-planned-tool-call";
 
+type ExecuteToolCallTestRuntime = Pick<IAgentRuntime, "actions"> & {
+	logger: Pick<IAgentRuntime["logger"], "debug" | "warn" | "error">;
+};
+
 function makeAction(overrides: Partial<Action>): Action {
 	return {
 		name: "TEST_ACTION",
@@ -22,14 +26,15 @@ function makeAction(overrides: Partial<Action>): Action {
 }
 
 function makeRuntime(actions: Action[]): IAgentRuntime {
-	return {
+	const runtime: ExecuteToolCallTestRuntime = {
 		actions,
 		logger: {
 			debug: vi.fn(),
 			warn: vi.fn(),
 			error: vi.fn(),
 		},
-	} as unknown as IAgentRuntime;
+	};
+	return runtime as IAgentRuntime;
 }
 
 function makeMessage(): Memory {

@@ -14,7 +14,7 @@ import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Service } from "@elizaos/core";
 import {
   type CreateIssueOptions,
   CredentialService,
@@ -194,8 +194,8 @@ export class CodingWorkspaceService {
   }
 
   static async stopRuntime(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService("CODING_WORKSPACE_SERVICE") as unknown as
-      | CodingWorkspaceService
+    const service = runtime.getService("CODING_WORKSPACE_SERVICE") as
+      | (Service & CodingWorkspaceService)
       | undefined;
     if (service) {
       await service.stop();

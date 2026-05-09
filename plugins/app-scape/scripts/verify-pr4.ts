@@ -71,15 +71,15 @@ function mockRuntime(perception: PerceptionSnapshot | null): IAgentRuntime {
         executeAction: async () => ({ success: true, message: "mock" }),
         getStatus: () => "connected",
         getSpawnState: () => null,
-      } as unknown as ReturnType<IAgentRuntime["getService"]>;
+      } as ReturnType<IAgentRuntime["getService"]>;
     },
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 function makeDummyMemory(): Memory {
   return {
     content: { text: "action: WALK_TO\nx: 3225\nz: 3220" },
-  } as unknown as Memory;
+  } as Memory;
 }
 
 function makeSamplePerception(): PerceptionSnapshot {
@@ -174,7 +174,7 @@ async function main(): Promise<void> {
   // 4. walkTo validates against a runtime that has the service
   console.log("\n[4] walkTo.validate");
   const rtWith = mockRuntime(makeSamplePerception());
-  const rtWithout = { getService: () => null } as unknown as IAgentRuntime;
+  const rtWithout = { getService: () => null } as IAgentRuntime;
   assertTrue(
     "walkTo.validate(runtime with service) = true",
     (await walkTo.validate?.(rtWith, makeDummyMemory())) === true,

@@ -175,7 +175,7 @@ export class MessagingStore implements Store {
         LIMIT 1
       `);
 
-      const rows = (results.rows || results) as unknown as RawMessageServerRow[];
+      const rows = Array.isArray(results) ? results : results.rows;
       if (rows.length === 0) return null;
 
       const row = rows[0];

@@ -95,7 +95,7 @@ export class NeonConnectionManager {
         }
       }
 
-      return await callback(tx as unknown as NeonDatabase);
+      return await callback(tx as NeonDatabase);
     });
   }
 

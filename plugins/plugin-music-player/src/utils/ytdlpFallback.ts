@@ -16,6 +16,36 @@ import {
   YTDLP_STDERR_SNIPPET_LEN,
 } from "./ytdlpYoutube";
 
+interface YtdlpStreamError extends NodeJS.ErrnoException {
+  ageVerificationDetected?: boolean;
+  downloadBlocked?: boolean;
+  stderrBuffer?: string[];
+}
+
+function annotateYtdlpError(
+  error: Error,
+  details: Pick<
+    YtdlpStreamError,
+    "ageVerificationDetected" | "downloadBlocked" | "stderrBuffer"
+  > & { code?: number | string | null },
+): YtdlpStreamError {
+  const annotated = error as YtdlpStreamError;
+  annotated.code =
+    details.code !== null && details.code !== undefined
+      ? String(details.code)
+      : undefined;
+  annotated.stderrBuffer = details.stderrBuffer;
+  annotated.ageVerificationDetected = details.ageVerificationDetected;
+  annotated.downloadBlocked = details.downloadBlocked;
+  return annotated;
+}
+
+function getYtdlpErrorMetadata(error: unknown): Partial<YtdlpStreamError> {
+  return error && typeof error === "object"
+    ? (error as Partial<YtdlpStreamError>)
+    : {};
+}
+
 /**
  * Get YouTube cookies file path from environment or return null
  */
@@ -222,11 +252,14 @@ async function createYtdlpStreamWithFormat(
             const error = new Error(
               "Download completed but temp file not found",
             );
-            (error as any).code = code;
-            (error as any).stderrBuffer = stderrBuffer;
-            (error as any).ageVerificationDetected = ageVerificationDetected;
-            (error as any).downloadBlocked = downloadBlocked;
-            reject(error);
+            reject(
+              annotateYtdlpError(error, {
+                code,
+                stderrBuffer,
+                ageVerificationDetected,
+                downloadBlocked,
+              }),
+            );
             return;
           }
 
@@ -412,19 +445,22 @@ export async function createYtdlpStream(url: string): Promise<Readable> {
     );
     logger.debug(`[ytdlp] Successfully created stream with preferred format`);
     return result.stream;
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const ytdlpError = getYtdlpErrorMetadata(error);
     // Check if this is a format availability issue (not age restriction or region block)
-    const stderrOutput = (error.stderrBuffer || []).join("").toLowerCase();
+    const stderrOutput = (ytdlpError.stderrBuffer || [])
+      .join("")
+      .toLowerCase();
     const isFormatNotAvailable =
       stderrOutput.includes("requested format is not available") ||
       stderrOutput.includes("no suitable formats found");
     const isFormatIssue =
-      (error.code === 0 &&
-        !error.ageVerificationDetected &&
-        !error.downloadBlocked) ||
+      (ytdlpError.code === "0" &&
+        !ytdlpError.ageVerificationDetected &&
+        !ytdlpError.downloadBlocked) ||
       (isFormatNotAvailable &&
-        !error.ageVerificationDetected &&
-        !error.downloadBlocked);
+        !ytdlpError.ageVerificationDetected &&
+        !ytdlpError.downloadBlocked);
 
     if (isFormatIssue) {
       logger.info(
@@ -452,15 +488,18 @@ export async function createYtdlpStream(url: string): Promise<Readable> {
           `[ytdlp] Successfully created stream with permissive format`,
         );
         return result.stream;
-      } catch (retryError: any) {
+      } catch (retryError: unknown) {
+        const retryYtdlpError = getYtdlpErrorMetadata(retryError);
         // Both attempts failed - provide helpful error message
-        const stderrOutput = (retryError.stderrBuffer || []).join("").trim();
+        const stderrOutput = (retryYtdlpError.stderrBuffer || [])
+          .join("")
+          .trim();
         const stderrLower = stderrOutput.toLowerCase();
 
         let helpfulHint = "";
         if (
-          retryError.ageVerificationDetected ||
-          retryError.downloadBlocked ||
+          retryYtdlpError.ageVerificationDetected ||
+          retryYtdlpError.downloadBlocked ||
           stderrLower.includes("age verification") ||
           stderrLower.includes("restricted in your region") ||
           stderrLower.includes("sign in to confirm") ||
@@ -496,7 +535,7 @@ export async function createYtdlpStream(url: string): Promise<Readable> {
       }
     } else {
       // Complete block (age verification, etc.) - don't retry, just provide helpful message
-      const stderrOutput = (error.stderrBuffer || []).join("").trim();
+      const stderrOutput = (ytdlpError.stderrBuffer || []).join("").trim();
       const stderrLower = stderrOutput.toLowerCase();
 
       // Check if it's a format error that we somehow missed
@@ -514,8 +553,8 @@ export async function createYtdlpStream(url: string): Promise<Readable> {
           "- Videos with unusual encoding\n" +
           "Try again later or try a different video.";
       } else if (
-        error.ageVerificationDetected ||
-        error.downloadBlocked ||
+        ytdlpError.ageVerificationDetected ||
+        ytdlpError.downloadBlocked ||
         stderrLower.includes("age verification") ||
         stderrLower.includes("restricted in your region") ||
         stderrLower.includes("sign in to confirm") ||

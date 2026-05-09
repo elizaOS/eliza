@@ -29,7 +29,7 @@ function runtimeWithServices(services: Record<string, unknown>): IAgentRuntime {
         settings.set(key, value);
       }
     }),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 function connectorGrant(

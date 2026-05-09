@@ -32,7 +32,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-agent-skills",      // skill execution and marketplace runtime
   "@elizaos/plugin-commands",          // slash command handling
   "@elizaos/app-lifeops",             // LifeOps: tasks, goals, calendar, inbox
-  "@elizaos/plugin-browser-bridge",    // Chrome/Safari companion pairing
+  "@elizaos/plugin-browser",    // Chrome/Safari companion pairing
 ];
 ```
 

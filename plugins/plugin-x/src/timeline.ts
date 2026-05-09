@@ -557,7 +557,7 @@ ${tweet.text}`;
               tweetId,
               inReplyTo: tweet.id,
             },
-          } as unknown as Memory["metadata"],
+          } satisfies Memory["metadata"],
           createdAt: Date.now(),
         };
 
@@ -637,7 +637,7 @@ ${tweet.text}`;
                 tweetId: result.id,
                 inReplyTo: tweet.id,
               },
-            } as unknown as Memory["metadata"],
+            } satisfies Memory["metadata"],
             createdAt: Date.now(),
           };
 

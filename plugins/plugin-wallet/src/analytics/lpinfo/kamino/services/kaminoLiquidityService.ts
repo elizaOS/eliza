@@ -1075,7 +1075,7 @@ export class KaminoLiquidityService extends Service {
   static async stop(runtime: AgentRuntime): Promise<void> {
     const service = runtime.getService(
       "KAMINO_LIQUIDITY_SERVICE",
-    ) as unknown as KaminoLiquidityService;
+    ) as KaminoLiquidityService;
     if (service) {
       await service.stop();
     }

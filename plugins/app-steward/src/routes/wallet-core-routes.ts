@@ -20,7 +20,7 @@ import {
 import { readCompatJsonBody } from "@elizaos/app-core";
 import { sendJson, sendJsonError } from "@elizaos/app-core";
 import type { AgentRuntime } from "@elizaos/core";
-import { resolveWalletExportRejection } from "@elizaos/plugin-wallet/lib/server-wallet-trade";
+import { resolveWalletExportRejection } from "@elizaos/plugin-wallet";
 import {
   DEFAULT_WALLET_ROUTE_DEPENDENCIES,
   handleWalletRoutes,

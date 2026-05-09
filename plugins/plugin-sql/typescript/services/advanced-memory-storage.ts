@@ -221,8 +221,8 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
       metadata: {
         purpose: ADVANCED_MEMORY_SOURCE,
       },
-      createdAt: new Date() as unknown as number,
-    } as World;
+      createdAt: new Date(),
+    } as World & { createdAt: Date };
     await this.runtime.ensureWorldExists(world);
     return worldId;
   }
@@ -240,16 +240,16 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
         purpose: "long_term_memory",
         entityId,
       },
-      createdAt: new Date() as unknown as number,
-    } as Room;
+      createdAt: new Date(),
+    } as Room & { createdAt: Date };
     await this.runtime.ensureRoomExists(room);
     return roomId;
   }
 
   private async getEntityResolutionService(): Promise<EntityResolutionService | null> {
-    const existing = this.runtime.getService(
-      ENTITY_RESOLUTION_SERVICE
-    ) as unknown as EntityResolutionService | null;
+		const existing = this.runtime.getService(
+			ENTITY_RESOLUTION_SERVICE
+		) as unknown as EntityResolutionService | null;
     if (existing) {
       return existing;
     }
@@ -257,9 +257,9 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
       return null;
     }
     try {
-      return (await this.runtime.getServiceLoadPromise(
-        ENTITY_RESOLUTION_SERVICE
-      )) as unknown as EntityResolutionService;
+			return (await this.runtime.getServiceLoadPromise(
+				ENTITY_RESOLUTION_SERVICE
+			)) as unknown as EntityResolutionService;
     } catch {
       return null;
     }

@@ -9,7 +9,7 @@ export function describeIf(condition: boolean): DescribeFn {
 		return describe;
 	}
 
-	return ((_: string, __?: () => void) => {}) as unknown as DescribeFn;
+	return describe.skip;
 }
 
 export function itIf(condition: boolean): ItFn {
@@ -17,7 +17,7 @@ export function itIf(condition: boolean): ItFn {
 		return it;
 	}
 
-	return ((_: string, __?: () => void) => {}) as unknown as ItFn;
+	return it.skip;
 }
 
 export function testIf(condition: boolean): TestFn {
@@ -25,5 +25,5 @@ export function testIf(condition: boolean): TestFn {
 		return test;
 	}
 
-	return ((_: string, __?: () => void) => {}) as unknown as TestFn;
+	return test.skip;
 }

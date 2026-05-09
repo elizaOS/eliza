@@ -1,14 +1,53 @@
 import { describe, expect, test } from "bun:test";
-import { UsersRepository } from "@/db/repositories/users";
+import { UsersRepository, type UserWithOrganization } from "@/db/repositories/users";
+
+type FakeUserRow = {
+  id: string;
+  email: string;
+  organization_id: string;
+  whatsapp_id: string;
+  whatsapp_name: string;
+};
+
+type FakeOrganizationRow = {
+  id: string;
+  name: string;
+};
+
+type FakeDatabase = {
+  execute: () => Promise<never>;
+  select: (...args: unknown[]) => {
+    from: () => {
+      where: () => {
+        limit: () => Promise<FakeUserRow[]>;
+      };
+    };
+  };
+  query: {
+    users: {
+      findFirst: (args: unknown) => Promise<{ organization: FakeOrganizationRow }>;
+    };
+  };
+};
+
+type FindUserWithOrganizationById = (
+  this: UsersRepository,
+  database: FakeDatabase,
+  userId: string,
+) => Promise<UserWithOrganization | undefined>;
 
 describe("UsersRepository user lookup", () => {
   test("hydrates organizations from the canonical users row without schema probing", async () => {
-    const repository = new UsersRepository() as any;
+    const repository = new UsersRepository();
+    const findUserWithOrganizationById = Reflect.get(
+      repository,
+      "findUserWithOrganizationById",
+    ) as FindUserWithOrganizationById;
     const selectCalls: unknown[][] = [];
     let organizationLookupArgs: unknown;
     let executeCalled = false;
 
-    const fakeDatabase = {
+    const fakeDatabase: FakeDatabase = {
       execute: async () => {
         executeCalled = true;
         throw new Error("schema probes should not run");
@@ -46,7 +85,7 @@ describe("UsersRepository user lookup", () => {
       },
     };
 
-    const user = await repository.findUserWithOrganizationById(fakeDatabase, "user-1");
+    const user = await findUserWithOrganizationById.call(repository, fakeDatabase, "user-1");
 
     expect(executeCalled).toBe(false);
     expect(selectCalls).toEqual([[]]);

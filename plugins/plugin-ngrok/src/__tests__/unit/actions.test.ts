@@ -50,6 +50,7 @@ describe('Ngrok Actions - Validation and Error Handling', () => {
   let mockCallback: HandlerCallback;
   let mockMemory: Memory;
   let mockState: State;
+  let mockUseModel: ReturnType<typeof mock>;
 
   beforeEach(() => {
     mockTunnelService = new MockNgrokService({} as IAgentRuntime);
@@ -66,6 +67,7 @@ describe('Ngrok Actions - Validation and Error Handling', () => {
       provider: 'ngrok',
     });
 
+    mockUseModel = mock().mockResolvedValue('{"port": 8080}');
     mockRuntime = createMockRuntime({
       getService: mock().mockImplementation((name: string) => {
         if (name === 'tunnel' || name === 'ngrok-tunnel') {
@@ -73,7 +75,7 @@ describe('Ngrok Actions - Validation and Error Handling', () => {
         }
         return null;
       }),
-      useModel: mock().mockResolvedValue('{"port": 8080}'),
+      useModel: mockUseModel,
     });
 
     mockCallback = mock();
@@ -155,7 +157,7 @@ describe('Ngrok Actions - Validation and Error Handling', () => {
 
     it('should handle port extraction failure', async () => {
       mockMemory.content = { text: 'start tunnel' };
-      (mockRuntime.useModel as any).mockResolvedValue('invalid json');
+      mockUseModel.mockResolvedValue('invalid json');
       mockTunnelService.startTunnel.mockResolvedValue('https://test.ngrok.io');
 
       const result = await startTunnelAction.handler(

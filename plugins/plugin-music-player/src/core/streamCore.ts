@@ -17,6 +17,15 @@ export interface TrackMetadata {
   requestedBy?: string;
 }
 
+interface StreamCoreHandlers {
+  onEnd: () => void;
+  onError: (error: Error) => void;
+}
+
+type StreamCoreSource = Readable & {
+  _streamCoreHandlers?: StreamCoreHandlers;
+};
+
 /**
  * StreamCore - The heart of the audio broadcast system
  *
@@ -135,7 +144,7 @@ export class StreamCore extends EventEmitter {
     media.on("close", onEnd);
 
     // Store handlers for cleanup
-    (media as any)._streamCoreHandlers = { onError, onEnd };
+    (media as StreamCoreSource)._streamCoreHandlers = { onError, onEnd };
   }
 
   /**

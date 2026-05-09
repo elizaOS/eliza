@@ -12,7 +12,7 @@ function createRuntime() {
       };
       return settings[key] ?? null;
     }),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 afterEach(() => {
@@ -63,7 +63,7 @@ describe("xAI native text plumbing", () => {
     const result = (await handleTextSmall(createRuntime(), {
       prompt: "use the tool",
       tools,
-    } as never)) as unknown as Record<string, unknown>;
+    } as never)) as Record<string, unknown>;
 
     const requestBody = JSON.parse(
       fetchMock.mock.calls[0]?.[1]?.body as string,

@@ -542,7 +542,7 @@ export async function runCoordinatorPreflight(options?: {
       `channel-${readiness.channel}`,
       readiness.available ? "pass" : readiness.configured ? "fail" : "warn",
       readiness.reason,
-      readiness as unknown as Record<string, unknown>,
+      readiness as Record<string, unknown>,
     );
   }
 

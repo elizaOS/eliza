@@ -484,7 +484,8 @@ export async function initStewardWalletCache(): Promise<void> {
       };
     };
 
-    const agent = body.data ?? (body as unknown as typeof body.data);
+    const agent =
+      body.data ?? (body as unknown as NonNullable<typeof body.data>);
     const stewardEvm =
       agent?.walletAddresses?.evm?.trim() ||
       agent?.walletAddress?.trim() ||
@@ -674,7 +675,8 @@ export async function getWalletAddressesWithSteward(): Promise<
       };
     };
 
-    const agent = body.data ?? (body as unknown as typeof body.data);
+    const agent =
+      body.data ?? (body as unknown as NonNullable<typeof body.data>);
     const stewardEvm =
       agent?.walletAddresses?.evm?.trim() ||
       agent?.walletAddress?.trim() ||

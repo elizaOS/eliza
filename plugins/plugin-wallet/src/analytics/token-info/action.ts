@@ -49,13 +49,13 @@ function unavailable(
   data: Record<string, unknown>,
 ): ActionResult {
   const dataAsContent =
-    data as unknown as Parameters<HandlerCallback>[0]["data"];
+    data as Parameters<HandlerCallback>[0]["data"];
   callback?.({ text, actions: ["TOKEN_INFO"], data: dataAsContent });
   return {
     success: false,
     text,
     error: String(data.error ?? "TOKEN_INFO_UNAVAILABLE"),
-    data: data as unknown as ActionResult["data"],
+    data: data as ActionResult["data"],
   };
 }
 

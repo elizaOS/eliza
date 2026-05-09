@@ -17,6 +17,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import * as sdk from "matrix-js-sdk";
+import type { RoomMessageEventContent } from "matrix-js-sdk/lib/@types/events";
 import {
   DEFAULT_MATRIX_ACCOUNT_ID,
   listMatrixAccountIds,
@@ -727,8 +728,20 @@ export class MatrixService extends Service implements IMatrixService {
     }
 
     // Build content
-    const content: Record<string, unknown> = {
-      msgtype: "m.text",
+    const content: {
+      body: string;
+      format?: "org.matrix.custom.html";
+      formatted_body?: string;
+      msgtype: sdk.MsgType.Text;
+      "m.relates_to"?: {
+        event_id?: string;
+        rel_type?: sdk.RelationType.Thread;
+        "m.in_reply_to"?: {
+          event_id: string;
+        };
+      };
+    } = {
+      msgtype: sdk.MsgType.Text,
       body: text,
     };
 
@@ -742,24 +755,20 @@ export class MatrixService extends Service implements IMatrixService {
       content["m.relates_to"] = {};
 
       if (options.threadId) {
-        (content["m.relates_to"] as Record<string, unknown>).rel_type = "m.thread";
-        (content["m.relates_to"] as Record<string, unknown>).event_id = options.threadId;
+        content["m.relates_to"].rel_type = sdk.RelationType.Thread;
+        content["m.relates_to"].event_id = options.threadId;
       }
 
       if (options.replyTo) {
-        (content["m.relates_to"] as Record<string, unknown>)["m.in_reply_to"] = {
+        content["m.relates_to"]["m.in_reply_to"] = {
           event_id: options.replyTo,
         };
       }
     }
 
-    // sendMessage's content parameter is typed RoomMessageEventContent, which is
-    // not re-exported from matrix-js-sdk's main barrel. The runtime check is the
-    // structural shape of `content` (msgtype + body); skip the unreachable type.
     const response = await state.client.sendMessage(
       resolvedRoomId,
-      // biome-ignore lint/suspicious/noExplicitAny: type not exported from main entry
-      content as any
+      content as RoomMessageEventContent
     );
     const eventId = response.event_id;
 

@@ -17,6 +17,7 @@ import {
 	ChannelType,
 	type Content,
 	createUniqueUuid,
+	type EventPayload,
 	EventType,
 	type HandlerCallback,
 	logger,
@@ -40,7 +41,7 @@ import prism from "prism-media";
 // Key point: Discord snowflake IDs (e.g., "1253563208833433701") are NOT valid UUIDs.
 // Use stringToUuid() to convert them, not asUUID() which would throw an error.
 import type { ICompatRuntime } from "./compat";
-import type { DiscordService } from "./service";
+import type { IDiscordService } from "./types";
 import { getMessageService, normalizeDiscordMessageText } from "./utils";
 
 // These values are chosen for compatibility with picovoice components
@@ -287,10 +288,13 @@ export class VoiceManager extends EventEmitter {
 	/**
 	 * Constructor for initializing a new instance of the class.
 	 *
-	 * @param {DiscordService} service - The Discord service to use.
+	 * @param {IDiscordService} service - The Discord service to use.
 	 * @param {ICompatRuntime} runtime - The runtime for the agent (with cross-core compat).
 	 */
-	constructor(service: DiscordService, runtime: ICompatRuntime) {
+	constructor(
+		service: Pick<IDiscordService, "accountId" | "client">,
+		runtime: ICompatRuntime,
+	) {
 		super();
 		this.client = service.client;
 		this.runtime = runtime;
@@ -1291,13 +1295,18 @@ export class VoiceManager extends EventEmitter {
 					{ src: "plugin:discord:voice", agentId: this.runtime.agentId },
 					"Using event-based handling for voice",
 				);
-				await this.runtime.emitEvent([EventType.VOICE_MESSAGE_RECEIVED], {
+				const payload: EventPayload & {
+					message: Memory;
+					callback: HandlerCallback;
+					accountId: string;
+				} = {
 					runtime: this.runtime,
 					message: memory,
 					callback,
 					source: "discord",
 					accountId: this.accountId,
-				} as any);
+				};
+				await this.runtime.emitEvent([EventType.VOICE_MESSAGE_RECEIVED], payload);
 			}
 		} catch (error) {
 			this.runtime.logger.error(

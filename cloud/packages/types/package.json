@@ -9,7 +9,6 @@
     "./cloud-api": "./cloud-api.ts",
     "./cloud-worker-env": "./cloud-worker-env.ts",
     "./global": "./global.d.ts",
-    "./plugin-sql": "./plugin-sql.d.ts",
     "./stripe-queue-message": "./stripe-queue-message.ts"
   },
   "scripts": {

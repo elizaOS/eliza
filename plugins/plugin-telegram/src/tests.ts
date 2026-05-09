@@ -201,7 +201,7 @@ export class TelegramTestSuite implements TestSuite {
           text: `@${this.bot.botInfo?.username}! Hello!`,
           date: Math.floor(Date.now() / 1000),
           chat,
-        } as unknown as Context["message"],
+        } as Context["message"],
         telegram: this.bot.telegram,
       };
 

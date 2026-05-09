@@ -129,10 +129,10 @@ export class SecretsService extends Service {
 			logger.info(`[SecretsService] Migrated ${migrated} legacy env vars`);
 		}
 
-		const isSandboxMode = Boolean(
-			this.runtime &&
-				(this.runtime as unknown as Record<string, unknown>).sandboxMode,
-		);
+			const isSandboxMode = Boolean(
+				this.runtime &&
+					(this.runtime as unknown as Record<string, unknown>).sandboxMode,
+			);
 		this.mirrorSecretsToProcessEnv =
 			!isSandboxMode &&
 			["1", "true", "yes", "on"].includes(

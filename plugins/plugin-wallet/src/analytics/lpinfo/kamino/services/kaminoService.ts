@@ -712,7 +712,7 @@ export class KaminoService extends Service {
   static async stop(runtime: IAgentRuntime): Promise<void> {
     const service = runtime.getService(
       "KAMINO_SERVICE",
-    ) as unknown as KaminoService;
+    ) as KaminoService;
     if (service) {
       await service.stop();
     }

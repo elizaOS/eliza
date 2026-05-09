@@ -23,6 +23,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { Trajectory } from "@elizaos/agent";
 import {
   type AnonymizerLookup,
   applyPrivacyFilter,
@@ -57,8 +58,10 @@ interface TrajectoryServiceLike {
   listTrajectories: (options: {
     limit?: number;
   }) => Promise<{ trajectories: Array<{ id: string }> }>;
-  getTrajectoryDetail: (id: string) => Promise<FilterableTrajectory | null>;
+  getTrajectoryDetail: (id: string) => Promise<ExportableTrajectory | null>;
 }
+
+type ExportableTrajectory = Trajectory & FilterableTrajectory;
 
 export type TriggerSource = "threshold" | "cron" | "manual";
 
@@ -503,7 +506,7 @@ export async function triggerTraining(
 
   const limit = options.trajectoryLimit ?? 500;
   const list = await trajectoryService.listTrajectories({ limit });
-  const trajectories: FilterableTrajectory[] = [];
+  const trajectories: ExportableTrajectory[] = [];
   for (const item of list.trajectories ?? []) {
     const detail = await trajectoryService.getTrajectoryDetail(item.id);
     if (detail) trajectories.push(detail);

@@ -27,9 +27,36 @@ interface DetectedMusicEntity {
   type: "song" | "artist" | "album" | string;
 }
 
+interface LibraryTrack {
+  url: string;
+  title: string;
+  duration?: number;
+  playCount?: number;
+}
+
+interface SpotifyTrackInfo {
+  name?: string;
+  artists?: { name: string }[];
+}
+
+interface SpotifyClientLike {
+  isConfigured?: () => boolean;
+  getTrack?: (trackId: string) => Promise<SpotifyTrackInfo | null>;
+}
+
 interface MusicLibraryLookupService {
-  detectEntities(text: string): Promise<DetectedMusicEntity[] | null>;
-  searchYouTube(
+  addSong?(song: {
+    url: string;
+    title: string;
+    duration?: number;
+    requestedBy?: string;
+  }): Promise<unknown>;
+  detectEntities?(text: string): Promise<DetectedMusicEntity[] | null>;
+  getLastPlayedSong?(): Promise<LibraryTrack | null>;
+  getSong?(url: string): Promise<LibraryTrack | null>;
+  getSongByUrl?(url: string): Promise<LibraryTrack | null>;
+  searchLibrary?(query: string, limit?: number): Promise<LibraryTrack[]>;
+  searchYouTube?(
     query: string,
     options?: { limit?: number; includeShorts?: boolean },
   ): Promise<
@@ -41,6 +68,13 @@ interface MusicLibraryLookupService {
       views?: number;
     }>
   >;
+  spotifyClient?: SpotifyClientLike;
+  trackTrackRequest?(
+    entityId: string,
+    track: { url: string; title: string },
+    roomId?: string,
+    worldId?: string,
+  ): Promise<void>;
 }
 
 interface BaseGuildVoiceChannel {
@@ -673,11 +707,10 @@ export const playAudio: Action = {
       if (urlResult.isSpotify && urlResult.spotifyInfo) {
         try {
           // Try to get track info from Spotify API if available
-          const musicLibrary = runtime.getService("musicLibrary") as any;
-          let spotifyTrackInfo: {
-            name?: string;
-            artists?: { name: string }[];
-          } | null = null;
+          const musicLibrary = runtime.getService(
+            "musicLibrary",
+          ) as MusicLibraryLookupService | null;
+          let spotifyTrackInfo: SpotifyTrackInfo | null = null;
 
           if (musicLibrary?.spotifyClient) {
             const spotifyClient = musicLibrary.spotifyClient;
@@ -727,7 +760,9 @@ export const playAudio: Action = {
         if (isPronounReference(messageText)) {
           // Try to get the last played song from music library (if available)
           try {
-            const musicLibrary = runtime.getService("musicLibrary") as any;
+            const musicLibrary = runtime.getService(
+              "musicLibrary",
+            ) as MusicLibraryLookupService | null;
             if (musicLibrary?.getLastPlayedSong) {
               const lastSong = await musicLibrary.getLastPlayedSong();
               if (lastSong) {
@@ -789,7 +824,9 @@ export const playAudio: Action = {
       if (!audioUrl && searchQuery) {
         // Step 1: Check local music library first
         try {
-          const musicLibrary = runtime.getService("musicLibrary") as any;
+          const musicLibrary = runtime.getService(
+            "musicLibrary",
+          ) as MusicLibraryLookupService | null;
           if (musicLibrary?.searchLibrary) {
             logger.debug(`Searching local music library for: ${searchQuery}`);
             const libraryResults = await musicLibrary.searchLibrary(
@@ -884,10 +921,13 @@ export const playAudio: Action = {
       if (audioUrl && !videoDuration) {
         // First, check if we have this URL in our music library
         try {
-          const musicLibrary = runtime.getService("musicLibrary") as any;
-          if (musicLibrary?.getSongByUrl) {
+          const musicLibrary = runtime.getService(
+            "musicLibrary",
+          ) as MusicLibraryLookupService | null;
+          const getSongByUrl = musicLibrary?.getSongByUrl ?? musicLibrary?.getSong;
+          if (musicLibrary && getSongByUrl) {
             logger.debug(`Checking library for URL: ${audioUrl}`);
-            const libraryTrack = await musicLibrary.getSongByUrl(audioUrl);
+            const libraryTrack = await getSongByUrl.call(musicLibrary, audioUrl);
 
             if (libraryTrack) {
               // Found in library! Use cached info
@@ -1174,7 +1214,9 @@ export const playAudio: Action = {
 
       // Track the request in user preferences (background)
       try {
-        const musicLibrary = runtime.getService("musicLibrary") as any;
+        const musicLibrary = runtime.getService(
+          "musicLibrary",
+        ) as MusicLibraryLookupService | null;
         if (musicLibrary?.trackTrackRequest) {
           musicLibrary
             .trackTrackRequest(
@@ -1196,7 +1238,9 @@ export const playAudio: Action = {
 
       // Save to global music library for future reference (background)
       try {
-        const musicLibrary = runtime.getService("musicLibrary") as any;
+        const musicLibrary = runtime.getService(
+          "musicLibrary",
+        ) as MusicLibraryLookupService | null;
         logger.info(
           `[PlayAudio] Music library service: ${musicLibrary ? "found" : "NOT FOUND"}`,
         );

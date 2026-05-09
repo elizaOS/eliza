@@ -270,7 +270,7 @@ export const Server = makeStub("Server");
 // node:module — some dependencies import `createRequire`; real createRequire is
 // meaningless in the browser; stub so the bundle resolves.
 export const createRequire = (_url?: string | URL): ((id: string) => unknown) =>
-  makeStub("createRequire.require") as unknown as (id: string) => unknown;
+  makeStub("createRequire.require");
 export const builtinModules: string[] = [];
 export const isBuiltin = () => false;
 export const Module = class {};

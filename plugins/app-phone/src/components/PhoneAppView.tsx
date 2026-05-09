@@ -135,7 +135,7 @@ async function loadContactsModule(): Promise<ContactsModule | null> {
   try {
     const mod = (await import(
       /* @vite-ignore */ specifier
-    )) as unknown as ContactsModule;
+    )) as ContactsModule;
     if (mod && typeof mod.Contacts?.listContacts === "function") {
       return mod;
     }

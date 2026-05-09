@@ -20,7 +20,7 @@ import { logger } from "@elizaos/core";
 import {
   canUseLocalTradeExecution as _canUseLocalTradeExecution,
   resolveTradePermissionMode as _resolveTradePermissionMode,
-} from "@elizaos/plugin-wallet/lib/server-wallet-trade";
+} from "@elizaos/plugin-wallet";
 import { type PolicyResult, StewardApiError } from "@stwd/sdk";
 import { ethers } from "ethers";
 import {

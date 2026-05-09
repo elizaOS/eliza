@@ -52,10 +52,7 @@
       "@elizaos/cloud-types/cloud-api": ["./packages/types/cloud-api.ts"],
       "@elizaos/cloud-types/cloud-worker-env": ["./packages/types/cloud-worker-env.ts"],
       "@elizaos/cloud-types/global": ["./packages/types/global.d.ts"],
-      "@elizaos/cloud-types/plugin-sql": ["./packages/types/plugin-sql.d.ts"],
-      "@elizaos/cloud-types/stripe-queue-message": [
-        "./packages/types/stripe-queue-message.ts"
-      ],
+      "@elizaos/cloud-types/stripe-queue-message": ["./packages/types/stripe-queue-message.ts"],
       "@elizaos/cloud-ui": ["./packages/ui/src/index.ts"],
       "@elizaos/cloud-ui/*": ["./packages/ui/src/*"]
     }

@@ -166,7 +166,7 @@ describe("RLM trajectory wrapping", () => {
       ),
       getSetting: vi.fn(),
       rlmConfig: { backend: "gemini" },
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime & { rlmConfig: { backend: "gemini" } };
     const handler = rlmPlugin.models?.[ModelType.TEXT_LARGE];
     expect(handler).toBeDefined();
 

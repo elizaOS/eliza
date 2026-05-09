@@ -81,12 +81,16 @@ async function attachVisibleScreenshot(
 
 async function installClosingWebSocket(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    class ClosingWebSocket extends EventTarget {
+    class ClosingWebSocket extends EventTarget implements WebSocket {
       static readonly CONNECTING = 0;
       static readonly OPEN = 1;
       static readonly CLOSING = 2;
       static readonly CLOSED = 3;
 
+      readonly CONNECTING = ClosingWebSocket.CONNECTING;
+      readonly OPEN = ClosingWebSocket.OPEN;
+      readonly CLOSING = ClosingWebSocket.CLOSING;
+      readonly CLOSED = ClosingWebSocket.CLOSED;
       readonly extensions = "";
       readonly protocol = "";
       readonly url: string;
@@ -98,7 +102,7 @@ async function installClosingWebSocket(page: Page): Promise<void> {
       onopen: ((this: WebSocket, ev: Event) => unknown) | null = null;
       readyState = ClosingWebSocket.CONNECTING;
 
-      constructor(url: string | URL) {
+      constructor(url: string | URL, _protocols?: string | string[]) {
         super();
         this.url = String(url);
         window.setTimeout(() => this.closeFromBackend(), 0);
@@ -108,7 +112,7 @@ async function installClosingWebSocket(page: Page): Promise<void> {
         this.closeFromBackend(code, reason, true);
       }
 
-      send(_data: unknown): void {}
+      send(_data: string | ArrayBufferLike | Blob | ArrayBufferView): void {}
 
       private closeFromBackend(
         code = 1001,
@@ -118,14 +122,16 @@ async function installClosingWebSocket(page: Page): Promise<void> {
         if (this.readyState === ClosingWebSocket.CLOSED) return;
         this.readyState = ClosingWebSocket.CLOSED;
         const event = new CloseEvent("close", { code, reason, wasClean });
-        this.onclose?.call(this as unknown as WebSocket, event);
+        this.onclose?.call(this, event);
         this.dispatchEvent(event);
       }
     }
 
+    const WebSocketCtor: typeof WebSocket = ClosingWebSocket;
+
     Object.defineProperty(window, "WebSocket", {
       configurable: true,
-      value: ClosingWebSocket as unknown as typeof WebSocket,
+      value: WebSocketCtor,
       writable: true,
     });
   });

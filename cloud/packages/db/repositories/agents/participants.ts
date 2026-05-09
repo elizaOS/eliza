@@ -36,7 +36,7 @@ export class ParticipantsRepository {
       .from(participantTable)
       .where(eq(participantTable.roomId, roomId));
 
-    return results as Participant[];
+    return results as unknown as Participant[];
   }
 
   /**
@@ -50,7 +50,9 @@ export class ParticipantsRepository {
       .from(participantTable)
       .where(eq(participantTable.entityId, entityId));
 
-    return results.map((r) => r.roomId);
+    return results
+      .map((r) => r.roomId)
+      .filter((roomId): roomId is string => typeof roomId === "string");
   }
 
   /**
@@ -71,6 +73,7 @@ export class ParticipantsRepository {
 
     const map = new Map<string, string[]>();
     for (const result of results) {
+      if (!result.entityId || !result.roomId) continue;
       const existing = map.get(result.entityId) || [];
       existing.push(result.roomId);
       map.set(result.entityId, existing);
@@ -113,7 +116,9 @@ export class ParticipantsRepository {
       .from(participantTable)
       .where(eq(participantTable.roomId, roomId));
 
-    return results.map((r) => r.entityId);
+    return results
+      .map((r) => r.entityId)
+      .filter((entityId): entityId is string => typeof entityId === "string");
   }
 
   // ============================================================================
@@ -141,7 +146,7 @@ export class ParticipantsRepository {
           ),
         )
         .limit(1);
-      return existing[0] as Participant;
+      return existing[0] as unknown as Participant;
     }
 
     const results = await dbWrite
@@ -150,12 +155,12 @@ export class ParticipantsRepository {
         roomId: input.roomId,
         entityId: input.entityId,
         agentId: input.agentId,
-        roomState: input.roomState,
+        roomState: input.roomState ? JSON.stringify(input.roomState) : undefined,
         createdAt: new Date(),
       })
       .returning();
 
-    return (results as Participant[])[0];
+    return (results as unknown as Participant[])[0];
   }
 
   /**
@@ -196,11 +201,11 @@ export class ParticipantsRepository {
   ): Promise<Participant> {
     const results = await dbWrite
       .update(participantTable)
-      .set({ roomState })
+      .set({ roomState: JSON.stringify(roomState) })
       .where(and(eq(participantTable.roomId, roomId), eq(participantTable.entityId, entityId)))
       .returning();
 
-    return (results as Participant[])[0];
+    return (results as unknown as Participant[])[0];
   }
 }
 

@@ -144,8 +144,8 @@ export default defineConfig(({ mode }) => {
         // crypto graph to bundle as a single deterministic chunk.
         { find: /^inherits$/, replacement: r("./src/shims/inherits.cjs") },
         // Real Buffer polyfill — Solana wallet adapters, viem, ethers, base64
-        // helpers all depend on Buffer. Stubbing it throws at runtime as soon
-        // if a browser-reachable code path constructs a Buffer.
+        // helpers all depend on Buffer. Stubbing it throws at runtime when a
+        // browser-reachable code path constructs a Buffer.
         { find: /^(node:)?buffer$/, replacement: "buffer" },
         // Real process shim — many libs read `process.env.NODE_ENV`,
         // `process.browser`, or call `process.nextTick(...)`. The empty stub

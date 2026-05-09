@@ -122,6 +122,7 @@ export class DashboardRepository {
         .groupBy(memoryTable.roomId);
 
       for (const row of groupedRows) {
+        if (!row.roomId) continue;
         const characterId = characterByRoom.get(row.roomId);
         if (!characterId) continue;
         const current = messageStatsByCharacter.get(characterId) ?? {

@@ -281,13 +281,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return worldData;
   }
 
-  private mapWorldResult(world: unknown): World {
-    const mappedWorld = world as Record<string, unknown>;
-    return {
-      ...mappedWorld,
-      serverId: (mappedWorld.messageServerId || mappedWorld.serverId) as UUID,
-    } as unknown as World;
-  }
+	private mapWorldResult(world: unknown): World {
+		const mappedWorld = world as Record<string, unknown>;
+		return {
+			...mappedWorld,
+			serverId: (mappedWorld.messageServerId || mappedWorld.serverId) as UUID,
+		} as unknown as World;
+	}
 
   /**
    * Executes the given operation with retry logic.
@@ -408,11 +408,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         username: row.username || "",
         id: row.id as UUID,
         system: !row.system ? undefined : row.system,
-        bio: bioValue as string | string[],
-        createdAt: row.createdAt.getTime(),
-        updatedAt: row.updatedAt.getTime(),
-      } as unknown as Agent;
-    });
+			bio: bioValue as string | string[],
+			createdAt: row.createdAt.getTime(),
+			updatedAt: row.updatedAt.getTime(),
+		} as unknown as Agent;
+	});
   }
 
   /**
@@ -455,11 +455,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           username: row.username || "",
           id: row.id as UUID,
           system: !row.system ? undefined : row.system,
-          bio: bioValue as string | string[],
-          createdAt: row.createdAt.getTime(),
-          updatedAt: row.updatedAt.getTime(),
-        } as unknown as Agent;
-      });
+			bio: bioValue as string | string[],
+			createdAt: row.createdAt.getTime(),
+			updatedAt: row.updatedAt.getTime(),
+		} as unknown as Agent;
+	});
     });
   }
 
@@ -571,11 +571,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           };
           const sanitizedAgentData = Object.fromEntries(
             Object.entries(agentData).filter(([, value]) => value !== undefined)
-          ) as typeof agentData;
+          ) as typeof agentTable.$inferInsert;
 
-          await tx
-            .insert(agentTable)
-            .values(sanitizedAgentData as unknown as typeof agentTable.$inferInsert);
+          await tx.insert(agentTable).values(sanitizedAgentData);
         });
 
         return true;
@@ -2020,12 +2018,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           errors: 0,
           evaluators: 0,
         };
-        // Cast through unknown to bridge the core type (without $typeName) to proto type (with $typeName)
-        run.counts = counts as unknown as typeof run.counts;
+        run.counts = counts;
       }
 
       return {
-        runs: limitedRuns as unknown as import("@elizaos/core").AgentRunSummary[],
+        runs: limitedRuns,
         total,
         hasMore,
       } as AgentRunSummaryResult;
@@ -4492,7 +4489,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<T> {
     // Delegate to the callback with this adapter as the transaction context.
     // True DB-level transactions are handled by drizzle's this.db.transaction() in individual methods.
-    return callback(this as unknown as IDatabaseAdapter<DrizzleDatabase>);
+    return callback(this as IDatabaseAdapter<DrizzleDatabase>);
   }
 
   // ── Component batch methods ───────────────────────────────────────────

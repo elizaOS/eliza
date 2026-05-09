@@ -18,6 +18,13 @@ export type LookupFn = (
 	options: { all: true },
 ) => Promise<LookupAddress[]>;
 
+export type LookupOptions = number | { all?: boolean; family?: number };
+
+export type PinnedLookup = {
+	(hostname: string, callback: LookupCallback): void;
+	(hostname: string, options: LookupOptions, callback: LookupCallback): void;
+};
+
 export class SsrfBlockedError extends Error {
 	constructor(message: string) {
 		super(message);
@@ -191,30 +198,22 @@ export function isBlockedHostname(hostname: string): boolean {
 export function createPinnedLookup(params: {
 	hostname: string;
 	addresses: string[];
-	fallback?: unknown;
-}): unknown {
+	fallback?: PinnedLookup;
+}): PinnedLookup {
 	const normalizedHost = normalizeHostname(params.hostname);
 	const fallback = params.fallback;
-	const fallbackLookup = fallback as unknown as (
-		hostname: string,
-		callback: LookupCallback,
-	) => void;
-	const fallbackWithOptions = fallback as unknown as (
-		hostname: string,
-		options: unknown,
-		callback: LookupCallback,
-	) => void;
 	const records = params.addresses.map((address) => ({
 		address,
 		family: address.includes(":") ? 6 : 4,
 	}));
 	let index = 0;
 
-	return ((host: string, options?: unknown, callback?: unknown) => {
-		const cb: LookupCallback =
-			typeof options === "function"
-				? (options as LookupCallback)
-				: (callback as LookupCallback);
+	const lookup: PinnedLookup = (
+		host: string,
+		options?: LookupOptions | LookupCallback,
+		callback?: LookupCallback,
+	) => {
+		const cb = typeof options === "function" ? options : callback;
 		if (!cb) {
 			return;
 		}
@@ -222,17 +221,15 @@ export function createPinnedLookup(params: {
 		if (!normalized || normalized !== normalizedHost) {
 			if (fallback) {
 				if (typeof options === "function" || options === undefined) {
-					return fallbackLookup(host, cb);
+					return fallback(host, cb);
 				}
-				return fallbackWithOptions(host, options, cb);
+				return fallback(host, options, cb);
 			}
 			throw new Error("DNS Context restricted: fallback missing.");
 		}
 
 		const opts =
-			typeof options === "object" && options !== null
-				? (options as { all?: boolean; family?: number })
-				: {};
+			typeof options === "object" && options !== null ? options : {};
 		const requestedFamily =
 			typeof options === "number"
 				? options
@@ -245,13 +242,15 @@ export function createPinnedLookup(params: {
 				: records;
 		const usable = candidates.length > 0 ? candidates : records;
 		if (opts.all) {
-			cb(null, usable as LookupAddress[]);
+			cb(null, usable);
 			return;
 		}
 		const chosen = usable[index % usable.length];
 		index += 1;
 		cb(null, chosen.address, chosen.family);
-	}) as unknown;
+	};
+
+	return lookup;
 }
 
 export type PinnedHostname = {

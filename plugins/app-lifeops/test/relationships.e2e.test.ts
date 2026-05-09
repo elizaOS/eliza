@@ -28,7 +28,7 @@ const AGENT_ID = "lifeops-relationships-agent";
 
 function makeMessage(runtime: IAgentRuntime, text: string) {
   return {
-    id: `msg-${Math.random()}` as unknown as string,
+    id: `msg-${Math.random()}` as string,
     entityId: runtime.agentId,
     roomId: runtime.agentId,
     content: { text },
@@ -158,7 +158,7 @@ describe("relationships handler — real PGLite", () => {
       async () => {},
     );
     expect(result?.success).toBe(true);
-    const data = (result as unknown as { data?: { contacts?: unknown[] } })
+    const data = (result as { data?: { contacts?: unknown[] } })
       .data;
     expect(Array.isArray(data?.contacts)).toBe(true);
   });
@@ -180,7 +180,7 @@ describe("relationships handler — real PGLite", () => {
     );
     expect(result?.success).toBe(true);
     const data = (
-      result as unknown as {
+      result as {
         data?: { relationship?: { id: string; name: string } };
       }
     ).data;
@@ -199,7 +199,7 @@ describe("relationships handler — real PGLite", () => {
     );
     expect(result?.success).toBe(false);
     expect(
-      (result as unknown as { data?: { error?: string } }).data?.error,
+      (result as { data?: { error?: string } }).data?.error,
     ).toBe("MISSING_FIELDS");
   });
 
@@ -237,7 +237,7 @@ describe("relationships handler — real PGLite", () => {
 
     expect(result?.success).toBe(true);
     const data = (
-      result as unknown as {
+      result as {
         data?: { followUp?: { relationshipId: string; dueAt: string } };
       }
     ).data;
@@ -279,7 +279,7 @@ describe("relationships handler — real PGLite", () => {
 
     expect(result?.success).toBe(true);
     const data = (
-      result as unknown as {
+      result as {
         data?: { relationshipId?: string; days?: number | null };
       }
     ).data;
@@ -321,7 +321,7 @@ describe("relationships handler — real PGLite", () => {
 
     expect(result?.success).toBe(true);
     const data = (
-      result as unknown as {
+      result as {
         data?: { relationshipId?: string; days?: number | null };
       }
     ).data;
@@ -363,7 +363,7 @@ describe("relationships handler — real PGLite", () => {
 
     expect(result?.success).toBe(true);
     const data = (
-      result as unknown as {
+      result as {
         data?: { relationshipId?: string; days?: number | null };
       }
     ).data;
@@ -423,7 +423,7 @@ describe("relationships handler — real PGLite", () => {
 
       expect(result?.success).toBe(true);
       const data = (
-        result as unknown as {
+        result as {
           data?: {
             relationshipId?: string;
             days?: number | null;

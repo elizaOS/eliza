@@ -2542,11 +2542,13 @@ type ClusterResolver = {
 function getClusterResolver(runtime: IAgentRuntime): ClusterResolver | null {
 	const service = runtime.getService("relationships");
 	if (!service) return null;
-	const candidate = service as unknown as Partial<ClusterResolver>;
+	const candidate = service as { getMemberEntityIds?: unknown };
 	if (typeof candidate.getMemberEntityIds !== "function") {
 		return null;
 	}
-	return candidate as ClusterResolver;
+	return {
+		getMemberEntityIds: candidate.getMemberEntityIds.bind(service),
+	};
 }
 
 function dedupeMemoriesById(memories: Memory[]): Memory[] {

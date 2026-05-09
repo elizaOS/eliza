@@ -70,7 +70,7 @@ function localIso(daysFromToday: number, hour: number, minute = 0): string {
 
 function makeMessage(runtime: AgentRuntime, text: string) {
   return {
-    id: `msg-${Math.random()}` as unknown as string,
+    id: `msg-${Math.random()}` as string,
     entityId: runtime.agentId,
     roomId: runtime.agentId,
     content: { text },
@@ -292,7 +292,7 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
     );
     expect(result?.success).toBe(false);
     expect(
-      (result as unknown as { data?: { error?: string } }).data?.error,
+      (result as { data?: { error?: string } }).data?.error,
     ).toBe("NO_FIELDS");
   });
 
@@ -311,7 +311,7 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
     );
     expect(result?.success).toBe(false);
     expect(
-      (result as unknown as { data?: { error?: string } }).data?.error,
+      (result as { data?: { error?: string } }).data?.error,
     ).toBe("INVALID_WINDOW");
   });
 });

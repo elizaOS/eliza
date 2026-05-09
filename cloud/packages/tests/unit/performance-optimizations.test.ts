@@ -31,7 +31,7 @@ describe("Action validation cache", () => {
               getTier2Index: () => ({ getToolCount: () => mcpToolCount }),
             }
           : undefined,
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
   }
 
   function makeMessage(id: string): Memory {
@@ -40,7 +40,7 @@ describe("Action validation cache", () => {
       content: { text: "test" },
       roomId: "room-1",
       entityId: "entity-1",
-    } as unknown as Memory;
+    } as Memory;
   }
 
   const emptyState = { values: {}, data: {}, text: "" } as State;
@@ -215,7 +215,7 @@ describe("Action validation cache", () => {
     const runtime = {
       actions: [action],
       getService: () => undefined,
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
 
     const result = await actionsProvider.get!(runtime, makeMessage("msg-no-mcp-1"), emptyState);
     expect(providerValues(result).discoverableToolCount).toBe("");
@@ -326,7 +326,7 @@ describe("Action validation cache", () => {
     globalThis.setTimeout = (() => ({
       id: Symbol("timer"),
       unref: () => undefined,
-    })) as unknown as typeof setTimeout;
+    })) as typeof setTimeout;
     globalThis.clearTimeout = ((handle?: ReturnType<typeof setTimeout>) => {
       clearedHandles.push(handle);
     }) as typeof clearTimeout;
@@ -362,13 +362,13 @@ describe("Action validation cache", () => {
     const runtime = {
       actions: [action],
       getService: () => undefined,
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     const msg = {
       id: undefined,
       content: { text: "test" },
       roomId: "r",
       entityId: "e",
-    } as unknown as Memory;
+    } as Memory;
 
     const r1 = await actionsProvider.get!(runtime, msg, emptyState);
     expect(providerActionsData(r1)).toHaveLength(1);

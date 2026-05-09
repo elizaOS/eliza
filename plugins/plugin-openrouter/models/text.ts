@@ -86,6 +86,7 @@ type NativeGenerateTextResult = {
   finishReason?: string;
   usage?: NormalizedUsage;
 };
+type NativeTextModelResult = string & NativeGenerateTextResult;
 
 function buildUserContent(params: GenerateTextParamsWithAttachments): UserContent {
   const content: Array<
@@ -423,7 +424,7 @@ async function generateTextWithModel(
   }
 
   if (shouldReturnNativeResult) {
-    return buildNativeTextResult(response) as unknown as string;
+    return buildNativeTextResult(response) as NativeTextModelResult;
   }
 
   return response.text;

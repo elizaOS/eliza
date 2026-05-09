@@ -51,7 +51,7 @@ async function runTest() {
 		},
 	};
 
-	const runtime = mockRuntime as unknown as IAgentRuntime;
+	const runtime = mockRuntime as IAgentRuntime;
 	trajectoriesService = new TrajectoriesService(runtime);
 
 	// Test 1: Phase Labels

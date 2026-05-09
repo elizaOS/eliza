@@ -163,13 +163,7 @@ function makeMockAction(opts: {
     required?: boolean;
     schema: { type: string };
   }>;
-  handler: (
-    runtime: InstanceType<typeof AgentRuntime>,
-    message: Memory,
-    state: State | undefined,
-    options: HandlerOptions,
-    callback?: HandlerCallback,
-  ) => Promise<ActionResult>;
+  handler: Action["handler"];
 }): Action {
   return {
     name: opts.name,
@@ -181,8 +175,8 @@ function makeMockAction(opts: {
     examples: [],
     parameters: opts.parameters ?? [],
     validate: async () => true,
-    handler: opts.handler as unknown as Action["handler"],
-  } as unknown as Action;
+    handler: opts.handler,
+  } satisfies Action;
 }
 
 function buildMockActions(): Action[] {
@@ -508,7 +502,7 @@ function buildMockActions(): Action[] {
       },
     }),
     subActions: ["WEB_SEARCH", "WRITE_DOCUMENT"],
-  } as unknown as ReturnType<typeof makeMockAction>;
+  } satisfies ReturnType<typeof makeMockAction>;
 
   return [
     webSearch,
@@ -860,7 +854,7 @@ async function runScenario(
       (() => {
         // Best-effort: look at the message_handler context event in any stage's
         // recorded contextObject.
-        const stagesWithContext = (t.stages ?? []) as unknown as Array<{
+        const stagesWithContext = (t.stages ?? []) as Array<{
           contextObject?: {
             events?: Array<{
               type?: string;

@@ -55,7 +55,42 @@ export function hasStorageApi(value: unknown): value is Storage {
  * Create a Canvas 2D rendering context shim for the common operations used in tests.
  */
 export function createCanvas2DContext(): CanvasRenderingContext2D {
-	return {
+	const context: Partial<CanvasRenderingContext2D> &
+		Pick<
+			CanvasRenderingContext2D,
+			| "canvas"
+			| "lineWidth"
+			| "globalAlpha"
+			| "fillStyle"
+			| "strokeStyle"
+			| "fillRect"
+			| "clearRect"
+			| "getImageData"
+			| "putImageData"
+			| "drawImage"
+			| "beginPath"
+			| "closePath"
+			| "moveTo"
+			| "lineTo"
+			| "stroke"
+			| "fill"
+			| "arc"
+			| "rect"
+			| "save"
+			| "restore"
+			| "translate"
+			| "rotate"
+			| "scale"
+			| "transform"
+			| "setTransform"
+			| "resetTransform"
+			| "fillText"
+			| "strokeText"
+			| "measureText"
+			| "createLinearGradient"
+			| "createRadialGradient"
+			| "createPattern"
+		> = {
 		fillRect() {},
 		clearRect() {},
 		getImageData() {
@@ -105,7 +140,8 @@ export function createCanvas2DContext(): CanvasRenderingContext2D {
 		globalAlpha: 1,
 		fillStyle: "#000",
 		strokeStyle: "#000",
-	} as unknown as CanvasRenderingContext2D;
+	};
+	return context as CanvasRenderingContext2D;
 }
 
 /**
@@ -184,7 +220,7 @@ export function installMediaElementShims(): void {
 			audio.src = src;
 		}
 		return audio;
-	} as unknown as typeof Audio & {
+	} as typeof Audio & {
 		[AUDIO_PATCH_MARK]?: boolean;
 	};
 	AudioShim[AUDIO_PATCH_MARK] = true;

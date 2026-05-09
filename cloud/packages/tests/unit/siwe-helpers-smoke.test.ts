@@ -34,7 +34,7 @@ function makeMockRedis(): CompatibleRedis & { _store: Map<string, string> } {
       store.delete(key);
       return v;
     },
-  } as unknown as CompatibleRedis & { _store: Map<string, string> };
+  } as CompatibleRedis & { _store: Map<string, string> };
 }
 
 describe("siwe-helpers (smoke)", () => {

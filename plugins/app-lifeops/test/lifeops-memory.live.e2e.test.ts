@@ -364,7 +364,7 @@ describeIf(LIVE_SUITE_ENABLED)(
       });
       memoryService = (await runtime.getServiceLoadPromise(
         "memory",
-      )) as unknown as MemoryServiceLike;
+      )) as MemoryServiceLike;
     }, 180_000);
 
     afterAll(async () => {

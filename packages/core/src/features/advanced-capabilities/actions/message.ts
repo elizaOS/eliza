@@ -2377,10 +2377,10 @@ function getRelationshipsServiceLike(
 	const candidates: Array<RelationshipsServiceLike | null> = [
 		(runtime.getService?.(
 			"relationships_graph",
-		) as unknown as RelationshipsServiceLike | null) ?? null,
+		) as RelationshipsServiceLike | null) ?? null,
 		(runtime.getService?.(
 			"relationships",
-		) as unknown as RelationshipsServiceLike | null) ?? null,
+		) as RelationshipsServiceLike | null) ?? null,
 	];
 	for (const candidate of candidates) {
 		if (candidate && typeof candidate.getGraphSnapshot === "function")

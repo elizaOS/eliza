@@ -11,11 +11,19 @@ import {
   EventType,
   type ActionEventPayload,
   type Character,
+  type ContextDefinition,
   type EvaluatorEventPayload,
+  type EventPayloadMap,
+  type GenerateTextParams,
   type IAgentRuntime,
   type MessagePayload,
+  type ModelParamsMap,
   type ModelEventPayload,
+  type ModelResultMap,
   type Plugin,
+  type PromptSegment,
+  type TokenUsage,
+  type ToolDefinition,
   type RunEventPayload,
   type UUID,
   createCharacter,
@@ -96,9 +104,10 @@ process.env.OPENAI_EMBEDDING_DISABLED = "true";
 
 // ---------- SSE bus ----------
 
-type Subscriber = (event: any) => void;
+type ConsoleEvent = Record<string, unknown> & { t?: number };
+type Subscriber = (event: ConsoleEvent & { t: number }) => void;
 const subscribers = new Set<Subscriber>();
-function broadcast(event: any) {
+function broadcast(event: ConsoleEvent) {
   const payload = { ...event, t: event.t ?? Date.now() };
   for (const sub of subscribers) {
     try {
@@ -110,6 +119,28 @@ function broadcast(event: any) {
 }
 
 // ---------- trajectory state ----------
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringifyContent(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value == null) return "";
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 const TRAJECTORY_COLORS = [
   "#ff8a8a", "#ffb573", "#ffe76e", "#9ce67c",
@@ -205,47 +236,95 @@ type SegmentView = {
 
 function messagesToSegmentViews(messages: unknown): SegmentView[] {
   if (!Array.isArray(messages)) return [];
-  return messages.map((m: any) => {
-    const role = String(m?.role ?? "user");
-    const content = typeof m?.content === "string"
-      ? m.content
-      : m?.content == null
-        ? ""
-        : (() => {
-            try { return JSON.stringify(m.content); } catch { return String(m.content); }
-          })();
+  return messages.map((message) => {
+    const record = isRecord(message) ? message : {};
+    const role = String(record.role ?? "user");
+    const content = stringifyContent(record.content);
     return { role, content, bytes: content.length };
   });
 }
 
 function promptSegmentsToSegmentViews(segments: unknown): SegmentView[] {
   if (!Array.isArray(segments)) return [];
-  return segments.map((s: any) => ({
-    role: s?.label === "system" ? "system" : "segment",
-    label: typeof s?.label === "string" ? s.label : undefined,
-    content: typeof s?.content === "string" ? s.content : "",
-    bytes: typeof s?.content === "string" ? s.content.length : 0,
-    stable: !!s?.stable,
-  }));
+  return segments.map((segment) => {
+    const record = isRecord(segment) ? segment : {};
+    const content = typeof record.content === "string" ? record.content : "";
+    return {
+      role: record.label === "system" ? "system" : "segment",
+      label: typeof record.label === "string" ? record.label : undefined,
+      content,
+      bytes: content.length,
+      stable: record.stable === true,
+    };
+  });
 }
 
 function toolsToSummary(tools: unknown): { name: string; description?: string }[] {
   if (!Array.isArray(tools)) return [];
-  return tools.map((t: any) => ({
-    name: String(t?.name ?? t?.function?.name ?? "?"),
-    description: t?.description ?? t?.function?.description,
-  }));
+  return tools.map((tool) => {
+    const record = isRecord(tool) ? tool : {};
+    const fn = isRecord(record.function) ? record.function : undefined;
+    const description = record.description ?? fn?.description;
+    return {
+      name: String(record.name ?? fn?.name ?? "?"),
+      description: typeof description === "string" ? description : undefined,
+    };
+  });
 }
 
-const origUseModel = runtime.useModel.bind(runtime);
+type RuntimeUseModel = <T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
+  modelType: T,
+  params: ModelParamsMap[T],
+  provider?: string,
+) => Promise<R>;
+
+type UsageSnapshot = Partial<TokenUsage> & { cachedPromptTokens?: number };
+
+function providerOption(
+  params: unknown,
+  providerKey: string,
+): Record<string, unknown> | undefined {
+  if (!isRecord(params) || !isRecord(params.providerOptions)) return undefined;
+  const value = params.providerOptions[providerKey];
+  return isRecord(value) ? value : undefined;
+}
+
+function usageFromResult(result: unknown): UsageSnapshot | undefined {
+  if (!isRecord(result) || !isRecord(result.usage)) return undefined;
+  const usage: UsageSnapshot = {
+    promptTokens: readNumber(result.usage.promptTokens),
+    completionTokens: readNumber(result.usage.completionTokens),
+    totalTokens: readNumber(result.usage.totalTokens),
+    cacheReadInputTokens: readNumber(result.usage.cacheReadInputTokens),
+    cacheCreationInputTokens: readNumber(result.usage.cacheCreationInputTokens),
+    cachedPromptTokens: readNumber(result.usage.cachedPromptTokens),
+  };
+  return Object.values(usage).some((value) => value !== undefined)
+    ? usage
+    : undefined;
+}
+
+const runtimeWithInstrumentedModel = runtime as IAgentRuntime & {
+  useModel: RuntimeUseModel;
+};
+const origUseModel: RuntimeUseModel =
+  runtimeWithInstrumentedModel.useModel.bind(runtime);
 let modelCallCounter = 0;
-(runtime as any).useModel = async (modelType: any, params: any, providerName?: any) => {
+runtimeWithInstrumentedModel.useModel = async <
+  T extends keyof ModelParamsMap,
+  R = ModelResultMap[T],
+>(
+  modelType: T,
+  params: ModelParamsMap[T],
+  providerName?: string,
+): Promise<R> => {
   const callId = `mc-${++modelCallCounter}`;
   const start = Date.now();
-  const messageViews = messagesToSegmentViews(params?.messages);
-  const segmentViews = promptSegmentsToSegmentViews(params?.promptSegments);
-  const toolsSummary = toolsToSummary(params?.tools);
-  const promptString = typeof params?.prompt === "string" ? params.prompt : "";
+  const textParams = isRecord(params) ? (params as Partial<GenerateTextParams>) : {};
+  const messageViews = messagesToSegmentViews(textParams.messages);
+  const segmentViews = promptSegmentsToSegmentViews(textParams.promptSegments);
+  const toolsSummary = toolsToSummary(textParams.tools);
+  const promptString = typeof textParams.prompt === "string" ? textParams.prompt : "";
   // Prefer the segmented messages view as the canonical input. Fall back to the
   // legacy prompt blob only when no messages are present (embeddings, simple
   // text-gen calls, etc.).
@@ -262,12 +341,21 @@ let modelCallCounter = 0;
 
   // Pull the prefix hash + Cerebras cache key off providerOptions so the
   // dashboard can show "same prefix as previous call" / cache key in flight.
-  const elizaPo = (params?.providerOptions as any)?.eliza;
-  const cerebrasPo = (params?.providerOptions as any)?.cerebras;
-  const prefixHash: string | undefined = elizaPo?.prefixHash;
-  const segmentHashes: string[] | undefined = elizaPo?.segmentHashes;
+  const elizaPo = providerOption(params, "eliza");
+  const cerebrasPo = providerOption(params, "cerebras");
+  const prefixHash =
+    typeof elizaPo?.prefixHash === "string" ? elizaPo.prefixHash : undefined;
+  const segmentHashes = Array.isArray(elizaPo?.segmentHashes)
+    ? elizaPo.segmentHashes.filter((hash): hash is string => typeof hash === "string")
+    : undefined;
   const cacheKey: string | undefined =
-    cerebrasPo?.prompt_cache_key ?? cerebrasPo?.promptCacheKey ?? elizaPo?.promptCacheKey;
+    typeof cerebrasPo?.prompt_cache_key === "string"
+      ? cerebrasPo.prompt_cache_key
+      : typeof cerebrasPo?.promptCacheKey === "string"
+        ? cerebrasPo.promptCacheKey
+        : typeof elizaPo?.promptCacheKey === "string"
+          ? elizaPo.promptCacheKey
+          : undefined;
   if (prefixHash) currentStats.prefixHashes.add(prefixHash);
 
   broadcast(
@@ -281,9 +369,9 @@ let modelCallCounter = 0;
       messages: messageViews,
       promptSegments: segmentViews,
       tools: toolsSummary,
-      toolChoice: params?.toolChoice,
-      hasResponseSchema: !!params?.responseSchema,
-      responseFormat: params?.responseFormat,
+      toolChoice: textParams.toolChoice,
+      hasResponseSchema: !!textParams.responseSchema,
+      responseFormat: textParams.responseFormat,
       prefixHash,
       segmentHashCount: segmentHashes?.length ?? 0,
       cacheKey,
@@ -292,10 +380,10 @@ let modelCallCounter = 0;
     })
   );
   try {
-    const result = await origUseModel(modelType, params, providerName);
+    const result = await origUseModel<T, R>(modelType, params, providerName);
     const responseText = stringifyResponse(result);
     const toolCalls = extractToolCalls(result);
-    const usage = (result as any)?.usage;
+    const usage = usageFromResult(result);
     if (usage) {
       currentStats.modelCalls += 1;
       currentStats.promptTokens += usage.promptTokens ?? 0;
@@ -316,21 +404,24 @@ let modelCallCounter = 0;
       })
     );
     return result;
-  } catch (err: any) {
+  } catch (err: unknown) {
     currentStats.errors += 1;
+    const errRecord = isRecord(err) ? err : {};
     const errorDetail = {
-      message: err?.message,
-      cause: err?.cause?.message ?? err?.cause,
-      responseBody: err?.responseBody,
-      url: err?.url,
-      statusCode: err?.statusCode,
+      message: errorMessage(err),
+      cause: isRecord(errRecord.cause)
+        ? errRecord.cause.message
+        : errRecord.cause,
+      responseBody: errRecord.responseBody,
+      url: errRecord.url,
+      statusCode: errRecord.statusCode,
     };
     broadcast(
       tag({
         type: "model_call_end",
         callId,
         modelType: String(modelType),
-        error: err?.message ?? String(err),
+        error: errorMessage(err),
         errorDetail,
         durationMs: Date.now() - start,
       })
@@ -363,28 +454,37 @@ function stringifyResponse(r: unknown): string {
 
 function extractToolCalls(result: unknown): { id?: string; name: string; arguments: unknown }[] {
   if (!result || typeof result !== "object") return [];
-  const tcs = (result as any).toolCalls;
+  const tcs = isRecord(result) ? result.toolCalls : undefined;
   if (!Array.isArray(tcs)) return [];
-  return tcs.map((tc: any) => {
-    const fnName = tc?.function?.name ?? tc?.name ?? tc?.toolName;
-    const args = tc?.function?.arguments ?? tc?.arguments ?? tc?.input;
+  return tcs.map((toolCall) => {
+    const tc = isRecord(toolCall) ? toolCall : {};
+    const fn = isRecord(tc.function) ? tc.function : undefined;
+    const fnName = fn?.name ?? tc.name ?? tc.toolName;
+    const args = fn?.arguments ?? tc.arguments ?? tc.input;
     let parsed: unknown = args;
     if (typeof args === "string") {
       try { parsed = JSON.parse(args); } catch { parsed = args; }
     }
-    return { id: tc?.id, name: String(fnName ?? "?"), arguments: safeSnapshot(parsed) };
+    return {
+      id: typeof tc.id === "string" ? tc.id : undefined,
+      name: String(fnName ?? "?"),
+      arguments: safeSnapshot(parsed),
+    };
   });
 }
 
 // ---------- subscribe to runtime events ----------
 
 function registerEventListeners(rt: IAgentRuntime) {
-  const wrap = (evType: string, project: (p: any) => Record<string, unknown>) => {
-    rt.registerEvent(evType as any, async (payload: any) => {
+  const wrap = <T extends keyof EventPayloadMap>(
+    evType: T,
+    project: (p: EventPayloadMap[T]) => Record<string, unknown>,
+  ) => {
+    rt.registerEvent(evType, async (payload) => {
       try {
         broadcast(tag({ type: evType, ...project(payload) }));
-      } catch (e: any) {
-        broadcast(tag({ type: "log", level: "error", message: `event ${evType}: ${e.message}` }));
+      } catch (e: unknown) {
+        broadcast(tag({ type: "log", level: "error", message: `event ${evType}: ${errorMessage(e)}` }));
       }
     });
   };
@@ -443,9 +543,9 @@ function registerEventListeners(rt: IAgentRuntime) {
 }
 
 function extractActionName(p: ActionEventPayload): string {
-  const c: any = p.content;
-  if (typeof c?.action === "string") return c.action;
-  if (Array.isArray(c?.actions)) return c.actions.join(",");
+  const content = isRecord(p.content) ? p.content : {};
+  if (typeof content.action === "string") return content.action;
+  if (Array.isArray(content.actions)) return content.actions.map(String).join(",");
   return "(unknown)";
 }
 
@@ -610,29 +710,36 @@ const server = Bun.serve({
     }
 
     if (url.pathname === "/runtime") {
-      const actions = (runtime.actions ?? []).map((a: any) => ({
+      const actions = (runtime.actions ?? []).map((a) => ({
         name: a.name,
         description: a.description,
         contexts: a.contexts ?? [],
         similes: (a.similes ?? []).slice(0, 6),
       }));
-      const providers = (runtime.providers ?? []).map((p: any) => ({
+      const providers = (runtime.providers ?? []).map((p) => ({
         name: p.name,
         description: p.description,
         position: p.position,
         dynamic: p.dynamic ?? false,
       }));
-      const contextsByName: Record<string, any> = {};
+      const contextsByName: Record<
+        string,
+        Pick<
+          ContextDefinition,
+          "label" | "description" | "cacheScope" | "roleGate"
+        > & {
+          actions?: unknown;
+          providers?: unknown;
+        }
+      > = {};
       try {
-        const list = (runtime as any).contexts?.list?.() ?? [];
+        const list = runtime.contexts.list();
         for (const c of list) {
-          contextsByName[c.id] = {
+          contextsByName[String(c.id)] = {
             label: c.label,
             description: c.description,
             cacheScope: c.cacheScope,
             roleGate: c.roleGate,
-            actions: c.actions,
-            providers: c.providers,
           };
         }
       } catch {}

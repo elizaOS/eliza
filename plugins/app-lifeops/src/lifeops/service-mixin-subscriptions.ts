@@ -908,7 +908,7 @@ export function withSubscriptions<
 
       const computerUse = this.runtime.getService(
         "computeruse",
-      ) as unknown as ComputerUseBrowserService | null;
+      ) as ComputerUseBrowserService | null;
       if (!computerUse) {
         cancellation = {
           ...cancellation,

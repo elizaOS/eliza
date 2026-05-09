@@ -1,6 +1,7 @@
 import {
   Action,
   type ActionResult,
+  type Content,
   composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
@@ -10,6 +11,7 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import { defineActionParameters } from "@/lib/eliza/plugin-cloud-bootstrap/types";
 import { normalizeCloudActionArgs } from "@/lib/eliza/plugin-cloud-bootstrap/utils/native-planner-guards";
 import { WebSearchService } from "../services/searchService";
 import type { SearchResult } from "../types";
@@ -201,8 +203,8 @@ export const webSearch: Action & Record<string, unknown> = {
     "- For crypto/DeFi content: use topic='finance' + source from [theblock.com, coindesk.com, decrypt.co, dlnews.com]\n" +
     "- Don't give up after one attempt if results are clearly irrelevant",
 
-  // Parameter schema for tool calling (object form, cast for compat with upstream ActionParameter[])
-  parameters: {
+  // Parameter schema for tool calling.
+  parameters: defineActionParameters({
     query: {
       type: "string",
       description: "The search query to look up on the web",
@@ -246,7 +248,7 @@ export const webSearch: Action & Record<string, unknown> = {
       description: "End date filter in YYYY-MM-DD format (returns results before this date)",
       required: false,
     },
-  } as any,
+  }),
 
   validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
     try {
@@ -374,7 +376,7 @@ export const webSearch: Action & Record<string, unknown> = {
             text: result.text,
             actions: ["WEB_SEARCH"],
             data: result.data,
-          } as any);
+          } as unknown as Content);
         }
 
         return result;

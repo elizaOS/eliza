@@ -494,7 +494,7 @@ function getScapeService(
 ): ScapeGameService | null {
   const rt = asRuntimeLike(runtime);
   const service = rt?.getService?.("scape_game");
-  return (service as unknown as ScapeGameService | null) ?? null;
+  return (service as ScapeGameService | null) ?? null;
 }
 
 // ---------------------------------------------------------------------------

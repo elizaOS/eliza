@@ -79,7 +79,7 @@ export class MemoriesRepository {
       .limit(limit)
       .offset(offset);
 
-    return results as Memory[];
+    return results as unknown as Memory[];
   }
 
   /**
@@ -101,7 +101,7 @@ export class MemoriesRepository {
       .orderBy(desc(memoryTable.createdAt))
       .limit(limit);
 
-    return results as Memory[];
+    return results as unknown as Memory[];
   }
 
   /**
@@ -166,7 +166,7 @@ export class MemoriesRepository {
       .limit(limit)
       .offset(offset);
 
-    return results as Memory[];
+    return results as unknown as Memory[];
   }
 
   /**
@@ -186,7 +186,7 @@ export class MemoriesRepository {
       .limit(limit)
       .offset(offset);
 
-    return results as Memory[];
+    return results as unknown as Memory[];
   }
 
   /**
@@ -199,7 +199,7 @@ export class MemoriesRepository {
       .where(eq(memoryTable.id, memoryId))
       .limit(1);
 
-    return (result[0] || null) as Memory | null;
+    return (result[0] || null) as unknown as Memory | null;
   }
 
   /**
@@ -231,7 +231,7 @@ export class MemoriesRepository {
       .limit(limit)
       .offset(offset);
 
-    return results as Memory[];
+    return results as unknown as Memory[];
   }
 
   /**
@@ -295,7 +295,7 @@ export class MemoriesRepository {
       .orderBy(desc(memoryTable.createdAt))
       .limit(1);
 
-    return (result[0] || null) as Memory | null;
+    return (result[0] || null) as unknown as Memory | null;
   }
 
   // ============================================================================
@@ -320,7 +320,7 @@ export class MemoriesRepository {
    * Creates a new memory.
    */
   async create(input: CreateMemoryInput): Promise<Memory> {
-    const memoryResult = (await dbWrite
+    const [memoryResult] = await dbWrite
       .insert(memoryTable)
       .values({
         id: input.id,
@@ -334,9 +334,9 @@ export class MemoriesRepository {
         worldId: input.worldId,
         createdAt: new Date(),
       })
-      .returning()) as any[];
+      .returning();
 
-    return memoryResult[0] as Memory;
+    return memoryResult as unknown as Memory;
   }
 
   /**

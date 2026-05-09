@@ -11,6 +11,10 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import { dailyMetrics } from "@/db/schemas/daily-metrics";
 import { retentionCohorts } from "@/db/schemas/retention-cohorts";
 
+type PrimaryColumnMetadata = {
+  primary: boolean;
+};
+
 describe("dailyMetrics schema", () => {
   const config = getTableConfig(dailyMetrics);
 
@@ -33,7 +37,7 @@ describe("dailyMetrics schema", () => {
   test("id is a uuid primary key", () => {
     const idCol = config.columns.find((c) => c.name === "id")!;
     expect(idCol.dataType).toBe("string");
-    expect((idCol as any).primary).toBe(true);
+    expect((idCol as PrimaryColumnMetadata).primary).toBe(true);
     expect(idCol.hasDefault).toBe(true);
   });
 
@@ -96,7 +100,7 @@ describe("retentionCohorts schema", () => {
   test("id is a uuid primary key", () => {
     const idCol = config.columns.find((c) => c.name === "id")!;
     expect(idCol.dataType).toBe("string");
-    expect((idCol as any).primary).toBe(true);
+    expect((idCol as PrimaryColumnMetadata).primary).toBe(true);
     expect(idCol.hasDefault).toBe(true);
   });
 

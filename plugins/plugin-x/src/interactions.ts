@@ -776,7 +776,7 @@ Response (YES/NO):`;
         await this.runtime.ensureConnection({
           entityId,
           roomId,
-          userId: userId as unknown as UUID,
+          userId,
           userName: username,
           name: tweet.name,
           source: "twitter",
@@ -914,7 +914,7 @@ Response (YES/NO):`;
             userId: interaction.userId,
             username: interaction.username,
           },
-        } as unknown as Memory["metadata"],
+        } satisfies Memory["metadata"],
         createdAt: Date.now(),
       };
 
@@ -1030,11 +1030,12 @@ Response (YES/NO):`;
         metadata: { accountId: string };
       },
       metadata: {
-        type,
+        type: "message",
         source: "twitter",
+        interactionType: type,
         accountId: this.client.accountId,
         provider: "twitter",
-      } as unknown as Memory["metadata"],
+      } satisfies Memory["metadata"],
       createdAt: Date.now(),
     };
   }
@@ -1132,7 +1133,7 @@ Response (YES/NO):`;
               tweetId: tweetResult.id,
               inReplyTo: tweetToReplyTo,
             },
-          } as unknown as Memory["metadata"],
+          } satisfies Memory["metadata"],
           createdAt: Date.now(),
         };
 

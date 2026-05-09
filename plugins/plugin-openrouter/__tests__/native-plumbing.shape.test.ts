@@ -2,7 +2,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 function createRuntime() {
-  return {
+  const runtime = {
     character: { system: "system prompt" },
     emitEvent: vi.fn(async () => undefined),
     getSetting: vi.fn((key: string) => {
@@ -12,7 +12,13 @@ function createRuntime() {
       };
       return settings[key] ?? null;
     }),
-  } as unknown as IAgentRuntime;
+  };
+
+  return runtime as IAgentRuntime;
+}
+
+function expectNativeTextResult(value: unknown): asserts value is Record<string, unknown> {
+  expect(value).toEqual(expect.objectContaining({ text: expect.any(String) }));
 }
 
 afterEach(() => {
@@ -43,11 +49,12 @@ describe("OpenRouter native text plumbing", () => {
     const { handleTextSmall } = await import("../models/text");
     const messages = [{ role: "user", content: "use the tool" }];
     const tools = { lookup: { description: "Lookup", inputSchema: { type: "object" } } };
-    const result = (await handleTextSmall(createRuntime(), {
+    const result = await handleTextSmall(createRuntime(), {
       prompt: "legacy prompt",
       messages,
       tools,
-    } as never)) as unknown as Record<string, unknown>;
+    } as never);
+    expectNativeTextResult(result);
 
     const call = generateText.mock.calls[0][0] as Record<string, unknown>;
     expect(call.messages).toBe(messages);

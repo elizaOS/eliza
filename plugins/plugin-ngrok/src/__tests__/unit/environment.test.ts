@@ -2,17 +2,57 @@ import { describe, expect, it, mock } from 'bun:test';
 import type { IAgentRuntime } from '@elizaos/core';
 import { ngrokEnvSchema, validateNgrokConfig } from '../../environment';
 
+type SettingMock = ((key: string) => unknown) & {
+  mockImplementation: (implementation: (key: string) => unknown) => SettingMock;
+  mockReturnValue: (value: unknown) => SettingMock;
+};
+
+type MockRuntimeWithSettings = IAgentRuntime & {
+  getSetting: SettingMock;
+};
+
+interface NgrokConfigTestContext {
+  mockRuntime: MockRuntimeWithSettings;
+  originalEnv: NodeJS.ProcessEnv;
+}
+
+interface TestSuiteConfig<TContext> {
+  beforeEach?: () => TContext;
+  afterEach?: (context: TContext) => void | Promise<void>;
+}
+
+interface UnitTest<TContext> {
+  name: string;
+  fn: (context: TContext) => Promise<void> | void;
+}
+
+function createSettingMock(implementation: (key: string) => unknown): SettingMock {
+  return mock(implementation) as SettingMock;
+}
+
+function createRuntimeWithSettingMock(
+  implementation: (key: string) => unknown = () => undefined
+): MockRuntimeWithSettings {
+  return {
+    getSetting: createSettingMock(implementation),
+  } as MockRuntimeWithSettings;
+}
+
 // Simplified TestSuite implementation for local use
-class TestSuite {
+class TestSuite<TContext> {
   constructor(
     private name: string,
-    private config: any
+    private config: TestSuiteConfig<TContext>
   ) {}
 
-  addTest(test: any) {
+  addTest(test: UnitTest<TContext>) {
     it(test.name, async () => {
-      const context = this.config.beforeEach ? this.config.beforeEach() : {};
+      const context = this.config.beforeEach?.();
+      if (!context) {
+        throw new Error(`Missing test context for ${this.name}`);
+      }
       await test.fn(context);
+      await this.config.afterEach?.(context);
     });
   }
 
@@ -21,11 +61,10 @@ class TestSuite {
   }
 }
 
-const createUnitTest = (config: { name: string; fn: (context?: any) => Promise<void> | void }) =>
-  config;
+const createUnitTest = (config: UnitTest<NgrokConfigTestContext>) => config;
 
 describe('Ngrok Environment Configuration', () => {
-  const ngrokConfigSuite = new TestSuite('Ngrok Environment Configuration', {
+  const ngrokConfigSuite = new TestSuite<NgrokConfigTestContext>('Ngrok Environment Configuration', {
     beforeEach: () => {
       // Save original env
       const originalEnv = { ...process.env };
@@ -37,16 +76,14 @@ describe('Ngrok Environment Configuration', () => {
       delete process.env.NGROK_DEFAULT_PORT;
 
       // Setup mock runtime
-      const mockRuntime = {
-        getSetting: mock((key: string) => {
+      const mockRuntime = createRuntimeWithSettingMock((key: string) => {
           const settings: Record<string, string> = {};
           return settings[key];
-        }),
-      } as unknown as IAgentRuntime;
+        });
 
       return { mockRuntime, originalEnv };
     },
-    afterEach: ({ originalEnv }: any) => {
+    afterEach: ({ originalEnv }) => {
       // Restore original env
       process.env = originalEnv;
     },
@@ -123,8 +160,8 @@ describe('Ngrok Environment Configuration', () => {
   ngrokConfigSuite.addTest(
     createUnitTest({
       name: 'should validate configuration from runtime settings',
-      fn: async ({ mockRuntime }: any) => {
-        (mockRuntime.getSetting as any).mockImplementation((key: string) => {
+      fn: async ({ mockRuntime }) => {
+        mockRuntime.getSetting.mockImplementation((key: string) => {
           const settings: Record<string, string> = {
             NGROK_AUTH_TOKEN: 'runtime-token',
             NGROK_REGION: 'ap',
@@ -147,11 +184,11 @@ describe('Ngrok Environment Configuration', () => {
   ngrokConfigSuite.addTest(
     createUnitTest({
       name: 'should fall back to process.env if runtime setting is not available',
-      fn: async ({ mockRuntime }: any) => {
+      fn: async ({ mockRuntime }) => {
         process.env.NGROK_AUTH_TOKEN = 'env-token';
         process.env.NGROK_REGION = 'sa';
 
-        (mockRuntime.getSetting as any).mockReturnValue(undefined);
+        mockRuntime.getSetting.mockReturnValue(undefined);
 
         const config = await validateNgrokConfig(mockRuntime);
 
@@ -164,10 +201,10 @@ describe('Ngrok Environment Configuration', () => {
   ngrokConfigSuite.addTest(
     createUnitTest({
       name: 'should prefer runtime settings over process.env',
-      fn: async ({ mockRuntime }: any) => {
+      fn: async ({ mockRuntime }) => {
         process.env.NGROK_AUTH_TOKEN = 'env-token';
 
-        (mockRuntime.getSetting as any).mockImplementation((key: string) => {
+        mockRuntime.getSetting.mockImplementation((key: string) => {
           if (key === 'NGROK_AUTH_TOKEN') {
             return 'runtime-token';
           }
@@ -184,9 +221,9 @@ describe('Ngrok Environment Configuration', () => {
   ngrokConfigSuite.addTest(
     createUnitTest({
       name: 'should handle validation errors gracefully',
-      fn: async ({ mockRuntime }: any) => {
+      fn: async ({ mockRuntime }) => {
         // Mock invalid data that will fail zod validation - now NGROK_REGION accepts numbers
-        (mockRuntime.getSetting as any).mockImplementation((key: string) => {
+        mockRuntime.getSetting.mockImplementation((key: string) => {
           if (key === 'NGROK_DEFAULT_PORT') {
             return 'invalid-port'; // This will fail parsing
           }
@@ -206,15 +243,13 @@ describe('Ngrok Environment Configuration', () => {
     createUnitTest({
       name: 'should handle number inputs by converting them',
       fn: async () => {
-        const mockRuntime = {
-          getSetting: mock((key: string) => {
-            const settings: Record<string, any> = {
-              NGROK_REGION: 123, // Will be converted to '123'
-              NGROK_DEFAULT_PORT: 'invalid', // Will use default 3000
-            };
-            return settings[key];
-          }),
-        } as unknown as IAgentRuntime;
+        const mockRuntime = createRuntimeWithSettingMock((key: string) => {
+          const settings: Record<string, unknown> = {
+            NGROK_REGION: 123, // Will be converted to '123'
+            NGROK_DEFAULT_PORT: 'invalid', // Will use default 3000
+          };
+          return settings[key];
+        });
 
         const config = await validateNgrokConfig(mockRuntime);
         expect(config.NGROK_REGION).toBe('123'); // Number converted to string
@@ -226,11 +261,11 @@ describe('Ngrok Environment Configuration', () => {
   ngrokConfigSuite.addTest(
     createUnitTest({
       name: 'should handle all supported regions',
-      fn: async ({ mockRuntime }: any) => {
+      fn: async ({ mockRuntime }) => {
         const regions = ['us', 'eu', 'ap', 'au', 'sa', 'jp', 'in'];
 
         for (const region of regions) {
-          (mockRuntime.getSetting as any).mockImplementation((key: string) => {
+          mockRuntime.getSetting.mockImplementation((key: string) => {
             if (key === 'NGROK_REGION') {
               return region;
             }
@@ -248,14 +283,12 @@ describe('Ngrok Environment Configuration', () => {
     createUnitTest({
       name: 'should handle port zero',
       fn: async () => {
-        const mockRuntime = {
-          getSetting: mock((key: string) => {
-            const settings: Record<string, any> = {
-              NGROK_DEFAULT_PORT: '0',
-            };
-            return settings[key];
-          }),
-        } as unknown as IAgentRuntime;
+        const mockRuntime = createRuntimeWithSettingMock((key: string) => {
+          const settings: Record<string, unknown> = {
+            NGROK_DEFAULT_PORT: '0',
+          };
+          return settings[key];
+        });
 
         const config = await validateNgrokConfig(mockRuntime);
         expect(config.NGROK_DEFAULT_PORT).toBe(3000); // Should use default instead of 0
@@ -266,8 +299,8 @@ describe('Ngrok Environment Configuration', () => {
   ngrokConfigSuite.addTest(
     createUnitTest({
       name: 'should handle very large port numbers',
-      fn: async ({ mockRuntime }: any) => {
-        (mockRuntime.getSetting as any).mockImplementation((key: string) => {
+      fn: async ({ mockRuntime }) => {
+        mockRuntime.getSetting.mockImplementation((key: string) => {
           if (key === 'NGROK_DEFAULT_PORT') {
             return '65535';
           }
@@ -284,8 +317,8 @@ describe('Ngrok Environment Configuration', () => {
   ngrokConfigSuite.addTest(
     createUnitTest({
       name: 'should handle null values from runtime settings',
-      fn: async ({ mockRuntime }: any) => {
-        (mockRuntime.getSetting as any).mockReturnValue(null as any);
+      fn: async ({ mockRuntime }) => {
+        mockRuntime.getSetting.mockReturnValue(null);
 
         const config = await validateNgrokConfig(mockRuntime);
 
@@ -301,9 +334,7 @@ describe('Ngrok Environment Configuration', () => {
     createUnitTest({
       name: 'should handle undefined runtime',
       fn: async () => {
-        const undefinedRuntime = {
-          getSetting: () => undefined,
-        } as unknown as IAgentRuntime;
+        const undefinedRuntime = createRuntimeWithSettingMock(() => undefined);
 
         const config = await validateNgrokConfig(undefinedRuntime);
 

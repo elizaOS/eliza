@@ -374,6 +374,10 @@ export function clearPersistedOnboardingStep(): void {
 const ONBOARDING_COMPLETE_STORAGE_KEY = "eliza:onboarding-complete";
 
 export function loadPersistedOnboardingComplete(): boolean {
+  if (typeof localStorage === "undefined") {
+    return false;
+  }
+
   try {
     return localStorage.getItem(ONBOARDING_COMPLETE_STORAGE_KEY) === "1";
   } catch (err) {
@@ -385,6 +389,10 @@ export function loadPersistedOnboardingComplete(): boolean {
 }
 
 export function savePersistedOnboardingComplete(complete: boolean): void {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
   try {
     if (complete) {
       localStorage.setItem(ONBOARDING_COMPLETE_STORAGE_KEY, "1");

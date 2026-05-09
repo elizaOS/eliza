@@ -310,7 +310,7 @@ function notifyTrainingTrigger(
   runtime: IAgentRuntime,
   trajectoryId: string,
 ): void {
-  const entries = runtime.services.get("TRAINING_TRIGGER_SERVICE");
+  const entries = runtime.services.get("TRAINING_TRIGGER_SERVICE" as never);
   if (!Array.isArray(entries) || entries.length === 0) return;
   const entry: unknown = entries[0];
   if (

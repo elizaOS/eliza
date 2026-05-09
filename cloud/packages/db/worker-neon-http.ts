@@ -14,8 +14,8 @@ import { Pool as PgPool, type PoolConfig } from "pg";
 import { disableLocalPreparedStatements } from "./local-pg-query";
 import * as schema from "./schemas";
 
-export type WorkerNeonDb = NeonHttpDatabase<typeof schema>;
-type WorkerDb = WorkerNeonDb | NodePgDatabase<typeof schema>;
+export type WorkerNeonDb = NeonHttpDatabase<typeof schema> | NodePgDatabase<typeof schema>;
+type WorkerDb = WorkerNeonDb;
 
 /** Minimal env slice required by `getWorkerNeonDb` (matches Cloud Worker `Bindings`). */
 export interface WorkerNeonEnvSlice {
@@ -110,18 +110,18 @@ export function getWorkerNeonDb(c: { env: WorkerNeonEnvSlice }): WorkerNeonDb {
 
   if (isNeonDatabase(url)) {
     const cached = neonCache.get(env as object);
-    if (cached) return cached as unknown as WorkerNeonDb;
+    if (cached) return cached;
     const db = createWorkerDb(env);
     neonCache.set(env as object, db);
-    return db as unknown as WorkerNeonDb;
+    return db;
   }
 
   const requestKey = c as object;
   const cached = requestCache.get(requestKey);
-  if (cached) return cached as unknown as WorkerNeonDb;
+  if (cached) return cached;
   const db = createWorkerDb(env);
   requestCache.set(requestKey, db);
-  return db as unknown as WorkerNeonDb;
+  return db;
 }
 
 export { schema };

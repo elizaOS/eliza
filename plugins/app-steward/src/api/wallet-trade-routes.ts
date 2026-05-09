@@ -280,7 +280,7 @@ export async function handleWalletTradeExecuteRoute(
         if (rpcUrl && approvalHash) {
           const provider = deps.createProvider(rpcUrl);
           try {
-            const prov = provider as unknown as {
+            const prov = provider as {
               waitForTransaction?: (
                 hash: string,
                 confirmations?: number,

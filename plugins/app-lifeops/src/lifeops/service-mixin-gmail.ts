@@ -982,5 +982,5 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
       }
       return { ok: true, sentCount: request.items?.length ?? 0 };
     }
-  } as unknown as MixinClass<TBase, LifeOpsGmailService>;
+  } as MixinClass<TBase, LifeOpsGmailService>;
 }
