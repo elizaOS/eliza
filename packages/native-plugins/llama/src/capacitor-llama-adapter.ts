@@ -15,6 +15,7 @@ import type {
   HardwareInfo,
   LlamaAdapter,
   LoadOptions,
+  SetSpecTypeArgs,
 } from "./definitions";
 
 // Dynamically imported so the adapter can be bundled into a desktop build
@@ -71,6 +72,32 @@ interface LlamaCppPluginLike {
     text: string;
     imagePaths?: Array<string>;
   }) => Promise<{ tokens: number[] }>;
+  /**
+   * Optional - exposed only by the buun-llama-cpp fork. Stock builds
+   * lack this method and the adapter feature-detects + warn-no-ops.
+   */
+  setCacheType?: (options: {
+    cacheTypeK: string;
+    cacheTypeV: string;
+  }) => Promise<void>;
+  /**
+   * Optional - exposed only by the buun-llama-cpp fork (DFlash spec
+   * decode bridge).
+   */
+  setSpecType?: (options: {
+    target: string;
+    drafter: string;
+    specType: string;
+    draftMin: number;
+    draftMax: number;
+  }) => Promise<void>;
+  /**
+   * Optional - returns the list of fork-specific kernel symbols
+   * compiled into the loaded native library (or an empty array on
+   * stock builds). Backed by a `kernels.json` resource read from
+   * the .so's APK assets at first call.
+   */
+  getNativeKernels?: () => Promise<{ kernels: string[]; variant?: string }>;
   addListener: (
     event: string,
     listener: (data: TokenEventPayload) => void,
@@ -137,6 +164,22 @@ function toPlainLlamaCppPlugin(plugin: LlamaCppPluginLike): LlamaCppPluginLike {
       typeof plugin.tokenize === "function"
         ? (options) =>
             plugin.tokenize?.(options) as Promise<{ tokens: number[] }>
+        : undefined,
+    setCacheType:
+      typeof plugin.setCacheType === "function"
+        ? (options) => plugin.setCacheType?.(options) as Promise<void>
+        : undefined,
+    setSpecType:
+      typeof plugin.setSpecType === "function"
+        ? (options) => plugin.setSpecType?.(options) as Promise<void>
+        : undefined,
+    getNativeKernels:
+      typeof plugin.getNativeKernels === "function"
+        ? () =>
+            plugin.getNativeKernels?.() as Promise<{
+              kernels: string[];
+              variant?: string;
+            }>
         : undefined,
     addListener: (event, listener) => plugin.addListener(event, listener),
   };
@@ -208,7 +251,26 @@ function fallbackHardwareInfo(
     dflashSupported: false,
     dflashReason: reason,
     source: "adapter-fallback",
+    nativeKernels: [],
+    forkVariant: null,
   };
+}
+
+function normalizeForkVariant(
+  value: unknown,
+): "buun-llama-cpp" | "stock-llama-cpp" | null | undefined {
+  if (value === "buun-llama-cpp" || value === "stock-llama-cpp") return value;
+  if (value === null) return null;
+  return undefined;
+}
+
+function stringArrayFromUnknown(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry === "string" && entry.length > 0) out.push(entry);
+  }
+  return out;
 }
 
 function normalizeHardwareInfo(
@@ -277,6 +339,8 @@ function normalizeHardwareInfo(
         ? undefined
         : "native plugin did not report DFlash support"),
     source: value.source === "native" ? "native" : "adapter-fallback",
+    nativeKernels: stringArrayFromUnknown(value.nativeKernels) ?? [],
+    forkVariant: normalizeForkVariant(value.forkVariant) ?? null,
   };
 }
 
@@ -334,13 +398,82 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
     if (!isCapacitorNative()) return fallbackHardwareInfo(platform);
     try {
       const plugin = await this.loadPlugin();
-      return normalizeHardwareInfo(await plugin.getHardwareInfo?.(), platform);
+      const baseInfo = normalizeHardwareInfo(
+        await plugin.getHardwareInfo?.(),
+        platform,
+      );
+      // Probe fork-specific kernels through the optional bridge method.
+      // Stock builds and older fork builds without the bridge fall back
+      // to the empty list + "stock-llama-cpp" variant marker.
+      let nativeKernels = baseInfo.nativeKernels ?? [];
+      let forkVariant: HardwareInfo["forkVariant"] =
+        baseInfo.forkVariant ?? "stock-llama-cpp";
+      if (typeof plugin.getNativeKernels === "function") {
+        try {
+          const probe = await plugin.getNativeKernels();
+          const kernels = stringArrayFromUnknown(probe?.kernels);
+          if (kernels) nativeKernels = kernels;
+          const variant = normalizeForkVariant(probe?.variant);
+          if (variant !== undefined) forkVariant = variant;
+          else if (nativeKernels.length > 0) forkVariant = "buun-llama-cpp";
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.debug("[capacitor-llama] getNativeKernels probe failed", {
+            error: message,
+          });
+        }
+      }
+      return {
+        ...baseInfo,
+        nativeKernels,
+        forkVariant,
+      };
     } catch (error) {
       return fallbackHardwareInfo(
         platform,
         error instanceof Error ? error.message : "native hardware probe failed",
       );
     }
+  }
+
+  async setCacheType(typeK: string, typeV: string): Promise<void> {
+    if (!isCapacitorNative()) {
+      console.warn(
+        "[capacitor-llama] setCacheType called on non-native platform; ignoring",
+      );
+      return;
+    }
+    const plugin = await this.loadPlugin();
+    if (typeof plugin.setCacheType !== "function") {
+      console.warn(
+        "[capacitor-llama] underlying plugin does not expose setCacheType (likely stock build); cache types must be passed via load() params instead",
+      );
+      return;
+    }
+    await plugin.setCacheType({ cacheTypeK: typeK, cacheTypeV: typeV });
+  }
+
+  async setSpecType(args: SetSpecTypeArgs): Promise<void> {
+    if (!isCapacitorNative()) {
+      console.warn(
+        "[capacitor-llama] setSpecType called on non-native platform; ignoring",
+      );
+      return;
+    }
+    const plugin = await this.loadPlugin();
+    if (typeof plugin.setSpecType !== "function") {
+      console.warn(
+        "[capacitor-llama] underlying plugin does not expose setSpecType (likely stock build); pass draft_model + draft_min/max via load() instead",
+      );
+      return;
+    }
+    await plugin.setSpecType({
+      target: args.target,
+      drafter: args.drafter,
+      specType: args.specType,
+      draftMin: args.draftMin,
+      draftMax: args.draftMax,
+    });
   }
 
   async isLoaded(): Promise<{ loaded: boolean; modelPath: string | null }> {
