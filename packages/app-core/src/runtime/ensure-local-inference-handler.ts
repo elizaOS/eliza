@@ -299,16 +299,14 @@ async function tryRegisterCapacitorLoader(
     | undefined;
   if (!cap?.isNativePlatform?.()) return false;
   try {
-    const mod = (await import("@elizaos/capacitor-llama")) as unknown as {
-      registerCapacitorLlamaLoader?: (r: AgentRuntime) => void;
-    };
-    if (typeof mod.registerCapacitorLlamaLoader === "function") {
-      mod.registerCapacitorLlamaLoader(runtime);
-      logger.info(
-        "[local-inference] Registered capacitor-llama loader for mobile on-device inference",
-      );
-      return true;
-    }
+    const { registerCapacitorLlamaLoader } = await import(
+      "@elizaos/capacitor-llama"
+    );
+    registerCapacitorLlamaLoader(runtime);
+    logger.info(
+      "[local-inference] Registered capacitor-llama loader for mobile on-device inference",
+    );
+    return true;
   } catch (err) {
     logger.debug(
       "[local-inference] capacitor-llama not available:",

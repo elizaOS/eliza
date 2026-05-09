@@ -424,7 +424,7 @@ export type JsonPrimitive = string | number | boolean | null;
  *
  * The broad object type (Record<string, unknown>) ensures that domain types
  * like Memory[], Character, Content, etc. are accepted without requiring
- * unsafe 'as unknown as' casts, while still maintaining JSON-serializable
+ * unsafe double assertions, while still maintaining JSON-serializable
  * semantics at runtime.
  */
 export type ProviderValue =

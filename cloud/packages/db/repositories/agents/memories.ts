@@ -4,10 +4,14 @@
  * Handles all database operations for memories without spinning up runtime.
  */
 
-import type { Memory } from "@elizaos/core";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import type { Content, ContentValue, Memory } from "@elizaos/core";
+import { and, desc, eq, inArray, type InferSelectModel, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "@/db/helpers";
 import { memoryTable } from "@/db/schemas/eliza";
+
+type MemoryRow = InferSelectModel<typeof memoryTable>;
+type StoredMemory = Memory & { type: string };
+type UnknownRecord = { [key: string]: unknown };
 
 /**
  * Input for creating a new memory.
@@ -34,6 +38,79 @@ export interface SearchMemoriesOptions {
   types?: string[];
   limit?: number;
   offset?: number;
+}
+
+function isUnknownRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isContentValue(value: unknown): value is ContentValue {
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.every(isContentValue);
+  }
+
+  if (isUnknownRecord(value)) {
+    return Object.values(value).every(isContentValue);
+  }
+
+  return false;
+}
+
+function isContent(value: unknown): value is Content {
+  return isUnknownRecord(value) && Object.values(value).every(isContentValue);
+}
+
+function isMemoryMetadata(value: unknown): value is NonNullable<Memory["metadata"]> {
+  return isUnknownRecord(value) && Object.values(value).every(isContentValue);
+}
+
+function requireUuid(value: string | null, field: string, memoryId: string): string {
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+  throw new Error(`Memory ${memoryId} is missing required ${field}`);
+}
+
+function requireContent(value: unknown, memoryId: string): Content {
+  if (isContent(value)) {
+    return value;
+  }
+  throw new Error(`Memory ${memoryId} has invalid content`);
+}
+
+function readMetadata(value: unknown, memoryId: string): Memory["metadata"] {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  if (isMemoryMetadata(value)) {
+    return value;
+  }
+  throw new Error(`Memory ${memoryId} has invalid metadata`);
+}
+
+function toMemory(row: MemoryRow): StoredMemory {
+  return {
+    id: row.id,
+    type: row.type,
+    entityId: requireUuid(row.entityId, "entityId", row.id),
+    agentId: row.agentId,
+    createdAt: row.createdAt.getTime(),
+    content: requireContent(row.content, row.id),
+    roomId: requireUuid(row.roomId, "roomId", row.id),
+    worldId: row.worldId ?? undefined,
+    unique: row.unique,
+    metadata: readMetadata(row.metadata, row.id),
+  };
 }
 
 /**
@@ -79,7 +156,7 @@ export class MemoriesRepository {
       .limit(limit)
       .offset(offset);
 
-    return results as unknown as Memory[];
+    return results.map(toMemory);
   }
 
   /**
@@ -101,7 +178,7 @@ export class MemoriesRepository {
       .orderBy(desc(memoryTable.createdAt))
       .limit(limit);
 
-    return results as unknown as Memory[];
+    return results.map(toMemory);
   }
 
   /**
@@ -166,7 +243,7 @@ export class MemoriesRepository {
       .limit(limit)
       .offset(offset);
 
-    return results as unknown as Memory[];
+    return results.map(toMemory);
   }
 
   /**
@@ -186,7 +263,7 @@ export class MemoriesRepository {
       .limit(limit)
       .offset(offset);
 
-    return results as unknown as Memory[];
+    return results.map(toMemory);
   }
 
   /**
@@ -199,7 +276,7 @@ export class MemoriesRepository {
       .where(eq(memoryTable.id, memoryId))
       .limit(1);
 
-    return (result[0] || null) as unknown as Memory | null;
+    return result[0] ? toMemory(result[0]) : null;
   }
 
   /**
@@ -231,7 +308,7 @@ export class MemoriesRepository {
       .limit(limit)
       .offset(offset);
 
-    return results as unknown as Memory[];
+    return results.map(toMemory);
   }
 
   /**
@@ -295,7 +372,7 @@ export class MemoriesRepository {
       .orderBy(desc(memoryTable.createdAt))
       .limit(1);
 
-    return (result[0] || null) as unknown as Memory | null;
+    return result[0] ? toMemory(result[0]) : null;
   }
 
   // ============================================================================
@@ -336,7 +413,10 @@ export class MemoriesRepository {
       })
       .returning();
 
-    return memoryResult as unknown as Memory;
+    if (!memoryResult) {
+      throw new Error(`Memory not returned after create: ${input.id}`);
+    }
+    return toMemory(memoryResult);
   }
 
   /**

@@ -19,7 +19,7 @@ import type {
   WalletGenerateResult,
   WalletImportResult,
   WalletKeys,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { ethers } from "ethers";
 
@@ -59,7 +59,7 @@ export type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 
 // ── Re-exports from extracted modules ─────────────────────────────────
 

@@ -17,6 +17,7 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  Service,
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
@@ -117,9 +118,9 @@ export const skillCommandAction: Action = {
       });
     }
 
-    const service = runtime.getService(
+    const service = runtime.getService<Service & AgentSkillsServiceLike>(
       "AGENT_SKILLS_SERVICE",
-    ) as unknown as AgentSkillsServiceLike | null;
+    );
 
     if (!service) {
       const text =

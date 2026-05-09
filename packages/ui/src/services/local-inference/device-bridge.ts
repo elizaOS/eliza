@@ -152,6 +152,30 @@ interface WsModule {
   WebSocket: WsConstructor;
 }
 
+function isWsModule(value: unknown): value is WsModule {
+  if (!value || typeof value !== "object") return false;
+  const WebSocketServer = Reflect.get(value, "WebSocketServer");
+  const WebSocket = Reflect.get(value, "WebSocket");
+  if (
+    typeof WebSocketServer !== "function" ||
+    typeof WebSocket !== "function"
+  ) {
+    return false;
+  }
+  return (
+    typeof Reflect.get(WebSocket, "OPEN") === "number" &&
+    typeof Reflect.get(WebSocket, "CLOSED") === "number"
+  );
+}
+
+async function importWsModule(): Promise<WsModule> {
+  const mod: unknown = await import("ws");
+  if (!isWsModule(mod)) {
+    throw new Error("ws module did not expose WebSocketServer/WebSocket");
+  }
+  return mod;
+}
+
 interface PendingLoad {
   correlationId: string;
   modelPath: string;
@@ -374,7 +398,7 @@ export class DeviceBridge {
 
   async attachToHttpServer(server: HttpServer): Promise<void> {
     if (this.wss) return;
-    const ws = (await import("ws")) as unknown as WsModule;
+    const ws = await importWsModule();
     const wss = new ws.WebSocketServer({
       noServer: true,
       maxPayload: 1024 * 1024,

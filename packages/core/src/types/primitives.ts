@@ -225,7 +225,7 @@ export type ContentType = (typeof ContentType)[keyof typeof ContentType];
  *
  * The Record<string, unknown> union member ensures that domain types like
  * ContactInfo, RelationshipData, etc. are accepted without requiring
- * unsafe 'as unknown as' casts.
+ * unsafe double assertions.
  */
 export type MetadataValue =
 	| JsonValue

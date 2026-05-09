@@ -4,7 +4,7 @@ import type {
   BscTradeQuoteResponse,
   BscUnsignedApprovalTx,
   BscUnsignedTradeTx,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 import type { ethers } from "ethers";
 import type { TradePermissionMode } from "./trade-safety";
 import type { WalletTradeLedgerRecordInput } from "./wallet-trading-profile";

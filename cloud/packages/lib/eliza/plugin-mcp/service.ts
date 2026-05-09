@@ -61,7 +61,10 @@ export class McpService extends Service {
   /** Per-key mutex to prevent concurrent requests from creating duplicate connections */
   private connectionLocks = new Map<string, Promise<void>>();
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
+    if (!runtime) {
+      throw new Error("McpService requires a runtime");
+    }
     super(runtime);
     this.initPromise = this.init();
   }

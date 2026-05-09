@@ -14,12 +14,21 @@ import { type DispatchResult, dispatchEvent, type JsonObject } from "./handlers/
 import { logger } from "./logger";
 import { getRedis } from "./redis";
 
-interface AgentEntry {
+interface AgentEntryBase {
   agentId: string;
   characterRef: string;
-  runtime: IAgentRuntime;
-  state: "running" | "stopped";
 }
+
+interface RunningAgentEntry extends AgentEntryBase {
+  runtime: IAgentRuntime;
+  state: "running";
+}
+
+interface StoppedAgentEntry extends AgentEntryBase {
+  state: "stopped";
+}
+
+type AgentEntry = RunningAgentEntry | StoppedAgentEntry;
 
 /**
  * Platform metadata forwarded by the gateway webhook alongside a user message.
@@ -216,7 +225,6 @@ export class AgentManager {
     this.agents.set(agentId, {
       agentId,
       characterRef,
-      runtime: null as unknown as IAgentRuntime,
       state: "stopped",
     });
 
@@ -270,7 +278,11 @@ export class AgentManager {
     if (!entry) throw new Error("Agent not found");
     if (entry.state === "stopped") return;
     await entry.runtime.stop();
-    entry.state = "stopped";
+    this.agents.set(id, {
+      agentId: entry.agentId,
+      characterRef: entry.characterRef,
+      state: "stopped",
+    });
     await this.refreshRedisState();
   }
 

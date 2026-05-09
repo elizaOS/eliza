@@ -56,6 +56,21 @@ interface TerminalDownloadsFile {
   jobs: DownloadJob[];
 }
 
+async function* readFetchBody(
+  body: ReadableStream<Uint8Array>,
+): AsyncIterable<Buffer> {
+  const reader = body.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      if (value) yield Buffer.from(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 function stagingFilename(modelId: string): string {
   // Filename is derived deterministically so repeated download attempts
   // reuse the same partial file and actually resume.
@@ -463,9 +478,7 @@ export class Downloader {
         return {
           statusCode: response.status,
           headers: Object.fromEntries(response.headers.entries()),
-          body: Readable.fromWeb(
-            response.body as unknown as Parameters<typeof Readable.fromWeb>[0],
-          ),
+          body: readFetchBody(response.body),
         };
       },
     };
