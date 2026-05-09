@@ -14,6 +14,12 @@ import type {
   TriggerTaskMetadata,
 } from "./types.js";
 
+// Phase 2E: triggers always dispatch through the workflow service. The
+// previous autonomy-room memory injection path has been removed; every
+// persisted trigger is `kind: "workflow"`. Any stale `kind: "text"`
+// record we encounter at dispatch time is logged and skipped — the boot
+// migration rewrites it on the next cycle.
+
 export const TRIGGER_TASK_NAME = "TRIGGER_DISPATCH" as const;
 export const TRIGGER_TASK_TAGS = ["queue", "repeat", "trigger"] as const;
 const HEARTBEAT_TASK_TAGS = ["queue", "repeat", "heartbeat"] as const;
@@ -137,106 +143,6 @@ export function getTriggerLimit(runtime?: IAgentRuntime): number {
   return DEFAULT_MAX_ACTIVE_TRIGGERS;
 }
 
-type AutonomyServiceLike = Service & {
-  getAutonomousRoomId?: () => UUID;
-  getTargetRoomId?: () => UUID;
-};
-
-async function isAutonomyServiceAvailable(
-  runtime: IAgentRuntime,
-): Promise<boolean> {
-  const svc =
-    runtime.getService<AutonomyServiceLike>("AUTONOMY") ??
-    runtime.getService<AutonomyServiceLike>("autonomy");
-  return svc != null;
-}
-
-/**
- * Dispatch a trigger instruction by creating a memory in the autonomy
- * room. The AutonomyService's internal loop picks up new memories and
- * processes them as autonomous actions.
- *
- * This replaces the previous approach of calling a non-existent
- * `injectAutonomousInstruction` method on the service.
- */
-async function dispatchInstruction(
-  runtime: IAgentRuntime,
-  taskId: UUID,
-  trigger: TriggerConfig,
-  event?: TriggerExecutionOptions["event"],
-): Promise<void> {
-  // Resolve the autonomy service to find the target room.
-  // Retry up to 5 times (500ms, 1s, 1.5s, 2s backoff) because the
-  // service may still be registering after a runtime restart or SQL
-  // compatibility repair. Worst case: adds ~5s latency to a trigger
-  // dispatch that would have failed anyway. The retry is bounded and
-  // does not block the event loop (uses setTimeout).
-  let autonomyService: AutonomyServiceLike | null = null;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    autonomyService =
-      runtime.getService<AutonomyServiceLike>("AUTONOMY") ??
-      runtime.getService<AutonomyServiceLike>("autonomy");
-    if (autonomyService) break;
-    if (attempt < 4) {
-      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
-    }
-  }
-
-  if (!autonomyService) {
-    runtime.logger.warn?.(
-      `Autonomy service not found after retries (taskId=${taskId}, triggerId=${trigger.triggerId})`,
-    );
-    throw new Error("Autonomy service unavailable for trigger dispatch");
-  }
-
-  // Resolve the room to inject the instruction into
-  const roomId =
-    (typeof autonomyService.getAutonomousRoomId === "function"
-      ? autonomyService.getAutonomousRoomId()
-      : undefined) ??
-    (typeof autonomyService.getTargetRoomId === "function"
-      ? autonomyService.getTargetRoomId()
-      : undefined);
-
-  if (!roomId) {
-    runtime.logger.warn?.(
-      `[trigger-runtime] No autonomy room resolvable for trigger ${trigger.triggerId} — cannot dispatch`,
-    );
-    throw new Error(
-      "No autonomy room available for trigger dispatch. Ensure the AutonomyService has a target room configured.",
-    );
-  }
-
-  // Create a memory in the autonomy room with the trigger instruction.
-  // The AutonomyService loop picks this up as an autonomous action.
-  const eventText = event
-    ? `\n\nEvent: ${event.kind}\nPayload: ${JSON.stringify(event.payload ?? {})}`
-    : "";
-  const instructionText = `[Heartbeat: ${trigger.displayName}]\n${trigger.instructions}${eventText}`;
-
-  await runtime.createMemory(
-    {
-      entityId: runtime.agentId,
-      roomId,
-      content: {
-        text: instructionText,
-        source: "trigger-runtime",
-        metadata: {
-          triggerId: trigger.triggerId,
-          triggerTaskId: taskId,
-          wakeMode: trigger.wakeMode,
-          isAutonomousInstruction: true,
-        },
-      },
-    },
-    "messages",
-  );
-
-  // For inject_now: the memory is already in the autonomy room. The
-  // AutonomyService loop will pick it up on its next cycle; that loop is
-  // the single execution path for all autonomous instructions.
-}
-
 interface WorkflowDispatchServiceLike {
   execute(
     workflowId: string,
@@ -330,22 +236,19 @@ export async function executeTriggerTask(
     };
   }
 
-  const isWorkflowKind = trigger.kind === "workflow";
-
-  // Workflow-kind triggers dispatch to an external service; they don't
-  // require the autonomy room to be ready.
-  if (
-    !isWorkflowKind &&
-    !(await isAutonomyServiceAvailable(runtime)) &&
-    options.source !== "manual"
-  ) {
+  // Phase 2E: every trigger that reaches dispatch is `kind: "workflow"`.
+  // Stale on-disk text triggers are migrated by the boot migration; if we
+  // encounter one before that runs, log a warning and skip — re-dispatch
+  // will pick it up after migration without crashing the loop.
+  if (trigger.kind !== "workflow") {
     runtime.logger.warn?.(
       {
         src: "trigger-runtime",
         taskId: task.id,
         triggerId: trigger.triggerId,
+        kind: trigger.kind,
       },
-      "Autonomy service unavailable — skipping trigger (will retry next cycle)",
+      "Trigger is not workflow-kind; skipping (boot migration will convert it)",
     );
     recordExecutionMetric(runtime.agentId, "skipped", Date.now());
     return { status: "skipped", taskDeleted: false };
@@ -356,42 +259,23 @@ export async function executeTriggerTask(
   let errorMessage = "";
   let workflowExecutionId: string | undefined;
 
-  if (isWorkflowKind) {
-    const result = await dispatchWorkflow(runtime, trigger, options.event);
-    if (result.ok === true) {
-      workflowExecutionId = result.executionId;
-    } else {
-      status = "error";
-      errorMessage = result.error;
-      runtime.logger.error(
-        {
-          src: "trigger-runtime",
-          agentId: runtime.agentId,
-          taskId: task.id,
-          triggerId: trigger.triggerId,
-          workflowId: trigger.workflowId,
-          error: errorMessage,
-        },
-        "Workflow trigger dispatch failed",
-      );
-    }
+  const result = await dispatchWorkflow(runtime, trigger, options.event);
+  if (result.ok === true) {
+    workflowExecutionId = result.executionId;
   } else {
-    try {
-      await dispatchInstruction(runtime, task.id, trigger, options.event);
-    } catch (error) {
-      status = "error";
-      errorMessage = String(error);
-      runtime.logger.error(
-        {
-          src: "trigger-runtime",
-          agentId: runtime.agentId,
-          taskId: task.id,
-          triggerId: trigger.triggerId,
-          error: errorMessage,
-        },
-        "Trigger execution failed",
-      );
-    }
+    status = "error";
+    errorMessage = result.error;
+    runtime.logger.error(
+      {
+        src: "trigger-runtime",
+        agentId: runtime.agentId,
+        taskId: task.id,
+        triggerId: trigger.triggerId,
+        workflowId: trigger.workflowId,
+        error: errorMessage,
+      },
+      "Workflow trigger dispatch failed",
+    );
   }
 
   if (status === "success") {

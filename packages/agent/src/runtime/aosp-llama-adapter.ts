@@ -12,6 +12,13 @@
  *   apothic's fork adds two GGML quant types (TBQ3_0 = 43, TBQ4_0 = 44)
  *   for KV-cache compression, with CPU implementations under
  *   `ggml/src/ggml-cpu/quants.c` + `ggml/src/ggml-cpu/ggml-cpu.c`.
+ *   The Milady-side `polarquant-q4` branch on the same fork adds a third
+ *   weight-quant type (Q4_POLAR = 45) — 128-element rotated Lloyd-Max +
+ *   optional 1-bit QJL residual, ~4.125-5.125 bpw — registered in the
+ *   same dispatch table. PolarQuant tensors are weight-quantized, not
+ *   KV-quantized, so they don't go through ELIZA_LLAMA_CACHE_TYPE_*;
+ *   the GGUF tensor type is sufficient at load time once the shim
+ *   library is built against the polarquant-q4 branch.
  *   block_tbq3_0 packs 32 floats into 14 bytes (vs 64 bytes for fp16) —
  *   ~4.6x KV-cache memory reduction. KV cache dominates phone-RAM
  *   pressure at long contexts, so this is the difference between Bonsai
@@ -809,6 +816,18 @@ class AospLlamaAdapter implements AospLoader {
     if (this.ctx !== null || this.model !== null) {
       await this.unloadModel();
     }
+
+    // GGUF type discovery is self-describing for weight-quantized formats.
+    // PolarQuant Q4 (GGML_TYPE_Q4_POLAR=45, registered in the
+    // apothic/llama.cpp-1bit-turboquant fork on branch polarquant-q4)
+    // ships as the tensor type recorded in the GGUF header — no env var
+    // is required at load time. The QJL residual flag in the header
+    // (polarquant.use_qjl) is honoured by the C decoder via
+    // ggml_q4_polar_set_use_qjl(); the loader call site for that toggle
+    // lives in the libllama startup path, not in this adapter, because
+    // the type traits are bound to the ggml-base library at process
+    // start. ELIZA_LLAMA_CACHE_TYPE_K/_V are unrelated — those drive
+    // the KV cache codec for Bonsai TBQ models, not weight quantization.
 
     // Resolve runtime tunables. The active-model coordinator only forwards
     // `{ modelPath }` today, so we backfill from env so AOSP doesn't run at
