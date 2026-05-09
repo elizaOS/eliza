@@ -166,7 +166,9 @@ async function loadCheckModule(
   }
 
   const url = pathToFileURL(absolute).href;
-  const mod = (await import(url)) as Partial<PluginAutoEnableModule> & {
+  // Dynamic file:// import — Vite's static analyzer flags this on the client
+  // bundle even though the engine only runs server-side at boot. Suppress.
+  const mod = (await import(/* @vite-ignore */ url)) as Partial<PluginAutoEnableModule> & {
     default?: Partial<PluginAutoEnableModule>;
   };
   // Accept both named and default exports — `export function shouldEnable`
