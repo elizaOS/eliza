@@ -1,7 +1,7 @@
 import type {
   RouteHelpers,
   RouteRequestContext,
-} from "@elizaos/agent/api/route-helpers";
+} from "@elizaos/shared";
 import {
   parseClampedFloat,
   parsePositiveInteger,

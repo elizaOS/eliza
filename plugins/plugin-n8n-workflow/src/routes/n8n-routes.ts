@@ -27,7 +27,7 @@
  * services/n8n-sidecar.ts rather than being threaded through state.
  */
 
-import type { RouteHelpers, RouteRequestMeta } from '@elizaos/agent/api/route-helpers';
+import type { RouteHelpers, RouteRequestMeta } from '@elizaos/shared';
 import { readCompatJsonBody } from '@elizaos/app-core/api/compat-route-shared';
 import { isNativeServerPlatform } from '@elizaos/app-core/platform/is-native-server';
 import { type N8nMode, resolveN8nMode } from '@elizaos/app-core/services/n8n-mode';

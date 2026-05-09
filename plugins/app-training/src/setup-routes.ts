@@ -18,7 +18,7 @@ import {
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
-} from "@elizaos/agent/api/http-helpers";
+} from "@elizaos/shared";
 import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
 import {
   EXPERIENCE_ROUTE_PATHS,
