@@ -113,11 +113,18 @@ export async function executePlannedToolCall(
 		});
 	}
 	if (!available) {
+		// User-facing `text` must be conversational — the planner loop's
+		// `continueChain: false` early-exit surfaces `latestToolResultText`
+		// straight to the user with no evaluator step to reformulate it.
+		// Keep the diagnostic identifier in `error` for telemetry / logs.
 		return emitToolResult(toolCall, {
 			...failureResult(
 				action.name,
-				`Action ${action.name} is not available for the current message or runtime state`,
-				{ error: "ACTION_UNAVAILABLE" },
+				"Sorry — I can't run that here right now.",
+				{
+					error: "ACTION_UNAVAILABLE",
+					diagnostic: `Action ${action.name} re-validation returned not available at execution time.`,
+				},
 			),
 			continueChain: false,
 		});

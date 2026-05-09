@@ -207,9 +207,24 @@ function getMediaProviderOptions(
   };
 }
 
+// Memoise per-kind availability by config-snapshot identity. `validate` runs
+// twice per planned action (planning-time + execution-time re-validate), and
+// provider constructors aren't free — without the cache we'd re-build them on
+// every message. WeakMap keyed on the loaded config object means a config
+// reload (which returns a fresh object) busts the cache automatically.
+const mediaProviderAvailabilityCache = new WeakMap<
+  object,
+  Map<"image" | "video" | "audio" | "vision", boolean>
+>();
+
 function canCreateMediaProvider(kind: "image" | "video" | "audio" | "vision") {
   const config = loadElizaConfig();
+  const cached = mediaProviderAvailabilityCache.get(config)?.get(kind);
+  if (cached !== undefined) return cached;
+
   const options = getMediaProviderOptions(config);
+  const cfg = config.media?.[kind];
+  let available: boolean;
   try {
     switch (kind) {
       case "image":
@@ -225,10 +240,29 @@ function canCreateMediaProvider(kind: "image" | "video" | "audio" | "vision") {
         createVisionProvider(config.media?.vision, options);
         break;
     }
-    return true;
-  } catch {
-    return false;
+    available = true;
+  } catch (err) {
+    // Distinguish "no config" (silent — the provider just isn't set up)
+    // from "misconfigured" (loud — the user wrote a config but it's
+    // broken). Without this split a malformed API key / wrong backend
+    // type / required-field typo silently disables the action and the
+    // user has no idea why image/video generation disappeared.
+    available = false;
+    if (cfg != null) {
+      console.warn(
+        `[canCreateMediaProvider] Failed to construct ${kind} provider — check media.${kind} config:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
+
+  let perKind = mediaProviderAvailabilityCache.get(config);
+  if (!perKind) {
+    perKind = new Map();
+    mediaProviderAvailabilityCache.set(config, perKind);
+  }
+  perKind.set(kind, available);
+  return available;
 }
 
 // ============================================================================
