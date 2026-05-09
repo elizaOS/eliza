@@ -379,7 +379,7 @@ export function getSharedSourceAliases(
     ...(options.includeConfigAlias
       ? [
           {
-            find: "@elizaos/shared/config",
+            find: /^@elizaos\/shared\/config$/,
             replacement: path.join(sourceRoot, "config", "types.ts"),
           },
         ]

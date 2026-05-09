@@ -135,7 +135,11 @@ export const grepAction: Action = {
     _message: Memory,
     _state?: State,
   ) => {
-    return true;
+    return Boolean(
+      runtime.getService(SANDBOX_SERVICE) &&
+        runtime.getService(SESSION_CWD_SERVICE) &&
+        runtime.getService(RIPGREP_SERVICE),
+    );
   },
   handler: async (
     runtime: IAgentRuntime,

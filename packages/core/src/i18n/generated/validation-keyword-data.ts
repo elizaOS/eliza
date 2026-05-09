@@ -474,11 +474,6 @@ export const VALIDATION_KEYWORD_DOCS = {
         base: "room\nmute room\nmute_room\nunmute room\nunmute_room\nfollow room\nfollow_room\nunfollow room\nunfollow_room\nmute chat\nmute_chat\nunmute chat\nunmute_chat\nmute telegram\nmute_telegram\nmute discord\nmute_discord\nsilence group chat\nsilence_group_chat\nfollow chat\nfollow_chat\nfollow channel\nfollow_channel\nfollow thread\nfollow_thread\nunfollow chat\nunfollow_chat\nunfollow thread\nunfollow_thread\njoin room\njoin_room\nleave room\nleave_room\nchat thread\nchat_thread\nmessaging room\ncontacts room\nsettings room",
       },
     },
-    roomTitle: {
-      request: {
-        base: "room title\nroom_title\ngenerate room title\ngenerate_room_title\nconversation title\nconversation_title",
-      },
-    },
     rs2004: {
       request: {
         base: "rs 2004\nrs_2004\ngame rs 2004\nautomation rs 2004\nworld rs 2004\nstate rs 2004",

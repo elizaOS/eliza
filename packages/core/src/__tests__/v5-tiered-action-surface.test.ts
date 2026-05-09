@@ -12,6 +12,7 @@ import { ModelType } from "../types/model";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
+import { getActiveRoutingContextsForTurn } from "../utils/context-routing";
 
 const MSG_ID = "00000000-0000-0000-0000-100000000001" as UUID;
 const SENDER_ID = "00000000-0000-0000-0000-100000000002" as UUID;
@@ -106,6 +107,12 @@ function makeAction(opts: {
 	description?: string;
 	contexts?: AgentContext[];
 	subActions?: Array<string | Action>;
+	validate?: (
+		runtime: IAgentRuntime,
+		message: Memory,
+		state: State | undefined,
+		options?: HandlerOptions,
+	) => Promise<boolean>;
 	handler?: (
 		runtime: IAgentRuntime,
 		message: Memory,
@@ -122,7 +129,7 @@ function makeAction(opts: {
 		parameters: [],
 		contexts: opts.contexts,
 		subActions: opts.subActions,
-		validate: async () => true,
+		validate: opts.validate ?? (async () => true),
 		handler:
 			opts.handler ??
 			(async () => ({
@@ -147,7 +154,9 @@ function replyPlannerResponse(): CannedResponse {
 	return {
 		body: {
 			text: "ok",
-			toolCalls: [{ id: "reply-1", name: "REPLY", args: { text: "ok" } }],
+			toolCalls: [
+				{ id: "reply-1", name: "REPLY", arguments: { text: "ok" } },
+			],
 		},
 	};
 }
@@ -243,7 +252,7 @@ describe("v5 tiered action surface", () => {
 		expect(prompt).not.toContain("SEND_EMAIL");
 	});
 
-	it("keeps ambiguous BM25 matches at Tier B parent-only", async () => {
+	it("expands strong context matches into callable actions", async () => {
 		const createEvent = makeAction({
 			name: "CREATE_EVENT",
 			description: "Create a calendar event.",
@@ -277,8 +286,8 @@ describe("v5 tiered action surface", () => {
 
 		const prompt = availableActionsSection(runtime);
 		expect(prompt).toContain("CALENDAR");
-		expect(prompt).not.toContain("CREATE_EVENT");
-		expect(prompt).not.toContain("CHAT_MESSAGE");
+		expect(prompt).toContain("CREATE_EVENT");
+		expect(prompt).toContain("CHAT_MESSAGE");
 	});
 
 	it("falls back to the full gated action surface when disabled", async () => {
@@ -313,6 +322,67 @@ describe("v5 tiered action surface", () => {
 		expect(prompt).toContain("CHAT_MESSAGE");
 	});
 
+	it("carries Stage 1 contexts into action validation and execution", async () => {
+		let messageCalls = 0;
+		const message = makeAction({
+			name: "MESSAGE",
+			description:
+				"Primary email and messaging action for inbox review and unread email summaries.",
+			contexts: ["email"],
+			validate: async (_runtime, msg, state) =>
+				getActiveRoutingContextsForTurn(state, msg).includes("email"),
+			handler: async () => {
+				messageCalls++;
+				return {
+					success: true,
+					text: "summarized unread email",
+					data: { actionName: "MESSAGE" },
+				};
+			},
+		});
+		const runtime = makeRuntime({
+			actions: [message],
+			responses: [
+				stage1Response({
+					contexts: ["email"],
+					requiresTool: true,
+					candidateActions: ["summarize_unread_emails"],
+					parentActionHints: ["MESSAGE"],
+				}),
+				{
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "message-1",
+								name: "MESSAGE",
+								arguments: {},
+							},
+						],
+					},
+				},
+				{
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Message action completed.",
+						messageToUser: "summarized unread email",
+					}),
+				},
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("summarize my unread emails"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(messageCalls).toBe(1);
+		expect(availableActionsSection(runtime)).toContain("MESSAGE");
+	});
+
 	it("lets a Tier B parent invoke its sub-planner and execute child actions", async () => {
 		let createEventCalls = 0;
 		const createEvent = makeAction({
@@ -341,13 +411,17 @@ describe("v5 tiered action surface", () => {
 				{
 					body: {
 						text: "Using calendar.",
-						toolCalls: [{ id: "top-1", name: "CALENDAR", args: {} }],
+						toolCalls: [
+							{ id: "top-1", name: "CALENDAR", arguments: {} },
+						],
 					},
 				},
 				{
 					body: {
 						text: "Creating the event.",
-						toolCalls: [{ id: "child-1", name: "CREATE_EVENT", args: {} }],
+						toolCalls: [
+							{ id: "child-1", name: "CREATE_EVENT", arguments: {} },
+						],
 					},
 				},
 				{

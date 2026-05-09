@@ -68,11 +68,11 @@ export const webFetchAction: Action = {
     },
   ],
   validate: async (
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
   ) => {
-    return true;
+    return typeof fetch === "function";
   },
   handler: async (
     runtime: IAgentRuntime,

@@ -1,12 +1,13 @@
-import {
-  type Action,
-  type ActionExample,
-  type ActionResult,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+import type {
+  Action,
+  ActionExample,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
+import { mergedOptions } from "./confirmation";
 import {
   downloadMusicExamples,
   downloadMusicSimiles,
@@ -31,7 +32,6 @@ import {
   searchYouTubeSimiles,
   validateSearchYouTube,
 } from "./searchYouTube";
-import { mergedOptions } from "./confirmation";
 
 type MusicLibraryOp = "playlist" | "play_query" | "search_youtube" | "download";
 
@@ -126,6 +126,35 @@ function readExplicitOp(
     normalizeMusicLibraryOp(options.action) ??
     normalizeMusicLibraryOp(options.subaction)
   );
+}
+
+function selectedContextMatches(
+  state: State | undefined,
+  contexts: readonly string[],
+): boolean {
+  const selected = new Set<string>();
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") selected.add(item);
+    }
+  };
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  const contextObject = (state?.data as Record<string, unknown> | undefined)
+    ?.contextObject as
+    | {
+        trajectoryPrefix?: { selectedContexts?: unknown };
+        metadata?: { selectedContexts?: unknown };
+      }
+    | undefined;
+  collect(contextObject?.trajectoryPrefix?.selectedContexts);
+  collect(contextObject?.metadata?.selectedContexts);
+  return contexts.some((context) => selected.has(context));
 }
 
 async function inferMusicLibraryOp(
@@ -233,12 +262,17 @@ export const musicLibraryAction: Action = {
   ],
   validate: async (
     runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     state?: State,
     options?: Record<string, unknown>,
   ): Promise<boolean> => {
     const merged = mergedOptions(options);
-    return Boolean(await inferMusicLibraryOp(runtime, message, state, merged));
+    const service = runtime.getService("musicLibrary");
+    return Boolean(
+      service &&
+        (readExplicitOp(merged) ||
+          selectedContextMatches(state, MUSIC_LIBRARY_CONTEXTS)),
+    );
   },
   handler: async (
     runtime: IAgentRuntime,

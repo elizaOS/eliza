@@ -103,7 +103,7 @@ if (missing.length > 0) {
 				} as never);
 
 				expect(typeof text).toBe("string");
-				expect(text.length).toBeGreaterThan(0);
+				expect((text as string).length).toBeGreaterThan(0);
 
 				const responsesCall = captured.find((c) =>
 					c.url.includes("/responses"),

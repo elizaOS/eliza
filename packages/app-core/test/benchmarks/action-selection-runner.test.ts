@@ -42,6 +42,9 @@ describe("action selection benchmark scoring helpers", () => {
     expect(caseMatches("FETCH_TWITTER_DMS", "MESSAGE", undefined)).toBe(true);
     expect(caseMatches("READ_TWITTER_DM", "MESSAGE", undefined)).toBe(true);
     expect(caseMatches("EMAIL_FETCH_UNREAD", "MESSAGE", undefined)).toBe(true);
+    expect(caseMatches("SUMMARIZE_UNREAD_EMAILS", "MESSAGE", undefined)).toBe(
+      true,
+    );
     expect(caseMatches("SEND_DISCORD_MESSAGE", "MESSAGE", undefined)).toBe(true);
     expect(caseMatches("BLOCK_WEBSITE", "WEBSITE_BLOCK", undefined)).toBe(true);
     expect(caseMatches("AUTOMATION_FOCUS_BLOCK", "WEBSITE_BLOCK", undefined)).toBe(

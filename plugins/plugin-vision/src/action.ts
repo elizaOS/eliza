@@ -213,17 +213,6 @@ const TRACK_ENTITY_KEYWORDS = [
   "사람",
 ];
 
-const ALL_VISION_KEYWORDS = Array.from(
-  new Set([
-    ...DESCRIBE_KEYWORDS,
-    ...CAPTURE_KEYWORDS,
-    ...SET_MODE_KEYWORDS,
-    ...NAME_ENTITY_KEYWORDS,
-    ...IDENTIFY_PERSON_KEYWORDS,
-    ...TRACK_ENTITY_KEYWORDS,
-  ]),
-);
-
 function withVisionTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   return Promise.race([
     promise,
@@ -302,22 +291,6 @@ function selectedContextMatches(
   collect(contextObject?.trajectoryPrefix?.selectedContexts);
   collect(contextObject?.metadata?.selectedContexts);
   return contexts.some((context) => selected.has(context));
-}
-
-function hasVisionIntent(
-  message: Memory,
-  state: State | undefined,
-  keywords: readonly string[],
-): boolean {
-  const text = [
-    typeof message.content?.text === "string" ? message.content.text : "",
-    typeof state?.values?.recentMessages === "string"
-      ? state.values.recentMessages
-      : "",
-  ]
-    .join("\n")
-    .toLowerCase();
-  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
 }
 
 function visionServiceIsActive(runtime: IAgentRuntime): boolean {
@@ -1396,17 +1369,19 @@ export const visionAction: Action = {
   ],
   validate: async (
     runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     state?: State,
+    options?: Record<string, unknown>,
   ): Promise<boolean> => {
     if (!visionServiceIsActive(runtime)) {
       // set_mode does not require active vision; allow if service is registered.
       const visionService = runtime.getService<VisionService>("VISION");
       if (!visionService) return false;
     }
+    const params = readActionParams(options);
     return (
       selectedContextMatches(state, ALL_VISION_CONTEXTS) ||
-      hasVisionIntent(message, state, ALL_VISION_KEYWORDS)
+      typeof params.op === "string"
     );
   },
   handler: async (

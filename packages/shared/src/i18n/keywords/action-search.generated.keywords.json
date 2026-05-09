@@ -1,13 +1,6 @@
 {
   "$schema": "./keywords.schema.json",
-  "locales": [
-    "es",
-    "ko",
-    "pt",
-    "tl",
-    "vi",
-    "zh-CN"
-  ],
+  "locales": ["es", "ko", "pt", "tl", "vi", "zh-CN"],
   "entries": {
     "action.agentInbox.request": {
       "base": [
@@ -645,9 +638,7 @@
       ]
     },
     "action.finish.request": {
-      "base": [
-        "finish"
-      ]
+      "base": ["finish"]
     },
     "action.formEvaluator.request": {
       "base": [
@@ -1339,10 +1330,7 @@
       ]
     },
     "action.musicLibrary.request": {
-      "base": [
-        "music library",
-        "music_library"
-      ]
+      "base": ["music library", "music_library"]
     },
     "action.nostrPublishProfile.request": {
       "base": [
@@ -1850,11 +1838,7 @@
       ]
     },
     "action.role.request": {
-      "base": [
-        "role",
-        "admin role",
-        "settings role"
-      ]
+      "base": ["role", "admin role", "settings role"]
     },
     "action.room.request": {
       "base": [
@@ -1896,16 +1880,6 @@
         "messaging room",
         "contacts room",
         "settings room"
-      ]
-    },
-    "action.roomTitle.request": {
-      "base": [
-        "room title",
-        "room_title",
-        "generate room title",
-        "generate_room_title",
-        "conversation title",
-        "conversation_title"
       ]
     },
     "action.rs2004.request": {
@@ -2079,11 +2053,7 @@
       ]
     },
     "action.securityEvaluator.request": {
-      "base": [
-        "security evaluator",
-        "security_evaluator",
-        "securityevaluator"
-      ]
+      "base": ["security evaluator", "security_evaluator", "securityevaluator"]
     },
     "action.sendToAdmin.request": {
       "base": [

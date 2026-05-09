@@ -408,8 +408,11 @@ export const walletRouterAction: Action = {
       schema: { type: "string" },
     },
   ],
-  validate: async (_runtime, message, state) => {
-    const raw = extractRawParams(message, state);
+  validate: async (_runtime, message, state, options) => {
+    if (!serviceFromRuntime(_runtime)) {
+      return false;
+    }
+    const raw = extractRawParams(message, state, options);
     if (raw) {
       const normalized = normalizeRawParams(raw);
       if (isWalletRouterSubaction(normalized.subaction)) {
@@ -419,11 +422,7 @@ export const walletRouterAction: Action = {
     if (selectedContextMatches(state, ["finance", "crypto", "wallet"])) {
       return true;
     }
-    const text = message.content?.text;
-    if (typeof text !== "string") return false;
-    return /\b(wallet|swap|transfer|send|token|crypto|money|balance|solana|evm|ethereum|base|arbitrum|governance|governor|proposal|vote|dao)\b/i.test(
-      text,
-    );
+    return false;
   },
   handler: async (
     runtime: IAgentRuntime,

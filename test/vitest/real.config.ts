@@ -124,6 +124,12 @@ const uiSourceRoot = getUiSourceRoot(repoRoot);
 const pluginOpenAiRoot = path.join(elizaWorkspaceRoot, "plugins", "plugin-openai");
 const pluginIMessageRoot = path.join(elizaWorkspaceRoot, "plugins", "plugin-imessage");
 const pluginDiscordRoot = path.join(elizaWorkspaceRoot, "plugins", "plugin-discord");
+const pluginBrowserRoot = path.join(
+  elizaWorkspaceRoot,
+  "plugins",
+  "plugin-browser",
+  "src",
+);
 const pluginElizaCloudRoot = path.join(
   elizaWorkspaceRoot,
   "plugins",
@@ -199,6 +205,14 @@ const realResolveAlias: ModuleAlias[] = [
   {
     find: /^@elizaos\/plugin-imessage\/(.+)$/,
     replacement: path.join(pluginIMessageRoot, "src", "$1"),
+  },
+  {
+    find: /^@elizaos\/plugin-browser$/,
+    replacement: path.join(pluginBrowserRoot, "index.ts"),
+  },
+  {
+    find: /^@elizaos\/plugin-browser\/(.+)$/,
+    replacement: path.join(pluginBrowserRoot, "$1"),
   },
   {
     find: /^@elizaos\/plugin-elizacloud$/,
