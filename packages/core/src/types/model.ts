@@ -89,8 +89,6 @@ export const ModelType = {
 	TEXT_TO_SPEECH: "TEXT_TO_SPEECH",
 	AUDIO: "AUDIO",
 	VIDEO: "VIDEO",
-	OBJECT_SMALL: "OBJECT_SMALL",
-	OBJECT_LARGE: "OBJECT_LARGE",
 	RESEARCH: "RESEARCH",
 } as const;
 
@@ -126,7 +124,7 @@ export type TextGenerationModelType =
  *   DEFAULT_TEMPERATURE: 0.7,              // Applies to all models
  *   TEXT_SMALL_TEMPERATURE: 0.5,           // Overrides default for TEXT_SMALL
  *   TEXT_LARGE_MAX_TOKENS: 4096,           // Specific to TEXT_LARGE
- *   OBJECT_SMALL_TEMPERATURE: 0.3,         // Specific to OBJECT_SMALL
+ *   TEXT_NANO_TEMPERATURE: 0.3,            // Specific to TEXT_NANO
  * }
  * ```
  */
@@ -218,28 +216,6 @@ export const MODEL_SETTINGS = {
 	ACTION_PLANNER_REPETITION_PENALTY: "ACTION_PLANNER_REPETITION_PENALTY",
 	ACTION_PLANNER_FREQUENCY_PENALTY: "ACTION_PLANNER_FREQUENCY_PENALTY",
 	ACTION_PLANNER_PRESENCE_PENALTY: "ACTION_PLANNER_PRESENCE_PENALTY",
-
-	// OBJECT_SMALL specific settings
-	OBJECT_SMALL_MAX_TOKENS: "OBJECT_SMALL_MAX_TOKENS",
-	OBJECT_SMALL_TEMPERATURE: "OBJECT_SMALL_TEMPERATURE",
-	OBJECT_SMALL_TOP_P: "OBJECT_SMALL_TOP_P",
-	OBJECT_SMALL_TOP_K: "OBJECT_SMALL_TOP_K",
-	OBJECT_SMALL_MIN_P: "OBJECT_SMALL_MIN_P",
-	OBJECT_SMALL_SEED: "OBJECT_SMALL_SEED",
-	OBJECT_SMALL_REPETITION_PENALTY: "OBJECT_SMALL_REPETITION_PENALTY",
-	OBJECT_SMALL_FREQUENCY_PENALTY: "OBJECT_SMALL_FREQUENCY_PENALTY",
-	OBJECT_SMALL_PRESENCE_PENALTY: "OBJECT_SMALL_PRESENCE_PENALTY",
-
-	// OBJECT_LARGE specific settings
-	OBJECT_LARGE_MAX_TOKENS: "OBJECT_LARGE_MAX_TOKENS",
-	OBJECT_LARGE_TEMPERATURE: "OBJECT_LARGE_TEMPERATURE",
-	OBJECT_LARGE_TOP_P: "OBJECT_LARGE_TOP_P",
-	OBJECT_LARGE_TOP_K: "OBJECT_LARGE_TOP_K",
-	OBJECT_LARGE_MIN_P: "OBJECT_LARGE_MIN_P",
-	OBJECT_LARGE_SEED: "OBJECT_LARGE_SEED",
-	OBJECT_LARGE_REPETITION_PENALTY: "OBJECT_LARGE_REPETITION_PENALTY",
-	OBJECT_LARGE_FREQUENCY_PENALTY: "OBJECT_LARGE_FREQUENCY_PENALTY",
-	OBJECT_LARGE_PRESENCE_PENALTY: "OBJECT_LARGE_PRESENCE_PENALTY",
 
 	// TEXT_COMPLETION specific settings
 	TEXT_COMPLETION_MAX_TOKENS: "TEXT_COMPLETION_MAX_TOKENS",
@@ -863,8 +839,6 @@ export interface ModelParamsMap {
 	[ModelType.TEXT_TO_SPEECH]: TextToSpeechParams | string;
 	[ModelType.AUDIO]: AudioProcessingParams;
 	[ModelType.VIDEO]: VideoProcessingParams;
-	[ModelType.OBJECT_SMALL]: ObjectGenerationParams;
-	[ModelType.OBJECT_LARGE]: ObjectGenerationParams;
 	[ModelType.TEXT_COMPLETION]: GenerateTextParams;
 	[ModelType.RESEARCH]: ResearchParams;
 	// Custom model types should be registered via runtime.registerModel() in plugin init()
@@ -907,8 +881,6 @@ export interface ModelResultMap {
 		| ArrayBuffer
 		| Uint8Array
 		| Record<string, JsonValue>;
-	[ModelType.OBJECT_SMALL]: Record<string, JsonValue>;
-	[ModelType.OBJECT_LARGE]: Record<string, JsonValue>;
 	[ModelType.TEXT_COMPLETION]: string;
 	[ModelType.RESEARCH]: ResearchResult;
 	// Custom model types should be registered via runtime.registerModel() in plugin init()
