@@ -1058,7 +1058,7 @@ export class DiscordService extends Service implements IDiscordService {
 			clientReadyPromise: state.clientReadyPromise,
 			accountToken: state.account.token,
 		};
-		return facade as DiscordService;
+		return facade as unknown as DiscordService;
 	}
 
 	private initializeAccount(account: ResolvedDiscordAccount): void {
