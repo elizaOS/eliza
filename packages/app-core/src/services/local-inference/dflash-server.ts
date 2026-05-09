@@ -13,6 +13,15 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import {
+  buildModelHash,
+  type CacheStatsEntry,
+  DEFAULT_CACHE_TTLS,
+  deriveSlotId,
+  evictExpired,
+  readCacheStats,
+  slotSavePath,
+} from "./cache-bridge";
 import { localInferenceRoot } from "./paths";
 
 export interface DflashServerPlan {
@@ -33,6 +42,13 @@ export interface DflashGenerateArgs {
   maxTokens?: number;
   temperature?: number;
   topP?: number;
+  /**
+   * Optional `promptCacheKey` from the runtime cache plan. When set the
+   * server pins the request to a deterministic `slot_id` so identical
+   * keys reuse the same in-RAM KV cache, and the slot file on disk
+   * preserves prefix tokens across restarts.
+   */
+  cacheKey?: string;
 }
 
 export interface DflashRuntimeStatus {
@@ -329,11 +345,36 @@ async function fetchJson(
   }
 }
 
+/**
+ * Default `--parallel` when caching is enabled. Higher values give more
+ * distinct cache slots so concurrent prefixes don't evict each other,
+ * at the cost of KV memory. 4 is a balance that works for a single-user
+ * desktop while still saturating a single GPU under load.
+ */
+const DEFAULT_CACHE_PARALLEL = 4;
+
+function resolveParallel(): number {
+  const raw = process.env.ELIZA_DFLASH_PARALLEL?.trim();
+  if (raw) {
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed >= 1) return parsed;
+  }
+  return DEFAULT_CACHE_PARALLEL;
+}
+
 export class DflashLlamaServer {
   private child: ChildProcess | null = null;
   private baseUrl: string | null = null;
   private stderrTail: string[] = [];
   private loadedPlan: DflashServerPlan | null = null;
+  /**
+   * Cache state captured at `start()`. The model hash + parallel count
+   * stay constant for the lifetime of the spawned process so we record
+   * them once and reuse them on every `generate()` call.
+   */
+  private cacheModelHash: string | null = null;
+  private cacheParallel: number = DEFAULT_CACHE_PARALLEL;
+  private cacheSlotDir: string | null = null;
 
   hasLoadedModel(): boolean {
     return this.child !== null && this.loadedPlan !== null;
@@ -365,6 +406,26 @@ export class DflashLlamaServer {
     );
     const port = await resolvePort();
     const host = process.env.ELIZA_DFLASH_HOST?.trim() || DEFAULT_HOST;
+    const cacheTypeK = process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim();
+    const cacheTypeV = process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim();
+    const parallel = resolveParallel();
+    const modelHash = buildModelHash({
+      targetModelPath: plan.targetModelPath,
+      drafterModelPath,
+      cacheTypeK: cacheTypeK ?? null,
+      cacheTypeV: cacheTypeV ?? null,
+      extra: `ctx=${plan.contextSize};parallel=${parallel}`,
+    });
+    const slotDir = slotSavePath(modelHash);
+    fs.mkdirSync(slotDir, { recursive: true });
+    // Fire-and-forget eviction: stale slot files on disk shouldn't block
+    // server startup, but we don't want them to grow without bound.
+    void evictExpired(slotDir, DEFAULT_CACHE_TTLS).catch(() => {
+      // Best effort; an EACCES or similar should not prevent server start.
+    });
+    this.cacheModelHash = modelHash;
+    this.cacheParallel = parallel;
+    this.cacheSlotDir = slotDir;
     const args = [
       "--model",
       plan.targetModelPath,
@@ -389,7 +450,18 @@ export class DflashLlamaServer {
       "--draft-max",
       String(plan.draftMax),
       "--parallel",
-      process.env.ELIZA_DFLASH_PARALLEL?.trim() || "1",
+      String(parallel),
+      // Persist per-slot KV state to disk so prefix reuse survives the
+      // process lifetime. llama-server keys files by slot id, not by
+      // prompt hash, but combined with deterministic slot_id derivation
+      // this gives effective prefix caching across restarts.
+      "--slot-save-path",
+      slotDir,
+      // Allow the server to fall back to a similar slot (>= 0.7
+      // similarity) when an exact match isn't loaded — useful when
+      // distinct keys land on the same slot due to hash collision.
+      "--slot-prompt-similarity",
+      "0.7",
       "--metrics",
       "--jinja",
     ];
@@ -397,8 +469,6 @@ export class DflashLlamaServer {
       args.push("--reasoning", "off");
       args.push("--chat-template-kwargs", '{"enable_thinking":false}');
     }
-    const cacheTypeK = process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim();
-    const cacheTypeV = process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim();
     if (cacheTypeK) {
       assertCacheTypeSupportedOnBackend(
         "ELIZA_DFLASH_CACHE_TYPE_K",
@@ -454,6 +524,9 @@ export class DflashLlamaServer {
     this.child = null;
     this.baseUrl = null;
     this.loadedPlan = null;
+    this.cacheModelHash = null;
+    this.cacheSlotDir = null;
+    this.cacheParallel = DEFAULT_CACHE_PARALLEL;
     if (!child) return;
     child.kill("SIGTERM");
     await Promise.race([
@@ -464,11 +537,35 @@ export class DflashLlamaServer {
     ]);
   }
 
+  /** Diagnostic snapshot of the on-disk slot save directory for this server. */
+  async describeCache(): Promise<{
+    modelHash: string | null;
+    slotDir: string | null;
+    parallel: number;
+    files: CacheStatsEntry[];
+  }> {
+    if (!this.cacheSlotDir) {
+      return {
+        modelHash: this.cacheModelHash,
+        slotDir: null,
+        parallel: this.cacheParallel,
+        files: [],
+      };
+    }
+    return {
+      modelHash: this.cacheModelHash,
+      slotDir: this.cacheSlotDir,
+      parallel: this.cacheParallel,
+      files: await readCacheStats(this.cacheSlotDir),
+    };
+  }
+
   async generate(args: DflashGenerateArgs): Promise<string> {
     if (!this.baseUrl) {
       throw new Error("[dflash] llama-server is not running");
     }
-    const payload = {
+    const slotId = deriveSlotId(args.cacheKey ?? "", this.cacheParallel);
+    const payload: Record<string, unknown> = {
       model: "local-dflash",
       messages: [{ role: "user", content: args.prompt }],
       max_tokens: args.maxTokens ?? 2048,
@@ -476,6 +573,12 @@ export class DflashLlamaServer {
       top_p: args.topP ?? 0.9,
       stop: args.stopSequences,
       stream: false,
+      // `cache_prompt: true` is always safe — the worst case is the
+      // server matches no prefix tokens and the request behaves like a
+      // cold call. Pinning by `slot_id` only happens when the runtime
+      // gave us a stable cache key.
+      cache_prompt: true,
+      slot_id: slotId,
     };
     const json = (await fetchJson(`${this.baseUrl}/v1/chat/completions`, {
       method: "POST",

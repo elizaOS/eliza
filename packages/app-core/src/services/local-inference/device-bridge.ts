@@ -262,7 +262,10 @@ function scoreDevice(
         : 0;
   const usableRamGb =
     typeof cap.availableRamGb === "number" && cap.availableRamGb > 0
-      ? Math.min(cap.totalRamGb, Math.max(cap.availableRamGb, cap.totalRamGb * 0.6))
+      ? Math.min(
+          cap.totalRamGb,
+          Math.max(cap.availableRamGb, cap.totalRamGb * 0.6),
+        )
       : cap.totalRamGb;
   const ramScore = usableRamGb * 2;
   const vramScore = cap.gpu?.available

@@ -24,6 +24,11 @@ import {
   getDflashRuntimeStatus,
 } from "./dflash-server";
 import { listInstalledModels } from "./registry";
+import {
+  DEFAULT_SESSION_KEY,
+  resolveDefaultPoolSize,
+  SessionPool,
+} from "./session-pool";
 
 export interface GenerateArgs {
   prompt: string;
@@ -34,6 +39,13 @@ export interface GenerateArgs {
   temperature?: number;
   /** nucleus sampling; defaults to 0.9. */
   topP?: number;
+  /**
+   * Optional cache key from the runtime's `ProviderCachePlan`. Identical
+   * keys reuse the same `LlamaChatSession` and therefore the same KV
+   * cache; absent / empty keys go to the synthetic `_default` slot which
+   * resets chat history every turn (the historical stateless behaviour).
+   */
+  cacheKey?: string;
 }
 
 interface LlamaContextSequence {
@@ -70,7 +82,15 @@ interface LlamaChatSessionCtor {
 }
 
 interface LlamaModel {
-  createContext(args?: { contextSize?: number }): Promise<LlamaContext>;
+  createContext(args?: {
+    contextSize?: number;
+    /**
+     * Per-context sequence count. Each `LlamaChatSession` lives on its own
+     * sequence, and the session pool needs at least `poolSize` sequences
+     * available — otherwise `getSequence()` throws once the pool is full.
+     */
+    sequences?: number;
+  }): Promise<LlamaContext>;
   dispose(): Promise<void>;
 }
 
@@ -90,12 +110,17 @@ export class LocalInferenceEngine {
   private llama: Llama | null = null;
   private loadedModel: LlamaModel | null = null;
   private loadedContext: LlamaContext | null = null;
-  private loadedSession: LlamaChatSession | null = null;
   private loadedPath: string | null = null;
   private bindingChecked = false;
   private bindingModule: LlamaBindingModule | null = null;
   /** Serialises generate calls so concurrent requests don't corrupt session state. */
   private generationQueue: Promise<unknown> = Promise.resolve();
+  /**
+   * Per-cache-key chat sessions. Created on first use, LRU-evicted, and
+   * torn down on `unload()`. The `_default` slot is reset every turn so
+   * callers without a `cacheKey` see the historical stateless behaviour.
+   */
+  private sessionPool: SessionPool<LlamaChatSession> | null = null;
 
   async available(): Promise<boolean> {
     if (!this.bindingChecked) {
@@ -119,24 +144,21 @@ export class LocalInferenceEngine {
   async unload(): Promise<void> {
     await dflashLlamaServer.stop();
     if (!this.loadedModel) return;
-    const session = this.loadedSession;
+    const pool = this.sessionPool;
     const context = this.loadedContext;
     const model = this.loadedModel;
-    this.loadedSession = null;
+    this.sessionPool = null;
     this.loadedContext = null;
     this.loadedModel = null;
     this.loadedPath = null;
-    // Dispose bottom-up: session first, then context, then the model. Each
-    // dispose is wrapped because a partial failure must not strand state.
-    try {
-      await session?.dispose?.();
-    } catch {
-      /* best effort */
-    }
+    // Dispose bottom-up: every cached session first, then the context,
+    // then the model. Pool.close() drains its own dispose() failures.
+    if (pool) await pool.close();
     try {
       await context?.dispose();
     } catch {
-      /* best effort */
+      // Best effort: the underlying context may already be released; we
+      // still need to dispose the model below.
     }
     await model.dispose();
   }
@@ -174,42 +196,67 @@ export class LocalInferenceEngine {
       this.llama = await this.bindingModule.getLlama({ gpu: "auto" });
     }
 
+    const poolSize = resolveDefaultPoolSize(
+      process.env.ELIZA_LOCAL_SESSION_POOL_SIZE,
+    );
     const model = await this.llama.loadModel({
       modelPath,
       gpuLayers: "auto",
     });
-    const context = await model.createContext();
-    const sequence = context.getSequence();
-    const session = new this.bindingModule.LlamaChatSession({
-      contextSequence: sequence,
+    // Reserve one sequence per pool slot. node-llama-cpp throws on
+    // `getSequence()` once `sequencesLeft` hits 0, so the context must
+    // be sized to the pool from the start.
+    const context = await model.createContext({ sequences: poolSize });
+
+    const bindingModule = this.bindingModule;
+    const sessionPool = new SessionPool<LlamaChatSession>({
+      maxSize: poolSize,
+      factory: async () => {
+        const sequence = context.getSequence();
+        return new bindingModule.LlamaChatSession({
+          contextSequence: sequence,
+        });
+      },
     });
 
     this.loadedModel = model;
     this.loadedContext = context;
-    this.loadedSession = session;
+    this.sessionPool = sessionPool;
     this.loadedPath = modelPath;
   }
 
   /**
-   * Generate text from the loaded model. Serialised — a new call waits for
-   * any in-flight generation to finish so the chat session's internal state
-   * stays consistent.
+   * Generate text from the loaded model. Serialised — a new call waits
+   * for any in-flight generation to finish so chat session state stays
+   * consistent. When `args.cacheKey` is set, repeated calls with the
+   * same key reuse the underlying `LlamaChatSession` (and therefore the
+   * KV cache) so the prefix doesn't have to be re-prefilled. Calls
+   * without a cache key share the synthetic `_default` slot, which is
+   * reset every turn to preserve the historical stateless behaviour.
    */
   async generate(args: GenerateArgs): Promise<string> {
     if (dflashLlamaServer.hasLoadedModel()) {
       return dflashLlamaServer.generate(args);
     }
-    if (!this.loadedSession) {
+    const pool = this.sessionPool;
+    if (!pool) {
       throw new Error(
         "No local model is active. Select one in Settings → Local models before using local inference.",
       );
     }
-    const session = this.loadedSession;
+    const cacheKey =
+      args.cacheKey && args.cacheKey.length > 0
+        ? args.cacheKey
+        : DEFAULT_SESSION_KEY;
     const run = async (): Promise<string> => {
-      // Agent model handlers are stateless per call. Drop any prior chat
-      // history so sequential prompts don't thread through accumulated
-      // context and drift output quality.
-      await session.resetChatHistory?.();
+      const session = await pool.acquire(cacheKey);
+      // Default slot mirrors the historical "stateless per call" semantics
+      // — no cache hint means the caller does not want prefix reuse.
+      // Keyed slots intentionally retain history so the prefix KV stays
+      // hot across turns.
+      if (cacheKey === DEFAULT_SESSION_KEY) {
+        await session.resetChatHistory?.();
+      }
       return session.prompt(args.prompt, {
         maxTokens: args.maxTokens ?? 2048,
         temperature: args.temperature ?? 0.7,
@@ -219,9 +266,33 @@ export class LocalInferenceEngine {
     };
     const job = this.generationQueue.then(run, run);
     this.generationQueue = job.catch(() => {
-      /* swallow so queue remains usable after a failure */
+      // Swallow upstream rejection so the queue stays usable; the failed
+      // job's caller still sees the original error via its own promise.
     });
     return job;
+  }
+
+  /**
+   * Diagnostic snapshot of in-process session-pool state. Returns null
+   * when no model is active so callers can distinguish "no pool" from
+   * "empty pool".
+   */
+  describeSessionPool(): {
+    size: number;
+    maxSize: number;
+    keys: string[];
+  } | null {
+    const pool = this.sessionPool;
+    if (!pool) return null;
+    return {
+      size: pool.size(),
+      maxSize: this.sessionPoolMaxSize(),
+      keys: pool.keys(),
+    };
+  }
+
+  private sessionPoolMaxSize(): number {
+    return resolveDefaultPoolSize(process.env.ELIZA_LOCAL_SESSION_POOL_SIZE);
   }
 
   private async loadBinding(): Promise<LlamaBindingModule | null> {

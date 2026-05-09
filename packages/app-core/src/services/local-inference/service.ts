@@ -11,8 +11,11 @@ import type { AgentRuntime } from "@elizaos/core";
 import { ActiveModelCoordinator } from "./active-model";
 import { readEffectiveAssignments, setAssignment } from "./assignments";
 import { registerBundledModels } from "./bundled-models";
+import type { CacheStatsEntry } from "./cache-bridge";
 import { MODEL_CATALOG } from "./catalog";
+import { dflashLlamaServer } from "./dflash-server";
 import { Downloader } from "./downloader";
+import { localInferenceEngine } from "./engine";
 import { probeHardware } from "./hardware";
 import { searchHuggingFaceGguf } from "./hf-search";
 import { buildTextGenerationReadiness } from "./readiness";
@@ -251,6 +254,28 @@ export class LocalInferenceService {
 
   async clearActive(runtime: AgentRuntime | null): Promise<ActiveModelState> {
     return this.activeModel.unload(runtime);
+  }
+
+  /**
+   * Diagnostic snapshot of the local prefix-cache state. Returns:
+   *   - `dflash`: per-slot files persisted by the out-of-process
+   *     llama-server (size + mtime + age in ms).
+   *   - `engine`: in-process session-pool size and live cache keys.
+   * Used by the API layer to render a "local cache" debug panel.
+   */
+  async getLocalCacheStats(): Promise<{
+    dflash: {
+      modelHash: string | null;
+      slotDir: string | null;
+      parallel: number;
+      files: CacheStatsEntry[];
+    };
+    engine: { size: number; maxSize: number; keys: string[] } | null;
+  }> {
+    return {
+      dflash: await dflashLlamaServer.describeCache(),
+      engine: localInferenceEngine.describeSessionPool(),
+    };
   }
 
   async uninstall(
