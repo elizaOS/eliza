@@ -129,7 +129,7 @@
     "react-test-renderer": "^19.2.4",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.1.18",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vite": "^8.0.8",
     "vitest": "^4.0.18"
   },

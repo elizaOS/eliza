@@ -8085,13 +8085,6 @@ Install the official elizaOS packages:
   
     ```bash bun add @elizaos/core @elizaos/plugin-elizacloud ```
   
-  
-    ```bash pnpm add @elizaos/core @elizaos/plugin-elizacloud ```
-  
-  
-    ```bash yarn add @elizaos/core @elizaos/plugin-elizacloud ```
-  
-
 ## CLI Installation
 
 Install the elizaOS CLI for deployment and management:

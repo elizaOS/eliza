@@ -8,9 +8,8 @@
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import { sendJsonError } from "@elizaos/core";
 import { fileURLToPath } from "node:url";
-import { logger } from "@elizaos/core";
+import { logger, sendJsonError } from "@elizaos/core";
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
 import { resolveApiToken } from "@elizaos/shared";
 import { getOrReadCachedFile } from "./memory-bounds.js";

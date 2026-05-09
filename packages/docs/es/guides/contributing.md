@@ -80,7 +80,7 @@ bun run dev
 
 | Herramienta | Propósito |
 |-------------|-----------|
-| pnpm | Gestor de paquetes opcional para flujos fuera del repositorio |
+| bun | Gestor de paquetes opcional para flujos fuera del repositorio |
 | Docker | Pruebas en contenedores |
 | VS Code | Editor recomendado |
 

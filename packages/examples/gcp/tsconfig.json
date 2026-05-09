@@ -13,8 +13,6 @@
     "sourceMap": true,
     "noEmit": true,
     "types": ["node"],
-    "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
     "paths": {
       "@elizaos/core": ["../../core/dist/index.d.ts"],
       "@elizaos/core/*": ["../../core/dist/*"]

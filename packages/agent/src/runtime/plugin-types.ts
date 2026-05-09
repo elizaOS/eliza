@@ -80,14 +80,6 @@ function looksLikePlugin(value: unknown): value is Plugin {
   );
 }
 
-function looksLikePluginBasic(
-  value: unknown,
-): value is Pick<Plugin, "name" | "description"> {
-  if (!value || typeof value !== "object") return false;
-  const obj = value as Record<string, unknown>;
-  return typeof obj.name === "string" && typeof obj.description === "string";
-}
-
 // ---------------------------------------------------------------------------
 // Utility functions
 // ---------------------------------------------------------------------------
@@ -97,10 +89,8 @@ export function findRuntimePluginExport(mod: PluginModuleShape): Plugin | null {
   if (looksLikePlugin(mod.default)) return mod.default;
   // 2. Check for a named `plugin` export
   if (looksLikePlugin(mod.plugin)) return mod.plugin;
-  // 3. Check if the module itself looks like a Plugin (CJS default pattern).
-  if (looksLikePlugin(mod)) return mod as Plugin;
 
-  // 4. Scan named exports in a deterministic order.
+  // 3. Scan named exports in a deterministic order.
   // Prefer keys ending with "Plugin" before generic exports like providers.
   const namedKeys = Object.keys(mod).filter(
     (key) => key !== "default" && key !== "plugin",
@@ -114,20 +104,6 @@ export function findRuntimePluginExport(mod: PluginModuleShape): Plugin | null {
     const value = mod[key];
     if (looksLikePlugin(value)) return value;
   }
-
-  // 5. Final compatibility fallback: accept minimal plugin-like exports only
-  // when the export name itself indicates it's a plugin.
-  for (const key of preferredKeys) {
-    const value = mod[key];
-    if (looksLikePluginBasic(value)) return value as Plugin;
-  }
-
-  // 6. Legacy CJS compatibility for modules that export only { name, description }.
-  if (looksLikePluginBasic(mod)) return mod as Plugin;
-  const modDefault = (mod as Record<string, unknown>).default;
-  const modPlugin = (mod as Record<string, unknown>).plugin;
-  if (looksLikePluginBasic(modDefault)) return modDefault as Plugin;
-  if (looksLikePluginBasic(modPlugin)) return modPlugin as Plugin;
 
   return null;
 }

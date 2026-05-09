@@ -25,27 +25,27 @@
       },
       "import": "./typescript/dist/index.js",
       "default": "./typescript/dist/index.js"
-  },
-  "./schema": {
-    "types": "./typescript/dist/schema/index.d.ts",
-    "bun": {
-      "types": "./typescript/schema/index.ts",
+    },
+    "./schema": {
+      "types": "./typescript/dist/schema/index.d.ts",
+      "bun": {
+        "types": "./typescript/schema/index.ts",
+        "default": "./typescript/schema/index.ts"
+      },
+      "import": "./typescript/schema/index.ts",
       "default": "./typescript/schema/index.ts"
     },
-    "import": "./typescript/schema/index.ts",
-    "default": "./typescript/schema/index.ts"
+    "./drizzle": {
+      "types": "./typescript/dist/drizzle/index.d.ts",
+      "import": "./typescript/dist/drizzle/index.js",
+      "default": "./typescript/dist/drizzle/index.js"
+    },
+    "./types": {
+      "types": "./typescript/dist/types.d.ts",
+      "import": "./typescript/dist/types.js",
+      "default": "./typescript/dist/types.js"
+    }
   },
-  "./drizzle": {
-    "types": "./typescript/dist/drizzle/index.d.ts",
-    "import": "./typescript/dist/drizzle/index.js",
-    "default": "./typescript/dist/drizzle/index.js"
-  },
-  "./types": {
-    "types": "./typescript/dist/types.d.ts",
-    "import": "./typescript/dist/types.js",
-    "default": "./typescript/dist/types.js"
-  }
-},
   "files": [
     "typescript/dist",
     "README.md",
@@ -87,7 +87,7 @@
     "@types/ws": "^8.18.1",
     "dotenv": "^17.2.3",
     "drizzle-kit": "^0.31.8",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "peerDependencies": {

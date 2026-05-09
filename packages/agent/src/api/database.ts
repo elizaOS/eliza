@@ -16,12 +16,19 @@
 import dns from "node:dns";
 import type http from "node:http";
 import net from "node:net";
-import { sendJson, sendJsonError } from "@elizaos/core";
 import { promisify } from "node:util";
 import {
-  type AgentRuntime, logger, type Memory, ModelType, } from "@elizaos/core";
+  type AgentRuntime,
+  logger,
+  type Memory,
+  ModelType,
+  sendJson,
+  sendJsonError,
+} from "@elizaos/core";
 import {
-  readJsonBody as parseJsonBody, resolveApiBindHost } from "@elizaos/shared";
+  readJsonBody as parseJsonBody,
+  resolveApiBindHost,
+} from "@elizaos/shared";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import type {
   DatabaseConfig,

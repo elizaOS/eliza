@@ -655,7 +655,7 @@ Confirma los hallazgos del escaneo de seguridad de un skill. Obligatorio antes d
 
 1. Confirma que el directorio de skills (`~/.eliza/workspace/skills/`) sea legible y escribible por el runtime.
 2. Confirma que el acceso de red/registro del marketplace esté disponible (por defecto: `https://clawhub.ai`). Verifica las variables de entorno `SKILLS_REGISTRY`, `CLAWHUB_REGISTRY` o `SKILLS_MARKETPLACE_URL`.
-3. Confirma que los prerrequisitos del instalador de plugins (`npm`/`pnpm`/`bun` y `git`) estén presentes en el PATH del runtime.
+3. Confirma que los prerrequisitos del instalador de plugins (`bun` y `git`) estén presentes en el PATH del runtime.
 4. Para el marketplace legacy SkillsMP, configura `SKILLSMP_API_KEY` en el entorno.
 5. Verifica que el archivo del catálogo exista en una de las rutas esperadas (incluido con `@elizaos/plugin-agent-skills`).
 

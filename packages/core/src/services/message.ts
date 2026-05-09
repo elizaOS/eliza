@@ -66,8 +66,8 @@ import {
 import {
 	actionResultToPlannerToolResult,
 	cacheProviderOptions,
-	type PlannerLoopResult,
 	type PlannerLoopParams,
+	type PlannerLoopResult,
 	type PlannerRuntime,
 	type PlannerToolCall,
 	type PlannerToolResult,
@@ -1893,18 +1893,116 @@ function getStage1OwnerPreferenceRepairPlan(args: {
 	};
 }
 
+function getStage1ApprovalResolutionRepairPlan(args: {
+	message: Memory;
+	availableContexts: readonly ContextDefinition[];
+}): {
+	contexts: AgentContext[];
+	candidateActions: string[];
+	parentActionHints: string[];
+} | null {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	if (!text) {
+		return null;
+	}
+	const lower = text.toLowerCase();
+	const resolutionIntent =
+		/\b(?:approve|accept|confirm|reject|deny|decline)\b[\s\S]{0,120}\b(?:pending\s+)?(?:approval|request)\b/.test(
+			lower,
+		) ||
+		/\b(?:pending\s+)?(?:approval|request)\b[\s\S]{0,120}\b(?:approve|accept|confirm|reject|deny|decline)\b/.test(
+			lower,
+		);
+	if (!resolutionIntent) {
+		return null;
+	}
+	const rejectIntent = /\b(?:reject|deny|decline)\b/.test(lower);
+	const contexts = (
+		["tasks", "automation", "admin", "general"] as AgentContext[]
+	).filter((context) =>
+		contextAvailableForRepair(context, args.availableContexts),
+	);
+	return {
+		contexts: contexts.length > 0 ? contexts : ["general"],
+		candidateActions: rejectIntent
+			? ["resolve_pending_approval", "reject_approval", "deny_approval"]
+			: ["resolve_pending_approval", "approve_approval", "approve_request"],
+		parentActionHints: ["RESOLVE_REQUEST"],
+	};
+}
+
+function getStage1PasswordManagerRepairPlan(args: {
+	message: Memory;
+	availableContexts: readonly ContextDefinition[];
+}): {
+	contexts: AgentContext[];
+	candidateActions: string[];
+	parentActionHints: string[];
+} | null {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	if (!text) {
+		return null;
+	}
+	const lower = text.toLowerCase();
+	const lookupVerb =
+		/\b(?:look\s*up|find|search|show|list|copy|retrieve|get)\b/.test(
+			lower,
+		);
+	const credentialNoun =
+		/\b(?:passwords?|saved\s+logins?|logins?|credentials?|1password|onepassword|protonpass|passkey|passkeys)\b/.test(
+			lower,
+		);
+	const explicitFillIntent =
+		/\b(?:fill|autofill|type|enter)\b[\s\S]{0,80}\b(?:password|login|field|form)\b/.test(
+			lower,
+		);
+	if (!lookupVerb || !credentialNoun || explicitFillIntent) {
+		return null;
+	}
+	const contexts = (
+		["secrets", "settings", "browser", "automation"] as AgentContext[]
+	).filter((context) =>
+		contextAvailableForRepair(context, args.availableContexts),
+	);
+	return {
+		contexts: contexts.length > 0 ? contexts : ["secrets"],
+		candidateActions: [
+			"password_manager_search",
+			"saved_login_lookup",
+			"credential_lookup",
+			"search_password_manager",
+		],
+		parentActionHints: ["PASSWORD_MANAGER"],
+	};
+}
+
+function getStage1KnownToolRepairPlan(args: {
+	message: Memory;
+	availableContexts: readonly ContextDefinition[];
+}): {
+	contexts: AgentContext[];
+	candidateActions: string[];
+	parentActionHints: string[];
+} | null {
+	return (
+		getStage1ApprovalResolutionRepairPlan(args) ??
+		getStage1PasswordManagerRepairPlan(args) ??
+		getStage1OwnerPreferenceRepairPlan(args)
+	);
+}
+
 function buildFallbackStage1PlanForKnownToolRequest(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
 }): MessageHandlerResult | null {
-	const repair = getStage1OwnerPreferenceRepairPlan(args);
+	const repair = getStage1KnownToolRepairPlan(args);
 	if (!repair) {
 		return null;
 	}
 	return {
 		processMessage: "RESPOND",
 		thought:
-			"Deterministic fallback: durable owner preference request requires PROFILE routing.",
+			"Deterministic fallback: explicit owner tool request requires a known owning action.",
 		plan: {
 			contexts: repair.contexts,
 			requiresTool: true,
@@ -1926,6 +2024,33 @@ function repairStage1PlanForKnownToolRequests(args: {
 	}
 
 	const lower = text.toLowerCase();
+	const approvalResolutionRepair = getStage1ApprovalResolutionRepairPlan({
+		message: args.message,
+		availableContexts: args.availableContexts,
+	});
+	if (approvalResolutionRepair) {
+		replaceStage1PlanContexts(
+			args.messageHandler,
+			approvalResolutionRepair.contexts,
+		);
+		appendStage1PlanHints(args.messageHandler, {
+			candidateActions: approvalResolutionRepair.candidateActions,
+			parentActionHints: approvalResolutionRepair.parentActionHints,
+		});
+	}
+
+	const passwordManagerRepair = getStage1PasswordManagerRepairPlan({
+		message: args.message,
+		availableContexts: args.availableContexts,
+	});
+	if (passwordManagerRepair) {
+		replaceStage1PlanContexts(args.messageHandler, passwordManagerRepair.contexts);
+		appendStage1PlanHints(args.messageHandler, {
+			candidateActions: passwordManagerRepair.candidateActions,
+			parentActionHints: passwordManagerRepair.parentActionHints,
+		});
+	}
+
 	const targetLookupReplyIntent =
 		/\b(draft|prepare|write|compose)\b[\s\S]{0,80}\brepl(?:y|ies|ied|ying)\b/.test(
 			lower,
@@ -2557,9 +2682,10 @@ function extractCalendlyAvailabilityFallbackParams(
 	) {
 		return null;
 	}
-	const eventTypeUri = /https?:\/\/api\.calendly\.com\/event_types\/[^\s),.;:!?]+/iu.exec(
-		text,
-	)?.[0];
+	const eventTypeUri =
+		/https?:\/\/api\.calendly\.com\/event_types\/[^\s),.;:!?]+/iu.exec(
+			text,
+		)?.[0];
 	const dates = Array.from(text.matchAll(/\b\d{4}-\d{2}-\d{2}\b/gu)).map(
 		(match) => match[0],
 	);
@@ -2576,7 +2702,9 @@ function buildDeterministicPlannerFallbackToolCall(args: {
 	message: Memory;
 	actions: readonly Action[];
 }): PlannerToolCall | null {
-	const calendlyParams = extractCalendlyAvailabilityFallbackParams(args.message);
+	const calendlyParams = extractCalendlyAvailabilityFallbackParams(
+		args.message,
+	);
 	if (!calendlyParams) {
 		return null;
 	}
@@ -2719,9 +2847,7 @@ async function runDeterministicPlannerFallback(args: {
 					success: result.success,
 					text: result.text,
 					error:
-						result.error instanceof Error
-							? result.error.message
-							: result.error,
+						result.error instanceof Error ? result.error.message : result.error,
 				}),
 				status: result.success ? "completed" : "failed",
 			},

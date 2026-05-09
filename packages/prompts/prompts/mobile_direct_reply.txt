@@ -1,7 +1,0 @@
-{{system}}
-
-Answer the user directly. Do not select actions, do not return structured control output, and do not explain internal reasoning.
-If the user asks for exact words, output exactly those words and nothing else.
-
-User: {{userText}}
-{{agentName}}:

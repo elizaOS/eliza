@@ -9,9 +9,10 @@
 export * from "./actions";
 export * from "./api/http-helpers";
 export * from "./api/route-helpers";
+export * from "./app-registry";
 // Export all core modules
 export * from "./app-route-plugin-registry";
-export * from "./app-registry";
+export * from "./boot-env";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 // Export character utilities
@@ -20,6 +21,20 @@ export * from "./character-utils";
 export * from "./connection";
 export * from "./connectors/account-manager";
 export * from "./connectors/privacy";
+export {
+	DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
+	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+	type DeploymentTargetConfig,
+	type LinkedAccountFlagsConfig,
+	type ServiceCapability,
+	type ServiceRoutingConfig,
+} from "./contracts/service-routing";
+export {
+	isCloudInferenceSelectedInConfig,
+	migrateLegacyRuntimeConfig,
+	type StylePreset,
+} from "./contracts/onboarding";
+export { isElizaCloudServiceSelectedInConfig } from "./contracts/cloud-topology";
 // Export additional constants not re-exported by character-utils
 export {
 	CANONICAL_SECRET_KEYS,
@@ -136,9 +151,9 @@ export * from "./runtime/schema-compat";
 export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";
 export * from "./runtime/trajectory-recorder";
-export * from "./runtime-env";
 // Runtime composition (loadCharacters, createRuntimes, getBasicCapabilitiesSettings, mergeSettingsInto) - node only
 export * from "./runtime-composition";
+export * from "./runtime-env";
 export * from "./runtime-route-context";
 // Export character schemas
 export * from "./schemas/character";
@@ -178,6 +193,11 @@ export * from "./services/trajectories";
 // Export sessions utilities
 export * from "./sessions";
 export * from "./settings";
+export {
+	isElizaSettingsDebugEnabled,
+	settingsDebugCloudSummary,
+} from "./settings-debug";
+export { sanitizeSpeechText } from "./spoken-text";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
 export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";

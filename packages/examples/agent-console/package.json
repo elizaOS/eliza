@@ -14,7 +14,7 @@
     "@elizaos/plugin-local-embedding": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "uuid": "^14.0.0"
   },
   "devDependencies": {

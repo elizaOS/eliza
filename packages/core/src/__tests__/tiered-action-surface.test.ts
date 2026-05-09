@@ -371,6 +371,122 @@ describe("v5 tiered action surface", () => {
 		expect(actions).not.toContain("DOCUMENT");
 	});
 
+	it("repairs pending approval decisions away from connector lifecycle", async () => {
+		const resolveRequest = makeAction({
+			name: "RESOLVE_REQUEST",
+			description:
+				"Owner-only. Approve or reject a pending action queued for human confirmation.",
+			contexts: ["tasks", "automation", "admin", "general"],
+		});
+		const connector = makeAction({
+			name: "CONNECTOR",
+			description: "Connect, disconnect, or verify external connector accounts.",
+			contexts: ["connectors"],
+		});
+		const runtime = makeRuntime({
+			actions: [resolveRequest, connector],
+			responses: [
+				stage1Response({
+					contexts: ["connectors"],
+					requiresTool: true,
+				}),
+				{
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "resolve-1",
+								name: "RESOLVE_REQUEST",
+								arguments: { subaction: "reject" },
+							},
+						],
+					},
+				},
+				{
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Approval request rejected.",
+						messageToUser: "Rejected.",
+					}),
+				},
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(
+				"reject that pending approval request and say it needs changes",
+			),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const prompt = plannerUserContent(runtime);
+		expect(prompt).toMatch(/selected_contexts:[^\n]*tasks/);
+		expect(prompt).not.toMatch(/selected_contexts:[^\n]*connectors/);
+		const actions = availableActionsSection(runtime);
+		expect(actions).toContain("RESOLVE_REQUEST");
+		expect(actions).not.toContain("CONNECTOR");
+	});
+
+	it("repairs password lookups to the password manager instead of autofill", async () => {
+		const passwordManager = makeAction({
+			name: "PASSWORD_MANAGER",
+			description:
+				"Look up, list, or copy credentials from the password manager.",
+			contexts: ["secrets", "browser", "automation"],
+		});
+		const autofill = makeAction({
+			name: "AUTOFILL",
+			description: "Fill password or login fields in the active browser tab.",
+			contexts: ["settings", "secrets", "browser", "automation"],
+		});
+		const runtime = makeRuntime({
+			actions: [passwordManager, autofill],
+			responses: [
+				stage1Response({
+					contexts: ["settings"],
+					requiresTool: true,
+					candidateActions: ["lookup_password"],
+				}),
+				{
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "password-1",
+								name: "PASSWORD_MANAGER",
+								arguments: { subaction: "search", query: "GitHub" },
+							},
+						],
+					},
+				},
+				{
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Credential lookup completed.",
+						messageToUser: "Found saved login.",
+					}),
+				},
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("look up my GitHub password"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const prompt = plannerUserContent(runtime);
+		expect(prompt).toMatch(/selected_contexts:[^\n]*secrets/);
+		expect(prompt).toContain('"parentActionHints":["PASSWORD_MANAGER"]');
+		const actions = availableActionsSection(runtime);
+		expect(actions).toContain("PASSWORD_MANAGER");
+	});
+
 	it("expands strong context matches into callable actions", async () => {
 		const createEvent = makeAction({
 			name: "CREATE_EVENT",

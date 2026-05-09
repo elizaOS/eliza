@@ -29,7 +29,7 @@
     "telegraf": "4.16.3",
     "telegram": "^2.26.22",
     "type-detect": "^4.1.0",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

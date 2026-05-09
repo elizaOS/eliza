@@ -59,7 +59,7 @@
     "@biomejs/biome": "^2.4.14",
     "@types/bun": "^1.2.22",
     "@types/node": "^24.5.2",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   },
   "scripts": {
     "build": "bun run build.ts",

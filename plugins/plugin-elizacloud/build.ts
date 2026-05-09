@@ -6,7 +6,6 @@ import { join } from "node:path";
 
 const externalDeps = [
   "@elizaos/core",
-  "@elizaos/shared",
   "@elizaos/cloud-sdk",
   "@ai-sdk/openai",
   "ai",

@@ -6623,12 +6623,6 @@ export const coreProvidersSpec = {
 				"Entities in context: users, agents, participants.",
 		},
 		{
-			name: "EVALUATORS",
-			description: "Available evaluators for assessing agent behavior",
-			dynamic: false,
-			descriptionCompressed: "Available evaluators for agent behavior.",
-		},
-		{
 			name: "FACTS",
 			description:
 				"Provides known facts about entities learned through conversation",
@@ -6799,12 +6793,6 @@ export const allProvidersSpec = {
 			dynamic: true,
 			descriptionCompressed:
 				"Entities in context: users, agents, participants.",
-		},
-		{
-			name: "EVALUATORS",
-			description: "Available evaluators for assessing agent behavior",
-			dynamic: false,
-			descriptionCompressed: "Available evaluators for agent behavior.",
 		},
 		{
 			name: "FACTS",

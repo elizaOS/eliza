@@ -1,8 +1,6 @@
-export * from "@elizaos/plugin-wallet";
 export * from "./ApprovalQueue";
 export * from "./api/tx-service";
 export * from "./api/wallet-dex-prices";
-export * from "./browser-workspace-wallet";
 export * from "./chain-utils";
 export { stewardPlugin } from "./plugin";
 export {

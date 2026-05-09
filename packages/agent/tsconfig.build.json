@@ -22,6 +22,16 @@
       "@elizaos/core/*": ["../core/dist/*"],
       "@elizaos/agent": ["./src/index.ts"],
       "@elizaos/agent/*": ["./src/*"],
+      "@elizaos/plugin-browser": [
+        "../../plugins/plugin-browser/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/dist/*"],
+      "@elizaos/plugin-elizacloud": [
+        "../../plugins/plugin-elizacloud/dist/node/index.d.ts"
+      ],
+      "@elizaos/plugin-elizacloud/*": [
+        "../../plugins/plugin-elizacloud/dist/*"
+      ],
       "@elizaos/*": ["../../node_modules/@elizaos/*"]
     },
     "types": ["node", "bun-types", "react", "react-dom"],

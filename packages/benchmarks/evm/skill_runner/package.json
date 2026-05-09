@@ -9,7 +9,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   },
   "scripts": {
     "lint": "bunx @biomejs/biome check --write --unsafe .",

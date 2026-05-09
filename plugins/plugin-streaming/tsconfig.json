@@ -6,7 +6,7 @@
     "types": ["node"],
     "target": "ESNext",
     "module": "Preserve",
-    "moduleResolution": "Bundler",
+    "moduleResolution": "bundler",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

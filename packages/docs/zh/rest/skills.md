@@ -655,7 +655,7 @@ POST /api/skills/:id/acknowledge
 
 1. 确认技能目录（`~/.eliza/workspace/skills/`）对运行时可读可写。
 2. 确认市场注册表/网络访问可用（默认：`https://clawhub.ai`）。检查 `SKILLS_REGISTRY`、`CLAWHUB_REGISTRY` 或 `SKILLS_MARKETPLACE_URL` 环境变量。
-3. 确认插件安装先决条件（`npm`/`pnpm`/`bun` 和 `git`）在运行时 PATH 中可用。
+3. 确认插件安装先决条件（`bun` 和 `git`）在运行时 PATH 中可用。
 4. 对于旧版 SkillsMP 市场，在环境中设置 `SKILLSMP_API_KEY`。
 5. 验证目录文件存在于预期路径之一（与 `@elizaos/plugin-agent-skills` 捆绑）。
 

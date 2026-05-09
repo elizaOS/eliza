@@ -151,6 +151,10 @@ export {
   resolveRelationshipsGraphService,
   searchMemoriesForCluster,
 } from "./services/relationships-graph.js";
+export {
+  isStewardEvmBridgeActive,
+  setStewardEvmBridgeActive,
+} from "./services/external-bridge-state.js";
 export * from "./test-support/index.js";
 export * from "./test-utils/sqlite-compat.js";
 export * from "./triggers/runtime.js";

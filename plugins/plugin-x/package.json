@@ -38,7 +38,7 @@
     "@vitest/coverage-v8": "^4.0.0",
     "dotenv": "^17.2.3",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "scripts": {

@@ -21,7 +21,7 @@
     "@types/node": "^25.0.3",
     "bun-types": "latest",
     "vitest": "4.1.5",
-    "typescript": "6.0.3"
+    "typescript": "^6.0.3"
   },
   "types": "./dist/index.d.ts",
   "files": [

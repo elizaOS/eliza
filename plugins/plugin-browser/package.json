@@ -72,7 +72,7 @@
   "devDependencies": {
     "bun-types": "^1.3.12",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

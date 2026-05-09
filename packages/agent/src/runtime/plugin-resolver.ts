@@ -118,6 +118,8 @@ type DeclaredPluginDependency = {
   optional: boolean;
 };
 
+const SOURCE_STAGED_WORKSPACE_DEPENDENCIES = new Set(["@elizaos/agent"]);
+
 function packageNodeModulesEntryPath(
   nodeModulesDir: string,
   packageName: string,
@@ -224,6 +226,114 @@ async function stageDependencyIntoNodeModules(params: {
   return true;
 }
 
+function rewriteDistExportTargetToSource(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value
+      .replace(/^\.(\/dist\/)/, "./src/")
+      .replace(/\.js$/, ".ts");
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(rewriteDistExportTargetToSource);
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [
+      key,
+      rewriteDistExportTargetToSource(entry),
+    ]),
+  );
+}
+
+async function writeSourceStagedPackageManifest(params: {
+  sourcePackageRoot: string;
+  targetPackageRoot: string;
+}): Promise<void> {
+  const sourcePackageJsonPath = path.join(
+    params.sourcePackageRoot,
+    "package.json",
+  );
+  const targetPackageJsonPath = path.join(
+    params.targetPackageRoot,
+    "package.json",
+  );
+  const manifest = JSON.parse(
+    await fs.readFile(sourcePackageJsonPath, "utf8"),
+  ) as Record<string, unknown>;
+
+  const rewrittenManifest = {
+    ...manifest,
+    main: "./src/index.ts",
+    module: "./src/index.ts",
+    types: "./src/index.ts",
+    exports: rewriteDistExportTargetToSource(manifest.exports),
+  };
+
+  await fs.writeFile(
+    targetPackageJsonPath,
+    `${JSON.stringify(rewrittenManifest, null, 2)}\n`,
+  );
+}
+
+async function stageWorkspaceSourceDependencyIntoNodeModules(params: {
+  dependencyName: string;
+  sourceNodeModulesDir: string;
+  targetNodeModulesDir: string;
+}): Promise<boolean> {
+  const sourcePath = packageNodeModulesEntryPath(
+    params.sourceNodeModulesDir,
+    params.dependencyName,
+  );
+  if (!(await pathEntryExists(sourcePath))) {
+    return false;
+  }
+
+  const resolvedSourcePath =
+    (await resolveSymlinkTargetIfPresent(sourcePath)) ?? sourcePath;
+  const sourceSrcPath = path.join(resolvedSourcePath, "src");
+  const sourcePackageJsonPath = path.join(resolvedSourcePath, "package.json");
+  if (
+    !(await pathEntryExists(sourceSrcPath)) ||
+    !(await pathEntryExists(sourcePackageJsonPath))
+  ) {
+    return false;
+  }
+
+  const targetPath = packageNodeModulesEntryPath(
+    params.targetNodeModulesDir,
+    params.dependencyName,
+  );
+  if (await pathEntryExists(targetPath)) {
+    return true;
+  }
+
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  await fs.cp(resolvedSourcePath, targetPath, {
+    recursive: true,
+    force: true,
+    dereference: true,
+    filter: (src) => {
+      const relativePath = path.relative(resolvedSourcePath, src);
+      if (!relativePath) return true;
+      const [topLevel] = relativePath.split(path.sep);
+      return (
+        topLevel === "src" ||
+        relativePath === "package.json" ||
+        relativePath === "vite-env.d.ts"
+      );
+    },
+  });
+  await writeSourceStagedPackageManifest({
+    sourcePackageRoot: resolvedSourcePath,
+    targetPackageRoot: targetPath,
+  });
+  return true;
+}
+
 async function ensureStagedPackageDependencies(params: {
   installRoot: string;
   packageName: string;
@@ -263,11 +373,17 @@ async function ensureStagedPackageDependencies(params: {
 
     let staged = false;
     for (const sourceNodeModulesDir of sourceNodeModulesDirs) {
-      staged = await stageDependencyIntoNodeModules({
-        dependencyName: dependency.name,
-        sourceNodeModulesDir,
-        targetNodeModulesDir: stagedNodeModulesPath,
-      });
+      staged = SOURCE_STAGED_WORKSPACE_DEPENDENCIES.has(dependency.name)
+        ? await stageWorkspaceSourceDependencyIntoNodeModules({
+            dependencyName: dependency.name,
+            sourceNodeModulesDir,
+            targetNodeModulesDir: stagedNodeModulesPath,
+          })
+        : await stageDependencyIntoNodeModules({
+            dependencyName: dependency.name,
+            sourceNodeModulesDir,
+            targetNodeModulesDir: stagedNodeModulesPath,
+          });
       if (staged) {
         break;
       }
