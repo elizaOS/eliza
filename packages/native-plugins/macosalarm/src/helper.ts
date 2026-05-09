@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,16 +11,7 @@ import type {
 const HELPER_ENV_OVERRIDE = "ELIZA_MACOSALARM_HELPER_BIN";
 
 export interface HelperSpawn {
-  (
-    bin: string,
-    args: string[],
-  ): {
-    stdin: NodeJS.WritableStream;
-    stdout: NodeJS.ReadableStream;
-    stderr: NodeJS.ReadableStream;
-    on(event: "error", listener: (err: Error) => void): void;
-    on(event: "close", listener: (code: number | null) => void): void;
-  };
+  (bin: string, args: string[]): ChildProcessWithoutNullStreams;
 }
 
 export interface HelperRunOptions {
@@ -28,6 +19,8 @@ export interface HelperRunOptions {
   binPathOverride?: string;
   timeoutMs?: number;
 }
+
+const defaultSpawnHelper: HelperSpawn = (bin, args) => spawn(bin, args);
 
 function resolveHelperBin(override?: string): string {
   if (override && override.length > 0) return override;
@@ -69,7 +62,7 @@ export async function runHelper(
     throw new MacosAlarmHelperUnavailableError("helper-binary-missing");
   }
 
-  const spawnImpl = options.spawnImpl ?? (spawn as unknown as HelperSpawn);
+  const spawnImpl = options.spawnImpl ?? defaultSpawnHelper;
   const proc = spawnImpl(bin, []);
 
   const stdoutChunks: Buffer[] = [];

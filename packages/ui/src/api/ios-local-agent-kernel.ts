@@ -8,6 +8,8 @@ import type { ProviderStatus } from "../services/local-inference/providers";
 import {
   assessCatalogModelFit,
   catalogDownloadSizeGb,
+  chooseSmallerFallbackModel,
+  selectRecommendedModelForSlot,
 } from "../services/local-inference/recommendation";
 import type { RoutingPreferences } from "../services/local-inference/routing-preferences";
 import type {
@@ -79,6 +81,7 @@ interface LocalMessage {
   role: Role;
   text: string;
   timestamp: number;
+  localInference?: LocalReply["localInference"];
 }
 
 interface ConversationStore {
@@ -193,6 +196,16 @@ type LlamaCppModule = {
     url: string,
     filename: string,
   ) => Promise<string | { path?: string }>;
+  getDownloadProgress?: (url: string) => Promise<{
+    downloaded?: number;
+    received?: number;
+    total?: number;
+    percentage?: number;
+    bytesPerSec?: number;
+    etaMs?: number | null;
+    error?: string;
+  }>;
+  cancelDownload?: (url: string) => Promise<boolean>;
   getAvailableModels?: () => Promise<
     | Array<{ name?: string; path?: string; size?: number }>
     | { models?: Array<{ name?: string; path?: string; size?: number }> }
@@ -213,6 +226,31 @@ function storage(): Storage | null {
   } catch {
     return null;
   }
+}
+
+function removeStorageItem(key: string): void {
+  try {
+    storage()?.removeItem(key);
+  } catch {
+    /* localStorage unavailable */
+  }
+}
+
+function resetIosLocalAgentState(): void {
+  for (const key of [
+    CONVERSATIONS_KEY,
+    ACTIVE_MODEL_KEY,
+    ASSIGNMENTS_KEY,
+    BROWSER_WORKSPACE_KEY,
+    WALLET_MARKET_OVERVIEW_KEY,
+  ]) {
+    removeStorageItem(key);
+  }
+  downloads.clear();
+  activeState = readActiveModelState();
+  loadedRuntimeSignature = null;
+  running = true;
+  startedAt = Date.now();
 }
 
 function nowIso(): string {
@@ -1232,6 +1270,194 @@ async function ensureActiveModelLoaded(): Promise<void> {
   loadedRuntimeSignature = signature;
 }
 
+type LocalReply = {
+  text: string;
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    model?: string;
+  };
+  localInference?: {
+    intent?:
+      | "retry"
+      | "resume"
+      | "redownload"
+      | "download"
+      | "cancel"
+      | "switch_smaller"
+      | "status";
+    status:
+      | "missing"
+      | "downloading"
+      | "loading"
+      | "failed"
+      | "no_space"
+      | "idle"
+      | "ready"
+      | "cancelled";
+    modelId?: string | null;
+    activeModelId?: string | null;
+    error?: string;
+    progress?: {
+      percent?: number;
+      receivedBytes: number;
+      totalBytes: number;
+      bytesPerSec?: number;
+      etaMs?: number | null;
+    };
+  };
+};
+
+function emptyUsage(modelId?: string | null): LocalReply["usage"] {
+  return {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    ...(modelId ? { model: modelId } : {}),
+  };
+}
+
+async function localModelStatusReply(text: string): Promise<LocalReply | null> {
+  const intent = classifyLocalModelIntent(text);
+  if (activeState.status === "ready" && intent !== "status") return null;
+
+  const hardware = await hardwareProbe();
+  const activeCatalog = activeState.modelId
+    ? findCatalogModel(activeState.modelId)
+    : null;
+  let model =
+    activeCatalog ??
+    selectRecommendedModelForSlot("TEXT_LARGE", hardware, MODEL_CATALOG).model;
+  if (!model) {
+    return {
+      text: "I could not find a local model that fits this device.",
+      usage: emptyUsage(activeState.modelId),
+      localInference: {
+        intent: intent ?? "status",
+        status: "failed",
+        activeModelId: activeState.modelId,
+        error: "No fitting local model in catalog",
+      },
+    };
+  }
+
+  if (intent === "switch_smaller") {
+    const smaller = chooseSmallerFallbackModel(
+      model.id,
+      hardware,
+      "TEXT_LARGE",
+      MODEL_CATALOG,
+    );
+    if (smaller) model = smaller;
+    const validationError = await validateMobileModelFit(model);
+    if (validationError) {
+      return {
+        text: validationError,
+        usage: emptyUsage(model.id),
+        localInference: {
+          intent,
+          status: validationError.toLowerCase().includes("storage")
+            ? "no_space"
+            : "failed",
+          modelId: model.id,
+          activeModelId: activeState.modelId,
+          error: validationError,
+        },
+      };
+    }
+    startDownload(model);
+  } else if (
+    intent === "download" ||
+    intent === "redownload" ||
+    activeState.status === "idle" ||
+    !activeState.modelId
+  ) {
+    const validationError = await validateMobileModelFit(model);
+    if (validationError) {
+      const smaller = chooseSmallerFallbackModel(
+        model.id,
+        hardware,
+        "TEXT_LARGE",
+        MODEL_CATALOG,
+      );
+      if (smaller) {
+        model = smaller;
+      } else {
+        return {
+          text: validationError,
+          usage: emptyUsage(model.id),
+          localInference: {
+            intent: intent ?? "download",
+            status: validationError.toLowerCase().includes("storage")
+              ? "no_space"
+              : "failed",
+            modelId: model.id,
+            activeModelId: activeState.modelId,
+            error: validationError,
+          },
+        };
+      }
+    }
+    startDownload(model);
+  } else if (intent === "cancel") {
+    for (const job of aggregateDownloadJobs(model)) {
+      if (["queued", "downloading"].includes(job.state)) {
+        updateDownload(job, { state: "cancelled", etaMs: 0 });
+      }
+    }
+  }
+
+  const jobs = aggregateDownloadJobs(model);
+  const progress = aggregateProgress(jobs);
+  if (activeState.status === "ready") {
+    return {
+      text: `Local inference is ready on ${model.displayName}.`,
+      usage: emptyUsage(model.id),
+      localInference: {
+        intent: "status",
+        status: "ready",
+        modelId: model.id,
+        activeModelId: activeState.modelId,
+      },
+    };
+  }
+  const state =
+    activeState.status === "loading"
+      ? "loading"
+      : progress.state === "failed"
+        ? progress.error?.toLowerCase().includes("space")
+          ? "no_space"
+          : "failed"
+        : progress.state === "cancelled"
+          ? "cancelled"
+          : progress.state === "completed"
+            ? "loading"
+            : progress.state === "missing"
+              ? "missing"
+              : "downloading";
+  return {
+    text: statusLine(model, jobs),
+    usage: emptyUsage(model.id),
+    localInference: {
+      intent: intent ?? "status",
+      status: state,
+      modelId: model.id,
+      activeModelId: activeState.modelId,
+      ...(progress.error ? { error: progress.error } : {}),
+      progress: {
+        ...(progress.percent !== null ? { percent: progress.percent } : {}),
+        receivedBytes: progress.received,
+        totalBytes:
+          progress.total ||
+          Math.round(catalogDownloadSizeGb(model, MODEL_CATALOG) * 1024 ** 3),
+        bytesPerSec: progress.bytesPerSec,
+        etaMs: progress.etaMs,
+      },
+    },
+  };
+}
+
 function buildPrompt(messages: LocalMessage[], latestText: string): string {
   const history = messages
     .slice(-12)
@@ -1246,15 +1472,9 @@ function buildPrompt(messages: LocalMessage[], latestText: string): string {
 async function generateLocalReply(
   conversation: LocalConversation,
   text: string,
-): Promise<{
-  text: string;
-  usage: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-    model?: string;
-  };
-}> {
+): Promise<LocalReply> {
+  const statusReply = await localModelStatusReply(text);
+  if (statusReply) return statusReply;
   await ensureActiveModelLoaded();
   const llama = await loadCapacitorLlama();
   if (!llama?.generate) {
@@ -1324,6 +1544,145 @@ function updateDownload(job: DownloadJob, patch: Partial<DownloadJob>): void {
   downloads.set(job.modelId, { ...job });
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function formatGb(bytes: number): string {
+  return `${(bytes / 1024 ** 3).toFixed(1)}GB`;
+}
+
+function aggregateDownloadJobs(model: CatalogModel): DownloadJob[] {
+  const ids = [model.id, ...(model.companionModelIds ?? [])];
+  return ids.flatMap((id) => {
+    const job = downloads.get(id);
+    return job ? [job] : [];
+  });
+}
+
+function aggregateProgress(jobs: DownloadJob[]): {
+  received: number;
+  total: number;
+  percent: number | null;
+  bytesPerSec: number;
+  etaMs: number | null;
+  state: DownloadJob["state"] | "missing";
+  error?: string;
+} {
+  if (jobs.length === 0) {
+    return {
+      received: 0,
+      total: 0,
+      percent: null,
+      bytesPerSec: 0,
+      etaMs: null,
+      state: "missing",
+    };
+  }
+  const received = jobs.reduce(
+    (sum, job) => sum + Math.max(0, job.received),
+    0,
+  );
+  const total = jobs.reduce((sum, job) => sum + Math.max(0, job.total), 0);
+  const bytesPerSec = jobs.reduce(
+    (sum, job) => sum + Math.max(0, job.bytesPerSec),
+    0,
+  );
+  const failed = jobs.find((job) => job.state === "failed");
+  const cancelled = jobs.find((job) => job.state === "cancelled");
+  const active = jobs.find((job) =>
+    ["queued", "downloading"].includes(job.state),
+  );
+  const allCompleted = jobs.every((job) => job.state === "completed");
+  const etaMs =
+    total > received && bytesPerSec > 0
+      ? Math.round(((total - received) / bytesPerSec) * 1000)
+      : null;
+  return {
+    received,
+    total,
+    percent:
+      total > 0 ? Math.min(100, Math.round((received / total) * 100)) : null,
+    bytesPerSec,
+    etaMs,
+    state: failed
+      ? "failed"
+      : cancelled
+        ? "cancelled"
+        : active
+          ? active.state
+          : allCompleted
+            ? "completed"
+            : "missing",
+    ...(failed?.error ? { error: failed.error } : {}),
+  };
+}
+
+function classifyLocalModelIntent(
+  text: string,
+): "redownload" | "download" | "cancel" | "switch_smaller" | "status" | null {
+  const normalized = text.toLowerCase();
+  if (/\b(cancel|stop|pause|abort)\b/.test(normalized)) return "cancel";
+  if (
+    /\b(redownload|re-download|download again|fresh copy|retry download)\b/.test(
+      normalized,
+    )
+  ) {
+    return "redownload";
+  }
+  if (
+    /\b(smaller|lighter|tiny|low memory|less memory|save space|not enough space)\b/.test(
+      normalized,
+    )
+  ) {
+    return "switch_smaller";
+  }
+  if (/\b(download|install|fetch|pull|resume|retry)\b/.test(normalized))
+    return "download";
+  if (
+    /\b(status|progress|percent|percentage|eta|what.*happen|how.*long)\b/.test(
+      normalized,
+    )
+  ) {
+    return "status";
+  }
+  return null;
+}
+
+function statusLine(
+  model: CatalogModel,
+  jobs: DownloadJob[],
+  detail?: string,
+): string {
+  const progress = aggregateProgress(jobs);
+  const templates = [
+    () =>
+      `I'm still downloading ${model.displayName}: ${progress.percent ?? 0}% (${formatGb(
+        progress.received,
+      )}/${formatGb(progress.total || Math.round(catalogDownloadSizeGb(model, MODEL_CATALOG) * 1024 ** 3))}). Please hold on.`,
+    () =>
+      `${model.displayName} is still coming down: ${progress.percent ?? 0}% complete, ${formatGb(
+        progress.received,
+      )} of ${formatGb(progress.total || Math.round(catalogDownloadSizeGb(model, MODEL_CATALOG) * 1024 ** 3))}.`,
+    () =>
+      `Local inference is not ready yet. ${model.displayName} is at ${
+        progress.percent ?? 0
+      }% (${formatGb(progress.received)}/${formatGb(
+        progress.total ||
+          Math.round(catalogDownloadSizeGb(model, MODEL_CATALOG) * 1024 ** 3),
+      )}).`,
+  ];
+  if (progress.state === "failed") {
+    return `The ${model.displayName} download failed${progress.error ? `: ${progress.error}` : "."}`;
+  }
+  if (progress.state === "cancelled") {
+    return `The ${model.displayName} download is cancelled.`;
+  }
+  if (detail) return detail;
+  const index = Math.abs(Math.floor(Date.now() / 10_000)) % templates.length;
+  return templates[index]();
+}
+
 async function queueCompanionDownloads(model: CatalogModel): Promise<void> {
   if (!model.companionModelIds?.length) return;
   const installed = await listInstalledModels().catch(() => []);
@@ -1371,10 +1730,53 @@ function startDownload(model: CatalogModel): DownloadJob {
       if (!llama?.downloadModel) {
         throw new Error("llama-cpp-capacitor downloadModel is unavailable.");
       }
-      const result = await llama.downloadModel(
-        buildHuggingFaceResolveUrl(model),
-        modelFilename(model),
-      );
+      const downloadUrl = buildHuggingFaceResolveUrl(model);
+      let polling = true;
+      void (async () => {
+        while (polling && ["queued", "downloading"].includes(job.state)) {
+          try {
+            const progress = await llama.getDownloadProgress?.(downloadUrl);
+            if (progress) {
+              const received =
+                typeof progress.downloaded === "number"
+                  ? progress.downloaded
+                  : typeof progress.received === "number"
+                    ? progress.received
+                    : job.received;
+              const total =
+                typeof progress.total === "number" && progress.total > 0
+                  ? progress.total
+                  : job.total;
+              const bytesPerSec =
+                typeof progress.bytesPerSec === "number"
+                  ? progress.bytesPerSec
+                  : job.bytesPerSec;
+              updateDownload(job, {
+                received,
+                total,
+                bytesPerSec,
+                etaMs:
+                  typeof progress.etaMs === "number" || progress.etaMs === null
+                    ? progress.etaMs
+                    : total > received && bytesPerSec > 0
+                      ? Math.round(((total - received) / bytesPerSec) * 1000)
+                      : job.etaMs,
+                ...(progress.error ? { error: progress.error } : {}),
+              });
+            }
+          } catch {
+            // The native progress endpoint is best-effort; the download promise
+            // remains the source of truth for completion or failure.
+          }
+          await sleep(1000);
+        }
+      })();
+      let result: string | { path?: string };
+      try {
+        result = await llama.downloadModel(downloadUrl, modelFilename(model));
+      } finally {
+        polling = false;
+      }
       const path =
         typeof result === "string"
           ? result
@@ -1538,6 +1940,33 @@ export async function handleIosLocalAgentRequest(
       },
       pendingRestart: false,
       pendingRestartReasons: [],
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/agent/reset") {
+    resetIosLocalAgentState();
+    return json({ ok: true });
+  }
+
+  if (method === "POST" && pathname === "/api/agent/restart") {
+    running = true;
+    startedAt = Date.now();
+    return json({
+      status: {
+        state: "running",
+        agentName: AGENT_NAME,
+        model: activeState.status === "ready" ? activeState.modelId : undefined,
+        startedAt,
+        uptime: 0,
+        cloud: {
+          connectionStatus: "disconnected",
+          activeAgentId: null,
+          cloudProvisioned: false,
+          hasApiKey: false,
+        },
+        pendingRestart: false,
+        pendingRestartReasons: [],
+      },
     });
   }
 
@@ -1743,6 +2172,13 @@ export async function handleIosLocalAgentRequest(
     }
     if (method === "DELETE") {
       if (job && ["queued", "downloading"].includes(job.state)) {
+        const catalog = findCatalogModel(modelId);
+        if (catalog) {
+          const llama = await loadLlamaCpp();
+          await llama
+            ?.cancelDownload?.(buildHuggingFaceResolveUrl(catalog))
+            .catch(() => false);
+        }
         updateDownload(job, { state: "cancelled", etaMs: 0 });
       }
       return json({ ok: true, job: downloads.get(modelId) ?? null });
@@ -1923,6 +2359,9 @@ export async function handleIosLocalAgentRequest(
         role: "assistant",
         text: reply.text,
         timestamp: Date.now(),
+        ...(reply.localInference
+          ? { localInference: reply.localInference }
+          : {}),
       };
       conversation.messages.push(assistantMessage);
       conversation.updatedAt = nowIso();
@@ -1936,6 +2375,9 @@ export async function handleIosLocalAgentRequest(
             fullText: reply.text,
             agentName: AGENT_NAME,
             usage: reply.usage,
+            ...(reply.localInference
+              ? { localInference: reply.localInference }
+              : {}),
           },
         ]);
       }
@@ -1944,6 +2386,9 @@ export async function handleIosLocalAgentRequest(
         text: reply.text,
         agentName: AGENT_NAME,
         blocks: [{ type: "text", text: reply.text }],
+        ...(reply.localInference
+          ? { localInference: reply.localInference }
+          : {}),
       });
     }
   }

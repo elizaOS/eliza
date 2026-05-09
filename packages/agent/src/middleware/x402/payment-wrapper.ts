@@ -1785,6 +1785,26 @@ interface OpenAPIObjectSchema extends OpenAPIPropertySchema {
   required?: string[];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isOpenAPIObjectSchema(
+  schema: unknown,
+): schema is OpenAPIObjectSchema {
+  if (!isRecord(schema) || schema.type !== "object") {
+    return false;
+  }
+  const properties = schema.properties;
+  return (
+    properties === undefined ||
+    (isRecord(properties) &&
+      Object.values(properties).every(
+        (property) => property === undefined || isRecord(property),
+      ))
+  );
+}
+
 /**
  * Field definition for schema conversion
  */
@@ -1882,10 +1902,11 @@ function buildInputSchemaFromRoute(route: PaymentEnabledRoute): InputSchema {
   }
 
   if (route.openapi?.requestBody?.content?.["application/json"]?.schema) {
-    schema.bodyFields = convertOpenAPISchemaToFieldDef(
-      route.openapi.requestBody.content["application/json"]
-        .schema as unknown as OpenAPIObjectSchema,
-    );
+    const requestBodySchema =
+      route.openapi.requestBody.content["application/json"].schema;
+    if (isOpenAPIObjectSchema(requestBodySchema)) {
+      schema.bodyFields = convertOpenAPISchemaToFieldDef(requestBodySchema);
+    }
   }
 
   return schema;
@@ -1942,11 +1963,12 @@ export function applyPaymentProtection(
         "[x402] payment protection enabled",
       );
 
-      return {
+      const wrappedRoute: Route & { [X402_ROUTE_PAYMENT_WRAPPED]: true } = {
         ...route,
         handler: createPaymentAwareHandler(x402Route),
         [X402_ROUTE_PAYMENT_WRAPPED]: true,
-      } as unknown as Route;
+      };
+      return wrappedRoute;
     }
     return route;
   });

@@ -104,7 +104,7 @@ function withActionResultsMetadata(
         ...getContentMetadata(message.content),
         actionResults,
       },
-    } as unknown as Content,
+    } as Content,
   };
 }
 

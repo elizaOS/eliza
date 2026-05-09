@@ -35,6 +35,34 @@ const TEST_AFFILIATE_API_KEY_NAME = "Local Live Test Affiliate API Key";
 const TEST_AFFILIATE_API_KEY_VALUE = "eliza_test_local_live_affiliate_key";
 const TEST_AFFILIATE_PERMISSIONS = ["affiliate:create-character"];
 const TEST_AUTH_SECRET = "playwright-local-auth-secret";
+const SCHEMA_COMPATIBILITY_COLUMNS = [
+  { table: "users", column: "steward_user_id", definition: "steward_user_id text" },
+  {
+    table: "user_identities",
+    column: "steward_user_id",
+    definition: "steward_user_id text",
+  },
+  {
+    table: "organizations",
+    column: "steward_tenant_id",
+    definition: "steward_tenant_id text",
+  },
+  {
+    table: "organizations",
+    column: "steward_tenant_api_key",
+    definition: "steward_tenant_api_key text",
+  },
+  {
+    table: "organizations",
+    column: "pay_as_you_go_from_earnings",
+    definition: "pay_as_you_go_from_earnings boolean NOT NULL DEFAULT true",
+  },
+  {
+    table: "generations",
+    column: "is_public",
+    definition: "is_public boolean NOT NULL DEFAULT false",
+  },
+] as const;
 
 let bootstrapPromise: Promise<LocalTestAuthContext> | null = null;
 
@@ -102,28 +130,31 @@ async function createLocalAuthClient(connectionString: string): Promise<LocalAut
   return client;
 }
 
+async function columnExists(
+  client: LocalAuthClient,
+  table: string,
+  column: string,
+): Promise<boolean> {
+  const result = await client.query(
+    `SELECT 1
+       FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = $1
+        AND column_name = $2
+      LIMIT 1`,
+    [table, column],
+  );
+
+  return Boolean(result.rowCount && result.rowCount > 0);
+}
+
 async function ensureSchemaCompatibility(client: LocalAuthClient): Promise<void> {
-  await client.query(`
-    ALTER TABLE users
-      ADD COLUMN IF NOT EXISTS steward_user_id text;
-  `);
-
-  await client.query(`
-    ALTER TABLE user_identities
-      ADD COLUMN IF NOT EXISTS steward_user_id text;
-  `);
-
-  await client.query(`
-    ALTER TABLE organizations
-      ADD COLUMN IF NOT EXISTS steward_tenant_id text,
-      ADD COLUMN IF NOT EXISTS steward_tenant_api_key text,
-      ADD COLUMN IF NOT EXISTS pay_as_you_go_from_earnings boolean NOT NULL DEFAULT true;
-  `);
-
-  await client.query(`
-    ALTER TABLE generations
-      ADD COLUMN IF NOT EXISTS is_public boolean NOT NULL DEFAULT false;
-  `);
+  for (const { table, column, definition } of SCHEMA_COMPATIBILITY_COLUMNS) {
+    if (await columnExists(client, table, column)) {
+      continue;
+    }
+    await client.query(`ALTER TABLE ${table} ADD COLUMN ${definition};`);
+  }
 }
 
 async function upsertOrganization(client: LocalAuthClient): Promise<string> {
@@ -400,9 +431,12 @@ async function bootstrapLocalTestAuth(): Promise<LocalTestAuthContext> {
 
   const client = await createLocalAuthClient(getDatabaseUrl());
 
+  let inTransaction = false;
   try {
-    await client.query("BEGIN");
     await ensureSchemaCompatibility(client);
+
+    await client.query("BEGIN");
+    inTransaction = true;
 
     const organizationId = await upsertOrganization(client);
     const userId = await upsertUser(client, organizationId);
@@ -424,6 +458,7 @@ async function bootstrapLocalTestAuth(): Promise<LocalTestAuthContext> {
     });
 
     await client.query("COMMIT");
+    inTransaction = false;
 
     const sessionToken = createPlaywrightTestSessionToken(userId, organizationId);
 
@@ -446,7 +481,9 @@ async function bootstrapLocalTestAuth(): Promise<LocalTestAuthContext> {
       sessionToken,
     };
   } catch (error) {
-    await client.query("ROLLBACK");
+    if (inTransaction) {
+      await client.query("ROLLBACK");
+    }
     throw error;
   } finally {
     await client.end();

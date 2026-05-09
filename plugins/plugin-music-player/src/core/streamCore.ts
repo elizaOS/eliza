@@ -305,10 +305,8 @@ export class StreamCore extends EventEmitter {
       }
     } else if (upstream) {
       try {
-        // Cast: TS picks up the DOM WritableStream lib here, but at runtime
-        // both src and upstream are Node streams and `unpipe` only cares
-        // about reference identity.
-        upstream.unpipe(src as unknown as NodeJS.WritableStream);
+        const writableSrc: NodeJS.WritableStream = src;
+        upstream.unpipe(writableSrc);
       } catch {
         /* ignore */
       }

@@ -8,13 +8,12 @@
 import type {
   Action,
   ActionResult,
-  ChannelType,
   HandlerOptions,
   IAgentRuntime,
   Memory,
   UUID,
 } from "@elizaos/core";
-import { logger, ModelType, stringToUuid } from "@elizaos/core";
+import { ChannelType, logger, ModelType, stringToUuid } from "@elizaos/core";
 
 const MEMORY_OPS = ["create", "search", "update", "delete"] as const;
 type MemoryOp = (typeof MEMORY_OPS)[number];
@@ -117,7 +116,7 @@ async function doCreate(
       agentId,
       name: "manual-memories",
       source: "agent",
-      type: "DM" as unknown as ChannelType,
+      type: ChannelType.DM,
       worldId: stringToUuid(`${agentId}-manual-memories-world`) as UUID,
     })
     .catch(() => undefined);

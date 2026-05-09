@@ -140,6 +140,16 @@ interface WsModule {
   WebSocket: WsConstructor;
 }
 
+function isWsModule(value: unknown): value is WsModule {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { WebSocketServer?: unknown }).WebSocketServer ===
+      "function" &&
+    typeof (value as { WebSocket?: unknown }).WebSocket === "function"
+  );
+}
+
 interface DeviceCapabilities {
   platform: "ios" | "android" | "web";
   deviceModel: string;
@@ -287,7 +297,11 @@ class MobileDeviceBridge {
 
   async attachToHttpServer(server: HttpServer): Promise<void> {
     if (!SERVICE_ENABLED || this.wss) return;
-    const ws = (await import("ws")) as unknown as WsModule;
+    const wsModule = await import("ws");
+    if (!isWsModule(wsModule)) {
+      throw new Error("ws module did not expose WebSocketServer/WebSocket");
+    }
+    const ws = wsModule;
     const wss = new ws.WebSocketServer({
       noServer: true,
       maxPayload: 1024 * 1024,

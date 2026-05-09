@@ -126,6 +126,45 @@ function replaceAll(
   return next;
 }
 
+function requireStringKeys<T extends Record<string, string>>(
+  values: Record<string, string>,
+  keys: readonly (keyof T & string)[],
+  templateId: TemplateDefinition["id"],
+): T {
+  const missing = keys.filter((key) => typeof values[key] !== "string");
+  if (missing.length > 0) {
+    throw new Error(
+      `Template "${templateId}" values missing required keys: ${missing.join(", ")}`,
+    );
+  }
+  return values as T;
+}
+
+const PLUGIN_TEMPLATE_VALUE_KEYS = [
+  "displayName",
+  "elizaVersion",
+  "githubUsername",
+  "pluginBaseName",
+  "pluginDescription",
+  "pluginSnake",
+  "repoUrl",
+] as const satisfies readonly (keyof PluginTemplateValues & string)[];
+
+const FULLSTACK_TEMPLATE_VALUE_KEYS = [
+  "appName",
+  "appUrl",
+  "bugReportUrl",
+  "bundleId",
+  "docsUrl",
+  "fileExtension",
+  "hashtag",
+  "orgName",
+  "packageScope",
+  "projectSlug",
+  "releaseBaseUrl",
+  "repoName",
+] as const satisfies readonly (keyof FullstackTemplateValues & string)[];
+
 function normalizeKebabCase(value: string): string {
   const normalized = value
     .trim()
@@ -236,11 +275,19 @@ export function getTemplateReplacementEntries(options: {
 }): Array<[string, string]> {
   if (options.templateId === "plugin") {
     return getPluginReplacementEntries(
-      options.values as unknown as PluginTemplateValues,
+      requireStringKeys<PluginTemplateValues>(
+        options.values,
+        PLUGIN_TEMPLATE_VALUE_KEYS,
+        options.templateId,
+      ),
     );
   }
   return getFullstackReplacementEntries(
-    options.values as unknown as FullstackTemplateValues,
+    requireStringKeys<FullstackTemplateValues>(
+      options.values,
+      FULLSTACK_TEMPLATE_VALUE_KEYS,
+      options.templateId,
+    ),
   );
 }
 

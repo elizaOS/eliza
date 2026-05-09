@@ -56,6 +56,46 @@ export interface McpSettings {
   readonly maxRetries?: number;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStdioMcpServerConfig(value: unknown): value is StdioMcpServerConfig {
+  return (
+    isRecord(value) &&
+    value.type === "stdio" &&
+    typeof value.command === "string" &&
+    (value.args === undefined ||
+      (Array.isArray(value.args) && value.args.every((arg) => typeof arg === "string"))) &&
+    (value.env === undefined ||
+      (isRecord(value.env) && Object.values(value.env).every((entry) => typeof entry === "string"))) &&
+    (value.cwd === undefined || typeof value.cwd === "string") &&
+    (value.timeoutInMillis === undefined || typeof value.timeoutInMillis === "number")
+  );
+}
+
+function isHttpMcpServerConfig(value: unknown): value is HttpMcpServerConfig {
+  return (
+    isRecord(value) &&
+    (value.type === "http" || value.type === "streamable-http" || value.type === "sse") &&
+    typeof value.url === "string" &&
+    (value.timeout === undefined || typeof value.timeout === "number")
+  );
+}
+
+export function isMcpSettings(value: unknown): value is McpSettings {
+  if (!isRecord(value) || !isRecord(value.servers)) {
+    return false;
+  }
+
+  return (
+    Object.values(value.servers).every(
+      (server) => isStdioMcpServerConfig(server) || isHttpMcpServerConfig(server)
+    ) &&
+    (value.maxRetries === undefined || typeof value.maxRetries === "number")
+  );
+}
+
 export type McpServerStatus = "connecting" | "connected" | "disconnected";
 
 export interface McpServer {

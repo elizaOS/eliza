@@ -53,6 +53,12 @@ type RelationshipsServiceWithGraph = RelationshipsServiceLike &
     }) => void;
   };
 
+function isRelationshipsServiceWithGraph(
+  service: unknown,
+): service is RelationshipsServiceWithGraph {
+  return typeof service === "object" && service !== null;
+}
+
 /**
  * Resolve the merged RelationshipsService and wire its agent-side owner
  * resolvers. Compatibility wrapper for the old factory; prefer
@@ -74,7 +80,10 @@ export async function resolveRelationshipsGraphService(
   if (!service || typeof service !== "object") {
     return null;
   }
-  const graphService = service as unknown as RelationshipsServiceWithGraph;
+  if (!isRelationshipsServiceWithGraph(service)) {
+    return null;
+  }
+  const graphService = service;
 
   if (typeof graphService.setGraphResolvers === "function") {
     graphService.setGraphResolvers({

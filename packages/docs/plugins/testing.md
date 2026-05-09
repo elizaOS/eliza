@@ -259,12 +259,13 @@ describe('weather plugin integration', () => {
     // runtime = await createTestRuntime({ plugins: [weatherPlugin] });
 
     // Or use a mock with real state composition:
-    runtime = {
+    const runtimeMock = {
       agentId: 'test-agent',
       getSetting: (key: string) => process.env[key],
       logger: console,
       // Add other methods your plugin needs
-    } as unknown as IAgentRuntime;
+    } satisfies Partial<IAgentRuntime>;
+    runtime = runtimeMock as IAgentRuntime;
 
     // Initialize the plugin
     if (weatherPlugin.init) {

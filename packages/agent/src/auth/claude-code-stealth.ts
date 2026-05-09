@@ -7,6 +7,8 @@ const CLAUDE_CODE_SYSTEM_PREFIX =
 const ANTHROPIC_BETA =
   "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,advanced-tool-use-2025-11-20,effort-2025-11-24";
 
+type FetchWithPreconnect = typeof fetch & { preconnect?: unknown };
+
 function isSetupToken(value: string | null): value is string {
   return typeof value === "string" && value.startsWith("sk-ant-oat");
 }
@@ -140,10 +142,9 @@ export function installClaudeCodeStealthFetchInterceptor(): void {
     return originalFetch(url.toString(), nextInit);
   };
 
-  if ("preconnect" in globalThis.fetch) {
-    (stealthFetch as unknown as Record<string, unknown>).preconnect = (
-      globalThis.fetch as unknown as Record<string, unknown>
-    ).preconnect;
+  const sourceFetch = globalThis.fetch as FetchWithPreconnect;
+  if ("preconnect" in sourceFetch) {
+    (stealthFetch as FetchWithPreconnect).preconnect = sourceFetch.preconnect;
   }
 
   globalThis.fetch = stealthFetch as typeof globalThis.fetch;

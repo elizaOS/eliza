@@ -47,9 +47,11 @@ export class ApprovalQueueUnavailableError extends Error {
 function getApprovalQueue(runtime: IAgentRuntime): ApprovalQueue | null {
   const service = runtime.getService(APPROVAL_QUEUE_SERVICE_NAME);
   if (!service) return null;
-  const candidate = service as unknown as Partial<ApprovalQueue>;
-  if (typeof candidate.enqueue !== "function") return null;
-  return candidate as ApprovalQueue;
+  if (typeof service !== "object") return null;
+  const candidate = service as Partial<ApprovalQueue>;
+  return typeof candidate.enqueue === "function"
+    ? (candidate as ApprovalQueue)
+    : null;
 }
 
 /**
@@ -155,7 +157,7 @@ export async function enqueueIfSensitive(
 const DISPATCH_LOG_KEY = Symbol.for("eliza.lifeops.background-planner.log");
 const DISPATCH_LOG_MAX_ENTRIES = 200;
 
-interface DispatchLogHolder {
+interface DispatchLogHolder extends IAgentRuntime {
   [DISPATCH_LOG_KEY]?: PlannerDispatchResult[];
 }
 
@@ -169,7 +171,7 @@ export function recordPlannerDispatch(
   runtime: IAgentRuntime,
   result: PlannerDispatchResult,
 ): void {
-  const holder = runtime as unknown as DispatchLogHolder;
+  const holder = runtime as DispatchLogHolder;
   const log = holder[DISPATCH_LOG_KEY] ?? [];
   log.push(result);
   if (log.length > DISPATCH_LOG_MAX_ENTRIES) {
@@ -182,12 +184,12 @@ export function recordPlannerDispatch(
 export function readPlannerDispatchLog(
   runtime: IAgentRuntime,
 ): ReadonlyArray<PlannerDispatchResult> {
-  const holder = runtime as unknown as DispatchLogHolder;
+  const holder = runtime as DispatchLogHolder;
   return holder[DISPATCH_LOG_KEY] ?? [];
 }
 
 /** Test-only: clear the dispatch log between runs. */
 export function resetPlannerDispatchLog(runtime: IAgentRuntime): void {
-  const holder = runtime as unknown as DispatchLogHolder;
+  const holder = runtime as DispatchLogHolder;
   holder[DISPATCH_LOG_KEY] = [];
 }

@@ -283,10 +283,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
   private mapWorldResult(world: unknown): World {
     const mappedWorld = world as Record<string, unknown>;
+    const messageServerId = mappedWorld.messageServerId || mappedWorld.serverId;
     return {
       ...mappedWorld,
-      serverId: (mappedWorld.messageServerId || mappedWorld.serverId) as UUID,
-    } as unknown as World;
+      ...(typeof messageServerId === "string" ? { messageServerId: messageServerId as UUID } : {}),
+    } as World;
   }
 
   /**
@@ -403,7 +404,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
       const row = rows[0];
       const bioValue = !row.bio ? "" : Array.isArray(row.bio) ? row.bio : row.bio;
-      return {
+      const agent: Agent = {
         ...row,
         username: row.username || "",
         id: row.id as UUID,
@@ -411,7 +412,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         bio: bioValue as string | string[],
         createdAt: row.createdAt.getTime(),
         updatedAt: row.updatedAt.getTime(),
-      } as unknown as Agent;
+      };
+      return agent;
     });
   }
 
@@ -450,7 +452,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const rows = await this.db.select().from(agentTable).where(inArray(agentTable.id, agentIds));
       return rows.map((row) => {
         const bioValue = !row.bio ? "" : Array.isArray(row.bio) ? row.bio : row.bio;
-        return {
+        const agent: Agent = {
           ...row,
           username: row.username || "",
           id: row.id as UUID,
@@ -458,7 +460,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           bio: bioValue as string | string[],
           createdAt: row.createdAt.getTime(),
           updatedAt: row.updatedAt.getTime(),
-        } as unknown as Agent;
+        };
+        return agent;
       });
     });
   }

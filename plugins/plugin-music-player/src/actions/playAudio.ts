@@ -91,6 +91,14 @@ interface DiscordService {
   voiceManager?: VoiceManager;
 }
 
+function isDiscordService(service: unknown): service is DiscordService {
+  return (
+    typeof service === "object" &&
+    service !== null &&
+    "client" in service
+  );
+}
+
 interface VoiceManager {
   getVoiceConnection(guildId: string): any;
   joinChannel(channel: BaseGuildVoiceChannel): Promise<void>;
@@ -648,8 +656,11 @@ export const playAudio: Action = {
     );
 
     const isDiscord = message.content.source === "discord";
-    const discordService = isDiscord
-      ? (runtime.getService(DISCORD_SERVICE_NAME) as unknown as DiscordService)
+    const maybeDiscordService = isDiscord
+      ? runtime.getService(DISCORD_SERVICE_NAME)
+      : null;
+    const discordService = isDiscordService(maybeDiscordService)
+      ? maybeDiscordService
       : null;
 
     // For Discord, we need the Discord service

@@ -365,12 +365,17 @@ type CrossChannelNativeSearchService = GmailSearchService & {
   }) => Promise<LifeOpsXDm[]>;
 };
 
+function isObjectService(value: unknown): value is object {
+  return Boolean(value) && typeof value === "object";
+}
+
 function getLifeOpsSearchService(
   runtime: IAgentRuntime,
 ): CrossChannelNativeSearchService | null {
-  return runtime.getService(
-    "lifeops",
-  ) as unknown as CrossChannelNativeSearchService | null;
+  const service = runtime.getService("lifeops");
+  return isObjectService(service)
+    ? (service as CrossChannelNativeSearchService)
+    : null;
 }
 
 async function searchGmail(
@@ -972,6 +977,17 @@ type RelationshipsGraphServiceWithCluster = RelationshipsGraphService & {
   getMemoriesForCluster?: GetMemoriesForClusterFn;
 };
 
+function isRelationshipsGraphServiceWithCluster(
+  service: unknown,
+): service is RelationshipsGraphServiceWithCluster {
+  if (!isObjectService(service)) return false;
+  const candidate = service as Partial<RelationshipsGraphServiceWithCluster>;
+  return (
+    typeof candidate.getGraphSnapshot === "function" &&
+    typeof candidate.getPersonDetail === "function"
+  );
+}
+
 async function resolvePerson(
   runtime: IAgentRuntime,
   ref: CrossChannelSearchPersonRef | undefined,
@@ -984,10 +1000,10 @@ async function resolvePerson(
     return { service: null, person: null, degraded: [] };
   }
 
-  const baseService =
-    (runtime.getService(
-      "relationships",
-    ) as unknown as RelationshipsGraphServiceWithCluster | null) ?? null;
+  const candidateService = runtime.getService("relationships");
+  const baseService = isRelationshipsGraphServiceWithCluster(candidateService)
+    ? candidateService
+    : null;
   const service = baseService
     ? ({
         ...baseService,

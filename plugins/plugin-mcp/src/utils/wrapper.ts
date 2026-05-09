@@ -5,7 +5,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { DEFAULT_MAX_RETRIES, type McpSettings, type ValidationResult } from "../types";
+import { DEFAULT_MAX_RETRIES, isMcpSettings, type ValidationResult } from "../types";
 import { parseStructuredModelOutput } from "./json";
 
 export type Input = string | Record<string, unknown>;
@@ -98,11 +98,8 @@ export async function withModelRetry<T>({
 function getMaxRetries(runtime: IAgentRuntime): number {
   const rawSettings = runtime.getSetting("mcp");
 
-  if (rawSettings && typeof rawSettings === "object") {
-    const settings = rawSettings as unknown as McpSettings;
-    if (typeof settings.maxRetries === "number" && settings.maxRetries >= 0) {
-      return settings.maxRetries;
-    }
+  if (isMcpSettings(rawSettings) && typeof rawSettings.maxRetries === "number" && rawSettings.maxRetries >= 0) {
+    return rawSettings.maxRetries;
   }
 
   return DEFAULT_MAX_RETRIES;
