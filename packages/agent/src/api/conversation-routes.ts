@@ -25,14 +25,9 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
-import type {
-  ChatFailureKind,
-  ChatGenerationResult,
-  LogEntry,
-} from "./chat-routes.js";
+import type { ChatGenerationResult, LogEntry } from "./chat-routes.js";
 import {
   classifyChatFailure,
   generateChatResponse,
@@ -40,7 +35,6 @@ import {
   getChatFailureReply,
   hasRecentVisibleAssistantMemorySince,
   initSse,
-  isLocalInferenceError,
   normalizeChatResponseText,
   persistAssistantConversationMemory,
   persistConversationMemory,
@@ -61,12 +55,9 @@ import {
   resolveDiscordMessageAuthorProfile,
   resolveDiscordUserProfile,
   resolveStoredDiscordEntityProfile,
-} from "./discord-profiles.js";
-import {
-  getLocalInferenceChatStatus,
-  type LocalInferenceChatMetadata,
-} from "./local-inference-routes.js";
+} from "@elizaos/plugin-discord";
 import { evictOldestConversation } from "./memory-bounds.js";
+import type { RouteRequestContext } from "./route-helpers.js";
 import {
   buildUserMessages,
   getErrorMessage,
@@ -462,11 +453,7 @@ export function buildPersistedAssistantContent(
   result:
     | Pick<
         ChatGenerationResult,
-        | "actionCallbackHistory"
-        | "failureKind"
-        | "localInference"
-        | "responseContent"
-        | "responseMessages"
+        "actionCallbackHistory" | "responseContent" | "responseMessages"
       >
     | null
     | undefined,
@@ -489,41 +476,17 @@ export function buildPersistedAssistantContent(
     result?.actionCallbackHistory,
   );
 
-  return (
-    responseContent || responseMessageContent
-      ? {
-          ...(responseMessageContent ?? {}),
-          ...(responseContent ?? {}),
-          text,
-          ...(result?.failureKind ? { failureKind: result.failureKind } : {}),
-          ...(result?.localInference
-            ? {
-                localInference: result.localInference as unknown as Record<
-                  string,
-                  unknown
-                >,
-              }
-            : {}),
-          ...(actionCallbackHistory.length > 0
-            ? { actionCallbackHistory }
-            : {}),
-        }
-      : {
-          text,
-          ...(result?.failureKind ? { failureKind: result.failureKind } : {}),
-          ...(result?.localInference
-            ? {
-                localInference: result.localInference as unknown as Record<
-                  string,
-                  unknown
-                >,
-              }
-            : {}),
-          ...(actionCallbackHistory.length > 0
-            ? { actionCallbackHistory }
-            : {}),
-        }
-  ) as Content;
+  return responseContent || responseMessageContent
+    ? {
+        ...(responseMessageContent ?? {}),
+        ...(responseContent ?? {}),
+        text,
+        ...(actionCallbackHistory.length > 0 ? { actionCallbackHistory } : {}),
+      }
+    : {
+        text,
+        ...(actionCallbackHistory.length > 0 ? { actionCallbackHistory } : {}),
+      };
 }
 
 export async function persistRecentAssistantActionCallbackHistory(
@@ -630,8 +593,6 @@ type ConversationRouteMessageRecord = {
   timestamp: number;
   source?: string;
   actionName?: string;
-  failureKind?: ChatFailureKind;
-  localInference?: LocalInferenceChatMetadata;
   actionCallbackHistory?: string[];
   from?: string;
   fromUserName?: string;
@@ -939,14 +900,6 @@ export async function handleConversationRoutes(
           const actionCallbackHistory = normalizeActionCallbackHistory(
             content.actionCallbackHistory,
           );
-          const failureKind =
-            typeof content.failureKind === "string"
-              ? (content.failureKind as ChatFailureKind)
-              : undefined;
-          const localInference =
-            content.localInference && typeof content.localInference === "object"
-              ? (content.localInference as LocalInferenceChatMetadata)
-              : undefined;
           return {
             id: m.id ?? "",
             role: m.entityId === agentId ? "assistant" : "user",
@@ -957,8 +910,6 @@ export async function handleConversationRoutes(
             timestamp: m.createdAt ?? 0,
             source: normalizedSource,
             actionName,
-            failureKind,
-            localInference,
             actionCallbackHistory:
               actionCallbackHistory.length > 0
                 ? [...actionCallbackHistory]
@@ -1348,10 +1299,6 @@ export async function handleConversationRoutes(
             type: "done",
             fullText: resolvedText,
             agentName: result.agentName,
-            ...(result.failureKind ? { failureKind: result.failureKind } : {}),
-            ...(result.localInference
-              ? { localInference: result.localInference }
-              : {}),
             ...(result.usage ? { usage: result.usage } : {}),
           });
         } else {
@@ -1360,10 +1307,6 @@ export async function handleConversationRoutes(
             fullText: "",
             agentName: result.agentName,
             noResponseReason: "ignored",
-            ...(result.failureKind ? { failureKind: result.failureKind } : {}),
-            ...(result.localInference
-              ? { localInference: result.localInference }
-              : {}),
             ...(result.usage ? { usage: result.usage } : {}),
           });
         }
@@ -1407,40 +1350,23 @@ export async function handleConversationRoutes(
             { err: getErrorMessage(err) },
             "Chat generation failed with no streamed text",
           );
-          const localFailure = isLocalInferenceError(err)
-            ? await getLocalInferenceChatStatus("status", err)
-            : null;
-          const providerIssueReply =
-            localFailure?.text ?? getChatFailureReply(err, state.logBuffer);
-          const failureKind = localFailure
-            ? "local_inference"
-            : classifyChatFailure(err, state.logBuffer);
+          const providerIssueReply = getChatFailureReply(err, state.logBuffer);
+          const failureKind = classifyChatFailure(err, state.logBuffer);
           try {
             await persistAssistantConversationMemory(
               runtime,
               conv.roomId,
-              localFailure
-                ? ({
-                    text: providerIssueReply,
-                    failureKind,
-                    localInference: localFailure.localInference as unknown as
-                      | Record<string, unknown>
-                      | undefined,
-                  } as unknown as Content)
-                : providerIssueReply,
+              providerIssueReply,
               channelType,
             );
             conv.updatedAt = new Date().toISOString();
-            writeSseJson(res, {
+            writeSse(res, {
               type: "done",
               fullText: providerIssueReply,
               agentName: state.agentName,
               // See non-streaming branch — renderer gates chat input on
               // failureKind === "no_provider".
               failureKind,
-              ...(localFailure
-                ? { localInference: localFailure.localInference }
-                : {}),
             });
           } catch (persistErr) {
             writeSse(res, {
@@ -1587,47 +1513,25 @@ export async function handleConversationRoutes(
         json(res, {
           text: resolvedText,
           agentName: result.agentName,
-          ...(result.failureKind ? { failureKind: result.failureKind } : {}),
-          ...(result.localInference
-            ? { localInference: result.localInference }
-            : {}),
         });
       } else {
         json(res, {
           text: "",
           agentName: result.agentName,
           noResponseReason: "ignored",
-          ...(result.failureKind ? { failureKind: result.failureKind } : {}),
-          ...(result.localInference
-            ? { localInference: result.localInference }
-            : {}),
         });
       }
     } catch (err) {
       logger.warn(
         `[conversations] POST /messages failed: ${err instanceof Error ? err.message : String(err)}`,
       );
-      const localFailure = isLocalInferenceError(err)
-        ? await getLocalInferenceChatStatus("status", err)
-        : null;
-      const providerIssueReply =
-        localFailure?.text ?? getChatFailureReply(err, state.logBuffer);
-      const failureKind = localFailure
-        ? "local_inference"
-        : classifyChatFailure(err, state.logBuffer);
+      const providerIssueReply = getChatFailureReply(err, state.logBuffer);
+      const failureKind = classifyChatFailure(err, state.logBuffer);
       try {
         await persistAssistantConversationMemory(
           runtime,
           conv.roomId,
-          localFailure
-            ? ({
-                text: providerIssueReply,
-                failureKind,
-                localInference: localFailure.localInference as unknown as
-                  | Record<string, unknown>
-                  | undefined,
-              } as unknown as Content)
-            : providerIssueReply,
+          providerIssueReply,
           channelType,
         );
         conv.updatedAt = new Date().toISOString();
@@ -1639,9 +1543,6 @@ export async function handleConversationRoutes(
           // instead of treating the message text as a normal assistant
           // reply (the user can't make progress without taking action).
           failureKind,
-          ...(localFailure
-            ? { localInference: localFailure.localInference }
-            : {}),
         });
       } catch (persistErr) {
         error(res, getErrorMessage(persistErr), 500);
