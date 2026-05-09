@@ -174,7 +174,16 @@ export function validateNodeParameters(workflow: N8nWorkflow): string[] {
       const value = node.parameters?.[prop.name];
       if (value === undefined || value === null || value === '') {
         const label = prop.displayName || prop.name;
-        warnings.push(`Node "${node.name}": missing required parameter "${label}"`);
+        // Include the n8n property description in parentheses when present.
+        // The displayName alone is often opaque ("Name", "Type", "Mode")
+        // and the user has no way to know what the parameter actually
+        // governs. The description is the same hover-text n8n shows in
+        // its own UI, so it carries real semantic information.
+        const description = prop.description?.trim();
+        const detail = description ? ` (${description})` : '';
+        warnings.push(
+          `Node "${node.name}": missing required parameter "${label}"${detail}`,
+        );
       }
     }
   }

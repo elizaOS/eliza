@@ -572,6 +572,50 @@ describe("validateNodeParameters", () => {
     const warnings = validateNodeParameters(workflow);
     expect(warnings).toEqual([]);
   });
+
+  test("includes the n8n property description so the user knows what the parameter governs", () => {
+    // Repro: clarification panel shows `missing required parameter "Name"`
+    // for the Discord node. "Name" alone tells the user nothing —
+    // n8n's UI shows a description tooltip but the Automations panel
+    // doesn't. Pull the description from the same catalog the
+    // validator reads and append it in parens.
+    //
+    // Discord's "Server" and "Channel" required parameters carry
+    // descriptions in the upstream node catalog, so use those to
+    // verify the formatting.
+    const workflow = {
+      name: "Discord notify",
+      nodes: [
+        {
+          name: "Post to Discord",
+          type: "n8n-nodes-base.discord",
+          typeVersion: 2,
+          position: [0, 0] as [number, number],
+          parameters: { resource: "message", operation: "send" },
+        },
+      ],
+      connections: {},
+    };
+    const warnings = validateNodeParameters(workflow);
+    const serverWarning = warnings.find((w) => w.includes('"Server"'));
+    expect(serverWarning).toBeDefined();
+    expect(serverWarning).toContain("(Select the server");
+  });
+
+  test("omits the parens suffix when the property has no description", () => {
+    // The default Gmail fixture's required `emailType` parameter has
+    // no description in the catalog. The warning string must stay
+    // tight in that case — no empty parens, no trailing whitespace.
+    const warnings = validateNodeParameters(createValidWorkflow());
+    const gmailWarning = warnings.find(
+      (w) => w.includes("Gmail") && w.includes("required parameter"),
+    );
+    expect(gmailWarning).toBeDefined();
+    expect(gmailWarning).not.toMatch(/\(\s*\)/);
+    expect(gmailWarning).toBe(
+      'Node "Gmail": missing required parameter "Email Type"',
+    );
+  });
 });
 
 // ============================================================================
