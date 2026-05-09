@@ -20,7 +20,7 @@
  */
 
 import type http from "node:http";
-import { ensureRouteAuthorized } from "@elizaos/app-core/api/auth";
+import { ensureRouteAuthorized } from "@elizaos/app-core";
 import type { IAgentRuntime, Plugin, Route } from "@elizaos/core";
 import { getConnectorAccountManager, logger } from "@elizaos/core";
 import { issueOpAction } from "./actions/issue-op.js";
