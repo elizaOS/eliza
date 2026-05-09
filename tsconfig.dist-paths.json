@@ -2,6 +2,9 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
     "paths": {
       "@elizaos/ui": [
         "./packages/ui/dist/index.d.ts"
