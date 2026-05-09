@@ -332,8 +332,15 @@ export function buildContextObjectTrajectoryExport(
 	if (metadata) exportRecord.metadata = metadata;
 	if (metrics) exportRecord.metrics = metrics;
 	if (sanitizedContextObject) {
-		exportRecord.contextObject =
-			sanitizedContextObject as unknown as ContextObjectTrajectoryExport["contextObject"];
+		const existingId = sanitizedContextObject.id;
+		const resolvedId =
+			typeof existingId === "string" && existingId.trim()
+				? existingId.trim()
+				: (contextObject?.id ?? "context-object");
+		exportRecord.contextObject = {
+			...sanitizedContextObject,
+			id: resolvedId,
+		};
 	}
 
 	return exportRecord;

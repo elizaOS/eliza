@@ -1,5 +1,5 @@
 import type { UUID } from "../../types";
-import type { ContextEvent, ContextObject } from "../../types/context-object";
+import type { ContextEvent } from "../../types/context-object";
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
