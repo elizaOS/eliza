@@ -62,7 +62,7 @@ export interface RouteHelpers {
   readJsonBody: <T extends object>(
     req: http.IncomingMessage,
     res: http.ServerResponse,
-    options?: ReadJsonBodyOptions,
+    options?: ReadJsonBodyOptions
   ) => Promise<T | null>;
 }
 

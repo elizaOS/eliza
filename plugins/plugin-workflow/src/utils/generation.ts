@@ -1,4 +1,5 @@
 import { type IAgentRuntime, logger, ModelType } from '@elizaos/core';
+import type { GenerateTextParams } from '@elizaos/core';
 import {
   ACTION_RESPONSE_SYSTEM_PROMPT,
   DRAFT_INTENT_SYSTEM_PROMPT,
@@ -41,8 +42,8 @@ import type { UnknownParamDetection } from './workflow';
 
 type StructuredModelRunner = {
   useModel<T>(
-    modelType: string,
-    params: { prompt: string; responseSchema: unknown },
+    modelType: typeof ModelType.TEXT_SMALL,
+    params: GenerateTextParams & { responseSchema: unknown },
     provider?: string
   ): Promise<T>;
 };
@@ -52,7 +53,8 @@ async function useStructuredModel<T>(
   prompt: string,
   schema: unknown
 ): Promise<T> {
-  return await (runtime as unknown as StructuredModelRunner).useModel<T>(ModelType.TEXT_SMALL, {
+  const structuredRuntime = runtime as IAgentRuntime & StructuredModelRunner;
+  return await structuredRuntime.useModel<T>(ModelType.TEXT_SMALL, {
     prompt,
     responseSchema: schema,
   });

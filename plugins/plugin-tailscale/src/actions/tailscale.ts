@@ -21,7 +21,27 @@ import {
 } from "@elizaos/core";
 import { z } from "zod";
 import { resolveTailscaleAccountId } from "../accounts";
-import { getTunnelService } from "../types";
+import { CloudTailscaleService } from "../services/CloudTailscaleService";
+import { LocalTailscaleService } from "../services/LocalTailscaleService";
+import { getTunnelService, type ITunnelService } from "../types";
+
+/**
+ * Narrow the canonical tunnel service back to a concrete Tailscale backend so
+ * the action can pass tailscale-specific options (per-account routing). The
+ * canonical `ITunnelService` contract intentionally hides `accountId` from
+ * other tunnel consumers; this narrowing is local to the tailscale plugin.
+ */
+type TailscaleService = LocalTailscaleService | CloudTailscaleService;
+
+function asTailscaleService(service: ITunnelService): TailscaleService | null {
+  if (
+    service instanceof LocalTailscaleService ||
+    service instanceof CloudTailscaleService
+  ) {
+    return service;
+  }
+  return null;
+}
 
 type TailscaleOp = "start" | "stop";
 
@@ -155,7 +175,10 @@ async function handleStart(
         }),
       ),
     );
-  const url = await tunnelService.startTunnel(port, { accountId });
+  const tailscaleImpl = asTailscaleService(tunnelService);
+  const url = tailscaleImpl
+    ? await tailscaleImpl.startTunnel(port, { accountId })
+    : await tunnelService.startTunnel(port);
   const publicUrl = typeof url === "string" ? url : tunnelService.getUrl();
 
   if (callback) {
@@ -206,7 +229,12 @@ async function handleStop(
   const previousUrl = status.url;
   const previousPort = status.port;
 
-  await tunnelService.stopTunnel({ accountId });
+  const tailscaleImpl = asTailscaleService(tunnelService);
+  if (tailscaleImpl) {
+    await tailscaleImpl.stopTunnel({ accountId });
+  } else {
+    await tunnelService.stopTunnel();
+  }
 
   if (callback) {
     await callback({

@@ -181,7 +181,7 @@ export const manageRouting = {
           error: "MUSIC_SERVICE_UNAVAILABLE",
         });
       }
-      const routingService = musicService as unknown as MusicRoutingService;
+      const routingService = musicService as MusicRoutingService;
       if (
         !routingService.getAudioRouter ||
         !routingService.getZoneManager ||

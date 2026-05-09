@@ -9,6 +9,7 @@ import type {
 } from "../../../types/index.ts";
 import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
 import { parseJSONObjectFromText } from "../../../utils.ts";
+import type { TrustEngineServiceWrapper } from "../services/wrappers.ts";
 import type { TrustProfile } from "../types/trust.ts";
 import { hasTrustEngine } from "./hasTrustEngine.ts";
 
@@ -75,15 +76,10 @@ export const evaluateTrustAction: ElizaAction = {
 		_options,
 		_callback,
 	): Promise<ActionResult> => {
-		const trustEngine = runtime.getService("trust-engine") as unknown as {
-			evaluateTrust: (
-				entityId: unknown,
-				evaluatorId: unknown,
-				context?: Record<string, unknown>,
-			) => Promise<TrustProfile>;
-		} | null;
+		const trustEngineService =
+			runtime.getService<TrustEngineServiceWrapper>("trust-engine");
 
-		if (!trustEngine) {
+		if (!trustEngineService) {
 			return {
 				success: false,
 				text: "Trust engine service is not available.",
@@ -136,11 +132,12 @@ export const evaluateTrustAction: ElizaAction = {
 				roomId: message.roomId,
 			};
 
-			const trustProfile: TrustProfile = await trustEngine.evaluateTrust(
-				targetEntityId,
-				runtime.agentId,
-				trustContext,
-			);
+			const trustProfile: TrustProfile =
+				await trustEngineService.trustEngine.evaluateTrust(
+					targetEntityId,
+					runtime.agentId,
+					trustContext,
+				);
 
 			const detailed = requestData.detailed ?? false;
 			const cappedEvidence = Array.isArray(trustProfile.evidence)

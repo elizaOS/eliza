@@ -54,6 +54,20 @@ export type TrajectoryLoggerLike = {
   providerAccess?: unknown[];
 };
 
+type OrchestratorTrajectoryContext = {
+  source: "orchestrator";
+  decisionType: string;
+  sessionId?: string;
+  taskLabel?: string;
+  repo?: string;
+  workdir?: string;
+  originalTask?: string;
+};
+
+type RuntimeWithOrchestratorTrajectoryContext = {
+  __orchestratorTrajectoryCtx?: OrchestratorTrajectoryContext;
+};
+
 export type PersistedLlmCall = TrajectoryLlmCall & {
   callId: string;
   timestamp: number;
@@ -605,7 +619,8 @@ export async function flushObservationBuffer(
     template: observationExtractionTemplate,
   });
 
-  const runtimeRecord = runtime as unknown as Record<string, unknown>;
+  const runtimeRecord = runtime as IAgentRuntime &
+    RuntimeWithOrchestratorTrajectoryContext;
   try {
     // Tag the call to prevent recursion
     runtimeRecord.__orchestratorTrajectoryCtx = {
@@ -705,9 +720,9 @@ export async function getSqlRaw(): Promise<
 export function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb | null {
   const adapterDb = runtime.adapter?.db as RuntimeDb | undefined;
   // Legacy runtimes may expose `databaseAdapter` instead of `adapter`
-  const fallbackDb = (
-    runtime as unknown as { databaseAdapter?: { db?: RuntimeDb } }
-  ).databaseAdapter?.db;
+  const fallbackDb = (runtime as IAgentRuntime & {
+    databaseAdapter?: { db?: RuntimeDb };
+  }).databaseAdapter?.db;
   const db = adapterDb || fallbackDb;
   if (!db || typeof db.execute !== "function") return null;
   return db;
@@ -1592,19 +1607,11 @@ export async function saveTrajectory(
 /**
  * Read orchestrator trajectory context from the runtime, if set.
  */
-export function readOrchestratorTrajectoryContext(runtime: unknown):
-  | {
-      source: "orchestrator";
-      decisionType: string;
-      sessionId?: string;
-      taskLabel?: string;
-      repo?: string;
-      workdir?: string;
-      originalTask?: string;
-    }
-  | undefined {
+export function readOrchestratorTrajectoryContext(
+  runtime: unknown,
+): OrchestratorTrajectoryContext | undefined {
   if (!runtime || typeof runtime !== "object") return undefined;
-  const ctx = (runtime as unknown as Record<string, unknown>)
+  const ctx = (runtime as RuntimeWithOrchestratorTrajectoryContext)
     .__orchestratorTrajectoryCtx;
   if (!ctx || typeof ctx !== "object") return undefined;
   const candidate = ctx as Record<string, unknown>;
@@ -1613,15 +1620,7 @@ export function readOrchestratorTrajectoryContext(runtime: unknown):
     typeof candidate.decisionType !== "string"
   )
     return undefined;
-  return candidate as {
-    source: "orchestrator";
-    decisionType: string;
-    sessionId?: string;
-    taskLabel?: string;
-    repo?: string;
-    workdir?: string;
-    originalTask?: string;
-  };
+  return candidate as OrchestratorTrajectoryContext;
 }
 
 // ---------------------------------------------------------------------------

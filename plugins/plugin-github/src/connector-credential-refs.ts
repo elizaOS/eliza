@@ -211,7 +211,7 @@ async function loadConnectorCredentialRecords(params: {
 
   for (const source of [
     getService(params.runtime, CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE),
-    (params.runtime as unknown as { adapter?: unknown }).adapter,
+    (params.runtime as { adapter?: unknown }).adapter,
   ]) {
     const reader = source as
       | {
@@ -452,7 +452,7 @@ function resolveCredentialRefWriters(
   const candidates = [
     manager?.getStorage?.(),
     getService(runtime, CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE),
-    (runtime as unknown as { adapter?: unknown }).adapter,
+    (runtime as { adapter?: unknown }).adapter,
   ].filter(Boolean);
 
   const writers: CredentialRefWriter[] = [];

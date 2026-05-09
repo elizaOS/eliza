@@ -287,7 +287,6 @@ export {
 export type { DiscordService as IDiscordService } from "./service";
 export { DiscordService } from "./service";
 export { discordSetupRoutes } from "./setup-routes";
-export * from "./user-account-scraper";
 export type {
 	AuditInfo,
 	ChannelPermissionsChangedPayload,
@@ -298,3 +297,4 @@ export type {
 	RolePermissionsChangedPayload,
 } from "./types";
 export { DiscordEventTypes } from "./types";
+export * from "./user-account-scraper";

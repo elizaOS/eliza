@@ -615,7 +615,7 @@ export const playAudio: Action = {
 
     const isDiscord = message.content.source === "discord";
     const discordService = isDiscord
-      ? (runtime.getService(DISCORD_SERVICE_NAME) as unknown as DiscordService)
+      ? (runtime.getService(DISCORD_SERVICE_NAME) as DiscordService)
       : null;
 
     // For Discord, we need the Discord service
@@ -1068,7 +1068,7 @@ export const playAudio: Action = {
       }
 
       // Get or create music service
-      let musicService = runtime.getService("music") as unknown as MusicService;
+      let musicService = runtime.getService("music") as MusicService;
       if (!musicService) {
         musicService = new MusicService(runtime);
         // Note: Service registration would typically happen in plugin init

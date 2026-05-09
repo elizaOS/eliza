@@ -12,9 +12,9 @@ describe("Google Chat message connector", () => {
       ),
       character: { settings: {} },
       getRoom: vi.fn(),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     const service = Object.create(GoogleChatService.prototype) as GoogleChatService;
-    (service as unknown as { settings: { accountId: string } }).settings = {
+    (service as { settings: { accountId: string } }).settings = {
       accountId: "workspace",
     };
     const sendMessageSpy = vi
@@ -62,7 +62,7 @@ describe("Google Chat message connector", () => {
       getSetting: vi.fn(),
       character: { settings: {} },
       getRoom: vi.fn(),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     const service = Object.create(GoogleChatService.prototype) as GoogleChatService;
     const states = new Map([
       [
@@ -86,8 +86,8 @@ describe("Google Chat message connector", () => {
         },
       ],
     ]);
-    (service as unknown as { states: typeof states; defaultAccountId: string }).states = states;
-    (service as unknown as { states: typeof states; defaultAccountId: string }).defaultAccountId =
+    (service as { states: typeof states; defaultAccountId: string }).states = states;
+    (service as { states: typeof states; defaultAccountId: string }).defaultAccountId =
       "workspace";
     const sendMessageSpy = vi
       .spyOn(service, "sendMessage")

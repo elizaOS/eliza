@@ -24,6 +24,8 @@
       "@elizaos/app-core": ["../packages/app-core/dist/index.d.ts"],
       "@elizaos/agent": ["../packages/agent/dist/packages/agent/src/index.d.ts"],
       "@elizaos/agent/*": ["../packages/agent/dist/packages/agent/src/*"],
+      "@elizaos/plugin-wallet": ["../plugins/plugin-wallet/dist/index.d.mts"],
+      "@elizaos/plugin-wallet/*": ["../plugins/plugin-wallet/dist/*"],
       "@elizaos/cloud-sdk": ["../cloud/packages/sdk/dist/index.d.ts"],
       "@elizaos/scenario-runner": ["../packages/scenario-runner/dist/index.d.ts"]
     }

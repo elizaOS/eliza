@@ -195,10 +195,10 @@ export function scrollWebBrowserWorkspaceTarget(
 
   const key = axis === "y" ? "__elizaScrollY" : "__elizaScrollX";
   const current = Number(
-    (dom.window as unknown as Record<string, unknown>)[key] ?? 0,
+    (dom.window as Record<string, unknown>)[key] ?? 0,
   );
   const next = current + delta;
-  (dom.window as unknown as Record<string, unknown>)[key] = next;
+  (dom.window as Record<string, unknown>)[key] = next;
   return {
     axis,
     selector: null,

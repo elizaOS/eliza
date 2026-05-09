@@ -203,7 +203,7 @@ export class ComputerUseService extends Service {
       case "detect_elements":
       case "ocr":
         return this.executeDesktopAction({
-          ...(parameters as unknown as DesktopActionParams),
+          ...(parameters as DesktopActionParams),
           action: this.mapDesktopCommandToAction(command),
         });
       case "browser_open":
@@ -228,7 +228,7 @@ export class ComputerUseService extends Service {
       case "browser_close_tab":
       case "browser_switch_tab":
         return this.executeBrowserAction({
-          ...(parameters as unknown as BrowserActionParams),
+          ...(parameters as BrowserActionParams),
           action: this.mapBrowserCommandToAction(command),
         });
       case "list_windows":
@@ -240,7 +240,7 @@ export class ComputerUseService extends Service {
       case "restore_window":
       case "close_window":
         return this.executeWindowAction({
-          ...(parameters as unknown as WindowActionParams),
+          ...(parameters as WindowActionParams),
           action: this.mapWindowCommandToAction(command),
         });
       case "file_read":
@@ -255,7 +255,7 @@ export class ComputerUseService extends Service {
       case "file_download":
       case "file_list_downloads":
         return this.executeFileAction({
-          ...(parameters as unknown as FileActionParams),
+          ...(parameters as FileActionParams),
           action: this.mapFileCommandToAction(command),
         });
       case "terminal_connect":
@@ -266,7 +266,7 @@ export class ComputerUseService extends Service {
       case "terminal_close":
       case "execute_command":
         return this.executeTerminalAction({
-          ...(parameters as unknown as TerminalActionParams),
+          ...(parameters as TerminalActionParams),
           action: this.mapTerminalCommandToAction(command),
         });
       default:

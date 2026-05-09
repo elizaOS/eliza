@@ -88,8 +88,8 @@ import "@elizaos/app-defense-of-the-agents";
 import "@clawville/app-clawville/ui";
 import {
   AppBlockerSettingsCard,
-  dispatchQueuedLifeOpsGithubCallbackFromUrl as dispatchQueuedLifeOpsGithubCallback,
   LifeOpsBrowserSetupPanel as BrowserBridgeSetupPanel,
+  dispatchQueuedLifeOpsGithubCallbackFromUrl as dispatchQueuedLifeOpsGithubCallback,
   LifeOpsActivitySignalsEffect,
   LifeOpsPageView,
   WebsiteBlockerSettingsCard,

@@ -32,7 +32,7 @@ console.error = (...args: unknown[]) => {
 };
 
 if (typeof globalThis.HTMLCanvasElement !== "undefined") {
-  const createCanvas2DContext = (): CanvasRenderingContext2D =>
+  const createCanvas2DContext = () =>
     ({
       fillRect: vi.fn(),
       clearRect: vi.fn(),
@@ -70,7 +70,7 @@ if (typeof globalThis.HTMLCanvasElement !== "undefined") {
       globalAlpha: 1,
       fillStyle: "#000",
       strokeStyle: "#000",
-    }) as unknown as CanvasRenderingContext2D;
+    }) satisfies Partial<CanvasRenderingContext2D>;
 
   Object.defineProperty(globalThis.HTMLCanvasElement.prototype, "getContext", {
     value: vi.fn((contextType: string) =>
@@ -96,7 +96,7 @@ afterAll(() => {
   // Some integration-style tests can leave chokidar/fs watchers open in workers,
   // which keeps Vitest from exiting cleanly on local runs.
   const getActiveHandles = (
-    process as unknown as {
+    process as NodeJS.Process & {
       _getActiveHandles?: () => unknown[];
     }
   )._getActiveHandles;

@@ -73,6 +73,21 @@ function validWorkflow(overrides?: Partial<WorkflowDefinition>): WorkflowDefinit
   };
 }
 
+function malformedWorkflow(overrides: Record<string, unknown>): WorkflowDefinition {
+  return {
+    name: 'Bad',
+    nodes: [],
+    connections: {},
+    ...overrides,
+  } as WorkflowDefinition;
+}
+
+function withoutPosition(node: WorkflowNode): WorkflowNode {
+  const copy: Partial<WorkflowNode> = { ...node };
+  delete copy.position;
+  return copy as WorkflowNode;
+}
+
 describe('validateWorkflow', () => {
   test('valid supported workflow passes validation', () => {
     const result = validateWorkflow(validWorkflow());
@@ -85,18 +100,10 @@ describe('validateWorkflow', () => {
       'Workflow must have at least one node'
     );
     expect(
-      validateWorkflow({
-        name: 'Bad',
-        nodes: null as unknown as [],
-        connections: {},
-      }).errors
+      validateWorkflow(malformedWorkflow({ nodes: null, connections: {} })).errors
     ).toContain('Missing or invalid nodes array');
     expect(
-      validateWorkflow({
-        name: 'Bad',
-        nodes: [schedule()],
-        connections: null as unknown as Record<string, unknown>,
-      }).errors
+      validateWorkflow(malformedWorkflow({ nodes: [schedule()], connections: null })).errors
     ).toContain('Missing or invalid connections object');
   });
 
@@ -154,10 +161,7 @@ describe('positionNodes', () => {
 
   test('positions missing nodes left-to-right', () => {
     const workflow = validWorkflow({
-      nodes: [
-        { ...schedule(), position: undefined as unknown as [number, number] },
-        { ...http(), position: undefined as unknown as [number, number] },
-      ],
+      nodes: [withoutPosition(schedule()), withoutPosition(http())],
     });
     const result = positionNodes(workflow);
     const trigger = result.nodes.find((n) => n.name === 'Schedule Trigger')!;
@@ -167,11 +171,7 @@ describe('positionNodes', () => {
 
   test('positions branching nodes at the same depth with different Y values', () => {
     const workflow = validWorkflow({
-      nodes: [
-        { ...schedule(), position: undefined as unknown as [number, number] },
-        { ...setNode(), position: undefined as unknown as [number, number] },
-        { ...code(), position: undefined as unknown as [number, number] },
-      ],
+      nodes: [withoutPosition(schedule()), withoutPosition(setNode()), withoutPosition(code())],
       connections: {
         'Schedule Trigger': {
           main: [

@@ -292,7 +292,7 @@ export class SmartMusicFetchService extends Service {
     try {
       const torrentSearch = this.runtime?.getService(
         "torrent-search",
-      ) as unknown as TorrentSearchService;
+      ) as TorrentSearchService;
       if (!torrentSearch) {
         logger.warn("Torrent search service not available");
         return [];
@@ -410,7 +410,7 @@ export class SmartMusicFetchService extends Service {
     try {
       const torrentService = this.runtime?.getService(
         "torrent",
-      ) as unknown as TorrentService;
+      ) as TorrentService;
       if (!torrentService) {
         return { success: false, error: "Torrent service not available" };
       }

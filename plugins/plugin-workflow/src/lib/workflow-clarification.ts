@@ -35,6 +35,10 @@ export interface WorkflowClarificationTargetGroup {
   }>;
 }
 
+type RawStructuredClarification = Partial<WorkflowClarificationRequest> & {
+  question: string;
+};
+
 const VALID_KINDS: ReadonlySet<WorkflowClarificationRequest['kind']> = new Set([
   'target_channel',
   'target_server',
@@ -43,7 +47,7 @@ const VALID_KINDS: ReadonlySet<WorkflowClarificationRequest['kind']> = new Set([
   'free_text',
 ]);
 
-function isStructuredClarification(v: unknown): v is WorkflowClarificationRequest {
+function isStructuredClarification(v: unknown): v is RawStructuredClarification {
   if (!v || typeof v !== 'object') {
     return false;
   }
@@ -73,28 +77,27 @@ export function coerceClarifications(raw: unknown): WorkflowClarificationRequest
     if (!isStructuredClarification(item)) {
       continue;
     }
-    const o = item as unknown as Record<string, unknown>;
-    const kindRaw = typeof o.kind === 'string' ? o.kind : 'free_text';
+    const kindRaw = typeof item.kind === 'string' ? item.kind : 'free_text';
     const kind = (
       VALID_KINDS.has(kindRaw as WorkflowClarificationRequest['kind']) ? kindRaw : 'free_text'
     ) as WorkflowClarificationRequest['kind'];
-    const platform = typeof o.platform === 'string' ? o.platform : undefined;
+    const platform = typeof item.platform === 'string' ? item.platform : undefined;
     let scope: { guildId?: string } | undefined;
     if (
-      o.scope &&
-      typeof o.scope === 'object' &&
-      typeof (o.scope as Record<string, unknown>).guildId === 'string'
+      item.scope &&
+      typeof item.scope === 'object' &&
+      typeof item.scope.guildId === 'string'
     ) {
       scope = {
-        guildId: (o.scope as Record<string, string>).guildId,
+        guildId: item.scope.guildId,
       };
     }
-    const paramPath = typeof o.paramPath === 'string' ? o.paramPath : '';
+    const paramPath = typeof item.paramPath === 'string' ? item.paramPath : '';
     out.push({
       kind,
       platform,
       scope,
-      question: (o.question as string).trim(),
+      question: item.question.trim(),
       paramPath,
     });
   }

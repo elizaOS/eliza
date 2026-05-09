@@ -34,7 +34,7 @@ export function toGbnfJsonSchema(schema: JSONSchema | undefined): GbnfJsonSchema
   if (typeof schema !== "object") {
     throw new Error("[plugin-local-ai] JSON schema must be an object");
   }
-  return schema as unknown as GbnfJsonSchema;
+  return schema as GbnfJsonSchema;
 }
 
 /**

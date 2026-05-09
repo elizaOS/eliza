@@ -315,7 +315,7 @@ export async function trackTrackPlayed(
           value: milestone.value,
           timestamp: now,
         },
-      } as unknown as Parameters<IAgentRuntime["emitEvent"]>[1]);
+      } as Parameters<IAgentRuntime["emitEvent"]>[1]);
     }
   }
 

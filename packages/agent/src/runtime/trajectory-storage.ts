@@ -310,15 +310,9 @@ function notifyTrainingTrigger(
   runtime: IAgentRuntime,
   trajectoryId: string,
 ): void {
-  const services = (
-    runtime as unknown as {
-      services?: Map<string, unknown[]>;
-    }
-  ).services;
-  if (!services) return;
-  const entries = services.get("TRAINING_TRIGGER_SERVICE");
+  const entries = runtime.services.get("TRAINING_TRIGGER_SERVICE");
   if (!Array.isArray(entries) || entries.length === 0) return;
-  const entry = entries[0];
+  const entry: unknown = entries[0];
   if (
     !entry ||
     typeof entry !== "object" ||
@@ -535,21 +529,17 @@ export async function installDatabaseTrajectoryLogger(
     logger.providerAccess.splice(0, logger.providerAccess.length);
   }
 
-  type VariadicLoggerCall = (...args: unknown[]) => unknown;
   const originalLogLlmCall =
     typeof logger.logLlmCall === "function"
-      ? ((logger.logLlmCall as unknown as VariadicLoggerCall).bind(
-          logger,
-        ) as VariadicLoggerCall)
+      ? (...args: unknown[]) => Reflect.apply(logger.logLlmCall!, logger, args)
       : null;
   const originalLogProviderAccess =
     typeof logger.logProviderAccess === "function"
-      ? ((logger.logProviderAccess as unknown as VariadicLoggerCall).bind(
-          logger,
-        ) as VariadicLoggerCall)
+      ? (...args: unknown[]) =>
+          Reflect.apply(logger.logProviderAccess!, logger, args)
       : null;
 
-  logger.logLlmCall = ((...args: unknown[]) => {
+  logger.logLlmCall = (...args: unknown[]) => {
     if (originalLogLlmCall) {
       try {
         originalLogLlmCall(...args);
@@ -572,9 +562,9 @@ export async function installDatabaseTrajectoryLogger(
     );
     const runtimeKey = runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
-  }) as unknown as (params: Record<string, unknown>) => void;
+  };
 
-  logger.logProviderAccess = ((...args: unknown[]) => {
+  logger.logProviderAccess = (...args: unknown[]) => {
     if (originalLogProviderAccess) {
       try {
         originalLogProviderAccess(...args);
@@ -601,12 +591,12 @@ export async function installDatabaseTrajectoryLogger(
     );
     const runtimeKey = runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
-  }) as unknown as (params: Record<string, unknown>) => void;
+  };
 
   logger.getLlmCallLogs = () => [];
   logger.getProviderAccessLogs = () => [];
 
-  const loggerAny = logger as unknown as {
+  const loggerAny = logger as typeof logger & {
     startTrajectory?: (
       stepIdOrAgentId: string,
       options?: {
@@ -810,7 +800,7 @@ export async function installDatabaseTrajectoryLogger(
   };
 
   // Add methods required by the trajectory-routes duck-type check
-  const loggerForRoutes = logger as unknown as {
+  const loggerForRoutes = logger as typeof logger & {
     isEnabled?: () => boolean;
     setEnabled?: (enabled: boolean) => void;
     deleteTrajectories?: (trajectoryIds: string[]) => Promise<number>;

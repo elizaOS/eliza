@@ -47,7 +47,7 @@ async function setupRepo(): Promise<TestEnv> {
       if (key === "CODING_TOOLS_WORKSPACE_ROOTS") return repoDir;
       return undefined;
     },
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 
   const sandbox = await SandboxService.start(runtime);
   const session = await SessionCwdService.start(runtime);
@@ -57,7 +57,7 @@ async function setupRepo(): Promise<TestEnv> {
     [SANDBOX_SERVICE]: sandbox,
     [SESSION_CWD_SERVICE]: session,
   };
-  (runtime as unknown as { getService: (k: string) => unknown }).getService = (
+  (runtime as { getService: (k: string) => unknown }).getService = (
     key: string,
   ) => services[key] ?? null;
 
@@ -81,13 +81,13 @@ async function cleanupEnv(env: TestEnv | undefined): Promise<void> {
 }
 
 function makeMessage(conversationId: string): Memory {
-  return { roomId: conversationId } as unknown as Memory;
+  return { roomId: conversationId } as Memory;
 }
 
 const state: State | undefined = undefined;
 
 describe("ENTER_WORKTREE", () => {
-  let env: TestEnv = undefined as unknown as TestEnv;
+  let env: TestEnv = undefined as TestEnv;
 
   beforeEach(async () => {
     env = await setupRepo();
@@ -156,7 +156,7 @@ describe("ENTER_WORKTREE", () => {
         if (key === "CODING_TOOLS_WORKSPACE_ROOTS") return nonGitDir;
         return undefined;
       },
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     const sandbox = await SandboxService.start(runtime);
     const session = await SessionCwdService.start(runtime);
     session.setCwd(conversationId, nonGitDir);
@@ -164,7 +164,7 @@ describe("ENTER_WORKTREE", () => {
       [SANDBOX_SERVICE]: sandbox,
       [SESSION_CWD_SERVICE]: session,
     };
-    (runtime as unknown as { getService: (k: string) => unknown }).getService =
+    (runtime as { getService: (k: string) => unknown }).getService =
       (key: string) => services[key] ?? null;
 
     const result = await enterWorktreeAction.handler?.(
@@ -186,7 +186,7 @@ describe("ENTER_WORKTREE", () => {
   it("fails with missing_param when message has no roomId", async () => {
     const result = await enterWorktreeAction.handler?.(
       env.runtime,
-      {} as unknown as Memory,
+      {} as Memory,
       state,
       { parameters: {} },
     );

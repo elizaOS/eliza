@@ -283,7 +283,7 @@ export class FeishuService extends Service {
 	}
 
 	static async stop(runtime: IAgentRuntime): Promise<void> {
-		const service = runtime.getService(FEISHU_SERVICE_NAME) as unknown as
+		const service = runtime.getService(FEISHU_SERVICE_NAME) as
 			| FeishuService
 			| undefined;
 		if (service) {
@@ -297,7 +297,7 @@ export class FeishuService extends Service {
 		if (this.wsClient) {
 			try {
 				// WSClient may not have a stop method in newer SDK versions
-				const wsClientWithStop = this.wsClient as unknown as {
+				const wsClientWithStop = this.wsClient as {
 					stop?: () => Promise<void>;
 				};
 				if (typeof wsClientWithStop.stop === "function") {
@@ -326,7 +326,7 @@ export class FeishuService extends Service {
 		// Get bot info - the API path may vary by SDK version
 		try {
 			// Try to get bot info via the contact API
-			const client = this.client as unknown as {
+			const client = this.client as {
 				bot?: {
 					botInfo?: {
 						get: (params: Record<string, unknown>) => Promise<{

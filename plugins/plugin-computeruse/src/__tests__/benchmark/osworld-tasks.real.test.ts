@@ -46,7 +46,7 @@ function mockRuntime(overrides: Record<string, string> = {}): IAgentRuntime {
       return overrides[key] ?? undefined;
     },
     getService: () => null,
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 // ── Test Suite ──────────────────────────────────────────────────────────

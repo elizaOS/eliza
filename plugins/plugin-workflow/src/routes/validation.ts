@@ -2,6 +2,14 @@ import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from '@elizaos
 import type { WorkflowDefinition } from '../types/index';
 import { validateNodeInputs, validateNodeParameters, validateWorkflow } from '../utils/workflow';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isWorkflowDefinition(value: unknown): value is WorkflowDefinition {
+  return isRecord(value) && Array.isArray(value.nodes) && isRecord(value.connections);
+}
+
 /**
  * POST /workflows/validate
  * Validate a workflow without deploying.
@@ -14,12 +22,11 @@ async function validate(
   _runtime: IAgentRuntime
 ): Promise<void> {
   try {
-    const workflow = req.body as unknown as WorkflowDefinition;
-
-    if (!workflow?.nodes || !workflow?.connections) {
+    if (!isWorkflowDefinition(req.body)) {
       res.status(400).json({ success: false, error: 'nodes and connections are required' });
       return;
     }
+    const workflow = req.body;
 
     const result = validateWorkflow(workflow);
     const paramWarnings = validateNodeParameters(workflow);

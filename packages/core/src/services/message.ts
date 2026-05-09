@@ -58,6 +58,7 @@ import {
 import {
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,
+	SIMPLE_CONTEXT_ID,
 } from "../runtime/message-handler";
 import {
 	buildModelInputBudget,
@@ -1974,6 +1975,95 @@ function getStage1PasswordManagerRepairPlan(args: {
 	};
 }
 
+function getStage1CheckinRepairPlan(args: {
+	message: Memory;
+	availableContexts: readonly ContextDefinition[];
+}): {
+	contexts: AgentContext[];
+	candidateActions: string[];
+	parentActionHints: string[];
+} | null {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	if (!text) {
+		return null;
+	}
+	const lower = text.toLowerCase();
+	const checkinIntent =
+		/\b(?:run|give|start|do|show|open)\b[\s\S]{0,80}\b(?:morning|night|daily|evening|bedtime)\s+check-?in\b/.test(
+			lower,
+		) ||
+		/\b(?:morning|night|daily|evening|bedtime)\s+check-?in\b[\s\S]{0,80}\b(?:now|today|tonight|please|for me)?\b/.test(
+			lower,
+		);
+	if (!checkinIntent) {
+		return null;
+	}
+	const nightIntent = /\b(?:night|evening|bedtime|tonight)\b/.test(lower);
+	const morningIntent = /\bmorning\b/.test(lower);
+	const contexts = (
+		["tasks", "health", "automation", "calendar", "email"] as AgentContext[]
+	).filter((context) =>
+		contextAvailableForRepair(context, args.availableContexts),
+	);
+	return {
+		contexts: contexts.length > 0 ? contexts : ["tasks"],
+		candidateActions: nightIntent
+			? ["night_checkin", "run_night_checkin", "lifeops_night_checkin"]
+			: morningIntent
+				? ["morning_checkin", "run_morning_checkin", "lifeops_morning_checkin"]
+				: ["run_checkin", "daily_checkin", "lifeops_checkin"],
+		parentActionHints: ["CHECKIN"],
+	};
+}
+
+function getStage1CalendlyRepairPlan(args: {
+	message: Memory;
+	availableContexts: readonly ContextDefinition[];
+}): {
+	contexts: AgentContext[];
+	candidateActions: string[];
+	parentActionHints: string[];
+} | null {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	if (!text) {
+		return null;
+	}
+	const lower = text.toLowerCase();
+	const calendlyIntent = /\bcalendly\b|api\.calendly\.com/u.test(lower);
+	if (!calendlyIntent) {
+		return null;
+	}
+	const availabilityIntent =
+		/\b(?:availability|available|open|slots?|times?)\b/u.test(lower);
+	const singleUseLinkIntent =
+		/\b(?:single[\s-]?use|one[\s-]?time|booking\s+link|book(?:ing)?\s+link|link)\b/u.test(
+			lower,
+		) && /\b(?:create|make|generate|get|give|send)\b/u.test(lower);
+	if (!availabilityIntent && !singleUseLinkIntent) {
+		return null;
+	}
+	const contexts = (
+		["calendar", "connectors", "tasks"] as AgentContext[]
+	).filter((context) =>
+		contextAvailableForRepair(context, args.availableContexts),
+	);
+	return {
+		contexts: contexts.length > 0 ? contexts : ["calendar"],
+		candidateActions: singleUseLinkIntent
+			? [
+					"calendly_single_use_link",
+					"calendly_create_single_use_link",
+					"calendar_calendly_single_use_link",
+				]
+			: [
+					"calendly_availability",
+					"calendar_check_calendly_availability",
+					"check_calendly_availability",
+				],
+		parentActionHints: ["CALENDAR"],
+	};
+}
+
 function getStage1KnownToolRepairPlan(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
@@ -1985,6 +2075,8 @@ function getStage1KnownToolRepairPlan(args: {
 	return (
 		getStage1ApprovalResolutionRepairPlan(args) ??
 		getStage1PasswordManagerRepairPlan(args) ??
+		getStage1CheckinRepairPlan(args) ??
+		getStage1CalendlyRepairPlan(args) ??
 		getStage1OwnerPreferenceRepairPlan(args)
 	);
 }
@@ -2049,6 +2141,30 @@ function repairStage1PlanForKnownToolRequests(args: {
 		appendStage1PlanHints(args.messageHandler, {
 			candidateActions: passwordManagerRepair.candidateActions,
 			parentActionHints: passwordManagerRepair.parentActionHints,
+		});
+	}
+
+	const checkinRepair = getStage1CheckinRepairPlan({
+		message: args.message,
+		availableContexts: args.availableContexts,
+	});
+	if (checkinRepair) {
+		replaceStage1PlanContexts(args.messageHandler, checkinRepair.contexts);
+		appendStage1PlanHints(args.messageHandler, {
+			candidateActions: checkinRepair.candidateActions,
+			parentActionHints: checkinRepair.parentActionHints,
+		});
+	}
+
+	const calendlyRepair = getStage1CalendlyRepairPlan({
+		message: args.message,
+		availableContexts: args.availableContexts,
+	});
+	if (calendlyRepair) {
+		replaceStage1PlanContexts(args.messageHandler, calendlyRepair.contexts);
+		appendStage1PlanHints(args.messageHandler, {
+			candidateActions: calendlyRepair.candidateActions,
+			parentActionHints: calendlyRepair.parentActionHints,
 		});
 	}
 
@@ -2318,10 +2434,46 @@ function parseMessageHandlerModelOutput(
 	if (typeof raw !== "string") {
 		return (
 			parseMessageHandlerNativeToolCall(raw) ??
-			parseMessageHandlerOutput(getV5ModelText(raw))
+			parseMessageHandlerOutput(getV5ModelText(raw)) ??
+			synthesizeSimpleReplyFromPlainText(getV5ModelText(raw))
 		);
 	}
-	return parseMessageHandlerOutput(raw);
+	return (
+		parseMessageHandlerOutput(raw) ??
+		synthesizeSimpleReplyFromPlainText(raw)
+	);
+}
+
+/**
+ * Tolerant fallback: when the model returns plain text instead of the
+ * expected JSON / native tool-call format, wrap the text as a simple
+ * reply. This keeps the conversation alive on cold-start turns where
+ * weaker / smaller models occasionally skip the structured-output
+ * scaffold. Without this, the runtime threw `v5 messageHandler returned
+ * invalid MessageHandlerResult` and the user saw the failure-template.
+ *
+ * Returns null only when the text is genuinely empty — that's a real
+ * failure that should still propagate.
+ */
+function synthesizeSimpleReplyFromPlainText(
+	raw: string | undefined | null,
+): MessageHandlerResult | null {
+	if (typeof raw !== "string") return null;
+	const trimmed = raw.trim();
+	if (!trimmed) return null;
+	// Strip <think>...</think> blocks emitted by reasoning models.
+	const cleaned = trimmed.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+	const replyText = cleaned || trimmed;
+	return {
+		processMessage: "RESPOND",
+		thought:
+			"Tolerant fallback: model returned plain text instead of the structured plan; treating as simple reply.",
+		plan: {
+			contexts: [SIMPLE_CONTEXT_ID],
+			reply: replyText,
+			simple: true,
+		},
+	};
 }
 
 /**
@@ -7631,14 +7783,31 @@ export class DefaultMessageService implements IMessageService {
 					state = outcome.result.state;
 				}
 			} catch (error) {
+				const errMsg = error instanceof Error ? error.message : String(error);
+				const errStack = error instanceof Error ? error.stack : undefined;
 				runtime.logger.warn(
 					{
 						src: "service:message",
 						agentId: runtime.agentId,
-						error: error instanceof Error ? error.message : String(error),
+						error: errMsg,
+						stack: errStack,
 					},
 					"v5 message runtime failed; returning structured failure reply",
 				);
+				// Mirror to process.stderr so bench / orchestrator runs can see
+				// the underlying cause when runtime.logger output is buffered or
+				// silenced. The previous behavior swallowed the stack and only
+				// the user-facing "something flaked" template appeared in
+				// trajectories — making the cold-start failure-fallback issue
+				// invisible in bench server logs.
+				try {
+					process.stderr.write(
+						`[v5-runtime-failed] agentId=${runtime.agentId} ` +
+							`error=${errMsg}\n${errStack ?? ""}\n`,
+					);
+				} catch {
+					// stderr write must never throw the runtime.
+				}
 				shouldRespondToMessage = true;
 				terminalDecision = null;
 				strategyResult = await this.buildStructuredFailureReply(

@@ -7,7 +7,12 @@
  * @license MIT
  */
 
-import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
+import type {
+  Evaluator,
+  IAgentRuntime,
+  Plugin,
+  ServiceClass,
+} from "@elizaos/core";
 import { formRestoreAction } from "./actions/restore";
 import { formEvaluator } from "./evaluators/extractor";
 
@@ -120,7 +125,7 @@ export const formPlugin = {
   ],
 
   actions: [formRestoreAction],
-  evaluators: [formEvaluator],
+  evaluators: [formEvaluator as Evaluator],
 } as Plugin & { descriptionCompressed?: string };
 
 export default formPlugin;

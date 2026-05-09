@@ -323,7 +323,9 @@ function registerMessageConnectorIfAvailable(
     withRegistry.registerMessageConnector(registration);
     return;
   }
-  runtime.registerSendHandler(registration.source, registration.sendHandler);
+  if (registration.sendHandler) {
+    runtime.registerSendHandler(registration.source, registration.sendHandler);
+  }
 }
 
 function normalizeBaileysSendTarget(target: string): string {
@@ -553,7 +555,7 @@ export class WhatsAppConnectorService extends Service {
   private configs: Map<string, RuntimeServiceConfig> = new Map();
   private phoneNumbers: Map<string, string> = new Map();
   private client: BaileysClient | WhatsAppClient | null = null;
-  config: RuntimeServiceConfig | null = null;
+  config: RuntimeServiceConfig | undefined = undefined;
   private knownTargets: Map<string, KnownWhatsAppTarget> = new Map();
 
   constructor(runtime?: IAgentRuntime) {
@@ -579,7 +581,7 @@ export class WhatsAppConnectorService extends Service {
     const normalizedAccountId = this.resolveAccountId(accountId);
     return (
       this.configs.get(normalizedAccountId) ??
-      (normalizedAccountId === this.defaultAccountId ? this.config : null)
+      (normalizedAccountId === this.defaultAccountId ? (this.config ?? null) : null)
     );
   }
 
@@ -854,7 +856,7 @@ export class WhatsAppConnectorService extends Service {
     this.configs.clear();
     this.phoneNumbers.clear();
     this.client = null;
-    this.config = null;
+    this.config = undefined;
     this.connected = false;
     this.phoneNumber = null;
   }

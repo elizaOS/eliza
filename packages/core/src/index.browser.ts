@@ -15,6 +15,7 @@ export * from "./app-route-plugin-registry";
 export * from "./character";
 export * from "./connectors";
 export * from "./connectors/account-manager";
+export * from "./connectors/connector-config";
 export * from "./connectors/privacy";
 export * from "./database";
 export * from "./database/inMemoryAdapter";

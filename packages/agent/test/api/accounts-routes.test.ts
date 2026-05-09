@@ -1,4 +1,5 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
+import { IncomingMessage, ServerResponse } from "node:http";
+import { Socket } from "node:net";
 import type { LinkedAccountConfig } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AccountsRouteContext } from "../../src/api/accounts-routes";
@@ -46,17 +47,12 @@ function createContext(): AccountsRouteContext & {
   body?: unknown;
   status?: number;
 } {
+  const req = new IncomingMessage(new Socket());
+  req.url = "/api/accounts/anthropic-subscription/shared-id";
+  const res = new ServerResponse(req);
   const ctx = {
-    req: {
-      url: "/api/accounts/anthropic-subscription/shared-id",
-      on: vi.fn(),
-    } as unknown as IncomingMessage,
-    res: {
-      statusCode: 200,
-      setHeader: vi.fn(),
-      write: vi.fn(),
-      end: vi.fn(),
-    } as unknown as ServerResponse,
+    req,
+    res,
     method: "PATCH",
     pathname: "/api/accounts/anthropic-subscription/shared-id",
     state: { config: {} },

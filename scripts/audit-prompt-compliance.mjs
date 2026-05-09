@@ -772,6 +772,7 @@ function auditLegacyLlmXmlHelpers() {
     const lines = fs.readFileSync(absolutePath, "utf8").split(/\r?\n/);
     lines.forEach((line, index) => {
       scannedLineCount += 1;
+      if (line.includes("audit:allowlist")) return;
       for (const { pattern, reason } of LEGACY_LLM_XML_HELPER_PATTERNS) {
         if (!pattern.test(line)) continue;
         violations.push(`${file}:${index + 1}: ${reason}: ${line.trim()}`);

@@ -14,7 +14,7 @@ function createRuntime(): IAgentRuntime {
     agentId: "agent-id",
     getSetting: vi.fn((key: string) => (key === "LINEAR_API_KEY" ? "linear-key" : undefined)),
     getService: vi.fn(),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 function createMessage(text: string): Memory {
@@ -24,7 +24,7 @@ function createMessage(text: string): Memory {
     entityId: "entity-id",
     roomId: "room-id",
     content: { text, source: "test" },
-  } as unknown as Memory;
+  } as Memory;
 }
 
 describe("Linear router actions", () => {

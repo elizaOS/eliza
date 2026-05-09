@@ -174,7 +174,7 @@ export const manageZones = {
       }
 
       const zoneManager = (
-        musicService as unknown as MusicZoneService
+        musicService as MusicZoneService
       ).getZoneManager?.();
       if (!zoneManager) {
         return emit(callback, source, "Zone manager not available", false, {

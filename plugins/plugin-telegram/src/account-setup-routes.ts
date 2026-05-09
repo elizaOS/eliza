@@ -40,7 +40,9 @@ interface ConnectorSetupService {
 }
 
 function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
-  return runtime.getService("connector-setup") as ConnectorSetupService | null;
+  return runtime.getService(
+    "connector-setup",
+  ) as unknown as ConnectorSetupService | null;
 }
 
 // ── Module-level auth session state ────────────────────────────────────

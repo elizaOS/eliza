@@ -74,7 +74,7 @@ function createMockRuntime(): IAgentRuntime {
     getService() {
       return null;
     },
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 describe("plugin-computeruse cross-platform driver e2e", () => {

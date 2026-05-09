@@ -4,11 +4,11 @@ import {
   findCatalogModel,
   MODEL_CATALOG,
 } from "../services/local-inference/catalog";
+import type { ProviderStatus } from "../services/local-inference/providers";
 import {
   assessCatalogModelFit,
   catalogDownloadSizeGb,
 } from "../services/local-inference/recommendation";
-import type { ProviderStatus } from "../services/local-inference/providers";
 import type { RoutingPreferences } from "../services/local-inference/routing-preferences";
 import type {
   ActiveModelState,
@@ -1004,7 +1004,9 @@ function catalogForAvailableModel(model: {
   });
 }
 
-function mobileRecommendedBucket(totalRamGb: number): HardwareProbe["recommendedBucket"] {
+function mobileRecommendedBucket(
+  totalRamGb: number,
+): HardwareProbe["recommendedBucket"] {
   if (totalRamGb >= 32) return "xl";
   if (totalRamGb >= 16) return "large";
   if (totalRamGb >= 12) return "mid";
@@ -1082,13 +1084,14 @@ async function hardwareProbe(): Promise<HardwareProbe> {
   const totalRamGb = hardware?.totalRamGb ?? 0;
   const cpuCores = hardware?.cpuCores ?? navigator.hardwareConcurrency ?? 0;
   const platform = normalizeMobilePlatform(hardware?.platform);
-  const gpu = hardware?.gpu?.available && hardware.gpuSupported !== false
-    ? {
-        backend: gpuBackendForMobile(platform, hardware.gpu.backend),
-        totalVramGb: 0,
-        freeVramGb: 0,
-      }
-    : null;
+  const gpu =
+    hardware?.gpu?.available && hardware.gpuSupported !== false
+      ? {
+          backend: gpuBackendForMobile(platform, hardware.gpu.backend),
+          totalVramGb: 0,
+          freeVramGb: 0,
+        }
+      : null;
   return {
     totalRamGb,
     freeRamGb: hardware?.availableRamGb ?? totalRamGb,
@@ -1114,7 +1117,9 @@ async function hardwareProbe(): Promise<HardwareProbe> {
       ...(typeof hardware?.lowPowerMode === "boolean"
         ? { lowPowerMode: hardware.lowPowerMode }
         : {}),
-      ...(hardware?.thermalState ? { thermalState: hardware.thermalState } : {}),
+      ...(hardware?.thermalState
+        ? { thermalState: hardware.thermalState }
+        : {}),
       gpuSupported: hardware?.gpuSupported ?? Boolean(gpu),
       dflashSupported: hardware?.dflashSupported ?? false,
       dflashReason:
@@ -1169,7 +1174,9 @@ function runtimeSignature(options: CapacitorLlamaLoadOptions): string {
   ].join("|");
 }
 
-async function validateMobileModelFit(model: CatalogModel): Promise<string | null> {
+async function validateMobileModelFit(
+  model: CatalogModel,
+): Promise<string | null> {
   if (model.runtimeRole === "dflash-drafter") return null;
   const hardware = await hardwareProbe();
   const fit = assessCatalogModelFit(hardware, model, MODEL_CATALOG);
@@ -1325,7 +1332,11 @@ async function queueCompanionDownloads(model: CatalogModel): Promise<void> {
     if (!companion) continue;
     if (installed.some((entry) => entry.id === companionId)) continue;
     const existing = downloads.get(companionId);
-    if (existing && existing.state !== "failed" && existing.state !== "cancelled") {
+    if (
+      existing &&
+      existing.state !== "failed" &&
+      existing.state !== "cancelled"
+    ) {
       continue;
     }
     startDownload(companion);

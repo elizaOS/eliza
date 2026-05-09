@@ -222,10 +222,7 @@ export interface PluginRouteContext {
     plugins: PluginEntry[],
     workspaceDir: string,
   ) => void;
-  applySignalQrOverride: (
-    plugins: PluginEntry[],
-    workspaceDir: string,
-  ) => void;
+  applySignalQrOverride: (plugins: PluginEntry[], workspaceDir: string) => void;
   resolvePluginConfigMutationRejections: (
     parameters: PluginParamDef[],
     configObj: Record<string, string>,
@@ -509,10 +506,7 @@ export async function handlePluginRoutes(
     }
 
     applyWhatsAppQrOverride(allPlugins, resolveDefaultAgentWorkspaceDir());
-    applySignalQrOverride(
-      allPlugins,
-      resolveDefaultAgentWorkspaceDir(),
-    );
+    applySignalQrOverride(allPlugins, resolveDefaultAgentWorkspaceDir());
 
     for (const plugin of allPlugins) {
       const providerModels = readProviderCache(plugin.id)?.models ?? [];

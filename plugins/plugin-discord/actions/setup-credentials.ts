@@ -556,7 +556,7 @@ export const setupCredentials: Action = {
 		const userId = message.entityId as string;
 		const room = state?.data?.room || (await runtime.getRoom(message.roomId));
 		const channelId =
-			((room as unknown as Record<string, unknown> | undefined)?.channelId as
+			((room as Record<string, unknown> | undefined)?.channelId as
 				| string
 				| undefined) || (message.roomId as string);
 

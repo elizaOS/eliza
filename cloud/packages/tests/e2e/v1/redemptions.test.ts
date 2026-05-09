@@ -1,5 +1,23 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { readJson } from "../helpers/json-body";
+
+type RedemptionStatusResponse = {
+  success: boolean;
+  canRedeem: boolean;
+  availableNetworks: unknown[];
+};
+
+type RedemptionBalanceResponse = {
+  success: boolean;
+  balance: unknown;
+  eligibility: unknown;
+  recentEarnings: unknown[];
+};
+
+type RedemptionValidationResponse = {
+  success: boolean;
+};
 
 /**
  * Token Redemptions API E2E Tests
@@ -13,7 +31,7 @@ describe("Redemptions API", () => {
         authenticated: true,
       });
       expect(response.status).toBe(200);
-      const body = (await response.json()) as any;
+      const body = await readJson<RedemptionStatusResponse>(response);
       expect(body.success).toBe(true);
       expect(typeof body.canRedeem).toBe("boolean");
       expect(Array.isArray(body.availableNetworks)).toBe(true);
@@ -31,7 +49,7 @@ describe("Redemptions API", () => {
         authenticated: true,
       });
       expect(response.status).toBe(200);
-      const body = (await response.json()) as any;
+      const body = await readJson<RedemptionBalanceResponse>(response);
       expect(body.success).toBe(true);
       expect(body.balance).toBeDefined();
       expect(body.eligibility).toBeDefined();
@@ -51,7 +69,7 @@ describe("Redemptions API", () => {
         { authenticated: true },
       );
       expect(response.status).toBe(400);
-      const body = (await response.json()) as any;
+      const body = await readJson<RedemptionValidationResponse>(response);
       expect(body.success).toBe(false);
     });
 

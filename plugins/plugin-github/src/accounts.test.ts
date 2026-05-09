@@ -16,7 +16,7 @@ function runtime(settings: Record<string, unknown>): IAgentRuntime {
   return {
     character: {},
     getSetting: vi.fn((key: string) => settings[key]),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 describe("GitHub account resolution", () => {
@@ -155,7 +155,7 @@ describe("GitHub account resolution", () => {
               },
             }
           : null,
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     const manager = createOAuthCallbackManager(
       "github",
       "acct_github_durable_1",
@@ -247,7 +247,7 @@ describe("GitHub account resolution", () => {
           GITHUB_OAUTH_REDIRECT_URI: "http://localhost/oauth/github/callback",
         })[key],
       getService: () => null,
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     const manager = createOAuthCallbackManager(
       "github",
       "acct_github_durable_1",
@@ -377,7 +377,7 @@ function runtimeWithConnectorStorage(options: {
       }
       return null;
     },
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 function createOAuthCallbackManager(

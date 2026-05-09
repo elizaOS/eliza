@@ -6,9 +6,7 @@ import { WORKFLOW_SERVICE_TYPE } from '../services/workflow-service';
  * Extract WorkflowService from runtime services
  */
 export function getService(runtime: IAgentRuntime): WorkflowService {
-  const service = runtime.getService(WORKFLOW_SERVICE_TYPE) as unknown as
-    | WorkflowService
-    | undefined;
+  const service = runtime.getService<WorkflowService>(WORKFLOW_SERVICE_TYPE);
 
   if (!service) {
     throw new Error('WorkflowService not available in runtime');

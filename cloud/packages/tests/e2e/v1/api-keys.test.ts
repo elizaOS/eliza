@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { readJson } from "../helpers/json-body";
 
 type CreateApiKeyResponse = {
   apiKey?: {
@@ -12,6 +13,12 @@ type CreateApiKeyResponse = {
 
 type ListApiKeysResponse = {
   keys?: Array<Record<string, unknown>>;
+};
+
+type ApiKeyListShape = { apiKeys?: unknown[]; keys?: unknown[] } | unknown[];
+
+type ApiKeyErrorResponse = {
+  error?: unknown;
 };
 
 /**
@@ -33,8 +40,9 @@ describe("API Keys API", () => {
     });
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
-    expect(Array.isArray(body.apiKeys || body.keys || body)).toBe(true);
+    const body = await readJson<ApiKeyListShape>(response);
+    const keys = Array.isArray(body) ? body : (body.apiKeys ?? body.keys ?? []);
+    expect(Array.isArray(keys)).toBe(true);
   });
 
   test("POST /api/v1/api-keys requires authentication", async () => {
@@ -55,7 +63,7 @@ describe("API Keys API", () => {
     );
 
     expect(response.status).toBe(400);
-    const body = (await response.json()) as any;
+    const body = await readJson<ApiKeyErrorResponse>(response);
     expect(body.error).toBeTruthy();
   });
 

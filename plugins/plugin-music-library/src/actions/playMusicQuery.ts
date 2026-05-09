@@ -257,7 +257,7 @@ Respond with JSON only:
         needsResearch:
           parsedJson.needsResearch === true ||
           String(parsedJson.needsResearch).toLowerCase() === "true",
-      } as unknown as MusicQueryIntent;
+      } as MusicQueryIntent;
     }
 
     return null;

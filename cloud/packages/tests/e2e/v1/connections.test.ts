@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { readJson } from "../helpers/json-body";
+
+type McpRegistryResponse =
+  | {
+      registry?: unknown[];
+    }
+  | unknown[];
 
 /**
  * OAuth, Connections, MCPs & Documents API E2E Tests
@@ -44,8 +51,9 @@ describe("MCPs API", () => {
   test("GET /api/mcp/registry returns public registry", async () => {
     const response = await api.get("/api/mcp/registry");
     expect(response.status).toBe(200);
-    const body = (await response.json()) as any;
-    expect(body.registry || Array.isArray(body)).toBeTruthy();
+    const body = await readJson<McpRegistryResponse>(response);
+    const hasRegistry = Array.isArray(body) || Array.isArray(body.registry);
+    expect(hasRegistry).toBe(true);
   });
 });
 
