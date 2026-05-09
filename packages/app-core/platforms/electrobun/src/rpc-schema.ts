@@ -549,12 +549,12 @@ export type ElizaDesktopRPCSchema = {
 			};
 
 			// ---- Desktop: Tray ----
-			desktopCreateTray: { params: TrayOptions; response: void };
-			desktopUpdateTray: { params: Partial<TrayOptions>; response: void };
-			desktopDestroyTray: { params: undefined; response: void };
+			desktopCreateTray: { params: TrayOptions; response: undefined };
+			desktopUpdateTray: { params: Partial<TrayOptions>; response: undefined };
+			desktopDestroyTray: { params: undefined; response: undefined };
 			desktopSetTrayMenu: {
 				params: { menu: TrayMenuItem[] };
-				response: void;
+				response: undefined;
 			};
 
 			// ---- Desktop: Shortcuts ----
@@ -564,9 +564,9 @@ export type ElizaDesktopRPCSchema = {
 			};
 			desktopUnregisterShortcut: {
 				params: { id: string };
-				response: void;
+				response: undefined;
 			};
-			desktopUnregisterAllShortcuts: { params: undefined; response: void };
+			desktopUnregisterAllShortcuts: { params: undefined; response: undefined };
 			desktopIsShortcutRegistered: {
 				params: { accelerator: string };
 				response: { registered: boolean };
@@ -575,7 +575,7 @@ export type ElizaDesktopRPCSchema = {
 			// ---- Desktop: Auto Launch ----
 			desktopSetAutoLaunch: {
 				params: { enabled: boolean; openAsHidden?: boolean };
-				response: void;
+				response: undefined;
 			};
 			desktopGetAutoLaunchStatus: {
 				params: undefined;
@@ -583,17 +583,17 @@ export type ElizaDesktopRPCSchema = {
 			};
 
 			// ---- Desktop: Window ----
-			desktopSetWindowOptions: { params: WindowOptions; response: void };
+			desktopSetWindowOptions: { params: WindowOptions; response: undefined };
 			desktopGetWindowBounds: { params: undefined; response: WindowBounds };
-			desktopSetWindowBounds: { params: WindowBounds; response: void };
-			desktopMinimizeWindow: { params: undefined; response: void };
-			desktopUnminimizeWindow: { params: undefined; response: void };
-			desktopMaximizeWindow: { params: undefined; response: void };
-			desktopUnmaximizeWindow: { params: undefined; response: void };
-			desktopCloseWindow: { params: undefined; response: void };
-			desktopShowWindow: { params: undefined; response: void };
-			desktopHideWindow: { params: undefined; response: void };
-			desktopFocusWindow: { params: undefined; response: void };
+			desktopSetWindowBounds: { params: WindowBounds; response: undefined };
+			desktopMinimizeWindow: { params: undefined; response: undefined };
+			desktopUnminimizeWindow: { params: undefined; response: undefined };
+			desktopMaximizeWindow: { params: undefined; response: undefined };
+			desktopUnmaximizeWindow: { params: undefined; response: undefined };
+			desktopCloseWindow: { params: undefined; response: undefined };
+			desktopShowWindow: { params: undefined; response: undefined };
+			desktopHideWindow: { params: undefined; response: undefined };
+			desktopFocusWindow: { params: undefined; response: undefined };
 			desktopIsWindowMaximized: {
 				params: undefined;
 				response: { maximized: boolean };
@@ -612,17 +612,17 @@ export type ElizaDesktopRPCSchema = {
 			};
 			desktopSetAlwaysOnTop: {
 				params: { flag: boolean; level?: string };
-				response: void;
+				response: undefined;
 			};
-			desktopSetFullscreen: { params: { flag: boolean }; response: void };
-			desktopSetOpacity: { params: { opacity: number }; response: void };
+			desktopSetFullscreen: { params: { flag: boolean }; response: undefined };
+			desktopSetOpacity: { params: { opacity: number }; response: undefined };
 
 			// ---- Desktop: Notifications ----
 			desktopShowNotification: {
 				params: NotificationOptions;
 				response: { id: string };
 			};
-			desktopCloseNotification: { params: { id: string }; response: void };
+			desktopCloseNotification: { params: { id: string }; response: undefined };
 			desktopShowBackgroundNotice: {
 				params: undefined;
 				response: { shown: boolean };
@@ -646,9 +646,9 @@ export type ElizaDesktopRPCSchema = {
 			};
 
 			// ---- Desktop: App ----
-			desktopQuit: { params: undefined; response: void };
-			desktopRelaunch: { params: undefined; response: void };
-			desktopApplyUpdate: { params: undefined; response: void };
+			desktopQuit: { params: undefined; response: undefined };
+			desktopRelaunch: { params: undefined; response: undefined };
+			desktopApplyUpdate: { params: undefined; response: undefined };
 			desktopCheckForUpdates: {
 				params: undefined;
 				response: DesktopUpdaterSnapshot;
@@ -688,7 +688,7 @@ export type ElizaDesktopRPCSchema = {
 				params: DesktopHttpRequestOptions;
 				response: DesktopHttpRequestResult;
 			};
-			desktopOpenLogsFolder: { params: undefined; response: void };
+			desktopOpenLogsFolder: { params: undefined; response: undefined };
 			desktopCreateBugReportBundle: {
 				params: {
 					reportMarkdown: string;
@@ -697,7 +697,7 @@ export type ElizaDesktopRPCSchema = {
 				};
 				response: DesktopBugReportBundleInfo;
 			};
-			desktopBeep: { params: undefined; response: void };
+			desktopBeep: { params: undefined; response: undefined };
 			desktopShowSelectionContextMenu: {
 				params: { text: string };
 				response: { shown: boolean };
@@ -730,7 +730,7 @@ export type ElizaDesktopRPCSchema = {
 			};
 			desktopOpenSettingsWindow: {
 				params: { tabHint?: string } | undefined;
-				response: void;
+				response: undefined;
 			};
 			desktopOpenSurfaceWindow: {
 				params: {
@@ -794,25 +794,25 @@ export type ElizaDesktopRPCSchema = {
 			// ---- Desktop: Clipboard ----
 			desktopWriteToClipboard: {
 				params: ClipboardWriteOptions;
-				response: void;
+				response: undefined;
 			};
 			desktopReadFromClipboard: {
 				params: undefined;
 				response: ClipboardReadResult;
 			};
-			desktopClearClipboard: { params: undefined; response: void };
+			desktopClearClipboard: { params: undefined; response: undefined };
 			desktopClipboardAvailableFormats: {
 				params: undefined;
 				response: { formats: string[] };
 			};
 
 			// ---- Desktop: Shell ----
-			desktopOpenExternal: { params: { url: string }; response: void };
+			desktopOpenExternal: { params: { url: string }; response: undefined };
 			desktopShowItemInFolder: {
 				params: { path: string };
-				response: void;
+				response: undefined;
 			};
-			desktopOpenPath: { params: { path: string }; response: void };
+			desktopOpenPath: { params: { path: string }; response: undefined };
 
 			// ---- Desktop: File Dialogs ----
 			desktopShowOpenDialog: {
@@ -829,7 +829,7 @@ export type ElizaDesktopRPCSchema = {
 				params: DiscoveryOptions | undefined;
 				response: DiscoveryResult;
 			};
-			gatewayStopDiscovery: { params: undefined; response: void };
+			gatewayStopDiscovery: { params: undefined; response: undefined };
 			gatewayIsDiscovering: {
 				params: undefined;
 				response: { isDiscovering: boolean };
@@ -862,10 +862,10 @@ export type ElizaDesktopRPCSchema = {
 				params: { enabled: boolean };
 				response: PermissionState;
 			};
-			permissionsClearCache: { params: undefined; response: void };
+			permissionsClearCache: { params: undefined; response: undefined };
 			permissionsOpenSettings: {
 				params: { id: SystemPermissionId };
-				response: void;
+				response: undefined;
 			};
 
 			// ---- Location ----
@@ -882,7 +882,7 @@ export type ElizaDesktopRPCSchema = {
 				params: { interval?: number };
 				response: { watchId: string };
 			};
-			locationClearWatch: { params: { watchId: string }; response: void };
+			locationClearWatch: { params: { watchId: string }; response: undefined };
 			locationGetLastKnownLocation: {
 				params: undefined;
 				response: {
@@ -902,7 +902,7 @@ export type ElizaDesktopRPCSchema = {
 				params: { deviceId?: string };
 				response: { available: boolean; reason?: string };
 			};
-			cameraStopPreview: { params: undefined; response: void };
+			cameraStopPreview: { params: undefined; response: undefined };
 			cameraSwitchCamera: {
 				params: { deviceId: string };
 				response: { available: boolean };
@@ -937,7 +937,7 @@ export type ElizaDesktopRPCSchema = {
 				params: CanvasWindowOptions;
 				response: { id: string };
 			};
-			canvasDestroyWindow: { params: { id: string }; response: void };
+			canvasDestroyWindow: { params: { id: string }; response: undefined };
 			canvasNavigate: {
 				params: { id: string; url: string };
 				response: { available: boolean; reason?: string };
@@ -958,23 +958,23 @@ export type ElizaDesktopRPCSchema = {
 			};
 			canvasA2uiPush: {
 				params: { id: string; payload: unknown };
-				response: void;
+				response: undefined;
 			};
-			canvasA2uiReset: { params: { id: string }; response: void };
-			canvasShow: { params: { id: string }; response: void };
-			canvasHide: { params: { id: string }; response: void };
+			canvasA2uiReset: { params: { id: string }; response: undefined };
+			canvasShow: { params: { id: string }; response: undefined };
+			canvasHide: { params: { id: string }; response: undefined };
 			canvasResize: {
 				params: { id: string; width: number; height: number };
-				response: void;
+				response: undefined;
 			};
-			canvasFocus: { params: { id: string }; response: void };
+			canvasFocus: { params: { id: string }; response: undefined };
 			canvasGetBounds: {
 				params: { id: string };
 				response: WindowBounds;
 			};
 			canvasSetBounds: {
 				params: { id: string } & WindowBounds;
-				response: void;
+				response: undefined;
 			};
 			canvasSetAlwaysOnTop: {
 				params: { id: string; flag: boolean };
@@ -1069,7 +1069,7 @@ export type ElizaDesktopRPCSchema = {
 				};
 				response: { started: boolean; error?: string };
 			};
-			swabbleStop: { params: undefined; response: void };
+			swabbleStop: { params: undefined; response: undefined };
 			swabbleIsListening: {
 				params: undefined;
 				response: { listening: boolean };
@@ -1080,25 +1080,25 @@ export type ElizaDesktopRPCSchema = {
 			};
 			swabbleUpdateConfig: {
 				params: Record<string, unknown>;
-				response: void;
+				response: undefined;
 			};
 			swabbleIsWhisperAvailable: {
 				params: undefined;
 				response: { available: boolean };
 			};
-			swabbleAudioChunk: { params: { data: string }; response: void };
+			swabbleAudioChunk: { params: { data: string }; response: undefined };
 
 			// ---- TalkMode ----
 			talkmodeStart: {
 				params: undefined;
 				response: { available: boolean; reason?: string };
 			};
-			talkmodeStop: { params: undefined; response: void };
+			talkmodeStop: { params: undefined; response: undefined };
 			talkmodeSpeak: {
 				params: { text: string; directive?: Record<string, unknown> };
-				response: void;
+				response: undefined;
 			};
-			talkmodeStopSpeaking: { params: undefined; response: void };
+			talkmodeStopSpeaking: { params: undefined; response: undefined };
 			talkmodeGetState: {
 				params: undefined;
 				response: { state: TalkModeState };
@@ -1116,8 +1116,8 @@ export type ElizaDesktopRPCSchema = {
 				params: undefined;
 				response: { available: boolean };
 			};
-			talkmodeUpdateConfig: { params: TalkModeConfig; response: void };
-			talkmodeAudioChunk: { params: { data: string }; response: void };
+			talkmodeUpdateConfig: { params: TalkModeConfig; response: undefined };
+			talkmodeAudioChunk: { params: { data: string }; response: undefined };
 
 			// ---- Music player (elizaOS plugin-music-player HTTP routes on agent) ----
 			musicPlayerGetDesktopPlaybackUrls: {
@@ -1128,19 +1128,19 @@ export type ElizaDesktopRPCSchema = {
 			// ---- Context Menu ----
 			contextMenuAskAgent: {
 				params: { text: string };
-				response: void;
+				response: undefined;
 			};
 			contextMenuCreateSkill: {
 				params: { text: string };
-				response: void;
+				response: undefined;
 			};
 			contextMenuQuoteInChat: {
 				params: { text: string };
-				response: void;
+				response: undefined;
 			};
 			contextMenuSaveAsCommand: {
 				params: { text: string };
-				response: void;
+				response: undefined;
 			};
 
 			// ---- Credentials Auto-Detection ----
@@ -1168,12 +1168,12 @@ export type ElizaDesktopRPCSchema = {
 				};
 				response: GpuWindowInfo;
 			};
-			gpuWindowDestroy: { params: { id: string }; response: void };
-			gpuWindowShow: { params: { id: string }; response: void };
-			gpuWindowHide: { params: { id: string }; response: void };
+			gpuWindowDestroy: { params: { id: string }; response: undefined };
+			gpuWindowShow: { params: { id: string }; response: undefined };
+			gpuWindowHide: { params: { id: string }; response: undefined };
 			gpuWindowSetBounds: {
 				params: { id: string } & WindowBounds;
-				response: void;
+				response: undefined;
 			};
 			gpuWindowGetInfo: {
 				params: { id: string };
@@ -1199,18 +1199,18 @@ export type ElizaDesktopRPCSchema = {
 				};
 				response: GpuViewInfo;
 			};
-			gpuViewDestroy: { params: { id: string }; response: void };
+			gpuViewDestroy: { params: { id: string }; response: undefined };
 			gpuViewSetFrame: {
 				params: { id: string } & WindowBounds;
-				response: void;
+				response: undefined;
 			};
 			gpuViewSetTransparent: {
 				params: { id: string; transparent: boolean };
-				response: void;
+				response: undefined;
 			};
 			gpuViewSetHidden: {
 				params: { id: string; hidden: boolean };
-				response: void;
+				response: undefined;
 			};
 			gpuViewGetNativeHandle: {
 				params: { id: string };
@@ -1236,7 +1236,7 @@ export type ElizaDesktopRPCSchema = {
 			};
 			editorBridgeClearSession: {
 				params: undefined;
-				response: void;
+				response: undefined;
 			};
 
 			// ---- Workspace File Watcher ----
@@ -1250,7 +1250,7 @@ export type ElizaDesktopRPCSchema = {
 			};
 			fileWatcherStopAll: {
 				params: undefined;
-				response: void;
+				response: undefined;
 			};
 			fileWatcherList: {
 				params: undefined;

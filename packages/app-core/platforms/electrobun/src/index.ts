@@ -1344,10 +1344,16 @@ function createDesktopRpc(label: string): {
 		}
 	};
 
+	type BunRpcRequestsHandlers = NonNullable<
+		Parameters<typeof BrowserView.defineRPC<ElizaDesktopRPCSchema>>[0]["handlers"]
+	>["requests"];
+
 	rpc = BrowserView.defineRPC<ElizaDesktopRPCSchema>({
 		maxRequestTime: MAX_RPC_REQUEST_TIME_MS,
 		handlers: {
-			requests: buildBunRpcHandlers({ sendToWebview }),
+			requests: buildBunRpcHandlers({
+				sendToWebview,
+			}) as BunRpcRequestsHandlers,
 		},
 	});
 

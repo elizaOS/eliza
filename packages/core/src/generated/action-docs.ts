@@ -3227,59 +3227,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "CHECKIN",
-			description:
-				"Owner-only. Run a LifeOps morning or night check-in now by assembling the owner's todos, habits, goals, inbox, calendar, and recent signals into a briefing.",
-			parameters: [
-				{
-					name: "kind",
-					description:
-						"morning or night. Infer from the user request when omitted.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"morning or night. Infer from user request when omitted.",
-				},
-				{
-					name: "timezone",
-					description: "Optional IANA timezone override.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Optional IANA timezone override.",
-				},
-			],
-			descriptionCompressed:
-				"run owner LifeOps check-in now: kind morning|night; returns briefing summary",
-			similes: [
-				"CHECK_IN",
-				"LIFE_CHECK_IN",
-				"MORNING_CHECKIN",
-				"MORNING_CHECK_IN",
-				"NIGHT_CHECKIN",
-				"NIGHT_CHECK_IN",
-				"RUN_CHECKIN",
-				"RUN_MORNING_CHECKIN",
-				"RUN_NIGHT_CHECKIN",
-				"DAILY_BRIEF",
-			],
-			exampleCalls: [
-				{
-					user: "Use CHECKIN with the provided parameters.",
-					actions: ["CHECKIN"],
-					params: {
-						CHECKIN: {
-							kind: "example",
-							timezone: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "CLEAR_LINEAR_ACTIVITY",
 			description: "Clear the Linear activity log",
 			parameters: [],
@@ -4901,54 +4848,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "LIST_ACTIVE_BLOCKS",
-			description:
-				"Report the current website blocker state by combining the live OS-level hosts/SelfControl status (active hosts, end time, permission notes) with LifeOps-managed block rules (id, gateType, websites, and gate target: todo id, ISO deadline, or fixed duration). Toggle either source via includeLiveStatus and includeManagedRules. Use only for website/app blocking status; do not use for inbox blockers, message priority, morning/night briefs, operating pictures, end-of-day reviews, or general executive-assistant triage.",
-			parameters: [
-				{
-					name: "includeLiveStatus",
-					description:
-						"Whether to include the current hosts-file/SelfControl live block state.",
-					required: false,
-					schema: {
-						type: "boolean",
-					},
-					descriptionCompressed:
-						"Whether to include the current hosts-file/SelfControl live block state.",
-				},
-				{
-					name: "includeManagedRules",
-					description:
-						"Whether to include managed LifeOps block rules and gate metadata.",
-					required: false,
-					schema: {
-						type: "boolean",
-					},
-					descriptionCompressed:
-						"Whether to include managed LifeOps block rules and gate metadata.",
-				},
-			],
-			descriptionCompressed:
-				"list-website-blocks: live hosts/SelfControl status + managed rules (gateType, target, websites)",
-			similes: [
-				"LIST_BLOCK_RULES",
-				"SHOW_ACTIVE_BLOCKS",
-				"WEBSITE_BLOCKS_STATUS",
-			],
-			exampleCalls: [
-				{
-					user: "Use LIST_ACTIVE_BLOCKS with the provided parameters.",
-					actions: ["LIST_ACTIVE_BLOCKS"],
-					params: {
-						LIST_ACTIVE_BLOCKS: {
-							includeLiveStatus: false,
-							includeManagedRules: false,
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "LIST_LINEAR_COMMENTS",
 			description: "List comments on a Linear issue",
 			parameters: [
@@ -6208,59 +6107,6 @@ export const allActionsSpec = {
 							subaction: "start",
 							question: "example",
 							context: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "RELEASE_BLOCK",
-			description:
-				"Release an active website block rule. Requires confirmed:true. ",
-			parameters: [
-				{
-					name: "ruleId",
-					description: "ID of the block rule to release.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "ID of the block rule to release.",
-				},
-				{
-					name: "confirmed",
-					description:
-						"Must be true to release. Prevents accidental unblocking.",
-					required: true,
-					schema: {
-						type: "boolean",
-					},
-					descriptionCompressed:
-						"Must be true to release. Prevents accidental unblocking.",
-				},
-				{
-					name: "reason",
-					description: "Optional reason for release, stored on the rule.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional reason for release, stored on the rule.",
-				},
-			],
-			descriptionCompressed:
-				"Release a website block rule; requires confirmation.",
-			similes: ["RELEASE_WEBSITE_BLOCK", "END_BLOCK_RULE", "BYPASS_BLOCK_RULE"],
-			exampleCalls: [
-				{
-					user: "Use RELEASE_BLOCK with the provided parameters.",
-					actions: ["RELEASE_BLOCK"],
-					params: {
-						RELEASE_BLOCK: {
-							ruleId: "example",
-							confirmed: false,
-							reason: "example",
 						},
 					},
 				},

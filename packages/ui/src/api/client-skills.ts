@@ -3,8 +3,8 @@
  * custom actions, WhatsApp, agent events.
  */
 
-import type { CustomActionDef } from "./agent-client-type-shim";
 import { packageNameToAppRouteSlug } from "@elizaos/shared";
+import type { CustomActionDef } from "./agent-client-type-shim";
 import { ElizaClient } from "./client-base";
 import type {
   AppLaunchResult,

@@ -48,6 +48,12 @@
       ],
       "@elizaos/plugin-signal": [
         "../../../../plugins/plugin-signal/src/index.ts"
+      ],
+      "@elizaos/app-task-coordinator": [
+        "../../../../plugins/app-task-coordinator/src/index.ts"
+      ],
+      "@clack/prompts": [
+        "../../../agent/node_modules/@clack/prompts"
       ]
     }
   },

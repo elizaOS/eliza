@@ -304,7 +304,8 @@ function collectSelectedWalletRpcCredentialKeys(
   const selectedKeys = new Set<WalletRpcCredentialKey>();
   for (const chain of Object.keys(selectedProviders) as WalletRpcChain[]) {
     const provider = selectedProviders[chain];
-    for (const key of WALLET_RPC_PROVIDER_CREDENTIAL_KEYS[chain][provider] ?? []) {
+    for (const key of WALLET_RPC_PROVIDER_CREDENTIAL_KEYS[chain][provider] ??
+      []) {
       selectedKeys.add(key);
     }
   }

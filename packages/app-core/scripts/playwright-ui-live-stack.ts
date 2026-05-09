@@ -10,7 +10,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { buildOnboardingRuntimeConfig } from "@elizaos/ui";
+import { buildOnboardingRuntimeConfig } from "@elizaos/ui/onboarding-config";
 import { WebSocket, WebSocketServer } from "ws";
 import { selectLiveProvider } from "../test/helpers/live-provider.ts";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";

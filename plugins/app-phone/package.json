@@ -30,6 +30,7 @@
     "@elizaos/app-core": "workspace:*",
     "@elizaos/capacitor-phone": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0"

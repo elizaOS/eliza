@@ -27,7 +27,6 @@ import type {
   WalletPrimaryMap,
   WalletSource,
 } from "@elizaos/shared";
-import type { PromptOptions } from "../components/ui/confirm-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   client,
@@ -37,6 +36,7 @@ import {
   type WalletExportResult,
   type WhitelistStatus,
 } from "../api";
+import type { PromptOptions } from "../components/ui/confirm-dialog";
 import { confirmDesktopAction } from "../utils/desktop-dialogs";
 import {
   loadBrowserEnabled,

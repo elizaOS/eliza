@@ -22,13 +22,13 @@
     "@pixiv/three-vrm": "^3.4.2",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "three": "^0.184.0",
+    "three": "0.184.0",
     "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.3",
     "@types/react-dom": "^19.2.2",
-    "@types/three": "^0.184.1",
+    "@types/three": "0.184.0",
     "@types/uuid": "^11.0.0",
     "@vitejs/plugin-react": "^6.0.0",
     "typescript": "^6.0.3",
