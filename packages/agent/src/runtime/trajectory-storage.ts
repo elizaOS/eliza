@@ -914,11 +914,10 @@ export async function startTrajectoryStepInDatabase({
 }
 
 /**
- * Annotate an existing trajectory step with the structural metadata Track A
- * relies on (kind discriminator, executeCode script, child step IDs, used
- * skills). Safe to call for any of the new trajectory step fields; passing
- * `undefined` for a field leaves the existing value alone, while passing an
- * explicit value overwrites.
+ * Annotate an existing trajectory step with structural metadata (kind
+ * discriminator, script, child step IDs, used skills). Safe to call for any
+ * of the new trajectory step fields; passing `undefined` for a field leaves
+ * the existing value alone, while passing an explicit value overwrites.
  */
 export async function annotateTrajectoryStep({
   runtime,

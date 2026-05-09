@@ -49,10 +49,10 @@
       ],
       "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/dist/*"],
       "@elizaos/plugin-sql": [
-        "../../plugins/plugin-sql/typescript/dist/index.node.d.ts"
+        "../../plugins/plugin-sql/src/dist/index.node.d.ts"
       ],
       "@elizaos/plugin-sql/*": [
-        "../../plugins/plugin-sql/typescript/dist/*"
+        "../../plugins/plugin-sql/src/dist/*"
       ],
       "@elizaos/agent": ["../agent/dist/packages/agent/src/index.d.ts"],
       "@elizaos/agent/*": ["../agent/dist/packages/agent/src/*"],

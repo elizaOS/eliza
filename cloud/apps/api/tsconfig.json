@@ -20,8 +20,8 @@
       "@/db/*": ["../../packages/db/*"],
       "@/types/*": ["../../packages/types/*"],
       "@/api/*": ["./*"],
-      "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/typescript/index.ts"],
-      "@elizaos/plugin-sql/*": ["../../../plugins/plugin-sql/typescript/*"],
+      "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
+      "@elizaos/plugin-sql/*": ["../../../plugins/plugin-sql/src/*"],
       "drizzle-orm": ["../../../plugins/plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
       "@/*": ["../../*"]

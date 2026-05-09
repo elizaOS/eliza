@@ -6,8 +6,8 @@
  * context (signal strength, security state) when relevant.
  */
 
-import { WiFi } from "@elizaos/capacitor-wifi";
 import type { WiFiNetwork } from "@elizaos/capacitor-wifi";
+import { WiFi } from "@elizaos/capacitor-wifi";
 import type {
   IAgentRuntime,
   Memory,

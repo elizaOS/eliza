@@ -1,35 +1,51 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import type { HandlerCallback, IAgentRuntime, Memory, State } from '@elizaos/core';
 
+type SimpleMock<TArgs extends readonly unknown[] = unknown[], TReturn = unknown> = ((
+  ...args: TArgs
+) => TReturn) & {
+  calls: TArgs[];
+  _returnValue: TReturn | undefined;
+  _implementation: ((...args: unknown[]) => TReturn) | null;
+  mockReturnValue: (value: TReturn) => SimpleMock<TArgs, TReturn>;
+  mockResolvedValue: (value: Awaited<TReturn>) => SimpleMock<TArgs, TReturn>;
+  mockRejectedValue: (reason: unknown) => SimpleMock<TArgs, TReturn>;
+  mockImplementation: (impl: (...args: unknown[]) => TReturn) => SimpleMock<TArgs, TReturn>;
+  mock: { calls: TArgs[]; results: unknown[] };
+};
+
 // Use local mock implementation until core test-utils build issue is resolved
-const mock = () => {
-  const calls: any[][] = [];
-  const fn = (...args: any[]) => {
+const mock = <const TArgs extends readonly unknown[] = unknown[], TReturn = unknown>(): SimpleMock<
+  TArgs,
+  TReturn
+> => {
+  const calls: TArgs[] = [];
+  const fn = ((...args: TArgs) => {
     calls.push(args);
     if (typeof fn._implementation === 'function') {
       return fn._implementation(...args);
     }
-    return fn._returnValue;
-  };
+    return fn._returnValue as TReturn;
+  }) as SimpleMock<TArgs, TReturn>;
   fn.calls = calls;
   fn._returnValue = undefined;
   fn._implementation = null;
-  fn.mockReturnValue = (value: any) => {
+  fn.mockReturnValue = (value: TReturn) => {
     fn._returnValue = value;
     fn._implementation = null;
     return fn;
   };
-  fn.mockResolvedValue = (value: any) => {
-    fn._returnValue = Promise.resolve(value);
+  fn.mockResolvedValue = (value: Awaited<TReturn>) => {
+    fn._returnValue = Promise.resolve(value) as TReturn;
     fn._implementation = null;
     return fn;
   };
-  fn.mockRejectedValue = (error: any) => {
-    fn._returnValue = Promise.reject(error);
+  fn.mockRejectedValue = (reason: unknown) => {
+    fn._returnValue = Promise.reject(reason) as TReturn;
     fn._implementation = null;
     return fn;
   };
-  fn.mockImplementation = (impl: any) => {
+  fn.mockImplementation = (impl: (...args: unknown[]) => TReturn) => {
     fn._implementation = impl;
     fn._returnValue = undefined;
     return fn;

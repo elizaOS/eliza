@@ -1,8 +1,21 @@
 import type http from "node:http";
-import type { ReadJsonBodyOptions } from "@elizaos/core";
+import type { IAgentRuntime, ReadJsonBodyOptions } from "@elizaos/core";
+import { credTypesForConnector } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { CONNECTOR_ENV_MAP } from "../config/env-vars.js";
 import type { ConnectorConfig } from "../config/types.eliza.js";
+
+/**
+ * Runtime event name emitted when a connector is disconnected. Subscribers
+ * (e.g. `WorkflowCredentialStore` in `@elizaos/plugin-workflow`) self-purge
+ * any caches keyed off the connector instead of the agent reaching across
+ * package boundaries to call them directly.
+ *
+ * Kept as a local string constant to avoid pulling plugin-workflow types
+ * into the agent. The matching constant in plugin-workflow lives at
+ * `plugins/plugin-workflow/src/types/index.ts` (`CONNECTOR_DISCONNECTED_EVENT`).
+ */
+const CONNECTOR_DISCONNECTED_EVENT = "connector_disconnected";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -15,6 +28,13 @@ export interface ConnectorRouteContext {
   pathname: string;
   state: {
     config: ElizaConfig;
+    /**
+     * Optional running agent. When present, every disconnect path emits
+     * `connector_disconnected` so service-owned caches (workflow credential
+     * store, etc.) self-invalidate without the agent reaching across package
+     * boundaries.
+     */
+    runtime?: IAgentRuntime | null;
   };
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
   error: (res: http.ServerResponse, message: string, status?: number) => void;
@@ -30,13 +50,32 @@ export interface ConnectorRouteContext {
   isBlockedObjectKey: (key: string) => boolean;
   cloneWithoutBlockedObjectKeys: <T>(value: T) => T;
   /**
-   * Called when a connector is disconnected (POST `/api/connectors` with
-   * `enabled: false`) or DELETE-d. Lets the host purge service-owned caches
-   * keyed off the connector — most importantly the workflow credential cache,
-   * which would otherwise return stale ids and silently bypass the
-   * missing-credentials banner.
+   * Optional host-supplied callback fired on every disconnect path. The
+   * canonical invalidation channel is the `connector_disconnected` runtime
+   * event (subscribed to by services like the workflow credential store);
+   * this callback remains as a host extension point for behavior that does
+   * not belong on the runtime event bus.
    */
   onConnectorDisconnect?: (connectorName: string) => Promise<void> | void;
+}
+
+/**
+ * Emit the `connector_disconnected` runtime event so service subscribers can
+ * purge their own caches. Safe when no runtime / no subscribers are
+ * registered: the runtime emit is a no-op in that case.
+ */
+async function emitConnectorDisconnected(
+  runtime: IAgentRuntime | null | undefined,
+  connectorName: string,
+): Promise<void> {
+  if (!runtime) return;
+  const credTypes = credTypesForConnector(connectorName);
+  await runtime.emitEvent(CONNECTOR_DISCONNECTED_EVENT, {
+    runtime,
+    userId: runtime.agentId,
+    credTypes,
+    connectorName,
+  });
 }
 
 function getConfiguredConnectorsFromEnv(): Record<
@@ -164,11 +203,18 @@ export async function handleConnectorRoutes(
     // update that happens to omit `enabled` while the connector was active.
     // That false-positive purge silently broke live connectors.
     const isDisconnect = (config as ConnectorConfig).enabled === false;
-    if (isDisconnect && onConnectorDisconnect) {
+    if (isDisconnect) {
       try {
-        await onConnectorDisconnect(connectorName);
+        await emitConnectorDisconnected(state.runtime, connectorName);
       } catch {
-        /* don't let cache-purge failure block the response */
+        /* don't let event-bus failure block the response */
+      }
+      if (onConnectorDisconnect) {
+        try {
+          await onConnectorDisconnect(connectorName);
+        } catch {
+          /* don't let host callback failure block the response */
+        }
       }
     }
     json(res, {
@@ -210,11 +256,16 @@ export async function handleConnectorRoutes(
     } catch {
       /* test envs */
     }
+    try {
+      await emitConnectorDisconnected(state.runtime, name);
+    } catch {
+      /* don't let event-bus failure block the response */
+    }
     if (onConnectorDisconnect) {
       try {
         await onConnectorDisconnect(name);
       } catch {
-        /* don't let cache-purge failure block the response */
+        /* don't let host callback failure block the response */
       }
     }
     json(res, {
