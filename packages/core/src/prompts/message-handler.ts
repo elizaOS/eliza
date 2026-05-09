@@ -5,6 +5,7 @@ import {
 	HANDLE_RESPONSE_SCHEMA,
 	HANDLE_RESPONSE_TOOL_NAME,
 } from "../actions/to-tool";
+import { messageHandlerTemplate } from "../prompts";
 import type { JSONSchema, ToolDefinition } from "../types/model";
 
 /**
@@ -13,62 +14,18 @@ import type { JSONSchema, ToolDefinition } from "../types/model";
  */
 export const V5_MESSAGE_HANDLER_TOOL_NAME = HANDLE_RESPONSE_TOOL_NAME;
 
-export const v5MessageHandlerTemplate = `task: Decide processMessage and the plan for this message.
-
-context:
-{{contextObject}}
-
-available_contexts:
-{{availableContexts}}
-
-rules:
-- choose processMessage=RESPOND only when the agent should answer or perform work for this message
-- choose processMessage=IGNORE when the message should be ignored
-- choose processMessage=STOP when the user asks the agent to stop or disengage
-- plan.contexts is a list of context ids drawn from available_contexts, such as calendar or email
-- plan.requiresTool is true when the current message needs tools, actions, subagents, providers, filesystem/runtime inspection, network/browser/API lookup, live/current/external data, side effects, long-running work, or verification; otherwise false
-- never invent context ids that are not in available_contexts
-- choose plan.contexts=["simple"] (and only "simple") when ALL of the following are true:
-    * the message is purely conversational, a greeting, or a factual question the agent can answer from training alone
-    * no external data, system state, person, document, file, schedule, calendar, email, memory, or provider is mentioned or implied
-    * no action verbs like search, find, get, fetch, save, send, create, update, delete, run, execute, or call are present
-    * the answer would not meaningfully change if checked against up-to-date information, world state, or memory
-    * when uncertain: prefer planning over simple
-- a platform mention, reply target, channel, room, or connector context does not by itself disqualify the simple shortcut; use simple when the current message only needs a direct conversational reply
-- never choose "simple" if the request needs tools, actions, subagents, providers, filesystem/runtime inspection, network/browser/API lookup, live/current/external data, side effects, long-running work, or verification
-- never choose "simple" if the message names a person, place, file, document, or data source; asks about schedules or past interactions ("what did I say earlier", "what's on my calendar", "how many X"); searches, browses, or looks up current facts; runs shell or terminal commands; inspects files/logs/repos/services/disk; builds or deploys apps; creates pull requests; spawns coding/task agents; sends messages; schedules tasks; or would benefit from any tool call even if the agent could fabricate a plausible answer
-- never choose "simple" for owner life-management requests to start, track, list, create, change, or review todos, habits, routines, goals, reminders, alarms, check-ins, blocks, calls, travel bookings, device delivery, desktop actions, or approvals; route to the relevant context so the owning action can ask any missing-detail follow-up
-- do not choose "simple" for requests to change, persist, update, or remember agent/user settings, preferences, identity, persona, character, response style, or future behavior; select settings and any other relevant context instead
-- explicit morning/night/daily check-in requests should route to tasks; include automation only when the user asks to schedule or change an automation/cadence
-- named-person relationship cadence requests ("follow up with David", "last talked to Alice", "how long since I spoke with Sam") must include contacts when available; one-off dated reminders or todos to call/text someone must include tasks when available
-- explicit phone/call/dial requests to a third party must include phone and contacts when available. Do not include calendar solely because the call is about an appointment or rescheduling; the requested operation is the call
-- device-targeted or broadcast reminders ("to my phone", "to mobile", "all devices", "broadcast") must include automation and connectors when available; do not route these as simple chat; tasks can be included as secondary context
-- password or saved-login lookup requests from the owner ("look up my GitHub password", "show my saved login") must include settings and secrets when available so PASSWORD_MANAGER can handle the request; do not answer with the raw secret in Stage 1
-- website/social-site focus blocking requests must include automation and settings when available; app blocking requests must include automation and settings, not screen_time unless the user is asking for usage/reporting
-- real flight/hotel/trip booking requests ("book travel", "book a flight", "reserve a hotel") must include browser, calendar, payments, and tasks when available so BOOK_TRAVEL can own the workflow
-- Calendly availability and single-use booking link requests must include calendar and connectors when available, even when the message contains a Calendly API URL
-- health metric requests such as steps, sleep, heart rate, workouts, or wearable summaries must include health when available
-- X/Twitter DMs must include messaging and connectors when available; X/Twitter timeline, feed, mentions, or post search must include social_posting and connectors when available; do not route X/Twitter post search as generic web browsing
-- desktop, native-app, browser, Finder, window, or computer screenshots/control requests must include browser or automation when available; do not route desktop screenshots to media alone
-- LifeOps browser, browser bridge, browser companion, browser extension, browser tab, or browser settings requests must include browser; include settings or connectors as secondary contexts when the user asks for configuration/connection state
-- otherwise list every relevant context id; planning will run and tools will be selected from those contexts
-- if only general is available and a tool/action is still needed, use plan.contexts=["general"]
-- include plan.reply only on the simple shortcut path (plan.contexts=["simple"])
-- plan.candidateActions is OPTIONAL. When planning is needed, include up to 12 action-like retrieval hints inferred from the request, such as "send_email", "calendar_create_event", "search_documents", or "play_music". These can be speculative BM25/regex hints; they are not tool calls.
-- plan.parentActionHints is OPTIONAL. Include up to 6 parent action names only when the parent action is explicit or highly likely. Prefer omitting over guessing.
-- plan.contextSlices is OPTIONAL. Include up to 12 stable retrieval slice ids or handles only when they are visible in the provided context; do not invent slice ids.
-- thought is internal routing rationale and is not shown to the user
-- extract is OPTIONAL. Populate it ONLY when the user's message states a durable fact about the user, a person they know, or a relationship between two entities. Examples worth extracting: "my birthday is March 5", "Alice is my manager", "I live in Brooklyn". Do NOT extract: questions, requests, ephemeral state, agent self-talk, or anything already obvious from the agent persona.
-- extract.facts entries are short factual statements in the user's voice ("the user's birthday is 1990-03-05"). Keep each entry under ~120 chars and self-contained.
-- extract.relationships entries are subject-predicate-object triples where subject and object are short entity names ("user", "Alice", "Acme Corp") and predicate is a snake_case relation ("works_with", "lives_in", "manages").
-- extract.addressedTo is OPTIONAL. Populate with entity UUIDs (preferred) or participant names from the available context that this specific message is directed at. Use the agent's id/name if the user is talking to the agent; use another participant's id/name when the user is addressing them by name or @-mention. Omit / empty array when broadcast or unclear. Do not guess.
-- omit extract entirely when nothing durable was stated and no addressee can be identified. Do not invent facts to fill it.
-- call ${HANDLE_RESPONSE_TOOL_NAME} exactly once with the plan
-- do not answer in plain text
-
-return:
-Use the ${HANDLE_RESPONSE_TOOL_NAME} tool. Do not return JSON as message text.`;
-
+/**
+ * The Stage 1 message-handler prompt. Single source of truth lives in
+ * `packages/prompts/prompts/message_handler.txt` and is generated into
+ * `core/src/prompts.ts`. Re-exported here under the legacy `v5*` name
+ * for back-compat with existing call sites.
+ *
+ * Template variables (substitute at compose time):
+ *   - {{availableContexts}} — formatted list of registered context ids
+ *   - {{handleResponseToolName}} — pass {@link HANDLE_RESPONSE_TOOL_NAME}
+ *   - {{#if directMessage}} — set true to switch to direct-message variant
+ */
+export const v5MessageHandlerTemplate = messageHandlerTemplate;
 export const V5_MESSAGE_HANDLER_TEMPLATE = v5MessageHandlerTemplate;
 
 /**
