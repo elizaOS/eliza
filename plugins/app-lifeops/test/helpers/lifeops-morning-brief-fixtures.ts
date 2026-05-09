@@ -170,15 +170,15 @@ export async function seedMorningBriefFixtures(args: {
   });
 
   const pendingDraft: DeferredInboxDraft = {
-    triageEntryId: "seeded-marco-triage-entry",
+    triageEntryId: "seeded-vendor-triage-entry",
     source: "gmail",
-    gmailMessageId: "morning-brief-gmail-marco",
+    gmailMessageId: "morning-brief-gmail-vendor",
     draftText:
       "I reviewed the investor diligence packet and can send comments by 2pm today.",
     deepLink:
-      "https://mail.google.com/mail/u/shawmakesmagic%40gmail.com/#inbox/morning-brief-gmail-marco",
-    channelName: "Marco Alvarez <marco@northstar.example.com>",
-    senderName: "Marco Alvarez",
+      "https://mail.google.com/mail/u/shawmakesmagic%40gmail.com/#inbox/morning-brief-gmail-vendor",
+    channelName: "Vendor Contact <vendor@example.com>",
+    senderName: "Vendor Contact",
   };
 
   const approvalRequest = await approvalQueue.enqueue({
@@ -187,12 +187,12 @@ export async function seedMorningBriefFixtures(args: {
     action: "send_email",
     payload: {
       action: "send_email",
-      to: ["marco@northstar.example.com"],
+      to: ["vendor@example.com"],
       cc: [],
       bcc: [],
       subject: "Re: Investor diligence packet",
       body: pendingDraft.draftText,
-      threadId: "morning-brief-marco-thread",
+      threadId: "morning-brief-vendor-thread",
     },
     channel: "email",
     reason: "Draft is ready and still waiting for owner sign-off.",
@@ -209,7 +209,7 @@ export async function seedMorningBriefFixtures(args: {
         entityName: "Eliza",
       },
       content: {
-        text: "Pending draft for Marco Alvarez is still waiting for sign-off about the investor diligence packet.",
+        text: "Pending draft for the vendor contact is still waiting for sign-off about the investor diligence packet.",
         source: "assistant",
         channelType: ChannelType.DM,
         inboxDraft: pendingDraft,

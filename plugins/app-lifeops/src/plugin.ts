@@ -17,6 +17,7 @@ import { firstRunAction } from "./actions/first-run.js";
 import { healthAction } from "./actions/health.js";
 import { lifeAction } from "./actions/life.js";
 import { lifeOpsPauseAction } from "./actions/lifeops-pause.js";
+import { messageHandoffAction } from "./actions/message-handoff.js";
 import { passwordManagerAction } from "./actions/password-manager.js";
 import { paymentsAction } from "./actions/payments.js";
 import { profileAction } from "./actions/profile.js";
@@ -81,6 +82,7 @@ import { inboxTriageProvider } from "./providers/inbox-triage.js";
 import { lifeOpsProvider } from "./providers/lifeops.js";
 import { pendingPromptsProvider } from "./providers/pending-prompts.js";
 import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
+import { roomPolicyProvider } from "./providers/room-policy.js";
 import { websiteBlockerProvider } from "./providers/website-blocker.js";
 import { BrowserBridgePluginService } from "./service.js";
 import {
@@ -297,6 +299,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     firstRunAction,
     lifeAction,
     lifeOpsPauseAction,
+    messageHandoffAction,
     bookTravelAction,
     profileAction,
     relationshipAction,
@@ -318,6 +321,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     websiteBlockerProvider,
     appBlockerProvider,
     firstRunProvider,
+    roomPolicyProvider,
     lifeOpsProvider,
     pendingPromptsProvider,
     recentTaskStatesProvider,
@@ -582,6 +586,19 @@ export {
   type GlobalPauseStatus,
   type GlobalPauseWindow,
 } from "./lifeops/global-pause/store.js";
+export {
+  createHandoffStore,
+  describeResumeCondition,
+  evaluateResume,
+  type HandoffEnterOpts,
+  type HandoffStatus,
+  type HandoffStore,
+  type ResumeCondition,
+  type ResumeEvaluation,
+  type ResumeEvaluationInput,
+} from "./lifeops/handoff/store.js";
+export { messageHandoffAction } from "./actions/message-handoff.js";
+export { roomPolicyProvider } from "./providers/room-policy.js";
 export {
   createPendingPromptsStore,
   type PendingPromptsStore,
