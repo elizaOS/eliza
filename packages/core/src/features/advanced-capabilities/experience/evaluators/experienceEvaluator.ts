@@ -51,14 +51,6 @@ const EXPERIENCE_EXTRACTION_SCHEMA = {
 	},
 	required: ["experiences"],
 };
-const PASSIVE_ACTIONS = new Set([
-	"REPLY",
-	"NONE",
-	"NOACTION",
-	"IGNORE",
-	"WAIT",
-]);
-
 export const experienceEvaluator: Action = {
 	name: "EXPERIENCE_EVALUATOR",
 	similes: ["experience recorder", "learning evaluator", "self-reflection"],
@@ -73,42 +65,14 @@ export const experienceEvaluator: Action = {
 		message: Memory,
 		_state?: State,
 	): Promise<boolean> {
-		// Only run every 10 messages and only on agent messages
-		if (message.entityId !== runtime.agentId) {
-			return false;
-		}
-
-		const content = asRecord(message.content);
-		if (content && isSimpleReplyOnlyMessage(content)) {
-			return false;
-		}
-
-		if (content && hasNonPassiveAction(content)) {
-			logger.info(
-				"[experienceEvaluator] Triggering experience extraction after actionful agent turn",
-			);
-			return true;
-		}
-
-		// Check cooldown - only extract experiences every 25 messages to reduce token cost
+		if (message.entityId !== runtime.agentId) return false;
 		const lastExtractionKey = "experience-extraction:last-message-count";
 		const currentCount =
 			(await runtime.getCache<string>(lastExtractionKey)) || "0";
 		const messageCount = Number.parseInt(currentCount, 10);
 		const newMessageCount = messageCount + 1;
-
 		await runtime.setCache(lastExtractionKey, newMessageCount.toString());
-
-		// Trigger extraction every 25 messages (was 10 — reduced to cut LLM costs by ~60%)
-		const shouldExtract = newMessageCount % 25 === 0;
-
-		if (shouldExtract) {
-			logger.info(
-				`[experienceEvaluator] Triggering experience extraction after ${newMessageCount} messages`,
-			);
-		}
-
-		return shouldExtract;
+		return newMessageCount % 25 === 0;
 	},
 
 	async handler(
@@ -282,39 +246,6 @@ export const experienceEvaluator: Action = {
 		};
 	},
 };
-
-function readStringArray(value: unknown): string[] {
-	if (!Array.isArray(value)) {
-		return [];
-	}
-
-	return value.filter((item): item is string => typeof item === "string");
-}
-
-function normalizeActionName(name: string): string {
-	return name
-		.trim()
-		.toUpperCase()
-		.replace(/[^A-Z0-9]/g, "");
-}
-
-function hasNonPassiveAction(content: Record<string, unknown>): boolean {
-	const actions = readStringArray(content.actions).map(normalizeActionName);
-	return actions.some((action) => action && !PASSIVE_ACTIONS.has(action));
-}
-
-function isSimpleReplyOnlyMessage(content: Record<string, unknown>): boolean {
-	const conversationMode =
-		typeof content.conversationMode === "string"
-			? content.conversationMode.trim().toLowerCase()
-			: "";
-	if (conversationMode !== "simple") {
-		return false;
-	}
-
-	const actions = readStringArray(content.actions).map(normalizeActionName);
-	return actions.every((action) => !action || PASSIVE_ACTIONS.has(action));
-}
 
 function formatExistingExperiences(experiences: Experience[]): string {
 	if (experiences.length === 0) {
