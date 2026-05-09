@@ -329,20 +329,6 @@ async function probeCloudAgentReachable(
   }
 }
 
-function readCloudControlToken(): string | undefined {
-  if (typeof globalThis === "undefined") return undefined;
-  const globalToken = (
-    globalThis as typeof globalThis & {
-      __ELIZA_CLOUD_AUTH_TOKEN__?: unknown;
-    }
-  ).__ELIZA_CLOUD_AUTH_TOKEN__;
-  if (typeof globalToken === "string" && globalToken.trim()) {
-    return globalToken.trim();
-  }
-
-  return client.getRestAuthToken()?.trim() || undefined;
-}
-
 // TODO: replace with real onboarding artwork per runtime choice
 // const CHOICE_IMAGE_PATH: Record<RuntimeChoice, string> = {
 //   cloud: "app-heroes/agentDOD.png",
@@ -600,21 +586,16 @@ export function RuntimeGate() {
           label = launchRes.data.agentName;
         }
       } catch (err) {
-        const controlToken = readCloudControlToken();
-        if (controlToken?.startsWith("agent_")) {
-          accessToken = controlToken;
-        } else {
-          setError(
-            displayErrorMessage(
-              err,
-              t("runtimegate.cloudLaunchFailed", {
-                defaultValue: "Cloud agent launch failed. Please retry.",
-              }),
-            ),
-          );
-          setCloudStage("retry");
-          return;
-        }
+        setError(
+          displayErrorMessage(
+            err,
+            t("runtimegate.cloudLaunchFailed", {
+              defaultValue: "Cloud agent launch failed. Please retry.",
+            }),
+          ),
+        );
+        setCloudStage("retry");
+        return;
       }
 
       savePersistedActiveServer({

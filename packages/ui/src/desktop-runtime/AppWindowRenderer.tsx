@@ -9,7 +9,6 @@
  * The renderer never mounts the main shell (sidebars, header, chat panes).
  */
 
-import { InventoryView } from "@elizaos/app-wallet";
 import {
   type JSX,
   Suspense,
@@ -18,6 +17,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { listAppShellPages } from "../app-shell-registry";
 import {
   type AppLaunchResult,
   type AppRunSummary,
@@ -85,6 +85,17 @@ function AppWindowSuspense({
   );
 }
 
+function RegisteredWalletInventoryView(): JSX.Element {
+  const registration = listAppShellPages().find(
+    (entry) => entry.id === "wallet.inventory" || entry.path === "/inventory",
+  );
+  if (!registration) {
+    return <AppWindowError message="Wallet is not registered in this build." />;
+  }
+  const Component = registration.Component;
+  return <Component />;
+}
+
 /** Render a built-in tab component bare (no chat pane / sidebar). */
 function renderInternalToolTab(tab: Tab): JSX.Element | null {
   switch (tab) {
@@ -108,7 +119,7 @@ function renderInternalToolTab(tab: Tab): JSX.Element | null {
     case "advanced":
       return <FineTuningView />;
     case "inventory":
-      return <InventoryView />;
+      return <RegisteredWalletInventoryView />;
     case "tasks":
       return <TasksPageView />;
     case "chat":

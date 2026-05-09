@@ -99,7 +99,6 @@ function lazyNamedView<
   });
 }
 
-import { InventoryView } from "@elizaos/app-wallet";
 import { fetchWithCsrf } from "./api/csrf-client";
 import {
   type AppShellPageRegistration,
@@ -448,6 +447,21 @@ function DynamicPluginPage({ resolved }: { resolved: ResolvedDynamicPage }) {
   );
 }
 
+function WalletInventoryPage() {
+  const registration = listAppShellPages().find(
+    (entry) => entry.id === "wallet.inventory" || entry.path === "/inventory",
+  );
+  if (!registration) {
+    return (
+      <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
+        Wallet is not registered in this build.
+      </div>
+    );
+  }
+  const Component = registration.Component;
+  return <Component />;
+}
+
 function ViewRouter({
   onCharacterHeaderActionsChange,
 }: {
@@ -537,7 +551,7 @@ function ViewRouter({
             chatScope="page-wallet"
             pageScopedChatPaneProps={buildWalletPageScopedChatPaneProps()}
           >
-            <InventoryView />
+            <WalletInventoryPage />
           </TabScrollView>
         );
       case "connectors":
@@ -1075,7 +1089,7 @@ export function App() {
             main={
               <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                 <LazyViewBoundary>
-                  <InventoryView />
+                  <WalletInventoryPage />
                 </LazyViewBoundary>
               </div>
             }
