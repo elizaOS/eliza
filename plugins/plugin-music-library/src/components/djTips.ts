@@ -90,7 +90,7 @@ export async function trackDJTip(
     await runtime.createComponent(component);
   }
 
-  const stats = component.data as unknown as DJTipStats;
+  const stats = component.data as DJTipStats;
 
   // Add tip
   const tipWithRoom: DJTip = { ...tip, roomId };
@@ -131,7 +131,7 @@ export async function trackDJTip(
 
   await runtime.updateComponent({
     ...component,
-    data: stats as unknown as typeof component.data,
+    data: stats as typeof component.data,
   });
 
   logger.info(`Tracked DJ tip: ${tip.amount} ${tip.currency} from ${tip.from}`);
@@ -160,7 +160,7 @@ export async function getDJTipStats(
     };
   }
 
-  return component.data as unknown as DJTipStats;
+  return component.data as DJTipStats;
 }
 
 /**

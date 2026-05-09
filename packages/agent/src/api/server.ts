@@ -93,6 +93,7 @@ function isVaultConfigRef(value: string): boolean {
   return value.startsWith("vault://") && value.length > "vault://".length;
 }
 
+import { isStreamingDestinationConfigured } from "@elizaos/core";
 import { handleComputerUseRoutes } from "@elizaos/plugin-computeruse";
 import {
   handleCloudStatusRoutes,
@@ -107,7 +108,6 @@ import { applySignalQrOverride } from "@elizaos/plugin-signal";
 // WhatsApp route dispatch extracted to @elizaos/plugin-whatsapp setup-routes.ts (Plugin.routes).
 // applyWhatsAppQrOverride remains for plugin-discovery's QR override flow.
 import { applyWhatsAppQrOverride } from "@elizaos/plugin-whatsapp";
-import { isStreamingDestinationConfigured } from "@elizaos/core";
 import {
   type ElizaConfig,
   loadElizaConfig,

@@ -8,12 +8,12 @@ describe("Feishu message connector", () => {
 			registerMessageConnector: vi.fn(),
 			registerSendHandler: vi.fn(),
 			getRoom: vi.fn(),
-		} as unknown as IAgentRuntime;
+		} as IAgentRuntime;
 		const service = Object.create(FeishuService.prototype) as FeishuService;
 		const sendMessage = vi.fn();
-		(service as unknown as { client: unknown }).client = {};
+		(service as { client: unknown }).client = {};
 		(
-			service as unknown as {
+			service as {
 				messageManager: { sendMessage: typeof sendMessage };
 			}
 		).messageManager = { sendMessage };

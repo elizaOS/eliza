@@ -46,7 +46,7 @@ function createMockRuntime(
     getService() {
       return null;
     },
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 function skipIfAccessibilityPermissionMissing(

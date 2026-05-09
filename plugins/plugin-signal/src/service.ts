@@ -721,7 +721,7 @@ export class SignalService extends Service implements ISignalService {
           accountId,
           timestamp: result.timestamp,
         },
-      };
+      } as unknown as Memory["metadata"];
       return memory;
     };
 
@@ -860,8 +860,7 @@ export class SignalService extends Service implements ISignalService {
             ),
           reactHandler: (handlerRuntime, params) => {
             const channelId =
-              params.target?.channelId ??
-              ("channelId" in params ? params.channelId : undefined);
+              params.target?.channelId ?? ("channelId" in params ? params.channelId : undefined);
             const roomId =
               params.target?.roomId ?? ("roomId" in params ? params.roomId : undefined);
             return service.reactConnectorMessage(handlerRuntime, {

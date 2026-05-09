@@ -58,6 +58,15 @@ export {
   type WhatsAppTokenResolution,
   type WhatsAppTokenSource,
 } from "./accounts";
+export {
+  applyWhatsAppQrOverride,
+  handleWhatsAppRoute,
+  MAX_PAIRING_SESSIONS as WHATSAPP_MAX_PAIRING_SESSIONS,
+  type WhatsAppPairingEventLike,
+  type WhatsAppPairingSessionLike,
+  type WhatsAppRouteDeps,
+  type WhatsAppRouteState,
+} from "./api/whatsapp-routes";
 export { ClientFactory } from "./clients/factory";
 // Channel configuration types
 export type {
@@ -102,12 +111,3 @@ export {
 export { WhatsAppConnectorService } from "./runtime-service";
 export { stopAllPairingSessions, whatsappSetupRoutes } from "./setup-routes";
 export * from "./types";
-export {
-  applyWhatsAppQrOverride,
-  handleWhatsAppRoute,
-  MAX_PAIRING_SESSIONS as WHATSAPP_MAX_PAIRING_SESSIONS,
-  type WhatsAppPairingEventLike,
-  type WhatsAppPairingSessionLike,
-  type WhatsAppRouteDeps,
-  type WhatsAppRouteState,
-} from "./api/whatsapp-routes";

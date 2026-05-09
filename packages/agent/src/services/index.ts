@@ -1,3 +1,27 @@
+// Signal pairing helpers live in @elizaos/plugin-signal. Re-exported here
+// for backward compatibility with code that imports them from @elizaos/agent.
+export {
+  classifySignalPairingErrorStatus,
+  extractSignalCliProvisioningUrl,
+  parseSignalCliAccountsOutput,
+  type SignalPairingEvent,
+  type SignalPairingOptions,
+  SignalPairingSession,
+  type SignalPairingSnapshot,
+  type SignalPairingStatus,
+  sanitizeSignalAccountId,
+  signalAuthExists,
+  signalLogout,
+} from "@elizaos/plugin-signal";
+export {
+  sanitizeWhatsAppAccountId,
+  type WhatsAppPairingEvent,
+  type WhatsAppPairingOptions,
+  WhatsAppPairingSession,
+  type WhatsAppPairingStatus,
+  whatsappAuthExists,
+  whatsappLogout,
+} from "@elizaos/plugin-whatsapp";
 export * from "./agent-export.js";
 export * from "./app-manager.js";
 export * from "./app-session-gate.js";
@@ -43,21 +67,6 @@ export { ResearchTaskExecutor } from "./research-task-executor.js";
 export * from "./sandbox-engine.js";
 export * from "./sandbox-manager.js";
 export * from "./self-updater.js";
-// Signal pairing helpers live in @elizaos/plugin-signal. Re-exported here
-// for backward compatibility with code that imports them from @elizaos/agent.
-export {
-  classifySignalPairingErrorStatus,
-  extractSignalCliProvisioningUrl,
-  parseSignalCliAccountsOutput,
-  type SignalPairingEvent,
-  type SignalPairingOptions,
-  SignalPairingSession,
-  type SignalPairingSnapshot,
-  type SignalPairingStatus,
-  sanitizeSignalAccountId,
-  signalAuthExists,
-  signalLogout,
-} from "@elizaos/plugin-signal";
 export * from "./signing-policy.js";
 export * from "./skill-catalog-client.js";
 export * from "./skill-marketplace.js";
@@ -66,12 +75,3 @@ export * from "./task-executor.js";
 export * from "./tts-stream-bridge.js";
 export * from "./update-checker.js";
 export * from "./version-compat.js";
-export {
-  sanitizeWhatsAppAccountId,
-  type WhatsAppPairingEvent,
-  type WhatsAppPairingOptions,
-  WhatsAppPairingSession,
-  type WhatsAppPairingStatus,
-  whatsappAuthExists,
-  whatsappLogout,
-} from "@elizaos/plugin-whatsapp";

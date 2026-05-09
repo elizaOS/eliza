@@ -52,7 +52,7 @@ function getComputerUseService(
   runtime: IAgentRuntime,
 ): ComputerUseService | null {
   return (
-    (runtime.getService("computeruse") as unknown as ComputerUseService) ?? null
+    (runtime.getService("computeruse") as ComputerUseService) ?? null
   );
 }
 

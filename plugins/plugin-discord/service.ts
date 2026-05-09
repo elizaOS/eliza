@@ -1058,7 +1058,7 @@ export class DiscordService extends Service implements IDiscordService {
 			clientReadyPromise: state.clientReadyPromise,
 			accountToken: state.account.token,
 		};
-		return facade as unknown as DiscordService;
+		return facade as DiscordService;
 	}
 
 	private initializeAccount(account: ResolvedDiscordAccount): void {
@@ -1079,7 +1079,7 @@ export class DiscordService extends Service implements IDiscordService {
 		this.accountPool.set(state);
 		const facade = this.createAccountServiceFacade(state);
 		state.voiceManager = new VoiceManager(
-			facade as unknown as DiscordService,
+			facade as DiscordService,
 			this.runtime,
 		);
 		state.messageManager = new MessageManager(facade, this.runtime);

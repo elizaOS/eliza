@@ -18,7 +18,7 @@ export const farcasterWebhookRoutes: Route[] = [
     path: "/webhook",
     handler: async (req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime) => {
       try {
-        const webhookData = req.body as unknown as NeynarWebhookData;
+        const webhookData = req.body as NeynarWebhookData;
         const eventType = webhookData.type;
 
         const farcasterService = runtime?.getService?.(FARCASTER_SERVICE_NAME) as

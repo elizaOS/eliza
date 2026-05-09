@@ -121,7 +121,7 @@ export async function handleInteractionCreate(
 		type,
 		worldId: createUniqueUuid(service.runtime, serverId ?? roomId) as UUID,
 		worldName: interaction.guild?.name || undefined,
-		userId: interaction.user.id as unknown as UUID,
+		userId: interaction.user.id as UUID,
 		metadata: {
 			...buildDiscordWorldMetadata(service.runtime, interaction.guild?.ownerId),
 			accountId,

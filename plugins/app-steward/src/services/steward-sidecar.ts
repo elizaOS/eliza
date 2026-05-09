@@ -1,1 +1,1 @@
-export * from "@elizaos/app-core/services/steward-sidecar";
+export * from "@elizaos/app-core";

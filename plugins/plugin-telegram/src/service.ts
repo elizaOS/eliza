@@ -2258,22 +2258,24 @@ export class TelegramService extends Service {
             ),
           listRooms: (context) =>
             serviceInstance.listConnectorRooms(withContextAccount(context)),
-          fetchMessages: (context, params) =>
-            serviceInstance.fetchConnectorMessages(
+          fetchMessages: (context, params) => {
+            const readParams = params ?? {};
+            return serviceInstance.fetchConnectorMessages(
               withContextAccount(context),
               {
-                ...params,
+                ...readParams,
                 target:
                   normalizedAccountId &&
-                  params.target &&
-                  !(params.target as AccountScopedTargetInfo).accountId
+                  readParams.target &&
+                  !(readParams.target as AccountScopedTargetInfo).accountId
                     ? ({
-                        ...params.target,
+                        ...readParams.target,
                         accountId: normalizedAccountId,
                       } as TargetInfo)
-                    : params.target,
+                    : readParams.target,
               },
-            ),
+            );
+          },
           searchMessages: (context, params) =>
             serviceInstance.searchConnectorMessages(
               withContextAccount(context),
@@ -2304,11 +2306,17 @@ export class TelegramService extends Service {
               withContextAccount(context),
             ),
           getUser: async (handlerRuntime, params) => {
+            const userParams = params as {
+              entityId?: UUID | string;
+              userId?: UUID | string;
+              username?: string;
+              handle?: string;
+            };
             const entityId = String(
-              params.entityId ??
-                params.userId ??
-                params.username ??
-                params.handle ??
+              userParams.entityId ??
+                userParams.userId ??
+                userParams.username ??
+                userParams.handle ??
                 "",
             ).trim();
             if (!entityId) {

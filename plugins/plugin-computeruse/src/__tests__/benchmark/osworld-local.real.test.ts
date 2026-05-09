@@ -50,7 +50,7 @@ function createMockRuntime(): IAgentRuntime {
       return undefined;
     },
     getService: () => null,
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 describeIfDesktop("OSWorld local benchmark", () => {

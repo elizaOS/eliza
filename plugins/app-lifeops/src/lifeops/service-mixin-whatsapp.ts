@@ -7,10 +7,10 @@
 // or moving to a single composed interface — tracked as separate work.
 import fs from "node:fs";
 import path from "node:path";
-import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
+import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent";
 import { whatsappAuthExists } from "@elizaos/plugin-whatsapp";
 import type { Plugin } from "@elizaos/core";
-import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 

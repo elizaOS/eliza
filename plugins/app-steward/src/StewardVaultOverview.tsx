@@ -1,16 +1,16 @@
 import type {
   StewardBalanceResponse,
-  StewardStatusResponse,
   StewardTokenBalancesResponse,
   StewardWalletAddressesResponse,
   StewardWebhookEvent,
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
-} from "@elizaai/shared/contracts/wallet";
+} from "@elizaos/shared";
 import { Button } from "@elizaos/ui";
 import { Copy, RefreshCw, Shield } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getChainName, truncateAddress } from "./chain-utils";
+import type { StewardStatusResponse } from "./types/steward";
 
 interface StewardVaultOverviewProps {
   stewardStatus: StewardStatusResponse;

@@ -1974,6 +1974,95 @@ function getStage1PasswordManagerRepairPlan(args: {
 	};
 }
 
+function getStage1CheckinRepairPlan(args: {
+	message: Memory;
+	availableContexts: readonly ContextDefinition[];
+}): {
+	contexts: AgentContext[];
+	candidateActions: string[];
+	parentActionHints: string[];
+} | null {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	if (!text) {
+		return null;
+	}
+	const lower = text.toLowerCase();
+	const checkinIntent =
+		/\b(?:run|give|start|do|show|open)\b[\s\S]{0,80}\b(?:morning|night|daily|evening|bedtime)\s+check-?in\b/.test(
+			lower,
+		) ||
+		/\b(?:morning|night|daily|evening|bedtime)\s+check-?in\b[\s\S]{0,80}\b(?:now|today|tonight|please|for me)?\b/.test(
+			lower,
+		);
+	if (!checkinIntent) {
+		return null;
+	}
+	const nightIntent = /\b(?:night|evening|bedtime|tonight)\b/.test(lower);
+	const morningIntent = /\bmorning\b/.test(lower);
+	const contexts = (
+		["tasks", "health", "automation", "calendar", "email"] as AgentContext[]
+	).filter((context) =>
+		contextAvailableForRepair(context, args.availableContexts),
+	);
+	return {
+		contexts: contexts.length > 0 ? contexts : ["tasks"],
+		candidateActions: nightIntent
+			? ["night_checkin", "run_night_checkin", "lifeops_night_checkin"]
+			: morningIntent
+				? ["morning_checkin", "run_morning_checkin", "lifeops_morning_checkin"]
+				: ["run_checkin", "daily_checkin", "lifeops_checkin"],
+		parentActionHints: ["CHECKIN"],
+	};
+}
+
+function getStage1CalendlyRepairPlan(args: {
+	message: Memory;
+	availableContexts: readonly ContextDefinition[];
+}): {
+	contexts: AgentContext[];
+	candidateActions: string[];
+	parentActionHints: string[];
+} | null {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	if (!text) {
+		return null;
+	}
+	const lower = text.toLowerCase();
+	const calendlyIntent = /\bcalendly\b|api\.calendly\.com/u.test(lower);
+	if (!calendlyIntent) {
+		return null;
+	}
+	const availabilityIntent =
+		/\b(?:availability|available|open|slots?|times?)\b/u.test(lower);
+	const singleUseLinkIntent =
+		/\b(?:single[\s-]?use|one[\s-]?time|booking\s+link|book(?:ing)?\s+link|link)\b/u.test(
+			lower,
+		) && /\b(?:create|make|generate|get|give|send)\b/u.test(lower);
+	if (!availabilityIntent && !singleUseLinkIntent) {
+		return null;
+	}
+	const contexts = (
+		["calendar", "connectors", "tasks"] as AgentContext[]
+	).filter((context) =>
+		contextAvailableForRepair(context, args.availableContexts),
+	);
+	return {
+		contexts: contexts.length > 0 ? contexts : ["calendar"],
+		candidateActions: singleUseLinkIntent
+			? [
+					"calendly_single_use_link",
+					"calendly_create_single_use_link",
+					"calendar_calendly_single_use_link",
+				]
+			: [
+					"calendly_availability",
+					"calendar_check_calendly_availability",
+					"check_calendly_availability",
+				],
+		parentActionHints: ["CALENDAR"],
+	};
+}
+
 function getStage1KnownToolRepairPlan(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
@@ -1985,6 +2074,8 @@ function getStage1KnownToolRepairPlan(args: {
 	return (
 		getStage1ApprovalResolutionRepairPlan(args) ??
 		getStage1PasswordManagerRepairPlan(args) ??
+		getStage1CheckinRepairPlan(args) ??
+		getStage1CalendlyRepairPlan(args) ??
 		getStage1OwnerPreferenceRepairPlan(args)
 	);
 }
@@ -2049,6 +2140,30 @@ function repairStage1PlanForKnownToolRequests(args: {
 		appendStage1PlanHints(args.messageHandler, {
 			candidateActions: passwordManagerRepair.candidateActions,
 			parentActionHints: passwordManagerRepair.parentActionHints,
+		});
+	}
+
+	const checkinRepair = getStage1CheckinRepairPlan({
+		message: args.message,
+		availableContexts: args.availableContexts,
+	});
+	if (checkinRepair) {
+		replaceStage1PlanContexts(args.messageHandler, checkinRepair.contexts);
+		appendStage1PlanHints(args.messageHandler, {
+			candidateActions: checkinRepair.candidateActions,
+			parentActionHints: checkinRepair.parentActionHints,
+		});
+	}
+
+	const calendlyRepair = getStage1CalendlyRepairPlan({
+		message: args.message,
+		availableContexts: args.availableContexts,
+	});
+	if (calendlyRepair) {
+		replaceStage1PlanContexts(args.messageHandler, calendlyRepair.contexts);
+		appendStage1PlanHints(args.messageHandler, {
+			candidateActions: calendlyRepair.candidateActions,
+			parentActionHints: calendlyRepair.parentActionHints,
 		});
 	}
 

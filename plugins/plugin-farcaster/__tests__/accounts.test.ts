@@ -17,7 +17,7 @@ function runtime(settings: Record<string, string>): IAgentRuntime {
       error: vi.fn(),
     },
     getSetting: vi.fn((key: string) => settings[key] ?? null),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 describe("Farcaster account config", () => {
@@ -51,7 +51,7 @@ describe("Farcaster account config", () => {
   });
 
   it("keeps active managers keyed by agent and account", () => {
-    const service = new FarcasterService() as unknown as {
+    const service = new FarcasterService() as {
       agents: Map<string, unknown>;
       getActiveManagers: FarcasterService["getActiveManagers"];
       getManagerForAccount: FarcasterService["getManagerForAccount"];

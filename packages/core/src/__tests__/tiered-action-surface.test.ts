@@ -488,6 +488,131 @@ describe("v5 tiered action surface", () => {
 		expect(actions).toContain("PASSWORD_MANAGER");
 	});
 
+	it("repairs direct night check-ins away from the simple reply shortcut", async () => {
+		const checkin = makeAction({
+			name: "CHECKIN",
+			description:
+				"Run a LifeOps morning or night check-in now with todos, habits, goals, inbox, calendar, and recent signals.",
+			contexts: ["tasks", "health", "automation", "calendar", "email"],
+		});
+		const runtime = makeRuntime({
+			actions: [checkin],
+			responses: [
+				stage1Response({
+					contexts: ["simple"],
+					reply: "Here is a generic night check-in.",
+					requiresTool: false,
+					simple: true,
+				}),
+				{
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "checkin-1",
+								name: "CHECKIN",
+								arguments: { subaction: "night" },
+							},
+						],
+					},
+				},
+				{
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Night check-in completed.",
+						messageToUser: "Night check-in complete.",
+					}),
+				},
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("give me my night check-in"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const prompt = plannerUserContent(runtime);
+		expect(prompt).toMatch(/selected_contexts:[^\n]*tasks/);
+		expect(prompt).toContain('"parentActionHints":["CHECKIN"]');
+		const actions = availableActionsSection(runtime);
+		expect(actions).toContain("CHECKIN");
+	});
+
+	it("repairs Calendly link requests into the calendar context", async () => {
+		const calendly = makeAction({
+			name: "CALENDLY",
+			description: "Calendly event-type availability and single-use links.",
+			contexts: ["calendar", "contacts", "tasks"],
+		});
+		const calendar = makeAction({
+			name: "CALENDAR",
+			description:
+				"Calendar and Calendly scheduling surface, including single-use Calendly links.",
+			contexts: ["calendar", "connectors", "tasks"],
+			subActions: ["CALENDLY"],
+		});
+		const connector = makeAction({
+			name: "CONNECTOR",
+			description: "Connect or configure external accounts.",
+			contexts: ["connectors"],
+		});
+		const runtime = makeRuntime({
+			actions: [calendar, calendly, connector],
+			responses: [
+				stage1Response({
+					contexts: ["connectors"],
+					requiresTool: true,
+					candidateActions: ["calendly_create_single_use_link"],
+					parentActionHints: ["create_single_use_link"],
+				}),
+				{
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "calendly-1",
+								name: "CALENDLY",
+								arguments: {
+									subaction: "single_use_link",
+									eventTypeUri: "https://api.calendly.com/event_types/abc",
+								},
+							},
+						],
+					},
+				},
+				{
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Calendly link created.",
+						messageToUser: "Created link.",
+					}),
+				},
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(
+				"create a single-use Calendly booking link for https://api.calendly.com/event_types/abc",
+			),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const prompt = plannerUserContent(runtime);
+		expect(prompt).toMatch(/selected_contexts:[^\n]*calendar/);
+		expect(prompt).toContain(
+			'"parentActionHints":["create_single_use_link","CALENDAR"]',
+		);
+		const actions = availableActionsSection(runtime);
+		expect(actions).toContain("CALENDAR");
+		expect(actions).toContain("CALENDLY");
+	});
+
 	it("expands strong context matches into callable actions", async () => {
 		const createEvent = makeAction({
 			name: "CREATE_EVENT",

@@ -267,7 +267,7 @@ function outboundMemoryIdFor(runtime: IAgentRuntime, roomId: UUID): UUID {
 function getRegisteredSendHandlers(
 	runtime: IAgentRuntime,
 ): Map<string, unknown> | null {
-	const sendHandlers = (runtime as unknown as { sendHandlers?: unknown })
+	const sendHandlers = (runtime as { sendHandlers?: unknown })
 		.sendHandlers;
 	return sendHandlers instanceof Map ? sendHandlers : null;
 }

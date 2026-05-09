@@ -474,7 +474,7 @@ export class FarcasterCastService implements CastServiceInterface {
           },
           ...(cast.metadata ?? {}),
         },
-      } as unknown as Memory["metadata"],
+      } as Memory["metadata"],
     };
   }
 

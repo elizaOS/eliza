@@ -151,7 +151,7 @@ async function handlePause(
 ): Promise<ActionResult> {
   const musicService = runtime.getService(
     MUSIC_SERVICE_NAME,
-  ) as unknown as MusicService;
+  ) as MusicService;
   if (!musicService) {
     await callback({
       text: "Music service is not available.",
@@ -189,7 +189,7 @@ async function handleResume(
 ): Promise<ActionResult> {
   const musicService = runtime.getService(
     MUSIC_SERVICE_NAME,
-  ) as unknown as MusicService;
+  ) as MusicService;
   if (!musicService) {
     await callback({
       text: "Music service is not available.",
@@ -225,7 +225,7 @@ async function handleSkip(
 ): Promise<ActionResult> {
   const musicService = runtime.getService(
     MUSIC_SERVICE_NAME,
-  ) as unknown as MusicService;
+  ) as MusicService;
   if (!musicService) {
     await callback({
       text: "Music service is not available.",
@@ -286,7 +286,7 @@ async function handleStop(
 ): Promise<ActionResult> {
   const musicService = runtime.getService(
     MUSIC_SERVICE_NAME,
-  ) as unknown as MusicService;
+  ) as MusicService;
   if (!musicService) {
     await callback({
       text: "Music service is not available.",
@@ -415,7 +415,7 @@ async function handleQueue(
   }
 
   const requestUserId = message.entityId;
-  let musicService = runtime.getService("music") as unknown as MusicService;
+  let musicService = runtime.getService("music") as MusicService;
   if (!musicService) musicService = new MusicService(runtime);
 
   const queueLength = musicService.getQueueList(currentServerId).length;
@@ -539,7 +539,7 @@ export const playbackOp: Action = {
     if (!inferred) return true;
     const musicService = runtime.getService(
       MUSIC_SERVICE_NAME,
-    ) as unknown as MusicService;
+    ) as MusicService;
     if (!musicService) return inferred === "queue";
     if (inferred === "queue") return true;
     if (inferred === "pause") {

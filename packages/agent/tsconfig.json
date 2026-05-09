@@ -89,6 +89,16 @@
       "@elizaos/plugin-whatsapp/*": ["../../plugins/plugin-whatsapp/src/*"],
       "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
       "@elizaos/plugin-signal/*": ["../../plugins/plugin-signal/src/*"],
+      "@elizaos/plugin-google": ["../../plugins/plugin-google/src/index.ts"],
+      "@elizaos/plugin-google/*": ["../../plugins/plugin-google/src/*"],
+      "@elizaos/plugin-telegram": [
+        "../../plugins/plugin-telegram/src/index.ts"
+      ],
+      "@elizaos/plugin-telegram/*": ["../../plugins/plugin-telegram/src/*"],
+      "@elizaos/plugin-sql": [
+        "../../plugins/plugin-sql/typescript/index.node.ts"
+      ],
+      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/typescript/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/skills": ["../skills/src/index.ts"],

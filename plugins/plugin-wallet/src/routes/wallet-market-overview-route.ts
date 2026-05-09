@@ -1,5 +1,4 @@
 import type http from "node:http";
-import { fetchWithTimeoutGuard } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud";
 import type {
@@ -21,6 +20,66 @@ const POLYMARKET_MARKET_LIMIT = 10;
 const CACHE_CONTROL_VALUE = "public, max-age=60, stale-while-revalidate=180";
 const MARKET_PRICE_IDS = ["bitcoin", "ethereum", "solana"] as const;
 const MARKET_PRICE_ID_SET = new Set<string>(MARKET_PRICE_IDS);
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException
+    ? error.name === "AbortError" || error.name === "TimeoutError"
+    : error instanceof Error &&
+        (error.name === "AbortError" || error.name === "TimeoutError");
+}
+
+function createTimeoutError(message: string): Error {
+  const timeoutError = new Error(message);
+  timeoutError.name = "TimeoutError";
+  return timeoutError;
+}
+
+async function fetchWithTimeoutGuard(
+  input: string | URL,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const upstreamSignal = init.signal;
+  let timedOut = false;
+
+  const onAbort = () => {
+    controller.abort();
+  };
+
+  if (upstreamSignal) {
+    if (upstreamSignal.aborted) {
+      controller.abort();
+    } else {
+      upstreamSignal.addEventListener("abort", onAbort, { once: true });
+    }
+  }
+
+  const timeoutHandle = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (timedOut && isAbortError(error)) {
+      throw createTimeoutError(
+        `Upstream request timed out after ${timeoutMs}ms`,
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutHandle);
+    if (upstreamSignal) {
+      upstreamSignal.removeEventListener("abort", onAbort);
+    }
+  }
+}
+
 const COINGECKO_SOURCE = {
   providerId: "coingecko",
   providerName: "CoinGecko",

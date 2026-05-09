@@ -271,7 +271,7 @@ export class MessageManager {
     try {
       const pdfService = this.runtime.getService(
         ServiceType.PDF,
-      ) as PdfTextService | null;
+      ) as unknown as PdfTextService | null;
       if (!pdfService) {
         logger.warn(
           { src: "plugin:telegram", agentId: this.runtime.agentId },

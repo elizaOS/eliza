@@ -41,7 +41,7 @@ describe("google plugin", () => {
     const runtime = {
       getService: vi.fn(() => null),
       getSetting: vi.fn(() => undefined),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
 
     await googlePlugin.init?.({}, runtime);
 
@@ -456,7 +456,7 @@ describe("google plugin", () => {
     };
     const factory = {
       gmail: vi.fn(async () => fakeGmail),
-    } as unknown as GoogleApiClientFactory;
+    } as GoogleApiClientFactory;
     const client = new GoogleGmailClient(factory);
 
     const results = await client.searchMessages({
@@ -546,7 +546,7 @@ describe("google plugin", () => {
     };
     const factory = {
       gmail: vi.fn(async () => fakeGmail),
-    } as unknown as GoogleApiClientFactory;
+    } as GoogleApiClientFactory;
     const client = new GoogleGmailClient(factory);
 
     await expect(
@@ -767,7 +767,7 @@ describe("google plugin", () => {
       docs: vi.fn(async () => fakeDocs),
       sheets: vi.fn(async () => fakeSheets),
       meet: vi.fn(async () => fakeMeet),
-    } as unknown as GoogleApiClientFactory;
+    } as GoogleApiClientFactory;
 
     const calendarClient = new GoogleCalendarClient(factory);
     const driveClient = new GoogleDriveClient(factory);

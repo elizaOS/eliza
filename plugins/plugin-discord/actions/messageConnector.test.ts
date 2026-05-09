@@ -17,7 +17,7 @@ function createRuntime() {
 		getRoom: vi.fn(),
 		getEntityById: vi.fn(),
 		getRelationships: vi.fn().mockResolvedValue([]),
-	} as unknown as IAgentRuntime & {
+	} as IAgentRuntime & {
 		registerMessageConnector: ReturnType<typeof vi.fn>;
 		registerSendHandler: ReturnType<typeof vi.fn>;
 	};

@@ -96,7 +96,7 @@ function makeRuntime(formService: unknown, modelResponse?: string) {
       warn: vi.fn(),
       info: vi.fn(),
     },
-  } as unknown as IAgentRuntime & { useModel: typeof useModel };
+  } as IAgentRuntime & { useModel: typeof useModel };
 }
 
 const EMPTY_STATE: State = { values: {}, data: {}, text: "" };
@@ -322,7 +322,7 @@ describe("form_extractor evaluator", () => {
     const runtime = makeRuntime(formService);
     const message = makeMessage("my email is jane@example.com");
     const prepared = {
-      formService: formService as unknown as FormService,
+      formService: formService as FormService,
       session,
       form: signupForm,
       templateValues: {},
@@ -377,7 +377,7 @@ describe("form_extractor evaluator", () => {
     const runtime = makeRuntime(formService);
     const message = makeMessage("submit");
     const prepared = {
-      formService: formService as unknown as FormService,
+      formService: formService as FormService,
       session,
       form: signupForm,
       templateValues: {},

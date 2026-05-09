@@ -25,7 +25,7 @@ function createRuntime() {
     runtime: {
       getSearchCategory,
       registerSearchCategory,
-    } as unknown as IAgentRuntime,
+    } as IAgentRuntime,
   };
 }
 
