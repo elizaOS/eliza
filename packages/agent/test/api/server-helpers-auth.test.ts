@@ -1,6 +1,9 @@
 import type http from "node:http";
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyCors, CORS_ALLOWED_HEADERS } from "./server-helpers-auth";
+import {
+  applyCors,
+  CORS_ALLOWED_HEADERS,
+} from "../../src/api/server-helpers-auth";
 
 class HeaderCapture {
   readonly headers = new Map<string, string | number | readonly string[]>();

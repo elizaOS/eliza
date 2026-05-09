@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ElizaConfig } from "../config/config.js";
-import { buildCharacterFromConfig } from "./build-character-config.js";
+import type { ElizaConfig } from "../../src/config/config.js";
+import { buildCharacterFromConfig } from "../../src/runtime/build-character-config.js";
 
 describe("buildCharacterFromConfig capability hints (regression for #7362 Bug A)", () => {
   it("appends a task-manager capability hint to the system prompt so the agent does not deny CREATE_TASK / persistence", () => {

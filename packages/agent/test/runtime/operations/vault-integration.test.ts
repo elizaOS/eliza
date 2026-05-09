@@ -33,18 +33,18 @@ import {
   type TestVault,
 } from "@elizaos/vault";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { defaultClassifier } from "./classifier.js";
-import { HealthChecker } from "./health.js";
-import { DefaultRuntimeOperationManager } from "./manager.js";
-import { createHotStrategy } from "./reload-hot.js";
-import { FilesystemRuntimeOperationRepository } from "./repository.js";
+import { defaultClassifier } from "../../../src/runtime/operations/classifier.js";
+import { HealthChecker } from "../../../src/runtime/operations/health.js";
+import { DefaultRuntimeOperationManager } from "../../../src/runtime/operations/manager.js";
+import { createHotStrategy } from "../../../src/runtime/operations/reload-hot.js";
+import { FilesystemRuntimeOperationRepository } from "../../../src/runtime/operations/repository.js";
 import type {
   OperationIntent,
   ProviderSwitchIntent,
   ReloadContext,
   RuntimeOperation,
-} from "./types.js";
-import { resolveProviderApiKey, VaultResolveError } from "./vault-bridge.js";
+} from "../../../src/runtime/operations/types.js";
+import { resolveProviderApiKey, VaultResolveError } from "../../../src/runtime/operations/vault-bridge.js";
 
 let stateDir: string;
 let testVault: TestVault;

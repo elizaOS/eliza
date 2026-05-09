@@ -7,11 +7,8 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { estimateTokenCount } from "../runtime/prompt-optimization.js";
-import {
-  detectLocalInferenceCommandIntent,
-  generateChatResponse,
-} from "./chat-routes.js";
+import { estimateTokenCount } from "../../src/runtime/prompt-optimization.js";
+import { generateChatResponse } from "../../src/api/chat-routes.js";
 
 type RuntimeOverrides = Partial<AgentRuntime> & {
   messageService?: NonNullable<AgentRuntime["messageService"]>;
