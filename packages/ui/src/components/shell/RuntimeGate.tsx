@@ -53,6 +53,7 @@ import {
   isElizaOS,
   isIOS,
 } from "../../platform/init";
+import { useBranding } from "../../config/branding";
 import {
   ONBOARDING_PROVIDER_CATALOG,
   type OnboardingProviderOption,
@@ -1890,19 +1891,10 @@ function GateShell({
     >
       <div
         aria-hidden="true"
-        className="pointer-events-none fixed inset-0 overflow-hidden"
+        className="pointer-events-none absolute inset-0 overflow-hidden"
       >
-        {/* Theme-paired Milady zine backgrounds:
-            light → gold-on-cream collage (splash-bg.png)
-            dark  → gold-on-black collage (splash-bg-dark.png).
-            Use `object-contain` so the dense side panels of the collage
-            (I AM the effect, elizaOS runtime, etc.) aren't cropped. The
-            wrapper bg fills any letterbox area with a complementary brand
-            tone so it blends. */}
         <img
-          src={resolveAppAssetUrl(
-            lightMode ? "splash-bg.png" : "splash-bg-dark.png",
-          )}
+          src={resolveAppAssetUrl("splash-bg.png")}
           alt=""
           className="absolute inset-0 h-full w-full object-contain object-center"
         />
@@ -2050,6 +2042,7 @@ function WelcomeChooser({
   t,
 }: WelcomeChooserProps) {
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
+  const { appName } = useBranding();
 
   return (
     <div className="flex w-full flex-col items-center gap-6 text-center sm:gap-7">
@@ -2069,7 +2062,10 @@ function WelcomeChooser({
           }}
           className="text-3xl font-light uppercase tracking-tight text-white sm:text-4xl md:text-5xl"
         >
-          {t("runtimegate.welcomeTitle", { defaultValue: "Welcome to Milady" })}
+          {t("runtimegate.welcomeTitle", {
+            defaultValue: "Welcome to {{appName}}",
+            appName,
+          })}
         </h1>
         <p
           className="max-w-md text-sm leading-relaxed text-white/85 sm:text-base"
