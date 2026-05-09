@@ -107,8 +107,7 @@ const musicLibraryPlugin: Plugin = {
   ],
   actions: [musicLibraryAction],
   // Self-declared auto-enable: activate when any of the music service API
-  // keys are present. The hardcoded AUTH_PROVIDER_PLUGINS map still serves
-  // as fallback.
+  // keys are present. (Manifest-only auto-enable — see ./auto-enable.ts.)
   autoEnable: {
     envKeys: [
       "LASTFM_API_KEY",
