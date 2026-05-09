@@ -35,17 +35,32 @@ export const ngrokEnvSchema = z.object({
 
 export type NgrokConfig = z.infer<typeof ngrokEnvSchema>;
 
+/**
+ * Coerce a runtime setting (which may be string | number | true | undefined) to
+ * a string suitable for schema parsing. `true` and numeric values are stringified;
+ * `undefined` is returned as `undefined` so optional schema fields work.
+ */
+function settingToString(value: string | number | true | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  if (value === true) return 'true';
+  return String(value);
+}
+
 export async function validateNgrokConfig(runtime: IAgentRuntime): Promise<NgrokConfig> {
   try {
     elizaLogger.debug('Validating Ngrok configuration with runtime settings');
     const config = {
-      NGROK_AUTH_TOKEN: runtime.getSetting('NGROK_AUTH_TOKEN') || process.env.NGROK_AUTH_TOKEN,
-      NGROK_REGION: runtime.getSetting('NGROK_REGION') || process.env.NGROK_REGION,
-      NGROK_SUBDOMAIN: runtime.getSetting('NGROK_SUBDOMAIN') || process.env.NGROK_SUBDOMAIN,
-      NGROK_DOMAIN: runtime.getSetting('NGROK_DOMAIN') || process.env.NGROK_DOMAIN,
+      NGROK_AUTH_TOKEN:
+        settingToString(runtime.getSetting('NGROK_AUTH_TOKEN')) ?? process.env.NGROK_AUTH_TOKEN,
+      NGROK_REGION:
+        settingToString(runtime.getSetting('NGROK_REGION')) ?? process.env.NGROK_REGION,
+      NGROK_SUBDOMAIN:
+        settingToString(runtime.getSetting('NGROK_SUBDOMAIN')) ?? process.env.NGROK_SUBDOMAIN,
+      NGROK_DOMAIN:
+        settingToString(runtime.getSetting('NGROK_DOMAIN')) ?? process.env.NGROK_DOMAIN,
       NGROK_DEFAULT_PORT:
-        runtime.getSetting('NGROK_DEFAULT_PORT') ||
-        process.env.NGROK_DEFAULT_PORT ||
+        settingToString(runtime.getSetting('NGROK_DEFAULT_PORT')) ??
+        process.env.NGROK_DEFAULT_PORT ??
         process.env.NGROK_TUNNEL_PORT,
     };
 
@@ -55,7 +70,9 @@ export async function validateNgrokConfig(runtime: IAgentRuntime): Promise<Ngrok
     return validated;
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const errorMessages = error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('\n');
+      const errorMessages = error.issues
+        .map((e) => `${e.path.join('.')}: ${e.message}`)
+        .join('\n');
       elizaLogger.error('Configuration validation failed:', errorMessages);
       throw new Error(`Ngrok configuration validation failed:\n${errorMessages}`);
     }

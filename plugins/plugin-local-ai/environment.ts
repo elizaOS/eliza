@@ -50,7 +50,7 @@ export function validateConfig(): Config {
     const validatedConfig = configSchema.parse(configToParse);
 
     logger.info(
-      validatedConfig as unknown as Record<string, unknown>,
+      validatedConfig as Record<string, unknown>,
       "Using local AI configuration:"
     );
 

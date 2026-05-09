@@ -1,9 +1,8 @@
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
+import { readJsonBody as parseJsonBody, sendJson, setOwnerContact } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
-import { readJsonBody as parseJsonBody, sendJson } from "@elizaos/agent/api/http-helpers";
-import { setOwnerContact } from "@elizaos/agent/api/owner-contact-helpers";
 import type { WhatsAppPairingEvent } from "../services/whatsapp-pairing.js";
 
 export type WhatsAppPairingEventLike = WhatsAppPairingEvent;
@@ -51,7 +50,7 @@ export const MAX_PAIRING_SESSIONS = 10;
 
 async function readJsonBody<T = Record<string, unknown>>(
   req: IncomingMessage,
-  res: ServerResponse,
+  res: ServerResponse
 ): Promise<T | null> {
   return parseJsonBody(req, res, { maxBytes: MAX_BODY_BYTES });
 }
@@ -68,22 +67,19 @@ function resolveAuthScope(value: unknown): WhatsAppAuthScope {
   return value === "lifeops" ? "lifeops" : "platform";
 }
 
-function resolveSessionKey(
-  authScope: WhatsAppAuthScope,
-  accountId: string,
-): string {
+function resolveSessionKey(authScope: WhatsAppAuthScope, accountId: string): string {
   return `${authScope}:${accountId}`;
 }
 
 function resolveAuthDir(
   workspaceDir: string,
   accountId: string,
-  authScope: WhatsAppAuthScope,
+  authScope: WhatsAppAuthScope
 ): string {
   return path.join(
     workspaceDir,
     authScope === "lifeops" ? "lifeops-whatsapp-auth" : "whatsapp-auth",
-    accountId,
+    accountId
   );
 }
 
@@ -91,16 +87,13 @@ function authExistsForScope(
   state: WhatsAppRouteState,
   deps: WhatsAppRouteDeps,
   accountId: string,
-  authScope: WhatsAppAuthScope,
+  authScope: WhatsAppAuthScope
 ): boolean {
   if (authScope === "platform") {
     return deps.whatsappAuthExists(state.workspaceDir, accountId);
   }
   return fs.existsSync(
-    path.join(
-      resolveAuthDir(state.workspaceDir, accountId, authScope),
-      "creds.json",
-    ),
+    path.join(resolveAuthDir(state.workspaceDir, accountId, authScope), "creds.json")
   );
 }
 
@@ -110,26 +103,19 @@ export async function handleWhatsAppRoute(
   pathname: string,
   method: string,
   state: WhatsAppRouteState,
-  deps: WhatsAppRouteDeps,
+  deps: WhatsAppRouteDeps
 ): Promise<boolean> {
   if (!pathname.startsWith("/api/whatsapp")) return false;
 
   if (pathname === "/api/whatsapp/webhook" && method === "GET") {
-    const url = new URL(
-      req.url ?? "/",
-      `http://${req.headers.host ?? "localhost"}`,
-    );
+    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
     const mode = url.searchParams.get("hub.mode") ?? "";
     const token = url.searchParams.get("hub.verify_token") ?? "";
     const challenge = url.searchParams.get("hub.challenge") ?? "";
 
     const service = state.runtime?.getService("whatsapp") as
       | {
-          verifyWebhook?: (
-            mode: string,
-            token: string,
-            challenge: string,
-          ) => string | null;
+          verifyWebhook?: (mode: string, token: string, challenge: string) => string | null;
         }
       | null
       | undefined;
@@ -180,14 +166,13 @@ export async function handleWhatsAppRoute(
   if (method === "POST" && pathname === "/api/whatsapp/pair") {
     const body = await readJsonBody<WhatsAppAccountBody>(req, res);
     const authScope = resolveAuthScope(body?.authScope);
-    const configurePlugin =
-      authScope === "platform" && shouldConfigurePlugin(body);
+    const configurePlugin = authScope === "platform" && shouldConfigurePlugin(body);
     let accountId: string;
     try {
       accountId = deps.sanitizeAccountId(
         body && typeof body.accountId === "string" && body.accountId.trim()
           ? body.accountId.trim()
-          : "default",
+          : "default"
       );
     } catch (err) {
       json(res, { error: (err as Error).message }, 400);
@@ -196,16 +181,13 @@ export async function handleWhatsAppRoute(
     const sessionKey = resolveSessionKey(authScope, accountId);
 
     const isReplacing = state.whatsappPairingSessions.has(sessionKey);
-    if (
-      !isReplacing &&
-      state.whatsappPairingSessions.size >= MAX_PAIRING_SESSIONS
-    ) {
+    if (!isReplacing && state.whatsappPairingSessions.size >= MAX_PAIRING_SESSIONS) {
       json(
         res,
         {
           error: `Too many concurrent pairing sessions (max ${MAX_PAIRING_SESSIONS})`,
         },
-        429,
+        429
       );
       return true;
     }
@@ -224,9 +206,7 @@ export async function handleWhatsAppRoute(
           if (configurePlugin) {
             if (!state.config.connectors) state.config.connectors = {};
             state.config.connectors.whatsapp = {
-              ...((state.config.connectors.whatsapp as
-                | Record<string, unknown>
-                | undefined) ?? {}),
+              ...((state.config.connectors.whatsapp as Record<string, unknown> | undefined) ?? {}),
               authDir,
               enabled: true,
             };
@@ -235,13 +215,10 @@ export async function handleWhatsAppRoute(
 
           const phoneNumber = event.phoneNumber;
           configChanged =
-            setOwnerContact(
-              state.config as Parameters<typeof setOwnerContact>[0],
-              {
-                source: "whatsapp",
-                channelId: phoneNumber ?? undefined,
-              },
-            ) || configChanged;
+            setOwnerContact(state.config as Parameters<typeof setOwnerContact>[0], {
+              source: "whatsapp",
+              channelId: phoneNumber ?? undefined,
+            }) || configChanged;
 
           if (!configChanged) {
             return;
@@ -273,15 +250,10 @@ export async function handleWhatsAppRoute(
   }
 
   if (method === "GET" && pathname === "/api/whatsapp/status") {
-    const url = new URL(
-      req.url ?? "/",
-      `http://${req.headers.host ?? "localhost"}`,
-    );
+    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
     let accountId: string;
     try {
-      accountId = deps.sanitizeAccountId(
-        url.searchParams.get("accountId") || "default",
-      );
+      accountId = deps.sanitizeAccountId(url.searchParams.get("accountId") || "default");
     } catch (err) {
       json(res, { error: (err as Error).message }, 400);
       return true;
@@ -295,10 +267,7 @@ export async function handleWhatsAppRoute(
     let servicePhone: string | null = null;
     if (state.runtime) {
       try {
-        const waService = state.runtime.getService("whatsapp") as Record<
-          string,
-          unknown
-        > | null;
+        const waService = state.runtime.getService("whatsapp") as Record<string, unknown> | null;
         if (waService) {
           serviceConnected = Boolean(waService.connected);
           servicePhone = (waService.phoneNumber as string) ?? null;
@@ -327,7 +296,7 @@ export async function handleWhatsAppRoute(
       accountId = deps.sanitizeAccountId(
         body && typeof body.accountId === "string" && body.accountId.trim()
           ? body.accountId.trim()
-          : "default",
+          : "default"
       );
     } catch (err) {
       json(res, { error: (err as Error).message }, 400);
@@ -348,14 +317,13 @@ export async function handleWhatsAppRoute(
   if (method === "POST" && pathname === "/api/whatsapp/disconnect") {
     const body = await readJsonBody<WhatsAppAccountBody>(req, res);
     const authScope = resolveAuthScope(body?.authScope);
-    const configurePlugin =
-      authScope === "platform" && shouldConfigurePlugin(body);
+    const configurePlugin = authScope === "platform" && shouldConfigurePlugin(body);
     let accountId: string;
     try {
       accountId = deps.sanitizeAccountId(
         body && typeof body.accountId === "string" && body.accountId.trim()
           ? body.accountId.trim()
-          : "default",
+          : "default"
       );
     } catch (err) {
       json(res, { error: (err as Error).message }, 400);
@@ -380,10 +348,9 @@ export async function handleWhatsAppRoute(
       logger.warn(
         {
           accountId,
-          error:
-            logoutErr instanceof Error ? logoutErr.message : String(logoutErr),
+          error: logoutErr instanceof Error ? logoutErr.message : String(logoutErr),
         },
-        "[whatsapp] Logout failed, deleting auth files directly",
+        "[whatsapp] Logout failed, deleting auth files directly"
       );
       try {
         fs.rmSync(authDir, { recursive: true, force: true });
@@ -415,15 +382,10 @@ export function applyWhatsAppQrOverride(
     configured: boolean;
     qrConnected?: boolean;
   }[],
-  workspaceDir: string,
+  workspaceDir: string
 ): void {
   try {
-    const waCredsPath = path.join(
-      workspaceDir,
-      "whatsapp-auth",
-      "default",
-      "creds.json",
-    );
+    const waCredsPath = path.join(workspaceDir, "whatsapp-auth", "default", "creds.json");
     if (fs.existsSync(waCredsPath)) {
       const waPlugin = plugins.find((plugin) => plugin.id === "whatsapp");
       if (waPlugin) {

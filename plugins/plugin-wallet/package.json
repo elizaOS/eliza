@@ -25,6 +25,12 @@
         "default": "./dist/sdk/index.mjs"
       }
     },
+    "./wallet-action": {
+      "import": {
+        "types": "./dist/wallet-action.d.mts",
+        "default": "./dist/wallet-action.mjs"
+      }
+    },
     "./plugin": {
       "types": "./dist/routes/plugin.d.ts",
       "import": "./dist/routes/plugin.js",
@@ -41,9 +47,9 @@
       "default": "./dist/routes/*.js"
     },
     "./lib/*": {
-      "types": "./dist/lib/*.d.ts",
-      "import": "./dist/lib/*.js",
-      "default": "./dist/lib/*.js"
+      "types": "./dist/lib/*.d.mts",
+      "import": "./dist/lib/*.mjs",
+      "default": "./dist/lib/*.mjs"
     },
     "./package.json": "./package.json"
   },
@@ -64,7 +70,7 @@
     }
   },
   "scripts": {
-    "build": "tsdown --no-config src/index.ts --format esm --dts --clean -d dist && tsdown --no-config src/sdk/index.ts --format esm --dts --no-clean -d dist/sdk && mv dist/index-*.d.ts dist/index.d.ts 2>/dev/null || true && mv dist/sdk/index-*.d.ts dist/sdk/index.d.ts 2>/dev/null || true",
+    "build": "tsdown --no-config src/index.ts --format esm --dts --clean -d dist && tsdown --no-config src/sdk/index.ts --format esm --dts --no-clean -d dist/sdk && tsdown --no-config src/wallet-action.ts --format esm --dts --no-clean -d dist && tsdown --no-config src/lib/server-wallet-trade.ts --format esm --dts --no-clean -d dist/lib && mv dist/index-*.d.ts dist/index.d.ts 2>/dev/null || true && mv dist/sdk/index-*.d.ts dist/sdk/index.d.ts 2>/dev/null || true && mv dist/wallet-action-*.d.ts dist/wallet-action.d.ts 2>/dev/null || true && mv dist/lib/server-wallet-trade-*.d.ts dist/lib/server-wallet-trade.d.ts 2>/dev/null || true",
     "check": "tsc --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "test": "vitest run --config ./vitest.config.ts",
@@ -72,7 +78,6 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
@@ -82,6 +87,7 @@
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",
     "@elizaos/cloud-routing": "workspace:*",
+    "@noble/hashes": "^1.8.0",
     "@lifi/data-types": "^6.0.0",
     "@lifi/sdk": "^3.7.9",
     "@lifi/types": "^17.18.0",

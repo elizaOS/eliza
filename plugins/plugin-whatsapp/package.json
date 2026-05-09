@@ -42,7 +42,6 @@
     }
   },
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
     "@hapi/boom": "^10.0.1",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "axios": "^1.16.0",
@@ -51,6 +50,7 @@
     "qrcode-terminal": "^0.12.0"
   },
   "peerDependencies": {
+    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {

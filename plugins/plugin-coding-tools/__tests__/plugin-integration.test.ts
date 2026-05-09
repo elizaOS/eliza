@@ -99,8 +99,8 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
       getSetting: (key: string) =>
         key === "CODING_TOOLS_DISABLE" ? true : undefined,
       getService: () => null,
-    } as unknown as IAgentRuntime;
-    const message = { roomId: "r" } as unknown as Memory;
+    } as IAgentRuntime;
+    const message = { roomId: "r" } as Memory;
     for (const action of codingToolsPlugin.actions ?? []) {
       const ok = await action.validate!(runtime, message);
       expect(ok, action.name).toBe(true);
@@ -134,7 +134,7 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
       agentId: "00000000-0000-0000-0000-000000000000" as UUID,
       getSetting: (_key: string) => undefined,
       getService: (key: string) => services.get(key) ?? null,
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
 
     const fileState = await FileStateService.start(runtime);
     const sandbox = await SandboxService.start(runtime);
@@ -174,7 +174,7 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   }
 
   function makeMessage(): Memory {
-    return { roomId: "smoke-room" } as unknown as Memory;
+    return { roomId: "smoke-room" } as Memory;
   }
 
   it("READ returns a known file's contents", async () => {
@@ -239,7 +239,7 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
       ];
       const sys = candidates.find((p) => fs2.existsSync(p));
       if (!sys) return;
-      (rg as unknown as { rgPath: string }).rgPath = sys;
+      (rg as { rgPath: string }).rgPath = sys;
     }
     const action = findAction("GREP");
     const result = await action.handler!(runtime, makeMessage(), undefined, {

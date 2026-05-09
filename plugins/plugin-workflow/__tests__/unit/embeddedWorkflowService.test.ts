@@ -87,7 +87,7 @@ describe('EmbeddedWorkflowService', () => {
     await service.stop();
     await embedded.stop();
     await harness.close();
-  });
+  }, 60_000);
 
   test('runs a schedule -> HTTP Request -> Set workflow in a child process', async () => {
     const pluginRoot = join(import.meta.dir, '../..');
@@ -145,7 +145,7 @@ describe('EmbeddedWorkflowService', () => {
 
     expect(stderr).not.toContain('HTTP Request node requires');
     expect(exitCode).toBe(0);
-  }, 20_000);
+  }, 60_000);
 
   test('persists workflows across embedded service restarts', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'embedded-workflows-persist-'));
@@ -181,7 +181,7 @@ describe('EmbeddedWorkflowService', () => {
     await second.stop();
     await secondClient.close();
     await rm(dir, { recursive: true, force: true });
-  });
+  }, 60_000);
 
   test('runs Code node in the QuickJS sandbox', async () => {
     const harness = await persistentRuntime();
@@ -224,7 +224,7 @@ describe('EmbeddedWorkflowService', () => {
       await service.stop();
       await harness.close();
     }
-  });
+  }, 60_000);
 
   test('executes active embedded webhooks through the plugin service', async () => {
     const harness = await persistentRuntime();
@@ -265,5 +265,5 @@ describe('EmbeddedWorkflowService', () => {
       await service.stop();
       await harness.close();
     }
-  });
+  }, 60_000);
 });

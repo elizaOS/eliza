@@ -687,7 +687,7 @@ async function generateTextWithModel(
       systemPrompt,
     });
     return shouldReturnNativeResult(paramsWithNative)
-      ? (nativeResult as unknown as string)
+      ? (nativeResult as string)
       : nativeResult.text;
   }
 

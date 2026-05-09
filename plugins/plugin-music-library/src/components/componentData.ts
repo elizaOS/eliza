@@ -38,7 +38,7 @@ export function getStoredField<T>(
     return null;
   }
 
-  return value as unknown as T;
+  return value as T;
 }
 
 export function createStoredField(

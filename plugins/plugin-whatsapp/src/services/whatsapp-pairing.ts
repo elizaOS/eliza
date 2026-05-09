@@ -18,7 +18,7 @@ export function sanitizeAccountId(raw: string): string {
   const cleaned = raw.replace(/[^a-zA-Z0-9_-]/g, "");
   if (!cleaned || cleaned !== raw) {
     throw new Error(
-      `Invalid accountId: must only contain alphanumeric characters, dashes, and underscores`,
+      `Invalid accountId: must only contain alphanumeric characters, dashes, and underscores`
     );
   }
   return cleaned;
@@ -50,9 +50,7 @@ export interface WhatsAppPairingOptions {
 }
 
 export class WhatsAppPairingSession {
-  private socket: ReturnType<
-    typeof import("@whiskeysockets/baileys").default
-  > | null = null;
+  private socket: ReturnType<typeof import("@whiskeysockets/baileys").default> | null = null;
   private status: WhatsAppPairingStatus = "idle";
   private options: WhatsAppPairingOptions;
   private qrAttempts = 0;
@@ -68,19 +66,13 @@ export class WhatsAppPairingSession {
 
     const baileys = await import("@whiskeysockets/baileys");
     const makeWASocket = baileys.default;
-    const {
-      useMultiFileAuthState,
-      fetchLatestBaileysVersion,
-      DisconnectReason,
-    } = baileys;
+    const { useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } = baileys;
     const QRCode = (await import("qrcode")).default;
     const { Boom } = await import("@hapi/boom");
 
     fs.mkdirSync(this.options.authDir, { recursive: true });
 
-    const { state, saveCreds } = await useMultiFileAuthState(
-      this.options.authDir,
-    );
+    const { state, saveCreds } = await useMultiFileAuthState(this.options.authDir);
     const { version } = await fetchLatestBaileysVersion();
 
     const pino = (await import("pino")).default;
@@ -102,7 +94,7 @@ export class WhatsAppPairingSession {
       if (qr) {
         this.qrAttempts++;
         coreLogger.info(
-          `${LOG_PREFIX} QR code received (attempt ${this.qrAttempts}/${this.MAX_QR_ATTEMPTS})`,
+          `${LOG_PREFIX} QR code received (attempt ${this.qrAttempts}/${this.MAX_QR_ATTEMPTS})`
         );
         if (this.qrAttempts > this.MAX_QR_ATTEMPTS) {
           this.setStatus("timeout");
@@ -130,10 +122,9 @@ export class WhatsAppPairingSession {
       }
 
       if (connection === "close") {
-        const statusCode = (lastDisconnect?.error as InstanceType<typeof Boom>)
-          ?.output?.statusCode;
+        const statusCode = (lastDisconnect?.error as InstanceType<typeof Boom>)?.output?.statusCode;
         coreLogger.info(
-          `${LOG_PREFIX} Connection closed, statusCode=${statusCode}, status=${this.status}`,
+          `${LOG_PREFIX} Connection closed, statusCode=${statusCode}, status=${this.status}`
         );
         if (statusCode === DisconnectReason.loggedOut) {
           this.setStatus("disconnected");
@@ -143,9 +134,7 @@ export class WhatsAppPairingSession {
           statusCode === DisconnectReason.connectionClosed ||
           statusCode === DisconnectReason.connectionReplaced
         ) {
-          coreLogger.info(
-            `${LOG_PREFIX} Restarting pairing after transient close...`,
-          );
+          coreLogger.info(`${LOG_PREFIX} Restarting pairing after transient close...`);
           this.socket = null;
           this.qrAttempts = 0;
           this.restartTimer = setTimeout(() => {
@@ -202,23 +191,12 @@ export class WhatsAppPairingSession {
   }
 }
 
-export function whatsappAuthExists(
-  workspaceDir: string,
-  accountId = "default",
-): boolean {
-  const credsPath = path.join(
-    workspaceDir,
-    "whatsapp-auth",
-    accountId,
-    "creds.json",
-  );
+export function whatsappAuthExists(workspaceDir: string, accountId = "default"): boolean {
+  const credsPath = path.join(workspaceDir, "whatsapp-auth", accountId, "creds.json");
   return fs.existsSync(credsPath);
 }
 
-export async function whatsappLogout(
-  workspaceDir: string,
-  accountId = "default",
-): Promise<void> {
+export async function whatsappLogout(workspaceDir: string, accountId = "default"): Promise<void> {
   const authDir = path.join(workspaceDir, "whatsapp-auth", accountId);
   const credsPath = path.join(authDir, "creds.json");
 

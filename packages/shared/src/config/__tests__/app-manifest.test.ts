@@ -125,7 +125,9 @@ describe("filterCandidatesByAppManifest", () => {
 
 describe("applyAppManifestDefaults", () => {
   it("does nothing when manifest is null", () => {
-    const config: { plugins?: { entries?: Record<string, { enabled?: boolean }> } } = {};
+    const config: {
+      plugins?: { entries?: Record<string, { enabled?: boolean }> };
+    } = {};
     expect(applyAppManifestDefaults(config, null)).toEqual([]);
     expect(config.plugins?.entries).toBeUndefined();
   });
@@ -136,7 +138,9 @@ describe("applyAppManifestDefaults", () => {
   });
 
   it("populates entries from defaults", () => {
-    const config: { plugins?: { entries?: Record<string, { enabled?: boolean }> } } = {};
+    const config: {
+      plugins?: { entries?: Record<string, { enabled?: boolean }> };
+    } = {};
     const applied = applyAppManifestDefaults(config, {
       defaults: { wallet: { enabled: false }, anthropic: { enabled: true } },
     });
@@ -158,7 +162,9 @@ describe("applyAppManifestDefaults", () => {
   });
 
   it("creates plugins.entries when missing", () => {
-    const config: { plugins?: { entries?: Record<string, { enabled?: boolean }> } } = {};
+    const config: {
+      plugins?: { entries?: Record<string, { enabled?: boolean }> };
+    } = {};
     applyAppManifestDefaults(config, {
       defaults: { x: { enabled: true } },
     });

@@ -652,7 +652,7 @@ export class MessageManager {
 				worldId: createUniqueUuid(this.runtime, messageServerId ?? roomId),
 				worldName: message.guild?.name,
 				// Preserve the raw Discord user id in source metadata for role and allowlist checks.
-				userId: message.author.id as unknown as UUID,
+				userId: message.author.id as UUID,
 				metadata: {
 					...buildDiscordWorldMetadata(
 						this.runtime,

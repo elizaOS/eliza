@@ -475,7 +475,7 @@ export async function buildMemoryFromMessage(
 				: undefined,
 			...(options?.extraContent ? options.extraContent : {}),
 		},
-		metadata: metadata as unknown as Memory["metadata"],
+		metadata: metadata as Memory["metadata"],
 		createdAt: message.createdTimestamp ?? Date.now(),
 		worldId,
 	};

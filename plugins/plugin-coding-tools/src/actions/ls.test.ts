@@ -24,7 +24,7 @@ async function buildRuntime(): Promise<RuntimeBundle> {
   const stub = {
     getSetting: (key: string) => settings[key],
     getService: <T>(_type: string): T | null => null,
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 
   const sandbox = await SandboxService.start(stub);
   const session = await SessionCwdService.start(stub);
@@ -33,13 +33,13 @@ async function buildRuntime(): Promise<RuntimeBundle> {
   const runtime = {
     getSetting: (key: string) => settings[key],
     getService: <T>(serviceType: string): T | null => {
-      if (serviceType === SANDBOX_SERVICE) return sandbox as unknown as T;
-      if (serviceType === SESSION_CWD_SERVICE) return session as unknown as T;
+      if (serviceType === SANDBOX_SERVICE) return sandbox as T;
+      if (serviceType === SESSION_CWD_SERVICE) return session as T;
       return null;
     },
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 
-  const message = { roomId: "test-room" } as unknown as Memory;
+  const message = { roomId: "test-room" } as Memory;
   return { runtime, message };
 }
 

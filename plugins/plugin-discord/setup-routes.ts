@@ -220,7 +220,7 @@ async function handleChannels(
 	}
 
 	const url = new URL(
-		(req as unknown as { url?: string }).url ?? "/api/discord-local/channels",
+		(req as { url?: string }).url ?? "/api/discord-local/channels",
 		"http://localhost",
 	);
 	const guildId = url.searchParams.get("guildId")?.trim() ?? "";

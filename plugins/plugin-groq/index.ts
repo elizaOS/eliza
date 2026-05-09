@@ -541,7 +541,7 @@ async function handleTextModel(
   // `(runtime, params) => Promise<string | TextStreamResult>`. The runtime
   // unwraps the native shape via `useModel` consumers that pass `tools` /
   // `messages` / `responseSchema` / `toolChoice`.
-  return result as unknown as string;
+  return result as string;
 }
 
 function getTextModelForType(runtime: IAgentRuntime, modelType: string): string {
@@ -649,13 +649,13 @@ export const groqPlugin: Plugin = {
 
       const hasBuffer =
         typeof Buffer !== "undefined" &&
-        typeof (Buffer as unknown as { isBuffer: (v: unknown) => boolean }).isBuffer === "function";
+        typeof (Buffer as { isBuffer: (v: unknown) => boolean }).isBuffer === "function";
 
       const audioBuffer: Buffer =
         typeof params === "string"
           ? Buffer.from(params, "base64")
           : hasBuffer &&
-              (Buffer as unknown as { isBuffer: (v: unknown) => boolean }).isBuffer(params)
+              (Buffer as { isBuffer: (v: unknown) => boolean }).isBuffer(params)
             ? (params as Buffer)
             : typeof params === "object" && params !== null && hasAudioData(params)
               ? Buffer.from((params as AudioDataShape).audioData)

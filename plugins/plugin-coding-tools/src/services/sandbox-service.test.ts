@@ -9,7 +9,7 @@ function mockRuntime(settings: Record<string, unknown> = {}): IAgentRuntime {
     agentId: "00000000-0000-0000-0000-000000000000",
     getSetting: (key: string) => settings[key],
     getService: () => null,
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 describe("SandboxService default blocklist", () => {

@@ -36,7 +36,7 @@ function runtime(settings: Record<string, string | undefined> = {}): IAgentRunti
     },
     getSetting: (key: string) => merged[key],
     emitEvent: vi.fn(),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 interface CapturedRequest {

@@ -326,7 +326,7 @@ export class CloudBridgeService extends Service {
     if (!conn) {
       // Pre-register handler before connection is established
       conn = {
-        ws: null as unknown as WebSocket,
+        ws: null as WebSocket,
         state: "disconnected",
         connectedAt: null,
         lastHeartbeat: null,

@@ -16,7 +16,7 @@ function createRuntime() {
   return {
     categories,
     registerSearchCategory,
-    runtime: { getSearchCategory, registerSearchCategory } as unknown as IAgentRuntime,
+    runtime: { getSearchCategory, registerSearchCategory } as IAgentRuntime,
   };
 }
 

@@ -101,7 +101,7 @@ export class McpService extends Service {
     if (rawSettings && typeof rawSettings === "object" && !Array.isArray(rawSettings)) {
       const parsed = rawSettings as Record<string, unknown>;
       if ("servers" in parsed && typeof parsed.servers === "object" && parsed.servers !== null) {
-        settings = parsed as unknown as McpSettings;
+        settings = parsed as McpSettings;
       }
     }
 
@@ -118,7 +118,7 @@ export class McpService extends Service {
           typeof characterMcpSettings === "object" &&
           "servers" in characterMcpSettings
         ) {
-          settings = characterMcpSettings as unknown as McpSettings;
+          settings = characterMcpSettings as McpSettings;
         }
       }
     }

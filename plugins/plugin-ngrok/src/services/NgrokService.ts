@@ -1,11 +1,3 @@
-// TODO(ngrok-port): This file was ported from eliza-self plugin-ngrok and has
-// API drift against the current @elizaos/core: TunnelConfig.region/.subdomain
-// no longer typed here, runtime.getSetting() now returns string|number|true,
-// ActionResult requires `success`, runtime.useModel() params shape changed,
-// ZodError uses `.issues` (zod v4) not `.errors`, and getService<T>() requires
-// T extends Service. Build is currently broken; needs targeted patches across
-// services/, actions/, environment.ts, and index.ts.
-
 import { elizaLogger, type IAgentRuntime, Service } from '@elizaos/core';
 import type { ITunnelService, TunnelStatus } from '@elizaos/plugin-tunnel';
 
@@ -14,6 +6,13 @@ interface TunnelConfig {
   authToken?: string;
   region?: string;
   subdomain?: string;
+}
+
+/** Coerce runtime.getSetting() (string | number | true | undefined) to string. */
+function settingString(value: string | number | true | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  if (value === true) return 'true';
+  return String(value);
 }
 
 import { type ChildProcess, spawn } from 'node:child_process';
@@ -34,16 +33,14 @@ export class NgrokService extends Service implements ITunnelService {
   private lastStartTime = 0;
   private tunnelConfig: TunnelConfig;
 
-  constructor(runtime: IAgentRuntime) {
-    super();
-    this.runtime = runtime;
+  constructor(runtime?: IAgentRuntime) {
+    super(runtime);
     this.tunnelConfig = {
       provider: 'ngrok',
-      authToken: runtime.getSetting('NGROK_AUTH_TOKEN') || process.env.NGROK_AUTH_TOKEN,
+      authToken:
+        settingString(runtime?.getSetting('NGROK_AUTH_TOKEN')) ?? process.env.NGROK_AUTH_TOKEN,
     };
   }
-
-  protected runtime: IAgentRuntime;
 
   async initialize(): Promise<void> {
     elizaLogger.info('🚇 Initializing Ngrok tunnel service...');
@@ -55,8 +52,8 @@ export class NgrokService extends Service implements ITunnelService {
     }
 
     const authToken =
-      this.tunnelConfig.authToken ||
-      this.runtime.getSetting('NGROK_AUTH_TOKEN') ||
+      this.tunnelConfig.authToken ??
+      settingString(this.runtime.getSetting('NGROK_AUTH_TOKEN')) ??
       process.env.NGROK_AUTH_TOKEN;
 
     if (authToken) {
@@ -67,15 +64,10 @@ export class NgrokService extends Service implements ITunnelService {
     }
   }
 
-  static async start(runtime: IAgentRuntime, _config?: TunnelConfig): Promise<Service> {
+  static override async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new NgrokService(runtime);
     await service.start();
     return service;
-  }
-
-  static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = new NgrokService(runtime);
-    return service.stop();
   }
 
   // Base Service lifecycle methods
@@ -175,11 +167,13 @@ export class NgrokService extends Service implements ITunnelService {
       }
 
       // Check for domain configuration
-      const domain = this.runtime.getSetting('NGROK_DOMAIN') || process.env.NGROK_DOMAIN;
-      const useRandomSubdomain = this.runtime.getSetting('NGROK_USE_RANDOM_SUBDOMAIN') === 'true';
+      const domain =
+        settingString(this.runtime.getSetting('NGROK_DOMAIN')) ?? process.env.NGROK_DOMAIN;
+      const useRandomSubdomain =
+        settingString(this.runtime.getSetting('NGROK_USE_RANDOM_SUBDOMAIN')) === 'true';
 
       if (domain && !useRandomSubdomain) {
-        args.push('--domain', domain as string);
+        args.push('--domain', domain);
         elizaLogger.info(`Using ngrok domain: ${domain}`);
       } else if (this.tunnelConfig.subdomain && !useRandomSubdomain) {
         // Only use subdomain if explicitly configured and not in test mode
@@ -196,7 +190,7 @@ export class NgrokService extends Service implements ITunnelService {
 
       this.ngrokProcess.on('error', (error) => {
         errorOccurred = true;
-        elizaLogger.error('Failed to start ngrok:', error);
+        elizaLogger.error(`Failed to start ngrok: ${error.message}`);
         reject(new Error(`Failed to start ngrok: ${error.message}`));
       });
 
@@ -380,13 +374,14 @@ export class NgrokService extends Service implements ITunnelService {
                 resolve(null);
               }
             } catch (error) {
-              elizaLogger.error('Failed to parse ngrok API response:', error);
+              const msg = error instanceof Error ? error.message : String(error);
+              elizaLogger.error(`Failed to parse ngrok API response: ${msg}`);
               resolve(null);
             }
           });
         })
         .on('error', (error) => {
-          elizaLogger.error('Failed to connect to ngrok API:', error);
+          elizaLogger.error(`Failed to connect to ngrok API: ${error.message}`);
           resolve(null);
         });
     });

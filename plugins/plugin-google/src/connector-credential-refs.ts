@@ -276,7 +276,7 @@ function resolveCredentialRefWriters(
   const candidates = [
     manager?.getStorage?.(),
     getService(runtime, CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE),
-    (runtime as unknown as { adapter?: unknown }).adapter,
+    (runtime as { adapter?: unknown }).adapter,
   ].filter(Boolean);
 
   const writers: CredentialRefWriter[] = [];

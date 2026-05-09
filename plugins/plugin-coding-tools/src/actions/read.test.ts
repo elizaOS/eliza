@@ -172,7 +172,7 @@ describe("READ", () => {
   it("fails when roomId is missing", async () => {
     const result = await readAction.handler?.(
       env.runtime,
-      {} as unknown as typeof env.message,
+      {} as typeof env.message,
       undefined,
       { parameters: { file_path: path.join(env.tmpDir, "any.txt") } },
     );

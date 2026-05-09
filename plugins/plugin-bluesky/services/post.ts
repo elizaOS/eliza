@@ -210,7 +210,7 @@ export class BlueSkyPostService {
 					likeCount: post.likeCount,
 					quoteCount: post.quoteCount,
 				},
-			} as unknown as Memory["metadata"],
+			} as Memory["metadata"],
 		};
 	}
 

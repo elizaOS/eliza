@@ -42,11 +42,27 @@
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/agent/*": ["../agent/src/*"],
       "@elizaos/plugin-elizacloud": [
-        "../../plugins/plugin-elizacloud/dist/index.node.d.ts"
+        "../../plugins/plugin-elizacloud/src/index.node.ts"
       ],
-      "@elizaos/plugin-elizacloud/*": [
-        "../../plugins/plugin-elizacloud/dist/*"
+      "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
+      "@elizaos/plugin-computeruse": [
+        "../../plugins/plugin-computeruse/src/index.ts"
       ],
+      "@elizaos/plugin-computeruse/*": [
+        "../../plugins/plugin-computeruse/src/*"
+      ],
+      "@elizaos/plugin-whatsapp": [
+        "../../plugins/plugin-whatsapp/src/index.ts"
+      ],
+      "@elizaos/plugin-whatsapp/*": ["../../plugins/plugin-whatsapp/src/*"],
+      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+      "@elizaos/plugin-signal/*": ["../../plugins/plugin-signal/src/*"],
+      "@elizaos/plugin-google": ["../../plugins/plugin-google/src/index.ts"],
+      "@elizaos/plugin-google/*": ["../../plugins/plugin-google/src/*"],
+      "@elizaos/plugin-telegram": [
+        "../../plugins/plugin-telegram/src/index.ts"
+      ],
+      "@elizaos/plugin-telegram/*": ["../../plugins/plugin-telegram/src/*"],
       "@elizaos/plugin-sql": [
         "../../plugins/plugin-sql/typescript/index.node.ts"
       ],

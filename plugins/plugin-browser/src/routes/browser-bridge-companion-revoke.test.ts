@@ -37,7 +37,7 @@ function createContext(args: {
     agentId: "agent-1",
     getService: (serviceType: string) =>
       serviceType === BROWSER_BRIDGE_ROUTE_SERVICE_TYPE ? args.service : null,
-  } as unknown as AgentRuntime;
+  } as AgentRuntime;
   return {
     req: {
       headers: {},

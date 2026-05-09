@@ -12,7 +12,7 @@ function createRuntime() {
       };
       return settings[key] ?? null;
     }),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 afterEach(() => {
@@ -51,7 +51,7 @@ describe("Groq native text plumbing", () => {
       tools,
     })) as Record<string, unknown>;
 
-    const firstCall = generateText.mock.calls[0] as unknown as [Record<string, unknown>];
+    const firstCall = generateText.mock.calls[0] as [Record<string, unknown>];
     const call = firstCall[0];
     expect(call.tools).toBe(tools);
     expect(result).toMatchObject({

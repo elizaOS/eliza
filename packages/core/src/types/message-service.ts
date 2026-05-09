@@ -80,11 +80,7 @@ export type ShouldRespondModelType =
 	| typeof ModelType.TEXT_LARGE
 	| typeof ModelType.TEXT_MEGA
 	| typeof ModelType.RESPONSE_HANDLER;
-export type MessageProcessingMode =
-	| "simple"
-	| "actions"
-	| "none"
-	| "blocked";
+export type MessageProcessingMode = "simple" | "actions" | "none" | "blocked";
 
 /**
  * Core interface for message handling service.

@@ -10,9 +10,9 @@ describe("Matrix message connector", () => {
       getSetting: vi.fn((key: string) => (key === "MATRIX_DEFAULT_ACCOUNT_ID" ? "work" : null)),
       character: { settings: {} },
       getRoom: vi.fn(),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     const service = Object.create(MatrixService.prototype) as MatrixService;
-    (service as unknown as { settings: { accountId: string } }).settings = { accountId: "work" };
+    (service as { settings: { accountId: string } }).settings = { accountId: "work" };
     const sendMessageSpy = vi
       .spyOn(service, "sendMessage")
       .mockResolvedValue({ success: true, roomId: "!room:matrix.org" });
@@ -49,7 +49,7 @@ describe("Matrix message connector", () => {
       getSetting: vi.fn(),
       character: { settings: {} },
       getRoom: vi.fn(),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     const service = Object.create(MatrixService.prototype) as MatrixService;
     const states = new Map([
       [
@@ -73,8 +73,8 @@ describe("Matrix message connector", () => {
         },
       ],
     ]);
-    (service as unknown as { states: typeof states; defaultAccountId: string }).states = states;
-    (service as unknown as { states: typeof states; defaultAccountId: string }).defaultAccountId =
+    (service as { states: typeof states; defaultAccountId: string }).states = states;
+    (service as { states: typeof states; defaultAccountId: string }).defaultAccountId =
       "work";
     const sendMessageSpy = vi
       .spyOn(service, "sendMessage")
