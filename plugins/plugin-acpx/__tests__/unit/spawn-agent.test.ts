@@ -9,6 +9,10 @@ import {
 } from "../../src/test-utils/action-test-utils.js";
 
 describe("SPAWN_AGENT", () => {
+  it("describes broad task-agent work including media and file assets", () => {
+    expect(spawnAgentAction.description).toContain("media/file asset work");
+  });
+
   it("validates explicit payload and rejects missing service", async () => {
     expect(
       await spawnAgentAction.validate(

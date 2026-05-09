@@ -41,6 +41,7 @@ import {
   queryLogsAction,
 } from "../actions/logs.js";
 import { manageTasksAction } from "../actions/manage-tasks.js";
+import { mediaActions } from "../actions/media.js";
 import {
   createMemoryAction,
   editMemoryAction,
@@ -294,6 +295,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       launchpadLaunchAction,
       readChannelAction,
       searchConversationsAction,
+      ...mediaActions,
       searchEntityAction,
       linkEntityAction,
       readEntityAction,

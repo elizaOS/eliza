@@ -34,7 +34,7 @@ export const spawnAgentAction = {
     "CREATE_AGENT",
   ],
   description:
-    "Spawn a specific task agent inside an existing workspace for open-ended coding, research, planning, testing, documentation, or async repo work. Returns a session ID for follow-up actions.",
+    "Spawn a specific task agent inside an existing workspace for open-ended coding, research, planning, testing, documentation, media/file asset work, or async repo work. Returns a session ID for follow-up actions.",
   suppressPostActionContinuation: true,
   parameters: [
     { name: "agentType", required: false, schema: { type: "string" } },

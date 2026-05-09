@@ -123,6 +123,50 @@ describe("executePlannedToolCall", () => {
 		);
 	});
 
+	it("honors action validate before invoking the handler", async () => {
+		const validate = vi.fn(async () => false);
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = makeAction({
+			name: "CREATE_TASK",
+			parameters: [
+				{
+					name: "title",
+					description: "Task title",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			validate,
+			handler,
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage() },
+			{ name: "CREATE_TASK", params: { title: "Ship it" } },
+		);
+
+		expect(result).toMatchObject({
+			success: false,
+			continueChain: false,
+			error:
+				"Action CREATE_TASK is not available for the current message or runtime state",
+			data: {
+				actionName: "CREATE_TASK",
+				error: "ACTION_UNAVAILABLE",
+			},
+		});
+		expect(validate).toHaveBeenCalledWith(
+			expect.any(Object),
+			expect.any(Object),
+			undefined,
+			expect.objectContaining({
+				parameters: { title: "Ship it" },
+			}),
+		);
+		expect(handler).not.toHaveBeenCalled();
+	});
+
 	it("converts thrown handler errors into failure ActionResults", async () => {
 		const action = makeAction({
 			name: "BOOM",

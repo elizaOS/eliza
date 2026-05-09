@@ -193,8 +193,9 @@ function messageHasImageAttachment(
   });
 }
 
-function getMediaProviderOptions(): MediaProviderFactoryOptions {
-  const config = loadElizaConfig();
+function getMediaProviderOptions(
+  config: ReturnType<typeof loadElizaConfig>,
+): MediaProviderFactoryOptions {
   const cloudMediaSelected = isElizaCloudServiceSelectedInConfig(
     config as Record<string, unknown>,
     "media",
@@ -204,6 +205,30 @@ function getMediaProviderOptions(): MediaProviderFactoryOptions {
     elizaCloudApiKey: config.cloud?.apiKey,
     cloudMediaDisabled: !cloudMediaSelected,
   };
+}
+
+function canCreateMediaProvider(kind: "image" | "video" | "audio" | "vision") {
+  const config = loadElizaConfig();
+  const options = getMediaProviderOptions(config);
+  try {
+    switch (kind) {
+      case "image":
+        createImageProvider(config.media?.image, options);
+        break;
+      case "video":
+        createVideoProvider(config.media?.video, options);
+        break;
+      case "audio":
+        createAudioProvider(config.media?.audio, options);
+        break;
+      case "vision":
+        createVisionProvider(config.media?.vision, options);
+        break;
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ============================================================================
@@ -233,6 +258,7 @@ export const generateImageAction: Action = {
     "generate image text prompt use AI image generation support various style, size, quality setting",
 
   validate: async (_runtime: IAgentRuntime, message, state) =>
+    canCreateMediaProvider("image") &&
     hasMediaActionSignal(message, state, IMAGE_STRONG_TERMS, IMAGE_WEAK_TERMS),
 
   handler: async (_runtime, _message, _state, options) => {
@@ -257,7 +283,7 @@ export const generateImageAction: Action = {
     const config = loadElizaConfig();
     const provider = createImageProvider(
       config.media?.image,
-      getMediaProviderOptions(),
+      getMediaProviderOptions(config),
     );
 
     const result = await provider.generate({
@@ -391,6 +417,7 @@ export const generateVideoAction: Action = {
     "generate video text prompt use AI video generation optionally use input image image-to-video generation",
 
   validate: async (_runtime: IAgentRuntime, message, state) =>
+    canCreateMediaProvider("video") &&
     hasMediaActionSignal(message, state, VIDEO_STRONG_TERMS),
 
   handler: async (_runtime, _message, _state, options) => {
@@ -414,7 +441,7 @@ export const generateVideoAction: Action = {
     const config = loadElizaConfig();
     const provider = createVideoProvider(
       config.media?.video,
-      getMediaProviderOptions(),
+      getMediaProviderOptions(config),
     );
 
     const result = await provider.generate({
@@ -536,6 +563,7 @@ export const generateAudioAction: Action = {
     "generate audio music text prompt use AI audio generation create song, sound effect, instrumental music",
 
   validate: async (_runtime: IAgentRuntime, message, state) =>
+    canCreateMediaProvider("audio") &&
     hasMediaActionSignal(message, state, AUDIO_STRONG_TERMS),
 
   handler: async (_runtime, _message, _state, options) => {
@@ -559,7 +587,7 @@ export const generateAudioAction: Action = {
     const config = loadElizaConfig();
     const provider = createAudioProvider(
       config.media?.audio,
-      getMediaProviderOptions(),
+      getMediaProviderOptions(config),
     );
 
     const result = await provider.generate({
@@ -686,9 +714,10 @@ export const analyzeImageAction: Action = {
     "analyze image use AI vision describe content, identify object, read text, answer question image",
 
   validate: async (_runtime: IAgentRuntime, message, state) =>
-    messageHasImageAttachment(message) ||
-    hasMediaActionSignal(message, state, ANALYZE_IMAGE_STRONG_TERMS) ||
-    /\b(image|photo|screenshot|receipt|ocr)\b/i.test(messageText(message)),
+    canCreateMediaProvider("vision") &&
+    (messageHasImageAttachment(message) ||
+      hasMediaActionSignal(message, state, ANALYZE_IMAGE_STRONG_TERMS) ||
+      /\b(image|photo|screenshot|receipt|ocr)\b/i.test(messageText(message))),
 
   handler: async (_runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
@@ -711,7 +740,7 @@ export const analyzeImageAction: Action = {
     const config = loadElizaConfig();
     const provider = createVisionProvider(
       config.media?.vision,
-      getMediaProviderOptions(),
+      getMediaProviderOptions(config),
     );
 
     const result = await provider.analyze({

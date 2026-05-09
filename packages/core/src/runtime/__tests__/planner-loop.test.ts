@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { type ChatMessage, ModelType } from "../../types/model";
-import { TrajectoryLimitExceeded } from "../limits";
 import { parsePlannerOutput, runPlannerLoop } from "../planner-loop";
 import type { TrajectoryRecorder } from "../trajectory-recorder";
 
@@ -155,7 +154,38 @@ describe("v5 planner loop skeleton", () => {
 		expect(result.finalMessage).toBe("Final answer.");
 	});
 
-	it("throws when the same tool failure repeats beyond the configured limit", async () => {
+	it("stops without evaluator retries when an action result ends the chain", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [{ id: "call-1", name: "GENERATE_IMAGE", arguments: {} }],
+			})),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: false,
+			text: "Action GENERATE_IMAGE is not available for the current message or runtime state",
+			error:
+				"Action GENERATE_IMAGE is not available for the current message or runtime state",
+			continueChain: false,
+		}));
+		const evaluate = vi.fn();
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(executeToolCall).toHaveBeenCalledTimes(1);
+		expect(evaluate).not.toHaveBeenCalled();
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(
+			"Action GENERATE_IMAGE is not available for the current message or runtime state",
+		);
+	});
+
+	it("stops with the latest tool error when the same failure repeats beyond the configured limit", async () => {
 		const runtime = {
 			useModel: vi.fn(async () => ({
 				text: "",
@@ -165,6 +195,7 @@ describe("v5 planner loop skeleton", () => {
 		const executeToolCall = vi.fn(async () => ({
 			success: false,
 			error: "boom",
+			text: "Lookup is unavailable.",
 		}));
 		const evaluate = vi.fn(async () => ({
 			success: false,
@@ -172,15 +203,18 @@ describe("v5 planner loop skeleton", () => {
 			thought: "Retry.",
 		}));
 
-		await expect(
-			runPlannerLoop({
-				runtime,
-				context: { id: "ctx" },
-				config: { maxRepeatedFailures: 1 },
-				executeToolCall,
-				evaluate,
-			}),
-		).rejects.toBeInstanceOf(TrajectoryLimitExceeded);
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			config: { maxRepeatedFailures: 1 },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("Lookup is unavailable.");
+		expect(result.trajectory.steps).toHaveLength(2);
+		expect(result.trajectory.steps.at(-1)?.result?.continueChain).toBe(false);
 	});
 
 	it("compacts old assistant/tool suffixes when the planner input crosses the budget threshold", async () => {

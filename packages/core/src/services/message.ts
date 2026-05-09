@@ -81,6 +81,7 @@ import type {
 	Provider,
 	StreamChunkCallback,
 } from "../types/components";
+import { ActionMode } from "../types/components";
 import type { ContextEvent, ContextObject } from "../types/context-object";
 import type { ContextDefinition, RoleGateRole } from "../types/contexts";
 import type { Room } from "../types/environment";
@@ -145,7 +146,6 @@ import {
 	type ContextRoutingDecision,
 	getActiveRoutingContexts,
 	inferContextRoutingFromMessage,
-	parseContextList,
 	parseContextRoutingMetadata,
 	setContextRoutingMetadata,
 } from "../utils/context-routing";
@@ -1205,27 +1205,11 @@ function createV5MessageContextObject(args: {
 	state: State;
 	selectedContexts?: readonly AgentContext[];
 	includeTools?: boolean;
+	toolActions?: readonly Action[];
 	userRoles?: readonly RoleGateRole[];
 	availableContexts?: readonly ContextDefinition[];
 }): ContextObject {
 	const events: ContextEvent[] = [];
-	const addInstruction = (
-		id: string,
-		content: string | undefined,
-		stable = false,
-	) => {
-		if (!content?.trim()) {
-			return;
-		}
-		events.push({
-			id,
-			type: "instruction",
-			source: "message-service",
-			content: content.trim(),
-			stable,
-		});
-	};
-
 	appendStateProviderEvents(
 		events,
 		args.state,
@@ -1251,11 +1235,16 @@ function createV5MessageContextObject(args: {
 	});
 
 	if (args.includeTools && args.selectedContexts?.length) {
-		const actions = filterByContextGate(
-			args.runtime.actions,
-			args.selectedContexts,
-			args.userRoles,
-		);
+		const actions =
+			args.toolActions ??
+			filterByContextGate(
+				args.runtime.actions.filter(
+					(action) =>
+						(action.mode ?? ActionMode.PLANNER) === ActionMode.PLANNER,
+				),
+				args.selectedContexts,
+				args.userRoles,
+			);
 		for (const action of actions) {
 			try {
 				const tool = actionToTool(action);
@@ -1332,6 +1321,41 @@ function createV5MessageContextObject(args: {
 		limits: {},
 		events,
 	});
+}
+
+async function collectValidatedPlannerActions(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	state: State;
+	selectedContexts: readonly AgentContext[];
+	userRoles?: readonly RoleGateRole[];
+}): Promise<Action[]> {
+	const plannerActions = args.runtime.actions.filter(
+		(action) => (action.mode ?? ActionMode.PLANNER) === ActionMode.PLANNER,
+	);
+	const contextAllowed = filterByContextGate(
+		plannerActions,
+		args.selectedContexts,
+		args.userRoles,
+	);
+	const available: Action[] = [];
+	for (const action of contextAllowed) {
+		if (!action.validate) {
+			available.push(action);
+			continue;
+		}
+		try {
+			if (await action.validate(args.runtime, args.message, args.state)) {
+				available.push(action);
+			}
+		} catch (error) {
+			args.runtime.logger?.warn?.(
+				{ src: "service:message", action: action.name, error },
+				"Skipping action whose validate() failed before v5 tool exposure",
+			);
+		}
+	}
+	return available;
 }
 
 function filterSelectedContextsForRole(
@@ -1896,11 +1920,19 @@ export async function runV5MessageRuntimeStage1(args: {
 			recomposedPlannerState,
 			args.runtime,
 		);
+		const plannerActions = await collectValidatedPlannerActions({
+			runtime: args.runtime,
+			message: args.message,
+			state: plannerState,
+			selectedContexts,
+			userRoles: [senderRole],
+		});
 		const plannerContext = createV5MessageContextObject({
 			...args,
 			state: plannerState,
 			selectedContexts,
 			includeTools: true,
+			toolActions: plannerActions,
 			userRoles: [senderRole],
 			availableContexts,
 		});

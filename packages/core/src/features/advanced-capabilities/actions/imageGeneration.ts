@@ -58,6 +58,10 @@ function readImagePrompt(
 	return typeof text === "string" && text.trim() ? text.trim() : undefined;
 }
 
+function hasImageGenerationModel(runtime: IAgentRuntime): boolean {
+	return typeof runtime.getModel(ModelType.IMAGE) === "function";
+}
+
 export const generateImageAction = {
 	name: spec.name,
 	contexts: ["media", "files"],
@@ -70,6 +74,7 @@ export const generateImageAction = {
 		_state?: State,
 		options?: HandlerOptions,
 	) => {
+		if (!hasImageGenerationModel(_runtime)) return false;
 		const prompt = readImagePrompt(message, options);
 		if (prompt && options?.parameters) return true;
 		const text =
@@ -102,6 +107,17 @@ export const generateImageAction = {
 				text: "Image prompt is required",
 				values: { success: false, error: "MISSING_PROMPT" },
 				data: { actionName: "GENERATE_IMAGE", error: "Missing prompt" },
+				success: false,
+			};
+		}
+		if (!hasImageGenerationModel(runtime)) {
+			return {
+				text: "Image generation is not configured",
+				values: { success: false, error: "IMAGE_MODEL_UNAVAILABLE" },
+				data: {
+					actionName: "GENERATE_IMAGE",
+					error: "No image generation model is registered",
+				},
 				success: false,
 			};
 		}

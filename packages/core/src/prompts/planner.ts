@@ -6,6 +6,7 @@ rules:
 - use only tools from the tools array
 - plan the smallest grounded queue
 - only include arguments grounded in the user request or prior tool results
+- when creation, analysis, file, or media work is requested and no specialized tool is exposed, use an exposed task-agent tool if one can attempt the work
 - if no tool fits or the task is complete, return no toolCalls and set messageToUser
 
 context_object:

@@ -26,9 +26,9 @@ import type { EvaluatorEffects, EvaluatorOutput } from "./evaluator";
 import { runEvaluator } from "./evaluator";
 import { parseJsonObject, stringifyForModel } from "./json-output";
 import {
-	assertRepeatedFailureLimit,
 	assertTrajectoryLimit,
 	type ChainingLoopConfig,
+	countRepeatedFailures,
 	type FailureLike,
 	mergeChainingLoopConfig,
 } from "./limits";
@@ -270,6 +270,15 @@ export async function runPlannerLoop(
 			config,
 			failures,
 		});
+
+		const latestStep = trajectory.steps[trajectory.steps.length - 1];
+		if (latestStep?.result?.continueChain === false) {
+			return {
+				status: "finished",
+				trajectory,
+				finalMessage: latestToolResultText(trajectory),
+			};
+		}
 
 		await maybeCompactBeforeNextModelCall({
 			trajectory,
@@ -1103,11 +1112,25 @@ async function executeQueuedToolCall(params: {
 	};
 	if (!result.success || result.error != null) {
 		params.failures.push(failure);
-		assertRepeatedFailureLimit({
-			failures: params.failures,
-			latestFailure: failure,
-			maxRepeatedFailures: params.config.maxRepeatedFailures,
-		});
+		const repeatedFailures = countRepeatedFailures(params.failures, failure);
+		if (repeatedFailures > params.config.maxRepeatedFailures) {
+			result = {
+				...result,
+				text:
+					result.text?.trim() ||
+					`Tool ${params.toolCall.name} failed repeatedly: ${stringifyForModel(
+						result.error ?? "failed",
+					)}`,
+				data: {
+					...result.data,
+					repeatedFailureLimit: {
+						max: params.config.maxRepeatedFailures,
+						observed: repeatedFailures,
+					},
+				},
+				continueChain: false,
+			};
+		}
 	}
 
 	params.trajectory.steps.push({
