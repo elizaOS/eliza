@@ -27,20 +27,22 @@ import {
   toNumber,
   toText,
 } from "../sql.js";
-import {
-  type Relationship,
-  type RelationshipFilter,
-  type RelationshipSentiment,
-  type RelationshipSource,
-  type RelationshipState,
-  type RelationshipStatus,
+import type {
+  Relationship,
+  RelationshipFilter,
+  RelationshipSentiment,
+  RelationshipSource,
+  RelationshipState,
+  RelationshipStatus,
 } from "./types.js";
 
 function isoNow(): string {
   return new Date().toISOString();
 }
 
-function readCadenceDays(metadata: Record<string, unknown> | undefined): number | null {
+function readCadenceDays(
+  metadata: Record<string, unknown> | undefined,
+): number | null {
   if (!metadata) return null;
   const raw = metadata.cadenceDays;
   if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
@@ -63,12 +65,16 @@ function rowToRelationship(row: Record<string, unknown>): Relationship {
     state.interactionCount = interactionCount;
   }
   if (row.state_sentiment_trend) {
-    state.sentimentTrend = toText(row.state_sentiment_trend) as RelationshipSentiment;
+    state.sentimentTrend = toText(
+      row.state_sentiment_trend,
+    ) as RelationshipSentiment;
   }
 
   const status = toText(row.status, "active") as RelationshipStatus;
   const retiredAt = row.retired_at ? toText(row.retired_at) : undefined;
-  const retiredReason = row.retired_reason ? toText(row.retired_reason) : undefined;
+  const retiredReason = row.retired_reason
+    ? toText(row.retired_reason)
+    : undefined;
 
   return {
     relationshipId: toText(row.relationship_id),
@@ -95,14 +101,16 @@ export class RelationshipStore {
   ) {}
 
   async upsert(
-    input: Omit<Relationship, "relationshipId" | "createdAt" | "updatedAt" | "status"> & {
+    input: Omit<
+      Relationship,
+      "relationshipId" | "createdAt" | "updatedAt" | "status"
+    > & {
       relationshipId?: string;
       status?: RelationshipStatus;
     },
   ): Promise<Relationship> {
     const now = isoNow();
-    const relationshipId =
-      input.relationshipId ?? `rel_${crypto.randomUUID()}`;
+    const relationshipId = input.relationshipId ?? `rel_${crypto.randomUUID()}`;
     const existing = await this.get(relationshipId);
     const createdAt = existing?.createdAt ?? now;
     const cadenceDays = readCadenceDays(input.metadata);
@@ -352,9 +360,7 @@ export class RelationshipStore {
     await this.appendAudit(relationshipId, "retire", { reason });
   }
 
-  async listAuditEvents(
-    relationshipId: string,
-  ): Promise<
+  async listAuditEvents(relationshipId: string): Promise<
     Array<{
       id: string;
       kind: string;

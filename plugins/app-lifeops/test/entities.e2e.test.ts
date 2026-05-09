@@ -174,9 +174,7 @@ describe("EntityStore — real PGLite", () => {
       confidence: 0.7,
     });
     expect(result.conflict).toBe(true);
-    expect(result.mergedFrom?.sort()).toEqual(
-      [a.entityId, b.entityId].sort(),
-    );
+    expect(result.mergedFrom?.sort()).toEqual([a.entityId, b.entityId].sort());
   });
 
   it("resolve returns ranked candidates by name", async () => {
@@ -188,7 +186,10 @@ describe("EntityStore — real PGLite", () => {
       visibility: "owner_agent_admin",
       state: {},
     });
-    const candidates = await store.resolve({ name: "ResolveTest", type: "person" });
+    const candidates = await store.resolve({
+      name: "ResolveTest",
+      type: "person",
+    });
     expect(candidates.length).toBeGreaterThan(0);
     expect(candidates[0]?.entity.preferredName).toBe("ResolveTest");
   });

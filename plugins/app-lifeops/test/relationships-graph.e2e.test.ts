@@ -19,12 +19,12 @@ import {
 } from "../../../test/helpers/real-runtime";
 import { EntityStore } from "../src/lifeops/entities/store";
 import { SELF_ENTITY_ID } from "../src/lifeops/entities/types";
-import { LifeOpsRepository } from "../src/lifeops/repository";
 import {
   applyExtractedEdges,
   managerOfAtCompany,
 } from "../src/lifeops/relationships/extraction";
 import { RelationshipStore } from "../src/lifeops/relationships/store";
+import { LifeOpsRepository } from "../src/lifeops/repository";
 
 describe("RelationshipStore — real PGLite", () => {
   let runtime: AgentRuntime;
@@ -66,7 +66,9 @@ describe("RelationshipStore — real PGLite", () => {
       source: "user_chat",
     });
     const list = await store.list({ fromEntityId: SELF_ENTITY_ID });
-    expect(list.find((r) => r.relationshipId === rel.relationshipId)).toBeTruthy();
+    expect(
+      list.find((r) => r.relationshipId === rel.relationshipId),
+    ).toBeTruthy();
   });
 
   it("supports multiple typed edges between the same pair (colleague_of + knows)", async () => {
@@ -161,7 +163,9 @@ describe("RelationshipStore — real PGLite", () => {
       fromEntityId: SELF_ENTITY_ID,
       toEntityId: ex.entityId,
     });
-    expect(active.find((r) => r.relationshipId === rel.relationshipId)).toBeFalsy();
+    expect(
+      active.find((r) => r.relationshipId === rel.relationshipId),
+    ).toBeFalsy();
 
     // observe-on-retired logs but does not revive.
     const after = await store.observe({
@@ -183,7 +187,9 @@ describe("RelationshipStore — real PGLite", () => {
 
     const audit = await store.listAuditEvents(rel.relationshipId);
     expect(audit.find((event) => event.kind === "retire")).toBeTruthy();
-    expect(audit.find((event) => event.kind === "observe_on_retired")).toBeTruthy();
+    expect(
+      audit.find((event) => event.kind === "observe_on_retired"),
+    ).toBeTruthy();
   });
 
   it("cadenceOverdueAsOf returns edges past their cadenceDays threshold", async () => {

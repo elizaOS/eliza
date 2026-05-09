@@ -9,9 +9,9 @@
  * the evidence id).
  */
 
+import type { EntityStore } from "../entities/store.js";
 import type { Entity } from "../entities/types.js";
 import { SELF_ENTITY_ID } from "../entities/types.js";
-import type { EntityStore } from "../entities/store.js";
 import type { RelationshipStore } from "./store.js";
 import type { Relationship, RelationshipSource } from "./types.js";
 
@@ -41,7 +41,10 @@ export interface ExtractionResult {
   entities: Entity[];
   relationships: Relationship[];
   /** Evidence-id → list of (entityId, relationshipId) it touched. */
-  provenance: Record<string, { entityIds: string[]; relationshipIds: string[] }>;
+  provenance: Record<
+    string,
+    { entityIds: string[]; relationshipIds: string[] }
+  >;
 }
 
 /**
@@ -59,10 +62,12 @@ export async function applyExtractedEdges(args: {
   source?: RelationshipSource;
 }): Promise<ExtractionResult> {
   const resolved = new Map<string, Entity>();
-  const provenance: Record<string, { entityIds: string[]; relationshipIds: string[] }> =
-    {
-      [args.evidenceId]: { entityIds: [], relationshipIds: [] },
-    };
+  const provenance: Record<
+    string,
+    { entityIds: string[]; relationshipIds: string[] }
+  > = {
+    [args.evidenceId]: { entityIds: [], relationshipIds: [] },
+  };
 
   // First, resolve every entity reference. Cache by canonical key so
   // multiple edges on the same entity reuse the same row.
@@ -71,7 +76,8 @@ export async function applyExtractedEdges(args: {
     if (ref.identity) {
       return `id_${ref.identity.platform}:${ref.identity.handle}`;
     }
-    if (ref.name) return `name:${ref.name.toLowerCase()}|type:${ref.type ?? "person"}`;
+    if (ref.name)
+      return `name:${ref.name.toLowerCase()}|type:${ref.type ?? "person"}`;
     return "unknown";
   };
 
@@ -144,11 +150,14 @@ export async function applyExtractedEdges(args: {
       return created;
     }
 
-    throw new Error("[applyExtractedEdges] entity ref has no identity, id, or name");
+    throw new Error(
+      "[applyExtractedEdges] entity ref has no identity, id, or name",
+    );
   };
 
   // Resolve all refs first so we know the entities involved.
-  const edgePairs: Array<{ from: Entity; to: Entity; edge: ExtractedEdge }> = [];
+  const edgePairs: Array<{ from: Entity; to: Entity; edge: ExtractedEdge }> =
+    [];
   for (const edge of args.edges) {
     const from = await resolveRef(edge.fromRef);
     const to = await resolveRef(edge.toRef);
@@ -169,7 +178,9 @@ export async function applyExtractedEdges(args: {
       source: args.source ?? "extraction",
     });
     relationships.push(relationship);
-    provenance[args.evidenceId]?.relationshipIds.push(relationship.relationshipId);
+    provenance[args.evidenceId]?.relationshipIds.push(
+      relationship.relationshipId,
+    );
   }
 
   // Dedupe entities returned (resolveRef may map to the same entity).
@@ -199,7 +210,11 @@ export async function applyExtractedEdges(args: {
 export function managerOfAtCompany(
   managerName: string,
   companyName: string,
-  options: { confidence?: number; managerRole?: string; selfRole?: string } = {},
+  options: {
+    confidence?: number;
+    managerRole?: string;
+    selfRole?: string;
+  } = {},
 ): ExtractedEdge[] {
   const confidence = options.confidence ?? 0.85;
   return [
@@ -207,7 +222,9 @@ export function managerOfAtCompany(
       fromRef: { id: SELF_ENTITY_ID },
       toRef: { name: managerName, type: "person" },
       type: "managed_by",
-      ...(options.managerRole ? { metadata: { role: options.managerRole } } : {}),
+      ...(options.managerRole
+        ? { metadata: { role: options.managerRole } }
+        : {}),
       confidence,
     },
     {
@@ -221,7 +238,9 @@ export function managerOfAtCompany(
       fromRef: { name: managerName, type: "person" },
       toRef: { name: companyName, type: "organization" },
       type: "works_at",
-      ...(options.managerRole ? { metadata: { role: options.managerRole } } : {}),
+      ...(options.managerRole
+        ? { metadata: { role: options.managerRole } }
+        : {}),
       confidence,
     },
   ];

@@ -35,7 +35,8 @@ async function seedLegacyRelationships(
   for (let i = 0; i < count; i += 1) {
     const id = `legacy-${crypto.randomUUID()}`;
     legacyIds.push(id);
-    const type = i % 3 === 0 ? "colleague" : i % 3 === 1 ? "friend" : "mystery_type";
+    const type =
+      i % 3 === 0 ? "colleague" : i % 3 === 1 ? "friend" : "mystery_type";
     const lastContactedAt =
       i % 5 === 0 ? null : new Date(Date.now() - i * 1000).toISOString();
     await executeRawSql(

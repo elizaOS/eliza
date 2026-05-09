@@ -12,6 +12,9 @@
  *   2. `RelationshipStore.observe`     — strengthens edges that already exist
  */
 
+import type { EntityStore } from "../entities/store.js";
+import type { Entity } from "../entities/types.js";
+import { SELF_ENTITY_ID } from "../entities/types.js";
 import type {
   LifeOpsIdentityObservation,
   NormalizedLifeOpsIdentityObservation,
@@ -20,9 +23,6 @@ import {
   normalizeIdentityObservation,
   planIdentityObservationIngestion,
 } from "../identity-observations.js";
-import type { EntityStore } from "../entities/store.js";
-import type { Entity } from "../entities/types.js";
-import { SELF_ENTITY_ID } from "../entities/types.js";
 import type { RelationshipStore } from "../relationships/store.js";
 
 export interface IdentityObserverOptions {

@@ -28,6 +28,10 @@ import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
+import { EntityStore } from "../entities/store.js";
+import type { EntityIdentity } from "../entities/types.js";
+import { SELF_ENTITY_ID } from "../entities/types.js";
+import { RelationshipStore } from "../relationships/store.js";
 import {
   executeRawSql,
   parseJsonArray,
@@ -40,10 +44,6 @@ import {
   toNumber,
   toText,
 } from "../sql.js";
-import { EntityStore } from "../entities/store.js";
-import type { EntityIdentity } from "../entities/types.js";
-import { SELF_ENTITY_ID } from "../entities/types.js";
-import { RelationshipStore } from "../relationships/store.js";
 
 export interface MigrationOptions {
   agentId: string;
@@ -133,7 +133,9 @@ async function readLegacyRows(
     primary_channel: toText(row.primary_channel),
     primary_handle: toText(row.primary_handle),
     relationship_type: toText(row.relationship_type),
-    last_contacted_at: row.last_contacted_at ? toText(row.last_contacted_at) : null,
+    last_contacted_at: row.last_contacted_at
+      ? toText(row.last_contacted_at)
+      : null,
     notes: toText(row.notes, ""),
     tags: parseJsonArray<string>(row.tags_json),
     email: row.email ? toText(row.email) : null,
