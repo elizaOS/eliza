@@ -266,6 +266,36 @@ For Metal/iOS, the (3) gate runs against the iOS Capacitor build via
   `docs/porting/on-device-quantization-porting-plan.md` (this file)
   once the runners are wired up.
 
+## AOSP bundle verification commands
+
+These are the cuttlefish commands used by the `worktree-agent-af5238436024dfb1d`
+baseline after `bun run --cwd packages/agent build:mobile` produced
+`packages/agent/dist-mobile/agent-bundle.js`.
+
+```bash
+adb -s 0.0.0.0:6520 shell am force-stop ai.milady.milady
+adb -s 0.0.0.0:6520 shell pkill -9 -f bun
+sleep 2
+adb -s 0.0.0.0:6520 push packages/agent/dist-mobile/agent-bundle.js \
+  /data/data/ai.milady.milady/files/agent/agent-bundle.js
+adb -s 0.0.0.0:6520 shell chmod 600 /data/data/ai.milady.milady/files/agent/agent-bundle.js
+adb -s 0.0.0.0:6520 shell chown u0_a36:u0_a36 /data/data/ai.milady.milady/files/agent/agent-bundle.js
+adb -s 0.0.0.0:6520 shell rm -rf /data/user/0/ai.milady.milady/files/.eliza/workspace/.eliza/.elizadb
+adb -s 0.0.0.0:6520 shell rm -f /data/data/ai.milady.milady/files/agent/agent.log
+adb -s 0.0.0.0:6520 shell monkey -p ai.milady.milady -c android.intent.category.LAUNCHER 1
+adb -s 0.0.0.0:6520 logcat -d | grep ElizaAgent | tail -30
+```
+
+Once the API server binds, forward the port and verify health plus a
+non-empty chat reply:
+
+```bash
+adb -s 0.0.0.0:6520 forward tcp:31337 tcp:31337
+curl localhost:31337/api/health
+curl -X POST localhost:31337/api/messages -H 'Content-Type: application/json' \
+  -d '{"text":"hi"}'
+```
+
 ## Out of scope (explicit)
 
 - NNAPI / EdgeTPU delegates. KV-cache compressors and per-step bit

@@ -239,6 +239,62 @@ export const MODEL_CATALOG: CatalogModel[] = [
     blurb:
       '1-bit weights with TurboQuant KV-cache compression (~4-4.6x KV memory cut) on phone CPU via the apothic/llama.cpp-1bit-turboquant fork. Auto-enabled when the AOSP runtime loads any GGUF whose filename contains "bonsai" (k=tbq4_0, v=tbq3_0); override with ELIZA_LLAMA_CACHE_TYPE_K/_V. Apple Silicon (Metal) and Vulkan GPU still run at full fp16 KV cache.',
   },
+  {
+    // DFlash variant of Bonsai-8B-1bit that pairs with the SmolLM2-360M
+    // drafter. Same target weights as `bonsai-8b-1bit` (still 1.2 GB on
+    // disk), but the runtime block declares a DFlash drafter so the AOSP
+    // dispatcher routes it through the spawn-and-route llama-server path
+    // (see aosp-dflash-adapter.ts).
+    //
+    // Why SmolLM2-360M as drafter:
+    //   * It's already in the catalog (bartowski/SmolLM2-360M-Instruct-GGUF
+    //     Q4_K_M, ~225 MB), so we get a paired DFlash setup without adding
+    //     a new download.
+    //   * Tokenizer mismatch with Bonsai is handled by the
+    //     `maybeRepairDflashDrafter` step in dflash-server.ts when the
+    //     adapter detects a missing `tokenizer.ggml.merges` field.
+    //
+    // Activation: install both bonsai-8b-1bit-dflash and
+    // smol-lm2-360m-instruct, then the dispatcher picks DFlash automatically
+    // when `ELIZA_DFLASH=1` is set or when a chat session is opened against
+    // this model id. Without llama-server staged for the active ABI, the
+    // adapter logs a warning and falls back to the in-process FFI loader.
+    id: "bonsai-8b-1bit-dflash",
+    displayName: "Bonsai 8B 1-bit + DFlash (TurboQuant)",
+    hfRepo: "apothic/bonsai-8B-1bit-turboquant",
+    ggufFile: "models/gguf/8B/Bonsai-8B.gguf",
+    params: "8B",
+    quant: "1-bit TurboQuant + Q4_K_M drafter",
+    sizeGb: 1.2,
+    minRamGb: 8,
+    category: "chat",
+    bucket: "mid",
+    companionModelIds: ["smol-lm2-360m-instruct"],
+    runtime: {
+      preferredBackend: "llama-server",
+      kvCache: {
+        typeK: "tbq4_0",
+        typeV: "tbq3_0",
+        requiresFork: "apothic-turboquant",
+      },
+      optimizations: {
+        requiresKernel: ["dflash"],
+      },
+      dflash: {
+        drafterModelId: "smol-lm2-360m-instruct",
+        specType: "dflash",
+        contextSize: 4096,
+        draftContextSize: 256,
+        draftMin: 4,
+        draftMax: 16,
+        gpuLayers: 0,
+        draftGpuLayers: 0,
+        disableThinking: false,
+      },
+    },
+    blurb:
+      "Bonsai-8B 1-bit with the cross-compiled AOSP llama-server speculative decoder; SmolLM2-360M drafter accelerates token decode while target verifies. CPU-only on phone (gpuLayers=0) — phone GPUs do not back DFlash.",
+  },
 
   // ─── large (8-20 GB) ────────────────────────────────────────────────
   // ─── AWQ-derived GGUFs (mid) ────────────────────────────────────────

@@ -125,9 +125,14 @@ type AppCoreRuntimeModule = {
 };
 
 async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
-  const moduleId = "@elizaos/app-core";
+  // Use a string-literal dynamic import (no indirection through a `const`)
+  // so Bun.build can statically follow it and inline `@elizaos/app-core`
+  // into the mobile bundle. The previous indirect form
+  // (`const moduleId = "@elizaos/app-core"; import(moduleId)`) defeated
+  // Bun's resolver and produced a runtime `Cannot find module` on AOSP
+  // where there is no node_modules tree.
   return import(
-    /* webpackIgnore: true */ moduleId
+    /* webpackIgnore: true */ "@elizaos/app-core"
   ) as Promise<AppCoreRuntimeModule>;
 }
 
