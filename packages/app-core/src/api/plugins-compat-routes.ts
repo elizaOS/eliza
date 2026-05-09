@@ -22,11 +22,11 @@ import {
 import { type AgentRuntime, logger } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 import { VaultMissError } from "@elizaos/vault";
-import { CONNECTOR_ENV_MAP } from "../config/env-vars";
+import { CONNECTOR_ENV_MAP } from "/shared";
 import {
   CONNECTOR_PLUGINS,
   STREAMING_PLUGINS,
-} from "../config/plugin-auto-enable";
+} from "/shared";
 import { loadRegistry } from "../registry";
 import type { ConfigField, RegistryEntry } from "../registry/schema";
 import {

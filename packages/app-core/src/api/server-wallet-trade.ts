@@ -6,7 +6,7 @@ import type {
   WalletExportRejection as CompatWalletExportRejection,
   WalletExportRequestBody,
 } from "@elizaos/shared";
-import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
+import { syncAppEnvToEliza, syncElizaEnvAliases } from "/shared";
 
 type UpstreamRejectionFn = (
   req: http.IncomingMessage,

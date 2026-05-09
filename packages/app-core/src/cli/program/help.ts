@@ -1,6 +1,6 @@
 import type { Command } from "commander";
-import { formatDocsLink } from "../../terminal/links";
-import { isRich, theme } from "../../terminal/theme";
+import { formatDocsLink } from "..//shared";
+import { isRich, theme } from "..//shared";
 import { formatCliBannerLine, hasEmittedCliBanner } from "../banner";
 import { replaceCliName, resolveCliName } from "../cli-name";
 

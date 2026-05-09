@@ -1,8 +1,8 @@
 // Timing: Track when the script starts
 const SCRIPT_START = Date.now();
 
-import "../utils/namespace-defaults.js";
-import { getLogPrefix } from "../utils/log-prefix";
+import "/shared";
+import { getLogPrefix } from "/shared";
 import {
   formatUncaughtError,
   shouldIgnoreUnhandledRejection,

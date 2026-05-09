@@ -4,7 +4,7 @@ import {
   quoteIdent,
   sanitizeIdentifier,
   sqlLiteral,
-} from "../utils/sql-compat";
+} from "/shared";
 import { ensureRouteAuthorized } from "./auth";
 import {
   type CompatRuntimeState,

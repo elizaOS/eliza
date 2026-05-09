@@ -190,6 +190,8 @@ export {
   settingsDebugCloudSummary,
 } from "./settings-debug.js";
 export * from "./spoken-text.js";
+export * from "./terminal/links.js";
+export * from "./terminal/theme.js";
 export * from "./themes/index.js";
 export * from "./type-guards.js";
 export * from "./validation-keywords.js";

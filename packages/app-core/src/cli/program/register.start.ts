@@ -8,8 +8,8 @@ import {
   setApiToken,
 } from "@elizaos/shared";
 import type { Command } from "commander";
-import { formatDocsLink } from "../../terminal/links";
-import { theme } from "../../terminal/theme";
+import { formatDocsLink } from "..//shared";
+import { theme } from "..//shared";
 import { runCommandWithRuntime } from "../cli-utils";
 
 const defaultRuntime = { error: console.error, exit: process.exit };

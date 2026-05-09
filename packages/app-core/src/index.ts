@@ -1,22 +1,33 @@
-// Barrel rebuilt by scripts/refactor/p1-collapse-app-core-exports.mjs.
-// Exports every top-level node-side module in @elizaos/app-core.
-// Frontend code lives in @elizaos/ui; pure types/utils in @elizaos/shared.
+// Node/runtime barrel for @elizaos/app-core.
+// Frontend surfaces live in @elizaos/ui; pure contracts/utilities live in @elizaos/shared.
 
-export * from "./App";
 export * from "./account-pool";
-export * from "./ambient-modules.d";
-export * from "./api";
-export * from "./app-shell-components";
-export * from "./bridge";
-export * from "./browser";
-export * from "./capacitor-shell";
-export * from "./character-catalog";
-export * from "./chat";
-export * from "./content-packs";
-export * from "./desktop-runtime";
+export * from "./api/auth";
+export * from "./api/compat-route-shared";
+export * from "./api/response";
+export * from "./api/server-security";
+export * from "./api/server-wallet-trade";
+export * from "./api/server";
+export * from "./api/secrets-inventory-routes";
+export * from "./api/secrets-manager-routes";
+export * from "./api/workbench-compat-routes";
+export * from "./diagnostics/integration-observability";
 export * from "./entry";
-export * from "./onboarding-config";
-export * from "./platform";
-export * from "./providers";
+export * from "./permissions/types";
 export * from "./registry";
-export * from "./shell-params";
+export * from "./runtime/build-character-from-config";
+export * from "./runtime/channel-plugin-map";
+export * from "./runtime/dev-server";
+export * from "./runtime/eliza";
+export * from "./security/agent-vault-id";
+export * from "./security/hydrate-wallet-keys-from-platform-store";
+export * from "./security/platform-secure-store";
+export * from "./security/platform-secure-store-node";
+export * from "./security/wallet-os-store-actions";
+export * from "./services/account-pool";
+export * from "./services/auth-store";
+export * from "./services/n8n-mode";
+export * from "./services/n8n-sidecar";
+export * from "./services/plugin-installer";
+export * from "./services/vault-bootstrap";
+export * from "./services/vault-mirror";

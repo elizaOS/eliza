@@ -25,7 +25,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { isNativeServerPlatform } from "../platform/is-native-server.js";
+import { isNativeServerPlatform } from "/shared";
 import { type N8nModeConfigLike, resolveN8nMode } from "./n8n-mode.js";
 import { peekN8nSidecar } from "./n8n-sidecar.js";
 

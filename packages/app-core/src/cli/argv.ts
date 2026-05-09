@@ -1,4 +1,4 @@
-import { parsePositiveInteger } from "../utils/number-parsing";
+import { parsePositiveInteger } from "/shared";
 
 const HELP_FLAGS = new Set(["-h", "--help"]);
 const VERSION_FLAGS = new Set(["-v", "-V", "--version"]);
