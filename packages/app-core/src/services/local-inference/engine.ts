@@ -351,6 +351,7 @@ export class LocalInferenceEngine {
     dflashLlamaServer,
     () => getDflashRuntimeStatus().enabled,
     () => dflashRequired(),
+    () => getDflashRuntimeStatus().capabilities?.kernels ?? null,
   );
 
   async available(): Promise<boolean> {
