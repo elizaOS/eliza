@@ -22,9 +22,6 @@ const externalDeps = [
 
 async function build(): Promise<void> {
   const totalStart = Date.now();
-  const { rm } = await import("node:fs/promises");
-
-  await rm("dist", { recursive: true, force: true });
 
   // Wipe dist first so leftover .d.ts files from prior runs don't get
   // picked up by tsc as inputs (TS5055).

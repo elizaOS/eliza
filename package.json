@@ -148,13 +148,14 @@
     "bun": "^1.3.5",
     "bun-types": "latest",
     "express": "^5.2.1",
+    "knip": "^5.88.1",
     "lerna": "9.0.7",
     "react-test-renderer": "^19.0.0",
-    "turbo": "^2.7.4",
+    "tsdown": "^0.22.0",
     "tsx": "^4.21.0",
+    "turbo": "^2.7.4",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.17",
-    "knip": "^5.88.1"
+    "vitest": "^4.0.17"
   },
   "resolutions": {
     "@elizaos/core": "workspace:*",
