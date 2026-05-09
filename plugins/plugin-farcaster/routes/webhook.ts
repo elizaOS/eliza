@@ -21,10 +21,7 @@ function isNeynarWebhookData(value: unknown): value is NeynarWebhookData {
   if (!isRecord(value.data)) return false;
   if (typeof value.data.hash !== "string") return false;
   if (!isRecord(value.data.author) || typeof value.data.author.fid !== "number") return false;
-  if (
-    value.data.text !== undefined &&
-    typeof value.data.text !== "string"
-  ) {
+  if (value.data.text !== undefined && typeof value.data.text !== "string") {
     return false;
   }
   if (
@@ -38,18 +35,12 @@ function isNeynarWebhookData(value: unknown): value is NeynarWebhookData {
   ) {
     return false;
   }
-  if (
-    value.data.parent_hash !== undefined &&
-    typeof value.data.parent_hash !== "string"
-  ) {
+  if (value.data.parent_hash !== undefined && typeof value.data.parent_hash !== "string") {
     return false;
   }
   if (
     value.data.parent_author !== undefined &&
-    !(
-      isRecord(value.data.parent_author) &&
-      typeof value.data.parent_author.fid === "number"
-    )
+    !(isRecord(value.data.parent_author) && typeof value.data.parent_author.fid === "number")
   ) {
     return false;
   }

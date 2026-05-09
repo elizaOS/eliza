@@ -1562,9 +1562,7 @@ function buildV5PlannerActionSurface(params: {
 		});
 	}
 
-	const catalog = buildActionCatalog(
-		params.actions as unknown as RuntimeActionLike[],
-	);
+	const catalog = buildActionCatalog([...params.actions]);
 	const retrieval = retrieveActions({
 		catalog,
 		messageText: getUserMessageText(params.message) ?? "",
@@ -2393,15 +2391,18 @@ function parseMessageHandlerNativeToolCall(
 		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
 			continue;
 		}
-		const record = entry as unknown as Record<string, unknown>;
 		const name = String(
-			record.name ?? record.toolName ?? record.tool ?? record.action ?? "",
+			entry.name ??
+				entry.toolName ??
+				entry.tool ??
+				entry.action ??
+				"",
 		).trim();
 		if (name !== HANDLE_RESPONSE_TOOL_NAME) {
 			continue;
 		}
 		const args = parseToolArguments(
-			record.arguments ?? record.args ?? record.input ?? record.params,
+			entry.arguments ?? entry.args ?? entry.input ?? entry.params,
 		);
 		if (!args || !looksLikeMessageHandlerToolArguments(args)) {
 			continue;
@@ -4452,19 +4453,22 @@ function extractMessageHandlerToolCalls(
 		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
 			continue;
 		}
-		const record = entry as unknown as Record<string, unknown>;
 		const name = String(
-			record.name ?? record.toolName ?? record.tool ?? record.action ?? "",
+			entry.name ??
+				entry.toolName ??
+				entry.tool ??
+				entry.action ??
+				"",
 		).trim();
 		const args = parseToolArguments(
-			record.arguments ?? record.args ?? record.input ?? record.params,
+			entry.arguments ?? entry.args ?? entry.input ?? entry.params,
 		);
 		toolCalls.push({
 			id:
-				typeof record.id === "string"
-					? record.id
-					: typeof record.toolCallId === "string"
-						? record.toolCallId
+				typeof entry.id === "string"
+					? entry.id
+					: typeof entry.toolCallId === "string"
+						? entry.toolCallId
 						: undefined,
 			name: name || undefined,
 			args: args ?? undefined,

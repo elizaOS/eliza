@@ -213,8 +213,6 @@ import { installRuntimePluginLifecycle } from "./plugin-lifecycle.js";
 import rolesPlugin from "./roles.js";
 import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.js";
 
-const require = createRequire(import.meta.url);
-
 function isPluginSqlResolutionError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return (

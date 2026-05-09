@@ -8,7 +8,7 @@ import { raydiumPositionProvider } from "./providers/positionProvider.ts";
 import { RaydiumService } from "./services/srv_raydium.ts";
 
 function hasExchangeRegistry(
-  service: unknown,
+  service: unknown
 ): service is { registerExchange: (exchange: { name: string }) => void } {
   return (
     service !== null &&

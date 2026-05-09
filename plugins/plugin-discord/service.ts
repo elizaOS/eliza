@@ -94,8 +94,8 @@ import {
 	transformCommandToDiscordApi,
 } from "./discord-commands";
 import {
-	setupDiscordEventListeners,
 	type DiscordServiceInternals,
+	setupDiscordEventListeners,
 } from "./discord-events";
 import {
 	buildMemoryFromMessage as buildMemoryFromMessageExtracted,
@@ -104,8 +104,8 @@ import {
 } from "./discord-history";
 import {
 	handleInteractionCreate as handleInteractionCreateExtracted,
-	onReady as onReadyExtracted,
 	type InteractionServiceInternals,
+	onReady as onReadyExtracted,
 } from "./discord-interactions";
 import {
 	handleReactionAdd as handleReactionAddExtracted,
@@ -1122,7 +1122,8 @@ export class DiscordService extends Service implements IDiscordService {
 			},
 			registerSlashCommands: (commands: DiscordSlashCommand[]) =>
 				parent.registerSlashCommands(commands, state?.accountId),
-			clientReadyPromise: state?.clientReadyPromise ?? parent.clientReadyPromise,
+			clientReadyPromise:
+				state?.clientReadyPromise ?? parent.clientReadyPromise,
 			accountToken: state?.account.token,
 		};
 		return facade;
@@ -2402,7 +2403,10 @@ export class DiscordService extends Service implements IDiscordService {
 	 */
 	private async onReadyForAccount(accountId: string, readyClient: any) {
 		const state = this.requireAccountState(accountId);
-		return onReadyExtracted(this.createAccountServiceFacade(state), readyClient);
+		return onReadyExtracted(
+			this.createAccountServiceFacade(state),
+			readyClient,
+		);
 	}
 
 	/**

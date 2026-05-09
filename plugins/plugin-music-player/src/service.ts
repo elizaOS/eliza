@@ -40,7 +40,9 @@ interface DiscordAudioSink {
 interface DiscordMusicIntegrationService {
   clearActivity?(): Promise<void> | void;
   getAudioSink?(guildId: string): DiscordAudioSink | null;
-  getDefaultRoomIdForGuild?(guildId: string): Promise<UUID | null> | UUID | null;
+  getDefaultRoomIdForGuild?(
+    guildId: string,
+  ): Promise<UUID | null> | UUID | null;
   setListeningActivity?(trackTitle: string): Promise<void> | void;
 }
 

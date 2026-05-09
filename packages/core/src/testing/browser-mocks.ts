@@ -98,7 +98,8 @@ export function createCanvas2DContext(): CanvasRenderingContext2D {
 				data: new Uint8ClampedArray(0),
 				width: 0,
 				height: 0,
-			};
+				colorSpace: "srgb",
+			} as ImageData;
 		},
 		putImageData() {},
 		drawImage() {},
@@ -121,7 +122,7 @@ export function createCanvas2DContext(): CanvasRenderingContext2D {
 		fillText() {},
 		strokeText() {},
 		measureText() {
-			return { width: 0 };
+			return { width: 0 } as TextMetrics;
 		},
 		createLinearGradient() {
 			return { addColorStop() {} };
@@ -220,7 +221,7 @@ export function installMediaElementShims(): void {
 			audio.src = src;
 		}
 		return audio;
-	} as typeof Audio & {
+	} as unknown as typeof Audio & {
 		[AUDIO_PATCH_MARK]?: boolean;
 	};
 	AudioShim[AUDIO_PATCH_MARK] = true;

@@ -83,11 +83,7 @@ export function coerceClarifications(raw: unknown): WorkflowClarificationRequest
     ) as WorkflowClarificationRequest['kind'];
     const platform = typeof item.platform === 'string' ? item.platform : undefined;
     let scope: { guildId?: string } | undefined;
-    if (
-      item.scope &&
-      typeof item.scope === 'object' &&
-      typeof item.scope.guildId === 'string'
-    ) {
+    if (item.scope && typeof item.scope === 'object' && typeof item.scope.guildId === 'string') {
       scope = {
         guildId: item.scope.guildId,
       };

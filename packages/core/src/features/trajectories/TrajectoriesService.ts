@@ -205,7 +205,8 @@ function booleanValue(value: unknown): boolean | null {
 }
 
 function stringArrayValue(value: unknown): string[] | undefined {
-	return Array.isArray(value) && value.every((entry) => typeof entry === "string")
+	return Array.isArray(value) &&
+		value.every((entry) => typeof entry === "string")
 		? value
 		: undefined;
 }
@@ -222,7 +223,9 @@ function parseJsonCell(cell: SqlCell | undefined): JsonValue | undefined {
 	return isJsonValue(cell) ? cell : undefined;
 }
 
-function parseJsonObjectCell(cell: SqlCell | undefined): JsonObject | undefined {
+function parseJsonObjectCell(
+	cell: SqlCell | undefined,
+): JsonObject | undefined {
 	const value = parseJsonCell(cell);
 	return isJsonObject(value) ? value : undefined;
 }
@@ -343,7 +346,8 @@ function normalizeLlmCall(value: unknown): LLMCall | null {
 	if ("toolChoice" in value) call.toolChoice = value.toolChoice;
 	if ("responseSchema" in value) call.responseSchema = value.responseSchema;
 	if ("providerOptions" in value) call.providerOptions = value.providerOptions;
-	if ("providerMetadata" in value) call.providerMetadata = value.providerMetadata;
+	if ("providerMetadata" in value)
+		call.providerMetadata = value.providerMetadata;
 	return call;
 }
 
@@ -423,7 +427,9 @@ function normalizeTrajectoryStep(value: unknown): TrajectoryStep | null {
 	const stepNumber = numberValue(value.stepNumber);
 	const timestamp = numberValue(value.timestamp);
 	const environmentState = normalizeEnvironmentState(value.environmentState);
-	const observation = isJsonObject(value.observation) ? value.observation : null;
+	const observation = isJsonObject(value.observation)
+		? value.observation
+		: null;
 	const action = normalizeActionAttempt(value.action);
 	const reward = numberValue(value.reward);
 	const done = booleanValue(value.done);

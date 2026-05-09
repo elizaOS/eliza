@@ -23,10 +23,7 @@ describe("live routing regressions", () => {
 	it("collapses duplicate visible REPLY planner actions", () => {
 		expect(
 			stripReplyWhenActionOwnsTurn(
-				{ actions: [], logger } as Pick<
-					IAgentRuntime,
-					"actions" | "logger"
-				>,
+				{ actions: [], logger } as Pick<IAgentRuntime, "actions" | "logger">,
 				["REPLY", "REPLY"],
 			),
 		).toEqual(["REPLY"]);

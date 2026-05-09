@@ -247,9 +247,9 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
   }
 
   private async getEntityResolutionService(): Promise<EntityResolutionService | null> {
-		const existing = this.runtime.getService(
-			ENTITY_RESOLUTION_SERVICE
-		) as unknown as EntityResolutionService | null;
+    const existing = this.runtime.getService(
+      ENTITY_RESOLUTION_SERVICE
+    ) as unknown as EntityResolutionService | null;
     if (existing) {
       return existing;
     }
@@ -257,9 +257,9 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
       return null;
     }
     try {
-			return (await this.runtime.getServiceLoadPromise(
-				ENTITY_RESOLUTION_SERVICE
-			)) as unknown as EntityResolutionService;
+      return (await this.runtime.getServiceLoadPromise(
+        ENTITY_RESOLUTION_SERVICE
+      )) as unknown as EntityResolutionService;
     } catch {
       return null;
     }

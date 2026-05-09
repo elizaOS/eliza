@@ -7,6 +7,7 @@ import type {
 	State,
 	UUID,
 } from "../../../types/index.ts";
+import type { Plugin } from "../../../types/plugin.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 import { LongTermMemoryCategory, type MemoryExtraction } from "../types.ts";
@@ -505,7 +506,7 @@ ${formatMessages(runtime, prepared.recentMessages)}`;
 	],
 };
 
-export const memoryItems = [
+export const memoryItems: NonNullable<Plugin["evaluators"]> = [
 	summaryEvaluator,
 	longTermMemoryEvaluator,
-] as unknown as Evaluator[];
+];

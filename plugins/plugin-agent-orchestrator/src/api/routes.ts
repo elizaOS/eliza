@@ -89,9 +89,9 @@ export function createCodingAgentRouteHandler(
       ptyService: runtime.getService("PTY_SERVICE") as
         | (Service & PTYService)
         | null,
-      workspaceService: runtime.getService(
-        "CODING_WORKSPACE_SERVICE",
-      ) as (Service & CodingWorkspaceService) | null,
+      workspaceService: runtime.getService("CODING_WORKSPACE_SERVICE") as
+        | (Service & CodingWorkspaceService)
+        | null,
       coordinator:
         coordinator ??
         (runtime.getService("SWARM_COORDINATOR") as

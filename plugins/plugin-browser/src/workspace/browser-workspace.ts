@@ -529,11 +529,16 @@ export async function navigateBrowserWorkspaceTab(
     });
   }
 
+  const navigateBody: { url: string; partition?: string } = { url: nextUrl };
+  if (request.partition !== undefined) {
+    navigateBody.partition = request.partition;
+  }
+
   const payload = await requestBrowserWorkspace<{ tab: BrowserWorkspaceTab }>(
     `/tabs/${encodeURIComponent(request.id)}/navigate`,
     {
       method: "POST",
-      body: JSON.stringify({ url: nextUrl }),
+      body: JSON.stringify(navigateBody),
     },
     env,
   );

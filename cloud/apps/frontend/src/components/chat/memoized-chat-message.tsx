@@ -6,8 +6,8 @@
 "use client";
 
 import { Button } from "@elizaos/cloud-ui";
-import dynamic from "@elizaos/cloud-ui";
-import Image from "@elizaos/cloud-ui";
+import dynamic from "@elizaos/cloud-ui/runtime/dynamic";
+import Image from "@elizaos/cloud-ui/runtime/image";
 import { Check, Copy, Loader2, Square, Volume2 } from "lucide-react";
 import React, { memo, useEffect, useRef, useState } from "react";
 import { type ChatMediaAttachment, ContentType } from "@elizaos/cloud-ui";

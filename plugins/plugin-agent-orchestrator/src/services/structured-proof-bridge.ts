@@ -79,8 +79,7 @@ const NOOP_LOGGER: StructuredProofLogger = {
 };
 
 function getLogger(runtime: IAgentRuntime): StructuredProofLogger {
-  const candidate = (runtime as { logger?: StructuredProofLogger })
-    .logger;
+  const candidate = (runtime as { logger?: StructuredProofLogger }).logger;
   return candidate ?? NOOP_LOGGER;
 }
 

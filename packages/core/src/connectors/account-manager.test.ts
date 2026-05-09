@@ -38,11 +38,7 @@ class TestRuntime {
 		const connector = this.messageConnectors.find(
 			(candidate) => candidate.source === target.source,
 		);
-		await connector?.sendHandler?.(
-			this as IAgentRuntime,
-			target,
-			content,
-		);
+		await connector?.sendHandler?.(this as IAgentRuntime, target, content);
 	}
 }
 

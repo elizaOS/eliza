@@ -1,5 +1,5 @@
-import { type IAgentRuntime, logger, ModelType } from '@elizaos/core';
 import type { GenerateTextParams } from '@elizaos/core';
+import { type IAgentRuntime, logger, ModelType } from '@elizaos/core';
 import {
   ACTION_RESPONSE_SYSTEM_PROMPT,
   DRAFT_INTENT_SYSTEM_PROMPT,

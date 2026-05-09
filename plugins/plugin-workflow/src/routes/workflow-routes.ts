@@ -65,9 +65,7 @@ function resolveAgentId(ctx: WorkflowRouteContext): string {
     return ctx.agentId.trim();
   }
   return (
-    ctx.runtime?.agentId ??
-    ctx.runtime?.character?.id ??
-    '00000000-0000-0000-0000-000000000000'
+    ctx.runtime?.agentId ?? ctx.runtime?.character?.id ?? '00000000-0000-0000-0000-000000000000'
   );
 }
 

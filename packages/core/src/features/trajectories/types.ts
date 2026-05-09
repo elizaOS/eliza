@@ -22,8 +22,9 @@ export interface ContextObjectTrajectoryExport {
 	events: ContextEvent[];
 	metrics?: JsonObject;
 	metadata?: JsonObject;
-	contextObject?: Omit<ContextObject, "events"> & {
-		events?: ContextEvent[];
+	/** Snapshot of context object plus optional events; JSON-sanitized for export */
+	contextObject?: JsonObject & {
+		id: string;
 	};
 }
 

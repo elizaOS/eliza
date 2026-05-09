@@ -99,10 +99,7 @@ async function handleWebhookVerify(
   res: RouteResponse,
   runtime: IAgentRuntime
 ): Promise<void> {
-  const url = new URL(
-    req.url ?? "/",
-    `http://${routeHost(req)}`
-  );
+  const url = new URL(req.url ?? "/", `http://${routeHost(req)}`);
   const mode = url.searchParams.get("hub.mode") ?? "";
   const token = url.searchParams.get("hub.verify_token") ?? "";
   const challenge = url.searchParams.get("hub.challenge") ?? "";
@@ -268,10 +265,7 @@ async function handleStatus(
   cleanupStaleSessions();
 
   const setupService = getSetupService(runtime);
-  const url = new URL(
-    req.url ?? "/",
-    `http://${routeHost(req)}`
-  );
+  const url = new URL(req.url ?? "/", `http://${routeHost(req)}`);
 
   let accountId: string;
   try {

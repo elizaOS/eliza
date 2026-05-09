@@ -56,7 +56,9 @@ async function openAuthStoreFromCli(): Promise<{
   store: import("../../services/auth-store").AuthStore;
   close: () => Promise<void>;
 }> {
-  const sql = (await import("@elizaos/plugin-sql")) as typeof import("@elizaos/plugin-sql") & {
+  const sql = (await import(
+    "@elizaos/plugin-sql"
+  )) as typeof import("@elizaos/plugin-sql") & {
     createDatabaseAdapter: (
       cfg: { dataDir: string },
       id: `${string}-${string}-${string}-${string}-${string}`,

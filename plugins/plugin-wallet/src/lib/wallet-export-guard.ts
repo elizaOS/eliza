@@ -10,9 +10,7 @@
  * defence-in-depth so a compromised session cannot instantly extract
  * keys without leaving an audit trail and hitting rate limits.
  *
- * Canonical home: `@elizaos/plugin-wallet/lib/wallet-export-guard`. The
- * legacy path `@elizaos/app-core/api/wallet-export-guard` is a re-export
- * shim and will be removed once external consumers migrate.
+ * Exported from the `@elizaos/plugin-wallet` barrel for package consumers.
  */
 
 import crypto from "node:crypto";

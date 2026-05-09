@@ -64,30 +64,33 @@ class TestSuite<TContext> {
 const createUnitTest = (config: UnitTest<NgrokConfigTestContext>) => config;
 
 describe('Ngrok Environment Configuration', () => {
-  const ngrokConfigSuite = new TestSuite<NgrokConfigTestContext>('Ngrok Environment Configuration', {
-    beforeEach: () => {
-      // Save original env
-      const originalEnv = { ...process.env };
+  const ngrokConfigSuite = new TestSuite<NgrokConfigTestContext>(
+    'Ngrok Environment Configuration',
+    {
+      beforeEach: () => {
+        // Save original env
+        const originalEnv = { ...process.env };
 
-      // Clear relevant env vars
-      delete process.env.NGROK_AUTH_TOKEN;
-      delete process.env.NGROK_REGION;
-      delete process.env.NGROK_SUBDOMAIN;
-      delete process.env.NGROK_DEFAULT_PORT;
+        // Clear relevant env vars
+        delete process.env.NGROK_AUTH_TOKEN;
+        delete process.env.NGROK_REGION;
+        delete process.env.NGROK_SUBDOMAIN;
+        delete process.env.NGROK_DEFAULT_PORT;
 
-      // Setup mock runtime
-      const mockRuntime = createRuntimeWithSettingMock((key: string) => {
+        // Setup mock runtime
+        const mockRuntime = createRuntimeWithSettingMock((key: string) => {
           const settings: Record<string, string> = {};
           return settings[key];
         });
 
-      return { mockRuntime, originalEnv };
-    },
-    afterEach: ({ originalEnv }) => {
-      // Restore original env
-      process.env = originalEnv;
-    },
-  });
+        return { mockRuntime, originalEnv };
+      },
+      afterEach: ({ originalEnv }) => {
+        // Restore original env
+        process.env = originalEnv;
+      },
+    }
+  );
 
   ngrokConfigSuite.addTest(
     createUnitTest({

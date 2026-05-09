@@ -365,8 +365,7 @@ export async function createScenarioRuntime(
   // user-facing action routing, not profile editing — dropping it unblocks
   // the realistic cases. Real runtimes keep UPDATE_ENTITY enabled.
   const bannedActions = new Set(["UPDATE_ENTITY"]);
-  const runtimeActions = (runtime as unknown as { actions: { name: string }[] })
-    .actions;
+  const runtimeActions = runtime.actions;
   for (let i = runtimeActions.length - 1; i >= 0; i -= 1) {
     if (bannedActions.has(runtimeActions[i].name)) {
       runtimeActions.splice(i, 1);

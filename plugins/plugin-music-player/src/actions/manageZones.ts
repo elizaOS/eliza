@@ -173,9 +173,7 @@ export const manageZones = {
         });
       }
 
-      const zoneManager = (
-        musicService as MusicZoneService
-      ).getZoneManager?.();
+      const zoneManager = (musicService as MusicZoneService).getZoneManager?.();
       if (!zoneManager) {
         return emit(callback, source, "Zone manager not available", false, {
           error: "ZONE_MANAGER_UNAVAILABLE",

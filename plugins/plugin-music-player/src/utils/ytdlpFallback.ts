@@ -448,9 +448,7 @@ export async function createYtdlpStream(url: string): Promise<Readable> {
   } catch (error: unknown) {
     const ytdlpError = getYtdlpErrorMetadata(error);
     // Check if this is a format availability issue (not age restriction or region block)
-    const stderrOutput = (ytdlpError.stderrBuffer || [])
-      .join("")
-      .toLowerCase();
+    const stderrOutput = (ytdlpError.stderrBuffer || []).join("").toLowerCase();
     const isFormatNotAvailable =
       stderrOutput.includes("requested format is not available") ||
       stderrOutput.includes("no suitable formats found");

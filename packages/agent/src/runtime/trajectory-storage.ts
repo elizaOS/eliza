@@ -529,14 +529,16 @@ export async function installDatabaseTrajectoryLogger(
     logger.providerAccess.splice(0, logger.providerAccess.length);
   }
 
+  const llmLogger = logger.logLlmCall;
   const originalLogLlmCall =
-    typeof logger.logLlmCall === "function"
-      ? (...args: unknown[]) => Reflect.apply(logger.logLlmCall!, logger, args)
+    typeof llmLogger === "function"
+      ? (...args: unknown[]) => Reflect.apply(llmLogger, logger, args)
       : null;
+  const providerAccessLogger = logger.logProviderAccess;
   const originalLogProviderAccess =
-    typeof logger.logProviderAccess === "function"
+    typeof providerAccessLogger === "function"
       ? (...args: unknown[]) =>
-          Reflect.apply(logger.logProviderAccess!, logger, args)
+          Reflect.apply(providerAccessLogger, logger, args)
       : null;
 
   logger.logLlmCall = (...args: unknown[]) => {

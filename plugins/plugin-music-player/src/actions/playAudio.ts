@@ -649,7 +649,7 @@ export const playAudio: Action = {
 
     const isDiscord = message.content.source === "discord";
     const discordService = isDiscord
-      ? (runtime.getService(DISCORD_SERVICE_NAME) as DiscordService)
+      ? (runtime.getService(DISCORD_SERVICE_NAME) as unknown as DiscordService)
       : null;
 
     // For Discord, we need the Discord service
@@ -865,7 +865,7 @@ export const playAudio: Action = {
           logger.debug(`Searching for: ${searchQuery}`);
 
           try {
-            const searchResults = await musicLibraryLookup?.searchYouTube(
+            const searchResults = await musicLibraryLookup?.searchYouTube?.(
               searchQuery,
               { limit: 3 },
             );
@@ -924,10 +924,14 @@ export const playAudio: Action = {
           const musicLibrary = runtime.getService(
             "musicLibrary",
           ) as MusicLibraryLookupService | null;
-          const getSongByUrl = musicLibrary?.getSongByUrl ?? musicLibrary?.getSong;
+          const getSongByUrl =
+            musicLibrary?.getSongByUrl ?? musicLibrary?.getSong;
           if (musicLibrary && getSongByUrl) {
             logger.debug(`Checking library for URL: ${audioUrl}`);
-            const libraryTrack = await getSongByUrl.call(musicLibrary, audioUrl);
+            const libraryTrack = await getSongByUrl.call(
+              musicLibrary,
+              audioUrl,
+            );
 
             if (libraryTrack) {
               // Found in library! Use cached info

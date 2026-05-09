@@ -1187,23 +1187,23 @@ export class PromptBatcher {
 		}
 
 		retriedCallIds.add(resolvedSection.section.id);
-			const prompt = [
-				"Previous attempt was invalid. Try again.",
-				resolvedSection.section.preamble ?? "",
-				`Context:\n${resolvedSection.resolvedContext || "[context unavailable]"}`,
+		const prompt = [
+			"Previous attempt was invalid. Try again.",
+			resolvedSection.section.preamble ?? "",
+			`Context:\n${resolvedSection.resolvedContext || "[context unavailable]"}`,
 			"Return only the requested structured fields.",
 		]
-				.filter(Boolean)
-				.join("\n\n");
-			const params = {
-				prompt,
-				...(resolvedSection.execOptions ?? {}),
-			} satisfies Omit<GenerateTextParams, "prompt"> & { prompt: string };
+			.filter(Boolean)
+			.join("\n\n");
+		const params = {
+			prompt,
+			...(resolvedSection.execOptions ?? {}),
+		} satisfies Omit<GenerateTextParams, "prompt"> & { prompt: string };
 
-			const response = await this.runtime.dynamicPromptExecFromState({
-				state: createMinimalState(resolvedSection.resolvedContext),
-				params,
-				schema: resolvedSection.section.schema,
+		const response = await this.runtime.dynamicPromptExecFromState({
+			state: createMinimalState(resolvedSection.resolvedContext),
+			params,
+			schema: resolvedSection.section.schema,
 			options: {
 				modelSize: resolvedSection.preferredModel,
 			},

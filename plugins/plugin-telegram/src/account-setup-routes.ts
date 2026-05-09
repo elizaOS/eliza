@@ -39,7 +39,9 @@ interface ConnectorSetupService {
   updateConfig(updater: (config: Record<string, unknown>) => void): void;
 }
 
-function isConnectorSetupService(service: unknown): service is ConnectorSetupService {
+function isConnectorSetupService(
+  service: unknown,
+): service is ConnectorSetupService {
   if (!service || typeof service !== "object") {
     return false;
   }

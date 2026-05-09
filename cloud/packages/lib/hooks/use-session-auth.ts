@@ -156,7 +156,7 @@ export function useSessionAuth(): SessionAuthState {
   const stewardAuthenticated =
     providerAuth.isAuthenticated || storageUser !== null || playwrightTestUser !== null;
 
-  const ready = !providerAuth.isLoading;
+  const ready = !providerAuth.isLoading || isPlaywrightTestAuthEnabled();
   const authenticated = stewardAuthenticated;
   const authSource: SessionAuthSource = stewardAuthenticated ? "steward" : "none";
 

@@ -1084,14 +1084,14 @@ export class AgentRuntime implements IAgentRuntime {
 		if (!hooks.length) {
 			return;
 		}
-		const runtime: IAgentRuntime = this;
+
 		const roomId = pipelineHookMetricRoomId(ctx);
 
 		const runOne = async (entry: ResolvedPipelineHook) => {
 			const t0 = performance.now();
 			let errorMessage: string | undefined;
 			try {
-				await entry.handler(runtime, ctx);
+				await entry.handler(this, ctx);
 			} catch (error) {
 				errorMessage = error instanceof Error ? error.message : String(error);
 				this.logger.error(
@@ -2499,9 +2499,9 @@ export class AgentRuntime implements IAgentRuntime {
 	getMessagingAdapter(): IMessagingAdapter | null {
 		// Check if the adapter implements IMessagingAdapter interface
 		// by checking for presence of messaging-specific methods
-			if (this.adapter && isMessagingAdapter(this.adapter)) {
-				return this.adapter;
-			}
+		if (this.adapter && isMessagingAdapter(this.adapter)) {
+			return this.adapter;
+		}
 		return null;
 	}
 
@@ -2688,12 +2688,11 @@ export class AgentRuntime implements IAgentRuntime {
 
 		setTrajectoryPurpose(mode === "ALWAYS_AFTER" ? "evaluation" : "hook");
 
-		const runtimeRef: IAgentRuntime = this;
 		const validated: Action[] = [];
 		await Promise.all(
 			candidates.map(async (action) => {
 				try {
-					const ok = await action.validate(runtimeRef, message, state);
+					const ok = await action.validate(this, message, state);
 					if (ok) validated.push(action);
 				} catch (err) {
 					this.logger.warn(
@@ -2726,7 +2725,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		const runOne = async (action: Action) => {
 			await this.emitEvent(EventType.ACTION_STARTED, {
-				runtime: runtimeRef,
+				runtime: this,
 				messageId,
 				roomId,
 				world: worldId,
@@ -2742,7 +2741,7 @@ export class AgentRuntime implements IAgentRuntime {
 			let errorMsg: string | undefined;
 			try {
 				await action.handler(
-					runtimeRef,
+					this,
 					message,
 					composedState,
 					{ mode },
@@ -2765,7 +2764,7 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 
 			await this.emitEvent(EventType.ACTION_COMPLETED, {
-				runtime: runtimeRef,
+				runtime: this,
 				messageId,
 				roomId,
 				world: worldId,
@@ -4172,13 +4171,14 @@ export class AgentRuntime implements IAgentRuntime {
 			// Include model settings from character configuration if available
 			const modelSettings = this.getModelSettings(requestedModelKey);
 
-				if (modelSettings) {
-					// Apply model settings if configured
-					modelParams = {
-						...modelSettings, // Apply model settings first (includes defaults and model-specific)
-						...(paramsClone as Record<string, JsonValue | object>), // Then apply specific params (allowing overrides)
-					} as unknown as ModelParamsMap[T];
-				} else {
+			if (modelSettings) {
+				// Apply model settings if configured — merged object is narrowed at handlers after routing.
+				const merged: object = {
+					...modelSettings,
+					...(paramsClone as Record<string, JsonValue | object>),
+				};
+				modelParams = merged as ModelParamsMap[T];
+			} else {
 				// No model settings configured, use params as-is
 				modelParams = paramsClone as ModelParamsMap[T];
 			}
@@ -4267,10 +4267,10 @@ export class AgentRuntime implements IAgentRuntime {
 			"Pre-model pipeline hook",
 		);
 
-			const rawResponse = await handler(
-				this,
-				modelParams as Record<string, JsonValue | object>,
-			);
+		const rawResponse = await handler(
+			this,
+			modelParams as Record<string, JsonValue | object>,
+		);
 
 		const resultRef: { current: unknown } = { current: rawResponse };
 		const modelOutToTrajectoryString = (v: unknown) =>
@@ -6622,12 +6622,12 @@ ${section_end}`;
 			};
 			if (typeof params === "object" && params && params !== null) {
 				const paramsObj = params as Record<string, JsonValue | object>;
-					paramsWithRuntime = {
-						...paramsObj,
-						runtime: this,
-						source:
-							typeof paramsObj.source === "string" ? paramsObj.source : "runtime",
-					} as EventPayloadMap[keyof EventPayloadMap] | EventPayload;
+				paramsWithRuntime = {
+					...paramsObj,
+					runtime: this,
+					source:
+						typeof paramsObj.source === "string" ? paramsObj.source : "runtime",
+				} as EventPayloadMap[keyof EventPayloadMap] | EventPayload;
 			}
 			await Promise.all(
 				eventHandlers.map((handler) =>
@@ -8226,7 +8226,7 @@ ${section_end}`;
 			);
 			throw new Error(errorMsg);
 		}
-			const result = await handler(this, target, content);
+		const result = await handler(this, target, content);
 		return result as Memory | undefined;
 	}
 	async getMemoriesByWorldId(params: {

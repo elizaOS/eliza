@@ -9,9 +9,7 @@ interface TunnelConfig {
 }
 
 /** Coerce runtime.getSetting() (string | number | boolean | null) to string. */
-function settingString(
-  value: string | number | boolean | null | undefined
-): string | undefined {
+function settingString(value: string | number | boolean | null | undefined): string | undefined {
   if (value === null || value === undefined) return undefined;
   return String(value);
 }

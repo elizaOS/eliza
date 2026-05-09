@@ -48,8 +48,7 @@ function unavailable(
   text: string,
   data: Record<string, unknown>,
 ): ActionResult {
-  const dataAsContent =
-    data as Parameters<HandlerCallback>[0]["data"];
+  const dataAsContent = data as Parameters<HandlerCallback>[0]["data"];
   callback?.({ text, actions: ["TOKEN_INFO"], data: dataAsContent });
   return {
     success: false,

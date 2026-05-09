@@ -74,8 +74,7 @@ describe("Matrix message connector", () => {
       ],
     ]);
     (service as { states: typeof states; defaultAccountId: string }).states = states;
-    (service as { states: typeof states; defaultAccountId: string }).defaultAccountId =
-      "work";
+    (service as { states: typeof states; defaultAccountId: string }).defaultAccountId = "work";
     const sendMessageSpy = vi
       .spyOn(service, "sendMessage")
       .mockResolvedValue({ success: true, roomId: "!personal:matrix.org" });

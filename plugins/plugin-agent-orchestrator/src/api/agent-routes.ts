@@ -317,10 +317,7 @@ export async function handleAgentRoutes(
       sendError(res, "Workspace Service not available", 503);
       return true;
     }
-    sendJson(
-      res,
-      ctx.workspaceService.listScratchWorkspaces(),
-    );
+    sendJson(res, ctx.workspaceService.listScratchWorkspaces());
     return true;
   }
 

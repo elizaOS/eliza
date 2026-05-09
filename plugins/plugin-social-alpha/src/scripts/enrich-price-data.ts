@@ -17,7 +17,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
 import * as dotenv from "dotenv";
 import { createServices } from "../services";
 
@@ -41,8 +41,15 @@ const BATCH_SIZE = parseInt(values["batch-size"] as string, 10);
 const RESUME = values.resume as boolean;
 
 // Create a mock runtime for the price service
+type EnrichmentTopMover = {
+	username?: string;
+	tokenSymbol?: string;
+	profit?: number;
+	profitPercent?: number;
+};
+
 const mockRuntime: IAgentRuntime = {
-	agentId: "price-enrichment" as any,
+	agentId: "price-enrichment" as UUID,
 	getSetting: (key: string) => process.env[key],
 	getCache: async () => null,
 	setCache: async () => {},
@@ -283,8 +290,8 @@ async function main() {
 				breakeven: 0,
 			},
 			averageProfit: 0,
-			topGainers: [] as any[],
-			topLosers: [] as any[],
+			topGainers: [] as EnrichmentTopMover[],
+			topLosers: [] as EnrichmentTopMover[],
 		};
 
 		// Analyze enriched calls

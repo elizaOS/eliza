@@ -1,9 +1,9 @@
 import type { Address, Hex, PublicClient, WalletClient } from "viem";
+import { TaskStatus } from "./types.js";
 import type {
   CreateEscrowParams,
   EscrowCreated,
   EscrowDetails,
-  TaskStatus,
   TxResult,
 } from "./types.js";
 import {

@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from 'bun:test';
-import type { WorkflowDraft } from '../../src/types/index';
+import type { NodeDefinition, WorkflowDefinition, WorkflowDraft } from '../../src/types/index';
 import {
   classifyDraftIntent,
   extractKeywords,
@@ -126,7 +126,7 @@ describe('matchWorkflow', () => {
     );
     const runtime = createMockRuntime({ useModel });
 
-    const workflows = [
+    const workflows: WorkflowDefinition[] = [
       {
         id: 'wf-001',
         name: 'Stripe Payments',
@@ -143,13 +143,12 @@ describe('matchWorkflow', () => {
       },
     ];
 
-    await matchWorkflow(runtime, 'Activate Stripe', workflows as any);
+    await matchWorkflow(runtime, 'Activate Stripe', workflows);
 
     // Verify useModel was called
     expect(useModel).toHaveBeenCalledTimes(1);
     // Verify the prompt includes workflow names
-    const callArgs = useModel.mock.calls[0] as any[];
-    const params = callArgs[1] as { prompt: string };
+    const [, params] = useModel.mock.calls[0] as [unknown, { prompt: string }];
     expect(params.prompt).toContain('Stripe Payments');
     expect(params.prompt).toContain('Gmail Auto');
     expect(params.prompt).toContain('ACTIVE');
@@ -161,7 +160,7 @@ describe('matchWorkflow', () => {
       useModel: mock(() => Promise.reject(new Error('LLM timeout'))),
     });
 
-    const workflows = [
+    const workflows: WorkflowDefinition[] = [
       {
         id: 'wf-001',
         name: 'Test',
@@ -171,7 +170,7 @@ describe('matchWorkflow', () => {
       },
     ];
 
-    const result = await matchWorkflow(runtime, 'Activate Test', workflows as any);
+    const result = await matchWorkflow(runtime, 'Activate Test', workflows);
 
     expect(result.matchedWorkflowId).toBeNull();
     expect(result.confidence).toBe('none');
@@ -189,7 +188,7 @@ describe('matchWorkflow', () => {
       useModel: mock(() => Promise.resolve(matchResult)),
     });
 
-    const workflows = [
+    const workflows: WorkflowDefinition[] = [
       {
         id: 'wf-002',
         name: 'Gmail',
@@ -199,7 +198,7 @@ describe('matchWorkflow', () => {
       },
     ];
 
-    const result = await matchWorkflow(runtime, 'the Gmail one', workflows as any);
+    const result = await matchWorkflow(runtime, 'the Gmail one', workflows);
 
     expect(result.matchedWorkflowId).toBe('wf-002');
     expect(result.confidence).toBe('medium');
@@ -292,12 +291,11 @@ describe('generateWorkflow', () => {
         group: ['output'],
         properties: [],
       },
-    ];
+    ] as NodeDefinition[];
 
-    await generateWorkflow(runtime, 'call an API', nodes as any);
+    await generateWorkflow(runtime, 'call an API', nodes);
 
-    const callArgs = useModel.mock.calls[0] as any[];
-    const params = callArgs[1] as { prompt: string };
+    const [, params] = useModel.mock.calls[0] as [unknown, { prompt: string }];
     expect(params.prompt).toContain('HTTP Request');
     expect(params.prompt).toContain('Make an HTTP request');
   });
@@ -323,12 +321,11 @@ describe('generateWorkflow', () => {
         group: ['transform'],
         properties: [],
       },
-    ];
+    ] as NodeDefinition[];
 
-    await generateWorkflow(runtime, 'do something', nodes as any);
+    await generateWorkflow(runtime, 'do something', nodes);
 
-    const callArgs = useModel.mock.calls[0] as any[];
-    const params = callArgs[1] as { prompt: string };
+    const [, params] = useModel.mock.calls[0] as [unknown, { prompt: string }];
     expect(params.prompt).not.toContain('Do NOT invent field names');
   });
 });
@@ -410,8 +407,7 @@ describe('classifyDraftIntent', () => {
 
     await classifyDraftIntent(runtime, 'yes', sampleDraft);
 
-    const callArgs = useModel.mock.calls[0] as any[];
-    const params = callArgs[1] as { prompt: string };
+    const [, params] = useModel.mock.calls[0] as [unknown, { prompt: string }];
     expect(params.prompt).toContain('Stripe Gmail Summary');
     expect(params.prompt).toContain('Schedule Trigger');
     expect(params.prompt).toContain('Send Stripe summaries via Gmail');

@@ -18,6 +18,7 @@ import { TLSSocket } from "node:tls";
 import {
   readJsonBody as httpReadJsonBody } from "@elizaos/shared";
 import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
+import { loadTrainingConfig } from "./core/training-config.js";
 import {
   EXPERIENCE_ROUTE_PATHS,
   handleExperienceRoutes,
@@ -35,6 +36,16 @@ const LOOPBACK_HOSTS = new Set([
   "::1",
   "0.0.0.0",
 ]);
+
+function emptyTrainingTaskCounters(): Record<string, number> {
+  return {
+    should_respond: 0,
+    context_routing: 0,
+    action_planner: 0,
+    response: 0,
+    media_description: 0,
+  };
+}
 
 function isLoopbackHost(host: string): boolean {
   if (!host) return false;
@@ -89,12 +100,30 @@ function trainingRouteHandler(): PluginRouteHandler {
     const httpRes = res as http.ServerResponse;
     const agentRuntime = (runtime as AgentRuntime) ?? null;
     const trainingService = getActiveTrainingService();
+    const method = (httpReq.method ?? "GET").toUpperCase();
+    const url = new URL(httpReq.url ?? "/", requestBaseUrl(httpReq));
     if (!trainingService) {
+      if (method === "GET" && url.pathname === "/api/training/auto/config") {
+        json(httpRes, { config: loadTrainingConfig() });
+        return;
+      }
+      if (method === "GET" && url.pathname === "/api/training/auto/status") {
+        const config = loadTrainingConfig();
+        json(httpRes, {
+          autoTrainEnabled: config.autoTrain,
+          triggerThreshold: config.triggerThreshold,
+          cooldownHours: config.triggerCooldownHours,
+          counters: emptyTrainingTaskCounters(),
+          lastTrain: {},
+          perTaskThresholds: emptyTrainingTaskCounters(),
+          perTaskCooldownMs: emptyTrainingTaskCounters(),
+          serviceRegistered: false,
+        });
+        return;
+      }
       error(httpRes, "Training service is not available", 503);
       return;
     }
-    const method = (httpReq.method ?? "GET").toUpperCase();
-    const url = new URL(httpReq.url ?? "/", requestBaseUrl(httpReq));
     await handleTrainingRoutes({
       req: httpReq,
       res: httpRes,

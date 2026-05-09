@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { ModelType } from "../../types/model";
 import type { IAgentRuntime } from "../../types/runtime";
 import type { Task } from "../../types/task";
-import { ModelType } from "../../types/model";
 import {
 	PROMPT_RUNNER_TASK_KIND,
 	PROMPT_RUNNER_TASK_WORKER_NAME,
@@ -17,13 +17,17 @@ function makeTask(prompt: unknown): Task {
 			prompt,
 		},
 		tags: ["queue", "repeat"],
-	} as unknown as Task;
+	} satisfies Task;
+}
+
+function runtimeWithModel(useModel: IAgentRuntime["useModel"]): IAgentRuntime {
+	return { useModel } as IAgentRuntime;
 }
 
 describe("prompt-runner TaskWorker", () => {
 	it("invokes TEXT_LARGE with the system prompt wrapping the task prompt", async () => {
 		const useModel = vi.fn(async () => "ok");
-		const runtime = { useModel } as unknown as IAgentRuntime;
+		const runtime = runtimeWithModel(useModel as IAgentRuntime["useModel"]);
 
 		await promptRunnerTaskWorker.execute(
 			runtime,
@@ -43,7 +47,7 @@ describe("prompt-runner TaskWorker", () => {
 
 	it("throws if metadata.prompt is missing", async () => {
 		const useModel = vi.fn();
-		const runtime = { useModel } as unknown as IAgentRuntime;
+		const runtime = runtimeWithModel(useModel as IAgentRuntime["useModel"]);
 		await expect(
 			promptRunnerTaskWorker.execute(runtime, {}, makeTask(undefined)),
 		).rejects.toThrow(/missing metadata.prompt/);
@@ -52,7 +56,7 @@ describe("prompt-runner TaskWorker", () => {
 
 	it("throws if metadata.prompt is empty string", async () => {
 		const useModel = vi.fn();
-		const runtime = { useModel } as unknown as IAgentRuntime;
+		const runtime = runtimeWithModel(useModel as IAgentRuntime["useModel"]);
 		await expect(
 			promptRunnerTaskWorker.execute(runtime, {}, makeTask("")),
 		).rejects.toThrow(/missing metadata.prompt/);

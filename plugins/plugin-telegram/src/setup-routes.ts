@@ -49,7 +49,9 @@ interface ConnectorSetupService {
   }): boolean;
 }
 
-function isConnectorSetupService(service: unknown): service is ConnectorSetupService {
+function isConnectorSetupService(
+  service: unknown,
+): service is ConnectorSetupService {
   if (!service || typeof service !== "object") {
     return false;
   }
