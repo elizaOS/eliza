@@ -1,6 +1,6 @@
 /**
  * Register the coding-agent orchestrator's HTTP routes with the
- * @elizaos/app-core route-plugin registry. The runtime walks this registry
+ * @elizaos/core route-plugin registry. The runtime walks this registry
  * during plugin initialization and mounts the rawPath routes directly onto
  * the agent runtime.
  */
