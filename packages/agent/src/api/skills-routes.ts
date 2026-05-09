@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import { skillScaffoldMarkdown } from "../templates/skill-scaffold.js";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import {
   installMarketplaceSkill,
@@ -12,8 +12,8 @@ import {
   uninstallMarketplaceSkill,
 } from "../services/skill-marketplace.js";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
+import { skillScaffoldMarkdown } from "../templates/skill-scaffold.js";
 import { parseClampedInteger } from "../utils/number-parsing.js";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // Types shared with server.ts (kept lean to avoid circular deps)

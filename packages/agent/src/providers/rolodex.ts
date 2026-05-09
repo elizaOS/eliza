@@ -3,13 +3,11 @@ import type {
   Memory,
   Provider,
   ProviderResult,
+  RelationshipsGraphService,
+  RelationshipsPersonSummary,
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type {
-  RelationshipsGraphService,
-  RelationshipsPersonSummary,
-} from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import { hasAdminAccess } from "../security/access.js";
 

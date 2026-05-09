@@ -32,8 +32,8 @@ export {
   searchMemoriesForCluster,
 } from "@elizaos/core";
 
-import type { IAgentRuntime } from "@elizaos/core";
 import type {
+  IAgentRuntime,
   RelationshipsGraphService,
   RelationshipsServiceLike,
 } from "@elizaos/core";

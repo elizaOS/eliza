@@ -14,7 +14,7 @@ import {
 function schedule(overrides?: Partial<WorkflowNode>): WorkflowNode {
   return {
     name: 'Schedule Trigger',
-    type: 'p1p3s-nodes-base.scheduleTrigger',
+    type: 'workflows-nodes-base.scheduleTrigger',
     typeVersion: 1,
     position: [250, 300],
     parameters: { rule: { interval: [{ field: 'hours', hoursInterval: 1 }] } },
@@ -25,7 +25,7 @@ function schedule(overrides?: Partial<WorkflowNode>): WorkflowNode {
 function http(overrides?: Partial<WorkflowNode>): WorkflowNode {
   return {
     name: 'HTTP Request',
-    type: 'p1p3s-nodes-base.httpRequest',
+    type: 'workflows-nodes-base.httpRequest',
     typeVersion: 4.3,
     position: [500, 300],
     parameters: { method: 'GET', url: 'https://example.com' },
@@ -36,7 +36,7 @@ function http(overrides?: Partial<WorkflowNode>): WorkflowNode {
 function setNode(overrides?: Partial<WorkflowNode>): WorkflowNode {
   return {
     name: 'Set',
-    type: 'p1p3s-nodes-base.set',
+    type: 'workflows-nodes-base.set',
     typeVersion: 3.4,
     position: [750, 300],
     parameters: {
@@ -52,7 +52,7 @@ function setNode(overrides?: Partial<WorkflowNode>): WorkflowNode {
 function code(overrides?: Partial<WorkflowNode>): WorkflowNode {
   return {
     name: 'Code',
-    type: 'p1p3s-nodes-base.code',
+    type: 'workflows-nodes-base.code',
     typeVersion: 2,
     position: [750, 420],
     parameters: { jsCode: 'return items;' },
@@ -220,7 +220,7 @@ describe('validateNodeParameters', () => {
       nodes: [
         {
           name: 'Custom',
-          type: 'p1p3s-nodes-community.unknownNode',
+          type: 'workflows-nodes-community.unknownNode',
           typeVersion: 1,
           position: [0, 0],
           parameters: {},
@@ -285,7 +285,7 @@ describe('correctOptionParameters', () => {
       nodes: [
         {
           name: 'Custom',
-          type: 'p1p3s-nodes-community.unknown',
+          type: 'workflows-nodes-community.unknown',
           typeVersion: 1,
           position: [250, 300],
           parameters: { resource: 'whatever' },
@@ -328,7 +328,7 @@ describe('detectUnknownParameters', () => {
       nodes: [
         {
           name: 'Custom',
-          type: 'p1p3s-nodes-community.unknown',
+          type: 'workflows-nodes-community.unknown',
           typeVersion: 1,
           position: [250, 300],
           parameters: { anything: 'goes' },

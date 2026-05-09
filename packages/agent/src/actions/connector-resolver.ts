@@ -8,12 +8,15 @@
  * @module actions/connector-resolver
  */
 
-import type { IAgentRuntime, Memory, Room, UUID } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import type {
+  IAgentRuntime,
+  Memory,
   RelationshipsGraphService,
   RelationshipsPersonSummary,
+  Room,
+  UUID,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { formatSpeakerLabel } from "../shared/conversation-format.js";
 
 // ---------------------------------------------------------------------------

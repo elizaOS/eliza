@@ -6,6 +6,7 @@ import {
   customActionGenerateTemplate,
   ModelType,
 } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { asRecord } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
@@ -17,7 +18,6 @@ import {
   buildTestHandler,
   registerCustomActionLive,
 } from "../runtime/custom-actions.js";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { resolveTerminalRunLimits } from "./terminal-run-limits.js";
 
 // ---------------------------------------------------------------------------

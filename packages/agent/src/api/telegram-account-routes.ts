@@ -1,4 +1,5 @@
 import type http from "node:http";
+import type { RouteHelpers } from "@elizaos/shared";
 import {
   clearTelegramAccountAuthState,
   clearTelegramAccountSession,
@@ -10,7 +11,6 @@ import {
   telegramAccountAuthStateExists,
   telegramAccountSessionExists,
 } from "../services/telegram-account-auth.js";
-import type { RouteHelpers } from "@elizaos/shared";
 
 type TelegramAccountRuntimeServiceLike = {
   isConnected?: () => boolean;

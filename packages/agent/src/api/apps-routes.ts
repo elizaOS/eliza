@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
 import {
   type AppRunActionResult,
   type AppRunSummary,
@@ -27,7 +28,6 @@ import {
   scoreEntries,
   toSearchResults,
 } from "../services/registry-client-queries.js";
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
 
 const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
   ".webp": "image/webp",

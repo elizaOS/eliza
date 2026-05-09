@@ -10,6 +10,7 @@ import {
   type TriggerWakeMode,
   type UUID,
 } from "@elizaos/core";
+import type { RouteHelpers, RouteRequestContext } from "@elizaos/shared";
 import type {
   TriggerExecutionOptions,
   TriggerExecutionResult,
@@ -20,7 +21,6 @@ import type {
   TriggerSummary,
   TriggerTaskMetadata,
 } from "../triggers/types.js";
-import type { RouteHelpers, RouteRequestContext } from "@elizaos/shared";
 
 export type TriggerRouteHelpers = RouteHelpers;
 

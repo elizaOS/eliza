@@ -11,14 +11,14 @@
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { logger } from "@elizaos/core";
-import { formatError } from "@elizaos/shared";
-import type { StreamConfig } from "../services/stream-manager.js";
 import {
+  formatError,
   readRequestBody,
   readRequestBodyBuffer,
   sendJson,
   sendJsonError,
 } from "@elizaos/shared";
+import type { StreamConfig } from "../services/stream-manager.js";
 import {
   getHeadlessCaptureConfig,
   readStreamSettings,
@@ -315,9 +315,7 @@ async function startStreamPipeline(
         `http://127.0.0.1:${state.port ?? 2138}`;
 
       try {
-        const { startBrowserCapture } = await import(
-          "@elizaos/plugin-browser"
-        );
+        const { startBrowserCapture } = await import("@elizaos/plugin-browser");
         // Browser capture in x11grab mode just opens the browser on the display --
         // we don't need the frame file since FFmpeg captures the display directly.
         await startBrowserCapture({
@@ -542,9 +540,7 @@ export async function handleStreamRoute(
     try {
       // Stop browser capture
       try {
-        const { stopBrowserCapture } = await import(
-          "@elizaos/plugin-browser"
-        );
+        const { stopBrowserCapture } = await import("@elizaos/plugin-browser");
         await stopBrowserCapture();
       } catch {
         // Browser capture may not have been started -- ignore

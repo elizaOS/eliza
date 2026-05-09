@@ -271,10 +271,7 @@ export interface ServerState {
   _codexFlow?: import("../auth/openai-codex.js").CodexFlow;
   _codexFlowTimer?: ReturnType<typeof setTimeout>;
   /** System permission states (cached from the desktop bridge). */
-  permissionStates?: Record<
-    string,
-    import("@elizaos/shared").PermissionState
-  >;
+  permissionStates?: Record<string, import("@elizaos/shared").PermissionState>;
   /** Whether shell access is enabled (can be toggled in UI). */
   shellEnabled?: boolean;
   /** Agent automation permission mode for self-directed config changes. */

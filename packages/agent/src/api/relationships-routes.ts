@@ -1,8 +1,9 @@
-import type { IAgentRuntime, UUID } from "@elizaos/core";
 import type {
+  IAgentRuntime,
   RelationshipsGraphQuery,
   RelationshipsGraphService,
   RelationshipsMergeProposalEvidence,
+  UUID,
 } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
 

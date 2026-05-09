@@ -214,9 +214,7 @@ export interface DownloadEvent {
 export type AgentModelSlot =
   | "TEXT_SMALL"
   | "TEXT_LARGE"
-  | "TEXT_EMBEDDING"
-  | "OBJECT_SMALL"
-  | "OBJECT_LARGE";
+  | "TEXT_EMBEDDING";
 
 export type TextGenerationSlot = Extract<
   AgentModelSlot,
@@ -227,8 +225,6 @@ export const AGENT_MODEL_SLOTS: AgentModelSlot[] = [
   "TEXT_SMALL",
   "TEXT_LARGE",
   "TEXT_EMBEDDING",
-  "OBJECT_SMALL",
-  "OBJECT_LARGE",
 ];
 
 export const TEXT_GENERATION_SLOTS: TextGenerationSlot[] = [

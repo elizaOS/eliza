@@ -1,12 +1,12 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/shared";
 import {
   buildCharacterHistorySnapshot,
   listCharacterHistory,
   type RuntimeCharacterLike,
   recordCharacterHistory,
 } from "../services/character-history.js";
-import type { RouteRequestContext } from "@elizaos/shared";
 
 interface CharacterGenerateContext {
   name?: string;

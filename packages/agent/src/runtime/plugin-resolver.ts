@@ -27,8 +27,8 @@ import {
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types.js";
 import { type ElizaConfig, saveElizaConfig } from "../config/config.js";
 import { resolveStateDir, resolveUserPath } from "../config/paths.js";
-import { evmAutoEnableReasonFromCapability } from "../services/evm-signing-capability.js";
 import type { PluginInstallRecord } from "../config/types.eliza.js";
+import { evmAutoEnableReasonFromCapability } from "../services/evm-signing-capability.js";
 import { diagnoseNoAIProvider } from "../services/version-compat.js";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
 import {

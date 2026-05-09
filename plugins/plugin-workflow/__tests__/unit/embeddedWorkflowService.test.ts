@@ -60,7 +60,7 @@ describe('EmbeddedWorkflowService', () => {
           {
             id: 'unknown',
             name: 'Unknown',
-            type: 'p1p3s-nodes-base.unknown',
+            type: 'workflows-nodes-base.unknown',
             typeVersion: 1,
             position: [0, 0],
             parameters: {},
@@ -99,7 +99,7 @@ describe('EmbeddedWorkflowService', () => {
       import { drizzle } from 'drizzle-orm/pglite';
       import { EmbeddedWorkflowService } from './src/services/embedded-workflow-service.ts';
       import * as dbSchema from './src/db/schema.ts';
-      const dir = await mkdtemp(join(tmpdir(), 'embedded-p1p3s-child-'));
+      const dir = await mkdtemp(join(tmpdir(), 'embedded-workflows-child-'));
       const client = new PGlite({ dataDir: join(dir, 'pglite') });
       const db = drizzle(client, { schema: dbSchema });
       const runtime = { db, getSetting: () => null, getService: () => null };
@@ -113,9 +113,9 @@ describe('EmbeddedWorkflowService', () => {
         const created = await service.createWorkflow({
           name: 'P0 smoke',
           nodes: [
-            { id: 'schedule', name: 'Schedule Trigger', type: 'p1p3s-nodes-base.scheduleTrigger', typeVersion: 1.2, position: [0, 0], parameters: {} },
-            { id: 'http', name: 'HTTP Request', type: 'p1p3s-nodes-base.httpRequest', typeVersion: 4.2, position: [200, 0], parameters: { url: 'https://example.test/ping', method: 'GET' } },
-            { id: 'set', name: 'Set', type: 'p1p3s-nodes-base.set', typeVersion: 3.4, position: [400, 0], parameters: { assignments: { assignments: [{ name: 'source', value: 'embedded' }] } } },
+            { id: 'schedule', name: 'Schedule Trigger', type: 'workflows-nodes-base.scheduleTrigger', typeVersion: 1.2, position: [0, 0], parameters: {} },
+            { id: 'http', name: 'HTTP Request', type: 'workflows-nodes-base.httpRequest', typeVersion: 4.2, position: [200, 0], parameters: { url: 'https://example.test/ping', method: 'GET' } },
+            { id: 'set', name: 'Set', type: 'workflows-nodes-base.set', typeVersion: 3.4, position: [400, 0], parameters: { assignments: { assignments: [{ name: 'source', value: 'embedded' }] } } },
           ],
           connections: {
             'Schedule Trigger': { main: [[{ node: 'HTTP Request', type: 'main', index: 0 }]] },
@@ -148,7 +148,7 @@ describe('EmbeddedWorkflowService', () => {
   }, 20_000);
 
   test('persists workflows across embedded service restarts', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'embedded-p1p3s-persist-'));
+    const dir = await mkdtemp(join(tmpdir(), 'embedded-workflows-persist-'));
     const dataDir = join(dir, 'pglite');
     const firstClient = new PGlite({ dataDir });
     const firstDb = drizzle(firstClient, { schema: dbSchema });
@@ -159,7 +159,7 @@ describe('EmbeddedWorkflowService', () => {
         {
           id: 'manual',
           name: 'Manual Trigger',
-          type: 'p1p3s-nodes-base.manualTrigger',
+          type: 'workflows-nodes-base.manualTrigger',
           typeVersion: 1,
           position: [0, 0],
           parameters: {},
@@ -193,7 +193,7 @@ describe('EmbeddedWorkflowService', () => {
           {
             id: 'manual',
             name: 'Manual Trigger',
-            type: 'p1p3s-nodes-base.manualTrigger',
+            type: 'workflows-nodes-base.manualTrigger',
             typeVersion: 1,
             position: [0, 0],
             parameters: {},
@@ -201,7 +201,7 @@ describe('EmbeddedWorkflowService', () => {
           {
             id: 'code',
             name: 'Code',
-            type: 'p1p3s-nodes-base.code',
+            type: 'workflows-nodes-base.code',
             typeVersion: 2,
             position: [200, 0],
             parameters: {
@@ -236,7 +236,7 @@ describe('EmbeddedWorkflowService', () => {
           {
             id: 'webhook',
             name: 'Webhook',
-            type: 'p1p3s-nodes-base.webhook',
+            type: 'workflows-nodes-base.webhook',
             typeVersion: 2,
             position: [0, 0],
             parameters: { path: 'incoming', httpMethod: 'POST' },
@@ -244,7 +244,7 @@ describe('EmbeddedWorkflowService', () => {
           {
             id: 'set',
             name: 'Set',
-            type: 'p1p3s-nodes-base.set',
+            type: 'workflows-nodes-base.set',
             typeVersion: 3.4,
             position: [200, 0],
             parameters: { assignments: { assignments: [{ name: 'handled', value: true }] } },

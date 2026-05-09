@@ -1,6 +1,6 @@
 [
   {
-    "name": "p1p3s-nodes-base.code",
+    "name": "workflows-nodes-base.code",
     "displayName": "Code",
     "group": [
       "transform"
@@ -89,7 +89,7 @@
           "editorLanguage": "javaScript"
         },
         "default": "",
-        "description": "JavaScript code to execute.<br><br>Tip: You can use luxon vars like <code>$today</code> for dates and <code>$jmespath</code> for querying JSON structures. <a href=\"https://docs.p1p3s.io/nodes/p1p3s-nodes-base.function\">Learn more</a>.",
+        "description": "JavaScript code to execute.<br><br>Tip: You can use luxon vars like <code>$today</code> for dates and <code>$jmespath</code> for querying JSON structures. <a href=\"https://docs.workflows.io/nodes/workflows-nodes-base.function\">Learn more</a>.",
         "noDataExpression": true,
         "displayOptions": {
           "show": {
@@ -111,7 +111,7 @@
           "editorLanguage": "javaScript"
         },
         "default": "",
-        "description": "JavaScript code to execute.<br><br>Tip: You can use luxon vars like <code>$today</code> for dates and <code>$jmespath</code> for querying JSON structures. <a href=\"https://docs.p1p3s.io/nodes/p1p3s-nodes-base.function\">Learn more</a>.",
+        "description": "JavaScript code to execute.<br><br>Tip: You can use luxon vars like <code>$today</code> for dates and <code>$jmespath</code> for querying JSON structures. <a href=\"https://docs.workflows.io/nodes/workflows-nodes-base.function\">Learn more</a>.",
         "noDataExpression": true,
         "displayOptions": {
           "show": {
@@ -133,7 +133,7 @@
           "editorLanguage": "javaScript"
         },
         "default": "",
-        "description": "JavaScript code to execute.<br><br>Tip: You can use luxon vars like <code>$today</code> for dates and <code>$jmespath</code> for querying JSON structures. <a href=\"https://docs.p1p3s.io/nodes/p1p3s-nodes-base.function\">Learn more</a>.",
+        "description": "JavaScript code to execute.<br><br>Tip: You can use luxon vars like <code>$today</code> for dates and <code>$jmespath</code> for querying JSON structures. <a href=\"https://docs.workflows.io/nodes/workflows-nodes-base.function\">Learn more</a>.",
         "noDataExpression": true,
         "displayOptions": {
           "show": {
@@ -158,7 +158,7 @@
           "editorLanguage": "javaScript"
         },
         "default": "",
-        "description": "JavaScript code to execute.<br><br>Tip: You can use luxon vars like <code>$today</code> for dates and <code>$jmespath</code> for querying JSON structures. <a href=\"https://docs.p1p3s.io/nodes/p1p3s-nodes-base.function\">Learn more</a>.",
+        "description": "JavaScript code to execute.<br><br>Tip: You can use luxon vars like <code>$today</code> for dates and <code>$jmespath</code> for querying JSON structures. <a href=\"https://docs.workflows.io/nodes/workflows-nodes-base.function\">Learn more</a>.",
         "noDataExpression": true,
         "displayOptions": {
           "show": {
@@ -175,7 +175,7 @@
         }
       },
       {
-        "displayName": "Type <code>$</code> for a list of <a target=\"_blank\" href=\"https://docs.p1p3s.io/code-examples/methods-variables-reference/\">special vars/methods</a>. Debug by using <code>console.log()</code> statements and viewing their output in the browser console.",
+        "displayName": "Type <code>$</code> for a list of <a target=\"_blank\" href=\"https://docs.workflows.io/code-examples/methods-variables-reference/\">special vars/methods</a>. Debug by using <code>console.log()</code> statements and viewing their output in the browser console.",
         "name": "notice",
         "type": "notice",
         "displayOptions": {
@@ -196,7 +196,7 @@
           "editorLanguage": "python"
         },
         "default": "",
-        "description": "Python code to execute.<br><br>Tip: You can use built-in methods and variables like <code>_today</code> for dates and <code>_jmespath</code> for querying JSON structures. <a href=\"https://docs.p1p3s.io/code/builtin/\">Learn more</a>.",
+        "description": "Python code to execute.<br><br>Tip: You can use built-in methods and variables like <code>_today</code> for dates and <code>_jmespath</code> for querying JSON structures. <a href=\"https://docs.workflows.io/code/builtin/\">Learn more</a>.",
         "noDataExpression": true,
         "displayOptions": {
           "show": {
@@ -219,7 +219,7 @@
           "editorLanguage": "python"
         },
         "default": "",
-        "description": "Python code to execute.<br><br>Tip: You can use built-in methods and variables like <code>_today</code> for dates and <code>_jmespath</code> for querying JSON structures. <a href=\"https://docs.p1p3s.io/code/builtin/\">Learn more</a>.",
+        "description": "Python code to execute.<br><br>Tip: You can use built-in methods and variables like <code>_today</code> for dates and <code>_jmespath</code> for querying JSON structures. <a href=\"https://docs.workflows.io/code/builtin/\">Learn more</a>.",
         "noDataExpression": true,
         "displayOptions": {
           "show": {
@@ -262,7 +262,7 @@
     ]
   },
   {
-    "name": "p1p3s-nodes-base.crypto",
+    "name": "workflows-nodes-base.crypto",
     "displayName": "Crypto",
     "group": [
       "transform"
@@ -605,7 +605,7 @@
           }
         },
         "type": "options",
-        "description": "Choose from the list, or specify an ID using an <a href=\"https://docs.p1p3s.io/code/expressions/\">expression</a>",
+        "description": "Choose from the list, or specify an ID using an <a href=\"https://docs.workflows.io/code/expressions/\">expression</a>",
         "options": [
           {
             "name": "RSA-MD5",
@@ -928,7 +928,7 @@
     ]
   },
   {
-    "name": "p1p3s-nodes-base.dateTime",
+    "name": "workflows-nodes-base.dateTime",
     "displayName": "Date & Time",
     "group": [
       "transform"
@@ -980,7 +980,7 @@
         "default": "getCurrentDate"
       },
       {
-        "displayName": "You can also refer to the current date in p1p3s expressions by using <code>{{$now}}</code> or <code>{{$today}}</code>. <a target=\"_blank\" href=\"https://docs.p1p3s.io/code/cookbook/luxon/\">More info</a>",
+        "displayName": "You can also refer to the current date in workflows expressions by using <code>{{$now}}</code> or <code>{{$today}}</code>. <a target=\"_blank\" href=\"https://docs.workflows.io/code/cookbook/luxon/\">More info</a>",
         "name": "notice",
         "type": "notice",
         "default": "",
@@ -1047,12 +1047,12 @@
             "type": "string",
             "placeholder": "America/New_York",
             "default": "",
-            "description": "The timezone to use. If not set, the timezone of the p1p3s instance will be used. Use ‘GMT’ for +00:00 timezone."
+            "description": "The timezone to use. If not set, the timezone of the workflows instance will be used. Use ‘GMT’ for +00:00 timezone."
           }
         ]
       },
       {
-        "displayName": "You can also do this using an expression, e.g. <code>{{your_date.plus(5, 'minutes')}}</code>. <a target='_blank' href='https://docs.p1p3s.io/code/cookbook/luxon/'>More info</a>",
+        "displayName": "You can also do this using an expression, e.g. <code>{{your_date.plus(5, 'minutes')}}</code>. <a target='_blank' href='https://docs.workflows.io/code/cookbook/luxon/'>More info</a>",
         "name": "notice",
         "type": "notice",
         "default": "",
@@ -1184,7 +1184,7 @@
         ]
       },
       {
-        "displayName": "You can also do this using an expression, e.g. <code>{{your_date.minus(5, 'minutes')}}</code>. <a target='_blank' href='https://docs.p1p3s.io/code/cookbook/luxon/'>More info</a>",
+        "displayName": "You can also do this using an expression, e.g. <code>{{your_date.minus(5, 'minutes')}}</code>. <a target='_blank' href='https://docs.workflows.io/code/cookbook/luxon/'>More info</a>",
         "name": "notice",
         "type": "notice",
         "default": "",
@@ -1316,7 +1316,7 @@
         ]
       },
       {
-        "displayName": "You can also do this using an expression, e.g. <code>{{your_date.format('yyyy-MM-dd')}}</code>. <a target='_blank' href='https://docs.p1p3s.io/code/cookbook/luxon/'>More info</a>",
+        "displayName": "You can also do this using an expression, e.g. <code>{{your_date.format('yyyy-MM-dd')}}</code>. <a target='_blank' href='https://docs.workflows.io/code/cookbook/luxon/'>More info</a>",
         "name": "notice",
         "type": "notice",
         "default": "",
@@ -1468,7 +1468,7 @@
         ]
       },
       {
-        "displayName": "You can also do this using an expression, e.g. <code>{{ your_date.beginningOf('month') }}</code> or <code>{{ your_date.endOfMonth() }}</code>. <a target='_blank' href='https://docs.p1p3s.io/code/cookbook/luxon/'>More info</a>",
+        "displayName": "You can also do this using an expression, e.g. <code>{{ your_date.beginningOf('month') }}</code> or <code>{{ your_date.endOfMonth() }}</code>. <a target='_blank' href='https://docs.workflows.io/code/cookbook/luxon/'>More info</a>",
         "name": "notice",
         "type": "notice",
         "default": "",
@@ -1742,7 +1742,7 @@
         ]
       },
       {
-        "displayName": "You can also do this using an expression, e.g. <code>{{ your_date.extract(\"month\") }}}</code>. <a target=\"_blank\" href=\"https://docs.p1p3s.io/code/cookbook/luxon/\">More info</a>",
+        "displayName": "You can also do this using an expression, e.g. <code>{{ your_date.extract(\"month\") }}}</code>. <a target=\"_blank\" href=\"https://docs.workflows.io/code/cookbook/luxon/\">More info</a>",
         "name": "notice",
         "type": "notice",
         "default": "",
@@ -1851,7 +1851,7 @@
     ]
   },
   {
-    "name": "p1p3s-nodes-base.filter",
+    "name": "workflows-nodes-base.filter",
     "displayName": "Filter",
     "group": [
       "transform"
@@ -1886,7 +1886,7 @@
       },
       {
         "displayName": "Convert types where required",
-        "description": "If the type of an expression doesn't match the type of the comparison, p1p3s will try to cast the expression to the required type. E.g. for booleans <code>\"false\"</code> or <code>0</code> will be cast to <code>false</code>",
+        "description": "If the type of an expression doesn't match the type of the comparison, workflows will try to cast the expression to the required type. E.g. for booleans <code>\"false\"</code> or <code>0</code> will be cast to <code>false</code>",
         "name": "looseTypeValidation",
         "type": "boolean",
         "default": false,
@@ -1918,7 +1918,7 @@
           },
           {
             "displayName": "Convert types where required",
-            "description": "If the type of an expression doesn't match the type of the comparison, p1p3s will try to cast the expression to the required type. E.g. for booleans <code>\"false\"</code> or <code>0</code> will be cast to <code>false</code>",
+            "description": "If the type of an expression doesn't match the type of the comparison, workflows will try to cast the expression to the required type. E.g. for booleans <code>\"false\"</code> or <code>0</code> will be cast to <code>false</code>",
             "name": "looseTypeValidation",
             "type": "boolean",
             "default": true,
@@ -1939,7 +1939,7 @@
     ]
   },
   {
-    "name": "p1p3s-nodes-base.httpRequest",
+    "name": "workflows-nodes-base.httpRequest",
     "displayName": "HTTP Request",
     "group": [
       "output"
@@ -2353,7 +2353,7 @@
             "value": "json"
           },
           {
-            "name": "p1p3s Binary File",
+            "name": "workflows Binary File",
             "value": "binaryData"
           },
           {
@@ -2430,7 +2430,7 @@
                 "name": "name",
                 "type": "string",
                 "default": "",
-                "description": "ID of the field to set. Choose from the list, or specify an ID using an <a href=\"https://docs.p1p3s.io/code/expressions/\">expression</a>."
+                "description": "ID of the field to set. Choose from the list, or specify an ID using an <a href=\"https://docs.workflows.io/code/expressions/\">expression</a>."
               },
               {
                 "displayName": "Value",
@@ -2499,7 +2499,7 @@
                 "type": "options",
                 "options": [
                   {
-                    "name": "p1p3s Binary File",
+                    "name": "workflows Binary File",
                     "value": "formBinaryData"
                   },
                   {
@@ -2514,7 +2514,7 @@
                 "name": "name",
                 "type": "string",
                 "default": "",
-                "description": "ID of the field to set. Choose from the list, or specify an ID using an <a href=\"https://docs.p1p3s.io/code/expressions/\">expression</a>."
+                "description": "ID of the field to set. Choose from the list, or specify an ID using an <a href=\"https://docs.workflows.io/code/expressions/\">expression</a>."
               },
               {
                 "displayName": "Value",
@@ -2613,7 +2613,7 @@
                 "name": "name",
                 "type": "string",
                 "default": "",
-                "description": "ID of the field to set. Choose from the list, or specify an ID using an <a href=\"https://docs.p1p3s.io/code/expressions/\">expression</a>."
+                "description": "ID of the field to set. Choose from the list, or specify an ID using an <a href=\"https://docs.workflows.io/code/expressions/\">expression</a>."
               },
               {
                 "displayName": "Value",
@@ -3005,7 +3005,7 @@
                     "description": "If pagination should be used"
                   },
                   {
-                    "displayName": "Use the $response variables to access the data of the previous response. Refer to the <a href=\"https://docs.p1p3s.io/integrations/builtin/core-nodes/p1p3s-nodes-base.httprequest/#pagination/?utm_source=p1p3s_app&utm_medium=node_settings_modal-credential_link&utm_campaign=p1p3s-nodes-base.httprequest\" target=\"_blank\">docs</a> for more info about pagination/",
+                    "displayName": "Use the $response variables to access the data of the previous response. Refer to the <a href=\"https://docs.workflows.io/integrations/builtin/core-nodes/workflows-nodes-base.httprequest/#pagination/?utm_source=workflows_app&utm_medium=node_settings_modal-credential_link&utm_campaign=workflows-nodes-base.httprequest\" target=\"_blank\">docs</a> for more info about pagination/",
                     "name": "webhookNotice",
                     "displayOptions": {
                       "hide": {
@@ -3029,7 +3029,7 @@
                       }
                     },
                     "default": "",
-                    "description": "Should evaluate to the URL of the next page. <a href=\"https://docs.p1p3s.io/integrations/builtin/core-nodes/p1p3s-nodes-base.httprequest/#pagination\" target=\"_blank\">More info</a>."
+                    "description": "Should evaluate to the URL of the next page. <a href=\"https://docs.workflows.io/integrations/builtin/core-nodes/workflows-nodes-base.httprequest/#pagination\" target=\"_blank\">More info</a>."
                   },
                   {
                     "displayName": "Parameters",
@@ -3160,7 +3160,7 @@
                       }
                     },
                     "default": "",
-                    "description": "Should evaluate to true when pagination is complete. <a href=\"https://docs.p1p3s.io/integrations/builtin/core-nodes/p1p3s-nodes-base.httprequest/#pagination\" target=\"_blank\">More info</a>."
+                    "description": "Should evaluate to true when pagination is complete. <a href=\"https://docs.workflows.io/integrations/builtin/core-nodes/workflows-nodes-base.httprequest/#pagination\" target=\"_blank\">More info</a>."
                   },
                   {
                     "displayName": "Limit Pages Fetched",
@@ -3506,7 +3506,7 @@
     ]
   },
   {
-    "name": "p1p3s-nodes-base.if",
+    "name": "workflows-nodes-base.if",
     "displayName": "If",
     "group": [
       "transform"
@@ -3542,7 +3542,7 @@
       },
       {
         "displayName": "Convert types where required",
-        "description": "If the type of an expression doesn't match the type of the comparison, p1p3s will try to cast the expression to the required type. E.g. for booleans <code>\"false\"</code> or <code>0</code> will be cast to <code>false</code>",
+        "description": "If the type of an expression doesn't match the type of the comparison, workflows will try to cast the expression to the required type. E.g. for booleans <code>\"false\"</code> or <code>0</code> will be cast to <code>false</code>",
         "name": "looseTypeValidation",
         "type": "boolean",
         "default": false,
@@ -3574,7 +3574,7 @@
           },
           {
             "displayName": "Convert types where required",
-            "description": "If the type of an expression doesn't match the type of the comparison, p1p3s will try to cast the expression to the required type. E.g. for booleans <code>\"false\"</code> or <code>0</code> will be cast to <code>false</code>",
+            "description": "If the type of an expression doesn't match the type of the comparison, workflows will try to cast the expression to the required type. E.g. for booleans <code>\"false\"</code> or <code>0</code> will be cast to <code>false</code>",
             "name": "looseTypeValidation",
             "type": "boolean",
             "default": true,
@@ -3595,7 +3595,7 @@
     ]
   },
   {
-    "name": "p1p3s-nodes-base.itemLists",
+    "name": "workflows-nodes-base.itemLists",
     "displayName": "Item Lists",
     "group": [
       "input"
@@ -4679,12 +4679,12 @@
     "credentials": []
   },
   {
-    "name": "p1p3s-nodes-base.manualTrigger",
+    "name": "workflows-nodes-base.manualTrigger",
     "displayName": "Manual Trigger",
     "group": [
       "trigger"
     ],
-    "description": "Runs the flow on clicking a button in p1p3s",
+    "description": "Runs the flow on clicking a button in workflows",
     "version": 1,
     "inputs": [],
     "outputs": [
@@ -4700,7 +4700,7 @@
     ]
   },
   {
-    "name": "p1p3s-nodes-base.merge",
+    "name": "workflows-nodes-base.merge",
     "displayName": "Merge",
     "group": [
       "transform"
@@ -5810,7 +5810,7 @@
     ]
   },
   {
-    "name": "p1p3s-nodes-base.noOp",
+    "name": "workflows-nodes-base.noOp",
     "displayName": "No Operation, do nothing",
     "group": [
       "organization"
@@ -5826,7 +5826,7 @@
     "properties": []
   },
   {
-    "name": "p1p3s-nodes-base.respondToWebhook",
+    "name": "workflows-nodes-base.respondToWebhook",
     "displayName": "Respond to Webhook",
     "group": [
       "transform"
@@ -5865,7 +5865,7 @@
         }
       },
       {
-        "displayName": "Verify that the \"Webhook\" node's \"Respond\" parameter is set to \"Using Respond to Webhook Node\". <a href=\"https://docs.p1p3s.io/integrations/builtin/core-nodes/p1p3s-nodes-base.respondtowebhook/\" target=\"_blank\">More details",
+        "displayName": "Verify that the \"Webhook\" node's \"Respond\" parameter is set to \"Using Respond to Webhook Node\". <a href=\"https://docs.workflows.io/integrations/builtin/core-nodes/workflows-nodes-base.respondtowebhook/\" target=\"_blank\">More details",
         "name": "generalNotice",
         "type": "notice",
         "default": ""
@@ -6029,7 +6029,7 @@
           }
         },
         "default": "",
-        "placeholder": "e.g. http://www.p1p3s.io",
+        "placeholder": "e.g. http://www.workflows.io",
         "description": "The URL to redirect to",
         "validateType": "url"
       },
@@ -6252,7 +6252,7 @@
     ]
   },
   {
-    "name": "p1p3s-nodes-base.scheduleTrigger",
+    "name": "workflows-nodes-base.scheduleTrigger",
     "displayName": "Schedule Trigger",
     "group": [
       "trigger",
@@ -6681,7 +6681,7 @@
     ]
   },
   {
-    "name": "p1p3s-nodes-base.set",
+    "name": "workflows-nodes-base.set",
     "displayName": "Edit Fields (Set)",
     "group": [
       "input"
@@ -7214,7 +7214,7 @@
     ]
   },
   {
-    "name": "p1p3s-nodes-base.splitInBatches",
+    "name": "workflows-nodes-base.splitInBatches",
     "displayName": "Loop Over Items (Split in Batches)",
     "group": [
       "organization"
@@ -7230,7 +7230,7 @@
     ],
     "properties": [
       {
-        "displayName": "You may not need this node — p1p3s nodes automatically run once for each input item. <a href=\"https://docs.p1p3s.io/getting-started/key-concepts/looping.html#using-loops-in-p1p3s\" target=\"_blank\">More info</a>",
+        "displayName": "You may not need this node — workflows nodes automatically run once for each input item. <a href=\"https://docs.workflows.io/getting-started/key-concepts/looping.html#using-loops-in-workflows\" target=\"_blank\">More info</a>",
         "name": "splitInBatchesNotice",
         "type": "notice",
         "default": ""
@@ -7264,7 +7264,7 @@
     ]
   },
   {
-    "name": "p1p3s-nodes-base.switch",
+    "name": "workflows-nodes-base.switch",
     "displayName": "Switch",
     "group": [
       "transform"
@@ -7447,7 +7447,7 @@
       },
       {
         "displayName": "Convert types where required",
-        "description": "If the type of an expression doesn't match the type of the comparison, p1p3s will try to cast the expression to the required type. E.g. for booleans <code>\"false\"</code> or <code>0</code> will be cast to <code>false</code>",
+        "description": "If the type of an expression doesn't match the type of the comparison, workflows will try to cast the expression to the required type. E.g. for booleans <code>\"false\"</code> or <code>0</code> will be cast to <code>false</code>",
         "name": "looseTypeValidation",
         "type": "boolean",
         "default": false,
@@ -7501,7 +7501,7 @@
           },
           {
             "displayName": "Convert types where required",
-            "description": "If the type of an expression doesn't match the type of the comparison, p1p3s will try to cast the expression to the required type. E.g. for booleans <code>\"false\"</code> or <code>0</code> will be cast to <code>false</code>",
+            "description": "If the type of an expression doesn't match the type of the comparison, workflows will try to cast the expression to the required type. E.g. for booleans <code>\"false\"</code> or <code>0</code> will be cast to <code>false</code>",
             "name": "looseTypeValidation",
             "type": "boolean",
             "default": true,
@@ -7543,7 +7543,7 @@
     ]
   },
   {
-    "name": "p1p3s-nodes-base.wait",
+    "name": "workflows-nodes-base.wait",
     "displayName": "Wait",
     "group": [
       "organization"
@@ -7779,7 +7779,7 @@
         }
       },
       {
-        "displayName": "The webhook URL will be generated at run time. It can be referenced with the <strong>$execution.resumeUrl</strong> variable. Send it somewhere before getting to this node. <a href=\"https://docs.p1p3s.io/integrations/builtin/core-nodes/p1p3s-nodes-base.wait/?utm_source=p1p3s_app&utm_medium=node_settings_modal-credential_link&utm_campaign=p1p3s-nodes-base.wait\" target=\"_blank\">More info</a>",
+        "displayName": "The webhook URL will be generated at run time. It can be referenced with the <strong>$execution.resumeUrl</strong> variable. Send it somewhere before getting to this node. <a href=\"https://docs.workflows.io/integrations/builtin/core-nodes/workflows-nodes-base.wait/?utm_source=workflows_app&utm_medium=node_settings_modal-credential_link&utm_campaign=workflows-nodes-base.wait\" target=\"_blank\">More info</a>",
         "name": "webhookNotice",
         "type": "notice",
         "displayOptions": {
@@ -7792,7 +7792,7 @@
         "default": ""
       },
       {
-        "displayName": "The form url will be generated at run time. It can be referenced with the <strong>$execution.resumeFormUrl</strong> variable. Send it somewhere before getting to this node. <a href=\"https://docs.p1p3s.io/integrations/builtin/core-nodes/p1p3s-nodes-base.wait/?utm_source=p1p3s_app&utm_medium=node_settings_modal-credential_link&utm_campaign=p1p3s-nodes-base.wait\" target=\"_blank\">More info</a>",
+        "displayName": "The form url will be generated at run time. It can be referenced with the <strong>$execution.resumeFormUrl</strong> variable. Send it somewhere before getting to this node. <a href=\"https://docs.workflows.io/integrations/builtin/core-nodes/workflows-nodes-base.wait/?utm_source=workflows_app&utm_medium=node_settings_modal-credential_link&utm_campaign=workflows-nodes-base.wait\" target=\"_blank\">More info</a>",
         "name": "formNotice",
         "type": "notice",
         "displayOptions": {
@@ -8965,11 +8965,11 @@
         },
         "options": [
           {
-            "displayName": "Append p1p3s Attribution",
+            "displayName": "Append workflows Attribution",
             "name": "appendAttribution",
             "type": "boolean",
             "default": true,
-            "description": "Whether to include the link “Form automated with p1p3s” at the bottom of the form"
+            "description": "Whether to include the link “Form automated with workflows” at the bottom of the form"
           },
           {
             "displayName": "Form Response",
@@ -9025,7 +9025,7 @@
                     "type": "string",
                     "default": "",
                     "validateType": "url",
-                    "placeholder": "e.g. http://www.p1p3s.io",
+                    "placeholder": "e.g. http://www.workflows.io",
                     "displayOptions": {
                       "show": {
                         "respondWith": [
@@ -9070,11 +9070,11 @@
         },
         "options": [
           {
-            "displayName": "Append p1p3s Attribution",
+            "displayName": "Append workflows Attribution",
             "name": "appendAttribution",
             "type": "boolean",
             "default": true,
-            "description": "Whether to include the link “Form automated with p1p3s” at the bottom of the form"
+            "description": "Whether to include the link “Form automated with workflows” at the bottom of the form"
           },
           {
             "displayName": "Webhook Suffix",
@@ -9125,7 +9125,7 @@
     ]
   },
   {
-    "name": "p1p3s-nodes-base.webhook",
+    "name": "workflows-nodes-base.webhook",
     "displayName": "Webhook",
     "group": [
       "trigger"
@@ -9336,7 +9336,7 @@
         }
       },
       {
-        "displayName": "Insert a 'Respond to Webhook' node to control when and how you respond. <a href=\"https://docs.p1p3s.io/integrations/builtin/core-nodes/p1p3s-nodes-base.respondtowebhook/\" target=\"_blank\">More details</a>",
+        "displayName": "Insert a 'Respond to Webhook' node to control when and how you respond. <a href=\"https://docs.workflows.io/integrations/builtin/core-nodes/workflows-nodes-base.respondtowebhook/\" target=\"_blank\">More details</a>",
         "name": "webhookNotice",
         "type": "notice",
         "displayOptions": {
@@ -9349,7 +9349,7 @@
         "default": ""
       },
       {
-        "displayName": "Insert a node that supports streaming (e.g. 'AI Agent') and enable streaming to stream directly to the response while the workflow is executed. <a href=\"https://docs.p1p3s.io/integrations/builtin/core-nodes/p1p3s-nodes-base.respondtowebhook/\" target=\"_blank\">More details</a>",
+        "displayName": "Insert a node that supports streaming (e.g. 'AI Agent') and enable streaming to stream directly to the response while the workflow is executed. <a href=\"https://docs.workflows.io/integrations/builtin/core-nodes/workflows-nodes-base.respondtowebhook/\" target=\"_blank\">More details</a>",
         "name": "webhookStreamingNotice",
         "type": "notice",
         "displayOptions": {

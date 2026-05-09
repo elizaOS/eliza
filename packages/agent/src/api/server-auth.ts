@@ -12,11 +12,11 @@ import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
 import {
   resolveApiSecurityConfig,
   resolveApiToken,
+  sendJsonError,
   setApiToken,
   type WalletExportRejection,
   type WalletExportRequestBody,
 } from "@elizaos/shared";
-import { sendJsonError } from "@elizaos/shared";
 import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.js";
 import type { ConversationMeta } from "./server-helpers.js";
 

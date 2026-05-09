@@ -14,13 +14,13 @@ describe('searchNodes', () => {
   test('finds supported HTTP node by keyword', () => {
     const results = searchNodes(['http', 'request']);
     expect(results.length).toBeGreaterThan(0);
-    expect(results[0].node.name).toBe('p1p3s-nodes-base.httpRequest');
+    expect(results[0].node.name).toBe('workflows-nodes-base.httpRequest');
   });
 
   test('finds supported schedule trigger by keyword', () => {
     const results = searchNodes(['schedule', 'trigger']);
     expect(results.length).toBeGreaterThan(0);
-    expect(results.some((r) => r.node.name === 'p1p3s-nodes-base.scheduleTrigger')).toBe(true);
+    expect(results.some((r) => r.node.name === 'workflows-nodes-base.scheduleTrigger')).toBe(true);
   });
 
   test('respects limit parameter and sorts by score', () => {
@@ -52,7 +52,7 @@ describe('filterNodesByIntegrationSupport', () => {
   });
 
   test('removes credentialed nodes when credentials are unsupported', () => {
-    const httpNode = getNodeDefinition('p1p3s-nodes-base.httpRequest');
+    const httpNode = getNodeDefinition('workflows-nodes-base.httpRequest');
     expect(httpNode).toBeDefined();
 
     const credentialed = {
@@ -72,7 +72,7 @@ describe('filterNodesByIntegrationSupport', () => {
 
 describe('simplifyNodeForLLM', () => {
   test('strips notice and hidden properties', () => {
-    const code = getNodeDefinition('p1p3s-nodes-base.code');
+    const code = getNodeDefinition('workflows-nodes-base.code');
     expect(code).toBeDefined();
     expect(code?.properties.some((p) => p.type === 'notice' || p.type === 'hidden')).toBe(true);
 
@@ -82,7 +82,7 @@ describe('simplifyNodeForLLM', () => {
   });
 
   test('removes transport/UI-only catalog metadata from properties', () => {
-    const http = getNodeDefinition('p1p3s-nodes-base.httpRequest');
+    const http = getNodeDefinition('workflows-nodes-base.httpRequest');
     expect(http).toBeDefined();
 
     const simplified = simplifyNodeForLLM(http!);
@@ -96,7 +96,7 @@ describe('simplifyNodeForLLM', () => {
   });
 
   test('preserves the node identity and usable fields', () => {
-    const setNode = getNodeDefinition('p1p3s-nodes-base.set');
+    const setNode = getNodeDefinition('workflows-nodes-base.set');
     expect(setNode).toBeDefined();
 
     const simplified = simplifyNodeForLLM(setNode!);

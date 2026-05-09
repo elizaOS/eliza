@@ -7,7 +7,7 @@ import { WORKFLOW_CREDENTIAL_STORE_TYPE } from '../types/index';
 
 /**
  * Default DB-backed credential store.
- * Maps (userId, credType) → p1p3s credential ID.
+ * Maps (userId, credType) → workflows credential ID.
  *
  * On the cloud, a different plugin can register its own implementation
  * under the same service type — runtime.getService() returns the first registered.
@@ -16,7 +16,7 @@ export class WorkflowCredentialStore extends Service implements WorkflowCredenti
   static override readonly serviceType = WORKFLOW_CREDENTIAL_STORE_TYPE;
 
   override capabilityDescription =
-    'Stores p1p3s credential ID mappings per user and credential type, backed by PostgreSQL.';
+    'Stores workflows credential ID mappings per user and credential type, backed by PostgreSQL.';
 
   private getDb(): NodePgDatabase {
     const db = this.runtime.db;

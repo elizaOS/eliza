@@ -23,7 +23,12 @@ import {
   type Memory,
   ModelType,
 } from "@elizaos/core";
-import { resolveApiBindHost } from "@elizaos/shared";
+import {
+  readJsonBody as parseJsonBody,
+  resolveApiBindHost,
+  sendJson,
+  sendJsonError,
+} from "@elizaos/shared";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import type {
   DatabaseConfig,
@@ -35,11 +40,6 @@ import {
   normalizeHostLike,
   normalizeIpForPolicy,
 } from "../security/network-policy.js";
-import {
-  readJsonBody as parseJsonBody,
-  sendJson,
-  sendJsonError,
-} from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // Types

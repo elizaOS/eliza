@@ -7,3 +7,8 @@ export * from "./owner-contacts.js";
 export * from "./paths.js";
 export * from "./schema.js";
 export * from "./telegram-custom-commands.js";
+export type {
+  CustomActionDef,
+  CustomActionHandler,
+  DatabaseProviderType,
+} from "./types.eliza.js";

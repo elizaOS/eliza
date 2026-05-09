@@ -9,12 +9,14 @@
 
 import type http from "node:http";
 import type { Service } from "@elizaos/core";
-import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud";
-import { resolveCloudApiKey } from "@elizaos/plugin-elizacloud";
-import { validateCloudBaseUrl } from "@elizaos/plugin-elizacloud";
+import {
+  normalizeCloudSiteUrl,
+  resolveCloudApiKey,
+  validateCloudBaseUrl,
+} from "@elizaos/plugin-elizacloud";
+import { sendJson, sendJsonError } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import type { CloudProxyConfigLike } from "../types/config-like.js";
-import { sendJson, sendJsonError } from "@elizaos/shared";
 
 interface XRelayRuntime {
   getService(serviceType: string): Service | null;

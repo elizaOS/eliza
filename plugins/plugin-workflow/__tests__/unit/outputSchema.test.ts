@@ -43,15 +43,15 @@ const mockMessageSchema: SchemaContent = {
 
 describe('catalog-backed schema lookup', () => {
   test('returns no schemas when the trimmed embedded catalog has no captured schema files', () => {
-    expect(hasOutputSchema('p1p3s-nodes-base.httpRequest')).toBe(false);
-    expect(loadOutputSchema('p1p3s-nodes-base.httpRequest', 'request', 'send')).toBeNull();
-    expect(loadTriggerOutputSchema('p1p3s-nodes-base.scheduleTrigger')).toBeNull();
-    expect(getAvailableResources('p1p3s-nodes-base.httpRequest')).toEqual([]);
-    expect(getAvailableOperations('p1p3s-nodes-base.httpRequest', 'request')).toEqual([]);
+    expect(hasOutputSchema('workflows-nodes-base.httpRequest')).toBe(false);
+    expect(loadOutputSchema('workflows-nodes-base.httpRequest', 'request', 'send')).toBeNull();
+    expect(loadTriggerOutputSchema('workflows-nodes-base.scheduleTrigger')).toBeNull();
+    expect(getAvailableResources('workflows-nodes-base.httpRequest')).toEqual([]);
+    expect(getAvailableOperations('workflows-nodes-base.httpRequest', 'request')).toEqual([]);
   });
 
   test('returns null for simple=false trigger schemas before checking catalog data', () => {
-    expect(loadTriggerOutputSchema('p1p3s-nodes-base.webhook', { simple: false })).toBeNull();
+    expect(loadTriggerOutputSchema('workflows-nodes-base.webhook', { simple: false })).toBeNull();
   });
 });
 

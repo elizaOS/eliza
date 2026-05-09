@@ -177,9 +177,7 @@ export async function ensureDefaultAssignment(
   if (
     next.TEXT_SMALL === current.TEXT_SMALL &&
     next.TEXT_LARGE === current.TEXT_LARGE &&
-    next.TEXT_EMBEDDING === current.TEXT_EMBEDDING &&
-    next.OBJECT_SMALL === current.OBJECT_SMALL &&
-    next.OBJECT_LARGE === current.OBJECT_LARGE
+    next.TEXT_EMBEDDING === current.TEXT_EMBEDDING
   ) {
     return current;
   }

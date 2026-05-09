@@ -1,5 +1,6 @@
 import type http from "node:http";
 import { logger } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { normalizeOnboardingProviderId } from "@elizaos/shared";
 import type { SecretsManager } from "@elizaos/vault";
 import type { ElizaConfig } from "../config/config.js";
@@ -9,7 +10,6 @@ import {
   persistProviderApiKey,
   type RuntimeOperationManager,
 } from "../runtime/operations/index.js";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   applyOnboardingConnectionConfig,
   createProviderSwitchConnection,

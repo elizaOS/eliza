@@ -27,6 +27,7 @@ import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
+  sendJsonError,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
@@ -42,7 +43,6 @@ import {
 } from "../services/plugin-manager-types.js";
 import { maybeAugmentChatMessageWithDocuments as augmentChatMessageWithDocuments } from "./chat-augmentation.js";
 import { extractCompatTextContent } from "./compat-utils.js";
-import { sendJsonError } from "@elizaos/shared";
 import type { ChatAttachmentWithData, ServerState } from "./server-types.js";
 import { getWalletAddresses } from "./wallet.js";
 import {

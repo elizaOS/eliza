@@ -13,14 +13,14 @@ export function createMockService(
         nodes: [
           {
             name: 'Schedule Trigger',
-            type: 'p1p3s-nodes-base.scheduleTrigger',
+            type: 'workflows-nodes-base.scheduleTrigger',
             typeVersion: 1,
             position: [0, 0],
             parameters: {},
           },
           {
             name: 'Gmail',
-            type: 'p1p3s-nodes-base.gmail',
+            type: 'workflows-nodes-base.gmail',
             typeVersion: 2,
             position: [200, 0],
             parameters: { operation: 'send' },
@@ -50,14 +50,14 @@ export function createMockService(
         nodes: [
           {
             name: 'Schedule Trigger',
-            type: 'p1p3s-nodes-base.scheduleTrigger',
+            type: 'workflows-nodes-base.scheduleTrigger',
             typeVersion: 1,
             position: [0, 0],
             parameters: {},
           },
           {
             name: 'Outlook',
-            type: 'p1p3s-nodes-base.microsoftOutlook',
+            type: 'workflows-nodes-base.microsoftOutlook',
             typeVersion: 2,
             position: [200, 0],
             parameters: { operation: 'send' },

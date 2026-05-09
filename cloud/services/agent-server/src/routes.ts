@@ -137,7 +137,7 @@ async function withWorkflowService<T>(
  *   DELETE /agents/:id        - Delete an agent (auth required)
  *   POST /agents/:id/message  - Forward a user message to an agent (auth required)
  *   POST /agents/:id/event    - Forward a structured event to an agent (auth required, ticket #54)
- *   /agents/:id/workflows/*   - Manage in-process p1p3s workflows for the agent runtime
+ *   /agents/:id/workflows/*   - Manage in-process workflows workflows for the agent runtime
  *   POST /drain               - Initiate graceful drain (auth required)
  */
 export function createRoutes(manager: AgentManager, sharedSecret: string) {

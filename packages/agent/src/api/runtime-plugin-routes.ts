@@ -6,10 +6,6 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
-  createPaymentAwareHandler,
-  isRoutePaymentWrapped,
-} from "../middleware/x402/payment-wrapper.js";
-import {
   type AgentRuntime,
   type PaymentEnabledRoute,
   type Route,
@@ -17,6 +13,10 @@ import {
   setRuntimeRouteHostContext,
 } from "@elizaos/core";
 import { readJsonBody } from "@elizaos/shared";
+import {
+  createPaymentAwareHandler,
+  isRoutePaymentWrapped,
+} from "../middleware/x402/payment-wrapper.js";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 

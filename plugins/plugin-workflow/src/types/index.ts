@@ -179,7 +179,7 @@ export interface WorkflowTag {
   updatedAt: string;
 }
 
-// Node catalog types (from p1p3s-intelligence)
+// Node catalog types (from workflows-intelligence)
 
 export interface NodeDefinition {
   name: string;
@@ -412,7 +412,7 @@ export interface WorkflowCredentialStoreApi {
   set(userId: string, credType: string, workflowCredId: string): Promise<void>;
   listByUser(userId: string): Promise<CredentialMapping[]>;
   /**
-   * Forget the cached p1p3s credential id for (userId, credType). The next
+   * Forget the cached workflows credential id for (userId, credType). The next
    * resolution falls back to credProvider so a disconnect-then-prompt flow
    * surfaces `needs_auth` instead of reusing stale credentials.
    *
@@ -496,7 +496,7 @@ export class UnsupportedIntegrationError extends Error {
 // Output schema validation types
 
 /**
- * JSON schema content from p1p3s output schemas
+ * JSON schema content from workflows output schemas
  */
 export interface SchemaContent {
   type: string;
