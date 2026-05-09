@@ -16,28 +16,58 @@
 > Anything that can't land via one of those routes is not "on device" for
 > the AOSP build, full stop.
 
-## Current state on the AOSP image (verified 2026-05-09 on cuttlefish)
+## Current state on the AOSP image (last verified 2026-05-09)
 
-`milady_cf_x86_64_phone-trunk_staging-userdebug` boots, agent service runs,
-but **end-to-end chat is currently broken** by a `Bun.build` cross-module
-top-level-await bug — `init_runtime5` dispatches `init_eliza()` without
-awaiting it, so `STATIC_ELIZA_PLUGINS["@elizaos/plugin-sql"]` is still
-`undefined` when the resolver fires. The plugin is bundled, the load order
-is wrong. Fix is in `eliza/packages/agent/src/runtime/eliza.ts` (replace
-the top-level `await loadRequiredPluginSql()` with a lazy registration
-hook called from `startEliza` before `loadSinglePlugin` runs). Tracked
-separately; not a porting issue.
+`milady_cf_x86_64_phone-trunk_staging-userdebug` boots, Milady priv-app
+installs at `/system/priv-app/Milady/`, and `ElizaAgentService` spawns
+`bun + libllama.so + agent-bundle.js` correctly. The plugin-sql
+top-level-await race is fixed at the **source** level
+(`worktree-agent-a1402895150138b18` commit `12bfccb481` — lazy memoized
+plugin loaders called from `startEliza`'s
+`ensureCoreStaticPluginsRegistered()`). Verified by hot-patching the
+on-device May-5 bundle with a literal `await init_eliza()` injection:
+plugin loading went from "3/4 loaded, 1 failed" to "4/4 loaded",
+plugin-sql resolves via `STATIC_ELIZA_PLUGINS` in 1 ms.
+
+**End-to-end chat is still gated on rebundling agent-bundle.js with
+the source fix.** The current build environment hits a separate
+`Bun.build (1.3.13)` re-export init-order bug: barrel modules
+(`./providers/index.ts`, `./actions/index.ts`, …) get collapsed to
+empty `init_X = () => {}` stubs while their consumers still reference
+imported symbols, producing `ReferenceError: <symbol> is not defined`
+at runtime. Each rebuild surfaces the next undefined symbol. Workaround
+that worked end-to-end: hot-patch the May-5 pre-built APK bundle
+(extracted at `/tmp/milady-apk/assets/agent/agent-bundle.js`,
+22989335 bytes, md5 `2874a0ef5bee39ff55ffec6205f82a61` after the
+literal `s/init_eliza()/await init_eliza()/` patch) and push that to
+`/data/data/ai.milady.milady/files/agent/agent-bundle.js`. That bundle
+predates the workspace state change that started triggering the Bun
+bug, so its barrels are pre-flattened correctly. Use it until the
+source-side build env is fully green (task #16).
+
+PGlite db corruption from prior crash-loops is bypassed by wiping
+`/data/user/0/ai.milady.milady/files/.eliza/workspace/.eliza/.elizadb`
+between runs. Improved `PGliteClientManager.formatError` handles
+non-Error throwables (was returning `"[object Object]"`, hiding the
+real error message; commit on `worktree-agent-af5238436024dfb1d`).
 
 ### Symbols verified in shipped libs
 
-| Symbol family | Location (per ABI under `assets/agent/<abi>/`) | Notes |
+| Symbol family | Location | Notes |
 |---|---|---|
-| `quantize_tbq3_0`, `quantize_tbq4_0`, `dequantize_row_tbq{3,4}_0` | `libggml-base.so` | TBQ3_0=43, TBQ4_0=44. Active on x86_64 + arm64-v8a today. |
+| `quantize_tbq3_0`, `quantize_tbq4_0`, `dequantize_row_tbq{3,4}_0` | `libggml-base.so` (x86_64 + arm64-v8a in APK) | TBQ3_0=43, TBQ4_0=44. Active on cuttlefish + real arm64 phones today. |
 | `eliza_llama_context_params_set_type_k` / `_set_type_v` | `libeliza-llama-shim.so` | KV cache type configurable per call from JS. |
 | `looksLikeBonsai(modelPath)` auto-routing | `aosp-llama-adapter.ts` | Any GGUF whose filename matches `/bonsai/i` auto-selects `{k:"tbq4_0", v:"tbq3_0"}`. |
-| Speculative-decoding API | **not in shim** | `llama_*_draft` is in upstream llama.cpp but not in `eliza_llama_shim.c`. |
-| QJL kernels | absent | Upstream is CUDA-only. |
-| PolarQuant quant block | absent | Upstream emits a sidecar safetensors, not GGUF. |
+| `looksLikeQjl(modelPath)` + `qjl1_256` cache type | `aosp-llama-adapter.ts` (worktree-agent-a55644a05aeeed035 commit `f674c14160`) | Set `ELIZA_LLAMA_CACHE_TYPE_K=qjl1_256` to compose with TBQ V. Auto-detect QJL > Bonsai precedence. |
+| `block_qjl1_256` + `GGML_OP_ATTN_SCORE_QJL` | `/tmp/llama-cpp-qjl @ qjl-kcache` (4 commits, NOT in shipped fork yet) | Not pushed to GitHub; vendor commit on Apothic side needed before next AOSP rebuild picks it up. |
+| `block_q4_polar` (`Q4_POLAR=45`) | `/tmp/llama-cpp-polar @ polarquant-q4` (4 commits, NOT in shipped fork yet) | Same — vendor + push to Apothic remote required. |
+| Speculative-decoding API | source landed (`aosp-dflash-adapter.ts`, llama-server cross-compile in `compile-libllama.mjs`); **not built** | Build env blocker (#16). |
+| Capacitor Android local-agent runtime | source landed (worktree-agent-a58ffa46f33215b6a) | ElizaAgentService gated on AOSP_BUILD; in-WebView local-agent kernel (`local-agent-kernel.ts`) generalized for both iOS and Android; shared TBQ resolver across adapters. |
+| Catalog `tokenizerFamily` field + DFlash pair guard | source landed (worktree-agent-a3b48813556536b5d commit `04a3fdb24d`) | Tests pass. |
+| QJL standalone kernel library | `packages/native-plugins/qjl-cpu/` (worktree-agent-a7e72f45ecf16deab) | 1100 LOC, scalar+AVX2+NEON, 100/100 bit-parity vs Python ref. |
+| PolarQuant standalone kernel library | `packages/native-plugins/polarquant-cpu/` (worktree-agent-a57094061cb3d026d) | 1871 LOC (C+Python), scalar kernels + safetensors→GGUF converter. |
+| Benchmark harness | `scripts/benchmark/profile-inference.mjs` (commit `df5624f154`) | 48-combo matrix, stub-validated, ready when the build env unblocks. |
+| iOS / macOS Metal kernels | NOT done | Tasks #21, #22 — agents hit Anthropic usage cap. Resume after May 13 11pm PT reset. |
 
 ## Target × technique matrix
 
