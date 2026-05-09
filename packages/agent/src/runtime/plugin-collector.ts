@@ -167,7 +167,7 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   // name (`import("evm")`), which silently fails inside the loader's
   // error boundary — short ids must resolve to real package names or optional
   // plugins silently fail inside the loader. Keep in sync with AUTH_PROVIDER_PLUGINS
-  // in packages/agent/src/config/plugin-auto-enable.ts.
+  // in packages/shared/src/config/plugin-auto-enable-engine.ts.
   evm: "@elizaos/plugin-wallet",
   solana: "@elizaos/plugin-wallet",
   wallet: "@elizaos/plugin-wallet",

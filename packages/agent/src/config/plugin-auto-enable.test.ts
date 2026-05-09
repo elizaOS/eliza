@@ -1,8 +1,13 @@
+import { applyPluginAutoEnable } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
-import { applyPluginAutoEnable } from "./plugin-auto-enable";
+import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types";
+import { evmAutoEnableReasonFromCapability } from "../services/evm-signing-capability";
 import type { ElizaConfig } from "./types.eliza";
 
-describe("applyPluginAutoEnable subscription providers", () => {
+// Tests the agent-layer wiring of @elizaos/shared's plugin auto-enable engine:
+// the engine itself lives in shared and is dependency-injected with the
+// agent-specific SUBSCRIPTION_PROVIDER_MAP and EVM-capability resolver.
+describe("applyPluginAutoEnable subscription providers (agent wiring)", () => {
   it("enables the Codex CLI model provider for Codex subscriptions", () => {
     const result = applyPluginAutoEnable({
       config: {
@@ -13,6 +18,8 @@ describe("applyPluginAutoEnable subscription providers", () => {
         },
       } as Partial<ElizaConfig>,
       env: {},
+      subscriptionProviderMap: SUBSCRIPTION_PROVIDER_MAP,
+      evmAutoEnableReason: evmAutoEnableReasonFromCapability,
     });
 
     expect(result.config.plugins?.allow ?? []).toContain(
@@ -31,6 +38,8 @@ describe("applyPluginAutoEnable subscription providers", () => {
       env: {
         OPENAI_API_KEY: "sk-direct-openai-key",
       } as NodeJS.ProcessEnv,
+      subscriptionProviderMap: SUBSCRIPTION_PROVIDER_MAP,
+      evmAutoEnableReason: evmAutoEnableReasonFromCapability,
     });
 
     expect(result.config.plugins?.allow ?? []).toContain(
