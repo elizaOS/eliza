@@ -53,6 +53,23 @@ import {
   registerConnectorRegistry,
   registerDefaultConnectorPack,
 } from "./lifeops/connectors/index.js";
+import {
+  createAnchorRegistry,
+  createEventKindRegistry,
+  createFamilyRegistry,
+  registerAnchorRegistry,
+  registerAppLifeOpsAnchors,
+  registerAppLifeOpsBusFamilies,
+  registerAppLifeOpsEventKinds,
+  registerBuiltinTelemetryFamilies,
+  registerDefaultBlockerPack,
+  registerEventKindRegistry,
+  registerFamilyRegistry,
+} from "./lifeops/registries/index.js";
+import {
+  createActivitySignalBus,
+  registerActivitySignalBus,
+} from "./lifeops/signals/bus.js";
 import { BrowserBridgeAdapter } from "./lifeops/messaging/adapters/browser-bridge-adapter.js";
 import { CalendlyAdapter } from "./lifeops/messaging/adapters/calendly-adapter.js";
 import { LifeOpsGmailAdapter } from "./lifeops/messaging/adapters/gmail-adapter.js";
@@ -86,11 +103,7 @@ import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
 import { roomPolicyProvider } from "./providers/room-policy.js";
 import { websiteBlockerProvider } from "./providers/website-blocker.js";
 import { BrowserBridgePluginService } from "./service.js";
-import {
-  listActiveBlocksAction,
-  registerBlockRuleReconcilerWorker,
-  releaseBlockAction,
-} from "./website-blocker/chat-integration/index.js";
+import { registerBlockRuleReconcilerWorker } from "./website-blocker/chat-integration/index.js";
 import {
   getSelfControlStatus,
   type SelfControlPluginConfig,
@@ -290,8 +303,6 @@ const rawAppLifeOpsPlugin: Plugin = {
   schema: lifeOpsSchema,
   actions: [
     websiteBlockAction,
-    listActiveBlocksAction,
-    releaseBlockAction,
     appBlockAction,
     calendarAction,
     calendlyAction,
@@ -373,6 +384,35 @@ const rawAppLifeOpsPlugin: Plugin = {
 
     const sendPolicyRegistry = createSendPolicyRegistry();
     registerSendPolicyRegistry(runtime, sendPolicyRegistry);
+
+    // W2-F BlockerRegistry — registers website-blocker (hosts-file / native)
+    // and app-blocker (iOS Family Controls / Android Usage Access) enforcers
+    // so the WEBSITE_BLOCK / APP_BLOCK umbrella actions dispatch through one
+    // registry instead of branching on `kind` inline. Adding a new blocker
+    // backend (router DNS, Bluetooth-tether, etc.) is a registration call.
+    registerDefaultBlockerPack(runtime);
+
+    // W2-D — anchor / event-kind / bus-family registries + ActivitySignalBus.
+    // Lifts the closed `LIFEOPS_TELEMETRY_FAMILIES` union into a runtime
+    // registry so plugins like `@elizaos/plugin-health` can contribute new
+    // namespaced families (`health.sleep.detected`, etc.) without growing a
+    // closed type union. plugin-health calls `registerHealthAnchors` /
+    // `registerHealthBusFamilies` against these same registries.
+    const anchorRegistry = createAnchorRegistry();
+    registerAppLifeOpsAnchors(anchorRegistry);
+    registerAnchorRegistry(runtime, anchorRegistry);
+
+    const eventKindRegistry = createEventKindRegistry();
+    registerAppLifeOpsEventKinds(eventKindRegistry);
+    registerEventKindRegistry(runtime, eventKindRegistry);
+
+    const familyRegistry = createFamilyRegistry();
+    registerBuiltinTelemetryFamilies(familyRegistry);
+    registerAppLifeOpsBusFamilies(familyRegistry);
+    registerFamilyRegistry(runtime, familyRegistry);
+
+    const activitySignalBus = createActivitySignalBus({ familyRegistry });
+    registerActivitySignalBus(runtime, activitySignalBus);
 
     // Owner outbound-message approval policy: gmail drafts require explicit
     // owner approval; everything else passes straight through.
