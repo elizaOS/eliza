@@ -5,6 +5,7 @@ import {
   extractKeywords,
   generateWorkflow,
   matchWorkflow,
+  modifyWorkflow,
 } from '../../src/utils/generation';
 import { createMockRuntime } from '../helpers/mockRuntime';
 
@@ -330,6 +331,91 @@ describe('generateWorkflow', () => {
     const callArgs = useModel.mock.calls[0] as any[];
     const params = callArgs[1] as { prompt: string };
     expect(params.prompt).not.toContain('Do NOT invent field names');
+  });
+
+  test('retries once and succeeds when first response is missing nodes array', async () => {
+    let callCount = 0;
+    const useModel = mock(() => {
+      callCount++;
+      if (callCount === 1) {
+        return Promise.resolve(JSON.stringify({ name: 'Bad', connections: {} }));
+      }
+      return Promise.resolve(
+        JSON.stringify({
+          name: 'Good',
+          nodes: [{ name: 'A', type: 't', position: [0, 0] }],
+          connections: {},
+        })
+      );
+    });
+    const runtime = createMockRuntime({ useModel });
+
+    const result = await generateWorkflow(runtime, 'test', []);
+    expect(result.name).toBe('Good');
+    expect(callCount).toBe(2);
+  });
+
+  test('retry prompt instructs the LLM to return only valid JSON', async () => {
+    let callCount = 0;
+    const useModel = mock(() => {
+      callCount++;
+      if (callCount === 1) {
+        return Promise.resolve('not json at all');
+      }
+      return Promise.resolve(
+        JSON.stringify({
+          name: 'Recovered',
+          nodes: [{ name: 'A', type: 't', position: [0, 0] }],
+          connections: {},
+        })
+      );
+    });
+    const runtime = createMockRuntime({ useModel });
+
+    await generateWorkflow(runtime, 'test', []);
+
+    expect(callCount).toBe(2);
+    const retryArgs = useModel.mock.calls[1] as any[];
+    const retryParams = retryArgs[1] as { prompt: string };
+    expect(retryParams.prompt).toContain('malformed');
+    expect(retryParams.prompt).toContain('"nodes"');
+    expect(retryParams.prompt).toContain('"connections"');
+  });
+});
+
+// ============================================================================
+// modifyWorkflow
+// ============================================================================
+
+describe('modifyWorkflow', () => {
+  const baseWorkflow = {
+    id: 'wf-1',
+    name: 'Existing',
+    nodes: [{ name: 'A', type: 't', position: [0, 0] as [number, number] }],
+    connections: {},
+  };
+
+  test('retries once and succeeds when first response is missing nodes array', async () => {
+    let callCount = 0;
+    const useModel = mock(() => {
+      callCount++;
+      if (callCount === 1) {
+        return Promise.resolve(JSON.stringify({ name: 'Bad', connections: {} }));
+      }
+      return Promise.resolve(
+        JSON.stringify({
+          name: 'Modified',
+          nodes: [{ name: 'A', type: 't', position: [0, 0] }],
+          connections: {},
+        })
+      );
+    });
+    const runtime = createMockRuntime({ useModel });
+
+    const result = await modifyWorkflow(runtime, baseWorkflow as any, 'tweak', []);
+    expect(result.name).toBe('Modified');
+    expect(result.id).toBe('wf-1');
+    expect(callCount).toBe(2);
   });
 });
 
