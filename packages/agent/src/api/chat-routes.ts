@@ -64,7 +64,7 @@ import {
   handleLocalInferenceChatCommand,
   type LocalInferenceChatMetadata,
   type LocalInferenceCommandIntent,
-} from "./local-inference-routes.js";
+} from "@elizaos/plugin-local-inference";
 import {
   buildWalletActionNotExecutedReply,
   cloneWithoutBlockedObjectKeys,
