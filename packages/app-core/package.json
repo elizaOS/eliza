@@ -70,6 +70,7 @@
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-training": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-aosp-local-inference": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-wechat": "workspace:*",

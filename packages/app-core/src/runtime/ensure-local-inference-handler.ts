@@ -281,8 +281,8 @@ async function tryRegisterAospLlamaLoader(
   if (process.env.ELIZA_LOCAL_LLAMA?.trim() !== "1") return false;
   try {
     const mod = (await import(
-      "@elizaos/agent"
-    )) as typeof import("@elizaos/agent") & {
+      "@elizaos/plugin-aosp-local-inference"
+    )) as typeof import("@elizaos/plugin-aosp-local-inference") & {
       registerAospLlamaLoader?: (r: AgentRuntime) => Promise<boolean> | boolean;
     };
     if (typeof mod.registerAospLlamaLoader !== "function") {
