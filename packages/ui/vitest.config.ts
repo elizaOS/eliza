@@ -5,7 +5,9 @@ import { defineConfig } from "vitest/config";
 
 const packageRoot = fileURLToPath(new URL("./", import.meta.url));
 const reactPath = realpathSync(resolve(packageRoot, "node_modules/react"));
-const reactDomPath = realpathSync(resolve(packageRoot, "node_modules/react-dom"));
+const reactDomPath = realpathSync(
+  resolve(packageRoot, "node_modules/react-dom"),
+);
 
 export default defineConfig({
   resolve: {
@@ -34,13 +36,21 @@ export default defineConfig({
         find: /^zlib-sync$/,
         replacement: resolve(packageRoot, "test/stubs/zlib-sync.ts"),
       },
+      {
+        find: /^discord\.js$/,
+        replacement: resolve(packageRoot, "test/stubs/discord-js.ts"),
+      },
     ],
   },
   test: {
     environment: "node",
     server: {
       deps: {
-        inline: [/^react(?:\/.*)?$/, /^react-dom(?:\/.*)?$/, /@testing-library\/react/],
+        inline: [
+          /^react(?:\/.*)?$/,
+          /^react-dom(?:\/.*)?$/,
+          /@testing-library\/react/,
+        ],
       },
     },
     include: [

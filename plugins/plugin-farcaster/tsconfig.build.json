@@ -9,20 +9,9 @@
     "declarationMap": true,
     "sourceMap": true,
     "paths": {
-      "@elizaos/core": [
-        "../../../packages/core/dist"
-      ]
+      "@elizaos/core": ["../../../packages/core/dist"]
     }
   },
-  "include": [
-    "**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "__tests__",
-    "**/*.test.ts",
-    "build.ts",
-    "vitest.config.ts"
-  ]
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist", "__tests__", "**/*.test.ts", "build.ts", "vitest.config.ts"]
 }

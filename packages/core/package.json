@@ -80,8 +80,10 @@
     "@types/fs-extra": "^11.0.4",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^25.0.3",
+    "@types/react-test-renderer": "^19.0.0",
     "@vitest/coverage-v8": "^4.0.0",
     "esbuild": "^0.28.0",
+    "react-test-renderer": "^19.0.0",
     "sharp": "^0.34.5",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"
