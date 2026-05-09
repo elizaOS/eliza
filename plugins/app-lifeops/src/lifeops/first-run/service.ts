@@ -48,6 +48,7 @@ import {
   type FirstRunStateStore,
   type OwnerFactStore,
 } from "./state.js";
+import { asCacheRuntime } from "../runtime-cache.js";
 
 // --- Runner injection ------------------------------------------------------
 
@@ -81,23 +82,6 @@ interface CachedTaskRecord {
 
 const FALLBACK_RUNNER_CACHE_KEY = "eliza:lifeops:first-run:fallback-tasks:v1";
 
-interface RuntimeCacheLike {
-  getCache<T>(key: string): Promise<T | null | undefined>;
-  setCache<T>(key: string, value: T): Promise<boolean | undefined>;
-  deleteCache?(key: string): Promise<boolean | undefined>;
-}
-
-function asCacheRuntime(runtime: IAgentRuntime): RuntimeCacheLike | null {
-  const candidate = runtime as unknown as Partial<RuntimeCacheLike>;
-  if (
-    typeof candidate.getCache !== "function" ||
-    typeof candidate.setCache !== "function"
-  ) {
-    return null;
-  }
-  return candidate as RuntimeCacheLike;
-}
-
 class FallbackInMemoryRunner implements ScheduledTaskRunnerLike {
   constructor(private readonly runtime: IAgentRuntime) {}
   async schedule(task: ScheduledTaskInput): Promise<ScheduledTask> {
@@ -110,25 +94,23 @@ class FallbackInMemoryRunner implements ScheduledTaskRunnerLike {
       taskId,
       state: { status: "scheduled", followupCount: 0 },
     };
-    if (cache) {
-      const stored =
-        (await cache.getCache<CachedTaskRecord[]>(FALLBACK_RUNNER_CACHE_KEY)) ??
-        [];
-      const filtered = task.idempotencyKey
-        ? stored.filter(
-            (entry) => entry.input.idempotencyKey !== task.idempotencyKey,
-          )
-        : stored.slice();
-      filtered.push({
-        taskId,
-        input: task,
-        scheduledAt: new Date().toISOString(),
-      });
-      await cache.setCache<CachedTaskRecord[]>(
-        FALLBACK_RUNNER_CACHE_KEY,
-        filtered,
-      );
-    }
+    const stored =
+      (await cache.getCache<CachedTaskRecord[]>(FALLBACK_RUNNER_CACHE_KEY)) ??
+      [];
+    const filtered = task.idempotencyKey
+      ? stored.filter(
+          (entry) => entry.input.idempotencyKey !== task.idempotencyKey,
+        )
+      : stored.slice();
+    filtered.push({
+      taskId,
+      input: task,
+      scheduledAt: new Date().toISOString(),
+    });
+    await cache.setCache<CachedTaskRecord[]>(
+      FALLBACK_RUNNER_CACHE_KEY,
+      filtered,
+    );
     return scheduled;
   }
 }
@@ -137,7 +119,6 @@ export async function readFallbackScheduledTasks(
   runtime: IAgentRuntime,
 ): Promise<CachedTaskRecord[]> {
   const cache = asCacheRuntime(runtime);
-  if (!cache) return [];
   const stored = await cache.getCache<CachedTaskRecord[]>(
     FALLBACK_RUNNER_CACHE_KEY,
   );
@@ -148,12 +129,7 @@ export async function clearFallbackScheduledTasks(
   runtime: IAgentRuntime,
 ): Promise<void> {
   const cache = asCacheRuntime(runtime);
-  if (!cache) return;
-  if (typeof cache.deleteCache === "function") {
-    await cache.deleteCache(FALLBACK_RUNNER_CACHE_KEY);
-    return;
-  }
-  await cache.setCache<CachedTaskRecord[]>(FALLBACK_RUNNER_CACHE_KEY, []);
+  await cache.deleteCache(FALLBACK_RUNNER_CACHE_KEY);
 }
 
 // --- Service ---------------------------------------------------------------

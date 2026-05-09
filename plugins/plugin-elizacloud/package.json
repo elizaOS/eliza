@@ -26,41 +26,6 @@
         "default": "./dist/node/index.node.js"
       },
       "default": "./dist/node/index.node.js"
-    },
-    "./plugin": {
-      "types": "./dist/plugin.d.ts",
-      "import": "./dist/plugin.js",
-      "default": "./dist/plugin.js"
-    },
-    "./register-routes": {
-      "types": "./dist/register-routes.d.ts",
-      "import": "./dist/register-routes.js",
-      "default": "./dist/register-routes.js"
-    },
-    "./routes/*": {
-      "types": "./dist/routes/*.d.ts",
-      "import": "./dist/routes/*.js",
-      "default": "./dist/routes/*.js"
-    },
-    "./lib/*": {
-      "types": "./dist/lib/*.d.ts",
-      "import": "./dist/lib/*.js",
-      "default": "./dist/lib/*.js"
-    },
-    "./cloud": {
-      "types": "./dist/cloud/index.d.ts",
-      "import": "./dist/cloud/index.js",
-      "default": "./dist/cloud/index.js"
-    },
-    "./cloud/*": {
-      "types": "./dist/cloud/*.d.ts",
-      "import": "./dist/cloud/*.js",
-      "default": "./dist/cloud/*.js"
-    },
-    "./onboarding": {
-      "types": "./dist/onboarding.d.ts",
-      "import": "./dist/onboarding.js",
-      "default": "./dist/onboarding.js"
     }
   },
   "files": [

@@ -11,11 +11,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./account-auth-service": {
-      "types": "./dist/account-auth-service.d.ts",
-      "import": "./dist/account-auth-service.js",
-      "default": "./dist/account-auth-service.js"
     }
   },
   "files": [

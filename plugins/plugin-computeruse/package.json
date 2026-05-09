@@ -13,12 +13,6 @@
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
       }
-    },
-    "./register-routes": {
-      "import": {
-        "types": "./dist/register-routes.d.ts",
-        "default": "./dist/register-routes.js"
-      }
     }
   },
   "files": [

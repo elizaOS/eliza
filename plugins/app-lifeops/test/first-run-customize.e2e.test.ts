@@ -26,7 +26,7 @@ function newService(runtime: IAgentRuntime): FirstRunService {
 
 describe("first-run customize e2e", () => {
   it("walks questions in order and seeds answers + tasks", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const service = newService(runtime);
 
     // Q1
@@ -60,7 +60,7 @@ describe("first-run customize e2e", () => {
   });
 
   it("asks Q5 when categories include follow-ups", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const service = newService(runtime);
 
     await service.runCustomizePath({ preferredName: "Pat" });

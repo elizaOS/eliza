@@ -342,3 +342,6 @@ export {
   resolveCloudApiBaseUrl,
 } from "./cloud/base-url";
 export { validateCloudBaseUrl } from "./cloud/validate-url";
+export * from "./plugin";
+export * from "./register-routes";
+export * from "./cloud";

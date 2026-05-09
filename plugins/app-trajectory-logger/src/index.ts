@@ -10,3 +10,4 @@ export {
   TrajectoryLoggerView,
   trajectoryLoggerApp,
 } from "./ui";
+export * from "./register";

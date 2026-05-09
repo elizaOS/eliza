@@ -11,8 +11,8 @@
     "declaration": false,
     "noEmit": true,
     "paths": {
-      "drizzle-orm": ["../../node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../../node_modules/drizzle-orm/*"],
+      "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/app-lifeops": ["../../plugins/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["../../plugins/app-lifeops/src/*"],
       "@elizaos/app-lifeops/types": [

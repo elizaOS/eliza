@@ -26,7 +26,7 @@ const SCHEDULER_TASK_ID = "lifeops-scheduler-task-id" as const;
 
 export function createMinimalRuntimeStub(
   overrides: Partial<MinimalRuntimeStub> = {},
-): MinimalRuntimeStub {
+): IAgentRuntime {
   const cache = new Map<string, unknown>();
   const tasks: Array<{
     id: string;
@@ -71,7 +71,7 @@ export function createMinimalRuntimeStub(
     },
     ...overrides,
   };
-  return stub;
+  return stub as IAgentRuntime;
 }
 
 export const SCHEDULER_TASK_ID_FOR_TESTS = SCHEDULER_TASK_ID;

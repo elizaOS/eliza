@@ -40,9 +40,13 @@ function makeMessage(runtime: IAgentRuntime): Memory {
   } as Memory;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 describe("first-run replay e2e", () => {
   it("replay preserves idempotency keys; facts update", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const service = newService(runtime);
 
     // Initial defaults run.
@@ -101,7 +105,7 @@ describe("first-run replay e2e", () => {
   });
 
   it("re-entry: FIRST_RUN path=defaults after complete routes to replay", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const service = newService(runtime);
     await service.runDefaultsPath({});
     const done = await service.runDefaultsPath({ wakeTime: "6:00am" });
@@ -124,12 +128,10 @@ describe("first-run replay e2e", () => {
       [],
     );
     expect(result?.success).toBe(true);
-    const cb = lastPayload as unknown as {
-      data: { awaitingQuestion?: string };
-    } | null;
     // Replay walks the customize questions; since we never set the
     // preferredName via customize, the first ask is the preferredName
     // question.
-    expect(cb?.data?.awaitingQuestion).toBeDefined();
+    const callbackData = isRecord(lastPayload?.data) ? lastPayload.data : {};
+    expect(callbackData.awaitingQuestion).toBeDefined();
   });
 });

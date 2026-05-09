@@ -339,6 +339,12 @@ export abstract class IMediaGenerationService extends Service {
 	public readonly capabilityDescription =
 		"Generates image, video, and audio media from prompts." as string;
 
+	canGenerateMedia(
+		_request: Pick<MediaGenerationRequest, "mediaType" | "audioKind">,
+	): boolean | Promise<boolean> {
+		return true;
+	}
+
 	abstract generateMedia(
 		request: MediaGenerationRequest,
 	): Promise<MediaGenerationResponse>;

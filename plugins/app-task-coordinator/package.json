@@ -9,31 +9,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./pty-status-dots": {
-      "types": "./dist/pty-status-dots.d.ts",
-      "import": "./dist/pty-status-dots.js",
-      "default": "./dist/pty-status-dots.js"
-    },
-    "./register-slots": {
-      "types": "./dist/register-slots.d.ts",
-      "import": "./dist/register-slots.js",
-      "default": "./dist/register-slots.js"
-    },
-    "./api/*": {
-      "types": "./dist/api/*.d.ts",
-      "import": "./dist/api/*.js",
-      "default": "./dist/api/*.js"
-    },
-    "./evals/*": {
-      "types": "./dist/evals/*.d.ts",
-      "import": "./dist/evals/*.js",
-      "default": "./dist/evals/*.js"
-    },
-    "./*": {
-      "types": "./dist/*",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
     }
   },
   "dependencies": {

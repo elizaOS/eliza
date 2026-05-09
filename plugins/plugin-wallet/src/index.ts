@@ -66,3 +66,7 @@ export * from "./types/wallet-router.js";
 export * from "./wallet/index.js";
 
 /** ERC-6551 / x402 / CCTP / swaps are available from the package barrel. */
+export * from "./sdk.js";
+export * from "./wallet-action.js";
+export * from "./routes/plugin.js";
+export * from "./register-routes.js";

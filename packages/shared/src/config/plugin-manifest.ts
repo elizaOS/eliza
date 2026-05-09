@@ -41,7 +41,7 @@ import type {
   PluginAutoEnableModule,
 } from "@elizaos/core";
 
-import type { ElizaConfig } from "./types.eliza";
+import type { ElizaConfig } from "./types.eliza.js";
 
 // Re-export the runtime types so consumers that import from @elizaos/shared
 // keep working. The canonical home for these is @elizaos/core (plugin author

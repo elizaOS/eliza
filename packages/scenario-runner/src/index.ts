@@ -15,3 +15,4 @@ export type {
   ScenarioReport,
   TurnReport,
 } from "./types.ts";
+export * from "./cli";

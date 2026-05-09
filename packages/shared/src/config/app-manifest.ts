@@ -40,7 +40,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import type { PluginManifestCandidate } from "./plugin-manifest";
+import type { PluginManifestCandidate } from "./plugin-manifest.js";
 
 /** Default to apply for a plugin entry. */
 export interface PluginAppDefault {

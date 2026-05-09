@@ -13,31 +13,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./contracts": {
-      "types": "./dist/contracts/health.d.ts",
-      "import": "./dist/contracts/health.js",
-      "default": "./dist/contracts/health.js"
-    },
-    "./sleep": {
-      "types": "./dist/sleep/index.d.ts",
-      "import": "./dist/sleep/index.js",
-      "default": "./dist/sleep/index.js"
-    },
-    "./health-bridge": {
-      "types": "./dist/health-bridge/index.d.ts",
-      "import": "./dist/health-bridge/index.js",
-      "default": "./dist/health-bridge/index.js"
-    },
-    "./screen-time": {
-      "types": "./dist/screen-time/index.d.ts",
-      "import": "./dist/screen-time/index.js",
-      "default": "./dist/screen-time/index.js"
-    },
-    "./actions": {
-      "types": "./dist/actions/index.d.ts",
-      "import": "./dist/actions/index.js",
-      "default": "./dist/actions/index.js"
     }
   },
   "files": [

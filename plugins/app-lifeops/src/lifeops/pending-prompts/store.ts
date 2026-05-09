@@ -19,6 +19,10 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import {
+  asCacheRuntime,
+  type RuntimeCacheLike,
+} from "../runtime-cache.js";
 
 export type ExpectedReplyKind = "any" | "yes_no" | "approval" | "free_form";
 
@@ -66,25 +70,6 @@ export interface PendingPromptsStore {
   forgetTask(taskId: string): Promise<void>;
   /** Remove every recorded entry (used by `LIFEOPS.wipe`). */
   clearAll(): Promise<void>;
-}
-
-interface RuntimeCacheLike {
-  getCache<T>(key: string): Promise<T | null | undefined>;
-  setCache<T>(key: string, value: T): Promise<boolean | undefined>;
-  deleteCache?(key: string): Promise<boolean | undefined>;
-}
-
-function asCacheRuntime(runtime: IAgentRuntime): RuntimeCacheLike {
-  const candidate = runtime as unknown as Partial<RuntimeCacheLike>;
-  if (
-    typeof candidate.getCache !== "function" ||
-    typeof candidate.setCache !== "function"
-  ) {
-    throw new Error(
-      "[pending-prompts] runtime does not expose getCache/setCache",
-    );
-  }
-  return candidate as RuntimeCacheLike;
 }
 
 const PROMPT_SNIPPET_MAX_LENGTH = 120;

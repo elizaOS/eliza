@@ -21,7 +21,7 @@ function newService(runtime: IAgentRuntime): FirstRunService {
 
 describe("first-run abandon / resume e2e", () => {
   it("partial answers persist between runService calls", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     let service = newService(runtime);
 
     // Q1
@@ -59,7 +59,7 @@ describe("first-run abandon / resume e2e", () => {
   });
 
   it("provider stays loud while abandoned-in-progress and goes quiet on completion", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const service = newService(runtime);
     await service.runCustomizePath({ preferredName: "Sam" });
 

@@ -49,7 +49,7 @@ function makeMessage(
 
 describe("J14 — group chat handoff e2e (closes J13)", () => {
   it("enter sets status.active; provider injects stay-quiet directive", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const roomId = "three-party-room-1";
 
     // Pre-handoff: provider quiet.
@@ -102,7 +102,7 @@ describe("J14 — group chat handoff e2e (closes J13)", () => {
   });
 
   it("@mention satisfies resumeOn.mention; resume clears handoff", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const roomId = "three-party-room-2";
 
     // Enter with resumeOn = mention.
@@ -243,7 +243,7 @@ describe("J14 — group chat handoff e2e (closes J13)", () => {
   });
 
   it("MESSAGE.handoff verb=status reports current state", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const roomId = "three-party-room-3";
     const captured: { text?: string; data?: unknown } = {};
     const cb = async (p: { text?: string; data?: unknown }) => {
@@ -286,7 +286,7 @@ describe("J14 — group chat handoff e2e (closes J13)", () => {
   });
 
   it("multiple rooms can be in handoff simultaneously", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const store = createHandoffStore(runtime);
     await store.enter("room-A", {
       reason: "step A",
