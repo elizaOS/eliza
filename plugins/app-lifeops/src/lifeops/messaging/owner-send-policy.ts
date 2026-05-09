@@ -1,7 +1,40 @@
-import type { DraftRequest, MessageSource, SendPolicy } from "@elizaos/core";
+import type {
+  DraftRequest,
+  IAgentRuntime,
+  MessageSource,
+  SendPolicy,
+} from "@elizaos/core";
+import { getConnectorRegistry } from "../connectors/registry.js";
 
-const OWNER_APPROVAL_REQUIRED: ReadonlySet<MessageSource> =
-  new Set<MessageSource>(["gmail"]);
+/**
+ * Map a `MessageSource` (the triage-layer enum) to the corresponding
+ * `ConnectorRegistry` kind. Gmail is a Google capability, not a separate
+ * connector kind, so the source `"gmail"` resolves to connector `"google"`.
+ *
+ * Sources without a matching connector (e.g. `browser_bridge`) return `null`
+ * and the default approval policy (no approval) applies.
+ */
+const SOURCE_TO_CONNECTOR_KIND: Partial<Record<MessageSource, string>> = {
+  gmail: "google",
+  discord: "discord",
+  telegram: "telegram",
+  twitter: "x",
+  imessage: "imessage",
+  signal: "signal",
+  whatsapp: "whatsapp",
+  calendly: "calendly",
+};
+
+function approvalRequiredForSource(
+  runtime: IAgentRuntime,
+  source: MessageSource,
+): boolean {
+  const kind = SOURCE_TO_CONNECTOR_KIND[source];
+  if (!kind) return false;
+  const registry = getConnectorRegistry(runtime);
+  if (!registry) return false;
+  return registry.get(kind)?.requiresApproval === true;
+}
 
 function makeApprovalDescription(draft: DraftRequest): string {
   const recipients = draft.to
@@ -22,8 +55,8 @@ function previewDraft(draft: DraftRequest): string {
 
 export function createOwnerSendPolicy(): SendPolicy {
   return {
-    async shouldRequireApproval(_runtime, draft) {
-      return OWNER_APPROVAL_REQUIRED.has(draft.source);
+    async shouldRequireApproval(runtime, draft) {
+      return approvalRequiredForSource(runtime, draft.source);
     },
     async enqueueApproval(runtime, draft, executor) {
       if (typeof runtime.createTask !== "function") {
