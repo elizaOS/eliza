@@ -1,7 +1,7 @@
-import "@elizaos/app-core/styles/styles.css";
-import "@elizaos/app-core/styles/brand-gold.css";
+import "@elizaos/ui/styles/styles.css";
+import "@elizaos/ui/styles/brand-gold.css";
 
-import "@elizaos/app-core/platform/native-plugin-entrypoints";
+import "@elizaos/app-core";
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";

@@ -42,14 +42,14 @@ import {
   useRef,
   useState,
 } from "react";
-import { client } from "@elizaos/app-core/api";
+import { client } from "@elizaos/app-core";
 import {
   type ActivityEvent,
   useActivityEvents,
-} from "@elizaos/app-core/hooks/useActivityEvents";
-import type { InventoryChainFilters } from "@elizaos/app-core/state/types";
-import { useApp } from "@elizaos/app-core/state/useApp";
-import { AppPageSidebar } from "@elizaos/app-core/components/shared/AppPageSidebar";
+} from "@elizaos/ui";
+import type { InventoryChainFilters } from "@elizaos/ui";
+import { useApp } from "@elizaos/ui";
+import { AppPageSidebar } from "@elizaos/ui";
 import { getNativeLogoUrl } from "./inventory/chainConfig";
 import {
   formatBalance,

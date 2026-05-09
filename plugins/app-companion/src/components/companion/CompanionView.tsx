@@ -3,8 +3,8 @@ import { ChatModalView, useApp, useRenderGuard } from "@elizaos/app-core";
 // browser entry, so the previous lazy() was eagerly merged back into the
 // main chunk. Drop the wrapper to silence the dynamic↔static collision
 // warning and remove the unnecessary Suspense boundary overhead.
-import { CharacterEditor } from "@elizaos/app-core/components/character/CharacterEditor";
-import { usePtySessions } from "@elizaos/app-core/state/PtySessionsContext";
+import { CharacterEditor } from "@elizaos/ui";
+import { usePtySessions } from "@elizaos/ui";
 import { PtyConsoleSidePanel } from "@elizaos/app-task-coordinator";
 import {
   memo,

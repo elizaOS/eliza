@@ -1,14 +1,14 @@
 import { Check, Copy, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useApp } from "@elizaos/app-core/state";
+import { useApp } from "@elizaos/ui";
 import {
   EmptyWidgetState,
   WidgetSection,
-} from "@elizaos/app-core/components/chat/widgets/shared";
+} from "@elizaos/ui";
 import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
-} from "@elizaos/app-core/components/chat/widgets/types";
+} from "@elizaos/ui";
 import {
   type ChainKey,
   getNativeLogoUrl,

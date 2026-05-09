@@ -36,8 +36,8 @@ import {
   type RegistryStatus,
   type WalletExportResult,
   type WhitelistStatus,
-} from "@elizaos/app-core/api";
-import { confirmDesktopAction } from "@elizaos/app-core/utils";
+} from "@elizaos/app-core";
+import { confirmDesktopAction } from "@elizaos/shared";
 import {
   loadBrowserEnabled,
   loadComputerUseEnabled,
@@ -45,8 +45,8 @@ import {
   saveBrowserEnabled,
   saveComputerUseEnabled,
   saveWalletEnabled,
-} from "@elizaos/app-core/state/persistence";
-import type { InventoryChainFilters } from "@elizaos/app-core/state/types";
+} from "@elizaos/ui";
+import type { InventoryChainFilters } from "@elizaos/ui";
 
 // ── Types ──────────────────────────────────────────────────────────────
 

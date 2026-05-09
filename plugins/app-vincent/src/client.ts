@@ -11,7 +11,7 @@
  * a barrel import here resolves to `undefined` when this file evaluates.
  * Going direct to the source module breaks the cycle.
  */
-import { ElizaClient } from "@elizaos/app-core/api/client-base";
+import { ElizaClient } from "@elizaos/app-core";
 import type {
   VincentStartLoginResponse,
   VincentStatusResponse,

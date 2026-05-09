@@ -28,10 +28,10 @@
  */
 
 import type { RouteHelpers, RouteRequestMeta } from '@elizaos/shared';
-import { readCompatJsonBody } from '@elizaos/app-core/api/compat-route-shared';
-import { isNativeServerPlatform } from '@elizaos/app-core/platform/is-native-server';
-import { type N8nMode, resolveN8nMode } from '@elizaos/app-core/services/n8n-mode';
-import type { N8nSidecar, N8nSidecarStatus } from '@elizaos/app-core/services/n8n-sidecar';
+import { readCompatJsonBody } from '@elizaos/app-core';
+import { isNativeServerPlatform } from '@elizaos/app-core';
+import { type N8nMode, resolveN8nMode } from '@elizaos/app-core';
+import type { N8nSidecar, N8nSidecarStatus } from '@elizaos/app-core';
 import type { AgentRuntime } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import {
@@ -42,7 +42,7 @@ import {
   pruneResolvedClarifications,
 } from '../lib/n8n-clarification';
 
-export type { N8nMode } from '@elizaos/app-core/services/n8n-mode';
+export type { N8nMode } from '@elizaos/app-core';
 
 /**
  * Host platform for the n8n status surface. On mobile (iOS / Android) the
@@ -256,12 +256,12 @@ async function getCloudHealth(baseUrl: string, fetchImpl: typeof fetch): Promise
  * is never reached.
  */
 async function loadSidecarModule(): Promise<
-  typeof import('@elizaos/app-core/services/n8n-sidecar') | null
+  typeof import('@elizaos/app-core') | null
   > {
   if (isNativeServerPlatform()) {
     return null;
   }
-  return await import('@elizaos/app-core/services/n8n-sidecar');
+  return await import('@elizaos/app-core');
 }
 
 // Cloud base URL default — mirrors `resolveCloudApiBaseUrl()` without

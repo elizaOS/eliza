@@ -1,4 +1,4 @@
-import { client } from "@elizaos/app-core/api";
+import { client } from "@elizaos/app-core";
 import type { LifeOpsCapabilitiesStatus } from "@elizaos/shared";
 import { useCallback, useEffect, useState } from "react";
 

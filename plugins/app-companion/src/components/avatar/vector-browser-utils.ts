@@ -1,1 +1,1 @@
-export * from "@elizaos/app-core/components/pages/vector-browser-utils";
+export * from "@elizaos/ui";

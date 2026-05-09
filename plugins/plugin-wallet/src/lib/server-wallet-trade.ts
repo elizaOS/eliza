@@ -11,7 +11,7 @@ import { resolveWalletExportRejection as upstreamResolveWalletExportRejection } 
 import {
   syncAppEnvToEliza,
   syncElizaEnvAliases,
-} from "@elizaos/app-core/utils/env";
+} from "@elizaos/shared";
 
 import {
   type WalletExportRejection as CompatWalletExportRejection,

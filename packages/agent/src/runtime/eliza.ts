@@ -2824,7 +2824,7 @@ export async function startEliza(
   {
     try {
       const { hydrateWalletKeysFromNodePlatformSecureStore } = await import(
-        "@elizaos/app-core/security/hydrate-wallet-keys-from-platform-store"
+        "@elizaos/app-core"
       );
       await hydrateWalletKeysFromNodePlatformSecureStore();
     } catch (err) {
@@ -2834,10 +2834,10 @@ export async function startEliza(
     }
 
     const { runVaultBootstrap } = await import(
-      "@elizaos/app-core/services/vault-bootstrap"
+      "@elizaos/app-core"
     );
     const { sharedVault } = await import(
-      "@elizaos/app-core/services/vault-mirror"
+      "@elizaos/app-core"
     );
     const bootResult = await runVaultBootstrap();
     logger.info(
@@ -3005,7 +3005,7 @@ export async function startEliza(
   // 2f. Install the multi-account pool shims and apply selected direct API
   //     accounts before plugin resolution snapshots process.env.
   try {
-    const accountPool = await import("@elizaos/app-core/account-pool");
+    const accountPool = await import("@elizaos/app-core");
     accountPool.getDefaultAccountPool();
     await accountPool.applyAccountPoolApiCredentials({
       activeBackend: resolveServiceRoutingInConfig(
@@ -3099,7 +3099,7 @@ export async function startEliza(
   if (process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER !== "1") {
     try {
       const { sharedVault } = await import(
-        "@elizaos/app-core/services/vault-mirror"
+        "@elizaos/app-core"
       );
       const { applyVaultProfilesForAgent } = await import(
         "./vault-profile-resolver.js"
@@ -3120,7 +3120,7 @@ export async function startEliza(
   if (process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP !== "1") {
     try {
       const { sharedVault } = await import(
-        "@elizaos/app-core/services/vault-mirror"
+        "@elizaos/app-core"
       );
       const { ensureAgentWallets } = await import("./agent-wallets.js");
       const descriptors = await ensureAgentWallets(
@@ -4028,7 +4028,7 @@ export async function startEliza(
           );
 
           try {
-            const accountPool = await import("@elizaos/app-core/account-pool");
+            const accountPool = await import("@elizaos/app-core");
             accountPool.getDefaultAccountPool();
             await accountPool.applyAccountPoolApiCredentials({
               activeBackend: resolveServiceRoutingInConfig(

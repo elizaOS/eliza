@@ -2,7 +2,7 @@ import "../api/client-lifeops.js";
 import {
   registerBuiltinWidgetDeclarations,
   registerBuiltinWidgets,
-} from "@elizaos/app-core/widgets";
+} from "@elizaos/ui";
 import { LIFEOPS_CHANNEL_WIDGETS } from "../components/chat/widgets/plugins/lifeops-channels.js";
 import {
   LIFEOPS_OVERVIEW_WIDGETS,

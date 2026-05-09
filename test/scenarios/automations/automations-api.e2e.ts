@@ -15,14 +15,14 @@ import type { TriggerSummary } from "@elizaos/agent/triggers/types";
 import type {
   N8nStatusResponse,
   N8nWorkflow,
-} from "@elizaos/app-core/api/client-types-chat";
+} from "@elizaos/app-core";
 import type {
   AutomationItem,
   AutomationListResponse,
   AutomationNodeCatalogResponse,
   AutomationNodeDescriptor,
   WorkbenchTask,
-} from "@elizaos/app-core/api/client-types-config";
+} from "@elizaos/app-core";
 
 const API_BASE = process.env.ELIZA_API_BASE ?? "http://127.0.0.1:31337";
 const AUTH_TOKEN = process.env.ELIZA_API_TOKEN ?? "";

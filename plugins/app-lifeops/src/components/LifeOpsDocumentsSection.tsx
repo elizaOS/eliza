@@ -2,7 +2,7 @@ import { client, useApp } from "@elizaos/app-core";
 import type {
   DocumentRecord,
   DocumentScope,
-} from "@elizaos/app-core/api/client-types-chat";
+} from "@elizaos/app-core";
 import { Button, Input, PagePanel, Textarea } from "@elizaos/ui";
 import {
   Bot,
