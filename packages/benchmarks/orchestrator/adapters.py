@@ -391,6 +391,8 @@ def _command_social_alpha(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
         system = system_raw.strip()
     elif ctx.request.provider.strip().lower() in {"eliza", "eliza-bridge", "eliza-ts"}:
         system = "eliza-bridge"
+    elif ctx.request.provider.strip().lower() in {"cerebras", "openai", "groq", "openrouter", "vllm"}:
+        system = "full"
     else:
         system = "baseline"
     data_dir = str(ctx.request.extra_config.get("data_dir", "trenches-chat-dataset/data"))
