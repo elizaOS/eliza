@@ -36,10 +36,10 @@ const SYMBOL_MOVES = [
   // Config types & loaders → cloud-sdk
   {
     from: "packages/agent/src/config/eliza.ts",
-    to: "packages/cloud-sdk/src/config/eliza.ts",
+    to: "cloud/packages/sdk/src/config/eliza.ts",
     importMap: {
-      "@elizaos/agent/config/eliza": "@elizaos/cloud-sdk/config/eliza",
-      "@elizaos/agent/src/config/eliza": "@elizaos/cloud-sdk/config/eliza",
+      "@elizaos/agent/config/eliza": "@elizaos/cloud-sdk",
+      "@elizaos/agent/src/config/eliza": "@elizaos/cloud-sdk",
     },
   },
   // Route helpers → shared
@@ -47,14 +47,14 @@ const SYMBOL_MOVES = [
     from: "packages/agent/src/api/route-helpers.ts",
     to: "packages/shared/src/api/route-helpers.ts",
     importMap: {
-      "@elizaos/agent/api/route-helpers": "@elizaos/shared/api/route-helpers",
+      "@elizaos/agent/api/route-helpers": "@elizaos/shared",
     },
   },
   {
     from: "packages/agent/src/api/http-helpers.ts",
     to: "packages/shared/src/api/http-helpers.ts",
     importMap: {
-      "@elizaos/agent/api/http-helpers": "@elizaos/shared/api/http-helpers",
+      "@elizaos/agent/api/http-helpers": "@elizaos/shared",
     },
   },
   // Telemetry helper → shared
@@ -62,7 +62,7 @@ const SYMBOL_MOVES = [
     from: "packages/agent/src/diagnostics/telemetry.ts",
     to: "packages/shared/src/diagnostics/telemetry.ts",
     importMap: {
-      "@elizaos/agent/diagnostics/telemetry": "@elizaos/shared/diagnostics/telemetry",
+      "@elizaos/agent/diagnostics/telemetry": "@elizaos/shared",
     },
   },
   // State-dir resolver → shared
@@ -70,7 +70,7 @@ const SYMBOL_MOVES = [
     from: "packages/agent/src/runtime/state-dir.ts",
     to: "packages/shared/src/runtime/state-dir.ts",
     importMap: {
-      "@elizaos/agent/runtime/state-dir": "@elizaos/shared/runtime/state-dir",
+      "@elizaos/agent/runtime/state-dir": "@elizaos/shared",
     },
   },
 ];
@@ -175,9 +175,9 @@ async function main() {
   // 5) Re-export from @elizaos/cloud-sdk and @elizaos/shared barrels
   log.section("5. Update barrel exports");
   updateBarrel(
-    "packages/cloud-sdk/src/index.ts",
+    "cloud/packages/sdk/src/index.ts",
     [
-      ["./config/eliza", "packages/cloud-sdk/src/config/eliza.ts"],
+      ["./config/eliza.js", "cloud/packages/sdk/src/config/eliza.ts"],
     ],
     flags,
     log,
@@ -186,10 +186,10 @@ async function main() {
   updateBarrel(
     "packages/shared/src/index.ts",
     [
-      ["./api/route-helpers", "packages/shared/src/api/route-helpers.ts"],
-      ["./api/http-helpers", "packages/shared/src/api/http-helpers.ts"],
-      ["./diagnostics/telemetry", "packages/shared/src/diagnostics/telemetry.ts"],
-      ["./runtime/state-dir", "packages/shared/src/runtime/state-dir.ts"],
+      ["./api/route-helpers.js", "packages/shared/src/api/route-helpers.ts"],
+      ["./api/http-helpers.js", "packages/shared/src/api/http-helpers.ts"],
+      ["./diagnostics/telemetry.js", "packages/shared/src/diagnostics/telemetry.ts"],
+      ["./runtime/state-dir.js", "packages/shared/src/runtime/state-dir.ts"],
     ],
     flags,
     log,

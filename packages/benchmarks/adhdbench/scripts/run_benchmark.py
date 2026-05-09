@@ -49,13 +49,15 @@ def parse_args() -> argparse.Namespace:
     )
     run_parser.add_argument(
         "--provider",
-        default="mock",
-        choices=("mock", "eliza", "openai", "cerebras", "groq", "openrouter", "vllm"),
+        default=None,
+        choices=("mock-passthrough", "eliza", "openai", "cerebras", "groq", "openrouter", "vllm"),
         help=(
-            "Model provider. 'mock' is the deterministic local runner (smoke "
-            "tests only — always scores ~100%%). 'eliza' routes through the "
-            "Eliza TypeScript benchmark bridge. The remaining choices hit an "
-            "OpenAI-compatible chat completions endpoint directly."
+            "Model provider. 'mock-passthrough' is the deterministic local "
+            "runner — smoke tests only, always scores ~100%% by construction. "
+            "'eliza' routes through the Eliza TypeScript benchmark bridge. "
+            "The remaining choices hit an OpenAI-compatible chat completions "
+            "endpoint directly. Required (no default) so accidental runs "
+            "never silently use the mock."
         ),
     )
     run_parser.add_argument("--levels", nargs="+", type=int, default=[0, 1, 2], help="Levels to run (0, 1, 2)")
@@ -114,6 +116,13 @@ def cmd_run(args: argparse.Namespace) -> None:
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     )
 
+    if args.provider is None:
+        raise SystemExit(
+            "ERROR: --provider is required. Choices: mock-passthrough (smoke "
+            "tests only, always ~100%), eliza, openai, cerebras, groq, "
+            "openrouter, vllm. Refusing to silently default to mock."
+        )
+
     # Build config from args
     if args.quick:
         config = ADHDBenchConfig(
@@ -169,7 +178,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             results = asyncio.run(runner.run(progress_callback=progress))
         finally:
             manager.stop()
-    elif provider_lc == "mock":
+    elif provider_lc in {"mock", "mock-passthrough"}:
         # Deterministic Python runner — only useful for smoke tests because
         # it always scores ~100% by construction. Explicit opt-in only.
         from elizaos_adhdbench.runner import ADHDBenchRunner

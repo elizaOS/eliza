@@ -58,7 +58,7 @@ const SHARED_TSCONFIG_CONTENT = `{
       "@elizaos/ui/*": ["../../packages/ui/dist/*"],
       "@elizaos/app-core": ["../../packages/app-core/dist/index.d.ts"],
       "@elizaos/agent": ["../../packages/agent/dist/index.d.ts"],
-      "@elizaos/cloud-sdk": ["../../packages/cloud-sdk/dist/index.d.ts"],
+      "@elizaos/cloud-sdk": ["../../cloud/packages/sdk/dist/index.d.ts"],
       "@elizaos/scenario-runner": ["../../packages/scenario-runner/dist/index.d.ts"]
     }
   },

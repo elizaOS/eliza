@@ -6,15 +6,15 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
-	createPaymentAwareHandler,
-	isRoutePaymentWrapped,
+  createPaymentAwareHandler,
+  isRoutePaymentWrapped,
 } from "../middleware/x402/payment-wrapper.js";
 import {
-	type AgentRuntime,
-	type PaymentEnabledRoute,
-	type Route,
-	type RuntimeRouteHostContext,
-	setRuntimeRouteHostContext,
+  type AgentRuntime,
+  type PaymentEnabledRoute,
+  type Route,
+  type RuntimeRouteHostContext,
+  setRuntimeRouteHostContext,
 } from "@elizaos/core";
 import { readJsonBody } from "./http-helpers.js";
 
@@ -193,13 +193,21 @@ export async function tryHandleRuntimePluginRoute(options: {
   res: ServerResponse;
   method: string;
   pathname: string;
-	url: URL;
-	runtime: AgentRuntime | null | undefined;
-	isAuthorized: () => boolean;
-	hostContext?: RuntimeRouteHostContext;
+  url: URL;
+  runtime: AgentRuntime | null | undefined;
+  isAuthorized: () => boolean;
+  hostContext?: RuntimeRouteHostContext;
 }): Promise<boolean> {
-  const { req, res, method, pathname, url, runtime, isAuthorized, hostContext } =
-    options;
+  const {
+    req,
+    res,
+    method,
+    pathname,
+    url,
+    runtime,
+    isAuthorized,
+    hostContext,
+  } = options;
   if (!runtime?.routes?.length) return false;
 
   for (const route of runtime.routes as Route[]) {

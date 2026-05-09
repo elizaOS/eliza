@@ -60,12 +60,14 @@ async function main() {
 
   // Build subpath rewrite table.
   // "packages/app-core/src/components/foo.tsx" → "@elizaos/app-core/components/foo"
-  // "packages/ui/src/components/foo.tsx"        → "@elizaos/ui/components/foo"
+  // "packages/ui/src/components/foo.tsx"        → "@elizaos/ui"
   /** @type {Record<string, string>} */
   const subpathRewrites = {};
   for (const entry of manifest) {
     const oldSpec = repoPathToSpecifier(entry.from);
-    const newSpec = repoPathToSpecifier(entry.to);
+    const newSpec = entry.to.endsWith(".css")
+      ? repoPathToAssetSpecifier(entry.to)
+      : repoPathToBarePackageSpecifier(entry.to);
     if (oldSpec && newSpec) {
       subpathRewrites[oldSpec] = newSpec;
     }
@@ -108,6 +110,9 @@ async function main() {
   stats.incr("subpath rewrites (to ui/shared)", totalRewrites);
   stats.incr("subpath collapses (to barrel)", collapsed);
 
+  log.section("Update @elizaos/ui and @elizaos/shared barrels");
+  updateDestinationBarrels(manifest, flags, log, stats);
+
   if (manualReview.length > 0) {
     log.section("MANUAL review needed");
     for (const m of manualReview.slice(0, 50)) {
@@ -142,6 +147,21 @@ function repoPathToSpecifier(repoPath) {
   // Map folder name to package scope. We assume @elizaos/<folder>.
   const pkgName = `@elizaos/${pkgFolder}`;
   return subpath ? `${pkgName}/${subpath}` : pkgName;
+}
+
+function repoPathToBarePackageSpecifier(repoPath) {
+  const m = /^packages\/([^/]+)\/src(?:\/|$)/.exec(repoPath);
+  if (!m) return null;
+  if (m[1] === "ui") return "@elizaos/ui";
+  if (m[1] === "shared") return "@elizaos/shared";
+  return `@elizaos/${m[1]}`;
+}
+
+function repoPathToAssetSpecifier(repoPath) {
+  const m = /^packages\/([^/]+)\/src\/(.+)$/.exec(repoPath);
+  if (!m) return null;
+  const pkgFolder = m[1];
+  return `@elizaos/${pkgFolder}/${m[2]}`;
 }
 
 /**
@@ -195,6 +215,63 @@ function rewriteAppCoreImports(source, subpathRewrites) {
     changes: { rewrites, collapses },
     manual,
   };
+}
+
+function updateDestinationBarrels(manifest, flags, log, stats) {
+  const byPackage = new Map([
+    [
+      "packages/ui/src/index.ts",
+      new Set(),
+    ],
+    [
+      "packages/shared/src/index.ts",
+      new Set(),
+    ],
+  ]);
+
+  for (const entry of manifest) {
+    const target = entry.to;
+    const pkgRoot = target.startsWith("packages/ui/src/")
+      ? "packages/ui/src"
+      : target.startsWith("packages/shared/src/")
+        ? "packages/shared/src"
+        : null;
+    if (!pkgRoot) continue;
+    if (!/\.(tsx?|jsx?|mts|cts|mjs)$/.test(target)) continue;
+    const barrel = `${pkgRoot}/index.ts`;
+    let rel = target.slice(`${pkgRoot}/`.length);
+    rel = rel.replace(/\.(tsx?|jsx?|mts|cts|mjs)$/, "");
+    rel = rel.replace(/\/index$/, "");
+    if (!rel || rel === "index") continue;
+    byPackage.get(barrel)?.add(`export * from "./${rel}";`);
+  }
+
+  for (const [barrelRel, exportLines] of byPackage.entries()) {
+    if (exportLines.size === 0) continue;
+    const barrelAbs = join(REPO_ROOT, barrelRel);
+    if (!existsSync(barrelAbs)) {
+      log.manual(`${barrelRel} missing; cannot add package barrel exports`);
+      continue;
+    }
+    const before = readFileSync(barrelAbs, "utf8");
+    const additions = [...exportLines]
+      .sort()
+      .filter((line) => !before.includes(line));
+    if (additions.length === 0) {
+      log.info(`${barrelRel}: moved exports already covered`);
+      continue;
+    }
+    const next = [
+      before.trimEnd(),
+      "",
+      "// Added by scripts/refactor/p1-rewrite-app-core-imports.mjs.",
+      "// Re-export moved app-core modules so consumers can import the package barrel.",
+      ...additions,
+      "",
+    ].join("\n");
+    writeFileIfChanged(barrelAbs, next, flags, log);
+    stats.incr("barrel export lines added", additions.length);
+  }
 }
 
 main().catch((err) => {

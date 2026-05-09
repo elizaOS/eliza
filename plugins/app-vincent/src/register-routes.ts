@@ -1,4 +1,4 @@
-import { registerAppRoutePluginLoader } from "@elizaos/app-core/runtime/app-route-plugin-registry";
+import { registerAppRoutePluginLoader } from "@elizaos/core";
 
 registerAppRoutePluginLoader("@elizaos/app-vincent", async () => {
   const { vincentPlugin } = await import("./plugin");

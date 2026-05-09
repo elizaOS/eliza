@@ -49,7 +49,8 @@ export function getRuntimeRouteHostContext<
 	TConfig extends Record<string, unknown> = Record<string, unknown>,
 >(runtime: object | null | undefined): RuntimeRouteHostContext<TConfig> | null {
 	if (!runtime) return null;
-	return getContextHolder(runtime).context as RuntimeRouteHostContext<TConfig> | null;
+	return getContextHolder(runtime)
+		.context as RuntimeRouteHostContext<TConfig> | null;
 }
 
 export function setRuntimeRouteHostContext(

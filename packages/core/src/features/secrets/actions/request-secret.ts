@@ -59,20 +59,10 @@ export const requestSecretAction: Action = {
 				: {};
 		const hasStructuredKey =
 			typeof params.key === "string" && params.key.trim().length > 0;
-		const text = message.content?.text?.toLowerCase() ?? "";
 		return (
 			hasStructuredKey ||
-			/\b(?:request|need|missing|require).*\b(?:secret|key|token|credential)\b/i.test(
-				text,
-			) ||
 			hasActionContextOrKeyword(message, _state, {
 				contexts: ["secrets", "settings", "connectors"],
-				keywords: [
-					"request secret",
-					"need secret",
-					"missing secret",
-					"require api key",
-				],
 			})
 		);
 	},

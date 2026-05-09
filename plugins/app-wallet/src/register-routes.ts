@@ -9,7 +9,7 @@
  */
 
 import { registerAppShellPage } from "@elizaos/app-core/app-shell-components";
-import { registerAppRoutePluginLoader } from "@elizaos/app-core/runtime/app-route-plugin-registry";
+import { registerAppRoutePluginLoader } from "@elizaos/core";
 import { registerBuiltinWidgets } from "@elizaos/app-core/widgets/registry";
 import { InventoryView } from "./InventoryView";
 import { WALLET_STATUS_WIDGET } from "./widgets/wallet-status";

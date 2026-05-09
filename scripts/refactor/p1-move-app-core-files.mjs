@@ -15,6 +15,8 @@ import {
   moveFile,
   parseFlags,
   preflight,
+  removeFile,
+  writeFileIfChanged,
 } from "./lib/util.mjs";
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -30,6 +32,7 @@ const DIR_MOVES = [
   { from: "packages/app-core/src/widgets", to: "packages/ui/src/widgets" },
   { from: "packages/app-core/src/navigation", to: "packages/ui/src/navigation" },
   { from: "packages/app-core/src/i18n", to: "packages/ui/src/i18n" },
+  { from: "packages/app-core/src/styles", to: "packages/ui/src/styles" },
 
   // electrobun-rpc is browser/preload-side; the runtime side stays in app-core
   {
@@ -130,6 +133,11 @@ function walkAndMove(move, flags, log, stats, manifest) {
     const targetRel = relative(REPO_ROOT, targetAbs);
     const sourceRel = relative(REPO_ROOT, file);
     if (existsSync(targetAbs)) {
+      if (isIndexFile(sourceRel)) {
+        mergeIndexBarrel(file, targetAbs, flags, log, stats);
+        manifest.push({ from: sourceRel, to: targetRel });
+        return;
+      }
       log.manual(`collision: ${targetRel} (skipping ${sourceRel})`);
       stats.incr("collisions");
       return;
@@ -164,6 +172,11 @@ function walkAndSplit(partial, flags, log, stats, manifest) {
     const targetRel = relative(REPO_ROOT, targetAbs);
     const sourceRel = relative(REPO_ROOT, file);
     if (existsSync(targetAbs)) {
+      if (isIndexFile(sourceRel)) {
+        mergeIndexBarrel(file, targetAbs, flags, log, stats);
+        manifest.push({ from: sourceRel, to: targetRel });
+        return;
+      }
       log.manual(`collision: ${targetRel} (skipping ${sourceRel})`);
       stats.incr("collisions");
       return;
@@ -185,6 +198,30 @@ function walkDir(dir, fn) {
       fn(full);
     }
   }
+}
+
+function isIndexFile(repoRelPath) {
+  return /(?:^|\/)index\.tsx?$/.test(repoRelPath);
+}
+
+function mergeIndexBarrel(sourceAbs, targetAbs, flags, log, stats) {
+  const sourceRel = relative(REPO_ROOT, sourceAbs);
+  const targetRel = relative(REPO_ROOT, targetAbs);
+  const source = readFileSync(sourceAbs, "utf8");
+  const target = readFileSync(targetAbs, "utf8");
+  const lines = source
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length > 0 && !target.includes(line));
+  if (lines.length > 0) {
+    const next = `${target.trimEnd()}\n${lines.join("\n")}\n`;
+    log.info(`merge index barrel: ${sourceRel} → ${targetRel}`);
+    writeFileIfChanged(targetAbs, next, flags, log);
+    stats.incr("index barrels merged");
+  } else {
+    log.info(`index barrel already covered: ${targetRel}`);
+  }
+  removeFile(sourceAbs, flags, log);
 }
 
 main().catch((err) => {

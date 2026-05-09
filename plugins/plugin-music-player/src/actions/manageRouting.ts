@@ -41,39 +41,6 @@ interface MusicRoutingService extends Service {
 }
 
 const ROUTING_CONTEXTS = ["media", "automation", "settings"] as const;
-const ROUTING_KEYWORDS = [
-  "route",
-  "routing",
-  "simulcast",
-  "broadcast",
-  "stream",
-  "zone",
-  "mode",
-  "audio",
-  "music",
-  "ruta",
-  "enrutar",
-  "transmitir",
-  "zona",
-  "modo",
-  "musica",
-  "routage",
-  "diffuser",
-  "zone",
-  "modus",
-  "weiterleiten",
-  "übertragen",
-  "ルーティング",
-  "配信",
-  "ゾーン",
-  "路由",
-  "广播",
-  "区域",
-  "라우팅",
-  "방송",
-  "구역",
-] as const;
-
 function selectedContextMatches(
   state: State | undefined,
   contexts: readonly string[],
@@ -101,22 +68,6 @@ function selectedContextMatches(
   collect(contextObject?.trajectoryPrefix?.selectedContexts);
   collect(contextObject?.metadata?.selectedContexts);
   return contexts.some((context) => selected.has(context));
-}
-
-function messageContainsAny(
-  message: Memory,
-  state: State | undefined,
-  keywords: readonly string[],
-): boolean {
-  const text = [
-    typeof message.content?.text === "string" ? message.content.text : "",
-    typeof state?.values?.recentMessages === "string"
-      ? state.values.recentMessages
-      : "",
-  ]
-    .join("\n")
-    .toLowerCase();
-  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
 }
 
 async function emit(
@@ -190,19 +141,24 @@ export const manageRouting = {
   description: "Manage audio routing modes and assignments",
   descriptionCompressed: "manage audio rout mode assignment",
 
-  validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
+  validate: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    state?: State,
+    options?: unknown,
+  ) => {
+    const musicService = (await runtime.getService(
+      "music",
+    )) as MusicRoutingService | null;
+    if (
+      !musicService?.getAudioRouter ||
+      !musicService.getZoneManager ||
+      !musicService.startBroadcastRoute
+    ) {
+      return false;
+    }
     if (selectedContextMatches(state, ROUTING_CONTEXTS)) return true;
-    const text = message.content.text?.toLowerCase() || "";
-
-    const hasRelevantKeyword = messageContainsAny(
-      message,
-      state,
-      ROUTING_KEYWORDS,
-    );
-    const actionKeywords = ["set", "start", "stop", "switch"];
-    const hasActionKeyword = actionKeywords.some((kw) => text.includes(kw));
-
-    return hasRelevantKeyword && hasActionKeyword;
+    return routingTextFromOptions(options) !== null;
   },
 
   handler: async (

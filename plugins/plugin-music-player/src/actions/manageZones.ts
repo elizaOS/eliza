@@ -17,42 +17,6 @@ interface MusicZoneService extends Service {
 }
 
 const ZONE_CONTEXTS = ["media", "automation", "settings"] as const;
-const ZONE_KEYWORDS = [
-  "zone",
-  "zones",
-  "mix",
-  "target",
-  "audio",
-  "music",
-  "create",
-  "delete",
-  "add",
-  "remove",
-  "list",
-  "zona",
-  "zonas",
-  "objetivo",
-  "añadir",
-  "eliminar",
-  "zone",
-  "cible",
-  "ajouter",
-  "supprimer",
-  "bereich",
-  "ziel",
-  "hinzufügen",
-  "entfernen",
-  "ゾーン",
-  "追加",
-  "削除",
-  "区域",
-  "添加",
-  "删除",
-  "구역",
-  "추가",
-  "삭제",
-] as const;
-
 function selectedContextMatches(
   state: State | undefined,
   contexts: readonly string[],
@@ -80,22 +44,6 @@ function selectedContextMatches(
   collect(contextObject?.trajectoryPrefix?.selectedContexts);
   collect(contextObject?.metadata?.selectedContexts);
   return contexts.some((context) => selected.has(context));
-}
-
-function messageContainsAny(
-  message: Memory,
-  state: State | undefined,
-  keywords: readonly string[],
-): boolean {
-  const text = [
-    typeof message.content?.text === "string" ? message.content.text : "",
-    typeof state?.values?.recentMessages === "string"
-      ? state.values.recentMessages
-      : "",
-  ]
-    .join("\n")
-    .toLowerCase();
-  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
 }
 
 async function emit(
@@ -188,23 +136,20 @@ export const manageZones = {
   description: "Manage audio zones for multi-bot voice routing",
   descriptionCompressed: "manage audio zone multi-bot voice rout",
 
-  validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
+  validate: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    state?: State,
+    options?: unknown,
+  ) => {
+    const musicService = (await runtime.getService(
+      "music",
+    )) as MusicZoneService | null;
+    if (!musicService?.getZoneManager?.()) {
+      return false;
+    }
     if (selectedContextMatches(state, ZONE_CONTEXTS)) return true;
-    const text = message.content.text?.toLowerCase() || "";
-
-    const actionKeywords = [
-      "create",
-      "delete",
-      "add",
-      "remove",
-      "list",
-      "show",
-    ];
-
-    const hasZoneKeyword = messageContainsAny(message, state, ZONE_KEYWORDS);
-    const hasActionKeyword = actionKeywords.some((kw) => text.includes(kw));
-
-    return hasZoneKeyword && hasActionKeyword;
+    return zoneTextFromOptions(options) !== null;
   },
 
   handler: async (

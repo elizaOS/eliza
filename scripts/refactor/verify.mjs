@@ -48,6 +48,11 @@ const ALL_CHECKS = [
     optional: true, // exists only after P5
   },
   {
+    id: "barrel-imports",
+    title: "Cross-package import audit (package barrels only)",
+    cmd: ["bun", ["scripts/refactor/audit-barrel-imports.mjs"]],
+  },
+  {
     id: "test",
     title: "bun run test",
     cmd: ["bun", ["run", "test"]],
