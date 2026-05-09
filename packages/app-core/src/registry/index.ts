@@ -20,14 +20,25 @@ export {
 } from "./loader";
 export * from "./schema";
 
-const moduleDir = dirname(fileURLToPath(import.meta.url));
-const entriesDir = join(moduleDir, "entries");
+// Bun.build collapses these top-level `const` declarations into `var`s
+// inside an `__esm` wrapper. When the bundle ends up with a code path that
+// reaches `loadRegistry()` before `init_registry6()` has run (no obvious
+// trigger we can find — possibly a TLA scheduling quirk in 1.3.13), the
+// `var entriesDir` is `undefined` and `path.join(undefined, "apps")` throws
+// `TypeError: The "paths[0]" property must be of type string`. Resolve the
+// directory lazily inside `loadRegistry()` so a stale call still finds the
+// path via `import.meta.url`.
+function resolveEntriesDir(): string {
+  const moduleDir = dirname(fileURLToPath(import.meta.url));
+  return join(moduleDir, "entries");
+}
 
 let cache: LoadedRegistry | null = null;
 
 export function loadRegistry(): LoadedRegistry {
   if (cache) return cache;
 
+  const entriesDir = resolveEntriesDir();
   const raws: { file: string; data: unknown }[] = [];
   for (const kind of ["apps", "plugins", "connectors"] as const) {
     const kindDir = join(entriesDir, kind);
