@@ -84,7 +84,10 @@ export const healthPlugin: Plugin = {
 };
 
 export default healthPlugin;
-export * from "./sleep.js";
+// `./sleep.js` is redundant — `./sleep/index.js` (line 46) re-exports the
+// same module. Bun's runtime ESM resolver does not honor TypeScript's
+// directory-shorthand and fails with `Cannot find module './sleep.js'`,
+// so drop the duplicate to keep the runtime barrel resolvable.
 export * from "./health-bridge.js";
 export * from "./screen-time.js";
 export * from "./actions.js";
