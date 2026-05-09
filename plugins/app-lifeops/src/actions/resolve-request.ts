@@ -26,7 +26,7 @@ import {
   resolveActionArgs,
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
-import { INTERNAL_URL } from "./lifeops-google-helpers.js";
+import { INTERNAL_URL } from "../lifeops/access.js";
 
 const ACTION_NAME = "RESOLVE_REQUEST";
 
@@ -486,7 +486,7 @@ export const resolveRequestAction: Action & {
       {
         name: "{{name1}}",
         content: {
-          text: "Yeah, go ahead and send that draft to Marco.",
+          text: "Yeah, go ahead and send that draft.",
         },
       },
       {

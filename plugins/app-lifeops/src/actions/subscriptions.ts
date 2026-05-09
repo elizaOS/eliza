@@ -14,7 +14,8 @@ import type { LifeOpsSubscriptionExecutor } from "../lifeops/subscriptions-types
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { formatPromptSection } from "./lib/prompt-format.js";
 import { recentConversationTexts } from "./lib/recent-context.js";
-import { INTERNAL_URL, messageText } from "./lifeops-google-helpers.js";
+import { INTERNAL_URL } from "../lifeops/access.js";
+import { messageText } from "../lifeops/google/format-helpers.js";
 
 type SubscriptionSubaction = "audit" | "cancel" | "status";
 

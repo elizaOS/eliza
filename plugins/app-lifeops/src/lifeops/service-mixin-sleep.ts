@@ -18,7 +18,7 @@ import {
   computePersonalBaseline,
   computeSleepRegularity,
   type SleepRegularityEpisodeLike,
-} from "./sleep-regularity.js";
+} from "@elizaos/plugin-health";
 
 const DEFAULT_HISTORY_WINDOW_DAYS = 365;
 const DEFAULT_REGULARITY_WINDOW_DAYS = 30;

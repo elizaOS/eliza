@@ -12,14 +12,14 @@ import {
 } from "@elizaos/shared";
 import { listActivityEvents } from "../activity-profile/activity-tracker-repo.js";
 import { isSystemInactivityApp } from "../activity-profile/system-inactivity-apps.js";
-import { computeAwakeProbability } from "./awake-probability.js";
 import {
+  computeAwakeProbability,
   type CircadianScorerResult,
   MIN_STABILITY_WINDOW_MS,
   SLEEP_ONSET_WINDOW_MS,
   scoreCircadianRules,
   WAKE_CONFIRM_WINDOW_MS,
-} from "./circadian-rules.js";
+} from "@elizaos/plugin-health";
 import { probeContinuityDevices } from "./continuity-probe.js";
 import { probeIMessageOutboundActivity } from "./imessage-outbound-probe.js";
 import { resolveLifeOpsRelativeTime } from "./relative-time.js";
@@ -33,16 +33,12 @@ import {
   type LifeOpsSleepEpisode,
   resolveLifeOpsDayBoundary,
   resolveLifeOpsSleepCycle,
-} from "./sleep-cycle.js";
-import {
   listHistoricalSleepEpisodes,
   persistSleepEpisodes,
-} from "./sleep-episode-store.js";
-import {
   computePersonalBaseline,
   computeSleepRegularity,
   type SleepRegularityEpisodeLike,
-} from "./sleep-regularity.js";
+} from "@elizaos/plugin-health";
 import { getZonedDateParts } from "./time.js";
 import { roundConfidence } from "./time-util.js";
 

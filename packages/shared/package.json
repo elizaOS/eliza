@@ -49,6 +49,7 @@
     "./contracts/awareness": "./dist/contracts/awareness.js",
     "./contracts/config": "./dist/contracts/config.js",
     "./contracts/drop": "./dist/contracts/drop.js",
+    "./contracts/health": "./dist/contracts/health.js",
     "./contracts/lifeops": "./dist/contracts/lifeops.js",
     "./contracts/onboarding": "./dist/contracts/onboarding.js",
     "./contracts/permissions": "./dist/contracts/permissions.js",
@@ -87,6 +88,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "chalk": "^5.3.0",
     "zod": "^4.4.3"
   },
   "optionalDependencies": {

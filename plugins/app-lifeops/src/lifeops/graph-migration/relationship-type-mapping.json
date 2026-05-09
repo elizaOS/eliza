@@ -1,0 +1,26 @@
+{
+  "_meta": {
+    "description": "Mapping table: legacy LifeOpsRelationship.relationshipType strings → new RelationshipStore type strings. Unknown strings pass through verbatim. Edit this file to add a new mapping; the migrator reloads it on each run.",
+    "owner": "W1-E"
+  },
+  "mappings": {
+    "partner": "partner_of",
+    "spouse": "partner_of",
+    "husband": "partner_of",
+    "wife": "partner_of",
+    "colleague": "colleague_of",
+    "coworker": "colleague_of",
+    "teammate": "colleague_of",
+    "manager": "managed_by",
+    "boss": "managed_by",
+    "supervisor": "managed_by",
+    "report": "manages",
+    "direct_report": "manages",
+    "friend": "knows",
+    "contact": "knows",
+    "vendor": "knows",
+    "client": "knows",
+    "customer": "knows",
+    "follower": "follows"
+  }
+}

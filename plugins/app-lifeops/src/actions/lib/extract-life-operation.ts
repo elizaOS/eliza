@@ -5,8 +5,8 @@ import {
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 import { parseJsonModelRecord } from "../../utils/json-model-output.js";
-import { runExtractorPipeline } from "../extractor-pipeline.js";
-import { resolveContextWindow } from "../lifeops-extraction-config.js";
+import { resolveContextWindow } from "../../lifeops/defaults.js";
+import { runExtractorPipeline } from "../../lifeops/llm/extractor-pipeline.js";
 
 export const LIFE_OPERATION_VALUES = [
   "create",

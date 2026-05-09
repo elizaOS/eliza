@@ -41,12 +41,12 @@ import {
 import { LifeOpsService, LifeOpsServiceError } from "../../lifeops/service.js";
 import { getZonedDateParts } from "../../lifeops/time.js";
 import { parseJsonModelRecord } from "../../utils/json-model-output.js";
-import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops-google-helpers.js";
+import { hasLifeOpsAccess, INTERNAL_URL } from "../../lifeops/access.js";
+import { inferTimeZoneFromLocationText } from "../../lifeops/time/timezone.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
-} from "../lifeops-grounded-reply.js";
-import { inferTimeZoneFromLocationText } from "../timezone-normalization.js";
+} from "../../lifeops/voice/grounded-reply.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
 
 const MS_PER_MINUTE = 60_000;
@@ -466,8 +466,8 @@ export const proposeMeetingTimesAction: Action & {
     "reschedule options. " +
     "STRONG POSITIVE TRIGGERS — route HERE, not to CALENDAR_ACTION or SCHEDULING: " +
     "'propose three times for a sync with a person', 'suggest a few times for " +
-    "Jill', 'offer Marco three 30-minute slots', 'find us three options " +
-    "next week', 'give me slots to send Sarah'. " +
+    "a partner', 'offer a colleague three 30-minute slots', 'find us three options " +
+    "next week', 'give me slots to send to a teammate'. " +
     "DO NOT use this for small talk, weather, or vague conversation. " +
     "DO NOT use this to check the owner's calendar, create a calendar event, " +
     "or view upcoming events — that is CALENDAR_ACTION. " +

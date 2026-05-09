@@ -18,8 +18,15 @@ import {
   resolveEntityRole,
   stringToUuid,
 } from "@elizaos/core";
+import { createRuntimeScheduledTaskRunner } from "../lifeops/scheduled-task/runtime-wiring.js";
+import { handleEntityRoutes } from "./entities.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { handleLifeOpsRoutes } from "./lifeops-routes.js";
+import { handleRelationshipRoutes } from "./relationships.js";
+import {
+  makeScheduledTasksRouteHandler,
+  SCHEDULED_TASKS_ROUTE_PATHS,
+} from "./scheduled-tasks.js";
 import { handleSleepRoutes } from "./sleep-routes.js";
 import type { WebsiteBlockerRouteContext } from "./website-blocker-routes.js";
 import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
@@ -374,6 +381,14 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/features/toggle" },
   // Browser extension self-registration.
   { type: "POST", path: "/api/lifeops/browser/register" },
+  // W1-E knowledge-graph: entities + relationships.
+  { type: "GET", path: "/api/lifeops/entities" },
+  { type: "POST", path: "/api/lifeops/entities" },
+  { type: "GET", path: "/api/lifeops/entities/resolve" },
+  { type: "POST", path: "/api/lifeops/entities/merge" },
+  { type: "GET", path: "/api/lifeops/relationships" },
+  { type: "POST", path: "/api/lifeops/relationships" },
+  { type: "POST", path: "/api/lifeops/relationships/observe" },
 ];
 
 const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
@@ -435,6 +450,13 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/occurrences/:id/snooze" },
   // /api/lifeops/website-access/callbacks/:key/resolve
   { type: "POST", path: "/api/lifeops/website-access/callbacks/:key/resolve" },
+  // W1-E knowledge graph dynamic routes.
+  { type: "GET", path: "/api/lifeops/entities/:id" },
+  { type: "PATCH", path: "/api/lifeops/entities/:id" },
+  { type: "POST", path: "/api/lifeops/entities/:id/identities" },
+  { type: "GET", path: "/api/lifeops/relationships/:id" },
+  { type: "PATCH", path: "/api/lifeops/relationships/:id" },
+  { type: "POST", path: "/api/lifeops/relationships/:id/retire" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -570,7 +592,42 @@ function lifeOpsRouteHandler(): PluginRouteHandler {
       httpRes,
       (runtime as AgentRuntime) ?? null,
     );
+    if (await handleEntityRoutes(ctx)) return;
+    if (await handleRelationshipRoutes(ctx)) return;
     await handleLifeOpsRoutes(ctx);
+  };
+}
+
+function scheduledTasksRouteHandler(): PluginRouteHandler {
+  // The runner is created per-request because it depends on the
+  // runtime which is only available inside the route call. The runtime
+  // wiring registers the built-in gates / completion-checks / ladders
+  // and uses the LifeOpsRepository for storage.
+  const handle = makeScheduledTasksRouteHandler({
+    async resolveRunner(ctx) {
+      const runtime = ctx.state.runtime;
+      if (!runtime) {
+        ctx.error(ctx.res, "Agent runtime is not available", 503);
+        return null;
+      }
+      return createRuntimeScheduledTaskRunner({
+        runtime,
+        agentId: runtime.agentId,
+      });
+    },
+  });
+  return async (req, res, runtime): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const ctx = buildLifeOpsContext(
+      httpReq,
+      httpRes,
+      (runtime as AgentRuntime) ?? null,
+    );
+    const handled = await handle(ctx);
+    if (!handled) {
+      error(httpRes, "Scheduled-tasks route not found", 404);
+    }
   };
 }
 
@@ -696,6 +753,11 @@ const lifeOpsPluginRoutes: Route[] = [
   ),
   ...buildRawRoutes(LIFEOPS_STATIC_ROUTES, lifeOpsRouteHandler()),
   ...buildRawRoutes(LIFEOPS_DYNAMIC_ROUTES, lifeOpsRouteHandler()),
+  // W1-A — ScheduledTask spine REST surface (`docs/audit/wave1-interfaces.md` §1.6).
+  ...buildRawRoutes(
+    SCHEDULED_TASKS_ROUTE_PATHS,
+    scheduledTasksRouteHandler(),
+  ),
   ...buildRawRoutes(LIFEOPS_SLEEP_ROUTES, sleepRouteHandler()),
   ...buildRawRoutes(WEBSITE_BLOCKER_ROUTES, websiteBlockerRouteHandler()),
 ];
