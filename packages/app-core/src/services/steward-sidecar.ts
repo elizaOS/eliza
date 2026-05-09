@@ -65,7 +65,6 @@ export {
   generateApiKey,
   generateMasterPassword,
   resolveDataDir,
-  resolveEffectiveStewardConfig,
 } from "./steward-sidecar/helpers";
 
 interface BunSubprocessLike {

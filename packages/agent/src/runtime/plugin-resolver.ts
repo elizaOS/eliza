@@ -367,13 +367,19 @@ async function ensureStagedPackageDependencies(params: {
       stagedNodeModulesPath,
       dependency.name,
     );
+    const shouldStageFromSource = SOURCE_STAGED_WORKSPACE_DEPENDENCIES.has(
+      dependency.name,
+    );
     if (await pathEntryExists(stagedDependencyPath)) {
-      continue;
+      if (!shouldStageFromSource) {
+        continue;
+      }
+      await fs.rm(stagedDependencyPath, { recursive: true, force: true });
     }
 
     let staged = false;
     for (const sourceNodeModulesDir of sourceNodeModulesDirs) {
-      staged = SOURCE_STAGED_WORKSPACE_DEPENDENCIES.has(dependency.name)
+      staged = shouldStageFromSource
         ? await stageWorkspaceSourceDependencyIntoNodeModules({
             dependencyName: dependency.name,
             sourceNodeModulesDir,

@@ -1,4 +1,4 @@
-import { ErrorBoundary } from "@elizaos/app-core";
+import { ErrorBoundary } from "@elizaos/ui";
 import "@elizaos/ui/styles/styles.css";
 import "@elizaos/ui/styles/brand-gold.css";
 import "@elizaos/app-core";
@@ -16,7 +16,7 @@ import {
   THREE,
   useCompanionSceneStatus,
 } from "@elizaos/app-companion";
-import type { BrandingConfig } from "@elizaos/app-core";
+import type { BrandingConfig } from "@elizaos/ui";
 import {
   AGENT_READY_EVENT,
   APP_PAUSE_EVENT,
@@ -65,7 +65,7 @@ import {
   subscribeDesktopBridgeEvent,
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import { PhoneCompanionApp } from "@elizaos/app-phone";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
@@ -115,7 +115,7 @@ import "@elizaos/app-vincent";
 // page, and chat sidebar wallet-status widget) with @elizaos/app-core
 // registries. Must precede the first shell render.
 import "@elizaos/app-wallet";
-import { shouldUseCloudOnlyBranding } from "@elizaos/app-core";
+import { shouldUseCloudOnlyBranding } from "@elizaos/ui";
 import {
   APP_BRANDING_BASE,
   APP_CONFIG,

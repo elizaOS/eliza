@@ -188,9 +188,9 @@ import { handleAppsRoutes } from "./apps-routes.js";
 import { handleAuthRoutes } from "./auth-routes.js";
 import { handleAvatarRoutes } from "./avatar-routes.js";
 // BlueBubbles routes extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
-// resolveBlueBubblesWebhookPath stays here so the auth gate can compute the webhook path
-// before the runtime plugin route dispatcher runs.
-import { resolveBlueBubblesWebhookPath } from "./bluebubbles-routes.js";
+// resolveBlueBubblesWebhookPath stays in @elizaos/plugin-imessage so the auth gate can compute
+// the webhook path before the runtime plugin route dispatcher runs.
+import { resolveBlueBubblesWebhookPath } from "@elizaos/plugin-imessage";
 import { handleBugReportRoutes } from "./bug-report-routes.js";
 import { handleCharacterRoutes } from "./character-routes.js";
 import {
@@ -210,7 +210,7 @@ import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.js";
 import { handleHealthRoutes } from "./health-routes.js";
 // iMessage routes extracted to @elizaos/plugin-imessage setup-routes.ts (Plugin.routes)
-// import { handleIMessageRoute } from "./imessage-routes.js";
+// import { handleIMessageRoute } from "@elizaos/plugin-imessage";
 import {
   getLocalInferenceActiveModelId,
   handleLocalInferenceRoutes,
