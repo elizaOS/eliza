@@ -322,8 +322,10 @@ Respond ONLY with the rephrased response, nothing else."""
                 responsive_turns += 1
 
             # --- Payment action execution ---
-            requested_payment = detect_payment_demand(agent_turn)
             payment_check = detect_payment_check(agent_turn)
+            requested_payment = (
+                None if payment_check else detect_payment_demand(agent_turn)
+            )
 
             if payment_check and active_payment:
                 payment_result = await self._check_collected_payment(active_payment)
