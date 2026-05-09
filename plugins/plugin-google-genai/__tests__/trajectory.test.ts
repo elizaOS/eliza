@@ -46,11 +46,8 @@ if (!SHOULD_RUN) {
   });
 } else {
   describe("Google GenAI trajectory wrapping (live)", () => {
-    it("records text and object generation through recordLlmCall", async () => {
-      const [{ handleTextSmall }, { handleObjectSmall }] = await Promise.all([
-        import("../models/text"),
-        import("../models/object"),
-      ]);
+    it("records text and structured-output generation via TEXT_* through recordLlmCall", async () => {
+      const { handleTextSmall, handleTextLarge } = await import("../models/text");
 
       const calls: CapturedLlmCall[] = [];
       const runtime = createInlineRuntime(calls);
@@ -62,20 +59,20 @@ if (!SHOULD_RUN) {
             prompt: "What is 2+2? Reply with just the number.",
             maxTokens: 32,
           });
-          await handleObjectSmall(runtime, {
+          await handleTextLarge(runtime, {
             prompt:
               'Return JSON {"answer": 4} for the question 2+2. Reply with only the JSON object.',
-            schema: {
+            responseSchema: {
               type: "object",
               properties: { answer: { type: "number" } },
               required: ["answer"],
             },
-          });
+          } as unknown as Parameters<typeof handleTextLarge>[1]);
         },
       );
 
       expect(calls).toHaveLength(2);
-      const [textCall, objectCall] = calls;
+      const [textCall, structuredCall] = calls;
       expect(textCall.stepId).toBe("step-google");
       expect(textCall.actionType).toBe(
         "google-genai.TEXT_SMALL.generateContent",
@@ -83,13 +80,13 @@ if (!SHOULD_RUN) {
       expect(textCall.promptTokens ?? 0).toBeGreaterThan(0);
       expect(textCall.completionTokens ?? 0).toBeGreaterThan(0);
       expect(textCall.response).toContain("4");
-      expect(objectCall.stepId).toBe("step-google");
-      expect(objectCall.actionType).toBe(
-        "google-genai.OBJECT_SMALL.generateContent",
+      expect(structuredCall.stepId).toBe("step-google");
+      expect(structuredCall.actionType).toBe(
+        "google-genai.TEXT_LARGE.generateContent",
       );
-      expect(objectCall.promptTokens ?? 0).toBeGreaterThan(0);
-      expect(objectCall.completionTokens ?? 0).toBeGreaterThan(0);
-      expect(objectCall.response).toContain("4");
+      expect(structuredCall.promptTokens ?? 0).toBeGreaterThan(0);
+      expect(structuredCall.completionTokens ?? 0).toBeGreaterThan(0);
+      expect(structuredCall.response).toContain("4");
     }, 120_000);
   });
 }

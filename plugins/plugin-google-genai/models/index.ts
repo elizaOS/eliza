@@ -1,6 +1,5 @@
 export { handleTextEmbedding } from "./embedding";
 export { handleImageDescription } from "./image";
-export { handleObjectLarge, handleObjectSmall } from "./object";
 export {
   handleActionPlanner,
   handleResponseHandler,

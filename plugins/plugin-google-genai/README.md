@@ -13,12 +13,10 @@ Google Generative AI (Gemini) plugin for elizaOS with native support for TypeScr
 
 | Model Type        | Default Model                | Description                        |
 | ----------------- | ---------------------------- | ---------------------------------- |
-| TEXT_SMALL        | gemini-2.0-flash-001         | Fast, efficient for everyday tasks |
-| TEXT_LARGE        | gemini-2.5-pro-preview-03-25 | Most capable for complex tasks     |
+| TEXT_SMALL        | gemini-2.0-flash-001         | Fast text + structured output (responseSchema, tools) |
+| TEXT_LARGE        | gemini-2.5-pro-preview-03-25 | Capable text + structured output (responseSchema, tools) |
 | TEXT_EMBEDDING    | text-embedding-004           | Text embeddings (768 dimensions)   |
 | IMAGE_DESCRIPTION | gemini-2.5-pro-preview-03-25 | Multimodal image analysis          |
-| OBJECT_SMALL      | gemini-2.0-flash-001         | Fast JSON generation               |
-| OBJECT_LARGE      | gemini-2.5-pro-preview-03-25 | Complex JSON generation            |
 
 ## Installation
 
@@ -63,14 +61,18 @@ const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
   text: "Hello, world!",
 });
 
-const object = await runtime.useModel(ModelType.OBJECT_SMALL, {
+// Structured output: route through TEXT_* with `responseSchema`. Google's
+// SDK accepts the schema via `responseJsonSchema` + `responseMimeType` set
+// internally by the handler.
+const structured = await runtime.useModel(ModelType.TEXT_SMALL, {
   prompt: "Generate a person profile with name and age.",
-  schema: {
+  responseSchema: {
     type: "object",
     properties: {
       name: { type: "string" },
       age: { type: "number" },
     },
+    required: ["name", "age"],
   },
 });
 ```
