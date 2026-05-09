@@ -304,16 +304,16 @@ export function enrichTrajectoryLlmCall<T extends Record<string, unknown>>(
   };
 }
 
-export function hasEvaluatorNamed(
+export function hasActionNamed(
   runtime: IAgentRuntime,
   name: string,
 ): boolean {
-  const evaluators = runtime.evaluators;
-  if (!Array.isArray(evaluators)) return false;
+  const actions = runtime.actions;
+  if (!Array.isArray(actions)) return false;
   const target = name.trim().toUpperCase();
-  return evaluators.some((evaluator) => {
-    const evaluatorName = evaluator?.name?.trim().toUpperCase() ?? "";
-    return evaluatorName === target;
+  return actions.some((action) => {
+    const actionName = action?.name?.trim().toUpperCase() ?? "";
+    return actionName === target;
   });
 }
 
@@ -509,8 +509,8 @@ export function shouldRunObservationExtraction(
   if (explicitValue !== undefined) return explicitValue;
 
   if (
-    hasEvaluatorNamed(runtime, "REFLECTION") ||
-    hasEvaluatorNamed(runtime, "RELATIONSHIP_EXTRACTION")
+    hasActionNamed(runtime, "REFLECTION") ||
+    hasActionNamed(runtime, "RELATIONSHIP_EXTRACTION")
   ) {
     return false;
   }
