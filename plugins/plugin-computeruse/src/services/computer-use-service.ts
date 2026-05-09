@@ -96,9 +96,21 @@ import type {
 } from "../types.js";
 
 const MAX_RECENT_ACTIONS = 10;
+const BROWSER_NOT_OPEN_ERROR = "Browser not open";
+const BROWSER_LIFECYCLE_ACTIONS = new Set<BrowserActionParams["action"]>([
+  "open",
+  "connect",
+  "close",
+]);
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isBrowserNotOpenMessage(message: unknown): boolean {
+  return (
+    typeof message === "string" && message.includes(BROWSER_NOT_OPEN_ERROR)
+  );
 }
 
 function commandParameters<TParams extends object>(
