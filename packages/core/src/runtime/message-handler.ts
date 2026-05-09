@@ -77,13 +77,9 @@ export function parseMessageHandlerOutput(
 	const normalizedPlan: V5MessageHandlerOutput["plan"] = {
 		contexts,
 		reply,
+		...(requiresTool !== undefined ? { requiresTool } : {}),
+		...(simple !== undefined ? { simple } : {}),
 	};
-	if (requiresTool !== undefined) {
-		normalizedPlan.requiresTool = requiresTool;
-	}
-	if (simple !== undefined) {
-		normalizedPlan.simple = simple;
-	}
 	if (contextSlices.length > 0) {
 		normalizedPlan.contextSlices = contextSlices;
 	}
@@ -196,8 +192,9 @@ export function routeMessageHandlerOutput(
 		(output as { simple?: unknown }).simple === false;
 
 	// `simple` is the shortcut marker. If it is the only context (or contexts
-	// is empty), Stage 1 owns the reply and we never enter the planner, unless
-	// the route explicitly says this turn needs a tool.
+	// is empty), Stage 1 owns the reply and we never enter the planner — unless
+	// the route explicitly says this turn needs a tool, in which case we fall
+	// through to planning against `general`.
 	const nonSimpleContexts = allContexts.filter(
 		(context) => context !== SIMPLE_CONTEXT_ID,
 	);

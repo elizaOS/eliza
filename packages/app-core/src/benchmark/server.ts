@@ -388,18 +388,51 @@ export async function startBenchmarkServer() {
     }
   }
 
+  // Load the OpenAI plugin when either:
+  //   - OPENAI_API_KEY is set (and is not actually a Groq key, prefix `gsk_`), or
+  //   - OPENAI_BASE_URL points at an OpenAI-compatible third-party endpoint
+  //     (e.g. Cerebras at *.cerebras.ai) and the matching provider key is set
+  //     (e.g. CEREBRAS_API_KEY). The openai plugin's `getApiKey` helper
+  //     resolves CEREBRAS_API_KEY automatically when the base URL matches.
   const openAiApiKey = process.env.OPENAI_API_KEY?.trim();
-  if (openAiApiKey && !openAiApiKey.startsWith("gsk_")) {
-    process.env.OPENAI_API_KEY = openAiApiKey;
+  const openAiBaseURL = process.env.OPENAI_BASE_URL?.trim();
+  const cerebrasApiKey = process.env.CEREBRAS_API_KEY?.trim();
+  const miladyProvider = process.env.MILADY_PROVIDER?.trim().toLowerCase();
+  const baseUrlIsCerebras =
+    !!openAiBaseURL && /(^|\.)cerebras\.ai(\/|$)/i.test(openAiBaseURL);
+  const providerIsCerebras = miladyProvider === "cerebras";
+  const hasOpenAiCompatibleKey =
+    (openAiApiKey && !openAiApiKey.startsWith("gsk_")) ||
+    ((baseUrlIsCerebras || providerIsCerebras) && !!cerebrasApiKey);
+  if (hasOpenAiCompatibleKey) {
+    if (openAiApiKey) {
+      process.env.OPENAI_API_KEY = openAiApiKey;
+    }
     try {
       const { default: openaiPlugin } = await import("@elizaos/plugin-openai");
       plugins.push(toPlugin(openaiPlugin, "@elizaos/plugin-openai"));
-      elizaLogger.info("[bench] Loaded LLM plugin: @elizaos/plugin-openai");
+      elizaLogger.info(
+        `[bench] Loaded LLM plugin: @elizaos/plugin-openai (baseURL=${openAiBaseURL ?? "default"}, key=${
+          openAiApiKey
+            ? "OPENAI_API_KEY"
+            : cerebrasApiKey
+              ? "CEREBRAS_API_KEY"
+              : "none"
+        })`,
+      );
     } catch (error: unknown) {
-      elizaLogger.debug(
+      elizaLogger.warn(
         `[bench] OpenAI plugin not available: ${formatUnknownError(error)}`,
       );
     }
+  } else {
+    elizaLogger.warn(
+      `[bench] Skipping @elizaos/plugin-openai: no usable key found ` +
+        `(OPENAI_API_KEY=${openAiApiKey ? (openAiApiKey.startsWith("gsk_") ? "groq-key (excluded)" : "set") : "unset"}, ` +
+        `OPENAI_BASE_URL=${openAiBaseURL ?? "unset"}, ` +
+        `CEREBRAS_API_KEY=${cerebrasApiKey ? "set" : "unset"}). ` +
+        `TEXT_LARGE / TEXT_SMALL handlers will be missing — useModel() will throw.`,
+    );
   }
 
   const openRouterApiKey = process.env.OPENROUTER_API_KEY?.trim();
