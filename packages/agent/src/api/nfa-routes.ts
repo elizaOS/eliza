@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readJsonFile } from "../utils/atomic-json.js";
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
 
 function emptyMerkleRoot(): string {
   return createHash("sha256").update("", "utf8").digest("hex");

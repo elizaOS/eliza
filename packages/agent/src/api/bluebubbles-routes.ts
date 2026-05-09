@@ -1,5 +1,5 @@
 import type http from "node:http";
-import type { RouteHelpers } from "./route-helpers.js";
+import type { RouteHelpers } from "@elizaos/shared";
 
 const BLUEBUBBLES_SERVICE_NAME = "bluebubbles";
 const DEFAULT_WEBHOOK_PATH = "/webhooks/bluebubbles";

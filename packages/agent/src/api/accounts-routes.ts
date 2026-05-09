@@ -60,7 +60,7 @@ import {
   type SubscriptionProvider,
 } from "../auth/types.js";
 import type { ElizaConfig } from "../config/types.eliza.js";
-import type { RouteRequestContext } from "./route-helpers.js";
+import type { RouteRequestContext } from "@elizaos/shared";
 
 // ─── Account pool (single source of truth) ──────────────────────────
 //

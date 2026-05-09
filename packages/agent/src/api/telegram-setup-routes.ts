@@ -15,7 +15,7 @@
 import type http from "node:http";
 import { registerEscalationChannel } from "../services/escalation.js";
 import { setOwnerContact } from "./owner-contact-helpers.js";
-import type { RouteHelpers } from "./route-helpers.js";
+import type { RouteHelpers } from "@elizaos/shared";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
 const MAX_BODY_BYTES = 4096;

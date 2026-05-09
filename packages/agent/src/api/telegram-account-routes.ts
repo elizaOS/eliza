@@ -10,7 +10,7 @@ import {
   telegramAccountAuthStateExists,
   telegramAccountSessionExists,
 } from "../services/telegram-account-auth.js";
-import type { RouteHelpers } from "./route-helpers.js";
+import type { RouteHelpers } from "@elizaos/shared";
 
 type TelegramAccountRuntimeServiceLike = {
   isConnected?: () => boolean;

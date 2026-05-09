@@ -12,7 +12,7 @@ import {
   readJsonBody as parseJsonBody,
   readRequestBody,
   sendJson as sendJsonResponse,
-} from "./http-helpers.js";
+} from "@elizaos/shared";
 
 interface SandboxRouteState {
   sandboxManager: SandboxManager | null;

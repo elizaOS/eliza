@@ -1,5 +1,5 @@
 import type { AgentRuntime } from "@elizaos/core";
-import type { RouteHelpers, RouteRequestContext } from "./route-helpers.js";
+import type { RouteHelpers, RouteRequestContext } from "@elizaos/shared";
 
 const DOCUMENTS_ROUTES_MODULE: string = "@elizaos/app-documents";
 

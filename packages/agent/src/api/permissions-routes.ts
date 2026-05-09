@@ -1,7 +1,7 @@
 import type { AgentRuntime } from "@elizaos/core";
 import type { PermissionState } from "@elizaos/shared";
 import type { AutonomousConfigLike } from "../types/config-like.js";
-import type { RouteRequestContext } from "./route-helpers.js";
+import type { RouteRequestContext } from "@elizaos/shared";
 
 interface PermissionAutonomousConfigLike extends AutonomousConfigLike {
   features?: {

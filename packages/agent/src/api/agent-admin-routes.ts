@@ -8,7 +8,7 @@ import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import { resolveUserPath } from "../config/paths.js";
 import { detectRuntimeModel } from "./agent-model.js";
 import { clearPersistedOnboardingConfig } from "./provider-switch-config.js";
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
 
 type AgentStateStatus =
   | "not_started"

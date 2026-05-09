@@ -25,7 +25,7 @@ import {
 import { join } from "node:path";
 import { logger } from "@elizaos/core";
 import { resolveStateDir } from "../config/paths.js";
-import type { RouteRequestContext } from "./route-helpers.js";
+import type { RouteRequestContext } from "@elizaos/shared";
 
 const CURATED_SKILL_NAME_RE = /^[a-z0-9-]+$/;
 

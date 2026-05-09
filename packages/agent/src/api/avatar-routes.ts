@@ -6,7 +6,7 @@ import {
   getDiscordAvatarCacheDir,
   getDiscordAvatarCachePath,
 } from "./discord-avatar-cache.js";
-import { readRequestBodyBuffer } from "./http-helpers.js";
+import { readRequestBodyBuffer } from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // Types

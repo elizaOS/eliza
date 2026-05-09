@@ -14,7 +14,7 @@ import { resolveCloudApiKey } from "@elizaos/plugin-elizacloud/cloud/cloud-api-k
 import { validateCloudBaseUrl } from "@elizaos/plugin-elizacloud/cloud/validate-url";
 import type { ElizaConfig } from "../config/config.js";
 import type { CloudProxyConfigLike } from "../types/config-like.js";
-import { sendJson, sendJsonError } from "./http-helpers.js";
+import { sendJson, sendJsonError } from "@elizaos/shared";
 
 interface XRelayRuntime {
   getService(serviceType: string): Service | null;

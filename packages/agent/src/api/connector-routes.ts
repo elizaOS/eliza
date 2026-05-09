@@ -2,7 +2,7 @@ import type http from "node:http";
 import type { ElizaConfig } from "../config/config.js";
 import { CONNECTOR_ENV_MAP } from "../config/env-vars.js";
 import type { ConnectorConfig } from "../config/types.eliza.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // Types

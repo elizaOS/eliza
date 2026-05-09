@@ -208,7 +208,7 @@ import {
   readRequestBody,
   sendJson,
   sendJsonError,
-} from "./http-helpers.js";
+} from "@elizaos/shared";
 // iMessage routes extracted to @elizaos/plugin-imessage setup-routes.ts (Plugin.routes)
 // import { handleIMessageRoute } from "./imessage-routes.js";
 import {

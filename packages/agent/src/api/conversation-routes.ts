@@ -57,7 +57,7 @@ import {
   resolveStoredDiscordEntityProfile,
 } from "./discord-profiles.js";
 import { evictOldestConversation } from "./memory-bounds.js";
-import type { RouteRequestContext } from "./route-helpers.js";
+import type { RouteRequestContext } from "@elizaos/shared";
 import {
   buildUserMessages,
   getErrorMessage,

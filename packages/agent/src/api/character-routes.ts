@@ -6,7 +6,7 @@ import {
   type RuntimeCharacterLike,
   recordCharacterHistory,
 } from "../services/character-history.js";
-import type { RouteRequestContext } from "./route-helpers.js";
+import type { RouteRequestContext } from "@elizaos/shared";
 
 interface CharacterGenerateContext {
   name?: string;

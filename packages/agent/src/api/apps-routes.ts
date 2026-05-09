@@ -27,7 +27,7 @@ import {
   scoreEntries,
   toSearchResults,
 } from "../services/registry-client-queries.js";
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
 
 const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
   ".webp": "image/webp",

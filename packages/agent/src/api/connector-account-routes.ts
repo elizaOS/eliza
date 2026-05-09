@@ -13,7 +13,7 @@ import {
 } from "@elizaos/core";
 import type { infer as ZodInfer } from "zod";
 import * as zod from "zod";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 
 const z = zod.z ?? zod;
 

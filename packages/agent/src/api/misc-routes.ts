@@ -17,7 +17,7 @@ import {
   buildTestHandler,
   registerCustomActionLive,
 } from "../runtime/custom-actions.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { resolveTerminalRunLimits } from "./terminal-run-limits.js";
 
 // ---------------------------------------------------------------------------

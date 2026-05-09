@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
 import { resolveApiToken } from "@elizaos/shared";
-import { sendJsonError } from "./http-helpers.js";
+import { sendJsonError } from "@elizaos/shared";
 import { getOrReadCachedFile } from "./memory-bounds.js";
 import { findOwnPackageRoot } from "./server-helpers.js";
 

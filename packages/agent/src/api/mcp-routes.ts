@@ -6,7 +6,7 @@ import {
   searchMcpMarketplace,
 } from "../services/mcp-marketplace.js";
 import { parseClampedInteger } from "../utils/number-parsing.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // Types

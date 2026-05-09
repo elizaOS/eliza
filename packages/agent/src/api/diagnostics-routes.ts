@@ -1,7 +1,7 @@
 import type http from "node:http";
 import { parseClampedInteger } from "../utils/number-parsing.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
 
 interface LogEntryLike {
   timestamp: number;

@@ -39,7 +39,7 @@ import {
   readJsonBody as parseJsonBody,
   sendJson,
   sendJsonError,
-} from "./http-helpers.js";
+} from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // Types
