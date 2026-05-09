@@ -41,9 +41,12 @@ function createRouteResponse(): {
 }
 
 // Routes: [0] = /nodes/available, [1] = /nodes/:type, [2] = /nodes
-const availableHandler = nodeRoutes[0].handler!;
-const getNodeHandler = nodeRoutes[1].handler!;
-const searchHandler = nodeRoutes[2].handler!;
+const availableHandler = nodeRoutes[0].handler;
+const getNodeHandler = nodeRoutes[1].handler;
+const searchHandler = nodeRoutes[2].handler;
+if (!availableHandler || !getNodeHandler || !searchHandler) {
+  throw new Error('expected node route handlers');
+}
 
 const runtime = createMockRuntime();
 

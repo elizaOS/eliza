@@ -54,7 +54,6 @@ import {
   parseJSONObjectFromText,
   stringToUuid,
 } from "@elizaos/core";
-import { v4 as uuidv4 } from "uuid";
 import type {
   RelationshipsGraphService,
   RelationshipsPersonDetail,
@@ -192,7 +191,9 @@ function isRelationshipsServiceLike(
   return typeof service === "object" && service !== null;
 }
 
-function isFollowUpServiceLike(service: unknown): service is FollowUpServiceLike {
+function isFollowUpServiceLike(
+  service: unknown,
+): service is FollowUpServiceLike {
   return (
     typeof service === "object" &&
     service !== null &&
@@ -1148,7 +1149,7 @@ async function handleUpdateComponent(
     };
   }
 
-  const newComponentId = uuidv4() as UUID;
+  const newComponentId = crypto.randomUUID() as UUID;
   await runtime.createComponent({
     id: newComponentId,
     entityId,

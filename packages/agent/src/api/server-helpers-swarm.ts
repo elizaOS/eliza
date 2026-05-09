@@ -570,8 +570,8 @@ export function wireCoordinatorEventRouting(st: ServerState): boolean {
 
           // Temporarily force TEXT_SMALL -- coordinator events are time-sensitive.
           const rt = runtime as unknown as Record<string, unknown>;
-          const prevLlmMode = rt["llmModeOption"];
-          rt["llmModeOption"] = "SMALL";
+          const prevLlmMode = rt.llmModeOption;
+          rt.llmModeOption = "SMALL";
           let result: { text: string; agentName?: string };
           try {
             result = await generateChatResponseFromChatRoutes(
@@ -583,7 +583,7 @@ export function wireCoordinatorEventRouting(st: ServerState): boolean {
               },
             );
           } finally {
-            rt["llmModeOption"] = prevLlmMode;
+            rt.llmModeOption = prevLlmMode;
           }
 
           // WS broadcast the natural language portion (strip JSON action block).

@@ -167,7 +167,9 @@ describe('EmbeddedWorkflowService task workers', () => {
     const ctx = await makeRuntime();
     try {
       await EmbeddedWorkflowService.start(ctx.runtime);
-      const worker = ctx.workers.get(WORKFLOW_RUN_TASK_WORKER_NAME)!;
+      const worker = ctx.workers.get(WORKFLOW_RUN_TASK_WORKER_NAME);
+      expect(worker).toBeDefined();
+      if (!worker) throw new Error('expected workflow run worker');
       const badTask = {
         id: 'task-bad' as Task['id'],
         name: WORKFLOW_RUN_TASK_WORKER_NAME,

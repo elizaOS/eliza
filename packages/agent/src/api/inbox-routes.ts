@@ -203,7 +203,7 @@ function parseSourceFilter(raw: string | null): Set<string> | null {
 function getRuntimeSendHandlers(
   runtime: AgentRuntime,
 ): Map<string, unknown> | null {
-  const sendHandlers = (runtime as AgentRuntime & { sendHandlers?: unknown })
+  const sendHandlers = (runtime as unknown as { sendHandlers?: unknown })
     .sendHandlers;
   return sendHandlers instanceof Map ? sendHandlers : null;
 }

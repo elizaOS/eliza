@@ -122,7 +122,7 @@ const sqlToStr = (sql: SQL, _casing: string | undefined) => {
   };
   // Type assertion needed: SQL.toQuery expects internal Drizzle types
   type ToQueryParam = Parameters<SQL["toQuery"]>[0];
-  return sql.toQuery(config as ToQueryParam).sql;
+  return sql.toQuery(config as unknown as ToQueryParam).sql;
 };
 
 /**

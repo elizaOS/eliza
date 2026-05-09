@@ -628,12 +628,16 @@ async function proxyRunSteeringRequest(
   const syntheticUrl = new URL(ctx.url.toString());
   syntheticUrl.pathname = target.pathname;
   const syntheticCtx: AppsRouteContext = {
-		...ctx,
-		pathname: target.pathname,
-		url: syntheticUrl,
-		res: captured as unknown as http.ServerResponse,
-		readJsonBody: async <T extends object>() => body as T | null,
-    json: (response: http.ServerResponse, data: unknown, status = 200): void => {
+    ...ctx,
+    pathname: target.pathname,
+    url: syntheticUrl,
+    res: captured as unknown as http.ServerResponse,
+    readJsonBody: async <T extends object>() => body as T | null,
+    json: (
+      response: http.ServerResponse,
+      data: unknown,
+      status = 200,
+    ): void => {
       response.writeHead(status, { "Content-Type": "application/json" });
       response.end(JSON.stringify(data));
     },

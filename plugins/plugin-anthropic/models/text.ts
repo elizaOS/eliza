@@ -161,7 +161,9 @@ function isProviderOptionValue(value: unknown): value is ProviderOptionValue {
     return value.every(isProviderOptionValue);
   }
   if (typeof value === "object" && value !== null) {
-    return Object.values(value).every((entry) => entry === undefined || isProviderOptionValue(entry));
+    return Object.values(value).every(
+      (entry) => entry === undefined || isProviderOptionValue(entry)
+    );
   }
   return false;
 }

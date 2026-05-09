@@ -20,6 +20,7 @@ import {
   DEFAULT_PING_CONFIG,
   type HttpMcpServerConfig,
   INITIAL_RETRY_DELAY,
+  isMcpSettings,
   MAX_RECONNECT_ATTEMPTS,
   MCP_SERVICE_NAME,
   type McpConnection,
@@ -30,7 +31,6 @@ import {
   type McpSettings,
   type PingConfig,
   type StdioMcpServerConfig,
-  isMcpSettings,
 } from "./types";
 import { buildMcpProviderData } from "./utils/mcp";
 

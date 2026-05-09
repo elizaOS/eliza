@@ -616,7 +616,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
     unique?: boolean,
   ) => Promise<unknown>;
 
-  const rt = runtime as {
+  const rt = runtime as unknown as {
     createMemory?: CreateMemoryFn;
     [k: string]: unknown;
   };

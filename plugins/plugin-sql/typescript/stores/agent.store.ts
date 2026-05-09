@@ -1,5 +1,6 @@
 import { type Agent, logger, type UUID } from "@elizaos/core";
 import { count, eq } from "drizzle-orm";
+import { documentsFromDb, messageExamplesFromDb } from "../agent-mapping";
 import { agentTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
@@ -33,7 +34,7 @@ export class AgentStore implements Store {
       if (rows.length === 0) return null;
 
       const row = rows[0];
-      const agent: Agent = {
+      const agent = {
         ...row,
         username: row.username || "",
         id: row.id as UUID,
@@ -41,8 +42,9 @@ export class AgentStore implements Store {
         bio: normalizeAgentBio(row.bio),
         createdAt: row.createdAt.getTime(),
         updatedAt: row.updatedAt.getTime(),
-        settings: row.settings as Agent["settings"],
-      };
+        messageExamples: messageExamplesFromDb(row.messageExamples),
+        knowledge: documentsFromDb(row.knowledge),
+      } as Agent;
       return agent;
     }, "AgentStore.get");
   }

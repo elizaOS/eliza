@@ -50,6 +50,14 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
+import { documentsFromDb, messageExamplesFromDb } from "./agent-mapping";
+
+function agentBioRowsFromDb(bio: unknown): string[] {
+  if (bio == null) return [];
+  if (Array.isArray(bio)) return bio.map((entry) => String(entry));
+  if (typeof bio === "string") return bio.trim() === "" ? [] : [bio];
+  return [];
+}
 
 interface GetOAuthFlowStateParams {
   state?: string;
@@ -403,16 +411,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       if (rows.length === 0) return null;
 
       const row = rows[0];
-      const bioValue = !row.bio ? "" : Array.isArray(row.bio) ? row.bio : row.bio;
-      const agent: Agent = {
+      const agent = {
         ...row,
         username: row.username || "",
         id: row.id as UUID,
         system: !row.system ? undefined : row.system,
-        bio: bioValue as string | string[],
+        bio: agentBioRowsFromDb(row.bio),
         createdAt: row.createdAt.getTime(),
         updatedAt: row.updatedAt.getTime(),
-      };
+        messageExamples: messageExamplesFromDb(row.messageExamples),
+        knowledge: documentsFromDb(row.knowledge),
+      } as Agent;
       return agent;
     });
   }
@@ -436,9 +445,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           ({
             ...row,
             id: row.id as UUID,
-            bio: (row.bio === null ? "" : Array.isArray(row.bio) ? row.bio : row.bio) as
-              | string
-              | string[],
+            bio: agentBioRowsFromDb(row.bio),
           }) as Partial<Agent>
       );
     });
@@ -451,16 +458,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       const rows = await this.db.select().from(agentTable).where(inArray(agentTable.id, agentIds));
       return rows.map((row) => {
-        const bioValue = !row.bio ? "" : Array.isArray(row.bio) ? row.bio : row.bio;
-        const agent: Agent = {
+        const agent = {
           ...row,
           username: row.username || "",
           id: row.id as UUID,
           system: !row.system ? undefined : row.system,
-          bio: bioValue as string | string[],
+          bio: agentBioRowsFromDb(row.bio),
           createdAt: row.createdAt.getTime(),
           updatedAt: row.updatedAt.getTime(),
-        };
+          messageExamples: messageExamplesFromDb(row.messageExamples),
+          knowledge: documentsFromDb(row.knowledge),
+        } as Agent;
         return agent;
       });
     });

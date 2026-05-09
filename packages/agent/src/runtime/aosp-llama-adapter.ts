@@ -115,7 +115,9 @@ type BunSymbolMap<TSymbols extends object> = {
 };
 
 interface BunFFIModule {
-  dlopen: <TSymbols extends object = Record<string, (...args: unknown[]) => unknown>>(
+  dlopen: <
+    TSymbols extends object = Record<string, (...args: unknown[]) => unknown>,
+  >(
     path: string,
     symbols: Record<string, { args: readonly number[]; returns: number }>,
   ) => {

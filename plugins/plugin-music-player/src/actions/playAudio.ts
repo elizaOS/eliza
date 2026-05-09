@@ -92,11 +92,7 @@ interface DiscordService {
 }
 
 function isDiscordService(service: unknown): service is DiscordService {
-  return (
-    typeof service === "object" &&
-    service !== null &&
-    "client" in service
-  );
+  return typeof service === "object" && service !== null && "client" in service;
 }
 
 interface VoiceManager {

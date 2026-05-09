@@ -8,16 +8,16 @@
  */
 
 import { Button } from "@elizaos/ui";
-import { Cloud, Laptop, RadioTower, type LucideIcon } from "lucide-react";
+import { Cloud, Laptop, type LucideIcon, RadioTower } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
 import {
-  reloadIntoRuntimePicker,
   type RuntimePickerTarget,
+  reloadIntoRuntimePicker,
 } from "../../onboarding/reload-into-runtime-picker";
+import { useApp } from "../../state";
 import { inferAgentRuntimeTarget } from "../../state/agent-runtime-target";
 import { loadPersistedActiveServer } from "../../state/persistence";
-import { useApp } from "../../state";
 
 type RuntimeAction = {
   target: RuntimePickerTarget;

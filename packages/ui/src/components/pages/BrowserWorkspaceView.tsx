@@ -94,7 +94,9 @@ type WebviewTagElement = HTMLElement & {
   toggleHidden(value?: boolean): void;
 };
 
-function isWebviewTagElement(value: EventTarget | null): value is WebviewTagElement {
+function isWebviewTagElement(
+  value: EventTarget | null,
+): value is WebviewTagElement {
   if (!(value instanceof HTMLElement)) return false;
   const candidate = value as Partial<WebviewTagElement>;
   return (

@@ -14,7 +14,7 @@ function runtime(settings: Record<string, unknown>): IAgentRuntime {
   return {
     character: {},
     getSetting: vi.fn((key: string) => settings[key]),
-  } as IAgentRuntime;
+  } as unknown as IAgentRuntime;
 }
 
 describe("Calendly ConnectorAccountManager provider", () => {
@@ -119,7 +119,7 @@ describe("Calendly ConnectorAccountManager provider", () => {
               },
             }
           : null,
-    } as IAgentRuntime;
+    } as unknown as IAgentRuntime;
     const manager = createOAuthCallbackManager(
       CALENDLY_PROVIDER_NAME,
       "acct_calendly_durable_1",
@@ -227,7 +227,7 @@ describe("Calendly ConnectorAccountManager provider", () => {
           })[key],
       ),
       getService: () => null,
-    } as IAgentRuntime;
+    } as unknown as IAgentRuntime;
     const manager = createOAuthCallbackManager(
       CALENDLY_PROVIDER_NAME,
       "acct_calendly_durable_1",

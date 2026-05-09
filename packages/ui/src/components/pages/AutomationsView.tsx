@@ -4106,7 +4106,9 @@ function WorkflowAutomationDetailPane({
               <Spinner className="h-4 w-4 text-muted" />
             </div>
           ) : executions.length === 0 ? (
-            <div className="px-3 py-3 text-xs text-muted">No executions yet.</div>
+            <div className="px-3 py-3 text-xs text-muted">
+              No executions yet.
+            </div>
           ) : (
             <div className="divide-y divide-border/15">
               {executions.slice(0, 10).map((exec) => {
@@ -4114,10 +4116,14 @@ function WorkflowAutomationDetailPane({
                   exec.startedAt && exec.stoppedAt
                     ? Date.parse(exec.stoppedAt) - Date.parse(exec.startedAt)
                     : null;
-                const isErr = exec.status === "error" || exec.status === "crashed";
+                const isErr =
+                  exec.status === "error" || exec.status === "crashed";
                 const errorMsg = exec.data?.resultData?.error?.message;
                 return (
-                  <div key={exec.id} className="flex flex-col gap-0.5 px-3 py-2">
+                  <div
+                    key={exec.id}
+                    className="flex flex-col gap-0.5 px-3 py-2"
+                  >
                     <div className="flex items-center gap-2">
                       <span
                         className={`h-1.5 w-1.5 shrink-0 rounded-full ${
@@ -4131,7 +4137,10 @@ function WorkflowAutomationDetailPane({
                         }`}
                       />
                       <span className="text-xs text-txt">
-                        {formatDateTime(exec.startedAt, { locale: uiLanguage, fallback: "—" })}
+                        {formatDateTime(exec.startedAt, {
+                          locale: uiLanguage,
+                          fallback: "—",
+                        })}
                       </span>
                       {durationMs !== null && durationMs >= 0 && (
                         <span className="ml-auto text-[10px] text-muted">
@@ -4140,7 +4149,9 @@ function WorkflowAutomationDetailPane({
                       )}
                     </div>
                     {isErr && errorMsg && (
-                      <div className="ml-3.5 truncate text-[10px] text-danger">{errorMsg}</div>
+                      <div className="ml-3.5 truncate text-[10px] text-danger">
+                        {errorMsg}
+                      </div>
                     )}
                   </div>
                 );

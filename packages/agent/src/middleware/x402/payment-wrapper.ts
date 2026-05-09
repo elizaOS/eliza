@@ -1789,9 +1789,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isOpenAPIObjectSchema(
-  schema: unknown,
-): schema is OpenAPIObjectSchema {
+function isOpenAPIObjectSchema(schema: unknown): schema is OpenAPIObjectSchema {
   if (!isRecord(schema) || schema.type !== "object") {
     return false;
   }
