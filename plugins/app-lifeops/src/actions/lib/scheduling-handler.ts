@@ -41,12 +41,12 @@ import {
 import { LifeOpsService, LifeOpsServiceError } from "../../lifeops/service.js";
 import { getZonedDateParts } from "../../lifeops/time.js";
 import { parseJsonModelRecord } from "../../utils/json-model-output.js";
-import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops-google-helpers.js";
+import { hasLifeOpsAccess, INTERNAL_URL } from "../../lifeops/access.js";
+import { inferTimeZoneFromLocationText } from "../../lifeops/time/timezone.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
-} from "../lifeops-grounded-reply.js";
-import { inferTimeZoneFromLocationText } from "../timezone-normalization.js";
+} from "../../lifeops/voice/grounded-reply.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
 
 const MS_PER_MINUTE = 60_000;

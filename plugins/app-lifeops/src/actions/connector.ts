@@ -11,7 +11,7 @@ import type {
 } from "@elizaos/core";
 import type { LifeOpsGoogleCapability } from "../contracts/index.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import { INTERNAL_URL } from "./lifeops-google-helpers.js";
+import { INTERNAL_URL } from "../lifeops/access.js";
 
 const ACTION_NAME = "CONNECTOR";
 
