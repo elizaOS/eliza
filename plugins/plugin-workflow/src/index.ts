@@ -1,4 +1,5 @@
 import { type IAgentRuntime, logger, type Plugin } from '@elizaos/core';
+import { workflowAction } from './actions/index';
 import * as dbSchema from './db/index';
 import {
   activeWorkflowsProvider,
@@ -8,6 +9,7 @@ import {
 import { workflowRoutes } from './routes/index';
 import {
   EmbeddedWorkflowService,
+  registerWorkflowDispatchService,
   WorkflowCredentialStore,
   WorkflowService,
 } from './services/index';
@@ -21,7 +23,7 @@ import './register-routes';
 /**
  * Workflow Plugin for ElizaOS
  *
- * Generate and manage workflows from natural language using RAG pipeline.
+ * Generate and manage workflows from natural language using a RAG pipeline.
  * Supports workflow CRUD, execution management, and credential resolution.
  *
  * **Optional Configuration:**
@@ -47,13 +49,13 @@ export const workflowPlugin: Plugin = {
   name: 'workflow',
   description:
     'Generate and deploy workflows from natural language. ' +
-    'Runs supported workflows workflow nodes in-process with credential resolution.',
+    'Runs supported workflow nodes in-process with credential resolution.',
 
   services: [EmbeddedWorkflowService, WorkflowService, WorkflowCredentialStore],
 
   schema: dbSchema,
 
-  actions: [],
+  actions: [workflowAction],
 
   providers: [workflowStatusProvider, activeWorkflowsProvider, pendingDraftProvider],
 
@@ -74,6 +76,10 @@ export const workflowPlugin: Plugin = {
         `Pre-configured credentials: ${credCount} credential types`
       );
     }
+
+    // Register WORKFLOW_DISPATCH so trigger-kind=workflow tasks can call
+    // runtime.getService("WORKFLOW_DISPATCH").execute(workflowId).
+    registerWorkflowDispatchService(runtime);
 
     logger.info(
       { src: 'plugin:workflow:plugin:init' },

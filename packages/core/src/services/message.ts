@@ -2392,11 +2392,7 @@ function parseMessageHandlerNativeToolCall(
 			continue;
 		}
 		const name = String(
-			entry.name ??
-				entry.toolName ??
-				entry.tool ??
-				entry.action ??
-				"",
+			entry.name ?? entry.toolName ?? entry.tool ?? entry.action ?? "",
 		).trim();
 		if (name !== HANDLE_RESPONSE_TOOL_NAME) {
 			continue;
@@ -4454,11 +4450,7 @@ function extractMessageHandlerToolCalls(
 			continue;
 		}
 		const name = String(
-			entry.name ??
-				entry.toolName ??
-				entry.tool ??
-				entry.action ??
-				"",
+			entry.name ?? entry.toolName ?? entry.tool ?? entry.action ?? "",
 		).trim();
 		const args = parseToolArguments(
 			entry.arguments ?? entry.args ?? entry.input ?? entry.params,
@@ -5031,6 +5023,7 @@ const EXPLICIT_INTENT_ACTIONS = new Set(
 		"SUMMARIZE_CONVERSATION",
 		"SERVER_INFO",
 		"WORKFLOW",
+		"TRIGGER",
 		"CREATE_TRIGGER",
 		"SCHEDULE_TRIGGER",
 		"SCHEDULE_TASK",
