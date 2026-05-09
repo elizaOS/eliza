@@ -90,13 +90,17 @@ const FIXTURE_CONTEXTS: readonly ContextDefinition[] = [
 	},
 ];
 
-describe("formatAvailableContextsForPrompt", () => {
-	it("renders id and description per line", () => {
-		const block = formatAvailableContextsForPrompt(FIXTURE_CONTEXTS);
-		expect(block).toContain("- general: Normal conversation.");
-		expect(block).toContain("- calendar: Manage calendar events.");
-		expect(block).toContain("- memory: Long-term agent memory.");
-	});
+	describe("formatAvailableContextsForPrompt", () => {
+		it("renders id, metadata, and description per line", () => {
+			const block = formatAvailableContextsForPrompt(FIXTURE_CONTEXTS);
+			expect(block).toContain("- general [label=General]: Normal conversation.");
+			expect(block).toContain(
+				"- calendar [label=Calendar; role>=ADMIN]: Manage calendar events.",
+			);
+			expect(block).toContain(
+				"- memory [label=Memory; role>=USER]: Long-term agent memory.",
+			);
+		});
 
 	it("falls back to a placeholder when no contexts are registered", () => {
 		expect(formatAvailableContextsForPrompt([])).toBe(
@@ -134,11 +138,11 @@ describe("Stage 1 prompt — available contexts catalog", () => {
 
 		expect(systemContent).toContain("available_contexts:");
 		// `general` (no gate) and `memory` (USER) are visible to USER role.
-		expect(systemContent).toContain("- general:");
-		expect(systemContent).toContain("- memory:");
-		// `wallet` (OWNER-only) and `calendar` (ADMIN-only) must NOT appear.
-		expect(systemContent).not.toMatch(/^- wallet:/m);
-		expect(systemContent).not.toMatch(/^- calendar:/m);
+			expect(systemContent).toContain("- general ");
+			expect(systemContent).toContain("- memory ");
+			// `wallet` (OWNER-only) and `calendar` (ADMIN-only) must NOT appear.
+			expect(systemContent).not.toMatch(/^- wallet\b/m);
+			expect(systemContent).not.toMatch(/^- calendar\b/m);
 	});
 
 	it("falls back to the placeholder line when no registry is attached", async () => {

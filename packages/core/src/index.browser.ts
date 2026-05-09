@@ -7,6 +7,7 @@
  */
 
 // Export core modules (all browser-compatible after refactoring)
+export * from "./app-route-plugin-registry";
 export * from "./actions";
 export * from "./character";
 export * from "./connectors/account-manager";
@@ -31,6 +32,7 @@ export * from "./memory";
 export * from "./prompts";
 export * from "./roles";
 export * from "./runtime";
+export * from "./runtime-route-context";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/execute-planned-tool-call";

@@ -257,6 +257,15 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
         n_gpu_layers: options.useGpu === false ? 0 : 99,
         n_threads: options.maxThreads ?? 0,
         use_mmap: true,
+        ...(options.draftModelPath
+          ? {
+              draft_model: options.draftModelPath,
+              speculative_samples: options.speculativeSamples ?? 3,
+              mobile_speculative: options.mobileSpeculative ?? true,
+            }
+          : {}),
+        ...(options.cacheTypeK ? { cache_type_k: options.cacheTypeK } : {}),
+        ...(options.cacheTypeV ? { cache_type_v: options.cacheTypeV } : {}),
       },
     });
     this.loadedPath = options.modelPath;

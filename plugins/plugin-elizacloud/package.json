@@ -28,43 +28,44 @@
       "default": "./dist/node/index.node.js"
     },
     "./plugin": {
-      "types": "./plugin.ts",
-      "import": "./plugin.ts",
-      "default": "./plugin.ts"
+      "types": "./src/plugin.ts",
+      "import": "./src/plugin.ts",
+      "default": "./src/plugin.ts"
     },
     "./register-routes": {
-      "types": "./register-routes.ts",
-      "import": "./register-routes.ts",
-      "default": "./register-routes.ts"
+      "types": "./src/register-routes.ts",
+      "import": "./src/register-routes.ts",
+      "default": "./src/register-routes.ts"
     },
     "./routes/*": {
-      "types": "./routes/*.ts",
-      "import": "./routes/*.ts",
-      "default": "./routes/*.ts"
+      "types": "./src/routes/*.ts",
+      "import": "./src/routes/*.ts",
+      "default": "./src/routes/*.ts"
     },
     "./lib/*": {
-      "types": "./lib/*.ts",
-      "import": "./lib/*.ts",
-      "default": "./lib/*.ts"
+      "types": "./src/lib/*.ts",
+      "import": "./src/lib/*.ts",
+      "default": "./src/lib/*.ts"
     },
     "./cloud": {
-      "types": "./cloud/index.ts",
-      "import": "./cloud/index.ts",
-      "default": "./cloud/index.ts"
+      "types": "./src/cloud/index.ts",
+      "import": "./src/cloud/index.ts",
+      "default": "./src/cloud/index.ts"
     },
     "./cloud/*": {
-      "types": "./cloud/*.ts",
-      "import": "./cloud/*.ts",
-      "default": "./cloud/*.ts"
+      "types": "./src/cloud/*.ts",
+      "import": "./src/cloud/*.ts",
+      "default": "./src/cloud/*.ts"
     },
     "./onboarding": {
-      "types": "./onboarding.ts",
-      "import": "./onboarding.ts",
-      "default": "./onboarding.ts"
+      "types": "./src/onboarding.ts",
+      "import": "./src/onboarding.ts",
+      "default": "./src/onboarding.ts"
     }
   },
   "files": [
     "dist",
+    "src",
     "types"
   ],
   "dependencies": {

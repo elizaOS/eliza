@@ -44,10 +44,6 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
-  findKeywordTermMatch,
-  getValidationKeywordTerms,
-} from "@elizaos/shared";
-import {
   executeTriggerTask,
   getTriggerLimit,
   listTriggerTasks,
@@ -100,14 +96,6 @@ const TRIGGER_OPS = new Set<WorkflowOp>([
 ]);
 
 const WORKFLOW_CONTEXTS = ["automation", "tasks", "agent_internal"] as const;
-
-const TRIGGER_INTENT_TERMS = getValidationKeywordTerms(
-  "action.triggerCreate.request",
-  { includeAllLocales: true },
-);
-
-const EVERY_N_UNIT_PATTERN =
-  /\bevery\s+\d+\s*(second|minute|hour|day|week|month)s?\b/i;
 
 interface WorkflowActionParameters {
   op?: unknown;
@@ -197,15 +185,6 @@ function readOp(value: unknown): WorkflowOp | undefined {
   if (!s) return undefined;
   if ((WORKFLOW_OPS as readonly string[]).includes(s)) return s as WorkflowOp;
   return undefined;
-}
-
-function looksLikeTriggerIntent(text: string): boolean {
-  const trimmed = text.trim();
-  if (!trimmed) return false;
-  if (findKeywordTermMatch(trimmed, TRIGGER_INTENT_TERMS) !== undefined) {
-    return true;
-  }
-  return EVERY_N_UNIT_PATTERN.test(trimmed);
 }
 
 interface TriggerExtraction {
@@ -1286,19 +1265,7 @@ export const workflowAction: Action = {
     ) {
       return true;
     }
-    if (triggersFeatureEnabled(runtime)) {
-      const currentText = message.content.text ?? "";
-      if (looksLikeTriggerIntent(currentText)) return true;
-      const recent = await runtime.getMemories({
-        tableName: "messages",
-        roomId: message.roomId,
-        limit: 6,
-      });
-      for (const mem of recent) {
-        if (looksLikeTriggerIntent(mem.content.text ?? "")) return true;
-      }
-    }
-    return false;
+    return triggersFeatureEnabled(runtime);
   },
   handler: async (
     runtime: IAgentRuntime,

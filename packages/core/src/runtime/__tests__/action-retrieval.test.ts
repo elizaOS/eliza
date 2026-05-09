@@ -142,6 +142,31 @@ describe("action catalogue and retrieval", () => {
 		expect(response.results[0].score).toBeGreaterThanOrEqual(0.7);
 	});
 
+	it("uses external i18n keyword matches as a retrieval signal", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "CREATE_TASK",
+				description: "Create scheduled user work.",
+				contexts: ["tasks"],
+			},
+			{
+				name: "EMAIL",
+				description: "Read, draft, and send email messages to contacts.",
+				contexts: ["email"],
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "remind me to stretch every day",
+		});
+
+		expect(response.results[0]).toMatchObject({
+			name: "CREATE_TASK",
+			matchedBy: expect.arrayContaining(["keyword"]),
+		});
+		expect(response.results[0].stageScores.keyword).toBeGreaterThan(0);
+	});
+
 	it("uses reciprocal rank fusion and optional embedding scores only when provided", () => {
 		const catalog = buildActionCatalog(actions);
 		const response = retrieveActions({

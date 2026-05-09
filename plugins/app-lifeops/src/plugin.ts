@@ -39,7 +39,6 @@ import {
   FOLLOWUP_TRACKER_TASK_NAME,
   registerFollowupTrackerWorker,
 } from "./followup/index.js";
-import { migrateRuntimeLifeConnectorGrantsToConnectorAccounts } from "./lifeops/connector-account-migration.js";
 import { BrowserBridgeAdapter } from "./lifeops/messaging/adapters/browser-bridge-adapter.js";
 import { CalendlyAdapter } from "./lifeops/messaging/adapters/calendly-adapter.js";
 import { LifeOpsGmailAdapter } from "./lifeops/messaging/adapters/gmail-adapter.js";
@@ -352,22 +351,6 @@ const rawAppLifeOpsPlugin: Plugin = {
     });
 
     registerBlockRuleReconcilerWorker(runtime);
-    scheduleTaskEnsureAfterRuntimeInit({
-      runtime,
-      prefix: "[lifeops]",
-      label: "connector account migration",
-      ensure: async () => {
-        const result =
-          await migrateRuntimeLifeConnectorGrantsToConnectorAccounts(runtime, {
-            dryRun: false,
-          });
-        if (result.scannedGrants > 0) {
-          runtime.logger?.info?.(
-            `[lifeops] Migrated connector grants: scanned=${result.scannedGrants}, created=${result.createdAccounts}, updated=${result.updatedAccounts}, linked=${result.linkedGrants}, tokenRefs=${result.preservedTokenRefs}`,
-          );
-        }
-      },
-    });
 
     scheduleTaskEnsureAfterRuntimeInit({
       runtime,

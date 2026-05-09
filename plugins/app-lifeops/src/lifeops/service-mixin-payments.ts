@@ -90,9 +90,6 @@ export function readPaymentMetadataToken(
   field: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string | null {
-  if (typeof value === "string") {
-    return value.trim().length > 0 ? value : null;
-  }
   if (value === null || value === undefined) {
     return null;
   }

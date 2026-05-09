@@ -1,19 +1,18 @@
 /**
- * Swarm Coordinator: legacy autonomous coordination loop bound to PTYService.
+ * Swarm Coordinator: autonomous coordination loop bound to PTYService.
  *
  * Subscribes to PTY session events and routes unhandled blocking prompts
  * through an autonomous LLM decision pipeline. Heavy logic is extracted into
  * swarm-decision-loop.ts (blocked / turn-complete / LLM decisions) and
  * swarm-idle-watchdog.ts (idle session scanning).
  *
- * **This is the legacy path.** It is bound only to PTYService and is dormant
- * for sessions spawned via AcpService (the canonical path). The new flow is:
+ * It is bound only to PTYService and is dormant for sessions spawned via
+ * AcpService. The ACP flow is:
  *   AcpService session events → SubAgentRouter
  *     → synthetic Memory posted to runtime.messageService.handleMessage
  *     → main agent's planner decides REPLY / SEND_TO_AGENT / both.
  *
- * See `docs/sub-agent-routing.md`. Prefer that path; this coordinator is
- * retained only for callers that still depend on PTYService directly.
+ * See `docs/sub-agent-routing.md`.
  *
  * @module services/swarm-coordinator
  */
@@ -3204,7 +3203,8 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
     promptText: string,
     recentOutput: string,
   ): Promise<CoordinationLLMResponse | null> {
-    // Re-export for backward compatibility. Delegates to module function.
+    // Keep this method on the coordinator while the implementation lives in
+    // the decision-loop module.
     const { makeCoordinationDecision: mkDecision } = await import(
       "./swarm-decision-loop.js"
     );

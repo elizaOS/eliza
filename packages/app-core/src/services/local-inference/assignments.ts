@@ -54,10 +54,27 @@ function pickLargestInstalledModel(
   );
 }
 
+/**
+ * Build slot recommendations from currently-installed models.
+ *
+ * Only Eliza-downloaded models are auto-recommended. External-scan blobs
+ * (Ollama / LM Studio / Jan / HF cache) are surfaced in the Model Hub for
+ * the user to opt into explicitly — but they are NOT auto-assigned to
+ * TEXT_SMALL / TEXT_LARGE.
+ *
+ * Why: external blobs may use newer architectures or quant formats
+ * the bundled `node-llama-cpp` binding does not yet support. Auto-loading
+ * an external blob the user never selected silently breaks PROACTIVE_AGENT
+ * and other background tasks at boot. The user opted into the external
+ * tool, not into Eliza loading those weights through llama.cpp.
+ */
 export function buildRecommendedAssignments(
   installed: InstalledModel[],
 ): ModelAssignments {
-  const best = pickLargestInstalledModel(installed);
+  const ownDownloads = installed.filter(
+    (model) => model.source === "eliza-download",
+  );
+  const best = pickLargestInstalledModel(ownDownloads);
   if (!best) return {};
   return {
     TEXT_SMALL: best.id,
@@ -172,18 +189,25 @@ export async function ensureDefaultAssignment(
 }
 
 /**
- * Boot-time helper. If exactly one model is installed and no assignment
- * file exists yet, auto-fill its slots so the first session works without
- * the user opening Settings. No-op when assignments are already present
- * or when more than one model is installed (we cannot guess intent).
+ * Boot-time helper. If exactly one Eliza-downloaded model is installed
+ * and no assignment file exists yet, auto-fill its slots so the first
+ * session works without the user opening Settings. No-op when assignments
+ * are already present or when more than one Eliza-downloaded model is
+ * installed (we cannot guess intent).
+ *
+ * External-scan blobs (Ollama / LM Studio / Jan / HF) are intentionally
+ * excluded — see `buildRecommendedAssignments` for the rationale.
  */
 export async function autoAssignAtBoot(
   installed: InstalledModel[],
 ): Promise<ModelAssignments | null> {
-  if (installed.length !== 1) return null;
+  const ownDownloads = installed.filter(
+    (model) => model.source === "eliza-download",
+  );
+  if (ownDownloads.length !== 1) return null;
   const current = await readAssignments();
   if (Object.keys(current).length > 0) return null;
-  const onlyInstalled = installed[0];
+  const onlyInstalled = ownDownloads[0];
   if (!onlyInstalled || typeof onlyInstalled.id !== "string") return null;
   return ensureDefaultAssignment(onlyInstalled.id);
 }

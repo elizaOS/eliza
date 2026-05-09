@@ -7,6 +7,7 @@
  */
 
 // Export all core modules
+export * from "./app-route-plugin-registry";
 export * from "./actions";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
@@ -131,6 +132,7 @@ export * from "./providers/skill-eligibility";
 export * from "./provisioning";
 export * from "./roles";
 export * from "./runtime";
+export * from "./runtime-route-context";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/cost-table";

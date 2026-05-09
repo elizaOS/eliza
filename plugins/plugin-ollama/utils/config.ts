@@ -14,8 +14,8 @@ type SettingsProvider = {
 };
 
 export const DEFAULT_OLLAMA_URL = "http://localhost:11434";
-export const DEFAULT_SMALL_MODEL = "gemma3:latest";
-export const DEFAULT_LARGE_MODEL = "gemma3:latest";
+export const DEFAULT_SMALL_MODEL = "qwen3.5:latest";
+export const DEFAULT_LARGE_MODEL = "qwen3.6:latest";
 export const DEFAULT_EMBEDDING_MODEL = "nomic-embed-text:latest";
 
 function getEnvValue(key: string): string | undefined {

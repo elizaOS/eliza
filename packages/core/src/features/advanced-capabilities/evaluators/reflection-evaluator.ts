@@ -1,32 +1,35 @@
 /**
  * ConsolidatedReflectionAction
  *
- * Single post-response LLM call that replaces the previous three-evaluator
- * stack (factExtractor + reflection + the semantic relationship analysis
- * inside relationshipExtraction). One prompt asks the model for:
+ * Single post-response LLM call that replaces the previous evaluator stack
+ * (factExtractor + reflection + relationshipExtraction). One prompt asks
+ * the model for:
  *
  *   - `thought`: a short self-reflection
  *   - `facts.ops[]`: durable/current fact ops (insert / strengthen / decay /
  *     contradict) over the two-store fact memory
  *   - `relationships[]`: entity-pair relationship updates (tags + interaction
  *     metadata)
+ *   - `identities[]`: platform identities (twitter / github / telegram / etc.)
+ *     mentioned by participants in the recent conversation
  *   - `task`: completion assessment for the current turn
  *
  * The handler then applies each branch independently. Fact-application
  * (write-time embedding dedup, candidate-pool fetching, contradiction
- * queueing) is preserved verbatim from the old factExtractor. Relationship
- * upsert and task-completion persistence are preserved verbatim from the old
- * reflection action.
+ * queueing), relationship upsert, identity upsert via
+ * `RelationshipsService.upsertIdentity`, and task-completion persistence are
+ * each handled in dedicated branches.
  *
- * Platform-identity regex scrape (twitter / github / telegram / discord) and
- * trust/dispute/privacy heuristics still live in `relationshipExtraction.ts`
- * — those are pre-message hooks. This action handles the *semantic* work
- * that previously needed an LLM call.
+ * Identity extraction is fully LLM-driven — no regex, no hard-coded patterns.
+ * The model resolves participant mentions against the entity list passed in
+ * the prompt and emits structured identity records that go straight into the
+ * `entity_identities` table.
  */
 
 import { v4 } from "uuid";
 import z from "zod";
 import { getEntityDetails } from "../../../entities.ts";
+import type { RelationshipsService } from "../../../services/relationships.ts";
 import type {
 	Action,
 	ActionResult,
@@ -73,6 +76,7 @@ const DECAY_DELTA = 0.15;
 const FACT_DECAY_FLOOR = 0.2;
 const NEW_FACT_CONFIDENCE = 0.7;
 const DEDUP_SIMILARITY_THRESHOLD = 0.92;
+const IDENTITY_CONFIDENCE_THRESHOLD = 0.5;
 
 const UUID_PATTERN =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

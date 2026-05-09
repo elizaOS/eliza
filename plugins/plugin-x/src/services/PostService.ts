@@ -128,7 +128,7 @@ export class TwitterPostService implements IPostService {
               options.media?.map((m) => ({
                 data: m.data,
                 mediaType: m.type,
-              })), // Keep for backward compatibility
+              })),
               false, // hideLinkPreview
               mediaIds, // Pass uploaded media IDs
             )

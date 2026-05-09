@@ -1,1 +1,8 @@
-export { n8nWorkflowSchema, credentialMappings } from './schema';
+export {
+  n8nWorkflowSchema,
+  credentialMappings,
+  embeddedWorkflows,
+  embeddedExecutions,
+  embeddedCredentials,
+  embeddedTags,
+} from './schema';

@@ -363,8 +363,6 @@ export type {
   SessionInfo,
   SpawnSessionOptions,
 } from "./pty-types.js";
-// Re-export for backward compatibility
-export { normalizeAgentType } from "./pty-types.js";
 
 /**
  * Narrow shape of `~/.claude.json` that we read/write here. Claude Code owns

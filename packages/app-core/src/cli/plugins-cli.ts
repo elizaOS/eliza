@@ -129,13 +129,11 @@ async function getPluginManager(): Promise<PluginManagerLike> {
     plugins: [],
     actions: [],
     providers: [],
-    evaluators: [],
     services: new Map(),
     getService: () => null,
     registerService: async () => {},
     registerAction: () => {},
     registerProvider: () => {},
-    registerEvaluator: () => {},
     registerEvent: () => {},
   };
   const pluginManager = new PluginManagerService(mockRuntime as IAgentRuntime);

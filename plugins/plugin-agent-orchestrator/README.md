@@ -10,9 +10,9 @@ The canonical orchestration plugin for ElizaOS task agents. Spawns local coding 
 
 ## What it does
 
-The plugin combines three previously-separate concerns:
+The plugin combines three concerns:
 
-1. **Spawn** coding agents via ACP (canonical) or PTY (legacy). The ACP path uses typed JSON-RPC events instead of ANSI-escape scraping — `tool_call` / `tool_call_update`, `agent_message_chunk`, cooperative `session/cancel`, parallel sessions in the same workspace, recoverable via `session/load`.
+1. **Spawn** coding agents via ACP. The ACP path uses typed JSON-RPC events — `tool_call` / `tool_call_update`, `agent_message_chunk`, cooperative `session/cancel`, parallel sessions in the same workspace, recoverable via `session/load`.
 2. **Route** sub-agent terminal events (`task_complete`, `error`, `blocked`) back into the runtime as synthetic inbound messages addressed to the original `roomId`/`userId`/`messageId`. The main agent's normal action layer then decides whether to `REPLY` to the user, `SEND_TO_AGENT` to push the sub-agent further, or both. See [`docs/sub-agent-routing.md`](./docs/sub-agent-routing.md).
 3. **Coordinate** workspace lifecycle (clone, branch, commit, push, PR open) and GitHub issue management for repo-hosted tasks.
 
@@ -35,8 +35,6 @@ export default {
   plugins: [agentOrchestratorPlugin],
 };
 ```
-
-`taskAgentPlugin`, `codingAgentPlugin`, and `acpPlugin` are aliases for the same default export.
 
 ## Action surface
 
@@ -61,16 +59,15 @@ export default {
 
 ## Services
 
-- `AcpService` (canonical) — ACP subprocess lifecycle, NDJSON parsing, session state, event emission. Registers under both `ACP_SUBPROCESS_SERVICE` and (for back-compat) `PTY_SERVICE` unless `ELIZA_ACP_REGISTER_AS_PTY_SERVICE=false`.
+- `AcpService` — ACP subprocess lifecycle, NDJSON parsing, session state, event emission. Registers under `ACP_SUBPROCESS_SERVICE`.
 - `SubAgentRouter` (canonical) — subscribes to `AcpService.onSessionEvent`, posts terminal-event synthetic memories to `runtime.messageService.handleMessage`. Per-session round-trip cap (`ACPX_SUB_AGENT_ROUND_TRIP_CAP`, default 32) force-stops runaway loops. Disable with `ACPX_SUB_AGENT_ROUTER_DISABLED=1`.
-- `PTYService` (legacy) — pre-ACP PTY-based spawn surface. Bound to `pty-manager`. Naturally dormant for ACP-spawned sessions; kept for callers that still depend on it.
-- `CodingWorkspaceService` (legacy) — git workspace lifecycle helpers used by the PTY-era flow.
+- `PTYService` — PTY-based spawn surface. Bound to `pty-manager`.
+- `CodingWorkspaceService` — git workspace lifecycle helpers.
 
 ```ts
 import { AcpService, SubAgentRouter } from "@elizaos/plugin-agent-orchestrator";
 
 const acp = runtime.getService("ACP_SUBPROCESS_SERVICE") as AcpService;
-// or: runtime.getService("PTY_SERVICE") as AcpService;
 
 const { sessionId } = await acp.spawnSession({
   agentType: "codex",
@@ -119,10 +116,9 @@ All configuration is via environment variables. Sensible defaults; most users on
 | `ELIZA_ACP_PROMPT_TIMEOUT_MS` / `ACPX_DEFAULT_TIMEOUT_MS` | `1800000` (30m) | Per-prompt timeout. |
 | `ELIZA_ACP_AUTH_TIMEOUT_MS` | `120000` | Auth handshake timeout. |
 | `ELIZA_ACP_STATE_DIR` | `~/.eliza/plugin-acpx` | Where to persist session state when no runtime DB. |
-| `ELIZA_ACP_WORKSPACE_ROOT` / `ACPX_DEFAULT_CWD` | runtime cwd | Base directory for spawned agent workdirs. |
+| `ACPX_DEFAULT_CWD` | runtime cwd | Base directory for spawned agent workdirs. |
 | `ELIZA_ACP_LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error`. |
 | `ELIZA_ACP_MAX_SESSIONS` | `8` | Concurrent session cap. |
-| `ELIZA_ACP_REGISTER_AS_PTY_SERVICE` | `true` | Register `AcpService` under `PTY_SERVICE` alias for back-compat. |
 | `ACPX_SUB_AGENT_ROUTER_DISABLED` | unset | Set to `1` to keep the router service registered but unbound (test/staging). |
 | `ACPX_SUB_AGENT_ROUND_TRIP_CAP` | `32` | Per-session inject cap before force-stop to prevent ping-pong loops. |
 
@@ -153,9 +149,7 @@ RUN_LIVE_ACPX=1 bun run test
 
 ## Status
 
-`0.2.0` — consolidated package. Replaces the previous two-package split between the legacy `@elizaos/plugin-agent-orchestrator` (PTY + workspace) and `@elizaos/plugin-acpx` (ACP spawn). Aliases (`acpPlugin`, `taskAgentPlugin`, `codingAgentPlugin`) preserve back-compat for existing callers.
-
-The PTY-based legacy services (`PTYService`, `SwarmCoordinator`, `swarm-decision-loop`, `pty-spawn`, `stall-classifier`, etc.) are still in the package and exported. They are dormant for ACP-spawned sessions but kept for callers that haven't migrated yet. Retiring them is a follow-up cleanup.
+`0.2.0` — consolidated package. ACP subprocess sessions are the primary spawn path; PTY services remain available for terminal-backed route handlers and coordinator tooling.
 
 ## Contributing
 

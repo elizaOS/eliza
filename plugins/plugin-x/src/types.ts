@@ -26,7 +26,7 @@ export type TwitterClientState = Partial<TwitterConfig> & {
   /**
    * Connector account identifier this client instance is bound to. Defaults
    * to "default" in single-account mode; resolved via the connector account
-   * manager (or the plugin-local resolver as a fallback) otherwise.
+   * manager or the plugin-local resolver otherwise.
    */
   accountId?: string;
 };
@@ -71,21 +71,6 @@ export interface ITwitterClient {
   post?: TwitterPostClient;
   interaction?: TwitterInteractionClient;
 }
-
-export const ServiceType = {
-  TWITTER: "twitter",
-} as const;
-
-/**
- * Extended interface for TwitterService with proper typing
- */
-export interface ITwitterService extends Service {
-  twitterClient?: TwitterClientInstance;
-}
-
-// Import types for the service interface
-import type { Service } from "@elizaos/core";
-import type { TwitterClientInstance } from "./services/x.service";
 
 /**
  * Twitter-specific tweet type

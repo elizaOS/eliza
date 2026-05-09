@@ -1,7 +1,3 @@
-import {
-	findKeywordTermMatch,
-	getValidationKeywordTerms,
-} from "../i18n/validation-keywords.ts";
 import type { AgentContext, Memory, State } from "../types/index.ts";
 import {
 	getActiveRoutingContextsForTurn,
@@ -10,7 +6,9 @@ import {
 
 export interface ContextKeywordValidationOptions {
 	contexts: readonly AgentContext[];
+	/** @deprecated Keyword routing belongs to action retrieval, not validate(). */
 	keywords?: readonly string[];
+	/** @deprecated Keyword routing belongs to action retrieval, not validate(). */
 	keywordKeys?: readonly string[];
 }
 
@@ -38,9 +36,8 @@ export function getActionValidationText(
 export function getAllValidationKeywordTerms(
 	keys: readonly string[] = [],
 ): string[] {
-	return keys.flatMap((key) =>
-		getValidationKeywordTerms(key, { includeAllLocales: true }),
-	);
+	void keys;
+	return [];
 }
 
 export function hasActionContextOrKeyword(
@@ -49,20 +46,5 @@ export function hasActionContextOrKeyword(
 	options: ContextKeywordValidationOptions,
 ): boolean {
 	const activeContexts = getActiveRoutingContextsForTurn(state, message);
-	if (routingContextsOverlap(options.contexts, activeContexts)) {
-		return true;
-	}
-
-	const terms = [
-		...(options.keywords ?? []),
-		...getAllValidationKeywordTerms(options.keywordKeys),
-	];
-	if (terms.length === 0) {
-		return false;
-	}
-
-	return (
-		findKeywordTermMatch(getActionValidationText(message, state), terms) !==
-		undefined
-	);
+	return routingContextsOverlap(options.contexts, activeContexts);
 }

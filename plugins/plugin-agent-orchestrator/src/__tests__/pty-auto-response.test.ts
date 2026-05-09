@@ -156,7 +156,7 @@ describe("Codex exec adapter", () => {
     }
   });
 
-  it("lets explicit Codex sandbox mode take precedence over legacy sandbox disable", () => {
+  it("lets explicit Codex sandbox mode take precedence over sandbox disable", () => {
     const previousSandboxMode = process.env.CODEX_EXEC_SANDBOX_MODE;
     const previousCodingSandbox = process.env.CODING_AGENT_SANDBOX;
     process.env.CODEX_EXEC_SANDBOX_MODE = "read-only";

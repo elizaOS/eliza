@@ -38,6 +38,11 @@ describe("action selection benchmark scoring helpers", () => {
     expect(caseMatches("SOCIAL_POSTING", "POST", undefined)).toBe(true);
     expect(caseMatches("GET_TIMELINE", "POST", undefined)).toBe(true);
     expect(caseMatches("SEARCH_TWITTER", "POST", undefined)).toBe(true);
+    expect(caseMatches("SEARCH_TWITTER_POSTS", "POST", undefined)).toBe(true);
+    expect(caseMatches("FETCH_TWITTER_DMS", "MESSAGE", undefined)).toBe(true);
+    expect(caseMatches("READ_TWITTER_DM", "MESSAGE", undefined)).toBe(true);
+    expect(caseMatches("EMAIL_FETCH_UNREAD", "MESSAGE", undefined)).toBe(true);
+    expect(caseMatches("SEND_DISCORD_MESSAGE", "MESSAGE", undefined)).toBe(true);
     expect(caseMatches("BLOCK_WEBSITE", "WEBSITE_BLOCK", undefined)).toBe(true);
     expect(caseMatches("AUTOMATION_FOCUS_BLOCK", "WEBSITE_BLOCK", undefined)).toBe(
       true,
@@ -76,6 +81,17 @@ describe("action selection benchmark scoring helpers", () => {
   it("matches generic memory set aliases to the profile action", () => {
     expect(caseMatches("MEMORY_SET", "PROFILE", undefined)).toBe(true);
     expect(caseMatches("MEMORY_WRITE", "PROFILE", undefined)).toBe(true);
+  });
+
+  it("matches task and desktop atomic aliases to parent benchmark actions", () => {
+    expect(caseMatches("TASKS_ADD_TODO", "LIFE", undefined)).toBe(true);
+    expect(caseMatches("TODO_CREATE", "LIFE", undefined)).toBe(true);
+    expect(caseMatches("TASK_LIST", "LIFE", undefined)).toBe(true);
+    expect(caseMatches("TASKS_LIST_TODAY", "LIFE", undefined)).toBe(true);
+    expect(caseMatches("TASKS_SET_GOAL", "LIFE", undefined)).toBe(true);
+    expect(caseMatches("LIST_TASKS", "LIFE", undefined)).toBe(true);
+    expect(caseMatches("SET_GOAL", "LIFE", undefined)).toBe(true);
+    expect(caseMatches("DESKTOP", "COMPUTER_USE", undefined)).toBe(true);
   });
 
   it("ignores background evaluator actions when picking the observed action", () => {
@@ -122,6 +138,7 @@ describe("action selection benchmark scoring helpers", () => {
         { phase: "completed", actionName: "RELATIONSHIP_EXTRACTION" },
         { phase: "completed", actionName: "FACT_EXTRACTOR" },
         { phase: "completed", actionName: "REFLECTION" },
+        { phase: "completed", actionName: "SKILL_LEARNING" },
       ],
       "completed",
       null,
@@ -146,6 +163,31 @@ describe("action selection benchmark scoring helpers", () => {
     );
 
     expect(planned).toEqual(["CALENDAR"]);
+  });
+
+  it("extracts bare JSON arrays of planner action records", () => {
+    const planned = parsePlannedActionsFromResponse(
+      `[{"name":"todo_create","arguments":{"title":"pick up dry cleaning","due":"2026-05-10"}}]`,
+    );
+
+    expect(planned).toEqual(["LIFE"]);
+  });
+
+  it("extracts top-level tool records embedded in generated text", () => {
+    const planned = parsePlannedActionsFromResponse(
+      JSON.stringify({
+        text: `{
+  "tool": "create_todo",
+  "arguments": {
+    "title": "Pick up dry cleaning",
+    "due_date": "2026-05-10"
+  }
+}Your todo has been added.`,
+        toolCalls: [],
+      }),
+    );
+
+    expect(planned).toEqual(["LIFE"]);
   });
 
   it("unwraps native call_action tool calls to the selected action", () => {

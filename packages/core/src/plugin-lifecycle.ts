@@ -7,6 +7,9 @@ import type {
 } from "./types/plugin";
 import type { IAgentRuntime } from "./types/runtime";
 import type { Service, ServiceTypeName } from "./types/service";
+import type { AgentContext, RoleGate, RoleGateRole } from "./types/contexts";
+import { roleRank } from "./runtime/context-gates";
+import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
 import {
 	resolveActionContexts,
 	resolveProviderContexts,
@@ -271,6 +274,53 @@ function applyEffectiveActionContexts(
 	return {
 		...inherited,
 		contexts: [...resolveActionContexts(inherited)],
+	};
+}
+
+const DEFAULT_CONTEXT_ROLE_BY_ID = new Map(
+	DEFAULT_CONTEXT_DEFINITIONS.map((definition) => [
+		String(definition.id),
+		definition.roleGate?.minRole,
+	]),
+);
+
+function roleGateForActionContexts(
+	contexts: readonly AgentContext[] | undefined,
+): RoleGate {
+	let minRole: RoleGateRole = "USER";
+	for (const context of contexts ?? []) {
+		const contextRole = DEFAULT_CONTEXT_ROLE_BY_ID.get(String(context));
+		if (contextRole && roleRank(contextRole) > roleRank(minRole)) {
+			minRole = contextRole;
+		}
+	}
+	return { minRole };
+}
+
+function applyEffectiveActionAccess(
+	action: RuntimeAction,
+	pluginContexts: Plugin["contexts"] | undefined,
+): RuntimeAction {
+	const withContexts = applyEffectiveActionContexts(action, pluginContexts);
+	const roleGate = withContexts.roleGate ?? roleGateForActionContexts(withContexts.contexts);
+	const subActions = withContexts.subActions?.map((subAction) =>
+		typeof subAction === "string"
+			? subAction
+			: applyEffectiveActionAccess(subAction as RuntimeAction, undefined),
+	);
+
+	if (withContexts === action) {
+		action.roleGate = roleGate;
+		if (subActions) {
+			action.subActions = subActions as RuntimeAction["subActions"];
+		}
+		return action;
+	}
+
+	return {
+		...withContexts,
+		roleGate,
+		...(subActions ? { subActions: subActions as RuntimeAction["subActions"] } : {}),
 	};
 }
 
@@ -697,12 +747,12 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 			? privateState._runServiceStart.bind(runtimeWithLifecycle)
 			: null;
 
-	runtimeWithLifecycle.registerAction = ((action: RuntimeAction) => {
-		const capture = pluginRegistrationContext.getStore();
-		const actionsBefore = runtimeWithLifecycle.actions.length;
-		originalRegisterAction(
-			applyEffectiveActionContexts(action, capture?.ownership.plugin.contexts),
-		);
+		runtimeWithLifecycle.registerAction = ((action: RuntimeAction) => {
+			const capture = pluginRegistrationContext.getStore();
+			const actionsBefore = runtimeWithLifecycle.actions.length;
+			originalRegisterAction(
+				applyEffectiveActionAccess(action, capture?.ownership.plugin.contexts),
+			);
 		if (!capture || runtimeWithLifecycle.actions.length <= actionsBefore)
 			return;
 		for (const registeredAction of runtimeWithLifecycle.actions.slice(

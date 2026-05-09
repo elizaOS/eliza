@@ -25,9 +25,11 @@
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
-      "@elizaos/agent/*": ["../../packages/agent/src/*"]
+      "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["../../packages/app-core/src/*"]
     }
   },
-  "include": ["./**/*.ts"],
+  "include": ["src/**/*.ts", "__tests__/**/*.ts", "build.ts", "vitest.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

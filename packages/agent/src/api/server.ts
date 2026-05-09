@@ -109,6 +109,7 @@ import {
   resolvePreferredProviderId,
   resolvePrimaryModel,
 } from "../runtime/model-resolution.js";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
 import {
   type ClassifyContext,
   createColdStrategy,
@@ -2572,6 +2573,20 @@ async function handleRequest(
       url,
       runtime: state.runtime,
       isAuthorized: () => isAuthorized(req),
+      hostContext: {
+        config: state.config as unknown as Record<string, unknown>,
+        saveConfig: (nextConfig) =>
+          saveElizaConfig(nextConfig as unknown as ElizaConfig),
+        restartRuntime,
+        createTelemetrySpan: (meta) =>
+          meta.boundary === "cloud"
+            ? createIntegrationTelemetrySpan({
+                boundary: "cloud",
+                operation: meta.operation,
+                timeoutMs: meta.timeoutMs,
+              })
+            : undefined,
+      },
     })
   ) {
     return;

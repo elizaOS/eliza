@@ -1,8 +1,4 @@
-import { promises as fs } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import {
   loadConnectorOAuthTokenSet,
   saveConnectorOAuthTokenSet,
@@ -61,63 +57,11 @@ export class RuntimeCacheTokenStore implements TokenStore {
   }
 }
 
-export class FileTokenStore implements TokenStore {
-  constructor(private readonly path: string) {}
-
-  static defaultPath(accountId: string = DEFAULT_X_ACCOUNT_ID): string {
-    // Explicit warning is logged by the provider when this fallback is used.
-    return join(
-      homedir(),
-      ".eliza",
-      "twitter",
-      "accounts",
-      normalizeXAccountId(accountId),
-      "oauth2.tokens.json",
-    );
-  }
-
-  async load(): Promise<StoredOAuth2Tokens | null> {
-    try {
-      const raw = await fs.readFile(this.path, "utf-8");
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object") return null;
-      if (typeof parsed.access_token !== "string") return null;
-      if (typeof parsed.expires_at !== "number") return null;
-      return parsed as StoredOAuth2Tokens;
-    } catch {
-      return null;
-    }
-  }
-
-  async save(tokens: StoredOAuth2Tokens): Promise<void> {
-    // Ensure token directory + file are owner-only (defense-in-depth for shared machines).
-    await fs.mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
-    await fs.writeFile(this.path, JSON.stringify(tokens, null, 2), {
-      encoding: "utf-8",
-      mode: 0o600,
-    });
-    // Some platforms ignore mode on write when file already exists; enforce explicitly.
-    try {
-      await fs.chmod(this.path, 0o600);
-    } catch {
-      // ignore
-    }
-  }
-
-  async clear(): Promise<void> {
-    try {
-      await fs.unlink(this.path);
-    } catch {
-      // ignore
-    }
-  }
-}
-
 export class ConnectorAccountTokenStore implements TokenStore {
   constructor(
     private readonly runtime: IAgentRuntime,
     private readonly accountId: string,
-    private readonly fallback: TokenStore,
+    private readonly secondaryStore: TokenStore,
   ) {}
 
   async load(): Promise<StoredOAuth2Tokens | null> {
@@ -128,7 +72,7 @@ export class ConnectorAccountTokenStore implements TokenStore {
       caller: "plugin-x",
     });
     const tokens = normalizeStoredOAuth2Tokens(tokenSet);
-    return tokens ?? this.fallback.load();
+    return tokens ?? this.secondaryStore.load();
   }
 
   async save(tokens: StoredOAuth2Tokens): Promise<void> {
@@ -141,12 +85,12 @@ export class ConnectorAccountTokenStore implements TokenStore {
       caller: "plugin-x",
     });
     if (!saved) {
-      await this.fallback.save(tokens);
+      await this.secondaryStore.save(tokens);
     }
   }
 
   async clear(): Promise<void> {
-    await this.fallback.clear();
+    await this.secondaryStore.clear();
   }
 }
 
@@ -167,14 +111,7 @@ export function chooseDefaultTokenStore(
     );
   }
 
-  logger.warn(
-    "Twitter OAuth token persistence: runtime cache API not available; falling back to local token file. " +
-      "This file contains sensitive tokens—protect it and rotate tokens if compromised.",
-  );
-  const fallback = new FileTokenStore(FileTokenStore.defaultPath(normalizedAccountId));
-  return runtime
-    ? new ConnectorAccountTokenStore(runtime, normalizedAccountId, fallback)
-    : fallback;
+  throw new Error("Twitter OAuth token persistence requires runtime cache APIs.");
 }
 
 function normalizeStoredOAuth2Tokens(value: unknown): StoredOAuth2Tokens | null {

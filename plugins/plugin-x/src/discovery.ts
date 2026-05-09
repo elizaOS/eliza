@@ -85,7 +85,7 @@ export class TwitterDiscoveryClient {
     this.runtime = runtime;
     this.accountId = client.accountId;
 
-    // Check dry run mode. Legacy callers may pass booleans, so widen the
+    // Check dry run mode. Runtime settings may pass booleans, so widen the
     // narrowed string from `TwitterClientState` back to `unknown`.
     const dryRunSetting: unknown =
       state?.TWITTER_DRY_RUN ??

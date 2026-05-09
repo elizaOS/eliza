@@ -14,7 +14,7 @@ function createRuntime(settings: Record<string, string>): IAgentRuntime {
 }
 
 describe("X account config", () => {
-  it("uses the configured default account with legacy env credentials", async () => {
+  it("uses the configured default account with env credentials", async () => {
     const runtime = createRuntime({
       TWITTER_DEFAULT_ACCOUNT_ID: "primary",
       TWITTER_AUTH_MODE: "env",

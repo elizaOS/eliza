@@ -108,6 +108,9 @@
     "node": ">=24.0.0"
   },
   "dependencies": {
-    "drizzle-orm": "^0.45.1"
+    "drizzle-orm": "^0.45.1",
+    "n8n-core": "2.16.1",
+    "n8n-workflow": "2.16.0",
+    "quickjs-emscripten": "0.32.0"
   }
 }

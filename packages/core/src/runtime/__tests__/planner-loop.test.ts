@@ -65,6 +65,26 @@ describe("v5 planner loop skeleton", () => {
 		]);
 	});
 
+	it("parses top-level tool records embedded before user-facing text", () => {
+		const output = parsePlannerOutput(`{
+  "tool": "create_todo",
+  "arguments": {
+    "title": "Pick up dry cleaning",
+    "due_date": "2026-05-10"
+  }
+}Your todo has been added.`);
+
+		expect(output.toolCalls).toEqual([
+			{
+				name: "create_todo",
+				params: {
+					title: "Pick up dry cleaning",
+					due_date: "2026-05-10",
+				},
+			},
+		]);
+	});
+
 	it("parses fenced JSON arrays of tool calls from markdown output", () => {
 		const output = parsePlannerOutput(`**Tool Calls**
 
@@ -84,6 +104,23 @@ describe("v5 planner loop skeleton", () => {
 				params: { subaction: "screenshot" },
 			},
 		]);
+	});
+
+	it("parses bare JSON arrays of action records from text", () => {
+		const output = parsePlannerOutput(
+			`[{"name":"todo_create","arguments":{"title":"pick up dry cleaning","due":"2026-05-10"}}]`,
+		);
+
+		expect(output.toolCalls).toEqual([
+			{
+				name: "todo_create",
+				params: {
+					title: "pick up dry cleaning",
+					due: "2026-05-10",
+				},
+			},
+		]);
+		expect(output.messageToUser).toBeUndefined();
 	});
 
 	it("treats non-JSON planner text as a terminal message", () => {

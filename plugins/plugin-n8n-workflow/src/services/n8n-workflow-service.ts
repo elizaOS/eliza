@@ -42,6 +42,7 @@ import {
   N8N_CREDENTIAL_STORE_TYPE,
   N8N_CREDENTIAL_PROVIDER_TYPE,
   N8N_RUNTIME_CONTEXT_PROVIDER_TYPE,
+  N8nApiError,
   isCredentialProvider,
   isRuntimeContextProvider,
   UnsupportedIntegrationError,
@@ -75,6 +76,8 @@ type N8nWorkflowClient = Pick<
   | 'getOrCreateTag'
 > & {
   getRuntimeNodeTypeVersions(): Promise<Map<string, number[]> | null> | Map<string, number[]> | null;
+  getRegisteredNodeTypes?(): string[];
+  supportsWorkflow?(workflow: N8nWorkflow): { supported: boolean; missing: string[] };
 };
 
 function settingAsString(runtime: IAgentRuntime, key: string): string {
@@ -113,6 +116,8 @@ export class N8nWorkflowService extends Service {
 
   private apiClient: N8nWorkflowClient | null = null;
   private serviceConfig: N8nWorkflowServiceConfig | null = null;
+  private fallbackClient: N8nWorkflowClient | null = null;
+  private fallbackConfig: N8nWorkflowServiceConfig | null = null;
 
   static async start(runtime: IAgentRuntime): Promise<N8nWorkflowService> {
     logger.info({ src: 'plugin:n8n-workflow:service:main' }, 'Starting N8n Workflow Service...');
@@ -140,6 +145,22 @@ export class N8nWorkflowService extends Service {
         credentials,
       };
       service.apiClient = embedded;
+
+      const fallbackHost =
+        settingAsString(runtime, 'N8N_FALLBACK_HOST') ||
+        settingAsString(runtime, 'N8N_CLOUD_FALLBACK_HOST');
+      const fallbackApiKey =
+        settingAsString(runtime, 'N8N_FALLBACK_API_KEY') ||
+        settingAsString(runtime, 'N8N_CLOUD_FALLBACK_API_KEY');
+      if (fallbackHost && fallbackApiKey) {
+        service.fallbackConfig = {
+          apiKey: fallbackApiKey,
+          host: fallbackHost,
+          backend: 'http',
+          credentials,
+        };
+        service.fallbackClient = new N8nApiClient(fallbackHost, fallbackApiKey);
+      }
     } else {
       if (!apiKey || typeof apiKey !== 'string') {
         throw new Error('N8N_API_KEY is required in settings');
@@ -183,7 +204,55 @@ export class N8nWorkflowService extends Service {
     logger.info({ src: 'plugin:n8n-workflow:service:main' }, 'Stopping N8n Workflow Service...');
     this.apiClient = null;
     this.serviceConfig = null;
+    this.fallbackClient = null;
+    this.fallbackConfig = null;
     logger.info({ src: 'plugin:n8n-workflow:service:main' }, 'N8n Workflow Service stopped');
+  }
+
+  private filterForEmbeddedBackend(results: Array<{ node: NodeDefinition }>): typeof results {
+    if (this.serviceConfig?.backend !== 'embedded') {
+      return results;
+    }
+    const registered = this.apiClient?.getRegisteredNodeTypes?.();
+    if (!registered?.length) {
+      return results;
+    }
+    const registeredSet = new Set(registered);
+    return results.filter((result) => registeredSet.has(result.node.name));
+  }
+
+  private resolveDeployTarget(workflow: N8nWorkflow): {
+    client: N8nWorkflowClient;
+    config: N8nWorkflowServiceConfig;
+    routedToFallback: boolean;
+  } {
+    const client = this.getClient();
+    const config = this.getConfig();
+    if (config.backend !== 'embedded') {
+      return { client, config, routedToFallback: false };
+    }
+
+    const support = client.supportsWorkflow?.(workflow);
+    if (!support || support.supported) {
+      return { client, config, routedToFallback: false };
+    }
+
+    if (this.fallbackClient && this.fallbackConfig) {
+      logger.info(
+        { src: 'plugin:n8n-workflow:service:main', missingNodes: support.missing },
+        'Embedded runtime missing node(s); routing workflow deployment to configured n8n fallback'
+      );
+      return {
+        client: this.fallbackClient,
+        config: this.fallbackConfig,
+        routedToFallback: true,
+      };
+    }
+
+    throw new N8nApiError(
+      `Embedded n8n runtime does not support node type(s): ${support.missing.join(', ')}`,
+      400
+    );
   }
 
   private injectCatalogClarifications(workflow: N8nWorkflow): void {
@@ -294,7 +363,7 @@ export class N8nWorkflowService extends Service {
       `Extracted keywords: ${keywords.join(', ')}${preferredProviders?.length ? ` (with bias: ${preferredProviders.join(', ')})` : ''}`
     );
 
-    let relevantNodes = searchNodes(keywords, 15);
+    let relevantNodes = this.filterForEmbeddedBackend(searchNodes(keywords, 15));
     logger.debug(
       { src: 'plugin:n8n-workflow:service:main' },
       `Found ${relevantNodes.length} relevant nodes`
@@ -514,7 +583,7 @@ export class N8nWorkflowService extends Service {
 
     // Search for new nodes the modification might need
     const keywords = await extractKeywords(this.runtime, modificationRequest);
-    const searchResults = searchNodes(keywords, 10);
+    const searchResults = this.filterForEmbeddedBackend(searchNodes(keywords, 10));
     const newDefs = searchResults.map((r) => r.node);
 
     // Deduplicate: merge existing + new, preferring existing (already in workflow)
@@ -666,8 +735,8 @@ export class N8nWorkflowService extends Service {
       `Deploying workflow "${workflow.name}" for user ${userId}`
     );
 
-    const config = this.getConfig();
-    const client = this.getClient();
+    const deployTarget = this.resolveDeployTarget(workflow);
+    const { config, client } = deployTarget;
 
     const credStore = this.runtime.getService(N8N_CREDENTIAL_STORE_TYPE) as unknown as
       | N8nCredentialStoreApi

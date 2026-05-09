@@ -79,16 +79,12 @@ export const XPlugin: Plugin = {
       );
     }
 
-    // In env mode (single-account legacy), materialize a synthetic `default`
-    // account so the rest of the runtime can address it through the connector
-    // account interface without a separate provisioning step.
+    // In env mode, materialize a synthetic `default` account so the rest of
+    // the runtime can address it through the connector account interface.
     if (mode === "env") {
       await materializeEnvAccountIfMissing(runtime);
     }
   },
 };
-
-// Backward-compatible alias for users still importing { TwitterPlugin }.
-export const TwitterPlugin = XPlugin;
 
 export default XPlugin;

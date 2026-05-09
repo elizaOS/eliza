@@ -66,9 +66,6 @@ export type LifeOpsConnectorAccountPrivacyInput = Pick<
 export const DEFAULT_LIFEOPS_ACCOUNT_PRIVACY_SCOPE: LifeOpsAccountPrivacyScope =
   "owner_only";
 
-export const CALENDAR_CONNECTOR_ACCOUNT_MIGRATION_NOTE =
-  "Legacy calendar rows without connector_account_id are ambiguous; purge and resync calendar caches before any destructive migration away from grant_id.";
-
 const DATA_CLASS_SET = new Set<string>(LIFEOPS_EGRESS_DATA_CLASSES);
 const ACCOUNT_PRIVACY_SCOPE_SET = new Set<string>(
   LIFEOPS_ACCOUNT_PRIVACY_SCOPES,
@@ -332,14 +329,14 @@ export function deriveConnectorAccountId(args: {
   return null;
 }
 
-export function legacyConnectorAccountIdAlias(args: {
+export function grantScopedConnectorAccountId(args: {
   provider: string;
   side?: string | null;
   grantId: string;
 }): string {
   const provider = args.provider.trim().toLowerCase();
   const side = (args.side ?? "owner").trim().toLowerCase() || "owner";
-  return `${provider}:${side}:legacy-grant:${digestConnectorAccountComponent(args.grantId)}`;
+  return `${provider}:${side}:grant:${digestConnectorAccountComponent(args.grantId)}`;
 }
 
 export function deriveConnectorAccountIdFromGrant(
@@ -368,7 +365,7 @@ export function deriveConnectorAccountIdFromGrant(
       cloudConnectionId: grant.cloudConnectionId,
       grantId: grant.id,
     }) ??
-    legacyConnectorAccountIdAlias({
+    grantScopedConnectorAccountId({
       provider: grant.provider,
       side: grant.side,
       grantId: grant.id,

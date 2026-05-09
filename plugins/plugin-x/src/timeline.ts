@@ -100,7 +100,7 @@ export class TwitterTimelineClient {
     this.runtime = runtime;
     this.state = state;
 
-    // Legacy callers may pass boolean dryRun values; widen to `unknown` so
+    // Some runtime settings pass boolean dryRun values; widen to `unknown` so
     // the boolean check below remains valid.
     const dryRunSetting: unknown =
       this.state?.TWITTER_DRY_RUN ??

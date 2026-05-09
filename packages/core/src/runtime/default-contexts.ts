@@ -49,22 +49,44 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			cacheScope: "agent",
 			roleGate: { minRole: "USER" },
 		},
-		{
-			id: "documents",
-			label: "Documents",
-			description:
-				"Read, write, edit, search, and list stored documents. Use whenever the user asks to save findings, notes, summaries, files, or any persisted text artifact, or to search and recall prior documents and uploaded files.",
-			sensitivity: "personal",
-			cacheScope: "agent",
-			roleGate: { minRole: "USER" },
-		},
-		{
-			id: "web",
-			label: "Web",
-			description: "Web search and reading public internet pages.",
-			sensitivity: "public",
-			cacheScope: "turn",
-			subcontexts: ["browser"],
+			{
+				id: "documents",
+				label: "Documents",
+				description:
+					"Read, write, edit, search, and list stored documents. Use whenever the user asks to save findings, notes, summaries, files, or any persisted text artifact, or to search and recall prior documents and uploaded files.",
+				sensitivity: "personal",
+				cacheScope: "agent",
+				subcontexts: ["knowledge", "research"],
+				roleGate: { minRole: "USER" },
+			},
+			{
+				id: "knowledge",
+				label: "Knowledge",
+				description:
+					"Stored knowledge, notes, facts, semantic recall, RAG, and memory-backed answers. Use for retrieve/answer-from-knowledge requests, not live web lookup.",
+				parent: "documents",
+				sensitivity: "personal",
+				cacheScope: "agent",
+				roleGate: { minRole: "USER" },
+			},
+			{
+				id: "research",
+				label: "Research",
+				description:
+					"Multi-step investigation, source gathering, synthesis, citations, and research artifacts. Use when the user asks to investigate, compare, produce findings, or save research.",
+				parent: "documents",
+				sensitivity: "personal",
+				cacheScope: "conversation",
+				roleGate: { minRole: "USER" },
+			},
+			{
+				id: "web",
+				label: "Web",
+				description:
+					"Live/current public internet lookup: search, open pages, read URLs, verify facts, prices, laws, news, docs, schedules, or anything likely to change.",
+				sensitivity: "public",
+				cacheScope: "turn",
+				subcontexts: ["browser"],
 			roleGate: { minRole: "USER" },
 		},
 		{
@@ -115,14 +137,14 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			cacheScope: "turn",
 			roleGate: { minRole: "ADMIN" },
 		},
-		{
-			id: "calendar",
-			label: "Calendar",
-			description:
-				"Check availability, view events, schedule meetings, manage invites.",
-			sensitivity: "private",
-			cacheScope: "turn",
-			roleGate: { minRole: "ADMIN" },
+			{
+				id: "calendar",
+				label: "Calendar",
+				description:
+					"Availability, events, meetings, appointments, invites, travel time, scheduling constraints, reschedules, and calendar-derived reminders.",
+				sensitivity: "private",
+				cacheScope: "turn",
+				roleGate: { minRole: "ADMIN" },
 		},
 		{
 			id: "contacts",
@@ -133,15 +155,36 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			cacheScope: "agent",
 			roleGate: { minRole: "ADMIN" },
 		},
-		{
-			id: "tasks",
-			label: "Tasks",
-			description:
-				"Reminders, todos, goals, habits, and scheduled actions for the user.",
-			sensitivity: "personal",
-			cacheScope: "agent",
-			roleGate: { minRole: "ADMIN" },
-		},
+			{
+				id: "tasks",
+				label: "Tasks",
+				description:
+					"Todos, reminders, goals, habits, routines, follow-ups, due dates, priorities, check-ins, scheduled personal actions, and task reviews.",
+				sensitivity: "personal",
+				cacheScope: "agent",
+				subcontexts: ["todos", "productivity"],
+				roleGate: { minRole: "ADMIN" },
+			},
+			{
+				id: "todos",
+				label: "Todos",
+				description:
+					"Concrete task-list operations: create, list, update, complete, delete, prioritize, defer, or review todos and reminders.",
+				parent: "tasks",
+				sensitivity: "personal",
+				cacheScope: "agent",
+				roleGate: { minRole: "ADMIN" },
+			},
+			{
+				id: "productivity",
+				label: "Productivity",
+				description:
+					"Work planning and personal operations spanning tasks, calendar, documents, contacts, workflows, and prioritization.",
+				parent: "tasks",
+				sensitivity: "personal",
+				cacheScope: "conversation",
+				roleGate: { minRole: "ADMIN" },
+			},
 		{
 			id: "health",
 			label: "Health",
@@ -210,15 +253,16 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			aliases: ["web3", "defi", "token", "tokens", "onchain", "on-chain"],
 			roleGate: { minRole: "OWNER" },
 		},
-		{
-			id: "messaging",
-			label: "Messaging",
-			description:
-				"Send and read messages on Discord, Slack, Telegram, Signal, iMessage, and similar.",
-			sensitivity: "private",
-			cacheScope: "turn",
-			roleGate: { minRole: "ADMIN" },
-		},
+			{
+				id: "messaging",
+				label: "Messaging",
+				description:
+					"Read, send, draft, search, triage, mute, follow, or manage private/group messages across Discord, Slack, Telegram, Signal, iMessage, WhatsApp, X DMs, and similar.",
+				sensitivity: "private",
+				cacheScope: "turn",
+				subcontexts: ["phone", "social"],
+				roleGate: { minRole: "ADMIN" },
+			},
 		{
 			id: "phone",
 			label: "Phone",
@@ -230,15 +274,27 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			aliases: ["sms", "voice"],
 			roleGate: { minRole: "ADMIN" },
 		},
-		{
-			id: "social_posting",
-			label: "Social Posting",
-			description: "Public posts and social actions on platforms like X.",
-			sensitivity: "private",
-			cacheScope: "turn",
-			aliases: ["social-posting", "posting"],
-			roleGate: { minRole: "ADMIN" },
-		},
+			{
+				id: "social_posting",
+				label: "Social Posting",
+				description:
+					"Public social posts, feeds, replies, searches, timelines, and posting actions on platforms like X. Use messaging for DMs.",
+				sensitivity: "private",
+				cacheScope: "turn",
+				aliases: ["social-posting", "posting"],
+				roleGate: { minRole: "ADMIN" },
+			},
+			{
+				id: "social",
+				label: "Social",
+				description:
+					"Social platforms broadly: public feed/search/posting plus private DMs when platform-specific intent is ambiguous.",
+				parents: ["messaging", "social_posting"],
+				sensitivity: "private",
+				cacheScope: "turn",
+				aliases: ["social_media", "social-media"],
+				roleGate: { minRole: "ADMIN" },
+			},
 		{
 			id: "media",
 			label: "Media",
@@ -248,33 +304,44 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			cacheScope: "turn",
 			roleGate: { minRole: "USER" },
 		},
-		{
-			id: "automation",
-			label: "Automation",
-			description:
-				"Workflows, cron jobs, triggers, and scheduled agent automations.",
-			sensitivity: "personal",
-			cacheScope: "agent",
-			roleGate: { minRole: "ADMIN" },
+			{
+				id: "automation",
+				label: "Automation",
+				description:
+					"Automations, workflows, triggers, cron/heartbeat jobs, recurring runs, monitors, reminders that execute later, and proactive follow-up tasks.",
+				sensitivity: "personal",
+				cacheScope: "agent",
+				roleGate: { minRole: "ADMIN" },
 		},
-		{
-			id: "connectors",
-			label: "Connectors",
-			description:
-				"MCP, OAuth, and integration connectors: list, configure, connect, disconnect.",
-			sensitivity: "private",
-			cacheScope: "agent",
-			roleGate: { minRole: "ADMIN" },
+			{
+				id: "connectors",
+				label: "Connectors",
+				description:
+					"MCP, OAuth, app integrations, connector accounts, scopes, auth state, connection repair, list/configure/connect/disconnect flows.",
+				sensitivity: "private",
+				cacheScope: "agent",
+				roleGate: { minRole: "ADMIN" },
 		},
-		{
-			id: "settings",
-			label: "Settings",
-			description:
-				"Agent and user settings, capability toggles, identity, and AI provider config.",
-			sensitivity: "private",
-			cacheScope: "agent",
-			roleGate: { minRole: "ADMIN" },
-		},
+			{
+				id: "settings",
+				label: "Settings",
+				description:
+					"Agent/user preferences, capability toggles, identity, profile, model/provider config, app settings, saved-login lookup, and non-secret configuration.",
+				sensitivity: "private",
+				cacheScope: "agent",
+				subcontexts: ["character"],
+				roleGate: { minRole: "ADMIN" },
+			},
+			{
+				id: "character",
+				label: "Character",
+				description:
+					"Agent personality, name, voice, style, system prompt, bio, behavior, and persistent character/profile edits.",
+				parent: "settings",
+				sensitivity: "private",
+				cacheScope: "agent",
+				roleGate: { minRole: "ADMIN" },
+			},
 		{
 			id: "secrets",
 			label: "Secrets",
@@ -283,17 +350,60 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			cacheScope: "none",
 			roleGate: { minRole: "OWNER" },
 		},
-		{
-			id: "admin",
-			label: "Admin",
-			description:
-				"Role and system administration, plugin management, trust changes.",
-			sensitivity: "system",
-			cacheScope: "none",
-			roleGate: { minRole: "OWNER" },
-		},
-		{
-			id: "agent_internal",
+			{
+				id: "admin",
+				label: "Admin",
+				description:
+					"Owner/admin-only control plane: roles, permissions, plugins, trust, policy, system configuration, and dangerous/private management actions.",
+				sensitivity: "system",
+				cacheScope: "none",
+				subcontexts: ["system"],
+				roleGate: { minRole: "OWNER" },
+			},
+			{
+				id: "system",
+				label: "System",
+				description:
+					"Runtime/system internals, diagnostics, process state, platform control, and owner-only operational commands.",
+				parent: "admin",
+				sensitivity: "system",
+				cacheScope: "none",
+				subcontexts: ["state", "world"],
+				roleGate: { minRole: "OWNER" },
+			},
+			{
+				id: "state",
+				label: "State",
+				description:
+					"Current runtime, room, device, app, workflow, or game state inspection/mutation when the request is about state rather than user content.",
+				parent: "system",
+				sensitivity: "system",
+				cacheScope: "turn",
+				roleGate: { minRole: "ADMIN" },
+			},
+			{
+				id: "world",
+				label: "World",
+				description:
+					"World/server/room membership, environment topology, channels, participants, simulation state, and shared-world operations.",
+				parent: "system",
+				sensitivity: "private",
+				cacheScope: "turn",
+				subcontexts: ["game"],
+				roleGate: { minRole: "ADMIN" },
+			},
+			{
+				id: "game",
+				label: "Game",
+				description:
+					"Game/session commands and game-state tools. Use only when there is an active game/simulation/world interaction or the user is controlling gameplay.",
+				parent: "world",
+				sensitivity: "personal",
+				cacheScope: "turn",
+				roleGate: { minRole: "USER" },
+			},
+			{
+				id: "agent_internal",
 			label: "Agent Internal",
 			description:
 				"Self-management and internal autonomous tasks not intended for users.",

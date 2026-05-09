@@ -1942,7 +1942,7 @@ export async function handleLifeOpsRoutes(
         state: status.connected ? "connected" : "error",
         error: status.connected
           ? undefined
-          : "Telegram setup is managed by @elizaos/plugin-telegram. Legacy LifeOps code/password submission is disabled.",
+          : "Telegram setup is managed by @elizaos/plugin-telegram. LifeOps code/password submission is disabled.",
         status,
       });
     });

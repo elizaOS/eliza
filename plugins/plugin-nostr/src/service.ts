@@ -103,9 +103,9 @@ function getNostrTargetMetadata(target: TargetInfo): Record<string, unknown> | u
     : undefined;
 }
 
-function clampLimit(value: number | undefined, fallback: number, max: number): number {
+function clampLimit(value: number | undefined, defaultValue: number, max: number): number {
   if (!Number.isFinite(value)) {
-    return fallback;
+    return defaultValue;
   }
   return Math.min(Math.max(1, Math.floor(value as number)), max);
 }
