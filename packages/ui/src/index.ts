@@ -1,6 +1,8 @@
-export * from "./App";
 export * from "./api";
+export * from "./app-shell-registry";
 export * from "./app-shell-components";
+export * from "./widgets";
+export * from "./App";
 export * from "./browser";
 export * from "./bridge";
 export * from "./capacitor-shell";
@@ -31,4 +33,3 @@ export * from "./themes/apply-theme";
 export * from "./types";
 export * from "./utils";
 export * from "./voice";
-export * from "./widgets";

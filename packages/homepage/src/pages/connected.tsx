@@ -1,25 +1,25 @@
+import { Check, Copy, Info, LogOut } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Copy, Check, LogOut, Info } from "lucide-react";
+import {
+  buildFullPhoneNumber,
+  PhoneNumberInput,
+  useCountryOptions,
+} from "@/components/login/phone-number-input";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  PhoneNumberInput,
-  useCountryOptions,
-  buildFullPhoneNumber,
-} from "@/components/login/phone-number-input";
-import { useAuth } from "@/lib/context/auth-context";
 import {
   buildElizaSmsHref,
   ELIZA_PHONE_FORMATTED,
   ELIZA_PHONE_NUMBER,
   getWhatsAppNumber,
 } from "@/lib/contact";
+import { useAuth } from "@/lib/context/auth-context";
 
 /**
  * Telegram bot username for direct link

@@ -35,9 +35,9 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "typecheck": "tsc --noEmit",
-    "build": "npx pepr build",
-    "dev": "npx pepr dev",
-    "deploy:local": "npx pepr build && ./scripts/deploy-local.sh"
+    "build": "bunx pepr build",
+    "dev": "bunx pepr dev",
+    "deploy:local": "bunx pepr build && ./scripts/deploy-local.sh"
   },
   "dependencies": {
     "ioredis": "^5.10.1",

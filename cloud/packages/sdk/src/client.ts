@@ -435,18 +435,13 @@ export class ElizaCloudClient {
    * `unknown` here to avoid drift.
    */
   listWorkflows(agentId: string): Promise<unknown> {
-    return this.request(
-      "GET",
-      `/api/v1/agents/${encodePathParam(agentId)}/workflows`,
-    );
+    return this.request("GET", `/api/v1/agents/${encodePathParam(agentId)}/workflows`);
   }
 
   createWorkflow(agentId: string, body: Record<string, unknown>): Promise<unknown> {
-    return this.request(
-      "POST",
-      `/api/v1/agents/${encodePathParam(agentId)}/workflows`,
-      { json: body },
-    );
+    return this.request("POST", `/api/v1/agents/${encodePathParam(agentId)}/workflows`, {
+      json: body,
+    });
   }
 
   getWorkflow(agentId: string, workflowId: string): Promise<unknown> {

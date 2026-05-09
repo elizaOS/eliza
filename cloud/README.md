@@ -1616,6 +1616,48 @@ POST /api/v1/api-keys/{id}/regenerate
 DELETE /api/v1/api-keys/{id}
 ```
 
+#### Agent Workflows (proxy → plugin-workflow on the user's agent)
+
+Authenticated proxy from cloud to a Railway-deployed agent's
+`@elizaos/plugin-workflow` HTTP surface. Org ownership is enforced by
+`elizaSandboxService.findRunningSandbox`. Cloud forwards the request to
+`<agent>/api/workflow/...` with a `Bearer ELIZA_API_TOKEN` header.
+
+```bash
+# List workflows
+curl -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  https://api.elizaos.ai/api/v1/agents/$AGENT_ID/workflows
+
+# Create workflow
+curl -X POST -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"my-flow","nodes":[]}' \
+  https://api.elizaos.ai/api/v1/agents/$AGENT_ID/workflows
+
+# Get / update / delete one workflow
+curl  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  https://api.elizaos.ai/api/v1/agents/$AGENT_ID/workflows/$WORKFLOW_ID
+curl -X PUT -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  -H "Content-Type: application/json" -d '{"name":"renamed"}' \
+  https://api.elizaos.ai/api/v1/agents/$AGENT_ID/workflows/$WORKFLOW_ID
+curl -X DELETE -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  https://api.elizaos.ai/api/v1/agents/$AGENT_ID/workflows/$WORKFLOW_ID
+
+# Trigger an execution (returns 202 + execution id)
+curl -X POST -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  -H "Content-Type: application/json" -d '{"inputs":{}}' \
+  https://api.elizaos.ai/api/v1/agents/$AGENT_ID/workflows/$WORKFLOW_ID/run
+
+# Poll execution status
+curl -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  https://api.elizaos.ai/api/v1/agents/$AGENT_ID/workflows/executions/$EXECUTION_ID
+```
+
+Note: the `/run` and `/executions/:id` paths require the agent-side
+`@elizaos/plugin-workflow` to mount its run + executions handlers in
+`src/plugin-routes.ts`. Until then those forwarded calls receive whatever
+the agent returns (currently HTTP 404).
+
 #### User Info
 
 ```bash

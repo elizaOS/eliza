@@ -94,32 +94,32 @@ export const setSecretAction: Action = {
 		},
 	],
 
-		validate: async (
-			runtime: IAgentRuntime,
-			message: Memory,
-			_state?: State,
-			_options?: HandlerOptions,
-		): Promise<boolean> => {
-			if (runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE) === null) {
-				return false;
-			}
-			const channelType = message.content.channelType;
-			if (channelType !== undefined && channelType !== ChannelType.DM) {
-				return false;
-			}
-			const params =
-				_options?.parameters && typeof _options.parameters === "object"
-					? (_options.parameters as Record<string, unknown>)
-					: {};
-			const hasStructuredSecrets =
-				Array.isArray(params.secrets) && params.secrets.length > 0;
-			return (
-				hasStructuredSecrets ||
-				hasActionContextOrKeyword(message, _state, {
-					contexts: ["secrets", "settings", "connectors"],
-				})
-			);
-		},
+	validate: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		_state?: State,
+		_options?: HandlerOptions,
+	): Promise<boolean> => {
+		if (runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE) === null) {
+			return false;
+		}
+		const channelType = message.content.channelType;
+		if (channelType !== undefined && channelType !== ChannelType.DM) {
+			return false;
+		}
+		const params =
+			_options?.parameters && typeof _options.parameters === "object"
+				? (_options.parameters as Record<string, unknown>)
+				: {};
+		const hasStructuredSecrets =
+			Array.isArray(params.secrets) && params.secrets.length > 0;
+		return (
+			hasStructuredSecrets ||
+			hasActionContextOrKeyword(message, _state, {
+				contexts: ["secrets", "settings", "connectors"],
+			})
+		);
+	},
 
 	handler: async (
 		runtime: IAgentRuntime,

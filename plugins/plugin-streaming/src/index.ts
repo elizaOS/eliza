@@ -9,9 +9,9 @@ import {
   buildPresetLayout,
   buildStreamOpAction,
   createStreamingPlugin,
-  streamStatusProvider,
   type StreamingDestination,
   type StreamingPluginConfig,
+  streamStatusProvider,
 } from "./core.ts";
 
 const TWITCH_CFG: StreamingPluginConfig = {

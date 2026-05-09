@@ -727,9 +727,9 @@ export const roomOpAction: Action = {
 			runtime.agentId,
 		)) as ParticipantState;
 
-			if (!preconditionMet(op, current)) {
-				return roomPreconditionFailureResult({ op, current, roomId });
-			}
+		if (!preconditionMet(op, current)) {
+			return roomPreconditionFailureResult({ op, current, roomId });
+		}
 
 		const proceed = await decide(runtime, message, state, cfg, op);
 		const room =

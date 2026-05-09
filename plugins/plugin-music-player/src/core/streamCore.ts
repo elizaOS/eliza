@@ -1,7 +1,7 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { PassThrough, type Readable } from "node:stream";
 import { logger } from "@elizaos/core";
-import { EventEmitter } from "events";
 import {
   normalizeOpusBroadcastStream,
   OPUS_NORMALIZE_FFMPEG,

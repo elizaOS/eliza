@@ -55,7 +55,7 @@ function getProxyUrl(): string | null {
           `Invalid proxy protocol: ${url.protocol}. Supported: http, https, socks4, socks5`,
         );
       }
-    } catch (error) {
+    } catch (_error) {
       logger.warn(`Invalid proxy URL format: ${proxyUrl}`);
     }
   }

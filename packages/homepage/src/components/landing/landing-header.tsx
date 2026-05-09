@@ -4,10 +4,10 @@
  * Desktop hover shows QR code to continue on phone.
  */
 
+import { AnimatePresence, motion } from "framer-motion";
+import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { QRCodeSVG } from "qrcode.react";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 import { Button } from "@/components/ui/button";
 import { buildElizaSmsHref } from "@/lib/contact";

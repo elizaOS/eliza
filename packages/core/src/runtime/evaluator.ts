@@ -280,7 +280,7 @@ function renderEvaluatorModelInput(params: {
 export function parseEvaluatorOutput(
 	raw: string | { text?: string; object?: unknown },
 ): EvaluatorOutput {
-	const parsed = getStructuredObject<RawEvaluatorOutput>(raw) ?? {};
+	const parsed = getStructuredEvaluatorObject(raw) ?? {};
 	const decision = normalizeEvaluatorRoute(parsed.decision ?? parsed.route);
 	return {
 		success: parsed.success === true,
@@ -349,23 +349,88 @@ export function normalizeEvaluatorRoute(route: unknown): EvaluatorRoute {
 	return "CONTINUE";
 }
 
-function getStructuredObject<T extends object>(
+function isEvaluatorShapedObject(value: unknown): value is RawEvaluatorOutput {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return false;
+	}
+	const record = value as Record<string, unknown>;
+	return "success" in record || "decision" in record || "route" in record;
+}
+
+function parseJsonObjects<T extends object>(raw: string): T[] {
+	const objects: T[] = [];
+	let depth = 0;
+	let start = -1;
+	let inString = false;
+	let escaped = false;
+
+	for (let index = 0; index < raw.length; index++) {
+		const char = raw[index];
+		if (inString) {
+			if (escaped) {
+				escaped = false;
+			} else if (char === "\\") {
+				escaped = true;
+			} else if (char === '"') {
+				inString = false;
+			}
+			continue;
+		}
+		if (char === '"') {
+			inString = true;
+			continue;
+		}
+		if (char === "{") {
+			if (depth === 0) start = index;
+			depth++;
+			continue;
+		}
+		if (char !== "}") continue;
+		depth--;
+		if (depth !== 0 || start < 0) continue;
+		try {
+			const parsed = JSON.parse(raw.slice(start, index + 1));
+			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+				objects.push(parsed as T);
+			}
+		} catch {
+			// Ignore malformed embedded JSON and keep scanning for later objects.
+		}
+		start = -1;
+	}
+
+	return objects;
+}
+
+function getStructuredEvaluatorObject(
 	raw: string | { text?: string; object?: unknown },
-): T | null {
+): RawEvaluatorOutput | null {
 	if (typeof raw === "string") {
-		return parseJsonObject<T>(raw);
+		return parseEvaluatorText(raw);
 	}
 	if (
 		raw.object &&
 		typeof raw.object === "object" &&
 		!Array.isArray(raw.object)
 	) {
-		return raw.object as T;
+		return raw.object as RawEvaluatorOutput;
 	}
 	if (typeof raw.text === "string") {
-		return parseJsonObject<T>(raw.text);
+		return parseEvaluatorText(raw.text);
 	}
 	return null;
+}
+
+function parseEvaluatorText(text: string): RawEvaluatorOutput | null {
+	const direct = parseJsonObject<RawEvaluatorOutput>(text);
+	if (isEvaluatorShapedObject(direct)) return direct;
+
+	const objects = parseJsonObjects<RawEvaluatorOutput>(text);
+	for (let index = objects.length - 1; index >= 0; index--) {
+		const object = objects[index];
+		if (isEvaluatorShapedObject(object)) return object;
+	}
+	return direct;
 }
 
 function normalizeNextTool(value: unknown): PlannerToolCall | undefined {

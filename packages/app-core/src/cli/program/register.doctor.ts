@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
-import type { Command } from "commander";
 import { theme } from "@elizaos/shared";
+import type { Command } from "commander";
 import { runCommandWithRuntime } from "../cli-utils";
 import type { CheckCategory, CheckResult, CheckStatus } from "../doctor/checks";
 
@@ -125,7 +125,9 @@ export function registerDoctorCommand(program: Command) {
             `  ${icon} ${check.label.padEnd(28)} ${theme.muted(check.detail)}`,
           );
           if (check.fix && check.status !== "pass") {
-            console.log(`      ${theme.muted("fix:")} ${theme.command(check.fix)}`);
+            console.log(
+              `      ${theme.muted("fix:")} ${theme.command(check.fix)}`,
+            );
           }
         }
         console.log();

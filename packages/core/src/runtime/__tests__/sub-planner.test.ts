@@ -250,12 +250,12 @@ describe("sub-planner helpers", () => {
 		// shortcut; parents must declare every child context they intend to expose.
 		const [, executedCtx] = execute.mock.calls[0] ?? [];
 		expect(executedCtx).toBeDefined();
-	const activeContexts = (executedCtx as { activeContexts?: string[] })
-		?.activeContexts;
-	expect(activeContexts).toEqual(
-		expect.arrayContaining(["research_workflow", "web"]),
-	);
-});
+		const activeContexts = (executedCtx as { activeContexts?: string[] })
+			?.activeContexts;
+		expect(activeContexts).toEqual(
+			expect.arrayContaining(["research_workflow", "web"]),
+		);
+	});
 
 	it("does not expose child actions whose role gate is not satisfied", async () => {
 		const child = makeAction({

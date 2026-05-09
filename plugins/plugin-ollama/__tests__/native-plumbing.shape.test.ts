@@ -41,6 +41,18 @@ function createRuntime() {
   } as unknown as IAgentRuntime;
 }
 
+function createFailingTextStream(message: string): AsyncIterable<string> {
+  return {
+    [Symbol.asyncIterator]() {
+      return {
+        async next(): Promise<IteratorResult<string>> {
+          throw new Error(message);
+        },
+      };
+    },
+  };
+}
+
 describe("Ollama native text plumbing", () => {
   beforeEach(() => {
     generateTextMock.mockReset();
@@ -224,9 +236,7 @@ describe("Ollama native text plumbing", () => {
         yield "hello";
       })(),
       text: Promise.resolve("hello"),
-      toolCalls: Promise.resolve([
-        { toolCallId: "c1", toolName: "lookup", input: { q: "x" } },
-      ]),
+      toolCalls: Promise.resolve([{ toolCallId: "c1", toolName: "lookup", input: { q: "x" } }]),
       usage: Promise.resolve(undefined),
       finishReason: Promise.resolve("stop"),
     }));
@@ -351,9 +361,7 @@ describe("Ollama native text plumbing", () => {
 
   it("handles rejected stream promises when plain textStream fails before callers await usage", async () => {
     streamTextMock.mockImplementation(() => ({
-      textStream: (async function* () {
-        throw new Error("stream failed");
-      })(),
+      textStream: createFailingTextStream("stream failed"),
       text: Promise.reject(new Error("text failed")),
       usage: Promise.reject(new Error("usage failed")),
       finishReason: Promise.reject(new Error("finish failed")),
@@ -376,9 +384,7 @@ describe("Ollama native text plumbing", () => {
 
   it("handles rejected toolCalls and usage promises when planner textStream fails", async () => {
     streamTextMock.mockImplementation(() => ({
-      textStream: (async function* () {
-        throw new Error("planner stream failed");
-      })(),
+      textStream: createFailingTextStream("planner stream failed"),
       text: Promise.reject(new Error("text failed")),
       toolCalls: Promise.reject(new Error("tool calls failed")),
       usage: Promise.reject(new Error("usage failed")),

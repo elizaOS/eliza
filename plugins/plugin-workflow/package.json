@@ -43,7 +43,7 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:unit": "bun test __tests__/unit/",
-    "test:e2e": "bun test __tests__/e2e/",
+    "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",

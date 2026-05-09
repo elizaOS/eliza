@@ -2,8 +2,8 @@
  * Footer for the landing page: branding, nav links, token addresses, social.
  */
 
-import { useState, useEffect, useRef } from "react";
-import { Copy, Check } from "lucide-react";
+import { Check, Copy } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 
 const TOKEN_ADDRESSES = [

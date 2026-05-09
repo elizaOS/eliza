@@ -1,19 +1,17 @@
 import type http from "node:http";
-import {
-  extractConversationMetadataFromRoom,
-  isAutomationConversationMetadata,
-} from "@elizaos/agent";
 import type {
   ConversationMetadata,
   ConversationScope,
+  TriggerSummary,
 } from "@elizaos/agent";
-import { toWorkbenchTask } from "@elizaos/agent";
-import { loadElizaConfig } from "@elizaos/agent";
 import {
+  extractConversationMetadataFromRoom,
+  isAutomationConversationMetadata,
   listTriggerTasks,
+  loadElizaConfig,
   taskToTriggerSummary,
+  toWorkbenchTask,
 } from "@elizaos/agent";
-import type { TriggerSummary } from "@elizaos/agent";
 import {
   type AgentRuntime,
   type Room,
@@ -21,9 +19,6 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
-import { ensureRouteAuthorized } from "./auth";
-import { listAutomationNodeContributors } from "./automation-node-contributors";
-import type { WorkflowStatusResponse, WorkflowDefinition } from "@elizaos/ui";
 import type {
   AutomationItem,
   AutomationNodeCatalogResponse,
@@ -31,7 +26,11 @@ import type {
   AutomationRoomBinding,
   AutomationSummary,
   WorkbenchTask,
+  WorkflowDefinition,
+  WorkflowStatusResponse,
 } from "@elizaos/ui";
+import { ensureRouteAuthorized } from "./auth";
+import { listAutomationNodeContributors } from "./automation-node-contributors";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import {
   sendJsonError as sendJsonErrorResponse,
@@ -74,7 +73,9 @@ interface WorkflowRouteContext {
   json: WorkflowJsonResponder;
 }
 
-type WorkflowRouteHandler = (context: WorkflowRouteContext) => Promise<void> | void;
+type WorkflowRouteHandler = (
+  context: WorkflowRouteContext,
+) => Promise<void> | void;
 
 const WORKFLOW_DRAFT_TITLE = "New Workflow Draft";
 const WORKFLOW_ROUTES_MODULE: string =
@@ -361,12 +362,14 @@ function readAutomationRoomRecord(
   };
 }
 
-let workflowRouteHandlerPromise: Promise<WorkflowRouteHandler | null> | null = null;
+let workflowRouteHandlerPromise: Promise<WorkflowRouteHandler | null> | null =
+  null;
 
 async function loadWorkflowRouteHandler(): Promise<WorkflowRouteHandler | null> {
   workflowRouteHandlerPromise ??= import(WORKFLOW_ROUTES_MODULE)
     .then((mod: unknown) => {
-      const handler = (mod as { handleWorkflowRoutes?: unknown }).handleWorkflowRoutes;
+      const handler = (mod as { handleWorkflowRoutes?: unknown })
+        .handleWorkflowRoutes;
       return typeof handler === "function"
         ? (handler as WorkflowRouteHandler)
         : null;
@@ -640,12 +643,13 @@ async function buildAutomationListResponse(
     .filter((task) => !triggerTaskIds.has(task.id))
     .map((task) => buildCoordinatorTaskItem(task, taskRooms.get(task.id)));
 
-  const workflowStatusResult = await invokeWorkflowRoute<WorkflowStatusResponse>(
-    req,
-    res,
-    runtime,
-    "/api/workflow/status",
-  );
+  const workflowStatusResult =
+    await invokeWorkflowRoute<WorkflowStatusResponse>(
+      req,
+      res,
+      runtime,
+      "/api/workflow/status",
+    );
   const workflowStatus =
     workflowStatusResult.status === 200 ? workflowStatusResult.payload : null;
 

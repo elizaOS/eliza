@@ -10,9 +10,9 @@ import { HelpOverlay } from "./components/HelpOverlay.js";
 import { MainScreen } from "./components/MainScreen.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { TaskPane } from "./components/TaskPane.js";
-import { FilteringTerminal } from "./lib/filtering-terminal.js";
 import { getAgentClient } from "./lib/agent-client.js";
 import { getCwd, setCwd } from "./lib/cwd.js";
+import { FilteringTerminal } from "./lib/filtering-terminal.js";
 import { getCodeTaskService } from "./lib/get-code-task-service.js";
 import { useStore } from "./lib/store.js";
 
@@ -199,8 +199,6 @@ export class App {
   private showingHelp = false;
   private startupResumeTaskIds: string[] | null = null;
   private didCheckInterruptedTasks = false;
-  private running = false;
-  private initialized = false;
   private exitResolver: (() => void) | null = null;
 
   constructor(runtime: AgentRuntime) {
@@ -277,10 +275,7 @@ export class App {
       service.getTasks().then((tasks: CodeTask[]) => {
         useStore.getState().setTasks(tasks);
 
-        if (
-          storedTaskId &&
-          tasks.some((t) => t.id === storedTaskId)
-        ) {
+        if (storedTaskId && tasks.some((t) => t.id === storedTaskId)) {
           service.setCurrentTask(storedTaskId);
         } else {
           const currentId = service.getCurrentTaskId();

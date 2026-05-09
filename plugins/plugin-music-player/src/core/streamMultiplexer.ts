@@ -137,7 +137,7 @@ export class StreamMultiplexer {
       logger.warn(
         `[StreamMultiplexer] Consumer ${id} already exists, returning existing stream`,
       );
-      return this.consumers.get(id)!.stream;
+      return this.consumers.get(id)?.stream;
     }
 
     const stream = new PassThrough({

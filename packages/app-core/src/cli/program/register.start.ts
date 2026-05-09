@@ -1,15 +1,15 @@
 import crypto from "node:crypto";
 import {
+  formatDocsLink,
   isLoopbackBindHost,
   resolveApiBindHost,
   resolveApiSecurityConfig,
   resolveApiToken,
   resolveServerOnlyPort,
   setApiToken,
+  theme,
 } from "@elizaos/shared";
 import type { Command } from "commander";
-import { formatDocsLink } from "@elizaos/shared";
-import { theme } from "@elizaos/shared";
 import { runCommandWithRuntime } from "../cli-utils";
 
 const defaultRuntime = { error: console.error, exit: process.exit };

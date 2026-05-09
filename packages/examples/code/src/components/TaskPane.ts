@@ -125,8 +125,6 @@ function formatTraceLines(events: TaskTraceEvent[]): string[] {
 export class TaskPane implements Focusable {
   focused = false;
   private props: TaskPaneProps;
-  private width = 40;
-  private height = 24;
   private selectedIndex = 0;
   private detailView: "output" | "trace" = "output";
   private detailScrollOffset = 0;
@@ -221,23 +219,27 @@ export class TaskPane implements Focusable {
       if (char === "y" || char === "Y") {
         if (taskService) {
           if (confirmSnapshot.type === "cancel") {
-            taskService.cancelTask(confirmSnapshot.taskId).catch((err: Error) => {
-              reportTaskServiceError(
-                taskService,
-                confirmSnapshot.taskId,
-                "cancelTask",
-                err,
-              );
-            });
+            taskService
+              .cancelTask(confirmSnapshot.taskId)
+              .catch((err: Error) => {
+                reportTaskServiceError(
+                  taskService,
+                  confirmSnapshot.taskId,
+                  "cancelTask",
+                  err,
+                );
+              });
           } else {
-            taskService.deleteTask(confirmSnapshot.taskId).catch((err: Error) => {
-              reportTaskServiceError(
-                taskService,
-                confirmSnapshot.taskId,
-                "deleteTask",
-                err,
-              );
-            });
+            taskService
+              .deleteTask(confirmSnapshot.taskId)
+              .catch((err: Error) => {
+                reportTaskServiceError(
+                  taskService,
+                  confirmSnapshot.taskId,
+                  "deleteTask",
+                  err,
+                );
+              });
           }
         }
         this.confirm = null;

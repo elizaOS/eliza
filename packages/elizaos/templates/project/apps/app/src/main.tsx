@@ -38,8 +38,10 @@ import {
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
 } from "@elizaos/app-core";
-import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "@elizaos/app-lifeops";
-import { LifeOpsActivitySignalsEffect } from "@elizaos/app-lifeops";
+import {
+  dispatchQueuedLifeOpsGithubCallbackFromUrl,
+  LifeOpsActivitySignalsEffect,
+} from "@elizaos/app-lifeops";
 // Side-effect: register LifeOps sidebar widgets into the app-core widget registry.
 import "@elizaos/app-lifeops";
 // Side-effect: register coding-agent (task-coordinator) slots so app-core

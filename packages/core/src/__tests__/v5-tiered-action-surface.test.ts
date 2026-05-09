@@ -154,9 +154,7 @@ function replyPlannerResponse(): CannedResponse {
 	return {
 		body: {
 			text: "ok",
-			toolCalls: [
-				{ id: "reply-1", name: "REPLY", arguments: { text: "ok" } },
-			],
+			toolCalls: [{ id: "reply-1", name: "REPLY", arguments: { text: "ok" } }],
 		},
 	};
 }
@@ -474,17 +472,13 @@ describe("v5 tiered action surface", () => {
 				{
 					body: {
 						text: "Using calendar.",
-						toolCalls: [
-							{ id: "top-1", name: "CALENDAR", arguments: {} },
-						],
+						toolCalls: [{ id: "top-1", name: "CALENDAR", arguments: {} }],
 					},
 				},
 				{
 					body: {
 						text: "Creating the event.",
-						toolCalls: [
-							{ id: "child-1", name: "CREATE_EVENT", arguments: {} },
-						],
+						toolCalls: [{ id: "child-1", name: "CREATE_EVENT", arguments: {} }],
 					},
 				},
 				{

@@ -13,29 +13,29 @@
  * - Cross-platform: If same phone is used for both, accounts are automatically linked
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { animated, useSpring, useTrail } from "@react-spring/web";
+import { ArrowLeft, Check, Copy, ExternalLink, Info } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Copy, Check, ExternalLink, Info } from "lucide-react";
-import { useSpring, useTrail, animated } from "@react-spring/web";
-import { Button } from "@/components/ui/button";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 import {
+  buildFullPhoneNumber,
   PhoneNumberInput,
   useCountryOptions,
-  buildFullPhoneNumber,
 } from "@/components/login/phone-number-input";
-import {
-  useAuth,
-  getAuthToken,
-  type TelegramAuthData,
-} from "@/lib/context/auth-context";
+import ShaderBackground from "@/components/ShaderBackground/ShaderBackground";
+import { Button } from "@/components/ui/button";
 import {
   buildElizaSmsHref,
   ELIZA_PHONE_FORMATTED,
   ELIZA_PHONE_NUMBER,
   getWhatsAppNumber,
 } from "@/lib/contact";
-import ShaderBackground from "@/components/ShaderBackground/ShaderBackground";
+import {
+  getAuthToken,
+  type TelegramAuthData,
+  useAuth,
+} from "@/lib/context/auth-context";
 
 // ============================================================================
 // Constants
@@ -428,6 +428,7 @@ export default function GetStartedPage() {
     authLoading,
     isAuthenticated,
     isLinkMode,
+    handleDiscordOAuthRedirect,
   ]);
 
   // Load Telegram widget script on mount

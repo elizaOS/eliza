@@ -11,83 +11,34 @@
 
 import type { PluginInfo } from "../api/client-types-config";
 import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
+import {
+  getWidgetComponent,
+  registerWidgetComponent,
+  seedLegacyWidgets,
+} from "./registry-store";
+export {
+  getWidgetComponent,
+  registerBuiltinWidgets,
+  registerWidgetComponent,
+} from "./registry-store";
 
 // -- Bundled widget component imports ----------------------------------------
 
-import { WALLET_STATUS_WIDGET } from "@elizaos/app-wallet";
 import { MusicLibraryCharacterWidget } from "../components/character/MusicLibraryCharacterWidget";
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status";
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
-import type { ChatSidebarWidgetDefinition } from "../components/chat/widgets/types";
-
-// -- Static component registry -----------------------------------------------
-
-const COMPONENT_REGISTRY = new Map<string, React.ComponentType<WidgetProps>>();
-
-/**
- * Register a bundled React component for a widget declaration.
- * Key format: `${pluginId}/${declarationId}`.
- */
-export function registerWidgetComponent(
-  pluginId: string,
-  declarationId: string,
-  Component: React.ComponentType<WidgetProps>,
-): void {
-  COMPONENT_REGISTRY.set(`${pluginId}/${declarationId}`, Component);
-}
-
-/** Look up a registered component. */
-export function getWidgetComponent(
-  pluginId: string,
-  declarationId: string,
-): React.ComponentType<WidgetProps> | undefined {
-  return COMPONENT_REGISTRY.get(`${pluginId}/${declarationId}`);
-}
-
 // -- Seed bundled widgets into the registry ----------------------------------
-
-/**
- * Adapts existing ChatSidebarWidgetDefinition[] to the new registry format.
- * These legacy widgets used `ChatSidebarWidgetProps` which is compatible with
- * `WidgetProps` (events + clearEvents).
- */
-function seedLegacyWidgets(
-  definitions: ReadonlyArray<ChatSidebarWidgetDefinition>,
-): void {
-  for (const def of definitions) {
-    registerWidgetComponent(
-      def.pluginId,
-      def.id,
-      def.Component as React.ComponentType<WidgetProps>,
-    );
-  }
-}
 
 seedLegacyWidgets(AGENT_ORCHESTRATOR_PLUGIN_WIDGETS);
 seedLegacyWidgets(TODO_PLUGIN_WIDGETS);
-seedLegacyWidgets([
-  WALLET_STATUS_WIDGET,
-  BROWSER_STATUS_WIDGET,
-  MUSIC_PLAYER_WIDGET,
-]);
+seedLegacyWidgets([BROWSER_STATUS_WIDGET, MUSIC_PLAYER_WIDGET]);
 registerWidgetComponent(
   "music-library",
   "music-library.playlists",
   MusicLibraryCharacterWidget,
 );
-
-/**
- * Public API for plugins outside app-core to seed their own widget components.
- * Call this when your plugin loads (e.g. via side-effect import of a widgets
- * module). Each definition must be a `ChatSidebarWidgetDefinition`.
- */
-export function registerBuiltinWidgets(
-  definitions: ReadonlyArray<ChatSidebarWidgetDefinition>,
-): void {
-  seedLegacyWidgets(definitions);
-}
 
 /**
  * Public API for plugins outside app-core to append widget declarations to the
@@ -133,16 +84,6 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     icon: "Activity",
     order: 300,
     defaultEnabled: true,
-  },
-  // Wallet status — surfaces /wallet state in the right rail.
-  {
-    id: WALLET_STATUS_WIDGET.id,
-    pluginId: WALLET_STATUS_WIDGET.pluginId,
-    slot: "chat-sidebar",
-    label: "Wallet",
-    icon: "Wallet",
-    order: WALLET_STATUS_WIDGET.order,
-    defaultEnabled: WALLET_STATUS_WIDGET.defaultEnabled,
   },
   // Browser workspace status — surfaces /browser state in the right rail.
   {

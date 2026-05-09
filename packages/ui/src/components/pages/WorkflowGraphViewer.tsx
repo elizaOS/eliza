@@ -1,5 +1,4 @@
 import {
-  Button,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -15,7 +14,7 @@ import {
   type Node,
   ReactFlow,
 } from "@xyflow/react";
-import { ExternalLink, Maximize2, X } from "lucide-react";
+import { Maximize2, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -26,11 +25,9 @@ import {
 } from "react";
 import type {
   WorkflowConnectionMap,
-  WorkflowStatusResponse,
   WorkflowDefinition,
   WorkflowDefinitionNode,
 } from "../../api/client-types-chat";
-import { getBootConfig } from "../../config/boot-config";
 import { useApp } from "../../state";
 
 // ── Node type colour families ─────────────────────────────────────────────────
@@ -110,7 +107,7 @@ function workflowToReactFlow(workflow: WorkflowDefinition | null): {
 
   const rawNodes = workflow.nodes;
 
-  // Collect position overrides from n8n canvas coordinates
+  // Collect position overrides from workflow canvas coordinates
   const posOverrides = new Map<string, { x: number; y: number }>();
   for (const n of rawNodes) {
     if (n.position) {
@@ -270,7 +267,7 @@ const WORKFLOW_GENERATION_STAGES: ReadonlyArray<{
     startsAt: 18,
   },
   {
-    label: "Deploying to n8n",
+    label: "Deploying workflow",
     hint: "Minting credentials + activating",
     startsAt: 24,
   },
@@ -478,34 +475,9 @@ function ParamValue({ value }: { value: unknown }) {
   );
 }
 
-function buildEditorUrl(
-  workflow: WorkflowDefinition,
-  status: WorkflowStatusResponse,
-  cloudAgentId: string | null | undefined,
-  uiTheme: "light" | "dark",
-): string | null {
-  let editorUrl: string | null = null;
-  if (status.mode === "local" && status.host) {
-    editorUrl = `${status.host}/workflow/${encodeURIComponent(workflow.id)}`;
-  }
-  if (status.mode === "cloud" && cloudAgentId) {
-    const cloudBase =
-      getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
-    editorUrl = `${cloudBase}/agents/${encodeURIComponent(cloudAgentId)}/n8n/workflow/${encodeURIComponent(workflow.id)}`;
-  }
-  if (!editorUrl) {
-    return null;
-  }
-
-  const url = new URL(editorUrl);
-  url.searchParams.set("theme", uiTheme);
-  return url.toString();
-}
-
 interface NodeDetailDrawerProps {
   node: WorkflowDefinitionNode | null;
   workflow: WorkflowDefinition | null;
-  status: WorkflowStatusResponse | null | undefined;
   onClose: () => void;
   labelId: string;
 }
@@ -513,11 +485,10 @@ interface NodeDetailDrawerProps {
 function NodeDetailDrawer({
   node,
   workflow,
-  status,
   onClose,
   labelId,
 }: NodeDetailDrawerProps) {
-  const { t, activeAgentProfile, uiTheme } = useApp();
+  const { t } = useApp();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   const isOpen = node !== null;
@@ -535,19 +506,6 @@ function NodeDetailDrawer({
   const colors = resolveNodeColor(node?.type ?? "");
   const typeLabel = (node?.type ?? "node").split(".").pop() ?? "node";
   const hasParams = node?.parameters && Object.keys(node.parameters).length > 0;
-
-  const editorDisabled =
-    !status || status.mode === "disabled" || status.status === "error";
-
-  const editorUrl =
-    !editorDisabled && workflow && status && node
-      ? buildEditorUrl(
-          workflow,
-          status,
-          activeAgentProfile?.cloudAgentId,
-          uiTheme,
-        )
-      : null;
 
   // Map color families to StatusBadge variants (success | warning | danger | muted)
   // amber=trigger→warning, slate=flow-control→muted, violet=integration→danger, blue=action→muted
@@ -642,34 +600,6 @@ function NodeDetailDrawer({
         )}
       </div>
 
-      {/* Footer — open in editor */}
-      <div className="shrink-0 border-t border-border/30 px-4 py-3">
-        {editorUrl ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="w-full h-8 text-xs gap-1.5"
-            tabIndex={isOpen ? 0 : -1}
-            onClick={() => window.open(editorUrl, "_blank", "noopener")}
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            {t("workflowGraph.nodeDrawer.openInEditor")}
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="w-full h-8 text-xs"
-            disabled
-            tabIndex={isOpen ? 0 : -1}
-            title={t("workflowGraph.nodeDrawer.editorDisabled")}
-          >
-            {t("workflowGraph.nodeDrawer.openInEditor")}
-          </Button>
-        )}
-      </div>
     </div>
   );
 }
@@ -733,8 +663,6 @@ interface WorkflowGraphViewerProps {
   emptyStateHelpText?: string;
   onNodeClick?: (nodeName: string) => void;
   onEmptyStateAction?: () => void;
-  /** n8n status — drives the "Open in editor" button URL and enabled state. */
-  status?: WorkflowStatusResponse | null;
 }
 
 export function WorkflowGraphViewer({
@@ -745,9 +673,8 @@ export function WorkflowGraphViewer({
   emptyStateHelpText = "Describe the trigger and steps in the sidebar.",
   onNodeClick,
   onEmptyStateAction,
-  status,
 }: WorkflowGraphViewerProps) {
-  const { activeAgentProfile, uiTheme } = useApp();
+  const { uiTheme } = useApp();
   const [fullScreen, setFullScreen] = useState(false);
   const [selectedNode, setSelectedNode] = useState<WorkflowDefinitionNode | null>(
     null,
@@ -811,17 +738,6 @@ export function WorkflowGraphViewer({
   }, [fullScreen, selectedNode]);
 
   const hasNodes = nodes.length > 0;
-  const editorDisabled =
-    !status || status.mode === "disabled" || status.status === "error";
-  const editorUrl =
-    !editorDisabled && workflow && status
-      ? buildEditorUrl(
-          workflow,
-          status,
-          activeAgentProfile?.cloudAgentId,
-          uiTheme,
-        )
-      : null;
 
   const borderClass = isGenerating
     ? "animate-pulse ring-2 ring-blue-500/50"
@@ -933,23 +849,11 @@ export function WorkflowGraphViewer({
           </button>
         )}
 
-        {editorUrl && !isGenerating && (
-          <button
-            type="button"
-            aria-label="Open in n8n editor"
-            className="absolute right-12 top-3 z-20 rounded border border-border/40 bg-bg/80 px-2.5 py-1 text-xs text-muted transition-colors hover:text-txt"
-            onClick={() => window.open(editorUrl, "_blank", "noopener")}
-          >
-            Open in n8n
-          </button>
-        )}
-
         {/* Node detail drawer — embedded mode */}
         {!fullScreen && (
           <NodeDetailDrawer
             node={selectedNode}
             workflow={workflow}
-            status={status}
             onClose={handleCloseDrawer}
             labelId={drawerLabelId}
           />
@@ -992,7 +896,6 @@ export function WorkflowGraphViewer({
             <NodeDetailDrawer
               node={selectedNode}
               workflow={workflow}
-              status={status}
               onClose={handleCloseDrawer}
               labelId={drawerLabelId}
             />

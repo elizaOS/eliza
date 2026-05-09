@@ -1,12 +1,14 @@
-import { useState, useRef, useEffect, type ReactNode } from "react";
+import { animated, useSpring } from "@react-spring/web";
 import type { ComponentType, HTMLAttributes } from "react";
-import { useSpring, animated } from "@react-spring/web";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { SpringAnimatedStyle } from "@/lib/spring-types";
+
 type AnimatedDivProps = Omit<HTMLAttributes<HTMLDivElement>, "style"> & {
   style?: SpringAnimatedStyle;
 };
 
 const AnimatedDiv = animated.div as ComponentType<AnimatedDivProps>;
+
 import QRCode from "@/components/QRCode";
 
 interface BlobButtonProps {

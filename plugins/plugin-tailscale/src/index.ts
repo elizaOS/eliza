@@ -1,9 +1,13 @@
-import { type Plugin, elizaLogger, getConnectorAccountManager } from '@elizaos/core';
-import { tailscaleAction } from './actions/tailscale';
-import { createTailscaleConnectorAccountProvider } from './connector-account-provider';
-import { tailscaleStatusProvider } from './providers/tailscale-status';
-import { selectTunnelBackend } from './services/TunnelBackendSelector';
-import { TailscaleTestSuite } from './__tests__/TailscaleTestSuite';
+import {
+  elizaLogger,
+  getConnectorAccountManager,
+  type Plugin,
+} from "@elizaos/core";
+import { TailscaleTestSuite } from "./__tests__/TailscaleTestSuite";
+import { tailscaleAction } from "./actions/tailscale";
+import { createTailscaleConnectorAccountProvider } from "./connector-account-provider";
+import { tailscaleStatusProvider } from "./providers/tailscale-status";
+import { selectTunnelBackend } from "./services/TunnelBackendSelector";
 
 /**
  * Plugin doesn't list any services upfront. The selector runs in `init()` and
@@ -16,15 +20,18 @@ import { TailscaleTestSuite } from './__tests__/TailscaleTestSuite';
  * a dedicated action dispatch.
  */
 export const tailscalePlugin: Plugin = {
-  name: 'tailscale',
-  description: 'Tunnel plugin with local Tailscale serve/funnel and cloud-proxy backends.',
+  name: "tailscale",
+  description:
+    "Tunnel plugin with local Tailscale serve/funnel and cloud-proxy backends.",
   actions: [tailscaleAction],
   providers: [tailscaleStatusProvider],
   tests: [new TailscaleTestSuite()],
   init: async (_config, runtime) => {
     try {
       const manager = getConnectorAccountManager(runtime);
-      manager.registerProvider(createTailscaleConnectorAccountProvider(runtime));
+      manager.registerProvider(
+        createTailscaleConnectorAccountProvider(runtime),
+      );
     } catch (err) {
       elizaLogger.warn(
         `[plugin-tailscale] failed to register ConnectorAccountManager provider: ${
@@ -43,10 +50,18 @@ export const tailscalePlugin: Plugin = {
 
 export default tailscalePlugin;
 
-export { LocalTailscaleService } from './services/LocalTailscaleService';
-export { CloudTailscaleService } from './services/CloudTailscaleService';
-export { createTailscaleConnectorAccountProvider } from './connector-account-provider';
-export { selectTunnelBackend, readBackendMode } from './services/TunnelBackendSelector';
-export type { BackendDecision } from './services/TunnelBackendSelector';
-export type { ITunnelService, TunnelStatus, TunnelProvider, TailscaleBackendMode } from './types';
-export * from './accounts';
+export * from "./accounts";
+export { createTailscaleConnectorAccountProvider } from "./connector-account-provider";
+export { CloudTailscaleService } from "./services/CloudTailscaleService";
+export { LocalTailscaleService } from "./services/LocalTailscaleService";
+export type { BackendDecision } from "./services/TunnelBackendSelector";
+export {
+  readBackendMode,
+  selectTunnelBackend,
+} from "./services/TunnelBackendSelector";
+export type {
+  ITunnelService,
+  TailscaleBackendMode,
+  TunnelProvider,
+  TunnelStatus,
+} from "./types";

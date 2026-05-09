@@ -20,9 +20,8 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "./paths.js";
-import type { ElizaConfig } from "./types.js";
-
-export * from "./types.js";
+import type { ElizaConfig } from "@elizaos/shared";
+export type { ElizaConfig } from "@elizaos/shared";
 
 function resolveConfigWritePath(env: NodeJS.ProcessEnv = process.env): string {
   const persistPath = env.ELIZA_PERSIST_CONFIG_PATH?.trim();

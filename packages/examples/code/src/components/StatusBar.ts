@@ -6,7 +6,6 @@ import { useStore } from "../lib/store.js";
 export class StatusBar implements Component {
   private cwd = getCwd();
   private lastCwdCheck = Date.now();
-  private width = 80;
 
   invalidate(): void {}
 

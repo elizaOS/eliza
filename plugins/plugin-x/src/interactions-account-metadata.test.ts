@@ -1,8 +1,13 @@
-import { EventType, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core";
+import {
+  EventType,
+  type IAgentRuntime,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { TwitterInteractionClient } from "./interactions";
 import type { ClientBase } from "./base";
-import type { TwitterInteractionPayload, TwitterClientState } from "./types";
+import { TwitterInteractionClient } from "./interactions";
+import type { TwitterClientState, TwitterInteractionPayload } from "./types";
 
 function createRuntime(): IAgentRuntime & {
   createMemory: ReturnType<typeof vi.fn>;
@@ -30,7 +35,7 @@ describe("Twitter interaction memory account metadata", () => {
     const client = new TwitterInteractionClient(
       createClient("secondary"),
       runtime,
-      {} as TwitterClientState
+      {} as TwitterClientState,
     );
     const interaction = {
       id: "like-1",
@@ -52,16 +57,16 @@ describe("Twitter interaction memory account metadata", () => {
     expect(storedMemory.metadata).toEqual(
       expect.objectContaining({
         accountId: "secondary",
-      })
+      }),
     );
 
     const reactionPayload = runtime.emitEvent.mock.calls.find(
-      ([event]) => event === EventType.REACTION_RECEIVED
+      ([event]) => event === EventType.REACTION_RECEIVED,
     )?.[1] as { message?: Memory } | undefined;
     expect(reactionPayload?.message?.metadata).toEqual(
       expect.objectContaining({
         accountId: "secondary",
-      })
+      }),
     );
   });
 });

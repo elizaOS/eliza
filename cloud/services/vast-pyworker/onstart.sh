@@ -248,6 +248,7 @@ if [ -n "$DRAFTER_PATH" ]; then
     --draft-max "$LLAMA_DRAFT_MAX"
     --jinja
     --reasoning off
+    --chat-template-kwargs '{"enable_thinking":false}'
   )
 fi
 if [ -n "$LLAMA_CACHE_TYPE_K" ]; then

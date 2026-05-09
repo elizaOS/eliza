@@ -39,39 +39,31 @@ describeLive(
   "OpenAI trajectory wrapping (live)",
   { requiredEnv: ["OPENAI_API_KEY"] },
   ({ harness }) => {
-    it(
-      "records text and object generation through recordLlmCall",
-      async () => {
-        const { runtime } = harness();
-        const calls = attachTrajectoryCapture(runtime);
+    it("records text and object generation through recordLlmCall", async () => {
+      const { runtime } = harness();
+      const calls = attachTrajectoryCapture(runtime);
 
-        await runWithTrajectoryContext(
-          { trajectoryStepId: "step-openai-live" },
-          async () => {
-            await handleTextSmall(runtime, {
-              prompt: "Reply with the single word: hello",
-            });
-            await handleObjectSmall(runtime, {
-              prompt:
-                'Return JSON with shape {"ok": true} and nothing else.',
-            });
-          },
-        );
+      await runWithTrajectoryContext({ trajectoryStepId: "step-openai-live" }, async () => {
+        await handleTextSmall(runtime, {
+          prompt: "Reply with the single word: hello",
+        });
+        await handleObjectSmall(runtime, {
+          prompt: 'Return JSON with shape {"ok": true} and nothing else.',
+        });
+      });
 
-        expect(calls).toHaveLength(2);
-        const [textCall, objectCall] = calls;
-        expect(textCall.stepId).toBe("step-openai-live");
-        expect(textCall.actionType).toBe("ai.generateText");
-        expect(textCall.promptTokens ?? 0).toBeGreaterThan(0);
-        expect(textCall.completionTokens ?? 0).toBeGreaterThan(0);
-        expect(objectCall.stepId).toBe("step-openai-live");
-        expect(objectCall.actionType).toBe("ai.generateObject");
-        expect(objectCall.promptTokens ?? 0).toBeGreaterThan(0);
-        expect(objectCall.completionTokens ?? 0).toBeGreaterThan(0);
-      },
-      120_000,
-    );
-  },
+      expect(calls).toHaveLength(2);
+      const [textCall, objectCall] = calls;
+      expect(textCall.stepId).toBe("step-openai-live");
+      expect(textCall.actionType).toBe("ai.generateText");
+      expect(textCall.promptTokens ?? 0).toBeGreaterThan(0);
+      expect(textCall.completionTokens ?? 0).toBeGreaterThan(0);
+      expect(objectCall.stepId).toBe("step-openai-live");
+      expect(objectCall.actionType).toBe("ai.generateObject");
+      expect(objectCall.promptTokens ?? 0).toBeGreaterThan(0);
+      expect(objectCall.completionTokens ?? 0).toBeGreaterThan(0);
+    }, 120_000);
+  }
 );
 
 // OpenAI-only paths (image generation, research, audio) are not supported by
@@ -112,22 +104,15 @@ describe.skipIf(!hasRealOpenAI)("OpenAI image/audio trajectory (real OpenAI)", (
         getSetting: (key: string) => process.env[key],
       } as unknown as IAgentRuntime;
 
-      await runWithTrajectoryContext(
-        { trajectoryStepId: "step-openai-real" },
-        async () => {
-          await handleImageGeneration(runtime, {
-            prompt: "A small red cube on a white background",
-          });
-          await handleTextToSpeech(runtime, "Hello live test");
-        },
-      );
+      await runWithTrajectoryContext({ trajectoryStepId: "step-openai-real" }, async () => {
+        await handleImageGeneration(runtime, {
+          prompt: "A small red cube on a white background",
+        });
+        await handleTextToSpeech(runtime, "Hello live test");
+      });
 
-      expect(calls.map((c) => c.actionType)).toContain(
-        "openai.images.generate",
-      );
-      expect(calls.map((c) => c.actionType)).toContain(
-        "openai.audio.speech.create",
-      );
+      expect(calls.map((c) => c.actionType)).toContain("openai.images.generate");
+      expect(calls.map((c) => c.actionType)).toContain("openai.audio.speech.create");
     } finally {
       if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
       else process.env.OPENAI_API_KEY = previousKey;

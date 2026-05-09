@@ -11,6 +11,7 @@ import {
   cloneWithoutBlockedObjectKeys,
   discoverInstalledPlugins,
   discoverPluginsFromManifest,
+  type ElizaConfig,
   extractAuthToken,
   fetchWithTimeoutGuard,
   handleCloudBillingRoute,
@@ -18,6 +19,7 @@ import {
   initStewardWalletCache,
   isAllowedHost,
   isAuthorized,
+  loadElizaConfig,
   normalizeWsClientId,
   persistConversationRoomTitle,
   resolveDefaultAgentWorkspaceDir,
@@ -25,14 +27,10 @@ import {
   resolvePluginConfigMutationRejections,
   resolveUserPath,
   routeAutonomyTextToUser,
+  saveElizaConfig,
   streamResponseBodyWithByteLimit,
   startApiServer as upstreamStartApiServer,
   validateMcpServerConfig,
-} from "@elizaos/agent";
-import {
-  type ElizaConfig,
-  loadElizaConfig,
-  saveElizaConfig,
 } from "@elizaos/agent";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
@@ -108,17 +106,15 @@ export {
 };
 
 import {
+  ensureRuntimeSqlCompatibility,
+  executeRawSql,
   isElizaSettingsDebugEnabled,
+  sanitizeIdentifier,
   settingsDebugCloudSummary,
+  sqlLiteral,
 } from "@elizaos/shared";
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
 import { deviceBridge } from "../services/local-inference/device-bridge";
-import {
-  ensureRuntimeSqlCompatibility,
-  executeRawSql,
-  sanitizeIdentifier,
-  sqlLiteral,
-} from "@elizaos/shared";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
 import { handleAuthSessionRoutes } from "./auth-session-routes";
@@ -151,10 +147,7 @@ const lazyEnsureTTS = () =>
     (m) => m.ensureTextToSpeechHandler,
   );
 
-import {
-  clearCloudSecrets,
-  getCloudSecret,
-} from "@elizaos/plugin-elizacloud";
+import { clearCloudSecrets, getCloudSecret } from "@elizaos/plugin-elizacloud";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
 import { hydrateWalletKeysFromNodePlatformSecureStore } from "../security/hydrate-wallet-keys-from-platform-store";
 import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
@@ -768,9 +761,7 @@ async function handleCompatRoute(
   if (uiSpecMatch) {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const pluginId = decodeURIComponent(uiSpecMatch[1]);
-    const { buildPluginConfigUiSpec } = await import(
-      "@elizaos/shared"
-    );
+    const { buildPluginConfigUiSpec } = await import("@elizaos/shared");
     const { buildPluginListResponse } = await import("./plugins-compat-routes");
     const pluginList = buildPluginListResponse(state.current);
     const plugin = pluginList.plugins.find((p) => p.id === pluginId);

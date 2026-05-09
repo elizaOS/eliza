@@ -21,9 +21,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { isLoopbackBindHost, resolveApiBindHost } from "@elizaos/shared";
+import { isLoopbackBindHost, resolveApiBindHost, theme } from "@elizaos/shared";
 import type { Command } from "commander";
-import { theme } from "@elizaos/shared";
 import { runCommandWithRuntime } from "../cli-utils";
 
 const defaultRuntime = { error: console.error, exit: process.exit };

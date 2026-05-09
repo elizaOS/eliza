@@ -215,10 +215,10 @@ With Twitter API v2 only:
 
 ```bash
 # Run performance benchmarks
-npm run benchmark
+bun run benchmark
 
 # Test rate limiting
-npm run test:rate-limits
+bun run test:rate-limits
 ```
 
 ## CI/CD Integration

@@ -79,8 +79,8 @@ import type {
   IAgentRuntime,
   ModelTypeName,
   TextStreamResult,
-  ToolCall,
   TokenUsage,
+  ToolCall,
 } from "@elizaos/core";
 import {
   buildCanonicalSystemPrompt,
@@ -99,7 +99,12 @@ import {
   streamText,
 } from "ai";
 import { createOllama } from "ollama-ai-provider-v2";
-
+import {
+  mapAiSdkToolCallsToCore,
+  normalizeNativeMessages,
+  normalizeNativeTools,
+  normalizeToolChoice,
+} from "../utils/ai-sdk-wire";
 import {
   getActionPlannerModel,
   getBaseURL,
@@ -111,12 +116,6 @@ import {
   getSmallModel,
   isOllamaStructuredOutputDisabled,
 } from "../utils/config";
-import {
-  mapAiSdkToolCallsToCore,
-  normalizeNativeMessages,
-  normalizeNativeTools,
-  normalizeToolChoice,
-} from "../utils/ai-sdk-wire";
 import { emitModelUsed, estimateUsage, normalizeTokenUsage } from "../utils/modelUsage";
 import { ensureModelAvailable } from "./availability";
 
@@ -399,8 +398,7 @@ function buildOllamaStreamWithToolsResult(args: {
     .catch(() => undefined);
 
   const isNativePlannerType =
-    args.modelType === RESPONSE_HANDLER_MODEL_TYPE ||
-    args.modelType === ACTION_PLANNER_MODEL_TYPE;
+    args.modelType === RESPONSE_HANDLER_MODEL_TYPE || args.modelType === ACTION_PLANNER_MODEL_TYPE;
 
   const textPromise: Promise<string> = isNativePlannerType
     ? toolCallsPromise.then(async (mapped) => {
@@ -565,17 +563,13 @@ async function handleTextWithModelType(
       system
     );
     const normalizedMessages = normalizeNativeMessages(wireRaw);
-    const hasChatMessages =
-      Array.isArray(normalizedMessages) && normalizedMessages.length > 0;
+    const hasChatMessages = Array.isArray(normalizedMessages) && normalizedMessages.length > 0;
     const toolChoice = tools ? normalizeToolChoice(extended.toolChoice) : undefined;
 
     // After `outputSpec` is final (including tools-vs-schema): native return shape when the
     // call used chat messages, tools, toolChoice, or structured output — matches OpenRouter.
     const shouldReturnNative = Boolean(
-      hasChatMessages ||
-        tools ||
-        extended.toolChoice ||
-        outputSpec !== undefined
+      hasChatMessages || tools || extended.toolChoice || outputSpec !== undefined
     );
 
     const renderedPrompt = hasChatMessages
@@ -673,7 +667,13 @@ async function handleTextWithModelType(
     } catch {
       /* ignore */
     }
-    logOllamaTextFailure("generateText", String(modelType), modelIdForLog || "(unknown)", endpoint, error);
+    logOllamaTextFailure(
+      "generateText",
+      String(modelType),
+      modelIdForLog || "(unknown)",
+      endpoint,
+      error
+    );
     return "Error generating text. Please try again later.";
   }
 }

@@ -224,7 +224,7 @@ export function measureBubbleHeight(text: string): number {
   const lines: string[] = [];
   let line = "";
   for (const word of words) {
-    const test = line ? line + " " + word : word;
+    const test = line ? `${line} ${word}` : word;
     if (ctx.measureText(test).width > maxBubbleW - padX * 2) {
       if (line) lines.push(line);
       line = word;
@@ -484,11 +484,7 @@ export function renderChatToCanvas(
   // ── App switcher mode ──
   if (switcherProgress > 0) {
     // Wallpaper background
-    if (
-      wallpaperImg &&
-      wallpaperImg.complete &&
-      wallpaperImg.naturalWidth > 0
-    ) {
+    if (wallpaperImg?.complete && wallpaperImg.naturalWidth > 0) {
       ctx.drawImage(wallpaperImg, 0, 0, W, H);
     } else {
       ctx.fillStyle = "#22c55e";
@@ -673,7 +669,7 @@ export function renderChatToCanvas(
     const lines: string[] = [];
     let line = "";
     for (const word of words) {
-      const test = line ? line + " " + word : word;
+      const test = line ? `${line} ${word}` : word;
       if (ctx.measureText(test).width > maxBubbleW - padX * 2) {
         if (line) lines.push(line);
         line = word;
@@ -831,7 +827,7 @@ export function renderChatToCanvas(
       const lines: string[] = [];
       let line = "";
       for (const word of words) {
-        const test = line ? line + " " + word : word;
+        const test = line ? `${line} ${word}` : word;
         if (ctx.measureText(test).width > maxBubbleW - padX * 2) {
           if (line) lines.push(line);
           line = word;

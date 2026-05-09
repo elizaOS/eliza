@@ -360,6 +360,7 @@ export class DflashLlamaServer {
     ];
     if (plan.disableThinking) {
       args.push("--reasoning", "off");
+      args.push("--chat-template-kwargs", '{"enable_thinking":false}');
     }
     const cacheTypeK = process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim();
     const cacheTypeV = process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim();

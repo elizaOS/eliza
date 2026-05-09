@@ -391,7 +391,8 @@ export async function startBenchmarkServer() {
   const _cerebrasIntent =
     !!_openAiBaseUrl && /(^|\.)cerebras\.ai(\/|$)/i.test(_openAiBaseUrl);
   const _explicitProvider = process.env.MILADY_PROVIDER?.trim().toLowerCase();
-  const _benchProvider = process.env.BENCHMARK_MODEL_PROVIDER?.trim().toLowerCase();
+  const _benchProvider =
+    process.env.BENCHMARK_MODEL_PROVIDER?.trim().toLowerCase();
   const _suppressGroqForOtherProvider =
     _cerebrasIntent ||
     (_explicitProvider !== undefined &&
@@ -707,7 +708,9 @@ export async function startBenchmarkServer() {
           ...(cachedTokens !== undefined ? { cachedTokens } : {}),
         });
       });
-      elizaLogger.info("[bench] Registered MODEL_USED listener for trajectory usage capture");
+      elizaLogger.info(
+        "[bench] Registered MODEL_USED listener for trajectory usage capture",
+      );
     } else {
       elizaLogger.warn(
         "[bench] runtime.registerEvent is not available; trajectory usage will be unset",

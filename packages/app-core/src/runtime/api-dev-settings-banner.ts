@@ -7,7 +7,7 @@ import {
   resolveApiSecurityConfig,
   resolveApiToken,
 } from "@elizaos/shared";
-import { prependDevSubsystemFigletHeading } from "@elizaos/shared";
+import { prependDevSubsystemFigletHeading } from "@elizaos/shared/dev-settings-figlet-heading";
 
 function summarizeList(label: string, items: string[], maxLen: number): string {
   if (items.length === 0) return `${label}: (empty)`;

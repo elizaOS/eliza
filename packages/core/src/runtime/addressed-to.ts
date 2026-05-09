@@ -174,7 +174,9 @@ async function resolveAddressedTargets(
 function entityNames(entity: Entity): string[] {
 	const names = entity.names;
 	if (!Array.isArray(names)) return [];
-	return names.filter((n): n is string => typeof n === "string" && n.length > 0);
+	return names.filter(
+		(n): n is string => typeof n === "string" && n.length > 0,
+	);
 }
 
 function dedupeTags(tags: readonly string[]): string[] {

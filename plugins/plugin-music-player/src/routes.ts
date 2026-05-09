@@ -363,12 +363,12 @@ async function statusHandler(
   res.status(200).json({
     guildId: active.guildId,
     track: {
-      id: active.track!.id,
-      title: active.track!.title,
-      url: active.track!.url,
-      duration: active.track!.duration,
-      requestedBy: active.track!.requestedBy,
-      addedAt: active.track!.addedAt,
+      id: active.track?.id,
+      title: active.track?.title,
+      url: active.track?.url,
+      duration: active.track?.duration,
+      requestedBy: active.track?.requestedBy,
+      addedAt: active.track?.addedAt,
     },
     isPaused: musicService.getIsPaused(active.guildId),
     streamUrl: `/music-player/stream?guildId=${encodeURIComponent(active.guildId)}`,

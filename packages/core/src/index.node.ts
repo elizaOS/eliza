@@ -6,9 +6,9 @@
  * Streaming context manager is auto-detected at runtime.
  */
 
+export * from "./actions";
 // Export all core modules
 export * from "./app-route-plugin-registry";
-export * from "./actions";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 // Export character utilities
@@ -124,7 +124,6 @@ export * from "./providers/skill-eligibility";
 export * from "./provisioning";
 export * from "./roles";
 export * from "./runtime";
-export * from "./runtime-route-context";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/cost-table";
@@ -135,6 +134,7 @@ export * from "./runtime/system-prompt";
 export * from "./runtime/trajectory-recorder";
 // Runtime composition (loadCharacters, createRuntimes, getBasicCapabilitiesSettings, mergeSettingsInto) - node only
 export * from "./runtime-composition";
+export * from "./runtime-route-context";
 // Export character schemas
 export * from "./schemas/character";
 // Export base table schemas (abstract SchemaTable definitions + buildBaseTables factory)
@@ -145,9 +145,9 @@ export * from "./secrets";
 // Export security utilities
 export * from "./security";
 export * from "./services";
-export * from "./services/evaluator";
 export * from "./services/agentEvent";
 export * from "./services/approval";
+export * from "./services/evaluator";
 export * from "./services/hook";
 export * from "./services/message";
 export * from "./services/onboarding-cli";
@@ -159,6 +159,7 @@ export * from "./services/pairing";
 export * from "./services/pairing-integration";
 export * from "./services/pairing-migration";
 export * from "./services/plugin-hooks";
+export * from "./services/relationships-graph-builder";
 export {
 	getTaskSchedulerAdapter,
 	markTaskSchedulerDirty,

@@ -6,17 +6,16 @@
  * and run `ollama pull llama3.2:1b` (or set `OLLAMA_SMALL_MODEL` /
  * `OLLAMA_EMBEDDING_MODEL` to models you already have) to enable.
  */
-import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
+
 import type { IAgentRuntime } from "@elizaos/core";
+import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
 
 const OLLAMA_ENDPOINT =
-  process.env.OLLAMA_API_ENDPOINT?.trim() ||
-  process.env.OLLAMA_API_URL?.trim() ||
-  "";
+  process.env.OLLAMA_API_ENDPOINT?.trim() || process.env.OLLAMA_API_URL?.trim() || "";
 const OLLAMA_SMALL_MODEL = process.env.OLLAMA_SMALL_MODEL?.trim() || "llama3.2:1b";
 const OLLAMA_EMBEDDING_MODEL =
   process.env.OLLAMA_EMBEDDING_MODEL?.trim() || "nomic-embed-text:latest";
@@ -80,7 +79,7 @@ describe.skipIf(skipReason !== null)("ollama MODEL_USED events (live)", () => {
     serverReachable = await pingOllama(OLLAMA_ENDPOINT);
     if (!serverReachable) {
       console.warn(
-        `${YELLOW}[ollama-live] OLLAMA_API_ENDPOINT=${OLLAMA_ENDPOINT} unreachable — tests will skip${RESET}`,
+        `${YELLOW}[ollama-live] OLLAMA_API_ENDPOINT=${OLLAMA_ENDPOINT} unreachable — tests will skip${RESET}`
       );
     }
   }, 5000);
@@ -92,11 +91,11 @@ describe.skipIf(skipReason !== null)("ollama MODEL_USED events (live)", () => {
 
     const result = await plugin.models?.[ModelType.TEXT_SMALL]?.(
       runtime as unknown as IAgentRuntime,
-      { prompt: "Reply with exactly two words: hello there" },
+      { prompt: "Reply with exactly two words: hello there" }
     );
 
     expect(typeof result === "string" || (typeof result === "object" && result !== null)).toBe(
-      true,
+      true
     );
 
     const modelUsed = runtime.emittedEvents.find((e) => e.event === "MODEL_USED");
@@ -131,18 +130,13 @@ describe.skipIf(skipReason !== null)("ollama MODEL_USED events (live)", () => {
     const runtime = {
       ...baseRuntime,
       getService: (name: string) => (name === "trajectories" ? trajectoryLogger : null),
-      getServicesByType: (type: string) =>
-        type === "trajectories" ? [trajectoryLogger] : [],
+      getServicesByType: (type: string) => (type === "trajectories" ? [trajectoryLogger] : []),
     };
 
     await runWithTrajectoryContext({ trajectoryStepId: "step-ollama-live" }, async () => {
-      await plugin.models?.[ModelType.OBJECT_SMALL]?.(
-        runtime as unknown as IAgentRuntime,
-        {
-          prompt:
-            'Return JSON {"ok": true}. Reply with only the JSON, no commentary.',
-        },
-      );
+      await plugin.models?.[ModelType.OBJECT_SMALL]?.(runtime as unknown as IAgentRuntime, {
+        prompt: 'Return JSON {"ok": true}. Reply with only the JSON, no commentary.',
+      });
     });
 
     expect(llmCalls.length).toBeGreaterThanOrEqual(1);

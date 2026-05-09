@@ -29,10 +29,10 @@
     "dist"
   ],
   "scripts": {
-    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
-    "build:docs": "npm run clean && npm run docgen && tsc && rollup -c rollup.config.mjs",
+    "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
+    "build:docs": "bun run clean && bun run docgen && tsc && rollup -c rollup.config.mjs",
     "clean": "rimraf ./dist",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "bun run build",
     "docgen": "docgen --api LocationPlugin --output-readme README.md --output-json dist/docs.json"
   },
   "author": "elizaOS",

@@ -1,11 +1,11 @@
 import type { Character } from "./agent";
 import type { Action, AgentContext, Provider } from "./components";
 import type { IDatabaseAdapter } from "./database";
+import type { Evaluator } from "./evaluator";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { ModelParamsMap, PluginModelResult } from "./model";
 import type { X402Config, X402RequestValidator } from "./payment";
 import type { UUID } from "./primitives";
-import type { Evaluator } from "./evaluator";
 import type {
 	JsonValue,
 	ComponentTypeDefinition as ProtoComponentTypeDefinition,

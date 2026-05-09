@@ -75,9 +75,7 @@ vi.mock("@elizaos/core", () => {
             )
         )
         .map((message) =>
-          typeof message.content === "string"
-            ? `${message.role ?? "user"}: ${message.content}`
-            : ""
+          typeof message.content === "string" ? `${message.role ?? "user"}: ${message.content}` : ""
         )
         .filter(Boolean)
         .join("\n");

@@ -6,7 +6,8 @@ export type RecordedStageKind =
   | "tool"
   | "evaluation"
   | "subPlanner"
-  | "compaction";
+  | "compaction"
+  | "factsAndRelationships";
 
 export interface ChatMessage {
   role: string;
@@ -38,7 +39,7 @@ export interface ModelCallRecord {
   modelType: string;
   modelName?: string;
   provider: string;
-  prompt: string;
+  prompt?: string;
   messages?: ChatMessage[];
   tools?: ToolDefinition[];
   toolChoice?: unknown;
@@ -181,14 +182,13 @@ const STAGE_KINDS = new Set<RecordedStageKind>([
   "evaluation",
   "subPlanner",
   "compaction",
+  "factsAndRelationships",
 ]);
 
 const MODEL_STAGE_KINDS = new Set<RecordedStageKind>([
   "messageHandler",
   "planner",
   "evaluation",
-  "subPlanner",
-  "compaction",
 ]);
 
 const DEFAULT_ROLLUP: TrajectoryRollup = {
@@ -282,6 +282,37 @@ function parseJsonObject(
       return null;
     }
   }
+}
+
+function stringifyModelContent(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value === undefined) return "";
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function modelInputText(model: unknown): string {
+  if (!isRecord(model)) return "";
+  if (typeof model.prompt === "string" && model.prompt.trim().length > 0) {
+    return model.prompt;
+  }
+  if (!Array.isArray(model.messages)) return "";
+  return model.messages
+    .map((message, index) => {
+      if (!isRecord(message)) {
+        return `message[${index}]: ${stringifyModelContent(message)}`;
+      }
+      const role =
+        typeof message.role === "string" && message.role.trim()
+          ? message.role
+          : `message[${index}]`;
+      return `${role}: ${stringifyModelContent(message.content)}`;
+    })
+    .filter((line) => line.trim().length > 0)
+    .join("\n\n");
 }
 
 function numberDelta(a: number, b: number): number {
@@ -417,7 +448,25 @@ function validateModel(
     nonEmpty: true,
   });
   requireString(model.provider, issues, `${path}.provider`, { nonEmpty: true });
-  requireString(model.prompt, issues, `${path}.prompt`, { nonEmpty: true });
+  const hasPrompt =
+    typeof model.prompt === "string" && model.prompt.trim().length > 0;
+  const hasMessages =
+    Array.isArray(model.messages) && model.messages.length > 0;
+  if (model.prompt !== undefined && typeof model.prompt !== "string") {
+    pushIssue(
+      issues,
+      "error",
+      `${path}.prompt`,
+      "must be a string when present",
+    );
+  } else if (!hasPrompt && !hasMessages) {
+    pushIssue(
+      issues,
+      "error",
+      `${path}.prompt`,
+      "must be a non-empty string when messages are absent",
+    );
+  }
   if (!("response" in model)) {
     pushIssue(issues, "error", `${path}.response`, "is required");
   } else {
@@ -446,6 +495,35 @@ function validateModel(
       `${path}.messages`,
       "should not be empty",
     );
+  } else {
+    for (let i = 0; i < model.messages.length; i++) {
+      const message = model.messages[i];
+      if (!isRecord(message)) {
+        pushIssue(
+          issues,
+          opts.requireMessageArrays ? "error" : "warning",
+          `${path}.messages[${i}]`,
+          "should be an object with role and content",
+        );
+        continue;
+      }
+      if (typeof message.role !== "string" || message.role.trim() === "") {
+        pushIssue(
+          issues,
+          opts.requireMessageArrays ? "error" : "warning",
+          `${path}.messages[${i}].role`,
+          "should be a non-empty string",
+        );
+      }
+      if (!("content" in message)) {
+        pushIssue(
+          issues,
+          opts.requireMessageArrays ? "error" : "warning",
+          `${path}.messages[${i}].content`,
+          "should be present",
+        );
+      }
+    }
   }
 
   const needsToolArrays =
@@ -632,7 +710,11 @@ function extractSelectedContexts(
     );
     return [];
   }
-  const contexts = parsed.contexts;
+  const contexts = Array.isArray(parsed.contexts)
+    ? parsed.contexts
+    : isRecord(parsed.plan) && Array.isArray(parsed.plan.contexts)
+      ? parsed.plan.contexts
+      : undefined;
   if (!Array.isArray(contexts)) {
     pushIssue(
       issues,
@@ -654,7 +736,7 @@ function validateContextEvidence(
   opts: ValidateTrajectoryOptions,
 ): void {
   if (opts.requireContextEvidence === false) return;
-  const handlerPrompt = stages[0]?.model?.prompt ?? "";
+  const handlerPrompt = modelInputText(stages[0]?.model);
   if (
     !handlerPrompt.includes("available_contexts") &&
     !handlerPrompt.includes("contextRegistryDigest")
@@ -680,8 +762,9 @@ function validateContextEvidence(
 
   const laterPrompts = stages
     .slice(1)
-    .map((stage) => stage.model?.prompt ?? "")
+    .map((stage) => modelInputText(stage.model))
     .filter(Boolean);
+  if (laterPrompts.length === 0) return;
   const combined = laterPrompts.join("\n");
   for (const context of selectedContexts) {
     if (!combined.includes(context)) {
@@ -820,7 +903,12 @@ export function rollupTrajectory(
     }
     if (stage.kind === "evaluation") {
       rollup.evaluatorStages += 1;
-      if (stage.evaluation?.success === false) rollup.evaluatorFailures += 1;
+      if (
+        stage.evaluation?.success === false &&
+        stage.evaluation.decision === "FINISH"
+      ) {
+        rollup.evaluatorFailures += 1;
+      }
       if (stage.evaluation?.success === true) rollup.evaluatorSuccesses += 1;
     }
   }
@@ -899,7 +987,10 @@ export function validateTrajectory(
     }
 
     const typedStage = stage as unknown as RecordedStage;
-    if (MODEL_STAGE_KINDS.has(typedStage.kind) && typedStage.kind !== "tool") {
+    if (
+      (MODEL_STAGE_KINDS.has(typedStage.kind) && typedStage.kind !== "tool") ||
+      stage.model !== undefined
+    ) {
       validateModel(stage.model, typedStage, i, issues, opts);
     }
     if (typedStage.kind === "tool") {

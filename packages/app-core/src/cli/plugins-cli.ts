@@ -6,9 +6,9 @@ import {
   type PluginManagerLike,
 } from "@elizaos/agent";
 import { type IAgentRuntime, PluginManagerService } from "@elizaos/core";
+import { parseClampedInteger } from "@elizaos/shared";
 import chalk from "chalk";
 import type { Command } from "commander";
-import { parseClampedInteger } from "@elizaos/shared";
 
 /** Validate that a resolved plugin path is within allowed boundaries. */
 export function validatePluginPath(resolved: string): void {
@@ -417,9 +417,7 @@ export function registerPluginsCli(program: Command): void {
             console.log(
               chalk.dim("Agent is restarting to load the new plugin..."),
             );
-            const { requestRestart } = await import(
-              "@elizaos/agent"
-            );
+            const { requestRestart } = await import("@elizaos/agent");
             await Promise.resolve(
               requestRestart(`Plugin ${result.pluginName} installed`),
             );

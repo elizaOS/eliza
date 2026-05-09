@@ -1,3 +1,6 @@
+import { roleRank } from "./runtime/context-gates";
+import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
+import type { AgentContext, RoleGate, RoleGateRole } from "./types/contexts";
 import type {
 	Plugin,
 	PluginEventRegistration,
@@ -7,9 +10,6 @@ import type {
 } from "./types/plugin";
 import type { IAgentRuntime } from "./types/runtime";
 import type { Service, ServiceTypeName } from "./types/service";
-import type { AgentContext, RoleGate, RoleGateRole } from "./types/contexts";
-import { roleRank } from "./runtime/context-gates";
-import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
 import {
 	resolveActionContexts,
 	resolveProviderContexts,

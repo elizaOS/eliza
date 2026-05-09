@@ -21,6 +21,21 @@ describe("v5 evaluator skeleton", () => {
 		});
 	});
 
+	it("prefers evaluator-shaped JSON when the model emits stray JSON first", () => {
+		const output = parseEvaluatorOutput(`{
+  "action": "OPEN_URL",
+  "url": "https://example.test"
+}{
+  "success": false,
+  "decision": "CONTINUE",
+  "thought": "Need one more grounded tool result."
+}`);
+
+		expect(output.success).toBe(false);
+		expect(output.decision).toBe("CONTINUE");
+		expect(output.thought).toBe("Need one more grounded tool result.");
+	});
+
 	it("applies message and clipboard effects through injected callbacks", async () => {
 		const copyToClipboard = vi.fn();
 		const messageToUser = vi.fn();

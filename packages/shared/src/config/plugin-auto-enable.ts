@@ -6,16 +6,16 @@
 //   1. Keep the public surface stable (named exports unchanged).
 //   2. Pass a sensible default for `isNativePlatform` when callers don't set it.
 import {
+  applyPluginAutoEnable as _applyPluginAutoEnableEngine,
   type ApplyPluginAutoEnableParams,
   type ApplyPluginAutoEnableResult,
-  applyPluginAutoEnable as _applyPluginAutoEnableEngine,
 } from "./plugin-auto-enable-engine";
 
 export {
   type ApplyPluginAutoEnableParams,
   type ApplyPluginAutoEnableResult,
-  applyPluginSelfDeclaredAutoEnable,
   AUTH_PROVIDER_PLUGINS,
+  applyPluginSelfDeclaredAutoEnable,
   CONNECTOR_PLUGINS,
   isConnectorConfigured,
   isStreamingDestinationConfigured,

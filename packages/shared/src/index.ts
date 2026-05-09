@@ -5,10 +5,35 @@
  * excluding modules that pull in node-only dependencies (figlet heading).
  */
 
+export * from "./api/http-helpers.js";
+export * from "./api/route-helpers.js";
 // Leaf modules (no internal collisions)
 export * from "./app-hero-art.js";
 // Awareness + themes barrels
 export * from "./awareness/index.js";
+// Added by scripts/refactor/p1-rewrite-app-core-imports.mjs.
+// Re-export moved app-core modules so consumers can import the package barrel.
+export * from "./config";
+export * from "./config/allowed-hosts";
+export * from "./config/api-key-prefix-hints";
+export * from "./config/app-config";
+export * from "./config/boot-config";
+// boot-config-react.tsx and branding-react.tsx are not barrel-exported
+// from the package root because they pull in React at module load time.
+// Import them via "@elizaos/shared/config/boot-config-react" or
+// "@elizaos/shared/config/branding-react" from React-using consumers.
+// This keeps node-side benchmark / agent boot paths React-free.
+export * from "./config/boot-config-store";
+export * from "./config/branding";
+export * from "./config/cloud-only";
+export * from "./config/config";
+export * from "./config/config-catalog";
+export * from "./config/config-paths";
+export * from "./config/env-vars";
+export * from "./config/plugin-auto-enable";
+export * from "./config/plugin-ui-spec";
+export * from "./config/runtime-overrides";
+export * from "./config/schema";
 // Config barrel — collides with `contracts/inbox` on `InboxAutoReplyConfig`
 // and `InboxTriageRules`. Surface those config-level shapes under aliased
 // names; the canonical shapes remain in `./contracts`.
@@ -160,6 +185,10 @@ export type {
   WorkflowConfig,
   X402Config,
 } from "./config/types.js";
+export * from "./config/ui-spec";
+export * from "./config/wechat-config";
+export * from "./config/zod-schema.agent-runtime";
+export * from "./config/zod-schema.core";
 export * from "./connector-cred-types.js";
 export * from "./connectors.js";
 // Contracts barrel — exposes apps/awareness/cloud-topology/config/content-pack/
@@ -177,9 +206,11 @@ export * from "./dev-settings-table.js";
 // Callers that need the vendored role helpers must import them through the
 // dedicated subpath: `import { ROLE_RANK } from "@elizaos/shared/eliza-core-roles"`.
 export * from "./env-utils.js";
+export * from "./events";
 export * from "./format-error.js";
 export * from "./onboarding-presets.characters.js";
 export * from "./onboarding-presets.js";
+export * from "./platform/is-native-server";
 export * from "./recent-messages-state.js";
 export * from "./restart.js";
 export * from "./runtime-env.js";
@@ -193,43 +224,10 @@ export {
 export * from "./spoken-text.js";
 export * from "./terminal/links.js";
 export * from "./terminal/theme.js";
-export * from "./themes/index.js";
-export * from "./type-guards.js";
-export * from "./validation-keywords.js";
-export * from "./api/route-helpers.js";
-export * from "./api/http-helpers.js";
-
-// Added by scripts/refactor/p1-rewrite-app-core-imports.mjs.
-// Re-export moved app-core modules so consumers can import the package barrel.
-export * from "./config";
-export * from "./config/allowed-hosts";
-export * from "./config/api-key-prefix-hints";
-export * from "./config/app-config";
-export * from "./config/boot-config";
-// boot-config-react.tsx and branding-react.tsx are not barrel-exported
-// from the package root because they pull in React at module load time.
-// Import them via "@elizaos/shared/config/boot-config-react" or
-// "@elizaos/shared/config/branding-react" from React-using consumers.
-// This keeps node-side benchmark / agent boot paths React-free.
-export * from "./config/boot-config-store";
-export * from "./config/branding";
-export * from "./config/cloud-only";
-export * from "./config/config";
-export * from "./config/config-catalog";
-export * from "./config/config-paths";
-export * from "./config/env-vars";
-export * from "./config/plugin-auto-enable";
-export * from "./config/plugin-ui-spec";
-export * from "./config/runtime-overrides";
-export * from "./config/schema";
-export * from "./config/ui-spec";
-export * from "./config/wechat-config";
-export * from "./config/zod-schema.agent-runtime";
-export * from "./config/zod-schema.core";
-export * from "./events";
-export * from "./platform/is-native-server";
 export * from "./test-support/process-helpers";
 export * from "./test-support/test-helpers";
+export * from "./themes/index.js";
+export * from "./type-guards.js";
 export * from "./types";
 export * from "./utils";
 export * from "./utils/asset-url";
@@ -259,3 +257,4 @@ export * from "./utils/streaming-text";
 export * from "./utils/subscription-auth";
 export * from "./utils/trajectory-format";
 export * from "./utils/tts-debug";
+export * from "./validation-keywords.js";

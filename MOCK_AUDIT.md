@@ -88,3 +88,47 @@ The remaining 41 KEEP-PURE files require no agent work.
 | 60 | plugins/plugin-wallet/src/chains/wallet-router.test.ts | 294 | 7 | `runtime.getService` injects fake WalletBackendService + chain handlers | KEEP-PURE | Router dispatch logic to registered chain handlers — exactly the polymorphism allowed under AGENTS.md rule 5. |
 | 61 | plugins/plugin-x/src/connector-account-provider.test.ts | 214 | 2 | `fetch` stubGlobal (X OAuth2 token + users/me) | KEEP-PURE | OAuth flow request-shape + credential-vault wiring. |
 | 62 | plugins/plugin-xai/__tests__/plugin.test.ts | 128 | 4 | `fetch` stubGlobal (xAI chat-completions + embeddings) | DELETE | Asserts MODEL_USED events fire after a fetch-stubbed response. Once `ai` SDK changes call shape, the stub passes while real xAI breaks. Convert or delete; recommend DELETE in favor of one live xAI e2e in cluster D. |
+
+---
+
+## Follow-up findings (post-conversion sweep)
+
+### Pre-existing test failure: plugin-anthropic native-plumbing.shape.test.ts
+
+`plugins/plugin-anthropic/__tests__/native-plumbing.shape.test.ts` ships
+with **1 failing test (7 passing)** on HEAD, predating the mock-to-live
+conversion. The failure is at line 449:
+
+```
+expect(cached.length).toBeGreaterThan(0); // received 0
+```
+
+The test scenario at line 410 passes both `messages` AND `promptSegments`
+with one stable + one dynamic part, plus `providerOptions.anthropic.cacheControl`.
+It expects stable parts to land in `call.messages[*].content` with
+`providerOptions.anthropic.cacheControl` set.
+
+But the test at line 178 (in the same file, same scenario shape) expects
+the leading user message to contain ONLY the dynamic part:
+```
+expect(call.messages[0]).toEqual({
+  role: "user",
+  content: [{ type: "text", text: "dynamic context" }],
+});
+```
+
+These two expectations are mutually exclusive. The current implementation
+of `buildSegmentedUserContentForMessages` filters to dynamic-only, which
+satisfies the line-178 test but breaks the line-449 test.
+
+To resolve this properly, an Anthropic-cache-control SME needs to decide
+which design is intended:
+- **Option A**: stable parts go to `call.system` only (not `call.messages`).
+  Then line 449 should scan `call.system` for cache_control instead.
+- **Option B**: stable parts go to wire user content with cache_control,
+  not to system. Then line 178 needs to expect both stable + dynamic parts.
+
+Either way, one test or the other needs adjustment to match the chosen design.
+
+This bug is unrelated to the mock-to-live conversion and was inherited
+from HEAD. Marking it out of scope for the test cleanup work.

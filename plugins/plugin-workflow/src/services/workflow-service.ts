@@ -699,7 +699,7 @@ export class WorkflowService extends Service {
 
     // Determine if this is an update (existing workflow) or create (new workflow).
     // If update fails (workflow deleted on p1p3s), fallback to create.
-    let deployedWorkflow;
+    let deployedWorkflow: WorkflowDefinitionResponse;
     let wasUpdate = false;
     if (workflow.id) {
       try {

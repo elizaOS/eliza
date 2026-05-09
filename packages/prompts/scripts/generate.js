@@ -18,13 +18,7 @@ const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, "..");
 const PROMPTS_DIR = path.join(ROOT_DIR, "prompts");
 const DIST_DIR = path.join(ROOT_DIR, "dist");
-const CORE_OUTPUT = path.resolve(
-  ROOT_DIR,
-  "..",
-  "core",
-  "src",
-  "prompts.ts",
-);
+const CORE_OUTPUT = path.resolve(ROOT_DIR, "..", "core", "src", "prompts.ts");
 
 const STANDARD_JSON_FOOTER =
   "JSON only. Return one JSON object. No prose, fences, thinking, or markdown.";

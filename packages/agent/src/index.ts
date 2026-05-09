@@ -97,8 +97,9 @@ export {
 export * from "./api/workbench-helpers.js";
 export * from "./auth/index.js";
 export * from "./awareness/index.js";
+export { runBenchmark } from "./cli/benchmark.js";
 export { CharacterSchema } from "./config/character-schema.js";
-export type { RolesConfig } from "./config/index.js";
+export type { ElizaConfig, ReleaseChannel, RolesConfig } from "@elizaos/shared";
 export * from "./config/index.js";
 // `contracts/awareness.js` adds the local-only (non-shared) contract surface.
 // Config media/custom-action contract types are exported from `./config/index.js`
