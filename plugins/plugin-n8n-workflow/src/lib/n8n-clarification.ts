@@ -11,6 +11,7 @@
  * Kept out of `n8n-routes.ts` so the handlers stay focused on transport.
  */
 
+import { logger } from '@elizaos/core';
 import type {
   N8nClarificationRequest,
   N8nClarificationResolution,
@@ -141,14 +142,39 @@ export function parseParamPath(path: string): string[] {
 }
 
 /**
+ * Find the index of a named entry in an array of objects, matching against
+ * `.name` first then `.id`. Returns -1 if no match. Used by `setByDotPath`
+ * to resolve `nodes["My Node"]`-style segments — the LLM consistently
+ * addresses n8n nodes by their human name even though `workflow.nodes` is
+ * an array, so we map name → index here rather than rejecting the path.
+ */
+function findArrayIndexByNameOrId(arr: unknown[], key: string): number {
+  for (let i = 0; i < arr.length; i += 1) {
+    const entry = arr[i];
+    if (entry === null || typeof entry !== 'object') continue;
+    const obj = entry as Record<string, unknown>;
+    if (obj.name === key || obj.id === key) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/**
  * Mutate `obj` so that its value at `paramPath` becomes `value`. Creates
  * intermediate plain objects as needed; never replaces an existing
  * non-object intermediate (those throw, since the path is invalid).
  *
- * Numeric segments index into arrays. If the segment expects an array but
- * the existing intermediate is a non-array object, we treat it as an
- * object key (n8n workflow shapes mix arrays and objects fairly freely;
- * we err on the side of preserving the existing structure).
+ * Segments that hit an array can be:
+ *   - numeric → direct index
+ *   - non-numeric (string) → looked up against the array's `.name` or `.id`
+ *     field. Common in LLM output for n8n workflows: the model writes
+ *     `nodes["Post to Slack"]` rather than `nodes[2]`. Treating that as a
+ *     hard failure forced every clarification resolution through a 400.
+ *
+ * If the segment expects an array but the existing intermediate is a non-
+ * array object, we treat it as an object key (n8n workflow shapes mix arrays
+ * and objects fairly freely; we err on the side of preserving structure).
  */
 export function setByDotPath(
   obj: Record<string, unknown>,
@@ -161,10 +187,17 @@ export function setByDotPath(
     const seg = segments[i];
     const isArrayIndex = /^[0-9]+$/.test(seg);
     if (Array.isArray(cur)) {
-      if (!isArrayIndex) {
-        throw new Error(`paramPath segment "${seg}" is not a valid array index at depth ${i}`);
+      let idx: number;
+      if (isArrayIndex) {
+        idx = Number(seg);
+      } else {
+        idx = findArrayIndexByNameOrId(cur, seg);
+        if (idx < 0) {
+          throw new Error(
+            `paramPath segment "${seg}" did not match any element by name/id at depth ${i}`
+          );
+        }
       }
-      const idx = Number(seg);
       let next = cur[idx];
       if (next === undefined || next === null) {
         next = /^[0-9]+$/.test(segments[i + 1]) ? [] : {};
@@ -188,13 +221,46 @@ export function setByDotPath(
   }
   const last = segments[segments.length - 1];
   if (Array.isArray(cur)) {
-    if (!/^[0-9]+$/.test(last)) {
-      throw new Error(`paramPath terminal segment "${last}" must be numeric at array`);
+    if (/^[0-9]+$/.test(last)) {
+      cur[Number(last)] = value;
+      return;
     }
-    cur[Number(last)] = value;
+    const idx = findArrayIndexByNameOrId(cur, last);
+    if (idx < 0) {
+      throw new Error(
+        `paramPath terminal segment "${last}" did not match any element by name/id at array`
+      );
+    }
+    cur[idx] = value;
   } else {
     (cur as Record<string, unknown>)[last] = value;
   }
+}
+
+/**
+ * Append a free-form answer to `draft._meta.userNotes`. Used for
+ * clarifications with no `paramPath` AND as the fallback when
+ * `setByDotPath` can't resolve a paramPath against the current draft.
+ * Subsequent LLM regeneration rounds read these notes from `_meta` so the
+ * user's answer is preserved across the failure rather than discarded.
+ */
+function appendUserNote(draft: Record<string, unknown>, value: string): void {
+  const existingMeta = draft._meta;
+  const meta =
+    existingMeta && typeof existingMeta === 'object'
+      ? (existingMeta as Record<string, unknown>)
+      : {};
+  draft._meta = meta;
+
+  let notes: string[];
+  if (Array.isArray(meta.userNotes)) {
+    notes = meta.userNotes as string[];
+  } else {
+    notes =
+      meta.userNotes !== null && meta.userNotes !== undefined ? [String(meta.userNotes)] : [];
+    meta.userNotes = notes;
+  }
+  notes.push(value);
 }
 
 export function applyResolutions(
@@ -216,33 +282,32 @@ export function applyResolutions(
       // Free-form clarification with no field to wire into. Record the user's
       // answer under draft._meta.userNotes so subsequent LLM iterations can
       // consume the context, but don't mutate the workflow itself.
-      const draftRecord = draft as Record<string, unknown>;
-      const existingMeta = draftRecord._meta;
-      const meta =
-        existingMeta && typeof existingMeta === 'object'
-          ? (existingMeta as Record<string, unknown>)
-          : {};
-      draftRecord._meta = meta;
-
-      let notes: string[];
-      if (Array.isArray(meta.userNotes)) {
-        notes = meta.userNotes as string[];
-      } else {
-        notes =
-          meta.userNotes !== null && meta.userNotes !== undefined ? [String(meta.userNotes)] : [];
-        meta.userNotes = notes;
-      }
-      notes.push(r.value);
+      appendUserNote(draft, r.value);
       continue;
     }
     try {
       setByDotPath(draft, r.paramPath, r.value);
     } catch (err) {
-      return {
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
-        paramPath: r.paramPath,
-      };
+      // The LLM occasionally emits a paramPath that references a node it
+      // didn't actually create (e.g. "Placeholder Notification") or points
+      // at a parent scope rather than a leaf field. Failing the whole
+      // resolution batch with a 400 is a dead-end — the user has no way to
+      // recover without re-prompting from scratch. Instead, log a warn and
+      // record the answer as a free-form note so the next regeneration
+      // round can use it. The clarification still gets pruned by
+      // `pruneResolvedClarifications` because we keep the original
+      // paramPath in the resolutions list.
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.warn(
+        {
+          src: 'plugin:n8n-workflow:clarification:applyResolutions',
+          err: errMsg,
+          paramPath: r.paramPath,
+        },
+        `setByDotPath failed for paramPath "${r.paramPath}"; recording "${r.value}" as a free-form note instead: ${errMsg}`
+      );
+      appendUserNote(draft, r.value);
+      continue;
     }
   }
   return { ok: true };
