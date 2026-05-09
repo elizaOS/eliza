@@ -99,8 +99,8 @@ plugins/plugin-mysticism/
 │   │   ├── providers/
 │   │   │   ├── reading-context.ts      # Active reading state
 │   │   │   └── mystical-knowledge.ts   # Domain expertise context
-│   │   ├── evaluators/
-│   │   │   └── reading-evaluator.ts    # Detects intent, emotional state
+│   │   ├── hooks/                      # Actions with mode: ALWAYS_AFTER
+│   │   │   └── reading-hook.ts         # Detects intent, emotional state
 │   │   ├── services/
 │   │   │   └── mysticism-service.ts    # Manages engines + sessions
 │   │   ├── forms/
@@ -203,7 +203,7 @@ interface ReadingSession {
 
 **Providers:** READING_CONTEXT (active session state), MYSTICAL_KNOWLEDGE (domain expertise to ground LLM)
 
-**Evaluator:** reading-evaluator (classifies emotional resonance, engagement, red flags, intent shifts)
+**Post-message hook (Action with `mode: ActionMode.ALWAYS_AFTER`):** reading-evaluator (classifies emotional resonance, engagement, red flags, intent shifts)
 
 **Service:** MysticismService (manages engines, sessions, coordinates reading flow)
 

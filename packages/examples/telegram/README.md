@@ -1,6 +1,6 @@
 # Telegram Agent Examples
 
-Telegram bots using elizaOS with the full message pipeline (providers → LLM → actions → evaluators).
+Telegram bots using elizaOS with the full message pipeline (providers → LLM → actions → ALWAYS_AFTER hook actions).
 
 ## Quick Start
 
