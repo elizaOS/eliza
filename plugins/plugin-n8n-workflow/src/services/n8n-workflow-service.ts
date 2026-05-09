@@ -245,6 +245,17 @@ export class N8nWorkflowService extends Service {
     if (!this.apiClient) {
       throw new Error('N8n Workflow Service not initialized');
     }
+    // Live-refresh from the sidecar. The plugin's service typically starts
+    // BEFORE the n8n autostart provisions its API key, so the start-time
+    // resolver may have fallen back to the env value when no sidecar key
+    // was registered yet. Once the sidecar is ready, prefer its key — it
+    // is the freshest and is rotated by the sidecar itself. peekN8nSidecar
+    // is O(1); getApiKey returns a cached string, so this is microsecond
+    // overhead per request.
+    const sidecarKey = peekN8nSidecar()?.getApiKey();
+    if (sidecarKey) {
+      this.apiClient.setApiKey(sidecarKey);
+    }
     return this.apiClient;
   }
 

@@ -89,6 +89,16 @@ export class N8nApiClient {
     this.apiKey = apiKey;
   }
 
+  /**
+   * Update the API key used for subsequent requests. The workflow service
+   * calls this on every getClient() to live-refresh from the sidecar after
+   * it provisions, since the sidecar typically boots after the plugin's
+   * service starts.
+   */
+  setApiKey(apiKey: string): void {
+    this.apiKey = apiKey;
+  }
+
   // ============================================================================
   // WORKFLOWS
   // ============================================================================
