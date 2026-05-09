@@ -346,7 +346,7 @@ export function nativeModuleStubPlugin(
       }
 
       // async_hooks — AsyncLocalStorage must be a real constructor because
-      // langsmith and @elizaos packages do `new AsyncLocalStorage()` at the
+      // @elizaos packages do `new AsyncLocalStorage()` at the
       // top level. Uses function-constructor syntax (not class expressions)
       // for maximum WebView compatibility. The renderChunk plugin
       // (asyncLocalStoragePatchPlugin) also patches the final bundle output

@@ -7,14 +7,14 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { manageCustomersHandler } from "./manage-customers.js";
-import { manageInventoryHandler } from "./manage-inventory.js";
-import { manageOrdersHandler } from "./manage-orders.js";
-import { manageProductsHandler } from "./manage-products.js";
 import {
   hasShopifyConfig,
   shopifyAccountIdParameter,
 } from "./account-options.js";
+import { manageCustomersHandler } from "./manage-customers.js";
+import { manageInventoryHandler } from "./manage-inventory.js";
+import { manageOrdersHandler } from "./manage-orders.js";
+import { manageProductsHandler } from "./manage-products.js";
 import { searchStoreHandler } from "./search-store.js";
 
 type ShopifyOp = "search" | "products" | "inventory" | "orders" | "customers";
@@ -168,9 +168,9 @@ export const shopifyAction: Action = {
     },
     shopifyAccountIdParameter,
   ],
-  validate: async (runtime, message) => {
+  validate: async (runtime) => {
     if (!hasShopifyConfig(runtime)) return false;
-    return selectRoute(message) !== null;
+    return true;
   },
   handler: async (
     runtime: IAgentRuntime,

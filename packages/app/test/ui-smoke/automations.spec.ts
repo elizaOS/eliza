@@ -50,7 +50,7 @@ type Workflow = {
 
 type AutomationItem = {
   id: string;
-  type: "coordinator_text" | "n8n_workflow" | "automation_draft";
+  type: "coordinator_text" | "workflow_service" | "automation_draft";
   source: "trigger" | "workflow" | "workflow_shadow";
   title: string;
   description: string;
@@ -196,7 +196,7 @@ function workflowItem(workflow: Workflow): AutomationItem {
   };
   return {
     id: `workflow:${workflow.id}`,
-    type: "n8n_workflow",
+    type: "workflow_service",
     source: "workflow",
     title: workflow.name,
     description: "",
@@ -223,7 +223,7 @@ function draftWorkflowItem(
 ): AutomationItem {
   return {
     id: `workflow-draft:${draftId}`,
-    type: "n8n_workflow",
+    type: "workflow_service",
     source: "workflow_shadow",
     title: "Draft",
     description: "",
@@ -247,9 +247,9 @@ function draftWorkflowItem(
 function automationSummary(automations: AutomationItem[]) {
   return {
     total: automations.length,
-    coordinatorCount: automations.filter((item) => item.type !== "n8n_workflow")
+    coordinatorCount: automations.filter((item) => item.type !== "workflow_service")
       .length,
-    workflowCount: automations.filter((item) => item.type === "n8n_workflow")
+    workflowCount: automations.filter((item) => item.type === "workflow_service")
       .length,
     scheduledCount: automations.reduce(
       (count, item) => count + item.schedules.length,
@@ -313,7 +313,7 @@ async function installAutomationsApi(
     await fulfillJson(route, {
       automations,
       summary: automationSummary(automations),
-      n8nStatus: {
+      workflowStatus: {
         mode: "local",
         host: "http://127.0.0.1:5678",
         status: "ready",

@@ -22,8 +22,6 @@
  * Routes that ownership-check land on 404 (or 401 if the route is service-
  * key only, or 403 for monetization which checks ownership before existence).
  *
- * Routes with Worker compatibility limits still assert their auth/route shape:
- *   - /api/v1/agents/:agentId/n8n/*  (Node-only, blocked from Workers)
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -322,39 +320,6 @@ describe("/api/v1/agents/:agentId/monetization", () => {
       { headers: bearerHeaders() },
     );
     expect([400, 401, 403, 404]).toContain(res.status);
-  });
-});
-
-// -------------------------------------------------------------------------
-// /api/v1/agents/:agentId/n8n/*  — 501 not_yet_migrated stub
-// -------------------------------------------------------------------------
-describe("/api/v1/agents/:agentId/n8n/*", () => {
-  test("GET unauth returns 401 (auth middleware fires before stub)", async () => {
-    if (!serverReachable) return;
-    const res = await api.get(`/api/v1/agents/${UNOWNED_AGENT_ID}/n8n/anything`);
-    expect([401, 403, 501]).toContain(res.status);
-  });
-
-  test("GET with auth lands on 501 not_yet_migrated stub", async () => {
-    if (!shouldRun()) return;
-    const res = await api.get(`/api/v1/agents/${UNOWNED_AGENT_ID}/n8n/anything`, {
-      headers: bearerHeaders(),
-    });
-    expect([401, 403, 501]).toContain(res.status);
-    if (res.status === 501) {
-      const body = (await res.json()) as { error?: string; reason?: string };
-      expect(body.error).toBe("not_yet_migrated");
-    }
-  });
-
-  test("POST with body lands on 501 not_yet_migrated stub", async () => {
-    if (!shouldRun()) return;
-    const res = await api.post(
-      `/api/v1/agents/${UNOWNED_AGENT_ID}/n8n/whatever`,
-      { not: "real" },
-      { headers: bearerHeaders() },
-    );
-    expect([401, 403, 501]).toContain(res.status);
   });
 });
 

@@ -20,10 +20,7 @@ export interface ApplyPluginAutoEnableParams {
   loadedPlugins?: Plugin[];
   /**
    * True when the runtime is hosted inside a Capacitor native shell
-   * (iOS / Android). Mobile cannot spawn a local n8n sidecar via
-   * `node:child_process`, so the n8n plugin is only auto-enabled when the
-   * Eliza Cloud gateway is authenticated. Desktop / server / web leave this
-   * undefined.
+   * (iOS / Android). Reserved for future platform-gated auto-enables.
    */
   isNativePlatform?: boolean;
 }
@@ -692,44 +689,22 @@ export function applyPluginAutoEnable(
     }
   }
 
-  // n8n workflow plugin — auto-enable when EITHER Eliza Cloud is authenticated
-  // (cloud supplies WORKFLOW_HOST + WORKFLOW_API_KEY via its gateway) OR the local n8n
-  // sidecar is permitted (config.n8n.localEnabled !== false, default true).
-  // The authoritative boot-config shape is `config.n8n` (N8nConfig in
-  // types.eliza.ts); the sidecar lifecycle writes `config.n8n.host` and
-  // `config.n8n.apiKey` once ready. The plugin's init() refuses to activate
-  // when neither is resolved, so this is safe to auto-enable eagerly.
-  //
-  // On mobile (iOS / Android), the local sidecar cannot spawn a child
-  // process, so auto-enable is gated on `cloudAuthed` alone regardless of
-  // `localEnabled`.
+  // workflow plugin — auto-enable when present and not explicitly disabled.
+  // Workflows run in-process via EmbeddedWorkflowService inside
+  // @elizaos/plugin-workflow; no external sidecar or gateway is required.
   {
-    const n8nPluginName = "@elizaos/plugin-workflow";
-    const n8nPluginId = "workflow";
-    const n8nConfig = updatedConfig.n8n;
-    const n8nMasterEnabled = n8nConfig?.enabled !== false;
-    const cloudAuthed = Boolean(
-      updatedConfig.cloud?.apiKey && updatedConfig.cloud?.enabled !== false,
-    );
-    // Default is "local sidecar allowed" — only disable if explicitly set to
-    // false. Mobile forces this to false regardless of user setting.
-    const localN8nEnabled =
-      params.isNativePlatform === true
-        ? false
-        : n8nConfig?.localEnabled !== false;
-    const n8nExplicitlyDisabled =
-      pluginsConfig.entries[n8nPluginId]?.enabled === false;
-    if (
-      n8nMasterEnabled &&
-      !n8nExplicitlyDisabled &&
-      (cloudAuthed || localN8nEnabled)
-    ) {
+    const workflowPluginName = "@elizaos/plugin-workflow";
+    const workflowPluginId = "workflow";
+    const workflowMasterEnabled = updatedConfig.n8n?.enabled !== false;
+    const workflowExplicitlyDisabled =
+      pluginsConfig.entries[workflowPluginId]?.enabled === false;
+    if (workflowMasterEnabled && !workflowExplicitlyDisabled) {
       addToAllowlist(
         pluginsConfig.allow,
-        n8nPluginName,
-        n8nPluginId,
+        workflowPluginName,
+        workflowPluginId,
         changes,
-        cloudAuthed ? "cloud: n8n gateway" : "n8n.localEnabled",
+        "workflow: in-process",
       );
     }
   }

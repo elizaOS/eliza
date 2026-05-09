@@ -75,7 +75,6 @@ Owner: `general-purpose` *(agent lifecycle, headscale, mcp wiring)*.
 /api/v1/agents/:agentId
 /api/v1/agents/:agentId/logs
 /api/v1/agents/:agentId/monetization
-/api/v1/agents/:agentId/n8n/*
 /api/v1/agents/:agentId/publish
 /api/v1/agents/:agentId/restart
 /api/v1/agents/:agentId/resume

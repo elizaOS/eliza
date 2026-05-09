@@ -20,7 +20,6 @@ import {
 import { cloudModelProviderPlugin } from "./cloud-model-provider";
 import { buildElevenLabsSettings, getElizaCloudApiUrl } from "./config";
 import mcpPlugin from "./plugin-mcp";
-import { cloudN8nPlugin } from "./plugin-n8n";
 
 // Plugin cache - preloaded at module init to eliminate dynamic import latency
 let _documentsPlugin: Plugin | null = null;
@@ -108,7 +107,6 @@ const AVAILABLE_PLUGINS: Record<string, Plugin> = {
   elizaOSCloud: cloudModelProviderPlugin,
   "eliza-cloud-model-provider": cloudModelProviderPlugin,
   "@elizaos/plugin-mcp": asPlugin(mcpPlugin),
-  "@elizaos/plugin-workflow": cloudN8nPlugin,
 };
 
 export class AgentLoader {

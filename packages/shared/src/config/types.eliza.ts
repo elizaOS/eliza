@@ -582,37 +582,28 @@ export type CloudConfig = {
 };
 
 /**
- * n8n workflow integration configuration.
+ * Workflow integration configuration.
  *
- * Two paths populate WORKFLOW_HOST + WORKFLOW_API_KEY for `@elizaos/plugin-workflow`:
- *   1. Eliza Cloud gateway — when `cloud.apiKey` is set and `cloud.enabled` is
- *      not false, the cloud gateway handles the n8n instance. The runtime
- *      pumps `${cloud.baseUrl}/api/v1/agents/${agentId}/n8n` into WORKFLOW_HOST and
- *      `cloud.apiKey` into WORKFLOW_API_KEY.
- *   2. Local sidecar — when `localEnabled !== false` (the default) and the
- *      Eliza n8n sidecar is running, the sidecar lifecycle writes `host`
- *      and `apiKey` fields below when it reaches the "ready" status. The
- *      runtime pumps those into the plugin.
+ * Populates WORKFLOW_HOST + WORKFLOW_API_KEY for `@elizaos/plugin-workflow`
+ * via the Eliza Cloud gateway: when `cloud.apiKey` is set and
+ * `cloud.enabled` is not false, the runtime pumps
+ * `${cloud.baseUrl}/api/v1/agents/${agentId}/workflow` into WORKFLOW_HOST and
+ * `cloud.apiKey` into WORKFLOW_API_KEY.
  *
  * `enabled` acts as a master gate (default true). Setting it to false disables
- * auto-enable of the plugin regardless of cloud or sidecar state.
+ * auto-enable of the plugin regardless of cloud state.
  */
-export type N8nConfig = {
+export type WorkflowConfig = {
   /** Master gate. Default: true. When false, plugin auto-enable is skipped. */
   enabled?: boolean;
-  /** Allow the local n8n sidecar to populate host/apiKey. Default: true. */
-  localEnabled?: boolean;
-  /** Sidecar-populated n8n host URL (set once the sidecar is ready). */
+  /** Cloud-populated workflow host URL. */
   host?: string;
-  /** Sidecar-populated n8n API key. */
+  /** Cloud-populated workflow API key. */
   apiKey?: string;
-  /** Sidecar lifecycle status. */
-  status?: "stopped" | "starting" | "ready" | "error";
-  /** Pinned n8n version for the sidecar. */
-  version?: string;
-  /** First port in the allocation range the sidecar picks from. */
-  startPort?: number;
 };
+
+/** @deprecated use {@link WorkflowConfig}. */
+export type N8nConfig = WorkflowConfig;
 
 /** CUA (Computer Use Agent) configuration. Supports local (Lume VM) and cloud modes. */
 export type CuaConfig = {
@@ -807,7 +798,9 @@ export type ElizaConfig = {
   database?: DatabaseConfig;
   /** Eliza Cloud integration for remote agent provisioning and inference. */
   cloud?: CloudConfig;
-  /** n8n workflow integration (cloud gateway or local sidecar). */
+  /** Workflow integration (cloud gateway). */
+  workflow?: WorkflowConfig;
+  /** @deprecated alias for {@link ElizaConfig.workflow}. */
   n8n?: N8nConfig;
   /** Wallet source selection and cached cloud wallet descriptors. */
   wallet?: {

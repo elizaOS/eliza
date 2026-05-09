@@ -121,7 +121,6 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-elevenlabs": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
-    "@elizaos/plugin-workflow": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@fal-ai/client": "^1.10.0",

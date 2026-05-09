@@ -128,9 +128,6 @@ const ROUTES: LinearRoute[] = [
   },
 ];
 
-const LINEAR_FALLBACK_PATTERN =
-  /\b(linear|issue|bug|task|ticket|comment|reply|activity|search|[a-z]+-\d+)\b/i;
-
 function textOf(message: Memory): string {
   return typeof message.content?.text === "string" ? message.content.text : "";
 }
@@ -218,11 +215,9 @@ export const linearAction: Action = {
     },
     linearAccountIdParameter,
   ],
-  validate: async (runtime: IAgentRuntime, message: Memory) => {
+  validate: async (runtime: IAgentRuntime) => {
     if (!hasLinearAccess(runtime)) return false;
-    const text = textOf(message);
-    if (!text.trim()) return false;
-    return ROUTES.some((route) => route.match.test(text)) || LINEAR_FALLBACK_PATTERN.test(text);
+    return true;
   },
   handler: async (
     runtime: IAgentRuntime,

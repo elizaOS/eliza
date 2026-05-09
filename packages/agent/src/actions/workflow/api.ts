@@ -1,9 +1,9 @@
 /**
- * Shared HTTP helpers for n8n workflow actions.
+ * Shared HTTP helpers for workflow actions.
  *
- * Workflow CRUD lives in the app-core HTTP layer (n8n-routes.ts) and proxies
- * out to the local n8n sidecar or to Eliza Cloud. The agent runtime does not
- * own a workflow service, so these actions reach back into the local API
+ * Workflow CRUD lives in the app-core HTTP layer (workflow-routes.ts) which
+ * delegates to the in-process EmbeddedWorkflowService registered by
+ * @elizaos/plugin-workflow. The agent runtime calls back into the local API
  * server the same way app-control.ts does.
  */
 

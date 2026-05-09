@@ -457,9 +457,9 @@ export const mcpAction: Action = {
     },
   ],
 
-  validate: async (runtime, message) => {
+  validate: async (runtime) => {
     if (!hasConnectedCapability(runtime)) return false;
-    return /\b(mcp|tool|tools|resource|resources|server|servers)\b/i.test(textOf(message));
+    return true;
   },
 
   handler: async (

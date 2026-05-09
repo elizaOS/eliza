@@ -1,8 +1,8 @@
 /**
- * n8n domain methods — status, workflow CRUD, sidecar start.
+ * Workflow domain methods — status, workflow CRUD.
  *
  * All routes hit `/api/workflow/*` on the local agent server.
- * The workflow CRUD routes are served by the n8n plugin itself
+ * The workflow CRUD routes are served by the workflow plugin itself
  * but exposed through the same base URL via the plugin's route registration.
  */
 

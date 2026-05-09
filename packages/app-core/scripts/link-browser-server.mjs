@@ -62,17 +62,17 @@ if (!existsSync(stagehandIndex) && existsSync(stagehandSrc)) {
   try {
     // Install deps if node_modules is missing, then compile TypeScript
     if (!existsSync(join(stagehandDir, "node_modules"))) {
-      execSync("pnpm install --ignore-scripts", {
+      execSync("bun install --ignore-scripts", {
         cwd: stagehandDir,
         stdio: "inherit",
       });
     }
-    // Resolve tsc: prefer local node_modules/.bin, then pnpm dlx, then npx
+    // Resolve tsc: prefer local node_modules/.bin, then bunx
     const localTsc = join(stagehandDir, "node_modules", ".bin", "tsc");
     if (existsSync(localTsc)) {
       execFileSync(localTsc, [], { cwd: stagehandDir, stdio: "inherit" });
     } else {
-      execFileSync("pnpm", ["exec", "tsc"], {
+      execFileSync("bunx", ["tsc"], {
         cwd: stagehandDir,
         stdio: "inherit",
       });

@@ -34,7 +34,6 @@ export const specializedLiveE2EPaths = [
   "eliza/packages/app-core/test/live-agent/cloud-providers.live.e2e.test.ts",
   "eliza/packages/app-core/test/live-agent/database-conversation.live.e2e.test.ts",
   "eliza/packages/app-core/test/live-agent/experience-extraction.live.e2e.test.ts",
-  "eliza/packages/app-core/test/live-agent/n8n-sidecar.live.e2e.test.ts",
   "eliza/packages/app-core/test/live-agent/personality-routing.live.e2e.test.ts",
   "eliza/packages/app-core/test/live-agent/plugin-lifecycle.live.e2e.test.ts",
   "eliza/packages/app-core/test/live-agent/runtime-debug.live.e2e.test.ts",

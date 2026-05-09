@@ -1156,19 +1156,22 @@ registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
   const want = expected ?? true;
   if (!want) {
     return total === 0
-      ? { status: "passed", detail: "no n8n dispatch observed" }
-      : { status: "failed", detail: `expected no n8n dispatch, saw ${total}` };
+      ? { status: "passed", detail: "no workflow dispatch observed" }
+      : {
+          status: "failed",
+          detail: `expected no workflow dispatch, saw ${total}`,
+        };
   }
   const min = typeof minCount === "number" ? minCount : 1;
   if (total < min) {
     return {
       status: "failed",
-      detail: `expected ${min} n8n dispatch record(s), saw ${total}`,
+      detail: `expected ${min} workflow dispatch record(s), saw ${total}`,
     };
   }
   return {
     status: "passed",
-    detail: `${total} n8n dispatch record(s) observed`,
+    detail: `${total} workflow dispatch record(s) observed`,
   };
 });
 

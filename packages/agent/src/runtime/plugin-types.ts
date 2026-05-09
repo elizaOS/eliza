@@ -307,15 +307,15 @@ export function ensureBrowserServerLink(): boolean {
           "node:child_process",
         ) as typeof import("node:child_process");
         if (!existsSync(path.join(stagehandDir, "node_modules"))) {
-          cp.execSync("pnpm install --ignore-scripts", {
+          cp.execSync("bun install --ignore-scripts", {
             cwd: stagehandDir,
             stdio: "ignore",
             timeout: 60_000,
           });
         }
-        // Prefer local tsc binary, fall back to pnpm exec
+        // Prefer local tsc binary, fall back to bunx
         const localTsc = path.join(stagehandDir, "node_modules", ".bin", "tsc");
-        const tscCmd = existsSync(localTsc) ? localTsc : "pnpm exec tsc";
+        const tscCmd = existsSync(localTsc) ? localTsc : "bunx tsc";
         cp.execSync(tscCmd, {
           cwd: stagehandDir,
           stdio: "ignore",

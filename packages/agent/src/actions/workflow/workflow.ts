@@ -1,21 +1,21 @@
 /**
  * WORKFLOW — single umbrella action consolidating workflow lifecycle,
- * trigger-task ops, and n8n-specific workflow ops.
+ * trigger-task ops, and workflow-specific ops.
  *
  * Replaces the former CREATE_WORKFLOW / DELETE_WORKFLOW / TOGGLE_WORKFLOW_ACTIVE /
  * PROMOTE_TASK_TO_WORKFLOW / CREATE_TRIGGER_TASK / UPDATE_TRIGGER_TASK /
  * DELETE_TRIGGER_TASK / RUN_TRIGGER_NOW / N8N / CREATE_N8N_WORKFLOW /
  * MODIFY_EXISTING_N8N_WORKFLOW / GET_WORKFLOW_EXECUTIONS actions. Op-based dispatch:
  *
- *   Workflow ops (n8n via local HTTP routes — plugin-workflow):
- *     create        — generate + create a new n8n workflow from a seed prompt
+ *   Workflow ops (in-process via plugin-workflow's EmbeddedWorkflowService):
+ *     create        — generate + create a new workflow from a seed prompt
  *     modify        — load a deployed workflow into the draft editor by id
  *     activate      — activate a workflow by id
  *     deactivate    — deactivate a workflow by id
  *     toggle_active — explicit active=true|false (preferred when scripting)
  *     delete        — permanently delete a workflow by id
  *     executions    — fetch recent executions for a workflow id
- *     promote_task  — compile an existing trigger/task into an n8n workflow
+ *     promote_task  — compile an existing trigger/task into a workflow
  *
  *   Trigger ops (runtime task APIs — always available):
  *     create_trigger — create a scheduled trigger (interval, once, cron, event)
@@ -525,7 +525,7 @@ function buildPromotePrompt(
     "Promoted automation"
   ).trim();
   const lines = [
-    "Compile this coordinator automation into an n8n workflow.",
+    "Compile this coordinator automation into a workflow.",
     `Automation title: ${title}`,
     `Description: ${task.description?.trim() || "No additional description provided."}`,
     "Keep the workflow in this dedicated automation room.",
@@ -1108,7 +1108,7 @@ export const workflowAction: Action = {
     "Manage workflows and scheduled triggers. Op-based dispatch — provide an `op` parameter:\n" +
     "  Workflow ops: create, modify, activate, deactivate, toggle_active, delete, executions, promote_task.\n" +
     "  Trigger ops: create_trigger, update_trigger, delete_trigger, run_trigger.\n" +
-    "Workflow ops require an n8n service to be configured. Trigger ops always run.",
+    "Workflow ops require the workflow plugin to be active. Trigger ops always run.",
   descriptionCompressed:
     "manage workflows + triggers; op-based dispatch (create modify activate deactivate toggle_active delete executions promote_task create_trigger update_trigger delete_trigger run_trigger)",
   parameters: [
@@ -1121,13 +1121,13 @@ export const workflowAction: Action = {
     },
     {
       name: "workflowId",
-      description: "n8n workflow id (workflow ops).",
+      description: "workflow id (workflow ops).",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "workflowName",
-      description: "n8n workflow name fragment for fuzzy matching.",
+      description: "workflow name fragment for fuzzy matching.",
       required: false,
       schema: { type: "string" as const },
     },

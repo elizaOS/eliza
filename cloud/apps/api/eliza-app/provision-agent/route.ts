@@ -38,7 +38,7 @@ app.post("/", async (c) => {
     if (mode === "Chat") {
       message = "Allocated shared cloud-hosted base agent.";
     } else if (mode === "Workflow") {
-      message = "Allocated cloud-hosted agent + n8n plugin connected.";
+      message = "Allocated cloud-hosted agent + workflow plugin connected.";
     } else if (mode === "Autonomous") {
       message = "Provisioned dedicated sandbox for autonomous execution.";
     }

@@ -24,8 +24,8 @@ iMessage plugin for ElizaOS agents. Enables chat integration with Apple's iMessa
 # npm
 npm install @elizaos/plugin-imessage
 
-# pnpm
-pnpm add @elizaos/plugin-imessage
+# bun
+bun add @elizaos/plugin-imessage
 ```
 
 ## Configuration

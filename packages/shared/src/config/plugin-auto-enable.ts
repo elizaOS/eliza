@@ -59,9 +59,8 @@ export function applyPluginAutoEnable(
     }
   }
 
-  // Delegate to upstream for all other connectors. On mobile, the n8n
-  // sidecar cannot run, so the upstream auto-enable gate should require
-  // cloud auth before enabling @elizaos/plugin-workflow.
+  // Delegate to upstream for all other connectors. The upstream auto-enable
+  // gate requires cloud auth before enabling @elizaos/plugin-workflow.
   return _upstreamApplyPluginAutoEnable({
     ...params,
     isNativePlatform: params.isNativePlatform ?? isNativeServerPlatform(),

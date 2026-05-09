@@ -19,7 +19,7 @@ import {
 } from "playwright-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
-import { buildOnboardingRuntimeConfig } from "../../src/onboarding-config";
+import { buildOnboardingRuntimeConfig } from "@elizaos/ui";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../helpers/live-provider.ts";
 

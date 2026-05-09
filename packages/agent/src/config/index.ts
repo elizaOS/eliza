@@ -5,7 +5,6 @@ export * from "./includes.js";
 export * from "./model-metadata.js";
 export * from "./owner-contacts.js";
 export * from "./paths.js";
-export * from "./plugin-auto-enable.js";
 export * from "./schema.js";
 export * from "./telegram-custom-commands.js";
 export * from "./types.agent-defaults.js";

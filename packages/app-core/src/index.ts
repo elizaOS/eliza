@@ -26,8 +26,6 @@ export * from "./security/platform-secure-store-node";
 export * from "./security/wallet-os-store-actions";
 export * from "./services/account-pool";
 export * from "./services/auth-store";
-export * from "./services/n8n-mode";
-export * from "./services/n8n-sidecar";
 export * from "./services/plugin-installer";
 export * from "./services/vault-bootstrap";
 export * from "./services/vault-mirror";

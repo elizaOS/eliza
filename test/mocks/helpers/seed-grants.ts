@@ -18,6 +18,16 @@ import {
   LifeOpsRepository,
 } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 
+interface MockConnectorCredentialStore {
+  __mockGoogleCredentialStore: true;
+  records: Map<string, string>;
+  get(
+    vaultRef: string,
+    options?: { reveal?: boolean; caller?: string },
+  ): Promise<string | null>;
+  reveal(vaultRef: string, caller?: string): Promise<string>;
+}
+
 function sanitizePathSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
@@ -40,6 +50,61 @@ function buildMockGoogleAccessToken(grantId?: string): string {
   return grantId
     ? `mock-google-access-token-${sanitizePathSegment(grantId)}`
     : "mock-google-access-token";
+}
+
+function buildMockGoogleVaultRef(agentId: string, accountId: string): string {
+  return [
+    "connector",
+    sanitizePathSegment(agentId),
+    "google",
+    sanitizePathSegment(accountId),
+    "oauth_tokens",
+  ].join(".");
+}
+
+function getRuntimeServices(runtime: IAgentRuntime): Map<string, unknown[]> | null {
+  const services = (runtime as unknown as { services?: unknown }).services;
+  return services instanceof Map ? (services as Map<string, unknown[]>) : null;
+}
+
+function installMockGoogleCredential(
+  runtime: IAgentRuntime,
+  vaultRef: string,
+  value: string,
+): void {
+  const services = getRuntimeServices(runtime);
+  if (!services) return;
+
+  const serviceType = "connector_credential_store";
+  const existing = services.get(serviceType) ?? [];
+  let store = existing.find(
+    (service): service is MockConnectorCredentialStore =>
+      Boolean(
+        service &&
+          typeof service === "object" &&
+          (service as MockConnectorCredentialStore).__mockGoogleCredentialStore,
+      ),
+  );
+
+  if (!store) {
+    store = {
+      __mockGoogleCredentialStore: true,
+      records: new Map<string, string>(),
+      async get(key: string) {
+        return this.records.get(key) ?? null;
+      },
+      async reveal(key: string) {
+        const found = this.records.get(key);
+        if (!found) {
+          throw new Error(`Mock Google credential ${key} was not seeded.`);
+        }
+        return found;
+      },
+    };
+    services.set(serviceType, [store, ...existing]);
+  }
+
+  store.records.set(vaultRef, value);
 }
 
 function writeMockGoogleToken(args: {
@@ -134,6 +199,17 @@ export async function seedGoogleConnectorGrant(
   const id = opts?.grantId ?? crypto.randomUUID();
   const accessToken = buildMockGoogleAccessToken(id);
   const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+  const vaultRef = buildMockGoogleVaultRef(runtime.agentId, id);
+  installMockGoogleCredential(
+    runtime,
+    vaultRef,
+    JSON.stringify({
+      access_token: accessToken,
+      token_type: "Bearer",
+      scope: grantedScopes.join(" "),
+      expiry_date: expiresAt,
+    }),
+  );
 
   await repo.upsertConnectorGrant({
     ...createLifeOpsConnectorGrant({
@@ -182,12 +258,7 @@ export async function seedGoogleConnectorGrant(
       credentialRefs: [
         {
           credentialType: "oauth.tokens",
-          value: JSON.stringify({
-            access_token: accessToken,
-            token_type: "Bearer",
-            scope: grantedScopes.join(" "),
-            expiry_date: expiresAt,
-          }),
+          vaultRef,
           expiresAt,
           metadata: { provider: "google", mocked: true },
         },
