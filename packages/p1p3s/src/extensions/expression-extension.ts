@@ -13,7 +13,7 @@ import { booleanExtensions } from './boolean-extensions.js';
 import { dateExtensions } from './date-extensions.js';
 import type { ExpressionChunk, ExpressionCode } from './expression-parser.js';
 import { joinExpression, splitExpression } from './expression-parser.js';
-import type { ExtensionMap } from './extensions.js';
+import type { Extension, ExtensionMap } from './extensions.js';
 import { numberExtensions } from './number-extensions.js';
 import { objectExtensions } from './object-extensions.js';
 import { stringExtensions } from './string-extensions.js';
@@ -39,7 +39,12 @@ export const EXTENSION_OBJECTS: ExtensionMap[] = [
 	booleanExtensions,
 ];
 
-const genericExtensions: Record<string, Function> = {
+type CallableFunction = (...args: unknown[]) => unknown;
+
+const asCallable = (fn: Extension | undefined): CallableFunction | undefined =>
+	fn as CallableFunction | undefined;
+
+const genericExtensions: Record<string, Extension> = {
 	isEmpty,
 	isNotEmpty,
 };
@@ -90,7 +95,7 @@ export const hasNativeMethod = (method: string): boolean => {
 //  * recast's types aren't great and we need to use a lot of anys
 //  */
 
-function parseWithEsprimaNext(source: string, options?: any): any {
+function parseWithEsprimaNext(source: string, options?: unknown): ReturnType<typeof esprimaParse> {
 	const ast = esprimaParse(source, {
 		loc: true,
 		locations: true,
@@ -415,7 +420,11 @@ export const extendTransform = (expression: string): { code: string } | undefine
 							: path.node.arguments[2];
 
 					path.replace(
-						types.builders.conditionalExpression(test as any, consequent as any, alternative as any)
+						types.builders.conditionalExpression(
+							test as ExpressionKind,
+							consequent as ExpressionKind,
+							alternative as ExpressionKind
+						)
 					);
 				}
 			},
@@ -440,7 +449,7 @@ function isDate(input: unknown): boolean {
 
 interface FoundFunction {
 	type: 'native' | 'extended';
-	function: Function;
+	function: CallableFunction;
 }
 
 function findExtendedFunction(input: unknown, functionName: string): FoundFunction | undefined {
@@ -454,38 +463,38 @@ function findExtendedFunction(input: unknown, functionName: string): FoundFuncti
 		);
 	}
 
-	let foundFunction: Function | undefined;
+	let foundFunction: CallableFunction | undefined;
 	if (Array.isArray(input)) {
-		foundFunction = arrayExtensions.functions[name];
+		foundFunction = asCallable(arrayExtensions.functions[name]);
 	} else if (isDate(input) && name !== 'toDate' && name !== 'toDateTime') {
 		// If it's a string date (from $json), convert it to a Date object,
 		// unless that function is `toDate`, since `toDate` does something
 		// very different on date objects
 		input = new Date(input as string);
-		foundFunction = dateExtensions.functions[name];
+		foundFunction = asCallable(dateExtensions.functions[name]);
 	} else if (typeof input === 'string') {
-		foundFunction = stringExtensions.functions[name];
+		foundFunction = asCallable(stringExtensions.functions[name]);
 	} else if (typeof input === 'number') {
-		foundFunction = numberExtensions.functions[name];
+		foundFunction = asCallable(numberExtensions.functions[name]);
 	} else if (input && (DateTime.isDateTime(input) || input instanceof Date)) {
-		foundFunction = dateExtensions.functions[name];
+		foundFunction = asCallable(dateExtensions.functions[name]);
 	} else if (input !== null && typeof input === 'object') {
-		foundFunction = objectExtensions.functions[name];
+		foundFunction = asCallable(objectExtensions.functions[name]);
 	} else if (typeof input === 'boolean') {
-		foundFunction = booleanExtensions.functions[name];
+		foundFunction = asCallable(booleanExtensions.functions[name]);
 	}
 
 	// Look for generic or builtin
 	if (!foundFunction) {
-		const inputAny: any = input;
+		const inputObject = input as Record<string, unknown>;
 		// This is likely a builtin we're implementing for another type
 		// (e.g. toLocaleString). We'll return that instead
-		if (inputAny && name && typeof inputAny[name] === 'function') {
-			return { type: 'native', function: inputAny[name] };
+		if (inputObject && name && typeof inputObject[name] === 'function') {
+			return { type: 'native', function: inputObject[name] as CallableFunction };
 		}
 
 		// Use a generic version if available
-		foundFunction = genericExtensions[name];
+		foundFunction = asCallable(genericExtensions[name]);
 	}
 
 	if (!foundFunction) {
@@ -536,7 +545,7 @@ export function extend(input: unknown, functionName: string, args: unknown[]) {
 	return foundFunction.function(input, args);
 }
 
-export function extendOptional(input: unknown, functionName: string): Function | undefined {
+export function extendOptional(input: unknown, functionName: string): CallableFunction | undefined {
 	const foundFunction = findExtendedFunction(input, functionName);
 
 	if (!foundFunction) {

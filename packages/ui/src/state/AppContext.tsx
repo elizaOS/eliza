@@ -92,6 +92,7 @@ export {
   type GamePostMessageAuthPayload,
   getCompanionBackgroundUrl,
   getVrmBackgroundUrl,
+  getVrmCount,
   getVrmPreviewUrl,
   getVrmTitle,
   getVrmUrl,

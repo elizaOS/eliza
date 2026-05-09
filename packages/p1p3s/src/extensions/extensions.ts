@@ -10,7 +10,7 @@ export interface ExtensionMap {
 	functions: Record<string, Extension>;
 }
 
-export type Extension = Function & { doc?: DocMetadata };
+export type Extension = ((...args: never[]) => unknown) & { doc?: DocMetadata };
 
 export type NativeDoc = {
 	typeName: string;

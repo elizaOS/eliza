@@ -12,7 +12,7 @@
  * an existing row.
  */
 
-import type { OverlayAppContext } from "@elizaos/app-core";
+import type { OverlayAppContext } from "@elizaos/ui";
 import {
   type ContactSummary,
   Contacts,

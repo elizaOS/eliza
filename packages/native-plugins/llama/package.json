@@ -29,7 +29,7 @@
   "author": "elizaOS",
   "license": "MIT",
   "scripts": {
-    "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
+    "build": "bun run clean && tsc && bun --bun rollup -c rollup.config.mjs",
     "clean": "rimraf ./dist",
     "prepublishOnly": "bun run build",
     "watch": "tsc --watch"

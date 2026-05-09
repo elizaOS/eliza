@@ -33,8 +33,8 @@ function hasField(value: object, extraArgs: string[]): boolean {
 function removeField(value: object, extraArgs: string[]): object {
 	const [name] = extraArgs;
 	if (name in value) {
-		const newObject = { ...value };
-		delete (newObject as any)[name];
+		const newObject: Record<string, unknown> = { ...value };
+		delete newObject[name];
 		return newObject;
 	}
 	return value;
@@ -45,10 +45,10 @@ function removeFieldsContaining(value: object, extraArgs: string[]): object {
 	if (typeof match !== 'string' || match === '') {
 		throw new ExpressionExtensionError('removeFieldsContaining(): expected non-empty string arg');
 	}
-	const newObject = { ...value };
+	const newObject: Record<string, unknown> = { ...value };
 	for (const [key, val] of Object.entries(value)) {
 		if (typeof val === 'string' && val.includes(match)) {
-			delete (newObject as any)[key];
+			delete newObject[key];
 		}
 	}
 	return newObject;
@@ -61,17 +61,17 @@ function keepFieldsContaining(value: object, extraArgs: string[]): object {
 			'argument of keepFieldsContaining must be a non-empty string'
 		);
 	}
-	const newObject = { ...value };
+	const newObject: Record<string, unknown> = { ...value };
 	for (const [key, val] of Object.entries(value)) {
 		if (typeof val !== 'string' || (typeof val === 'string' && !val.includes(match))) {
-			delete (newObject as any)[key];
+			delete newObject[key];
 		}
 	}
 	return newObject;
 }
 
 export function compact(value: object): object {
-	const newObj: any = {};
+	const newObj: Record<string, unknown> = {};
 	for (const [key, val] of Object.entries(value)) {
 		if (val !== null && val !== undefined && val !== 'nil' && val !== '') {
 			if (typeof val === 'object') {

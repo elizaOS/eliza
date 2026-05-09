@@ -4,7 +4,7 @@ import {
   type UiLanguage,
   type UiTheme,
   useMediaQuery,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import { Button } from "@elizaos/ui";
 import {
   MessageCirclePlus,

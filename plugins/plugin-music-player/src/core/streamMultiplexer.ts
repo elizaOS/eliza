@@ -133,11 +133,12 @@ export class StreamMultiplexer {
    * @returns PassThrough stream for the consumer
    */
   addConsumer(id: string): PassThrough {
-    if (this.consumers.has(id)) {
+    const existingConsumer = this.consumers.get(id);
+    if (existingConsumer) {
       logger.warn(
         `[StreamMultiplexer] Consumer ${id} already exists, returning existing stream`,
       );
-      return this.consumers.get(id)?.stream;
+      return existingConsumer.stream;
     }
 
     const stream = new PassThrough({

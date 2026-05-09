@@ -14,6 +14,8 @@
 		"build:native-effects": "bash scripts/build-macos-effects.sh"
 	},
 	"dependencies": {
+		"@elizaos/app-core": "workspace:*",
+		"@elizaos/plugin-browser": "workspace:*",
 		"@elizaos/shared": "workspace:*",
 		"bonjour-service": "1.3.0",
 		"electrobun": "^1.16.0"

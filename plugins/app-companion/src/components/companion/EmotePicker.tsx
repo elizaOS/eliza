@@ -4,7 +4,7 @@ import {
   EMOTE_PICKER_EVENT,
   STOP_EMOTE_EVENT,
   useApp,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import { Button, Input, useTimeout, Z_SYSTEM_CRITICAL } from "@elizaos/ui";
 import { Menu, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

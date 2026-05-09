@@ -124,7 +124,7 @@ export async function handleAuthBootstrapRoutes(
   const userAgent = extractHeaderValue(req.headers["user-agent"]);
   const result = await verifyBootstrapToken(token, { authStore: store });
 
-  if (!result.ok) {
+  if (result.ok === false) {
     // Failure path is audited so the operator can see replay / mismatch
     // attempts. The token itself is never written — just the failure
     // reason.

@@ -65,6 +65,16 @@ import {
 } from "../utils/race-tracking";
 import { refreshStateAfterAction } from "../utils/state";
 
+type RuntimeWithEvaluators = IAgentRuntime & {
+  evaluate?: (
+    message: Memory,
+    state: State,
+    didRespond: boolean,
+    callback: HandlerCallback,
+    responseMessages: Memory[],
+  ) => Promise<unknown>;
+};
+
 const RETRY_CONFIG = {
   baseDelayMs: 200,
   maxDelayMs: 1000,
@@ -628,12 +638,13 @@ export class CloudBootstrapMessageService implements IMessageService {
     const hasEvaluatorStorage = memoryService?.hasStorage?.() !== false;
 
     if (hasEvaluatorStorage) {
+      const runtimeWithEvaluators = runtime as RuntimeWithEvaluators;
       try {
-        await runtime.evaluate(
+        await runtimeWithEvaluators.evaluate?.(
           message,
           state,
           true,
-          async (content) => {
+          async (content: Content) => {
             if (responseContent) {
               responseContent.evalCallbacks = content;
             }

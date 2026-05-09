@@ -6,7 +6,7 @@
  * in the catalog where it cannot function.
  */
 
-import { type OverlayApp, registerOverlayApp } from "@elizaos/app-core";
+import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
 import { PhoneAppView } from "./PhoneAppView";
 
 export const PHONE_APP_NAME = "@elizaos/app-phone";

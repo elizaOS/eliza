@@ -4,7 +4,7 @@ import {
   type DesktopPowerState,
   invokeDesktopBridgeRequest,
   isElectrobunRuntime,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 
 /** How often to re-read AC vs battery in the Electrobun shell (ms). */
 export const VRM_DESKTOP_BATTERY_POLL_MS = 60_000;

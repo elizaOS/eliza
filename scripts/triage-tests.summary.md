@@ -125,7 +125,7 @@ Total: **126**
 | `packages/app-core/test/live-agent/feishu-connector.live.e2e.test.ts` | `feishu-connector.e2e.test.ts` |
 | `packages/app-core/test/live-agent/lens-connector.live.e2e.test.ts` | `lens-connector.e2e.test.ts` |
 | `packages/app-core/test/live-agent/matrix-connector.live.e2e.test.ts` | `matrix-connector.e2e.test.ts` |
-| `packages/app-core/test/live-agent/n8n-sidecar.live.e2e.test.ts` | `n8n-sidecar.e2e.test.ts` |
+| `packages/app-core/test/live-agent/workflow-engine.live.e2e.test.ts` | `workflow-engine.e2e.test.ts` |
 | `packages/app-core/test/live-agent/nostr-connector.live.e2e.test.ts` | `nostr-connector.e2e.test.ts` |
 | `packages/app-core/test/live-agent/page-scoped-chat.live.e2e.test.ts` | `page-scoped-chat.e2e.test.ts` |
 | `packages/app-core/test/live-agent/personality-routing.live.e2e.test.ts` | `personality-routing.e2e.test.ts` |

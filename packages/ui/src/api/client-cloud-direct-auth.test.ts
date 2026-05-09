@@ -635,7 +635,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     );
     expect(agents).toEqual({ success: true, data: [] });
     expect(create.data.agentId).toBe("agent-dev");
-    expect(provision.data.jobId).toBe("job-dev");
+    expect(provision.data?.jobId).toBe("job-dev");
     expect(job.data).toEqual(
       expect.objectContaining({
         jobId: "job-dev",

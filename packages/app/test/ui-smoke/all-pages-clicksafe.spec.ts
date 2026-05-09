@@ -376,28 +376,25 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
     });
   });
 
-  await page.route(
-    "**/api/coding-agents/coordinator/status",
-    async (route) => {
-      if (route.request().method() !== "GET") {
-        await route.fallback();
-        return;
-      }
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          supervisionLevel: "manual",
-          taskCount: 0,
-          tasks: [],
-          pendingConfirmations: 0,
-          taskThreadCount: 0,
-          taskThreads: [],
-          frameworks: [],
-        }),
-      });
-    },
-  );
+  await page.route("**/api/coding-agents/coordinator/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        supervisionLevel: "manual",
+        taskCount: 0,
+        tasks: [],
+        pendingConfirmations: 0,
+        taskThreadCount: 0,
+        taskThreads: [],
+        frameworks: [],
+      }),
+    });
+  });
 
   await page.route("**/api/character/experiences**", async (route) => {
     if (route.request().method() !== "GET") {
@@ -982,7 +979,7 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
       body: JSON.stringify({
         automations: [],
         summary: { total: 0, enabled: 0, disabled: 0 },
-        n8nStatus: {
+        workflowStatus: {
           mode: "local",
           host: "http://127.0.0.1:5678",
           status: "ready",

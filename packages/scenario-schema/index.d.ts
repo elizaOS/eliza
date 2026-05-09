@@ -309,7 +309,7 @@ export type ScenarioFinalCheck =
       [key: string]: unknown;
     }
   | {
-      type: "n8nDispatchOccurred";
+      type: "workflowDispatchOccurred";
       workflowId?: string;
       expected?: boolean;
       minCount?: number;

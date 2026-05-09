@@ -9,7 +9,7 @@
  * inline rather than retrying silently.
  */
 
-import { Button, type OverlayAppContext } from "@elizaos/app-core";
+import { Button, type OverlayAppContext } from "@elizaos/ui";
 import type {
   ConnectResult,
   WiFiNetwork,

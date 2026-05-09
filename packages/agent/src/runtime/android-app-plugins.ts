@@ -12,16 +12,16 @@
 import {
   contactsProvider,
   appContactsPlugin as rawContactsPlugin,
-} from "@elizaos/app-contacts";
+} from "@elizaos/app-contacts/plugin";
 import {
   phoneCallLogProvider,
   placeCallAction,
   appPhonePlugin as rawPhonePlugin,
-} from "@elizaos/app-phone";
+} from "@elizaos/app-phone/plugin";
 import {
   appWifiPlugin as rawWifiPlugin,
   wifiNetworksProvider,
-} from "@elizaos/app-wifi";
+} from "@elizaos/app-wifi/plugin";
 import { gatePluginSessionForHostedApp } from "../services/app-session-gate.js";
 import { STATIC_ELIZA_PLUGINS } from "./plugin-types.js";
 
@@ -66,9 +66,7 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
 });
 
 // Pin to globalThis so Bun.build's tree-shaker keeps the symbols even though
-// the runtime resolves plugins by name. This Android-only bridge must import
-// `/plugin` subpaths rather than public UI entries; those public entries pull
-// React/app-core surfaces intended for renderer bundles, not the agent runtime.
+// the runtime resolves plugins by name.
 (
   globalThis as {
     __elizaAndroidAppPlugins?: {

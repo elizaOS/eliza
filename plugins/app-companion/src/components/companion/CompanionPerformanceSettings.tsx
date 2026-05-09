@@ -2,7 +2,7 @@ import {
   type CompanionHalfFramerateMode,
   type CompanionVrmPowerMode,
   useApp,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import { Button, Switch } from "@elizaos/ui";
 import {
   COMPANION_HALF_FRAMERATE_OPTIONS,

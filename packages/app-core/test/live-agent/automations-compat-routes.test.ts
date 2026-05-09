@@ -31,7 +31,7 @@ vi.doMock("@elizaos/agent/triggers/runtime", () => ({
     taskToTriggerSummaryMock(...args),
 }));
 
-vi.doMock("@elizaos/plugin-workflow/routes/n8n-routes", () => ({
+vi.doMock("@elizaos/plugin-workflow/routes/workflow-routes", () => ({
   handleWorkflowRoutes: (...args: unknown[]) => handleWorkflowRoutesMock(...args),
 }));
 
@@ -156,7 +156,7 @@ function buildRuntimeStub() {
           webConversation: {
             conversationId: "conv-draft-1",
             scope: "automation-workflow-draft",
-            automationType: "n8n_workflow",
+            automationType: "workflow_service",
             draftId: "draft-1",
             terminalBridgeConversationId: "terminal-1",
           },
@@ -170,7 +170,7 @@ function buildRuntimeStub() {
           webConversation: {
             conversationId: "conv-wf-1",
             scope: "automation-workflow",
-            automationType: "n8n_workflow",
+            automationType: "workflow_service",
             workflowId: "wf-1",
             workflowName: "Daily report workflow",
             terminalBridgeConversationId: "terminal-1",
@@ -393,7 +393,7 @@ describe("automations compat routes", () => {
         scheduledCount: number;
         draftCount: number;
       };
-      n8nStatus: { mode: string; status: string };
+      workflowStatus: { mode: string; status: string };
       workflowFetchError: string | null;
     };
 
@@ -404,7 +404,7 @@ describe("automations compat routes", () => {
       scheduledCount: 2,
       draftCount: 1,
     });
-    expect(body.n8nStatus).toMatchObject({ mode: "local", status: "ready" });
+    expect(body.workflowStatus).toMatchObject({ mode: "local", status: "ready" });
     expect(body.workflowFetchError).toBeNull();
 
     const taskItem = body.automations.find((item) => item.id === "task:task-1");
@@ -423,7 +423,7 @@ describe("automations compat routes", () => {
     expect(draftItem?.isDraft).toBe(true);
     expect(workflowItem).toMatchObject({
       workflowId: "wf-1",
-      source: "n8n_workflow",
+      source: "workflow_service",
       room: { conversationId: "conv-wf-1" },
     });
     expect(workflowItem?.schedules).toHaveLength(1);
