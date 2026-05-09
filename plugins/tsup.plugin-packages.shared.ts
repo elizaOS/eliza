@@ -36,7 +36,7 @@ function collectSrcEntries(srcRoot: string): string[] {
         ) {
           continue;
         }
-        out.push(path.relative(resolvePackageRoot(), full));
+        out.push(path.relative(resolvePackageRoot(), full).split(path.sep).join("/"));
       }
     }
   };
