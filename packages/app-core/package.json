@@ -45,7 +45,9 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./*": ["./dist/*.js", "./dist/*/index.js"],
+    "./*.js": ["./dist/*.js", "./dist/*/index.js"]
   },
   "peerDependencies": {
     "react": "^19.0.0",
