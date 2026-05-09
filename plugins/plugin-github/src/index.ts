@@ -20,7 +20,6 @@
  */
 
 import type http from "node:http";
-import { ensureRouteAuthorized } from "@elizaos/app-core";
 import type { IAgentRuntime, Plugin, Route } from "@elizaos/core";
 import { getConnectorAccountManager, logger } from "@elizaos/core";
 import { issueOpAction } from "./actions/issue-op.js";
@@ -31,7 +30,16 @@ import { handleGitHubRoutes } from "./routes/github-routes.js";
 import { registerGitHubSearchCategory } from "./search-category.js";
 import { GitHubService } from "./services/github-service.js";
 
-type RouteAuthState = Parameters<typeof ensureRouteAuthorized>[2];
+type RouteAuthState = {
+  current: unknown;
+};
+
+type EnsureRouteAuthorized = (
+  req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
+  res: http.ServerResponse,
+  state: RouteAuthState,
+  options?: { skipCsrf?: boolean; now?: number },
+) => Promise<boolean>;
 
 function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
   return async (
@@ -43,6 +51,9 @@ function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
     const httpRes = res as http.ServerResponse;
     const url = new URL(httpReq.url ?? "/api/github/token", "http://localhost");
     const state = { current: runtime } as RouteAuthState;
+    const { ensureRouteAuthorized } = (await import(
+      ["@elizaos", "app-core", "api", "auth"].join("/")
+    )) as { ensureRouteAuthorized: EnsureRouteAuthorized };
     if (!(await ensureRouteAuthorized(httpReq, httpRes, state))) return;
     await handleGitHubRoutes({
       req: httpReq,

@@ -45,6 +45,21 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./api/auth": {
+      "types": "./dist/api/auth.d.ts",
+      "import": "./dist/api/auth.js",
+      "default": "./dist/api/auth.js"
+    },
+    "./api/compat-route-shared": {
+      "types": "./dist/api/compat-route-shared.d.ts",
+      "import": "./dist/api/compat-route-shared.js",
+      "default": "./dist/api/compat-route-shared.js"
+    },
+    "./services/github-credentials": {
+      "types": "./dist/services/github-credentials.d.ts",
+      "import": "./dist/services/github-credentials.js",
+      "default": "./dist/services/github-credentials.js"
+    },
     "./package.json": "./package.json"
   },
   "peerDependencies": {
