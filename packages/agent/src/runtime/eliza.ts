@@ -3749,27 +3749,28 @@ export async function startEliza(
       );
     }
 
-    // 8b. Register lightweight conversation-proximity evaluator.
+    // 8b. Register lightweight conversation-proximity post-message hook.
     // Updates relationship strength when people post near each other in a room.
     // No LLM calls — deterministic, runs on every message.
     try {
       const { updateProximityRelationships } = await import(
         "../services/conversation-proximity.js"
       );
+      const { ActionMode } = await import("@elizaos/core");
       await runtime.registerPlugin({
         name: "eliza-conversation-proximity",
         description:
           "Lightweight relationship updates from conversation co-occurrence",
-        evaluators: [
+        actions: [
           {
             name: "CONVERSATION_PROXIMITY",
             description:
               "Update relationship strength for co-participants in a room",
             similes: [],
-            alwaysRun: true,
             examples: [],
+            mode: ActionMode.ALWAYS_AFTER,
+            modePriority: 100,
             validate: async (_runtime, message) => {
-              // Run for any message with text from a real user (not the agent).
               const text = (message.content as { text?: string })?.text;
               return Boolean(text) && message.entityId !== _runtime.agentId;
             },
@@ -3780,10 +3781,10 @@ export async function startEliza(
           },
         ],
       });
-      logger.info("[eliza] ✓ conversation-proximity evaluator registered");
+      logger.info("[eliza] ✓ conversation-proximity hook registered");
     } catch (err) {
       logger.debug(
-        `[eliza] Conversation-proximity evaluator skipped: ${formatError(err)}`,
+        `[eliza] Conversation-proximity hook skipped: ${formatError(err)}`,
       );
     }
 
