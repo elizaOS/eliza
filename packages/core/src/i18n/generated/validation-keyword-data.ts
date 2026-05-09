@@ -15,7 +15,1614 @@ type ValidationKeywordTree = {
 };
 
 export const VALIDATION_KEYWORD_DOCS = {
+  action: {
+    agentInbox: {
+      request: {
+        base: "agent inbox\nagent_inbox\nagent mailbox\nagent_mailbox\nagent gmail\nagent_gmail\nagent email\nagent_email\nagent messages\nagent_messages\nmy agent inbox\nmy_agent_inbox\nmessaging agent inbox\nemail agent inbox\nconnectors agent inbox\nagent internal agent inbox",
+      },
+    },
+    analyzeImage: {
+      request: {
+        base: "analyze image\nanalyze_image\ndescribe image\ndescribe_image\nwhat is in image\nwhat_is_in_image\nidentify image\nidentify_image\nread image\nread_image\nunderstand image\nunderstand_image\nvision\nocr\nimage to text\nimage_to_text\ngeneral analyze image\nmedia analyze image\nfiles analyze image",
+      },
+    },
+    app: {
+      request: {
+        base: "app\napp control\napp_control\nmanage apps\nmanage_apps\nautomation app\nsettings app\ncode app",
+      },
+    },
+    askUserQuestion: {
+      request: {
+        base: "ask user question\nask_user_question\nask\nclarify\ncode ask user question\nterminal ask user question\nautomation ask user question",
+      },
+    },
+    bash: {
+      request: {
+        base: "bash\nshell\nexec\nrun command\nrun_command\ncode bash\nterminal bash\nautomation bash",
+      },
+    },
+    bookTravel: {
+      request: {
+        base: "book travel\nbook_travel\ntravel booking\ntravel_booking\nbook flight\nbook_flight\nbook hotel\nbook_hotel\nbook trip\nbook_trip\nreserve flight\nreserve_flight\ncalendar book travel\ncontacts book travel\ntasks book travel\npayments book travel\nfinance book travel\nbrowser book travel",
+      },
+    },
+    browser: {
+      request: {
+        base: "browser\nbrowse site\nbrowse_site\nbrowser session\nbrowser_session\ncontrol browser\ncontrol_browser\ncontrol browser session\ncontrol_browser_session\nmanage eliza browser workspace\nmanage_eliza_browser_workspace\nmanage lifeops browser\nmanage_lifeops_browser\nnavigate site\nnavigate_site\nopen site\nopen_site\nuse browser\nuse_browser\nbrowser action\nbrowser_action\nbrowser autofill login\nbrowser_autofill_login\nagent autofill\nagent_autofill\nautofill browser login\nautofill_browser_login\nautofill login\nautofill_login\nfill browser credentials\nfill_browser_credentials\nlog into site\nlog_into_site\nsign in to site\nsign_in_to_site\nbrowser browser\nweb browser\nautomation browser\nsecrets browser",
+      },
+    },
+    character: {
+      request: {
+        base: "character\nmodify character\nmodify_character\npersist character\npersist_character\nupdate identity\nupdate_identity\nupdate owner name\nupdate_owner_name\nidentity\nset identity\nset_identity\nupdate agent name\nupdate_agent_name\nupdate system prompt\nupdate_system_prompt\nset agent name\nset_agent_name\nset system prompt\nset_system_prompt\nrename agent\nrename_agent\nsettings character\nagent internal character\nmedia character\nadmin character",
+      },
+    },
+    checkAvailability: {
+      request: {
+        base: "check availability\ncheck_availability\nam i free\nam_i_free\navailability check\navailability_check\nfree busy\nfree_busy\ncalendar check availability\ncontacts check availability\ntasks check availability",
+      },
+    },
+    checkin: {
+      request: {
+        base: "checkin\ncheck in\ncheck_in\nlife check in\nlife_check_in\nmorning checkin\nmorning_checkin\nmorning check in\nmorning_check_in\nnight checkin\nnight_checkin\nnight check in\nnight_check_in\nrun checkin\nrun_checkin\nrun morning checkin\nrun_morning_checkin\nrun night checkin\nrun_night_checkin\ndaily brief\ndaily_brief\ntasks checkin\nhealth checkin\nautomation checkin\ncalendar checkin\nemail checkin",
+      },
+    },
+    clearLinearActivity: {
+      request: {
+        base: "clear linear activity\nclear_linear_activity\nclear-linear-activity\nreset linear activity\nreset-linear-activity\ndelete linear activity\ndelete-linear-activity\ntasks clear linear activity\nconnectors clear linear activity\nautomation clear linear activity",
+      },
+    },
+    code: {
+      request: {
+        base: "code\ncoding\nworkspace\ncode task\ncode_task\ncode code\nfiles code\ntasks code\nautomation code\nagent internal code",
+      },
+    },
+    completeTodo: {
+      request: {
+        base: "complete todo\ncomplete_todo\ndone todo\ndone_todo\nfinish todo\nfinish_todo\nmark complete\nmark_complete\ntodos complete todo\nagent internal complete todo",
+      },
+    },
+    computerUse: {
+      request: {
+        base: "computer use\ncomputer_use\nuse computer\nuse_computer\ncontrol computer\ncontrol_computer\ncomputer action\ncomputer_action\ndesktop action\ndesktop_action\nclick\nclick screen\nclick_screen\ntype text\ntype_text\npress key\npress_key\nkey combo\nkey_combo\nscroll screen\nscroll_screen\nmove mouse\nmove_mouse\ndrag\nmouse click\nmouse_click\nclick with modifiers\nclick_with_modifiers\ntake screenshot\ntake_screenshot\ncapture screen\ncapture_screen\nsee screen\nsee_screen\nbrowser computer use\nfiles computer use\nterminal computer use\nscreen time computer use\nautomation computer use\nadmin computer use",
+      },
+    },
+    createLinearComment: {
+      request: {
+        base: "create linear comment\ncreate_linear_comment\ncreate-linear-comment\nadd linear comment\nadd-linear-comment\ncomment on linear issue\ncomment-on-linear-issue\nreply to linear issue\nreply-to-linear-issue\ntasks create linear comment\nconnectors create linear comment\nautomation create linear comment",
+      },
+    },
+    createLinearIssue: {
+      request: {
+        base: "create linear issue\ncreate_linear_issue\ncreate-linear-issue\nnew linear issue\nnew-linear-issue\nadd linear issue\nadd-linear-issue\ntasks create linear issue\nconnectors create linear issue\nautomation create linear issue",
+      },
+    },
+    createPlan: {
+      request: {
+        base: "create plan\nmake a plan\nproject plan\ncomprehensive plan\norganize project\nstrategy\nstrategic plan",
+        locales: {
+          "zh-CN": "创建计划\n制定计划\n项目计划\n综合计划\n组织项目\n策略\n战略计划",
+          ko: "계획 만들어\n계획 세워\n프로젝트 계획\n종합 계획\n프로젝트 정리\n전략\n전략 계획",
+          es: "crear plan\nhacer un plan\nplan de proyecto\nplan integral\norganizar proyecto\nestrategia\nplan estratégico\nplan estrategico",
+          pt: "criar plano\nfazer um plano\nplano de projeto\nplano abrangente\norganizar projeto\nestratégia\nestrategia\nplano estratégico\nplano estrategico",
+          vi: "tạo kế hoạch\ntao ke hoach\nlập kế hoạch\nlap ke hoach\nkế hoạch dự án\nke hoach du an\nchiến lược\nchien luoc",
+          tl: "gumawa ng plano\nplano ng proyekto\nkomprehensibong plano\nayusin ang proyekto\ndiskarte\nestratehiya",
+        },
+      },
+    },
+    createTodo: {
+      request: {
+        base: "create todo\ncreate_todo\nadd todo\nadd_todo\nnew todo\nnew_todo\nmake todo\nmake_todo\ntodos create todo\nagent internal create todo",
+      },
+    },
+    database: {
+      request: {
+        base: "database\nlist database tables\nlist_database_tables\nget table data\nget_table_data\nexecute database query\nexecute_database_query\nsearch vectors\nsearch_vectors\nlist tables\nlist_tables\nshow tables\nshow_tables\ndb tables\ndb_tables\nread table\nread_table\nselect table\nselect_table\nbrowse table\nbrowse_table\nrun query\nrun_query\nsql query\nsql_query\ndb query\ndb_query\nvector search\nvector_search\nembedding search\nembedding_search\nsimilarity search\nsimilarity_search\nadmin database\nagent internal database\ndocuments database\nmemory database",
+      },
+    },
+    deleteLinearComment: {
+      request: {
+        base: "delete linear comment\ndelete_linear_comment\nremove linear comment\nremove-linear-comment\nerase linear comment\nerase-linear-comment\ntasks delete linear comment\nconnectors delete linear comment\nautomation delete linear comment",
+      },
+    },
+    deleteLinearIssue: {
+      request: {
+        base: "delete linear issue\ndelete_linear_issue\ndelete-linear-issue\narchive linear issue\narchive-linear-issue\nremove linear issue\nremove-linear-issue\nclose linear issue\nclose-linear-issue\ntasks delete linear issue\nconnectors delete linear issue\nautomation delete linear issue",
+      },
+    },
+    deleteTodo: {
+      request: {
+        base: "delete todo\ndelete_todo\nremove todo\nremove_todo\ndiscard todo\ndiscard_todo\ntodos delete todo\nagent internal delete todo",
+      },
+    },
+    desktop: {
+      request: {
+        base: "desktop\nfile action\nfile_action\nmanage window\nmanage_window\nterminal action\nterminal_action\nuse desktop\nuse_desktop\ndesktop action\ndesktop_action\nfiles desktop\nterminal desktop\ncode desktop\nbrowser desktop\nscreen time desktop\nautomation desktop",
+      },
+    },
+    discordSetupCredentials: {
+      request: {
+        base: "discord setup credentials\ndiscord_setup_credentials\ndiscord setup\ndiscord_setup\ndiscord pair\ndiscord_pair\ndiscord connect\ndiscord_connect\ndiscord add credentials\ndiscord_add_credentials\ndiscord configure service\ndiscord_configure_service\ndiscord connect service\ndiscord_connect_service\ndiscord add api key\ndiscord_add_api_key\ndiscord setup service\ndiscord_setup_service\nmessaging discord setup credentials\nconnectors discord setup credentials\nsettings discord setup credentials",
+      },
+    },
+    document: {
+      request: {
+        base: "document\nsearch documents\nread document\nsave document\nedit document\ndelete document\nlist documents\nimport file\nimport url\ndocuments document",
+      },
+    },
+    edit: {
+      request: {
+        base: "edit\nedit file\nedit_file\nmodify file\nmodify_file\ncode edit\nterminal edit\nautomation edit",
+      },
+    },
+    editTodo: {
+      request: {
+        base: "edit todo\nedit_todo\nupdate todo\nupdate_todo\nmodify todo\nmodify_todo\nchange todo\nchange_todo\ntodos edit todo\nagent internal edit todo",
+      },
+    },
+    enterWorktree: {
+      request: {
+        base: "enter worktree\nenter_worktree\ngit worktree add\ngit_worktree_add\nadd worktree\nadd_worktree\nopen worktree\nopen_worktree\ncode enter worktree\nterminal enter worktree\nautomation enter worktree",
+      },
+    },
+    evaluateTrust: {
+      request: {
+        base: "evaluate trust\nevaluate_trust\ncheck trust score\nshow trust level\ntrust rating\ntrust profile\ntrust assessment\ncheck reputation\nshow trust details\nadmin evaluate trust\nsettings evaluate trust\nagent internal evaluate trust",
+      },
+    },
+    executeCode: {
+      request: {
+        base: "execute code\nexecute_code\nrun script\nrun_script\nexecute tool script\nexecute_tool_script",
+      },
+    },
+    exitWorktree: {
+      request: {
+        base: "exit worktree\nexit_worktree\nleave worktree\nleave_worktree\npop worktree\npop_worktree\ngit worktree remove\ngit_worktree_remove\ncode exit worktree\nterminal exit worktree\nautomation exit worktree",
+      },
+    },
+    experienceEvaluator: {
+      request: {
+        base: "experience evaluator\nexperience_evaluator\nexperience recorder\nlearning evaluator\nself reflection\nself-reflection",
+      },
+    },
+    extractPage: {
+      request: {
+        base: "extract page\nextract_page\nscrape page\nscrape_page\nfetch page\nfetch_page\nread web page\nread_web_page\nextract web page\nextract_web_page\nweb extract page\nbrowser extract page\ndocuments extract page",
+      },
+    },
+    file: {
+      request: {
+        base: "file\nread file\nread_file\nwrite file\nwrite_file\nedit file\nedit_file\nfile operation\nfile_operation\nfile io\nfile_io\ncode file\nterminal file\nautomation file",
+      },
+    },
+    finish: {
+      request: {
+        base: "finish",
+      },
+    },
+    formEvaluator: {
+      request: {
+        base: "form evaluator\nform_evaluator\nform extraction\nform_extraction\nform handler\nform_handler",
+      },
+    },
+    formRestore: {
+      request: {
+        base: "form restore\nform_restore\nresume form\nresume_form\ncontinue form\ncontinue_form\ntasks form restore\nautomation form restore\nmemory form restore",
+      },
+    },
+    getLinearActivity: {
+      request: {
+        base: "get linear activity\nget_linear_activity\nget-linear-activity\nshow linear activity\nshow-linear-activity\nview linear activity\nview-linear-activity\ncheck linear activity\ncheck-linear-activity\ntasks get linear activity\nconnectors get linear activity\nautomation get linear activity",
+      },
+    },
+    getLinearIssue: {
+      request: {
+        base: "get linear issue\nget_linear_issue\nget-linear-issue\nshow linear issue\nshow-linear-issue\nview linear issue\nview-linear-issue\ncheck linear issue\ncheck-linear-issue\nfind linear issue\nfind-linear-issue\ntasks get linear issue\nconnectors get linear issue\nknowledge get linear issue",
+      },
+    },
+    glob: {
+      request: {
+        base: "glob\nfind files\nfind_files\ncode glob\nterminal glob\nautomation glob",
+      },
+    },
+    googleCalendar: {
+      request: {
+        base: "google calendar\ngoogle_calendar\ncalendar action\ncalendar_action\ncheck calendar\ncheck_calendar\ncalendar read\ncalendar_read\ncalendar feed\ncalendar_feed\ncalendar next event\ncalendar_next_event\ncalendar create event\ncalendar_create_event\ncalendar search events\ncalendar_search_events\nshow calendar today\nshow_calendar_today\ntoday schedule\ntoday_schedule\nweek ahead\nweek_ahead\nweek view\nweek_view\nwhats my next meeting\nwhats_my_next_meeting\nschedule event\nschedule_event\ncreate calendar event\ncreate_calendar_event\nsearch calendar\nsearch_calendar\nnext meeting\nnext_meeting\nitinerary\ntravel schedule\ntravel_schedule\ncheck schedule\ncheck_schedule\nbook time block\nbook_time_block\nrecurring time block\nrecurring_time_block\nrebook travel\nrebook_travel\ncalendar google calendar\ncontacts google calendar\ntasks google calendar",
+      },
+    },
+    grep: {
+      request: {
+        base: "grep\nsearch content\nsearch_content\nripgrep\nrg\ncode grep\nterminal grep\nautomation grep",
+      },
+    },
+    health: {
+      request: {
+        base: "health\nfitness\nwellness\nsleep\nsteps\nheart rate\nheart_rate\nworkout\nexercise\ncalories\nactivity metrics\nactivity_metrics\nhealth health\ntasks health\ncalendar health",
+      },
+    },
+    life: {
+      request: {
+        base: "life\ntodo\ntodos\nhabit\nhabits\ngoal\ngoals\nreminder\nreminders\nalarm\nroutine\ntask\ntrack habit\ntrack_habit\nmark done\nmark_done\nsnooze\nset reminder\nset_reminder\nnew habit\nnew_habit\nnew goal\nnew_goal\ntasks life\ntodos life\ncalendar life\nhealth life",
+      },
+    },
+    linear: {
+      request: {
+        base: "linear\nlinear issue\nlinear_issue\nlinear issues\nlinear_issues\nlinear comment\nlinear_comment\nlinear comments\nlinear_comments\nlinear workflow\nlinear_workflow\nlinear activity\nlinear_activity\nlinear search\nlinear_search\ncreate linear issue\ncreate_linear_issue\nget linear issue\nget_linear_issue\nupdate linear issue\nupdate_linear_issue\ndelete linear issue\ndelete_linear_issue\nmanage linear issue\nmanage_linear_issue\nmanage linear issues\nmanage_linear_issues\ncreate linear comment\ncreate_linear_comment\ncomment linear issue\ncomment_linear_issue\nupdate linear comment\nupdate_linear_comment\ndelete linear comment\ndelete_linear_comment\nlist linear comments\nlist_linear_comments\nget linear activity\nget_linear_activity\nclear linear activity\nclear_linear_activity\nsearch linear issues\nsearch_linear_issues\nlinear workflow search\nlinear_workflow_search\ngeneral linear\nautomation linear\nknowledge linear",
+      },
+    },
+    linearComment: {
+      request: {
+        base: "linear comment\nlinear_comment\ngeneral linear comment\nautomation linear comment",
+      },
+    },
+    linearIssue: {
+      request: {
+        base: "linear issue\nlinear_issue\ngeneral linear issue\nautomation linear issue\nknowledge linear issue",
+      },
+    },
+    linearWorkflow: {
+      request: {
+        base: "linear workflow\nlinear_workflow\ngeneral linear workflow\nautomation linear workflow\nknowledge linear workflow",
+      },
+    },
+    liquidity: {
+      request: {
+        base: "liquidity\nlp management\nlp_management\nliquidity pool management\nliquidity_pool_management\nlp manager\nlp_manager\nmanage lp\nmanage_lp\nmanage liquidity\nmanage_liquidity\nmanage lp positions\nmanage_lp_positions\nmanage positions\nmanage_positions\nmanage raydium positions\nmanage_raydium_positions\nautomate rebalancing\nautomate_rebalancing\nautomate positions\nautomate_positions\nstart managing positions\nstart_managing_positions\nautomate raydium rebalancing\nautomate_raydium_rebalancing\nautomate raydium positions\nautomate_raydium_positions\nstart managing raydium positions\nstart_managing_raydium_positions\nfinance liquidity\ncrypto liquidity\nwallet liquidity\nautomation liquidity",
+      },
+    },
+    listActiveBlocks: {
+      request: {
+        base: "list active blocks\nlist_active_blocks\nlist block rules\nlist_block_rules\nshow active blocks\nshow_active_blocks\nwebsite blocks status\nwebsite_blocks_status\nscreen time list active blocks\nbrowser list active blocks\ntasks list active blocks\nautomation list active blocks",
+      },
+    },
+    listLinearComments: {
+      request: {
+        base: "list linear comments\nlist_linear_comments\nget linear comments\nget-linear-comments\nshow linear comments\nshow-linear-comments\nfetch linear comments\nfetch-linear-comments\ntasks list linear comments\nconnectors list linear comments\nautomation list linear comments",
+      },
+    },
+    listOverdueFollowups: {
+      request: {
+        base: "list overdue followups\nlist_overdue_followups\noverdue followups\noverdue_followups\nwho to follow up\nwho_to_follow_up\nwho haven t i talked to\nwho_haven_t_i_talked_to\nlist followups\nlist_followups\nfollowup list\nfollowup_list\ncontacts list overdue followups\ntasks list overdue followups\ncalendar list overdue followups\nmessaging list overdue followups",
+      },
+    },
+    listTodos: {
+      request: {
+        base: "list todos\nlist_todos\nshow todos\nshow_todos\nget todos\nget_todos\nmy todos\nmy_todos\ntodos list todos\nagent internal list todos",
+      },
+    },
+    logs: {
+      request: {
+        base: "logs\nsearch logs\nsearch_logs\ndelete logs\ndelete_logs\nlog level\nlog_level\nquery logs\nquery_logs\nread logs\nread_logs\nget logs\nget_logs\ninspect logs\ninspect_logs\nview logs\nview_logs\nlookup logs\nlookup_logs\nclear logs\nclear_logs\nwipe logs\nwipe_logs\nreset logs\nreset_logs\nempty logs\nempty_logs\nset log level\nset_log_level\nchange log level\nchange_log_level\ndebug mode\ndebug_mode\nset debug\nset_debug\nconfigure logging\nconfigure_logging\nadmin logs\nagent internal logs\nsettings logs",
+      },
+    },
+    ls: {
+      request: {
+        base: "ls\nlist dir\nlist_dir\ndir\ncode ls\nterminal ls\nautomation ls",
+      },
+    },
+    managePlugins: {
+      request: {
+        base: "manage plugins\nmanage_plugins\nplugin\nplugin control\nplugin manager\nmanage installed plugins\nmanage ejected plugins\nadmin manage plugins\nsettings manage plugins\nconnectors manage plugins",
+      },
+    },
+    manageRouting: {
+      request: {
+        base: "manage routing\nmanage_routing\nset routing mode\nset_routing_mode\nroute audio\nroute_audio\nstop routing\nstop_routing\nset mode\nroute to\nsimulcast to\nindependent mode\nmedia manage routing\nautomation manage routing\nsettings manage routing",
+      },
+    },
+    manageSecret: {
+      request: {
+        base: "manage secret\nmanage_secret\nsecret management\nsecret_management\nhandle secret\nhandle_secret\nsecret operation\nsecret_operation\nget secret\nget_secret\ndelete secret\ndelete_secret\nlist secrets\nlist_secrets\ncheck secret\ncheck_secret\nsecrets manage secret\nsettings manage secret\nconnectors manage secret",
+      },
+    },
+    manageZones: {
+      request: {
+        base: "manage zones\nmanage_zones\ncreate zone\ncreate_zone\ndelete zone\ndelete_zone\nlist zones\nlist_zones\nadd to zone\nadd_to_zone\nremove from zone\nremove_from_zone\nshow zones\nmedia manage zones\nautomation manage zones\nsettings manage zones",
+      },
+    },
+    markFollowupDone: {
+      request: {
+        base: "mark followup done\nmark_followup_done\nfollowed up\nfollowed_up\nfollowup done\nfollowup_done\ncontacted\nmark contacted\nmark_contacted\nrecord interaction\nrecord_interaction\ncontacts mark followup done\ntasks mark followup done\ncalendar mark followup done\nmessaging mark followup done",
+      },
+    },
+    mcp: {
+      request: {
+        base: "mcp\nsearch actions\nsearch_actions\nfind actions\nfind_actions\ndiscover actions\ndiscover_actions\nsearch tools\nsearch_tools\nfind tools\nfind_tools\ndiscover tools\ndiscover_tools\nlookup actions\nlookup_actions\nlist connections\nlist_connections\nshow connections\nshow_connections\nget connections\nget_connections\noauth connections\noauth_connections\nmy connections\nmy_connections\nconnected services\nconnected_services\nread mcp resource\nread_mcp_resource\nread resource\nread_resource\nget resource\nget_resource\nget mcp resource\nget_mcp_resource\nfetch resource\nfetch_resource\nfetch mcp resource\nfetch_mcp_resource\naccess resource\naccess_resource\naccess mcp resource\naccess_mcp_resource\nmcp action\nmcp_action\nmcp router\nmcp_router\nuse mcp",
+      },
+    },
+    memory: {
+      request: {
+        base: "memory\ncreate memory\ncreate_memory\nsearch memories\nsearch_memories\nupdate memory\nupdate_memory\ndelete memory\ndelete_memory\nrecall memory filtered\nrecall_memory_filtered\nforget memory\nforget_memory\nedit memory\nedit_memory\nmemorize\nremember this\nremember_this\nstore memory\nstore_memory\nwrite memory\nwrite_memory\nsave memory\nsave_memory\nbrowse memories\nbrowse_memories\nfilter memories\nfilter_memories\nfind memories\nfind_memories\nremove memory\nremove_memory\nmodify memory\nmodify_memory\nmemory memory\ndocuments memory\nagent internal memory",
+      },
+    },
+    memoryEvaluator: {
+      request: {
+        base: "memory evaluator\nmemory_evaluator\nmemory consolidation\nmemory_consolidation\nmemory summarization\nmemory_summarization\nlong term memory extraction\nlong_term_memory_extraction\ncontext compression\ncontext_compression",
+      },
+    },
+    message: {
+      request: {
+        base: "message\ndm\ndirect message\ndirect_message\nchat\nchannel\nroom\ncompose followup\ncompose_followup\nfollowup draft\nfollowup_draft\ncheck in draft\ncheck_in_draft\nmessaging message\nemail message\ncontacts message\ntasks message\ncompose reply\ncompose_reply\ndraft message reply\ndraft_message_reply\nlist messages\nlist_messages\nshow unread across\nshow_unread_across\nconnectors message\narchive message\narchive_message\ntag message\ntag_message\nunsubscribe\nblock sender\nblock_sender\nmark read\nmark_read\nreply to message\nreply_to_message\nquick reply\nquick_reply\none shot reply\none_shot_reply\ndefer send\ndefer_send\nschedule send\nschedule_send\nsend later\nsend_later\ncalendar message",
+      },
+    },
+    musicGeneration: {
+      request: {
+        base: "music generation\nmusic_generation\ngenerate music\ngenerate_music\ncreate music\ncreate_music\nmake music\nmake_music\ncompose music\ncompose_music\ncustom generate music\ncustom_generate_music\nextend audio\nextend_audio\nmedia music generation",
+      },
+    },
+    musicLibrary: {
+      request: {
+        base: "music library\nmusic_library",
+      },
+    },
+    nostrPublishProfile: {
+      request: {
+        base: "nostr publish profile\nnostr_publish_profile\nupdate nostr profile\nupdate_nostr_profile\nset nostr profile\nset_nostr_profile\nnostr profile\nnostr_profile\nsocial posting nostr publish profile\nconnectors nostr publish profile",
+      },
+    },
+    oauth: {
+      request: {
+        base: "oauth\noauth connect\noauth_connect\noauth get\noauth_get\noauth list\noauth_list\noauth revoke\noauth_revoke\nconnect account\nconnect_account\nconnect oauth\nconnect_oauth\nlink account\nlink_account\nlink integration\nlink_integration\nadd connection\nadd_connection\nauthorize app\nauthorize_app\ncheck connection\ncheck_connection\nverify connection\nverify_connection\nconnection status\nconnection_status\nis connected\nis_connected\ndone\nfinished\ncompleted\ndid it work\ndid_it_work\nlist connections\nlist_connections\nshow connections\nshow_connections\nmy accounts\nmy_accounts\nconnected apps\nconnected_apps\nwhat is connected\nwhat_is_connected\nmy integrations\nmy_integrations\nshow integrations\nshow_integrations",
+      },
+    },
+    passwordManager: {
+      request: {
+        base: "password manager\npassword_manager\nonepassword\nprotonpass\ncredential lookup\ncredential_lookup\ncopy credential\ncopy_credential\nshow logins\nshow_logins\nsecrets password manager\nbrowser password manager\nautomation password manager",
+      },
+    },
+    payment: {
+      request: {
+        base: "payment\nrequest payment\nrequest_payment\ncharge user\ncharge_user\nask for payment\nask_for_payment\nset price\nset_price\ncheck payment\ncheck_payment\nverify payment\nverify_payment\npayment status\npayment_status\nfinance payment\npayments payment",
+      },
+    },
+    placeCall: {
+      request: {
+        base: "place call\nplace_call\ncall\ndial\nring\nphone call\nphone_call\nmake call\nmake_call",
+      },
+    },
+    playAudio: {
+      request: {
+        base: "play audio\nplay_audio\nplay youtube\nplay_youtube\nplay youtube audio\nplay_youtube_audio\nplay video audio\nplay_video_audio\nplay music\nplay_music\nplay song\nplay_song\nplay track\nplay_track\nstart music\nstart_music\nplay this\nplay_this\nstream youtube\nstream_youtube\nplay from youtube\nplay_from_youtube\nqueue song\nqueue_song\nadd to queue\nadd_to_queue\nmedia play audio\nautomation play audio",
+      },
+    },
+    playback: {
+      request: {
+        base: "playback\npause music\npause_music\nresume music\nresume_music\nstop music\nstop_music\nskip track\nskip_track\nqueue music\nqueue_music\npause\nresume\nunpause\nskip\nnext track\nnext_track\nadd to queue\nadd_to_queue\nmedia playback\nautomation playback",
+      },
+    },
+    playEmote: {
+      request: {
+        base: "play emote\nplay_emote\nemote\nanimate\ngesture\ndance\nwave\nplay animation\nplay_animation\ndo emote\ndo_emote\nperform\nmedia play emote\ngeneral play emote",
+      },
+    },
+    plugin: {
+      request: {
+        base: "plugin\ninstall plugin\ninstall_plugin\nuninstall plugin\nuninstall_plugin\nupdate plugin\nupdate_plugin\nsync plugin\nsync_plugin\neject plugin\neject_plugin\nreinject plugin\nreinject_plugin\nconfigure plugin\nconfigure_plugin\nread plugin config\nread_plugin_config\ntoggle plugin\ntoggle_plugin\nconfigure connector\nconfigure_connector\nsave connector config\nsave_connector_config\nset connector enabled\nset_connector_enabled\ntoggle connector\ntoggle_connector\ndisconnect connector\ndisconnect_connector\nlist connectors\nlist_connectors\nconnector\nplugin lifecycle\nplugin_lifecycle\nmanage plugin\nmanage_plugin\nmanage connector\nmanage_connector\nadmin plugin\nsettings plugin\nconnectors plugin\nsecrets plugin\ncode plugin\nfiles plugin",
+      },
+    },
+    post: {
+      request: {
+        base: "post\ntweet\ncast\npublish\nfeed post\nfeed_post\ntimeline\nsocial posting post\nconnectors post",
+      },
+    },
+    profile: {
+      request: {
+        base: "profile\nremember about me\nremember_about_me\nsave my name\nsave_my_name\nsave my location\nsave_my_location\nsave travel preferences\nsave_travel_preferences\nremember preferences\nremember_preferences\ncapture phone\ncapture_phone\nconfigure escalation\nconfigure_escalation\nset reminder intensity\nset_reminder_intensity\nmemory profile\ncontacts profile\ntasks profile\nsettings profile\ncalendar profile",
+      },
+    },
+    proposeMeetingTimes: {
+      request: {
+        base: "propose meeting times\npropose_meeting_times\nsuggest meeting times\nsuggest_meeting_times\noffer meeting slots\noffer_meeting_slots\nfind meeting slots\nfind_meeting_slots\npropose slots\npropose_slots\nbundle meetings while traveling\nbundle_meetings_while_traveling\nbulk reschedule meetings\nbulk_reschedule_meetings\nreschedule meetings\nreschedule_meetings\ncalendar propose meeting times\ncontacts propose meeting times\ntasks propose meeting times",
+      },
+    },
+    queryTrajectories: {
+      request: {
+        base: "query trajectories\nquery_trajectories\nlist trajectories\nlist_trajectories\nfind trajectories\nfind_trajectories\nbrowse trajectories\nbrowse_trajectories\nagent internal query trajectories\nadmin query trajectories\ndocuments query trajectories",
+      },
+    },
+    read: {
+      request: {
+        base: "read\nread file\nread_file\ncat\nopen file\nopen_file\ncode read\nterminal read\nautomation read",
+      },
+    },
+    readAttachment: {
+      request: {
+        base: "read attachment\nread_attachment\nopen attachment\nopen_attachment\ninspect attachment\ninspect_attachment\nread url\nread_url\nopen url\nopen_url\nread webpage\nread_webpage\nfiles read attachment\nmedia read attachment\nmessaging read attachment\ndocuments read attachment",
+      },
+    },
+    reading: {
+      request: {
+        base: "reading\ntarot reading\ntarot_reading\nread tarot\nread_tarot\ndraw cards\ndraw_cards\ntarot spread\ntarot_spread\ncard reading\ncard_reading\niching reading\niching_reading\ncast hexagram\ncast_hexagram\nconsult iching\nconsult_iching\nthrow coins\nthrow_coins\noracle reading\noracle_reading\nastrology reading\nastrology_reading\nbirth chart\nbirth_chart\nnatal chart\nnatal_chart\nhoroscope reading\nhoroscope_reading\nzodiac reading\nzodiac_reading\nreading followup\nreading_followup\ncontinue reading\ncontinue_reading\nnext card\nnext_card\nproceed reading\nproceed_reading\ndeepen reading\ndeepen_reading\nexplore deeper\nexplore_deeper\nelaborate reading\nelaborate_reading\nknowledge reading\ngeneral reading",
+      },
+    },
+    recordTrustInteraction: {
+      request: {
+        base: "record trust interaction\nrecord_trust_interaction\nrecord trust event\nlog trust interaction\ntrack behavior\nnote trustworthy action\nreport suspicious activity\ndocument promise kept\nmark helpful contribution\nadmin record trust interaction\nsettings record trust interaction\nagent internal record trust interaction",
+      },
+    },
+    reflection: {
+      request: {
+        base: "reflection\nreflect\nself reflect\nself_reflect\nevaluate interaction\nevaluate_interaction\nassess situation\nassess_situation\nextract facts\nextract_facts\nfact classifier\nfact_classifier\nfact ops\nfact_ops",
+      },
+    },
+    relationship: {
+      request: {
+        base: "relationship\ncontacts\nrolodex\nfollow ups\nfollow_ups\nlog interaction\nlog_interaction\nadd contact\nadd_contact\ndays since\ndays_since\noverdue followups\noverdue_followups\nmark followup done\nmark_followup_done\ncontacts relationship\ntasks relationship\ncalendar relationship\nmessaging relationship\nmemory relationship",
+      },
+    },
+    releaseBlock: {
+      request: {
+        base: "release block\nrelease_block\nrelease website block\nrelease_website_block\nend block rule\nend_block_rule\nbypass block rule\nbypass_block_rule",
+      },
+    },
+    requestElevation: {
+      request: {
+        base: "request elevation\nrequest_elevation\nrequest elevated permissions\nneed temporary access\nrequest higher privileges\nneed admin permission\nelevate my permissions\ngrant me access\ntemporary permission request\nneed special access\nadmin request elevation\nsettings request elevation\nagent internal request elevation",
+      },
+    },
+    requestSecret: {
+      request: {
+        base: "request secret\nrequest_secret\nask for secret\nask_for_secret\nrequire secret\nrequire_secret\nneed secret\nneed_secret\nmissing secret\nmissing_secret\nsecrets request secret\nsettings request secret\nconnectors request secret",
+      },
+    },
+    role: {
+      request: {
+        base: "role\nadmin role\nsettings role",
+      },
+    },
+    room: {
+      request: {
+        base: "room\nmute room\nmute_room\nunmute room\nunmute_room\nfollow room\nfollow_room\nunfollow room\nunfollow_room\nmute chat\nmute_chat\nunmute chat\nunmute_chat\nmute telegram\nmute_telegram\nmute discord\nmute_discord\nsilence group chat\nsilence_group_chat\nfollow chat\nfollow_chat\nfollow channel\nfollow_channel\nfollow thread\nfollow_thread\nunfollow chat\nunfollow_chat\nunfollow thread\nunfollow_thread\njoin room\njoin_room\nleave room\nleave_room\nchat thread\nchat_thread\nmessaging room\ncontacts room\nsettings room",
+      },
+    },
+    roomTitle: {
+      request: {
+        base: "room title\nroom_title\ngenerate room title\ngenerate_room_title\nconversation title\nconversation_title",
+      },
+    },
+    rs2004: {
+      request: {
+        base: "rs 2004\nrs_2004\ngame rs 2004\nautomation rs 2004\nworld rs 2004\nstate rs 2004",
+      },
+    },
+    runtime: {
+      request: {
+        base: "runtime\nget runtime status\nget_runtime_status\nlist actions\nlist_actions\ndescribe registered actions\ndescribe_registered_actions\nreload runtime config\nreload_runtime_config\nrestart runtime\nrestart_runtime\nrestart agent\nrestart_agent\nget self status\nget_self_status\nruntime status\nruntime_status\nagent status runtime\nagent_status_runtime\nruntime snapshot\nruntime_snapshot\nregistered actions\nregistered_actions\navailable actions\navailable_actions\nreload config\nreload_config\nrefresh config\nrefresh_config\nrestart process\nrestart_process\nreload runtime\nreload_runtime\nbounce runtime\nbounce_runtime\nrestart\nreboot\nreload\nrefresh\nrespawn\nrestart self\nrestart_self\nreboot agent\nreboot_agent\nreload agent\nreload_agent\ncheck status\ncheck_status",
+      },
+    },
+    scape: {
+      request: {
+        base: "scape\nscape walk to\nscape_walk_to\nmove to\nmove_to\ngo to\ngo_to\ntravel to\ntravel_to\nhead to\nhead_to\nattack npc\nattack_npc\nfight npc\nfight_npc\nkill npc\nkill_npc\nengage\nchat public\nchat_public\nsay\nspeak\ntalk\nbroadcast\njournal\ninventory\nset goal\nset_goal\ncomplete goal\ncomplete_goal\nremember\neat food\neat_food\ndrop item\ndrop_item\ngame scape\nautomation scape\nworld scape\nstate scape\nmessaging scape",
+      },
+    },
+    schedule: {
+      request: {
+        base: "schedule\nsleep inference\nsleep_inference\nmeal inference\nmeal_inference\ncalendar schedule\ntasks schedule\nhealth schedule\nscreen time schedule",
+      },
+    },
+    scheduling: {
+      request: {
+        base: "scheduling\nnegotiate meeting\nnegotiate_meeting\nmulti turn scheduling\nmulti_turn_scheduling\nmanage scheduling negotiation\nmanage_scheduling_negotiation\nrespond to meeting proposal\nrespond_to_meeting_proposal\nfinalize scheduling negotiation\nfinalize_scheduling_negotiation\ncalendar scheduling\ncontacts scheduling\ntasks scheduling\nmessaging scheduling",
+      },
+    },
+    searchLinearIssues: {
+      request: {
+        base: "search linear issues\nsearch_linear_issues\nsearch-linear-issues\nfind linear issues\nfind-linear-issues\nquery linear issues\nquery-linear-issues\nlist linear issues\nlist-linear-issues\ntasks search linear issues\nconnectors search linear issues\nknowledge search linear issues",
+      },
+    },
+    secretsUpdateSettings: {
+      request: {
+        base: "secrets update settings\nsecrets_update_settings\nupdate setting\nupdate_setting\nsave setting\nsave_setting\nset configuration\nset_configuration\nconfigure\nsettings secrets update settings\nsecrets secrets update settings\nconnectors secrets update settings",
+      },
+    },
+    securityEvaluator: {
+      request: {
+        base: "security evaluator\nsecurity_evaluator\nsecurityevaluator",
+      },
+    },
+    sendToAdmin: {
+      request: {
+        base: "admin\nuser\ntell admin\nnotify admin\ninform admin\nupdate admin\nmessage admin\nsend to admin\ncommunicate\nreport\nalert",
+        locales: {
+          "zh-CN": "管理员\n用户\n告诉管理员\n通知管理员\n向管理员汇报\n给管理员发消息\n警报",
+          ko: "관리자\n사용자\n관리자에게 알려\n관리자에게 통지\n관리자에게 보고\n관리자에게 메시지 보내\n경고",
+          es: "administrador\nusuario\navisa al administrador\ninforma al administrador\nmensaje al administrador\nenvía al administrador\nenvia al administrador\nalerta",
+          pt: "administrador\nusuário\nusuario\navise o administrador\ninforme o administrador\nmensagem ao administrador\nenvie ao administrador\nalerta",
+          vi: "quản trị viên\nquan tri vien\nngười dùng\nnguoi dung\nbáo quản trị viên\nbao quan tri vien\nnhắn quản trị viên\nnhan quan tri vien\ncảnh báo\ncanh bao",
+          tl: "admin\nuser\nsabihin sa admin\nipaalam sa admin\ni-message ang admin\niulat\nalerto",
+        },
+      },
+    },
+    setFollowupThreshold: {
+      request: {
+        base: "set followup threshold\nset_followup_threshold\nfollowup rule\nfollowup_rule\nchange followup interval\nchange_followup_interval\nset contact frequency days\nset_contact_frequency_days\ncontacts set followup threshold\ntasks set followup threshold\ncalendar set followup threshold\nsettings set followup threshold",
+      },
+    },
+    setSecret: {
+      request: {
+        base: "set secret\nset_secret\nstore secret\nstore_secret\nsave secret\nsave_secret\nset api key\nset_api_key\nconfigure secret\nconfigure_secret\nset env var\nset_env_var\nstore api key\nstore_api_key\nset token\nset_token\nsave key\nsave_key\nsecrets set secret\nsettings set secret\nconnectors set secret",
+      },
+    },
+    settings: {
+      request: {
+        base: "settings\nupdate ai provider\nupdate_ai_provider\ntoggle capability\ntoggle_capability\ntoggle auto training\ntoggle_auto_training\nset user name\nset_user_name\nset owner name\nset_owner_name\nupdate owner name\nupdate_owner_name\nremember name\nremember_name\nsave name\nsave_name\nset name\nset_name\nsettings settings\nadmin settings\nagent internal settings",
+      },
+    },
+    shopify: {
+      request: {
+        base: "shopify\nmanage shopify products\nmanage_shopify_products\nmanage shopify inventory\nmanage_shopify_inventory\nmanage shopify orders\nmanage_shopify_orders\nmanage shopify customers\nmanage_shopify_customers\nlist products\nlist_products\ncreate product\ncreate_product\nupdate product\nupdate_product\nsearch products\nsearch_products\ncheck inventory\ncheck_inventory\nadjust inventory\nadjust_inventory\ncheck stock\ncheck_stock\nupdate stock\nupdate_stock\nlist orders\nlist_orders\ncheck orders\ncheck_orders\nfulfill order\nfulfill_order\norder status\norder_status\nlist customers\nlist_customers\nfind customer\nfind_customer\nsearch customers\nsearch_customers\npayments shopify\nconnectors shopify\nautomation shopify\nknowledge shopify",
+      },
+    },
+    skill: {
+      request: {
+        base: "skill\nskill info\nskill_info\nskill details\nskill_details\nknowledge skill\nautomation skill\nsettings skill\nconnectors skill\nbrowse skills\nbrowse_skills\nlist skills\nlist_skills\nfind skills\nfind_skills",
+      },
+    },
+    skillCommand: {
+      request: {
+        base: "skill command\nskill_command\nskill\n/skill\nadmin skill command\nagent internal skill command\nautomation skill command",
+      },
+    },
+    stream: {
+      request: {
+        base: "stream\nstart stream\nstart_stream\nstop stream\nstop_stream\nget stream status\nget_stream_status\ngo live\ngo_live\ngo offline\ngo_offline\nstream status\nstream_status\nis live\nis_live\nmedia stream\nautomation stream\nconnectors stream",
+      },
+    },
+    tailscale: {
+      request: {
+        base: "tailscale\nconnectors tailscale\nsettings tailscale\nadmin tailscale",
+      },
+    },
+    tasks: {
+      request: {
+        base: "tasks\ncreate agent task\ncreate_agent_task\ncreate task\ncreate_task\nstart coding task\nstart_coding_task\nlaunch coding task\nlaunch_coding_task\nrun coding task\nrun_coding_task\nstart agent task\nstart_agent_task\nspawn and provision\nspawn_and_provision\ncode this\ncode_this\nlaunch task\nlaunch_task\ncreate subtask\ncreate_subtask\nspawn agent\nspawn_agent\nspawn coding agent\nspawn_coding_agent\nstart coding agent\nstart_coding_agent\nlaunch coding agent\nlaunch_coding_agent\ncreate coding agent\ncreate_coding_agent\nspawn coder\nspawn_coder\nrun coding agent\nrun_coding_agent\nspawn sub agent\nspawn_sub_agent\nstart task agent\nstart_task_agent\ncreate agent\ncreate_agent\nsend to agent\nsend_to_agent\nsend to coding agent\nsend_to_coding_agent\nmessage coding agent\nmessage_coding_agent\ninput to agent",
+      },
+    },
+    todo: {
+      request: {
+        base: "todo\ntodos\ntask\ntasks\ntodos todo\nagent internal todo\ntodo write\ntodo_write\nwrite todos\nwrite_todos\nset todos\nset_todos\nupdate todos\nupdate_todos\ntodo create\ntodo_create\ncreate todo\ncreate_todo\ntodo update\ntodo_update\nupdate todo\nupdate_todo\ntodo complete\ntodo_complete\ncomplete todo\ncomplete_todo\nfinish todo\nfinish_todo\ntodo cancel\ntodo_cancel\ncancel todo\ncancel_todo\ntodo delete\ntodo_delete\ndelete todo\ndelete_todo\nremove todo\nremove_todo\ntodo list\ntodo_list\nlist todos\nlist_todos\nget todos\nget_todos\nshow todos\nshow_todos\ntodo clear\ntodo_clear",
+      },
+    },
+    tokenInfo: {
+      request: {
+        base: "token info\ntoken_info\ndexscreener search\ndexscreener_search\ndexscreener token info\ndexscreener_token_info\ndexscreener trending\ndexscreener_trending\ndexscreener new pairs\ndexscreener_new_pairs\ndexscreener chain pairs\ndexscreener_chain_pairs\ndexscreener boosted tokens\ndexscreener_boosted_tokens\ndexscreener token profiles\ndexscreener_token_profiles\nbirdeye lookup\nbirdeye_lookup\nbirdeye token search\nbirdeye_token_search\ntoken search\ntoken_search\ntoken lookup\ntoken_lookup\ntoken price\ntoken_price\ncoingecko",
+      },
+    },
+    trustUpdateRole: {
+      request: {
+        base: "trust update role\ntrust_update_role\nchange role\nchange_role\nset permissions\nset_permissions\nassign role\nassign_role\nmake admin\nmake_admin\nadmin trust update role\nsettings trust update role",
+      },
+    },
+    updateLinearIssue: {
+      request: {
+        base: "update linear issue\nupdate_linear_issue\nupdate-linear-issue\nedit linear issue\nedit-linear-issue\nmodify linear issue\nmodify-linear-issue\ntasks update linear issue\nconnectors update linear issue\nautomation update linear issue",
+      },
+    },
+    updateMeetingPreferences: {
+      request: {
+        base: "update meeting preferences\nupdate_meeting_preferences\nset meeting preferences\nset_meeting_preferences\nsave meeting preferences\nsave_meeting_preferences\nset preferred times\nset_preferred_times\nset blackout windows\nset_blackout_windows\nsleep window\nsleep_window\nno call hours\nno_call_hours\nprotect sleep\nprotect_sleep\ncalendar update meeting preferences\ncontacts update meeting preferences\ntasks update meeting preferences\nsettings update meeting preferences",
+      },
+    },
+    useSkill: {
+      request: {
+        base: "use skill\nuse_skill\nautomation use skill\nknowledge use skill\nconnectors use skill",
+      },
+    },
+    vision: {
+      request: {
+        base: "vision\ndescribe scene\ndescribe_scene\ncapture image\ncapture_image\nset vision mode\nset_vision_mode\nname entity\nname_entity\nidentify person\nidentify_person\ntrack entity\ntrack_entity\nanalyze scene\nanalyze_scene\nwhat do you see\nwhat_do_you_see\nvision check\nvision_check\nlook around\nlook_around\ntake photo\ntake_photo\nscreenshot\ncapture frame\ncapture_frame\ntake picture\ntake_picture",
+      },
+    },
+    wallet: {
+      request: {
+        base: "wallet\nswap\nswap solana\nswap_solana\ntransfer\ntransfer token\ntransfer_token\nwallet swap\nwallet_swap\nwallet transfer\nwallet_transfer\ncross chain transfer\ncross_chain_transfer\nprepare transfer\nprepare_transfer\nwallet action\nwallet_action\nwallet gov\nwallet_gov\nfinance wallet\ncrypto wallet\nwallet wallet",
+      },
+    },
+    webFetch: {
+      request: {
+        base: "web fetch\nweb_fetch\nfetch url\nfetch_url\nget url\nget_url\ndownload page\ndownload_page\ncode web fetch\nterminal web fetch\nautomation web fetch",
+      },
+    },
+    webSearch: {
+      request: {
+        base: "web search\nweb_search\nsearch web\nsearch_web\ninternet search\ninternet_search\nlookup\nquery web\nquery_web\nfind online\nfind_online\nsearch engine\nsearch_engine\nweb lookup\nweb_lookup\nonline search\nonline_search\nfind information\nfind_information\nweb web search\ndocuments web search\nfinance web search\ncrypto web search",
+      },
+    },
+    write: {
+      request: {
+        base: "write\nwrite file\nwrite_file\ncreate file\ncreate_file\ncode write\nterminal write\nautomation write",
+      },
+    },
+    restart: {
+      request: {
+        base: "restart\nreboot\nreload\nrefresh\nrespawn",
+        locales: {
+          "zh-CN": "重启\n重开\n重新加载\n刷新",
+          ko: "재시작\n다시 시작\n재부팅\n다시 불러와\n새로고침",
+          es: "reinicia\nreiniciar\nreinicio\nrecarga\nrecargar\nrefresca\nrefrescar",
+          pt: "reinicia\nreiniciar\nreinício\nreinicio\nrecarrega\nrecarregar\natualiza\natualizar",
+          vi: "khởi động lại\nkhoi dong lai\ntải lại\ntai lai\nlàm mới\nlam moi",
+          tl: "i-restart\nrestart\ni-reboot\ni-reload\ni-refresh",
+        },
+      },
+    },
+    setUserName: {
+      recentContext: {
+        base: "name\nmy name is\nmy name\ni'm\ni am\ncall me\ncall me by\nchange my name\nrename me",
+        locales: {
+          "zh-CN": "名字\n我的名字\n我叫\n我是\n叫我\n称呼我\n改名字",
+          ko: "이름\n내 이름\n제 이름은\n나는\n불러줘\n라고 불러\n이름 바꿔",
+          es: "nombre\nmi nombre\nmi nombre es\nme llamo\nllámame\nllamame\ncambia mi nombre",
+          pt: "nome\nmeu nome\nmeu nome é\nmeu nome e\nme chamo\nme chama de\nchame-me\nmuda meu nome",
+          vi: "tên\nten\ntên tôi\nten toi\ntôi là\ntoi la\ngọi tôi là\ngoi toi la\nđổi tên tôi\ndoi ten toi",
+          tl: "pangalan\nang pangalan ko\nako si\ntawagin mo akong\npalitan ang pangalan ko",
+        },
+      },
+    },
+    manageTasks: {
+      request: {
+        base: "create task\nadd task\nnew task\nmake task\ncomplete task\nfinish task\ndone with task\nmark task done\ndelete task\nremove task\nupdate task\nedit task\nchange task\nlist tasks\nshow tasks\nmy tasks\nwhat are my tasks\nadd a todo\nadd a to-do\ncreate a to do\ntask list\ncheck off",
+        locales: {
+          "zh-CN": "创建任务\n添加任务\n新任务\n完成任务\n删除任务\n更新任务\n列出任务\n任务列表",
+          ko: "작업 만들기\n작업 추가\n새 작업\n작업 완료\n작업 삭제\n작업 수정\n작업 목록",
+          es: "crear tarea\nagregar tarea\nnueva tarea\ncompletar tarea\neliminar tarea\nactualizar tarea\nlistar tareas\nmis tareas\nlista de tareas",
+          pt: "criar tarefa\nadicionar tarefa\nnova tarefa\nconcluir tarefa\nremover tarefa\natualizar tarefa\nlistar tarefas\nminhas tarefas\nlista de tarefas",
+          vi: "tạo nhiệm vụ\ntao nhiem vu\nthêm nhiệm vụ\nthem nhiem vu\nhoàn thành nhiệm vụ\nhoan thanh nhiem vu\nxóa nhiệm vụ\nxoa nhiem vu\ncập nhật nhiệm vụ\ncap nhat nhiem vu\ndanh sách nhiệm vụ\ndanh sach nhiem vu",
+          tl: "gumawa ng task\nmagdagdag ng task\nbagong task\ntapusin ang task\nburahin ang task\ni-update ang task\nlistahan ng task\nmga task ko",
+        },
+      },
+    },
+    appControl: {
+      launchVerb: {
+        base: "launch\nopen\nstart\nrun\nshow",
+        locales: {
+          "zh-CN": "启动\n打开\n运行\n开启\n显示",
+          ko: "실행\n열어\n시작\n켜\n보여줘",
+          es: "abre\nabrir\ninicia\niniciar\nejecuta\nmostrar",
+          pt: "abre\nabrir\ninicia\niniciar\nexecuta\nmostrar",
+          vi: "mở\nmo\nkhởi chạy\nkhoi chay\nchạy\nchay\nbắt đầu\nbat dau",
+          tl: "buksan\nsimulan\npatakbuhin\nipakita",
+        },
+      },
+      stopVerb: {
+        base: "stop\nclose\nshut down\nkill\nquit\nexit",
+        locales: {
+          "zh-CN": "停止\n关闭\n关掉\n退出",
+          ko: "중지\n멈춰\n종료\n닫아\n끄기",
+          es: "detén\ndetener\ncierra\ncerrar\napaga\nsalir",
+          pt: "parar\npare\nfechar\nfecha\ndesliga\nsair",
+          vi: "dừng\ndung\ntắt\ntat\nđóng\ndong\nthoát\nthoat",
+          tl: "ihinto\nitigil\nisara\npatayin\nlumabas",
+        },
+      },
+      genericTarget: {
+        base: "app\napplication",
+        locales: {
+          "zh-CN": "应用\n应用程序\n程序",
+          ko: "앱\n애플리케이션",
+          es: "app\naplicación\naplicacion\nprograma",
+          pt: "app\naplicativo\naplicação\naplicacao\nprograma",
+          vi: "ứng dụng\nung dung",
+          tl: "app\naplikasyon\nprograma",
+        },
+      },
+      knownApp: {
+        base: "shopify\nvincent\ncompanion\nhyperscape\nbabylon",
+        locales: {
+          "zh-CN": "shopify\nvincent\ncompanion\nhyperscape\nbabylon",
+          ko: "shopify\nvincent\ncompanion\nhyperscape\nbabylon",
+          es: "shopify\nvincent\ncompanion\nhyperscape\nbabylon",
+          pt: "shopify\nvincent\ncompanion\nhyperscape\nbabylon",
+          vi: "shopify\nvincent\ncompanion\nhyperscape\nbabylon",
+          tl: "shopify\nvincent\ncompanion\nhyperscape\nbabylon",
+        },
+      },
+    },
+    terminal: {
+      commandVerb: {
+        base: "run\nexecute\nstart\ndo",
+        locales: {
+          "zh-CN": "运行\n执行\n开始",
+          ko: "실행\n돌려\n시작\n해줘",
+          es: "ejecuta\nejecutar\ncorre\ncorrer\ninicia",
+          pt: "executa\nexecutar\nroda\nrodar\ninicia",
+          vi: "chạy\nchay\nthực hiện\nthuc hien\nbắt đầu\nbat dau",
+          tl: "patakbuhin\nisagawa\nsimulan\ngawin",
+        },
+      },
+      commandFiller: {
+        base: "command\nshell command\nterminal command",
+        locales: {
+          "zh-CN": "命令\n终端命令\nshell 命令",
+          ko: "명령\n명령어\n터미널 명령",
+          es: "comando\ncomando de terminal",
+          pt: "comando\ncomando do terminal",
+          vi: "lệnh\nlenh\nlệnh terminal\nlenh terminal",
+          tl: "utos\ncommand\nutos sa terminal",
+        },
+      },
+      utility: {
+        base: "price\nworth\ncost\nbalance\nstatus\ncheck\ncurl\nfetch\ntail\nhead\nlog",
+        locales: {
+          "zh-CN": "价格\n余额\n状态\n检查\n日志",
+          ko: "가격\n잔액\n상태\n확인\n로그",
+          es: "precio\ncosto\nbalance\nsaldo\nestado\nrevisar\nlog",
+          pt: "preço\npreco\ncusto\nsaldo\nestado\nverificar\nlog",
+          vi: "giá\ngia\nsố dư\nso du\ntrạng thái\ntrang thai\nkiểm tra\nkiem tra\nlog",
+          tl: "presyo\nbalanse\nstatus\ncheck\nlog",
+        },
+      },
+      cryptoBitcoin: {
+        base: "bitcoin\nbtc",
+        locales: {
+          "zh-CN": "比特币",
+          ko: "비트코인",
+          es: "bitcóin\nbitcoín\nbitcoin",
+          pt: "bitcóin\nbitcoin",
+          vi: "đồng bitcoin\ndong bitcoin\nbitcoin",
+          tl: "bitcoin\nbarya ng bitcoin",
+        },
+      },
+      cryptoEthereum: {
+        base: "ethereum\neth",
+        locales: {
+          "zh-CN": "以太坊",
+          ko: "이더리움",
+          es: "ethereum\netéreo\netereo",
+          pt: "ethereum\nether",
+          vi: "ethereum\nđồng ethereum\ndong ethereum",
+          tl: "ethereum\nether",
+        },
+      },
+      cryptoSolana: {
+        base: "solana\nsol",
+        locales: {
+          "zh-CN": "索拉纳",
+          ko: "솔라나",
+          es: "solana",
+          pt: "solana",
+          vi: "solana\nđồng solana\ndong solana",
+          tl: "solana",
+        },
+      },
+      disk: {
+        base: "disk\nspace\nstorage\ndisk usage",
+        locales: {
+          "zh-CN": "磁盘\n空间\n存储",
+          ko: "디스크\n저장공간\n저장소",
+          es: "disco\nespacio\nalmacenamiento",
+          pt: "disco\nespaço\nespaco\narmazenamento",
+          vi: "ổ đĩa\no dia\ndung lượng\ndung luong\nlưu trữ\nluu tru",
+          tl: "disk\nespasyo\nstorage",
+        },
+      },
+      uptime: {
+        base: "uptime\nload",
+        locales: {
+          "zh-CN": "运行时间\n负载",
+          ko: "업타임\n부하",
+          es: "tiempo activo\ncarga",
+          pt: "uptime\ntempo ativo\ncarga",
+          vi: "thời gian hoạt động\nthoi gian hoat dong\ntải\ntai",
+          tl: "uptime\nload",
+        },
+      },
+      memory: {
+        base: "memory\nram",
+        locales: {
+          "zh-CN": "内存",
+          ko: "메모리\n램",
+          es: "memoria\nram",
+          pt: "memória\nmemoria\nram",
+          vi: "bộ nhớ\nbo nho\nram",
+          tl: "memory\nram",
+        },
+      },
+      process: {
+        base: "process\nprocesses\ntop\nmemory usage",
+        locales: {
+          "zh-CN": "进程\n进程列表\n内存占用",
+          ko: "프로세스\ntop\n메모리 사용",
+          es: "proceso\nprocesos\ntop\nuso de memoria",
+          pt: "processo\nprocessos\ntop\nuso de memória\nuso de memoria",
+          vi: "tiến trình\ntien trinh\ntop\ndùng bộ nhớ\ndung bo nho",
+          tl: "process\nmga proseso\ntop\ngamit ng memory",
+        },
+      },
+    },
+    logLevel: {
+      command: {
+        base: "/loglevel\nlog level\nlogging level",
+        locales: {
+          "zh-CN": "日志级别\n日志等级",
+          ko: "로그 레벨\n로깅 레벨",
+          es: "nivel de log\nnivel de registro",
+          pt: "nível de log\nnivel de log\nnível de registro\nnivel de registro",
+          vi: "mức log\nmuc log\nmức ghi log\nmuc ghi log",
+          tl: "antas ng log\nantas ng pag-log",
+        },
+      },
+      setVerb: {
+        base: "set\nchange\nswitch",
+        locales: {
+          "zh-CN": "设置\n调成\n改成\n切换",
+          ko: "설정\n바꿔\n변경\n전환",
+          es: "pon\nponer\ncambia\ncambiar\najusta",
+          pt: "define\ndefinir\nmuda\nmudar\najusta",
+          vi: "đặt\ndat\nđổi\ndoi\nchuyển\nchuyen",
+          tl: "itakda\npalitan\nilipat",
+        },
+      },
+      domain: {
+        base: "log\nlogging\nverbosity",
+        locales: {
+          "zh-CN": "日志\n详细程度",
+          ko: "로그\n로깅\n상세도",
+          es: "log\nregistro\nverbosidad",
+          pt: "log\nregistro\nverbosidade",
+          vi: "log\nghi log\nđộ chi tiết\ndo chi tiet",
+          tl: "log\npag-log\nverbosity",
+        },
+      },
+      level: {
+        trace: {
+          base: "trace",
+          locales: {
+            "zh-CN": "跟踪",
+            ko: "추적",
+            es: "rastreo",
+            pt: "rastreamento",
+            vi: "theo dõi\ntheo doi",
+            tl: "bakas\ntrace",
+          },
+        },
+        debug: {
+          base: "debug",
+          locales: {
+            "zh-CN": "调试",
+            ko: "디버그",
+            es: "depuración\ndepuracion",
+            pt: "depuração\ndepuracao",
+            vi: "gỡ lỗi\ngo loi",
+            tl: "debug\npag-debug",
+          },
+        },
+        info: {
+          base: "info\ninformation",
+          locales: {
+            "zh-CN": "信息",
+            ko: "정보",
+            es: "información\ninformacion",
+            pt: "informação\ninformacao",
+            vi: "thông tin\nthong tin",
+            tl: "impormasyon",
+          },
+        },
+        warn: {
+          base: "warn\nwarning",
+          locales: {
+            "zh-CN": "警告",
+            ko: "경고",
+            es: "advertencia",
+            pt: "aviso\nadvertência\nadvertencia",
+            vi: "cảnh báo\ncanh bao",
+            tl: "babala",
+          },
+        },
+        error: {
+          base: "error\nerrors",
+          locales: {
+            "zh-CN": "错误",
+            ko: "오류",
+            es: "error\nerrores",
+            pt: "erro",
+            vi: "lỗi\nloi",
+            tl: "error\nmga error",
+          },
+        },
+      },
+    },
+    updateRole: {
+      intent: {
+        base: "role\nassign role\nset role\nchange role\nupdate role\nboss\nmanager\nsupervisor\nsuperior\nlead\ncoworker\nco-worker\nteammate\ncolleague\npeer\nfriend\npartner\nadmin\nowner\nguest\nmember\nuser\nmod\nmoderator\npromote\ndemote\nrevoke\nremove role",
+        locales: {
+          "zh-CN": "角色\n分配角色\n设置角色\n修改角色\n老板\n经理\n主管\n上级\n负责人\n同事\n队友\n伙伴\n管理员\n所有者\n主人\n访客\n成员\n用户\n版主\n提升\n升级\n降级\n撤销\n移除角色",
+          ko: "역할\n역할 설정\n역할 변경\n상사\n매니저\n관리자\n감독자\n리더\n동료\n팀원\n친구\n파트너\n오너\n소유자\n게스트\n멤버\n사용자\n모더레이터\n승급\n강등\n철회",
+          es: "rol\nasigna el rol\ncambiar el rol\njefe\njefa\ngerente\nsupervisor\nlíder\nlider\ncompañero\ncompanero\ncolega\namigo\nsocio\nadministrador\ndueño\ndueno\npropietario\ninvitado\nmiembro\nusuario\nmoderador\nasciende\npromociona\ndegrada\nrevoca\nquitar el rol",
+          pt: "papel\nfunção\nfuncao\ncargo\natribuir papel\nmudar papel\nchefe\ngerente\nsupervisor\nlíder\nlider\ncolega\namigo\nparceiro\nadministrador\ndono\nproprietário\nproprietario\nconvidado\nmembro\nusuário\nusuario\nmoderador\npromover\nrebaixar\nrevogar\nremover papel",
+          vi: "vai trò\nvai tro\ngán vai trò\ngan vai tro\nđổi vai trò\ndoi vai tro\nsếp\nsep\nquản lý\nquan ly\ngiám sát\ngiam sat\ntrưởng nhóm\ntruong nhom\nđồng nghiệp\ndong nghiep\nbạn bè\nban be\nđối tác\ndoi tac\nquản trị viên\nquan tri vien\nchủ sở hữu\nchu so huu\nkhách\nthành viên\nthanh vien\nngười dùng\nnguoi dung\nđiều hành viên\ndieu hanh vien\nthăng cấp\nthang cap\nhạ cấp\nha cap\nthu hồi\nthu hoi",
+          tl: "role\ntungkulin\nitakda ang role\nbaguhin ang role\nboss\nmanager\nsupervisor\nlead\nkatrabaho\nkasamahan\nkaibigan\npartner\nadmin\nmay-ari\nguest\nmiyembro\nuser\nmod\nmoderador\ni-promote\ni-demote\nbawiin\nalisin ang role",
+        },
+      },
+    },
+    triggerCreate: {
+      request: {
+        base: "schedule\nscheduled\ntrigger\nheartbeat\ncron\nrecurring\nrecur\nrepeat\nrepeating\nreminder\nremind\nautomate\nautomation\nautomatic\nperiodic\ninterval\nfollow up\ncheck in\nevery day\nevery week\nevery month\nevery hour\ndaily\nweekly\nmonthly\nhourly\nalarm\nwake me",
+        locales: {
+          "zh-CN": "安排\n定时\n触发器\n心跳\ncron\n循环\n重复\n提醒\n提醒我\n自动化\n自动\n定期\n间隔\n跟进\n检查一下\n每天\n每周\n每月\n每小时\n闹钟\n叫醒我",
+          ko: "예약\n예약해\n트리거\n하트비트\n크론\n반복\n반복적으로\n알림\n리마인더\n자동화\n자동\n주기적\n간격\n후속 확인\n매일\n매주\n매달\n매시간\n알람\n깨워줘",
+          es: "programa\nprogramar\nrecordatorio\nrecordar\nrecurrente\nrepetir\nautomatiza\nautomatizar\nautomático\nautomatico\nperiódico\nperiodico\nintervalo\nseguimiento\ncada día\ncada dia\ncada semana\ncada mes\ncada hora\ndiario\nsemanal\nmensual\nalarma\ndespiértame\ndespiertame",
+          pt: "programa\nprogramar\nlembrete\nlembrar\nrecorrente\nrepetir\nautomatiza\nautomatizar\nautomático\nautomatico\nperiódico\nperiodico\nintervalo\nacompanhamento\ncada dia\ncada semana\ncada mês\ncada mes\ncada hora\ndiário\ndiario\nsemanal\nmensal\nalarme\nme acorde",
+          vi: "lên lịch\nlen lich\nlời nhắc\nloi nhac\nnhắc tôi\nnhac toi\nlặp lại\nlap lai\ntự động\ntu dong\ntự động hóa\ntu dong hoa\nđịnh kỳ\ndinh ky\nkhoảng cách\nkhoang cach\ntheo dõi\ntheo doi\nmỗi ngày\nmoi ngay\nmỗi tuần\nmoi tuan\nmỗi tháng\nmoi thang\nmỗi giờ\nmoi gio\nbáo thức\nbao thuc\nđánh thức tôi\ndanh thuc toi",
+          tl: "iskedyul\npaalala\nipaalala\npaulit-ulit\nulitin\nawtomatiko\nawtomasyon\npana-panahon\npagitan\nfollow up\nkada araw\nkada linggo\nkada buwan\nkada oras\nalarm\ngisingin mo ako",
+        },
+      },
+    },
+    createTask: {
+      request: {
+        base: "create task\ncreate trigger\ncreate a trigger\nset a trigger\nschedule a trigger\nschedule a task\nremind me\nreminder\nrecurring\nrepeat\nheartbeat\ncron\nrun every\nrun at\nevery day\nevery week\nevery month\nevery hour",
+        locales: {
+          "zh-CN": "创建任务\n创建触发器\n设置触发器\n安排任务\n提醒我\n提醒\n重复\n循环\n心跳\n定时\n每天\n每周\n每月\n每小时",
+          ko: "작업 만들기\n트리거 만들기\n트리거 설정\n작업 예약\n알림\n리마인더\n반복\n하트비트\n크론\n매일\n매주\n매달\n매시간",
+          es: "crear tarea\ncrear disparador\nprograma una tarea\nprograma un disparador\nrecordatorio\nrecuérdame\nrecurrente\nrepetir\ncada día\ncada dia\ncada semana\ncada mes\ncada hora",
+          pt: "criar tarefa\ncriar gatilho\nprogramar tarefa\nprogramar gatilho\nlembrete\nlembra-me\nrecorrente\nrepetir\ncada dia\ncada semana\ncada mês\ncada mes\ncada hora",
+          vi: "tạo tác vụ\ntao tac vu\ntạo trình kích hoạt\ntao trinh kich hoat\nlên lịch tác vụ\nlen lich tac vu\nlời nhắc\nloi nhac\nnhắc tôi\nnhac toi\nlặp lại\nlap lai\nmỗi ngày\nmoi ngay\nmỗi tuần\nmoi tuan",
+          tl: "gumawa ng task\ngumawa ng trigger\niskedyul ang task\niskedyul ang trigger\npaalala\nipaalala\npaulit-ulit\nkada araw\nkada linggo\nkada buwan\nkada oras",
+        },
+      },
+    },
+    searchContacts: {
+      request: {
+        base: "list contacts\nshow contacts\nsearch contacts\nfind contacts\nwho do i know\nfriends\ncolleagues\nvip",
+        locales: {
+          "zh-CN": "联系人列表\n显示联系人\n搜索联系人\n查找联系人\n我认识谁\n朋友\n同事\n贵宾",
+          ko: "연락처 목록\n연락처 보여줘\n연락처 검색\n연락처 찾기\n내가 아는 사람\n친구\n동료\nVIP",
+          es: "lista de contactos\nmuestra contactos\nbusca contactos\nencuentra contactos\na quién conozco\na quien conozco\namigos\ncolegas\nvip",
+          pt: "lista de contatos\nmostrar contatos\nbuscar contatos\nencontrar contatos\nquem eu conheço\nquem eu conheco\namigos\ncolegas\nvip",
+          vi: "danh sách liên hệ\ndanh sach lien he\nhiển thị liên hệ\nhien thi lien he\ntìm liên hệ\ntim lien he\ntôi quen ai\ntoi quen ai\nbạn bè\nban be\nđồng nghiệp\ndong nghiep",
+          tl: "listahan ng contact\nipakita ang contact\nhanapin ang contact\nsino ang kilala ko\nkaibigan\nkasamahan\nvip",
+        },
+      },
+    },
+    addContact: {
+      request: {
+        base: "add contact\nsave contact\nremember contact\ncategorize contact\nadd to relationships\nsave this person",
+        locales: {
+          "zh-CN": "添加联系人\n保存联系人\n记住联系人\n给联系人分类\n加入关系\n保存这个人",
+          ko: "연락처 추가\n연락처 저장\n연락처 기억해\n연락처 분류\n관계에 추가\n이 사람 저장",
+          es: "agrega contacto\nagregar contacto\nguarda contacto\nrecuerda contacto\ncategoriza contacto\nagrega a relaciones\nguarda a esta persona",
+          pt: "adicionar contato\nadiciona contato\nsalvar contato\nlembrar contato\ncategorizar contato\nadicionar aos relacionamentos\nsalvar esta pessoa",
+          vi: "thêm liên hệ\nthem lien he\nlưu liên hệ\nluu lien he\nghi nhớ liên hệ\nghi nho lien he\nphân loại liên hệ\nphan loai lien he",
+          tl: "magdagdag ng contact\ni-save ang contact\ntandaan ang contact\nikategorya ang contact\ni-save ang taong ito",
+        },
+      },
+    },
+    updateContact: {
+      request: {
+        base: "update contact\nedit contact\nmodify contact\nchange contact\nupdate relationship\nedit relationship\nchange notes\nadd tag\nremove tag\nadd category\nremove category",
+        locales: {
+          "zh-CN": "更新联系人\n编辑联系人\n修改联系人\n更新关系\n编辑关系\n修改备注\n添加标签\n移除标签\n添加分类\n移除分类",
+          ko: "연락처 업데이트\n연락처 수정\n연락처 변경\n관계 업데이트\n메모 변경\n태그 추가\n태그 제거\n분류 추가\n분류 제거",
+          es: "actualiza contacto\nactualizar contacto\nedita contacto\nmodifica contacto\ncambia contacto\nactualiza relación\nactualiza relacion\ncambia notas\nagrega etiqueta\nquita etiqueta\nagrega categoría\nagrega categoria\nquita categoría\nquita categoria",
+          pt: "atualizar contato\natualiza contato\neditar contato\nmodificar contato\nmudar contato\natualizar relacionamento\nmudar notas\nadicionar etiqueta\nremover etiqueta\nadicionar categoria\nremover categoria",
+          vi: "cập nhật liên hệ\ncap nhat lien he\nsửa liên hệ\nsua lien he\nthay đổi liên hệ\nthay doi lien he\ncập nhật quan hệ\ncap nhat quan he\nthêm thẻ\nthem the\nxóa thẻ\nxoa the",
+          tl: "i-update ang contact\ni-edit ang contact\nbaguhin ang contact\ni-update ang relasyon\ndagdagan ng tag\nalisin ang tag\ndagdagan ng kategorya\nalisin ang kategorya",
+        },
+      },
+    },
+    removeContact: {
+      request: {
+        base: "remove contact\ndelete contact\ndrop contact\nremove from relationships\nforget contact",
+        locales: {
+          "zh-CN": "移除联系人\n删除联系人\n从关系中移除\n忘记联系人",
+          ko: "연락처 제거\n연락처 삭제\n관계에서 제거\n연락처 잊어",
+          es: "elimina contacto\neliminar contacto\nborra contacto\nquita de relaciones\nolvida contacto",
+          pt: "remover contato\nexcluir contato\napagar contato\nremover dos relacionamentos\nesquecer contato",
+          vi: "xóa liên hệ\nxoa lien he\ngỡ liên hệ\ngo lien he\nxóa khỏi quan hệ\nxoa khoi quan he",
+          tl: "alisin ang contact\nburahin ang contact\ntanggalin sa relationships\nkalimutan ang contact",
+        },
+      },
+    },
+    scheduleFollowUp: {
+      request: {
+        base: "follow up\nfollowup\nremind me\ncheck in\ncheck back\nreach out\nschedule follow-up\nschedule a reminder",
+        locales: {
+          "zh-CN": "跟进\n提醒我\n回访\n联系一下\n安排提醒\n安排跟进",
+          ko: "후속 조치\n팔로업\n알려줘\n체크인\n다시 연락\n후속 일정 잡아",
+          es: "seguimiento\nhaz seguimiento\nrecuérdame\nrecuerdame\nvuelve a contactar\nrevisa de nuevo\nprograma seguimiento",
+          pt: "acompanhamento\nfaça acompanhamento\nfaca acompanhamento\nlembra-me\nentre em contato de novo\nprograme acompanhamento",
+          vi: "theo dõi\ntheo doi\nnhắc tôi\nnhac toi\nliên hệ lại\nlien he lai\nlên lịch theo dõi\nlen lich theo doi",
+          tl: "follow up\npaalalahanan mo ako\ncheck in\nmakipag-ugnayan muli\niskedyul ang follow up",
+        },
+      },
+    },
+    followRoom: {
+      request: {
+        base: "follow this room\nparticipate here\nengage here\nlisten to this room\njoin this room\ntake interest",
+        locales: {
+          "zh-CN": "关注这个房间\n参与这里\n加入这个房间\n听这个房间",
+          ko: "이 방을 팔로우해\n여기에 참여해\n이 방에 들어와\n이 방을 들어줘",
+          es: "sigue esta sala\nparticipa aquí\nparticipa aqui\núnete a esta sala\nunete a esta sala\npresta atención aquí\npresta atencion aqui",
+          pt: "siga esta sala\nparticipe aqui\nentre nesta sala\npreste atenção aqui\npreste atencao aqui",
+          vi: "theo dõi phòng này\ntheo doi phong nay\ntham gia ở đây\ntham gia o day\nvào phòng này\nvao phong nay",
+          tl: "i-follow ang room na ito\nsumali dito\nmakilahok dito\nmakinig sa room na ito",
+        },
+      },
+    },
+    muteRoom: {
+      request: {
+        base: "mute\nsilence\nquiet\nshut up\nstop talking\nbe quiet\nhush\nshh\nno more",
+        locales: {
+          "zh-CN": "静音\n安静\n闭嘴\n别说话\n不要再说了",
+          ko: "음소거\n조용히\n입 다물어\n말하지 마\n그만 말해",
+          es: "silencia\nponte en silencio\ncállate\ncallate\ndeja de hablar\nguarda silencio",
+          pt: "silencia\nfique em silêncio\nfique em silencio\ncala a boca\npara de falar\nfique quieto",
+          vi: "tắt tiếng\ntat tieng\nim lặng\nim lang\nđừng nói nữa\ndung noi nua",
+          tl: "i-mute\ntumahimik\ntigilan ang pagsasalita\nwag ka nang magsalita",
+        },
+      },
+    },
+    unmuteRoom: {
+      request: {
+        base: "unmute\nunsilence\nlisten again\nstart talking\ntalk again\nspeak again\nenable\nresume",
+        locales: {
+          "zh-CN": "取消静音\n恢复说话\n再说话\n继续\n恢复",
+          ko: "음소거 해제\n다시 말해\n다시 듣기\n재개",
+          es: "activa el sonido\nquitar silencio\nvuelve a hablar\nreanuda\nescucha otra vez",
+          pt: "tirar do silêncio\ntirar do silencio\nvolte a falar\nretomar\nouça de novo\nouca de novo",
+          vi: "bỏ tắt tiếng\nbo tat tieng\nnói lại đi\nnoi lai di\ntiếp tục\ntiep tuc",
+          tl: "i-unmute\nmagsalita ulit\nipagpatuloy\nmakinig ulit",
+        },
+      },
+    },
+    processDocuments: {
+      request: {
+        base: "process knowledge\nadd to knowledge\nupload document\nadd document\nlearn this\nremember this\nstore this\ningest file\nknowledge base",
+        locales: {
+          "zh-CN": "处理知识\n加入知识库\n上传文档\n添加文档\n记住这个\n存入知识库\n知识库",
+          ko: "지식 처리\n지식에 추가\n문서 업로드\n문서 추가\n이걸 기억해\n저장해\n지식 베이스",
+          es: "procesa conocimiento\nagrega al conocimiento\nsube documento\nañade documento\nanade documento\nrecuerda esto\nguarda esto\nbase de conocimiento",
+          pt: "processar conhecimento\nadicionar ao conhecimento\nenviar documento\nadicionar documento\nlembre isto\nguarde isto\nbase de conhecimento",
+          vi: "xử lý kiến thức\nxu ly kien thuc\nthêm vào kiến thức\nthem vao kien thuc\ntải tài liệu lên\ntai tai lieu len\nghi nhớ điều này\nghi nho dieu nay",
+          tl: "iproseso ang kaalaman\nidagdag sa kaalaman\nmag-upload ng dokumento\ni-save ito\ntandaan ito\nknowledge base",
+        },
+      },
+    },
+    searchDocuments: {
+      request: {
+        base: "search knowledge\nfind information\nlook up\nquery knowledge base\nsearch documents\nfind in knowledge\nwhat do you know about",
+        locales: {
+          "zh-CN": "搜索知识\n查找信息\n查询知识库\n搜索文档\n你知道什么关于",
+          ko: "지식 검색\n정보 찾기\n찾아봐\n지식 베이스 조회\n문서 검색\n무엇을 알고 있어",
+          es: "busca conocimiento\nbuscar información\nbusca información\nbusca informacion\nconsulta la base de conocimiento\nbusca documentos\nqué sabes sobre\nque sabes sobre",
+          pt: "busca conhecimento\nbuscar informação\nbuscar informacao\nprocure informação\nprocure informacao\nconsulte a base de conhecimento\no que você sabe sobre\no que voce sabe sobre",
+          vi: "tìm kiến thức\ntim kien thuc\ntìm thông tin\ntim thong tin\ntra cứu kiến thức\ntra cuu kien thuc\nbạn biết gì về\nban biet gi ve",
+          tl: "hanapin ang kaalaman\nhanapin ang impormasyon\ntingnan sa knowledge base\nano ang alam mo tungkol sa",
+        },
+      },
+    },
+    generateImage: {
+      strong: {
+        base: "generate image\ncreate image\nmake image\ndraw\npaint\nillustration\ngenerate picture\ncreate picture\nmake picture\ngenerate art\ncreate art\nimage of\npicture of\nphoto of",
+        locales: {
+          "zh-CN": "生成图片\n创建图片\n画\n绘制\n插画\n图片\n照片",
+          ko: "이미지 생성\n그림 그려\n그려줘\n그림\n일러스트\n사진",
+          es: "genera imagen\ncrear imagen\nhaz una imagen\ndibuja\npinta\nilustración\nilustracion\nfoto de",
+          pt: "gerar imagem\ncriar imagem\nfaça uma imagem\nfaca uma imagem\ndesenhe\npinte\nilustração\nilustracao\nfoto de",
+          vi: "tạo ảnh\ntao anh\nvẽ\nve\nminh họa\nminh hoa\nhình ảnh\nhinh anh",
+          tl: "gumawa ng larawan\nlumikha ng larawan\ngumuhit\npinta\nlarawan ng\nphoto ng",
+        },
+      },
+      weak: {
+        base: "image\npicture\nvisual\nart\ngraphic\nrender\ngenerate\ncreate\ndesign\nsketch\nportrait",
+        locales: {
+          "zh-CN": "图片\n图像\n视觉\n艺术\n设计\n素描\n肖像",
+          ko: "이미지\n사진\n비주얼\n아트\n디자인\n스케치\n초상화",
+          es: "imagen\nfoto\nvisual\narte\ngráfico\ngrafico\ndiseño\ndiseno\nboceto\nretrato",
+          pt: "imagem\nfoto\nvisual\narte\ngráfico\ngrafico\ndesign\nesboço\nesboco\nretrato",
+          vi: "ảnh\nanh\nhình\nhinh\nthị giác\nthi giac\nnghệ thuật\nnghe thuat\nthiết kế\nthiet ke",
+          tl: "larawan\nbiswal\nsining\ndisenyo\nsketch\nretrato",
+        },
+      },
+    },
+    generateMedia: {
+      request: {
+        base: "generate media\ncreate media\nmake media\ngenerate image\ncreate image\ngenerate video\ncreate video\nanimate\nanimation\ngenerate audio\ncreate audio\ngenerate music\nsound effect\ntext to speech\ntts\nvoiceover",
+        locales: {
+          "zh-CN": "生成媒体\n创建媒体\n生成图片\n生成视频\n动画\n生成音频\n音乐\n文字转语音",
+          ko: "미디어 생성\n이미지 생성\n비디오 생성\n영상 생성\n애니메이션\n오디오 생성\n음악 생성\n텍스트 음성 변환",
+          es: "generar media\ncrear media\ngenerar imagen\ncrear imagen\ngenerar video\ncrear video\nanimar\ngenerar audio\ncrear audio\ntexto a voz",
+          pt: "gerar mídia\ngerar midia\ncriar mídia\ncriar midia\ngerar imagem\ncriar imagem\ngerar vídeo\ngerar video\nanimar\ngerar áudio\ngerar audio\ntexto para fala",
+          vi: "tạo media\ntao media\ntạo ảnh\ntao anh\ntạo video\ntao video\nhoạt hình\nhoat hinh\ntạo âm thanh\ntao am thanh\nvăn bản thành giọng nói",
+          tl: "gumawa ng media\nlumikha ng media\ngumawa ng larawan\ngumawa ng video\ni-animate\ngumawa ng audio\ntext to speech",
+        },
+      },
+    },
+  },
   contextSignal: {
+    admin: {
+      strong: {
+        base: "admin\nowner\npermissions\nroles\npolicy\nsystem control",
+        locales: {
+          es: "administrador\ndueño\npermisos\nroles\npolitica",
+          ko: "관리자\n소유자\n권한\n역할\n정책",
+          pt: "administrador\ndono\npermissoes\nfuncoes\npolitica",
+          tl: "admin\nmay ari\npahintulot\nrole\npatakaran",
+          vi: "quản trị\nquan tri\nchủ sở hữu\nchu so huu\nquyền\nquyen",
+          "zh-CN": "管理员\n所有者\n权限\n角色\n策略",
+        },
+      },
+    },
+    agent_internal: {
+      strong: {
+        base: "agent internal\nself management\nautonomous task\ninternal state",
+        locales: {
+          es: "interno del agente\ngestion interna\nestado interno",
+          ko: "에이전트 내부\n자체 관리\n내부 상태",
+          pt: "interno do agente\ngestao interna\nestado interno",
+          tl: "internal ng agent\nsariling pamamahala\ninternal state",
+          vi: "nội bộ tác tử\nnoi bo tac tu\ntự quản lý\ntu quan ly",
+          "zh-CN": "代理内部\n自我管理\n内部状态",
+        },
+      },
+    },
+    automation: {
+      strong: {
+        base: "automation\nworkflow\ntrigger\ncron\nmonitor\nscheduled job",
+        locales: {
+          es: "automatizacion\nflujo de trabajo\ndisparador\ncron\nmonitor",
+          ko: "자동화\n워크플로\n트리거\n크론\n모니터",
+          pt: "automacao\nfluxo de trabalho\ngatilho\ncron\nmonitor",
+          tl: "automation\nworkflow\ntrigger\ncron\nmonitor",
+          vi: "tự động hóa\ntu dong hoa\nquy trình\nquy trinh\nkich hoat",
+          "zh-CN": "自动化\n工作流\n触发器\n定时\n监控",
+        },
+      },
+    },
+    browser: {
+      strong: {
+        base: "browser\nopen page\nclick\ntype on website\nbrowser session",
+        locales: {
+          es: "navegador\nabrir pagina\nhacer clic\nsitio web",
+          ko: "브라우저\n페이지 열기\n클릭\n웹사이트 입력",
+          pt: "navegador\nabrir pagina\nclicar\nsite",
+          tl: "browser\nbuksan ang pahina\nclick\nwebsite",
+          vi: "trình duyệt\ntrinh duyet\nmở trang\nmo trang\nnhấp",
+          "zh-CN": "浏览器\n打开页面\n点击\n网站输入",
+        },
+      },
+    },
+    character: {
+      strong: {
+        base: "character\npersonality\nvoice\nstyle\nsystem prompt\nagent profile",
+        locales: {
+          es: "personaje\npersonalidad\nvoz\nestilo\nperfil",
+          ko: "캐릭터\n성격\n목소리\n스타일\n프로필",
+          pt: "personagem\npersonalidade\nvoz\nestilo\nperfil",
+          tl: "karakter\npersonalidad\nboses\nestilo\nprofile",
+          vi: "nhân vật\nnhan vat\ntính cách\ntinh cach\ngiọng\ngiong",
+          "zh-CN": "角色\n性格\n声音\n风格\n资料",
+        },
+      },
+    },
+    code: {
+      strong: {
+        base: "code\nprogramming\nrepo\nrepository\nimplementation\ndebug\ntest",
+        locales: {
+          es: "codigo\nprogramacion\nrepositorio\nimplementar\ndepurar\nprueba",
+          ko: "코드\n프로그래밍\n저장소\n구현\n디버그\n테스트",
+          pt: "codigo\nprogramacao\nrepositorio\nimplementar\ndepurar\nteste",
+          tl: "code\nprogramming\nrepo\nipatupad\ndebug\ntest",
+          vi: "mã\nma\nlập trình\nlap trinh\nkho mã\nkho ma\nkiểm thử",
+          "zh-CN": "代码\n编程\n仓库\n实现\n调试\n测试",
+        },
+      },
+    },
+    connectors: {
+      strong: {
+        base: "connector\nintegration\noauth\nmcp\naccount connection\napp auth",
+        locales: {
+          es: "conector\nintegracion\noauth\nmcp\ncuenta conectada",
+          ko: "커넥터\n통합\n오어스\n계정 연결",
+          pt: "conector\nintegracao\noauth\nmcp\nconta conectada",
+          tl: "connector\nintegration\noauth\naccount connection",
+          vi: "kết nối\nket noi\ntích hợp\ntich hop\noauth\ntài khoản",
+          "zh-CN": "连接器\n集成\n授权\n账号连接",
+        },
+      },
+    },
+    contacts: {
+      strong: {
+        base: "contacts\nperson\npeople\nrelationship\nfriend\ncolleague",
+        locales: {
+          es: "contactos\npersona\ngente\nrelacion\namigo\ncolega",
+          ko: "연락처\n사람\n관계\n친구\n동료",
+          pt: "contatos\npessoa\npessoas\nrelacao\namigo\ncolega",
+          tl: "contacts\ntao\nrelasyon\nkaibigan\nkasamahan",
+          vi: "liên hệ\nlien he\nngười\nnguoi\nquan hệ\nquan he",
+          "zh-CN": "联系人\n人物\n关系\n朋友\n同事",
+        },
+      },
+    },
+    crypto: {
+      strong: {
+        base: "crypto\ntoken\ndefi\non-chain\nswap\nbridge\nliquidity",
+        locales: {
+          es: "cripto\ntoken\ndefi\ncadena\nintercambio\nliquidez",
+          ko: "암호화폐\n토큰\n디파이\n온체인\n스왑\n유동성",
+          pt: "cripto\ntoken\ndefi\nonchain\ntroca\nliquidez",
+          tl: "crypto\ntoken\ndefi\nswap\nliquidity",
+          vi: "crypto\ntiền mã hóa\ntien ma hoa\ntoken\ndefi\nthanh khoản",
+          "zh-CN": "加密货币\n代币\n链上\n交换\n流动性",
+        },
+      },
+    },
+    documents: {
+      strong: {
+        base: "document\ndocuments\nnotes\nfile content\nsave notes\nartifact",
+        locales: {
+          es: "documento\ndocumentos\nnotas\nguardar notas\narchivo",
+          ko: "문서\n노트\n파일 내용\n저장",
+          pt: "documento\ndocumentos\nnotas\nsalvar notas\narquivo",
+          tl: "dokumento\nnotes\nnilalaman ng file\ni-save",
+          vi: "tài liệu\ntai lieu\nghi chú\nghi chu\nlưu ghi chú",
+          "zh-CN": "文档\n笔记\n文件内容\n保存笔记",
+        },
+      },
+    },
+    email: {
+      strong: {
+        base: "email account\nmail\ninbox\ndraft email\nsend email",
+        locales: {
+          es: "correo\nbandeja\nredactar correo\nenviar correo",
+          ko: "이메일\n메일함\n받은편지함\n메일 보내기",
+          pt: "email\ncorreio\ncaixa de entrada\nenviar email",
+          tl: "email\ninbox\ngumawa ng email\nmagpadala ng email",
+          vi: "email\nthư\nthu\nhộp thư\nhop thu\ngửi email",
+          "zh-CN": "邮件\n邮箱\n收件箱\n发送邮件",
+        },
+      },
+    },
+    files: {
+      strong: {
+        base: "file\nfiles\nfolder\ndirectory\nread file\nwrite file",
+        locales: {
+          es: "archivo\narchivos\ncarpeta\ndirectorio\nleer archivo",
+          ko: "파일\n폴더\n디렉터리\n파일 읽기\n파일 쓰기",
+          pt: "arquivo\narquivos\npasta\ndiretorio\nler arquivo",
+          tl: "file\nfiles\nfolder\ndirectory\nbasahin file",
+          vi: "tệp\ntep\nthư mục\nthu muc\nđọc tệp\ndoc tep",
+          "zh-CN": "文件\n文件夹\n目录\n读取文件\n写文件",
+        },
+      },
+    },
+    finance: {
+      strong: {
+        base: "finance\nmoney\nbalance\nportfolio\ninvoice\naccount",
+        locales: {
+          es: "finanzas\ndinero\nsaldo\nportafolio\nfactura\ncuenta",
+          ko: "금융\n돈\n잔액\n포트폴리오\n청구서\n계정",
+          pt: "financas\ndinheiro\nsaldo\nportfolio\nfatura\nconta",
+          tl: "finance\npera\nbalance\nportfolio\ninvoice\naccount",
+          vi: "tài chính\ntai chinh\ntiền\ntien\nsố dư\nso du",
+          "zh-CN": "财务\n钱\n余额\n投资组合\n发票\n账户",
+        },
+      },
+    },
+    game: {
+      strong: {
+        base: "game\ngameplay\nmatch\nsimulation\nplayer\nturn",
+        locales: {
+          es: "juego\npartida\nsimulacion\njugador\nturno",
+          ko: "게임\n플레이\n매치\n시뮬레이션\n플레이어\n턴",
+          pt: "jogo\npartida\nsimulacao\njogador\nturno",
+          tl: "laro\ngameplay\nsimulation\nplayer\nturn",
+          vi: "trò chơi\ntro choi\nmô phỏng\nmo phong\nngười chơi",
+          "zh-CN": "游戏\n对局\n模拟\n玩家\n回合",
+        },
+      },
+    },
+    general: {
+      strong: {
+        base: "general chat\nconversation\nreply\nanswer\ntalk",
+        locales: {
+          es: "conversacion\nrespuesta\nhablar\nchat general",
+          ko: "일반 대화\n답변\n말하기\n채팅",
+          pt: "conversa\nresposta\nfalar\nchat geral",
+          tl: "usap\nsagot\nmakipag-usap\ngeneral chat",
+          vi: "trò chuyện\ntro chuyen\ntrả lời\ntra loi\nnói chuyện",
+          "zh-CN": "普通聊天\n对话\n回复\n回答",
+        },
+      },
+    },
+    health: {
+      strong: {
+        base: "health\nwellness\nsleep\nexercise\nmedicine\nsymptom",
+        locales: {
+          es: "salud\nbienestar\nsueño\nejercicio\nmedicina\nsintoma",
+          ko: "건강\n웰니스\n수면\n운동\n약\n증상",
+          pt: "saude\nbem-estar\nsono\nexercicio\nremedio\nsintoma",
+          tl: "kalusugan\nwellness\ntulog\nehersisyo\ngamot\nsintomas",
+          vi: "sức khỏe\nsuc khoe\nngủ\nngu\ntập luyện\ntrieu chung",
+          "zh-CN": "健康\n睡眠\n运动\n药物\n症状",
+        },
+      },
+    },
+    knowledge: {
+      strong: {
+        base: "knowledge\nknown facts\nsaved notes\nrecall\nsemantic search",
+        locales: {
+          es: "conocimiento\nhechos guardados\nnotas guardadas\nrecordar",
+          ko: "지식\n저장된 사실\n저장된 노트\n회상\n검색",
+          pt: "conhecimento\nfatos salvos\nnotas salvas\nlembrar",
+          tl: "kaalaman\nsaved facts\nsaved notes\nalalahanin",
+          vi: "kiến thức\nkien thuc\nghi chú đã lưu\nghi chu da luu\nnhớ lại",
+          "zh-CN": "知识\n已保存事实\n已保存笔记\n回忆\n语义搜索",
+        },
+      },
+    },
+    media: {
+      strong: {
+        base: "media\nimage\nvideo\naudio\nscreenshot\ntranscript",
+        locales: {
+          es: "multimedia\nimagen\nvideo\naudio\ncaptura\ntranscripcion",
+          ko: "미디어\n이미지\n비디오\n오디오\n스크린샷\n전사",
+          pt: "midia\nimagem\nvideo\naudio\ncaptura\ntranscricao",
+          tl: "media\nlarawan\nvideo\naudio\nscreenshot\ntranscript",
+          vi: "đa phương tiện\nda phuong tien\nhình ảnh\nhinh anh\nvideo\nâm thanh",
+          "zh-CN": "媒体\n图片\n视频\n音频\n截图\n转录",
+        },
+      },
+    },
+    memory: {
+      strong: {
+        base: "memory\nremember\nrecall\nsave memory\nlong term memory",
+        locales: {
+          es: "memoria\nrecordar\nrecuerdo\nguardar memoria",
+          ko: "기억\n기억해\n회상\n장기 기억",
+          pt: "memoria\nlembrar\nrecordar\nsalvar memoria",
+          tl: "memory\ntandaan\nalalahanin\nlong term memory",
+          vi: "ký ức\nky uc\nnhớ\nnho\nghi nhớ\nghi nho",
+          "zh-CN": "记忆\n记住\n回忆\n长期记忆",
+        },
+      },
+    },
+    payments: {
+      strong: {
+        base: "payment\npay\ninvoice\nbilling\ncheckout\nsubscription charge",
+        locales: {
+          es: "pago\npagar\nfactura\ncobro\ncheckout",
+          ko: "결제\n지불\n청구서\n요금\n체크아웃",
+          pt: "pagamento\npagar\nfatura\ncobranca\ncheckout",
+          tl: "bayad\nmagbayad\ninvoice\nbilling\ncheckout",
+          vi: "thanh toán\nthanh toan\nhóa đơn\nhoa don\ntính tiền",
+          "zh-CN": "付款\n支付\n发票\n账单\n结账",
+        },
+      },
+    },
+    phone: {
+      strong: {
+        base: "phone\nsms\ntext message\ncall\ndial\niMessage",
+        locales: {
+          es: "telefono\nsms\nmensaje\nllamada\nmarcar",
+          ko: "전화\n문자\n메시지\n통화\n아이메시지",
+          pt: "telefone\nsms\nmensagem\nligacao\ndiscar",
+          tl: "telepono\nsms\ntext\ntawag\ndial",
+          vi: "điện thoại\ndien thoai\nsms\ntin nhắn\ncuộc gọi",
+          "zh-CN": "电话\n短信\n消息\n通话\n拨号",
+        },
+      },
+    },
+    productivity: {
+      strong: {
+        base: "productivity\nplanning\npriorities\nwork planning\npersonal operations",
+        locales: {
+          es: "productividad\nplanificacion\nprioridades\nplan de trabajo",
+          ko: "생산성\n계획\n우선순위\n업무 계획",
+          pt: "produtividade\nplanejamento\nprioridades\nplano de trabalho",
+          tl: "productivity\npagpaplano\nprayoridad\nwork plan",
+          vi: "năng suất\nnang suat\nlập kế hoạch\nlap ke hoach\nưu tiên",
+          "zh-CN": "效率\n规划\n优先级\n工作计划",
+        },
+      },
+    },
+    research: {
+      strong: {
+        base: "research\ninvestigate\ncompare sources\nfindings\ncitations\nsynthesis",
+        locales: {
+          es: "investigacion\ninvestigar\ncomparar fuentes\nhallazgos\ncitas",
+          ko: "조사\n연구\n출처 비교\n결과\n인용\n종합",
+          pt: "pesquisa\ninvestigar\ncomparar fontes\nachados\ncitacoes",
+          tl: "research\nimbestiga\nikumpara sources\nfindings\ncitations",
+          vi: "nghiên cứu\nnghien cuu\nđiều tra\ndieu tra\ntrích dẫn",
+          "zh-CN": "研究\n调查\n比较来源\n发现\n引用\n综合",
+        },
+      },
+    },
+    screen_time: {
+      strong: {
+        base: "screen time\ndevice usage\napp limits\nusage report\nfocus",
+        locales: {
+          es: "tiempo de pantalla\nuso del dispositivo\nlimites de apps\nenfoque",
+          ko: "스크린 타임\n기기 사용\n앱 제한\n사용 보고서\n집중",
+          pt: "tempo de tela\nuso do dispositivo\nlimites de app\nfoco",
+          tl: "screen time\ngamit ng device\napp limits\nfocus",
+          vi: "thời gian màn hình\nthoi gian man hinh\ngiới hạn ứng dụng",
+          "zh-CN": "屏幕时间\n设备使用\n应用限制\n使用报告\n专注",
+        },
+      },
+    },
+    secrets: {
+      strong: {
+        base: "secret\nsecrets\napi key\ntoken\ncredential\npassword",
+        locales: {
+          es: "secreto\nsecretos\nclave api\ntoken\ncredencial\ncontraseña",
+          ko: "비밀\n시크릿\napi 키\n토큰\n자격 증명\n비밀번호",
+          pt: "segredo\nsegredos\nchave api\ntoken\ncredencial\nsenha",
+          tl: "secret\napi key\ntoken\ncredential\npassword",
+          vi: "bí mật\nbi mat\nkhóa api\nkhoa api\ntoken\nmật khẩu",
+          "zh-CN": "密钥\n秘密\nAPI 密钥\n令牌\n凭据\n密码",
+        },
+      },
+    },
+    settings: {
+      strong: {
+        base: "settings\npreferences\nconfiguration\nconfig\ntoggle\nmodel settings",
+        locales: {
+          es: "ajustes\npreferencias\nconfiguracion\nactivar\nmodelo",
+          ko: "설정\n환경설정\n구성\n토글\n모델 설정",
+          pt: "configuracoes\npreferencias\nconfiguracao\nalternar\nmodelo",
+          tl: "settings\npreferences\nconfiguration\ntoggle\nmodel settings",
+          vi: "cài đặt\ncai dat\ntùy chọn\ntuy chon\ncấu hình",
+          "zh-CN": "设置\n偏好\n配置\n开关\n模型设置",
+        },
+      },
+    },
+    simple: {
+      strong: {
+        base: "simple answer\nno tools\ndirect reply\njust answer",
+        locales: {
+          es: "respuesta simple\nsin herramientas\nrespuesta directa",
+          ko: "간단한 답\n도구 없음\n직접 답변",
+          pt: "resposta simples\nsem ferramentas\nresposta direta",
+          tl: "simpleng sagot\nwalang tools\ndirektang sagot",
+          vi: "trả lời đơn giản\ntra loi don gian\nkhông dùng công cụ",
+          "zh-CN": "简单回答\n不用工具\n直接回复",
+        },
+      },
+    },
+    social: {
+      strong: {
+        base: "social\nsocial media\nfeed\ntimeline\ndm\nreply",
+        locales: {
+          es: "social\nredes sociales\nfeed\nlinea de tiempo\ndm\nresponder",
+          ko: "소셜\n소셜 미디어\n피드\n타임라인\n디엠\n답글",
+          pt: "social\nrede social\nfeed\nlinha do tempo\ndm\nresponder",
+          tl: "social\nsocial media\nfeed\ntimeline\ndm\nreply",
+          vi: "mạng xã hội\nmang xa hoi\nbảng tin\nbang tin\ntin nhắn riêng",
+          "zh-CN": "社交\n社交媒体\n动态\n时间线\n私信\n回复",
+        },
+      },
+    },
+    social_posting: {
+      strong: {
+        base: "post\npublish\ntweet\ntimeline\npublic reply\nfeed search",
+        locales: {
+          es: "publicar\npost\ntuit\nlinea de tiempo\nrespuesta publica",
+          ko: "게시\n발행\n트윗\n타임라인\n공개 답글",
+          pt: "postar\npublicar\ntweet\nlinha do tempo\nresposta publica",
+          tl: "mag-post\npublish\ntweet\ntimeline\npublic reply",
+          vi: "đăng\ndang\nxuất bản\nxuat ban\ntweet\ndòng thời gian",
+          "zh-CN": "发布\n帖子\n推文\n时间线\n公开回复",
+        },
+      },
+    },
+    state: {
+      strong: {
+        base: "state\nstatus\ncurrent mode\nruntime state\nroom state",
+        locales: {
+          es: "estado\nestatus\nmodo actual\nestado de runtime",
+          ko: "상태\n현재 모드\n런타임 상태\n룸 상태",
+          pt: "estado\nstatus\nmodo atual\nestado do runtime",
+          tl: "state\nstatus\ncurrent mode\nruntime state",
+          vi: "trạng thái\ntrang thai\nchế độ hiện tại\nche do hien tai",
+          "zh-CN": "状态\n当前模式\n运行时状态\n房间状态",
+        },
+      },
+    },
+    subscriptions: {
+      strong: {
+        base: "subscription\nrenewal\nrecurring service\nbilling cycle\nmembership",
+        locales: {
+          es: "suscripcion\nrenovacion\nservicio recurrente\nciclo de cobro",
+          ko: "구독\n갱신\n반복 서비스\n결제 주기\n멤버십",
+          pt: "assinatura\nrenovacao\nservico recorrente\nciclo de cobranca",
+          tl: "subscription\nrenewal\nrecurring service\nbilling cycle",
+          vi: "đăng ký\ndang ky\ngia hạn\ngia han\nchu kỳ thanh toán",
+          "zh-CN": "订阅\n续费\n周期服务\n账单周期\n会员",
+        },
+      },
+    },
+    system: {
+      strong: {
+        base: "system\nruntime\ndiagnostics\nprocess\noperational command",
+        locales: {
+          es: "sistema\nruntime\ndiagnostico\nproceso\noperacion",
+          ko: "시스템\n런타임\n진단\n프로세스\n운영 명령",
+          pt: "sistema\nruntime\ndiagnostico\nprocesso\noperacao",
+          tl: "system\nruntime\ndiagnostics\nprocess\noperation",
+          vi: "hệ thống\nhe thong\nruntime\nchẩn đoán\nchan doan",
+          "zh-CN": "系统\n运行时\n诊断\n进程\n运维命令",
+        },
+      },
+    },
+    tasks: {
+      strong: {
+        base: "task\ntasks\ntodo\nreminder\nfollow up\ndue date",
+        locales: {
+          es: "tarea\ntareas\npendiente\nrecordatorio\nseguimiento\nfecha limite",
+          ko: "작업\n할 일\n리마인더\n후속 조치\n마감일",
+          pt: "tarefa\ntarefas\nafazer\nlembrete\nacompanhamento\nprazo",
+          tl: "task\ntodo\npaalala\nfollow up\ndeadline",
+          vi: "tác vụ\ntac vu\nviệc cần làm\nviec can lam\nnhắc nhở",
+          "zh-CN": "任务\n待办\n提醒\n跟进\n截止日期",
+        },
+      },
+    },
+    terminal: {
+      strong: {
+        base: "terminal\nshell\ncommand line\nbash\nprocess\nstdout",
+        locales: {
+          es: "terminal\nshell\nlinea de comandos\nbash\nproceso",
+          ko: "터미널\n셸\n명령줄\n배시\n프로세스",
+          pt: "terminal\nshell\nlinha de comando\nbash\nprocesso",
+          tl: "terminal\nshell\ncommand line\nbash\nprocess",
+          vi: "terminal\nshell\ndòng lệnh\ndong lenh\nbash\ntiến trình",
+          "zh-CN": "终端\n命令行\nBash\n进程\n标准输出",
+        },
+      },
+    },
+    todos: {
+      strong: {
+        base: "todo\ntodos\ntask list\ncomplete task\ndelete task\nactive task",
+        locales: {
+          es: "pendiente\npendientes\nlista de tareas\ncompletar tarea\nborrar tarea",
+          ko: "할 일\n작업 목록\n작업 완료\n작업 삭제\n활성 작업",
+          pt: "afazer\nafazeres\nlista de tarefas\nconcluir tarefa\napagar tarefa",
+          tl: "todo\ntask list\nkumpletuhin task\nburahin task",
+          vi: "việc cần làm\nviec can lam\ndanh sách tác vụ\nhoàn thành tác vụ",
+          "zh-CN": "待办\n任务列表\n完成任务\n删除任务\n活动任务",
+        },
+      },
+    },
+    wallet: {
+      strong: {
+        base: "wallet\nbalance\ntransfer\nsign transaction\naccount address\nportfolio",
+        locales: {
+          es: "billetera\nsaldo\ntransferir\nfirmar transaccion\ndireccion",
+          ko: "지갑\n잔액\n전송\n거래 서명\n주소\n포트폴리오",
+          pt: "carteira\nsaldo\ntransferir\nassinar transacao\nendereco",
+          tl: "wallet\nbalance\ntransfer\nsign transaction\naddress",
+          vi: "ví\nvi\nsố dư\nso du\nchuyển\nchuyen\nký giao dịch",
+          "zh-CN": "钱包\n余额\n转账\n签名交易\n地址\n投资组合",
+        },
+      },
+    },
+    web: {
+      strong: {
+        base: "web\ninternet\ncurrent information\nsearch web\nopen url\nlatest",
+        locales: {
+          es: "web\ninternet\ninformacion actual\nbuscar web\nabrir url\nultimo",
+          ko: "웹\n인터넷\n최신 정보\n웹 검색\nurl 열기\n최신",
+          pt: "web\ninternet\ninformacao atual\nbuscar na web\nabrir url",
+          tl: "web\ninternet\nkasalukuyang impormasyon\nsearch web\nopen url",
+          vi: "web\ninternet\nthông tin hiện tại\nthong tin hien tai\ntìm web",
+          "zh-CN": "网络\n互联网\n最新信息\n网页搜索\n打开网址",
+        },
+      },
+    },
+    world: {
+      strong: {
+        base: "world\nserver\nroom\nchannel\nparticipants\nmembership",
+        locales: {
+          es: "mundo\nservidor\nsala\ncanal\nparticipantes\nmiembros",
+          ko: "월드\n서버\n방\n채널\n참가자\n멤버십",
+          pt: "mundo\nservidor\nsala\ncanal\nparticipantes\nmembros",
+          tl: "world\nserver\nroom\nchannel\nparticipants\nmembership",
+          vi: "thế giới\nthe gioi\nmáy chủ\nmay chu\nphòng\nkenh",
+          "zh-CN": "世界\n服务器\n房间\n频道\n参与者\n成员",
+        },
+      },
+    },
     gmail: {
       strong: {
         base: "email\nemails\ne-mail\ngmail\ninbox\nmailbox\ncompose\ndraft\ndrafts\nunread\nstarred\nmail\nmessage\nmessages\nrespond to\nreply to\ncheck my email\ncheck email\nnew mail\nshoot me an email",
@@ -565,529 +2172,6 @@ export const VALIDATION_KEYWORD_DOCS = {
           pt: "plugin\nplugins\ninstalar\nconfiguração\nconfiguracao\nconfigurar\nativar\ndesativar\nconectar\nintegração\nintegracao\nme ajuda\ncomo faço\nmostrar\npainel\nformulário\nformulario\ntabela\ngráfico\ngrafico\nmétricas\nmetricas\ninterface\napi key\ncredenciais\nsegredo",
           vi: "plugin\ncài đặt\ncai dat\nthiết lập\nthiet lap\ncấu hình\ncau hinh\nbật\nbat\ntắt\ntat\nkết nối\nket noi\ntích hợp\ntich hop\ngiúp tôi\ngiup toi\nlàm sao\nlam sao\ncho tôi xem\ndashboard\nbiểu mẫu\nbieu mau\nbảng\nbang\nbiểu đồ\nbieu do\nchỉ số\nchi so\ngiao diện\ngiao dien\napi key\nthông tin xác thực\nthong tin xac thuc\nbí mật\nbi mat",
           tl: "plugin\nplugins\ni-install\ni-setup\ni-configure\nconfig\npaganahin\npatayin\ni-connect\nintegration\ntulungan mo ako\npaano\nipakita mo\ndashboard\nform\ntable\nchart\nmetrics\ninterface\napi key\ncredentials\nsecret",
-        },
-      },
-    },
-  },
-  action: {
-    restart: {
-      request: {
-        base: "restart\nreboot\nreload\nrefresh\nrespawn",
-        locales: {
-          "zh-CN": "重启\n重开\n重新加载\n刷新",
-          ko: "재시작\n다시 시작\n재부팅\n다시 불러와\n새로고침",
-          es: "reinicia\nreiniciar\nreinicio\nrecarga\nrecargar\nrefresca\nrefrescar",
-          pt: "reinicia\nreiniciar\nreinício\nreinicio\nrecarrega\nrecarregar\natualiza\natualizar",
-          vi: "khởi động lại\nkhoi dong lai\ntải lại\ntai lai\nlàm mới\nlam moi",
-          tl: "i-restart\nrestart\ni-reboot\ni-reload\ni-refresh",
-        },
-      },
-    },
-    setUserName: {
-      recentContext: {
-        base: "name\nmy name is\nmy name\ni'm\ni am\ncall me\ncall me by\nchange my name\nrename me",
-        locales: {
-          "zh-CN": "名字\n我的名字\n我叫\n我是\n叫我\n称呼我\n改名字",
-          ko: "이름\n내 이름\n제 이름은\n나는\n불러줘\n라고 불러\n이름 바꿔",
-          es: "nombre\nmi nombre\nmi nombre es\nme llamo\nllámame\nllamame\ncambia mi nombre",
-          pt: "nome\nmeu nome\nmeu nome é\nmeu nome e\nme chamo\nme chama de\nchame-me\nmuda meu nome",
-          vi: "tên\nten\ntên tôi\nten toi\ntôi là\ntoi la\ngọi tôi là\ngoi toi la\nđổi tên tôi\ndoi ten toi",
-          tl: "pangalan\nang pangalan ko\nako si\ntawagin mo akong\npalitan ang pangalan ko",
-        },
-      },
-    },
-    manageTasks: {
-      request: {
-        base: "create task\nadd task\nnew task\nmake task\ncomplete task\nfinish task\ndone with task\nmark task done\ndelete task\nremove task\nupdate task\nedit task\nchange task\nlist tasks\nshow tasks\nmy tasks\nwhat are my tasks\nadd a todo\nadd a to-do\ncreate a to do\ntask list\ncheck off",
-        locales: {
-          "zh-CN": "创建任务\n添加任务\n新任务\n完成任务\n删除任务\n更新任务\n列出任务\n任务列表",
-          ko: "작업 만들기\n작업 추가\n새 작업\n작업 완료\n작업 삭제\n작업 수정\n작업 목록",
-          es: "crear tarea\nagregar tarea\nnueva tarea\ncompletar tarea\neliminar tarea\nactualizar tarea\nlistar tareas\nmis tareas\nlista de tareas",
-          pt: "criar tarefa\nadicionar tarefa\nnova tarefa\nconcluir tarefa\nremover tarefa\natualizar tarefa\nlistar tarefas\nminhas tarefas\nlista de tarefas",
-          vi: "tạo nhiệm vụ\ntao nhiem vu\nthêm nhiệm vụ\nthem nhiem vu\nhoàn thành nhiệm vụ\nhoan thanh nhiem vu\nxóa nhiệm vụ\nxoa nhiem vu\ncập nhật nhiệm vụ\ncap nhat nhiem vu\ndanh sách nhiệm vụ\ndanh sach nhiem vu",
-          tl: "gumawa ng task\nmagdagdag ng task\nbagong task\ntapusin ang task\nburahin ang task\ni-update ang task\nlistahan ng task\nmga task ko",
-        },
-      },
-    },
-    appControl: {
-      launchVerb: {
-        base: "launch\nopen\nstart\nrun\nshow",
-        locales: {
-          "zh-CN": "启动\n打开\n运行\n开启\n显示",
-          ko: "실행\n열어\n시작\n켜\n보여줘",
-          es: "abre\nabrir\ninicia\niniciar\nejecuta\nmostrar",
-          pt: "abre\nabrir\ninicia\niniciar\nexecuta\nmostrar",
-          vi: "mở\nmo\nkhởi chạy\nkhoi chay\nchạy\nchay\nbắt đầu\nbat dau",
-          tl: "buksan\nsimulan\npatakbuhin\nipakita",
-        },
-      },
-      stopVerb: {
-        base: "stop\nclose\nshut down\nkill\nquit\nexit",
-        locales: {
-          "zh-CN": "停止\n关闭\n关掉\n退出",
-          ko: "중지\n멈춰\n종료\n닫아\n끄기",
-          es: "detén\ndetener\ncierra\ncerrar\napaga\nsalir",
-          pt: "parar\npare\nfechar\nfecha\ndesliga\nsair",
-          vi: "dừng\ndung\ntắt\ntat\nđóng\ndong\nthoát\nthoat",
-          tl: "ihinto\nitigil\nisara\npatayin\nlumabas",
-        },
-      },
-      genericTarget: {
-        base: "app\napplication",
-        locales: {
-          "zh-CN": "应用\n应用程序\n程序",
-          ko: "앱\n애플리케이션",
-          es: "app\naplicación\naplicacion\nprograma",
-          pt: "app\naplicativo\naplicação\naplicacao\nprograma",
-          vi: "ứng dụng\nung dung",
-          tl: "app\naplikasyon\nprograma",
-        },
-      },
-      knownApp: {
-        base: "shopify\nvincent\ncompanion\nhyperscape\nbabylon",
-        locales: {
-          "zh-CN": "shopify\nvincent\ncompanion\nhyperscape\nbabylon",
-          ko: "shopify\nvincent\ncompanion\nhyperscape\nbabylon",
-          es: "shopify\nvincent\ncompanion\nhyperscape\nbabylon",
-          pt: "shopify\nvincent\ncompanion\nhyperscape\nbabylon",
-          vi: "shopify\nvincent\ncompanion\nhyperscape\nbabylon",
-          tl: "shopify\nvincent\ncompanion\nhyperscape\nbabylon",
-        },
-      },
-    },
-    terminal: {
-      commandVerb: {
-        base: "run\nexecute\nstart\ndo",
-        locales: {
-          "zh-CN": "运行\n执行\n开始",
-          ko: "실행\n돌려\n시작\n해줘",
-          es: "ejecuta\nejecutar\ncorre\ncorrer\ninicia",
-          pt: "executa\nexecutar\nroda\nrodar\ninicia",
-          vi: "chạy\nchay\nthực hiện\nthuc hien\nbắt đầu\nbat dau",
-          tl: "patakbuhin\nisagawa\nsimulan\ngawin",
-        },
-      },
-      commandFiller: {
-        base: "command\nshell command\nterminal command",
-        locales: {
-          "zh-CN": "命令\n终端命令\nshell 命令",
-          ko: "명령\n명령어\n터미널 명령",
-          es: "comando\ncomando de terminal",
-          pt: "comando\ncomando do terminal",
-          vi: "lệnh\nlenh\nlệnh terminal\nlenh terminal",
-          tl: "utos\ncommand\nutos sa terminal",
-        },
-      },
-      utility: {
-        base: "price\nworth\ncost\nbalance\nstatus\ncheck\ncurl\nfetch\ntail\nhead\nlog",
-        locales: {
-          "zh-CN": "价格\n余额\n状态\n检查\n日志",
-          ko: "가격\n잔액\n상태\n확인\n로그",
-          es: "precio\ncosto\nbalance\nsaldo\nestado\nrevisar\nlog",
-          pt: "preço\npreco\ncusto\nsaldo\nestado\nverificar\nlog",
-          vi: "giá\ngia\nsố dư\nso du\ntrạng thái\ntrang thai\nkiểm tra\nkiem tra\nlog",
-          tl: "presyo\nbalanse\nstatus\ncheck\nlog",
-        },
-      },
-      cryptoBitcoin: {
-        base: "bitcoin\nbtc",
-        locales: {
-          "zh-CN": "比特币",
-          ko: "비트코인",
-          es: "bitcóin\nbitcoín\nbitcoin",
-          pt: "bitcóin\nbitcoin",
-          vi: "đồng bitcoin\ndong bitcoin\nbitcoin",
-          tl: "bitcoin\nbarya ng bitcoin",
-        },
-      },
-      cryptoEthereum: {
-        base: "ethereum\neth",
-        locales: {
-          "zh-CN": "以太坊",
-          ko: "이더리움",
-          es: "ethereum\netéreo\netereo",
-          pt: "ethereum\nether",
-          vi: "ethereum\nđồng ethereum\ndong ethereum",
-          tl: "ethereum\nether",
-        },
-      },
-      cryptoSolana: {
-        base: "solana\nsol",
-        locales: {
-          "zh-CN": "索拉纳",
-          ko: "솔라나",
-          es: "solana",
-          pt: "solana",
-          vi: "solana\nđồng solana\ndong solana",
-          tl: "solana",
-        },
-      },
-      disk: {
-        base: "disk\nspace\nstorage\ndisk usage",
-        locales: {
-          "zh-CN": "磁盘\n空间\n存储",
-          ko: "디스크\n저장공간\n저장소",
-          es: "disco\nespacio\nalmacenamiento",
-          pt: "disco\nespaço\nespaco\narmazenamento",
-          vi: "ổ đĩa\no dia\ndung lượng\ndung luong\nlưu trữ\nluu tru",
-          tl: "disk\nespasyo\nstorage",
-        },
-      },
-      uptime: {
-        base: "uptime\nload",
-        locales: {
-          "zh-CN": "运行时间\n负载",
-          ko: "업타임\n부하",
-          es: "tiempo activo\ncarga",
-          pt: "uptime\ntempo ativo\ncarga",
-          vi: "thời gian hoạt động\nthoi gian hoat dong\ntải\ntai",
-          tl: "uptime\nload",
-        },
-      },
-      memory: {
-        base: "memory\nram",
-        locales: {
-          "zh-CN": "内存",
-          ko: "메모리\n램",
-          es: "memoria\nram",
-          pt: "memória\nmemoria\nram",
-          vi: "bộ nhớ\nbo nho\nram",
-          tl: "memory\nram",
-        },
-      },
-      process: {
-        base: "process\nprocesses\ntop\nmemory usage",
-        locales: {
-          "zh-CN": "进程\n进程列表\n内存占用",
-          ko: "프로세스\ntop\n메모리 사용",
-          es: "proceso\nprocesos\ntop\nuso de memoria",
-          pt: "processo\nprocessos\ntop\nuso de memória\nuso de memoria",
-          vi: "tiến trình\ntien trinh\ntop\ndùng bộ nhớ\ndung bo nho",
-          tl: "process\nmga proseso\ntop\ngamit ng memory",
-        },
-      },
-    },
-    logLevel: {
-      command: {
-        base: "/loglevel\nlog level\nlogging level",
-        locales: {
-          "zh-CN": "日志级别\n日志等级",
-          ko: "로그 레벨\n로깅 레벨",
-          es: "nivel de log\nnivel de registro",
-          pt: "nível de log\nnivel de log\nnível de registro\nnivel de registro",
-          vi: "mức log\nmuc log\nmức ghi log\nmuc ghi log",
-          tl: "antas ng log\nantas ng pag-log",
-        },
-      },
-      setVerb: {
-        base: "set\nchange\nswitch",
-        locales: {
-          "zh-CN": "设置\n调成\n改成\n切换",
-          ko: "설정\n바꿔\n변경\n전환",
-          es: "pon\nponer\ncambia\ncambiar\najusta",
-          pt: "define\ndefinir\nmuda\nmudar\najusta",
-          vi: "đặt\ndat\nđổi\ndoi\nchuyển\nchuyen",
-          tl: "itakda\npalitan\nilipat",
-        },
-      },
-      domain: {
-        base: "log\nlogging\nverbosity",
-        locales: {
-          "zh-CN": "日志\n详细程度",
-          ko: "로그\n로깅\n상세도",
-          es: "log\nregistro\nverbosidad",
-          pt: "log\nregistro\nverbosidade",
-          vi: "log\nghi log\nđộ chi tiết\ndo chi tiet",
-          tl: "log\npag-log\nverbosity",
-        },
-      },
-      level: {
-        trace: {
-          base: "trace",
-          locales: {
-            "zh-CN": "跟踪",
-            ko: "추적",
-            es: "rastreo",
-            pt: "rastreamento",
-            vi: "theo dõi\ntheo doi",
-            tl: "bakas\ntrace",
-          },
-        },
-        debug: {
-          base: "debug",
-          locales: {
-            "zh-CN": "调试",
-            ko: "디버그",
-            es: "depuración\ndepuracion",
-            pt: "depuração\ndepuracao",
-            vi: "gỡ lỗi\ngo loi",
-            tl: "debug\npag-debug",
-          },
-        },
-        info: {
-          base: "info\ninformation",
-          locales: {
-            "zh-CN": "信息",
-            ko: "정보",
-            es: "información\ninformacion",
-            pt: "informação\ninformacao",
-            vi: "thông tin\nthong tin",
-            tl: "impormasyon",
-          },
-        },
-        warn: {
-          base: "warn\nwarning",
-          locales: {
-            "zh-CN": "警告",
-            ko: "경고",
-            es: "advertencia",
-            pt: "aviso\nadvertência\nadvertencia",
-            vi: "cảnh báo\ncanh bao",
-            tl: "babala",
-          },
-        },
-        error: {
-          base: "error\nerrors",
-          locales: {
-            "zh-CN": "错误",
-            ko: "오류",
-            es: "error\nerrores",
-            pt: "erro",
-            vi: "lỗi\nloi",
-            tl: "error\nmga error",
-          },
-        },
-      },
-    },
-    updateRole: {
-      intent: {
-        base: "role\nassign role\nset role\nchange role\nupdate role\nboss\nmanager\nsupervisor\nsuperior\nlead\ncoworker\nco-worker\nteammate\ncolleague\npeer\nfriend\npartner\nadmin\nowner\nguest\nmember\nuser\nmod\nmoderator\npromote\ndemote\nrevoke\nremove role",
-        locales: {
-          "zh-CN": "角色\n分配角色\n设置角色\n修改角色\n老板\n经理\n主管\n上级\n负责人\n同事\n队友\n伙伴\n管理员\n所有者\n主人\n访客\n成员\n用户\n版主\n提升\n升级\n降级\n撤销\n移除角色",
-          ko: "역할\n역할 설정\n역할 변경\n상사\n매니저\n관리자\n감독자\n리더\n동료\n팀원\n친구\n파트너\n오너\n소유자\n게스트\n멤버\n사용자\n모더레이터\n승급\n강등\n철회",
-          es: "rol\nasigna el rol\ncambiar el rol\njefe\njefa\ngerente\nsupervisor\nlíder\nlider\ncompañero\ncompanero\ncolega\namigo\nsocio\nadministrador\ndueño\ndueno\npropietario\ninvitado\nmiembro\nusuario\nmoderador\nasciende\npromociona\ndegrada\nrevoca\nquitar el rol",
-          pt: "papel\nfunção\nfuncao\ncargo\natribuir papel\nmudar papel\nchefe\ngerente\nsupervisor\nlíder\nlider\ncolega\namigo\nparceiro\nadministrador\ndono\nproprietário\nproprietario\nconvidado\nmembro\nusuário\nusuario\nmoderador\npromover\nrebaixar\nrevogar\nremover papel",
-          vi: "vai trò\nvai tro\ngán vai trò\ngan vai tro\nđổi vai trò\ndoi vai tro\nsếp\nsep\nquản lý\nquan ly\ngiám sát\ngiam sat\ntrưởng nhóm\ntruong nhom\nđồng nghiệp\ndong nghiep\nbạn bè\nban be\nđối tác\ndoi tac\nquản trị viên\nquan tri vien\nchủ sở hữu\nchu so huu\nkhách\nthành viên\nthanh vien\nngười dùng\nnguoi dung\nđiều hành viên\ndieu hanh vien\nthăng cấp\nthang cap\nhạ cấp\nha cap\nthu hồi\nthu hoi",
-          tl: "role\ntungkulin\nitakda ang role\nbaguhin ang role\nboss\nmanager\nsupervisor\nlead\nkatrabaho\nkasamahan\nkaibigan\npartner\nadmin\nmay-ari\nguest\nmiyembro\nuser\nmod\nmoderador\ni-promote\ni-demote\nbawiin\nalisin ang role",
-        },
-      },
-    },
-    triggerCreate: {
-      request: {
-        base: "schedule\nscheduled\ntrigger\nheartbeat\ncron\nrecurring\nrecur\nrepeat\nrepeating\nreminder\nremind\nautomate\nautomation\nautomatic\nperiodic\ninterval\nfollow up\ncheck in\nevery day\nevery week\nevery month\nevery hour\ndaily\nweekly\nmonthly\nhourly\nalarm\nwake me",
-        locales: {
-          "zh-CN": "安排\n定时\n触发器\n心跳\ncron\n循环\n重复\n提醒\n提醒我\n自动化\n自动\n定期\n间隔\n跟进\n检查一下\n每天\n每周\n每月\n每小时\n闹钟\n叫醒我",
-          ko: "예약\n예약해\n트리거\n하트비트\n크론\n반복\n반복적으로\n알림\n리마인더\n자동화\n자동\n주기적\n간격\n후속 확인\n매일\n매주\n매달\n매시간\n알람\n깨워줘",
-          es: "programa\nprogramar\nrecordatorio\nrecordar\nrecurrente\nrepetir\nautomatiza\nautomatizar\nautomático\nautomatico\nperiódico\nperiodico\nintervalo\nseguimiento\ncada día\ncada dia\ncada semana\ncada mes\ncada hora\ndiario\nsemanal\nmensual\nalarma\ndespiértame\ndespiertame",
-          pt: "programa\nprogramar\nlembrete\nlembrar\nrecorrente\nrepetir\nautomatiza\nautomatizar\nautomático\nautomatico\nperiódico\nperiodico\nintervalo\nacompanhamento\ncada dia\ncada semana\ncada mês\ncada mes\ncada hora\ndiário\ndiario\nsemanal\nmensal\nalarme\nme acorde",
-          vi: "lên lịch\nlen lich\nlời nhắc\nloi nhac\nnhắc tôi\nnhac toi\nlặp lại\nlap lai\ntự động\ntu dong\ntự động hóa\ntu dong hoa\nđịnh kỳ\ndinh ky\nkhoảng cách\nkhoang cach\ntheo dõi\ntheo doi\nmỗi ngày\nmoi ngay\nmỗi tuần\nmoi tuan\nmỗi tháng\nmoi thang\nmỗi giờ\nmoi gio\nbáo thức\nbao thuc\nđánh thức tôi\ndanh thuc toi",
-          tl: "iskedyul\npaalala\nipaalala\npaulit-ulit\nulitin\nawtomatiko\nawtomasyon\npana-panahon\npagitan\nfollow up\nkada araw\nkada linggo\nkada buwan\nkada oras\nalarm\ngisingin mo ako",
-        },
-      },
-    },
-    createTask: {
-      request: {
-        base: "create task\ncreate trigger\ncreate a trigger\nset a trigger\nschedule a trigger\nschedule a task\nremind me\nreminder\nrecurring\nrepeat\nheartbeat\ncron\nrun every\nrun at\nevery day\nevery week\nevery month\nevery hour",
-        locales: {
-          "zh-CN": "创建任务\n创建触发器\n设置触发器\n安排任务\n提醒我\n提醒\n重复\n循环\n心跳\n定时\n每天\n每周\n每月\n每小时",
-          ko: "작업 만들기\n트리거 만들기\n트리거 설정\n작업 예약\n알림\n리마인더\n반복\n하트비트\n크론\n매일\n매주\n매달\n매시간",
-          es: "crear tarea\ncrear disparador\nprograma una tarea\nprograma un disparador\nrecordatorio\nrecuérdame\nrecurrente\nrepetir\ncada día\ncada dia\ncada semana\ncada mes\ncada hora",
-          pt: "criar tarefa\ncriar gatilho\nprogramar tarefa\nprogramar gatilho\nlembrete\nlembra-me\nrecorrente\nrepetir\ncada dia\ncada semana\ncada mês\ncada mes\ncada hora",
-          vi: "tạo tác vụ\ntao tac vu\ntạo trình kích hoạt\ntao trinh kich hoat\nlên lịch tác vụ\nlen lich tac vu\nlời nhắc\nloi nhac\nnhắc tôi\nnhac toi\nlặp lại\nlap lai\nmỗi ngày\nmoi ngay\nmỗi tuần\nmoi tuan",
-          tl: "gumawa ng task\ngumawa ng trigger\niskedyul ang task\niskedyul ang trigger\npaalala\nipaalala\npaulit-ulit\nkada araw\nkada linggo\nkada buwan\nkada oras",
-        },
-      },
-    },
-    createPlan: {
-      request: {
-        base: "create plan\nmake a plan\nproject plan\ncomprehensive plan\norganize project\nstrategy\nstrategic plan",
-        locales: {
-          "zh-CN": "创建计划\n制定计划\n项目计划\n综合计划\n组织项目\n策略\n战略计划",
-          ko: "계획 만들어\n계획 세워\n프로젝트 계획\n종합 계획\n프로젝트 정리\n전략\n전략 계획",
-          es: "crear plan\nhacer un plan\nplan de proyecto\nplan integral\norganizar proyecto\nestrategia\nplan estratégico\nplan estrategico",
-          pt: "criar plano\nfazer um plano\nplano de projeto\nplano abrangente\norganizar projeto\nestratégia\nestrategia\nplano estratégico\nplano estrategico",
-          vi: "tạo kế hoạch\ntao ke hoach\nlập kế hoạch\nlap ke hoach\nkế hoạch dự án\nke hoach du an\nchiến lược\nchien luoc",
-          tl: "gumawa ng plano\nplano ng proyekto\nkomprehensibong plano\nayusin ang proyekto\ndiskarte\nestratehiya",
-        },
-      },
-    },
-    searchContacts: {
-      request: {
-        base: "list contacts\nshow contacts\nsearch contacts\nfind contacts\nwho do i know\nfriends\ncolleagues\nvip",
-        locales: {
-          "zh-CN": "联系人列表\n显示联系人\n搜索联系人\n查找联系人\n我认识谁\n朋友\n同事\n贵宾",
-          ko: "연락처 목록\n연락처 보여줘\n연락처 검색\n연락처 찾기\n내가 아는 사람\n친구\n동료\nVIP",
-          es: "lista de contactos\nmuestra contactos\nbusca contactos\nencuentra contactos\na quién conozco\na quien conozco\namigos\ncolegas\nvip",
-          pt: "lista de contatos\nmostrar contatos\nbuscar contatos\nencontrar contatos\nquem eu conheço\nquem eu conheco\namigos\ncolegas\nvip",
-          vi: "danh sách liên hệ\ndanh sach lien he\nhiển thị liên hệ\nhien thi lien he\ntìm liên hệ\ntim lien he\ntôi quen ai\ntoi quen ai\nbạn bè\nban be\nđồng nghiệp\ndong nghiep",
-          tl: "listahan ng contact\nipakita ang contact\nhanapin ang contact\nsino ang kilala ko\nkaibigan\nkasamahan\nvip",
-        },
-      },
-    },
-    addContact: {
-      request: {
-        base: "add contact\nsave contact\nremember contact\ncategorize contact\nadd to relationships\nsave this person",
-        locales: {
-          "zh-CN": "添加联系人\n保存联系人\n记住联系人\n给联系人分类\n加入关系\n保存这个人",
-          ko: "연락처 추가\n연락처 저장\n연락처 기억해\n연락처 분류\n관계에 추가\n이 사람 저장",
-          es: "agrega contacto\nagregar contacto\nguarda contacto\nrecuerda contacto\ncategoriza contacto\nagrega a relaciones\nguarda a esta persona",
-          pt: "adicionar contato\nadiciona contato\nsalvar contato\nlembrar contato\ncategorizar contato\nadicionar aos relacionamentos\nsalvar esta pessoa",
-          vi: "thêm liên hệ\nthem lien he\nlưu liên hệ\nluu lien he\nghi nhớ liên hệ\nghi nho lien he\nphân loại liên hệ\nphan loai lien he",
-          tl: "magdagdag ng contact\ni-save ang contact\ntandaan ang contact\nikategorya ang contact\ni-save ang taong ito",
-        },
-      },
-    },
-    updateContact: {
-      request: {
-        base: "update contact\nedit contact\nmodify contact\nchange contact\nupdate relationship\nedit relationship\nchange notes\nadd tag\nremove tag\nadd category\nremove category",
-        locales: {
-          "zh-CN": "更新联系人\n编辑联系人\n修改联系人\n更新关系\n编辑关系\n修改备注\n添加标签\n移除标签\n添加分类\n移除分类",
-          ko: "연락처 업데이트\n연락처 수정\n연락처 변경\n관계 업데이트\n메모 변경\n태그 추가\n태그 제거\n분류 추가\n분류 제거",
-          es: "actualiza contacto\nactualizar contacto\nedita contacto\nmodifica contacto\ncambia contacto\nactualiza relación\nactualiza relacion\ncambia notas\nagrega etiqueta\nquita etiqueta\nagrega categoría\nagrega categoria\nquita categoría\nquita categoria",
-          pt: "atualizar contato\natualiza contato\neditar contato\nmodificar contato\nmudar contato\natualizar relacionamento\nmudar notas\nadicionar etiqueta\nremover etiqueta\nadicionar categoria\nremover categoria",
-          vi: "cập nhật liên hệ\ncap nhat lien he\nsửa liên hệ\nsua lien he\nthay đổi liên hệ\nthay doi lien he\ncập nhật quan hệ\ncap nhat quan he\nthêm thẻ\nthem the\nxóa thẻ\nxoa the",
-          tl: "i-update ang contact\ni-edit ang contact\nbaguhin ang contact\ni-update ang relasyon\ndagdagan ng tag\nalisin ang tag\ndagdagan ng kategorya\nalisin ang kategorya",
-        },
-      },
-    },
-    removeContact: {
-      request: {
-        base: "remove contact\ndelete contact\ndrop contact\nremove from relationships\nforget contact",
-        locales: {
-          "zh-CN": "移除联系人\n删除联系人\n从关系中移除\n忘记联系人",
-          ko: "연락처 제거\n연락처 삭제\n관계에서 제거\n연락처 잊어",
-          es: "elimina contacto\neliminar contacto\nborra contacto\nquita de relaciones\nolvida contacto",
-          pt: "remover contato\nexcluir contato\napagar contato\nremover dos relacionamentos\nesquecer contato",
-          vi: "xóa liên hệ\nxoa lien he\ngỡ liên hệ\ngo lien he\nxóa khỏi quan hệ\nxoa khoi quan he",
-          tl: "alisin ang contact\nburahin ang contact\ntanggalin sa relationships\nkalimutan ang contact",
-        },
-      },
-    },
-    scheduleFollowUp: {
-      request: {
-        base: "follow up\nfollowup\nremind me\ncheck in\ncheck back\nreach out\nschedule follow-up\nschedule a reminder",
-        locales: {
-          "zh-CN": "跟进\n提醒我\n回访\n联系一下\n安排提醒\n安排跟进",
-          ko: "후속 조치\n팔로업\n알려줘\n체크인\n다시 연락\n후속 일정 잡아",
-          es: "seguimiento\nhaz seguimiento\nrecuérdame\nrecuerdame\nvuelve a contactar\nrevisa de nuevo\nprograma seguimiento",
-          pt: "acompanhamento\nfaça acompanhamento\nfaca acompanhamento\nlembra-me\nentre em contato de novo\nprograme acompanhamento",
-          vi: "theo dõi\ntheo doi\nnhắc tôi\nnhac toi\nliên hệ lại\nlien he lai\nlên lịch theo dõi\nlen lich theo doi",
-          tl: "follow up\npaalalahanan mo ako\ncheck in\nmakipag-ugnayan muli\niskedyul ang follow up",
-        },
-      },
-    },
-    followRoom: {
-      request: {
-        base: "follow this room\nparticipate here\nengage here\nlisten to this room\njoin this room\ntake interest",
-        locales: {
-          "zh-CN": "关注这个房间\n参与这里\n加入这个房间\n听这个房间",
-          ko: "이 방을 팔로우해\n여기에 참여해\n이 방에 들어와\n이 방을 들어줘",
-          es: "sigue esta sala\nparticipa aquí\nparticipa aqui\núnete a esta sala\nunete a esta sala\npresta atención aquí\npresta atencion aqui",
-          pt: "siga esta sala\nparticipe aqui\nentre nesta sala\npreste atenção aqui\npreste atencao aqui",
-          vi: "theo dõi phòng này\ntheo doi phong nay\ntham gia ở đây\ntham gia o day\nvào phòng này\nvao phong nay",
-          tl: "i-follow ang room na ito\nsumali dito\nmakilahok dito\nmakinig sa room na ito",
-        },
-      },
-    },
-    muteRoom: {
-      request: {
-        base: "mute\nsilence\nquiet\nshut up\nstop talking\nbe quiet\nhush\nshh\nno more",
-        locales: {
-          "zh-CN": "静音\n安静\n闭嘴\n别说话\n不要再说了",
-          ko: "음소거\n조용히\n입 다물어\n말하지 마\n그만 말해",
-          es: "silencia\nponte en silencio\ncállate\ncallate\ndeja de hablar\nguarda silencio",
-          pt: "silencia\nfique em silêncio\nfique em silencio\ncala a boca\npara de falar\nfique quieto",
-          vi: "tắt tiếng\ntat tieng\nim lặng\nim lang\nđừng nói nữa\ndung noi nua",
-          tl: "i-mute\ntumahimik\ntigilan ang pagsasalita\nwag ka nang magsalita",
-        },
-      },
-    },
-    unmuteRoom: {
-      request: {
-        base: "unmute\nunsilence\nlisten again\nstart talking\ntalk again\nspeak again\nenable\nresume",
-        locales: {
-          "zh-CN": "取消静音\n恢复说话\n再说话\n继续\n恢复",
-          ko: "음소거 해제\n다시 말해\n다시 듣기\n재개",
-          es: "activa el sonido\nquitar silencio\nvuelve a hablar\nreanuda\nescucha otra vez",
-          pt: "tirar do silêncio\ntirar do silencio\nvolte a falar\nretomar\nouça de novo\nouca de novo",
-          vi: "bỏ tắt tiếng\nbo tat tieng\nnói lại đi\nnoi lai di\ntiếp tục\ntiep tuc",
-          tl: "i-unmute\nmagsalita ulit\nipagpatuloy\nmakinig ulit",
-        },
-      },
-    },
-    sendToAdmin: {
-      request: {
-        base: "admin\nuser\ntell admin\nnotify admin\ninform admin\nupdate admin\nmessage admin\nsend to admin\ncommunicate\nreport\nalert",
-        locales: {
-          "zh-CN": "管理员\n用户\n告诉管理员\n通知管理员\n向管理员汇报\n给管理员发消息\n警报",
-          ko: "관리자\n사용자\n관리자에게 알려\n관리자에게 통지\n관리자에게 보고\n관리자에게 메시지 보내\n경고",
-          es: "administrador\nusuario\navisa al administrador\ninforma al administrador\nmensaje al administrador\nenvía al administrador\nenvia al administrador\nalerta",
-          pt: "administrador\nusuário\nusuario\navise o administrador\ninforme o administrador\nmensagem ao administrador\nenvie ao administrador\nalerta",
-          vi: "quản trị viên\nquan tri vien\nngười dùng\nnguoi dung\nbáo quản trị viên\nbao quan tri vien\nnhắn quản trị viên\nnhan quan tri vien\ncảnh báo\ncanh bao",
-          tl: "admin\nuser\nsabihin sa admin\nipaalam sa admin\ni-message ang admin\niulat\nalerto",
-        },
-      },
-    },
-    processDocuments: {
-      request: {
-        base: "process knowledge\nadd to knowledge\nupload document\nadd document\nlearn this\nremember this\nstore this\ningest file\nknowledge base",
-        locales: {
-          "zh-CN": "处理知识\n加入知识库\n上传文档\n添加文档\n记住这个\n存入知识库\n知识库",
-          ko: "지식 처리\n지식에 추가\n문서 업로드\n문서 추가\n이걸 기억해\n저장해\n지식 베이스",
-          es: "procesa conocimiento\nagrega al conocimiento\nsube documento\nañade documento\nanade documento\nrecuerda esto\nguarda esto\nbase de conocimiento",
-          pt: "processar conhecimento\nadicionar ao conhecimento\nenviar documento\nadicionar documento\nlembre isto\nguarde isto\nbase de conhecimento",
-          vi: "xử lý kiến thức\nxu ly kien thuc\nthêm vào kiến thức\nthem vao kien thuc\ntải tài liệu lên\ntai tai lieu len\nghi nhớ điều này\nghi nho dieu nay",
-          tl: "iproseso ang kaalaman\nidagdag sa kaalaman\nmag-upload ng dokumento\ni-save ito\ntandaan ito\nknowledge base",
-        },
-      },
-    },
-    searchDocuments: {
-      request: {
-        base: "search knowledge\nfind information\nlook up\nquery knowledge base\nsearch documents\nfind in knowledge\nwhat do you know about",
-        locales: {
-          "zh-CN": "搜索知识\n查找信息\n查询知识库\n搜索文档\n你知道什么关于",
-          ko: "지식 검색\n정보 찾기\n찾아봐\n지식 베이스 조회\n문서 검색\n무엇을 알고 있어",
-          es: "busca conocimiento\nbuscar información\nbusca información\nbusca informacion\nconsulta la base de conocimiento\nbusca documentos\nqué sabes sobre\nque sabes sobre",
-          pt: "busca conhecimento\nbuscar informação\nbuscar informacao\nprocure informação\nprocure informacao\nconsulte a base de conhecimento\no que você sabe sobre\no que voce sabe sobre",
-          vi: "tìm kiến thức\ntim kien thuc\ntìm thông tin\ntim thong tin\ntra cứu kiến thức\ntra cuu kien thuc\nbạn biết gì về\nban biet gi ve",
-          tl: "hanapin ang kaalaman\nhanapin ang impormasyon\ntingnan sa knowledge base\nano ang alam mo tungkol sa",
-        },
-      },
-    },
-    generateImage: {
-      strong: {
-        base: "generate image\ncreate image\nmake image\ndraw\npaint\nillustration\ngenerate picture\ncreate picture\nmake picture\ngenerate art\ncreate art\nimage of\npicture of\nphoto of",
-        locales: {
-          "zh-CN": "生成图片\n创建图片\n画\n绘制\n插画\n图片\n照片",
-          ko: "이미지 생성\n그림 그려\n그려줘\n그림\n일러스트\n사진",
-          es: "genera imagen\ncrear imagen\nhaz una imagen\ndibuja\npinta\nilustración\nilustracion\nfoto de",
-          pt: "gerar imagem\ncriar imagem\nfaça uma imagem\nfaca uma imagem\ndesenhe\npinte\nilustração\nilustracao\nfoto de",
-          vi: "tạo ảnh\ntao anh\nvẽ\nve\nminh họa\nminh hoa\nhình ảnh\nhinh anh",
-          tl: "gumawa ng larawan\nlumikha ng larawan\ngumuhit\npinta\nlarawan ng\nphoto ng",
-        },
-      },
-      weak: {
-        base: "image\npicture\nvisual\nart\ngraphic\nrender\ngenerate\ncreate\ndesign\nsketch\nportrait",
-        locales: {
-          "zh-CN": "图片\n图像\n视觉\n艺术\n设计\n素描\n肖像",
-          ko: "이미지\n사진\n비주얼\n아트\n디자인\n스케치\n초상화",
-          es: "imagen\nfoto\nvisual\narte\ngráfico\ngrafico\ndiseño\ndiseno\nboceto\nretrato",
-          pt: "imagem\nfoto\nvisual\narte\ngráfico\ngrafico\ndesign\nesboço\nesboco\nretrato",
-          vi: "ảnh\nanh\nhình\nhinh\nthị giác\nthi giac\nnghệ thuật\nnghe thuat\nthiết kế\nthiet ke",
-          tl: "larawan\nbiswal\nsining\ndisenyo\nsketch\nretrato",
-        },
-      },
-    },
-    generateMedia: {
-      request: {
-        base: "generate media\ncreate media\nmake media\ngenerate image\ncreate image\ngenerate video\ncreate video\nanimate\nanimation\ngenerate audio\ncreate audio\ngenerate music\nsound effect\ntext to speech\ntts\nvoiceover",
-        locales: {
-          "zh-CN": "生成媒体\n创建媒体\n生成图片\n生成视频\n动画\n生成音频\n音乐\n文字转语音",
-          ko: "미디어 생성\n이미지 생성\n비디오 생성\n영상 생성\n애니메이션\n오디오 생성\n음악 생성\n텍스트 음성 변환",
-          es: "generar media\ncrear media\ngenerar imagen\ncrear imagen\ngenerar video\ncrear video\nanimar\ngenerar audio\ncrear audio\ntexto a voz",
-          pt: "gerar mídia\ngerar midia\ncriar mídia\ncriar midia\ngerar imagem\ncriar imagem\ngerar vídeo\ngerar video\nanimar\ngerar áudio\ngerar audio\ntexto para fala",
-          vi: "tạo media\ntao media\ntạo ảnh\ntao anh\ntạo video\ntao video\nhoạt hình\nhoat hinh\ntạo âm thanh\ntao am thanh\nvăn bản thành giọng nói",
-          tl: "gumawa ng media\nlumikha ng media\ngumawa ng larawan\ngumawa ng video\ni-animate\ngumawa ng audio\ntext to speech",
         },
       },
     },

@@ -128,6 +128,7 @@ const pluginElizaCloudRoot = path.join(
   elizaWorkspaceRoot,
   "plugins",
   "plugin-elizacloud",
+  "src",
 );
 const appCompanionSourceRoot = path.join(
   elizaWorkspaceRoot,

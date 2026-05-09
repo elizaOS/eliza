@@ -1,15 +1,6 @@
-// NOTE: These re-exports were originally pulled from
-// "@elizaos/plugin-elizacloud/routes/<name>" subpath imports. The plugin's
-// `exports` map only ships compiled `dist/routes/*.js`, so when those files
-// aren't built the entire `@elizaos/agent` index fails to load — which in
-// turn breaks the benchmark server (`@elizaos/app-core/src/benchmark/server.ts`)
-// at boot. The benchmark stack only imports `CORE_PLUGINS` and
-// `createElizaPlugin` from this barrel, so re-import via the relative
-// workspace path so tsx can resolve to the TypeScript source even when the
-// dist hasn't been generated.
-export { handleCloudBillingRoute } from "../../../plugins/plugin-elizacloud/src/routes/cloud-billing-routes.ts";
-export { handleCloudCompatRoute } from "../../../plugins/plugin-elizacloud/src/routes/cloud-compat-routes.ts";
-export type { CloudConfigLike } from "../../../plugins/plugin-elizacloud/src/routes/cloud-status-routes-autonomous.ts";
+export { handleCloudBillingRoute } from "@elizaos/plugin-elizacloud/routes/cloud-billing-routes";
+export { handleCloudCompatRoute } from "@elizaos/plugin-elizacloud/routes/cloud-compat-routes";
+export type { CloudConfigLike } from "@elizaos/plugin-elizacloud/routes/cloud-status-routes-autonomous";
 export {
   type ExtractActionParamsArgs,
   extractActionParamsViaLlm,
