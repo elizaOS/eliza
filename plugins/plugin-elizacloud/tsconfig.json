@@ -14,36 +14,17 @@
     "noEmit": true,
     "outDir": "./dist",
     "rootDir": "../..",
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
-    "types": [
-      "node",
-      "bun-types"
-    ],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node", "bun-types"],
     "noImplicitAny": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "allowImportingTsExtensions": true,
     "paths": {
-      "@elizaos/cloud-sdk": [
-        "../../cloud/packages/sdk/dist/index.d.ts"
-      ],
-      "@elizaos/core": [
-        "../../packages/core/src/index.node.ts"
-      ]
+      "@elizaos/cloud-sdk": ["../../cloud/packages/sdk/dist/index.d.ts"],
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"]
     }
   },
-  "include": [
-    "src/**/*.ts",
-    "__tests__/**/*.ts",
-    "build.ts",
-    "vitest.config.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+  "include": ["src/**/*.ts", "__tests__/**/*.ts", "build.ts", "vitest.config.ts"],
+  "exclude": ["node_modules", "dist"]
 }
