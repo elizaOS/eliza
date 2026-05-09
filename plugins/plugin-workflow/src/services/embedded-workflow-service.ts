@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { type IAgentRuntime, logger, Service } from '@elizaos/core';
+import { rewriteN8nNodeTypes } from '../utils/n8n-import';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import {
@@ -1297,6 +1298,7 @@ export class EmbeddedWorkflowService extends Service {
   }
 
   async createWorkflow(workflow: WorkflowDefinition): Promise<WorkflowDefinitionResponse> {
+    workflow = rewriteN8nNodeTypes(workflow);
     this.assertRegisteredNodes(workflow);
     await this.ensureSchema();
     const db = this.getDb();
@@ -1320,6 +1322,7 @@ export class EmbeddedWorkflowService extends Service {
     id: string,
     workflow: WorkflowDefinition
   ): Promise<WorkflowDefinitionResponse> {
+    workflow = rewriteN8nNodeTypes(workflow);
     this.assertRegisteredNodes(workflow);
     const existing = await this.getStoredWorkflow(id);
     const db = this.getDb();
