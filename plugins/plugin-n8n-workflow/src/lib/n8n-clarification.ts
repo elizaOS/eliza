@@ -175,6 +175,15 @@ function findArrayIndexByNameOrId(arr: unknown[], key: string): number {
  * If the segment expects an array but the existing intermediate is a non-
  * array object, we treat it as an object key (n8n workflow shapes mix arrays
  * and objects fairly freely; we err on the side of preserving structure).
+ *
+ * Terminal-segment guard: refuses to overwrite an existing object with a
+ * non-object value. The LLM sometimes emits a paramPath that points at a
+ * parent scope rather than a leaf (e.g.
+ * `nodes["Hourly Trigger"].parameters` for a question whose answer is a
+ * channel name); naively writing the string there replaces the entire
+ * `parameters` object and n8n then rejects the workflow with `parameters
+ * must be object`. Throwing here gives `applyResolutions` a chance to
+ * fall back to the userNotes path.
  */
 export function setByDotPath(
   obj: Record<string, unknown>,
@@ -220,19 +229,35 @@ export function setByDotPath(
     cur = next as Record<string, unknown> | unknown[];
   }
   const last = segments[segments.length - 1];
+  const isExistingObject = (v: unknown): boolean =>
+    v !== null && typeof v === 'object';
+  const isObjectValue = (v: unknown): boolean =>
+    v !== null && typeof v === 'object';
   if (Array.isArray(cur)) {
+    let idx: number;
     if (/^[0-9]+$/.test(last)) {
-      cur[Number(last)] = value;
-      return;
+      idx = Number(last);
+    } else {
+      idx = findArrayIndexByNameOrId(cur, last);
+      if (idx < 0) {
+        throw new Error(
+          `paramPath terminal segment "${last}" did not match any element by name/id at array`
+        );
+      }
     }
-    const idx = findArrayIndexByNameOrId(cur, last);
-    if (idx < 0) {
+    if (isExistingObject(cur[idx]) && !isObjectValue(value)) {
       throw new Error(
-        `paramPath terminal segment "${last}" did not match any element by name/id at array`
+        `paramPath terminal "${last}" currently holds an object; refusing to overwrite with non-object value (path likely points at a parent scope rather than a leaf field)`
       );
     }
     cur[idx] = value;
   } else {
+    const existing = (cur as Record<string, unknown>)[last];
+    if (isExistingObject(existing) && !isObjectValue(value)) {
+      throw new Error(
+        `paramPath terminal "${last}" currently holds an object; refusing to overwrite with non-object value (path likely points at a parent scope rather than a leaf field)`
+      );
+    }
     (cur as Record<string, unknown>)[last] = value;
   }
 }

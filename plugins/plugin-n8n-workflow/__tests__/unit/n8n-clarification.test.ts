@@ -54,6 +54,45 @@ describe("setByDotPath", () => {
     setByDotPath(obj, "a.b.c", 42);
     expect((obj.a as any).b.c).toBe(42);
   });
+
+  test("refuses to overwrite an object with a non-object value (object case)", () => {
+    // The LLM sometimes points paramPath at a parent scope. Without this
+    // guard, the assignment silently replaces the parameters object with
+    // a string and n8n rejects the deploy with `parameters must be object`.
+    const obj: Record<string, unknown> = {
+      nodes: [{ name: "Trigger", parameters: { existing: "field" } }],
+    };
+    expect(() =>
+      setByDotPath(obj, 'nodes["Trigger"].parameters', "discord"),
+    ).toThrow(/refusing to overwrite with non-object value/);
+    // Original parameters object is untouched.
+    expect((obj.nodes as any)[0].parameters).toEqual({ existing: "field" });
+  });
+
+  test("refuses to overwrite an object inside an array (array case)", () => {
+    const obj: Record<string, unknown> = {
+      items: [{ a: 1 }, { b: 2 }],
+    };
+    expect(() => setByDotPath(obj, "items.0", "string")).toThrow(
+      /refusing to overwrite with non-object value/,
+    );
+  });
+
+  test("allows replacing a primitive with another primitive", () => {
+    const obj: Record<string, unknown> = {
+      nodes: [{ name: "T", parameters: { hour: 9 } }],
+    };
+    setByDotPath(obj, 'nodes["T"].parameters.hour', 10);
+    expect((obj.nodes as any)[0].parameters.hour).toBe(10);
+  });
+
+  test("allows replacing an object with another object", () => {
+    const obj: Record<string, unknown> = {
+      nodes: [{ name: "T", parameters: { old: "x" } }],
+    };
+    setByDotPath(obj, 'nodes["T"].parameters', { new: "y" });
+    expect((obj.nodes as any)[0].parameters).toEqual({ new: "y" });
+  });
 });
 
 describe("applyResolutions", () => {
@@ -94,6 +133,26 @@ describe("applyResolutions", () => {
     // Workflow nodes untouched.
     expect((draft.nodes as any).length).toBe(1);
     expect((draft.nodes as any)[0].name).toBe("Hourly Trigger");
+  });
+
+  test("falls back to userNotes when paramPath points at a parent object scope", () => {
+    // The exact LLM failure the user hit: clarification asked for a
+    // notification channel but paramPath was `nodes["Trigger"].parameters`
+    // — the parameters object itself, not a leaf field. Old behavior
+    // overwrote parameters with the string "discord" and broke deploy.
+    const draft: Record<string, unknown> = {
+      nodes: [{ name: "Hourly Trigger", parameters: { mode: "everyHour" } }],
+    };
+    const result = applyResolutions(draft, [
+      {
+        paramPath: 'nodes["Hourly Trigger"].parameters',
+        value: "discord",
+      },
+    ]);
+    expect(result.ok).toBe(true);
+    expect((draft as any)._meta.userNotes).toEqual(["discord"]);
+    // The parameters object survives untouched.
+    expect((draft.nodes as any)[0].parameters).toEqual({ mode: "everyHour" });
   });
 
   test("falls back to userNotes when paramPath descends into a non-object", () => {
