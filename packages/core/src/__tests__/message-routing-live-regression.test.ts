@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ActionResult, IAgentRuntime } from "../index";
+import type { Action, ActionResult, IAgentRuntime } from "../index";
 import {
 	actionResultsSuppressPostActionContinuation,
 	inferLocalShellCommandFromMessageText,
@@ -103,6 +103,27 @@ describe("live routing regressions", () => {
 		expect(resolvePlannerActionName(runtime, undefined, "DESKTOP")).toEqual([
 			"COMPUTER_USE",
 		]);
+	});
+
+	it("repairs known aliases against the runtime when the compressed surface omitted the parent", () => {
+		const runtime = {
+			actions: [{ name: "MESSAGE" }, { name: "CONNECTOR" }],
+			logger,
+		} as unknown as Pick<IAgentRuntime, "actions" | "logger">;
+		const exposedLookup = new Map<string, Action>([
+			["CONNECTOR", { name: "CONNECTOR" } as Action],
+		]);
+
+		expect(
+			resolvePlannerActionName(
+				runtime,
+				exposedLookup,
+				"list_unread_emails",
+			),
+		).toEqual(["MESSAGE"]);
+		expect(
+			resolvePlannerActionName(runtime, exposedLookup, "MESSAGE"),
+		).toEqual(["MESSAGE"]);
 	});
 
 	it("infers safe params for explicit local shell checks", () => {

@@ -36,6 +36,13 @@ const KEYWORD_FILES = [
 	"packages/shared/src/i18n/keywords/validate.keywords.json",
 ];
 
+const CONTEXT_CONSTANTS = {
+	CODING_TOOLS_CONTEXTS: ["code", "terminal", "automation"],
+	POST_CONTEXTS: ["social_posting", "connectors"],
+	ROOM_CONTEXTS: ["messaging", "contacts", "settings"],
+	TODOS_CONTEXTS: ["tasks", "todos", "automation"],
+};
+
 const args = new Set(process.argv.slice(2));
 const format = args.has("--json") ? "json" : "markdown";
 const roots = process.argv
@@ -130,7 +137,19 @@ function readActionObject(source, node) {
 
 	const hasHandler = Boolean(getProperty(node, "handler"));
 	const hasValidate = Boolean(getProperty(node, "validate"));
-	const hasActionShape = hasHandler || hasValidate;
+	const hasActionMetadata = [
+		"contexts",
+		"contextGate",
+		"description",
+		"descriptionCompressed",
+		"examples",
+		"mode",
+		"parameters",
+		"roleGate",
+		"similes",
+		"subActions",
+	].some((propertyName) => Boolean(getProperty(node, propertyName)));
+	const hasActionShape = (hasHandler || hasValidate) && hasActionMetadata;
 	if (!hasActionShape) return null;
 
 	const validateNode = getPropertyInitializer(node, "validate");
@@ -363,10 +382,23 @@ function getStringProperty(node, name) {
 
 function getStringArrayProperty(node, name) {
 	const initializer = getPropertyInitializer(node, name);
-	if (!initializer || !ts.isArrayLiteralExpression(initializer)) return [];
+	if (!initializer) return [];
+	if (ts.isIdentifier(initializer)) {
+		return CONTEXT_CONSTANTS[initializer.text] ?? [];
+	}
+	if (!ts.isArrayLiteralExpression(initializer)) return [];
 	return initializer.elements
-		.filter(ts.isStringLiteralLike)
-		.map((element) => element.text);
+		.flatMap((element) => {
+			if (ts.isStringLiteralLike(element)) return [element.text];
+			if (
+				ts.isSpreadElement(element) &&
+				ts.isIdentifier(element.expression) &&
+				CONTEXT_CONSTANTS[element.expression.text]
+			) {
+				return CONTEXT_CONSTANTS[element.expression.text];
+			}
+			return [];
+		});
 }
 
 function propertyName(name) {

@@ -47,8 +47,6 @@ const SHARED_TSCONFIG_CONTENT = `{
     "declarationMap": true,
     "emitDeclarationOnly": true,
     "noEmit": false,
-    "outDir": "dist",
-    "rootDir": "./src",
     "paths": {
       "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
       "@elizaos/core/*": ["../../packages/core/dist/*"],
@@ -61,9 +59,7 @@ const SHARED_TSCONFIG_CONTENT = `{
       "@elizaos/cloud-sdk": ["../../cloud/packages/sdk/dist/index.d.ts"],
       "@elizaos/scenario-runner": ["../../packages/scenario-runner/dist/index.d.ts"]
     }
-  },
-  "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/__tests__/**"]
+  }
 }
 `;
 
@@ -90,7 +86,9 @@ async function main() {
     const buildCmd = pkg.scripts?.build ?? "";
     if (!buildCmd) continue;
 
-    const usesSharedConfig = buildCmd.includes("tsup.plugin-packages.shared");
+    const usesSharedConfig =
+      buildCmd.includes("tsup.plugin-packages.shared") ||
+      pkg.scripts?.["build:js"]?.includes("tsup.plugin-packages.shared");
     const distHasDts = checkDistHasDts(dir);
     const ownTsupConfig = join(dir, "tsup.config.ts");
     const hasOwnTsup = existsSync(ownTsupConfig);
@@ -146,20 +144,41 @@ function patchPluginToAddTscStep(name, pkgPath, pkg, flags, log, stats) {
   pkg.scripts = pkg.scripts ?? {};
   const oldBuild = pkg.scripts.build;
   if (!oldBuild) return;
+  writePluginTsconfig(pkgPath, flags, log, stats);
   if (
     pkg.scripts["build:js"] &&
     pkg.scripts["build:types"] &&
-    pkg.scripts.build === "bun run build:js && bun run build:types"
+    pkg.scripts.build === "bun run build:js && bun run build:types" &&
+    pkg.scripts["build:types"] === "tsc -p tsconfig.build.json"
   ) {
     log.verbose(`${name}: already split (skip)`);
     return;
   }
-  pkg.scripts["build:js"] = oldBuild;
-  pkg.scripts["build:types"] = `tsc -p ../tsconfig.build.shared.json`;
+  if (!pkg.scripts["build:js"]) {
+    pkg.scripts["build:js"] = oldBuild;
+  }
+  pkg.scripts["build:types"] = "tsc -p tsconfig.build.json";
   pkg.scripts.build = "bun run build:js && bun run build:types";
   log.info(`patch: ${name} → split build into js + types`);
   writeJson(pkgPath, pkg, flags, log);
   stats.incr("plugins patched (shared config + tsc step)");
+}
+
+function writePluginTsconfig(pkgPath, flags, log, stats) {
+  const configPath = join(pkgPath, "..", "tsconfig.build.json");
+  const content = `{
+  "extends": "../tsconfig.build.shared.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "./src"
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/__tests__/**"]
+}
+`;
+  if (writeFileIfChanged(configPath, content, flags, log)) {
+    stats.incr("plugin tsconfig.build files written");
+  }
 }
 
 function patchOwnTsupToEnableDts(configPath, flags, log, stats) {

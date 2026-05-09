@@ -46,7 +46,7 @@ export interface TodoInput {
   parentTodoId?: string | null;
 }
 
-export const TODOS_CONTEXTS = ["code", "task", "automation"] as const;
+export const TODOS_CONTEXTS = ["tasks", "todos", "automation"] as const;
 export type TodosContext = (typeof TODOS_CONTEXTS)[number];
 
 export const TODO_FAILURE_TEXT_PREFIX = "[Todos]";

@@ -407,6 +407,43 @@ export function resolvePlannerActionName(
 	actionLookup: Map<string, Action> | undefined,
 	actionName: string,
 ): string[] {
+	const lookup =
+		actionLookup ?? buildRuntimeActionLookup(runtime as IAgentRuntime);
+	const resolved = resolvePlannerActionNameFromLookup(
+		runtime,
+		lookup,
+		actionName,
+	);
+	if (resolved.length > 0) {
+		return resolved;
+	}
+
+	if (actionLookup) {
+		const runtimeResolved = resolvePlannerActionNameFromLookup(
+			runtime,
+			buildRuntimeActionLookup(runtime as IAgentRuntime),
+			actionName,
+		);
+		if (runtimeResolved.length > 0) {
+			return runtimeResolved;
+		}
+	}
+
+	runtime.logger.warn(
+		{
+			src: "service:message",
+			actionName,
+		},
+		"Dropping unknown planner action",
+	);
+	return [];
+}
+
+function resolvePlannerActionNameFromLookup(
+	runtime: Pick<IAgentRuntime, "actions" | "logger">,
+	lookup: Map<string, Action>,
+	actionName: string,
+): string[] {
 	const normalized = normalizeActionIdentifier(actionName);
 	if (!normalized) {
 		return [];
@@ -417,8 +454,6 @@ export function resolvePlannerActionName(
 		return [controlActionName];
 	}
 
-	const lookup =
-		actionLookup ?? buildRuntimeActionLookup(runtime as IAgentRuntime);
 	const resolvedAction = resolveRuntimeAction(lookup, actionName);
 	if (resolvedAction) {
 		return [resolvedAction.name];
@@ -451,13 +486,6 @@ export function resolvePlannerActionName(
 		}
 	}
 
-	runtime.logger.warn(
-		{
-			src: "service:message",
-			actionName,
-		},
-		"Dropping unknown planner action",
-	);
 	return [];
 }
 
@@ -2519,7 +2547,7 @@ function normalizeMessagePlannerParams(
 		toolCall.params && typeof toolCall.params === "object"
 			? (toolCall.params as Record<string, unknown>)
 			: {};
-	const operation =
+	const rawOperation =
 		stringParam(params.operation) ??
 		stringParam(params.subaction) ??
 		stringParam(params.subAction) ??
@@ -2528,15 +2556,39 @@ function normalizeMessagePlannerParams(
 		stringParam(params.manageOperation) ??
 		stringParam(params.command) ??
 		stringParam(params.action);
-	const source = stringParam(params.source);
+	const rawSource =
+		stringParam(params.source) ??
+		stringParam(params.platform) ??
+		stringParam(params.connector);
+	const source = rawSource === "twitter" ? "x" : rawSource;
 	const target =
 		stringParam(params.target) ??
+		stringParam(params.recipient) ??
+		stringParam(params.channel) ??
+		stringParam(params.channelName) ??
+		stringParam(params.room) ??
 		stringParam(params.email) ??
 		stringParam(params.emailAddress) ??
 		stringParam(params.address);
+	const messageBody =
+		stringParam(params.message) ??
+		stringParam(params.text) ??
+		stringParam(params.content) ??
+		stringParam(params.body);
 	const text = getUserMessageText(message) ?? "";
+	const directChatSend =
+		/\b(?:post|send|message|dm)\b/i.test(text) &&
+		/\b(?:discord|slack|telegram|signal|whatsapp)\b/i.test(text);
+	const operation =
+		rawOperation === "send_draft" &&
+		!stringParam(params.draftId) &&
+		(directChatSend || source || target || messageBody)
+			? "send"
+			: rawOperation;
 	const inferredOperation =
-		/\bdraft\b.*\breply\b/i.test(text)
+		directChatSend
+			? "send"
+			: /\bdraft\b.*\breply\b/i.test(text)
 			? "draft_reply"
 			: /\b(?:unread|inbox|digest|summarize).*?\b(?:email|gmail|mail|inbox)\b/i.test(
 						text,
@@ -2559,6 +2611,10 @@ function normalizeMessagePlannerParams(
 				? { source: "x" }
 				: {}),
 		...(target ? { target, sender: target } : {}),
+		...(messageBody ? { message: messageBody, body: messageBody } : {}),
+		...(target && stringParam(params.channel)
+			? { targetKind: "channel" }
+			: {}),
 		...(manageIntent
 			? {
 					manageOperation: /\bunsubscribe\b/i.test(manageIntent)
@@ -2856,7 +2912,19 @@ async function executeV5PlannedToolCall(
 		args.executorCtx.message,
 	);
 
-	const action = actions.find((candidate) => candidate.name === toolCall.name);
+	const executionActions = actions.some(
+		(candidate) => candidate.name === toolCall.name,
+	)
+		? actions
+		: [
+				...actions,
+				...args.runtime.actions.filter(
+					(candidate) => candidate.name === toolCall.name,
+				),
+			];
+	const action = executionActions.find(
+		(candidate) => candidate.name === toolCall.name,
+	);
 
 	if (action && actionHasSubActions(action)) {
 		const subResult = await runSubPlanner({
@@ -2879,7 +2947,7 @@ async function executeV5PlannedToolCall(
 		args.runtime,
 		args.executorCtx,
 		toolCall,
-		args.executorOptions ?? {},
+		{ ...(args.executorOptions ?? {}), actions: executionActions },
 	);
 	return actionResultToPlannerToolResult(actionResult);
 }
