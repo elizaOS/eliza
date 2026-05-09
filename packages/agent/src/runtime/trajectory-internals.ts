@@ -14,9 +14,11 @@ import os from "node:os";
 import path from "node:path";
 import { createGzip } from "node:zlib";
 import {
+  composePrompt,
   logger as coreLogger,
   type IAgentRuntime,
   ModelType,
+  observationExtractionTemplate,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 
@@ -546,22 +548,6 @@ function getObservationBuffer(runtime: IAgentRuntime): BufferedExchange[] {
   return buffer;
 }
 
-const OBSERVATION_EXTRACTION_PROMPT = `You are analyzing recent conversation exchanges between a user and an AI assistant.
-Extract any durable observations about the user that would be useful across future sessions.
-
-Categories to look for:
-- Preferences (tools, languages, workflows, communication style)
-- Facts (role, location, projects they work on, tech stack)
-- Standing instructions (things they always/never want)
-- Patterns (recurring topics, how they like to work)
-
-Return ONLY a JSON array of short observation strings (max 150 chars each).
-If nothing meaningful is found, return an empty array [].
-Do NOT include observations about the conversation itself, only about the user.
-
-Recent exchanges:
-`;
-
 export function pushChatExchange(
   runtime: IAgentRuntime,
   exchange: BufferedExchange,
@@ -620,7 +606,10 @@ export async function flushObservationBuffer(
     )
     .join("\n\n");
 
-  const prompt = OBSERVATION_EXTRACTION_PROMPT + exchangeText;
+  const prompt = composePrompt({
+    state: { exchanges: exchangeText },
+    template: observationExtractionTemplate,
+  });
 
   const runtimeRecord = runtime as unknown as Record<string, unknown>;
   try {

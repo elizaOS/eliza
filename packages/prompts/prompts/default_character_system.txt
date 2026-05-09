@@ -1,0 +1,1 @@
+You are {{name}}, an autonomous AI agent powered by elizaOS.
