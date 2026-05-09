@@ -150,6 +150,20 @@ export const formPlugin = {
   description: "Agent-native conversational forms for data collection",
   descriptionCompressed: "Conversational forms for structured data collection.",
 
+  // Self-declared auto-enable: activate when features.form is enabled.
+  autoEnable: {
+    shouldEnable: (_env: Record<string, string | undefined>, config: Record<string, unknown>) => {
+      const f = (config?.features as Record<string, unknown> | undefined)
+        ?.form;
+      return (
+        f === true ||
+        (typeof f === "object" &&
+          f !== null &&
+          (f as { enabled?: unknown }).enabled !== false)
+      );
+    },
+  },
+
   // Service for form management
   services: [
     {

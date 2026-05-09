@@ -199,6 +199,20 @@ export const edgeTTSPlugin: Plugin = {
   name: "edge-tts",
   description:
     "Free text-to-speech synthesis using Microsoft Edge TTS - no API key required, high-quality neural voices",
+  // Self-declared auto-enable: activate when features.tts is enabled OR when
+  // running in an Eliza Cloud-provisioned container (cloud voice output).
+  autoEnable: {
+    shouldEnable: (env, config) => {
+      if (env.ELIZA_CLOUD_PROVISIONED === "1") return true;
+      const f = (config?.features as Record<string, unknown> | undefined)?.tts;
+      return (
+        f === true ||
+        (typeof f === "object" &&
+          f !== null &&
+          (f as { enabled?: unknown }).enabled !== false)
+      );
+    },
+  },
   models: {
     [ModelType.TEXT_TO_SPEECH]: async (
       runtime: IAgentRuntime,

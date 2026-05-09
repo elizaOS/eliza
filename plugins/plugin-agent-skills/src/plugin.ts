@@ -90,6 +90,20 @@ export const agentSkillsPlugin: Plugin = {
 	actions: ALL_ACTIONS,
 	providers: ALL_PROVIDERS,
 
+	// Self-declared auto-enable: activate when features.agentSkills is enabled.
+	autoEnable: {
+		shouldEnable: (_env, config) => {
+			const f = (config?.features as Record<string, unknown> | undefined)
+				?.agentSkills;
+			return (
+				f === true ||
+				(typeof f === "object" &&
+					f !== null &&
+					(f as { enabled?: unknown }).enabled !== false)
+			);
+		},
+	},
+
 	routes: [],
 
 	// Initialize background task when plugin loads.
