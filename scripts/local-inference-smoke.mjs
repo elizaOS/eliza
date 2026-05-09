@@ -43,6 +43,26 @@ function listTargets(root) {
     .sort();
 }
 
+/**
+ * Decide whether `target` (e.g. "android-arm64-cpu") can plausibly execute
+ * on the current host. Cross-compiled binaries (Android arm64 on Linux x64,
+ * Windows on POSIX, etc.) are recognised as `--version` failures only because
+ * they're for a different platform — not because they're broken. We skip
+ * those with a clear log line so CI runners don't false-fail on cross builds.
+ */
+function targetMatchesHost(target) {
+  const [targetPlatform, targetArch] = target.split("-");
+  const hostPlatform = process.platform;
+  const hostArch = process.arch;
+  // platform: linux | darwin | win32 | android | windows
+  const platformMatch =
+    targetPlatform === hostPlatform ||
+    (targetPlatform === "windows" && hostPlatform === "win32");
+  // arch: x64 | arm64 | armv7l | ... (matches Node's process.arch)
+  const archMatch = targetArch === hostArch;
+  return platformMatch && archMatch;
+}
+
 function probeBinary(binaryPath) {
   if (!fs.existsSync(binaryPath)) {
     return { ok: false, reason: `missing: ${binaryPath}` };
@@ -106,6 +126,12 @@ function main() {
   }
   let allOk = true;
   for (const target of targets) {
+    if (!targetMatchesHost(target)) {
+      console.log(
+        `SKIP ${target} cross-compiled for ${process.platform}-${process.arch} host (verify on a matching device)`,
+      );
+      continue;
+    }
     const targetDir = path.join(root, target);
     const ok = probeTarget(targetDir, target);
     if (!ok) allOk = false;
