@@ -20,11 +20,7 @@ function makeRuntime(): AgentRuntime {
 		logLevel: "fatal",
 	});
 	runtime.evaluators.length = 0;
-	(
-		runtime as unknown as {
-			composeState: AgentRuntime["composeState"];
-		}
-	).composeState = vi.fn(async (_message, providerNames) => ({
+	runtime.composeState = vi.fn(async (_message, providerNames) => ({
 		values: { providerNames },
 		data: {
 			providers: Object.fromEntries(
@@ -33,11 +29,7 @@ function makeRuntime(): AgentRuntime {
 		},
 		text: `providers:${(providerNames ?? []).join(",")}`,
 	}));
-	(
-		runtime as unknown as {
-			emitEvent: AgentRuntime["emitEvent"];
-		}
-	).emitEvent = vi.fn(async () => {});
+	runtime.emitEvent = vi.fn(async () => {});
 	return runtime;
 }
 
@@ -125,11 +117,7 @@ describe("EvaluatorService", () => {
 				second: { ok: true },
 			};
 		});
-		(
-			runtime as unknown as {
-				useModel: AgentRuntime["useModel"];
-			}
-		).useModel = useModel as AgentRuntime["useModel"];
+		runtime.useModel = useModel as AgentRuntime["useModel"];
 
 		const result = await new EvaluatorService(runtime).run(makeMessage(), {
 			values: {},
@@ -209,11 +197,7 @@ describe("EvaluatorService", () => {
 			],
 		});
 
-		(
-			runtime as unknown as {
-				useModel: AgentRuntime["useModel"];
-			}
-		).useModel = vi.fn(async () => ({
+		runtime.useModel = vi.fn(async () => ({
 			invalid: { ok: true },
 			throws: { ok: true },
 			ok: { ok: true },

@@ -70,12 +70,13 @@ describe("getMainTabApp", () => {
   });
 
   it("ignores non-true values for mainTab", () => {
-    const apps = [
-      buildApp({
-        name: "@elizaos/app-a",
-        mainTab: undefined as unknown as boolean,
-      }),
-    ];
+    const app = buildApp({ name: "@elizaos/app-a" });
+    Object.defineProperty(app, "mainTab", {
+      value: undefined,
+      enumerable: true,
+      configurable: true,
+    });
+    const apps = [app];
     expect(getMainTabApp(apps)).toBeNull();
   });
 });

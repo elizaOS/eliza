@@ -685,7 +685,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       sandboxId: containerName,
       bridgeUrl: `http://${targetHost}:${bridgePort}`,
       healthUrl: `http://${targetHost}:${webUiPort}/api`,
-      metadata: metadata as unknown as Record<string, unknown>,
+      metadata: { ...metadata },
     };
   }
 

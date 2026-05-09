@@ -183,11 +183,15 @@ function contactInfoToMetadata(contactInfo: ContactInfo): Metadata {
 		customFields: contactInfo.customFields,
 		privacyLevel: contactInfo.privacyLevel,
 		lastModified: contactInfo.lastModified,
-		handles: contactInfo.handles as unknown as MetadataValue,
-		interactions: contactInfo.interactions as unknown as MetadataValue,
+		handles: contactInfo.handles.map((handle) => ({ ...handle })),
+		interactions: contactInfo.interactions.map((interaction) => ({
+			...interaction,
+		})),
 		followupThresholdDays: contactInfo.followupThresholdDays,
 		lastInteractionAt: contactInfo.lastInteractionAt,
-		relationshipGoal: contactInfo.relationshipGoal as unknown as MetadataValue,
+		relationshipGoal: contactInfo.relationshipGoal
+			? { ...contactInfo.relationshipGoal }
+			: undefined,
 		relationshipStatus: contactInfo.relationshipStatus,
 	};
 }

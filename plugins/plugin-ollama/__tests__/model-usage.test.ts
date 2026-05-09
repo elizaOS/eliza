@@ -89,10 +89,9 @@ describe.skipIf(skipReason !== null)("ollama MODEL_USED events (live)", () => {
     const { default: plugin } = await import("../index");
     const runtime = createRuntime();
 
-    const result = await plugin.models?.[ModelType.TEXT_SMALL]?.(
-      runtime as unknown as IAgentRuntime,
-      { prompt: "Reply with exactly two words: hello there" }
-    );
+    const result = await plugin.models?.[ModelType.TEXT_SMALL]?.(runtime as IAgentRuntime, {
+      prompt: "Reply with exactly two words: hello there",
+    });
 
     expect(typeof result === "string" || (typeof result === "object" && result !== null)).toBe(
       true
@@ -135,7 +134,7 @@ describe.skipIf(skipReason !== null)("ollama MODEL_USED events (live)", () => {
 
     await runWithTrajectoryContext({ trajectoryStepId: "step-ollama-live" }, async () => {
       await plugin.models?.[ModelType.TEXT_LARGE]?.(
-        runtime as unknown as IAgentRuntime,
+        runtime as IAgentRuntime,
         {
           prompt: 'Return JSON {"ok": true}. Reply with only the JSON, no commentary.',
           responseSchema: {

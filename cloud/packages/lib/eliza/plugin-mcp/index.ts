@@ -28,9 +28,7 @@ export {
 // Re-export types
 export * from "./types";
 
-// Use type assertion for the plugin definition because McpService and ActionWithParams
-// have minor structural differences from upstream @elizaos/core ServiceClass and Action types
-const mcpPlugin = {
+const mcpPlugin: Plugin = {
   name: "mcp",
   description: "Plugin for connecting to MCP (Model Context Protocol) servers",
 
@@ -41,6 +39,6 @@ const mcpPlugin = {
   services: [McpService],
   actions: [mcpAction],
   providers: [provider],
-} satisfies Record<string, unknown> as unknown as Plugin;
+};
 
 export default mcpPlugin;

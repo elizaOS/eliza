@@ -28,7 +28,7 @@ function createRuntimeWithPluginRegistration(initialPlugins: Plugin[] = []): {
       info: vi.fn(),
       warn: vi.fn(),
     },
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
   return { runtime, plugins, registerPlugin };
 }
 
@@ -48,7 +48,7 @@ describe("LifeOps Google plugin registration", () => {
 
     await expect(
       lifeAction?.validate?.(
-        { getRoom: async () => null } as unknown as IAgentRuntime,
+        { getRoom: async () => null } as IAgentRuntime,
         { content: { text: "add a todo: pick up dry cleaning tomorrow" } } as never,
       ),
     ).resolves.toBe(true);

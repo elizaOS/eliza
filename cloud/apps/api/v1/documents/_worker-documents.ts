@@ -1,3 +1,4 @@
+import type { Memory } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { dbWrite } from "@/db/helpers";
 import { memoriesRepository } from "@/db/repositories/agents";
@@ -9,22 +10,6 @@ export interface DocumentScope {
   agentId: string;
   roomId: string;
   characterId?: string;
-}
-
-interface StoredDocumentContent {
-  text?: string;
-  source?: string;
-  metadata?: Record<string, unknown>;
-}
-
-interface StoredDocumentMemory {
-  id: string;
-  agentId?: string;
-  roomId?: string;
-  type?: string;
-  content?: StoredDocumentContent;
-  metadata?: Record<string, unknown>;
-  createdAt?: Date | string | number;
 }
 
 export interface DocumentFileInput {
@@ -91,17 +76,32 @@ export async function resolveDocumentScope(
   };
 }
 
-function timestamp(value: StoredDocumentMemory["createdAt"]): number {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function timestamp(value: unknown): number {
   if (value instanceof Date) return value.getTime();
   if (typeof value === "number") return value;
   if (typeof value === "string") return new Date(value).getTime();
   return Date.now();
 }
 
-export function toDocumentRecord(memory: StoredDocumentMemory) {
-  const metadata = memory.metadata ?? memory.content?.metadata ?? {};
+function getMemoryStringField(memory: Memory, key: string): string | undefined {
+  if (!(key in memory)) return undefined;
+  const value = memory[key as keyof Memory];
+  return typeof value === "string" ? value : undefined;
+}
+
+export function isStoredDocumentMemory(memory: Memory | null): memory is Memory & { id: string } {
+  return !!memory && typeof memory.id === "string" && getMemoryStringField(memory, "type") === "documents";
+}
+
+export function toDocumentRecord(memory: Memory) {
+  const contentMetadata = isRecord(memory.content.metadata) ? memory.content.metadata : undefined;
+  const metadata = isRecord(memory.metadata) ? memory.metadata : (contentMetadata ?? {});
   return {
-    id: memory.id,
+    id: memory.id ?? "",
     content: {
       text: memory.content?.text ?? "",
     },
@@ -121,13 +121,13 @@ function fragmentTextChunks(text: string): string[] {
 }
 
 export async function listDocumentRecords(scope: DocumentScope, limit = 100, offset = 0) {
-  const memories = (await memoriesRepository.search({
+  const memories = await memoriesRepository.search({
     agentId: scope.agentId,
     roomId: scope.roomId,
     type: "documents",
     limit,
     offset,
-  })) as unknown as StoredDocumentMemory[];
+  });
 
   return memories.map(toDocumentRecord);
 }
@@ -160,7 +160,7 @@ export async function createDocumentRecord(
     uploadedAt: now,
     characterId: scope.characterId,
   };
-  const memory = (await memoriesRepository.create({
+  const memory = await memoriesRepository.create({
     id,
     roomId: scope.roomId,
     entityId: user.id,
@@ -172,7 +172,7 @@ export async function createDocumentRecord(
       source: "documents",
     },
     metadata,
-  })) as unknown as StoredDocumentMemory;
+  });
 
   for (const [position, text] of fragmentTextChunks(input.text).entries()) {
     await memoriesRepository.create({

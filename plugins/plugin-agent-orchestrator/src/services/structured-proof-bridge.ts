@@ -79,8 +79,7 @@ const NOOP_LOGGER: StructuredProofLogger = {
 };
 
 function getLogger(runtime: IAgentRuntime): StructuredProofLogger {
-  const candidate = (runtime as unknown as { logger?: StructuredProofLogger })
-    .logger;
+  const candidate = (runtime as { logger?: StructuredProofLogger }).logger;
   return candidate ?? NOOP_LOGGER;
 }
 
@@ -314,7 +313,7 @@ export function ensureStructuredProofBridge(
   runtime: IAgentRuntime,
   ptyService: PTYService,
 ): void {
-  const runtimeKey = runtime as unknown as object;
+  const runtimeKey = runtime as object;
   if (installedRuntimes.has(runtimeKey)) return;
   installedRuntimes.add(runtimeKey);
   installStructuredProofBridge({ runtime, ptyService });

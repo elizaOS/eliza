@@ -39,9 +39,7 @@ export type NgrokConfig = z.infer<typeof ngrokEnvSchema>;
  * Coerce a runtime setting (string | number | boolean | null) to a string suitable
  * for schema parsing. Null/undefined return undefined so optional schema fields work.
  */
-function settingToString(
-  value: string | number | boolean | null | undefined
-): string | undefined {
+function settingToString(value: string | number | boolean | null | undefined): string | undefined {
   if (value === null || value === undefined) return undefined;
   return String(value);
 }
@@ -52,12 +50,10 @@ export async function validateNgrokConfig(runtime: IAgentRuntime): Promise<Ngrok
     const config = {
       NGROK_AUTH_TOKEN:
         settingToString(runtime.getSetting('NGROK_AUTH_TOKEN')) ?? process.env.NGROK_AUTH_TOKEN,
-      NGROK_REGION:
-        settingToString(runtime.getSetting('NGROK_REGION')) ?? process.env.NGROK_REGION,
+      NGROK_REGION: settingToString(runtime.getSetting('NGROK_REGION')) ?? process.env.NGROK_REGION,
       NGROK_SUBDOMAIN:
         settingToString(runtime.getSetting('NGROK_SUBDOMAIN')) ?? process.env.NGROK_SUBDOMAIN,
-      NGROK_DOMAIN:
-        settingToString(runtime.getSetting('NGROK_DOMAIN')) ?? process.env.NGROK_DOMAIN,
+      NGROK_DOMAIN: settingToString(runtime.getSetting('NGROK_DOMAIN')) ?? process.env.NGROK_DOMAIN,
       NGROK_DEFAULT_PORT:
         settingToString(runtime.getSetting('NGROK_DEFAULT_PORT')) ??
         process.env.NGROK_DEFAULT_PORT ??
@@ -70,9 +66,7 @@ export async function validateNgrokConfig(runtime: IAgentRuntime): Promise<Ngrok
     return validated;
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const errorMessages = error.issues
-        .map((e) => `${e.path.join('.')}: ${e.message}`)
-        .join('\n');
+      const errorMessages = error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join('\n');
       elizaLogger.error(`Configuration validation failed: ${errorMessages}`);
       throw new Error(`Ngrok configuration validation failed:\n${errorMessages}`);
     }

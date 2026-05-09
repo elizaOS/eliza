@@ -627,18 +627,22 @@ async function proxyRunSteeringRequest(
   const captured = createCapturedResponse();
   const syntheticUrl = new URL(ctx.url.toString());
   syntheticUrl.pathname = target.pathname;
-  const syntheticCtx = {
+  const syntheticCtx: AppsRouteContext = {
     ...ctx,
     pathname: target.pathname,
     url: syntheticUrl,
-    res: captured,
+    res: captured as unknown as http.ServerResponse,
     readJsonBody: async <T extends object>() => body as T | null,
-    json: (response: CapturedResponse, data: unknown, status = 200): void => {
+    json: (
+      response: http.ServerResponse,
+      data: unknown,
+      status = 200,
+    ): void => {
       response.writeHead(status, { "Content-Type": "application/json" });
       response.end(JSON.stringify(data));
     },
     error: (
-      response: CapturedResponse,
+      response: http.ServerResponse,
       message: string,
       status = 500,
     ): void => {
@@ -647,9 +651,7 @@ async function proxyRunSteeringRequest(
     },
   };
 
-  const handled = await routeModule.handleAppRoutes(
-    syntheticCtx as unknown as AppsRouteContext,
-  );
+  const handled = await routeModule.handleAppRoutes(syntheticCtx);
   if (!handled) {
     return {
       success: false,

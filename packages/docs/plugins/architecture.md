@@ -32,7 +32,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-agent-skills",      // skill execution and marketplace runtime
   "@elizaos/plugin-commands",          // slash command handling
   "@elizaos/app-lifeops",             // LifeOps: tasks, goals, calendar, inbox
-  "@elizaos/plugin-browser-bridge",    // Chrome/Safari companion pairing
+  "@elizaos/plugin-browser",    // Chrome/Safari companion pairing
 ];
 ```
 
@@ -207,7 +207,6 @@ const FEATURE_PLUGINS = {
   cua:                  "@elizaos/plugin-cua",                   // * upstream-only
   obsidian:             "@elizaos/plugin-obsidian",              // * upstream-only
   shell:                "@elizaos/plugin-shell",
-  executeCode:          "@elizaos/plugin-executecode",
   imageGen:             "@elizaos/plugin-image-generation",
   tts:                  "@elizaos/plugin-edge-tts",
   stt:                  "@elizaos/plugin-stt",

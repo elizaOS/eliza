@@ -124,7 +124,12 @@ function normalizeLastExecution(
     const error = resultData?.error as Record<string, unknown> | undefined;
     return typeof error?.message === "string" ? error.message : undefined;
   })();
-  return { status, startedAt, stoppedAt, ...(errorMessage ? { errorMessage } : {}) };
+  return {
+    status,
+    startedAt,
+    stoppedAt,
+    ...(errorMessage ? { errorMessage } : {}),
+  };
 }
 
 interface StaticAutomationNodeSpec {
@@ -372,16 +377,14 @@ function buildRoomBinding(
 }
 
 function readAutomationRoomRecord(
-  room: Record<string, unknown>,
+  room: Room & { updatedAt?: unknown },
 ): AutomationRoomRecord | null {
   const roomId = asString(room.id);
   if (!roomId) {
     return null;
   }
 
-  const metadata = extractConversationMetadataFromRoom(
-    room as unknown as Pick<Room, "metadata">,
-  );
+  const metadata = extractConversationMetadataFromRoom(room);
   if (!metadata || !isAutomationConversationMetadata(metadata)) {
     return null;
   }
@@ -420,9 +423,7 @@ async function listAutomationRooms(
   const worldId = stringToUuid(`${agentName}-web-chat-world`) as UUID;
   const rooms = await runtime.getRooms(worldId);
   return rooms
-    .map((room) =>
-      readAutomationRoomRecord(room as unknown as Record<string, unknown>),
-    )
+    .map((room) => readAutomationRoomRecord(room))
     .filter((room): room is AutomationRoomRecord => room !== null);
 }
 
@@ -784,7 +785,10 @@ async function buildAutomationListResponse(
           runtime,
           `/api/workflow/workflows/${encodeURIComponent(workflowId)}/executions?limit=1`,
         );
-        if (result.status !== 200 || !Array.isArray(result.payload?.executions)) {
+        if (
+          result.status !== 200 ||
+          !Array.isArray(result.payload?.executions)
+        ) {
           return;
         }
         if (result.payload.executions.length === 0) {

@@ -654,8 +654,7 @@ export const groqPlugin: Plugin = {
       const audioBuffer: Buffer =
         typeof params === "string"
           ? Buffer.from(params, "base64")
-          : hasBuffer &&
-              (Buffer as { isBuffer: (v: unknown) => boolean }).isBuffer(params)
+          : hasBuffer && (Buffer as { isBuffer: (v: unknown) => boolean }).isBuffer(params)
             ? (params as Buffer)
             : typeof params === "object" && params !== null && hasAudioData(params)
               ? Buffer.from((params as AudioDataShape).audioData)

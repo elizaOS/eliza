@@ -99,9 +99,9 @@ describe('validateWorkflow', () => {
     expect(validateWorkflow({ name: 'Empty', nodes: [], connections: {} }).errors).toContain(
       'Workflow must have at least one node'
     );
-    expect(
-      validateWorkflow(malformedWorkflow({ nodes: null, connections: {} })).errors
-    ).toContain('Missing or invalid nodes array');
+    expect(validateWorkflow(malformedWorkflow({ nodes: null, connections: {} })).errors).toContain(
+      'Missing or invalid nodes array'
+    );
     expect(
       validateWorkflow(malformedWorkflow({ nodes: [schedule()], connections: null })).errors
     ).toContain('Missing or invalid connections object');
@@ -164,8 +164,11 @@ describe('positionNodes', () => {
       nodes: [withoutPosition(schedule()), withoutPosition(http())],
     });
     const result = positionNodes(workflow);
-    const trigger = result.nodes.find((n) => n.name === 'Schedule Trigger')!;
-    const request = result.nodes.find((n) => n.name === 'HTTP Request')!;
+    const trigger = result.nodes.find((n) => n.name === 'Schedule Trigger');
+    const request = result.nodes.find((n) => n.name === 'HTTP Request');
+    expect(trigger).toBeDefined();
+    expect(request).toBeDefined();
+    if (!trigger || !request) throw new Error('expected positioned nodes');
     expect(trigger.position[0]).toBeLessThan(request.position[0]);
   });
 
@@ -238,10 +241,7 @@ describe('validateNodeParameters', () => {
     // carries the description "The URL to make the request to".
     const warnings = validateNodeParameters(
       validWorkflow({
-        nodes: [
-          schedule(),
-          http({ parameters: { method: 'GET' } }),
-        ],
+        nodes: [schedule(), http({ parameters: { method: 'GET' } })],
       })
     );
     const urlWarning = warnings.find((w) => w.includes('"URL"'));
@@ -266,7 +266,9 @@ describe('validateNodeParameters', () => {
       ],
       connections: {},
     });
-    const jsCodeWarning = warnings.find((w) => w.includes('Code') && w.includes('required parameter'));
+    const jsCodeWarning = warnings.find(
+      (w) => w.includes('Code') && w.includes('required parameter')
+    );
     if (jsCodeWarning) {
       expect(jsCodeWarning).not.toMatch(/\(\s*\)/);
       expect(jsCodeWarning.endsWith('"')).toBe(true);
@@ -444,9 +446,12 @@ describe('ensureExpressionPrefix', () => {
     });
     const count = ensureExpressionPrefix(workflow);
     expect(count).toBe(2);
-    const assignments = (workflow.nodes[0].parameters.assignments as any).assignments;
-    expect(assignments[0].value).toBe('={{ $json.a }}');
-    expect(assignments[1].value).toBe('={{ $json.b }}');
-    expect((workflow.nodes[0].parameters.options as any).values[0]).toBe('={{ $json.c }}');
+    const assignmentBlock = workflow.nodes[0].parameters.assignments as {
+      assignments: Array<{ name: string; value: string; type: string }>;
+    };
+    expect(assignmentBlock.assignments[0].value).toBe('={{ $json.a }}');
+    expect(assignmentBlock.assignments[1].value).toBe('={{ $json.b }}');
+    const optionsBlock = workflow.nodes[0].parameters.options as { values: string[] };
+    expect(optionsBlock.values[0]).toBe('={{ $json.c }}');
   });
 });

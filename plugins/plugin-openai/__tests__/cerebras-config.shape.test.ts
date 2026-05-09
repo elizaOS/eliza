@@ -7,7 +7,7 @@ import { getApiKey, getBaseURL } from "../utils/config";
 function buildRuntime(settings: Record<string, string | undefined>): IAgentRuntime {
   return {
     getSetting: vi.fn((key: string) => (key in settings ? (settings[key] ?? null) : null)),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 const ENV_KEYS = [

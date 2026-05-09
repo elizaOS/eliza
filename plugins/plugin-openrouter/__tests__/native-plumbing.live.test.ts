@@ -12,18 +12,23 @@ interface TextResult {
   };
 }
 
+function expectTextResult(value: unknown): asserts value is TextResult {
+  expect(value).toEqual(expect.objectContaining({ text: expect.any(String) }));
+}
+
 describeLive(
   "OpenRouter native plumbing (live)",
   { requiredEnv: ["OPENROUTER_API_KEY"], provider: "openrouter" },
   ({ harness }) => {
     it("returns real text and populated usage from a native messages call", async () => {
       const { runtime } = harness();
-      const result = (await handleTextSmall(runtime, {
+      const result = await handleTextSmall(runtime, {
         messages: [
           { role: "system", content: "Reply with one short sentence." },
           { role: "user", content: "Say hello." },
         ],
-      } as never)) as unknown as TextResult;
+      } as never);
+      expectTextResult(result);
 
       expect(typeof result.text).toBe("string");
       expect((result.text ?? "").length).toBeGreaterThan(0);

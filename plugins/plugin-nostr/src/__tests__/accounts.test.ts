@@ -7,7 +7,7 @@ function runtime(settings: Record<string, string>): IAgentRuntime {
   return {
     character: { settings: {} },
     getSetting: vi.fn((key: string) => settings[key] ?? null),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 describe("Nostr account config", () => {
@@ -52,7 +52,7 @@ describe("Nostr message connector accounts", () => {
       registerSendHandler: vi.fn(),
       logger: { info: vi.fn() },
       getSetting: vi.fn(() => null),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     const service = Object.create(NostrService.prototype) as NostrService;
     const primary = Object.create(NostrService.prototype) as NostrService;
     const secondary = Object.create(NostrService.prototype) as NostrService;

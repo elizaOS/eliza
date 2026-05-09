@@ -238,7 +238,7 @@ export async function getStewardBridgeStatus(
         try {
           agentData = (await fallbackClient.getAgent(
             fallbackAgentId,
-          )) as unknown as AgentDataShape;
+          )) as AgentDataShape;
         } catch (error: unknown) {
           if (
             !(error instanceof StewardApiError) ||
@@ -298,7 +298,7 @@ export async function getStewardBridgeStatus(
       try {
         agentData = (await client.getAgent(
           agentId,
-        )) as unknown as AgentDataShape;
+        )) as AgentDataShape;
       } catch (error: unknown) {
         if (
           !(error instanceof StewardApiError) ||
@@ -458,7 +458,7 @@ export async function getStewardWalletAddresses(
   // The SDK's AgentIdentity type only declares `walletAddress` (string),
   // but the live API returns an extended `walletAddresses` object with
   // per-chain addresses.  Cast to `unknown` to access those extra fields.
-  const agent = (await client.getAgent(agentId)) as unknown as {
+  const agent = (await client.getAgent(agentId)) as {
     walletAddress?: string;
     walletAddresses?: { evm?: string; solana?: string };
   };
@@ -1116,7 +1116,7 @@ async function doEnsureStewardAgent(
 
     // Check if agent exists
     try {
-      const agent = (await client.getAgent(agentId)) as unknown as {
+      const agent = (await client.getAgent(agentId)) as {
         id: string;
         name?: string;
         walletAddress?: string;

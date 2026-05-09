@@ -135,6 +135,7 @@ type GenerateTextParamsWithNativeOptions = Omit<GenerateTextParams, "responseSch
 };
 
 type NativeTextOutput = NonNullable<Parameters<typeof generateText>[0]["output"]>;
+type NativeTextModelResult = string & GenerateTextResult;
 
 /**
  * Pulls useful fields from Vercel AI SDK errors (`APICallError`, `RetryError`, `NoOutputGeneratedError`, …).
@@ -252,8 +253,8 @@ function buildNativeResultCast(
     finishReason: String(result.finishReason ?? ""),
     usage,
     providerMetadata: { modelName },
-  } as unknown as GenerateTextResult;
-  return payload as unknown as string;
+  };
+  return payload as NativeTextModelResult;
 }
 
 type StreamTextParams = Parameters<typeof streamText>[0];
@@ -302,7 +303,7 @@ function buildOllamaStreamTextResult(args: {
       const normalized =
         normalizeTokenUsage(usage) ?? estimateUsage(args.promptForEstimate, fullText);
       emitModelUsed(args.runtime, args.modelType, args.model, normalized);
-      return normalized as unknown as TokenUsage | undefined;
+      return normalized;
     })
     .catch(() => undefined);
 
@@ -393,7 +394,7 @@ function buildOllamaStreamWithToolsResult(args: {
       const normalized =
         normalizeTokenUsage(usage) ?? estimateUsage(args.promptForEstimate, fullText);
       emitModelUsed(args.runtime, args.modelType, args.model, normalized);
-      return normalized as unknown as TokenUsage | undefined;
+      return normalized;
     })
     .catch(() => undefined);
 
@@ -656,7 +657,7 @@ async function handleTextWithModelType(
       if (outputSpec !== undefined) {
         return serializeStructuredGenerateTextResult(result);
       }
-      return buildNativeResultCast(result, model, usage as unknown as TokenUsage);
+      return buildNativeResultCast(result, model, usage);
     }
 
     return result.text;

@@ -18,7 +18,7 @@ import {
   StatusBadge,
   Switch,
 } from "@elizaos/cloud-ui";
-import Image from "@elizaos/cloud-ui";
+import Image from "@elizaos/cloud-ui/runtime/image";
 import {
   Copy,
   Globe,
@@ -253,32 +253,47 @@ export function AgentCard({
     [agent.id, agent.name, onRemoveSaved],
   );
 
+  const openAgentChat = useCallback(async () => {
+    // Ensure rooms are loaded
+    if (rooms.length === 0) {
+      await loadRooms();
+    }
+
+    const currentRooms = useChatStore.getState().rooms;
+    const characterRooms = currentRooms
+      .filter((r) => r.characterId === agent.id)
+      .sort((a, b) => (b.lastTime ?? 0) - (a.lastTime ?? 0));
+
+    if (characterRooms.length > 0) {
+      navigate(`/dashboard/chat?characterId=${agent.id}&roomId=${characterRooms[0].id}`);
+    } else {
+      navigate(`/dashboard/chat?characterId=${agent.id}`);
+    }
+  }, [rooms.length, loadRooms, agent.id, navigate]);
+
   const handleCardClick = useCallback(
-    async (e: React.MouseEvent) => {
+    (e: React.MouseEvent) => {
       if (showDeleteConfirm) {
         e.preventDefault();
         return;
       }
 
       e.preventDefault();
+      void openAgentChat();
+    },
+    [showDeleteConfirm, openAgentChat],
+  );
 
-      // Ensure rooms are loaded
-      if (rooms.length === 0) {
-        await loadRooms();
-      }
-
-      const currentRooms = useChatStore.getState().rooms;
-      const characterRooms = currentRooms
-        .filter((r) => r.characterId === agent.id)
-        .sort((a, b) => (b.lastTime ?? 0) - (a.lastTime ?? 0));
-
-      if (characterRooms.length > 0) {
-        navigate(`/dashboard/chat?characterId=${agent.id}&roomId=${characterRooms[0].id}`);
-      } else {
-        navigate(`/dashboard/chat?characterId=${agent.id}`);
+  const handleCardKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        if (!showDeleteConfirm) {
+          void openAgentChat();
+        }
       }
     },
-    [showDeleteConfirm, rooms.length, loadRooms, agent.id, navigate],
+    [showDeleteConfirm, openAgentChat],
   );
 
   const isListView = viewMode === "list";
@@ -289,9 +304,7 @@ export function AgentCard({
       <div
         className={cn("min-w-0", !showDeleteConfirm && "cursor-pointer")}
         onClick={handleCardClick}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") handleCardClick(e as unknown as React.MouseEvent);
-        }}
+        onKeyDown={handleCardKeyDown}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         role="button"
@@ -470,9 +483,7 @@ export function AgentCard({
     <div
       className={cn("block h-full", !showDeleteConfirm && "cursor-pointer")}
       onClick={handleCardClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") handleCardClick(e as unknown as React.MouseEvent);
-      }}
+      onKeyDown={handleCardKeyDown}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       role="button"

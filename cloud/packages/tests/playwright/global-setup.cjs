@@ -40,6 +40,16 @@ const SCHEMA_COMPATIBILITY_COLUMNS = [
     column: "steward_tenant_api_key",
     definition: "steward_tenant_api_key text",
   },
+  {
+    table: "organizations",
+    column: "pay_as_you_go_from_earnings",
+    definition: "pay_as_you_go_from_earnings boolean NOT NULL DEFAULT true",
+  },
+  {
+    table: "generations",
+    column: "is_public",
+    definition: "is_public boolean NOT NULL DEFAULT false",
+  },
 ];
 
 const LOCAL_DOCKER_DB_USER = "eliza_dev";

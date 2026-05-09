@@ -54,7 +54,7 @@
     "harness": "bun run --cwd packages/agent start",
     "dev:core": "bun run --cwd packages/core dev",
     "start:debug": "NODE_NO_WARNINGS=1 LOG_LEVEL=debug bun run --cwd packages/agent start",
-    "build": "turbo run build --concurrency=4 && node scripts/run-examples-benchmarks.mjs build",
+    "build": "turbo run build --concurrency=1 && node scripts/run-examples-benchmarks.mjs build",
     "build:typescript": "turbo run build",
     "build:client": "turbo run build --filter=@elizaos/client",
     "format": "turbo run format",
@@ -65,7 +65,7 @@
     "build:server": "turbo run build --filter=@elizaos/server --no-cache",
     "lint": "turbo run lint && node scripts/run-examples-benchmarks.mjs lint",
     "lint:check": "turbo run lint:check",
-    "typecheck": "NODE_OPTIONS='--max-old-space-size=8192' turbo run typecheck --concurrency=4 --filter='!@elizaos/example-code' && node scripts/run-examples-benchmarks.mjs typecheck",
+    "typecheck": "NODE_OPTIONS='--max-old-space-size=8192' turbo run typecheck --concurrency=1 --filter='!@elizaos/example-code' && node scripts/run-examples-benchmarks.mjs typecheck",
     "lint:all": "bun run lint:check && bun run typecheck",
     "pre-commit": "bun run scripts/pre-commit-lint.js",
     "release": "bunx lerna publish from-package --dist-tag latest --force-publish --yes --no-verify-access",
@@ -164,7 +164,8 @@
     "zod": "^4.4.3",
     "drizzle-orm": "0.45.2",
     "@electric-sql/pglite": "^0.4.5",
-    "@solana/web3.js": "1.98.4"
+    "@solana/web3.js": "1.98.4",
+    "@clack/prompts": "1.3.0"
   },
   "overrides": {
     "@elizaos/core": "workspace:*",
@@ -193,7 +194,8 @@
     "tsup": "8.5.1",
     "viem": "2.48.8",
     "@solana/web3.js": "1.98.4",
-    "@slack/web-api": "7.15.2"
+    "@slack/web-api": "7.15.2",
+    "@clack/prompts": "1.3.0"
   },
   "patchedDependencies": {
     "@orca-so/common-sdk@0.7.0": "patches/@orca-so%2Fcommon-sdk@0.7.0.patch",

@@ -310,7 +310,7 @@ function notifyTrainingTrigger(
   runtime: IAgentRuntime,
   trajectoryId: string,
 ): void {
-  const entries = runtime.services.get("TRAINING_TRIGGER_SERVICE");
+  const entries = runtime.services.get("TRAINING_TRIGGER_SERVICE" as never);
   if (!Array.isArray(entries) || entries.length === 0) return;
   const entry: unknown = entries[0];
   if (
@@ -529,14 +529,16 @@ export async function installDatabaseTrajectoryLogger(
     logger.providerAccess.splice(0, logger.providerAccess.length);
   }
 
+  const llmLogger = logger.logLlmCall;
   const originalLogLlmCall =
-    typeof logger.logLlmCall === "function"
-      ? (...args: unknown[]) => Reflect.apply(logger.logLlmCall!, logger, args)
+    typeof llmLogger === "function"
+      ? (...args: unknown[]) => Reflect.apply(llmLogger, logger, args)
       : null;
+  const providerAccessLogger = logger.logProviderAccess;
   const originalLogProviderAccess =
-    typeof logger.logProviderAccess === "function"
+    typeof providerAccessLogger === "function"
       ? (...args: unknown[]) =>
-          Reflect.apply(logger.logProviderAccess!, logger, args)
+          Reflect.apply(providerAccessLogger, logger, args)
       : null;
 
   logger.logLlmCall = (...args: unknown[]) => {
@@ -912,11 +914,10 @@ export async function startTrajectoryStepInDatabase({
 }
 
 /**
- * Annotate an existing trajectory step with the structural metadata Track A
- * relies on (kind discriminator, executeCode script, child step IDs, used
- * skills). Safe to call for any of the new trajectory step fields; passing
- * `undefined` for a field leaves the existing value alone, while passing an
- * explicit value overwrites.
+ * Annotate an existing trajectory step with structural metadata (kind
+ * discriminator, script, child step IDs, used skills). Safe to call for any
+ * of the new trajectory step fields; passing `undefined` for a field leaves
+ * the existing value alone, while passing an explicit value overwrites.
  */
 export async function annotateTrajectoryStep({
   runtime,

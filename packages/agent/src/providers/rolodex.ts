@@ -5,6 +5,7 @@ import type {
   ProviderResult,
   RelationshipsGraphService,
   RelationshipsPersonSummary,
+  Service,
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
@@ -63,9 +64,9 @@ export const rolodexProvider: Provider = {
     }
 
     try {
-      const graphService = runtime.getService(
-        "relationships",
-      ) as unknown as RelationshipsGraphService | null;
+      const graphService = runtime.getService<
+        Service & RelationshipsGraphService
+      >("relationships");
 
       if (!graphService) {
         return { text: "", values: {}, data: {} };

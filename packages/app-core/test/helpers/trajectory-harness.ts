@@ -575,6 +575,11 @@ function extractLlmTokenUsage(
 type UseModelFn = AgentRuntime["useModel"];
 type CreateMemoryFn = AgentRuntime["createMemory"];
 type ComposeStateFn = AgentRuntime["composeState"];
+type WritableRuntimeHooks = AgentRuntime & {
+  useModel: UseModelFn;
+  createMemory: CreateMemoryFn;
+  composeState: ComposeStateFn;
+};
 
 export class RecordingHarness {
   readonly inner: ConversationHarness;
@@ -694,7 +699,7 @@ export class RecordingHarness {
         throw err;
       }
     }) as UseModelFn;
-    (runtime as unknown as { useModel: UseModelFn }).useModel = wrappedUseModel;
+    (runtime as WritableRuntimeHooks).useModel = wrappedUseModel;
 
     // Wrap createMemory.
     this.originalCreateMemory = runtime.createMemory.bind(
@@ -712,8 +717,7 @@ export class RecordingHarness {
         unique,
       );
     }) as CreateMemoryFn;
-    (runtime as unknown as { createMemory: CreateMemoryFn }).createMemory =
-      wrappedCreateMemory;
+    (runtime as WritableRuntimeHooks).createMemory = wrappedCreateMemory;
 
     // Wrap composeState (records the providers resolved per state composition).
     this.originalComposeState = runtime.composeState.bind(
@@ -734,8 +738,7 @@ export class RecordingHarness {
       this.recordProviderSnapshot(includeList ?? null, result);
       return result;
     }) as ComposeStateFn;
-    (runtime as unknown as { composeState: ComposeStateFn }).composeState =
-      wrappedComposeState;
+    (runtime as WritableRuntimeHooks).composeState = wrappedComposeState;
 
     // Subscribe to runtime lifecycle events.
     this.subscribeEvent(EventType.RUN_STARTED, "RUN_STARTED");
@@ -907,15 +910,14 @@ export class RecordingHarness {
     if (this.installed) {
       const runtime = this.inner.runtime;
       if (this.originalUseModel) {
-        (runtime as unknown as { useModel: UseModelFn }).useModel =
-          this.originalUseModel;
+        (runtime as WritableRuntimeHooks).useModel = this.originalUseModel;
       }
       if (this.originalCreateMemory) {
-        (runtime as unknown as { createMemory: CreateMemoryFn }).createMemory =
+        (runtime as WritableRuntimeHooks).createMemory =
           this.originalCreateMemory;
       }
       if (this.originalComposeState) {
-        (runtime as unknown as { composeState: ComposeStateFn }).composeState =
+        (runtime as WritableRuntimeHooks).composeState =
           this.originalComposeState;
       }
       for (const unsub of this.eventUnsubs.splice(0)) unsub();

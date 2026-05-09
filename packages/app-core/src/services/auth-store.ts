@@ -11,19 +11,14 @@
 
 import type { DrizzleDatabase } from "@elizaos/plugin-sql";
 import {
-  and,
   authAuditEventTable,
   authBootstrapJtiSeenTable,
   authIdentityTable,
   authOwnerBindingTable,
   authOwnerLoginTokenTable,
   authSessionTable,
-  desc,
-  eq,
-  isNull,
-  lte,
-  ne,
 } from "@elizaos/plugin-sql";
+import { and, desc, eq, isNull, lte, ne } from "drizzle-orm";
 
 export interface AuthIdentityRow {
   id: string;
@@ -117,6 +112,12 @@ export interface AppendAuditEventInput {
 
 interface DrizzleRunResult {
   rowCount?: number | null;
+}
+
+function readRunRowCount(result: unknown): number | null {
+  if (!result || typeof result !== "object") return null;
+  const rowCount = (result as DrizzleRunResult).rowCount;
+  return typeof rowCount === "number" ? rowCount : null;
 }
 
 function nullableString(value: string | null | undefined): string | null {
@@ -290,13 +291,14 @@ export class AuthStore {
   }
 
   async revokeSession(id: string, now: number = Date.now()): Promise<boolean> {
-    const result = (await this.db
+    const result = await this.db
       .update(authSessionTable)
       .set({ revokedAt: now })
       .where(
         and(eq(authSessionTable.id, id), isNull(authSessionTable.revokedAt)),
-      )) as unknown as DrizzleRunResult;
-    return typeof result.rowCount === "number" ? result.rowCount > 0 : true;
+      );
+    const rowCount = readRunRowCount(result);
+    return rowCount === null ? true : rowCount > 0;
   }
 
   /**
@@ -337,11 +339,11 @@ export class AuthStore {
           eq(authSessionTable.identityId, identityId),
           isNull(authSessionTable.revokedAt),
         );
-    const result = (await this.db
+    const result = await this.db
       .update(authSessionTable)
       .set({ revokedAt: now })
-      .where(condition)) as unknown as DrizzleRunResult;
-    return typeof result.rowCount === "number" ? result.rowCount : 0;
+      .where(condition);
+    return readRunRowCount(result) ?? 0;
   }
 
   /**
@@ -540,10 +542,11 @@ export class AuthStore {
   }
 
   async deleteOwnerBinding(id: string): Promise<boolean> {
-    const result = (await this.db
+    const result = await this.db
       .delete(authOwnerBindingTable)
-      .where(eq(authOwnerBindingTable.id, id))) as unknown as DrizzleRunResult;
-    return typeof result.rowCount === "number" ? result.rowCount > 0 : true;
+      .where(eq(authOwnerBindingTable.id, id));
+    const rowCount = readRunRowCount(result);
+    return rowCount === null ? true : rowCount > 0;
   }
 
   async createOwnerLoginToken(input: {
@@ -584,7 +587,7 @@ export class AuthStore {
     tokenHash: string,
     now: number,
   ): Promise<boolean> {
-    const result = (await this.db
+    const result = await this.db
       .update(authOwnerLoginTokenTable)
       .set({ consumedAt: now })
       .where(
@@ -592,8 +595,9 @@ export class AuthStore {
           eq(authOwnerLoginTokenTable.tokenHash, tokenHash),
           isNull(authOwnerLoginTokenTable.consumedAt),
         ),
-      )) as unknown as DrizzleRunResult;
-    return typeof result.rowCount === "number" ? result.rowCount > 0 : true;
+      );
+    const rowCount = readRunRowCount(result);
+    return rowCount === null ? true : rowCount > 0;
   }
 }
 

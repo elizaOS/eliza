@@ -539,7 +539,7 @@ export interface AutomationRoomBinding {
 }
 
 export interface AutomationLastExecution {
-  status: 'success' | 'error' | 'running' | 'waiting' | 'unknown';
+  status: "success" | "error" | "running" | "waiting" | "unknown";
   startedAt: string;
   stoppedAt?: string | null;
   errorMessage?: string;

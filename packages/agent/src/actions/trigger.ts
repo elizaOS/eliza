@@ -15,6 +15,7 @@
  * carry a {@link TriggerConfig} in their metadata. Workbench tasks (TASK
  * action) and trigger tasks share a table but are kept distinct via tag.
  */
+import crypto from "node:crypto";
 import {
   type Action,
   type ActionExample,
@@ -33,7 +34,7 @@ import {
   type TriggerWakeMode,
   type UUID,
 } from "@elizaos/core";
-import { v4 as uuidv4 } from "uuid";
+
 import {
   executeTriggerTask,
   readTriggerConfig,
@@ -48,6 +49,16 @@ import {
 } from "../triggers/scheduling.js";
 import { deployTextTriggerWorkflow } from "../triggers/text-to-workflow.js";
 import type { TriggerTaskMetadata } from "../triggers/types.js";
+
+type AutonomyRoomService = {
+  getAutonomousRoomId?(): UUID;
+};
+
+function isAutonomyRoomService(
+  service: unknown,
+): service is AutonomyRoomService {
+  return typeof service === "object" && service !== null;
+}
 
 const TRIGGER_OPS = ["create", "update", "delete", "run", "toggle"] as const;
 type TriggerOp = (typeof TRIGGER_OPS)[number];
@@ -290,7 +301,7 @@ async function opCreate(
     );
   }
 
-  const triggerId = stringToUuid(uuidv4());
+  const triggerId = stringToUuid(crypto.randomUUID());
   const triggerConfig: TriggerConfig = {
     version: TRIGGER_SCHEMA_VERSION,
     triggerId,
@@ -323,9 +334,8 @@ async function opCreate(
     );
   }
 
-  const autonomyService = runtime.getService("AUTONOMY") as unknown as {
-    getAutonomousRoomId?(): UUID;
-  } | null;
+  const service = runtime.getService("AUTONOMY");
+  const autonomyService = isAutonomyRoomService(service) ? service : null;
   const roomId = autonomyService?.getAutonomousRoomId?.() ?? message.roomId;
 
   const taskId = await runtime.createTask({

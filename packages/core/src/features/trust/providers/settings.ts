@@ -48,16 +48,15 @@ function generateStatusMessage(
 	state?: State,
 ): string {
 	try {
-		const settingsByKey = Object.fromEntries(worldSettingEntries(worldSettings));
+		const settingsByKey = Object.fromEntries(
+			worldSettingEntries(worldSettings),
+		);
 		const formattedSettings = Object.entries(settingsByKey)
 			.map(([key, setting]) => {
 				const description = setting.description || "";
 				const usageDescription = setting.usageDescription || "";
 
-				if (
-					setting.visibleIf &&
-					!setting.visibleIf(settingsByKey)
-				) {
+				if (setting.visibleIf && !setting.visibleIf(settingsByKey)) {
 					return null;
 				}
 

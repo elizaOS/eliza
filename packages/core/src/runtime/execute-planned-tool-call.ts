@@ -44,6 +44,43 @@ export type ExecutePlannedToolCallOptions = HandlerOptions & {
 	onStreamChunk?: StreamChunkCallback;
 };
 
+function isContentRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function toContentValue(value: unknown): ContentValue {
+	if (
+		value === undefined ||
+		value === null ||
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		return value as ContentValue;
+	}
+	if (Array.isArray(value)) {
+		return value.map(toContentValue);
+	}
+	if (isContentRecord(value)) {
+		const record: Record<string, ContentValue> = {};
+		for (const [key, entry] of Object.entries(value)) {
+			record[key] = toContentValue(entry);
+		}
+		return record;
+	}
+	return String(value);
+}
+
+function actionResultToContentRecord(
+	result: ActionResult,
+): Record<string, ContentValue> {
+	const record: Record<string, ContentValue> = {};
+	for (const [key, value] of Object.entries(result)) {
+		record[key] = toContentValue(value);
+	}
+	return record;
+}
+
 export async function executePlannedToolCall(
 	runtime: IAgentRuntime,
 	ctx: ExecutePlannedToolCallContext,
@@ -201,9 +238,7 @@ export async function executePlannedToolCall(
 					text: resultForEvent.text ?? `Action ${action.name} completed`,
 					actions: [action.name],
 					actionStatus: resultForEvent.success ? "completed" : "failed",
-					actionResult: resultForEvent as unknown as {
-						[key: string]: ContentValue;
-					},
+					actionResult: actionResultToContentRecord(resultForEvent),
 					source: executorCtx.message.content?.source,
 					error:
 						typeof resultForEvent.error === "string"

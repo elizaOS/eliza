@@ -63,7 +63,7 @@ export function createFakeRuntime(
 
 	const runtime = {
 		getService: (name: string) => services.get(name) ?? null,
-	} as unknown as IAgentRuntime;
+	} as IAgentRuntime;
 
 	return runtime;
 }

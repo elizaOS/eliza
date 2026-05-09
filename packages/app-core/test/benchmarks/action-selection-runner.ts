@@ -156,7 +156,13 @@ const RETRYABLE_CASE_ATTEMPTS = 3;
 const RETRYABLE_CASE_BACKOFF_MS = 5_000;
 const GENERIC_ACTION_NAMES = new Set(["REPLY", "IGNORE", "NONE"]);
 const NON_SELECTION_ACTION_NAMES = new Set([
+  "CONTACT_LOOKUP",
+  "CONTACT_SEARCH",
+  "CONTACTS_LOOKUP",
+  "CONTACTS_SEARCH",
+  "FIND_CONTACT",
   "FACT_EXTRACTOR",
+  "LOOKUP_CONTACT",
   "REFLECTION",
   "SKILL_LEARNING",
 ]);
@@ -979,6 +985,8 @@ function extractPlannerDecision(
   }
   let fallback: PlannerDecision | null = null;
   let latestPlanned: PlannerDecision | null = null;
+  let latestMeaningful: PlannerDecision | null = null;
+  const allPlannedActions: string[] = [];
   for (const plannerCall of plannerCalls) {
     const rawAvailableActions = parseAvailableActionsFromPrompt(
       plannerCall.prompt,
@@ -997,24 +1005,34 @@ function extractPlannerDecision(
     const plannedActions = parsePlannedActionsFromResponse(
       plannerCall.response,
     );
+    for (const action of plannedActions) {
+      if (!allPlannedActions.includes(action)) {
+        allPlannedActions.push(action);
+      }
+    }
     const decision = {
       availableActions,
-      plannedActions,
+      plannedActions: [...allPlannedActions],
       plannedAction: plannedActions[0] ?? null,
     };
     fallback ??= decision;
     if (plannedActions.length > 0) {
       latestPlanned = decision;
-      if (
-        plannedActions.some(
-          (action) => !isGenericActionName(action) && !isNonSelectionActionName(action),
-        )
-      ) {
-        return decision;
+      const meaningfulAction = plannedActions.find(
+        (action) =>
+          !isGenericActionName(action) && !isNonSelectionActionName(action),
+      );
+      if (meaningfulAction) {
+        latestMeaningful = {
+          availableActions,
+          plannedActions: [...allPlannedActions],
+          plannedAction: meaningfulAction,
+        };
       }
     }
   }
   return (
+    latestMeaningful ??
     latestPlanned ??
     fallback ?? {
       availableActions: [],
@@ -1070,17 +1088,11 @@ async function seedBenchmarkCaseFixtures(
       "@elizaos/app-lifeops/lifeops/repository"
     );
     const repo = new LifeOpsRepository(runtime);
-    if (
-      typeof (repo as unknown as { upsertRelationship?: unknown })
-        .upsertRelationship === "function"
-    ) {
-      const upsert = (
-        repo as unknown as {
-          upsertRelationship: (
-            rel: Record<string, unknown>,
-          ) => Promise<unknown>;
-        }
-      ).upsertRelationship.bind(repo);
+    const relationshipRepo = repo as typeof repo & {
+      upsertRelationship?: (rel: Record<string, unknown>) => Promise<unknown>;
+    };
+    if (typeof relationshipRepo.upsertRelationship === "function") {
+      const upsert = relationshipRepo.upsertRelationship.bind(repo);
 
       // Generic personal contact (used by rel-* and follow-up cases).
       await upsert({

@@ -13,7 +13,8 @@
  */
 
 import { withCanonicalActionDocs } from "../../action-docs.ts";
-import type { Evaluator, IAgentRuntime } from "../../types/index.ts";
+import { createService } from "../../services.ts";
+import type { IAgentRuntime, RegisteredEvaluator } from "../../types/index.ts";
 import type { ServiceClass } from "../../types/plugin.ts";
 import {
 	experiencePatternEvaluator,
@@ -94,28 +95,28 @@ export const advancedEvaluators = [
 	...postMessageActions.reflectionItems,
 	...postMessageActions.skillItems,
 	experiencePatternEvaluator,
-] as unknown as Evaluator[];
+] satisfies readonly RegisteredEvaluator[];
 
 /**
  * Advanced services - extended service infrastructure
  */
 export const advancedServices: ServiceClass[] = [
-	{
-		serviceType: "EXPERIENCE",
-		start: async (runtime: IAgentRuntime) => {
+	createService("EXPERIENCE")
+		.withDescription("Experience memory service")
+		.withStart(async (runtime: IAgentRuntime) => {
 			const { ExperienceService } = await import("./experience/service.ts");
 			return ExperienceService.start(runtime);
-		},
-	} as unknown as ServiceClass,
-	{
-		serviceType: "CHARACTER_MANAGEMENT",
-		start: async (runtime: IAgentRuntime) => {
+		})
+		.build(),
+	createService("CHARACTER_MANAGEMENT")
+		.withDescription("Character management service")
+		.withStart(async (runtime: IAgentRuntime) => {
 			const { CharacterFileManager } = await import(
 				"./personality/services/character-file-manager.ts"
 			);
 			return CharacterFileManager.start(runtime);
-		},
-	} as unknown as ServiceClass,
+		})
+		.build(),
 ];
 
 /**

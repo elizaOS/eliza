@@ -1118,9 +1118,8 @@ export class XService extends Service {
     };
   }> {
     const base = (await this.getTwitterClientForAccount(accountId)).client;
-    const auth = (
-      base as unknown as { auth?: { getV2Client: () => Promise<unknown> } }
-    )?.auth;
+    const auth = (base as { auth?: { getV2Client: () => Promise<unknown> } })
+      ?.auth;
     if (!auth) {
       throw new Error("X auth client not initialized");
     }
@@ -1336,7 +1335,7 @@ export class XService extends Service {
           metrics: post.metrics,
           ...(post.metadata ?? {}),
         },
-      } as unknown as Memory["metadata"],
+      } satisfies Memory["metadata"],
     };
   }
 
@@ -1401,7 +1400,7 @@ export class XService extends Service {
           isInbound: message.isInbound ?? true,
           participantIds: message.participantIds ?? [],
         },
-      } as unknown as Memory["metadata"],
+      } satisfies Memory["metadata"],
     };
   }
 

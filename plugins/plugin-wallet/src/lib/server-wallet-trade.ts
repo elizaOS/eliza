@@ -2,9 +2,7 @@
  * Wallet / trade compat helpers — trade permission modes, local execution
  * guards, and wallet export rejection wrappers.
  *
- * Canonical home: `@elizaos/plugin-wallet/lib/server-wallet-trade`. The
- * legacy path `@elizaos/app-core/api/server-wallet-trade` is a re-export
- * shim and will be removed once external consumers migrate.
+ * Exported from the `@elizaos/plugin-wallet` barrel for package consumers.
  */
 import crypto from "node:crypto";
 import type http from "node:http";

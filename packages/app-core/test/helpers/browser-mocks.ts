@@ -184,7 +184,7 @@ export function installMediaElementShims(): void {
       audio.src = src;
     }
     return audio;
-  } as unknown as typeof Audio & {
+  } as typeof Audio & {
     [AUDIO_PATCH_MARK]?: boolean;
   };
   AudioShim[AUDIO_PATCH_MARK] = true;

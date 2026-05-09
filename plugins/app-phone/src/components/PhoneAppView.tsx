@@ -133,9 +133,7 @@ interface ContactsModule {
 async function loadContactsModule(): Promise<ContactsModule | null> {
   const specifier = "@elizaos/capacitor-contacts";
   try {
-    const mod = (await import(
-      /* @vite-ignore */ specifier
-    )) as unknown as ContactsModule;
+    const mod = (await import(/* @vite-ignore */ specifier)) as ContactsModule;
     if (mod && typeof mod.Contacts?.listContacts === "function") {
       return mod;
     }

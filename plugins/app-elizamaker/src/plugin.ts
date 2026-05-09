@@ -5,7 +5,13 @@ import {
   sendJsonError as httpSendJsonError,
 } from "@elizaos/core";
 import { getWalletAddresses, } from "@elizaos/agent";
-import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
+import type {
+  AgentRuntime,
+  Plugin,
+  Route,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/core";
 import { handleDropRoutes } from "./drop-routes.js";
 import { getElizaMakerDropService } from "./drop-service-registry.js";
 import { initializeRegistryAndDropServices } from "./init-registry-services.js";
@@ -43,6 +49,30 @@ function agentNameFromRuntime(runtime: AgentRuntime | null): string {
   return runtime?.character?.name ?? "Eliza";
 }
 
+function toHttpIncomingMessage(req: RouteRequest): http.IncomingMessage {
+  if (
+    typeof req !== "object" ||
+    req === null ||
+    typeof req.method !== "string" ||
+    typeof req.headers !== "object"
+  ) {
+    throw new TypeError("ElizaMaker routes require a Node HTTP request");
+  }
+  return req as http.IncomingMessage;
+}
+
+function toHttpServerResponse(res: RouteResponse): http.ServerResponse {
+  if (
+    typeof res !== "object" ||
+    res === null ||
+    typeof res.end !== "function" ||
+    typeof res.setHeader !== "function"
+  ) {
+    throw new TypeError("ElizaMaker routes require a Node HTTP response");
+  }
+  return res as http.ServerResponse;
+}
+
 function getOptionalWalletAddresses(): {
   evmAddress?: string;
   solanaAddress?: string;
@@ -56,8 +86,8 @@ function getOptionalWalletAddresses(): {
 
 function elizaMakerRouteHandler(): NonNullable<Route["handler"]> {
   return async (req, res, runtime) => {
-    const httpReq = req as unknown as http.IncomingMessage;
-    const httpRes = res as unknown as http.ServerResponse;
+    const httpReq = toHttpIncomingMessage(req);
+    const httpRes = toHttpServerResponse(res);
     const method = (httpReq.method ?? "GET").toUpperCase();
     const url = new URL(httpReq.url ?? "/", requestBaseUrl(httpReq));
 

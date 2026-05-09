@@ -40,7 +40,7 @@ import { createServer, type Server } from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
 import {
   cleanForChat,
   listAgentsAction,
@@ -583,7 +583,7 @@ async function waitForTrackedSession(
   await waitFor(
     async () => {
       listResult = await listAgentsAction.handler(
-        runtime as unknown as IAgentRuntime,
+        runtime,
         createMessage({}) as never,
       );
       if (!listResult?.success) {
@@ -615,7 +615,7 @@ async function waitForTrackedSession(
 async function runSequentialSmoke(agentType: Framework): Promise<void> {
   const workdir = createWorkdir(agentType, "reuse");
   const { runtime, cleanup } = await createRuntime({ SERVER_PORT: "31337" });
-  const service = await PTYService.start(runtime as unknown as IAgentRuntime);
+  const service = await PTYService.start(runtime);
   runtime.services.set("PTY_SERVICE", [service]);
 
   const events: Array<{ event: string; data: unknown }> = [];
@@ -639,7 +639,7 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
     assert.equal(preflight?.installed, true);
 
     const spawnResult = await spawnAgentAction.handler(
-      runtime as unknown as IAgentRuntime,
+      runtime,
       createMessage({
         agentType,
         workdir,
@@ -703,7 +703,7 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 
     const secondTaskEventStart = events.length;
     const sendResult = await sendToAgentAction.handler(
-      runtime as unknown as IAgentRuntime,
+      runtime,
       createMessage({
         sessionId,
         task:
@@ -735,7 +735,7 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
     );
 
     const finalList = await listAgentsAction.handler(
-      runtime as unknown as IAgentRuntime,
+      runtime,
       createMessage({}) as never,
     );
     assert.equal(finalList?.success, true);
@@ -753,7 +753,7 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 async function runWebSmoke(agentType: Framework): Promise<void> {
   const workdir = createWorkdir(agentType, "web");
   const { runtime, cleanup } = await createRuntime({ SERVER_PORT: "31337" });
-  const service = await PTYService.start(runtime as unknown as IAgentRuntime);
+  const service = await PTYService.start(runtime);
   runtime.services.set("PTY_SERVICE", [service]);
 
   const events: Array<{ event: string; data: unknown }> = [];
@@ -777,7 +777,7 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
     assert.equal(preflight?.installed, true);
 
     const spawnResult = await spawnAgentAction.handler(
-      runtime as unknown as IAgentRuntime,
+      runtime,
       createMessage({
         agentType,
         workdir,
@@ -842,7 +842,7 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
     );
 
     const finalList = await listAgentsAction.handler(
-      runtime as unknown as IAgentRuntime,
+      runtime,
       createMessage({}) as never,
     );
     assert.equal(finalList?.success, true);
@@ -1164,10 +1164,10 @@ async function runCounterAppSmoke(agentType: Framework): Promise<void> {
   process.env.ELIZA_STATE_DIR = stateDir;
   const { runtime, cleanup } = await createRuntime({ SERVER_PORT: "31337" });
   const appRegistry = await AppRegistryService.start(
-    runtime as unknown as IAgentRuntime,
+    runtime,
   );
   const appVerification = new AppVerificationService(
-    runtime as unknown as IAgentRuntime,
+    runtime,
   );
   runtime.services.set(APP_REGISTRY_SERVICE_TYPE, [appRegistry]);
   runtime.services.set(AppVerificationService.serviceType, [appVerification]);
@@ -1215,7 +1215,7 @@ async function runCounterAppSmoke(agentType: Framework): Promise<void> {
       hasOwnerAccess: async () => true,
     });
     const loadResult = await appAction.handler(
-      runtime as unknown as IAgentRuntime,
+      runtime,
       createMessage({
         text: `load apps from ${workdir} directory`,
       }) as never,

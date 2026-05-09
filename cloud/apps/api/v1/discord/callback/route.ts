@@ -52,7 +52,7 @@ function resolveOAuthReturnTarget(
     try {
       return assertAllowedAbsoluteRedirectUrl(returnUrl, [
         ...getDefaultPlatformRedirectOrigins(),
-        ...(LOOPBACK_REDIRECT_ORIGINS as unknown as string[]),
+        ...LOOPBACK_REDIRECT_ORIGINS,
       ]);
     } catch {
       // Fall through to standard same-origin fallback below.

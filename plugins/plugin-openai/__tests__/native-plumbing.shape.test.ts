@@ -41,7 +41,7 @@ vi.mock("../providers", () => ({
 }));
 
 function createRuntime() {
-  return {
+  const runtime = {
     character: { name: "Ada", system: "system prompt" },
     emitEvent: vi.fn(),
     getService: vi.fn(() => null),
@@ -53,7 +53,13 @@ function createRuntime() {
       };
       return settings[key];
     }),
-  } as unknown as IAgentRuntime;
+  };
+
+  return runtime as IAgentRuntime;
+}
+
+function expectNativeTextResult(value: unknown): asserts value is Record<string, unknown> {
+  expect(value).toEqual(expect.objectContaining({ text: expect.any(String) }));
 }
 
 afterEach(() => {
@@ -75,7 +81,7 @@ describe("OpenAI native text plumbing", () => {
     const toolChoice = { type: "tool", toolName: "lookup" };
     const responseSchema = { type: "object", properties: { answer: { type: "string" } } };
 
-    const result = (await handleTextSmall(createRuntime(), {
+    const result = await handleTextSmall(createRuntime(), {
       prompt: "legacy prompt",
       messages,
       tools,
@@ -86,7 +92,8 @@ describe("OpenAI native text plumbing", () => {
         openai: { promptCacheKey: "cache-key", promptCacheRetention: "24h" },
         custom: { enabled: true },
       },
-    } as never)) as unknown as Record<string, unknown>;
+    } as never);
+    expectNativeTextResult(result);
 
     const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
     expect(call.messages).toEqual(messages);
@@ -165,7 +172,7 @@ describe("OpenAI native text plumbing", () => {
     const { getResponseHandlerModel, getSmallModel } = await import("../utils/config");
     const runtime = {
       getSetting: vi.fn(() => undefined),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
 
     expect(getSmallModel(runtime)).toBe("gpt-5.4-mini");
     expect(getResponseHandlerModel(runtime)).toBe("gpt-5.4-mini");
@@ -178,7 +185,7 @@ describe("OpenAI native text plumbing", () => {
         };
         return settings[key];
       }),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     expect(getSmallModel(overrideRuntime)).toBe("custom-small");
     expect(getResponseHandlerModel(overrideRuntime)).toBe("custom-response");
   });

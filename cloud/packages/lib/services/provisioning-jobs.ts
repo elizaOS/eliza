@@ -54,6 +54,32 @@ export interface AgentProvisionJobResult {
   error?: string;
 }
 
+function agentProvisionJobDataToRecord(data: AgentProvisionJobData): Record<string, unknown> {
+  return { ...data };
+}
+
+function agentProvisionJobResultToRecord(result: AgentProvisionJobResult): Record<string, unknown> {
+  return { ...result };
+}
+
+function isAgentProvisionJobData(value: unknown): value is AgentProvisionJobData {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { agentId?: unknown }).agentId === "string" &&
+    typeof (value as { organizationId?: unknown }).organizationId === "string" &&
+    typeof (value as { userId?: unknown }).userId === "string" &&
+    typeof (value as { agentName?: unknown }).agentName === "string"
+  );
+}
+
+function readAgentProvisionJobData(job: Job): AgentProvisionJobData {
+  if (!isAgentProvisionJobData(job.data)) {
+    throw new Error(`Invalid agent provision job data for job ${job.id}`);
+  }
+  return job.data;
+}
+
 export interface EnqueueAgentProvisionResult {
   job: Job;
   created: boolean;
@@ -104,7 +130,7 @@ export class ProvisioningJobService {
     const newJob: NewJob = {
       type: JOB_TYPES.AGENT_PROVISION,
       status: "pending",
-      data: jobData as unknown as Record<string, unknown>,
+      data: agentProvisionJobDataToRecord(jobData),
       data_storage: "inline",
       organization_id: params.organizationId,
       user_id: params.userId,
@@ -356,7 +382,7 @@ export class ProvisioningJobService {
         // sandbox as "error" immediately so the UI reflects reality
         // instead of staying stuck in "provisioning".
         if (updated?.status === "failed" && job.type === JOB_TYPES.AGENT_PROVISION) {
-          const data = job.data as unknown as AgentProvisionJobData;
+          const data = readAgentProvisionJobData(job);
           try {
             await agentSandboxesRepository.update(data.agentId, {
               status: "error",
@@ -389,7 +415,7 @@ export class ProvisioningJobService {
   }
 
   private async executeAgentProvision(job: Job): Promise<void> {
-    const data = job.data as unknown as AgentProvisionJobData;
+    const data = readAgentProvisionJobData(job);
 
     // Cross-check: the org ID stored in the JSONB payload must match the
     // first-class organization_id column. A mismatch indicates either a bug
@@ -414,7 +440,7 @@ export class ProvisioningJobService {
           cloudAgentId: data.agentId,
           status: provResult.sandboxRecord?.status ?? "error",
           error: provResult.error,
-        } as unknown as Record<string, unknown>,
+        },
       });
       throw new Error(provResult.error);
     }
@@ -428,7 +454,7 @@ export class ProvisioningJobService {
     };
 
     await jobsRepository.updateStatus(job.id, "completed", {
-      result: jobResult as unknown as Record<string, unknown>,
+      result: agentProvisionJobResultToRecord(jobResult),
       completed_at: new Date(),
     });
 

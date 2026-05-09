@@ -24,19 +24,23 @@ const REQUIRED = ["ELIZAOS_CLOUD_API_KEY"] as const;
 
 const missing = REQUIRED.filter((k) => !process.env[k]?.trim());
 
+type RuntimeFixture = Pick<IAgentRuntime, "character" | "emitEvent" | "getSetting"> &
+  Partial<IAgentRuntime>;
+
 function runtime(settings: Record<string, string | undefined> = {}): IAgentRuntime {
   const merged: Record<string, string | undefined> = {
     ELIZAOS_CLOUD_API_KEY: process.env.ELIZAOS_CLOUD_API_KEY,
     ...settings,
   };
-  return {
+  const fixture: RuntimeFixture = {
     character: {
       name: "Milady",
       bio: [],
     },
     getSetting: (key: string) => merged[key],
     emitEvent: vi.fn(),
-  } as IAgentRuntime;
+  };
+  return fixture as IAgentRuntime;
 }
 
 interface CapturedRequest {

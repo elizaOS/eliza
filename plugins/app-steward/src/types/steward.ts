@@ -1,10 +1,8 @@
 /**
  * Steward-specific wallet types.
  *
- * `StewardPolicyResult` and `StewardApprovalInfo` are still defined in
- * `@elizaos/shared/contracts/wallet` because the BSC trade response types
- * there reference them. Re-export them here so consumers only need a single
- * import path for steward work.
+ * Steward wallet response types are surfaced here so steward consumers only
+ * need this package's barrel imports.
  */
 
 import type {
@@ -16,7 +14,7 @@ import type {
   StewardWebhookEvent,
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 
 export type {
   StewardApprovalInfo,

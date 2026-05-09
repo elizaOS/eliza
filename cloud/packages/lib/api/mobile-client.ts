@@ -172,7 +172,7 @@ class MobileApiClient {
     if (contentType?.includes("application/json")) {
       data = await response.json();
     } else {
-      data = (await response.text()) as unknown as T;
+      data = (await response.text()) as T;
     }
 
     if (!response.ok) {

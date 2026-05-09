@@ -68,7 +68,6 @@ import {
 	type DeleteConnectorAccountParams,
 	type DeleteOAuthFlowStateParams,
 	type Entity,
-	type Evaluator,
 	type EventHandler,
 	type EventPayload,
 	type EventPayloadMap,
@@ -118,6 +117,7 @@ import {
 	type Provider,
 	type ProviderResult,
 	type ProviderValue,
+	type RegisteredEvaluator,
 	type Relationship,
 	type ResolvedPipelineHook,
 	type Room,
@@ -608,6 +608,17 @@ function getServiceClassLabel(serviceClass: ServiceClass): string {
 	);
 }
 
+function isMessagingAdapter(
+	adapter: IDatabaseAdapter,
+): adapter is IDatabaseAdapter & IMessagingAdapter {
+	const candidate = adapter as Partial<IMessagingAdapter>;
+	return (
+		typeof candidate.createMessageServer === "function" &&
+		typeof candidate.createChannel === "function" &&
+		typeof candidate.createMessage === "function"
+	);
+}
+
 export class AgentRuntime implements IAgentRuntime {
 	#conversationLength = 100 as number;
 	readonly agentId: UUID;
@@ -616,7 +627,7 @@ export class AgentRuntime implements IAgentRuntime {
 	static #anonymousAgentCounter = 0;
 	readonly actions: Action[] = [];
 	readonly providers: Provider[] = [];
-	readonly evaluators: Evaluator[] = [];
+	readonly evaluators: RegisteredEvaluator[] = [];
 	readonly plugins: Plugin[] = [];
 	/**
 	 * Per-runtime context registry seeded with first-party context definitions
@@ -1073,14 +1084,14 @@ export class AgentRuntime implements IAgentRuntime {
 		if (!hooks.length) {
 			return;
 		}
-		const runtime = this as unknown as IAgentRuntime;
+
 		const roomId = pipelineHookMetricRoomId(ctx);
 
 		const runOne = async (entry: ResolvedPipelineHook) => {
 			const t0 = performance.now();
 			let errorMessage: string | undefined;
 			try {
-				await entry.handler(runtime, ctx);
+				await entry.handler(this, ctx);
 			} catch (error) {
 				errorMessage = error instanceof Error ? error.message : String(error);
 				this.logger.error(
@@ -1494,7 +1505,7 @@ export class AgentRuntime implements IAgentRuntime {
 					}
 				}
 			}
-			await pluginToRegister.init(config, this as unknown as IAgentRuntime);
+			await pluginToRegister.init(config, this);
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId, plugin: pluginToRegister.name },
 				"Plugin initialized",
@@ -2488,16 +2499,8 @@ export class AgentRuntime implements IAgentRuntime {
 	getMessagingAdapter(): IMessagingAdapter | null {
 		// Check if the adapter implements IMessagingAdapter interface
 		// by checking for presence of messaging-specific methods
-		if (
-			this.adapter &&
-			typeof (this.adapter as Partial<IMessagingAdapter>)
-				.createMessageServer === "function" &&
-			typeof (this.adapter as Partial<IMessagingAdapter>).createChannel ===
-				"function" &&
-			typeof (this.adapter as Partial<IMessagingAdapter>).createMessage ===
-				"function"
-		) {
-			return this.adapter as unknown as IMessagingAdapter;
+		if (this.adapter && isMessagingAdapter(this.adapter)) {
+			return this.adapter;
 		}
 		return null;
 	}
@@ -2528,7 +2531,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
-	registerEvaluator(evaluator: Evaluator) {
+	registerEvaluator(evaluator: RegisteredEvaluator) {
 		if (this.evaluators.find((item) => item.name === evaluator.name)) {
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId, evaluator: evaluator.name },
@@ -2685,12 +2688,11 @@ export class AgentRuntime implements IAgentRuntime {
 
 		setTrajectoryPurpose(mode === "ALWAYS_AFTER" ? "evaluation" : "hook");
 
-		const runtimeRef = this as unknown as IAgentRuntime;
 		const validated: Action[] = [];
 		await Promise.all(
 			candidates.map(async (action) => {
 				try {
-					const ok = await action.validate(runtimeRef, message, state);
+					const ok = await action.validate(this, message, state);
 					if (ok) validated.push(action);
 				} catch (err) {
 					this.logger.warn(
@@ -2723,7 +2725,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		const runOne = async (action: Action) => {
 			await this.emitEvent(EventType.ACTION_STARTED, {
-				runtime: runtimeRef,
+				runtime: this,
 				messageId,
 				roomId,
 				world: worldId,
@@ -2739,7 +2741,7 @@ export class AgentRuntime implements IAgentRuntime {
 			let errorMsg: string | undefined;
 			try {
 				await action.handler(
-					runtimeRef,
+					this,
 					message,
 					composedState,
 					{ mode },
@@ -2762,7 +2764,7 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 
 			await this.emitEvent(EventType.ACTION_COMPLETED, {
-				runtime: runtimeRef,
+				runtime: this,
 				messageId,
 				roomId,
 				world: worldId,
@@ -3215,7 +3217,7 @@ export class AgentRuntime implements IAgentRuntime {
 				const start = Date.now();
 				let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 				let timedOut = false;
-				const providerRuntime = this as unknown as IAgentRuntime;
+				const providerRuntime: IAgentRuntime = this;
 				try {
 					const result = await Promise.race([
 						withProviderStep(providerRuntime, provider.name, () =>
@@ -3458,9 +3460,7 @@ export class AgentRuntime implements IAgentRuntime {
 			return null;
 		}
 		try {
-			const serviceInstance = await serviceDef.start(
-				this as unknown as IAgentRuntime,
-			);
+			const serviceInstance = await serviceDef.start(this);
 			if (!serviceInstance) {
 				this.serviceRegistrationStatus.set(key, "failed");
 				return null;
@@ -3478,10 +3478,7 @@ export class AgentRuntime implements IAgentRuntime {
 				this.servicePromiseHandlers.delete(serviceType);
 			}
 			if (serviceDef.registerSendHandlers) {
-				serviceDef.registerSendHandlers(
-					this as unknown as IAgentRuntime,
-					serviceInstance,
-				);
+				serviceDef.registerSendHandlers(this, serviceInstance);
 			}
 			this.serviceRegistrationStatus.set(key, "registered");
 			return serviceInstance;
@@ -4175,11 +4172,12 @@ export class AgentRuntime implements IAgentRuntime {
 			const modelSettings = this.getModelSettings(requestedModelKey);
 
 			if (modelSettings) {
-				// Apply model settings if configured
-				modelParams = {
-					...modelSettings, // Apply model settings first (includes defaults and model-specific)
-					...(paramsClone as Record<string, JsonValue | object>), // Then apply specific params (allowing overrides)
-				} as unknown as ModelParamsMap[T];
+				// Apply model settings if configured — merged object is narrowed at handlers after routing.
+				const merged: object = {
+					...modelSettings,
+					...(paramsClone as Record<string, JsonValue | object>),
+				};
+				modelParams = merged as ModelParamsMap[T];
 			} else {
 				// No model settings configured, use params as-is
 				modelParams = paramsClone as ModelParamsMap[T];
@@ -4270,7 +4268,7 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 
 		const rawResponse = await handler(
-			this as unknown as IAgentRuntime,
+			this,
 			modelParams as Record<string, JsonValue | object>,
 		);
 
@@ -6619,14 +6617,14 @@ ${section_end}`;
 			let paramsWithRuntime:
 				| EventPayloadMap[keyof EventPayloadMap]
 				| EventPayload = {
-				runtime: this as unknown as IAgentRuntime,
+				runtime: this,
 				source: "runtime",
 			};
 			if (typeof params === "object" && params && params !== null) {
 				const paramsObj = params as Record<string, JsonValue | object>;
 				paramsWithRuntime = {
 					...paramsObj,
-					runtime: this as unknown as IAgentRuntime,
+					runtime: this,
 					source:
 						typeof paramsObj.source === "string" ? paramsObj.source : "runtime",
 				} as EventPayloadMap[keyof EventPayloadMap] | EventPayload;
@@ -8228,11 +8226,7 @@ ${section_end}`;
 			);
 			throw new Error(errorMsg);
 		}
-		const result = await handler(
-			this as unknown as IAgentRuntime,
-			target,
-			content,
-		);
+		const result = await handler(this, target, content);
 		return result as Memory | undefined;
 	}
 	async getMemoriesByWorldId(params: {

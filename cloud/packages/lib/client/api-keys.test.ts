@@ -21,7 +21,7 @@ describe("getClientApiKeySecret", () => {
         ],
       }),
     );
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    globalThis.fetch = fetchMock as typeof fetch;
 
     await expect(getClientApiKeySecret("api-key-1")).rejects.toThrow(
       "Full API keys are only available immediately after creation.",

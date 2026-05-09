@@ -125,6 +125,8 @@ interface NativeGenerateTextResult {
   providerMetadata?: unknown;
 }
 
+type NativeTextModelResult = string & NativeGenerateTextResult;
+
 const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as ModelTypeName;
 const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ?? "TEXT_MEDIUM") as ModelTypeName;
 const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as ModelTypeName;
@@ -221,7 +223,7 @@ function firstNumber(...values: unknown[]): number | undefined {
 }
 
 function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCacheOptions {
-  const withOpenAIOptions = params as unknown as GenerateTextParamsWithOpenAIOptions;
+  const withOpenAIOptions = params as GenerateTextParamsWithOpenAIOptions;
   return {
     promptCacheKey: withOpenAIOptions.providerOptions?.openai?.promptCacheKey,
     promptCacheRetention: withOpenAIOptions.providerOptions?.openai?.promptCacheRetention,
@@ -232,7 +234,7 @@ function resolveProviderOptions(
   params: GenerateTextParams,
   runtime: IAgentRuntime
 ): Record<string, unknown> | undefined {
-  const withOpenAIOptions = params as unknown as GenerateTextParamsWithOpenAIOptions;
+  const withOpenAIOptions = params as GenerateTextParamsWithOpenAIOptions;
   const rawProviderOptions = withOpenAIOptions.providerOptions;
   const promptCacheOptions = resolvePromptCacheOptions(params);
 
@@ -688,7 +690,7 @@ function createLlmCallDetails(
   providerOptions?: Record<string, unknown>,
   generateParams?: NativeTextParams
 ): RecordLlmCallDetails {
-  const originalParams = params as unknown as GenerateTextParamsWithOpenAIOptions;
+  const originalParams = params as GenerateTextParamsWithOpenAIOptions;
   const nativeParams = generateParams as
     | (NativeTextParams & {
         output?: unknown;
@@ -788,7 +790,7 @@ async function generateTextByModelType(
   modelType: ModelTypeName,
   getModelFn: ModelNameGetter
 ): Promise<string | TextStreamResult> {
-  const paramsWithAttachments = params as unknown as GenerateTextParamsWithOpenAIOptions;
+  const paramsWithAttachments = params as GenerateTextParamsWithOpenAIOptions;
   const openai = createOpenAIClient(runtime);
   const modelName = getModelFn(runtime);
 
@@ -899,7 +901,7 @@ async function generateTextByModelType(
   }
 
   if (shouldReturnNativeResult) {
-    return buildNativeTextResult(result, modelName) as unknown as string;
+    return buildNativeTextResult(result, modelName) as NativeTextModelResult;
   }
 
   return result.text;

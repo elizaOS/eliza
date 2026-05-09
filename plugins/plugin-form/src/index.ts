@@ -125,7 +125,7 @@ export const formPlugin = {
   ],
 
   actions: [formRestoreAction],
-  evaluators: [formEvaluator as Evaluator],
+  evaluators: [formEvaluator as unknown as Evaluator],
 } as Plugin & { descriptionCompressed?: string };
 
 export default formPlugin;

@@ -98,8 +98,8 @@ function makeRuntime(opts: {
 			error: vi.fn(),
 			trace: vi.fn(),
 		},
-	} as unknown as IAgentRuntime & { __calls: typeof calls };
-	(runtime as unknown as { __calls: typeof calls }).__calls = calls;
+	} as IAgentRuntime & { __calls: typeof calls };
+	(runtime as { __calls: typeof calls }).__calls = calls;
 	return runtime;
 }
 
@@ -109,7 +109,7 @@ function getCalls(runtime: IAgentRuntime): Array<{
 	provider: unknown;
 }> {
 	return (
-		runtime as unknown as {
+		runtime as {
 			__calls: Array<{
 				modelType: unknown;
 				params: unknown;
@@ -147,7 +147,7 @@ function makeMockAction(opts: {
 		handler: opts.handler,
 		...(opts.subActions ? { subActions: opts.subActions } : {}),
 		...(opts.contexts ? { contexts: opts.contexts } : {}),
-	} as unknown as Action;
+	} as Action;
 }
 
 let tempDir: string;
@@ -796,7 +796,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				}
 				return definitions.filter((d) => d.gate.minRole !== "OWNER");
 			},
-		} as unknown as ContextRegistry;
+		} as ContextRegistry;
 
 		const runtime = makeRuntime({
 			actions: [],

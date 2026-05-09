@@ -108,11 +108,7 @@ export function coerceClarifications(raw: unknown): WorkflowClarificationRequest
     ) as WorkflowClarificationRequest['kind'];
     const platform = typeof item.platform === 'string' ? item.platform : undefined;
     let scope: { guildId?: string } | undefined;
-    if (
-      item.scope &&
-      typeof item.scope === 'object' &&
-      typeof item.scope.guildId === 'string'
-    ) {
+    if (item.scope && typeof item.scope === 'object' && typeof item.scope.guildId === 'string') {
       scope = {
         guildId: item.scope.guildId,
       };
@@ -326,8 +322,7 @@ function appendUserNote(draft: Record<string, unknown>, value: string): void {
   if (Array.isArray(meta.userNotes)) {
     notes = meta.userNotes as string[];
   } else {
-    notes =
-      meta.userNotes !== null && meta.userNotes !== undefined ? [String(meta.userNotes)] : [];
+    notes = meta.userNotes !== null && meta.userNotes !== undefined ? [String(meta.userNotes)] : [];
     meta.userNotes = notes;
   }
   notes.push(value);
@@ -390,7 +385,6 @@ export function applyResolutions(
         `setByDotPath failed for paramPath "${r.paramPath}"; recording "${r.value}" as a free-form note instead`
       );
       appendUserNote(draft, r.value);
-      continue;
     }
   }
   return { ok: true };

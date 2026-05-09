@@ -1238,7 +1238,7 @@ export class TaskRegistry {
     return (
       runtimeLike.adapter ??
       runtimeLike.databaseAdapter ??
-      (this.runtime as unknown as object)
+      (this.runtime as object)
     );
   }
 

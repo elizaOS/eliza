@@ -63,7 +63,7 @@ function buildMockGoogleVaultRef(agentId: string, accountId: string): string {
 }
 
 function getRuntimeServices(runtime: IAgentRuntime): Map<string, unknown[]> | null {
-  const services = (runtime as unknown as { services?: unknown }).services;
+  const services = runtime.services;
   return services instanceof Map ? (services as Map<string, unknown[]>) : null;
 }
 
@@ -157,7 +157,7 @@ function writeMockGoogleToken(args: {
 export async function ensureLifeOpsSchema(
   runtime: IAgentRuntime,
 ): Promise<void> {
-  const repoClass = LifeOpsRepository as unknown as {
+  const repoClass = LifeOpsRepository as {
     bootstrapSchema?: (r: IAgentRuntime) => Promise<void>;
   };
   if (typeof repoClass.bootstrapSchema === "function") {

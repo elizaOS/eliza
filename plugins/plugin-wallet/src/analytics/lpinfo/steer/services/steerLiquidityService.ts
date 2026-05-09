@@ -1253,7 +1253,7 @@ export class SteerLiquidityService extends Service {
   static async stop(runtime: IAgentRuntime): Promise<void> {
     const service = runtime.getService(
       "STEER_LIQUIDITY_SERVICE",
-    ) as unknown as SteerLiquidityService;
+    ) as SteerLiquidityService;
     if (service) {
       await service.stop();
     }

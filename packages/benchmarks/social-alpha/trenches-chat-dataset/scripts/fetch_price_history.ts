@@ -12,6 +12,35 @@ import {
 } from "../../src/services/historicalPriceService";
 import { SupportedChain } from "../../src/types";
 
+type HistoricalPriceRuntime = Pick<
+  IAgentRuntime,
+  "getCache" | "setCache" | "getSetting"
+>;
+
+type TokenManifestEntry = {
+  address: string;
+  symbol: string;
+  chain: "UNKNOWN" | "solana" | "ethereum" | string;
+};
+
+type RawPricePoint = Partial<{
+  timestamp: number;
+  t: number;
+  price: number;
+  open: number;
+  o: number;
+  high: number;
+  h: number;
+  low: number;
+  l: number;
+  close: number;
+  c: number;
+  volume: number;
+  v: number;
+  liquidity: number;
+  marketCap: number;
+}>;
+
 // check if .env in this folder or in one lower or in CWD
 let envPath = path.join(process.cwd(), ".env");
 if (!fs.exists(envPath)) {
@@ -29,7 +58,7 @@ console.log("envPath", envPath);
 config({ path: envPath });
 
 // Mock runtime
-const mockRuntime: IAgentRuntime = {
+const mockRuntime = {
   getCache: async () => null,
   setCache: async () => {},
   getSetting: (key: string) => {
@@ -42,7 +71,7 @@ const mockRuntime: IAgentRuntime = {
         return undefined;
     }
   },
-} as any;
+} satisfies HistoricalPriceRuntime;
 
 // Paths
 const PROJECT_ROOT = path.join(process.cwd(), "..");
@@ -100,11 +129,11 @@ async function saveProgress(progress: FetchProgress): Promise<void> {
   await fs.writeFile(PROGRESS_FILE, JSON.stringify(progress, null, 2));
 }
 
-function convertToOHLCV(priceHistory: any[]): PricePoint[] {
+function convertToOHLCV(priceHistory: RawPricePoint[]): PricePoint[] {
   // Convert from Birdeye/DexScreener format to our standard format
   return priceHistory.map((point) => {
     // Handle different formats
-    if ("price" in point && "timestamp" in point) {
+    if (typeof point.price === "number" && typeof point.timestamp === "number") {
       // Simple price point format
       return {
         timestamp: point.timestamp,
@@ -112,29 +141,43 @@ function convertToOHLCV(priceHistory: any[]): PricePoint[] {
         high: point.price,
         low: point.price,
         close: point.price,
-        volume: point.volume || 0,
+        volume: point.volume ?? 0,
         liquidity: point.liquidity,
         market_cap: point.marketCap,
       };
     } else if ("o" in point || "open" in point) {
       // OHLCV format
+      const open = point.open ?? point.o ?? 0;
+      const high = point.high ?? point.h ?? open;
+      const low = point.low ?? point.l ?? open;
+      const close = point.close ?? point.c ?? open;
       return {
-        timestamp: point.timestamp || point.t,
-        open: point.open || point.o,
-        high: point.high || point.h,
-        low: point.low || point.l,
-        close: point.close || point.c,
-        volume: point.volume || point.v || 0,
+        timestamp: point.timestamp ?? point.t ?? 0,
+        open,
+        high,
+        low,
+        close,
+        volume: point.volume ?? point.v ?? 0,
         liquidity: point.liquidity,
         market_cap: point.marketCap,
       };
     }
-    return point;
+    const close = point.close ?? point.c ?? point.price ?? 0;
+    return {
+      timestamp: point.timestamp ?? point.t ?? 0,
+      open: point.open ?? point.o ?? close,
+      high: point.high ?? point.h ?? close,
+      low: point.low ?? point.l ?? close,
+      close,
+      volume: point.volume ?? point.v ?? 0,
+      liquidity: point.liquidity,
+      market_cap: point.marketCap,
+    };
   });
 }
 
 async function fetchTokenPriceHistory(
-  token: any,
+  token: TokenManifestEntry,
   service: HistoricalPriceService,
   startDate: Date,
   endDate: Date,
@@ -213,7 +256,7 @@ async function main() {
     // Load token manifest
     const tokenManifestPath = path.join(DATA_DIR, "tokens.json");
     const tokenContent = await fs.readFile(tokenManifestPath, "utf-8");
-    const tokens = JSON.parse(tokenContent);
+    const tokens = JSON.parse(tokenContent) as TokenManifestEntry[];
 
     logger.info(`📋 Found ${tokens.length} tokens to fetch`);
 
@@ -223,7 +266,7 @@ async function main() {
 
     // Filter out already completed tokens
     const remainingTokens = tokens.filter(
-      (t: any) =>
+      (t) =>
         !progress.completed.includes(t.address) &&
         !progress.failed.includes(t.address),
     );
@@ -246,7 +289,7 @@ async function main() {
     );
 
     // Initialize service
-    const service = new HistoricalPriceService(mockRuntime);
+    const service = new HistoricalPriceService(mockRuntime as IAgentRuntime);
 
     // Process tokens one at a time to avoid rate limits
     for (let i = 0; i < remainingTokens.length; i++) {
@@ -306,10 +349,10 @@ async function main() {
 
     if (progress.failed.length > 0) {
       logger.info("\n❌ Failed tokens:");
-      const failedTokens = tokens.filter((t: any) =>
+      const failedTokens = tokens.filter((t) =>
         progress.failed.includes(t.address),
       );
-      failedTokens.forEach((t: any) => {
+      failedTokens.forEach((t) => {
         logger.info(`  - ${t.symbol} (${t.address})`);
       });
     }

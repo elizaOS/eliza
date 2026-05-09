@@ -187,7 +187,6 @@ body.native textarea {
 :root[data-theme-switching] *,
 :root[data-theme-switching] *::before,
 :root[data-theme-switching] *::after {
-  /* biome-ignore lint/complexity/noImportantStyles: Theme-switch guard must override component-level transition utilities */
   transition: none !important;
 }
 
@@ -405,13 +404,9 @@ kbd {
   *,
   *::before,
   *::after {
-    /* biome-ignore lint/complexity/noImportantStyles: Accessibility requires forcing reduced motion */
     animation-duration: 0.01ms !important;
-    /* biome-ignore lint/complexity/noImportantStyles: Accessibility requires forcing reduced motion */
     animation-iteration-count: 1 !important;
-    /* biome-ignore lint/complexity/noImportantStyles: Accessibility requires forcing reduced motion */
     transition-duration: 0.01ms !important;
-    /* biome-ignore lint/complexity/noImportantStyles: Accessibility requires forcing reduced motion */
     scroll-behavior: auto !important;
   }
 }

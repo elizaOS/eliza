@@ -388,7 +388,7 @@ function installTravelAndCalendarFetchStub() {
   if (typeof vi.stubGlobal === "function") {
     vi.stubGlobal("fetch", fetchMock);
   } else {
-    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+    globalThis.fetch = fetchMock as typeof globalThis.fetch;
   }
   return fetchMock;
 }

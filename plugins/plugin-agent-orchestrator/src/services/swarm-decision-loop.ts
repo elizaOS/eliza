@@ -2715,11 +2715,8 @@ export async function handleConfirmDecision(
         threadId: taskCtx.threadId,
         promptText,
         recentOutput: output,
-        llmDecision: pendingDecision.llmDecision as unknown as Record<
-          string,
-          unknown
-        >,
-        taskContext: taskCtx as unknown as Record<string, unknown>,
+        llmDecision: { ...pendingDecision.llmDecision },
+        taskContext: { ...taskCtx },
         createdAt: pendingDecision.createdAt,
       });
     } else {
@@ -2740,8 +2737,8 @@ export async function handleConfirmDecision(
         threadId: taskCtx.threadId,
         promptText,
         recentOutput: output,
-        llmDecision: decision as unknown as Record<string, unknown>,
-        taskContext: taskCtx as unknown as Record<string, unknown>,
+        llmDecision: { ...decision },
+        taskContext: { ...taskCtx },
         createdAt: pendingDecision.createdAt,
       });
     }

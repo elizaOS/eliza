@@ -331,7 +331,7 @@ function chatToTarget(
 		channelId: isGroup ? chat.guid : directHandle || chat.guid,
 	};
 	if (!isGroup && directHandle) {
-		target.entityId = directHandle as unknown as UUID;
+		target.entityId = directHandle as UUID;
 	}
 	return {
 		target,
@@ -362,7 +362,7 @@ function directTarget(
 		target: {
 			source: "bluebubbles",
 			channelId: normalized,
-			entityId: normalized as unknown as UUID,
+			entityId: normalized as UUID,
 		},
 		label: normalized,
 		kind: targetKindForBlueBubbles(normalized),
@@ -1194,7 +1194,7 @@ export class BlueBubblesService extends Service {
 			roomId,
 			worldId,
 			worldName: "iMessage",
-			userId: senderHandle as unknown as UUID,
+			userId: senderHandle as UUID,
 			userName: senderHandle,
 			name: message.handle?.address ?? senderHandle,
 			source: "bluebubbles",
@@ -1256,7 +1256,7 @@ export class BlueBubblesService extends Service {
 			bluebubblesMessageGuid: message.guid,
 			bluebubblesThreadOriginatorGuid:
 				message.threadOriginatorGuid ?? undefined,
-		} as unknown as Memory["metadata"];
+		} as Memory["metadata"];
 
 		await this.runtime.createMemory(memory, "messages");
 

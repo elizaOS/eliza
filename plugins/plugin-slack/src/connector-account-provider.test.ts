@@ -12,7 +12,7 @@ function runtime(settings: Record<string, unknown>): IAgentRuntime {
   return {
     character: {},
     getSetting: vi.fn((key: string) => settings[key]),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 describe("Slack ConnectorAccountManager provider", () => {
@@ -112,7 +112,7 @@ describe("Slack ConnectorAccountManager provider", () => {
               },
             }
           : null,
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     const manager = createOAuthCallbackManager(
       SLACK_SERVICE_NAME,
       "acct_slack_durable_1",
@@ -204,7 +204,7 @@ describe("Slack ConnectorAccountManager provider", () => {
           })[key],
       ),
       getService: () => null,
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     const manager = createOAuthCallbackManager(
       SLACK_SERVICE_NAME,
       "acct_slack_durable_1",

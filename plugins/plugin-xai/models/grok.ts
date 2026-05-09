@@ -581,7 +581,7 @@ export async function handleTextSmall(
     ModelType.TEXT_SMALL,
     config.smallModel,
     params,
-  )) as unknown as string | TextStreamResult;
+  )) as string | TextStreamResult;
 }
 
 export async function handleTextLarge(
@@ -596,7 +596,7 @@ export async function handleTextLarge(
     ModelType.TEXT_LARGE,
     config.largeModel,
     params,
-  )) as unknown as string | TextStreamResult;
+  )) as string | TextStreamResult;
 }
 
 export async function handleTextEmbedding(

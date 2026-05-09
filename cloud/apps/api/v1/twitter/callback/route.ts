@@ -31,7 +31,7 @@ app.get("/", async (c) => {
   const defaultRedirectPath = "/dashboard/settings?tab=connections";
   const allowedAbsoluteOrigins = [
     ...getDefaultPlatformRedirectOrigins(),
-    ...(LOOPBACK_REDIRECT_ORIGINS as unknown as string[]),
+    ...LOOPBACK_REDIRECT_ORIGINS,
   ];
 
   function buildRedirectUrl(redirectUrl: string | undefined, params: Record<string, string>): URL {

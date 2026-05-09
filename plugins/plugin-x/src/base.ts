@@ -19,7 +19,11 @@ import {
   SearchMode,
   type Tweet,
 } from "./client/index";
-import type { TwitterClientState, TwitterInteractionPayload } from "./types";
+import {
+  convertClientTweetToCoreTweet,
+  type TwitterClientState,
+  type TwitterInteractionPayload,
+} from "./types";
 import { buildTwitterMessageMetadata, createMemorySafe } from "./utils/memory";
 import { getEpochMs } from "./utils/time";
 
@@ -566,7 +570,7 @@ export class ClientBase {
           await this.runtime.ensureConnection({
             entityId,
             roomId,
-            userId: tweet.userId as unknown as UUID,
+            userId: createUniqueUuid(this.runtime, tweet.userId),
             userName: tweet.username,
             name: tweet.name,
             source: "twitter",
@@ -692,7 +696,7 @@ export class ClientBase {
       await this.runtime.ensureConnection({
         entityId,
         roomId,
-        userId: tweet.userId as unknown as UUID,
+        userId: createUniqueUuid(this.runtime, tweet.userId),
         userName: tweet.username,
         name: tweet.name,
         source: "twitter",
@@ -882,11 +886,6 @@ export class ClientBase {
     const isRetweet = !!tweet.retweetedStatus;
     const type = isQuote ? "quote" : isRetweet ? "retweet" : "like";
 
-    // The client Tweet and the core Tweet DTO overlap structurally; cast
-    // once at this boundary instead of round-tripping through a mapper.
-    const asCoreTweet = (t: Tweet) =>
-      t as unknown as TwitterInteractionPayload["targetTweet"];
-
     return {
       id: tweet.id,
       type,
@@ -894,8 +893,8 @@ export class ClientBase {
       username: tweet.username,
       name: tweet.name || tweet.username,
       targetTweetId: tweet.inReplyToStatusId || tweet.quotedStatusId || "",
-      targetTweet: asCoreTweet(tweet.quotedStatus || tweet),
-      quoteTweet: isQuote ? asCoreTweet(tweet) : undefined,
+      targetTweet: convertClientTweetToCoreTweet(tweet.quotedStatus || tweet),
+      quoteTweet: isQuote ? convertClientTweetToCoreTweet(tweet) : undefined,
       retweetId: tweet.retweetedStatus?.id,
     };
   }

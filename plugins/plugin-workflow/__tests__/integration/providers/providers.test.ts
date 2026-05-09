@@ -3,7 +3,11 @@ import { activeWorkflowsProvider } from '../../../src/providers/activeWorkflows'
 import { pendingDraftProvider } from '../../../src/providers/pendingDraft';
 import { workflowStatusProvider } from '../../../src/providers/workflowStatus';
 import { WORKFLOW_SERVICE_TYPE } from '../../../src/services/workflow-service';
-import { createExecution, createWorkflowResponse } from '../../fixtures/workflows';
+import {
+  createExecution,
+  createTriggerNode,
+  createWorkflowResponse,
+} from '../../fixtures/workflows';
 import { createMockMessage, createMockRuntime, createMockState } from '../../helpers/mockRuntime';
 import { createMockService } from '../../helpers/mockService';
 
@@ -50,7 +54,11 @@ describe('activeWorkflowsProvider', () => {
             id: 'wf-1',
             name: 'Stripe Payments',
             active: true,
-            nodes: [{ name: 'n1' }, { name: 'n2' }, { name: 'n3' }] as any,
+            nodes: [
+              createTriggerNode({ name: 'n1', position: [0, 0] }),
+              createTriggerNode({ name: 'n2', position: [100, 0] }),
+              createTriggerNode({ name: 'n3', position: [200, 0] }),
+            ],
           }),
           createWorkflowResponse({
             id: 'wf-2',

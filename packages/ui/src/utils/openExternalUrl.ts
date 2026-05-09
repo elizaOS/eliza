@@ -12,17 +12,21 @@ interface CapacitorBrowserPlugin {
 const registeredCapacitorBrowser =
   registerPlugin<CapacitorBrowserPlugin>("Browser");
 
+type CapacitorGlobal = {
+  Plugins?: { Browser?: CapacitorBrowserPlugin };
+};
+
+function isCapacitorGlobal(value: unknown): value is CapacitorGlobal {
+  return !!value && typeof value === "object";
+}
+
 function getCapacitorBrowser(): CapacitorBrowserPlugin | null {
   if (!Capacitor.isNativePlatform()) return null;
 
-  const cap = (
-    globalThis as unknown as {
-      Capacitor?: {
-        Plugins?: { Browser?: CapacitorBrowserPlugin };
-      };
-    }
-  ).Capacitor;
-  return cap?.Plugins?.Browser ?? registeredCapacitorBrowser;
+  const cap: unknown = Reflect.get(globalThis, "Capacitor");
+  return isCapacitorGlobal(cap)
+    ? (cap.Plugins?.Browser ?? registeredCapacitorBrowser)
+    : registeredCapacitorBrowser;
 }
 
 export async function openExternalUrl(url: string): Promise<void> {

@@ -55,6 +55,15 @@ type DocumentFilter = {
   tags?: string[];
 };
 
+type DocumentReadableMemory = {
+  id?: UUID;
+  agentId?: UUID;
+  entityId?: UUID;
+  createdAt?: number;
+  content?: { text?: string };
+  metadata?: unknown;
+};
+
 type DocumentUploadBody = {
   content: string;
   filename: string;
@@ -310,7 +319,7 @@ function isDocumentMemory(memory: Memory, agentId: UUID): boolean {
 }
 
 function matchesDocumentFilter(
-  memory: Memory,
+  memory: DocumentReadableMemory,
   filters: DocumentFilter,
 ): boolean {
   const metadata = asRecord(memory.metadata);
@@ -376,7 +385,7 @@ function matchesDocumentFilter(
   return true;
 }
 
-function documentScopedEntityId(memory: Memory): UUID | undefined {
+function documentScopedEntityId(memory: DocumentReadableMemory): UUID | undefined {
   const metadata = asRecord(memory.metadata);
   return (
     asUuid(metadata?.scopedToEntityId) ??
@@ -386,7 +395,7 @@ function documentScopedEntityId(memory: Memory): UUID | undefined {
 }
 
 function canReadDocumentMemory(
-  memory: Memory,
+  memory: DocumentReadableMemory,
   actor: RouteActor,
   filters: DocumentFilter = {},
 ): boolean {
@@ -749,12 +758,8 @@ export async function handleDocumentsRoutes(
 
     const filteredResults = results
       .filter((result) => (result.similarity ?? 0) >= threshold)
-      .filter((result) =>
-        matchesDocumentFilter(result as unknown as Memory, filters),
-      )
-      .filter((result) =>
-        canReadDocumentMemory(result as unknown as Memory, routeActor, filters),
-      )
+      .filter((result) => matchesDocumentFilter(result, filters))
+      .filter((result) => canReadDocumentMemory(result, routeActor, filters))
       .slice(0, limit)
       .map((result) => {
         const meta = asRecord(result.metadata);

@@ -437,12 +437,8 @@ export function getTaskAgentModelPrefs(
 function getPreflightAuthStatus(
   result: PreflightResult | undefined,
 ): "authenticated" | "unauthenticated" | "unknown" {
-  const auth =
-    result && typeof result === "object"
-      ? ((result as unknown as Record<string, unknown>).auth as
-          | Record<string, unknown>
-          | undefined)
-      : undefined;
+  const auth = (result as PreflightResult & { auth?: { status?: unknown } })
+    ?.auth;
   const status = typeof auth?.status === "string" ? auth.status : "";
   if (status === "authenticated" || status === "unauthenticated") {
     return status;

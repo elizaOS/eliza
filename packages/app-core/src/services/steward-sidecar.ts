@@ -385,7 +385,7 @@ export class StewardSidecar {
         stderr: "pipe",
       });
 
-      this.process = proc as unknown as typeof this.process;
+      this.process = proc;
       this.updateStatus({ pid: proc.pid ?? null });
 
       pipeOutput(proc.stdout, "stdout", this.config.onLog);

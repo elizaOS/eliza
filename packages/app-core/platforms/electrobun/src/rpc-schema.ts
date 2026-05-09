@@ -517,6 +517,10 @@ export type ElizaDesktopRPCSchema = {
 				params: undefined;
 				response: ExistingElizaInstallInfo;
 			};
+			agentPostReset: {
+				params: { apiBase?: string; bearerToken?: string } | undefined | null;
+				response: { ok: boolean; error?: string };
+			};
 			agentPostCloudDisconnect: {
 				params: { apiBase?: string; bearerToken?: string } | undefined | null;
 				response: { ok: boolean; error?: string };
@@ -1469,6 +1473,7 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"agent:restartClearLocalDb": "agentRestartClearLocalDb",
 	"agent:status": "agentStatus",
 	"agent:inspectExistingInstall": "agentInspectExistingInstall",
+	"agent:postReset": "agentPostReset",
 	"agent:postCloudDisconnect": "agentPostCloudDisconnect",
 	"agent:cloudDisconnectWithConfirm": "agentCloudDisconnectWithConfirm",
 

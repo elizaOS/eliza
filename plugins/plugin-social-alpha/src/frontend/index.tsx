@@ -19,12 +19,61 @@ import { LeaderboardTable } from "./LeaderboardTable.tsx";
 import Loader from "./loader.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.tsx";
 
+declare global {
+	interface Window {
+		elizaAgentId?: UUID;
+	}
+}
+
+function jsonRow(value: unknown): Record<string, unknown> {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		throw new Error("Leaderboard row is not a JSON object");
+	}
+	return value as Record<string, unknown>;
+}
+
+function parseRecommendationRow(
+	record: Record<string, unknown>,
+): Recommendation {
+	return {
+		id: record.id as UUID,
+		userId: record.userId as UUID,
+		messageId: record.messageId as UUID,
+		timestamp:
+			typeof record.timestamp === "number"
+				? record.timestamp
+				: Number(record.timestamp),
+		tokenTicker:
+			typeof record.tokenTicker === "string" ? record.tokenTicker : undefined,
+		tokenAddress:
+			typeof record.tokenAddress === "string"
+				? record.tokenAddress
+				: String(record.tokenAddress ?? ""),
+		chain: record.chain as SupportedChain,
+		recommendationType: record.recommendationType as "BUY" | "SELL",
+		conviction: record.conviction as Conviction,
+		rawMessageQuote:
+			typeof record.rawMessageQuote === "string"
+				? record.rawMessageQuote
+				: String(record.rawMessageQuote ?? ""),
+		priceAtRecommendation:
+			typeof record.priceAtRecommendation === "number"
+				? record.priceAtRecommendation
+				: undefined,
+		metrics: record.metrics as RecommendationMetric | undefined,
+		processedForTradeDecision:
+			typeof record.processedForTradeDecision === "boolean"
+				? record.processedForTradeDecision
+				: undefined,
+	};
+}
+
 const queryClient = new QueryClient();
 
 // Function to fetch real leaderboard data from the backend
 async function fetchLeaderboardData(): Promise<LeaderboardEntry[]> {
 	// Read agentId from window object injected by the server
-	const agentId = (window as any).elizaAgentId;
+	const agentId = window.elizaAgentId;
 
 	let apiUrl = "/api/plugins/community-investor/leaderboard"; // Default path
 
@@ -47,34 +96,27 @@ async function fetchLeaderboardData(): Promise<LeaderboardEntry[]> {
 				`Network response was not ok: ${response.statusText}`,
 		);
 	}
-	const data = await response.json();
+	const data = (await response.json()) as { message?: string; data?: unknown };
+	const rows = data.data;
+	if (!Array.isArray(rows)) {
+		throw new Error(
+			data.message ?? "Leaderboard API response did not include a data array",
+		);
+	}
 
 	// Transform the data to ensure proper typing
-	const transformedData: LeaderboardEntry[] = (data.data as any[]).map(
-		(entry: any) => ({
+	const transformedData: LeaderboardEntry[] = rows.map((entryRaw) => {
+		const entry = jsonRow(entryRaw);
+		const recs = Array.isArray(entry.recommendations)
+			? entry.recommendations
+			: [];
+		return {
 			userId: entry.userId as UUID,
-			username: entry.username,
-			trustScore: entry.trustScore,
-			recommendations: (entry.recommendations || []).map(
-				(rec: any) =>
-					({
-						id: rec.id as UUID,
-						userId: rec.userId as UUID,
-						messageId: rec.messageId as UUID,
-						timestamp: rec.timestamp,
-						tokenTicker: rec.tokenTicker,
-						tokenAddress: rec.tokenAddress,
-						chain: rec.chain as SupportedChain,
-						recommendationType: rec.recommendationType as "BUY" | "SELL",
-						conviction: rec.conviction as Conviction, // Changed type assertion
-						rawMessageQuote: rec.rawMessageQuote,
-						priceAtRecommendation: rec.priceAtRecommendation,
-						metrics: rec.metrics as RecommendationMetric,
-						processedForTradeDecision: rec.processedForTradeDecision,
-					}) as Recommendation,
-			),
-		}),
-	);
+			username: typeof entry.username === "string" ? entry.username : undefined,
+			trustScore: typeof entry.trustScore === "number" ? entry.trustScore : 0,
+			recommendations: recs.map((rec) => parseRecommendationRow(jsonRow(rec))),
+		};
+	});
 
 	// Sort and rank the data
 	return transformedData

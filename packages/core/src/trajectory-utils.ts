@@ -220,7 +220,7 @@ function readContextObjectFromUnknown(value: unknown): ContextObject | null {
 	const version = record.version;
 	const id = record.id;
 	return {
-		...(record as unknown as Partial<ContextObject>),
+		...(record as Partial<ContextObject>),
 		id: typeof id === "string" && id.trim() ? id : "context-object",
 		version: typeof version === "string" ? version : "v5",
 		events: [...(record.events as ContextEvent[])],
@@ -332,8 +332,15 @@ export function buildContextObjectTrajectoryExport(
 	if (metadata) exportRecord.metadata = metadata;
 	if (metrics) exportRecord.metrics = metrics;
 	if (sanitizedContextObject) {
-		exportRecord.contextObject =
-			sanitizedContextObject as unknown as ContextObjectTrajectoryExport["contextObject"];
+		const existingId = sanitizedContextObject.id;
+		const resolvedId =
+			typeof existingId === "string" && existingId.trim()
+				? existingId.trim()
+				: (contextObject?.id ?? "context-object");
+		exportRecord.contextObject = {
+			...sanitizedContextObject,
+			id: resolvedId,
+		};
 	}
 
 	return exportRecord;
@@ -359,7 +366,7 @@ type TrajectoryStepState = {
 	openPositions: number;
 };
 
-type TrajectoryStepKindLike = "llm" | "action" | "executeCode";
+type TrajectoryStepKindLike = "llm" | "action";
 
 export type TrajectoryAnnotateParams = {
 	stepId: string;
@@ -387,9 +394,7 @@ type TrajectoryLoggerLike = {
 	/**
 	 * Optional. When implemented (DatabaseTrajectoryLogger does), lets a caller
 	 * extend an existing step row with the new schema fields (kind, script,
-	 * childSteps, usedSkills). The plugin-executecode action uses this to
-	 * record its parent step + collected child step IDs without depending
-	 * directly on @elizaos/agent.
+	 * childSteps, usedSkills) without depending directly on @elizaos/agent.
 	 */
 	annotateStep?: (params: TrajectoryAnnotateParams) => Promise<void> | void;
 };

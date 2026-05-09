@@ -393,7 +393,7 @@ describe("stopSession", () => {
       sessionOutputBuffers: new Map(),
       taskResponseMarkers: new Map(),
       outputUnsubscribers: new Map(),
-    } as unknown as SessionIOContext;
+    } as SessionIOContext;
 
     await stopSessionIO(ctx, "session-1", metadata, new Map(), () => undefined);
 

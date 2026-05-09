@@ -394,9 +394,7 @@ const modelCommand: SlashCommand = {
 		});
 	},
 	async autocomplete(interaction) {
-		const runtime = (
-			interaction.client as { runtime?: IAgentRuntime }
-		).runtime;
+		const runtime = (interaction.client as { runtime?: IAgentRuntime }).runtime;
 		const models = runtime
 			? getKnownModels(runtime)
 			: [...FALLBACK_KNOWN_MODELS];

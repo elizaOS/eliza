@@ -32,6 +32,7 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  Service,
   State,
 } from "@elizaos/core";
 import { logger as coreLogger } from "@elizaos/core";
@@ -522,13 +523,12 @@ async function runStopAgent(
       );
       if (state)
         (
-          state as unknown as {
+          state as {
             codingSession?: unknown;
             codingSessions?: unknown;
           }
         ).codingSession = undefined;
-      if (state)
-        (state as unknown as { codingSessions?: unknown }).codingSessions = [];
+      if (state) (state as { codingSessions?: unknown }).codingSessions = [];
       const text = `Stopped ${sessions.length} sessions`;
       await callbackText(callback, text);
       return { success: true, text, data: { stoppedCount: sessions.length } };
@@ -536,8 +536,8 @@ async function runStopAgent(
 
     const requestedId =
       pickString(params, content, "sessionId") ??
-      (state as unknown as { codingSession?: { id?: string } } | undefined)
-        ?.codingSession?.id;
+      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
+        ?.id;
     const target = requestedId
       ? await Promise.resolve(service.getSession(requestedId))
       : newestSession(sessions);
@@ -554,11 +554,10 @@ async function runStopAgent(
 
     await service.stopSession(target.id);
     if (
-      (state as unknown as { codingSession?: { id?: string } } | undefined)
-        ?.codingSession?.id === target.id
+      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
+        ?.id === target.id
     ) {
-      (state as unknown as { codingSession?: unknown }).codingSession =
-        undefined;
+      (state as { codingSession?: unknown }).codingSession = undefined;
     }
     await callbackText(callback, `Stopped task-agent session ${target.id}.`);
     return {
@@ -662,8 +661,8 @@ async function runCancel(
     const threadId = pickString(params, content, "threadId");
     const sessionId =
       pickString(params, content, "sessionId") ??
-      (state as unknown as { codingSession?: { id?: string } } | undefined)
-        ?.codingSession?.id;
+      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
+        ?.id;
     const search = pickString(params, content, "search")?.toLowerCase();
     const sessions = await Promise.resolve(service.listSessions());
 
@@ -1322,9 +1321,9 @@ async function runProvisionWorkspace(
     return { success: false, error: "FORBIDDEN", text: access.reason };
   }
 
-  const workspaceService = runtime.getService(
-    "CODING_WORKSPACE_SERVICE",
-  ) as unknown as CodingWorkspaceService | undefined;
+  const workspaceService = runtime.getService("CODING_WORKSPACE_SERVICE") as
+    | (Service & CodingWorkspaceService)
+    | undefined;
   if (!workspaceService) {
     if (callback)
       await callback({ text: "Workspace Service is not available." });
@@ -1451,9 +1450,9 @@ async function runSubmitWorkspace(
     return { success: false, error: "FORBIDDEN", text: access.reason };
   }
 
-  const workspaceService = runtime.getService(
-    "CODING_WORKSPACE_SERVICE",
-  ) as unknown as CodingWorkspaceService | undefined;
+  const workspaceService = runtime.getService("CODING_WORKSPACE_SERVICE") as
+    | (Service & CodingWorkspaceService)
+    | undefined;
   if (!workspaceService) {
     if (callback)
       await callback({ text: "Workspace Service is not available." });
@@ -1861,9 +1860,9 @@ async function runManageIssues(
     return { success: false, error: "FORBIDDEN", text: access.reason };
   }
 
-  const workspaceService = runtime.getService(
-    "CODING_WORKSPACE_SERVICE",
-  ) as unknown as CodingWorkspaceService | undefined;
+  const workspaceService = runtime.getService("CODING_WORKSPACE_SERVICE") as
+    | (Service & CodingWorkspaceService)
+    | undefined;
   if (!workspaceService) {
     if (callback)
       await callback({ text: "Workspace Service is not available." });

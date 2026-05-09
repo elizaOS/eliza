@@ -19,12 +19,7 @@
  * No backend changes are required.
  */
 
-import {
-  Button,
-  PagePanel,
-  Spinner,
-  StatusBadge,
-} from "@elizaos/ui";
+import { Button, PagePanel, Spinner, StatusBadge } from "@elizaos/ui";
 import {
   Calendar,
   CheckCircle2,
@@ -41,11 +36,17 @@ import type {
   AutomationItem,
   AutomationListResponse,
 } from "../../api/client-types-config";
+import {
+  type FeedFilter,
+  passesFilter,
+} from "../../utils/automation-feed-filter";
 import { formatSchedule } from "../../utils/cron-format";
-import { decodeScheduleTags, TaskEditor } from "./TaskEditor";
+import { decodeScheduleTags } from "../../utils/task-schedule";
+import { TaskEditor } from "./TaskEditor";
 import { WorkflowEditor } from "./WorkflowEditor";
 
-type FeedFilter = "all" | "tasks" | "workflows" | "active" | "inactive";
+export type { FeedFilter } from "../../utils/automation-feed-filter";
+export { passesFilter } from "../../utils/automation-feed-filter";
 
 type ChooserState = "closed" | "task" | "workflow";
 
@@ -78,7 +79,8 @@ function automationToRow(item: AutomationItem): FeedRow {
   const schedule = isWorkflow
     ? item.schedules
         .map((trigger) => {
-          if (trigger.cronExpression) return formatSchedule(trigger.cronExpression);
+          if (trigger.cronExpression)
+            return formatSchedule(trigger.cronExpression);
           if (trigger.displayName) return trigger.displayName;
           return null;
         })
@@ -105,23 +107,6 @@ function automationToRow(item: AutomationItem): FeedRow {
     lastUpdated: item.updatedAt,
     source: item,
   };
-}
-
-export function passesFilter(row: FeedRow, filter: FeedFilter): boolean {
-  switch (filter) {
-    case "all":
-      return true;
-    case "tasks":
-      return row.kind === "task";
-    case "workflows":
-      return row.kind === "workflow";
-    case "active":
-      return row.active;
-    case "inactive":
-      return !row.active;
-    default:
-      return true;
-  }
 }
 
 export function AutomationsFeed() {
@@ -157,8 +142,7 @@ export function AutomationsFeed() {
   }, [data, filter]);
 
   const tasksCount = useMemo(
-    () =>
-      data?.automations.filter((a) => a.type !== "workflow").length ?? 0,
+    () => data?.automations.filter((a) => a.type !== "workflow").length ?? 0,
     [data],
   );
   const workflowsCount = data?.summary.workflowCount ?? 0;
@@ -346,11 +330,11 @@ function FeedRowItem({
 }) {
   const Icon = row.kind === "workflow" ? Workflow : CheckCircle2;
   return (
-    <li>
+    <li className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-accent/40">
       <button
         type="button"
         onClick={onOpen}
-        className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg-accent/40"
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
       >
         <Icon
           className={`h-4 w-4 shrink-0 ${row.kind === "workflow" ? "text-violet-400" : "text-blue-400"}`}
@@ -362,7 +346,7 @@ function FeedRowItem({
               {row.title}
             </span>
             <StatusBadge
-              tone={row.kind === "workflow" ? "muted" : "muted"}
+              tone="muted"
               label={row.kind === "workflow" ? "Workflow" : "Task"}
             />
             {row.active ? (
@@ -391,31 +375,21 @@ function FeedRowItem({
             )}
           </div>
         </div>
-        {row.kind === "workflow" && (
-          <span
-            role="button"
-            tabIndex={0}
-            aria-label={row.active ? "Deactivate workflow" : "Activate workflow"}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.stopPropagation();
-                onRunNow();
-              }
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRunNow();
-            }}
-            className="rounded-md border border-border/40 px-2 py-1 text-xs text-muted-strong opacity-0 transition-opacity hover:border-border group-hover:opacity-100"
-          >
-            {row.active ? (
-              <Pause className="h-3 w-3" aria-hidden />
-            ) : (
-              <Play className="h-3 w-3" aria-hidden />
-            )}
-          </span>
-        )}
       </button>
+      {row.kind === "workflow" && (
+        <button
+          type="button"
+          aria-label={row.active ? "Deactivate workflow" : "Activate workflow"}
+          onClick={onRunNow}
+          className="rounded-md border border-border/40 px-2 py-1 text-xs text-muted-strong opacity-0 transition-opacity hover:border-border group-hover:opacity-100 focus:opacity-100"
+        >
+          {row.active ? (
+            <Pause className="h-3 w-3" aria-hidden />
+          ) : (
+            <Play className="h-3 w-3" aria-hidden />
+          )}
+        </button>
+      )}
     </li>
   );
 }
@@ -430,19 +404,17 @@ function ChooserSheet({
   onClose: () => void;
 }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 lg:items-center"
-      onClick={onClose}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
-      }}
-      role="dialog"
-      tabIndex={-1}
-    >
-      <div
-        className="w-full max-w-md rounded-2xl border border-border/40 bg-bg p-4 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-        role="document"
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 lg:items-center">
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={onClose}
+        className="absolute inset-0 cursor-default"
+      />
+      <dialog
+        open
+        className="relative m-0 w-full max-w-md rounded-2xl border border-border/40 bg-bg p-4 shadow-xl"
+        aria-modal="true"
       >
         <h3 className="mb-3 text-base font-semibold text-txt">
           What do you want to create?
@@ -462,8 +434,8 @@ function ChooserSheet({
                 Task (simple prompt)
               </div>
               <div className="text-xs text-muted-strong">
-                One prompt, run once or on a schedule. Pick this if you're
-                not sure.
+                One prompt, run once or on a schedule. Pick this if you're not
+                sure.
               </div>
             </div>
           </button>
@@ -487,7 +459,7 @@ function ChooserSheet({
             </div>
           </button>
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }
@@ -501,9 +473,9 @@ function WorkflowEditorLoader({
   onSaved: () => void;
   onCancel: () => void;
 }) {
-  const [loaded, setLoaded] = useState<
-    null | { workflow: import("../../api/client-types-chat").WorkflowDefinition | null }
-  >(workflowId ? null : { workflow: null });
+  const [loaded, setLoaded] = useState<null | {
+    workflow: import("../../api/client-types-chat").WorkflowDefinition | null;
+  }>(workflowId ? null : { workflow: null });
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -535,12 +507,7 @@ function WorkflowEditorLoader({
         <div className="rounded-lg border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
           {loadError}
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mt-3"
-          onClick={onCancel}
-        >
+        <Button variant="ghost" size="sm" className="mt-3" onClick={onCancel}>
           Back
         </Button>
       </div>

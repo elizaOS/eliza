@@ -42,7 +42,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
 const nativePluginsRoot = path.join(elizaRoot, "packages/native-plugins");
 const appCoreSrcRoot = path.join(elizaRoot, "packages/app-core/src");
-const pluginSqlSrcRoot = path.join(elizaRoot, "plugins/plugin-sql/typescript");
+const pluginSqlSrcRoot = path.join(elizaRoot, "plugins/plugin-sql/src");
 const pluginBrowserBridgeSrcRoot = path.join(
   elizaRoot,
   "plugins/plugin-browser/src",

@@ -126,7 +126,7 @@ export const kaminoProvider: Provider = {
         // Get Kamino service with proper type casting
         const kaminoService = runtime.getService(
           "KAMINO_SERVICE",
-        ) as unknown as KaminoService;
+        ) as KaminoService;
         if (!kaminoService) {
           console.log("Kamino service not available");
           return {

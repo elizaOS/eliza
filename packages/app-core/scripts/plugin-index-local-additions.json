@@ -1,21 +1,12 @@
 [
   {
-    "id": "music-library",
-    "dirName": "plugin-music-library",
-    "name": "Music Library",
-    "npmName": "@elizaos/plugin-music-library",
+    "id": "music",
+    "dirName": "plugin-music",
+    "name": "Music",
+    "npmName": "@elizaos/plugin-music",
     "category": "feature",
     "version": "1.0.0",
-    "repository": "https://github.com/elizaos-plugins/plugin-music-library",
-    "pluginDeps": ["sql", "music-player"]
-  },
-  {
-    "id": "music-player",
-    "dirName": "plugin-music-player",
-    "name": "Music Player",
-    "npmName": "@elizaos/plugin-music-player",
-    "category": "feature",
-    "version": "1.0.0",
-    "repository": "https://github.com/elizaos-plugins/plugin-music-player"
+    "repository": "https://github.com/elizaos-plugins/plugin-music",
+    "pluginDeps": ["sql"]
   }
 ]

@@ -132,7 +132,7 @@ parts:
           "app-wallet",
           "plugin-agent-skills",
           "plugin-anthropic",
-          "plugin-browser-bridge",
+          "plugin-browser",
           "plugin-elizacloud",
           "plugin-imessage",
           "plugin-local-embedding",
@@ -485,7 +485,7 @@ parts:
         --filter=@elizaos/app-training \
         --filter=@elizaos/app-wallet \
         --filter=@elizaos/plugin-agent-skills \
-        --filter=@elizaos/plugin-browser-bridge \
+        --filter=@elizaos/plugin-browser \
         --filter=@elizaos/plugin-imessage \
         --filter=@elizaos/plugin-local-embedding \
         --filter=@elizaos/plugin-ollama \

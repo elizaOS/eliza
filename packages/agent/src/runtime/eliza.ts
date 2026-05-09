@@ -213,8 +213,6 @@ import { installRuntimePluginLifecycle } from "./plugin-lifecycle.js";
 import rolesPlugin from "./roles.js";
 import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.js";
 
-const require = createRequire(import.meta.url);
-
 function isPluginSqlResolutionError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return (
@@ -236,7 +234,7 @@ async function loadRequiredPluginSql(): Promise<
   } catch (err) {
     const sourceEntry = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
-      "../../../../plugins/plugin-sql/typescript/index.node.ts",
+      "../../../../plugins/plugin-sql/src/index.node.ts",
     );
     if (!isPluginSqlResolutionError(err) || !existsSync(sourceEntry)) {
       throw err;
@@ -2660,14 +2658,20 @@ const LEVEL_TO_NAME: Record<number, string> = {
   60: "fatal",
 };
 
+type ChatLogEntry = LogEntry & {
+  roomId?: string;
+  runtime?: AgentRuntime & {
+    logLevelOverrides?: Map<string, string>;
+  };
+};
+
 export const logToChatListener = (entry: LogEntry) => {
-  if (entry.roomId && entry.runtime) {
-    const runtime = entry.runtime as unknown as AgentRuntime & {
-      logLevelOverrides?: Map<string, string>;
-    };
+  const chatEntry = entry as ChatLogEntry;
+  if (chatEntry.roomId && chatEntry.runtime) {
+    const runtime = chatEntry.runtime;
     // access dynamic property
     const overrides = runtime.logLevelOverrides;
-    const overrideLevel = overrides?.get(String(entry.roomId));
+    const overrideLevel = overrides?.get(String(chatEntry.roomId));
 
     if (overrideLevel) {
       const levelKey = entry.level as number;

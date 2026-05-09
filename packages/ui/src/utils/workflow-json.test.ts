@@ -59,14 +59,12 @@ describe("parseWorkflowJson", () => {
   });
 
   it("rejects nodes missing required fields", () => {
-    const result = parseWorkflowJson(
-      '{"name":"x","nodes":[{"name":"a"}]}',
-    );
+    const result = parseWorkflowJson('{"name":"x","nodes":[{"name":"a"}]}');
     expect(result.ok).toBe(false);
   });
 
   it("reports a line number on JSON syntax errors", () => {
-    const result = parseWorkflowJson("{\n  \"name\": \"x\",\n  \"nodes\": [,]\n}");
+    const result = parseWorkflowJson('{\n  "name": "x",\n  "nodes": [,]\n}');
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(typeof result.message).toBe("string");

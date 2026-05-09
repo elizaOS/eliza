@@ -109,9 +109,7 @@ describe('EmbeddedWorkflowService task workers', () => {
       });
 
       await service.activateWorkflow(created.id);
-      const scheduledTasks = ctx.tasks.filter(
-        (t) => t.name === WORKFLOW_RUN_TASK_WORKER_NAME
-      );
+      const scheduledTasks = ctx.tasks.filter((t) => t.name === WORKFLOW_RUN_TASK_WORKER_NAME);
       expect(scheduledTasks).toHaveLength(1);
       const task = scheduledTasks[0];
       expect(task.metadata?.workflowId).toBe(created.id);
@@ -158,7 +156,7 @@ describe('EmbeddedWorkflowService task workers', () => {
         metadata: { kind: WORKFLOW_TASK_KIND, workflowId: created.id },
       } as Task;
 
-      const result = await worker!.execute(ctx.runtime, {}, fakeTask);
+      const result = await worker?.execute(ctx.runtime, {}, fakeTask);
       expect(result).toBeUndefined();
     } finally {
       await ctx.close();
@@ -169,7 +167,9 @@ describe('EmbeddedWorkflowService task workers', () => {
     const ctx = await makeRuntime();
     try {
       await EmbeddedWorkflowService.start(ctx.runtime);
-      const worker = ctx.workers.get(WORKFLOW_RUN_TASK_WORKER_NAME)!;
+      const worker = ctx.workers.get(WORKFLOW_RUN_TASK_WORKER_NAME);
+      expect(worker).toBeDefined();
+      if (!worker) throw new Error('expected workflow run worker');
       const badTask = {
         id: 'task-bad' as Task['id'],
         name: WORKFLOW_RUN_TASK_WORKER_NAME,

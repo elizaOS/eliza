@@ -34,12 +34,20 @@ describe("vision trajectory capture", () => {
     const { runtime, trajectoryLogger, llmCalls } = createRuntime();
     const service = new VisionService(runtime);
     const analyzeImage = vi.fn(async () => ({ caption: "A tidy desk." }));
-    (service as any).florence2 = {
-      isInitialized: () => true,
-      analyzeImage,
-    };
+    Object.defineProperty(service, "florence2", {
+      configurable: true,
+      value: {
+        isInitialized: () => true,
+        analyzeImage,
+      },
+    });
 
-    const description = await (service as any).describeSceneWithVLM(
+    const describeSceneWithVLM = Reflect.get(
+      service,
+      "describeSceneWithVLM",
+    ) as (imageUrl: string) => Promise<string>;
+    const description = await describeSceneWithVLM.call(
+      service,
       `data:image/jpeg;base64,${Buffer.from("image").toString("base64")}`,
     );
 

@@ -481,8 +481,8 @@ async function seedClaudeTrustForWorkdirUnsafe(
 export function getCoordinator(
   runtime: IAgentRuntime,
 ): SwarmCoordinator | undefined {
-  const ptyService = runtime.getService("PTY_SERVICE") as unknown as
-    | PTYService
+  const ptyService = runtime.getService("PTY_SERVICE") as
+    | (Service & PTYService)
     | undefined;
   return ptyService?.coordinator ?? undefined;
 }
@@ -612,7 +612,7 @@ export class PTYService {
     const servicesMap = runtime.services as Map<string, Service[]> | undefined;
     const existing = servicesMap?.get?.("SWARM_COORDINATOR");
     if (existing && existing.length > 0) {
-      service.coordinator = existing[0] as unknown as SwarmCoordinator;
+      service.coordinator = existing[0] as Service & SwarmCoordinator;
       logger.info(
         "[PTYService] SwarmCoordinator already registered, skipping duplicate start",
       );
@@ -628,7 +628,7 @@ export class PTYService {
         // We bypass registerService() (which would call start() again) and
         // write directly to the services map that getService() reads from.
         servicesMap?.set?.("SWARM_COORDINATOR", [
-          coordinator as unknown as Service,
+          coordinator as Service & SwarmCoordinator,
         ]);
 
         logger.info("[PTYService] SwarmCoordinator wired and started");
@@ -649,8 +649,8 @@ export class PTYService {
   }
 
   static async stopRuntime(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService("PTY_SERVICE") as unknown as
-      | PTYService
+    const service = runtime.getService("PTY_SERVICE") as
+      | (Service & PTYService)
       | undefined;
     if (service) {
       await service.stop();

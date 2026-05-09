@@ -1,5 +1,6 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { readJson, type JsonValue } from "../helpers/json-body";
 import { NONEXISTENT_UUID } from "../helpers/test-data";
 
 /**
@@ -10,11 +11,16 @@ import { NONEXISTENT_UUID } from "../helpers/test-data";
  */
 setDefaultTimeout(15_000);
 
+type HealthResponse = {
+  status: string;
+  timestamp: number;
+};
+
 describe("Health API", () => {
   test("GET /api/health returns 200 with status ok", async () => {
     const response = await api.get("/api/health");
     expect(response.status).toBe(200);
-    const body = (await response.json()) as any;
+    const body = await readJson<HealthResponse>(response);
     expect(body.status).toBe("ok");
     expect(typeof body.timestamp).toBe("number");
   });
@@ -141,7 +147,7 @@ describe("Credits Summary API", () => {
       authenticated: true,
     });
     expect(response.status).toBe(200);
-    const body = (await response.json()) as any;
+    const body = await readJson<JsonValue>(response);
     expect(body).toBeTruthy();
   });
 });

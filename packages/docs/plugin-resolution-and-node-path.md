@@ -136,6 +136,6 @@ This is a compatibility alias for the same drift check used by older sprint tick
 Because all packages resolve via `workspace:*`, local modifications are live the moment you restart `bun run dev`.
 **Example proof-of-life workflow**:
 1. Open `eliza/packages/core/src/index.ts` (`@elizaos/core`) and add a `console.log("Hello from vendored core!");`.
-2. Open `eliza/plugins/plugin-sql/typescript/src/index.ts` and add `console.log("Hello from vendored plugin!");`.
+2. Open `eliza/plugins/plugin-sql/src/index.ts` and add `console.log("Hello from vendored plugin!");`.
 3. Run `bun run dev` at the root.
 4. You will immediately see both logs without needing `npm link`, custom `NODE_PATH` patches, or cache-busting. The changes are resolved automatically by Bun workspaces.

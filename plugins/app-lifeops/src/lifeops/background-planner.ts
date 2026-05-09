@@ -299,6 +299,76 @@ function emptyPayloadFor(_action: ApprovalAction): ApprovalPayload | null {
   return null;
 }
 
+function stringOrNull(record: Record<string, unknown>, key: string): string | null {
+  const value = record[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value
+    : null;
+}
+
+function coerceTravelSearch(
+  value: unknown,
+): TravelBookingPayloadFields["search"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const origin = stringOrNull(record, "origin");
+  const destination = stringOrNull(record, "destination");
+  const departureDate = stringOrNull(record, "departureDate");
+  if (!origin || !destination || !departureDate) return null;
+  const passengers =
+    typeof record.passengers === "number" && Number.isFinite(record.passengers)
+      ? Math.max(1, Math.floor(record.passengers))
+      : undefined;
+  return {
+    origin,
+    destination,
+    departureDate,
+    returnDate: stringOrNull(record, "returnDate") ?? undefined,
+    passengers,
+  };
+}
+
+function coerceTravelPassengers(
+  value: unknown,
+): TravelBookingPayloadFields["passengers"] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const record = entry as Record<string, unknown>;
+    const givenName = stringOrNull(record, "givenName");
+    const familyName = stringOrNull(record, "familyName");
+    const bornOn = stringOrNull(record, "bornOn");
+    if (!givenName || !familyName || !bornOn) return [];
+    return [
+      {
+        offerPassengerId: stringOrNull(record, "offerPassengerId"),
+        givenName,
+        familyName,
+        bornOn,
+        email: stringOrNull(record, "email"),
+        phoneNumber: stringOrNull(record, "phoneNumber"),
+        title: stringOrNull(record, "title"),
+        gender: stringOrNull(record, "gender"),
+      },
+    ];
+  });
+}
+
+function coerceTravelCalendarSync(
+  value: unknown,
+): TravelBookingPayloadFields["calendarSync"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  return {
+    enabled: record.enabled === true,
+    calendarId: stringOrNull(record, "calendarId"),
+    title: stringOrNull(record, "title"),
+    description: stringOrNull(record, "description"),
+    location: stringOrNull(record, "location"),
+    timeZone: stringOrNull(record, "timeZone"),
+  };
+}
+
 function coercePayload(
   action: ApprovalAction,
   rawPayload: unknown,
@@ -393,26 +463,9 @@ function coercePayload(
         record.kind === "ground"
           ? record.kind
           : null;
-      const search =
-        record.search &&
-        typeof record.search === "object" &&
-        !Array.isArray(record.search)
-          ? record.search
-          : null;
-      const passengers = Array.isArray(record.passengers)
-        ? record.passengers.filter(
-            (value): value is Record<string, unknown> =>
-              Boolean(value) &&
-              typeof value === "object" &&
-              !Array.isArray(value),
-          )
-        : [];
-      const calendarSync =
-        record.calendarSync &&
-        typeof record.calendarSync === "object" &&
-        !Array.isArray(record.calendarSync)
-          ? record.calendarSync
-          : null;
+      const search = coerceTravelSearch(record.search);
+      const passengers = coerceTravelPassengers(record.passengers);
+      const calendarSync = coerceTravelCalendarSync(record.calendarSync);
       if (
         !provider ||
         !itineraryRef ||
@@ -438,14 +491,9 @@ function coercePayload(
           record.orderType === "hold" || record.orderType === "instant"
             ? record.orderType
             : null,
-        // Planner output is shaped by the LLM; downstream booking flow
-        // re-validates each field before any real Duffel call. Cast through
-        // unknown to satisfy the closed TravelBookingPayloadFields shapes.
-        search: search as TravelBookingPayloadFields["search"],
-        passengers:
-          passengers as unknown as TravelBookingPayloadFields["passengers"],
-        calendarSync:
-          calendarSync as unknown as TravelBookingPayloadFields["calendarSync"],
+        search,
+        passengers,
+        calendarSync,
         summary: typeof record.summary === "string" ? record.summary : null,
       };
     }

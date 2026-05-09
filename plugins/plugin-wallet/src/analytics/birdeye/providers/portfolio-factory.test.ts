@@ -9,7 +9,7 @@ import {
 const WALLET = "So11111111111111111111111111111111111111112";
 
 function createRuntime(service: unknown): IAgentRuntime {
-  return {
+  const runtime = {
     getSetting: vi.fn((key: string) => {
       if (key === "BIRDEYE_WALLET_ADDR") return WALLET;
       if (key === "BIRDEYE_CHAIN") return "solana";
@@ -22,7 +22,9 @@ function createRuntime(service: unknown): IAgentRuntime {
       log: vi.fn(),
       debug: vi.fn(),
     },
-  } as unknown as IAgentRuntime;
+  };
+
+  return runtime as unknown as IAgentRuntime;
 }
 
 describe("Birdeye portfolio provider factory", () => {

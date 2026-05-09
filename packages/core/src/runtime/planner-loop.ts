@@ -106,6 +106,14 @@ export async function runPlannerLoop(
 	const requireNonTerminalToolCall =
 		params.requireNonTerminalToolCall === true &&
 		hasExposedNonTerminalTool(params.tools);
+	// Tracks the most recent planner output's *explicit* `messageToUser` so the
+	// post-tool evaluator gate can use it as the final response when the
+	// trajectory ends cleanly. EXPLICIT means the planner's structured output
+	// carried a `messageToUser` field — not a fallback inferred from a stray
+	// `text` field on a native tool-call return (which can be a pre-tool thought
+	// rather than a final answer). The gate refuses ambiguous signals to avoid
+	// surfacing a thought as the user-facing reply.
+	let lastPlannerExplicitMessageToUser: string | undefined;
 
 	for (
 		let iteration = 1;
@@ -133,6 +141,18 @@ export async function runPlannerLoop(
 				parentStageId: params.parentStageId,
 				iteration,
 			});
+			// Treat `messageToUser` as authoritative ONLY when the planner's structured
+			// output carried it as an explicit field. The native-tool-call code path
+			// in `parsePlannerOutput` falls back to `raw.text`, but in native mode
+			// `text` can be a pre-tool thought rather than a final answer — too
+			// ambiguous to drive the gate. We therefore probe `raw.messageToUser`
+			// directly here; native-mode returns won't have that key, so the gate
+			// stays inert in that path.
+			const explicit = plannerOutput.raw?.messageToUser;
+			lastPlannerExplicitMessageToUser =
+				typeof explicit === "string" && explicit.trim().length > 0
+					? explicit
+					: undefined;
 
 			if (plannerOutput.toolCalls.length === 0) {
 				if (
@@ -327,6 +347,59 @@ export async function runPlannerLoop(
 			iteration,
 			logger: params.runtime.logger,
 		});
+
+		// Conservative gate: when a successful tool drained the queue and the
+		// just-completed planner call gave us a clean explicit `messageToUser`,
+		// the in-loop evaluator's job (decide FINISH / NEXT_RECOMMENDED /
+		// CONTINUE) collapses to FINISH with success=true. Synthesize that
+		// decision and skip ONLY the in-loop `runEvaluator` LLM call.
+		//
+		// The post-turn registered evaluator step (`runPostTurnEvaluators` in
+		// `services/evaluator.ts`, dispatched from `services/message.ts` after
+		// `runPlannerLoop` returns) runs regardless of how the loop terminates
+		// and is unaffected by this gate. See `tryGateEvaluator` doc-comment for
+		// the full scope contract.
+		//
+		// Falls through to the real evaluator on any ambiguity (failure, more
+		// queued tools, missing/unsafe message).
+		const gateStartedAt = Date.now();
+		const gated = tryGateEvaluator({
+			trajectory,
+			failures,
+			lastPlannerExplicitMessageToUser,
+		});
+		if (gated) {
+			trajectory.evaluatorOutputs.push(gated);
+			trajectory.context = appendEvaluationEvent({
+				context: trajectory.context,
+				iteration,
+				evaluator: gated,
+			});
+			// Recorder-stage parity: emit a synthesized "evaluation" stage so
+			// trajectory replay tools see the iteration's outcome on the same
+			// timeline slot they would for a model-produced evaluation. The
+			// stage carries `gated: true` + `llmCallSkipped: true` so reviewers
+			// can distinguish gated decisions from real evaluator calls.
+			await recordGatedEvaluationStage({
+				recorder: params.recorder,
+				trajectoryId: params.trajectoryId,
+				parentStageId: params.parentStageId,
+				iteration,
+				startedAt: gateStartedAt,
+				endedAt: Date.now(),
+				output: gated,
+				logger: params.runtime.logger,
+			});
+			return {
+				status: "finished",
+				trajectory,
+				evaluator: gated,
+				finalMessage: userSafeFinalMessage(
+					gated.messageToUser ?? latestToolResultText(trajectory),
+					trajectory,
+				),
+			};
+		}
 
 		const evaluator = await evaluateTrajectory(params, trajectory, iteration);
 		trajectory.evaluatorOutputs.push(evaluator);
@@ -1052,6 +1125,54 @@ function compactText(value: string, maxLength: number): string {
 	return `${text.slice(0, headLength)} ...[${text.length - headLength - tailLength} chars compacted]... ${text.slice(-tailLength)}`;
 }
 
+/**
+ * Synthesized recorder stage for the gated path. Emits a `kind: "evaluation"`
+ * entry so the recorder timeline shows the iteration's outcome on the same
+ * slot a model-produced evaluation would have occupied. The stage carries
+ * `gated: true`, `llmCallSkipped: true`, and `reason: "explicit_terminal_reply"`
+ * so replay/debug tools can distinguish gated decisions from real evaluator
+ * calls without a string-match against the thought marker. No `model` block
+ * is included — no LLM call happened.
+ */
+async function recordGatedEvaluationStage(args: {
+	recorder?: TrajectoryRecorder;
+	trajectoryId?: string;
+	parentStageId?: string;
+	iteration: number;
+	startedAt: number;
+	endedAt: number;
+	output: EvaluatorOutput;
+	logger?: PlannerRuntime["logger"];
+}): Promise<void> {
+	if (!args.recorder || !args.trajectoryId) return;
+	try {
+		const stage: RecordedStage = {
+			stageId: `stage-eval-iter-${args.iteration}-${args.startedAt}-gated`,
+			kind: "evaluation",
+			iteration: args.iteration,
+			parentStageId: args.parentStageId,
+			startedAt: args.startedAt,
+			endedAt: args.endedAt,
+			latencyMs: args.endedAt - args.startedAt,
+			evaluation: {
+				success: args.output.success,
+				decision: args.output.decision,
+				thought: args.output.thought,
+				messageToUser: args.output.messageToUser,
+				gated: true,
+				llmCallSkipped: true,
+				reason: "explicit_terminal_reply",
+			},
+		};
+		await args.recorder.recordStage(args.trajectoryId, stage);
+	} catch (err) {
+		args.logger?.warn?.(
+			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
+			"[TrajectoryRecorder] failed to record gated evaluation stage",
+		);
+	}
+}
+
 async function recordCompactionStage(args: {
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
@@ -1185,19 +1306,19 @@ function extractUsage(
 		completionTokens,
 		totalTokens,
 	};
-	const usageRecord = usage as unknown as Record<string, unknown>;
-	const cacheRead = usageRecord.cacheReadInputTokens;
+	const cacheRead = usage.cacheReadInputTokens;
 	if (typeof cacheRead === "number") {
 		out.cacheReadInputTokens = cacheRead;
 	} else {
 		// Fall back to OpenAI plugin's `cachedPromptTokens` shape, which adapters
 		// emitted before the shared schema landed.
-		const cachedPrompt = usageRecord.cachedPromptTokens;
+		const cachedPrompt =
+			"cachedPromptTokens" in usage ? usage.cachedPromptTokens : undefined;
 		if (typeof cachedPrompt === "number") {
 			out.cacheReadInputTokens = cachedPrompt;
 		}
 	}
-	const cacheCreation = usageRecord.cacheCreationInputTokens;
+	const cacheCreation = usage.cacheCreationInputTokens;
 	if (typeof cacheCreation === "number") {
 		out.cacheCreationInputTokens = cacheCreation;
 	}
@@ -1734,6 +1855,83 @@ function latestToolResultText(
 	}
 	return undefined;
 }
+
+/**
+ * Decide whether the planner-loop can synthesize a FINISH evaluator output and
+ * skip ONLY the in-loop LLM trajectory-decision call (`runEvaluator`) for the
+ * current iteration.
+ *
+ * Scope — what this skips and what it does NOT skip
+ * --------------------------------------------------
+ * SKIPS: the in-loop `runEvaluator` call (`packages/core/src/runtime/evaluator.ts`),
+ * which makes one LLM call to decide FINISH / NEXT_RECOMMENDED / CONTINUE for
+ * the planner trajectory.
+ *
+ * DOES NOT skip: the post-turn registered evaluator step. `runtime.evaluators`
+ * are dispatched by `EvaluatorService.run` via `runPostTurnEvaluators`
+ * (`packages/core/src/services/evaluator.ts:446`), called from
+ * `services/message.ts` AFTER `runPlannerLoop` returns. Those registered
+ * evaluators run regardless of how the loop terminated, including via this
+ * gate. Memory hooks, telemetry, and `ALWAYS_AFTER` actions in the same
+ * end-of-chain block are likewise unaffected.
+ *
+ * The evaluator's three trajectory-decision outcomes (FINISH, NEXT_RECOMMENDED,
+ * CONTINUE) collapse to FINISH/success=true when ALL of the following hold
+ * after a tool execution:
+ *
+ *   1. The just-completed tool result is `success: true`.
+ *   2. The plan queue is drained — no tools remain to evaluate.
+ *   3. No failures have accumulated (no recent error to investigate).
+ *   4. The most-recent planner output supplied an EXPLICIT `messageToUser`
+ *      field in its structured output (NOT a fallback inferred from a stray
+ *      `text` on a native tool-call return — that path can carry a pre-tool
+ *      thought rather than a final answer, which would be unsafe to surface).
+ *   5. That `messageToUser` is not a tool/function-syntax leak (the evaluator's
+ *      own prompt rules say leaked syntax should force CONTINUE; we honor the
+ *      same constraint by reusing `isUnsafeUserVisibleText`).
+ *
+ * On any single ambiguity the function returns `null` and the caller falls
+ * through to the full evaluator path. Returning a synthesized `EvaluatorOutput`
+ * preserves trajectory observability: `appendEvaluationEvent` still records
+ * the decision in the context event stream, `trajectory.evaluatorOutputs` still
+ * gets the entry, and the loop's return value still carries `evaluator` in the
+ * shape consumers (`subPlannerResultToPlannerToolResult` in `services/message.ts`)
+ * read — `success` and `messageToUser`. Recorder stage entries for "evaluation"
+ * are NOT emitted in the gated case; the recorder timeline shows tool stages
+ * only for that iteration.
+ *
+ * Cost win: roughly 50% of LLM calls on "tool-then-explicit-reply" turns where
+ * the planner committed a `messageToUser` field at plan-time. Native-mode
+ * native-tool-call returns without an explicit `messageToUser` field do NOT
+ * trigger the gate — those calls remain on the full evaluator path.
+ */
+function tryGateEvaluator(args: {
+	trajectory: PlannerTrajectory;
+	failures: readonly FailureLike[];
+	lastPlannerExplicitMessageToUser: string | undefined;
+}): EvaluatorOutput | null {
+	const latestStep = args.trajectory.steps[args.trajectory.steps.length - 1];
+	const latestResult = latestStep?.result;
+	if (!latestResult || latestResult.success !== true) return null;
+	if (args.trajectory.plannedQueue.length > 0) return null;
+	if (args.failures.length > 0) return null;
+	const message = args.lastPlannerExplicitMessageToUser?.trim();
+	if (!message) return null;
+	if (isUnsafeUserVisibleText(message)) return null;
+
+	return {
+		success: true,
+		decision: "FINISH",
+		thought: GATED_EVALUATOR_THOUGHT,
+		messageToUser: message,
+	};
+}
+
+/** Marker the gate stamps onto synthesized EvaluatorOutputs so trajectory
+ * dumps and replay tools can identify gated (i.e. evaluator-skipped) decisions
+ * cheaply. */
+export const GATED_EVALUATOR_THOUGHT =
+	"Gated FINISH: queue drained successfully with a clean planner messageToUser; evaluator LLM call skipped.";
 
 function userSafeFinalMessage(
 	message: string | undefined,

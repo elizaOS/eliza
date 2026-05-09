@@ -156,6 +156,10 @@ function readString(value: unknown): string | null {
     : null;
 }
 
+function toJsonValue(value: unknown): JsonValue {
+  return JSON.parse(JSON.stringify(value ?? null));
+}
+
 function readOriginRoomId(
   task: TaskContext | null,
   metadata: Record<string, unknown>,
@@ -260,7 +264,7 @@ function normalizeMemoryHit(
         : null,
     metadata:
       memory.metadata && typeof memory.metadata === "object"
-        ? (memory.metadata as unknown as JsonValue)
+        ? toJsonValue(memory.metadata)
         : null,
   };
 }
@@ -342,7 +346,7 @@ async function listActiveWorkspaceContext(
     } as Memory,
     { values: {}, data: {}, text: "" },
   );
-  return (result.data ?? {}) as JsonValue;
+  return toJsonValue(result.data ?? {});
 }
 
 /**
