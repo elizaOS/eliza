@@ -124,6 +124,9 @@ describe('EmbeddedN8nService', () => {
         });
         const execution = await service.executeWorkflow(created.id);
         const item = execution.data?.resultData?.runData?.Set?.[0]?.data?.main?.[0]?.[0]?.json;
+        if (execution.status !== 'success') throw new Error('Expected successful embedded execution');
+        if (item?.source !== 'embedded') throw new Error('Expected Set node to add source');
+        if (item?.body?.ok !== true) throw new Error('Expected HTTP response body to be preserved');
         console.log('RESULT:' + JSON.stringify({ status: execution.status, item }));
       } finally {
         await service.stop();
@@ -135,26 +138,16 @@ describe('EmbeddedN8nService', () => {
     const proc = Bun.spawn([process.execPath, '-e', script], {
       cwd: pluginRoot,
       env: { ...process.env, N8N_DIAGNOSTICS_ENABLED: 'false' },
-      stdout: 'pipe',
+      stdout: 'ignore',
       stderr: 'pipe',
     });
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
+    const [stderr, exitCode] = await Promise.all([
       new Response(proc.stderr).text(),
       proc.exited,
     ]);
 
     expect(stderr).not.toContain('HTTP Request node requires');
     expect(exitCode).toBe(0);
-
-    const resultLine = stdout
-      .split('\n')
-      .find((line) => line.startsWith('RESULT:'));
-    expect(resultLine).toBeDefined();
-    const result = JSON.parse(resultLine!.slice('RESULT:'.length));
-    expect(result.status).toBe('success');
-    expect(result.item.source).toBe('embedded');
-    expect(result.item.body.ok).toBe(true);
   }, 20_000);
 
   test('persists workflows across embedded service restarts', async () => {
