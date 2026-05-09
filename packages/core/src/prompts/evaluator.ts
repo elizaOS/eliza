@@ -15,6 +15,8 @@ rules:
 - choose NEXT_RECOMMENDED only when one queued tool is clearly still grounded
 - choose CONTINUE when the next step requires new planning
 - messageToUser is optional progress, diagnosis, question, or final output
+- when decision is FINISH after tool use, include messageToUser with the concise user-facing answer or status grounded in the completed tool results
+- do not paste raw tool transcripts, command banners, or internal logs as messageToUser unless the user explicitly asked for raw output
 - copyToClipboard is optional and must include title and content
 - thought is internal and not shown to the user
 
