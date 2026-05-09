@@ -3,6 +3,24 @@ import { writeLocalStorageString } from "../utils/localStorage";
 type ProcessEnv = Record<string, string | undefined>;
 type ProcessShim = { env: ProcessEnv };
 
+function isProcessShim(value: unknown): value is ProcessShim {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    !!Reflect.get(value, "env") &&
+    typeof Reflect.get(value, "env") === "object"
+  );
+}
+
+function readProcessShim(): ProcessShim | undefined {
+  const candidate: unknown = Reflect.get(globalThis, "process");
+  return isProcessShim(candidate) ? candidate : undefined;
+}
+
+function writeProcessShim(processShim: ProcessShim): void {
+  Reflect.set(globalThis, "process", processShim);
+}
+
 function ensureSecretSalt(env: ProcessEnv): void {
   if (env.SECRET_SALT?.trim()) return;
   try {
@@ -18,25 +36,19 @@ function ensureSecretSalt(env: ProcessEnv): void {
 }
 
 export function ensureProcessShim(): void {
-  const g = globalThis as unknown as { process?: ProcessShim };
-  if (!g.process) {
-    g.process = { env: {} as ProcessEnv };
+  const current = readProcessShim();
+  if (!current) {
+    const processShim: ProcessShim = { env: {} };
+    writeProcessShim(processShim);
+    ensureSecretSalt(processShim.env);
+    return;
   }
-  ensureSecretSalt(g.process.env);
+  ensureSecretSalt(current.env);
 }
 
 ensureProcessShim();
 
-type ProcessLike = {
-  env: Record<string, string | undefined>;
-};
-
-const g = globalThis as unknown as {
-  process?: ProcessLike;
-};
-
-if (!g.process) {
-  g.process = { env: {} as ProcessEnv };
-} else if (!g.process.env) {
-  g.process.env = {} as ProcessEnv;
+const processShim = readProcessShim();
+if (!processShim) {
+  writeProcessShim({ env: {} });
 }

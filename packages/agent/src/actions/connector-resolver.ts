@@ -14,6 +14,7 @@ import type {
   RelationshipsGraphService,
   RelationshipsPersonSummary,
   Room,
+  Service,
   UUID,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
@@ -58,34 +59,18 @@ export type CrossPlatformConversationView = {
 export async function getGraphService(
   runtime: IAgentRuntime,
 ): Promise<RelationshipsGraphService | null> {
-  return (
-    (runtime.getService(
-      "relationships",
-    ) as unknown as RelationshipsGraphService | null) ?? null
+  return runtime.getService<Service & RelationshipsGraphService>(
+    "relationships",
   );
 }
 
 /** Returns the set of connector source names that have active send handlers. */
 export function getActiveConnectors(runtime: IAgentRuntime): Set<string> {
   const active = new Set<string>();
-  const rt = runtime as unknown as {
-    getMessageConnectors?: () => Array<{ source?: string }>;
-    sendHandlers?: Map<string, unknown>;
-  };
 
-  if (typeof rt.getMessageConnectors === "function") {
-    for (const connector of rt.getMessageConnectors()) {
-      if (typeof connector.source === "string" && connector.source.trim()) {
-        active.add(connector.source);
-      }
-    }
-    return active;
-  }
-
-  // Legacy compatibility: older runtimes only expose the backing sendHandlers map.
-  if (rt.sendHandlers) {
-    for (const key of rt.sendHandlers.keys()) {
-      active.add(key);
+  for (const connector of runtime.getMessageConnectors()) {
+    if (typeof connector.source === "string" && connector.source.trim()) {
+      active.add(connector.source);
     }
   }
   return active;

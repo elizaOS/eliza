@@ -1,4 +1,4 @@
-import { type IAgentRuntime, logger, type Plugin, type ServiceClass } from "@elizaos/core";
+import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { mcpAction } from "./actions/mcp";
 import { provider } from "./provider";
 import { McpService } from "./service";
@@ -36,7 +36,7 @@ const mcpPlugin: Plugin = {
     logger.info("Initializing MCP plugin...");
   },
 
-  services: [McpService as unknown as ServiceClass],
+  services: [McpService],
   actions: [mcpAction],
   providers: [provider],
 };

@@ -14,17 +14,13 @@ import {
   createCharacter,
   createMessageMemory,
   type IAgentRuntime,
-  type Plugin,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
-import sqlPlugin from "@elizaos/plugin-sql";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 
 import { v4 as uuidv4 } from "uuid";
-
-// Type assertion needed due to namespace import inference
-const typedSqlPlugin = sqlPlugin as unknown as Plugin;
 
 // Character configuration
 // Pass environment variables via character.secrets so getSetting() can find them
@@ -59,7 +55,7 @@ async function getRuntime(): Promise<IAgentRuntime> {
 
       const newRuntime = new AgentRuntime({
         character,
-        plugins: [typedSqlPlugin, openaiPlugin],
+        plugins: [sqlPlugin, openaiPlugin],
       });
 
       await newRuntime.initialize();

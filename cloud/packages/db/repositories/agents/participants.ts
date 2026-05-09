@@ -4,10 +4,11 @@
  * Handles all database operations for participants without spinning up runtime.
  */
 
-import type { Participant } from "@elizaos/core";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, type InferSelectModel, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "@/db/helpers";
 import { participantTable } from "@/db/schemas/eliza";
+
+export type ParticipantRecord = InferSelectModel<typeof participantTable>;
 
 /**
  * Input for creating a new participant.
@@ -17,6 +18,13 @@ export interface CreateParticipantInput {
   entityId: string;
   agentId: string;
   roomState?: Record<string, unknown>;
+}
+
+function requireParticipant(row: ParticipantRecord | undefined, context: string): ParticipantRecord {
+  if (!row) {
+    throw new Error(`Participant not found after ${context}`);
+  }
+  return row;
 }
 
 /**
@@ -30,13 +38,13 @@ export class ParticipantsRepository {
   /**
    * Gets all participants for a room.
    */
-  async findByRoomId(roomId: string): Promise<Participant[]> {
+  async findByRoomId(roomId: string): Promise<ParticipantRecord[]> {
     const results = await dbRead
       .select()
       .from(participantTable)
       .where(eq(participantTable.roomId, roomId));
 
-    return results as unknown as Participant[];
+    return results;
   }
 
   /**
@@ -131,7 +139,7 @@ export class ParticipantsRepository {
    * @param input - Participant creation input (entityId should be user's database UUID).
    * @returns Existing participant if already present, otherwise new participant.
    */
-  async create(input: CreateParticipantInput): Promise<Participant> {
+  async create(input: CreateParticipantInput): Promise<ParticipantRecord> {
     // Check if already exists
     const exists = await this.isParticipant(input.roomId, input.entityId);
     if (exists) {
@@ -146,7 +154,7 @@ export class ParticipantsRepository {
           ),
         )
         .limit(1);
-      return existing[0] as unknown as Participant;
+      return requireParticipant(existing[0], "existence check");
     }
 
     const results = await dbWrite
@@ -160,7 +168,7 @@ export class ParticipantsRepository {
       })
       .returning();
 
-    return (results as unknown as Participant[])[0];
+    return requireParticipant(results[0], "create");
   }
 
   /**
@@ -198,14 +206,14 @@ export class ParticipantsRepository {
     roomId: string,
     entityId: string,
     roomState: Record<string, unknown>,
-  ): Promise<Participant> {
+  ): Promise<ParticipantRecord> {
     const results = await dbWrite
       .update(participantTable)
       .set({ roomState: JSON.stringify(roomState) })
       .where(and(eq(participantTable.roomId, roomId), eq(participantTable.entityId, entityId)))
       .returning();
 
-    return (results as unknown as Participant[])[0];
+    return requireParticipant(results[0], "room state update");
   }
 }
 

@@ -50,6 +50,7 @@ export {
 	type ServiceCapability,
 	type ServiceRoutingConfig,
 } from "./contracts/service-routing";
+export * from "./contracts/wallet";
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";

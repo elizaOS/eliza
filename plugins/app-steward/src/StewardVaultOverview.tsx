@@ -5,7 +5,7 @@ import type {
   StewardWebhookEvent,
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 import { Button } from "@elizaos/ui";
 import { Copy, RefreshCw, Shield } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
