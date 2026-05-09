@@ -17,6 +17,7 @@
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/plugin-workflow": "workspace:*",
     "elysia": "^1.1.0",
     "ioredis": "^5.10.1",
     "zod": "^4.4.3"

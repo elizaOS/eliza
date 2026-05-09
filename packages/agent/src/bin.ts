@@ -31,7 +31,7 @@ import { ensureMobileDeviceBridgeInferenceHandlers as __elizaMobileDeviceBridgeB
 // mobile bundle. The adapter imports each app package's `/plugin` subpath,
 // applies the agent-side hosted-app session gate, and Object.assigns those
 // modules into STATIC_ELIZA_PLUGINS so plugin-resolver.ts picks them up before
-// falling through to a runtime `import("@elizaos/app-*/plugin")` that has no
+// falling through to a wildcard app plugin import that has no
 // node_modules tree to resolve on-device.
 //
 // Dynamic + try/catch instead of a static `import` so non-mobile builds

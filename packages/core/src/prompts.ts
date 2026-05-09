@@ -694,6 +694,7 @@ Domain routing (when context is available):
 - X/Twitter DMs -> messaging + connectors; X/Twitter timeline/feed/mentions/post search -> social_posting + connectors (not generic web browsing)
 - desktop/native-app/browser/Finder/window screenshots or control -> browser or automation (not media alone)
 - LifeOps browser bridge/companion/extension/tab/settings -> browser; settings/connectors as secondary when configuration/connection state is asked
+- durable owner facts and stable personal preferences, especially travel/booking preferences ("remember that I prefer aisle seats", "save my hotel preferences") -> memory; add PROFILE as a parent action hint when possible; do not route these to documents unless the user explicitly asks to create/search/edit a document or file
 
 Otherwise: list every relevant context id; planning will run and tools will be selected from those contexts. If only general is available and a tool is still needed, use plan.contexts=["general"]. Include plan.reply only on the simple path.
 
