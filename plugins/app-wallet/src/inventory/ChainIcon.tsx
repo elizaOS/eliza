@@ -1,5 +1,5 @@
 import type * as React from "react";
-import { resolveChainKey } from "./chainConfig";
+import { resolveChainKey } from "./chainConfig.ts";
 
 export type ChainIconSize = "sm" | "md" | "lg";
 

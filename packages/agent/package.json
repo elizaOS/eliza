@@ -46,8 +46,9 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "exports": {
-    "./package.json": "./package.json",
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./api/*": "./src/api/*.ts",
+    "./package.json": "./package.json"
   },
   "publishConfig": {
     "access": "public",
