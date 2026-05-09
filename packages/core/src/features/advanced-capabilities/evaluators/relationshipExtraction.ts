@@ -1,4 +1,3 @@
-import { requireEvaluatorSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import type { RelationshipsService } from "../../../services/relationships.ts";
 import type {
@@ -12,9 +11,6 @@ import type {
 } from "../../../types/index.ts";
 import { ActionMode } from "../../../types/index.ts";
 import { stringToUuid } from "../../../utils.ts";
-
-// Get text content from centralized specs
-const spec = requireEvaluatorSpec("RELATIONSHIP_EXTRACTION");
 
 interface PlatformIdentity {
 	platform: string;
@@ -166,9 +162,14 @@ const relationshipExtractionHandler = async (
  * sees them inline. At that point this action can be deleted.
  */
 export const relationshipExtractionAction: Action = {
-	name: spec.name,
-	description: spec.description,
-	similes: spec.similes ? [...spec.similes] : [],
+	name: "RELATIONSHIP_EXTRACTION",
+	description:
+		"Passively extracts and updates relationship information from conversations. Identifies platform identities, relationship indicators, and mentioned third parties.",
+	similes: [
+		"RELATIONSHIP_ANALYZER",
+		"SOCIAL_GRAPH_BUILDER",
+		"CONTACT_EXTRACTOR",
+	],
 	mode: ActionMode.ALWAYS_BEFORE,
 	modePriority: 50,
 	examples: [],
