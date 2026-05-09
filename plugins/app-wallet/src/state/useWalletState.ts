@@ -36,8 +36,8 @@ import {
   type RegistryStatus,
   type WalletExportResult,
   type WhitelistStatus,
-} from "@elizaos/app-core";
-import { confirmDesktopAction } from "@elizaos/shared";
+} from "@elizaos/ui";
+import { confirmDesktopAction } from "@elizaos/ui";
 import {
   loadBrowserEnabled,
   loadComputerUseEnabled,

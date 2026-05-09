@@ -894,7 +894,7 @@ export interface TrajectoryConfig {
 }
 
 export type TrajectoryExportOptions = CoreTrajectoryExportOptions & {
-  format: TrajectoryExportFormat;
+  format: TrajectoryExportFormat | "jsonl";
 };
 
 // ERC-8004 Registry & Drop types
