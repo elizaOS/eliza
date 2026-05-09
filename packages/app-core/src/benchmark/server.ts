@@ -545,8 +545,7 @@ export async function startBenchmarkServer() {
   // socialAlphaProvider, and balancedTrustScoreCalculator — i.e. the actual
   // TS implementation that the Python harness used to port. Loading it here
   // makes the eliza TS agent the surface under test.
-  const benchName =
-    process.env.ELIZA_BENCH_NAME?.trim().toLowerCase() ?? "";
+  const benchName = process.env.ELIZA_BENCH_NAME?.trim().toLowerCase() ?? "";
   const enableSocialAlphaPlugin =
     process.env.ELIZA_BENCH_LOAD_SOCIAL_ALPHA === "true" ||
     benchName === "social_alpha" ||
@@ -563,7 +562,9 @@ export async function startBenchmarkServer() {
       const socialAlphaPlugin =
         socialAlphaModule.socialAlphaPlugin ?? socialAlphaModule.default;
       if (socialAlphaPlugin) {
-        plugins.push(toPlugin(socialAlphaPlugin, "@elizaos/plugin-social-alpha"));
+        plugins.push(
+          toPlugin(socialAlphaPlugin, "@elizaos/plugin-social-alpha"),
+        );
         elizaLogger.info(
           "[bench] Loaded LLM plugin: @elizaos/plugin-social-alpha (services=CommunityInvestorService; providers=socialAlphaProvider)",
         );
