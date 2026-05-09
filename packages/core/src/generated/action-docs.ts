@@ -69,10 +69,38 @@ export type ProviderDoc = {
 	dynamic?: boolean;
 };
 
+export type EvaluatorDocMessageContent = {
+	text: string;
+	type?: string;
+};
+
+export type EvaluatorDocMessage = {
+	name: string;
+	content: EvaluatorDocMessageContent;
+};
+
+export type EvaluatorDocExample = {
+	prompt: string;
+	messages: readonly EvaluatorDocMessage[];
+	outcome: string;
+};
+
+export type EvaluatorDoc = {
+	name: string;
+	description: string;
+	descriptionCompressed?: string;
+	compressedDescription?: string;
+	similes?: readonly string[];
+	alwaysRun?: boolean;
+	examples?: readonly EvaluatorDocExample[];
+};
+
 export const coreActionsSpecVersion = "1.0.0" as const;
 export const allActionsSpecVersion = "1.0.0" as const;
 export const coreProvidersSpecVersion = "1.0.0" as const;
 export const allProvidersSpecVersion = "1.0.0" as const;
+export const coreEvaluatorsSpecVersion = "1.0.0" as const;
+export const allEvaluatorsSpecVersion = "1.0.0" as const;
 
 export const coreActionsSpec = {
 	version: "1.0.0",
@@ -6902,6 +6930,352 @@ export const allProvidersSpec = {
 		},
 	],
 } as const satisfies { version: string; providers: readonly ProviderDoc[] };
+export const coreEvaluatorsSpec = {
+	version: "1.0.0",
+	evaluators: [
+		{
+			name: "REFLECTION",
+			description:
+				"Generate a self-reflective thought on the conversation, then extract facts and relationships between entities in the conversation. Reflects on agent behavior and provides feedback for improvement.",
+			similes: [
+				"REFLECT",
+				"SELF_REFLECT",
+				"EVALUATE_INTERACTION",
+				"ASSESS_SITUATION",
+			],
+			alwaysRun: false,
+			examples: [
+				{
+					prompt:
+						"Agent Name: Sarah\nAgent Role: Community Manager\nRoom Type: group\nCurrent Room: general-chat\nMessage Sender: John (user-123)",
+					messages: [
+						{
+							name: "John",
+							content: {
+								text: "Hey everyone, I'm new here!",
+							},
+						},
+						{
+							name: "Sarah",
+							content: {
+								text: "Welcome John! How did you find our community?",
+							},
+						},
+						{
+							name: "John",
+							content: {
+								text: "Through a friend who's really into AI",
+							},
+						},
+					],
+					outcome:
+						'thought: "I\'m engaging appropriately with a new community member, maintaining a welcoming and professional tone. My questions are helping to learn more about John and make him feel welcome."\nfacts[0]:\n  claim: John is new to the community\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: John found the community through a friend interested in AI\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: sarah-agent\n  targetEntityId: user-123\n  tags[0]: group_interaction',
+				},
+				{
+					prompt:
+						"Agent Name: Alex\nAgent Role: Tech Support\nRoom Type: group\nCurrent Room: tech-help\nMessage Sender: Emma (user-456)",
+					messages: [
+						{
+							name: "Emma",
+							content: {
+								text: "My app keeps crashing when I try to upload files",
+							},
+						},
+						{
+							name: "Alex",
+							content: {
+								text: "Have you tried clearing your cache?",
+							},
+						},
+						{
+							name: "Emma",
+							content: {
+								text: "No response...",
+							},
+						},
+						{
+							name: "Alex",
+							content: {
+								text: "Emma, are you still there? We can try some other troubleshooting steps.",
+							},
+						},
+					],
+					outcome:
+						"thought: \"I'm not sure if I'm being helpful or if Emma is frustrated with my suggestions. The lack of response is concerning - maybe I should have asked for more details about the issue first before jumping to solutions.\"\nfacts[0]:\n  claim: Emma is having technical issues with file uploads\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: Emma stopped responding after the first troubleshooting suggestion\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: alex-agent\n  targetEntityId: user-456\n  tags[0]: group_interaction\n  tags[1]: support_interaction\n  tags[2]: incomplete_interaction",
+				},
+				{
+					prompt:
+						"Agent Name: Max\nAgent Role: Discussion Facilitator\nRoom Type: group\nCurrent Room: book-club\nMessage Sender: Lisa (user-789)",
+					messages: [
+						{
+							name: "Lisa",
+							content: {
+								text: "What did everyone think about chapter 5?",
+							},
+						},
+						{
+							name: "Max",
+							content: {
+								text: "The symbolism was fascinating! The red door clearly represents danger.",
+							},
+						},
+						{
+							name: "Max",
+							content: {
+								text: "And did anyone notice how the author used weather to reflect the protagonist's mood?",
+							},
+						},
+						{
+							name: "Max",
+							content: {
+								text: "Plus the foreshadowing in the first paragraph was brilliant!",
+							},
+						},
+						{
+							name: "Max",
+							content: {
+								text: "I also have thoughts about the character development...",
+							},
+						},
+					],
+					outcome:
+						"thought: \"I'm dominating the conversation and not giving others a chance to share their perspectives. I've sent multiple messages in a row without waiting for responses. I need to step back and create space for other members to participate.\"\nfacts[0]:\n  claim: The discussion is about chapter 5 of a book\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: Max has sent 4 consecutive messages without user responses\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: max-agent\n  targetEntityId: user-789\n  tags[0]: group_interaction\n  tags[1]: excessive_interaction",
+				},
+			],
+			descriptionCompressed:
+				"Generate a self-reflective thought on the convo, then extract facts and relationships between entities in the convo. Reflects on agent behavior and provides...",
+		},
+		{
+			name: "RELATIONSHIP_EXTRACTION",
+			description:
+				"Passively extracts and updates relationship information from conversations. Identifies platform identities, relationship indicators, and mentioned third parties.",
+			similes: [
+				"RELATIONSHIP_ANALYZER",
+				"SOCIAL_GRAPH_BUILDER",
+				"CONTACT_EXTRACTOR",
+			],
+			alwaysRun: false,
+			examples: [
+				{
+					prompt: "User introduces themselves with social media",
+					messages: [
+						{
+							name: "{{name1}}",
+							content: {
+								type: "text",
+								text: "Hi, I'm Sarah Chen. You can find me on X @sarahchen_dev",
+							},
+						},
+					],
+					outcome:
+						"Extracts X handle and creates/updates the entity with a platform identity.",
+				},
+			],
+			descriptionCompressed:
+				"Passively extracts and updates relationship info from convos. Identifies platform identities, relationship indicators, and mentioned third parties.",
+		},
+		{
+			name: "MEMORY_SUMMARIZATION",
+			description:
+				"Automatically summarizes conversations to optimize context usage. Compresses conversation history while preserving important information.",
+			similes: [
+				"CONVERSATION_SUMMARY",
+				"CONTEXT_COMPRESSION",
+				"MEMORY_OPTIMIZATION",
+			],
+			alwaysRun: true,
+			examples: [],
+			descriptionCompressed:
+				"Auto summarizes convos to optimize context usage. Compresses convo history while preserving important info.",
+		},
+		{
+			name: "LONG_TERM_MEMORY_EXTRACTION",
+			description:
+				"Extracts long-term facts about users from conversations. Identifies and stores persistent information like preferences, interests, and personal details.",
+			similes: ["MEMORY_EXTRACTION", "FACT_LEARNING", "USER_PROFILING"],
+			alwaysRun: true,
+			examples: [],
+			descriptionCompressed:
+				"Extract long-term facts about users from convos. Identifies and stores persistent info like preferences, interests, and personal details.",
+		},
+	],
+} as const satisfies {
+	version: string;
+	evaluators: readonly EvaluatorDoc[];
+};
+export const allEvaluatorsSpec = {
+	version: "1.0.0",
+	evaluators: [
+		{
+			name: "REFLECTION",
+			description:
+				"Generate a self-reflective thought on the conversation, then extract facts and relationships between entities in the conversation. Reflects on agent behavior and provides feedback for improvement.",
+			similes: [
+				"REFLECT",
+				"SELF_REFLECT",
+				"EVALUATE_INTERACTION",
+				"ASSESS_SITUATION",
+			],
+			alwaysRun: false,
+			examples: [
+				{
+					prompt:
+						"Agent Name: Sarah\nAgent Role: Community Manager\nRoom Type: group\nCurrent Room: general-chat\nMessage Sender: John (user-123)",
+					messages: [
+						{
+							name: "John",
+							content: {
+								text: "Hey everyone, I'm new here!",
+							},
+						},
+						{
+							name: "Sarah",
+							content: {
+								text: "Welcome John! How did you find our community?",
+							},
+						},
+						{
+							name: "John",
+							content: {
+								text: "Through a friend who's really into AI",
+							},
+						},
+					],
+					outcome:
+						'thought: "I\'m engaging appropriately with a new community member, maintaining a welcoming and professional tone. My questions are helping to learn more about John and make him feel welcome."\nfacts[0]:\n  claim: John is new to the community\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: John found the community through a friend interested in AI\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: sarah-agent\n  targetEntityId: user-123\n  tags[0]: group_interaction',
+				},
+				{
+					prompt:
+						"Agent Name: Alex\nAgent Role: Tech Support\nRoom Type: group\nCurrent Room: tech-help\nMessage Sender: Emma (user-456)",
+					messages: [
+						{
+							name: "Emma",
+							content: {
+								text: "My app keeps crashing when I try to upload files",
+							},
+						},
+						{
+							name: "Alex",
+							content: {
+								text: "Have you tried clearing your cache?",
+							},
+						},
+						{
+							name: "Emma",
+							content: {
+								text: "No response...",
+							},
+						},
+						{
+							name: "Alex",
+							content: {
+								text: "Emma, are you still there? We can try some other troubleshooting steps.",
+							},
+						},
+					],
+					outcome:
+						"thought: \"I'm not sure if I'm being helpful or if Emma is frustrated with my suggestions. The lack of response is concerning - maybe I should have asked for more details about the issue first before jumping to solutions.\"\nfacts[0]:\n  claim: Emma is having technical issues with file uploads\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: Emma stopped responding after the first troubleshooting suggestion\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: alex-agent\n  targetEntityId: user-456\n  tags[0]: group_interaction\n  tags[1]: support_interaction\n  tags[2]: incomplete_interaction",
+				},
+				{
+					prompt:
+						"Agent Name: Max\nAgent Role: Discussion Facilitator\nRoom Type: group\nCurrent Room: book-club\nMessage Sender: Lisa (user-789)",
+					messages: [
+						{
+							name: "Lisa",
+							content: {
+								text: "What did everyone think about chapter 5?",
+							},
+						},
+						{
+							name: "Max",
+							content: {
+								text: "The symbolism was fascinating! The red door clearly represents danger.",
+							},
+						},
+						{
+							name: "Max",
+							content: {
+								text: "And did anyone notice how the author used weather to reflect the protagonist's mood?",
+							},
+						},
+						{
+							name: "Max",
+							content: {
+								text: "Plus the foreshadowing in the first paragraph was brilliant!",
+							},
+						},
+						{
+							name: "Max",
+							content: {
+								text: "I also have thoughts about the character development...",
+							},
+						},
+					],
+					outcome:
+						"thought: \"I'm dominating the conversation and not giving others a chance to share their perspectives. I've sent multiple messages in a row without waiting for responses. I need to step back and create space for other members to participate.\"\nfacts[0]:\n  claim: The discussion is about chapter 5 of a book\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: Max has sent 4 consecutive messages without user responses\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: max-agent\n  targetEntityId: user-789\n  tags[0]: group_interaction\n  tags[1]: excessive_interaction",
+				},
+			],
+			descriptionCompressed:
+				"Generate a self-reflective thought on the convo, then extract facts and relationships between entities in the convo. Reflects on agent behavior and provides...",
+		},
+		{
+			name: "RELATIONSHIP_EXTRACTION",
+			description:
+				"Passively extracts and updates relationship information from conversations. Identifies platform identities, relationship indicators, and mentioned third parties.",
+			similes: [
+				"RELATIONSHIP_ANALYZER",
+				"SOCIAL_GRAPH_BUILDER",
+				"CONTACT_EXTRACTOR",
+			],
+			alwaysRun: false,
+			examples: [
+				{
+					prompt: "User introduces themselves with social media",
+					messages: [
+						{
+							name: "{{name1}}",
+							content: {
+								type: "text",
+								text: "Hi, I'm Sarah Chen. You can find me on X @sarahchen_dev",
+							},
+						},
+					],
+					outcome:
+						"Extracts X handle and creates/updates the entity with a platform identity.",
+				},
+			],
+			descriptionCompressed:
+				"Passively extracts and updates relationship info from convos. Identifies platform identities, relationship indicators, and mentioned third parties.",
+		},
+		{
+			name: "MEMORY_SUMMARIZATION",
+			description:
+				"Automatically summarizes conversations to optimize context usage. Compresses conversation history while preserving important information.",
+			similes: [
+				"CONVERSATION_SUMMARY",
+				"CONTEXT_COMPRESSION",
+				"MEMORY_OPTIMIZATION",
+			],
+			alwaysRun: true,
+			examples: [],
+			descriptionCompressed:
+				"Auto summarizes convos to optimize context usage. Compresses convo history while preserving important info.",
+		},
+		{
+			name: "LONG_TERM_MEMORY_EXTRACTION",
+			description:
+				"Extracts long-term facts about users from conversations. Identifies and stores persistent information like preferences, interests, and personal details.",
+			similes: ["MEMORY_EXTRACTION", "FACT_LEARNING", "USER_PROFILING"],
+			alwaysRun: true,
+			examples: [],
+			descriptionCompressed:
+				"Extract long-term facts about users from convos. Identifies and stores persistent info like preferences, interests, and personal details.",
+		},
+	],
+} as const satisfies {
+	version: string;
+	evaluators: readonly EvaluatorDoc[];
+};
 
 export const coreActionDocs: readonly ActionDoc[] = coreActionsSpec.actions;
 export const allActionDocs: readonly ActionDoc[] = allActionsSpec.actions;
@@ -6909,3 +7283,7 @@ export const coreProviderDocs: readonly ProviderDoc[] =
 	coreProvidersSpec.providers;
 export const allProviderDocs: readonly ProviderDoc[] =
 	allProvidersSpec.providers;
+export const coreEvaluatorDocs: readonly EvaluatorDoc[] =
+	coreEvaluatorsSpec.evaluators;
+export const allEvaluatorDocs: readonly EvaluatorDoc[] =
+	allEvaluatorsSpec.evaluators;

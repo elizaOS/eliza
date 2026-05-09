@@ -145,7 +145,7 @@ if [ -n "$DRAFTER_PATH" ]; then
     --draft-min "$LLAMA_DRAFT_MIN"
     --draft-max "$LLAMA_DRAFT_MAX"
     --jinja
-    --chat-template-kwargs '{"enable_thinking": false}'
+    --reasoning off
   )
 fi
 if [ -n "$LLAMA_CACHE_TYPE_K" ]; then
