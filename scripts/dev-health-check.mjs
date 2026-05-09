@@ -278,6 +278,9 @@ function isSuspiciousLogLine(line) {
   if (/\b(Runtime bootstrap failed|Migration failed|Task execution failed|failed to load model|proxy error|crashed during init)\b/i.test(line)) {
     return true;
   }
+  if (/\bUsage: eliza\b/i.test(line)) {
+    return true;
+  }
   return false;
 }
 
@@ -495,7 +498,7 @@ async function run() {
       ELIZAOS_CLOUD_ENABLED:
         process.env.ELIZA_DEV_HEALTH_USE_CLOUD === "1"
           ? process.env.ELIZAOS_CLOUD_ENABLED || ""
-          : "false",
+          : "",
       EVM_PRIVATE_KEY: process.env.ELIZA_DEV_HEALTH_USE_WALLET === "1"
         ? process.env.EVM_PRIVATE_KEY || ""
         : "",

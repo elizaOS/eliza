@@ -2,7 +2,7 @@
 
 In-process workflow engine for elizaOS agents. Generate and deploy automation workflows from natural language using a RAG pipeline. The plugin embeds its own execution engine — workflows run in the agent process, no separate sidecar.
 
-Built on shared workflow type contracts from `@elizaos/p1p3s`. Supports the bundled node catalog used by the in-process runtime for routing decisions, with intelligent credential resolution and lifecycle management.
+Built on shared workflow type contracts from `@elizaos/workflows`. Supports the bundled node catalog used by the in-process runtime for routing decisions, with intelligent credential resolution and lifecycle management.
 
 ## Configuration
 
@@ -13,7 +13,7 @@ No workflow-specific env vars are required. The plugin's `EmbeddedWorkflowServic
 | Component | Purpose |
 |---|---|
 | `EmbeddedWorkflowService` | In-process workflow execution engine (CRUD + node runtime + scheduler + webhooks). |
-| `WorkflowService` | Public service surface used by the agent's `WORKFLOW` umbrella action. Routes to the embedded p1p3s engine. |
+| `WorkflowService` | Public service surface used by the agent's `WORKFLOW` umbrella action. Routes to the embedded workflows engine. |
 | `WorkflowCredentialStore` | Stores workflow-scoped credentials (encrypted at rest). |
 | `workflowStatusProvider` | Exposes engine status to the planner. |
 | `activeWorkflowsProvider` | Lists active workflows for context. |

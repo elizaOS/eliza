@@ -1,4 +1,4 @@
-// Stub: p1p3s does not ship a separate expression sandbox runtime. Consumers
+// Stub: workflows does not ship a separate expression sandbox runtime. Consumers
 // that need expression evaluation must provide it explicitly.
 
 type Evaluator = (expr: string, data: unknown) => string | null | (() => unknown);
@@ -11,7 +11,7 @@ export const setErrorHandler = (handler: ErrorHandler) => {
 };
 
 export const evaluateExpression: Evaluator = (_expr, _data) => {
-	const error = new Error('expression evaluation runtime is not bundled in @elizaos/p1p3s');
+	const error = new Error('expression evaluation runtime is not bundled in @elizaos/workflows');
 	errorHandler(error);
 	throw error;
 };

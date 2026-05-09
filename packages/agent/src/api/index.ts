@@ -9,6 +9,8 @@ export * from "./bug-report-routes.js";
 export * from "./character-routes.js";
 export * from "./compat-utils.js";
 export * from "./connector-health.js";
+export * from "./connector-account-routes.js";
+export * from "./connector-routes.js";
 export * from "./credit-detection.js";
 export * from "./database.js";
 export * from "./diagnostics-routes.js";
