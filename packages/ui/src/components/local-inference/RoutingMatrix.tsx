@@ -13,8 +13,6 @@ const SLOTS: AgentModelSlot[] = [
   "TEXT_SMALL",
   "TEXT_LARGE",
   "TEXT_EMBEDDING",
-  "OBJECT_SMALL",
-  "OBJECT_LARGE",
 ];
 
 const POLICIES: Array<{ value: RoutingPolicy; label: string; hint: string }> = [
@@ -47,16 +45,12 @@ const SLOT_MODEL_TYPE: Record<AgentModelSlot, string> = {
   TEXT_SMALL: "TEXT_SMALL",
   TEXT_LARGE: "TEXT_LARGE",
   TEXT_EMBEDDING: "TEXT_EMBEDDING",
-  OBJECT_SMALL: "OBJECT_SMALL",
-  OBJECT_LARGE: "OBJECT_LARGE",
 };
 
 const SLOT_LABEL: Record<AgentModelSlot, string> = {
   TEXT_SMALL: "Small text",
   TEXT_LARGE: "Large text",
   TEXT_EMBEDDING: "Embeddings",
-  OBJECT_SMALL: "Small structured output",
-  OBJECT_LARGE: "Large structured output",
 };
 
 export function RoutingMatrix() {

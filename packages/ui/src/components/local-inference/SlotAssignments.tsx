@@ -33,16 +33,6 @@ const SLOTS: Array<{
     description:
       "Vector search and memory when a local embedding handler exists.",
   },
-  {
-    slot: "OBJECT_SMALL",
-    label: "Small structured output",
-    description: "XML/JSON structured generation on the small path.",
-  },
-  {
-    slot: "OBJECT_LARGE",
-    label: "Large structured output",
-    description: "Structured generation on the large path.",
-  },
 ];
 
 /**
