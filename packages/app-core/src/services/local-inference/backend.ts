@@ -118,6 +118,16 @@ export interface BackendDecision {
     | "default";
   /** Required kernels declared by the catalog, when any. */
   kernels: LocalRuntimeKernel[];
+  /**
+   * Set when the dispatcher detected a kernel mismatch — the catalog model
+   * declares `requiresKernel: [...]` but CAPABILITIES.json next to the
+   * installed binary reports those kernels as unavailable. The dispatcher
+   * still routes to llama-server (the only backend that could ever satisfy
+   * those kernels), but the load is expected to fail; the caller should
+   * surface this to the operator with a clear "rebuild your binary"
+   * message instead of letting the model silently misbehave.
+   */
+  unsatisfiedKernels?: LocalRuntimeKernel[];
 }
 
 /**
@@ -125,18 +135,29 @@ export interface BackendDecision {
  *
  * Inputs are deliberately explicit — the caller resolves the catalog entry,
  * the binary availability, and the env override before calling us.
+ *
+ * `binaryKernels`, when present, is the parsed CAPABILITIES.json kernels
+ * map from the installed llama-server build. The dispatcher uses it to
+ * compute `unsatisfiedKernels`; null means the binary is older / has no
+ * capabilities probe, in which case we trust the model's declaration and
+ * let the load attempt clarify.
  */
 export function decideBackend(input: {
   override: BackendOverride;
   catalog: CatalogModel | undefined;
   llamaServerAvailable: boolean;
   dflashRequired: boolean;
+  binaryKernels?: Partial<Record<LocalRuntimeKernel | string, boolean>> | null;
 }): BackendDecision {
   const { override, catalog, llamaServerAvailable, dflashRequired } = input;
   const optimizations = catalog?.runtime?.optimizations;
   const kernels = optimizations?.requiresKernel ?? [];
   const dflashConfigured = catalog?.runtime?.dflash;
   const preferredBackend = catalog?.runtime?.preferredBackend;
+  const unsatisfiedKernels = computeUnsatisfiedKernels(
+    kernels,
+    input.binaryKernels ?? null,
+  );
 
   if (override === "node-llama-cpp") {
     if (kernels.length > 0 || dflashRequired) {
@@ -148,22 +169,39 @@ export function decideBackend(input: {
         backend: "llama-server",
         reason: "kernel-required",
         kernels,
+        unsatisfiedKernels,
       };
     }
-    return { backend: "node-llama-cpp", reason: "env-override", kernels };
+    return {
+      backend: "node-llama-cpp",
+      reason: "env-override",
+      kernels,
+      unsatisfiedKernels,
+    };
   }
   if (override === "llama-server") {
-    return { backend: "llama-server", reason: "env-override", kernels };
+    return {
+      backend: "llama-server",
+      reason: "env-override",
+      kernels,
+      unsatisfiedKernels,
+    };
   }
 
   if (kernels.length > 0) {
-    return { backend: "llama-server", reason: "kernel-required", kernels };
+    return {
+      backend: "llama-server",
+      reason: "kernel-required",
+      kernels,
+      unsatisfiedKernels,
+    };
   }
   if (dflashConfigured && dflashRequired) {
     return {
       backend: "llama-server",
       reason: "dflash-required",
       kernels,
+      unsatisfiedKernels,
     };
   }
   if (preferredBackend === "llama-server" && llamaServerAvailable) {
@@ -171,12 +209,37 @@ export function decideBackend(input: {
       backend: "llama-server",
       reason: "preferred-backend",
       kernels,
+      unsatisfiedKernels,
     };
   }
   if (preferredBackend === "node-llama-cpp") {
-    return { backend: "node-llama-cpp", reason: "preferred-backend", kernels };
+    return {
+      backend: "node-llama-cpp",
+      reason: "preferred-backend",
+      kernels,
+      unsatisfiedKernels,
+    };
   }
-  return { backend: "node-llama-cpp", reason: "default", kernels };
+  return {
+    backend: "node-llama-cpp",
+    reason: "default",
+    kernels,
+    unsatisfiedKernels,
+  };
+}
+
+/**
+ * Returns the subset of `required` kernels that aren't reported as `true`
+ * in the binary's CAPABILITIES.json. Returns undefined when no probe is
+ * available; an empty array means "all required kernels are satisfied".
+ */
+function computeUnsatisfiedKernels(
+  required: LocalRuntimeKernel[],
+  binaryKernels: Partial<Record<LocalRuntimeKernel | string, boolean>> | null,
+): LocalRuntimeKernel[] | undefined {
+  if (required.length === 0) return undefined;
+  if (!binaryKernels) return undefined;
+  return required.filter((k) => binaryKernels[k] !== true);
 }
 
 /**
@@ -209,6 +272,17 @@ export class BackendDispatcher implements LocalInferenceBackend {
     private readonly llamaServer: LocalInferenceBackend,
     private readonly probeLlamaServerAvailable: () => boolean,
     private readonly probeDflashRequired: () => boolean,
+    /**
+     * Optional capabilities probe that returns the kernels map from
+     * CAPABILITIES.json next to the installed llama-server binary, or
+     * null when the file is absent. Used to flag `unsatisfiedKernels`
+     * in the BackendDecision before load() so callers can give a clean
+     * "rebuild your fork binary" error instead of a kernel SIGSEGV at
+     * generation time.
+     */
+    private readonly probeBinaryKernels?: () =>
+      | Partial<Record<string, boolean>>
+      | null,
   ) {}
 
   async available(): Promise<boolean> {
@@ -236,11 +310,18 @@ export class BackendDispatcher implements LocalInferenceBackend {
       catalog,
       llamaServerAvailable: this.probeLlamaServerAvailable(),
       dflashRequired: this.probeDflashRequired(),
+      binaryKernels: this.probeBinaryKernels?.() ?? null,
     });
   }
 
   async load(plan: BackendPlan): Promise<void> {
     const decision = this.decide(plan);
+    if (decision.unsatisfiedKernels && decision.unsatisfiedKernels.length > 0) {
+      const missing = decision.unsatisfiedKernels.join(", ");
+      throw new Error(
+        `[local-inference] Catalog model requires kernel(s) {${missing}}, but the installed llama-server binary does not advertise them in CAPABILITIES.json. Rebuild the fork with the matching backend (e.g. node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>) or pick a different model.`,
+      );
+    }
     const target =
       decision.backend === "llama-server"
         ? this.llamaServer
