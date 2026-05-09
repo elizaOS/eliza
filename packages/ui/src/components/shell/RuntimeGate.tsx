@@ -329,6 +329,21 @@ async function probeCloudAgentReachable(
   }
 }
 
+function readCloudAuthToken(): string | undefined {
+  const clientToken = client.getRestAuthToken()?.trim();
+  if (clientToken) return clientToken;
+
+  if (typeof globalThis === "undefined") return undefined;
+  const globalToken = (
+    globalThis as typeof globalThis & {
+      __ELIZA_CLOUD_AUTH_TOKEN__?: unknown;
+    }
+  ).__ELIZA_CLOUD_AUTH_TOKEN__;
+  return typeof globalToken === "string" && globalToken.trim()
+    ? globalToken.trim()
+    : undefined;
+}
+
 // TODO: replace with real onboarding artwork per runtime choice
 // const CHOICE_IMAGE_PATH: Record<RuntimeChoice, string> = {
 //   cloud: "app-heroes/agentDOD.png",
@@ -583,7 +598,7 @@ export function RuntimeGate() {
       }
       setCloudStage("connecting");
 
-      const accessToken = client.getRestAuthToken() ?? undefined;
+      const accessToken = readCloudAuthToken();
 
       savePersistedActiveServer({
         id: `cloud:${agent.agent_id}`,
@@ -601,6 +616,7 @@ export function RuntimeGate() {
       });
 
       client.setBaseUrl(apiBase);
+      client.setToken(accessToken ?? null);
       persistMobileRuntimeModeForServerTarget("elizacloud");
       setState("onboardingServerTarget", "elizacloud");
       // Apply embedding preference before handing off. Non-blocking: if this
@@ -1194,16 +1210,6 @@ export function RuntimeGate() {
             t("runtimegate.failedCreate", {
               defaultValue: "Failed to create agent. Try again.",
             }),
-        );
-        setCloudStage("agent-list");
-        return;
-      }
-      if (createRes.data.nodeId == null) {
-        setError(
-          t("runtimegate.cloudHostingUnavailable", {
-            defaultValue:
-              "Cloud agent hosting isn't available on this instance. Try a local or remote agent.",
-          }),
         );
         setCloudStage("agent-list");
         return;

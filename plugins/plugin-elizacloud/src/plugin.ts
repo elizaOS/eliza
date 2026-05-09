@@ -148,6 +148,12 @@ const cloudRoutes: Route[] = [
   },
   {
     type: "POST",
+    path: "/api/cloud/login",
+    rawPath: true,
+    handler: cloudRouteHandler,
+  },
+  {
+    type: "POST",
     path: "/api/cloud/login/persist",
     rawPath: true,
     handler: cloudRouteHandler,
@@ -155,6 +161,36 @@ const cloudRoutes: Route[] = [
   {
     type: "GET",
     path: "/api/cloud/login/status",
+    rawPath: true,
+    handler: cloudRouteHandler,
+  },
+  {
+    type: "GET",
+    path: "/api/cloud/agents",
+    rawPath: true,
+    handler: cloudRouteHandler,
+  },
+  {
+    type: "POST",
+    path: "/api/cloud/agents",
+    rawPath: true,
+    handler: cloudRouteHandler,
+  },
+  {
+    type: "POST",
+    path: "/api/cloud/agents/:agentId/provision",
+    rawPath: true,
+    handler: cloudRouteHandler,
+  },
+  {
+    type: "POST",
+    path: "/api/cloud/agents/:agentId/connect",
+    rawPath: true,
+    handler: cloudRouteHandler,
+  },
+  {
+    type: "POST",
+    path: "/api/cloud/agents/:agentId/shutdown",
     rawPath: true,
     handler: cloudRouteHandler,
   },
