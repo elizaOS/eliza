@@ -189,12 +189,21 @@ def _command_hyperliquid(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> li
 
 
 def _command_adhdbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    provider = ctx.request.provider.strip().lower()
+    # Route LLM-backed providers through the eliza TS bridge by default so
+    # the registered eliza agent + plugins are exercised. Callers can
+    # opt out via extra_config "use_direct_provider": True.
+    bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
+    use_direct = bool(ctx.request.extra_config.get("use_direct_provider"))
+    effective_provider = (
+        "eliza" if (provider in bridge_providers and not use_direct) else ctx.request.provider
+    )
     args = [
         sys.executable,
         "scripts/run_benchmark.py",
         "run",
         "--provider",
-        ctx.request.provider,
+        effective_provider,
         "--model",
         ctx.request.model,
         "--output",
