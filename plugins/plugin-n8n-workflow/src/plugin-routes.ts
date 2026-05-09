@@ -93,6 +93,24 @@ const n8nRouteList: Route[] = [
     rawPath: true,
     handler: n8nHandler,
   },
+  // Resolve a `needs_clarification` response from /generate by posting the
+  // user's picked values back. handleResolveClarification (n8n-routes.ts)
+  // either returns the next pending clarification (chained pickers) or
+  // deploys the resolved draft. Without this entry the runtime path matcher
+  // 404s the request before it reaches the handler, surfacing as a raw
+  // "Not found" inside the Automations UI clarification panel.
+  {
+    type: 'POST',
+    path: '/api/n8n/workflows/resolve-clarification',
+    rawPath: true,
+    handler: n8nHandler,
+  },
+  {
+    type: 'GET',
+    path: '/api/n8n/workflows/:id',
+    rawPath: true,
+    handler: n8nHandler,
+  },
   {
     type: 'PUT',
     path: '/api/n8n/workflows/:id',
