@@ -24,9 +24,11 @@ export function encodeScheduleTags(
   return [];
 }
 
-export function decodeScheduleTags(
-  tags: ReadonlyArray<string> | undefined,
-): { kind: TaskScheduleKind; cronExpression: string; eventName: string } {
+export function decodeScheduleTags(tags: ReadonlyArray<string> | undefined): {
+  kind: TaskScheduleKind;
+  cronExpression: string;
+  eventName: string;
+} {
   for (const tag of tags ?? []) {
     if (tag.startsWith(SCHEDULE_TAG_PREFIX)) {
       return {
