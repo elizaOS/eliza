@@ -255,6 +255,10 @@ export function createElectrobunConfig(): ElectrobunConfig {
 					"onnxruntime-common",
 					"onnxruntime-web",
 					"@huggingface/transformers",
+					// chalk is pulled in transitively via @elizaos/shared/dist/terminal/theme.js.
+					// The Electrobun bun shell never renders to a TTY, so this branch is dead at
+					// runtime — externalising it just keeps the bundler from trying to resolve it.
+					"chalk",
 				],
 			},
 			views: {},
