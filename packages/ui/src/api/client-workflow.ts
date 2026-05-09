@@ -13,6 +13,7 @@ import type {
   WorkflowDefinitionGenerateResponse,
   WorkflowDefinitionResolveClarificationRequest,
   WorkflowDefinitionWriteRequest,
+  WorkflowExecution,
   WorkflowStatusResponse,
 } from "./client-types-chat";
 
@@ -41,6 +42,7 @@ declare module "./client-base" {
     activateWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
     deactivateWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
     deleteWorkflowDefinition(id: string): Promise<{ ok: boolean }>;
+    getWorkflowExecutions(id: string, limit?: number): Promise<WorkflowExecution[]>;
   }
 }
 
@@ -164,4 +166,15 @@ ElizaClient.prototype.deleteWorkflowDefinition = async function (
     `/api/workflow/workflows/${encodeURIComponent(id)}`,
     { method: "DELETE" },
   );
+};
+
+ElizaClient.prototype.getWorkflowExecutions = async function (
+  this: ElizaClient,
+  id: string,
+  limit = 10,
+): Promise<WorkflowExecution[]> {
+  const result = await this.fetch<{ executions?: WorkflowExecution[] }>(
+    `/api/workflow/workflows/${encodeURIComponent(id)}/executions?limit=${limit}`,
+  );
+  return result.executions ?? [];
 };

@@ -21,6 +21,7 @@ import {
 import { asRecord } from "@elizaos/shared";
 import type {
   AutomationItem,
+  AutomationLastExecution,
   AutomationNodeCatalogResponse,
   AutomationNodeDescriptor,
   AutomationRoomBinding,
@@ -91,6 +92,40 @@ const BLOCKED_AUTOMATION_PROVIDER_NODES = new Set([
   "recent-conversations",
   "relevant-conversations",
 ]);
+
+// 30s cache for last-execution data — avoids hammering the workflow runtime on
+// every automations poll. null data = checked and found no executions yet
+// (still cached to avoid re-polling).
+const lastExecutionCache = new Map<
+  string,
+  { data: AutomationLastExecution | null; expiresAt: number }
+>();
+const LAST_EXECUTION_TTL_MS = 30_000;
+
+function normalizeLastExecution(
+  raw: Record<string, unknown>,
+): AutomationLastExecution | null {
+  const rawStatus = raw.status;
+  if (typeof rawStatus !== "string") return null;
+  const STATUS_MAP: Record<string, AutomationLastExecution["status"]> = {
+    success: "success",
+    error: "error",
+    crashed: "error",
+    running: "running",
+    waiting: "waiting",
+  };
+  const status = STATUS_MAP[rawStatus] ?? "unknown";
+  const startedAt = typeof raw.startedAt === "string" ? raw.startedAt : null;
+  if (!startedAt) return null;
+  const stoppedAt = typeof raw.stoppedAt === "string" ? raw.stoppedAt : null;
+  const errorMessage = (() => {
+    const data = raw.data as Record<string, unknown> | undefined;
+    const resultData = data?.resultData as Record<string, unknown> | undefined;
+    const error = resultData?.error as Record<string, unknown> | undefined;
+    return typeof error?.message === "string" ? error.message : undefined;
+  })();
+  return { status, startedAt, stoppedAt, ...(errorMessage ? { errorMessage } : {}) };
+}
 
 interface StaticAutomationNodeSpec {
   id: string;
@@ -723,6 +758,53 @@ async function buildAutomationListResponse(
         );
       }
     }
+  }
+
+  // Fetch last execution for each live workflow in parallel.
+  // Promise.allSettled ensures one failure does not block the full list.
+  if (!workflowOffline && workflowItemsById.size > 0) {
+    const now = Date.now();
+    for (const [k, v] of lastExecutionCache) {
+      if (v.expiresAt < now) lastExecutionCache.delete(k);
+    }
+    const workflowIds = [...workflowItemsById.keys()];
+    await Promise.allSettled(
+      workflowIds.map(async (workflowId) => {
+        const cached = lastExecutionCache.get(workflowId);
+        if (cached && cached.expiresAt > Date.now()) {
+          if (cached.data !== null) {
+            const item = workflowItemsById.get(workflowId);
+            if (item) item.lastExecution = cached.data;
+          }
+          return;
+        }
+        const result = await invokeWorkflowRoute<{ executions?: unknown[] }>(
+          req,
+          res,
+          runtime,
+          `/api/workflow/workflows/${encodeURIComponent(workflowId)}/executions?limit=1`,
+        );
+        if (result.status !== 200 || !Array.isArray(result.payload?.executions)) {
+          return;
+        }
+        if (result.payload.executions.length === 0) {
+          lastExecutionCache.set(workflowId, {
+            data: null,
+            expiresAt: Date.now() + LAST_EXECUTION_TTL_MS,
+          });
+          return;
+        }
+        const raw = result.payload.executions[0] as Record<string, unknown>;
+        const exec = normalizeLastExecution(raw);
+        if (!exec) return;
+        lastExecutionCache.set(workflowId, {
+          data: exec,
+          expiresAt: Date.now() + LAST_EXECUTION_TTL_MS,
+        });
+        const item = workflowItemsById.get(workflowId);
+        if (item) item.lastExecution = exec;
+      }),
+    );
   }
 
   const coordinatorTriggerItems = triggerItems
