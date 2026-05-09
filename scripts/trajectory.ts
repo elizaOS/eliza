@@ -601,7 +601,9 @@ async function cmdStats(idOrPath: string): Promise<void> {
     `Tool calls: ${m?.toolCallsExecuted ?? 0} executed (${(m?.toolCallsExecuted ?? 0) - (m?.toolCallFailures ?? 0)} success, ${m?.toolCallFailures ?? 0} failed)`,
   );
   console.log(`Evaluator decisions: ${decisionList || "—"}`);
-  console.log(`Evaluator success=false: ${m?.evaluatorFailures ?? 0} stages`);
+  console.log(
+    `Terminal evaluator failures: ${m?.evaluatorFailures ?? 0} stages`,
+  );
   console.log(`Cache hit rate (avg): ${meanCacheRate.toFixed(1)}%`);
 }
 

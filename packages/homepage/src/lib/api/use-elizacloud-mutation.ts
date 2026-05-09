@@ -34,9 +34,9 @@ export function useElizacloudMutation<
       return res;
     },
     onSuccess: () => {
-      invalidateKeys.forEach((key) =>
-        queryClient.invalidateQueries({ queryKey: key }),
-      );
+      invalidateKeys.forEach((key) => {
+        queryClient.invalidateQueries({ queryKey: key });
+      });
     },
   });
 }

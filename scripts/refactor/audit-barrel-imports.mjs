@@ -49,7 +49,15 @@ function main() {
     const owner = packageByDir.find(
       (pkg) => relFile === `${pkg.dir}/package.json` || relFile.startsWith(`${pkg.dir}/`),
     )?.name;
-    const source = readFileSync(file, "utf8");
+    let source;
+    try {
+      source = readFileSync(file, "utf8");
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
     for (const spec of findImportSpecifiers(source)) {
       const match = PACKAGE_SUBPATH_RE.exec(spec.specifier);
       if (!match) continue;

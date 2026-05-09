@@ -259,29 +259,6 @@ declare module "abitype" {
   export type TypedDataType = string;
 }
 
-declare module "@elizaos/plugin-sql" {
-  import type { Plugin } from "@elizaos/core";
-
-  export * from "@elizaos/plugin-sql";
-  export type { DrizzleDatabase } from "@elizaos/plugin-sql";
-
-  export const PGLITE_ERROR_CODES: {
-    ACTIVE_LOCK: string;
-    CORRUPT_DATA: string;
-    MANUAL_RESET_REQUIRED: string;
-  };
-
-  export function getPgliteErrorCode(error: unknown): string | null;
-  export function createPgliteInitError(
-    code: string,
-    message: string,
-    options?: Record<string, unknown>,
-  ): Error;
-
-  const plugin: Plugin;
-  export default plugin;
-}
-
 declare module "ws" {
   import type { EventEmitter } from "node:events";
   import type { Server as HttpServer, IncomingMessage } from "node:http";

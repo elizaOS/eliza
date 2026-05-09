@@ -48,7 +48,7 @@ export const creditBalanceProvider: Provider = {
 
     if (balance < 1.0) logger.warn(`[CloudCredits] Low balance: $${balance.toFixed(2)}`);
     const result = format(balance);
-    return { ...result, text: result.text.slice(0, MAX_CREDIT_TEXT_CHARS) };
+    return { ...result, text: (result.text ?? "").slice(0, MAX_CREDIT_TEXT_CHARS) };
   },
 };
 

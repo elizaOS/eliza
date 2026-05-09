@@ -17,6 +17,7 @@ export type RuntimeActionLike = {
 	subActions?: Array<string | RuntimeActionLike>;
 	cacheStable?: boolean;
 	cacheScope?: string;
+	routingHint?: string;
 	[key: string]: unknown;
 };
 
@@ -47,6 +48,8 @@ export type ActionCatalogEntry = {
 	contexts?: unknown;
 	cacheStable?: boolean;
 	cacheScope?: string;
+	/** One-line routing hint for the planner. See Action.routingHint. */
+	routingHint?: string;
 	keywordKeys: string[];
 	keywordText: string;
 	keywordSources: ActionSearchKeywordSource[];
@@ -368,6 +371,7 @@ function materializeEntry(
 		contexts: action.contexts,
 		cacheStable: action.cacheStable,
 		cacheScope: normalizeOptionalString(action.cacheScope),
+		routingHint: normalizeOptionalString(action.routingHint),
 		keywordKeys,
 		keywordText: actionEntryKeywordText(action, children),
 		keywordSources,

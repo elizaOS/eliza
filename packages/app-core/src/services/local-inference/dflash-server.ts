@@ -50,18 +50,33 @@ function readBool(name: string): boolean {
   return raw === "1" || raw === "true" || raw === "yes";
 }
 
+function managedDflashBinaryPath(): string {
+  return path.join(
+    localInferenceRoot(),
+    "bin",
+    "dflash",
+    platformKey(),
+    "llama-server",
+  );
+}
+
+function isMetalDflashRuntime(): boolean {
+  return platformKey().endsWith("-metal");
+}
+
+function dflashMetalAutoEnabled(): boolean {
+  return (
+    readBool("ELIZA_DFLASH_METAL_AUTO") ||
+    readBool("ELIZA_DFLASH_METAL_ENABLED")
+  );
+}
+
 export function dflashEnabled(): boolean {
   if (readBool("ELIZA_DFLASH_DISABLED")) return false;
   if (readBool("ELIZA_DFLASH_ENABLED")) return true;
-  return fs.existsSync(
-    path.join(
-      localInferenceRoot(),
-      "bin",
-      "dflash",
-      platformKey(),
-      "llama-server",
-    ),
-  );
+  if (!fs.existsSync(managedDflashBinaryPath())) return false;
+  if (isMetalDflashRuntime()) return dflashMetalAutoEnabled();
+  return true;
 }
 
 export function dflashRequired(): boolean {
@@ -71,15 +86,7 @@ export function dflashRequired(): boolean {
 function candidateBinaryPaths(): string[] {
   const explicit = process.env.ELIZA_DFLASH_LLAMA_SERVER?.trim();
   const out = explicit ? [explicit] : [];
-  out.push(
-    path.join(
-      localInferenceRoot(),
-      "bin",
-      "dflash",
-      platformKey(),
-      "llama-server",
-    ),
-  );
+  out.push(managedDflashBinaryPath());
   if (readBool("ELIZA_DFLASH_ENABLED")) out.push("llama-server");
   return out;
 }
@@ -114,12 +121,16 @@ export function resolveDflashBinary(): string | null {
 export function getDflashRuntimeStatus(): DflashRuntimeStatus {
   const binary = resolveDflashBinary();
   if (!dflashEnabled()) {
+    const managedBinaryExists = fs.existsSync(managedDflashBinaryPath());
+    const reason =
+      managedBinaryExists && isMetalDflashRuntime()
+        ? "DFlash Metal binary found but auto-disabled because the local Qwen 3.5 4B ablation is slower than target-only Metal decode; set ELIZA_DFLASH_ENABLED=1 or ELIZA_DFLASH_METAL_AUTO=1 to force it."
+        : "DFlash auto-enables when the managed llama-server binary is installed; set ELIZA_DFLASH_ENABLED=1 to force a PATH/explicit binary, or run packages/app-core/scripts/build-llama-cpp-dflash.mjs.";
     return {
       enabled: false,
       required: dflashRequired(),
       binaryPath: binary,
-      reason:
-        "DFlash auto-enables when the managed llama-server binary is installed; set ELIZA_DFLASH_ENABLED=1 to force a PATH/explicit binary, or run packages/app-core/scripts/build-llama-cpp-dflash.mjs.",
+      reason,
     };
   }
   if (!binary) {

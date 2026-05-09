@@ -21,14 +21,9 @@ import {
   normalizeLinkedAccountFlagsConfig,
   normalizeOnboardingCredentialInputs,
   normalizeServiceRoutingConfig,
+  PREMADE_VOICES,
   type ServiceRoutingConfig,
 } from "@elizaos/shared";
-// Import via the dedicated voice export so we don't pull the full
-// @elizaos/ui barrel (and its React app-shell registry) into the server
-// boot graph. Importing the barrel from a server-side file caused a
-// circular-dep TDZ at runtime startup: "Cannot access
-// 'APP_SHELL_PAGE_REGISTRY_KEY' before initialization".
-import { PREMADE_VOICES } from "@elizaos/ui/voice";
 import { resolveProviderCredential } from "./credential-resolver";
 
 // ---------------------------------------------------------------------------

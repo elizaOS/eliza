@@ -61,7 +61,7 @@ export async function extractKeywords(
 ): Promise<string[]> {
   let result: KeywordExtractionResult;
   try {
-    result = (await runtime.useModel(ModelType.OBJECT_SMALL, {
+    result = (await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt: `${KEYWORD_EXTRACTION_SYSTEM_PROMPT}${buildPreferredProvidersDirective(preferredProviders)}\n\nUser request: ${userPrompt}`,
       schema: keywordExtractionSchema,
     })) as KeywordExtractionResult;
@@ -128,7 +128,7 @@ ${workflowList}`;
 
     let result: WorkflowMatchResult;
     try {
-      result = (await runtime.useModel(ModelType.OBJECT_SMALL, {
+      result = (await runtime.useModel(ModelType.TEXT_SMALL, {
         prompt: `${WORKFLOW_MATCHING_SYSTEM_PROMPT}\n\n${userPrompt}`,
         schema: workflowMatchingSchema,
       })) as WorkflowMatchResult;
@@ -184,7 +184,7 @@ Original prompt: "${draft.prompt}"`;
 
   let result: DraftIntentResult;
   try {
-    result = (await runtime.useModel(ModelType.OBJECT_SMALL, {
+    result = (await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt: `${DRAFT_INTENT_SYSTEM_PROMPT}
 
 ## Current Draft
@@ -659,7 +659,7 @@ export async function assessFeasibility(
     .join(', ');
 
   try {
-    const result = (await runtime.useModel(ModelType.OBJECT_SMALL, {
+    const result = (await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt:
         `${FEASIBILITY_CHECK_PROMPT}\n\n## User Request\n${userPrompt}` +
         `\n\n## Removed Integrations (unavailable)\n${removedList}` +

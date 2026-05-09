@@ -1,7 +1,5 @@
-// Stub: the original implementation depended on @workflows/tournament for AST-based
-// expression sandboxing. This package ships only the type contracts and helpers,
-// so the runtime evaluator is replaced with a no-op. Consumers that need to
-// actually evaluate workflow expressions must override these symbols.
+// Stub: p1p3s does not ship a separate expression sandbox runtime. Consumers
+// that need expression evaluation must provide it explicitly.
 
 type Evaluator = (expr: string, data: unknown) => string | null | (() => unknown);
 type ErrorHandler = (error: Error) => void;
@@ -13,7 +11,7 @@ export const setErrorHandler = (handler: ErrorHandler) => {
 };
 
 export const evaluateExpression: Evaluator = (_expr, _data) => {
-	const error = new Error('expression evaluation runtime is not bundled in @elizaos/workflows');
+	const error = new Error('expression evaluation runtime is not bundled in @elizaos/p1p3s');
 	errorHandler(error);
 	throw error;
 };

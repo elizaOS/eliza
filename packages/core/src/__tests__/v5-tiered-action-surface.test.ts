@@ -313,6 +313,64 @@ describe("v5 tiered action surface", () => {
 		expect(actions).not.toContain("DOCUMENT");
 	});
 
+	it("falls back to PROFILE routing when Stage 1 emits malformed preference output", async () => {
+		const profile = makeAction({
+			name: "PROFILE",
+			description:
+				"Owner-only. Persist stable owner facts and reusable travel-booking preferences.",
+			contexts: ["memory"],
+		});
+		const document = makeAction({
+			name: "DOCUMENT",
+			description: "Create, search, and edit stored documents.",
+			contexts: ["documents"],
+		});
+		const runtime = makeRuntime({
+			actions: [profile, document],
+			responses: [
+				{ body: "{not valid stage one json" },
+				{
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "profile-1",
+								name: "PROFILE",
+								arguments: {
+									travelBookingPreferences:
+										"Prefer aisle seats, carry-on only, and moderate hotels close to the venue.",
+								},
+							},
+						],
+					},
+				},
+				{
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Profile updated.",
+						messageToUser: "Updated travel preferences.",
+					}),
+				},
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(
+				"remember that I prefer aisle seats, carry-on only, and moderate hotels close to the venue",
+			),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const prompt = plannerUserContent(runtime);
+		expect(prompt).toMatch(/selected_contexts:[^\n]*memory/);
+		const actions = availableActionsSection(runtime);
+		expect(actions).toContain("PROFILE");
+		expect(actions).not.toContain("DOCUMENT");
+	});
+
 	it("expands strong context matches into callable actions", async () => {
 		const createEvent = makeAction({
 			name: "CREATE_EVENT",

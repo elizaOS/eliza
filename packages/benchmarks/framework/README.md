@@ -74,7 +74,7 @@ benchmarks/framework/
 
 The harness uses a mock LLM plugin that:
 
-1. Registers handlers for `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `TEXT_COMPLETION`, `OBJECT_SMALL`, `OBJECT_LARGE`
+1. Registers handlers for `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `TEXT_COMPLETION`
 2. Returns **deterministic, pre-computed XML responses** that pass the framework's validation pipeline
 3. Detects which template is being evaluated (shouldRespond vs message handler vs reply action) by inspecting the prompt
 4. Returns zero-latency responses (no artificial delay)

@@ -59,8 +59,11 @@ export default function BlobButton({
   return (
     <div
       className="relative z-30 inline-flex items-center"
+      role="group"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onFocus={() => setHovered(true)}
+      onBlur={() => setHovered(false)}
     >
       {/* Single glass shape: starts as the pill, morphs into pill+panel */}
       <AnimatedDiv
