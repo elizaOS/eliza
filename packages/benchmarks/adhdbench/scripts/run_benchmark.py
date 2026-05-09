@@ -50,10 +50,12 @@ def parse_args() -> argparse.Namespace:
     run_parser.add_argument(
         "--provider",
         default="mock",
+        choices=("mock", "eliza", "openai", "cerebras", "groq", "openrouter", "vllm"),
         help=(
-            "Model provider. Default 'mock' uses the deterministic local "
-            "runner. Use 'eliza' to route through the Eliza TypeScript "
-            "benchmark bridge."
+            "Model provider. 'mock' is the deterministic local runner (smoke "
+            "tests only — always scores ~100%%). 'eliza' routes through the "
+            "Eliza TypeScript benchmark bridge. The remaining choices hit an "
+            "OpenAI-compatible chat completions endpoint directly."
         ),
     )
     run_parser.add_argument("--levels", nargs="+", type=int, default=[0, 1, 2], help="Levels to run (0, 1, 2)")
@@ -85,6 +87,8 @@ def _configure_bridge_model_env(model_name: str | None) -> None:
             provider = "groq"
         elif os.environ.get("OPENROUTER_API_KEY"):
             provider = "openrouter"
+        elif os.environ.get("CEREBRAS_API_KEY"):
+            provider = "cerebras"
         elif os.environ.get("OPENAI_API_KEY"):
             provider = "openai"
 
@@ -150,7 +154,8 @@ def cmd_run(args: argparse.Namespace) -> None:
     def progress(config_name: str, scale: str, current: int, total: int) -> None:
         print(f"  [{config_name}/{scale}] {current}/{total}", end="\r", flush=True)
 
-    if (config.model_provider or "").strip().lower() == "eliza":
+    provider_lc = (config.model_provider or "").strip().lower()
+    if provider_lc == "eliza":
         # Route through the elizaOS TypeScript benchmark bridge instead of
         # the removed in-process Python AgentRuntime.
         from eliza_adapter.adhdbench import ElizaADHDBenchRunner
@@ -164,9 +169,23 @@ def cmd_run(args: argparse.Namespace) -> None:
             results = asyncio.run(runner.run(progress_callback=progress))
         finally:
             manager.stop()
-    else:
+    elif provider_lc == "mock":
+        # Deterministic Python runner — only useful for smoke tests because
+        # it always scores ~100% by construction. Explicit opt-in only.
         from elizaos_adhdbench.runner import ADHDBenchRunner
         runner = ADHDBenchRunner(config)
+        results = asyncio.run(runner.run(progress_callback=progress))
+    else:
+        from elizaos_adhdbench.openai_runner import (
+            OpenAICompatibleADHDBenchRunner,
+            is_openai_compatible_provider,
+        )
+        if not is_openai_compatible_provider(provider_lc):
+            raise SystemExit(
+                f"Unknown --provider {config.model_provider!r}. "
+                f"Use 'mock', 'eliza', or one of: openai, cerebras, groq, openrouter, vllm."
+            )
+        runner = OpenAICompatibleADHDBenchRunner(config)
         results = asyncio.run(runner.run(progress_callback=progress))
 
     print(f"\nBenchmark complete. {len(results.results)} scenario results.")
