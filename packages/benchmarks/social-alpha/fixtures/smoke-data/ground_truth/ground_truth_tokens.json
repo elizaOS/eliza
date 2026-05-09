@@ -3,7 +3,7 @@
     "address": "token_moon",
     "symbol": "MOON",
     "chain": "solana",
-    "call_count": 2,
+    "call_count": 5,
     "is_rug": false,
     "is_pump_dump": false,
     "max_gain_pct": 40.0,
@@ -13,11 +13,31 @@
     "address": "token_base",
     "symbol": "BASE",
     "chain": "solana",
-    "call_count": 2,
+    "call_count": 5,
     "is_rug": false,
     "is_pump_dump": false,
     "max_gain_pct": 10.0,
     "max_loss_pct": -5.0
+  },
+  {
+    "address": "token_star",
+    "symbol": "STAR",
+    "chain": "solana",
+    "call_count": 4,
+    "is_rug": false,
+    "is_pump_dump": false,
+    "max_gain_pct": 40.0,
+    "max_loss_pct": -3.0
+  },
+  {
+    "address": "token_sun",
+    "symbol": "SUN",
+    "chain": "solana",
+    "call_count": 3,
+    "is_rug": false,
+    "is_pump_dump": false,
+    "max_gain_pct": 31.3,
+    "max_loss_pct": -2.5
   },
   {
     "address": "token_rug",
@@ -28,5 +48,25 @@
     "is_pump_dump": false,
     "max_gain_pct": 5.0,
     "max_loss_pct": -92.0
+  },
+  {
+    "address": "token_zap",
+    "symbol": "ZAP",
+    "chain": "solana",
+    "call_count": 2,
+    "is_rug": true,
+    "is_pump_dump": false,
+    "max_gain_pct": 10.0,
+    "max_loss_pct": -91.0
+  },
+  {
+    "address": "token_wick",
+    "symbol": "WICK",
+    "chain": "solana",
+    "call_count": 1,
+    "is_rug": true,
+    "is_pump_dump": false,
+    "max_gain_pct": 6.7,
+    "max_loss_pct": -90.0
   }
 ]
