@@ -44,7 +44,9 @@ interface LogsParams {
   roomId?: string;
 }
 
-function hasMutableLogLevel(value: typeof logger): value is RuntimeLoggerWithLevel {
+function hasMutableLogLevel(
+  value: typeof logger,
+): value is RuntimeLoggerWithLevel {
   return "level" in value && typeof value.level === "string";
 }
 

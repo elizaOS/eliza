@@ -192,7 +192,9 @@ function isRelationshipsServiceLike(
   return typeof service === "object" && service !== null;
 }
 
-function isFollowUpServiceLike(service: unknown): service is FollowUpServiceLike {
+function isFollowUpServiceLike(
+  service: unknown,
+): service is FollowUpServiceLike {
   return (
     typeof service === "object" &&
     service !== null &&

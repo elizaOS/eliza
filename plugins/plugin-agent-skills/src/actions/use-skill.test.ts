@@ -36,15 +36,15 @@ describe("useSkillAction", () => {
 				estimatedTokens: 12,
 			})),
 		};
-		const runtime = {
+		const runtimeShape = {
 			getService: vi.fn((name: string) =>
 				name === "AGENT_SKILLS_SERVICE" ? service : undefined,
 			),
-		} as IAgentRuntime;
+		};
 		const callback = vi.fn();
 
 		const result = await useSkillAction.handler(
-			runtime,
+			Object.assign(Object.create(null) as IAgentRuntime, runtimeShape),
 			{ content: { text: "use github skill" } } as Memory,
 			undefined,
 			{ parameters: { slug: "github", mode: "guidance" } },

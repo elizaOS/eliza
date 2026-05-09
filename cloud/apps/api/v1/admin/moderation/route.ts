@@ -211,11 +211,7 @@ async function adminStatusResponse(c: AppContext): Promise<Response> {
   try {
     const user = await requireUserOrApiKey(c);
 
-    if (!user?.wallet_address) {
-      return notAdminResponse();
-    }
-
-    const { isAdmin, role } = await adminService.getAdminStatus(user.wallet_address);
+    const { isAdmin, role } = await adminService.getAdminStatusForUser(user);
 
     c.header("X-Is-Admin", String(isAdmin));
     c.header("X-Admin-Role", role ?? "");

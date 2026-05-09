@@ -90,10 +90,7 @@ describe("BlueSky account config", () => {
 			]),
 		});
 
-		BlueSkyService.registerSendHandlers(
-			rt,
-			service,
-		);
+		BlueSkyService.registerSendHandlers(rt, service);
 
 		expect(rt.registerMessageConnector).toHaveBeenCalledTimes(2);
 		expect(rt.registerPostConnector).toHaveBeenCalledTimes(2);

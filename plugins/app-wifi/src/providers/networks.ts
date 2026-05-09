@@ -46,13 +46,15 @@ export const wifiNetworksProvider: Provider = {
       const { networks } = await WiFi.listAvailableNetworks({
         limit: WIFI_NETWORKS_LIMIT,
       });
-      const entries: WifiNetworkEntry[] = networks.map((n) => ({
-        ssid: n.ssid,
-        bssid: n.bssid,
-        rssi: n.rssi,
-        frequency: n.frequency,
-        secured: n.secured,
-      }));
+      const entries: WifiNetworkEntry[] = networks.map(
+        (n: WifiNetworkEntry) => ({
+          ssid: n.ssid,
+          bssid: n.bssid,
+          rssi: n.rssi,
+          frequency: n.frequency,
+          secured: n.secured,
+        }),
+      );
 
       return {
         text: JSON.stringify({

@@ -29,6 +29,22 @@
 			"@elizaos/core/*": ["./src/*"],
 			"@elizaos/app-core": ["../app-core/src/index.ts"],
 			"@elizaos/app-core/*": ["../app-core/src/*"],
+			"@elizaos/ui": ["../ui/dist/index.d.ts"],
+			"@elizaos/ui/components/apps/extensions/registry": [
+				"../ui/dist/components/apps/extensions/registry.d.ts"
+			],
+			"@elizaos/ui/components/apps/extensions/surface": [
+				"../ui/dist/components/apps/extensions/surface.d.ts"
+			],
+			"@elizaos/ui/components/apps/extensions/types": [
+				"../ui/dist/components/apps/extensions/types.d.ts"
+			],
+			"@elizaos/ui/components/apps/surfaces/registry": [
+				"../ui/dist/components/apps/surfaces/registry.d.ts"
+			],
+			"@elizaos/ui/components/apps/surfaces/types": [
+				"../ui/dist/components/apps/surfaces/types.d.ts"
+			],
 			"@elizaos/shared": ["../shared/src/index.ts"],
 			"@elizaos/shared/*": ["../shared/src/*"],
 			"@elizaos/plugin-elizacloud": ["../../plugins/plugin-elizacloud/src/index.node.ts"],

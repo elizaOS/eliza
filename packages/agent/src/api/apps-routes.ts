@@ -636,7 +636,7 @@ async function proxyRunSteeringRequest(
     ...ctx,
     pathname: target.pathname,
     url: syntheticUrl,
-				res: syntheticResponse,
+    res: syntheticResponse,
     readJsonBody: async <T extends object>() => body as T | null,
     json: (
       response: http.ServerResponse,

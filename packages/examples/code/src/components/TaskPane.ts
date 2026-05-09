@@ -138,8 +138,8 @@ export class TaskPane implements Focusable {
   }
 
   resize(width: number, height: number): void {
-    this.width = width;
-    this.height = height;
+    void width;
+    void height;
   }
 
   syncFocus(focused: boolean): void {
@@ -413,9 +413,6 @@ export class TaskPane implements Focusable {
   }
 
   renderContent(width: number, height: number): string[] {
-    this.width = width;
-    this.height = height;
-
     const state = useStore.getState();
     const tasks = state.tasks;
     const currentTaskId = state.currentTaskId;

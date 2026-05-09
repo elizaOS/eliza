@@ -86,9 +86,7 @@ interface DrizzleDb {
   execute(query: { queryChunks: unknown[] }): Promise<RawExecuteResult>;
 }
 
-function hasDrizzleDb(
-  adapter: unknown,
-): adapter is { db: DrizzleDb } {
+function hasDrizzleDb(adapter: unknown): adapter is { db: DrizzleDb } {
   return (
     typeof adapter === "object" &&
     adapter !== null &&

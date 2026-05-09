@@ -236,10 +236,7 @@ export class App {
   }
 
   async run(): Promise<void> {
-    this.running = true;
-
     await useStore.getState().loadSessionState();
-    this.initialized = true;
 
     this.initializeManagers();
 
@@ -253,7 +250,6 @@ export class App {
   }
 
   stop(): void {
-    this.running = false;
     this.tui.stop();
     if (this.exitResolver) {
       this.exitResolver();

@@ -11,10 +11,31 @@ import {
 } from "./connector-account-provider.js";
 
 function runtime(settings: Record<string, unknown>): IAgentRuntime {
-  return {
+  return createTestRuntime({
     character: {},
-    getSetting: vi.fn((key: string) => settings[key]),
-  } as unknown as IAgentRuntime;
+    getSetting: vi.fn((key: string) => toRuntimeSetting(settings[key])),
+  });
+}
+
+type RuntimeSetting = string | number | boolean | null;
+
+interface TestRuntimeShape {
+  agentId?: string;
+  character?: unknown;
+  getSetting?: (key: string) => RuntimeSetting;
+  getService?: (serviceType: string) => unknown;
+}
+
+function toRuntimeSetting(value: unknown): RuntimeSetting {
+  return typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+    ? value
+    : null;
+}
+
+function createTestRuntime(runtimeShape: TestRuntimeShape): IAgentRuntime {
+  return Object.assign(Object.create(null) as IAgentRuntime, runtimeShape);
 }
 
 describe("Calendly ConnectorAccountManager provider", () => {
@@ -99,7 +120,7 @@ describe("Calendly ConnectorAccountManager provider", () => {
   it("persists callback tokens as credential refs without returning token metadata", async () => {
     const vault = new Map<string, string>();
     const setCredentialRef = vi.fn(async () => undefined);
-    const rt = {
+    const rt = createTestRuntime({
       agentId: "agent-1",
       character: {},
       getSetting: vi.fn(
@@ -109,7 +130,7 @@ describe("Calendly ConnectorAccountManager provider", () => {
             CALENDLY_OAUTH_CLIENT_SECRET: "calendly-secret",
             CALENDLY_OAUTH_REDIRECT_URI:
               "http://localhost/oauth/calendly/callback",
-          })[key],
+          })[key] ?? null,
       ),
       getService: (serviceType: string) =>
         serviceType === "vault"
@@ -119,7 +140,7 @@ describe("Calendly ConnectorAccountManager provider", () => {
               },
             }
           : null,
-    } as unknown as IAgentRuntime;
+    });
     const manager = createOAuthCallbackManager(
       CALENDLY_PROVIDER_NAME,
       "acct_calendly_durable_1",
@@ -214,7 +235,7 @@ describe("Calendly ConnectorAccountManager provider", () => {
   });
 
   it("fails OAuth callback when no durable vault writer is available", async () => {
-    const rt = {
+    const rt = createTestRuntime({
       agentId: "agent-1",
       character: {},
       getSetting: vi.fn(
@@ -224,10 +245,10 @@ describe("Calendly ConnectorAccountManager provider", () => {
             CALENDLY_OAUTH_CLIENT_SECRET: "calendly-secret",
             CALENDLY_OAUTH_REDIRECT_URI:
               "http://localhost/oauth/calendly/callback",
-          })[key],
+          })[key] ?? null,
       ),
       getService: () => null,
-    } as unknown as IAgentRuntime;
+    });
     const manager = createOAuthCallbackManager(
       CALENDLY_PROVIDER_NAME,
       "acct_calendly_durable_1",

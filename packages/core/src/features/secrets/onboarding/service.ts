@@ -41,10 +41,7 @@ export const ONBOARDING_SERVICE_TYPE = "SECRETS_ONBOARDING" as ServiceTypeName;
 
 interface TelegramDeepLinkService {
 	messageManager: {
-		sendMessage(
-			chatId: string | number,
-			msg: { text: string },
-		): Promise<void>;
+		sendMessage(chatId: string | number, msg: { text: string }): Promise<void>;
 	};
 }
 

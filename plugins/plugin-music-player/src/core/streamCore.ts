@@ -26,6 +26,15 @@ type StreamCoreSource = Readable & {
   _streamCoreHandlers?: StreamCoreHandlers;
 };
 
+function isWritableStream(value: unknown): value is NodeJS.WritableStream {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    typeof (value as { write?: unknown }).write === "function" &&
+    typeof (value as { end?: unknown }).end === "function"
+  );
+}
+
 /**
  * StreamCore - The heart of the audio broadcast system
  *
@@ -305,8 +314,9 @@ export class StreamCore extends EventEmitter {
       }
     } else if (upstream) {
       try {
-        const writableSrc: NodeJS.WritableStream = src;
-        upstream.unpipe(writableSrc);
+        if (isWritableStream(src)) {
+          upstream.unpipe(src);
+        }
       } catch {
         /* ignore */
       }

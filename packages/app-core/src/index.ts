@@ -30,3 +30,4 @@ export * from "./services/steward-credentials";
 export * from "./services/steward-sidecar";
 export * from "./services/vault-bootstrap";
 export * from "./services/vault-mirror";
+export * from "./ui-compat";

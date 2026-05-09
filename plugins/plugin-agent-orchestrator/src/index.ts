@@ -21,11 +21,30 @@ import { PTYService } from "./services/pty-service.js";
 import { SubAgentRouter } from "./services/sub-agent-router.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+function assertServiceClass(service: unknown): asserts service is ServiceClass {
+  if (
+    !isRecord(service) ||
+    typeof service.serviceType !== "string" ||
+    typeof service.start !== "function"
+  ) {
+    throw new TypeError("Invalid orchestrator service class");
+  }
+}
+
+function serviceClass(service: unknown): ServiceClass {
+  assertServiceClass(service);
+  return service;
+}
+
 const orchestratorServices: ServiceClass[] = [
-  AcpService as ServiceClass,
-  SubAgentRouter as ServiceClass,
-  PTYService as ServiceClass,
-  CodingWorkspaceService as ServiceClass,
+  serviceClass(AcpService),
+  serviceClass(SubAgentRouter),
+  serviceClass(PTYService),
+  serviceClass(CodingWorkspaceService),
 ];
 
 export const agentOrchestratorPlugin: Plugin = {
