@@ -44,7 +44,16 @@ export interface DflashRuntimeStatus {
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_START_TIMEOUT_MS = 120_000;
-const METAL_UNSUPPORTED_CACHE_TYPES = new Set(["turbo2_tcq", "turbo3_tcq"]);
+const METAL_UNSUPPORTED_CACHE_TYPES = new Set([
+  "turbo2",
+  "turbo3",
+  "turbo4",
+  "turbo2_0",
+  "turbo3_0",
+  "turbo4_0",
+  "turbo2_tcq",
+  "turbo3_tcq",
+]);
 
 function readBool(name: string): boolean {
   const raw = process.env[name]?.trim().toLowerCase();
@@ -78,7 +87,7 @@ function assertCacheTypeSupportedOnBackend(name: string, value: string): void {
     METAL_UNSUPPORTED_CACHE_TYPES.has(value.toLowerCase())
   ) {
     throw new Error(
-      `${name}=${value} requires TCQ/QJL kernels that are implemented for CUDA/ROCm in the DFlash fork, but not Metal. Use turbo4 on Metal or run this variant on CUDA/ROCm.`,
+      `${name}=${value} is not production-safe on Metal in the DFlash fork. Turbo4 currently crashes during slot initialization, and TCQ/QJL kernels are only implemented for CUDA/ROCm. Use f16 KV on Metal or run this variant on CUDA/ROCm.`,
     );
   }
 }
@@ -104,12 +113,15 @@ function candidateBinaryPaths(): string[] {
 }
 
 function platformKey(): string {
+  const forced = process.env.ELIZA_DFLASH_BACKEND?.trim().toLowerCase();
+  if (forced) return `${process.platform}-${process.arch}-${forced}`;
   const backend =
     process.platform === "darwin"
       ? "metal"
       : process.env.HIP_VISIBLE_DEVICES || process.env.ROCR_VISIBLE_DEVICES
         ? "rocm"
-        : process.env.CUDA_VISIBLE_DEVICES !== "-1"
+        : process.env.CUDA_VISIBLE_DEVICES &&
+            process.env.CUDA_VISIBLE_DEVICES !== "-1"
           ? "cuda"
           : "cpu";
   return `${process.platform}-${process.arch}-${backend}`;
@@ -388,11 +400,17 @@ export class DflashLlamaServer {
     const cacheTypeK = process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim();
     const cacheTypeV = process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim();
     if (cacheTypeK) {
-      assertCacheTypeSupportedOnBackend("ELIZA_DFLASH_CACHE_TYPE_K", cacheTypeK);
+      assertCacheTypeSupportedOnBackend(
+        "ELIZA_DFLASH_CACHE_TYPE_K",
+        cacheTypeK,
+      );
       args.push("--cache-type-k", cacheTypeK);
     }
     if (cacheTypeV) {
-      assertCacheTypeSupportedOnBackend("ELIZA_DFLASH_CACHE_TYPE_V", cacheTypeV);
+      assertCacheTypeSupportedOnBackend(
+        "ELIZA_DFLASH_CACHE_TYPE_V",
+        cacheTypeV,
+      );
       args.push("--cache-type-v", cacheTypeV);
     }
 
@@ -401,7 +419,7 @@ export class DflashLlamaServer {
       for (const cacheType of METAL_UNSUPPORTED_CACHE_TYPES) {
         if (extra.toLowerCase().split(/\s+/).includes(cacheType)) {
           throw new Error(
-            `ELIZA_DFLASH_LLAMA_ARGS includes ${cacheType}, but Metal TCQ/QJL kernels are not implemented in the DFlash fork. Use turbo4 on Metal or run this variant on CUDA/ROCm.`,
+            `ELIZA_DFLASH_LLAMA_ARGS includes ${cacheType}, but that KV cache type is not production-safe on Metal in the DFlash fork. Use f16 KV on Metal or run this variant on CUDA/ROCm.`,
           );
         }
       }
