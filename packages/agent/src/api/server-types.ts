@@ -301,7 +301,7 @@ export interface ServerState {
   >;
   /** Active Telegram account auth session (user-account login flow). */
   telegramAccountAuthSession?:
-    | import("@elizaos/plugin-telegram/account-auth-service").TelegramAccountAuthSessionLike
+    | import("@elizaos/plugin-telegram").TelegramAccountAuthSessionLike
     | null;
 }
 

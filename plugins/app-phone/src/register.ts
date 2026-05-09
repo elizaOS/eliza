@@ -8,7 +8,7 @@
  *   import "@elizaos/app-phone/register";
  */
 
-import { isElizaOS } from "@elizaos/app-core";
+import { isElizaOS } from "@elizaos/ui";
 import { registerPhoneApp } from "./components/phone-app";
 
 if (isElizaOS()) {
