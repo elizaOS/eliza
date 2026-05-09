@@ -199,11 +199,11 @@ describe("plugin-sql advanced memory storage", () => {
     expect(memory).toBeTruthy();
     expect(runtime.providers.some((provider) => provider.name === "LONG_TERM_MEMORY")).toBe(true);
     expect(runtime.providers.some((provider) => provider.name === "SUMMARIZED_CONTEXT")).toBe(true);
-    expect(runtime.evaluators.some((evaluator) => evaluator.name === "MEMORY_SUMMARIZATION")).toBe(
+    expect(runtime.actions.some((action) => action.name === "MEMORY_SUMMARIZATION")).toBe(
       true
     );
     expect(
-      runtime.evaluators.some((evaluator) => evaluator.name === "LONG_TERM_MEMORY_EXTRACTION")
+      runtime.actions.some((action) => action.name === "LONG_TERM_MEMORY_EXTRACTION")
     ).toBe(true);
   });
 

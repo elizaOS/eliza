@@ -408,17 +408,17 @@ describeIf(LIVE_SUITE_ENABLED)(
         ),
       ).toBe(true);
       expect(
-        runtime.evaluators.some(
-          (evaluator) => evaluator.name === "MEMORY_SUMMARIZATION",
+        runtime.actions.some(
+          (action) => action.name === "MEMORY_SUMMARIZATION",
         ),
       ).toBe(true);
       expect(
-        runtime.evaluators.some(
-          (evaluator) => evaluator.name === "LONG_TERM_MEMORY_EXTRACTION",
+        runtime.actions.some(
+          (action) => action.name === "LONG_TERM_MEMORY_EXTRACTION",
         ),
       ).toBe(true);
       expect(
-        runtime.evaluators.some((evaluator) => evaluator.name === "REFLECTION"),
+        runtime.actions.some((action) => action.name === "REFLECTION"),
       ).toBe(true);
     });
 

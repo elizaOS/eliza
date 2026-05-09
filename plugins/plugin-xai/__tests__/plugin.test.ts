@@ -29,7 +29,6 @@ describe("XAIPlugin", () => {
     expect(XAIPlugin.actions ?? []).toHaveLength(0);
     expect(XAIPlugin.services ?? []).toHaveLength(0);
     expect(XAIPlugin.providers ?? []).toHaveLength(0);
-    expect(XAIPlugin.evaluators ?? []).toHaveLength(0);
   });
 
   it("emits MODEL_USED usage for text and embedding calls", async () => {
