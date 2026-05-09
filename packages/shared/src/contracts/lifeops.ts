@@ -4187,3 +4187,95 @@ export interface SendLifeOpsIMessageRequest {
   text: string;
   attachmentPaths?: string[];
 }
+// ── Knowledge-graph: Entity + Relationship (W1-E) ──────────────────────────
+//
+// Frozen shapes per `eliza/plugins/app-lifeops/docs/audit/wave1-interfaces.md
+// §2`. The runtime stores live in `@elizaos/app-lifeops`. These contracts
+// expose the wire shape so other packages (UI, Cloud relay, tests) can work
+// against typed data without depending on the lifeops package.
+
+export type LifeOpsEntityVisibility =
+  | "owner_only"
+  | "agent_and_admin"
+  | "owner_agent_admin";
+
+export type LifeOpsEntityIdentityAddedVia =
+  | "user_chat"
+  | "merge"
+  | "platform_observation"
+  | "extraction"
+  | "import";
+
+export interface LifeOpsEntityIdentity {
+  platform: string;
+  handle: string;
+  displayName?: string;
+  verified: boolean;
+  confidence: number;
+  addedAt: string;
+  addedVia: LifeOpsEntityIdentityAddedVia;
+  evidence: string[];
+}
+
+export interface LifeOpsEntityAttribute {
+  value: unknown;
+  confidence: number;
+  evidence: string[];
+  updatedAt: string;
+}
+
+export interface LifeOpsEntityState {
+  lastObservedAt?: string;
+  lastInboundAt?: string;
+  lastOutboundAt?: string;
+  lastInteractionPlatform?: string;
+}
+
+export interface LifeOpsEntity {
+  entityId: string;
+  type: string;
+  preferredName: string;
+  fullName?: string;
+  identities: LifeOpsEntityIdentity[];
+  attributes?: Record<string, LifeOpsEntityAttribute>;
+  state: LifeOpsEntityState;
+  tags: string[];
+  visibility: LifeOpsEntityVisibility;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type LifeOpsGraphRelationshipSource =
+  | "user_chat"
+  | "platform_observation"
+  | "extraction"
+  | "import"
+  | "system";
+
+export type LifeOpsGraphRelationshipStatus = "active" | "retired";
+
+export interface LifeOpsGraphRelationshipState {
+  lastObservedAt?: string;
+  lastInteractionAt?: string;
+  interactionCount?: number;
+  sentimentTrend?: "positive" | "neutral" | "negative";
+}
+
+export interface LifeOpsGraphRelationship {
+  relationshipId: string;
+  fromEntityId: string;
+  toEntityId: string;
+  type: string;
+  metadata?: Record<string, unknown>;
+  state: LifeOpsGraphRelationshipState;
+  evidence: string[];
+  confidence: number;
+  source: LifeOpsGraphRelationshipSource;
+  status: LifeOpsGraphRelationshipStatus;
+  retiredAt?: string;
+  retiredReason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+
