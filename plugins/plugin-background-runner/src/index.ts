@@ -28,8 +28,13 @@ export const backgroundRunnerPlugin: Plugin = {
 
 export default backgroundRunnerPlugin;
 
-export { BgTaskSchedulerService } from './services/BgTaskSchedulerService';
+export {
+  type BackgroundRunnerLike,
+  type CapacitorEnvironment,
+  resolveCapacitorEnvironment,
+} from './capacitor/bridge';
 export { CapacitorBgScheduler } from './capacitor/capacitor-scheduler';
+export { BgTaskSchedulerService } from './services/BgTaskSchedulerService';
 export { IntervalBgScheduler } from './services/IntervalBgScheduler';
 export {
   BACKGROUND_RUNNER_SERVICE_TYPE,
@@ -37,8 +42,3 @@ export {
   type IBgTaskScheduler,
   type ScheduleOptions,
 } from './types';
-export {
-  type BackgroundRunnerLike,
-  type CapacitorEnvironment,
-  resolveCapacitorEnvironment,
-} from './capacitor/bridge';

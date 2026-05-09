@@ -1,6 +1,6 @@
 import { elizaLogger } from '@elizaos/core';
-import type { BackgroundRunnerLike, CapacitorEnvironment } from './bridge';
 import type { BgSchedulerKind, IBgTaskScheduler, ScheduleOptions } from '../types';
+import type { BackgroundRunnerLike, CapacitorEnvironment } from './bridge';
 
 /**
  * Capacitor-backed background scheduler.

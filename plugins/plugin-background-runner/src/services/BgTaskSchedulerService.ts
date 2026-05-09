@@ -1,11 +1,12 @@
 import { elizaLogger, type IAgentRuntime, Service, ServiceType } from '@elizaos/core';
-import { CapacitorBgScheduler } from '../capacitor/capacitor-scheduler';
 import {
   type BackgroundRunnerLike,
   type CapacitorEnvironment,
   resolveCapacitorEnvironment,
 } from '../capacitor/bridge';
+import { CapacitorBgScheduler } from '../capacitor/capacitor-scheduler';
 import { BACKGROUND_RUNNER_SERVICE_TYPE, type IBgTaskScheduler } from '../types';
+import { IntervalBgScheduler } from './IntervalBgScheduler';
 
 /**
  * Subset of core's TaskService that this plugin needs. Pinned structurally
@@ -15,7 +16,10 @@ import { BACKGROUND_RUNNER_SERVICE_TYPE, type IBgTaskScheduler } from '../types'
 interface TaskServiceLike {
   runDueTasks(): Promise<void>;
 }
-import { IntervalBgScheduler } from './IntervalBgScheduler';
+
+function isTaskServiceLike(service: Service | null): service is Service & TaskServiceLike {
+  return service !== null && typeof Reflect.get(service, 'runDueTasks') === 'function';
+}
 
 /**
  * Integrates the host's background scheduler (iOS BGTaskScheduler / Android
@@ -83,7 +87,13 @@ export class BgTaskSchedulerService extends Service {
       elizaLogger.warn('[BgTaskSchedulerService] wake fired but no TaskService is registered');
       return;
     }
-    await (service as unknown as TaskServiceLike).runDueTasks();
+    if (!isTaskServiceLike(service)) {
+      elizaLogger.warn(
+        '[BgTaskSchedulerService] wake fired but registered TaskService does not expose runDueTasks'
+      );
+      return;
+    }
+    await service.runDueTasks();
   }
 
   /**

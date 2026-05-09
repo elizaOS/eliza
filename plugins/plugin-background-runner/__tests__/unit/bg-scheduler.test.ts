@@ -7,12 +7,14 @@ import {
 } from '../../src';
 import type { BackgroundRunnerLike, CapacitorEnvironment } from '../../src/capacitor/bridge';
 
-function makeRunner(): BackgroundRunnerLike & { calls: Array<Record<string, unknown>> } {
-  const calls: Array<Record<string, unknown>> = [];
+type DispatchEventOptions = Parameters<BackgroundRunnerLike['dispatchEvent']>[0];
+
+function makeRunner(): BackgroundRunnerLike & { calls: DispatchEventOptions[] } {
+  const calls: DispatchEventOptions[] = [];
   return {
     calls,
     dispatchEvent: async (opts) => {
-      calls.push(opts as unknown as Record<string, unknown>);
+      calls.push(opts);
       return undefined;
     },
   };

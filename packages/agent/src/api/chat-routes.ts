@@ -80,7 +80,7 @@ import {
   trimWalletProgressPrefix,
   validateChatImages,
 } from "./server-helpers.js";
-import { resolveStreamingUpdate } from "./streaming-text.js";
+import { resolveStreamingUpdate } from "@elizaos/plugin-streaming";
 
 const CHAT_MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB (image-capable)
 

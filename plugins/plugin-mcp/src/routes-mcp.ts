@@ -3,9 +3,9 @@ import { logger } from "@elizaos/core";
 import type { ElizaConfig, ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   getMcpServerDetails,
+  parseClampedInteger,
   searchMcpMarketplace,
-} from "@elizaos/agent/services/mcp-marketplace";
-import { parseClampedInteger } from "@elizaos/agent/utils/number-parsing";
+} from "@elizaos/agent";
 
 // ---------------------------------------------------------------------------
 // Types

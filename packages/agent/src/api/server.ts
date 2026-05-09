@@ -50,7 +50,12 @@ import {
   saveElizaConfig,
 } from "../config/config.js";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
-import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.js";
+// `plugin-auto-enable.ts` was removed during a workspace refactor; the helper
+// `isStreamingDestinationConfigured` landed in `@elizaos/core`
+// (`connectors/connector-config.ts`, re-exported via index.node.ts). Importing
+// from the canonical path keeps the bench server bootable without
+// resurrecting the deleted file.
+import { isStreamingDestinationConfigured } from "@elizaos/core";
 import { CharacterSchema } from "../config/zod-schema.js";
 // ONBOARDING_CLOUD_PROVIDER_OPTIONS, ONBOARDING_PROVIDER_CATALOG moved to server-helpers-config.ts
 import { validateX402Startup } from "../middleware/x402/startup-validator.js";
@@ -98,8 +103,8 @@ import {
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
 // signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout extracted to @elizaos/plugin-signal
-import { signalAuthExists } from "../services/signal-pairing.js";
-import { streamManager } from "../services/stream-manager.js";
+import { signalAuthExists } from "@elizaos/plugin-signal";
+import { streamManager } from "@elizaos/plugin-streaming";
 // telegram-account-auth helpers moved to @elizaos/plugin-telegram (account-setup-routes.ts).
 // WhatsApp pairing service helpers (sanitizeAccountId, WhatsAppPairingSession,
 // whatsappAuthExists, whatsappLogout) are owned by @elizaos/plugin-whatsapp now;
@@ -136,16 +141,45 @@ import { handleAvatarRoutes } from "./avatar-routes.js";
 // BlueBubbles routes extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
 // resolveBlueBubblesWebhookPath stays here so the auth gate can compute the webhook path
 // before the runtime plugin route dispatcher runs.
-import { resolveBlueBubblesWebhookPath } from "./bluebubbles-routes.js";
+import { resolveBlueBubblesWebhookPath } from "@elizaos/plugin-imessage";
+import {
+  BROWSER_BRIDGE_KINDS,
+  BROWSER_BRIDGE_PACKAGE_PATH_TARGETS,
+  buildBrowserBridgeCompanionPackage,
+  closeBrowserWorkspaceTab,
+  evaluateBrowserWorkspaceTab,
+  executeBrowserWorkspaceCommand,
+  getBrowserBridgeCompanionPackageStatus,
+  getBrowserWorkspaceSnapshot,
+  hideBrowserWorkspaceTab,
+  listBrowserWorkspaceTabs,
+  navigateBrowserWorkspaceTab,
+  openBrowserBridgeCompanionManager,
+  openBrowserBridgeCompanionPackagePath,
+  openBrowserWorkspaceTab,
+  showBrowserWorkspaceTab,
+  snapshotBrowserWorkspaceTab,
+  type BrowserBridgeKind,
+  type BrowserBridgePackagePathTarget,
+  type BrowserWorkspaceCommand,
+  type BrowserWorkspaceTabKind,
+} from "@elizaos/plugin-browser";
 import { handleBugReportRoutes } from "./bug-report-routes.js";
 import { handleCharacterRoutes } from "./character-routes.js";
 import {
   initSse as initSseFromChatRoutes,
   writeSseJson as writeSseJsonFromChatRoutes,
 } from "./chat-routes.js";
-import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
-import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
-import { handleComputerUseRoutes } from "./computer-use-routes.js";
+// `cloud-provisioning.ts` was deleted from agent/src/api during a workspace
+// refactor; the function moved to plugin-elizacloud. Pull from there to
+// keep the bench server bootable.
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
+// `cloud-status-routes.ts` and `computer-use-routes.ts` were deleted from
+// agent/src/api during a workspace refactor; the route handlers now live in
+// the corresponding plugins. Pull from there to keep the bench server
+// bootable.
+import { handleCloudStatusRoutes } from "@elizaos/plugin-elizacloud";
+import { handleComputerUseRoutes } from "@elizaos/plugin-computeruse";
 import { handleConfigRoutes } from "./config-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
@@ -163,7 +197,7 @@ import {
   sendJsonError,
 } from "./http-helpers.js";
 // iMessage routes extracted to @elizaos/plugin-imessage setup-routes.ts (Plugin.routes)
-// import { handleIMessageRoute } from "./imessage-routes.js";
+// import { handleIMessageRoute } from "@elizaos/plugin-imessage";
 import {
   getLocalInferenceActiveModelId,
   handleLocalInferenceRoutes,
@@ -174,7 +208,7 @@ import { handleMemoryRoutes } from "./memory-routes.js";
 import { handleMiscRoutes } from "./misc-routes.js";
 import { handleMobileOptionalRoutes } from "./mobile-optional-routes.js";
 import { handleModelsRoutes } from "./models-routes.js";
-import { tryHandleMusicPlayerStatusFallback } from "@elizaos/plugin-music";
+import { tryHandleMusicPlayerStatusFallback } from "@elizaos/plugin-music-player";
 import { handleOnboardingRoutes } from "./onboarding-routes.js";
 import { handlePermissionRoutes } from "./permissions-routes.js";
 import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.js";
@@ -210,7 +244,7 @@ import {
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
 // Telegram account routes extracted to @elizaos/plugin-telegram account-setup-routes.ts (Plugin.routes).
 import { handleTriggerRoutes } from "@elizaos/plugin-workflow";
-import { handleTtsRoutes } from "./tts-routes.js";
+import { handleTtsRoutes } from "@elizaos/plugin-streaming";
 import { handleUpdateRoutes } from "./update-routes.js";
 import {
   // Balance/import/generate helpers moved to @elizaos/app-steward plugin routes.
@@ -229,7 +263,8 @@ import { handleWalletRoutes } from "./wallet-routes.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
 // WhatsApp route dispatch extracted to @elizaos/plugin-whatsapp setup-routes.ts (Plugin.routes).
 // applyWhatsAppQrOverride remains for plugin-discovery's QR override flow.
-import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
+// `whatsapp-routes.ts` was moved into the plugin; pull from there.
+import { applyWhatsAppQrOverride } from "@elizaos/plugin-whatsapp";
 import { handleWorkbenchRoutes } from "./workbench-routes.js";
 
 export {
@@ -271,7 +306,6 @@ export {
   IMAGE_ONLY_CHAT_FALLBACK_PROMPT,
   isUuidLike,
   isWalletActionRequiredIntent,
-  maybeAugmentChatMessageWithKnowledge,
   maybeAugmentChatMessageWithLanguage,
   maybeAugmentChatMessageWithWalletContext,
   normalizeIncomingChatPrompt,
@@ -505,7 +539,7 @@ export {
 const fetchWithTimeoutGuard = _fetchWithTimeoutGuard;
 const streamResponseBodyWithByteLimit = _streamResponseBodyWithByteLimit;
 
-type StreamRouteDestination = import("./stream-routes.js").StreamingDestination;
+type StreamRouteDestination = import("@elizaos/plugin-streaming").StreamingDestination;
 
 interface StreamingPluginDestinationFactories {
   createCustomRtmpDestination(config?: {
@@ -3500,7 +3534,7 @@ export async function startApiServer(opts?: {
     // configured, inject it so /api/stream/live can fetch credentials.
     void (async () => {
       try {
-        const { handleStreamRoute } = await import("./stream-routes.js");
+        const { handleStreamRoute } = await import("@elizaos/plugin-streaming");
         // Screen capture manager is injected by the desktop host via globalThis
         const screenCapture = (globalThis as Record<string, unknown>)
           .__elizaScreenCapture as

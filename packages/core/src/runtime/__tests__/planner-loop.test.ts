@@ -3,7 +3,7 @@ import { plannerTemplate } from "../../prompts/planner";
 import { type ChatMessage, ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
 import { parsePlannerOutput, runPlannerLoop } from "../planner-loop";
-import type { TrajectoryRecorder } from "../trajectory-recorder";
+import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
 describe("v5 planner loop skeleton", () => {
 	it("parses planner tool calls", () => {
@@ -638,14 +638,18 @@ describe("v5 planner loop — evaluator gate", () => {
 			decision: "FINISH" as const,
 			thought: "should not be called",
 		}));
-		const recordedStages: Array<Record<string, unknown>> = [];
-		const recorder = {
+		const recordedStages: RecordedStage[] = [];
+		const recorder: TrajectoryRecorder = {
+			startTrajectory: vi.fn(() => "trj-gated"),
 			recordStage: vi.fn(
-				async (_trajectoryId: string, stage: Record<string, unknown>) => {
+				async (_trajectoryId: string, stage: RecordedStage) => {
 					recordedStages.push(stage);
 				},
 			),
-		} as unknown as TrajectoryRecorder;
+			endTrajectory: vi.fn(async () => undefined),
+			load: vi.fn(async () => null),
+			list: vi.fn(async () => []),
+		};
 
 		await runPlannerLoop({
 			runtime,
@@ -662,21 +666,16 @@ describe("v5 planner loop — evaluator gate", () => {
 		// The recorder DID receive an evaluation stage for the gated iteration.
 		const evalStages = recordedStages.filter((s) => s.kind === "evaluation");
 		expect(evalStages).toHaveLength(1);
-		const evalStage = evalStages[0] as Record<string, unknown>;
-		expect((evalStage.evaluation as Record<string, unknown>).gated).toBe(true);
-		expect(
-			(evalStage.evaluation as Record<string, unknown>).llmCallSkipped,
-		).toBe(true);
-		expect((evalStage.evaluation as Record<string, unknown>).reason).toBe(
-			"explicit_terminal_reply",
-		);
+		const evalStage = evalStages[0];
+		if (!evalStage?.evaluation) {
+			throw new Error("Expected an evaluation stage payload");
+		}
+		expect(evalStage.evaluation.gated).toBe(true);
+		expect(evalStage.evaluation.llmCallSkipped).toBe(true);
+		expect(evalStage.evaluation.reason).toBe("explicit_terminal_reply");
 		// The decision and message reach the recorder so timeline UIs render them.
-		expect((evalStage.evaluation as Record<string, unknown>).decision).toBe(
-			"FINISH",
-		);
-		expect(
-			(evalStage.evaluation as Record<string, unknown>).messageToUser,
-		).toBe("Status check passed.");
+		expect(evalStage.evaluation.decision).toBe("FINISH");
+		expect(evalStage.evaluation.messageToUser).toBe("Status check passed.");
 		// No `model` block — there was no LLM call to attribute.
 		expect(evalStage.model).toBeUndefined();
 	});

@@ -30,7 +30,11 @@ import {
   toWorkbenchTaskView,
 } from './automations-types';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
-import type { WorkflowDefinition, WorkflowDefinitionResponse } from '../types/index';
+import type {
+  WorkflowDefinition,
+  WorkflowDefinitionResponse,
+  WorkflowExecution,
+} from '../types/index';
 import type { WorkflowStatusResponse } from '../routes/workflow-routes';
 
 const WORKFLOW_DRAFT_TITLE = 'New Workflow Draft';
@@ -405,7 +409,7 @@ function compareAutomationItems(left: AutomationItem, right: AutomationItem): nu
   return left.title.localeCompare(right.title);
 }
 
-function normalizeLastExecution(raw: Record<string, unknown>): AutomationLastExecution | null {
+function normalizeLastExecution(raw: WorkflowExecution): AutomationLastExecution | null {
   const rawStatus = raw.status;
   if (typeof rawStatus !== 'string') return null;
   const STATUS_MAP: Record<string, AutomationLastExecution['status']> = {
@@ -420,9 +424,9 @@ function normalizeLastExecution(raw: Record<string, unknown>): AutomationLastExe
   if (!startedAt) return null;
   const stoppedAt = typeof raw.stoppedAt === 'string' ? raw.stoppedAt : null;
   const errorMessage = (() => {
-    const data = raw.data as Record<string, unknown> | undefined;
-    const resultData = data?.resultData as Record<string, unknown> | undefined;
-    const error = resultData?.error as Record<string, unknown> | undefined;
+    const data = isRecord(raw.data) ? raw.data : null;
+    const resultData = isRecord(data?.resultData) ? data.resultData : null;
+    const error = isRecord(resultData?.error) ? resultData.error : null;
     return typeof error?.message === 'string' ? error.message : undefined;
   })();
   return {
@@ -487,7 +491,7 @@ async function fetchLastExecution(
     });
     return null;
   }
-  const exec = normalizeLastExecution(response.data[0] as unknown as Record<string, unknown>);
+  const exec = normalizeLastExecution(response.data[0]);
   lastExecutionCache.set(workflowId, {
     data: exec,
     expiresAt: Date.now() + LAST_EXECUTION_TTL_MS,

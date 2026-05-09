@@ -4,7 +4,7 @@ import type {
   TaskExecutor,
   TaskResult,
   TaskSpec,
-} from "@elizaos/agent/services/task-executor";
+} from "@elizaos/agent";
 
 const CODING_PATTERNS =
   /\b(build|create|make|scaffold|generate|code|implement|develop|fix|debug|refactor|write)\b/i;
