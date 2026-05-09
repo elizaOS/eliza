@@ -101,6 +101,7 @@ async def _chat_completion(
         "openai": "https://api.openai.com/v1",
         "groq": "https://api.groq.com/openai/v1",
         "openrouter": "https://openrouter.ai/api/v1",
+        "cerebras": "https://api.cerebras.ai/v1",
     }
     if provider not in base_urls:
         raise RuntimeError(f"Local experience agent does not support provider '{provider}'")
@@ -465,7 +466,7 @@ def main() -> None:
     parser.add_argument(
         "--provider",
         type=str,
-        choices=["openai", "groq", "openrouter", "anthropic", "google", "ollama"],
+        choices=["openai", "groq", "openrouter", "anthropic", "google", "ollama", "cerebras"],
         default=None,
         help="Provider for eliza-agent mode (default: auto-detect)",
     )

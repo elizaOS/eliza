@@ -1,2 +1,1 @@
-export { longTermExtractionAction } from "./long-term-extraction.ts";
-export { summarizationAction } from "./summarization.ts";
+export { consolidatedMemoryAction } from "./consolidated-memory.ts";
