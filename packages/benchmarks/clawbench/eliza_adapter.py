@@ -195,7 +195,10 @@ def main() -> int:
         return 0
 
     mgr: ElizaServerManager | None = None
-    if args.start_server:
+    # Auto-spawn the eliza benchmark server when no external URL is configured.
+    # Matches the pattern used by swe_bench, gaia, rlm-bench, etc., so the
+    # orchestrator can run clawbench without manually starting a server.
+    if args.start_server or not os.environ.get("ELIZA_BENCH_URL"):
         mgr = ElizaServerManager()
         mgr.start()
         client = mgr.client
