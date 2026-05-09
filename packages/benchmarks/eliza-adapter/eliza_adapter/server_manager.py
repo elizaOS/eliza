@@ -6,6 +6,7 @@ import atexit
 import logging
 import os
 import secrets
+import shutil
 import signal
 import socket
 import subprocess

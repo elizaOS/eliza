@@ -150,7 +150,12 @@ class ElizaClawBenchRunner:
             }
             score_result = score_episode(scorable, scoring_config)
             result["score"] = score_result
-            result["success"] = score_result.get("failed", 1) == 0
+            # Success = score meets threshold (default 0.6). Old behavior
+            # required zero failed checks, which is unrealistic and tied
+            # success to perfection.
+            threshold = scoring_config.get("success_threshold", 0.6)
+            score_val = score_result.get("score") or 0.0
+            result["success"] = score_val >= threshold
 
         return result
 

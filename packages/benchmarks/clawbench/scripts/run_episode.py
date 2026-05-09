@@ -334,8 +334,9 @@ def main():
             scoring_config = scenario_config.get("scoring")
             if scoring_config:
                 score_result = score_episode(scorable, scoring_config)
-                score_val = score_result.get("score", 0.0)
-                success = score_result.get("failed", 1) == 0
+                score_val = score_result.get("score", 0.0) or 0.0
+                threshold = scoring_config.get("success_threshold", 0.6)
+                success = score_val >= threshold
                 rubric = score_result
 
         output = {
