@@ -1,4 +1,3 @@
-import { requireEvaluatorSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import {
 	type Action,
@@ -20,9 +19,6 @@ import {
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 import type { SummaryResult } from "../types.ts";
-
-// Get text content from centralized specs
-const spec = requireEvaluatorSpec("MEMORY_SUMMARIZATION");
 
 function isDialogueMessage(msg: Memory): boolean {
 	return (
@@ -110,9 +106,14 @@ function parseSummaryResponse(text: string): SummaryResult {
 }
 
 export const summarizationAction: Action = {
-	name: spec.name,
-	description: spec.description,
-	similes: spec.similes ? [...spec.similes] : [],
+	name: "MEMORY_SUMMARIZATION",
+	description:
+		"Automatically summarizes conversations to optimize context usage. Compresses conversation history while preserving important information.",
+	similes: [
+		"CONVERSATION_SUMMARY",
+		"CONTEXT_COMPRESSION",
+		"MEMORY_OPTIMIZATION",
+	],
 	mode: ActionMode.ALWAYS_AFTER,
 	modePriority: 400,
 	examples: [],

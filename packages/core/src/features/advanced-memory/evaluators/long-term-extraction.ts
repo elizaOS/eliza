@@ -1,4 +1,3 @@
-import { requireEvaluatorSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import {
 	type Action,
@@ -21,7 +20,6 @@ import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 import { LongTermMemoryCategory, type MemoryExtraction } from "../types.ts";
 
-const spec = requireEvaluatorSpec("LONG_TERM_MEMORY_EXTRACTION");
 const validMemoryCategories = new Set(Object.values(LongTermMemoryCategory));
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -103,9 +101,10 @@ function parseMemoryExtractionResponse(text: string): MemoryExtraction[] {
 }
 
 export const longTermExtractionAction: Action = {
-	name: spec.name,
-	description: spec.description,
-	similes: spec.similes ? [...spec.similes] : [],
+	name: "LONG_TERM_MEMORY_EXTRACTION",
+	description:
+		"Extracts long-term facts about users from conversations. Identifies and stores persistent information like preferences, interests, and personal details.",
+	similes: ["MEMORY_EXTRACTION", "FACT_LEARNING", "USER_PROFILING"],
 	mode: ActionMode.ALWAYS_AFTER,
 	modePriority: 410,
 	examples: [],

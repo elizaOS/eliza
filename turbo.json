@@ -74,27 +74,17 @@
       "dependsOn": ["^build"],
       "outputs": ["build/**"]
     },
-    "@elizaos/client#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"]
-    },
-    "@elizaos/server#build": {
-      "dependsOn": ["@elizaos/client#build", "^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"]
-    },
     "@elizaos/plugin-cli#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-commands#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-discord#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-elizacloud#build": {
       "dependsOn": [
@@ -102,15 +92,15 @@
         "@elizaos/cloud-sdk#build",
         "^build"
       ],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-groq#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-imessage#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-agent-skills#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
@@ -118,47 +108,43 @@
     },
     "@elizaos/plugin-app-control#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-edge-tts#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-local-ai#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-local-embedding#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-ollama#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-openai#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-openrouter#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-pdf#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
-    },
-    "@elizaos/plugin-plugin-manager#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-shell#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-wallet#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-sql#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
@@ -166,20 +152,17 @@
     },
     "@elizaos/plugin-whatsapp#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "@elizaos/native-activity-tracker#build": {
       "dependsOn": [],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "@elizaos/schemas#build": {
       "outputs": ["../core/src/types/generated/**"],
       "inputs": ["eliza/**", "buf.yaml", "buf.gen.yaml"]
     },
     "lint": {
-      "outputs": []
-    },
-    "@elizaos/interop#lint": {
       "outputs": []
     },
     "lint:check": {
@@ -239,10 +222,7 @@
       "outputs": []
     },
     "@elizaos/example-game-of-life#build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/plugin-inmemorydb#build"
-      ],
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-inmemorydb#build"],
       "outputs": []
     },
     "@elizaos/gcp-examples#build": {

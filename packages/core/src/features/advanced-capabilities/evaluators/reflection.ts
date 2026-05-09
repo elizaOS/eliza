@@ -1,7 +1,6 @@
 import { v4 } from "uuid";
 import z from "zod";
 import { getEntityDetails } from "../../../entities.ts";
-import { requireEvaluatorSpec } from "../../../generated/spec-helpers.ts";
 import { reflectionEvaluatorTemplate } from "../../../prompts.ts";
 import type {
 	Action,
@@ -20,9 +19,6 @@ import {
 	getTaskCompletionCacheKey,
 	type TaskCompletionAssessment,
 } from "./task-completion.ts";
-
-// Get text content from centralized specs
-const spec = requireEvaluatorSpec("REFLECTION");
 
 /** Shape of a single fact in structured JSON responses. */
 interface FactJson {
@@ -907,9 +903,15 @@ const reflectionValidate = async (
  * have been folded into Stage 1.
  */
 export const reflectionAction: Action = {
-	name: spec.name,
-	description: spec.description,
-	similes: spec.similes ? [...spec.similes] : [],
+	name: "REFLECTION",
+	description:
+		"Generate a self-reflective thought on the conversation, then extract facts and relationships between entities in the conversation. Reflects on agent behavior and provides feedback for improvement.",
+	similes: [
+		"REFLECT",
+		"SELF_REFLECT",
+		"EVALUATE_INTERACTION",
+		"ASSESS_SITUATION",
+	],
 	mode: ActionMode.ALWAYS_AFTER,
 	modePriority: 100,
 	examples: [],
