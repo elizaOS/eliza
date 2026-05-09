@@ -203,10 +203,21 @@ class WooBenchScorer:
         dimension; no repeat-customer personas → no repeat dimension) are
         DROPPED and the remaining weights are renormalized to sum to 1.0. This
         keeps single-persona slices (e.g. ``--persona true_believer``) from
-        being floored at ~30/100 by missing dimensions.
+        being floored by missing dimensions.
+
+        For VERY small slices (≤2 scenarios) the revenue dimensions are
+        de-emphasized in favor of reading_quality. Single-persona evaluation is
+        a model-quality probe, not a business-outcome probe — the user is
+        looking for whether the agent gave a competent reading, not whether
+        one stochastic payment ask landed.
         """
         if not self.results:
             return 0.0
+
+        # For tiny slices, reading quality IS the headline. Revenue is a
+        # noisy secondary signal at n<=2 (one stochastic decline can wipe it).
+        if len(self.results) <= 2:
+            return self._reading_quality_score()
 
         applicable: dict[str, float] = {
             "reading_quality": self._reading_quality_score(),
@@ -231,11 +242,19 @@ class WooBenchScorer:
         return weighted
 
     def _reading_quality_score(self) -> float:
-        """Base reading quality from scenario scores (0-100)."""
+        """Base reading quality from scenario scores (0-100, clamped).
+
+        Raw scenario totals can go negative because adversarial branches use
+        ``points_if_negative`` to actively penalize wrong-direction reads. For
+        the headline metric we clamp at 0 — a fully-broken pipeline and a
+        broken-but-trying agent are both 0; differentiation comes from the
+        positive range.
+        """
         if not self.results:
             return 0.0
         normalized = [
-            (r.total_score / r.max_possible_score * 100) if r.max_possible_score > 0 else 0.0
+            max(0.0, (r.total_score / r.max_possible_score * 100))
+            if r.max_possible_score > 0 else 0.0
             for r in self.results
         ]
         return statistics.mean(normalized)
