@@ -328,6 +328,35 @@ declare module "@elizaos/plugin-local-embedding";
 declare module "@elizaos/plugin-ollama";
 declare module "@elizaos/plugin-openai";
 declare module "@elizaos/plugin-shell";
+declare module "@elizaos/plugin-x402" {
+  import type {
+    PaymentEnabledRoute,
+    Route,
+    RouteRequest,
+    RouteResponse,
+    IAgentRuntime,
+  } from "@elizaos/core";
+
+  export interface X402StartupValidationResult {
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+  }
+
+  export function createPaymentAwareHandler(
+    route: PaymentEnabledRoute,
+  ): (
+    req: RouteRequest,
+    res: RouteResponse,
+    runtime: IAgentRuntime,
+  ) => void | Promise<void>;
+  export function isRoutePaymentWrapped(route: unknown): boolean;
+  export function validateX402Startup(
+    routes: Route[],
+    character?: unknown,
+    options?: { agentId?: string },
+  ): X402StartupValidationResult;
+}
 declare module "@elizaos/signal-native";
 declare module "qrcode";
 

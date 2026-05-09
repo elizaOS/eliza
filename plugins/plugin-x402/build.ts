@@ -12,7 +12,7 @@ await build({
 });
 
 const proc = Bun.spawn(
-  ["bunx", "tsc", "--emitDeclarationOnly", "--declaration", "--declarationMap"],
+  ["bunx", "tsc", "-p", "tsconfig.dts.json"],
   {
     cwd: import.meta.dir,
     stdout: "inherit",
@@ -20,6 +20,9 @@ const proc = Bun.spawn(
   },
 );
 
-await proc.exited;
+const procExit = await proc.exited;
+if (procExit !== 0) {
+  process.exit(procExit);
+}
 
 console.log("Build complete!");

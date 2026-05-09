@@ -27,6 +27,12 @@
 			"@elizaos/shared/*": ["../../../shared/src/*"],
 			"@elizaos/ui": ["../../../ui/src/index.ts"],
 			"@elizaos/ui/*": ["../../../ui/src/*"],
+			"@elizaos/plugin-elizacloud": [
+				"../../../../plugins/plugin-elizacloud/src/index.node.ts"
+			],
+			"@elizaos/plugin-elizacloud/*": [
+				"../../../../plugins/plugin-elizacloud/src/*"
+			],
 			"@elizaos/plugin-signal": [
 				"../../../../plugins/plugin-signal/src/index.ts"
 			],
