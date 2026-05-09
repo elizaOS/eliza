@@ -653,10 +653,7 @@ async function buildNode() {
 	const runNode = createBuildRunner({
 		...sharedConfig,
 		buildOptions: {
-			entrypoints: [
-				`${TS_SRC}/index.node.ts`,
-				`${TS_SRC}/roles.ts`,
-			],
+			entrypoints: [`${TS_SRC}/index.node.ts`, `${TS_SRC}/roles.ts`],
 			outdir: "dist/node",
 			target: "node",
 			format: "esm",
