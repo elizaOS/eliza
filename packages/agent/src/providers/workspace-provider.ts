@@ -17,7 +17,7 @@ import {
   type State,
 } from "@elizaos/core";
 import { hasAdminAccess } from "../security/access.js";
-import type { CodingAgentContext } from "../services/coding-agent-context.js";
+import type { CodingAgentContext } from "@elizaos/plugin-coding-tools";
 import {
   filterInitFilesForSession,
   isDefaultBoilerplate,

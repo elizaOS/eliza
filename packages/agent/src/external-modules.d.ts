@@ -142,7 +142,154 @@ declare module "@elizaos/plugin-elizacloud/onboarding" {
     chosenTemplate?: unknown,
   ): Promise<CloudOnboardingResult | null>;
 }
+declare module "@elizaos/plugin-elizacloud" {
+  export interface CloudConfigLike {
+    apiKey?: string | null;
+    baseUrl?: string | null;
+    [key: string]: unknown;
+  }
+
+  export interface CloudOnboardingResult {
+    apiKey: string;
+    agentId: string | undefined;
+    baseUrl: string;
+    bridgeUrl?: string;
+  }
+
+  export interface CloudRouteState {
+    config?: unknown;
+    runtime?: unknown;
+    [key: string]: unknown;
+  }
+
+  export interface CloudWalletDescriptor {
+    agentWalletId: string;
+    walletAddress: string;
+    walletProvider: CloudWalletProvider;
+    chainType: "evm" | "solana";
+    balance?: string | number;
+  }
+
+  export type CloudWalletProvider = "privy" | "steward";
+
+  export class ElizaCloudClient {
+    constructor(...args: unknown[]);
+    [key: string]: unknown;
+  }
+
+  export class CloudManager {
+    constructor(...args: unknown[]);
+    init(): Promise<void>;
+    connect(agentId: string): Promise<{ agentName?: string; [key: string]: unknown }>;
+    disconnect(): Promise<void>;
+    [key: string]: unknown;
+  }
+
+  export function normalizeCloudSiteUrl(value?: string): string;
+  export function normalizeCloudSecret(value: string | null | undefined): string | null;
+  export function validateCloudBaseUrl(value: string): string | null;
+  export function resolveCloudApiBaseUrl(...args: unknown[]): string;
+  export function resolveCloudApiKey(...args: unknown[]): string | null;
+  export function __resetCloudBaseUrlCache(): void;
+  export function clearCloudSecrets(): void;
+  export function ensureCloudTtsApiKeyAlias(...args: unknown[]): void;
+  export function getCloudSecret(...args: unknown[]): string | undefined;
+  export function getOrCreateClientAddressKey(): Promise<{ address: string }>;
+  export function isCloudProvisionedContainer(...args: unknown[]): boolean;
+  export function provisionCloudWalletsBestEffort(
+    ...args: unknown[]
+  ): Promise<{
+    descriptors: Partial<Record<"evm" | "solana", CloudWalletDescriptor>>;
+    failures: Array<{ chain: "evm" | "solana"; error: unknown }>;
+    warnings: string[];
+  }>;
+  export function persistCloudWalletCache(...args: unknown[]): void;
+  export function resolveCloudTtsBaseUrl(...args: unknown[]): string;
+  export function resolveElevenLabsApiKeyForCloudMode(
+    ...args: unknown[]
+  ): string | undefined;
+  export function runCloudOnboarding(
+    ...args: unknown[]
+  ): Promise<CloudOnboardingResult | null>;
+
+  export function handleCloudBillingRoute(...args: unknown[]): Promise<boolean>;
+  export function handleCloudCompatRoute(...args: unknown[]): Promise<boolean>;
+  export function handleCloudRelayRoute(...args: unknown[]): Promise<boolean>;
+  export function handleCloudRoute(...args: unknown[]): Promise<boolean>;
+  export function handleCloudStatusRoutes(...args: unknown[]): Promise<boolean>;
+  export function handleCloudTtsPreviewRoute(
+    ...args: unknown[]
+  ): Promise<boolean>;
+  export function mirrorCompatHeaders(...args: unknown[]): void;
+
+  const plugin: unknown;
+  export default plugin;
+}
 declare module "@elizaos/plugin-commands";
+declare module "@elizaos/plugin-signal" {
+  export type SignalPairingStatus =
+    | "idle"
+    | "initializing"
+    | "waiting_for_qr"
+    | "connected"
+    | "disconnected"
+    | "timeout"
+    | "error";
+
+  export interface SignalPairingEvent {
+    type: "signal-qr" | "signal-status";
+    accountId: string;
+    qrDataUrl?: string;
+    status?: SignalPairingStatus;
+    uuid?: string;
+    phoneNumber?: string;
+    error?: string;
+  }
+
+  export interface SignalPairingSnapshot {
+    status: SignalPairingStatus;
+    qrDataUrl: string | null;
+    phoneNumber: string | null;
+    error: string | null;
+  }
+
+  export interface SignalPairingOptions {
+    authDir: string;
+    accountId: string;
+    cliPath?: string;
+    onEvent: (event: SignalPairingEvent) => void;
+  }
+
+  export class SignalPairingSession {
+    constructor(options: SignalPairingOptions);
+    start(): Promise<void>;
+    stop(): void;
+    getStatus(): SignalPairingStatus;
+    getSnapshot(): SignalPairingSnapshot;
+  }
+
+  export function applySignalQrOverride(
+    plugins: {
+      id: string;
+      validationErrors: unknown[];
+      configured: boolean;
+      qrConnected?: boolean;
+    }[],
+    workspaceDir: string,
+  ): void;
+
+  export function classifySignalPairingErrorStatus(
+    errorMessage: string,
+  ): SignalPairingStatus;
+  export function extractSignalCliProvisioningUrl(text: string): string | null;
+  export function parseSignalCliAccountsOutput(output: string): string | null;
+  export function sanitizeSignalAccountId(raw: string): string;
+  export function signalAuthExists(
+    workspaceDir: string,
+    accountId?: string,
+  ): boolean;
+  export function signalLogout(workspaceDir: string, accountId?: string): void;
+}
 declare module "@elizaos/plugin-discord" {
   export interface DiscordProfileLike {
     displayName?: string | null;
@@ -181,6 +328,35 @@ declare module "@elizaos/plugin-local-embedding";
 declare module "@elizaos/plugin-ollama";
 declare module "@elizaos/plugin-openai";
 declare module "@elizaos/plugin-shell";
+declare module "@elizaos/plugin-x402" {
+  import type {
+    PaymentEnabledRoute,
+    Route,
+    RouteRequest,
+    RouteResponse,
+    IAgentRuntime,
+  } from "@elizaos/core";
+
+  export interface X402StartupValidationResult {
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+  }
+
+  export function createPaymentAwareHandler(
+    route: PaymentEnabledRoute,
+  ): (
+    req: RouteRequest,
+    res: RouteResponse,
+    runtime: IAgentRuntime,
+  ) => void | Promise<void>;
+  export function isRoutePaymentWrapped(route: unknown): boolean;
+  export function validateX402Startup(
+    routes: Route[],
+    character?: unknown,
+    options?: { agentId?: string },
+  ): X402StartupValidationResult;
+}
 declare module "@elizaos/signal-native";
 declare module "qrcode";
 
@@ -193,23 +369,114 @@ declare module "@elizaos/app-documents/routes" {
 }
 
 declare module "@elizaos/app-documents/service-loader" {
-  // Source of truth lives in @elizaos/agent/api/documents-service-loader.
-  // The plugin re-exports those names verbatim, so this ambient declaration
-  // simply forwards the same surface for environments where the workspace
-  // resolver fails to pick up the plugin's TypeScript exports map.
-  export type {
-    DocumentAddedByRole,
-    DocumentAddedFrom,
-    DocumentSearchMode,
-    DocumentsLoadFailReason,
-    DocumentsServiceLike,
-    DocumentsServiceResult,
-    DocumentVisibilityScope,
-  } from "@elizaos/agent/api/documents-service-loader";
-  export {
-    getDocumentsService,
-    getDocumentsServiceTimeoutMs,
-  } from "@elizaos/agent/api/documents-service-loader";
+  import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+
+  export type DocumentVisibilityScope =
+    | "global"
+    | "owner-private"
+    | "user-private"
+    | "agent-private";
+
+  export type DocumentAddedByRole =
+    | "OWNER"
+    | "ADMIN"
+    | "USER"
+    | "AGENT"
+    | "RUNTIME";
+
+  export type DocumentAddedFrom =
+    | "chat"
+    | "upload"
+    | "url"
+    | "file"
+    | "agent-autonomous"
+    | "runtime-internal"
+    | "lifeops"
+    | "default-seed"
+    | "character";
+
+  export type DocumentSearchMode = "hybrid" | "vector" | "keyword";
+
+  export interface DocumentsServiceLike {
+    addDocument(options: {
+      agentId?: UUID;
+      worldId: UUID;
+      roomId: UUID;
+      entityId: UUID;
+      clientDocumentId: UUID;
+      contentType: string;
+      originalFilename: string;
+      content: string;
+      metadata?: Record<string, unknown>;
+      scope?: DocumentVisibilityScope;
+      scopedToEntityId?: UUID;
+      addedBy?: UUID;
+      addedByRole?: DocumentAddedByRole;
+      addedFrom?: DocumentAddedFrom;
+    }): Promise<{
+      clientDocumentId: string;
+      storedDocumentMemoryId: UUID;
+      fragmentCount: number;
+    }>;
+    searchDocuments(
+      message: Memory,
+      scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
+      searchMode?: DocumentSearchMode,
+    ): Promise<
+      Array<{
+        id: UUID;
+        content: { text?: string };
+        similarity?: number;
+        metadata?: Record<string, unknown>;
+        worldId?: UUID;
+      }>
+    >;
+    listDocuments?(
+      message?: Memory,
+      options?: Record<string, unknown>,
+    ): Promise<Memory[]>;
+    getDocumentById?(
+      documentId: UUID,
+      message?: Memory,
+    ): Promise<Memory | null>;
+    getMemories(params: {
+      tableName: string;
+      roomId?: UUID;
+      count?: number;
+      offset?: number;
+      end?: number;
+    }): Promise<Memory[]>;
+    countMemories(params: {
+      tableName: string;
+      roomId?: UUID;
+      unique?: boolean;
+    }): Promise<number>;
+    updateDocument(options: {
+      documentId: UUID;
+      content: string;
+      message?: Memory;
+    }): Promise<{
+      documentId: UUID;
+      fragmentCount: number;
+    }>;
+    deleteDocument?(documentId: UUID, message?: Memory): Promise<void>;
+    deleteMemory(memoryId: UUID): Promise<void>;
+  }
+
+  export type DocumentsLoadFailReason =
+    | "timeout"
+    | "runtime_unavailable"
+    | "not_registered";
+
+  export interface DocumentsServiceResult {
+    service: DocumentsServiceLike | null;
+    reason?: DocumentsLoadFailReason;
+  }
+
+  export function getDocumentsServiceTimeoutMs(): number;
+  export function getDocumentsService(
+    runtime: AgentRuntime | null,
+  ): Promise<DocumentsServiceResult>;
 }
 
 declare module "@elizaos/app-training/core/context-types" {

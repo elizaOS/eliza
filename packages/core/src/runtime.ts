@@ -68,7 +68,6 @@ import {
 	type DeleteConnectorAccountParams,
 	type DeleteOAuthFlowStateParams,
 	type Entity,
-	type Evaluator,
 	type EventHandler,
 	type EventPayload,
 	type EventPayloadMap,
@@ -118,6 +117,7 @@ import {
 	type Provider,
 	type ProviderResult,
 	type ProviderValue,
+	type RegisteredEvaluator,
 	type Relationship,
 	type ResolvedPipelineHook,
 	type Room,
@@ -627,7 +627,7 @@ export class AgentRuntime implements IAgentRuntime {
 	static #anonymousAgentCounter = 0;
 	readonly actions: Action[] = [];
 	readonly providers: Provider[] = [];
-	readonly evaluators: Evaluator[] = [];
+	readonly evaluators: RegisteredEvaluator[] = [];
 	readonly plugins: Plugin[] = [];
 	/**
 	 * Per-runtime context registry seeded with first-party context definitions
@@ -2531,7 +2531,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
-	registerEvaluator(evaluator: Evaluator) {
+	registerEvaluator(evaluator: RegisteredEvaluator) {
 		if (this.evaluators.find((item) => item.name === evaluator.name)) {
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId, evaluator: evaluator.name },

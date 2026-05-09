@@ -20,6 +20,7 @@
       "@elizaos/ui": ["./packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["./packages/ui/src/*"],
       "@elizaos/core": ["./packages/core/src/index.node.ts"],
+      "@elizaos/core/testing": ["./packages/core/src/testing/index.ts"],
       "@elizaos/core/*": ["./packages/core/src/*"],
       "@elizaos/shared": ["./packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["./packages/shared/src/*"]

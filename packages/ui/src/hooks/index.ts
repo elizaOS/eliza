@@ -14,3 +14,5 @@ export * from "./useStreamPopoutNavigation";
 export * from "./useTimeout";
 export * from "./useVoiceChat";
 export * from "./useWhatsAppPairing";
+export * from "./useWorkflowGenerationState";
+export * from "./useAutomationDeepLink";

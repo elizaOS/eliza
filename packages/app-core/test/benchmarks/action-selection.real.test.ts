@@ -110,8 +110,7 @@ async function createBenchmarkRuntimeFactory(): Promise<{
   // client modules that read env-based mock endpoints do not capture the
   // production URLs during module evaluation.
   const { appLifeOpsPlugin } = await import(
-    // @ts-expect-error — workspace package resolved at runtime
-    "@elizaos/app-lifeops/plugin"
+    "@elizaos/app-lifeops"
   );
   const { computerUsePlugin } = await import(
     // @ts-expect-error — workspace package resolved at runtime

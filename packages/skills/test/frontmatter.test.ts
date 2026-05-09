@@ -147,9 +147,10 @@ describe("resolveSkillMetadata", () => {
   });
 
   it("filters non-string values from arrays", () => {
-    const metadata = resolveSkillMetadata({
-      "required-os": ["macos", 42 as unknown as string, "linux"],
-    });
+    const rawFrontmatter: Record<string, unknown> = {
+      "required-os": ["macos", 42, "linux"],
+    };
+    const metadata = resolveSkillMetadata(rawFrontmatter);
     assert.deepStrictEqual(metadata.requiredOs, ["macos", "linux"]);
   });
 

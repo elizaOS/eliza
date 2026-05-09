@@ -64,7 +64,7 @@ import {
   handleLocalInferenceChatCommand,
   type LocalInferenceChatMetadata,
   type LocalInferenceCommandIntent,
-} from "./local-inference-routes.js";
+} from "@elizaos/plugin-local-inference";
 import {
   buildWalletActionNotExecutedReply,
   cloneWithoutBlockedObjectKeys,
@@ -80,7 +80,7 @@ import {
   trimWalletProgressPrefix,
   validateChatImages,
 } from "./server-helpers.js";
-import { resolveStreamingUpdate } from "./streaming-text.js";
+import { resolveStreamingUpdate } from "@elizaos/plugin-streaming";
 
 const CHAT_MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB (image-capable)
 
@@ -1559,7 +1559,7 @@ export async function generateChatResponse(
                   text: localResult.text,
                   source: "client_chat",
                   actions: ["REPLY"],
-                  localInference: localResult.localInference as unknown as
+                  localInference: localResult.localInference as
                     | Record<string, unknown>
                     | undefined,
                   failureKind:
@@ -1567,7 +1567,7 @@ export async function generateChatResponse(
                     localResult.localInference.status === "no_space"
                       ? "local_inference"
                       : undefined,
-                } as unknown as Content,
+                } as Content,
                 responseMessages: [],
               } as typeof result;
               responseText = localResult.text;

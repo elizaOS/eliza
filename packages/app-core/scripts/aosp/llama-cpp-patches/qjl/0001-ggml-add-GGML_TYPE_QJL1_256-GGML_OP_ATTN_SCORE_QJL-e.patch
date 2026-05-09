@@ -1,0 +1,120 @@
+From 59e91974938e01acfae4fd68e1e259ee014c02bb Mon Sep 17 00:00:00 2001
+From: qjl-port <qjl@local>
+Date: Sat, 9 May 2026 02:44:27 -0700
+Subject: [PATCH 1/4] ggml: add GGML_TYPE_QJL1_256 + GGML_OP_ATTN_SCORE_QJL
+ enums
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Reserves type id 46 for the QJL 1-bit JL-transform K-cache block
+(34 bytes / 256 sketch dims / head_dim=128) and enum slot 92 for
+the matching attention-score op. Type id 45 is intentionally left
+as a hole — that was GGML_TYPE_COUNT in the previous build, so a
+GGUF that recorded type=45 against the old build is unambiguously
+not a QJL block.
+
+block_qjl1_256 mirrors qjl_block_qjl1_256 from
+packages/native-plugins/qjl-cpu/include/qjl/qjl.h: 16-bit bf16 norm
+followed by 32 bytes of packed signs (8 per byte LSB-first).
+
+No type-traits or op metadata wired yet — that comes in the next
+chunk.
+---
+ ggml/include/ggml.h    | 36 +++++++++++++++++++++++++++++++++++-
+ ggml/src/ggml-common.h | 18 ++++++++++++++++++
+ 2 files changed, 53 insertions(+), 1 deletion(-)
+
+diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
+index 8a0470fd..10aa5b73 100644
+--- a/ggml/include/ggml.h
++++ b/ggml/include/ggml.h
+@@ -432,7 +432,9 @@ extern "C" {
+         GGML_TYPE_Q1_0    = 42,
+         GGML_TYPE_TBQ3_0  = 43,
+         GGML_TYPE_TBQ4_0  = 44,
+-        GGML_TYPE_COUNT   = 45,
++        // 45 reserved (was GGML_TYPE_COUNT before QJL was added)
++        GGML_TYPE_QJL1_256 = 46, // 1-bit JL-transform K-cache block (34 B / 256 sketch dims)
++        GGML_TYPE_COUNT   = 47,
+     };
+ 
+     // precision
+@@ -553,6 +555,7 @@ extern "C" {
+ 
+         GGML_OP_FLASH_ATTN_EXT,
+         GGML_OP_FLASH_ATTN_BACK,
++        GGML_OP_ATTN_SCORE_QJL, // QJL 1-bit packed-K attention score (CPU-only)
+         GGML_OP_SSM_CONV,
+         GGML_OP_SSM_SCAN,
+         GGML_OP_WIN_PART,
+@@ -2347,6 +2350,37 @@ extern "C" {
+             struct ggml_tensor * a,
+             struct ggml_tensor * sinks);
+ 
++    // QJL 1-bit packed-K attention score.
++    //
++    // Inputs:
++    //   q          F32 [proj_dim, n_heads, n_batch, ne3] — pre-projected
++    //              query sketch (already through Π). Caller is responsible
++    //              for projecting Q once at the top of the attention block;
++    //              this op never touches the raw query.
++    //   packed_k   QJL1_256 [proj_dim, n_kv_tokens, n_kv_heads, ne3] — the
++    //              packed K-cache. The element type carries the per-token
++    //              norm and the packed signs together. proj_dim is encoded
++    //              in the type's blck_size (= QK_QJL = 256), so the leading
++    //              dim length must equal QK_QJL.
++    //   n_kv_heads number of KV heads (the GQA divisor). n_heads must be a
++    //              multiple of n_kv_heads.
++    //
++    // Output:
++    //   F32 [n_kv_tokens, n_heads, n_batch, ne3] — per-(q-head, token) score
++    //   computed as ||k_t|| * sqrt(pi/2)/proj_dim * sum_j sign[t,j] * q[h_q,j],
++    //   matching the QJL paper's unbiased cosine-similarity estimator.
++    //
++    // Shape invariants:
++    //   q->ne[0] == QK_QJL
++    //   packed_k->ne[0] == QK_QJL
++    //   q->ne[1] % packed_k->ne[2] == 0
++    //   q->ne[2] == packed_k->ne[3]   // batch dim matches
++    GGML_API struct ggml_tensor * ggml_attn_score_qjl(
++            struct ggml_context * ctx,
++            struct ggml_tensor  * q,
++            struct ggml_tensor  * packed_k,
++            int                   n_kv_heads);
++
+     // TODO: needs to be adapted to ggml_flash_attn_ext
+     GGML_API struct ggml_tensor * ggml_flash_attn_back(
+            struct ggml_context * ctx,
+diff --git a/ggml/src/ggml-common.h b/ggml/src/ggml-common.h
+index 3656c76a..7f3c08e5 100644
+--- a/ggml/src/ggml-common.h
++++ b/ggml/src/ggml-common.h
+@@ -260,6 +260,24 @@ typedef struct {
+ } block_tbq4_0;
+ static_assert(sizeof(block_tbq4_0) == sizeof(ggml_half) + QK_TBQ/2, "wrong tbq4_0 block size/padding");
+ 
++// QJL: 1-bit Quantized JL Transform K-cache compression. One block stores
++// the packed signs of Π·k for one cached key vector together with the bf16
++// L2 norm of the original key. Mirrors qjl_block_qjl1_256 from
++// packages/native-plugins/qjl-cpu/include/qjl/qjl.h. The companion attention
++// score path is GGML_OP_ATTN_SCORE_QJL.
++//
++// `d` holds the raw bf16 bits as uint16_t (same on-cache footprint as
++// ggml_bf16_t, which is itself a `struct { uint16_t bits; }` wrapper). All
++// other ggml_common.h block defs use the plain ggml_half / uint16_t shape
++// for the scale field, so we keep that convention here. Conversions are
++// handled by qjl_fp32_to_bf16 / qjl_bf16_to_fp32 in the kernel library.
++#define QK_QJL 256  // projection_dim_per_head (= sketch dim, NOT head_dim)
++typedef struct {
++    uint16_t d;                // bf16 L2 norm of the original key vector
++    uint8_t signs[QK_QJL/8];   // packed 1-bit signs of Π·k, 8 per byte LSB-first
++} block_qjl1_256;
++static_assert(sizeof(block_qjl1_256) == 2 + QK_QJL/8, "wrong qjl1_256 block size/padding");
++
+ #define QK8_1 32
+ typedef struct {
+     GGML_EXTENSION union {
+-- 
+2.43.0
+

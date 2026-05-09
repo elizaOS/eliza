@@ -1,6 +1,7 @@
 import { v4 } from "uuid";
 import z from "zod";
 import { getEntityDetails } from "../../../entities.ts";
+import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import type { RelationshipsService } from "../../../services/relationships.ts";
 import type {
 	Entity,
@@ -9,6 +10,7 @@ import type {
 	JSONSchema,
 	Memory,
 	MemoryMetadata,
+	RegisteredEvaluator,
 	State,
 	UUID,
 } from "../../../types/index.ts";
@@ -193,10 +195,6 @@ interface EmbeddedMemory {
 
 function nowIso(): string {
 	return new Date().toISOString();
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function toJsonObject(value: Record<string, unknown>): {
@@ -842,7 +840,7 @@ export const factMemoryEvaluator: Evaluator<
 	name: "factMemory",
 	description:
 		"Extracts durable/current fact-store operations from the recent conversation.",
-	priority: 100,
+	priority: EvaluatorPriority.REFLECTION_FACTS,
 	schema: factOpsSchema,
 	async shouldRun({ message }) {
 		return canEvaluateMessage(message);
@@ -946,7 +944,7 @@ export const relationshipEvaluator: Evaluator<
 	name: "relationships",
 	description:
 		"Extracts semantic relationship updates between known room participants.",
-	priority: 110,
+	priority: EvaluatorPriority.REFLECTION_RELATIONSHIPS,
 	providers: ["CONVERSATION_PROXIMITY"],
 	schema: relationshipSchema,
 	async shouldRun({ message }) {
@@ -1003,7 +1001,7 @@ export const identityEvaluator: Evaluator<
 	name: "identities",
 	description:
 		"Extracts LLM-resolved platform identities for known room participants.",
-	priority: 120,
+	priority: EvaluatorPriority.REFLECTION_IDENTITY,
 	schema: identitySchema,
 	async shouldRun({ message }) {
 		return canEvaluateMessage(message);
@@ -1056,7 +1054,7 @@ export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 	name: "success",
 	description:
 		"Evaluates whether the user's task is complete for this turn and stores the assessment.",
-	priority: 130,
+	priority: EvaluatorPriority.REFLECTION_SUCCESS,
 	schema: successSchema,
 	async shouldRun({ message }) {
 		return canEvaluateMessage(message);
@@ -1126,9 +1124,9 @@ ${JSON.stringify(prepared.actionResults, null, 2)}`;
 	],
 };
 
-export const reflectionItems = [
+export const reflectionItems: RegisteredEvaluator[] = [
 	factMemoryEvaluator,
 	relationshipEvaluator,
 	identityEvaluator,
 	successEvaluator,
-] as Evaluator[];
+];

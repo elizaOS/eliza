@@ -479,8 +479,10 @@ export function applyIosAppIdentity({
 
   const replacements = [
     ["group.ai.elizaos.app", appGroup],
+    ["group.app.eliza", appGroup],
     ["group.com.miladyai.milady", appGroup],
     ['"group.ai.elizaos.app"', `"${appGroup}"`],
+    ['"group.app.eliza"', `"${appGroup}"`],
     ['"group.com.miladyai.milady"', `"${appGroup}"`],
   ];
   for (const relPath of [
@@ -725,6 +727,94 @@ export function injectNoCompressTarGz(content) {
  *
  * Idempotent: re-runs are no-ops once the block is present.
  */
+/**
+ * Inject the `copyForkLlamaLib` Gradle task that bundles the buun-llama-cpp
+ * fork's android-arm64 .so into the APK's jniLibs/. The fork's specialized
+ * KV cache types (turbo3, turbo4, turbo3_tcq) and DFlash spec-decoding kernels
+ * live in this .so; without it, mobile only gets stock llama.cpp.
+ *
+ * Resolution order for the libdir:
+ *   1. -Peliza.dflash.android.libdir=<path>   (gradle property)
+ *   2. ELIZA_DFLASH_ANDROID_LIBDIR env var
+ *   3. ~/.eliza/local-inference/bin/dflash/android-arm64-{cpu,vulkan}/
+ *
+ * Skips with a clear log when no path is configured or the dir doesn't exist,
+ * so a desktop dev still gets a working APK without local fork builds.
+ *
+ * Idempotent: re-runs are no-ops once the block is present.
+ */
+export function injectCopyForkLlamaLibTask(content) {
+  if (/\[copyForkLlamaLib\]/.test(content)) return content;
+  const block =
+    `\n// Bundle the buun-llama-cpp fork's android-arm64 .so into the APK so\n` +
+    `// mobile gets DFlash + TurboQuant KV cache + QJL kernels. Stock\n` +
+    `// llama-cpp-capacitor's .so still ships when the fork lib dir is missing.\n` +
+    `def resolveForkLlamaLibDir = { ->\n` +
+    `    def fromProp = project.findProperty('eliza.dflash.android.libdir')\n` +
+    `    if (fromProp) return fromProp.toString()\n` +
+    `    def fromEnv = System.getenv('ELIZA_DFLASH_ANDROID_LIBDIR')\n` +
+    `    if (fromEnv) return fromEnv\n` +
+    `    def stateDir = System.getenv('ELIZA_STATE_DIR') ?: "\${System.getProperty('user.home')}/.eliza"\n` +
+    `    def candidates = ['vulkan', 'cpu'].collect { backend ->\n` +
+    `        "\${stateDir}/local-inference/bin/dflash/android-arm64-\${backend}"\n` +
+    `    }\n` +
+    `    return candidates.find { new File(it).isDirectory() }\n` +
+    `}\n` +
+    `\n` +
+    `task copyForkLlamaLib {\n` +
+    `    doLast {\n` +
+    `        def libDir = resolveForkLlamaLibDir()\n` +
+    `        if (!libDir) {\n` +
+    `            println "[copyForkLlamaLib] no fork lib dir configured (set -Peliza.dflash.android.libdir or build via packages/app-core/scripts/build-llama-cpp-dflash.mjs --target android-arm64-vulkan); APK ships stock llama-cpp-capacitor only"\n` +
+    `            return\n` +
+    `        }\n` +
+    `        def srcDir = new File(libDir.toString())\n` +
+    `        if (!srcDir.isDirectory()) {\n` +
+    `            println "[copyForkLlamaLib] fork lib dir \${libDir} does not exist; APK ships stock llama-cpp-capacitor only"\n` +
+    `            return\n` +
+    `        }\n` +
+    `        def jniDir = file('src/main/jniLibs/arm64-v8a')\n` +
+    `        jniDir.mkdirs()\n` +
+    `        def assetsDir = file('src/main/assets')\n` +
+    `        assetsDir.mkdirs()\n` +
+    `        int copied = 0\n` +
+    `        srcDir.eachFile { src ->\n` +
+    `            if (src.name.endsWith('.so')) {\n` +
+    `                def dst = new File(jniDir, src.name)\n` +
+    `                dst.bytes = src.bytes\n` +
+    `                copied++\n` +
+    `            }\n` +
+    `            if (src.name == 'kernels.json') {\n` +
+    `                def dst = new File(assetsDir, 'llama-cpp-kernels.json')\n` +
+    `                dst.bytes = src.bytes\n` +
+    `                println "[copyForkLlamaLib] staged kernels.json as assets/llama-cpp-kernels.json"\n` +
+    `            }\n` +
+    `        }\n` +
+    `        println "[copyForkLlamaLib] copied \${copied} .so file(s) from \${libDir} to \${jniDir}"\n` +
+    `    }\n` +
+    `}\n` +
+    `\n` +
+    `afterEvaluate {\n` +
+    `    tasks.matching { it.name == 'preBuild' }.all { it.dependsOn copyForkLlamaLib }\n` +
+    `}\n`;
+  const androidOpen = content.search(/\n\s*android\s*\{/);
+  if (androidOpen < 0) return content;
+  let depth = 0;
+  let i = content.indexOf("{", androidOpen);
+  while (i < content.length) {
+    const ch = content[i];
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return content.slice(0, i + 1) + block + content.slice(i + 1);
+      }
+    }
+    i += 1;
+  }
+  return content;
+}
+
 export function injectAospAssetThinning(content) {
   if (/\[app-thinning\]/.test(content)) return content;
   const block =
@@ -1660,6 +1750,7 @@ function overlayIos() {
   if (fs.existsSync(srcEnt)) {
     let ent = fs.readFileSync(srcEnt, "utf8");
     ent = ent.replace("group.ai.elizaos.app", `group.${APP.appId}`);
+    ent = ent.replace("group.app.eliza", `group.${APP.appId}`);
     fs.writeFileSync(path.join(targetAppDir, "App.entitlements"), ent, "utf8");
     console.log(
       `[mobile-build] Copied iOS entitlements (app group: group.${APP.appId}).`,
@@ -1970,6 +2061,7 @@ function patchAndroidGradle() {
     patched = injectBuildConfigAospField(patched);
     patched = injectNoCompressTarGz(patched);
     patched = injectAospAssetThinning(patched);
+    patched = injectCopyForkLlamaLibTask(patched);
     if (patched !== current) {
       fs.writeFileSync(appGradlePath, patched, "utf8");
       console.log(
@@ -2382,7 +2474,7 @@ function hasSimulatorSlice(xcframeworkDir) {
         continue;
       }
       if (
-        entry.name === "llama-cpp" &&
+        (entry.name === "LlamaCpp" || entry.name === "llama-cpp") &&
         readMachOPlatform(entryPath) === 7 &&
         readMachOArchs(entryPath).includes("arm64")
       ) {
@@ -2396,7 +2488,7 @@ function hasSimulatorSlice(xcframeworkDir) {
 export function patchLlamaCppCapacitorPodspecForXcframework(
   packageDir,
   {
-    xcframeworkRelPath = "ios/Frameworks-xcframework/llama-cpp.xcframework",
+    xcframeworkRelPath = "ios/Frameworks-xcframework/LlamaCpp.xcframework",
   } = {},
 ) {
   const podspecPath = path.join(packageDir, "LlamaCppCapacitor.podspec");
@@ -2407,7 +2499,15 @@ export function patchLlamaCppCapacitorPodspecForXcframework(
     `s.vendored_frameworks = '${xcframeworkRelPath}'`,
   );
   patched = patched.replace(
+    "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.framework'",
+    `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+  );
+  patched = patched.replace(
     "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.xcframework'",
+    `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+  );
+  patched = patched.replace(
+    "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.xcframework'",
     `s.vendored_frameworks = '${xcframeworkRelPath}'`,
   );
   patched = patched.replace(
@@ -2437,12 +2537,15 @@ export function patchLlamaCppCapacitorPodspecForXcframework(
 }
 
 function moveDeviceOnlyLlamaCppFrameworkForSimulator(frameworksDir) {
-  const deviceFramework = path.join(frameworksDir, "llama-cpp.framework");
-  if (!fs.existsSync(deviceFramework)) return;
+  const deviceFramework = firstExisting([
+    path.join(frameworksDir, "LlamaCpp.framework"),
+    path.join(frameworksDir, "llama-cpp.framework"),
+  ]);
+  if (!deviceFramework || !fs.existsSync(deviceFramework)) return;
 
   const archivedFramework = path.join(
     frameworksDir,
-    "llama-cpp-device.framework",
+    `${path.basename(deviceFramework, ".framework")}-device.framework`,
   );
   fs.rmSync(archivedFramework, { recursive: true, force: true });
   fs.renameSync(deviceFramework, archivedFramework);
@@ -2489,6 +2592,8 @@ async function buildIosLlamaCppSimulatorFramework(packageDir) {
   );
 
   const frameworkDir = firstExisting([
+    path.join(buildDir, "LlamaCpp.framework"),
+    path.join(buildDir, "Release", "LlamaCpp.framework"),
     path.join(buildDir, "llama-cpp.framework"),
     path.join(buildDir, "Release", "llama-cpp.framework"),
   ]);
@@ -2515,7 +2620,7 @@ async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
     "ios",
     "Frameworks-xcframework",
   );
-  const xcframeworkDir = path.join(xcframeworksDir, "llama-cpp.xcframework");
+  const xcframeworkDir = path.join(xcframeworksDir, "LlamaCpp.xcframework");
   patchLlamaCppCapacitorPodspecForXcframework(packageDir);
 
   if (hasSimulatorSlice(xcframeworkDir)) {
@@ -2525,9 +2630,13 @@ async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
 
   const simulatorFramework =
     await buildIosLlamaCppSimulatorFramework(packageDir);
-  const deviceFramework = path.join(frameworksDir, "llama-cpp.framework");
+  const deviceFramework = firstExisting([
+    path.join(frameworksDir, "LlamaCpp.framework"),
+    path.join(frameworksDir, "llama-cpp.framework"),
+  ]);
   const createArgs = ["-create-xcframework"];
   if (
+    deviceFramework &&
     frameworkMatches({
       frameworkDir: deviceFramework,
       platform: 2,
@@ -2551,7 +2660,7 @@ async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
   //   ld: building for 'iOS-simulator', but linking in dylib (...) built for 'iOS'
   // Move the device-only framework out of the search path so only the
   // xcframework's per-platform slice can resolve.
-  if (fs.existsSync(deviceFramework)) {
+  if (deviceFramework && fs.existsSync(deviceFramework)) {
     const archivedDeviceFramework = path.join(
       packageDir,
       "ios",
@@ -2587,17 +2696,28 @@ export function resolveIosBuildTarget({
   const includeDeviceOnlyLlama =
     isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA) ||
     isTruthyEnv(env.MILADY_IOS_INCLUDE_LLAMA);
-  const llamaCppFramework = path.join(
-    appDirValue,
-    "node_modules",
-    "llama-cpp-capacitor",
-    "ios",
-    "Frameworks",
-    "llama-cpp.framework",
-    "llama-cpp",
-  );
+  const llamaCppFramework = firstExisting([
+    path.join(
+      appDirValue,
+      "node_modules",
+      "llama-cpp-capacitor",
+      "ios",
+      "Frameworks",
+      "LlamaCpp.framework",
+      "LlamaCpp",
+    ),
+    path.join(
+      appDirValue,
+      "node_modules",
+      "llama-cpp-capacitor",
+      "ios",
+      "Frameworks",
+      "llama-cpp.framework",
+      "llama-cpp",
+    ),
+  ]);
 
-  if (includeDeviceOnlyLlama && fs.existsSync(llamaCppFramework)) {
+  if (includeDeviceOnlyLlama && llamaCppFramework) {
     return {
       destination: "generic/platform=iOS",
       sdk: "iphoneos",

@@ -1,6 +1,7 @@
 import { roleRank } from "./runtime/context-gates";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
 import type { AgentContext, RoleGate, RoleGateRole } from "./types/contexts";
+import type { RegisteredEvaluator } from "./types/evaluator";
 import type {
 	Plugin,
 	PluginEventRegistration,
@@ -17,7 +18,7 @@ import {
 
 type RuntimeAction = NonNullable<Plugin["actions"]>[number];
 type RuntimeProvider = NonNullable<Plugin["providers"]>[number];
-type RuntimeEvaluator = NonNullable<Plugin["evaluators"]>[number];
+type RuntimeEvaluator = RegisteredEvaluator;
 type RuntimeRoute = NonNullable<Plugin["routes"]>[number];
 type RuntimeServiceClass = NonNullable<Plugin["services"]>[number];
 type RuntimeEventHandler = PluginEventRegistration["handler"];

@@ -171,6 +171,7 @@ export * from "./services";
 export * from "./services/agentEvent";
 export * from "./services/approval";
 export * from "./services/evaluator";
+export * from "./services/evaluator-priorities";
 export * from "./services/hook";
 export * from "./services/message";
 export * from "./services/onboarding-cli";
@@ -246,6 +247,7 @@ export * from "./utils/server-health";
 export * from "./utils/state-dir";
 // Export streaming utilities
 export * from "./utils/streaming";
+export * from "./testing";
 // Export validation utilities
 export * from "./validation";
 

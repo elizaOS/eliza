@@ -80,9 +80,39 @@ function getHipsHeightFromVrm(vrm: VRM): number {
   return Math.max(0.001, Math.abs(hipsPos.y - rootPos.y));
 }
 
+function toFbxGroup(asset: THREE.Object3D): THREE.Group {
+  if (asset instanceof THREE.Group) {
+    return asset;
+  }
+  const group = new THREE.Group();
+  group.name = asset.name;
+  group.add(asset);
+  return group;
+}
+
+type FbxLoad = (
+  url: string,
+  onLoad: (asset: THREE.Object3D) => void,
+  onProgress?: (event: ProgressEvent) => void,
+  onError?: (error: unknown) => void,
+) => void;
+
+function getFbxLoad(loader: FBXLoader): FbxLoad {
+  const load = Reflect.get(loader, "load");
+  if (typeof load !== "function") {
+    throw new Error("FBXLoader.load is unavailable");
+  }
+  return (url, onLoad, onProgress, onError) => {
+    load.call(loader, url, onLoad, onProgress, onError);
+  };
+}
+
 function loadFbx(url: string): Promise<THREE.Group> {
   const loader = new FBXLoader();
-  return loader.loadAsync(url);
+  const load = getFbxLoad(loader);
+  return new Promise((resolve, reject) => {
+    load(url, (asset) => resolve(toFbxGroup(asset)), undefined, reject);
+  });
 }
 
 /**

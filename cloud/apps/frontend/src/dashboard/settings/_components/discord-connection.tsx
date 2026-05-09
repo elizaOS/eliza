@@ -18,7 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@elizaos/cloud-ui";
-import Image from "@elizaos/cloud-ui/runtime/image";
+import { Image } from "@elizaos/cloud-ui";
 import { CheckCircle, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";

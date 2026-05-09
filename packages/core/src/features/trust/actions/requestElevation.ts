@@ -5,7 +5,7 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 import { parseJSONObjectFromText } from "../../../utils.ts";
 import type {
 	ContextualPermissionSystemServiceWrapper,
@@ -63,7 +63,7 @@ export const requestElevationAction: ElizaAction = {
 				typeof params.action === "string" && params.action.trim().length > 0;
 			return (
 				hasStructuredAction ||
-				hasActionContextOrKeyword(message, state, {
+				hasActionContext(message, state, {
 					contexts: ["admin", "settings", "agent_internal"],
 					keywords: [
 						"request elevation",

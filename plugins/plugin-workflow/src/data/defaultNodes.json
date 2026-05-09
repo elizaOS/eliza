@@ -5826,6 +5826,60 @@
     "properties": []
   },
   {
+    "name": "workflows-nodes-base.respondToEvent",
+    "displayName": "Respond to Event",
+    "group": [
+      "transform"
+    ],
+    "description": "Inject an instruction into the agent's autonomy room. Use as a single-node workflow to act as a task template, or as a step in a larger workflow to wake the agent in response to an event.",
+    "version": 1,
+    "inputs": [
+      "main"
+    ],
+    "outputs": [
+      "main"
+    ],
+    "properties": [
+      {
+        "displayName": "Instructions",
+        "name": "instructions",
+        "type": "string",
+        "required": true,
+        "default": "",
+        "typeOptions": {
+          "rows": 4
+        },
+        "description": "What the agent should do when this node fires. The text is injected as a memory in the autonomy room and processed by the AutonomyService loop."
+      },
+      {
+        "displayName": "Display Name",
+        "name": "displayName",
+        "type": "string",
+        "default": "",
+        "description": "Optional friendly label included in the instruction header. Defaults to the node's name when empty."
+      },
+      {
+        "displayName": "Wake Mode",
+        "name": "wakeMode",
+        "type": "options",
+        "default": "inject_now",
+        "options": [
+          {
+            "name": "Inject Now",
+            "value": "inject_now",
+            "description": "Add the instruction to the autonomy room immediately; AutonomyService picks it up on its next cycle."
+          },
+          {
+            "name": "Next Autonomy Cycle",
+            "value": "next_autonomy_cycle",
+            "description": "Queue the instruction for the next scheduled autonomy cycle without forcing an immediate wake."
+          }
+        ],
+        "description": "How the autonomy loop should handle the injected instruction."
+      }
+    ]
+  },
+  {
     "name": "workflows-nodes-base.respondToWebhook",
     "displayName": "Respond to Webhook",
     "group": [

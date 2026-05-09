@@ -88,6 +88,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "chalk": "^5.3.0",
     "zod": "^4.4.3"
   },
   "optionalDependencies": {

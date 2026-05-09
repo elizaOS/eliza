@@ -11,7 +11,7 @@ export const visionPlugin: Plugin = {
   services: [VisionService],
   providers: [visionProvider],
   actions: [visionAction],
-  tests: testSuites as unknown as TestSuite[],
+  tests: testSuites as TestSuite[],
   // Self-declared auto-enable: activate when features.vision is enabled OR
   // when media.vision.provider is configured.
   autoEnable: {

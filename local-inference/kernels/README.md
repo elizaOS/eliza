@@ -1,11 +1,32 @@
 # DRAFT TurboQuant KV cache kernels (Vulkan + Metal)
 
-> **DRAFT — DO NOT ENABLE IN PRODUCTION UNTIL VERIFIED ON HARDWARE.**
+> **DRAFT — KNOWN-BROKEN.** These shaders were ported from buun-llama-cpp's
+> CUDA reference without a GPU available to the agent that wrote them. They
+> compile cleanly to SPIR-V 1.3 / Vulkan 1.1 (verified locally with the
+> Android NDK's bundled glslc) and the host harness dispatches them, but
+> running the harness against Mesa llvmpipe shows 0/8 passes for all three
+> kernels (`turbo3`, `turbo4`, `turbo3_tcq`) — even sign bits diverge from
+> the reference fixtures, so the divergence is structural, not precision.
 >
-> These shaders were ported from buun-llama-cpp's CUDA reference without a GPU
-> available to the agent that wrote them. They are textually consistent with
-> the CUDA originals and pass a CPU-vs-CPU sanity test, but they have NEVER
-> been compiled by a real shader toolchain or executed on real hardware.
+> Status:
+> - ✅ Compile to SPIR-V (`make vulkan-spirv`)
+> - ✅ Build the host verification harness (`make vulkan` works on stock
+>   Linux without the LunarG SDK by using fetched Khronos Vulkan-Headers
+>   plus the system libvulkan.so loader)
+> - ❌ Numerical agreement with the CPU reference fixture (currently 0/8 PASS)
+>
+> **Do not wire these into the production fork** until the failures above
+> are root-caused on real hardware. The most likely suspects are:
+>
+>   1. FWHT not being applied / applied with the wrong sign-vector seed
+>      (the kernels assume the host pre-rotated Q; the harness might not).
+>   2. Subgroup reduction (`subgroupAdd`) inclusion with the wrong invocation
+>      mask — Mesa llvmpipe and real GPUs have different subgroup sizes.
+>   3. The `block_turbo*` byte layout in the shader's storage buffer is one
+>      step off from the CPU reference's packing.
+>
+> The harness IS reusable for fixing the above — it loads SPIR-V, dispatches
+> to a Vulkan device, reads results back, and diffs against a JSON fixture.
 
 ## Source of truth
 

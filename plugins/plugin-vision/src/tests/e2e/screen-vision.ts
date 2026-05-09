@@ -319,23 +319,28 @@ export class ScreenVisionE2ETestSuite {
 
         // Try to set invalid region (should handle gracefully)
         // Access private property for testing purposes
-        const testableService = visionService as unknown as {
-          visionConfig: {
-            screenRegion?: {
-              x: number;
-              y: number;
-              width: number;
-              height: number;
-            };
+        type TestVisionConfig = {
+          screenRegion?: {
+            x: number;
+            y: number;
+            width: number;
+            height: number;
           };
         };
-        const originalConfig = testableService.visionConfig;
-        testableService.visionConfig.screenRegion = {
+        const originalConfig = Reflect.get(
+          visionService,
+          "visionConfig",
+        ) as TestVisionConfig;
+        const invalidConfig: TestVisionConfig = {
+          ...originalConfig,
+          screenRegion: {
           x: -100,
           y: -100,
           width: 50000,
           height: 50000,
+          },
         };
+        Reflect.set(visionService, "visionConfig", invalidConfig);
 
         await visionService.setVisionMode(VisionMode.SCREEN);
         await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -345,7 +350,7 @@ export class ScreenVisionE2ETestSuite {
         console.log(`  Service active after invalid config: ${isActive}`);
 
         // Restore config
-        testableService.visionConfig = originalConfig;
+        Reflect.set(visionService, "visionConfig", originalConfig);
 
         console.log("✓ Error handling works correctly");
       },

@@ -500,15 +500,10 @@ export interface AdminAuthResult {
 export async function requireAdmin(request: Request): Promise<AdminAuthResult> {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
 
-  if (!user.wallet_address) {
-    throw new AuthenticationError("Wallet connection required for admin access");
-  }
+  const status = await adminService.getAdminStatusForUser(user);
+  if (!status.isAdmin) throw new ForbiddenError("Admin access required");
 
-  const isAdmin = await adminService.isAdmin(user.wallet_address);
-  if (!isAdmin) throw new ForbiddenError("Admin access required");
-
-  const role = await adminService.getAdminRole(user.wallet_address);
-  return { user, isAdmin: true, role };
+  return { user, isAdmin: true, role: status.role };
 }
 
 export {

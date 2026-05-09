@@ -22,7 +22,7 @@ import type {
 import type { Memory } from "../../../types/memory.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";
 import type { State } from "../../../types/state.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 import { hasOwnerAccess as defaultOwnerAccessFn } from "../security.ts";
 import { runCoreStatus } from "./plugin-handlers/core-status.ts";
 import {
@@ -423,7 +423,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 			return (
 				hasStructuredMode ||
 				hasPendingCreateChoice ||
-				hasActionContextOrKeyword(message, state, {
+				hasActionContext(message, state, {
 					contexts: ["admin", "settings", "connectors"],
 				})
 			);

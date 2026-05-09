@@ -19,10 +19,7 @@ import { looksLikeNonActionableChatter } from "../features/basic-capabilities/pr
 import { logger } from "../logger";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
 import { checkSenderRole } from "../roles";
-import {
-	buildActionCatalog,
-	type RuntimeActionLike,
-} from "../runtime/action-catalog";
+import { buildActionCatalog } from "../runtime/action-catalog";
 import { retrieveActions } from "../runtime/action-retrieval";
 import { tierActionResults } from "../runtime/action-tiering";
 import { applyAddressedTo } from "../runtime/addressed-to";

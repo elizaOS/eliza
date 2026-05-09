@@ -1,4 +1,3 @@
-export { applySignalQrOverride } from "@elizaos/plugin-signal";
 export {
   applyWhatsAppQrOverride,
   handleWhatsAppRoute,
@@ -17,15 +16,14 @@ export * from "./auth-routes.js";
 export * from "./bug-report-routes.js";
 export * from "./character-routes.js";
 export * from "./compat-utils.js";
-export * from "./connector-account-routes.js";
 export * from "./connector-health.js";
-export * from "./connector-routes.js";
 export * from "./credit-detection.js";
 export * from "./database.js";
 export * from "./diagnostics-routes.js";
 export * from "./documents-routes.js";
 export * from "./documents-service-loader.js";
 export * from "./early-logs.js";
+export * from "./http-helpers.js";
 export * from "./memory-bounds.js";
 export * from "./memory-routes.js";
 export * from "./models-routes.js";
@@ -37,6 +35,7 @@ export * from "./provider-switch-config.js";
 export * from "./rate-limiter.js";
 export * from "./registry-routes.js";
 export * from "./registry-service.js";
+export * from "./route-helpers.js";
 // `runtime-plugin-routes.ts` exports `matchPluginRoutePath` (used by plugin
 // authors and their tests, e.g. plugins/app-vincent/src/vincent-plugin-dispatch.test.ts)
 // and the request-handling helper `tryHandleRuntimePluginRoute` (used by
@@ -45,15 +44,17 @@ export {
   matchPluginRoutePath,
   tryHandleRuntimePluginRoute,
 } from "./runtime-plugin-routes.js";
-export * from "./sandbox-routes.js";
-export * from "./stream-route-state.js";
-export * from "./stream-routes.js";
-export * from "./streaming-text.js";
+export { handleSandboxRoute } from "@elizaos/plugin-computeruse";
+export { applySignalQrOverride } from "@elizaos/plugin-signal";
 export * from "./subscription-routes.js";
 export * from "./terminal-run-limits.js";
 export * from "./training-backend-check.js";
 export * from "./training-service-like.js";
-export * from "./trigger-routes.js";
+export {
+  handleTriggerRoutes,
+  type TriggerRouteContext,
+  type TriggerRouteHelpers,
+} from "@elizaos/plugin-workflow";
 export * from "./tx-service.js";
 export * from "./wallet.js";
 export * from "./wallet-evm-balance.js";

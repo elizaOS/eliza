@@ -393,19 +393,6 @@ export const VALIDATION_KEYWORD_DOCS = {
         },
       },
     },
-    executeCode: {
-      request: {
-        base: "action\naction args\nactions\nactions timeout\nagent\nallowed\nallowed actions\nargs\nasync\nawait\nbody\ncallable\ncode\ncode async\ncontext\ndata\nentity\nexecute\nexecute code\nexecute tool script\nexecute_code\nexecute_tool_script\nfunction\nget\nincluded\njava\njson\nmemories\nname\nnarrows\noptional\norchestrate\noverrides\nprocess\nread\nregistered\nrendered\nreturn\nroom\nrun script\nrun_script\nruntime\nsafe\nscript\nscript tools\nsearch\nshort\nstate\ntext\nthrough\ntimeout\ntools\ntools action\nvalue",
-        locales: {
-          es: "accion\nagente\nbuscar\nchat\ncodigo\nejecutar\nejecutar codigo\nejecutar herramienta\nherramienta\nherramienta accion\nleer\nmemoria\nobtener\nsala\nsolicitud",
-          ko: "가져오기\n검색\n기억\n도구\n도구 작업\n방\n실행\n실행 도구\n실행 코드\n에이전트\n요청\n읽기\n작업\n채팅방\n코드",
-          pt: "acao\nagente\nbuscar\nchat\ncodigo\nexecutar\nexecutar codigo\nexecutar ferramenta\nferramenta\nferramenta acao\nler\nmemoria\nobter\nsala\nsolicitacao",
-          tl: "agent\naksyon\nalaala\nbasahin\ncode\nkahilingan\nkasangkapan\nkunin\nkuwarto\nmaghanap\nmemory\npatakbuhin\npatakbuhin code\npatakbuhin tool\nroom\ntool\ntool aksyon",
-          vi: "chay\nchạy\ncong cu\ncông cụ\ncông cụ hành động\ndoc\nđọc\nhanh dong\nhành động\nky uc\nký ức\nlay\nlấy\nma\nmã\nphong\nphòng\ntac tu\ntác tử\nthuc thi\nthực thi\nthực thi công cụ\nthực thi mã\ntim kiem\ntìm kiếm\nyeu cau\nyêu cầu",
-          "zh-CN": "代理\n代码\n工具\n工具 操作\n房间\n执行\n执行 代码\n执行 工具\n搜索\n操作\n智能体\n聊天室\n获取\n记忆\n请求\n读取\n运行",
-        },
-      },
-    },
     exitWorktree: {
       request: {
         base: "added\nautomation exit worktree\ncleanup\ncode exit worktree\ndelete\ndelete worktree\ndirectory\ndrop\nenter\nexit\nexit worktree\nexit_worktree\nforce\nforce delete\ngit worktree remove\ngit_worktree_remove\nleave worktree\nleave_worktree\nmost\noptionally\npop worktree\npop_worktree\nprevious\nrecent\nremove\nremove force\nrestore\nroot\nrun\nrun worktree\nsandbox\nsession\nterminal exit worktree\ntrue\ntrue run\nworktree\nworktree remove",

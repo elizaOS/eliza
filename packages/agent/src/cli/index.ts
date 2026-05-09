@@ -65,7 +65,7 @@ export async function runAutonomousCli(
     if (runtime && process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
       console.log("[cli] importing aosp-local-inference-bootstrap…");
       const { ensureAospLocalInferenceHandlers } = await import(
-        "../runtime/aosp-local-inference-bootstrap.js"
+        "@elizaos/plugin-aosp-local-inference"
       );
       console.log("[cli] calling ensureAospLocalInferenceHandlers(runtime)…");
       const ok = await ensureAospLocalInferenceHandlers(runtime);
@@ -76,7 +76,7 @@ export async function runAutonomousCli(
     ) {
       console.log("[cli] importing mobile-device-bridge-bootstrap…");
       const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-        "../runtime/mobile-device-bridge-bootstrap.js"
+        "@elizaos/plugin-capacitor-bridge"
       );
       console.log(
         "[cli] calling ensureMobileDeviceBridgeInferenceHandlers(runtime)…",

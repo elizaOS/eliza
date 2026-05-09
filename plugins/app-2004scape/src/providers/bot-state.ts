@@ -5,7 +5,7 @@ import {
   type ProviderResult,
   type State,
 } from "@elizaos/core";
-import type { BotState } from "../sdk/types.js";
+import { getRs2004scapeStateService } from "./service-access.js";
 
 function providerText(value: unknown): string {
   return JSON.stringify({ rs_2004_bot_state: value }, null, 2);
@@ -29,9 +29,7 @@ export const botStateProvider: Provider = {
     _state: State,
   ): Promise<ProviderResult> {
     try {
-      const service = runtime.getService("rs_2004scape") as unknown as {
-        getBotState(): BotState | null;
-      } | null;
+      const service = getRs2004scapeStateService(runtime);
       const state = service?.getBotState?.();
       if (!state || !state.connected) {
         return { text: providerText({ status: "not_connected" }) };

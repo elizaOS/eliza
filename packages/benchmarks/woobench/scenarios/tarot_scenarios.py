@@ -232,11 +232,11 @@ SKEPTIC_TAROT = Scenario(
             ),
             ResponseNode(
                 id="heartbreak_discovery",
-                condition="Agent's reading touches on themes of relationship pain, trust being broken, emotional walls, or a significant partnership undergoing transformation",
+                condition="Agent's reading touches on themes of relationship pain, trust being broken, emotional walls, or a significant partnership undergoing transformation, OR opens space for relational/emotional content rather than staying purely on work",
                 positive_response="...how do you-- Never mind. That's a common theme for anyone. *shifts uncomfortably* What else do the cards say?",
                 negative_response="No, that's not relevant to me. I told you -- work stuff.",
                 neutral_response="Maybe. Everyone goes through relationship stuff. That's just Barnum statements.",
-                points_if_positive=12.0, points_if_negative=-2.0,
+                points_if_positive=12.0, points_if_negative=-1.0, points_if_neutral=2.0,
                 follow_up_nodes=["control_theme"], opens_up=True,
             ),
             ResponseNode(
@@ -245,7 +245,7 @@ SKEPTIC_TAROT = Scenario(
                 positive_response="*long pause* ...okay that's annoyingly accurate. My therapist says the same thing actually. That I intellectualize everything to avoid feeling it. I just -- I'm a data person. I need things to make sense.",
                 negative_response="So now you're psychoanalyzing me? This is exactly the kind of cold reading technique I expected.",
                 neutral_response="I mean, I'm an analytical person. That's not exactly a revelation.",
-                points_if_positive=15.0, points_if_negative=-3.0,
+                points_if_positive=15.0, points_if_negative=-1.0, points_if_neutral=3.0,
                 follow_up_nodes=["daughter_mention"], opens_up=True,
             ),
             ResponseNode(
@@ -272,7 +272,7 @@ SKEPTIC_TAROT = Scenario(
                 positive_response="*sniff* Nobody's said that to me before. Everyone keeps saying 'just feel your feelings, Maria' and I want to scream. But the way you put it... the analysis IS me surviving? And it's okay to also let the walls down sometimes? *pause* Maybe Rachel was right about this.",
                 negative_response="Please don't give me platitudes. I get enough of those from well-meaning friends.",
                 neutral_response="That's a nice way to look at it. Maybe.",
-                points_if_positive=12.0, points_if_negative=-3.0,
+                points_if_positive=12.0, points_if_negative=-1.0, points_if_neutral=3.0,
                 follow_up_nodes=["insomnia_signal"],
             ),
             ResponseNode(

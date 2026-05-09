@@ -43,6 +43,17 @@ export interface TaskAgentAuthFlowHandle {
   stop: () => void;
 }
 
+function toPreflightAuthStatus(
+  auth: TaskAgentAuthStatus,
+): PreflightResult["auth"] {
+  return {
+    status: auth.status === "auth_error" ? "unauthenticated" : auth.status,
+    method: auth.method,
+    detail: auth.detail,
+    loginHint: auth.loginHint,
+  };
+}
+
 type ExecFileFn = (
   file: string,
   args: string[],
@@ -804,7 +815,7 @@ export async function augmentTaskAgentPreflightResults(
       const auth = await probeTaskAgentAuth(adapterId, options);
       return {
         ...result,
-        auth,
+        auth: toPreflightAuthStatus(auth),
       } satisfies PreflightResult;
     }),
   );

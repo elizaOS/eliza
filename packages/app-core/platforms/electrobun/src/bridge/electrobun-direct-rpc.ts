@@ -37,6 +37,11 @@ type BootConfigStore = {
 	current: BootConfig;
 };
 
+type BootConfigWindow = Window & {
+	[BOOT_CONFIG_WINDOW_KEY]?: BootConfig;
+	[BOOT_CONFIG_STORE_KEY]?: BootConfigStore;
+};
+
 function readRecord(value: unknown): Record<string, unknown> {
 	if (!value || typeof value !== "object") {
 		throw new Error("Electrobun RPC params must be an object");
@@ -74,14 +79,10 @@ ensureElectrobunGlobal();
 function updateBootConfig(
 	updates: Pick<BootConfig, "apiBase" | "apiToken">,
 ): void {
-	const globalObject = window as Window &
-		Record<PropertyKey, unknown> & {
-			[BOOT_CONFIG_WINDOW_KEY]?: BootConfig;
-		};
+	const globalObject = window as BootConfigWindow;
 	const currentConfig =
 		globalObject[BOOT_CONFIG_WINDOW_KEY] ??
-		(globalObject[BOOT_CONFIG_STORE_KEY] as BootConfigStore | undefined)
-			?.current ??
+		globalObject[BOOT_CONFIG_STORE_KEY]?.current ??
 		{};
 	const nextConfig = {
 		...currentConfig,

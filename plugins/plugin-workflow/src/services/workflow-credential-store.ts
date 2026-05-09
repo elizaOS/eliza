@@ -2,8 +2,12 @@ import { type IAgentRuntime, logger, Service } from '@elizaos/core';
 import { and, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { credentialMappings } from '../db/schema';
-import type { CredentialMapping, WorkflowCredentialStoreApi } from '../types/index';
-import { WORKFLOW_CREDENTIAL_STORE_TYPE } from '../types/index';
+import type {
+  ConnectorDisconnectedPayload,
+  CredentialMapping,
+  WorkflowCredentialStoreApi,
+} from '../types/index';
+import { CONNECTOR_DISCONNECTED_EVENT, WORKFLOW_CREDENTIAL_STORE_TYPE } from '../types/index';
 
 /**
  * Default DB-backed credential store.
@@ -17,6 +21,38 @@ export class WorkflowCredentialStore extends Service implements WorkflowCredenti
 
   override capabilityDescription =
     'Stores workflows credential ID mappings per user and credential type, backed by PostgreSQL.';
+
+  /**
+   * Bound handler for the runtime `connector_disconnected` event. Stored on the
+   * instance so `stop()` can unregister exactly the same reference that
+   * `start()` registered (referential equality matters for unregisterEvent).
+   */
+  private readonly connectorDisconnectedHandler = async (
+    payload: ConnectorDisconnectedPayload
+  ): Promise<void> => {
+    if (!payload?.userId || !Array.isArray(payload.credTypes)) {
+      return;
+    }
+    if (payload.credTypes.length === 0) {
+      return;
+    }
+    await Promise.all(
+      payload.credTypes.map((credType) =>
+        this.delete(payload.userId, credType).catch((err: unknown) => {
+          logger.warn(
+            {
+              src: 'plugin:workflow:service:credential-store',
+              userId: payload.userId,
+              credType,
+              connectorName: payload.connectorName,
+              error: err instanceof Error ? err.message : String(err),
+            },
+            'Failed to purge credential mapping on connector_disconnected'
+          );
+        })
+      )
+    );
+  };
 
   private getDb(): NodePgDatabase {
     const db = this.runtime.db;
@@ -32,6 +68,10 @@ export class WorkflowCredentialStore extends Service implements WorkflowCredenti
       'Starting Workflow Credential Store...'
     );
     const service = new WorkflowCredentialStore(runtime);
+    runtime.registerEvent<ConnectorDisconnectedPayload>(
+      CONNECTOR_DISCONNECTED_EVENT,
+      service.connectorDisconnectedHandler
+    );
     logger.info(
       { src: 'plugin:workflow:service:credential-store' },
       'Workflow Credential Store started'
@@ -40,6 +80,10 @@ export class WorkflowCredentialStore extends Service implements WorkflowCredenti
   }
 
   override async stop(): Promise<void> {
+    this.runtime.unregisterEvent<ConnectorDisconnectedPayload>(
+      CONNECTOR_DISCONNECTED_EVENT,
+      this.connectorDisconnectedHandler
+    );
     logger.info(
       { src: 'plugin:workflow:service:credential-store' },
       'Workflow Credential Store stopped'

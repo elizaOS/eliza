@@ -197,7 +197,7 @@ import {
 } from "../shared/workspace-resolution.js";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
 import { seedBundledDocuments } from "./default-documents.js";
-import discordLocalPlugin from "./discord-local-plugin.js";
+import discordLocalPlugin from "@elizaos/plugin-discord-local";
 import { createElizaPlugin } from "./eliza-plugin.js";
 import { detectEmbeddingPreset } from "./embedding-presets.js";
 import {
@@ -234,7 +234,7 @@ async function loadRequiredPluginSql(): Promise<
   } catch (err) {
     const sourceEntry = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
-      "../../../../plugins/plugin-sql/typescript/index.node.ts",
+      "../../../../plugins/plugin-sql/src/index.node.ts",
     );
     if (!isPluginSqlResolutionError(err) || !existsSync(sourceEntry)) {
       throw err;
@@ -248,18 +248,6 @@ async function loadRequiredPluginSql(): Promise<
   }
 }
 
-const pluginSql = await loadRequiredPluginSql();
-// plugin-local-embedding is needed when local embeddings are enabled, but
-// Docker no-embedding smokes must still boot if a published package advertises
-// a missing dist entry.
-let pluginLocalEmbedding:
-  | typeof import("@elizaos/plugin-local-embedding")
-  | null = null;
-try {
-  pluginLocalEmbedding = await import("@elizaos/plugin-local-embedding");
-} catch {
-  pluginLocalEmbedding = null;
-}
 // Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package.
 const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
   try {
@@ -269,27 +257,134 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
   }
 };
 
-const pluginAgentOrchestrator: unknown = await loadOptionalPlugin(
-  "@elizaos/plugin-agent-orchestrator",
-);
-const pluginShell: unknown = await loadOptionalPlugin("@elizaos/plugin-shell");
-const pluginCommands: unknown = await loadOptionalPlugin(
-  "@elizaos/plugin-commands",
-);
-const pluginVideo: unknown = await loadOptionalPlugin("@elizaos/plugin-video");
-const pluginElizacloud: unknown = await loadOptionalPlugin(
-  "@elizaos/plugin-elizacloud",
-);
-const pluginOllama: unknown = await loadOptionalPlugin(
-  "@elizaos/plugin-ollama",
-);
-const pluginAnthropic: unknown = await loadOptionalPlugin(
-  "@elizaos/plugin-anthropic",
-);
-const pluginOpenai: unknown = await loadOptionalPlugin(
-  "@elizaos/plugin-openai",
-);
+// IMPORTANT: Do NOT pull plugin modules in via top-level `await` at module scope.
+//
+// Bun.build (and any cross-module top-level-await scheduling that follows the
+// ESM spec naively) can emit an `init_eliza()` call that is NOT awaited inside
+// a downstream `init_runtime*` function. When that happens, the
+// `Object.assign(STATIC_ELIZA_PLUGINS, ...)` below has not run yet by the time
+// `loadSinglePlugin("@elizaos/plugin-sql")` is dispatched, and the resolver
+// falls through to a dynamic import that throws
+// "Cannot find module '@elizaos/plugin-sql'" from the bundle path.
+//
+// Solution: lazy-load and memoize each module, and register the static map
+// inside `ensureCoreStaticPluginsRegistered()` which is awaited from every
+// runtime entry point (`startEliza`, `startInCloudMode`).
+let _pluginSqlPromise: Promise<typeof import("@elizaos/plugin-sql")> | null =
+  null;
+async function getPluginSql(): Promise<typeof import("@elizaos/plugin-sql")> {
+  if (!_pluginSqlPromise) {
+    _pluginSqlPromise = loadRequiredPluginSql();
+  }
+  return _pluginSqlPromise;
+}
+
+let _pluginLocalEmbeddingPromise: Promise<
+  typeof import("@elizaos/plugin-local-embedding") | null
+> | null = null;
+async function getPluginLocalEmbedding(): Promise<
+  typeof import("@elizaos/plugin-local-embedding") | null
+> {
+  if (!_pluginLocalEmbeddingPromise) {
+    _pluginLocalEmbeddingPromise = (async () => {
+      try {
+        return await import("@elizaos/plugin-local-embedding");
+      } catch {
+        return null;
+      }
+    })();
+  }
+  return _pluginLocalEmbeddingPromise;
+}
+
+const _optionalPluginCache = new Map<string, Promise<unknown>>();
+function getOptionalPlugin(packageName: string): Promise<unknown> {
+  const cached = _optionalPluginCache.get(packageName);
+  if (cached) return cached;
+  const promise = loadOptionalPlugin(packageName);
+  _optionalPluginCache.set(packageName, promise);
+  return promise;
+}
 // Personality is bundled in @elizaos/core advanced capabilities (advancedCapabilities).
+
+let _coreStaticPluginsRegistered = false;
+let _coreStaticPluginsRegistrationPromise: Promise<void> | null = null;
+
+/**
+ * Resolve and register the baseline `@elizaos/plugin-*` modules into the
+ * shared `STATIC_ELIZA_PLUGINS` map. Called from every runtime entry point
+ * (`startEliza`, `startInCloudMode`, `bootElizaRuntime`) before any caller
+ * touches `loadSinglePlugin`. Memoized so repeated calls are free.
+ *
+ * Why this isn't done at module init:
+ * - Top-level `await` for these modules at module scope creates a
+ *   cross-module TLA dependency that `Bun.build` does not always honor in
+ *   the bundled output (it emits the init call without awaiting it).
+ * - Deferring to an explicit awaited call inside an entry function makes the
+ *   ordering explicit and bundler-independent.
+ */
+export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
+  if (_coreStaticPluginsRegistered) return;
+  if (_coreStaticPluginsRegistrationPromise) {
+    await _coreStaticPluginsRegistrationPromise;
+    return;
+  }
+  _coreStaticPluginsRegistrationPromise = (async () => {
+    const [
+      pluginSql,
+      pluginLocalEmbedding,
+      pluginAgentOrchestrator,
+      pluginShell,
+      pluginCommands,
+      pluginVideo,
+      pluginElizacloud,
+      pluginOllama,
+      pluginAnthropic,
+      pluginOpenai,
+    ] = await Promise.all([
+      getPluginSql(),
+      getPluginLocalEmbedding(),
+      getOptionalPlugin("@elizaos/plugin-agent-orchestrator"),
+      getOptionalPlugin("@elizaos/plugin-shell"),
+      getOptionalPlugin("@elizaos/plugin-commands"),
+      getOptionalPlugin("@elizaos/plugin-video"),
+      getOptionalPlugin("@elizaos/plugin-elizacloud"),
+      getOptionalPlugin("@elizaos/plugin-ollama"),
+      getOptionalPlugin("@elizaos/plugin-anthropic"),
+      getOptionalPlugin("@elizaos/plugin-openai"),
+    ]);
+
+    Object.assign(STATIC_ELIZA_PLUGINS, {
+      "@elizaos/plugin-sql": pluginSql,
+      ...(pluginLocalEmbedding
+        ? { "@elizaos/plugin-local-embedding": pluginLocalEmbedding }
+        : {}),
+      // secrets (SECRETS service): now built-in core capability (ENABLE_SECRETS_MANAGER)
+      ...(pluginAgentOrchestrator
+        ? { "agent-orchestrator": pluginAgentOrchestrator }
+        : {}),
+      ...(pluginShell ? { "@elizaos/plugin-shell": pluginShell } : {}),
+      // plugin-manager: now built-in core capability (ENABLE_PLUGIN_MANAGER)
+      ...(pluginCommands ? { "@elizaos/plugin-commands": pluginCommands } : {}),
+      ...(pluginVideo ? { "@elizaos/plugin-video": pluginVideo } : {}),
+      ...(pluginOpenai ? { "@elizaos/plugin-openai": pluginOpenai } : {}),
+      ...(pluginAnthropic
+        ? { "@elizaos/plugin-anthropic": pluginAnthropic }
+        : {}),
+      ...(pluginOllama ? { "@elizaos/plugin-ollama": pluginOllama } : {}),
+      ...(pluginElizacloud
+        ? { "@elizaos/plugin-elizacloud": pluginElizacloud }
+        : {}),
+      // trust: now built-in core capability (ENABLE_TRUST)
+      // `@elizaos/app-lifeops` and `@elizaos/app-companion` are intentionally
+      // omitted from the static map — see the comment near the top of this file.
+      // They resolve via headless dynamic-import entrypoints in plugin-resolver.ts.
+      // personality: now built-in advanced capability (advancedCapabilities: true)
+    });
+    _coreStaticPluginsRegistered = true;
+  })();
+  await _coreStaticPluginsRegistrationPromise;
+}
 
 type SignalShutdownContext = {
   getRuntime: () => AgentRuntime;
@@ -368,35 +463,13 @@ function registerSignalShutdownHandlers(context: SignalShutdownContext): void {
  * Post-release plugins are intentionally excluded so the packaged runtime can
  * ship a smaller baseline bundle. Those plugins fall through to dynamic
  * import() and can be installed later via the plugin installer.
+ *
+ * The actual `Object.assign(STATIC_ELIZA_PLUGINS, ...)` registration runs
+ * inside `ensureCoreStaticPluginsRegistered()` (defined above), which is
+ * called at the top of every runtime entry point. Doing it there instead of
+ * at module init avoids a `Bun.build` cross-module top-level-await scheduling
+ * bug that strands `@elizaos/plugin-sql` undefined in the bundled runtime.
  */
-// Populate the shared STATIC_ELIZA_PLUGINS registry (defined in plugin-types.ts)
-// so plugin-resolver.ts can read it without importing this module directly.
-Object.assign(STATIC_ELIZA_PLUGINS, {
-  "@elizaos/plugin-sql": pluginSql,
-  ...(pluginLocalEmbedding
-    ? { "@elizaos/plugin-local-embedding": pluginLocalEmbedding }
-    : {}),
-  // secrets (SECRETS service): now built-in core capability (ENABLE_SECRETS_MANAGER)
-  ...(pluginAgentOrchestrator
-    ? { "agent-orchestrator": pluginAgentOrchestrator }
-    : {}),
-  ...(pluginShell ? { "@elizaos/plugin-shell": pluginShell } : {}),
-  // plugin-manager: now built-in core capability (ENABLE_PLUGIN_MANAGER)
-  ...(pluginCommands ? { "@elizaos/plugin-commands": pluginCommands } : {}),
-  ...(pluginVideo ? { "@elizaos/plugin-video": pluginVideo } : {}),
-  ...(pluginOpenai ? { "@elizaos/plugin-openai": pluginOpenai } : {}),
-  ...(pluginAnthropic ? { "@elizaos/plugin-anthropic": pluginAnthropic } : {}),
-  ...(pluginOllama ? { "@elizaos/plugin-ollama": pluginOllama } : {}),
-  ...(pluginElizacloud
-    ? { "@elizaos/plugin-elizacloud": pluginElizacloud }
-    : {}),
-  // trust: now built-in core capability (ENABLE_TRUST)
-  // `@elizaos/app-lifeops` and `@elizaos/app-companion` are intentionally
-  // omitted from the static map — see the comment near the top of this file.
-  // They resolve via headless dynamic-import entrypoints in plugin-resolver.ts.
-  "@elizaos/plugin-discord-local": discordLocalPlugin,
-  // personality: now built-in advanced capability (advancedCapabilities: true)
-});
 
 // NODE_PATH so dynamic plugin imports (e.g. @elizaos/plugin-*) resolve.
 // WHY: When eliza is loaded from dist/ or by a test runner, Node's resolution does not
@@ -2633,6 +2706,12 @@ export const logToChatListener = (entry: LogEntry) => {
 export async function startEliza(
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
+  // Resolve and register baseline `@elizaos/plugin-*` modules into the
+  // STATIC_ELIZA_PLUGINS map BEFORE any plugin resolution happens. See the
+  // comment on `ensureCoreStaticPluginsRegistered()` for why this isn't a
+  // module-init top-level await.
+  await ensureCoreStaticPluginsRegistered();
+
   // Start buffering logs early so startup messages appear in the UI log viewer
   const { captureEarlyLogs } = await import("../api/early-logs.js");
   captureEarlyLogs();
@@ -3363,7 +3442,7 @@ export async function startEliza(
   if (process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
     try {
       const { ensureAospLocalInferenceHandlers } = await import(
-        "./aosp-local-inference-bootstrap.js"
+        "@elizaos/plugin-aosp-local-inference"
       );
       await ensureAospLocalInferenceHandlers(runtime);
     } catch (err) {
@@ -3374,7 +3453,7 @@ export async function startEliza(
   } else if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1") {
     try {
       const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-        "./mobile-device-bridge-bootstrap.js"
+        "@elizaos/plugin-capacitor-bridge"
       );
       await ensureMobileDeviceBridgeInferenceHandlers(runtime);
     } catch (err) {
@@ -3669,9 +3748,9 @@ export async function startEliza(
       logger.info("[eliza] AutonomyService skipped — ENABLE_AUTONOMY=false");
     }
 
-    // Enable the autonomy loop so trigger/heartbeat instructions are
-    // actually processed. Without this, memories created by
-    // dispatchInstruction() sit in the DB and are never acted on.
+    // Enable the autonomy loop so memories injected into the autonomy
+    // room (e.g. by workflow nodes that post into autonomy) are actually
+    // processed by the agent's autonomous reasoning.
     if (autonomyEnabled) {
       const autonomySvc = getAutonomyService(runtime);
       if (autonomySvc) {
@@ -4300,11 +4379,21 @@ export async function startEliza(
  * Start in cloud mode — connect to a remote cloud agent via the thin client.
  * Skips all local runtime construction (plugins, database, etc.).
  */
+type CloudRuntimeProxyLike = {
+  agentName: string;
+  handleChatMessageStream: (text: string) => AsyncIterable<string>;
+  handleChatMessage: (text: string) => Promise<string>;
+};
+
 export async function startInCloudMode(
   config: ElizaConfig,
   agentId: string,
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
+  // Cloud mode does not run a local AgentRuntime, but the registry must still
+  // be populated for any code path that touches `STATIC_ELIZA_PLUGINS` while
+  // the cloud proxy is active.
+  await ensureCoreStaticPluginsRegistered();
   const { CloudManager } = await import("@elizaos/plugin-elizacloud");
 
   const cloudConfig = config.cloud;
@@ -4325,7 +4414,7 @@ export async function startInCloudMode(
 
   try {
     await manager.init();
-    const proxy = await manager.connect(agentId);
+    const proxy = (await manager.connect(agentId)) as CloudRuntimeProxyLike;
 
     if (opts?.headless || opts?.serverOnly) {
       // In headless/server mode, start the API server with the cloud proxy.

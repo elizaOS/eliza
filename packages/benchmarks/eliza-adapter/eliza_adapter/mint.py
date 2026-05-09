@@ -146,7 +146,7 @@ class ElizaMINTAgent:
             )
 
             # Tool execution: extract code from response and run it via PythonExecutor.
-            # The TS bridge does not host EXECUTE_CODE — we handle code execution Python-side.
+            # The TS bridge delegates benchmark code execution to this Python sidecar.
             code_to_execute: str | None = None
             if enable_tools and "python" in task.tools_allowed:
                 code_to_execute = self._helpers._extract_code(response_text)

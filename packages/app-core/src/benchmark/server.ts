@@ -310,7 +310,7 @@ export async function startBenchmarkServer() {
         }
         const fallbackPath = path.resolve(
           process.cwd(),
-          "../../plugins/plugin-sql/typescript/index.ts",
+          "../../plugins/plugin-sql/src/index.ts",
         );
         elizaLogger.warn(
           `[bench] @elizaos/plugin-sql package entry is unavailable; falling back to workspace source at ${fallbackPath}`,

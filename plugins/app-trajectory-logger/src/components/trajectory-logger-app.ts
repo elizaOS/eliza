@@ -2,7 +2,7 @@
  * Overlay app definition + registration for the Trajectory Logger app.
  */
 
-import { type OverlayApp, registerOverlayApp } from "@elizaos/app-core";
+import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
 import { TrajectoryLoggerView } from "./TrajectoryLoggerView";
 
 export const TRAJECTORY_LOGGER_APP_NAME = "@elizaos/app-trajectory-logger";

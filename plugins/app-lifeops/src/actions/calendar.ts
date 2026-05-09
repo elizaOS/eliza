@@ -468,8 +468,8 @@ async function route(
       ? ({
           ...params,
           subaction: innerSubaction,
-        } as unknown as HandlerOptions["parameters"])
-      : (params as unknown as HandlerOptions["parameters"]),
+        } as HandlerOptions["parameters"])
+      : (params as HandlerOptions["parameters"]),
   };
 
   switch (target) {
@@ -600,7 +600,7 @@ export const calendarAction: Action & {
     }
     const mergedOptions: HandlerOptions = {
       ...(options ?? {}),
-      parameters: resolved.params as unknown as HandlerOptions["parameters"],
+      parameters: resolved.params as HandlerOptions["parameters"],
     };
     return route(subaction, runtime, message, state, mergedOptions, callback);
   },
