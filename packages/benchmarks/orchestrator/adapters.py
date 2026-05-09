@@ -430,7 +430,16 @@ def _command_social_alpha(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
 def _command_trust(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     handler = str(ctx.request.extra_config.get("handler", "oracle"))
     provider_name = ctx.request.provider.strip().lower()
-    if handler == "eliza" and provider_name in {"openai", "groq", "openrouter"}:
+    # Route LLM-backed providers through the eliza TS bridge handler when
+    # the caller didn't explicitly request a different handler.
+    bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
+    if (
+        handler == "oracle"
+        and "handler" not in ctx.request.extra_config
+        and provider_name in bridge_providers
+    ):
+        handler = "eliza"
+    if handler == "eliza" and provider_name in {"openai", "groq", "openrouter", "cerebras", "vllm"}:
         handler = "llm"
     args = [
         sys.executable,

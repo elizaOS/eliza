@@ -808,15 +808,23 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     def _bfcl_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [python, "-m", "benchmarks.bfcl", "run", "--output", str(output_dir)]
-        if model.provider:
-            args.extend(["--provider", model.provider])
-        if model.model:
-            model_name = model.model
-            provider_name = (model.provider or "").strip().lower()
-            if provider_name == "groq" and not model_name.startswith("groq/"):
-                model_name = f"groq/{model_name}"
-            args.extend(["--model", model_name])
         provider_name = (model.provider or "").strip().lower()
+        agent = extra.get("agent")
+        # Route LLM-backed providers through the eliza TS bridge so the
+        # ElizaBFCLAgent + registered runtime is exercised.
+        bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
+        if agent == "eliza" or provider_name in bridge_providers:
+            args.extend(["--provider", "eliza"])
+            if model.model:
+                args.extend(["--model", model.model])
+        else:
+            if model.provider:
+                args.extend(["--provider", model.provider])
+            if model.model:
+                model_name = model.model
+                if provider_name == "groq" and not model_name.startswith("groq/"):
+                    model_name = f"groq/{model_name}"
+                args.extend(["--model", model_name])
         if extra.get("mock") is True or provider_name == "mock":
             args.append("--mock")
         sample = extra.get("sample")
@@ -1017,7 +1025,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     def _terminalbench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         # Run module from its python project root.
-        _ = extra
         args = [
             python,
             "-m",
@@ -1025,13 +1032,23 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--output-dir",
             str(output_dir),
         ]
-        if model.model:
-            model_name = model.model
-            if model.provider and "/" not in model_name:
-                model_name = f"{model.provider}/{model_name}"
-            args.extend(["--model", model_name])
-        if model.provider:
-            args.extend(["--model-provider", model.provider])
+        provider_name = (model.provider or "").strip().lower()
+        agent = extra.get("agent")
+        # LLM-backed providers route through the eliza TS bridge so the
+        # registered eliza agent + plugins are exercised.
+        bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
+        if agent == "eliza" or provider_name in bridge_providers:
+            if model.model:
+                args.extend(["--model", model.model])
+            args.extend(["--model-provider", "eliza"])
+        else:
+            if model.model:
+                model_name = model.model
+                if model.provider and "/" not in model_name:
+                    model_name = f"{model.provider}/{model_name}"
+                args.extend(["--model", model_name])
+            if model.provider:
+                args.extend(["--model-provider", model.provider])
         if model.temperature is not None:
             args.extend(["--temperature", str(model.temperature)])
         max_tasks = extra.get("max_tasks")
@@ -1064,7 +1081,18 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         provider_name = (model.provider or "").strip().lower()
-        if provider_name == "mock":
+        agent = extra.get("agent")
+        # Route LLM-backed providers through the eliza TS bridge.
+        bridge_providers = {
+            "cerebras",
+            "openai",
+            "groq",
+            "openrouter",
+            "vllm",
+            "eliza",
+            "mock",
+        }
+        if agent == "eliza" or provider_name in bridge_providers:
             args.extend(["--provider", "eliza"])
         elif model.provider:
             args.extend(["--provider", model.provider])

@@ -160,14 +160,15 @@ const REMOTE_MODEL_PROVIDER_PLUGINS = new Set(
  */
 export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   // ── Wallet plugins ─────────────────────────────────────────────────
-  // These short ids are what plugin-auto-enable.ts writes into
-  // `plugins.allow` when EVM_PRIVATE_KEY / SOLANA_PRIVATE_KEY are
-  // present in process.env. Without entries here, collectPluginNames()
-  // would fall through to loading the short id as a literal package
-  // name (`import("evm")`), which silently fails inside the loader's
-  // error boundary — short ids must resolve to real package names or optional
-  // plugins silently fail inside the loader. Keep in sync with AUTH_PROVIDER_PLUGINS
-  // in packages/shared/src/config/plugin-auto-enable-engine.ts.
+  // These short ids are what plugin-wallet's auto-enable.ts writes into
+  // `plugins.allow` when an EVM / Solana / Steward signing path is
+  // available. Without entries here, collectPluginNames() would fall
+  // through to loading the short id as a literal package name
+  // (`import("evm")`), which silently fails inside the loader's error
+  // boundary — short ids must resolve to real package names or optional
+  // plugins silently fail. Keep in sync with the short ids that
+  // plugin-wallet auto-enables under (`wallet`, plus legacy `evm` /
+  // `solana` aliases for older configs).
   evm: "@elizaos/plugin-wallet",
   solana: "@elizaos/plugin-wallet",
   wallet: "@elizaos/plugin-wallet",
