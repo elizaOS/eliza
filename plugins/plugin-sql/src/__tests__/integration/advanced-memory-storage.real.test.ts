@@ -200,9 +200,7 @@ describe("plugin-sql advanced memory storage", () => {
     expect(runtime.providers.some((provider) => provider.name === "LONG_TERM_MEMORY")).toBe(true);
     expect(runtime.providers.some((provider) => provider.name === "SUMMARIZED_CONTEXT")).toBe(true);
     expect(runtime.evaluators.some((evaluator) => evaluator.name === "summary")).toBe(true);
-    expect(runtime.evaluators.some((evaluator) => evaluator.name === "longTermMemory")).toBe(
-      true
-    );
+    expect(runtime.evaluators.some((evaluator) => evaluator.name === "longTermMemory")).toBe(true);
   });
 
   it("stores long-term memories in SQL and retrieves them across confirmed identity links", async () => {

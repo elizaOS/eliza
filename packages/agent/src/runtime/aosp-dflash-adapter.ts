@@ -49,10 +49,7 @@
  *   the agent bundle.
  */
 
-import {
-  type ChildProcess,
-  spawn as spawnChild,
-} from "node:child_process";
+import { type ChildProcess, spawn as spawnChild } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
@@ -274,7 +271,10 @@ class AospDflashAdapter implements DflashAdapter {
       }
     });
 
-    let exitedEarly: { code: number | null; signal: NodeJS.Signals | null } | null = null;
+    let exitedEarly: {
+      code: number | null;
+      signal: NodeJS.Signals | null;
+    } | null = null;
     child.on("exit", (code, signal) => {
       exitedEarly = { code, signal };
       this.child = null;

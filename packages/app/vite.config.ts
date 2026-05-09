@@ -1233,6 +1233,16 @@ export default defineConfig({
             "electron",
             "node-llama-cpp",
             "pty-manager",
+            // Lazy-imported only by sql-compat's runtime repair path (server-side
+            // database column reconciliation). Never reached from the browser
+            // bundle, but rolldown's static analyzer still tries to resolve the
+            // dynamic import. Externalising prevents resolution; the import will
+            // throw at runtime if the repair path ever runs in the renderer
+            // (which it shouldn't — that code is database-server-only).
+            "drizzle-orm",
+            // chalk is used only by @elizaos/shared's terminal theme helpers,
+            // which never run in the browser. Same rationale as drizzle-orm.
+            "chalk",
           ].includes(id)
         )
           return true;

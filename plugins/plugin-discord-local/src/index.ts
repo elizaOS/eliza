@@ -20,8 +20,8 @@ import {
   type Route,
   type RouteRequest,
   type RouteResponse,
-  Service,
   resolveStateDir,
+  Service,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";

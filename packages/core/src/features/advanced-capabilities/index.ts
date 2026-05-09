@@ -33,18 +33,17 @@ import { todosProvider } from "./todos/providers/todos.ts";
 
 // Re-export action, provider, and post-message-action modules
 export * from "./actions/index.ts";
+// Explicit named re-exports for symbols that are also referenced from
+// runtime capability lists below — this defeats Bun.build's tree-shaking
+// of the underlying module so the symbols stay defined when external
+// consumers import them via `@elizaos/core`.
+export { roleAction } from "./actions/role.ts";
 export * from "./evaluators/index.ts";
 export * from "./experience/index.ts";
 export type * from "./form/index.ts";
 export * from "./personality/index.ts";
 export * from "./providers/index.ts";
 export * from "./todos/index.ts";
-
-// Explicit named re-exports for symbols that are also referenced from
-// runtime capability lists below — this defeats Bun.build's tree-shaking
-// of the underlying module so the symbols stay defined when external
-// consumers import them via `@elizaos/core`.
-export { roleAction } from "./actions/role.ts";
 
 // Import for local use.
 //
@@ -60,8 +59,8 @@ export { roleAction } from "./actions/role.ts";
 // gives Bun a real per-file consumer it cannot prune.
 import { messageAction } from "./actions/message.ts";
 import { postAction } from "./actions/post.ts";
-import { roomOpAction } from "./actions/room.ts";
 import { roleAction, updateRoleAction } from "./actions/role.ts";
+import { roomOpAction } from "./actions/room.ts";
 import { reflectionItems } from "./evaluators/reflection-items.ts";
 import { skillItems } from "./evaluators/skill-items.ts";
 import { advancedContactsProvider } from "./providers/contacts.ts";

@@ -183,7 +183,9 @@ export function normalize(path: string): string {
 }
 
 export function resolve(...paths: string[]): string {
-  const lastAbsolute = [...paths].reverse().find((path) => path.startsWith("/"));
+  const lastAbsolute = [...paths]
+    .reverse()
+    .find((path) => path.startsWith("/"));
   return normalize(lastAbsolute ?? `/${paths.join("/")}`);
 }
 
@@ -231,7 +233,8 @@ export function format(pathObject: {
   name?: string;
   ext?: string;
 }): string {
-  const base = pathObject.base ?? `${pathObject.name ?? ""}${pathObject.ext ?? ""}`;
+  const base =
+    pathObject.base ?? `${pathObject.name ?? ""}${pathObject.ext ?? ""}`;
   return join(pathObject.dir ?? pathObject.root ?? "", base);
 }
 
@@ -380,7 +383,10 @@ export class EventEmitter {
   }
 }
 
-export function ok(value: unknown, message = "Assertion failed"): asserts value {
+export function ok(
+  value: unknown,
+  message = "Assertion failed",
+): asserts value {
   if (!value) throw new Error(message);
 }
 
@@ -411,7 +417,10 @@ const childProcessHandle = {
   on: () => childProcessHandle,
 };
 
-export function exec(_command: string, callback?: NodeCallback): typeof childProcessHandle {
+export function exec(
+  _command: string,
+  callback?: NodeCallback,
+): typeof childProcessHandle {
   callback?.(new Error("child_process.exec is not available in browsers"));
   return childProcessHandle;
 }

@@ -3029,8 +3029,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         metadata: params.metadata || {},
       };
       try {
-        await this.db.insert(relationshipTable).values(saveParams);
-        return true;
+        const inserted = await this.db
+          .insert(relationshipTable)
+          .values(saveParams)
+          .onConflictDoNothing()
+          .returning();
+        return inserted.length > 0;
       } catch (error) {
         logger.error(
           {

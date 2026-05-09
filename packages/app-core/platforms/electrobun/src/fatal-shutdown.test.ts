@@ -1,6 +1,6 @@
+import { Utils } from "electrobun/bun";
 import { describe, expect, it, vi } from "vitest";
 import { shutdownAfterFatalError } from "./fatal-shutdown";
-import { Utils } from "electrobun/bun";
 
 vi.mock("electrobun/bun", () => ({
 	Utils: {

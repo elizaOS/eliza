@@ -1,12 +1,10 @@
 import "./styles/styles.css";
 import "./styles/brand-gold.css";
 
-export * from "./app-shell-registry";
-export * from "./widgets/registry-store";
-export * from "./widgets";
-export * from "./app-shell-components";
 export * from "./App";
 export * from "./api";
+export * from "./app-shell-components";
+export * from "./app-shell-registry";
 export * from "./bridge";
 // `capacitor-shell` is a side-effect-only module that registers Capacitor
 // plugins on a Capacitor / mobile host. It MUST NOT be in the shared barrel
@@ -46,4 +44,6 @@ export * from "./types";
 export * from "./utils";
 export * from "./voice";
 export * from "./widgets";
+export * from "./widgets";
+export * from "./widgets/registry-store";
 export * from "./widgets/registry-store";
