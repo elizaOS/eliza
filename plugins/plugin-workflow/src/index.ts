@@ -1,10 +1,7 @@
 import { type IAgentRuntime, logger, type Plugin } from '@elizaos/core';
 import { workflowAction } from './actions/index';
 import * as dbSchema from './db/index';
-import {
-  migrateLegacyTextTriggers,
-  migrateLegacyWorkbenchTasks,
-} from './lib/index';
+import { migrateLegacyTextTriggers, migrateLegacyWorkbenchTasks } from './lib/index';
 import {
   activeWorkflowsProvider,
   pendingDraftProvider,

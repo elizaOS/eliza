@@ -39,7 +39,6 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
-  credTypesForConnector,
   getStylePresets,
   isMobilePlatform,
   normalizeCharacterLanguage,
@@ -1531,7 +1530,6 @@ import {
   parseNullableNumber,
   readTaskCompleted,
   readTaskMetadata,
-  toWorkbenchTask,
   toWorkbenchTodo,
 } from "./workbench-helpers.js";
 
@@ -2406,29 +2404,10 @@ async function handleRequest(
       redactConfigSecrets,
       isBlockedObjectKey,
       cloneWithoutBlockedObjectKeys,
-      onConnectorDisconnect: async (connectorName) => {
-        // Disconnect cascades to the workflow credential cache: without this,
-        // credStore.get() returns a stale credential id and the next
-        // workflow generation silently bypasses the missing-credentials
-        // banner.
-        const credTypes = credTypesForConnector(connectorName);
-        if (credTypes.length === 0) return;
-        const runtime = state.runtime;
-        if (!runtime) return;
-        const credStore = runtime.getService("workflow_credential_store") as {
-          delete?: (userId: string, credType: string) => Promise<void>;
-        } | null;
-        const deleteCred = credStore?.delete;
-        if (!deleteCred) return;
-        const userId = runtime.agentId;
-        await Promise.all(
-          credTypes.map((credType) =>
-            deleteCred(userId, credType).catch(() => {
-              /* per-credType failure shouldn't block siblings */
-            }),
-          ),
-        );
-      },
+      // Disconnect cascade is now event-driven (Phase 1B): connector-routes
+      // emits `connector_disconnected` and WorkflowCredentialStore subscribes
+      // to invalidate its own cache. No direct service lookup needed here.
+      onConnectorDisconnect: async () => {},
     })
   ) {
     return;
@@ -2826,8 +2805,6 @@ async function handleRequest(
         json,
         error,
         readJsonBody,
-        toWorkbenchTask:
-          coerce<WorkbenchRouteArg["toWorkbenchTask"]>(toWorkbenchTask),
         toWorkbenchTodo:
           coerce<WorkbenchRouteArg["toWorkbenchTodo"]>(toWorkbenchTodo),
         normalizeTags,

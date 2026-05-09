@@ -13,21 +13,11 @@ import { readTriggerConfig } from "../triggers/runtime.js";
 // Constants
 // ---------------------------------------------------------------------------
 
-export const WORKBENCH_TASK_TAG = "workbench-task";
 export const WORKBENCH_TODO_TAG = "workbench-todo";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-export interface WorkbenchTaskView {
-  id: string;
-  name: string;
-  description: string;
-  tags: string[];
-  isCompleted: boolean;
-  updatedAt?: number;
-}
 
 export interface WorkbenchTodoView {
   id: string;
@@ -104,33 +94,6 @@ export function isWorkbenchTodoTask(task: Task): boolean {
     asObject(metadata.workbenchTodo) !== null ||
     asObject(metadata.todo) !== null
   );
-}
-
-export function toWorkbenchTask(task: Task): WorkbenchTaskView | null {
-  // Only surface tasks that were explicitly created as workbench items.
-  // The runtime's batch-queue util (EMBEDDING_DRAIN, PROACTIVE_AGENT,
-  // LIFEOPS_SCHEDULER, heartbeat, ...) registers system ticks in the same
-  // task table; without this tag check those system tasks leaked into
-  // the user-facing task list and (worse) into LIST_TASKS replies.
-  if (!task.tags?.includes(WORKBENCH_TASK_TAG)) return null;
-  if (readTriggerConfig(task) || isWorkbenchTodoTask(task)) return null;
-  const id = normalizeTaskId(task);
-  if (!id) return null;
-  const metadata = readTaskMetadata(task);
-  const updatedAt =
-    normalizeTimestamp(task.updatedAt) ??
-    normalizeTimestamp(metadata.updatedAt);
-  return {
-    id,
-    name:
-      typeof task.name === "string" && task.name.trim().length > 0
-        ? task.name
-        : "Task",
-    description: typeof task.description === "string" ? task.description : "",
-    tags: normalizeStringArray(task.tags),
-    isCompleted: readTaskCompleted(task),
-    ...(updatedAt !== undefined ? { updatedAt } : {}),
-  };
 }
 
 export function toWorkbenchTodo(task: Task): WorkbenchTodoView | null {
