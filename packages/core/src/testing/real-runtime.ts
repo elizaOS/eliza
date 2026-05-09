@@ -20,8 +20,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { Plugin } from "@elizaos/core";
-import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
+import type { Plugin } from "../types";
+import { createCharacter } from "../character";
+import { logger } from "../logger";
+import { AgentRuntime } from "../runtime";
 
 /** Workspace plugins may resolve `@elizaos/core` from npm while this package uses source types. */
 type RegisterablePlugin = Parameters<AgentRuntime["registerPlugin"]>[0];
