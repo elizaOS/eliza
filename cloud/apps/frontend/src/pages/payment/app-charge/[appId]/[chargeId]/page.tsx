@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import { ApiError, api } from "../../../../../lib/api-client";
+import { navigateToExternalPayment } from "./payment-navigation";
 
 type AppChargeProvider = "stripe" | "oxapay";
 
@@ -191,7 +192,7 @@ export default function AppChargePaymentPage() {
         throw new Error("Payment provider did not return a checkout link.");
       }
 
-      window.location.assign(checkoutUrl);
+      navigateToExternalPayment(checkoutUrl);
     } catch (checkoutError) {
       setError(normalizeError(checkoutError));
       setCheckoutProvider(null);
