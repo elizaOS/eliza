@@ -14,11 +14,11 @@ import type {
   TriggerTaskMetadata,
 } from "./types.js";
 
-// Phase 2E: triggers always dispatch through the workflow service.
-// `dispatchInstruction` (autonomy-room memory injection) and
-// `isAutonomyServiceAvailable` are removed; `kind: "text"` no longer
-// reaches dispatch — the boot migration converts it on the way in, and
-// any stale on-disk record we encounter is logged + skipped.
+// Phase 2E: triggers always dispatch through the workflow service. The
+// previous autonomy-room memory injection path has been removed; every
+// persisted trigger is `kind: "workflow"`. Any stale `kind: "text"`
+// record we encounter at dispatch time is logged and skipped — the boot
+// migration rewrites it on the next cycle.
 
 export const TRIGGER_TASK_NAME = "TRIGGER_DISPATCH" as const;
 export const TRIGGER_TASK_TAGS = ["queue", "repeat", "trigger"] as const;
