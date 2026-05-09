@@ -2,18 +2,18 @@ import type http from "node:http";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
-} from "@elizaos/agent/api/conversation-metadata";
+} from "@elizaos/agent";
 import type {
   ConversationMetadata,
   ConversationScope,
-} from "@elizaos/agent/api/server-types";
-import { toWorkbenchTask } from "@elizaos/agent/api/workbench-helpers";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
+} from "@elizaos/agent";
+import { toWorkbenchTask } from "@elizaos/agent";
+import { loadElizaConfig } from "@elizaos/agent";
 import {
   listTriggerTasks,
   taskToTriggerSummary,
-} from "@elizaos/agent/triggers/runtime";
-import type { TriggerSummary } from "@elizaos/agent/triggers/types";
+} from "@elizaos/agent";
+import type { TriggerSummary } from "@elizaos/agent";
 import {
   type AgentRuntime,
   type Room,
@@ -23,7 +23,7 @@ import {
 import { asRecord } from "@elizaos/shared";
 import { ensureRouteAuthorized } from "./auth";
 import { listAutomationNodeContributors } from "./automation-node-contributors";
-import type { WorkflowStatusResponse, WorkflowDefinition } from "@elizaos/ui/api/client-types-chat";
+import type { WorkflowStatusResponse, WorkflowDefinition } from "@elizaos/ui";
 import type {
   AutomationItem,
   AutomationNodeCatalogResponse,
@@ -31,7 +31,7 @@ import type {
   AutomationRoomBinding,
   AutomationSummary,
   WorkbenchTask,
-} from "@elizaos/ui/api/client-types-config";
+} from "@elizaos/ui";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import {
   sendJsonError as sendJsonErrorResponse,

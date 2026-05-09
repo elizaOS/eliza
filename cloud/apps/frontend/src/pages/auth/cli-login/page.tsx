@@ -1,4 +1,4 @@
-import { Button } from "@elizaos/cloud-ui/components/button";
+import { Button } from "@elizaos/cloud-ui";
 import { AlertCircle, CheckCircle2, Key, Loader2, Terminal } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";

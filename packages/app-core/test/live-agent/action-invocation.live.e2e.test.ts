@@ -16,13 +16,13 @@ import {
   getSelfControlStatus,
   LifeOpsService,
 } from "@elizaos/app-lifeops";
-import { readCalendlyCredentialsFromEnv } from "@elizaos/app-lifeops/lifeops/calendly-client";
-import { detectHealthBackend } from "@elizaos/app-lifeops/lifeops/health-bridge";
-import { detectPasswordManagerBackend } from "@elizaos/app-lifeops/lifeops/password-manager-bridge";
-import { detectRemoteDesktopBackend } from "@elizaos/app-lifeops/lifeops/remote-desktop";
-import { LifeOpsRepository } from "@elizaos/app-lifeops/lifeops/repository";
-import { readTwilioCredentialsFromEnv } from "@elizaos/app-lifeops/lifeops/twilio";
-import { getAppBlockerStatus } from "@elizaos/app-lifeops/plugin";
+import { readCalendlyCredentialsFromEnv } from "@elizaos/app-lifeops";
+import { detectHealthBackend } from "@elizaos/app-lifeops";
+import { detectPasswordManagerBackend } from "@elizaos/app-lifeops";
+import { detectRemoteDesktopBackend } from "@elizaos/app-lifeops";
+import { LifeOpsRepository } from "@elizaos/app-lifeops";
+import { readTwilioCredentialsFromEnv } from "@elizaos/app-lifeops";
+import { getAppBlockerStatus } from "@elizaos/app-lifeops";
 import {
   type AgentRuntime,
   logger,

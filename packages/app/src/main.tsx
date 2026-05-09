@@ -66,25 +66,25 @@ import {
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
 } from "@elizaos/app-core";
-import { PhoneCompanionApp } from "@elizaos/app-phone/ui";
+import { PhoneCompanionApp } from "@elizaos/app-phone";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import "@elizaos/app-companion/register";
+import "@elizaos/app-companion";
 // Side-effect: register LifeOps sidebar widgets + client methods on ElizaClient.
-import "@elizaos/app-lifeops/widgets";
+import "@elizaos/app-lifeops";
 // Side-effect: register coding-agent (task-coordinator) slots so app-core
 // slot wrappers (CodingAgentControlChip, PtyConsoleBase, etc.) render the
 // real components instead of nulls.
-import "@elizaos/app-task-coordinator/register-slots";
+import "@elizaos/app-task-coordinator";
 // Side-effect: register game operator surfaces + detail extensions.
-import "@elizaos/app-babylon/ui";
-import "@elizaos/app-scape/ui";
-import "@elizaos/app-hyperscape/ui";
-import "@elizaos/app-2004scape/ui";
-import "@elizaos/app-defense-of-the-agents/ui";
+import "@elizaos/app-babylon";
+import "@elizaos/app-scape";
+import "@elizaos/app-hyperscape";
+import "@elizaos/app-2004scape";
+import "@elizaos/app-defense-of-the-agents";
 import "@clawville/app-clawville/ui";
 import {
   AppBlockerSettingsCard,
@@ -93,28 +93,28 @@ import {
   LifeOpsActivitySignalsEffect,
   LifeOpsPageView,
   WebsiteBlockerSettingsCard,
-} from "@elizaos/app-lifeops/ui";
+} from "@elizaos/app-lifeops";
 import {
   ApprovalQueue,
   StewardLogo,
   TransactionHistory,
-} from "@elizaos/app-steward/ui";
+} from "@elizaos/app-steward";
 import {
   CodingAgentControlChip,
   CodingAgentSettingsSection,
   CodingAgentTasksPanel,
   PtyConsoleDrawer,
 } from "@elizaos/app-task-coordinator";
-import { FineTuningView } from "@elizaos/app-training/ui";
-import "@elizaos/app-trajectory-logger/register";
-import "@elizaos/app-shopify/register";
-import "@elizaos/app-vincent/client";
+import { FineTuningView } from "@elizaos/app-training";
+import "@elizaos/app-trajectory-logger";
+import "@elizaos/app-shopify";
+import "@elizaos/app-vincent";
 import { useVincentState } from "@elizaos/app-vincent";
-import "@elizaos/app-vincent/register";
+import "@elizaos/app-vincent";
 // Side-effect: register the wallet UI plugin (route loader, /inventory shell
 // page, and chat sidebar wallet-status widget) with @elizaos/app-core
 // registries. Must precede the first shell render.
-import "@elizaos/app-wallet/register";
+import "@elizaos/app-wallet";
 import { shouldUseCloudOnlyBranding } from "@elizaos/app-core";
 import {
   APP_BRANDING_BASE,

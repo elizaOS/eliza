@@ -5,8 +5,8 @@
  * that require Node APIs or server-only runtime state.
  */
 
-export { TokenLogo } from "@elizaos/app-wallet/inventory/TokenLogo";
-export { useInventoryData } from "@elizaos/app-wallet/inventory/useInventoryData";
+export { TokenLogo } from "@elizaos/app-wallet";
+export { useInventoryData } from "@elizaos/app-wallet";
 export type { RestartHandler } from "@elizaos/shared";
 export {
   RESTART_EXIT_CODE,

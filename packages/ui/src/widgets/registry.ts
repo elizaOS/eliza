@@ -14,7 +14,7 @@ import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
 
 // -- Bundled widget component imports ----------------------------------------
 
-import { WALLET_STATUS_WIDGET } from "@elizaos/app-wallet/widgets/wallet-status";
+import { WALLET_STATUS_WIDGET } from "@elizaos/app-wallet";
 import { MusicLibraryCharacterWidget } from "../components/character/MusicLibraryCharacterWidget";
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status";

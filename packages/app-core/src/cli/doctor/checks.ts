@@ -18,7 +18,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { resolveConfigPath } from "@elizaos/agent";
-import { getCloudSecret } from "@elizaos/plugin-elizacloud/lib/cloud-secrets";
+import { getCloudSecret } from "@elizaos/plugin-elizacloud";
 import {
   resolveApiSecurityConfig,
   resolveServerOnlyPort,

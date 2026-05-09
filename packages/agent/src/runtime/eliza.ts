@@ -4324,7 +4324,7 @@ export async function startInCloudMode(
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
   const { CloudManager } = await import(
-    "@elizaos/plugin-elizacloud/cloud/cloud-manager"
+    "@elizaos/plugin-elizacloud"
   );
 
   const cloudConfig = config.cloud;

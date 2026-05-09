@@ -2,8 +2,8 @@ import type {
   RouteHelpers,
   RouteRequestContext,
 } from "@elizaos/shared";
-import type { Trajectory } from "@elizaos/agent/types/trajectory";
-import { parsePositiveInteger } from "@elizaos/agent/utils/number-parsing";
+import type { Trajectory } from "@elizaos/agent";
+import { parsePositiveInteger } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { AGENT_CONTEXTS, type AgentContext } from "../core/context-types.js";
 import type { RoleplayExecutionReport } from "../core/roleplay-executor.js";

@@ -7,7 +7,7 @@ import { useSearchParams } from "react-router-dom";
 import {
   clearStoredAppAuthorizeReturnTo,
   readStoredAppAuthorizeReturnTo,
-} from "@elizaos/cloud-ui/components/auth/authorize-return";
+} from "@elizaos/cloud-ui";
 import { syncStewardSessionCookie } from "../../../../lib/steward-session";
 
 type CallbackStatus = "verifying" | "success" | "error";

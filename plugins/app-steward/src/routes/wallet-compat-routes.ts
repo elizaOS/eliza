@@ -11,7 +11,7 @@ import type http from "node:http";
 import {
   type ElizaConfig,
   loadElizaConfig,
-} from "@elizaos/agent/config/config";
+} from "@elizaos/agent";
 import {
   ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,

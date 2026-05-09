@@ -12,7 +12,7 @@ import { Lock } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import { cn } from "@/lib/utils";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@elizaos/cloud-ui/components/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@elizaos/cloud-ui";
 import type { SidebarItem } from "./sidebar-data";
 
 interface SidebarNavigationItemProps {

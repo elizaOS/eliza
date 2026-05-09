@@ -353,7 +353,7 @@ export interface SandboxWindowInfo {
 }
 
 export interface StreamEventEnvelope {
-  type: import("@elizaos/agent/api/server-types").StreamEventType;
+  type: import("@elizaos/agent").StreamEventType;
   version: 1;
   eventId: string;
   ts: number;
@@ -383,7 +383,7 @@ export interface ExtensionStatus {
   safariAppPath?: string | null;
   safariPackagePath?: string | null;
   releaseManifest?:
-    | import("@elizaos/plugin-browser/contracts").BrowserBridgeCompanionReleaseManifest
+    | import("@elizaos/plugin-browser").BrowserBridgeCompanionReleaseManifest
     | null;
 }
 

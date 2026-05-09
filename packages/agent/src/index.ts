@@ -1,6 +1,6 @@
-export { handleCloudBillingRoute } from "@elizaos/plugin-elizacloud/routes/cloud-billing-routes";
-export { handleCloudCompatRoute } from "@elizaos/plugin-elizacloud/routes/cloud-compat-routes";
-export type { CloudConfigLike } from "@elizaos/plugin-elizacloud/routes/cloud-status-routes-autonomous";
+export { handleCloudBillingRoute } from "@elizaos/plugin-elizacloud";
+export { handleCloudCompatRoute } from "@elizaos/plugin-elizacloud";
+export type { CloudConfigLike } from "@elizaos/plugin-elizacloud";
 export {
   type ExtractActionParamsArgs,
   extractActionParamsViaLlm,

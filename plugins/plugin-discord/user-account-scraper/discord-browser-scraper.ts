@@ -12,7 +12,7 @@ import {
   openBrowserWorkspaceTab,
   resolveBrowserWorkspaceConnectorPartition,
   showBrowserWorkspaceTab,
-} from "@elizaos/plugin-browser/workspace";
+} from "@elizaos/plugin-browser";
 import type { BrowserBridgePageContext } from "@elizaos/plugin-browser";
 import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../accounts";
 

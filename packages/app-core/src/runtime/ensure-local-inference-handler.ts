@@ -268,7 +268,7 @@ async function tryRegisterAospLlamaLoader(
   if (process.env.ELIZA_LOCAL_LLAMA?.trim() !== "1") return false;
   try {
     const mod = (await import(
-      "@elizaos/agent/runtime/aosp-llama-adapter"
+      "@elizaos/agent"
     )) as unknown as {
       registerAospLlamaLoader?: (r: AgentRuntime) => Promise<boolean> | boolean;
     };

@@ -10,7 +10,7 @@ import type http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
-import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
 import { resolveApiToken } from "@elizaos/shared";
 import { sendJsonError } from "@elizaos/shared";
 import { getOrReadCachedFile } from "./memory-bounds.js";

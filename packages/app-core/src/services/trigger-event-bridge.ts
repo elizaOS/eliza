@@ -29,7 +29,7 @@ import {
   listTriggerTasks,
   readTriggerConfig,
   triggersFeatureEnabled,
-} from "@elizaos/agent/triggers/runtime";
+} from "@elizaos/agent";
 import {
   type AgentRuntime,
   type EventPayload,

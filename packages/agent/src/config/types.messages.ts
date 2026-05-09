@@ -1,1 +1,1 @@
-export * from "@elizaos/shared/config/types.messages";
+export * from "@elizaos/shared";

@@ -1,9 +1,9 @@
 import type http from "node:http";
 import { sendJson, sendJsonError } from "@elizaos/shared";
-import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud/base-url";
-import { resolveCloudApiKey } from "@elizaos/plugin-elizacloud/cloud/cloud-api-key";
-import { validateCloudBaseUrl } from "@elizaos/plugin-elizacloud/cloud/validate-url";
-import type { CloudProxyConfigLike } from "@elizaos/agent/types/config-like";
+import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud";
+import { resolveCloudApiKey } from "@elizaos/plugin-elizacloud";
+import { validateCloudBaseUrl } from "@elizaos/plugin-elizacloud";
+import type { CloudProxyConfigLike } from "@elizaos/agent";
 import type { IAgentRuntime, Service } from "@elizaos/core";
 
 export interface TravelProviderRelayRouteState {

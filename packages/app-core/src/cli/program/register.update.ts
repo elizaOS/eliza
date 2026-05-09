@@ -49,13 +49,13 @@ async function updateAction(opts: {
   force?: boolean;
 }): Promise<void> {
   const { loadElizaConfig, saveElizaConfig } = await import(
-    "@elizaos/agent/config/config"
+    "@elizaos/agent"
   );
   const { checkForUpdate, resolveChannel } = await import(
-    "@elizaos/agent/services/update-checker"
+    "@elizaos/agent"
   );
   const { detectInstallMethod, performUpdate } = await import(
-    "@elizaos/agent/services/self-updater"
+    "@elizaos/agent"
   );
   const config = loadElizaConfig();
   let newChannel: ReleaseChannel | undefined;
@@ -169,12 +169,12 @@ async function updateAction(opts: {
 }
 
 async function statusAction(): Promise<void> {
-  const { loadElizaConfig } = await import("@elizaos/agent/config/config");
+  const { loadElizaConfig } = await import("@elizaos/agent");
   const { resolveChannel, fetchAllChannelVersions } = await import(
-    "@elizaos/agent/services/update-checker"
+    "@elizaos/agent"
   );
   const { detectInstallMethod } = await import(
-    "@elizaos/agent/services/self-updater"
+    "@elizaos/agent"
   );
   console.log(`\n${theme.heading("Version Status")}\n`);
 
@@ -206,10 +206,10 @@ async function statusAction(): Promise<void> {
 
 async function channelAction(channelArg: string | undefined): Promise<void> {
   const { loadElizaConfig, saveElizaConfig } = await import(
-    "@elizaos/agent/config/config"
+    "@elizaos/agent"
   );
   const { resolveChannel } = await import(
-    "@elizaos/agent/services/update-checker"
+    "@elizaos/agent"
   );
   const config = loadElizaConfig();
   const current = resolveChannel(config.update);

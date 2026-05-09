@@ -19,7 +19,7 @@ import { getAccessToken, listProviderAccounts } from "@elizaos/agent";
 import {
   DIRECT_ACCOUNT_PROVIDER_ENV,
   type DirectAccountProvider,
-} from "@elizaos/agent/auth/types";
+} from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import { getDefaultAccountPool } from "../account-pool.js";
 

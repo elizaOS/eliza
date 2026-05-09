@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getBundledRuntimePackages } from "@elizaos/agent/runtime/release-plugin-policy";
+import { getBundledRuntimePackages } from "@elizaos/agent";
 
 const JS_FILE_RE = /\.(?:[cm]?js)$/i;
 const IMPORT_SPECIFIER_RE =

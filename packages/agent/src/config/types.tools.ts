@@ -1,1 +1,1 @@
-export * from "@elizaos/shared/config/types.tools";
+export * from "@elizaos/shared";

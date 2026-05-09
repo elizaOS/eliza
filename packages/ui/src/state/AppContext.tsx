@@ -4,7 +4,7 @@
  * Children access state and actions through the useApp() hook.
  */
 
-import { useWalletState } from "@elizaos/app-wallet/state/useWalletState";
+import { useWalletState } from "@elizaos/app-wallet";
 import {
   ConfirmDialog,
   PromptDialog,

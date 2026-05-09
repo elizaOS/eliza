@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { PromoteAppDialog } from "@elizaos/cloud-ui/components/promotion/promote-app-dialog";
+import { PromoteAppDialog } from "@elizaos/cloud-ui";
 import type { App } from "../../../lib/data/apps";
 
 interface AppPromoteProps {

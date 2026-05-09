@@ -39,19 +39,19 @@ import {
   TRAY_ACTION_EVENT,
 } from "@elizaos/app-core";
 import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "@elizaos/app-lifeops";
-import { LifeOpsActivitySignalsEffect } from "@elizaos/app-lifeops/ui";
+import { LifeOpsActivitySignalsEffect } from "@elizaos/app-lifeops";
 // Side-effect: register LifeOps sidebar widgets into the app-core widget registry.
-import "@elizaos/app-lifeops/widgets";
+import "@elizaos/app-lifeops";
 // Side-effect: register coding-agent (task-coordinator) slots so app-core
 // slot wrappers (CodingAgentControlChip, PtyConsoleBase, etc.) render the
 // real components instead of nulls.
-import "@elizaos/app-task-coordinator/register-slots";
+import "@elizaos/app-task-coordinator";
 // Side-effect: register game operator surfaces + detail extensions.
-import "@elizaos/app-babylon/ui";
-import "@elizaos/app-scape/ui";
-import "@elizaos/app-hyperscape/ui";
-import "@elizaos/app-2004scape/ui";
-import "@elizaos/app-defense-of-the-agents/ui";
+import "@elizaos/app-babylon";
+import "@elizaos/app-scape";
+import "@elizaos/app-hyperscape";
+import "@elizaos/app-2004scape";
+import "@elizaos/app-defense-of-the-agents";
 import {
   AppProvider,
   applyUiTheme,

@@ -17,7 +17,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Trajectory } from "@elizaos/agent/types/trajectory";
+import type { Trajectory } from "@elizaos/agent";
 import type { IAgentRuntime, RecordLlmCallDetails } from "@elizaos/core";
 import * as ElizaCore from "@elizaos/core";
 import {

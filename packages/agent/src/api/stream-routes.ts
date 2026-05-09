@@ -316,7 +316,7 @@ async function startStreamPipeline(
 
       try {
         const { startBrowserCapture } = await import(
-          "@elizaos/plugin-browser/workspace/browser-capture"
+          "@elizaos/plugin-browser"
         );
         // Browser capture in x11grab mode just opens the browser on the display --
         // we don't need the frame file since FFmpeg captures the display directly.
@@ -367,7 +367,7 @@ async function startStreamPipeline(
       );
 
       const { startBrowserCapture, FRAME_FILE } = await import(
-        "@elizaos/plugin-browser/workspace/browser-capture"
+        "@elizaos/plugin-browser"
       );
       try {
         await startBrowserCapture({
@@ -543,7 +543,7 @@ export async function handleStreamRoute(
       // Stop browser capture
       try {
         const { stopBrowserCapture } = await import(
-          "@elizaos/plugin-browser/workspace/browser-capture"
+          "@elizaos/plugin-browser"
         );
         await stopBrowserCapture();
       } catch {

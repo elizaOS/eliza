@@ -10,14 +10,14 @@ import {
   performDesktopMouseMove,
   performDesktopScroll,
   performDesktopTextInput,
-} from "@elizaos/agent/services/desktop-control";
+} from "@elizaos/agent";
 import type {
   AppLaunchDiagnostic,
   AppLaunchPreparation,
   AppLaunchSessionContext,
   AppRunSessionContext,
   AppSessionState,
-} from "@elizaos/shared/contracts/apps";
+} from "@elizaos/shared";
 import {
   buildScreenshareAppSession,
   canAccessScreenshareSession,

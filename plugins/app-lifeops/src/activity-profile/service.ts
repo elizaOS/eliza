@@ -8,7 +8,7 @@ import {
 } from "../lifeops/screen-context.js";
 import { LifeOpsService } from "../lifeops/service.js";
 
-export { resolveOwnerEntityId } from "@elizaos/agent/runtime/owner-entity";
+export { resolveOwnerEntityId } from "@elizaos/agent";
 
 import {
   analyzeMessages,

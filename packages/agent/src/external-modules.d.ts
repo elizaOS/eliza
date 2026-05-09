@@ -263,8 +263,8 @@ declare module "abitype" {
 declare module "@elizaos/plugin-sql" {
   import type { Plugin } from "@elizaos/core";
 
-  export * from "@elizaos/plugin-sql/schema";
-  export type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
+  export * from "@elizaos/plugin-sql";
+  export type { DrizzleDatabase } from "@elizaos/plugin-sql";
 
   export const PGLITE_ERROR_CODES: {
     ACTIVE_LOCK: string;

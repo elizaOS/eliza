@@ -7,7 +7,7 @@
 // or moving to a single composed interface — tracked as separate work.
 import crypto from "node:crypto";
 import path from "node:path";
-import { resolveOAuthDir } from "@elizaos/agent/config/paths";
+import { resolveOAuthDir } from "@elizaos/agent";
 import {
   type ParsedCsvTransaction,
   parseTransactionsCsv,

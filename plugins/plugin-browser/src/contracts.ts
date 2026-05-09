@@ -277,7 +277,7 @@ export interface BrowserBridgeCompanionSyncResponse {
   currentPage: BrowserBridgePageContext | null;
   settings: BrowserBridgeSettings;
   session:
-    | import("@elizaos/shared/contracts/lifeops").LifeOpsBrowserSession
+    | import("@elizaos/shared").LifeOpsBrowserSession
     | null;
 }
 

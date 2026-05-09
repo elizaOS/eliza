@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
 import { resolveApiToken } from "@elizaos/shared";
 import type { RouteRequestContext } from "@elizaos/shared";
 import { isAuthorized, isTrustedLocalRequest } from "./server-helpers-auth.js";

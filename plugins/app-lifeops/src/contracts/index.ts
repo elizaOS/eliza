@@ -1,2 +1,2 @@
-export * from "@elizaos/plugin-browser/contracts";
+export * from "@elizaos/plugin-browser";
 export * from "@elizaos/shared";

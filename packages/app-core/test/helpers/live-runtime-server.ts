@@ -24,11 +24,11 @@ export type RuntimeHarness = {
 async function resolveAllowedPlugin(name: string): Promise<Plugin> {
   switch (name) {
     case "@elizaos/app-shopify": {
-      const { shopifyPlugin } = await import("@elizaos/app-shopify/plugin");
+      const { shopifyPlugin } = await import("@elizaos/app-shopify");
       return shopifyPlugin;
     }
     case "@elizaos/app-vincent": {
-      const { vincentPlugin } = await import("@elizaos/app-vincent/plugin");
+      const { vincentPlugin } = await import("@elizaos/app-vincent");
       return vincentPlugin;
     }
     default:

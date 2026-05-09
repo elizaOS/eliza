@@ -1,6 +1,6 @@
 import type http from "node:http";
 import { Readable } from "node:stream";
-import type { Trajectory } from "@elizaos/agent/types/trajectory";
+import type { Trajectory } from "@elizaos/agent";
 import {
   ELIZA_NATIVE_TRAJECTORY_FORMAT,
   type AgentRuntime,

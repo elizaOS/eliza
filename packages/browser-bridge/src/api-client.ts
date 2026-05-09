@@ -1,4 +1,4 @@
-import type { LifeOpsBrowserCompanionSyncResponse } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsBrowserCompanionSyncResponse } from "@elizaos/shared";
 import type {
   CompanionConfig,
   CompanionSessionCompleteRequest,

@@ -10,7 +10,7 @@
  */
 
 import type { DrizzleDatabase } from "@elizaos/plugin-sql";
-import { and, desc, eq, isNull, lte, ne } from "@elizaos/plugin-sql/drizzle";
+import { and, desc, eq, isNull, lte, ne } from "@elizaos/plugin-sql";
 import {
   authAuditEventTable,
   authBootstrapJtiSeenTable,
@@ -18,7 +18,7 @@ import {
   authOwnerBindingTable,
   authOwnerLoginTokenTable,
   authSessionTable,
-} from "@elizaos/plugin-sql/schema";
+} from "@elizaos/plugin-sql";
 
 export interface AuthIdentityRow {
   id: string;

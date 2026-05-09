@@ -159,7 +159,7 @@ async function ensureWalletKeys(): Promise<void> {
   }
 
   const { deriveEvmAddress, deriveSolanaAddress, generateWalletKeys } =
-    await import("@elizaos/agent/api/wallet");
+    await import("@elizaos/agent");
 
   let generatedKeys: {
     evmPrivateKey: string;
@@ -232,7 +232,7 @@ async function startLiveServer(args: {
   await seedMachineSession(runtimeResult, args.apiToken);
   const { startApiServer } = await import("../../src/api/server");
   const { _resetForTesting } = await import(
-    "@elizaos/plugin-wallet/lib/wallet-export-guard"
+    "@elizaos/plugin-wallet"
   );
   _resetForTesting();
   const server = await startApiServer({

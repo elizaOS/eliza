@@ -13,7 +13,7 @@
 
 "use client";
 
-import Image from "@elizaos/cloud-ui/runtime/image";
+import Image from "@elizaos/cloud-ui";
 import { memo } from "react";
 import { cn } from "@/lib/utils";
 import { ensureAvatarUrl, isBuiltInAvatar } from "@/lib/utils/default-avatar";

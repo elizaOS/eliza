@@ -84,7 +84,7 @@ async function startDocumentServer(): Promise<StartedDocumentServer> {
     preferredProvider: LIVE_PROVIDER?.name,
     plugins: [createElizaPlugin({ agentId: "main" }), documentsPlugin],
   });
-  const { startApiServer } = await import("@elizaos/agent/api/server");
+  const { startApiServer } = await import("@elizaos/agent");
   const server = await startApiServer({
     port: 0,
     runtime: runtimeResult.runtime,

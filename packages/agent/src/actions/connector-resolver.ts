@@ -13,7 +13,7 @@ import { logger } from "@elizaos/core";
 import type {
   RelationshipsGraphService,
   RelationshipsPersonSummary,
-} from "@elizaos/core/services/relationships-graph-builder";
+} from "@elizaos/core";
 import { formatSpeakerLabel } from "../shared/conversation-format.js";
 
 // ---------------------------------------------------------------------------

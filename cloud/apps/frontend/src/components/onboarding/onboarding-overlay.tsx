@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { TooltipPlacement } from "@/lib/onboarding/types";
 import { cn } from "@/lib/utils";
-import { Button } from "@elizaos/cloud-ui/components/button";
+import { Button } from "@elizaos/cloud-ui";
 import { useOnboarding } from "./onboarding-provider";
 
 interface TargetRect {

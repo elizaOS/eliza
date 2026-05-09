@@ -236,7 +236,7 @@ async function startLiveServer(): Promise<StartedLiveServer> {
   });
   await seedLocalGmail(runtimeResult.runtime, stateDir);
 
-  const { startApiServer } = await import("@elizaos/agent/api/server");
+  const { startApiServer } = await import("@elizaos/agent");
   const server = await startApiServer({
     port: 0,
     runtime: runtimeResult.runtime,

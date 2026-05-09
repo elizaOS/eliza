@@ -25,7 +25,7 @@ import {
   Slider,
   Switch,
 } from "@elizaos/cloud-ui";
-import Image from "@elizaos/cloud-ui/runtime/image";
+import Image from "@elizaos/cloud-ui";
 import { Bot, CheckCircle, Hash, Loader2, RefreshCw, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";

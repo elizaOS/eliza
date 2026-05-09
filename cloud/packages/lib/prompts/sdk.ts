@@ -153,7 +153,7 @@ function ImageGen() {
 **Protected Dashboard with Auth:**
 \`\`\`tsx
 'use client';
-import { ProtectedRoute, UserMenu, AppCreditDisplay } from "@elizaos/cloud-ui/components/eliza";
+import { ProtectedRoute, UserMenu, AppCreditDisplay } from "@elizaos/cloud-ui";
 
 export default function DashboardLayout({ children }) {
   return (
