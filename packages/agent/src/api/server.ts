@@ -209,7 +209,7 @@ import { handleMemoryRoutes } from "./memory-routes.js";
 import { handleMiscRoutes } from "./misc-routes.js";
 import { handleMobileOptionalRoutes } from "./mobile-optional-routes.js";
 import { handleModelsRoutes } from "./models-routes.js";
-import { tryHandleMusicPlayerStatusFallback } from "@elizaos/plugin-music";
+import { tryHandleMusicPlayerStatusFallback } from "./music-player-route-fallback.js";
 import { handleOnboardingRoutes } from "./onboarding-routes.js";
 import { handlePermissionRoutes } from "./permissions-routes.js";
 import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.js";

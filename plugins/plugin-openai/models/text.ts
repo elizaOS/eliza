@@ -250,6 +250,8 @@ function resolveProviderOptions(
   // OpenAI-compatible providers such as Cerebras. Skip it when in Cerebras mode
   // so we don't send an unsupported field that causes HTTP 400 errors.
   const skipCacheRetention = isCerebrasMode(runtime);
+  // eslint-disable-next-line no-console
+  console.log("[DEBUG] skipCacheRetention:", skipCacheRetention, "BASE_URL_ENV:", process.env.OPENAI_BASE_URL, "PROVIDER_ENV:", process.env.MILADY_PROVIDER);
 
   const { agentName: _agentName, openai: rawOpenAIOptions, ...rest } = rawProviderOptions ?? {};
   // When on Cerebras, scrub OpenAI-direct-only fields (e.g. `promptCacheRetention`)

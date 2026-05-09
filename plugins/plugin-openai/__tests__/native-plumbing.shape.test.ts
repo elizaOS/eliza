@@ -33,6 +33,8 @@ beforeEach(() => {
     originalEnv.set(key, process.env[key]);
     delete process.env[key];
   }
+  // eslint-disable-next-line no-console
+  console.log("[BEFORE_EACH] OPENAI_BASE_URL:", process.env.OPENAI_BASE_URL);
 });
 
 vi.mock("ai", () => ({
@@ -114,6 +116,8 @@ describe("OpenAI native text plumbing", () => {
     });
 
     const { handleTextSmall } = await import("../models/text");
+    // eslint-disable-next-line no-console
+    console.log("[POST_IMPORT] OPENAI_BASE_URL:", process.env.OPENAI_BASE_URL);
     const messages = [{ role: "user", content: "use the tool" }];
     const tools = { lookup: { description: "Lookup", inputSchema: { type: "object" } } };
     const toolChoice = { type: "tool", toolName: "lookup" };
