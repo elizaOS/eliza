@@ -112,6 +112,7 @@
     "json5": "^2.2.3",
     "mammoth": "^1.9.0",
     "markdown-it": "^14.1.0",
+    "underscore": "^1.13.8",
     "pdfjs-dist": "^5.4.530",
     "undici": "8.2.0",
     "unique-names-generator": "^4.7.1",

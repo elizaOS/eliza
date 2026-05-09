@@ -1,6 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { handleTextSmall } from "../models/grok";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 function createRuntime() {
   return {
@@ -17,8 +16,13 @@ function createRuntime() {
 }
 
 afterEach(() => {
-  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   vi.clearAllMocks();
+  vi.resetModules();
+});
+
+beforeEach(() => {
+  vi.resetModules();
 });
 
 describe("xAI native text plumbing", () => {
@@ -55,8 +59,9 @@ describe("xAI native text plumbing", () => {
           { status: 200, headers: { "Content-Type": "application/json" } },
         ),
     );
-    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+    vi.stubGlobal("fetch", fetchMock);
 
+    const { handleTextSmall } = await import("../models/grok");
     const tools = {
       lookup: { description: "Lookup", inputSchema: { type: "object" } },
     };
@@ -108,8 +113,9 @@ describe("xAI native text plumbing", () => {
           { status: 200, headers: { "Content-Type": "application/json" } },
         ),
     );
-    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+    vi.stubGlobal("fetch", fetchMock);
 
+    const { handleTextSmall } = await import("../models/grok");
     const result = await handleTextSmall(createRuntime(), { prompt: "hi" });
     expect(result).toBe("hello");
   });
