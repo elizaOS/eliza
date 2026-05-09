@@ -2375,6 +2375,27 @@ export class LifeOpsRepository {
 
   constructor(private readonly runtime: IAgentRuntime) {}
 
+  /**
+   * EntityStore / RelationshipStore accessors. Wave-1 W1-E shipping the
+   * graph primitive; existing legacy-table accessors (`upsertRelationship`,
+   * `listRelationships`, etc.) remain in place for backward compat with
+   * `service-mixin-relationships.ts`. New code paths should consume the
+   * graph via these factories. Wave-2 W2-A removes the legacy mixin.
+   */
+  async entityStore(
+    agentId: string,
+  ): Promise<import("./entities/store.js").EntityStore> {
+    const mod = await import("./entities/store.js");
+    return new mod.EntityStore(this.runtime, agentId);
+  }
+
+  async relationshipStore(
+    agentId: string,
+  ): Promise<import("./relationships/store.js").RelationshipStore> {
+    const mod = await import("./relationships/store.js");
+    return new mod.RelationshipStore(this.runtime, agentId);
+  }
+
   static async bootstrapSchema(runtime: IAgentRuntime): Promise<void> {
     const adapter = runtime.adapter;
     if (!adapter || typeof adapter.runPluginMigrations !== "function") {
