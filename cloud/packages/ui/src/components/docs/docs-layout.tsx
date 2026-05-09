@@ -1,3 +1,4 @@
+import "../../styles/docs.css";
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { NavItem } from "./docs-types";

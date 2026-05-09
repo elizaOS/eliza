@@ -265,6 +265,10 @@ function titleFor(
 	return `${prefix}_${timestamp}.${extensionFor(url, request.mediaType)}`;
 }
 
+function hasImageGenerationModel(runtime: IAgentRuntime): boolean {
+	return typeof runtime.getModel(ModelType.IMAGE) === "function";
+}
+
 async function fallbackGenerateImage(
 	runtime: IAgentRuntime,
 	request: MediaGenerationRequest,
@@ -299,14 +303,20 @@ async function generateWithService(
 	const service = runtime.getService<IMediaGenerationService>(
 		ServiceType.MEDIA_GENERATION,
 	);
-	if (service) return service.generateMedia(request);
+	const serviceCanGenerate =
+		service && (await service.canGenerateMedia(request));
+	if (service && serviceCanGenerate) {
+		return service.generateMedia(request);
+	}
 
-	if (request.mediaType === "image") {
+	if (request.mediaType === "image" && hasImageGenerationModel(runtime)) {
 		return fallbackGenerateImage(runtime, request);
 	}
 
 	throw new Error(
-		"Media generation service is not available for video or audio generation.",
+		service
+			? `${request.mediaType} generation is not configured.`
+			: "Media generation service is not available for video or audio generation.",
 	);
 }
 
@@ -318,14 +328,23 @@ export const generateMediaAction = {
 	description: spec.description,
 	descriptionCompressed: spec.descriptionCompressed,
 	validate: async (
-		_runtime: IAgentRuntime,
+		runtime: IAgentRuntime,
 		message: Memory,
 		state?: State,
 		options?: HandlerOptions,
 	) => {
+		const request = buildRequest(message, options);
+		if (!request) return false;
+		const service = runtime.getService<IMediaGenerationService>(
+			ServiceType.MEDIA_GENERATION,
+		);
+		const canGenerate =
+			(service && (await service.canGenerateMedia(request))) ||
+			(request.mediaType === "image" && hasImageGenerationModel(runtime));
+		if (!canGenerate) return false;
+
 		const params = readParams(options);
-		const prompt = readPrompt(message, options);
-		if (prompt && normalizeMediaType(params.mediaType)) return true;
+		if (normalizeMediaType(params.mediaType)) return true;
 
 		return hasActionContext(message, state, {
 			contexts: [...MEDIA_CONTEXTS],

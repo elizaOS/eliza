@@ -30,7 +30,7 @@ import type {
   ValidationCheck,
   ValidationConfig,
   VisibilityCondition,
-} from "../types";
+} from "../types/index.js";
 
 // ── JSON Schema types (subset we consume) ──────────────────────────────
 

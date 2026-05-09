@@ -10,56 +10,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./plugin": {
-      "types": "./dist/plugin.d.ts",
-      "import": "./dist/plugin.js",
-      "default": "./dist/plugin.js"
-    },
-    "./routes/drop-routes": {
-      "types": "./dist/drop-routes.d.ts",
-      "import": "./dist/drop-routes.js",
-      "default": "./dist/drop-routes.js"
-    },
-    "./drop-service-registry": {
-      "types": "./dist/drop-service-registry.d.ts",
-      "import": "./dist/drop-service-registry.js",
-      "default": "./dist/drop-service-registry.js"
-    },
-    "./drop-service": {
-      "types": "./dist/drop-service.d.ts",
-      "import": "./dist/drop-service.js",
-      "default": "./dist/drop-service.js"
-    },
-    "./registry-service-registry": {
-      "types": "./dist/registry-service-registry.d.ts",
-      "import": "./dist/registry-service-registry.js",
-      "default": "./dist/registry-service-registry.js"
-    },
-    "./init-registry-services": {
-      "types": "./dist/init-registry-services.d.ts",
-      "import": "./dist/init-registry-services.js",
-      "default": "./dist/init-registry-services.js"
-    },
-    "./nft-verify": {
-      "types": "./dist/nft-verify.d.ts",
-      "import": "./dist/nft-verify.js",
-      "default": "./dist/nft-verify.js"
-    },
-    "./twitter-verify": {
-      "types": "./dist/twitter-verify.d.ts",
-      "import": "./dist/twitter-verify.js",
-      "default": "./dist/twitter-verify.js"
-    },
-    "./merkle-tree": {
-      "types": "./dist/merkle-tree.d.ts",
-      "import": "./dist/merkle-tree.js",
-      "default": "./dist/merkle-tree.js"
-    },
-    "./og-tracker": {
-      "types": "./dist/og-tracker.d.ts",
-      "import": "./dist/og-tracker.js",
-      "default": "./dist/og-tracker.js"
     }
   },
   "dependencies": {

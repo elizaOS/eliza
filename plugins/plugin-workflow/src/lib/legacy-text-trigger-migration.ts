@@ -7,12 +7,15 @@
  * `workflows-nodes-base.respondToEvent` and rewrite the trigger metadata so
  * `kind = "workflow"` plus a pointer to the new workflow. A `migratedFromText`
  * marker prevents double-conversion on subsequent boots.
- *
- * Plugin-workflow cannot import @elizaos/agent (would create a cycle), so the
- * minimal trigger shape it reads is inlined here as `LegacyTriggerConfig`.
  */
 
-import { type IAgentRuntime, logger, type Task, type TaskMetadata } from '@elizaos/core';
+import {
+  type IAgentRuntime,
+  logger,
+  type Task,
+  type TaskMetadata,
+  type TriggerConfig,
+} from '@elizaos/core';
 import type { WorkflowService } from '../services/workflow-service';
 import { WORKFLOW_SERVICE_TYPE } from '../services/workflow-service';
 import type { WorkflowDefinition } from '../types/index';
@@ -26,37 +29,20 @@ export interface LegacyTextTriggerMigrationSummary {
   failed: number;
 }
 
-/**
- * Subset of @elizaos/core `TriggerConfig` we read here. Inlined to avoid a
- * dependency edge from plugin-workflow into @elizaos/agent. We only touch
- * fields relevant to the text → workflow rewrite.
- */
-interface LegacyTriggerConfig {
-  triggerId?: string;
-  kind?: 'text' | 'workflow';
-  instructions?: string;
-  displayName?: string;
-  triggerType?: string;
-  workflowId?: string;
-  workflowName?: string;
-  [key: string]: unknown;
-}
-
 function readWorkflowService(runtime: IAgentRuntime): WorkflowService | null {
   const svc = runtime.getService(WORKFLOW_SERVICE_TYPE) as WorkflowService | null;
   return svc ?? null;
 }
 
-function readTriggerFromMetadata(task: Task): LegacyTriggerConfig | null {
-  const trigger = (task.metadata as { trigger?: unknown } | undefined)?.trigger;
+function readTriggerFromMetadata(task: Task): TriggerConfig | null {
+  const trigger = task.metadata?.trigger;
   if (!trigger || typeof trigger !== 'object' || Array.isArray(trigger)) return null;
-  const cfg = trigger as LegacyTriggerConfig;
-  if (typeof cfg.triggerId !== 'string') return null;
-  return cfg;
+  if (typeof trigger.triggerId !== 'string') return null;
+  return trigger;
 }
 
 function buildRespondToEventWorkflow(
-  trigger: LegacyTriggerConfig,
+  trigger: TriggerConfig,
   fallbackName: string
 ): WorkflowDefinition {
   const displayName =
@@ -122,7 +108,7 @@ export async function migrateLegacyTextTriggers(
       continue;
     }
 
-    const metadata = (task.metadata ?? {}) as Record<string, unknown>;
+    const metadata: TaskMetadata = task.metadata ?? {};
     if (metadata.migratedFromText === true) {
       summary.skipped += 1;
       continue;
@@ -158,24 +144,19 @@ export async function migrateLegacyTextTriggers(
         continue;
       }
 
-      const updatedTrigger: LegacyTriggerConfig = {
+      const updatedTrigger: TriggerConfig = {
         ...trigger,
         kind: 'workflow',
         workflowId: deployed.id,
         workflowName: deployed.name,
       };
 
-      // Cast through unknown: the runtime's TaskMetadata.trigger field is
-      // typed as the full TriggerConfig, but we read/write a structural
-      // subset here (plugin-workflow cannot import @elizaos/agent without
-      // cycling). Persistence preserves whatever extra fields we never
-      // touch, so the round-trip stays loss-free.
-      const nextMetadata = {
+      const nextMetadata: TaskMetadata = {
         ...metadata,
         trigger: updatedTrigger,
         migratedFromText: true,
         migratedAt: Date.now(),
-      } as unknown as TaskMetadata;
+      };
 
       await runtime.updateTask(task.id, { metadata: nextMetadata });
       summary.migrated += 1;

@@ -321,7 +321,7 @@ describe("ScheduledTaskRunner — every verb", () => {
     await expect(
       h.runner.apply(task.taskId, "edit", {
         state: { status: "completed", followupCount: 0 },
-      } as unknown as Parameters<ScheduledTaskRunnerHandle["apply"]>[2]),
+      }),
     ).rejects.toThrow(/read-only/);
   });
 

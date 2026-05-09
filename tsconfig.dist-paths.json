@@ -544,7 +544,7 @@
         "./plugins/plugin-agent-skills/dist/*"
       ],
       "@elizaos/plugin-elizacloud": [
-        "./plugins/plugin-elizacloud/dist/index.d.ts"
+        "./plugins/plugin-elizacloud/dist/node/index.d.ts"
       ],
       "@elizaos/plugin-elizacloud/*": [
         "./plugins/plugin-elizacloud/dist/*"
@@ -724,10 +724,10 @@
         "./plugins/plugin-discord/dist/*"
       ],
       "@elizaos/plugin-whatsapp": [
-        "./plugins/plugin-whatsapp/dist/index.d.ts"
+        "./plugins/plugin-whatsapp/dist/src/index.d.ts"
       ],
       "@elizaos/plugin-whatsapp/*": [
-        "./plugins/plugin-whatsapp/dist/*"
+        "./plugins/plugin-whatsapp/dist/src/*"
       ],
       "@elizaos/plugin-elevenlabs": [
         "./plugins/plugin-elevenlabs/dist/index.d.ts"

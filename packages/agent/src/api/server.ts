@@ -25,14 +25,77 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
 import os from "node:os";
 import path from "node:path";
+// `plugin-auto-enable.ts` was removed during a workspace refactor; the helper
+// `isStreamingDestinationConfigured` landed in `@elizaos/core`
+// (`connectors/connector-config.ts`, re-exported via index.node.ts). Importing
+// from the canonical path keeps the bench server bootable without
+// resurrecting the deleted file.
 import {
   type AgentRuntime,
   type IAgentRuntime,
+  isStreamingDestinationConfigured,
   logger,
   type Route,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import {
+  BROWSER_BRIDGE_KINDS,
+  BROWSER_BRIDGE_PACKAGE_PATH_TARGETS,
+  type BrowserBridgeKind,
+  type BrowserBridgePackagePathTarget,
+  type BrowserWorkspaceCommand,
+  type BrowserWorkspaceTabKind,
+  buildBrowserBridgeCompanionPackage,
+  closeBrowserWorkspaceTab,
+  evaluateBrowserWorkspaceTab,
+  executeBrowserWorkspaceCommand,
+  getBrowserBridgeCompanionPackageStatus,
+  getBrowserWorkspaceSnapshot,
+  hideBrowserWorkspaceTab,
+  listBrowserWorkspaceTabs,
+  navigateBrowserWorkspaceTab,
+  openBrowserBridgeCompanionManager,
+  openBrowserBridgeCompanionPackagePath,
+  openBrowserWorkspaceTab,
+  showBrowserWorkspaceTab,
+  snapshotBrowserWorkspaceTab,
+} from "@elizaos/plugin-browser";
+import { attachMobileDeviceBridgeToServer } from "@elizaos/plugin-capacitor-bridge";
+import { handleComputerUseRoutes } from "@elizaos/plugin-computeruse";
+// `cloud-provisioning.ts` was deleted from agent/src/api during a workspace
+// refactor; the function moved to plugin-elizacloud. Pull from there to
+// keep the bench server bootable.
+// `cloud-status-routes.ts` and `computer-use-routes.ts` were deleted from
+// agent/src/api during a workspace refactor; the route handlers now live in
+// the corresponding plugins. Pull from there to keep the bench server
+// bootable.
+import {
+  handleCloudStatusRoutes,
+  isCloudProvisionedContainer,
+} from "@elizaos/plugin-elizacloud";
+// BlueBubbles routes extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
+// resolveBlueBubblesWebhookPath stays here so the auth gate can compute the webhook path
+// before the runtime plugin route dispatcher runs.
+import { resolveBlueBubblesWebhookPath } from "@elizaos/plugin-imessage";
+// iMessage routes extracted to @elizaos/plugin-imessage setup-routes.ts (Plugin.routes)
+// import { handleIMessageRoute } from "@elizaos/plugin-imessage";
+import {
+  getLocalInferenceActiveModelId,
+  handleLocalInferenceRoutes,
+} from "@elizaos/plugin-local-inference";
+import { handleMcpRoutes } from "@elizaos/plugin-mcp";
+// signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout extracted to @elizaos/plugin-signal
+import { applySignalQrOverride } from "@elizaos/plugin-signal";
+import { handleTtsRoutes, streamManager } from "@elizaos/plugin-streaming";
+// WhatsApp route dispatch extracted to @elizaos/plugin-whatsapp setup-routes.ts (Plugin.routes).
+// applyWhatsAppQrOverride remains for plugin-discovery's QR override flow.
+// `whatsapp-routes.ts` was moved into the plugin; pull from there.
+import { applyWhatsAppQrOverride } from "@elizaos/plugin-whatsapp";
+// Telegram account routes extracted to @elizaos/plugin-telegram account-setup-routes.ts (Plugin.routes).
+import { handleTriggerRoutes } from "@elizaos/plugin-workflow";
+// ONBOARDING_CLOUD_PROVIDER_OPTIONS, ONBOARDING_PROVIDER_CATALOG moved to server-helpers-config.ts
+import { validateX402Startup } from "@elizaos/plugin-x402";
 import {
   getStylePresets,
   isMobilePlatform,
@@ -49,20 +112,11 @@ import {
   saveElizaConfig,
 } from "../config/config.js";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
-// `plugin-auto-enable.ts` was removed during a workspace refactor; the helper
-// `isStreamingDestinationConfigured` landed in `@elizaos/core`
-// (`connectors/connector-config.ts`, re-exported via index.node.ts). Importing
-// from the canonical path keeps the bench server bootable without
-// resurrecting the deleted file.
-import { isStreamingDestinationConfigured } from "@elizaos/core";
 import { CharacterSchema } from "../config/zod-schema.js";
-// ONBOARDING_CLOUD_PROVIDER_OPTIONS, ONBOARDING_PROVIDER_CATALOG moved to server-helpers-config.ts
-import { validateX402Startup } from "@elizaos/plugin-x402";
 import {
   type AgentEventServiceLike,
   getAgentEventService,
 } from "../runtime/agent-event-service.js";
-import { attachMobileDeviceBridgeToServer } from "@elizaos/plugin-capacitor-bridge";
 import {
   resolvePreferredProviderId,
   resolvePrimaryModel,
@@ -100,9 +154,6 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
-// signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout extracted to @elizaos/plugin-signal
-import { applySignalQrOverride } from "@elizaos/plugin-signal";
-import { streamManager } from "@elizaos/plugin-streaming";
 // telegram-account-auth helpers moved to @elizaos/plugin-telegram (account-setup-routes.ts).
 // WhatsApp pairing service helpers (sanitizeAccountId, WhatsAppPairingSession,
 // whatsappAuthExists, whatsappLogout) are owned by @elizaos/plugin-whatsapp now;
@@ -137,48 +188,12 @@ import { handleAppPackageRoutes } from "./app-package-routes.js";
 import { handleAppsRoutes } from "./apps-routes.js";
 import { handleAuthRoutes } from "./auth-routes.js";
 import { handleAvatarRoutes } from "./avatar-routes.js";
-// BlueBubbles routes extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
-// resolveBlueBubblesWebhookPath stays here so the auth gate can compute the webhook path
-// before the runtime plugin route dispatcher runs.
-import { resolveBlueBubblesWebhookPath } from "@elizaos/plugin-imessage";
-import {
-  BROWSER_BRIDGE_KINDS,
-  BROWSER_BRIDGE_PACKAGE_PATH_TARGETS,
-  buildBrowserBridgeCompanionPackage,
-  closeBrowserWorkspaceTab,
-  evaluateBrowserWorkspaceTab,
-  executeBrowserWorkspaceCommand,
-  getBrowserBridgeCompanionPackageStatus,
-  getBrowserWorkspaceSnapshot,
-  hideBrowserWorkspaceTab,
-  listBrowserWorkspaceTabs,
-  navigateBrowserWorkspaceTab,
-  openBrowserBridgeCompanionManager,
-  openBrowserBridgeCompanionPackagePath,
-  openBrowserWorkspaceTab,
-  showBrowserWorkspaceTab,
-  snapshotBrowserWorkspaceTab,
-  type BrowserBridgeKind,
-  type BrowserBridgePackagePathTarget,
-  type BrowserWorkspaceCommand,
-  type BrowserWorkspaceTabKind,
-} from "@elizaos/plugin-browser";
 import { handleBugReportRoutes } from "./bug-report-routes.js";
 import { handleCharacterRoutes } from "./character-routes.js";
 import {
   initSse as initSseFromChatRoutes,
   writeSseJson as writeSseJsonFromChatRoutes,
 } from "./chat-routes.js";
-// `cloud-provisioning.ts` was deleted from agent/src/api during a workspace
-// refactor; the function moved to plugin-elizacloud. Pull from there to
-// keep the bench server bootable.
-import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
-// `cloud-status-routes.ts` and `computer-use-routes.ts` were deleted from
-// agent/src/api during a workspace refactor; the route handlers now live in
-// the corresponding plugins. Pull from there to keep the bench server
-// bootable.
-import { handleCloudStatusRoutes } from "@elizaos/plugin-elizacloud";
-import { handleComputerUseRoutes } from "@elizaos/plugin-computeruse";
 import { handleConfigRoutes } from "./config-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
@@ -195,13 +210,6 @@ import {
   sendJson,
   sendJsonError,
 } from "./http-helpers.js";
-// iMessage routes extracted to @elizaos/plugin-imessage setup-routes.ts (Plugin.routes)
-// import { handleIMessageRoute } from "@elizaos/plugin-imessage";
-import {
-  getLocalInferenceActiveModelId,
-  handleLocalInferenceRoutes,
-} from "@elizaos/plugin-local-inference";
-import { handleMcpRoutes } from "@elizaos/plugin-mcp";
 import { pushWithBatchEvict } from "./memory-bounds.js";
 import { handleMemoryRoutes } from "./memory-routes.js";
 import { handleMiscRoutes } from "./misc-routes.js";
@@ -240,9 +248,6 @@ import {
 import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
-// Telegram account routes extracted to @elizaos/plugin-telegram account-setup-routes.ts (Plugin.routes).
-import { handleTriggerRoutes } from "@elizaos/plugin-workflow";
-import { handleTtsRoutes } from "@elizaos/plugin-streaming";
 import { handleUpdateRoutes } from "./update-routes.js";
 import {
   // Balance/import/generate helpers moved to @elizaos/app-steward plugin routes.
@@ -259,10 +264,6 @@ import {
 } from "./wallet-capability.js";
 import { handleWalletRoutes } from "./wallet-routes.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
-// WhatsApp route dispatch extracted to @elizaos/plugin-whatsapp setup-routes.ts (Plugin.routes).
-// applyWhatsAppQrOverride remains for plugin-discovery's QR override flow.
-// `whatsapp-routes.ts` was moved into the plugin; pull from there.
-import { applyWhatsAppQrOverride } from "@elizaos/plugin-whatsapp";
 import { handleWorkbenchRoutes } from "./workbench-routes.js";
 
 export {
@@ -537,7 +538,8 @@ export {
 const fetchWithTimeoutGuard = _fetchWithTimeoutGuard;
 const streamResponseBodyWithByteLimit = _streamResponseBodyWithByteLimit;
 
-type StreamRouteDestination = import("@elizaos/plugin-streaming").StreamingDestination;
+type StreamRouteDestination =
+  import("@elizaos/plugin-streaming").StreamingDestination;
 
 interface StreamingPluginDestinationFactories {
   createCustomRtmpDestination(config?: {
@@ -649,7 +651,7 @@ type OptionalTrainingConfigApi = {
   saveTrainingConfig: (config: OptionalTrainingConfig) => void;
 };
 
-const TRAINING_CONFIG_MODULE = "@elizaos/app-training/core/training-config";
+const TRAINING_CONFIG_MODULE = "@elizaos/app-training";
 
 function defaultTrainingConfig(): OptionalTrainingConfig {
   return {
@@ -987,7 +989,7 @@ type StewardWalletCoreRoutesHandler = (
 ) => Promise<boolean>;
 
 const STEWARD_WALLET_CORE_ROUTES_MODULE: string =
-  "@elizaos/app-steward/routes/wallet-core-routes";
+  "@elizaos/app-steward";
 
 // ---------------------------------------------------------------------------
 // Static UI serving — extracted to static-file-server.ts
@@ -1086,7 +1088,7 @@ const resolveMcpServersRejection = _resolveMcpServersRejection;
 // ---------------------------------------------------------------------------
 
 import { pickRandomNames } from "../runtime/onboarding-names.js";
-
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 import {
   applyOnboardingVoicePreset,
   ensureWalletKeysInEnvAndConfig,
@@ -1103,7 +1105,6 @@ import {
   stripRedactedPlaceholderValuesDeep,
 } from "./server-helpers-config.js";
 
-import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 export { isSafeResetStateDir } from "./server-helpers-config.js";
 
 // ---------------------------------------------------------------------------
@@ -1303,7 +1304,7 @@ type TrainingServiceCtor = new (options: {
 }) => TrainingServiceWithRuntime;
 
 const TRAINING_SERVICE_REGISTRY_MODULE: string =
-  "@elizaos/app-training/services/training-service-registry";
+  "@elizaos/app-training";
 
 async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null> {
   if (isMobilePlatform()) {

@@ -14,9 +14,7 @@
   },
   "exports": {
     "./package.json": "./package.json",
-    ".": "./src/index.ts",
-    "./aosp-llama-adapter": "./src/aosp-llama-adapter.ts",
-    "./aosp-local-inference-bootstrap": "./src/aosp-local-inference-bootstrap.ts"
+    ".": "./src/index.ts"
   },
   "files": [
     "dist",

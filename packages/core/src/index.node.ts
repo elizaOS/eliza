@@ -202,6 +202,7 @@ export {
 	settingsDebugCloudSummary,
 } from "./settings-debug";
 export { sanitizeSpeechText } from "./spoken-text";
+export * from "./testing";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
 export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
@@ -247,7 +248,6 @@ export * from "./utils/server-health";
 export * from "./utils/state-dir";
 // Export streaming utilities
 export * from "./utils/streaming";
-export * from "./testing";
 // Export validation utilities
 export * from "./validation";
 

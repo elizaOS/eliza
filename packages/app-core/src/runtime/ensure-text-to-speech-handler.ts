@@ -87,7 +87,7 @@ export async function ensureTextToSpeechHandler(
 
     if (!handler) {
       throw new Error(
-        "@elizaos/plugin-edge-tts/node did not expose a TEXT_TO_SPEECH handler",
+        "@elizaos/plugin-edge-tts did not expose a TEXT_TO_SPEECH handler",
       );
     }
 

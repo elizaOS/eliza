@@ -134,9 +134,7 @@ describe("PgliteVaultImpl", () => {
     await expect(
       // @ts-expect-error exercises runtime validation for invalid callers.
       vault.set("k", 123),
-    ).rejects.toThrow(
-      /must be a string/,
-    );
+    ).rejects.toThrow(/must be a string/);
   });
 
   it("ciphertext is opaque on disk (decrypt requires the master key)", async () => {
@@ -209,6 +207,17 @@ describe("PgliteVaultImpl", () => {
       expect(refDesc?.source).toBe("1password");
       // Sentinel row written
       expect(await pg.has("_migrated_from_file_v1")).toBe(true);
+      expect(await pg.list()).toEqual([
+        "github.token",
+        "openrouter.apiKey",
+        "ui.theme",
+      ]);
+      expect(await pg.stats()).toEqual({
+        total: 3,
+        sensitive: 1,
+        nonSensitive: 1,
+        references: 1,
+      });
 
       await pg.close();
       await rm(pgDir, { recursive: true, force: true });
@@ -254,6 +263,39 @@ describe("PgliteVaultImpl", () => {
       expect(await pg2.has("shouldNotImport")).toBe(false);
       expect(await pg2.has("preexisting")).toBe(true);
       await pg2.close();
+      await rm(pgDir, { recursive: true, force: true });
+      await rm(legacyDir, { recursive: true, force: true });
+    });
+
+    it("hides empty-source migration sentinel from list and stats", async () => {
+      const legacyDir = await mkdtemp(join(tmpdir(), "vault-empty-legacy-"));
+      const legacyPath = join(legacyDir, "vault.json");
+      await writeFile(
+        legacyPath,
+        JSON.stringify({
+          version: 1,
+          entries: {},
+        }),
+      );
+
+      const pgDir = await mkdtemp(join(tmpdir(), "vault-pglite-empty-"));
+      const pg = new PgliteVaultImpl({
+        dataDir: join(pgDir, ".vault-pglite"),
+        legacyStorePath: legacyPath,
+        masterKey: inMemoryMasterKey(generateMasterKey()),
+        auditPath: join(pgDir, "audit", "vault.jsonl"),
+      });
+
+      expect(await pg.has("_migrated_from_file_v1")).toBe(true);
+      expect(await pg.list()).toEqual([]);
+      expect(await pg.stats()).toEqual({
+        total: 0,
+        sensitive: 0,
+        nonSensitive: 0,
+        references: 0,
+      });
+
+      await pg.close();
       await rm(pgDir, { recursive: true, force: true });
       await rm(legacyDir, { recursive: true, force: true });
     });

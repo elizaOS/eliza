@@ -6,7 +6,6 @@ import { type ReactElement, useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { useLocation } from "react-router-dom";
 import { docsNav, mdxLoaders } from "./nav";
-import "@elizaos/cloud-ui/styles/docs.css";
 
 function DocsLoading() {
   return <div className="docs-loading">Loading…</div>;

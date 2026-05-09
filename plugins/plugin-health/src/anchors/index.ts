@@ -17,8 +17,8 @@
  */
 
 export {
-  HEALTH_ANCHORS,
-  registerHealthAnchors,
   type AnchorContribution,
   type AnchorRegistry,
+  HEALTH_ANCHORS,
+  registerHealthAnchors,
 } from "../connectors/index.js";

@@ -1,6 +1,3 @@
-import "@elizaos/ui/styles/styles.css";
-import "@elizaos/ui/styles/brand-gold.css";
-
 import "@elizaos/app-core";
 
 import { App as CapacitorApp } from "@capacitor/app";

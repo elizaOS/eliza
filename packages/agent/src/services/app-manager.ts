@@ -1990,22 +1990,9 @@ export class AppManager {
           // Runtime plugin manager unavailable — fall back to the app-core
           // installer which writes to ~/.eliza/plugins/installed and can be
           // picked up by the app-package-modules resolver without restart.
-          const { installPlugin: installPluginDirect } = (await import(
+          const { installPlugin: installPluginDirect } = await import(
             /* webpackIgnore: true */ "@elizaos/app-core"
-          )) as unknown as {
-            installPlugin: (
-              name: string,
-              onProgress?: (progress: InstallProgressLike) => void,
-              version?: string,
-            ) => Promise<{
-              success: boolean;
-              pluginName: string;
-              version: string;
-              installPath: string;
-              requiresRestart: boolean;
-              error?: string;
-            }>;
-          };
+          );
           result = await installPluginDirect(pluginName, onProgress);
         }
         if (!result.success) {

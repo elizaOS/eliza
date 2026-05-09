@@ -26,6 +26,7 @@ import {
   readLifeOpsOwnerProfile,
   updateLifeOpsOwnerProfile,
 } from "../owner-profile.js";
+import { asCacheRuntime } from "../runtime-cache.js";
 
 // --- OwnerFactStore (interim wrapper) -------------------------------------
 
@@ -146,25 +147,6 @@ interface OwnerFactsExtensions {
   eveningWindow?: OwnerFactWindow;
   preferredNotificationChannel?: string;
   locale?: string;
-}
-
-interface RuntimeCacheLike {
-  getCache<T>(key: string): Promise<T | null | undefined>;
-  setCache<T>(key: string, value: T): Promise<boolean | undefined>;
-  deleteCache?(key: string): Promise<boolean | undefined>;
-}
-
-function asCacheRuntime(runtime: IAgentRuntime): RuntimeCacheLike {
-  const candidate = runtime as unknown as Partial<RuntimeCacheLike>;
-  if (
-    typeof candidate.getCache !== "function" ||
-    typeof candidate.setCache !== "function"
-  ) {
-    throw new Error(
-      "[first-run-state] runtime does not expose getCache/setCache",
-    );
-  }
-  return candidate as RuntimeCacheLike;
 }
 
 async function readOwnerFactsExtensions(

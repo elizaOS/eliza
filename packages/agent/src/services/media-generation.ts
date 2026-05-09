@@ -41,6 +41,27 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
 
   async stop(): Promise<void> {}
 
+  canGenerateMedia(
+    request: Pick<MediaGenerationRequest, "mediaType" | "audioKind">,
+  ): boolean {
+    const config = loadElizaConfig();
+    const providerOptions = getMediaProviderOptions();
+    try {
+      if (request.mediaType === "image") {
+        createImageProvider(config.media?.image, providerOptions);
+        return true;
+      }
+      if (request.mediaType === "video") {
+        createVideoProvider(config.media?.video, providerOptions);
+        return true;
+      }
+      createAudioProvider(config.media?.audio, providerOptions);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async generateMedia(
     request: MediaGenerationRequest,
   ): Promise<MediaGenerationResponse> {

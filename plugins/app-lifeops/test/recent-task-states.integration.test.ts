@@ -13,7 +13,7 @@ import { createMinimalRuntimeStub } from "./first-run-helpers.ts";
 
 describe("recent task states integration", () => {
   it("computes a 3-in-a-row skipped streak and surfaces notable observations", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const baseTime = Date.now() - 60_000;
     for (let i = 0; i < 3; i += 1) {
       await appendScheduledTaskLogEntry(runtime, {
@@ -36,7 +36,7 @@ describe("recent task states integration", () => {
   });
 
   it("filters by kind and lookbackDays", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const recent = new Date().toISOString();
     const ancient = new Date(Date.now() - 30 * 86_400_000).toISOString();
     await appendScheduledTaskLogEntry(runtime, {

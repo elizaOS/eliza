@@ -39,12 +39,6 @@ import type {
   AutomationListResponse,
 } from "../../api/client-types-config";
 import { useAutomationDeepLink } from "../../hooks/useAutomationDeepLink";
-import { useWorkflowGenerationState } from "../../hooks/useWorkflowGenerationState";
-import {
-  dispatchFocusConnector,
-  prettyCredName,
-  providerFromCredType,
-} from "../../state/connector-deeplink";
 import {
   type FeedFilter,
   passesFilter,
@@ -52,13 +46,12 @@ import {
 import { formatSchedule } from "../../utils/cron-format";
 import { decodeScheduleTags } from "../../utils/task-schedule";
 import { AutomationsChatPane } from "./AutomationsChatPane";
-import { missingCredTypes } from "./automations-missing-creds";
 import { TaskEditor } from "./TaskEditor";
+import { WorkflowEditor } from "./WorkflowEditor";
 import {
   VISUALIZE_WORKFLOW_EVENT,
   type VisualizeWorkflowEventDetail,
 } from "./workflow-graph-events";
-import { WorkflowEditor } from "./WorkflowEditor";
 
 export type { FeedFilter } from "../../utils/automation-feed-filter";
 export { passesFilter } from "../../utils/automation-feed-filter";

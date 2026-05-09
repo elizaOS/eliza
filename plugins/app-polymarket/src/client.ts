@@ -18,7 +18,7 @@ export interface PolymarketMarketsRequest {
   tagId?: string;
 }
 
-declare module "@elizaos/app-core/api/client-base" {
+declare module "@elizaos/app-core" {
   interface ElizaClient {
     polymarketStatus(): Promise<PolymarketStatusResponse>;
     polymarketMarkets(

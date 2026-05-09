@@ -139,8 +139,7 @@ import {
 } from "./model-resolution.js";
 
 const ELIZAMAKER_MODULE: string = "@elizaos/app-elizamaker";
-const STEWARD_EVM_BRIDGE_MODULE: string =
-  "@elizaos/app-steward/services/steward-evm-bridge";
+const STEWARD_EVM_BRIDGE_MODULE: string = "@elizaos/app-steward";
 
 type ElizaMakerModule = {
   initializeOGCode?: () => void;
@@ -197,7 +196,6 @@ import {
 } from "../shared/workspace-resolution.js";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
 import { seedBundledDocuments } from "./default-documents.js";
-import discordLocalPlugin from "@elizaos/plugin-discord-local";
 import { createElizaPlugin } from "./eliza-plugin.js";
 import { detectEmbeddingPreset } from "./embedding-presets.js";
 import {

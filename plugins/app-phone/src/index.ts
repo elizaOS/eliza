@@ -21,3 +21,8 @@ export {
 } from "./components/phone-app";
 export { appPhonePlugin, default } from "./plugin";
 export { phoneCallLogProvider } from "./providers/call-log";
+export * from "./ui";
+export * from "./register";
+export * from "./register-companion-page";
+export * from "./companion";
+export * from "./companion/services";

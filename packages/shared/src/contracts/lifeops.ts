@@ -3755,10 +3755,8 @@ export interface LifeOpsPersonalBaselineResponse {
   windowDays: number;
 }
 
-
 // ── Additional contracts (relationships, X read, cross-channel, screen time,
 //    scheduling, dossier, iMessage, WhatsApp).
-
 
 // ── Message channels ─────────────────────────────────────────────────────────
 
@@ -4277,5 +4275,3 @@ export interface LifeOpsGraphRelationship {
   createdAt: string;
   updatedAt: string;
 }
-
-

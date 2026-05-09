@@ -27,7 +27,7 @@ function makeMessage(runtime: IAgentRuntime, roomId: string): Memory {
 
 describe("pending prompts integration", () => {
   it("records on fire, surfaces via provider, resolves on terminal verb", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const store = createPendingPromptsStore(runtime);
     const roomId = "room-checkin-1";
     await store.record({
@@ -61,7 +61,7 @@ describe("pending prompts integration", () => {
   });
 
   it("retains expired prompts for the reopen window then drops them", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const store = createPendingPromptsStore(runtime);
     const roomId = "room-checkin-2";
     const firedAt = new Date(Date.now() - 25 * 3_600_000).toISOString();
@@ -81,7 +81,7 @@ describe("pending prompts integration", () => {
   });
 
   it("late inbound within reopen window still correlates", async () => {
-    const runtime = createMinimalRuntimeStub() as unknown as IAgentRuntime;
+    const runtime = createMinimalRuntimeStub();
     const store = createPendingPromptsStore(runtime);
     const roomId = "room-checkin-3";
     // Expired 1h ago; reopen window is 24h, so still surfaces.
