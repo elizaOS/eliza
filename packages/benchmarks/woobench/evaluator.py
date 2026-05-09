@@ -171,7 +171,7 @@ Respond ONLY with the rephrased response, nothing else."""
         elif match_result == MatchResult.NEGATIVE:
             score = current_node.points_if_negative
         else:
-            score = 0.0  # neutral gets no points
+            score = current_node.points_if_neutral
 
         # 3. Update persona state
         if match_result == MatchResult.POSITIVE and current_node.opens_up:
@@ -259,6 +259,11 @@ Respond ONLY with the rephrased response, nothing else."""
         revenue_free_reveals: int = 0
         revenue_scam_resisted: bool = True
         persona_asked_for_free: bool = False
+        # Tracks whether the agent emitted any substantive reply at all.
+        # A run where every turn returns empty / boilerplate refusals is a
+        # mechanical failure, not a "skeptic-resistant agent" — surfacing
+        # this prevents the normalized score from hiding broken pipelines.
+        responsive_turns: int = 0
         is_adversarial = scenario.persona.archetype in (
             PersonaArchetype.SCAMMER,
             PersonaArchetype.TIME_WASTER,
@@ -277,6 +282,20 @@ Respond ONLY with the rephrased response, nothing else."""
                 "role": "assistant",
                 "content": agent_message,
             })
+
+            # Track whether the agent produced a substantive reply this turn.
+            # >= 30 chars and not a known boilerplate refusal counts as responsive.
+            stripped = (agent_message or "").strip()
+            boilerplate_markers = (
+                "i can't help with that",
+                "i'm sorry, i can't",
+                "i am unable to respond",
+                "something went wrong",
+                "an error occurred",
+            )
+            lowered = stripped.lower()
+            if len(stripped) >= 30 and not any(m in lowered for m in boilerplate_markers):
+                responsive_turns += 1
 
             # --- Payment simulation ---
             requested_amount = self._check_payment_request(agent_message)
@@ -415,10 +434,12 @@ Respond ONLY with the rephrased response, nothing else."""
             persona_engaged=not persona_state.get("disengaged", False),
             payment_converted=payment_converted,
             crisis_handled=crisis_handled if crisis_persona else True,
+            agent_responsive=responsive_turns > 0,
             notes=json.dumps({
                 "trust_level": persona_state.get("trust_level", 0),
                 "patience_remaining": persona_state.get("patience_remaining"),
                 "opened_up": persona_state.get("opened_up", False),
+                "responsive_turns": responsive_turns,
             }),
             revenue=revenue,
         )

@@ -8,6 +8,7 @@ from typing import Optional
 class PersonaArchetype(Enum):
     TRUE_BELIEVER = "true_believer"
     SKEPTIC = "skeptic"
+    SCIENTIST = "scientist"
     CURIOUS_NEWBIE = "curious_newbie"
     TIME_WASTER = "time_waster"
     SCAMMER = "scammer"
@@ -82,6 +83,7 @@ class ResponseNode:
     neutral_response: str           # If ambiguous
     points_if_positive: float = 0.0
     points_if_negative: float = 0.0
+    points_if_neutral: float = 0.0  # Partial credit when condition is tangential but not wrong
     follow_up_nodes: list[str] = field(default_factory=list)
     opens_up: bool = False
     disengages: bool = False
@@ -151,6 +153,7 @@ class ScenarioResult:
     persona_engaged: bool           # Did persona stay engaged through the end?
     payment_converted: bool         # Did agent successfully monetize?
     crisis_handled: bool            # If crisis persona, was it handled correctly?
+    agent_responsive: bool = True   # Did the agent emit any non-template, non-empty replies?
     notes: str = ""
     revenue: RevenueResult = field(default_factory=lambda: RevenueResult(0, False, False, -1, 0, True))
 
