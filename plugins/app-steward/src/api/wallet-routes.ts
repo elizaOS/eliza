@@ -3,7 +3,7 @@ import { persistConfigEnv } from "@elizaos/agent/api/config-env";
 import type {
   RouteHelpers,
   RouteRequestMeta,
-} from "@elizaos/agent/api/route-helpers";
+} from "@elizaos/shared";
 import type { ElizaConfig } from "@elizaos/agent/config";
 import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
 import type { AgentRuntime } from "@elizaos/core";

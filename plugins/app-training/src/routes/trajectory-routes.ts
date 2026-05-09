@@ -17,7 +17,7 @@ import {
   readJsonBody as parseJsonBody,
   sendJson,
   sendJsonError,
-} from "@elizaos/agent/api/http-helpers";
+} from "@elizaos/shared";
 import { createZipArchive } from "@elizaos/agent/api/zip-utils";
 import {
   enrichTrajectoryLlmCall,

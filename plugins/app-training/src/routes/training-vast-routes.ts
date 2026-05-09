@@ -28,7 +28,7 @@
 import type {
   RouteHelpers,
   RouteRequestContext,
-} from "@elizaos/agent/api/route-helpers";
+} from "@elizaos/shared";
 import { logger } from "@elizaos/core";
 import {
   type CreateJobInput,

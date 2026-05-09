@@ -130,8 +130,6 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.0.0",
-    "@elizaos/app-elizamaker": "workspace:*",
-    "@elizaos/app-lifeops": "workspace:*",
     "@elizaos/app-task-coordinator": "workspace:*",
     "@elizaos/app-training": "workspace:*",
     "@elizaos/capacitor-contacts": "workspace:*",

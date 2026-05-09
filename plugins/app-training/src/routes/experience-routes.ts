@@ -9,7 +9,7 @@
  */
 
 import type { AgentRuntime, UUID } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/agent/api/route-helpers";
+import type { RouteRequestContext } from "@elizaos/shared";
 
 // These enums and types are defined in @elizaos/core's advanced-capabilities
 // experience module but not re-exported from the compiled dist bundle (tsdown

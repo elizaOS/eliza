@@ -1,4 +1,4 @@
-import type { RouteRequestContext } from "@elizaos/agent/api/route-helpers";
+import type { RouteRequestContext } from "@elizaos/shared";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {
