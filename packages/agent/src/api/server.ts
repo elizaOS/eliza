@@ -202,7 +202,7 @@ import {
   getLocalInferenceActiveModelId,
   handleLocalInferenceRoutes,
 } from "@elizaos/plugin-local-inference";
-import { handleMcpRoutes } from "./mcp-routes.js";
+import { handleMcpRoutes } from "@elizaos/plugin-mcp";
 import { pushWithBatchEvict } from "./memory-bounds.js";
 import { handleMemoryRoutes } from "./memory-routes.js";
 import { handleMiscRoutes } from "./misc-routes.js";
@@ -1104,6 +1104,7 @@ import {
   stripRedactedPlaceholderValuesDeep,
 } from "./server-helpers-config.js";
 
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 export { isSafeResetStateDir } from "./server-helpers-config.js";
 
 // ---------------------------------------------------------------------------
