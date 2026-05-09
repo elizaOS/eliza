@@ -8,7 +8,7 @@
  * prompt semantics as LocalInferenceEngine.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -131,6 +131,102 @@ function normalizeGpuLayers(value: number | "auto"): string {
   return value === "auto" ? "99" : String(value);
 }
 
+function findPython(): string | null {
+  for (const candidate of ["python3", "python"]) {
+    const result = spawnSync(candidate, ["--version"], {
+      stdio: "ignore",
+      env: process.env,
+    });
+    if (result.status === 0) return candidate;
+  }
+  return null;
+}
+
+function maybeRepairDflashDrafter(
+  binaryPath: string,
+  targetModelPath: string,
+  drafterModelPath: string,
+): string {
+  if (readBool("ELIZA_DFLASH_REPAIR_DISABLED")) return drafterModelPath;
+  if (!fs.existsSync(targetModelPath) || !fs.existsSync(drafterModelPath)) {
+    return drafterModelPath;
+  }
+
+  const repairedPath = drafterModelPath.replace(/\.gguf$/i, ".repaired.gguf");
+  if (repairedPath === drafterModelPath) return drafterModelPath;
+  if (fs.existsSync(repairedPath)) return repairedPath;
+
+  const python = findPython();
+  if (!python) return drafterModelPath;
+
+  const bundledGgufPy = path.join(path.dirname(binaryPath), "gguf-py");
+  const pythonPath = [
+    fs.existsSync(bundledGgufPy) ? bundledGgufPy : null,
+    process.env.PYTHONPATH,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(path.delimiter);
+
+  const repairCode = String.raw`
+import sys
+from pathlib import Path
+
+if len(sys.argv) != 4:
+    raise SystemExit("usage: repair_dflash.py TARGET DRAFTER OUT")
+
+target = Path(sys.argv[1])
+drafter = Path(sys.argv[2])
+out = Path(sys.argv[3])
+
+import gguf
+from gguf.scripts.gguf_new_metadata import MetadataDetails, copy_with_new_metadata, get_field_data
+
+target_reader = gguf.GGUFReader(target, "r")
+draft_reader = gguf.GGUFReader(drafter, "r")
+
+if get_field_data(draft_reader, gguf.Keys.Tokenizer.MERGES):
+    print(drafter)
+    raise SystemExit(0)
+
+merges = get_field_data(target_reader, gguf.Keys.Tokenizer.MERGES)
+if not merges:
+    raise SystemExit("target GGUF has no tokenizer.ggml.merges metadata")
+
+arch = get_field_data(draft_reader, gguf.Keys.General.ARCHITECTURE)
+writer = gguf.GGUFWriter(out, arch=arch, endianess=draft_reader.endianess)
+alignment = get_field_data(draft_reader, gguf.Keys.General.ALIGNMENT)
+if alignment is not None:
+    writer.data_alignment = alignment
+copy_with_new_metadata(
+    draft_reader,
+    writer,
+    {gguf.Keys.Tokenizer.MERGES: MetadataDetails(gguf.GGUFValueType.ARRAY, merges, sub_type=gguf.GGUFValueType.STRING)},
+    [],
+)
+print(out)
+`;
+
+  const result = spawnSync(python, ["-c", repairCode, targetModelPath, drafterModelPath, repairedPath], {
+    env: {
+      ...process.env,
+      ...(pythonPath ? { PYTHONPATH: pythonPath } : {}),
+    },
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024,
+  });
+
+  if (result.status !== 0) {
+    console.warn(
+      "[local-inference] DFlash drafter tokenizer repair failed; trying original drafter:",
+      result.stderr || result.stdout,
+    );
+    return drafterModelPath;
+  }
+
+  const outputPath = result.stdout.trim().split(/\r?\n/).at(-1)?.trim();
+  return outputPath && fs.existsSync(outputPath) ? outputPath : drafterModelPath;
+}
+
 function resolvePort(): Promise<number> {
   const explicit = Number.parseInt(process.env.ELIZA_DFLASH_PORT ?? "", 10);
   if (Number.isFinite(explicit) && explicit > 0) {
@@ -205,13 +301,18 @@ export class DflashLlamaServer {
       throw new Error(`[dflash] ${status.reason}`);
     }
 
+    const drafterModelPath = maybeRepairDflashDrafter(
+      status.binaryPath,
+      plan.targetModelPath,
+      plan.drafterModelPath,
+    );
     const port = await resolvePort();
     const host = process.env.ELIZA_DFLASH_HOST?.trim() || DEFAULT_HOST;
     const args = [
       "--model",
       plan.targetModelPath,
       "-md",
-      plan.drafterModelPath,
+      drafterModelPath,
       "--spec-type",
       "dflash",
       "--host",

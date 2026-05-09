@@ -2,7 +2,7 @@ import type {
   CloudConfigLike,
   CloudStatusRouteContext,
 } from "./cloud-status-routes-autonomous.js";
-import type { ElizaConfig } from "@elizaos/agent/config";
+import type { ElizaConfig } from "../lib/config-like";
 import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared";
 import {
   CLOUD_BILLING_URL,

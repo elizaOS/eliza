@@ -179,6 +179,22 @@ class ElizaServerManager:
             self.port,
             cwd,
         )
+
+        # Clear stale tsx transformer caches. node --import tsx caches
+        # transformed TypeScript by source-file content hash + version. When
+        # core source files get renamed/restructured between runs (e.g.
+        # `consolidatedReflectionAction` rename, evaluator removal), the cache
+        # holds onto the old AST and the next boot fails with cryptic
+        # `does not provide an export named X` errors. Purging on every start
+        # is cheap (the cache rebuilds within seconds) and removes a tarpit.
+        try:
+            tmp_root = Path(tempfile.gettempdir())
+            for entry in tmp_root.iterdir():
+                if entry.name.startswith("tsx-") and entry.is_dir():
+                    shutil.rmtree(entry, ignore_errors=True)
+        except Exception as exc:  # never block server boot on cache cleanup
+            logger.debug("tsx cache cleanup skipped: %s", exc)
+
         log_dir = Path(env.get("ELIZA_BENCH_LOG_DIR") or tempfile.gettempdir())
         log_dir.mkdir(parents=True, exist_ok=True)
         stdout_file = tempfile.NamedTemporaryFile(

@@ -1,7 +1,7 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
-import type { CloudProxyConfigLike } from "@elizaos/agent/types/config-like";
-import { sendJsonError } from "@elizaos/agent/api/http-helpers";
+import type { CloudProxyConfigLike } from "../lib/config-like";
+import { sendJsonError } from "../lib/http";
 
 const LIFEOPS_CLOUD_FEATURES_MODULE: string =
   "@elizaos/app-lifeops/routes/cloud-features-routes";

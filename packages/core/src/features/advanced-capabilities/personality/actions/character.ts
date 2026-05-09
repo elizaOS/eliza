@@ -89,6 +89,7 @@ function denyResult(op: CharacterOp, message: string): ActionResult {
 export const characterAction: Action = {
 	name: "CHARACTER",
 	contexts: ["settings", "agent_internal", "media", "admin"],
+	roleGate: { minRole: "ADMIN" },
 	similes: [
 		// Old leaf action names
 		"MODIFY_CHARACTER",
