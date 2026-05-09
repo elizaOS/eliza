@@ -32,6 +32,7 @@
 //   the relative paths land. Phase A is responsible for placing the .tar.gz
 //   files at parent-of-bundle on the device.
 
+import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import {
   copyFile,
@@ -61,6 +62,39 @@ console.log("[build-mobile] output dir:", outDir);
 
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
+
+// Ensure generated keyword data exists. `@elizaos/shared` ships a
+// runtime-loaded `validation-keyword-data.js` that's produced by
+// `packages/shared/scripts/generate-keywords.mjs` rather than checked into
+// the repo. Without it, Bun.build fails with "Could not resolve:
+// ./generated/validation-keyword-data.js" because the i18n module imports it
+// directly. Re-run the generator before bundling so a fresh checkout
+// (no prior `bun run build`) still produces a working bundle.
+const sharedGeneratedFile = path.resolve(
+  repoRoot,
+  "packages",
+  "shared",
+  "src",
+  "i18n",
+  "generated",
+  "validation-keyword-data.js",
+);
+if (!existsSync(sharedGeneratedFile)) {
+  console.log(
+    "[build-mobile] generating @elizaos/shared i18n keyword data...",
+  );
+  const result = spawnSync(
+    "bun",
+    ["run", "--cwd", path.join(repoRoot, "packages", "shared"), "build:i18n"],
+    { stdio: "inherit" },
+  );
+  if (result.status !== 0) {
+    console.error(
+      "[build-mobile] FATAL: failed to generate i18n keyword data",
+    );
+    process.exit(1);
+  }
+}
 
 function findPgliteDist() {
   // pglite.wasm + pglite.data MUST match the @electric-sql/pglite version
@@ -165,6 +199,18 @@ const nativeStubs = {
   "pty-manager": path.join(stubsDir, "pty-manager.cjs"),
   sharp: path.join(stubsDir, "sharp.cjs"),
   canvas: path.join(stubsDir, "canvas.cjs"),
+  // React + react-dom stubs: workspace plugins (`@elizaos/app-lifeops`,
+  // `@elizaos/app-companion`, etc.) re-export their UI subtree from
+  // `src/index.ts` for the host app to consume. The agent only loads each
+  // package's runtime plugin object, but Bun.build still has to resolve
+  // every import in the dependency closure. Without these stubs Bun follows
+  // the `react` tsconfig path alias to `@types/react/index.d.ts` and dies
+  // parsing TypeScript-only syntax. Nothing on-device renders JSX.
+  react: path.join(stubsDir, "react.cjs"),
+  "react-dom": path.join(stubsDir, "react-dom.cjs"),
+  "react-dom/client": path.join(stubsDir, "react-dom.cjs"),
+  "react/jsx-runtime": path.join(stubsDir, "react-jsx-runtime.cjs"),
+  "react/jsx-dev-runtime": path.join(stubsDir, "react-jsx-runtime.cjs"),
 };
 
 // Optional @elizaos plugins that the agent runtime statically references but
@@ -330,6 +376,205 @@ const nativeCapacitorPlugin = {
   },
 };
 
+// Force Bun.build to load Zod from its CJS files instead of the ESM ones.
+//
+// Zod 4's classic ESM source uses re-export aliases like
+// `export { _regex as regex } from "./checks.js"` and then references
+// `checks.regex(...)` from `schemas.js`. Bun.build (1.3.13 at time of
+// writing) inlines those alias hops too aggressively and emits
+// `_regex(...)` instead of `checks_exports.regex(...)` — but never
+// declares `_regex` in the bundle scope. The on-device runtime then
+// crashes with `ReferenceError: _regex is not defined` the first time
+// any plugin's `z.string().regex(...)` schema is evaluated.
+//
+// The CJS variant (`./index.cjs`, `./v4/classic/schemas.cjs`) uses
+// `Object.defineProperty(exports, "regex", { get: () => index.regex })`
+// which Bun bundles as a real property access, so the bug doesn't
+// trigger. Redirect every `zod` and `zod/...` import to its `.cjs`
+// counterpart in the same package directory.
+const zodCjsResolverPlugin = {
+  name: "eliza-mobile-zod-cjs",
+  setup(build) {
+    build.onResolve({ filter: /^zod(\/.*)?$/ }, (args) => {
+      const subpath = args.path === "zod" ? "" : args.path.slice(4);
+      const pkgRoot = path.resolve(repoRoot, "node_modules", "zod");
+      if (!existsSync(pkgRoot)) return undefined;
+      const tryCandidates = subpath
+        ? [
+            path.join(pkgRoot, `${subpath}.cjs`),
+            path.join(pkgRoot, subpath, "index.cjs"),
+          ]
+        : [path.join(pkgRoot, "index.cjs")];
+      for (const candidate of tryCandidates) {
+        if (existsSync(candidate)) {
+          return { path: candidate, namespace: "file" };
+        }
+      }
+      return undefined;
+    });
+  },
+};
+
+// `@elizaos/ui/capacitor-shell` and any other workspace UI module that
+// pulls in CSS would otherwise be included in the bundle. Bun.build emits
+// a `.css` artifact in addition to the `.js`, and our `naming` template
+// fixes the output filename for both — leading to "Multiple files share
+// the same output path". The agent doesn't paint pixels on-device, so
+// stub CSS imports with an empty module.
+const stubCssPlugin = {
+  name: "eliza-mobile-stub-css",
+  setup(build) {
+    build.onResolve({ filter: /\.css$/ }, () => ({
+      path: path.join(stubsDir, "empty.cjs"),
+      namespace: "file",
+    }));
+  },
+};
+
+// Workspace plugins like `@elizaos/app-wallet` ship both a `.tsx` source
+// file and a stale `.js` artifact (committed by accident from an earlier
+// build) at the same path inside `src/`. Bun's default resolver picks the
+// `.js` file when both exist, even though the `.tsx` source is the truth.
+// This plugin redirects relative imports inside any plugin/package `src/`
+// directory to the `.ts`/`.tsx` source if a `.js` of the same name exists.
+const stripStaleJsArtifactsPlugin = {
+  name: "eliza-mobile-strip-stale-js-artifacts",
+  setup(build) {
+    build.onResolve({ filter: /.*/ }, (args) => {
+      const p = args.path;
+      // Only handle relative imports.
+      if (!p.startsWith("./") && !p.startsWith("../")) return undefined;
+      const importer = args.importer;
+      if (!importer) return undefined;
+      // Only rewrite imports originating inside a workspace package source
+      // tree. Symlinked node_modules paths (Bun's hoisted layout for
+      // workspace deps) also count, so the regex covers both
+      // `<repo>/plugins/app-wallet/src/...` and
+      // `<repo>/node_modules/@elizaos/app-wallet/src/...`.
+      if (
+        !/[/\\](packages|plugins|cloud)[/\\][^/\\]+([/\\][^/\\]+)?[/\\]src[/\\]/.test(
+          importer,
+        ) &&
+        !/[/\\]node_modules[/\\]@elizaos[/\\][^/\\]+[/\\]src[/\\]/.test(importer)
+      ) {
+        return undefined;
+      }
+      const dir = path.dirname(importer);
+      const cleaned = p.replace(/\.js$/, "");
+      const resolved = path.resolve(dir, cleaned);
+      const candidates = [
+        `${resolved}.ts`,
+        `${resolved}.tsx`,
+        path.join(resolved, "index.ts"),
+        path.join(resolved, "index.tsx"),
+      ];
+      for (const candidate of candidates) {
+        if (existsSync(candidate)) {
+          return { path: candidate, namespace: "file" };
+        }
+      }
+      return undefined;
+    });
+  },
+};
+
+// `@elizaos/*` workspace packages whose `package.json#main` points at
+// `dist/index.js` are unbuilt in this checkout. Bun.build's default resolver
+// reads `main`, hits a missing file, and aborts the bundle. For workspace
+// packages with a `src/index.ts` (the convention across the monorepo) we
+// transparently redirect bare-name imports to that source file. Subpath
+// imports like `@elizaos/foo/x` are also rerouted to `src/x.ts` (or `.tsx`)
+// when the file exists. This avoids forcing a tsc build of dozens of
+// upstream packages just to produce the mobile bundle.
+const workspaceSrcFallbackPlugin = {
+  name: "eliza-mobile-workspace-src-fallback",
+  setup(build) {
+    const cache = new Map();
+    const resolvePackageDir = (pkgName) => {
+      if (cache.has(pkgName)) return cache.get(pkgName);
+      const pkgPath = path.resolve(
+        repoRoot,
+        "node_modules",
+        ...pkgName.split("/"),
+      );
+      const result = existsSync(pkgPath) ? pkgPath : null;
+      cache.set(pkgName, result);
+      return result;
+    };
+    build.onResolve({ filter: /^@elizaos\// }, (args) => {
+      // Don't override packages already handled by the dedupe / capacitor
+      // plugins. Order matters: those plugins run earlier in the array.
+      if (corePackages.includes(args.path)) return undefined;
+      if (/^@elizaos\/capacitor-[^/]+$/.test(args.path)) return undefined;
+
+      const segments = args.path.split("/");
+      // `@elizaos/foo` => 2 segments; `@elizaos/foo/bar` => 3+
+      const pkgName = `${segments[0]}/${segments[1]}`;
+      const subpath = segments.slice(2).join("/");
+      const pkgDir = resolvePackageDir(pkgName);
+      if (!pkgDir) return undefined;
+
+      // Skip if dist exists — let the default resolver handle it normally.
+      if (existsSync(path.join(pkgDir, "dist"))) return undefined;
+
+      // Two layouts to handle: packages with a `src/` directory (the
+      // monorepo convention for typescript packages) and packages whose
+      // .ts files sit at the package root (the elizaos-plugins convention,
+      // e.g. plugin-discord, plugin-telegram, plugin-google).
+      const srcDir = existsSync(path.join(pkgDir, "src"))
+        ? path.join(pkgDir, "src")
+        : pkgDir;
+
+      if (!subpath) {
+        for (const name of [
+          "index.node.ts",
+          "index.ts",
+          "index.tsx",
+          "index.node.tsx",
+        ]) {
+          const candidate = path.join(srcDir, name);
+          if (existsSync(candidate)) {
+            return { path: candidate, namespace: "file" };
+          }
+        }
+        return undefined;
+      }
+
+      // Strip an optional `.js` extension (TS source compiles to `.js` so
+      // imports like `./foo.js` should resolve to `./foo.ts`).
+      const cleaned = subpath.replace(/\.js$/, "");
+      const candidates = [
+        `${cleaned}.ts`,
+        `${cleaned}.tsx`,
+        `${cleaned}/index.ts`,
+        `${cleaned}/index.tsx`,
+        cleaned,
+      ];
+      for (const candidate of candidates) {
+        const full = path.join(srcDir, candidate);
+        if (existsSync(full)) {
+          return { path: full, namespace: "file" };
+        }
+      }
+      return undefined;
+    });
+  },
+};
+
+// Point Bun.build at a paths-free tsconfig so it doesn't try to resolve
+// `react` / `react-dom` to the `.d.ts` files the agent's main tsconfig
+// aliases for `tsc --noEmit` typechecking. Those `.d.ts` files contain
+// TypeScript-only syntax (`export as namespace React`) that crashes
+// the bundler's parser. Workspace `@elizaos/*` resolution is handled by
+// the dedupe / capacitor / src-fallback plugins below, not via paths.
+const bundlerTsconfig = path.join(agentRoot, "tsconfig.bundle.json");
+if (!existsSync(bundlerTsconfig)) {
+  console.error(
+    `[build-mobile] FATAL: bundler tsconfig not found at ${bundlerTsconfig}`,
+  );
+  process.exit(1);
+}
+
 console.log("[build-mobile] starting Bun.build...");
 const buildResult = await Bun.build({
   entrypoints: [entry],
@@ -337,6 +582,7 @@ const buildResult = await Bun.build({
   naming: "agent-bundle.js",
   target: "bun",
   format: "esm",
+  tsconfig: bundlerTsconfig,
   // Don't minify. Bundling is already significant — this is a debugging step
   // to keep stack traces readable. Re-enable selectively if APK size matters.
   minify: false,
@@ -352,7 +598,15 @@ const buildResult = await Bun.build({
     // branch at build time.
     "process.env.ELIZA_DISABLE_DIRECT_RUN": JSON.stringify("1"),
   },
-  plugins: [dedupePlugin, nativeCapacitorPlugin, stubResolverPlugin],
+  plugins: [
+    zodCjsResolverPlugin,
+    stubCssPlugin,
+    dedupePlugin,
+    nativeCapacitorPlugin,
+    workspaceSrcFallbackPlugin,
+    stripStaleJsArtifactsPlugin,
+    stubResolverPlugin,
+  ],
 });
 
 if (!buildResult.success) {
