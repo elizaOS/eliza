@@ -126,7 +126,7 @@ The bundling spike showed the agent loads but dies on:
   next to the bundle, or the runtime needs a mobile-aware loader that imports plugins from a
   manifest.
 - **`child_process.spawn` from inside the agent.** The agent shells out in ~20 places
-  (signal-pairing QR, sandbox-engine, stream-manager, n8n sidecar, self-updater, desktop-control,
+  (signal-pairing QR, sandbox-engine, stream-manager, self-updater, desktop-control,
   /usr/bin/open, osascript, lsof). On Android, none of these exist. They need either platform
   guards (`if (process.platform === "android") return null`) at every site, or — better — a
   `ELIZA_PLATFORM=android` env var the runtime checks centrally to short-circuit them. The
