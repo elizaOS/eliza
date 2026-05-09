@@ -38,7 +38,7 @@
   },
   "scripts": {
     "build": "bun run clean && tsc && bun --bun rollup -c rollup.config.mjs",
-    "clean": "rimraf ./dist",
+    "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
     "watch": "tsc --watch"
   },

@@ -260,10 +260,50 @@ template <typename type4x4>
 void dequantize_turbo4_0`,
   );
 
-  const turbo4Instantiations = `typedef decltype(kernel_set_rows_turbo<int64_t, block_turbo4_0, QK_TURBO4, quantize_turbo4_0>) set_rows_turbo4_t;
+  const turbo4SetRowsKernel = `template<typename TI>
+kernel void kernel_set_rows_turbo4(
+        constant ggml_metal_kargs_set_rows & args,
+        device const  void * src0,
+        device const  void * src1,
+        device       float * dst,
+        uint3                tgpig[[threadgroup_position_in_grid]],
+        uint                 tiitg[[thread_index_in_threadgroup]],
+        uint3                tptg [[threads_per_threadgroup]]) {
+    const int32_t i03 = tgpig.z;
+    const int32_t i02 = tgpig.y;
+    const int32_t i12 = i03%args.ne12;
+    const int32_t i11 = i02%args.ne11;
+    const int32_t i01 = tgpig.x*tptg.y + tiitg/tptg.x;
+    if (i01 >= args.ne01) return;
 
-template [[host_name("kernel_set_rows_turbo4_i64")]] kernel set_rows_turbo4_t kernel_set_rows_turbo<int64_t, block_turbo4_0, QK_TURBO4, quantize_turbo4_0>;
-template [[host_name("kernel_set_rows_turbo4_i32")]] kernel set_rows_turbo4_t kernel_set_rows_turbo<int32_t, block_turbo4_0, QK_TURBO4, quantize_turbo4_0>;`;
+    const int32_t i10 = i01;
+    const TI      i1  = ((const device TI *) ((const device char *) src1 + i10*args.nb10 + i11*args.nb11 + i12*args.nb12))[0];
+
+          device block_turbo4_0 * dst_row = (      device block_turbo4_0 *) ((      device char *) dst  +  i1*args.nb1  + i02*args.nb2  + i03*args.nb3);
+    const device float          * src_row = (const device float          *) ((const device char *) src0 + i01*args.nb01 + i02*args.nb02 + i03*args.nb03);
+
+    for (int ind = tiitg%tptg.x; ind < args.nk0; ind += tptg.x) {
+        quantize_turbo4_0(src_row + QK_TURBO4*ind, dst_row[ind]);
+    }
+}
+
+`;
+  if (!source.includes("kernel void kernel_set_rows_turbo4(")) {
+    source = source.replace(
+      "\n// TurboQuant set_rows instantiations (block size 128)",
+      `\n${turbo4SetRowsKernel}// TurboQuant set_rows instantiations (block size 128)`,
+    );
+  }
+
+  const turbo4Instantiations = `typedef decltype(kernel_set_rows_turbo4<int64_t>) set_rows_turbo4_t;
+
+template [[host_name("kernel_set_rows_turbo4_i64")]] kernel set_rows_turbo4_t kernel_set_rows_turbo4<int64_t>;
+template [[host_name("kernel_set_rows_turbo4_i32")]] kernel set_rows_turbo4_t kernel_set_rows_turbo4<int32_t>;`;
+
+  source = source.replace(
+    /typedef decltype\(kernel_set_rows_turbo<int64_t, block_turbo4_0, QK_TURBO4, quantize_turbo4_0>\) set_rows_turbo4_t;\n\ntemplate \[\[host_name\("kernel_set_rows_turbo4_i64"\)\]\] kernel set_rows_turbo4_t kernel_set_rows_turbo<int64_t, block_turbo4_0, QK_TURBO4, quantize_turbo4_0>;\ntemplate \[\[host_name\("kernel_set_rows_turbo4_i32"\)\]\] kernel set_rows_turbo4_t kernel_set_rows_turbo<int32_t, block_turbo4_0, QK_TURBO4, quantize_turbo4_0>;/,
+    turbo4Instantiations,
+  );
 
   if (!source.includes('host_name("kernel_set_rows_turbo4_i64")')) {
     const disabledTurbo4Comment = `// Disabled for Metal until the fork's Turbo4 set_rows path is updated for the

@@ -53,7 +53,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "axios": "^1.16.0",
     "canvas": "^3.1.2",
     "face-api.js": "^0.22.2",

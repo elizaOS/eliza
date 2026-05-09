@@ -55,7 +55,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "qrcode": "^1.5.4",
     "zod": "^4.4.3"
   },

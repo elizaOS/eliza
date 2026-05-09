@@ -157,6 +157,30 @@ function resolvePluginExport(module: Record<string, unknown>): Plugin | null {
   return null;
 }
 
+async function importGoogleConnectorPluginModule(): Promise<
+  Record<string, unknown>
+> {
+  try {
+    return (await import(GOOGLE_CONNECTOR_PLUGIN_PACKAGE)) as Record<
+      string,
+      unknown
+    >;
+  } catch (error) {
+    const stagedDependencyUrl = new URL(
+      "../node_modules/@elizaos/plugin-google/dist/index.js",
+      import.meta.url,
+    );
+    try {
+      return (await import(stagedDependencyUrl.href)) as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      throw error;
+    }
+  }
+}
+
 export async function ensureLifeOpsGooglePluginRegistered(
   runtime: IAgentRuntime,
 ): Promise<void> {
@@ -164,10 +188,7 @@ export async function ensureLifeOpsGooglePluginRegistered(
     return;
   }
 
-  const module = (await import(GOOGLE_CONNECTOR_PLUGIN_PACKAGE)) as Record<
-    string,
-    unknown
-  >;
+  const module = await importGoogleConnectorPluginModule();
   const plugin = resolvePluginExport(module);
   if (!plugin) {
     throw new Error(

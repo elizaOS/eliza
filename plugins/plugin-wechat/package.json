@@ -70,8 +70,5 @@
     "connector",
     "messaging"
   ],
-  "packageType": "plugin",
-  "dependencies": {
-    "@elizaos/shared": "workspace:*"
-  }
+  "packageType": "plugin"
 }

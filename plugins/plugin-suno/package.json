@@ -60,6 +60,6 @@
     "access": "public"
   },
   "dependencies": {
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/core": "workspace:*"
   }
 }

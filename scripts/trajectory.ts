@@ -563,12 +563,19 @@ async function cmdStats(idOrPath: string): Promise<void> {
     .join(", ");
 
   const decisionCounts = new Map<string, number>();
+  let terminalTaskFailures = 0;
   for (const s of t.stages) {
     if (s.evaluation?.decision) {
       decisionCounts.set(
         s.evaluation.decision,
         (decisionCounts.get(s.evaluation.decision) ?? 0) + 1,
       );
+      if (
+        s.evaluation.decision === "FINISH" &&
+        s.evaluation.success === false
+      ) {
+        terminalTaskFailures++;
+      }
     }
   }
   const decisionList = Array.from(decisionCounts.entries())
@@ -602,8 +609,9 @@ async function cmdStats(idOrPath: string): Promise<void> {
   );
   console.log(`Evaluator decisions: ${decisionList || "—"}`);
   console.log(
-    `Terminal evaluator failures: ${m?.evaluatorFailures ?? 0} stages`,
+    `Evaluator protocol failures: ${m?.evaluatorFailures ?? 0} stages`,
   );
+  console.log(`Terminal task failures: ${terminalTaskFailures} stages`);
   console.log(`Cache hit rate (avg): ${meanCacheRate.toFixed(1)}%`);
 }
 

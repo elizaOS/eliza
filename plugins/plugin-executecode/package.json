@@ -41,8 +41,7 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
