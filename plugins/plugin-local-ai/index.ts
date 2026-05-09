@@ -10,7 +10,6 @@ import type {
   EventPayload,
   GenerateTextParams,
   ModelTypeName,
-  ObjectGenerationParams,
   TextEmbeddingParams,
 } from "@elizaos/core";
 import { EventType, type IAgentRuntime, logger, ModelType, type Plugin } from "@elizaos/core";
@@ -83,22 +82,6 @@ const wordsToPunish = [
   " Therefore",
 ];
 
-function parseJsonObjectResponse(response: string): Record<string, unknown> {
-  const trimmed = response.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  const candidate = (fenced?.[1] ?? trimmed).trim();
-  const firstBrace = candidate.indexOf("{");
-  const lastBrace = candidate.lastIndexOf("}");
-  if (firstBrace < 0 || lastBrace <= firstBrace) {
-    throw new Error("No JSON object found in model response");
-  }
-  const parsed = JSON.parse(candidate.slice(firstBrace, lastBrace + 1));
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Model response was not a JSON object");
-  }
-  return parsed as Record<string, unknown>;
-}
-
 type NormalizedUsage = {
   promptTokens: number;
   completionTokens: number;
@@ -146,7 +129,7 @@ function getLocalModelLabel(runtime: IAgentRuntime, type: ModelTypeName): string
   if (type === ModelType.TEXT_EMBEDDING) {
     return String(runtime.getSetting("LOCAL_EMBEDDING_MODEL") || config.LOCAL_EMBEDDING_MODEL);
   }
-  if (type === ModelType.TEXT_LARGE || type === ModelType.OBJECT_LARGE) {
+  if (type === ModelType.TEXT_LARGE) {
     return String(runtime.getSetting("LOCAL_LARGE_MODEL") || config.LOCAL_LARGE_MODEL);
   }
   return String(runtime.getSetting("LOCAL_SMALL_MODEL") || config.LOCAL_SMALL_MODEL);
@@ -871,132 +854,13 @@ export const localAiPlugin: Plugin = {
       return embedding;
     },
 
-    [ModelType.OBJECT_SMALL]: async (runtime: IAgentRuntime, params: ObjectGenerationParams) => {
-      await localAIManager.initializeEnvironment();
-      logger.info("OBJECT_SMALL handler - Processing request:", {
-        prompt: params.prompt,
-        hasSchema: !!params.schema,
-        temperature: params.temperature,
-      });
-
-      // Build JSON schema hint from the provided schema
-      let schemaHint = "";
-      if (params.schema) {
-        const schemaKeys = Object.keys(params.schema);
-        schemaHint = schemaKeys.map((key) => `"${key}": null`).join(",\n  ");
-      }
-
-      const structuredPrompt = `${params.prompt}
-
-Respond with JSON only. ${schemaHint ? `Include these fields:\n{\n  ${schemaHint}\n}` : ""}
-
-For multiline values such as code, return a JSON string with escaped newline characters.
-
-Example response format:
-{
-  "thought": "Your reasoning here",
-  "text": "Your response text here"
-}`;
-
-      const textResponse = await localAIManager.generateText({
-        prompt: structuredPrompt,
-        stopSequences: params.stopSequences,
-        runtime,
-        modelType: ModelType.TEXT_SMALL,
-      });
-      emitModelUsed(
-        runtime,
-        ModelType.OBJECT_SMALL,
-        getLocalModelLabel(runtime, ModelType.OBJECT_SMALL),
-        estimateUsage(structuredPrompt, textResponse)
-      );
-
-      try {
-        logger.debug("Raw model response:", textResponse.substring(0, 500));
-
-        const parsedStructured = parseJsonObjectResponse(textResponse);
-        logger.debug("Parsed structured result:", parsedStructured);
-
-        // Validate against schema if provided
-        if (params.schema) {
-          for (const key of Object.keys(params.schema)) {
-            if (!(key in parsedStructured)) {
-              parsedStructured[key] = null;
-            }
-          }
-        }
-
-        return parsedStructured;
-      } catch (parseError) {
-        logger.error("Failed to parse structured response:", parseError);
-        logger.error("Raw response:", textResponse);
-        throw new Error("Invalid structured response returned from model");
-      }
-    },
-
-    [ModelType.OBJECT_LARGE]: async (runtime: IAgentRuntime, params: ObjectGenerationParams) => {
-      await localAIManager.initializeEnvironment();
-      logger.info("OBJECT_LARGE handler - Processing request:", {
-        prompt: params.prompt,
-        hasSchema: !!params.schema,
-        temperature: params.temperature,
-      });
-
-      // Build JSON schema hint from the provided schema
-      let schemaHint = "";
-      if (params.schema) {
-        const schemaKeys = Object.keys(params.schema);
-        schemaHint = schemaKeys.map((key) => `"${key}": null`).join(",\n  ");
-      }
-
-      const structuredPrompt = `${params.prompt}
-
-Respond with JSON only. ${schemaHint ? `Include these fields:\n{\n  ${schemaHint}\n}` : ""}
-
-For multiline values such as code, return a JSON string with escaped newline characters.
-
-Example response format:
-{
-  "thought": "Your reasoning here",
-  "text": "Your response text here"
-}`;
-
-      const textResponse = await localAIManager.generateText({
-        prompt: structuredPrompt,
-        stopSequences: params.stopSequences,
-        runtime,
-        modelType: ModelType.TEXT_LARGE,
-      });
-      emitModelUsed(
-        runtime,
-        ModelType.OBJECT_LARGE,
-        getLocalModelLabel(runtime, ModelType.OBJECT_LARGE),
-        estimateUsage(structuredPrompt, textResponse)
-      );
-
-      try {
-        logger.debug("Raw model response:", textResponse.substring(0, 500));
-
-        const parsedStructured = parseJsonObjectResponse(textResponse);
-        logger.debug("Parsed structured result:", parsedStructured);
-
-        // Validate against schema if provided
-        if (params.schema) {
-          for (const key of Object.keys(params.schema)) {
-            if (!(key in parsedStructured)) {
-              parsedStructured[key] = null;
-            }
-          }
-        }
-
-        return parsedStructured;
-      } catch (parseError) {
-        logger.error("Failed to parse structured response:", parseError);
-        logger.error("Raw response:", textResponse);
-        throw new Error("Invalid structured response returned from model");
-      }
-    },
-
+    // NOTE: local-ai (node-llama-cpp) does not currently expose a native
+    // tool-calling / structured-output API surface. Callers that need
+    // structured output should pass `responseSchema` to TEXT_*; the local
+    // backend will fall back to plain text generation, which is acceptable
+    // for the local stub. If you need guaranteed JSON, prefer a hosted
+    // provider (anthropic/openai/groq/etc.) which routes through native
+    // tools.
     [ModelType.TEXT_TOKENIZER_ENCODE]: async (
       _runtime: IAgentRuntime,
       { text }: { text: string }
