@@ -17,6 +17,9 @@ import type {
   WorkflowTag,
 } from '../types/index';
 import { WorkflowApiError } from '../types/index';
+import { rewriteN8nNodeTypes } from '../utils/n8n-import';
+import { detectHostCapabilities } from '../utils/host-capabilities';
+import type { NodeCapabilities } from '@elizaos/workflows';
 
 export const EMBEDDED_WORKFLOW_SERVICE_TYPE = 'embedded_workflow_service';
 
