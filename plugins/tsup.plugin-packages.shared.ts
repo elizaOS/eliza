@@ -62,14 +62,16 @@ function collectSrcEntries(srcRoot: string): string[] {
  */
 const rewriteRelativeTsExtensions = {
   name: "rewrite-relative-ts-extensions",
-  setup(build: { onLoad: (filter: { filter: RegExp }, callback: (args: { path: string }) => Promise<{ contents: string; loader: "ts" | "tsx" }>) => void }) {
-    build.onLoad({ filter: /\.(ts|tsx)$/ }, async (args) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setup(build: any) {
+    build.onLoad({ filter: /\.(ts|tsx)$/ }, async (args: { path: string }) => {
       const source = await fsp.readFile(args.path, "utf8");
       // Rewrite relative `from "./x.ts"` / `from "./x.tsx"` to `from "./x.js"`.
-      // Covers static `from`, dynamic `import(...)`, and re-exports `export ... from`.
-      // Only rewrites paths beginning with `.` to avoid touching package specifiers.
+      // Covers static `import x from`, dynamic `import("...")`, bare side-effect
+      // `import "..."`, and re-exports `export ... from`. Only rewrites paths
+      // beginning with `.` to avoid touching package specifiers.
       const transformed = source.replace(
-        /((?:\bfrom\s+|\bimport\s*\(\s*|\bexport\s+(?:\*|\{[^}]*\})\s+from\s+)["'])(\.\.?\/[^"']+?)\.(tsx?)(["'])/g,
+        /((?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+|\bexport\s+(?:\*|\{[^}]*\})\s+from\s+)["'])(\.\.?\/[^"']+?)\.(tsx?)(["'])/g,
         "$1$2.js$4",
       );
       return {
