@@ -43,7 +43,7 @@ import {
   executeFallbackParsedActions,
   maybeHandleDirectBinanceSkillRequest,
   parseFallbackActionBlocks,
-} from "./binance-skill-helpers.js";
+} from "@elizaos/plugin-agent-skills";
 import {
   isClientVisibleNoResponse,
   isNoResponsePlaceholder,

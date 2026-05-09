@@ -3,17 +3,42 @@ import type http from "node:http";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
+import {
+  parseClampedInteger,
+  resolveDefaultAgentWorkspaceDir,
+} from "@elizaos/agent";
+import type { ReadJsonBodyOptions } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/shared";
+
+/**
+ * Markdown scaffold for new skill SKILL.md files.
+ * Placeholders __SLUG__ and __DESCRIPTION__ are replaced at scaffold time.
+ */
+const skillScaffoldMarkdown = `---
+name: __SLUG__
+description: __DESCRIPTION__
+---
+
+## Instructions
+
+[Describe what this skill does and how the agent should use it]
+
+## When to Use
+
+Use this skill when [describe trigger conditions].
+
+## Steps
+
+1. [First step]
+2. [Second step]
+3. [Third step]
+`;
 import {
   installMarketplaceSkill,
   listInstalledMarketplaceSkills,
   searchSkillsMarketplace,
   uninstallMarketplaceSkill,
 } from "../services/skill-marketplace.js";
-import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
-import { skillScaffoldMarkdown } from "../templates/skill-scaffold.js";
-import { parseClampedInteger } from "../utils/number-parsing.js";
 
 // ---------------------------------------------------------------------------
 // Types shared with server.ts (kept lean to avoid circular deps)

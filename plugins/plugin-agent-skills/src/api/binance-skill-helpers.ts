@@ -13,7 +13,7 @@ import {
   type createMessageMemory,
   ModelType,
 } from "@elizaos/core";
-import { extractCompatTextContent } from "./compat-utils.js";
+import { extractCompatTextContent } from "@elizaos/agent";
 
 const EXPOSED_BINANCE_SKILL_IDS = new Set([
   "binance-crypto-market-rank",
