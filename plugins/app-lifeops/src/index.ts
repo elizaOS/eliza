@@ -2,6 +2,8 @@ export { appBlockAction } from "./actions/app-block.js";
 export { autofillAction } from "./actions/autofill.js";
 export { bookTravelAction } from "./actions/book-travel.js";
 export { calendarAction } from "./actions/calendar.js";
+export { calendlyAction } from "./actions/lib/calendly-handler.js";
+export { schedulingNegotiationAction } from "./actions/scheduling-negotiation.js";
 export { checkinAction } from "./actions/checkin.js";
 export { connectorAction } from "./actions/connector.js";
 export { deviceIntentAction } from "./actions/device-intent.js";
