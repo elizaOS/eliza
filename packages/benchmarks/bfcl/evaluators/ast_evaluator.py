@@ -7,6 +7,8 @@ Compares predicted function calls against expected calls with flexible matching.
 
 from __future__ import annotations
 
+import ast
+import json
 import logging
 import math
 from typing import Optional
@@ -219,6 +221,20 @@ class ASTEvaluator:
                 if self._values_match(predicted[0], expected):
                     return True
 
+        # Stringified-list tolerance: the model sometimes emits a JSON-encoded
+        # or Python-repr list when the schema wants an actual list. Try to
+        # decode and re-compare. Common with Java argv parameters and SQL
+        # column lists where the ground truth is list[str].
+        if not self.strict_type_matching:
+            if isinstance(predicted, str) and isinstance(expected, list):
+                parsed = self._try_parse_stringified_list(predicted)
+                if parsed is not None and self._values_match(parsed, expected):
+                    return True
+            if isinstance(expected, str) and isinstance(predicted, list):
+                parsed = self._try_parse_stringified_list(expected)
+                if parsed is not None and self._values_match(predicted, parsed):
+                    return True
+
         # Comma-separated string vs list-of-strings tolerance — common when
         # the model returns SQL-style "a, b, c" for a parameter the schema
         # actually defines as list[str]. Only meaningful for primitive lists.
@@ -266,6 +282,20 @@ class ASTEvaluator:
             except ValueError:
                 pass
         return None
+
+    def _try_parse_stringified_list(self, value: str) -> Optional[list]:
+        """Decode a string that wraps a Python/JSON list literal."""
+        text = value.strip()
+        if not (text.startswith("[") and text.endswith("]")):
+            return None
+        try:
+            parsed = json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            try:
+                parsed = ast.literal_eval(text)
+            except (ValueError, SyntaxError):
+                return None
+        return parsed if isinstance(parsed, list) else None
 
     def _try_parse_bool(self, value: object) -> Optional[bool]:
         """Try to parse a value as a boolean."""
