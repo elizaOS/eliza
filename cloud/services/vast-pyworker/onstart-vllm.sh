@@ -36,6 +36,11 @@
 #                             / "" to skip). Empty = bf16 / native.
 #   KV_CACHE_DTYPE          — vLLM `--kv-cache-dtype` (fp8_e4m3 / auto /
 #                             turboquant_4bit_nc). Empty = vLLM default.
+#   DFLASH_MODEL            — optional HF drafter repo/path for vLLM DFlash.
+#                             Requires a vLLM build that supports method=dflash.
+#   SPECULATIVE_CONFIG_JSON — raw vLLM speculative config JSON. Overrides
+#                             DFLASH_MODEL when set.
+#   SPECULATIVE_TOKENS      — default 15 for DFlash.
 #   TOOL_PARSER             — default qwen3_coder.
 #   REASONING_PARSER        — default qwen3.
 #   COMPILATION_CONFIG_JSON — JSON blob for `--compilation-config`. Empty = skip.
@@ -117,6 +122,9 @@ KV_CACHE_DTYPE="${KV_CACHE_DTYPE:-}"
 TOOL_PARSER="${TOOL_PARSER:-qwen3_coder}"
 REASONING_PARSER="${REASONING_PARSER:-qwen3}"
 COMPILATION_CONFIG_JSON="${COMPILATION_CONFIG_JSON:-}"
+DFLASH_MODEL="${DFLASH_MODEL:-}"
+SPECULATIVE_CONFIG_JSON="${SPECULATIVE_CONFIG_JSON:-}"
+SPECULATIVE_TOKENS="${SPECULATIVE_TOKENS:-15}"
 EXTRA_VLLM_ARGS="${EXTRA_VLLM_ARGS:-}"
 VLLM_LOG="${VLLM_LOG:-/var/log/vllm.log}"
 PYWORKER_REPO="${PYWORKER_REPO:-https://github.com/elizaOS/cloud.git}"
@@ -178,6 +186,23 @@ VLLM_ARGS+=(
 )
 if [ -n "$COMPILATION_CONFIG_JSON" ]; then
   VLLM_ARGS+=(--compilation-config "$COMPILATION_CONFIG_JSON")
+fi
+if [ -z "$SPECULATIVE_CONFIG_JSON" ] && [ -n "$DFLASH_MODEL" ]; then
+  if [ "${MILADY_VLLM_DFLASH:-}" != "1" ] && [ "${MILADY_VLLM_DFLASH:-}" != "true" ]; then
+    echo "[onstart-vllm] DFLASH_MODEL set without MILADY_VLLM_DFLASH=1; continuing, but stock vLLM may reject method=dflash" >&2
+  fi
+  SPECULATIVE_CONFIG_JSON="$(python3 - <<PY
+import json, os
+print(json.dumps({
+    "method": "dflash",
+    "model": os.environ["DFLASH_MODEL"],
+    "num_speculative_tokens": int(os.environ.get("SPECULATIVE_TOKENS", "15")),
+}))
+PY
+)"
+fi
+if [ -n "$SPECULATIVE_CONFIG_JSON" ]; then
+  VLLM_ARGS+=(--speculative-config "$SPECULATIVE_CONFIG_JSON")
 fi
 if [ -n "$EXTRA_VLLM_ARGS" ]; then
   # shellcheck disable=SC2206 # caller-provided word splitting is intentional

@@ -16,6 +16,8 @@
     "ensure-plugin-test-conventions:check": "bun scripts/ensure-plugin-test-conventions.mjs --check",
     "audit:duplicate-components": "node scripts/audit-duplicate-components.mjs",
     "audit:duplicate-components:self-check": "node scripts/audit-duplicate-components.mjs --self-check",
+    "audit:package-barrels": "node scripts/audit-package-barrels.mjs",
+    "audit:package-barrels:check": "node scripts/audit-package-barrels.mjs --check",
     "audit:prompt-compliance": "node scripts/audit-prompt-compliance.mjs",
     "audit:description-compressed": "node scripts/audit-prompt-compliance.mjs --description-compressed-only",
     "lint:descriptions": "node scripts/lint-description-compressed.mjs",

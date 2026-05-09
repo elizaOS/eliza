@@ -94,20 +94,34 @@ function classifySubpath(subpath) {
   return "shared";
 }
 
-const packageJsonFiles = shellLines("find", [
-  ".",
-  "-name",
+const packageJsonFiles = shellLines("rg", [
+  "--files",
+  "-g",
   "package.json",
-  "-not",
-  "-path",
-  "*/node_modules/*",
-  "-not",
-  "-path",
-  "*/dist/*",
-  "-not",
-  "-path",
-  "*/build/*",
-]).sort();
+  "-g",
+  "!**/node_modules/**",
+  "-g",
+  "!**/dist/**",
+  "-g",
+  "!**/build/**",
+  "-g",
+  "!**/.turbo/**",
+  "-g",
+  "!**/.next/**",
+  "-g",
+  "!**/coverage/**",
+])
+  .filter((file) =>
+    /^(?:package|cloud\/package)\.json$/.test(file) ||
+    /^packages\/[^/]+\/package\.json$/.test(file) ||
+    /^packages\/examples\/[^/]+(?:\/[^/]+){0,2}\/package\.json$/.test(file) ||
+    /^packages\/native-plugins\/[^/]+\/package\.json$/.test(file) ||
+    /^packages\/app-core\/platforms\/[^/]+\/package\.json$/.test(file) ||
+    /^plugins\/[^/]+\/package\.json$/.test(file) ||
+    /^cloud\/(?:apps|packages|services|examples)\/[^/]+\/package\.json$/.test(file) ||
+    /^cloud\/packages\/services\/[^/]+\/package\.json$/.test(file),
+  )
+  .sort();
 
 const packages = packageJsonFiles
   .map((file) => {
@@ -209,6 +223,8 @@ try {
     "--hidden",
     "-i",
     "-g",
+    "!**/.git/**",
+    "-g",
     "!**/node_modules/**",
     "-g",
     "!**/dist/**",
@@ -222,7 +238,9 @@ try {
     "!**/coverage/**",
     "re-export|reexport",
     ".",
-  ]).filter((line) => !ignoredPath.test(line));
+  ])
+    .filter((line) => !ignoredPath.test(line))
+    .filter((line) => !line.startsWith("./scripts/audit-package-barrels.mjs:"));
 } catch (error) {
   if (error.status !== 1) throw error;
 }

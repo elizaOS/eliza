@@ -25,7 +25,6 @@ import {
   readSignalInboundMessages,
   readSignalLocalClientConfigFromEnv,
 } from "../../../plugins/app-lifeops/src/lifeops/signal-local-client.ts";
-import { buildTelegramTokenRef } from "../../../plugins/app-lifeops/src/lifeops/telegram-auth.ts";
 import { TELEGRAM_LOCAL_MOCK_SESSION_PREFIX } from "../../../plugins/app-lifeops/src/lifeops/telegram-local-client.ts";
 import {
   assertLifeOpsSimulatorFixtureIntegrity,
@@ -464,9 +463,17 @@ function writeTelegramMockSession(stateDir: string): void {
   );
 }
 
+function sanitizeTokenPathSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function buildTelegramTokenRef(agentId: string): string {
+  return path.join(sanitizeTokenPathSegment(agentId), "owner", "telegram.json");
+}
+
 function writeTelegramToken(runtime: AgentRuntime): string {
   const telegramIdentity = LIFEOPS_SIMULATOR_OWNER_IDENTITIES.telegram;
-  const tokenRef = buildTelegramTokenRef(runtime.agentId, "owner");
+  const tokenRef = buildTelegramTokenRef(runtime.agentId);
   const tokenPath = path.join(
     resolveOAuthDir(process.env),
     "lifeops",

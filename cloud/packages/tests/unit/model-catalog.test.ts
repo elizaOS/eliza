@@ -4,6 +4,7 @@ import {
   FALLBACK_TEXT_SELECTOR_MODELS,
   getGroqApiModelId,
   isGroqNativeModel,
+  isVastNativeModel,
   isSelectableTextModel,
   mergeCatalogModels,
   OPENROUTER_DEFAULT_FREE_MODEL,
@@ -21,6 +22,16 @@ describe("Groq catalog helpers", () => {
     expect(getGroqApiModelId("groq/compound")).toBe("compound-beta");
     expect(getGroqApiModelId("groq/compound-mini")).toBe("compound-beta-mini");
     expect(getGroqApiModelId("openai/gpt-5.4")).toBe("openai/gpt-5.4");
+  });
+});
+
+describe("Vast catalog helpers", () => {
+  test("recognizes static Vast native model ids", () => {
+    expect(isVastNativeModel("vast/qwen3.6-27b-neo-code")).toBe(true);
+    expect(isVastNativeModel("vast/qwen3.5-4b-dflash")).toBe(true);
+    expect(isVastNativeModel("vast/qwen3.5-9b-dflash")).toBe(true);
+    expect(isVastNativeModel("vast/qwen3.6-27b-dflash")).toBe(true);
+    expect(isVastNativeModel("openai/gpt-5.4")).toBe(false);
   });
 });
 

@@ -239,34 +239,68 @@ function createSetNode(): INodeType {
       defaults: { name: 'Edit Fields' },
       inputs: ['main'] as never,
       outputs: ['main'] as never,
-      properties: [],
+      properties: [
+        {
+          displayName: 'Include Other Fields',
+          name: 'includeOtherFields',
+          type: 'boolean',
+          default: true,
+        },
+        {
+          displayName: 'Assignments',
+          name: 'assignments',
+          type: 'fixedCollection',
+          typeOptions: { multipleValues: true },
+          default: {},
+          options: [
+            {
+              displayName: 'Assignment',
+              name: 'assignments',
+              values: [
+                { displayName: 'Name', name: 'name', type: 'string', default: '' },
+                { displayName: 'Value', name: 'value', type: 'string', default: '' },
+              ],
+            },
+          ],
+        },
+        {
+          displayName: 'Values',
+          name: 'values',
+          type: 'json',
+          default: {},
+        },
+        {
+          displayName: 'Fields',
+          name: 'fields',
+          type: 'json',
+          default: {},
+        },
+      ] as never,
     },
     async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
       const inputItems = this.getInputData();
       const sourceItems = inputItems.length > 0 ? inputItems : [{ json: {} }];
       const output: INodeExecutionData[] = [];
+      const nodeParameters = this.getNode().parameters as Record<string, unknown>;
 
       for (let itemIndex = 0; itemIndex < sourceItems.length; itemIndex++) {
-        const includeOtherFields = this.getNodeParameter(
-          'includeOtherFields',
-          itemIndex,
-          true
-        ) as boolean;
+        const includeOtherFields = nodeParameters.includeOtherFields !== false;
         const base: Record<string, unknown> = includeOtherFields
           ? { ...(sourceItems[itemIndex]?.json ?? {}) }
           : {};
 
-        const assignments = this.getNodeParameter(
-          'assignments.assignments',
-          itemIndex,
-          []
-        ) as Array<{ name?: unknown; value?: unknown }>;
+        const assignmentContainer = isRecord(nodeParameters.assignments)
+          ? nodeParameters.assignments
+          : {};
+        const assignments = Array.isArray(assignmentContainer.assignments)
+          ? (assignmentContainer.assignments as Array<{ name?: unknown; value?: unknown }>)
+          : [];
         for (const assignment of assignments) {
           const name = readString(assignment.name, '');
           if (name) base[name] = assignment.value;
         }
 
-        const values = this.getNodeParameter('values', itemIndex, {}) as Record<string, unknown>;
+        const values = isRecord(nodeParameters.values) ? nodeParameters.values : {};
         for (const group of Object.values(values)) {
           if (!Array.isArray(group)) continue;
           for (const entry of group) {
@@ -276,7 +310,7 @@ function createSetNode(): INodeType {
           }
         }
 
-        const fields = this.getNodeParameter('fields', itemIndex, {}) as Record<string, unknown>;
+        const fields = isRecord(nodeParameters.fields) ? nodeParameters.fields : {};
         if (isRecord(fields)) {
           Object.assign(base, fields);
         }
@@ -303,42 +337,110 @@ function createHttpRequestNode(): INodeType {
       defaults: { name: 'HTTP Request' },
       inputs: ['main'] as never,
       outputs: ['main'] as never,
-      properties: [],
+      properties: [
+        {
+          displayName: 'Method',
+          name: 'method',
+          type: 'options',
+          default: 'GET',
+          options: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'].map((method) => ({
+            name: method,
+            value: method,
+          })),
+        },
+        {
+          displayName: 'URL',
+          name: 'url',
+          type: 'string',
+          default: '',
+        },
+        {
+          displayName: 'Headers',
+          name: 'headers',
+          type: 'json',
+          default: {},
+        },
+        {
+          displayName: 'Header Parameters',
+          name: 'headerParameters',
+          type: 'fixedCollection',
+          typeOptions: { multipleValues: true },
+          default: {},
+          options: [
+            {
+              displayName: 'Parameter',
+              name: 'parameters',
+              values: [
+                { displayName: 'Name', name: 'name', type: 'string', default: '' },
+                { displayName: 'Value', name: 'value', type: 'string', default: '' },
+              ],
+            },
+          ],
+        },
+        {
+          displayName: 'Body',
+          name: 'body',
+          type: 'string',
+          default: '',
+        },
+        {
+          displayName: 'JSON Body',
+          name: 'jsonBody',
+          type: 'json',
+          default: {},
+        },
+        {
+          displayName: 'Body Parameters',
+          name: 'bodyParameters',
+          type: 'fixedCollection',
+          typeOptions: { multipleValues: true },
+          default: {},
+          options: [
+            {
+              displayName: 'Parameter',
+              name: 'parameters',
+              values: [
+                { displayName: 'Name', name: 'name', type: 'string', default: '' },
+                { displayName: 'Value', name: 'value', type: 'string', default: '' },
+              ],
+            },
+          ],
+        },
+      ] as never,
     },
     async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
       const inputItems = this.getInputData();
       const sourceItems = inputItems.length > 0 ? inputItems : [{ json: {} }];
       const output: INodeExecutionData[] = [];
+      const nodeParameters = this.getNode().parameters as Record<string, unknown>;
 
       for (let itemIndex = 0; itemIndex < sourceItems.length; itemIndex++) {
-        const url = this.getNodeParameter('url', itemIndex, '') as string;
+        const url = readString(nodeParameters.url, '');
         if (!url) {
-          throw new Error('HTTP Request node requires a url parameter');
+          throw new Error(
+            `HTTP Request node requires a url parameter; got ${JSON.stringify(nodeParameters)}`
+          );
         }
 
-        const method = readString(this.getNodeParameter('method', itemIndex, 'GET'), 'GET')
-          .toUpperCase()
-          .trim();
+        const method = readString(nodeParameters.method, 'GET').toUpperCase().trim();
 
-        const headerParameters = this.getNodeParameter(
-          'headerParameters.parameters',
-          itemIndex,
-          []
-        );
+        const headerContainer = isRecord(nodeParameters.headerParameters)
+          ? nodeParameters.headerParameters
+          : {};
+        const headerParameters = headerContainer.parameters ?? [];
         const headers = {
-          ...normalizeHeaderEntries(this.getNodeParameter('headers', itemIndex, {})),
+          ...normalizeHeaderEntries(nodeParameters.headers),
           ...normalizeHeaderEntries(headerParameters),
         };
 
         const requestOptions: RequestInit = { method, headers };
-        const bodyParameters = this.getNodeParameter(
-          'bodyParameters.parameters',
-          itemIndex,
-          []
-        );
+        const bodyContainer = isRecord(nodeParameters.bodyParameters)
+          ? nodeParameters.bodyParameters
+          : {};
+        const bodyParameters = bodyContainer.parameters ?? [];
         const bodyObject = collectParametersList(bodyParameters);
-        const jsonBody = this.getNodeParameter('jsonBody', itemIndex, undefined);
-        const rawBody = this.getNodeParameter('body', itemIndex, undefined);
+        const jsonBody = nodeParameters.jsonBody;
+        const rawBody = nodeParameters.body;
 
         if (!['GET', 'HEAD'].includes(method)) {
           if (typeof rawBody === 'string' && rawBody.length > 0) {
