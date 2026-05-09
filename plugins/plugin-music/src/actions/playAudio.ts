@@ -14,7 +14,6 @@ import {
   isDiscordPluginServiceLike,
   type MusicPlayerDiscordVoiceManager,
 } from "../discordVoice";
-import { MUSIC_PLAYER_ACTION_DOCS } from "./music-player-action-docs";
 import { MusicService } from "../service";
 import { isPlaybackTransportControlOnlyMessage } from "../utils/playbackTransportIntent";
 import { ProgressiveMessage } from "../utils/progressiveMessage";
@@ -23,6 +22,7 @@ import {
   isConfirmed,
   mergedOptions,
 } from "./confirmation";
+import { MUSIC_PLAYER_ACTION_DOCS } from "./music-player-action-docs";
 
 // Local stubs for cross-plugin / native deps that ship without d.ts files.
 // `@elizaos/plugin-music` builds with `dts: false`, and `discord.js`

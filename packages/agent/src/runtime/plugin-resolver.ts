@@ -1464,7 +1464,9 @@ export async function resolvePlugins(
         // registry is the normal fast path, but use a literal import fallback
         // so Bun can still inline the required SQL plugin if module init order
         // leaves the registry empty.
-        mod = (await import("@elizaos/plugin-sql")) as unknown as PluginModuleShape;
+        mod = (await import(
+          "@elizaos/plugin-sql"
+        )) as unknown as PluginModuleShape;
       } else if (workspaceOverridePath) {
         const shouldPreferRepoNodeModules =
           isOfficialElizaPlugin &&

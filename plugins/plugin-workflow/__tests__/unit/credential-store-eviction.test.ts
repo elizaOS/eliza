@@ -22,12 +22,7 @@ import {
 type EventHandler = (payload: EventPayload) => Promise<void>;
 type CredentialStoreRuntime = Pick<
   IAgentRuntime,
-  | 'agentId'
-  | 'db'
-  | 'getService'
-  | 'getSetting'
-  | 'registerEvent'
-  | 'unregisterEvent'
+  'agentId' | 'db' | 'getService' | 'getSetting' | 'registerEvent' | 'unregisterEvent'
 >;
 type DeleteMethod = typeof WorkflowCredentialStore.prototype.delete;
 
