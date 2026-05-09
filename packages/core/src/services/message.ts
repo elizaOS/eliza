@@ -258,6 +258,14 @@ function splitPlannerActionList(actionsText: string): string[] {
 	for (let index = 0; index < actionsText.length; index += 1) {
 		if (!inJsonString && lower.startsWith("<params", index)) {
 			inParams = true;
+			// Advance through the rest of the opening tag, including any
+			// attributes (e.g. `<params type="json">`), so the loop's char
+			// handling doesn't iterate the tag's interior. Mirrors the
+			// closing-tag branch's full-length advance.
+			const close = actionsText.indexOf(">", index);
+			if (close >= 0) {
+				index = close;
+			}
 			continue;
 		}
 		if (!inJsonString && lower.startsWith("</params>", index)) {
