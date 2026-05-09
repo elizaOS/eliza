@@ -2,7 +2,6 @@ import type {
   GenerateTextParams,
   IAgentRuntime,
   ImageDescriptionParams,
-  ObjectGenerationParams,
   Plugin,
   TextEmbeddingParams,
 } from "@elizaos/core";
@@ -29,11 +28,6 @@ const warnUnsupported = (modelType: string): void => {
 const unsupportedText = (modelType: string): string => {
   warnUnsupported(modelType);
   return unsupportedMessage;
-};
-
-const unsupportedObject = (modelType: string): Record<string, string> => {
-  warnUnsupported(modelType);
-  return { error: unsupportedMessage };
 };
 
 const unsupportedImageDescription = (modelType: string): ImageDescriptionResult => {
@@ -88,14 +82,6 @@ export const localAiPlugin: Plugin = {
       warnUnsupported(ModelType.TEXT_TOKENIZER_DECODE);
       return "";
     },
-    [ModelType.OBJECT_SMALL]: async (
-      _runtime: IAgentRuntime,
-      _params: ObjectGenerationParams
-    ): Promise<Record<string, string>> => unsupportedObject(ModelType.OBJECT_SMALL),
-    [ModelType.OBJECT_LARGE]: async (
-      _runtime: IAgentRuntime,
-      _params: ObjectGenerationParams
-    ): Promise<Record<string, string>> => unsupportedObject(ModelType.OBJECT_LARGE),
     [ModelType.IMAGE_DESCRIPTION]: async (
       _runtime: IAgentRuntime,
       _params: ImageDescriptionParams | string
