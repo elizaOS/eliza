@@ -200,4 +200,17 @@ export const browserPlugin: Plugin = {
   services: [BrowserService as ServiceClass],
   providers: [browserWorkspaceProvider],
   actions: [browserAction, manageBrowserBridgeAction],
+  // Self-declared auto-enable: activate when features.browser is enabled.
+  autoEnable: {
+    shouldEnable: (_env, config) => {
+      const f = (config?.features as Record<string, unknown> | undefined)
+        ?.browser;
+      return (
+        f === true ||
+        (typeof f === "object" &&
+          f !== null &&
+          (f as { enabled?: unknown }).enabled !== false)
+      );
+    },
+  },
 };

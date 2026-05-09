@@ -40,6 +40,22 @@ export const codingToolsPlugin: Plugin = {
     enterWorktreeAction,
     exitWorktreeAction,
   ],
+  // Self-declared auto-enable: activate when features.codingTools is enabled,
+  // or via the legacy "coding-agent" feature key (the plugin was renamed).
+  autoEnable: {
+    shouldEnable: (_env, config) => {
+      const features = config?.features as Record<string, unknown> | undefined;
+      const isFeatureEnabled = (f: unknown) =>
+        f === true ||
+        (typeof f === "object" &&
+          f !== null &&
+          (f as { enabled?: unknown }).enabled !== false);
+      return (
+        isFeatureEnabled(features?.codingTools) ||
+        isFeatureEnabled(features?.["coding-agent"])
+      );
+    },
+  },
 };
 
 export default codingToolsPlugin;
