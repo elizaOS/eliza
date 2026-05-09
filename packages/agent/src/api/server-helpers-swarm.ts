@@ -364,7 +364,7 @@ function splitSynthesisPayloadByReplyTarget<
     total: tasks.length,
     completed: tasks.filter((task) => task.status === "completed").length,
     stopped: tasks.filter((task) => task.status === "stopped").length,
-    errored: tasks.filter((task) => task.status === "error").length,
+    errored: tasks.filter((task) => task.status === "errored").length,
   }));
 }
 
