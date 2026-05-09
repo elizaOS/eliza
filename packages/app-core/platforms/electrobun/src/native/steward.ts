@@ -16,10 +16,7 @@
  *   4. Stops the sidecar on app shutdown
  */
 
-import type {
-	StewardSidecar,
-	StewardSidecarStatus,
-} from "@elizaos/app-core";
+import type { StewardSidecar, StewardSidecarStatus } from "@elizaos/app-core";
 import { getBrandConfig } from "../brand-config";
 import { logger } from "../logger";
 
@@ -34,26 +31,20 @@ type SendToWebviewFn = (message: string, payload?: unknown) => void;
 // Lazy runtime imports
 // ---------------------------------------------------------------------------
 
-type StewardSidecarModule =
-	typeof import("@elizaos/app-core");
-type StewardCredentialsModule =
-	typeof import("@elizaos/app-core");
+type StewardSidecarModule = typeof import("@elizaos/app-core");
+type StewardCredentialsModule = typeof import("@elizaos/app-core");
 
 let stewardSidecarModulePromise: Promise<StewardSidecarModule> | null = null;
 let stewardCredentialsModulePromise: Promise<StewardCredentialsModule> | null =
 	null;
 
 function loadStewardSidecarModule(): Promise<StewardSidecarModule> {
-	stewardSidecarModulePromise ??= import(
-		"@elizaos/app-core"
-	);
+	stewardSidecarModulePromise ??= import("@elizaos/app-core");
 	return stewardSidecarModulePromise;
 }
 
 function loadStewardCredentialsModule(): Promise<StewardCredentialsModule> {
-	stewardCredentialsModulePromise ??= import(
-		"@elizaos/app-core"
-	);
+	stewardCredentialsModulePromise ??= import("@elizaos/app-core");
 	return stewardCredentialsModulePromise;
 }
 

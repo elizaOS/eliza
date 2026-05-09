@@ -33,7 +33,7 @@ export async function handleImageGeneration(
     const typedData = await createElizaCloudClient(runtime).generateImage(requestBody);
 
     const result = typedData.images.map((img) => ({
-      url: img.url || img.image,
+      url: img.url ?? img.image ?? "",
     }));
     return result;
   } catch (error) {

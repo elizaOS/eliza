@@ -1,7 +1,4 @@
-import {
-	allActionDocs,
-	allProviderDocs,
-} from "./generated/action-docs.ts";
+import { allActionDocs, allProviderDocs } from "./generated/action-docs.ts";
 import type {
 	Action,
 	ActionParameter,
@@ -190,4 +187,3 @@ export function withCanonicalProviderDocsAll(
 ): Provider[] {
 	return providers.map(withCanonicalProviderDocs);
 }
-

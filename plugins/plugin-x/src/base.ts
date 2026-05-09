@@ -735,7 +735,7 @@ export class ClientBase {
     await this.cacheMentions(mentionsAndInteractions.tweets);
   }
 
-  async saveRequestMessage(message: Memory, state: State) {
+  async saveRequestMessage(message: Memory, _state: State) {
     if (message.content.text) {
       const recentMessage = await this.runtime.getMemories({
         tableName: "messages",

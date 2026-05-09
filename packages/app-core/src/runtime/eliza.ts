@@ -7,7 +7,6 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 import {
   type BootElizaRuntimeOptions,
-  collectPluginNames as upstreamCollectPluginNames,
   CUSTOM_PLUGINS_DIRNAME,
   getLastFailedPluginNames,
   loadElizaConfig,
@@ -15,10 +14,11 @@ import {
   resolvePackageEntry,
   resolveUserPath,
   type StartElizaOptions,
+  scanDropInPlugins,
   applyCloudConfigToEnv as upstreamApplyCloudConfigToEnv,
   bootElizaRuntime as upstreamBootElizaRuntime,
+  collectPluginNames as upstreamCollectPluginNames,
   configureLocalEmbeddingPlugin as upstreamConfigureLocalEmbeddingPlugin,
-  scanDropInPlugins,
   shutdownRuntime as upstreamShutdownRuntime,
   startEliza as upstreamStartEliza,
 } from "@elizaos/agent";
@@ -35,16 +35,15 @@ import {
   type Plugin,
   stringToUuid,
 } from "@elizaos/core";
-
 import {
+  ensureRuntimeSqlCompatibility,
   isMobilePlatform,
   resolveServerOnlyPort,
+  syncAppEnvToEliza,
+  syncElizaEnvAliases,
   syncResolvedApiPort,
 } from "@elizaos/shared";
-import { isNativeServerPlatform } from "@elizaos/shared";
 import { getApps, loadRegistry } from "../registry";
-import { syncAppEnvToEliza, syncElizaEnvAliases } from "@elizaos/shared";
-import { ensureRuntimeSqlCompatibility } from "@elizaos/shared";
 import {
   type AppRoutePluginRegistryEntry,
   listAppRoutePluginLoaders,
@@ -520,8 +519,9 @@ async function repairRuntimeAfterBoot(
 // Module-level handle for the WORKFLOW_DISPATCH service instance. Kept across
 // hot-reloads so we can clear the runtime.services slot on shutdown without
 // leaking closures that hold a stale runtime reference.
-let _workflowDispatch: { execute: (workflowId: string) => Promise<unknown> } | null =
-  null;
+let _workflowDispatch: {
+  execute: (workflowId: string) => Promise<unknown>;
+} | null = null;
 
 // Module-level handle for the trigger event bridge. Reset across
 // hot-reloads so we never leave two handler sets racing the runtime's
@@ -541,7 +541,9 @@ let _connectorTargetCatalog: { stop: () => void } | null = null;
 
 const CONNECTOR_TARGET_CATALOG_SERVICE_TYPE = "connector_target_catalog";
 
-async function ensureWorkflowDispatchService(runtime: AgentRuntime): Promise<void> {
+async function ensureWorkflowDispatchService(
+  runtime: AgentRuntime,
+): Promise<void> {
   // Clear any prior instance so a hot-reloaded runtime never holds a stale
   // closure binding to a discarded AgentRuntime.
   if (_workflowDispatch) {

@@ -73,15 +73,15 @@ describe("live routing regressions", () => {
 			logger,
 		} as unknown as Pick<IAgentRuntime, "actions" | "logger">;
 
-		expect(resolvePlannerActionName(runtime, undefined, "TASKS_ADD_TODO")).toEqual([
-			"LIFE",
-		]);
-		expect(resolvePlannerActionName(runtime, undefined, "todo_create")).toEqual([
-			"LIFE",
-		]);
-		expect(resolvePlannerActionName(runtime, undefined, "todos_create")).toEqual([
-			"LIFE",
-		]);
+		expect(
+			resolvePlannerActionName(runtime, undefined, "TASKS_ADD_TODO"),
+		).toEqual(["LIFE"]);
+		expect(resolvePlannerActionName(runtime, undefined, "todo_create")).toEqual(
+			["LIFE"],
+		);
+		expect(
+			resolvePlannerActionName(runtime, undefined, "todos_create"),
+		).toEqual(["LIFE"]);
 		expect(resolvePlannerActionName(runtime, undefined, "task_list")).toEqual([
 			"LIFE",
 		]);
@@ -118,15 +118,11 @@ describe("live routing regressions", () => {
 		]);
 
 		expect(
-			resolvePlannerActionName(
-				runtime,
-				exposedLookup,
-				"list_unread_emails",
-			),
+			resolvePlannerActionName(runtime, exposedLookup, "list_unread_emails"),
 		).toEqual(["MESSAGE"]);
-		expect(
-			resolvePlannerActionName(runtime, exposedLookup, "MESSAGE"),
-		).toEqual(["MESSAGE"]);
+		expect(resolvePlannerActionName(runtime, exposedLookup, "MESSAGE")).toEqual(
+			["MESSAGE"],
+		);
 	});
 
 	it("infers safe params for explicit local shell checks", () => {

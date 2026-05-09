@@ -39,22 +39,22 @@
     "url": "https://github.com/elizaOS/eliza"
   },
   "scripts": {
-    "verify": "npm run verify:ios && npm run verify:android && npm run verify:web",
+    "verify": "bun run verify:ios && bun run verify:android && bun run verify:web",
     "verify:ios": "cd ios && pod install && xcodebuild -workspace Plugin.xcworkspace -scheme Plugin -destination generic/platform=iOS && cd ..",
     "verify:android": "cd android && ./gradlew clean build test && cd ..",
-    "verify:web": "npm run build",
-    "lint": "bunx @biomejs/biome check . && bash -c 'if command -v swiftlint >/dev/null 2>&1; then npm run swiftlint -- lint; fi'",
+    "verify:web": "bun run build",
+    "lint": "bunx @biomejs/biome check . && bash -c 'if command -v swiftlint >/dev/null 2>&1; then bun run swiftlint -- lint; fi'",
     "lint:check": "bunx @biomejs/biome check .",
-    "fmt": "bunx @biomejs/biome check --write --unsafe . && bash -c 'if command -v swiftlint >/dev/null 2>&1; then npm run swiftlint -- lint --fix; fi'",
+    "fmt": "bunx @biomejs/biome check --write --unsafe . && bash -c 'if command -v swiftlint >/dev/null 2>&1; then bun run swiftlint -- lint --fix; fi'",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "swiftlint": "node-swiftlint",
     "docgen": "docgen --api GatewayPlugin --output-readme README.md --output-json dist/docs.json",
-    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
-    "build:docs": "npm run clean && npm run docgen && tsc && rollup -c rollup.config.mjs",
+    "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
+    "build:docs": "bun run clean && bun run docgen && tsc && rollup -c rollup.config.mjs",
     "clean": "rimraf ./dist",
     "watch": "tsc --watch",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "bun run build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

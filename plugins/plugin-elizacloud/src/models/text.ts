@@ -128,7 +128,7 @@ function buildUserContent(params: GenerateTextParamsWithAttachments) {
         mediaType: string;
         filename?: string;
       }
-  > = [{ type: "text", text: params.prompt }];
+  > = [{ type: "text", text: params.prompt ?? "" }];
 
   for (const attachment of params.attachments ?? []) {
     content.push({
@@ -608,7 +608,7 @@ function buildGenerateParams(
   params: GenerateTextParams
 ) {
   const paramsWithAttachments = params as GenerateTextParamsWithAttachments;
-  const { prompt } = params;
+  const prompt = params.prompt ?? "";
   const maxTokens = params.maxTokens ?? 8192;
 
   const openai = createOpenAIClient(runtime);

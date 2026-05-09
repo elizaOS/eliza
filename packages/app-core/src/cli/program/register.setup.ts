@@ -1,10 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveConfigPath } from "@elizaos/agent";
+import { formatDocsLink, theme } from "@elizaos/shared";
 import type { Command } from "commander";
 import JSON5 from "json5";
-import { formatDocsLink } from "@elizaos/shared";
-import { theme } from "@elizaos/shared";
 import { runCommandWithRuntime } from "../cli-utils";
 
 const defaultRuntime = { error: console.error, exit: process.exit };

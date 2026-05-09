@@ -449,9 +449,9 @@ describe("Anthropic model defaults", () => {
     expect(cached.length).toBeGreaterThan(0);
     expect(cached.length).toBeLessThanOrEqual(4);
     const cachedTexts = cached.map((p) => p.text);
-    expect(
-      cachedTexts.some((t) => typeof t === "string" && t.includes("planner_stage")),
-    ).toBe(true);
+    expect(cachedTexts.some((t) => typeof t === "string" && t.includes("planner_stage"))).toBe(
+      true
+    );
 
     // Tools still reach the wire.
     expect(call.tools).toBe(tools);

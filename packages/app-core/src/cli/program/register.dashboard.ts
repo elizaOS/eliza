@@ -1,5 +1,5 @@
-import type { Command } from "commander";
 import { theme } from "@elizaos/shared";
+import type { Command } from "commander";
 
 async function isPortListening(
   port: number,

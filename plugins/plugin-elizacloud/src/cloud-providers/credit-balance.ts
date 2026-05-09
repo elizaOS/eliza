@@ -27,7 +27,7 @@ export const creditBalanceProvider: Provider = {
     const cached = creditCaches.get(runtime);
     if (cached && Date.now() - cached.at < TTL) {
       const result = format(cached.value);
-      return { ...result, text: result.text.slice(0, MAX_CREDIT_TEXT_CHARS) };
+      return { ...result, text: (result.text ?? "").slice(0, MAX_CREDIT_TEXT_CHARS) };
     }
 
     let balance: number;
@@ -40,7 +40,7 @@ export const creditBalanceProvider: Provider = {
       );
       if (cached) {
         const result = format(cached.value);
-        return { ...result, text: result.text.slice(0, MAX_CREDIT_TEXT_CHARS) };
+        return { ...result, text: (result.text ?? "").slice(0, MAX_CREDIT_TEXT_CHARS) };
       }
       return { text: "", values: { cloudCreditsUnavailable: true }, data: {} };
     }

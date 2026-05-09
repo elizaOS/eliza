@@ -208,10 +208,7 @@ export function resolveCharacterCatalog(catalog: CharacterCatalogData): {
   });
 
   const byCatchphrase = new Map(
-    injectedCharacters.map((character) => [
-      character.catchphrase,
-      character,
-    ]),
+    injectedCharacters.map((character) => [character.catchphrase, character]),
   );
 
   return {

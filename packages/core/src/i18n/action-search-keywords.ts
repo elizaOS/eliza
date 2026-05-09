@@ -6,11 +6,11 @@
  * used as hard action availability checks.
  */
 
+import { VALIDATION_KEYWORD_DOCS } from "./generated/validation-keyword-data.ts";
 import {
 	collectKeywordTermMatches,
 	splitKeywordDoc,
 } from "./validation-keywords.ts";
-import { VALIDATION_KEYWORD_DOCS } from "./generated/validation-keyword-data.ts";
 
 type KeywordDoc = {
 	base?: string;
@@ -41,7 +41,11 @@ const CONTEXT_KEYWORD_STEMS: Record<string, readonly string[]> = {
 	connectors: ["contextSignal.connectors"],
 	contacts: ["contextSignal.contacts", "action.searchContacts"],
 	crypto: ["contextSignal.crypto"],
-	documents: ["contextSignal.documents", "action.processDocuments", "action.searchDocuments"],
+	documents: [
+		"contextSignal.documents",
+		"action.processDocuments",
+		"action.searchDocuments",
+	],
 	email: ["contextSignal.email", "contextSignal.gmail"],
 	files: ["contextSignal.files"],
 	finance: ["contextSignal.finance"],
@@ -60,7 +64,11 @@ const CONTEXT_KEYWORD_STEMS: Record<string, readonly string[]> = {
 	memory: ["contextSignal.memory"],
 	payments: ["contextSignal.payments"],
 	phone: ["contextSignal.phone", "contextSignal.send_message"],
-	productivity: ["contextSignal.productivity", "action.createTask", "action.manageTasks"],
+	productivity: [
+		"contextSignal.productivity",
+		"action.createTask",
+		"action.manageTasks",
+	],
 	research: ["contextSignal.research", "contextSignal.web_search"],
 	screen_time: ["contextSignal.screen_time"],
 	secrets: ["contextSignal.secrets"],
@@ -71,7 +79,10 @@ const CONTEXT_KEYWORD_STEMS: Record<string, readonly string[]> = {
 		"contextSignal.send_message",
 		"contextSignal.read_messages",
 	],
-	social_posting: ["contextSignal.social_posting", "contextSignal.send_message"],
+	social_posting: [
+		"contextSignal.social_posting",
+		"contextSignal.send_message",
+	],
 	state: ["contextSignal.state"],
 	subscriptions: ["contextSignal.subscriptions"],
 	system: ["contextSignal.system"],

@@ -6,9 +6,9 @@
  * Streaming context manager is auto-detected at runtime.
  */
 
+export * from "./actions";
 // Export core modules (all browser-compatible after refactoring)
 export * from "./app-route-plugin-registry";
-export * from "./actions";
 export * from "./character";
 export * from "./connectors/account-manager";
 export * from "./connectors/privacy";
@@ -32,13 +32,13 @@ export * from "./memory";
 export * from "./prompts";
 export * from "./roles";
 export * from "./runtime";
-export * from "./runtime-route-context";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/execute-planned-tool-call";
 export * from "./runtime/schema-compat";
 export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";
+export * from "./runtime-route-context";
 // Export schemas (including buildBaseTables for plugin-sql browser/PGLite builds)
 export * from "./schemas/character";
 export { type BaseTables, buildBaseTables } from "./schemas/index";

@@ -192,9 +192,8 @@ function extractExpressionsFromString(str: string, paramPath: string): Expressio
   const namedNodePattern =
     /\$\(['"]([^'"]{1,100})['"]\)\.item\.json\.([a-zA-Z0-9_.[\]'"-]{1,200})/g;
 
-  let match;
-
-  while ((match = simplePattern.exec(str)) !== null) {
+  let match: RegExpExecArray | null = simplePattern.exec(str);
+  while (match !== null) {
     const field = match[1];
     refs.push({
       fullExpression: match[0],
@@ -202,9 +201,11 @@ function extractExpressionsFromString(str: string, paramPath: string): Expressio
       path: parseFieldPath(field),
       paramPath,
     });
+    match = simplePattern.exec(str);
   }
 
-  while ((match = bracketPattern.exec(str)) !== null) {
+  match = bracketPattern.exec(str);
+  while (match !== null) {
     const field = match[2];
     refs.push({
       fullExpression: match[0],
@@ -212,9 +213,11 @@ function extractExpressionsFromString(str: string, paramPath: string): Expressio
       path: parseFieldPath(field),
       paramPath,
     });
+    match = bracketPattern.exec(str);
   }
 
-  while ((match = namedNodePattern.exec(str)) !== null) {
+  match = namedNodePattern.exec(str);
+  while (match !== null) {
     const field = match[2];
     refs.push({
       fullExpression: match[0],
@@ -223,6 +226,7 @@ function extractExpressionsFromString(str: string, paramPath: string): Expressio
       paramPath,
       sourceNodeName: match[1],
     });
+    match = namedNodePattern.exec(str);
   }
 
   return refs;

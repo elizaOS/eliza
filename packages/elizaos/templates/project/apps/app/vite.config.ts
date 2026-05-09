@@ -2,13 +2,11 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { colorizeDevSettingsStartupBanner } from "@elizaos/shared";
-import { prependDevSubsystemFigletHeading } from "@elizaos/shared";
 import {
+  colorizeDevSettingsStartupBanner,
   type DevSettingsRow,
   formatDevSettingsTable,
-} from "@elizaos/shared";
-import {
+  prependDevSubsystemFigletHeading,
   resolveDesktopApiPort,
   resolveDesktopApiPortPreference,
   resolveDesktopUiPort,

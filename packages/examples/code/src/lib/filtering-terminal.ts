@@ -12,10 +12,7 @@ export class FilteringTerminal implements Terminal {
     // onIntercept returns true when the event was handled and should not reach the TUI
   }
 
-  start(
-    onInput: (data: string) => void,
-    onResize: () => void,
-  ): void {
+  start(onInput: (data: string) => void, onResize: () => void): void {
     this.inner.start((data: string) => {
       if (this.onIntercept(data)) {
         return;

@@ -10,7 +10,7 @@ import {
   type Plugin,
   transformWithEsbuild,
 } from "vite";
-import { resolveAppBranding } from "../../packages/app-core/src/config/app-config.ts";
+import { resolveAppBranding } from "../../packages/ui/src/config/app-config.ts";
 // Keep workspace-relative TS imports in this config so Vite transpiles them
 // while bundling the config instead of asking Node to load package-exported
 // .ts files directly in CI.

@@ -1,10 +1,13 @@
 import process from "node:process";
-import { RESTART_EXIT_CODE, setRestartHandler } from "@elizaos/shared";
+import {
+  getLogPrefix,
+  RESTART_EXIT_CODE,
+  setRestartHandler,
+} from "@elizaos/shared";
 import {
   formatUncaughtError,
   shouldIgnoreUnhandledRejection,
 } from "../runtime/error-handlers";
-import { getLogPrefix } from "@elizaos/shared";
 import { getPrimaryCommand, hasHelpOrVersion } from "./argv";
 import { registerSubCliByName } from "./program/register.subclis";
 

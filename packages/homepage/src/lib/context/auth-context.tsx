@@ -1,10 +1,10 @@
 import {
   createContext,
-  useContext,
-  useState,
-  useEffect,
-  useCallback,
   type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
 } from "react";
 import { elizacloudFetch, getAuthToken } from "@/lib/api/client";
 
@@ -323,7 +323,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const headers: Record<string, string> = {};
         // If an existing token is provided, send it for session-based linking
         if (existingToken) {
-          headers["Authorization"] = `Bearer ${existingToken}`;
+          headers.Authorization = `Bearer ${existingToken}`;
         }
 
         const response = await elizacloudFetch<TelegramAuthResponse>(
@@ -397,7 +397,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const headers: Record<string, string> = {};
         // If an existing token is provided, send it for session-based linking
         if (existingToken) {
-          headers["Authorization"] = `Bearer ${existingToken}`;
+          headers.Authorization = `Bearer ${existingToken}`;
         }
 
         const response = await elizacloudFetch<DiscordAuthResponse>(
@@ -469,7 +469,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const headers: Record<string, string> = {};
         if (existingToken) {
-          headers["Authorization"] = `Bearer ${existingToken}`;
+          headers.Authorization = `Bearer ${existingToken}`;
         }
 
         const response = await elizacloudFetch<WhatsAppAuthResponse>(

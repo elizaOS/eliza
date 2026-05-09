@@ -1,5 +1,5 @@
+import type { EventEmitter } from "node:events";
 import type { Readable } from "node:stream";
-import type { EventEmitter } from "events";
 
 /**
  * Audio Broadcast Contracts

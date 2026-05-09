@@ -9,8 +9,8 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import { loadPlaylists, savePlaylist } from "../components/playlists";
 import type { Playlist } from "../components/playlists";
+import { loadPlaylists, savePlaylist } from "../components/playlists";
 import type { MusicLibraryService } from "../services/musicLibraryService";
 import {
   getSmartMusicFetchService,

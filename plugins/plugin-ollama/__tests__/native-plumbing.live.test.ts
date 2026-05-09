@@ -21,9 +21,7 @@ const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
 
 const OLLAMA_ENDPOINT =
-  process.env.OLLAMA_API_ENDPOINT?.trim() ||
-  process.env.OLLAMA_API_URL?.trim() ||
-  "";
+  process.env.OLLAMA_API_ENDPOINT?.trim() || process.env.OLLAMA_API_URL?.trim() || "";
 const OLLAMA_SMALL_MODEL = process.env.OLLAMA_SMALL_MODEL?.trim() || "llama3.2:1b";
 
 function createRuntime(): IAgentRuntime {
@@ -67,7 +65,7 @@ describe.skipIf(skipReason !== null)("Ollama native text plumbing (live)", () =>
     serverReachable = await pingOllama(OLLAMA_ENDPOINT);
     if (!serverReachable) {
       console.warn(
-        `${YELLOW}[ollama-live] OLLAMA_API_ENDPOINT=${OLLAMA_ENDPOINT} unreachable — tests will skip${RESET}`,
+        `${YELLOW}[ollama-live] OLLAMA_API_ENDPOINT=${OLLAMA_ENDPOINT} unreachable — tests will skip${RESET}`
       );
     }
   }, 5000);

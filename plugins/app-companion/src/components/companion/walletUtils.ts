@@ -1,6 +1,6 @@
-import { getExplorerTokenUrl } from "@elizaos/app-wallet";
 import {
   BSC_GAS_READY_THRESHOLD,
+  getExplorerTokenUrl,
   HEX_ADDRESS_RE,
   isAvaxChainName,
   isBscChainName,

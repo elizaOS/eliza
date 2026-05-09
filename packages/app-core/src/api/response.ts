@@ -9,7 +9,9 @@ function scrubStackFields(value: unknown): unknown {
   }
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
-    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    for (const [key, nested] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
       if (key === "stack" || key === "stackTrace") continue;
       out[key] = scrubStackFields(nested);
     }

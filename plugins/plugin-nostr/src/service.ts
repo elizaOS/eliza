@@ -173,7 +173,6 @@ export class NostrService extends Service implements INostrService {
           { src: "plugin:nostr", agentId: runtime.agentId },
           "Registered Nostr DM connector"
         );
-        continue;
       }
     }
   }

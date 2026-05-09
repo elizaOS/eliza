@@ -130,7 +130,6 @@ declare module "telegram/sessions" {
     [key: string]: unknown;
   }
 }
-declare module "@elizaos/plugin-elizacloud";
 declare module "@elizaos/plugin-elizacloud/onboarding" {
   export interface CloudOnboardingResult {
     apiKey: string;

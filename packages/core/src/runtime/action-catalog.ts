@@ -1,7 +1,7 @@
 import {
+	type ActionSearchKeywordSource,
 	getActionSearchKeywordSources,
 	getActionSearchKeywordTerms,
-	type ActionSearchKeywordSource,
 } from "../i18n/action-search-keywords";
 
 export type RuntimeActionLike = {

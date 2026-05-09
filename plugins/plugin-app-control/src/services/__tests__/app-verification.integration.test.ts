@@ -159,7 +159,9 @@ describe("AppVerificationService.verifyApp (integration)", () => {
 			expect(typecheck).toBeDefined();
 			expect(typecheck?.passed).toBe(false);
 			expect((typecheck?.diagnostics ?? []).length).toBeGreaterThan(0);
-			expect(result.retryablePromptForChild.toLowerCase()).toContain("typecheck");
+			expect(result.retryablePromptForChild.toLowerCase()).toContain(
+				"typecheck",
+			);
 		},
 		120_000,
 	);

@@ -95,8 +95,8 @@ export const sendToAdminAction: Action = {
 			return false;
 		}
 
-			return true;
-		},
+		return true;
+	},
 
 	handler: async (
 		runtime: IAgentRuntime,

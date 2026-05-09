@@ -175,7 +175,7 @@ describe("JsonFileTrajectoryRecorder", () => {
 		expect(parsed.metrics.totalLatencyMs).toBe(300 + 600 + 110 + 270);
 	});
 
-	it("increments evaluatorFailures when evaluation.success is false", async () => {
+	it("does not count an interim CONTINUE evaluation as an evaluator failure", async () => {
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
 		const id = recorder.startTrajectory({
 			agentId: "agent-fail",
@@ -215,8 +215,37 @@ describe("JsonFileTrajectoryRecorder", () => {
 
 		const trajectory = await recorder.load(id);
 		expect(trajectory).not.toBeNull();
-		expect(trajectory?.metrics.evaluatorFailures).toBe(1);
+		expect(trajectory?.metrics.evaluatorFailures).toBe(0);
 		expect(trajectory?.metrics.toolCallFailures).toBe(1);
+	});
+
+	it("counts terminal unsuccessful evaluations as evaluator failures", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-terminal-fail",
+			rootMessage: { id: "msg-terminal-fail", text: "missing input" },
+		});
+
+		await recorder.recordStage(id, {
+			stageId: "stage-eval-terminal-fail",
+			kind: "evaluation",
+			iteration: 1,
+			startedAt: 1,
+			endedAt: 2,
+			latencyMs: 1,
+			evaluation: {
+				success: false,
+				decision: "FINISH",
+				thought: "cannot proceed without user input",
+			},
+		});
+
+		await recorder.endTrajectory(id, "finished");
+
+		const trajectory = await recorder.load(id);
+		expect(trajectory).not.toBeNull();
+		expect(trajectory?.metrics.evaluatorFailures).toBe(1);
+		expect(trajectory?.metrics.finalDecision).toBe("FINISH");
 	});
 
 	it("computes costUsd via the price table when usage and modelName are set", async () => {

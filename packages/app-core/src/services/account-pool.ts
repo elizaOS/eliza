@@ -31,15 +31,13 @@ import os from "node:os";
 import path from "node:path";
 import type { AccountCredentialRecord } from "@elizaos/agent";
 import {
-  getAccessToken as getAccountAccessToken,
-  listProviderAccounts,
-} from "@elizaos/agent";
-import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
   DIRECT_ACCOUNT_PROVIDER_ENV,
   DIRECT_ACCOUNT_PROVIDER_IDS,
   type DirectAccountProvider,
+  getAccessToken as getAccountAccessToken,
   isSubscriptionProvider,
+  listProviderAccounts,
   type SubscriptionProvider,
 } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
@@ -989,9 +987,8 @@ function installSubscriptionSelectorBridge(pool: AccountPool): void {
       return account?.id ?? null;
     },
   };
-  (
-    globalThis as Record<symbol, unknown>
-  )[SUBSCRIPTION_SELECTOR_BRIDGE_SYMBOL] = bridge;
+  (globalThis as Record<symbol, unknown>)[SUBSCRIPTION_SELECTOR_BRIDGE_SYMBOL] =
+    bridge;
 }
 
 /**

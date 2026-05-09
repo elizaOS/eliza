@@ -332,11 +332,13 @@ describe("v5 planner loop skeleton", () => {
 
 	it("returns a user-visible failure when required tool retries are exhausted", async () => {
 		const runtime = {
-			useModel: vi.fn(async () => `{
+			useModel: vi.fn(
+				async () => `{
   "thought": "I can answer directly.",
   "messageToUser": "Looks fine.",
   "toolCalls": []
-}`),
+}`,
+			),
 			logger: { warn: vi.fn() },
 		};
 

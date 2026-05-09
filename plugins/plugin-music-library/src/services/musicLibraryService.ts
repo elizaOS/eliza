@@ -42,20 +42,20 @@ import {
   recordSongRequest,
   type SongMemory,
 } from "../components/songMemory";
-import { SpotifyClient } from "./spotifyClient";
 import {
   type DetectedMusicEntity,
   MusicEntityDetectionHelper,
 } from "./musicEntityDetectionService";
 import { MusicInfoHelper } from "./musicInfoService";
 import type { MusicInfoServiceStatus } from "./serviceStatus";
+import { SpotifyClient } from "./spotifyClient";
+import { WikipediaClient } from "./wikipediaClient";
 import {
   type ExtractedMusicInfo,
   type WikipediaExtractionContext,
   WikipediaExtractionHelper,
 } from "./wikipediaExtractionService";
-import { WikipediaClient } from "./wikipediaClient";
-import { type YouTubeSearchResult, YouTubeSearchHelper } from "./youtubeSearch";
+import { YouTubeSearchHelper, type YouTubeSearchResult } from "./youtubeSearch";
 
 const MUSIC_LIBRARY_SERVICE_NAME = "musicLibrary";
 

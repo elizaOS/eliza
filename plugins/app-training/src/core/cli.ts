@@ -8,7 +8,10 @@
  * Or: `cd eliza/packages/agent && bun run training:cli` (delegates to this file).
  */
 
-import { readFile, writeFile } from "fs/promises";
+import { existsSync, readdirSync, readFileSync, statSync } from "fs";
+import { mkdir, readFile, writeFile } from "fs/promises";
+import { homedir } from "os";
+import { join } from "path";
 import { parseArgs } from "util";
 import { AGENT_CONTEXTS, type AgentContext } from "./context-types.js";
 import {
@@ -285,6 +288,182 @@ async function cmdCompare(args: string[]) {
   }
 }
 
+interface RecordedMessage {
+  role: string;
+  content: string | unknown;
+}
+
+interface RecordedStage {
+  stageId?: string;
+  kind?: string;
+  startedAt?: number;
+  endedAt?: number;
+  model?: {
+    modelType?: string;
+    modelName?: string;
+    provider?: string;
+    messages?: RecordedMessage[];
+    response?: string | unknown;
+    toolCalls?: unknown[];
+  };
+}
+
+interface RecordedTrajectory {
+  trajectoryId: string;
+  agentId: string;
+  rootMessage?: { text?: string };
+  startedAt?: number;
+  status?: string;
+  stages?: RecordedStage[];
+}
+
+/**
+ * Map RecordedStage.kind / model.modelType to a TrajectoryTrainingTask bucket.
+ * Returns null if the stage doesn't fit a known eval task.
+ */
+function classifyStage(stage: RecordedStage): TrajectoryTrainingTask | null {
+  const kind = stage.kind?.toLowerCase() ?? "";
+  const modelType = stage.model?.modelType?.toLowerCase() ?? "";
+  if (kind === "messagehandler" || modelType.includes("response_handler")) {
+    return "should_respond";
+  }
+  if (kind === "planner" || modelType.includes("planner")) {
+    return "action_planner";
+  }
+  if (kind === "tool" || kind === "action") {
+    return "response";
+  }
+  if (modelType.includes("vision") || modelType.includes("image")) {
+    return "media_description";
+  }
+  return null;
+}
+
+function stringifyContent(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return "";
+  return JSON.stringify(value);
+}
+
+function stageToJsonlRow(
+  stage: RecordedStage,
+): Record<string, unknown> | null {
+  const messages = stage.model?.messages ?? [];
+  const response = stage.model?.response;
+  if (messages.length === 0) return null;
+  if (!response && !stage.model?.toolCalls) return null;
+  const normalizedMessages = messages.map((m) => ({
+    role: m.role,
+    content: stringifyContent(m.content),
+  }));
+  const systemMsg = normalizedMessages.find((m) => m.role === "system");
+  const responseText = stringifyContent(response);
+  const toolCalls = stage.model?.toolCalls;
+  return {
+    format: "eliza_native_v1",
+    boundary: "vercel_ai_sdk.generateText",
+    request: {
+      system: systemMsg?.content ?? "",
+      messages: normalizedMessages,
+    },
+    response: toolCalls
+      ? { text: responseText, toolCalls }
+      : { text: responseText },
+  };
+}
+
+async function cmdExportTrajectories(args: string[]) {
+  const { values } = parseArgs({
+    args,
+    options: {
+      input: { type: "string", short: "i" },
+      output: { type: "string", short: "o" },
+      "max-per-task": { type: "string" },
+    },
+  });
+  const inputDir =
+    values.input ??
+    process.env.MILADY_TRAJECTORY_DIR ??
+    join(
+      process.env.MILADY_STATE_DIR ??
+        process.env.ELIZA_STATE_DIR ??
+        join(homedir(), ".milady"),
+      "trajectories",
+    );
+  const outputDir = values.output ?? "./training-data";
+  const cap = values["max-per-task"]
+    ? Number.parseInt(values["max-per-task"], 10)
+    : Number.POSITIVE_INFINITY;
+
+  if (!existsSync(inputDir)) {
+    console.error(`[export-trajectories] input dir not found: ${inputDir}`);
+    process.exit(1);
+  }
+
+  await mkdir(outputDir, { recursive: true });
+  console.log(`[export-trajectories] reading from ${inputDir}`);
+  console.log(`[export-trajectories] writing to ${outputDir}`);
+
+  const buckets: Record<TrajectoryTrainingTask, Record<string, unknown>[]> = {
+    should_respond: [],
+    context_routing: [],
+    action_planner: [],
+    response: [],
+    media_description: [],
+  };
+
+  const agentDirs = readdirSync(inputDir).filter((name) => {
+    const full = join(inputDir, name);
+    return statSync(full).isDirectory();
+  });
+
+  let totalTrajectories = 0;
+  let totalStages = 0;
+  let droppedStages = 0;
+  for (const agentDir of agentDirs) {
+    const agentPath = join(inputDir, agentDir);
+    const files = readdirSync(agentPath).filter((f) => f.endsWith(".json"));
+    for (const file of files) {
+      let traj: RecordedTrajectory;
+      try {
+        traj = JSON.parse(
+          readFileSync(join(agentPath, file), "utf-8"),
+        ) as RecordedTrajectory;
+      } catch {
+        continue;
+      }
+      totalTrajectories += 1;
+      for (const stage of traj.stages ?? []) {
+        totalStages += 1;
+        const task = classifyStage(stage);
+        if (!task) {
+          droppedStages += 1;
+          continue;
+        }
+        if (buckets[task].length >= cap) continue;
+        const row = stageToJsonlRow(stage);
+        if (!row) {
+          droppedStages += 1;
+          continue;
+        }
+        buckets[task].push(row);
+      }
+    }
+  }
+
+  for (const task of Object.keys(buckets) as TrajectoryTrainingTask[]) {
+    const path = join(outputDir, `${task}_trajectories.jsonl`);
+    const lines = buckets[task].map((row) => JSON.stringify(row));
+    await writeFile(path, `${lines.join("\n")}\n`);
+    console.log(
+      `[export-trajectories] ${task}: wrote ${buckets[task].length} examples to ${path}`,
+    );
+  }
+  console.log(
+    `[export-trajectories] summary: ${totalTrajectories} trajectories, ${totalStages} stages (${droppedStages} unclassified)`,
+  );
+}
+
 async function cmdValidate(args: string[]) {
   const { values } = parseArgs({
     args,
@@ -325,6 +504,9 @@ async function main() {
     case "compare":
       await cmdCompare(restArgs);
       break;
+    case "export-trajectories":
+      await cmdExportTrajectories(restArgs);
+      break;
     default:
       console.log(`Usage: cli.ts <command> [options]
 
@@ -338,6 +520,11 @@ Commands:
 
   validate          Validate a generated dataset
     --input PATH    Path to raw_samples.json
+
+  export-trajectories  Re-export raw recorded trajectories to per-task JSONL
+    -i, --input DIR    Trajectory dir (default: $MILADY_TRAJECTORY_DIR or ~/.milady/trajectories)
+    -o, --output DIR   Output dir (default: ./training-data)
+    --max-per-task N   Cap examples per task bucket
 
   compare           A/B compare two prompts on a trajectory dataset
     --baseline PATH    Path to baseline prompt (.txt)

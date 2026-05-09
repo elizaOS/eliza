@@ -1,15 +1,15 @@
-import { Service, elizaLogger, type IAgentRuntime } from '@elizaos/core';
-import { spawn } from 'node:child_process';
-import { z } from 'zod';
-import { readTailscaleAccounts, resolveTailscaleAccount } from '../accounts';
-import { validateTailscaleConfig } from '../environment';
+import { spawn } from "node:child_process";
+import { elizaLogger, type IAgentRuntime, Service } from "@elizaos/core";
+import { z } from "zod";
+import { readTailscaleAccounts, resolveTailscaleAccount } from "../accounts";
+import { validateTailscaleConfig } from "../environment";
 import {
-  TAILSCALE_CLOUD_TUNNEL_SERVICE_TYPE,
   type ITunnelService,
+  TAILSCALE_CLOUD_TUNNEL_SERVICE_TYPE,
   type TunnelStatus,
-} from '../types';
+} from "../types";
 
-const CLOUD_BASE_FALLBACK = 'https://www.elizacloud.ai/api/v1';
+const CLOUD_BASE_FALLBACK = "https://www.elizacloud.ai/api/v1";
 
 const authKeyResponseSchema = z.object({
   authKey: z.string(),
@@ -20,7 +20,7 @@ const authKeyResponseSchema = z.object({
 type AuthKeyResponse = z.infer<typeof authKeyResponseSchema>;
 
 interface CloudFetchInit {
-  method: 'POST';
+  method: "POST";
   headers: Record<string, string>;
   body: string;
 }
@@ -33,7 +33,10 @@ interface CloudFetchResponse {
   text(): Promise<string>;
 }
 
-type CloudFetch = (url: string, init: CloudFetchInit) => Promise<CloudFetchResponse>;
+type CloudFetch = (
+  url: string,
+  init: CloudFetchInit,
+) => Promise<CloudFetchResponse>;
 
 export interface CloudTailscaleServiceOptions {
   /** Override fetch impl for tests. */
@@ -53,33 +56,39 @@ interface SpawnResult {
 
 function defaultCliRunner(cmd: string, args: string[]): Promise<SpawnResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
-    child.stdout?.on('data', (chunk: Buffer) => out.push(chunk));
-    child.stderr?.on('data', (chunk: Buffer) => err.push(chunk));
-    child.on('error', reject);
-    child.on('exit', (code) =>
+    child.stdout?.on("data", (chunk: Buffer) => out.push(chunk));
+    child.stderr?.on("data", (chunk: Buffer) => err.push(chunk));
+    child.on("error", reject);
+    child.on("exit", (code) =>
       resolve({
         code,
-        stdout: Buffer.concat(out).toString('utf8'),
-        stderr: Buffer.concat(err).toString('utf8'),
+        stdout: Buffer.concat(out).toString("utf8"),
+        stderr: Buffer.concat(err).toString("utf8"),
       }),
     );
   });
 }
 
-async function defaultFetch(url: string, init: CloudFetchInit): Promise<CloudFetchResponse> {
+async function defaultFetch(
+  url: string,
+  init: CloudFetchInit,
+): Promise<CloudFetchResponse> {
   return normalizeFetchResponse(await fetch(url, init));
 }
 
 export class CloudTailscaleService extends Service implements ITunnelService {
   static override serviceType = TAILSCALE_CLOUD_TUNNEL_SERVICE_TYPE;
   readonly capabilityDescription =
-    'Provides Tailscale tunnel functionality via Eliza Cloud — auth keys are minted server-side and the local CLI joins the tailnet.';
+    "Provides Tailscale tunnel functionality via Eliza Cloud — auth keys are minted server-side and the local CLI joins the tailnet.";
 
   private readonly fetchImpl: CloudFetch;
-  private readonly cliRunner: (cmd: string, args: string[]) => Promise<SpawnResult>;
+  private readonly cliRunner: (
+    cmd: string,
+    args: string[],
+  ) => Promise<SpawnResult>;
 
   private tunnelUrl: string | null = null;
   private tunnelPort: number | null = null;
@@ -87,7 +96,10 @@ export class CloudTailscaleService extends Service implements ITunnelService {
   private isShuttingDown = false;
   private joinedTailnet = false;
 
-  constructor(runtime?: IAgentRuntime, options: CloudTailscaleServiceOptions = {}) {
+  constructor(
+    runtime?: IAgentRuntime,
+    options: CloudTailscaleServiceOptions = {},
+  ) {
     super(runtime);
     this.fetchImpl = options.fetch ?? defaultFetch;
     this.cliRunner = options.cliRunner ?? defaultCliRunner;
@@ -100,44 +112,53 @@ export class CloudTailscaleService extends Service implements ITunnelService {
   }
 
   async start(): Promise<void> {
-    elizaLogger.info('[CloudTailscaleService] started');
+    elizaLogger.info("[CloudTailscaleService] started");
   }
 
   async stop(): Promise<void> {
     await this.stopTunnel();
   }
 
-  async startTunnel(port?: number, options: { accountId?: string } = {}): Promise<string | void> {
+  async startTunnel(
+    port?: number,
+    options: { accountId?: string } = {},
+  ): Promise<string | undefined> {
     if (this.isActive()) {
-      elizaLogger.warn('[CloudTailscaleService] tunnel already running');
+      elizaLogger.warn("[CloudTailscaleService] tunnel already running");
       return this.tunnelUrl ?? undefined;
     }
 
     if (port === undefined || port === null) {
       elizaLogger.warn(
-        '[CloudTailscaleService] startTunnel called without a port — service active but no tunnel started',
+        "[CloudTailscaleService] startTunnel called without a port — service active but no tunnel started",
       );
       return;
     }
 
     if (port < 1 || port > 65535) {
-      throw new Error('Invalid port number');
+      throw new Error("Invalid port number");
     }
 
-    const config = await validateTailscaleConfig(this.runtime, options.accountId);
+    const config = await validateTailscaleConfig(
+      this.runtime,
+      options.accountId,
+    );
     const { baseUrl, apiKey } = this.resolveCloudCredentials(options.accountId);
 
-    const response = await this.fetchImpl(`${baseUrl}/apis/tunnels/tailscale/auth-key`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+    const response = await this.fetchImpl(
+      `${baseUrl}/apis/tunnels/tailscale/auth-key`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          tags: config.TAILSCALE_TAGS,
+          expirySeconds: config.TAILSCALE_AUTH_KEY_EXPIRY_SECONDS,
+        }),
       },
-      body: JSON.stringify({
-        tags: config.TAILSCALE_TAGS,
-        expirySeconds: config.TAILSCALE_AUTH_KEY_EXPIRY_SECONDS,
-      }),
-    });
+    );
 
     if (!response.ok) {
       const text = await safeReadText(response);
@@ -150,7 +171,7 @@ export class CloudTailscaleService extends Service implements ITunnelService {
     const parsed = authKeyResponseSchema.safeParse(rawJson);
     if (!parsed.success) {
       throw new Error(
-        `Cloud Tailscale response malformed: ${parsed.error.issues.map((i) => i.message).join('; ')}`,
+        `Cloud Tailscale response malformed: ${parsed.error.issues.map((i) => i.message).join("; ")}`,
       );
     }
 
@@ -161,30 +182,32 @@ export class CloudTailscaleService extends Service implements ITunnelService {
     this.tunnelPort = port;
     this.startedAt = new Date();
     this.joinedTailnet = true;
-    elizaLogger.info(`[CloudTailscaleService] tunnel started: ${this.tunnelUrl}`);
+    elizaLogger.info(
+      `[CloudTailscaleService] tunnel started: ${this.tunnelUrl}`,
+    );
     return this.tunnelUrl;
   }
 
   async stopTunnel(_options: { accountId?: string } = {}): Promise<void> {
     if (!this.isActive() && !this.joinedTailnet) {
-      elizaLogger.warn('[CloudTailscaleService] no active tunnel to stop');
+      elizaLogger.warn("[CloudTailscaleService] no active tunnel to stop");
       return;
     }
     this.isShuttingDown = true;
-    elizaLogger.info('[CloudTailscaleService] stopping tunnel');
+    elizaLogger.info("[CloudTailscaleService] stopping tunnel");
 
     if (this.tunnelPort !== null) {
-      await this.cliRunner('tailscale', ['serve', 'reset']);
-      await this.cliRunner('tailscale', ['funnel', 'reset']);
+      await this.cliRunner("tailscale", ["serve", "reset"]);
+      await this.cliRunner("tailscale", ["funnel", "reset"]);
     }
 
     if (this.joinedTailnet) {
-      await this.cliRunner('tailscale', ['logout']);
+      await this.cliRunner("tailscale", ["logout"]);
     }
 
     this.cleanup();
     this.isShuttingDown = false;
-    elizaLogger.info('[CloudTailscaleService] tunnel stopped');
+    elizaLogger.info("[CloudTailscaleService] tunnel stopped");
   }
 
   getUrl(): string | null {
@@ -201,42 +224,52 @@ export class CloudTailscaleService extends Service implements ITunnelService {
       url: this.tunnelUrl,
       port: this.tunnelPort,
       startedAt: this.startedAt,
-      provider: 'tailscale',
+      provider: "tailscale",
     };
   }
 
   private async joinTailnet(payload: AuthKeyResponse): Promise<void> {
-    const result = await this.cliRunner('tailscale', ['up', `--auth-key=${payload.authKey}`]);
+    const result = await this.cliRunner("tailscale", [
+      "up",
+      `--auth-key=${payload.authKey}`,
+    ]);
     if (result.code !== 0) {
-      throw new Error(`tailscale up failed (code ${result.code}): ${result.stderr.trim()}`);
+      throw new Error(
+        `tailscale up failed (code ${result.code}): ${result.stderr.trim()}`,
+      );
     }
   }
 
   private async runServe(port: number, funnel: boolean): Promise<void> {
     const args = funnel
-      ? ['funnel', String(port)]
-      : ['serve', '--bg', '--https=443', `localhost:${port}`];
-    const result = await this.cliRunner('tailscale', args);
+      ? ["funnel", String(port)]
+      : ["serve", "--bg", "--https=443", `localhost:${port}`];
+    const result = await this.cliRunner("tailscale", args);
     if (result.code !== 0) {
-      throw new Error(`tailscale ${args[0]} failed (code ${result.code}): ${result.stderr.trim()}`);
+      throw new Error(
+        `tailscale ${args[0]} failed (code ${result.code}): ${result.stderr.trim()}`,
+      );
     }
   }
 
-  private resolveCloudCredentials(accountId?: string): { baseUrl: string; apiKey: string } {
+  private resolveCloudCredentials(accountId?: string): {
+    baseUrl: string;
+    apiKey: string;
+  } {
     const account = accountId
       ? resolveTailscaleAccount(readTailscaleAccounts(this.runtime), accountId)
       : null;
     const apiKey =
       readNonEmptyString(account?.cloudApiKey) ??
-      readNonEmptyString(this.runtime.getSetting('ELIZAOS_CLOUD_API_KEY'));
+      readNonEmptyString(this.runtime.getSetting("ELIZAOS_CLOUD_API_KEY"));
     if (!apiKey) {
       throw new Error(
-        'CloudTailscaleService requires ELIZAOS_CLOUD_API_KEY. Set it or use the local backend.',
+        "CloudTailscaleService requires ELIZAOS_CLOUD_API_KEY. Set it or use the local backend.",
       );
     }
     const baseRaw =
       readNonEmptyString(account?.cloudBaseUrl) ??
-      readNonEmptyString(this.runtime.getSetting('ELIZAOS_CLOUD_BASE_URL')) ??
+      readNonEmptyString(this.runtime.getSetting("ELIZAOS_CLOUD_BASE_URL")) ??
       CLOUD_BASE_FALLBACK;
     return { baseUrl: stripTrailingSlash(baseRaw), apiKey };
   }
@@ -256,28 +289,30 @@ function readNonEmptyString(value: unknown): string | null {
 }
 
 function stripTrailingSlash(url: string): string {
-  return url.replace(/\/+$/, '');
+  return url.replace(/\/+$/, "");
 }
 
 async function safeReadText(response: CloudFetchResponse): Promise<string> {
-  const text = await response.text().catch(() => '');
+  const text = await response.text().catch(() => "");
   return text.slice(0, 500);
 }
 
 function normalizeFetchResponse(value: unknown): CloudFetchResponse {
   if (!isRecord(value)) {
-    throw new Error('Cloud Tailscale fetch returned a non-object response');
+    throw new Error("Cloud Tailscale fetch returned a non-object response");
   }
 
   const { ok, status, statusText, json, text } = value;
   if (
-    typeof ok !== 'boolean' ||
-    typeof status !== 'number' ||
-    typeof statusText !== 'string' ||
-    typeof json !== 'function' ||
-    typeof text !== 'function'
+    typeof ok !== "boolean" ||
+    typeof status !== "number" ||
+    typeof statusText !== "string" ||
+    typeof json !== "function" ||
+    typeof text !== "function"
   ) {
-    throw new Error('Cloud Tailscale fetch response is missing required fields');
+    throw new Error(
+      "Cloud Tailscale fetch response is missing required fields",
+    );
   }
 
   return {
@@ -290,5 +325,5 @@ function normalizeFetchResponse(value: unknown): CloudFetchResponse {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === "object" && value !== null;
 }

@@ -4,6 +4,7 @@ import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { Action, ActionResult, IAgentRuntime } from "../types";
 import type { ContextEvent, ContextObject } from "../types/context-object";
 import type { JSONSchema, ToolDefinition } from "../types/model";
+import { filterByContextGate } from "./context-gates";
 import {
 	type ExecutePlannedToolCallContext,
 	type ExecutePlannedToolCallOptions,
@@ -17,7 +18,6 @@ import {
 	type PlannerToolCall,
 	runPlannerLoop,
 } from "./planner-loop";
-import { filterByContextGate } from "./context-gates";
 import type { RecordedStage, TrajectoryRecorder } from "./trajectory-recorder";
 
 /**

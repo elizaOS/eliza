@@ -1,8 +1,8 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { DetectedMusicEntity } from "../services/musicEntityDetectionService";
-import type { ExtractedMusicInfo } from "../services/wikipediaExtractionService";
 import type { MusicLibraryService } from "../services/musicLibraryService";
+import type { ExtractedMusicInfo } from "../services/wikipediaExtractionService";
 
 /**
  * Provider that uses LLMs to dynamically extract music information from Wikipedia

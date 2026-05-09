@@ -1,6 +1,6 @@
+import { EventEmitter } from "node:events";
 import type { Readable } from "node:stream";
 import { logger } from "@elizaos/core";
-import { EventEmitter } from "events";
 import type {
   AudioSubscription,
   BroadcastState,
@@ -222,7 +222,6 @@ export class Broadcast extends EventEmitter implements IAudioBroadcast {
         return "live";
       case "silence":
         return "silence";
-      case "stopped":
       default:
         return "stopped";
     }

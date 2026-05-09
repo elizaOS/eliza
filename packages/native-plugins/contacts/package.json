@@ -20,9 +20,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
+    "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
     "clean": "rimraf ./dist",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "bun run build"
   },
   "license": "MIT",
   "capacitor": {

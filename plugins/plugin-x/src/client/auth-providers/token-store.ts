@@ -111,21 +111,30 @@ export function chooseDefaultTokenStore(
     );
   }
 
-  throw new Error("Twitter OAuth token persistence requires runtime cache APIs.");
+  throw new Error(
+    "Twitter OAuth token persistence requires runtime cache APIs.",
+  );
 }
 
-function normalizeStoredOAuth2Tokens(value: unknown): StoredOAuth2Tokens | null {
+function normalizeStoredOAuth2Tokens(
+  value: unknown,
+): StoredOAuth2Tokens | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  const accessToken = typeof record.access_token === "string" ? record.access_token : undefined;
-  const expiresAt = typeof record.expires_at === "number" ? record.expires_at : undefined;
+  const accessToken =
+    typeof record.access_token === "string" ? record.access_token : undefined;
+  const expiresAt =
+    typeof record.expires_at === "number" ? record.expires_at : undefined;
   if (!accessToken || typeof expiresAt !== "number") return null;
   return {
     access_token: accessToken,
     refresh_token:
-      typeof record.refresh_token === "string" ? record.refresh_token : undefined,
+      typeof record.refresh_token === "string"
+        ? record.refresh_token
+        : undefined,
     expires_at: expiresAt,
     scope: typeof record.scope === "string" ? record.scope : undefined,
-    token_type: typeof record.token_type === "string" ? record.token_type : undefined,
+    token_type:
+      typeof record.token_type === "string" ? record.token_type : undefined,
   };
 }

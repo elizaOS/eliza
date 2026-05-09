@@ -560,7 +560,11 @@ function applyMetricsForStage(
 		metrics.toolCallsExecuted += 1;
 		if (stage.tool && !stage.tool.success) metrics.toolCallFailures += 1;
 	}
-	if (stage.kind === "evaluation" && stage.evaluation?.success === false) {
+	if (
+		stage.kind === "evaluation" &&
+		stage.evaluation?.success === false &&
+		stage.evaluation.decision === "FINISH"
+	) {
 		metrics.evaluatorFailures += 1;
 	}
 

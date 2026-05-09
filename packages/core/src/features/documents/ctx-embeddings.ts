@@ -52,7 +52,7 @@ const CONTENT_TYPE_RULES: Record<ContentType, string[]> = {
 		"2-3 sentences of following context that complete thoughts",
 		"Include definitions of terms used in the chunk",
 		"For narrative content: character/setting info needed for the chunk",
-		"Present context directly; no \"this chunk discusses\" phrasing",
+		'Present context directly; no "this chunk discusses" phrasing',
 	],
 	code: [
 		"Preserve syntax, indentation, and comments verbatim",
@@ -145,9 +145,8 @@ export const SYSTEM_PROMPTS = {
 	TECHNICAL: buildEnrichmentSystemPrompt({ contentType: "technical" }),
 };
 
-export const CONTEXTUAL_CHUNK_ENRICHMENT_PROMPT_TEMPLATE = buildEnrichmentPrompt(
-	{ contentType: "default", includeFullDocument: true },
-);
+export const CONTEXTUAL_CHUNK_ENRICHMENT_PROMPT_TEMPLATE =
+	buildEnrichmentPrompt({ contentType: "default", includeFullDocument: true });
 export const CACHED_CHUNK_PROMPT_TEMPLATE = buildEnrichmentPrompt({
 	contentType: "default",
 	includeFullDocument: false,

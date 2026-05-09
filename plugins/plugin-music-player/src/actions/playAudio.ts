@@ -228,7 +228,7 @@ const extractAudioUrl = (
   const youtubeRegex =
     /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
   const youtubeMatch = messageText.match(youtubeRegex);
-  if (youtubeMatch && youtubeMatch[1]) {
+  if (youtubeMatch?.[1]) {
     return {
       url: `https://www.youtube.com/watch?v=${youtubeMatch[1]}`,
       isSpotify: false,
@@ -619,7 +619,7 @@ export const playAudio: Action = {
       : null;
 
     // For Discord, we need the Discord service
-    if (isDiscord && (!discordService || !discordService.client)) {
+    if (isDiscord && !discordService?.client) {
       logger.error("Discord service not found or not initialized");
       await progress.fail("Discord service is not available.");
       return failureResult(
@@ -679,9 +679,9 @@ export const playAudio: Action = {
             artists?: { name: string }[];
           } | null = null;
 
-          if (musicLibrary && musicLibrary.spotifyClient) {
+          if (musicLibrary?.spotifyClient) {
             const spotifyClient = musicLibrary.spotifyClient;
-            if (spotifyClient.isConfigured && spotifyClient.isConfigured()) {
+            if (spotifyClient.isConfigured?.()) {
               const spotifyUrl = urlResult.spotifyInfo.searchQuery;
               if (urlResult.spotifyInfo.type === "track") {
                 const trackId = spotifyUrl.match(/track\/([a-zA-Z0-9]+)/)?.[1];
@@ -695,7 +695,7 @@ export const playAudio: Action = {
           }
 
           // Build search query from Spotify track info or use URL
-          if (spotifyTrackInfo && spotifyTrackInfo.name) {
+          if (spotifyTrackInfo?.name) {
             const artistNames =
               spotifyTrackInfo.artists?.map((a) => a.name).join(" ") || "";
             searchQuery = `${artistNames} ${spotifyTrackInfo.name}`.trim();
@@ -728,7 +728,7 @@ export const playAudio: Action = {
           // Try to get the last played song from music library (if available)
           try {
             const musicLibrary = runtime.getService("musicLibrary") as any;
-            if (musicLibrary && musicLibrary.getLastPlayedSong) {
+            if (musicLibrary?.getLastPlayedSong) {
               const lastSong = await musicLibrary.getLastPlayedSong();
               if (lastSong) {
                 logger.info(
@@ -790,7 +790,7 @@ export const playAudio: Action = {
         // Step 1: Check local music library first
         try {
           const musicLibrary = runtime.getService("musicLibrary") as any;
-          if (musicLibrary && musicLibrary.searchLibrary) {
+          if (musicLibrary?.searchLibrary) {
             logger.debug(`Searching local music library for: ${searchQuery}`);
             const libraryResults = await musicLibrary.searchLibrary(
               searchQuery,
@@ -885,7 +885,7 @@ export const playAudio: Action = {
         // First, check if we have this URL in our music library
         try {
           const musicLibrary = runtime.getService("musicLibrary") as any;
-          if (musicLibrary && musicLibrary.getSongByUrl) {
+          if (musicLibrary?.getSongByUrl) {
             logger.debug(`Checking library for URL: ${audioUrl}`);
             const libraryTrack = await musicLibrary.getSongByUrl(audioUrl);
 
@@ -1175,7 +1175,7 @@ export const playAudio: Action = {
       // Track the request in user preferences (background)
       try {
         const musicLibrary = runtime.getService("musicLibrary") as any;
-        if (musicLibrary && musicLibrary.trackTrackRequest) {
+        if (musicLibrary?.trackTrackRequest) {
           musicLibrary
             .trackTrackRequest(
               message.entityId,
@@ -1200,7 +1200,7 @@ export const playAudio: Action = {
         logger.info(
           `[PlayAudio] Music library service: ${musicLibrary ? "found" : "NOT FOUND"}`,
         );
-        if (musicLibrary && musicLibrary.addSong) {
+        if (musicLibrary?.addSong) {
           logger.info(
             `[PlayAudio] Adding to music library: "${videoTitle}" (${audioUrl})`,
           );

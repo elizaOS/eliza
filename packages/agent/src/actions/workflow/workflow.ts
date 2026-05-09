@@ -4,8 +4,8 @@
  *
  * Replaces the former CREATE_WORKFLOW / DELETE_WORKFLOW / TOGGLE_WORKFLOW_ACTIVE /
  * PROMOTE_TASK_TO_WORKFLOW / CREATE_TRIGGER_TASK / UPDATE_TRIGGER_TASK /
- * DELETE_TRIGGER_TASK / RUN_TRIGGER_NOW / N8N / CREATE_N8N_WORKFLOW /
- * MODIFY_EXISTING_N8N_WORKFLOW / GET_WORKFLOW_EXECUTIONS actions. Op-based dispatch:
+ * DELETE_TRIGGER_TASK / RUN_TRIGGER_NOW / GET_WORKFLOW_EXECUTIONS actions.
+ * Op-based dispatch:
  *
  *   Workflow ops (in-process via plugin-workflow's EmbeddedWorkflowService):
  *     create        — generate + create a new workflow from a seed prompt
@@ -1039,12 +1039,6 @@ export const workflowAction: Action = {
     "CONVERT_TASK_TO_WORKFLOW",
     "TASK_TO_WORKFLOW",
     "PROMOTE_AUTOMATION",
-    // Old N8N umbrella + children
-    "N8N",
-    "N8N_WORKFLOW",
-    "CREATE_N8N_WORKFLOW",
-    "BUILD_N8N_WORKFLOW",
-    "MODIFY_EXISTING_N8N_WORKFLOW",
     "MODIFY_WORKFLOW",
     "UPDATE_WORKFLOW",
     "EDIT_WORKFLOW",
@@ -1052,9 +1046,6 @@ export const workflowAction: Action = {
     "UPDATE_EXISTING_WORKFLOW",
     "CHANGE_EXISTING_WORKFLOW",
     "LOAD_WORKFLOW_FOR_EDIT",
-    "ACTIVATE_N8N_WORKFLOW",
-    "DEACTIVATE_N8N_WORKFLOW",
-    "DELETE_N8N_WORKFLOW",
     "GET_WORKFLOW_EXECUTIONS",
     "GET_EXECUTIONS",
     "SHOW_EXECUTIONS",

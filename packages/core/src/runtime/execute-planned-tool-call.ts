@@ -76,7 +76,7 @@ export async function executePlannedToolCall(
 					`Invalid arguments for action ${action.name}`,
 				{ parameterErrors: validation.errors },
 			),
-			);
+		);
 	}
 	const previousResults = [...(executorCtx.previousResults ?? [])];
 	const parameters =
@@ -139,7 +139,7 @@ export async function executePlannedToolCall(
 				accountPolicy.reason ??
 					`Action ${action.name} is not allowed for the selected connector account`,
 			),
-			);
+		);
 	}
 
 	const messageId = executorCtx.message.id as UUID | undefined;

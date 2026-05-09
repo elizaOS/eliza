@@ -353,7 +353,7 @@ export function syncResolvedApiPort(
 /**
  * `ELIZA_PLATFORM` values that the agent runtime treats as a mobile (Android /
  * iOS) embedding. On these platforms many host capabilities the agent normally
- * relies on (spawning subprocesses for n8n / signal-cli / sandbox engines,
+ * relies on (spawning subprocesses for signal-cli / sandbox engines,
  * `/usr/bin/open`, AppleScript, lsof, ffmpeg, etc.) either don't exist or
  * aren't reachable from the app sandbox. Code that would shell out should call
  * {@link isMobilePlatform} and short-circuit to a logged no-op instead of

@@ -4137,7 +4137,6 @@ function WorkflowAutomationDetailPane({
               input?.focus();
               if (!input) handleDescribeWorkflow();
             }}
-            status={workflowStatus}
           />
         </div>
       </DetailSection>

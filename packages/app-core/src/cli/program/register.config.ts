@@ -1,7 +1,6 @@
 import type { ElizaConfig } from "@elizaos/agent";
+import { getLogPrefix, theme } from "@elizaos/shared";
 import type { Command } from "commander";
-import { theme } from "@elizaos/shared";
-import { getLogPrefix } from "@elizaos/shared";
 
 export function registerConfigCli(program: Command) {
   const config = program
@@ -57,9 +56,7 @@ export function registerConfigCli(program: Command) {
     .option("--json", "Output as raw JSON")
     .action(async (opts: { all?: boolean; json?: boolean }) => {
       const { loadElizaConfig } = await import("@elizaos/agent");
-      const { buildConfigSchema } = await import(
-        "@elizaos/agent"
-      );
+      const { buildConfigSchema } = await import("@elizaos/agent");
 
       let config: ElizaConfig | undefined;
       try {

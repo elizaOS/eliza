@@ -19,7 +19,6 @@ const verbosePluginBuild =
   process.env.ELIZA_VERBOSE_PLUGIN_BUILD === "1";
 
 if (process.platform !== "darwin") {
-  // eslint-disable-next-line no-console
   console.warn(
     `[macosalarm] skipping swift helper build on ${process.platform}`,
   );
@@ -41,6 +40,5 @@ if (result.status !== 0) {
 }
 
 if (verbosePluginBuild) {
-  // eslint-disable-next-line no-console
   console.log(`[macosalarm] built ${outBin}`);
 }

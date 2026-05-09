@@ -128,6 +128,10 @@ when they are missing `tokenizer.ggml.merges`; bundle llama.cpp's `gguf-py`
 next to `llama-server` or set `GGUF_PYTHONPATH` in the template image.
 `LLAMA_CACHE_TYPE_K/V` can be set for TurboQuant-capable forks; stock upstream
 images will reject those cache types.
+The worker also disables Qwen thinking mode with
+`--chat-template-kwargs '{"enable_thinking":false}'`; the DFlash drafter was
+not trained on think-wrapped text and acceptance/throughput collapse when it is
+left on.
 
 ## vLLM Manifests
 

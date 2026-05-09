@@ -1,6 +1,6 @@
+import { countActionSearchKeywordMatches } from "../i18n/action-search-keywords";
 import type { ActionCatalog, ActionCatalogParent } from "./action-catalog";
 import { normalizeActionName } from "./action-catalog";
-import { countActionSearchKeywordMatches } from "../i18n/action-search-keywords";
 
 export type RetrievalStageName =
 	| "exact"
@@ -84,27 +84,27 @@ export function retrieveActions(
 	const stageRankings: Partial<
 		Record<RetrievalStageName, Map<string, number>>
 	> = {
-			exact: rankScores(exactScores),
-			regex: rankScores(regexScores),
-			keyword: rankScores(keywordScores),
-			bm25: rankScores(bm25Scores),
-			embedding: rankScores(embeddingScores),
-		};
+		exact: rankScores(exactScores),
+		regex: rankScores(regexScores),
+		keyword: rankScores(keywordScores),
+		bm25: rankScores(bm25Scores),
+		embedding: rankScores(embeddingScores),
+	};
 	const rrfScores = reciprocalRankFusion(stageRankings);
-		const maxRrf = Math.max(0, ...rrfScores.values());
-		const maxKeyword = Math.max(0, ...keywordScores.values());
-		const maxBm25 = Math.max(0, ...bm25Scores.values());
-		const maxEmbedding = Math.max(0, ...embeddingScores.values());
+	const maxRrf = Math.max(0, ...rrfScores.values());
+	const maxKeyword = Math.max(0, ...keywordScores.values());
+	const maxBm25 = Math.max(0, ...bm25Scores.values());
+	const maxEmbedding = Math.max(0, ...embeddingScores.values());
 
 	const results = input.catalog.parents.map((parent) => {
 		const normalizedName = parent.normalizedName;
-			const exact = exactScores.get(normalizedName) ?? 0;
-			const regex = regexScores.get(normalizedName) ?? 0;
-			const keywordRaw = keywordScores.get(normalizedName) ?? 0;
-			const bm25Raw = bm25Scores.get(normalizedName) ?? 0;
-			const embeddingRaw = embeddingScores.get(normalizedName) ?? 0;
-			const keyword = maxKeyword > 0 ? keywordRaw / maxKeyword : 0;
-			const bm25 = maxBm25 > 0 ? bm25Raw / maxBm25 : 0;
+		const exact = exactScores.get(normalizedName) ?? 0;
+		const regex = regexScores.get(normalizedName) ?? 0;
+		const keywordRaw = keywordScores.get(normalizedName) ?? 0;
+		const bm25Raw = bm25Scores.get(normalizedName) ?? 0;
+		const embeddingRaw = embeddingScores.get(normalizedName) ?? 0;
+		const keyword = maxKeyword > 0 ? keywordRaw / maxKeyword : 0;
+		const bm25 = maxBm25 > 0 ? bm25Raw / maxBm25 : 0;
 		const embedding = maxEmbedding > 0 ? embeddingRaw / maxEmbedding : 0;
 		const rrfRaw = rrfScores.get(normalizedName) ?? 0;
 		const rrf = maxRrf > 0 ? rrfRaw / maxRrf : 0;
@@ -113,14 +113,14 @@ export function retrieveActions(
 		if (exact > 0) {
 			stageScores.exact = exact;
 		}
-			if (regex > 0) {
-				stageScores.regex = regex;
-			}
-			if (keyword > 0) {
-				stageScores.keyword = roundScore(keyword);
-			}
-			if (bm25 > 0) {
-				stageScores.bm25 = roundScore(bm25);
+		if (regex > 0) {
+			stageScores.regex = regex;
+		}
+		if (keyword > 0) {
+			stageScores.keyword = roundScore(keyword);
+		}
+		if (bm25 > 0) {
+			stageScores.bm25 = roundScore(bm25);
 		}
 		if (embedding > 0) {
 			stageScores.embedding = roundScore(embedding);
@@ -129,11 +129,9 @@ export function retrieveActions(
 		const score = clampScore(
 			Math.max(
 				exact,
-					regex,
-					keyword > 0 ? 0.35 + keyword * 0.5 : 0,
-					bm25 > 0
-						? 0.28 + bm25 * (isBareSingleTokenQuery ? 0.38 : 0.49)
-					: 0,
+				regex,
+				keyword > 0 ? 0.35 + keyword * 0.5 : 0,
+				bm25 > 0 ? 0.28 + bm25 * (isBareSingleTokenQuery ? 0.38 : 0.49) : 0,
 				embedding > 0 ? 0.25 + embedding * 0.45 : 0,
 				rrf > 0 ? 0.2 + rrf * (isBareSingleTokenQuery ? 0.45 : 0.5) : 0,
 			),
@@ -447,7 +445,9 @@ function dedupeNormalizedStrings(values: string[] | undefined): string[] {
 	return result;
 }
 
-function normalizeTextList(value: string | readonly string[] | undefined): string[] {
+function normalizeTextList(
+	value: string | readonly string[] | undefined,
+): string[] {
 	if (typeof value === "string") {
 		return [value];
 	}

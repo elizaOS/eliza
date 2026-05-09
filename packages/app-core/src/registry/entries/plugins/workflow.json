@@ -1,29 +1,12 @@
 {
   "id": "workflow",
   "name": "Workflow",
-  "description": "Natural-language workflow actions (create, activate, deactivate, delete). Eliza auto-resolves WORKFLOW_HOST and WORKFLOW_API_KEY by minting a short-lived token from the Eliza Cloud workflow gateway when paired (the cloud key itself is never passed through). Explicit env/config values override.",
+  "description": "Natural-language workflow actions (create, activate, deactivate, delete). Workflows run in-process with the agent runtime using p1p3s.",
   "npmName": "@elizaos/plugin-workflow",
   "version": "1.2.10",
   "source": "bundled",
   "tags": ["workflow", "automation"],
-  "config": {
-    "WORKFLOW_HOST": {
-      "type": "string",
-      "required": false,
-      "sensitive": false,
-      "label": "Workflow Host",
-      "help": "Workflow service instance URL. Leave blank — Eliza auto-resolves this via the Eliza Cloud workflow gateway when cloud is authenticated.",
-      "advanced": false
-    },
-    "WORKFLOW_API_KEY": {
-      "type": "secret",
-      "required": false,
-      "sensitive": true,
-      "label": "Workflow Api Key",
-      "help": "Workflow service API key. Leave blank — Eliza auto-resolves this (cloud gateway token). Only set this to override the auto-resolved credential.",
-      "advanced": false
-    }
-  },
+  "config": {},
   "render": {
     "visible": true,
     "pinTo": [],

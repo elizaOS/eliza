@@ -89,10 +89,6 @@ export class SmartMusicFetchService extends Service {
   capabilityDescription =
     "Intelligently fetches music from multiple sources with automatic fallback";
 
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
-  }
-
   static async start(runtime: IAgentRuntime): Promise<SmartMusicFetchService> {
     logger.debug(
       `Starting SmartMusicFetchService for agent ${runtime.character.name}`,
@@ -237,7 +233,7 @@ export class SmartMusicFetchService extends Service {
   ): Promise<{ found: boolean; url?: string; tracks?: any[] }> {
     try {
       const musicLibrary = this.runtime?.getService("musicLibrary") as any;
-      if (!musicLibrary || !musicLibrary.searchTracks) {
+      if (!musicLibrary?.searchTracks) {
         return { found: false };
       }
 

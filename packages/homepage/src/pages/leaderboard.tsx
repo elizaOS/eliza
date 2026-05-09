@@ -1,27 +1,27 @@
-import { useRef, useState, useCallback, useEffect } from "react";
+import {
+  animated,
+  to,
+  useSpring,
+  useSprings,
+  useTrail,
+} from "@react-spring/web";
+import { useDrag } from "@use-gesture/react";
+import { getCountries, getCountryCallingCode } from "libphonenumber-js";
 import type {
   ButtonHTMLAttributes,
   ComponentType,
   HTMLAttributes,
   SVGProps,
 } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  useSpring,
-  useSprings,
-  useTrail,
-  animated,
-  to,
-} from "@react-spring/web";
-import { useDrag } from "@use-gesture/react";
-import { getCountries, getCountryCallingCode } from "libphonenumber-js";
-import ShaderBackground from "@/components/ShaderBackground/ShaderBackground";
-import ModelB, { type ModelBHandle } from "@/components/ModelViewers/ModelB";
 import BlobButton from "@/components/BlobButton";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
+import ModelB, { type ModelBHandle } from "@/components/ModelViewers/ModelB";
+import ShaderBackground from "@/components/ShaderBackground/ShaderBackground";
+import VideoCall from "@/components/VideoCall";
 import { ELIZA_PHONE_NUMBER } from "@/lib/contact";
 import type { SpringAnimatedStyle } from "@/lib/spring-types";
-import VideoCall from "@/components/VideoCall";
 
 type AnimatedHtmlProps<T extends HTMLElement> = Omit<
   HTMLAttributes<T>,
@@ -221,7 +221,7 @@ export default function Leaderboard() {
     // Phase 1: scale up to 1.05 (0-500ms)
     lScaleApi.start({
       scale: 1.15,
-      config: { duration: 500, easing: (t: number) => 1 - Math.pow(1 - t, 3) },
+      config: { duration: 500, easing: (t: number) => 1 - (1 - t) ** 3 },
     });
     // Phase 2: scale down to 0.8 (500-1000ms)
     const t1 = setTimeout(() => {
@@ -309,7 +309,7 @@ export default function Leaderboard() {
     const phase1 = () => {
       const elapsed = performance.now() - t0;
       const progress = Math.min(elapsed / 400, 1);
-      const s = 1 - Math.pow(1 - progress, 3);
+      const s = 1 - (1 - progress) ** 3;
       const scale = 800 + (14 - 800) * s;
       eDisplaceRef.current?.setAttribute("scale", String(scale));
       if (progress < 1) {
@@ -366,7 +366,7 @@ export default function Leaderboard() {
     const phase1 = () => {
       const elapsed = performance.now() - t0;
       const progress = Math.min(elapsed / blurDuration, 1);
-      const ease = 1 - Math.pow(1 - progress, 3);
+      const ease = 1 - (1 - progress) ** 3;
       aBlurRef.current?.setAttribute(
         "stdDeviation",
         String(startBlur * (1 - ease)),
@@ -392,7 +392,7 @@ export default function Leaderboard() {
         // Scale #fa from 1.2 -> 1 (ease-out cubic, starts from swap point)
         if (progress >= 0.5) {
           const scaleProgress = Math.min((progress - 0.5) / 0.5, 1);
-          const ease = 1 - Math.pow(1 - scaleProgress, 3);
+          const ease = 1 - (1 - scaleProgress) ** 3;
           const s = startScale + (1 - startScale) * ease;
           faScaleRef.current?.setAttribute(
             "transform",
@@ -425,7 +425,7 @@ export default function Leaderboard() {
         const elapsed = performance.now() - t0;
         const progress = Math.min(elapsed / duration, 1);
         // ease-out cubic
-        const w = 1 - Math.pow(1 - progress, 3);
+        const w = 1 - (1 - progress) ** 3;
         const wipeX = 315 + w * 475;
         clipOldRef.current?.setAttribute(
           "points",
@@ -512,8 +512,8 @@ export default function Leaderboard() {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 320) + "px";
-  }, [tryInput]);
+    el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
+  }, []);
 
   const formatPhone = useCallback((digits: string, pattern: string) => {
     let result = "";
@@ -685,42 +685,39 @@ export default function Leaderboard() {
 
   const targetIndex = platforms.indexOf(platform);
 
-  const changePlatform = useCallback(
-    (newPlatform: Platform) => {
-      const newIndex = platforms.indexOf(newPlatform);
-      const oldIndex = prevIndex.current;
-      if (newIndex === oldIndex) return;
+  const changePlatform = useCallback((newPlatform: Platform) => {
+    const newIndex = platforms.indexOf(newPlatform);
+    const oldIndex = prevIndex.current;
+    if (newIndex === oldIndex) return;
 
-      setPlatform(newPlatform);
-      if (newPlatform !== "try") setTryPlatform(newPlatform);
-      setSquishing(true);
-      if (newPlatform !== "try") {
-        modelRef.current?.spin(newIndex > oldIndex ? -1 : 1);
-        setTimeout(() => modelRef.current?.restartMessages(), 200);
-      }
-      setTimeout(() => {
-        setSquishing(false);
-        prevIndex.current = newIndex;
-      }, 100);
+    setPlatform(newPlatform);
+    if (newPlatform !== "try") setTryPlatform(newPlatform);
+    setSquishing(true);
+    if (newPlatform !== "try") {
+      modelRef.current?.spin(newIndex > oldIndex ? -1 : 1);
+      setTimeout(() => modelRef.current?.restartMessages(), 200);
+    }
+    setTimeout(() => {
+      setSquishing(false);
+      prevIndex.current = newIndex;
+    }, 100);
 
-      if (newIndex === 0) {
-        setBarBounceLeft(true);
-        setTimeout(() => setBarBounceLeft(false), 150);
-      }
-      if (newIndex === 2) {
-        setBarBounceRight(true);
-        setTimeout(() => setBarBounceRight(false), 150);
-      }
-      if (newIndex === 3) {
-        setTryBounce("enter");
-        setTimeout(() => setTryBounce(false), 150);
-      } else if (oldIndex === 3) {
-        setTryBounce("leave");
-        setTimeout(() => setTryBounce(false), 150);
-      }
-    },
-    [platforms],
-  );
+    if (newIndex === 0) {
+      setBarBounceLeft(true);
+      setTimeout(() => setBarBounceLeft(false), 150);
+    }
+    if (newIndex === 2) {
+      setBarBounceRight(true);
+      setTimeout(() => setBarBounceRight(false), 150);
+    }
+    if (newIndex === 3) {
+      setTryBounce("enter");
+      setTimeout(() => setTryBounce(false), 150);
+    } else if (oldIndex === 3) {
+      setTryBounce("leave");
+      setTimeout(() => setTryBounce(false), 150);
+    }
+  }, []);
 
   // Indicator left offsets relative to the flex wrapper
   // 0-2: barBorder(1) + barPad(6) + index * 52
@@ -753,7 +750,7 @@ export default function Leaderboard() {
       if (next < 0 || next > 3) return;
       changePlatform(platforms[next]);
     },
-    [platform, platforms, changePlatform],
+    [platform, changePlatform],
   );
 
   const bind = useDrag(
@@ -990,8 +987,7 @@ export default function Leaderboard() {
                 onChange={(e) => {
                   setTryInput(e.target.value);
                   e.target.style.height = "auto";
-                  e.target.style.height =
-                    Math.min(e.target.scrollHeight, 320) + "px";
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 320)}px`;
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
@@ -1078,8 +1074,7 @@ export default function Leaderboard() {
               onChange={(e) => {
                 setTryInput(e.target.value);
                 e.target.style.height = "auto";
-                e.target.style.height =
-                  Math.min(e.target.scrollHeight, 320) + "px";
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 320)}px`;
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {

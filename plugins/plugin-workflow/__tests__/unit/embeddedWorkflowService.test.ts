@@ -71,7 +71,7 @@ describe('EmbeddedWorkflowService', () => {
     ).rejects.toThrow('Embedded workflow runtime does not support node');
   });
 
-  test('WorkflowService can select embedded backend without WORKFLOW_HOST or WORKFLOW_API_KEY', async () => {
+  test('WorkflowService uses the embedded backend without external runtime settings', async () => {
     const harness = await persistentRuntime({ WORKFLOW_BACKEND: 'embedded' });
     const embedded = await EmbeddedWorkflowService.start(harness.runtime);
     const serviceRuntime = runtime(

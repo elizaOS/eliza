@@ -97,9 +97,9 @@ console.log("Generating TypeScript declarations...");
 }
 
 // Ensure declaration entry points
-const reexportNode = `export * from '../index.node';\nexport { default } from '../index.node';\n`;
-const reexportBrowser = `export * from '../index.browser';\nexport { default } from '../index.browser';\n`;
-const reexportRoot = `export * from './index.node';\nexport { default } from './index.node';\nexport * from './schema/index';\nexport type { DrizzleDatabase } from './types';\n`;
+const reexportNode = `export * from '../index.node.js';\nexport { default } from '../index.node.js';\n`;
+const reexportBrowser = `export * from '../index.browser.js';\nexport { default } from '../index.browser.js';\n`;
+const reexportRoot = `export * from './index.node.js';\nexport { default } from './index.node.js';\nexport * from './schema/index.js';\nexport type { DrizzleDatabase } from './types.js';\n`;
 const reexportRootRuntime = `export * from './node/index.node.js';\nexport { default } from './node/index.node.js';\n`;
 
 await writeFile(join(DIST, "node", "index.d.ts"), reexportNode);
@@ -112,15 +112,15 @@ await writeFile(join(DIST, "index.d.ts"), reexportRoot);
 await writeFile(join(DIST, "index.js"), reexportRootRuntime);
 await writeFile(
   join(DIST, "drizzle", "index.d.ts"),
-  `export { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, type SQL, sql } from 'drizzle-orm';\n`,
+  `export { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, type SQL, sql } from 'drizzle-orm';\n`
 );
 await writeFile(
   join(DIST, "drizzle", "index.js"),
-  `export { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';\n`,
+  `export { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';\n`
 );
 await appendFile(
   join(DIST, "index.node.d.ts"),
-  `\nexport * from './schema/index';\nexport type { DrizzleDatabase } from './types';\n`
+  `\nexport * from './schema/index.js';\nexport type { DrizzleDatabase } from './types.js';\n`
 );
 
 console.log("Build complete!");

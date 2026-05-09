@@ -1,8 +1,8 @@
 import {
 	existsSync,
 	mkdirSync,
-	readFileSync,
 	readdirSync,
+	readFileSync,
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -19,9 +19,9 @@ import { resolveStateDir } from "../../../utils/state-dir.ts";
 import {
 	formatTrajectoryForPrompt,
 	getTrajectoryService,
+	type SkillTrajectoryService,
 	type SkillTrajectory as Trajectory,
 	type SkillTrajectoryListItem as TrajectoryListItem,
-	type SkillTrajectoryService,
 } from "./trajectory-evaluator-utils.ts";
 
 const MIN_STEPS_FOR_EXTRACTION = 5;

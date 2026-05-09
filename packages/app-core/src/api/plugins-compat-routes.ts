@@ -6,27 +6,25 @@ import { fileURLToPath } from "node:url";
 import {
   type AdvancedCapabilityPluginId,
   applyPluginRuntimeMutation,
+  CONNECTOR_ENV_MAP,
   discoverPluginsFromManifest,
   findPrimaryEnvKey,
   isAdvancedCapabilityPluginId,
+  isVaultRef,
   loadElizaConfig,
   type PluginRuntimeApplyResult,
+  parseVaultRef,
   readBundledPluginPackageMetadata,
   resolveAdvancedCapabilitiesEnabled,
   saveElizaConfig,
 } from "@elizaos/agent";
-import {
-  isVaultRef,
-  parseVaultRef,
-} from "@elizaos/agent";
 import { type AgentRuntime, logger } from "@elizaos/core";
-import { asRecord } from "@elizaos/shared";
-import { VaultMissError } from "@elizaos/vault";
-import { CONNECTOR_ENV_MAP } from "@elizaos/agent";
 import {
+  asRecord,
   CONNECTOR_PLUGINS,
   STREAMING_PLUGINS,
 } from "@elizaos/shared";
+import { VaultMissError } from "@elizaos/vault";
 import { loadRegistry } from "../registry";
 import type { ConfigField, RegistryEntry } from "../registry/schema";
 import {

@@ -83,9 +83,7 @@ async function build() {
 
   const subpathStart = Date.now();
   console.log("📦 Building exported subpaths...");
-  const subpathEntries = Array.from(
-    new Bun.Glob("src/**/*.{ts,tsx}").scanSync("."),
-  )
+  const subpathEntries = Array.from(new Bun.Glob("src/**/*.{ts,tsx}").scanSync("."))
     .filter((entry) => {
       if (entry.includes("__tests__/") || entry.endsWith(".test.ts")) return false;
       if (entry === "src/index.node.ts" || entry === "src/index.browser.ts") return false;
@@ -123,8 +121,8 @@ async function build() {
   await mkdir("dist/cjs", { recursive: true });
   await writeFile(
     "dist/node/index.d.ts",
-    `export * from '../index';
-export { default } from '../index';
+    `export * from '../index.node';
+export { default } from '../index.node';
 `
   );
   await writeFile(
@@ -135,8 +133,8 @@ export { default } from '../index';
   );
   await writeFile(
     "dist/cjs/index.d.ts",
-    `export * from '../index';
-export { default } from '../index';
+    `export * from '../index.node';
+export { default } from '../index.node';
 `
   );
   console.log(`✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`);

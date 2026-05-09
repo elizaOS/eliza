@@ -8,8 +8,8 @@
  */
 import "@elizaos/shared";
 import process from "node:process";
-import { applyCliProfileEnv, parseCliProfileArgs } from "./cli/profile";
 import { getLogPrefix } from "@elizaos/shared";
+import { applyCliProfileEnv, parseCliProfileArgs } from "./cli/profile";
 
 process.title = process.env.APP_CLI_NAME?.trim() || "eliza";
 
