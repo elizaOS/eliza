@@ -23,8 +23,13 @@ import { useCallback, useMemo, useState } from "react";
 import { client } from "../../api";
 import type { WorkbenchTask } from "../../api/client-types-config";
 import { CRON_PRESETS, formatSchedule } from "../../utils/cron-format";
+import {
+  encodeScheduleTags,
+  type TaskScheduleKind,
+} from "../../utils/task-schedule";
 
-export type TaskScheduleKind = "once" | "recurring" | "event";
+export { decodeScheduleTags, encodeScheduleTags } from "../../utils/task-schedule";
+export type { TaskScheduleKind } from "../../utils/task-schedule";
 
 export interface TaskEditorInitialValue {
   id?: string;
@@ -45,50 +50,6 @@ export interface TaskEditorProps {
   availableEvents?: ReadonlyArray<{ id: string; label: string }>;
   onSaved?: (task: WorkbenchTask) => void;
   onCancel?: () => void;
-}
-
-const SCHEDULE_TAG_PREFIX = "schedule:";
-const EVENT_TAG_PREFIX = "event:";
-
-/**
- * Encode the chosen schedule into the WorkbenchTask `tags` array. Keeps
- * the on-disk shape simple and doesn't require a backend migration.
- */
-export function encodeScheduleTags(
-  kind: TaskScheduleKind,
-  cronExpression: string,
-  eventName: string,
-): string[] {
-  if (kind === "recurring" && cronExpression.trim()) {
-    return [`${SCHEDULE_TAG_PREFIX}${cronExpression.trim()}`];
-  }
-  if (kind === "event" && eventName.trim()) {
-    return [`${EVENT_TAG_PREFIX}${eventName.trim()}`];
-  }
-  return [];
-}
-
-/** Decode the schedule encoded by `encodeScheduleTags`. */
-export function decodeScheduleTags(
-  tags: ReadonlyArray<string> | undefined,
-): { kind: TaskScheduleKind; cronExpression: string; eventName: string } {
-  for (const tag of tags ?? []) {
-    if (tag.startsWith(SCHEDULE_TAG_PREFIX)) {
-      return {
-        kind: "recurring",
-        cronExpression: tag.slice(SCHEDULE_TAG_PREFIX.length),
-        eventName: "",
-      };
-    }
-    if (tag.startsWith(EVENT_TAG_PREFIX)) {
-      return {
-        kind: "event",
-        cronExpression: "",
-        eventName: tag.slice(EVENT_TAG_PREFIX.length),
-      };
-    }
-  }
-  return { kind: "once", cronExpression: "", eventName: "" };
 }
 
 export function TaskEditor({

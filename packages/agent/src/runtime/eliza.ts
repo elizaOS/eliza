@@ -2585,14 +2585,20 @@ const LEVEL_TO_NAME: Record<number, string> = {
   60: "fatal",
 };
 
+type ChatLogEntry = LogEntry & {
+  roomId?: string;
+  runtime?: AgentRuntime & {
+    logLevelOverrides?: Map<string, string>;
+  };
+};
+
 export const logToChatListener = (entry: LogEntry) => {
-  if (entry.roomId && entry.runtime) {
-    const runtime = entry.runtime as unknown as AgentRuntime & {
-      logLevelOverrides?: Map<string, string>;
-    };
+  const chatEntry = entry as ChatLogEntry;
+  if (chatEntry.roomId && chatEntry.runtime) {
+    const runtime = chatEntry.runtime;
     // access dynamic property
     const overrides = runtime.logLevelOverrides;
-    const overrideLevel = overrides?.get(String(entry.roomId));
+    const overrideLevel = overrides?.get(String(chatEntry.roomId));
 
     if (overrideLevel) {
       const levelKey = entry.level as number;

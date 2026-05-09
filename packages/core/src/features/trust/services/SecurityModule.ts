@@ -1001,13 +1001,11 @@ export class SecurityModule {
 
 		if (similarUsers.length > 0) {
 			const mostSimilar = similarUsers[0];
-			const visualSimilarity = this.calculateVisualSimilarity(
-				username,
-				mostSimilar,
-			);
-			const impersonatedMessages = this.messageHistory.get(
-				mostSimilar as unknown as UUID,
-			);
+				const visualSimilarity = this.calculateVisualSimilarity(
+					username,
+					mostSimilar,
+				);
+				const impersonatedMessages = this.messageHistory.get(mostSimilar);
 			const hasRecentActivity = impersonatedMessages?.some(
 				(m) => Date.now() - m.timestamp < 24 * 60 * 60 * 1000,
 			);

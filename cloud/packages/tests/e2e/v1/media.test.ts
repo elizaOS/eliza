@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { readJson } from "../helpers/json-body";
+
+type EmbeddingsResponse = {
+  data?: unknown;
+  embeddings?: unknown;
+};
 
 /**
  * Media Generation API E2E Tests
@@ -76,7 +82,7 @@ describe("Embeddings API", () => {
     expect([200, 402, 429, 503]).toContain(response.status);
 
     if (response.status === 200) {
-      const body = (await response.json()) as any;
+      const body = await readJson<EmbeddingsResponse>(response);
       expect(body.data || body.embeddings).toBeTruthy();
     }
   });

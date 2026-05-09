@@ -3,6 +3,7 @@ import {
 	type Component,
 	type IAgentRuntime,
 	type Metadata,
+	type MetadataValue,
 	Service,
 	type UUID,
 } from "../../../types/index.ts";
@@ -39,6 +40,140 @@ const DEFAULT_CONFIG: TrustCalculationConfig = {
 		transparency: 0.1,
 	},
 };
+
+const TRUST_EVIDENCE_TYPE_VALUES = new Set<string>(
+	Object.values(TrustEvidenceType),
+);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isTrustEvidenceType(value: unknown): value is TrustEvidenceType {
+	return typeof value === "string" && TRUST_EVIDENCE_TYPE_VALUES.has(value);
+}
+
+function isUuidValue(value: unknown): value is UUID {
+	return typeof value === "string";
+}
+
+function isTrustDimensions(value: unknown): value is TrustDimensions {
+	return (
+		isRecord(value) &&
+		typeof value.reliability === "number" &&
+		typeof value.competence === "number" &&
+		typeof value.integrity === "number" &&
+		typeof value.benevolence === "number" &&
+		typeof value.transparency === "number"
+	);
+}
+
+function isTrustContext(value: unknown): value is TrustContext {
+	return isRecord(value) && isUuidValue(value.evaluatorId);
+}
+
+function isTrustEvidence(value: unknown): value is TrustEvidence {
+	return (
+		isRecord(value) &&
+		isTrustEvidenceType(value.type) &&
+		typeof value.timestamp === "number" &&
+		typeof value.impact === "number" &&
+		typeof value.weight === "number" &&
+		typeof value.description === "string" &&
+		isUuidValue(value.reportedBy) &&
+		typeof value.verified === "boolean" &&
+		isTrustContext(value.context) &&
+		isUuidValue(value.targetEntityId) &&
+		isUuidValue(value.evaluatorId)
+	);
+}
+
+function isTrustProfile(value: unknown): value is TrustProfile {
+	if (!isRecord(value)) return false;
+	const trend = value.trend;
+	return (
+		isUuidValue(value.entityId) &&
+		isTrustDimensions(value.dimensions) &&
+		typeof value.overallTrust === "number" &&
+		typeof value.confidence === "number" &&
+		typeof value.interactionCount === "number" &&
+		Array.isArray(value.evidence) &&
+		value.evidence.every(isTrustEvidence) &&
+		typeof value.lastCalculated === "number" &&
+		typeof value.calculationMethod === "string" &&
+		isRecord(trend) &&
+		(trend.direction === "increasing" ||
+			trend.direction === "decreasing" ||
+			trend.direction === "stable") &&
+		typeof trend.changeRate === "number" &&
+		typeof trend.lastChangeAt === "number" &&
+		isUuidValue(value.evaluatorId)
+	);
+}
+
+function toMetadataValue(value: unknown): MetadataValue {
+	if (
+		value === null ||
+		value === undefined ||
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		return value;
+	}
+	if (Array.isArray(value)) {
+		return value.map(toMetadataValue);
+	}
+	if (isRecord(value)) {
+		const metadata: Metadata = {};
+		for (const [key, nestedValue] of Object.entries(value)) {
+			metadata[key] = toMetadataValue(nestedValue);
+		}
+		return metadata;
+	}
+	return String(value);
+}
+
+function trustEvidenceToMetadata(evidence: TrustEvidence): Metadata {
+	return {
+		type: evidence.type,
+		timestamp: evidence.timestamp,
+		impact: evidence.impact,
+		weight: evidence.weight,
+		description: evidence.description,
+		reportedBy: evidence.reportedBy,
+		verified: evidence.verified,
+		context: toMetadataValue(evidence.context),
+		targetEntityId: evidence.targetEntityId,
+		evaluatorId: evidence.evaluatorId,
+		metadata: toMetadataValue(evidence.metadata),
+	};
+}
+
+function trustProfileToMetadata(profile: TrustProfile): Metadata {
+	return {
+		entityId: profile.entityId,
+		dimensions: {
+			reliability: profile.dimensions.reliability,
+			competence: profile.dimensions.competence,
+			integrity: profile.dimensions.integrity,
+			benevolence: profile.dimensions.benevolence,
+			transparency: profile.dimensions.transparency,
+		},
+		overallTrust: profile.overallTrust,
+		confidence: profile.confidence,
+		interactionCount: profile.interactionCount,
+		evidence: profile.evidence.map(trustEvidenceToMetadata),
+		lastCalculated: profile.lastCalculated,
+		calculationMethod: profile.calculationMethod,
+		trend: {
+			direction: profile.trend.direction,
+			changeRate: profile.trend.changeRate,
+			lastChangeAt: profile.trend.lastChangeAt,
+		},
+		evaluatorId: profile.evaluatorId,
+	};
+}
 
 /**
  * Evidence impact mapping for different evidence types
@@ -570,7 +705,8 @@ export class TrustEngine extends Service {
 			.filter(
 				(c) => c.type === "trust_profile" && c.agentId === context.evaluatorId,
 			)
-			.map((c) => c.data as unknown as TrustProfile)
+			.map((c) => c.data)
+			.filter(isTrustProfile)
 			.sort((a, b) => b.lastCalculated - a.lastCalculated)
 			.slice(0, 10);
 
@@ -630,7 +766,10 @@ export class TrustEngine extends Service {
 
 		const evidence: TrustEvidence[] = [];
 		for (const component of evidenceComponents) {
-			const ev = component.data as unknown as TrustEvidence;
+			if (!isTrustEvidence(component.data)) {
+				continue;
+			}
+			const ev = component.data;
 
 			// Apply time window filter
 			if (context.timeWindow) {
@@ -722,7 +861,7 @@ export class TrustEngine extends Service {
 			roomId: context.roomId || stringToUuid("trust-global"),
 			worldId,
 			sourceEntityId: context.evaluatorId,
-			data: profile as unknown as Metadata,
+			data: trustProfileToMetadata(profile),
 			createdAt: existingComponent?.createdAt || Date.now(),
 		};
 

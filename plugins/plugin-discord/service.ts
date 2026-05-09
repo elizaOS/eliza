@@ -92,18 +92,24 @@ import {
 	isGuildOnlyCommand,
 	transformCommandToDiscordApi,
 } from "./discord-commands";
-import { setupDiscordEventListeners } from "./discord-events";
+import {
+	setupDiscordEventListeners,
+	type DiscordServiceInternals,
+} from "./discord-events";
 import {
 	buildMemoryFromMessage as buildMemoryFromMessageExtracted,
 	fetchChannelHistory as fetchChannelHistoryExtracted,
+	type HistoryServiceInternals,
 } from "./discord-history";
 import {
 	handleInteractionCreate as handleInteractionCreateExtracted,
 	onReady as onReadyExtracted,
+	type InteractionServiceInternals,
 } from "./discord-interactions";
 import {
 	handleReactionAdd as handleReactionAddExtracted,
 	handleReactionRemove as handleReactionRemoveExtracted,
+	type ReactionServiceInternals,
 } from "./discord-reactions";
 import { getDiscordSettings } from "./environment";
 import {
@@ -114,6 +120,7 @@ import {
 } from "./identity";
 import { MessageManager } from "./messages";
 import type {
+	BuildMemoryFromMessageOptions,
 	ChannelHistoryOptions,
 	ChannelHistoryResult,
 	DiscordSettings,
@@ -133,6 +140,19 @@ const DISCORD_SNOWFLAKE_PATTERN = /^\d{15,20}$/;
 type MessageConnectorRegistration = Parameters<
 	IAgentRuntime["registerMessageConnector"]
 >[0];
+
+type DiscordSettingsForEvents = DiscordSettings & {
+	shouldIgnoreBotMessages: boolean;
+};
+
+type DiscordAccountServiceFacade = IDiscordService &
+	DiscordServiceInternals &
+	HistoryServiceInternals &
+	InteractionServiceInternals &
+	ReactionServiceInternals & {
+		client: DiscordJsClient;
+		discordSettings: DiscordSettingsForEvents;
+	};
 
 type ConnectorFetchMessagesParams = {
 	target?: TargetInfo;

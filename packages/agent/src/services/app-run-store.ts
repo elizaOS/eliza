@@ -201,10 +201,10 @@ function normalizeSessionState(value: unknown): AppSessionState | null {
         }
       : {}),
     ...(typeof value.summary === "string" || value.summary === null
-      ? { summary: value.summary }
+      ? { summary: value.summary as string | null }
       : {}),
     ...(typeof value.goalLabel === "string" || value.goalLabel === null
-      ? { goalLabel: value.goalLabel }
+      ? { goalLabel: value.goalLabel as string | null }
       : {}),
     ...(Array.isArray(value.suggestedPrompts)
       ? {

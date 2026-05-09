@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { readJson } from "../helpers/json-body";
+
+type CreditsBalanceResponse = {
+  balance?: number;
+  creditBalance?: number;
+};
+
+type CreditTransactionsResponse = { transactions?: unknown[] } | unknown[];
 
 /**
  * Credits API E2E Tests
@@ -17,7 +25,7 @@ describe("Credits API", () => {
     });
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<CreditsBalanceResponse>(response);
     expect(body.balance !== undefined || body.creditBalance !== undefined).toBe(true);
   });
 
@@ -32,7 +40,8 @@ describe("Credits API", () => {
     });
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
-    expect(Array.isArray(body.transactions || body)).toBe(true);
+    const body = await readJson<CreditTransactionsResponse>(response);
+    const transactions = Array.isArray(body) ? body : (body.transactions ?? []);
+    expect(Array.isArray(transactions)).toBe(true);
   });
 });
