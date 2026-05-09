@@ -46,6 +46,7 @@ import {
   parseCronExpression,
   parseScheduledAtIso,
 } from "../triggers/scheduling.js";
+import { deployTextTriggerWorkflow } from "../triggers/text-to-workflow.js";
 import type { TriggerTaskMetadata } from "../triggers/types.js";
 
 const TRIGGER_OPS = ["create", "update", "delete", "run", "toggle"] as const;
@@ -273,6 +274,22 @@ async function opCreate(
     });
   }
 
+  // Phase 2E: every trigger persisted to disk is `kind: "workflow"`.
+  // Materialize a single-node `respondToEvent` workflow that wraps the
+  // user's instructions, then bind the trigger to it.
+  const deployedWorkflow = await deployTextTriggerWorkflow(
+    runtime,
+    { displayName, instructions, wakeMode },
+    creatorId,
+  );
+  if (!deployedWorkflow) {
+    return failed(
+      "create",
+      "Workflow plugin is not loaded; cannot create text triggers.",
+      "WORKFLOW_SERVICE_UNAVAILABLE",
+    );
+  }
+
   const triggerId = stringToUuid(uuidv4());
   const triggerConfig: TriggerConfig = {
     version: TRIGGER_SCHEMA_VERSION,
@@ -289,6 +306,9 @@ async function opCreate(
     cronExpression: triggerType === "cron" ? cronExpression : undefined,
     maxRuns,
     dedupeKey,
+    kind: "workflow",
+    workflowId: deployedWorkflow.id,
+    workflowName: deployedWorkflow.name,
   };
 
   const metadata = buildTriggerMetadata({
@@ -319,8 +339,17 @@ async function opCreate(
   return ok(
     "create",
     `Created trigger "${displayName}" (${describeSchedule(triggerConfig)}).`,
-    { triggerId, taskId, triggerType, wakeMode, dedupeKey },
-    { triggerId, taskId },
+    {
+      triggerId,
+      taskId,
+      triggerType,
+      wakeMode,
+      dedupeKey,
+      kind: "workflow",
+      workflowId: deployedWorkflow.id,
+      workflowName: deployedWorkflow.name,
+    },
+    { triggerId, taskId, workflowId: deployedWorkflow.id },
   );
 }
 
