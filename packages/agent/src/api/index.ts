@@ -71,7 +71,11 @@ export * from "./subscription-routes.js";
 export * from "./terminal-run-limits.js";
 export * from "./training-backend-check.js";
 export * from "./training-service-like.js";
-export * from "./trigger-routes.js";
+export {
+  handleTriggerRoutes,
+  type TriggerRouteContext,
+  type TriggerRouteHelpers,
+} from "@elizaos/plugin-workflow";
 export * from "./tx-service.js";
 export * from "./wallet.js";
 export * from "./wallet-evm-balance.js";
