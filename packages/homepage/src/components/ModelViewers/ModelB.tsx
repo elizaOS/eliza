@@ -709,8 +709,8 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
   },
   ref,
 ) {
-  const backBtnOverlayRef = useRef<HTMLDivElement>(null);
-  const vidBtnOverlayRef = useRef<HTMLDivElement>(null);
+  const backBtnOverlayRef = useRef<HTMLButtonElement>(null);
+  const vidBtnOverlayRef = useRef<HTMLButtonElement>(null);
   const platformRef = useRef(platform);
 
   useEffect(() => {
@@ -830,27 +830,34 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
         <FovZoom />
       </Canvas>
       {/* Back button overlay — pill shaped, size set dynamically via rAF */}
-      <div
+      <button
+        type="button"
         ref={backBtnOverlayRef}
         onClick={() => {
           currentOnBackClick?.();
         }}
+        aria-label="Back"
         style={{
           display: "none",
           position: "fixed",
           top: 0,
           left: 0,
+          border: "none",
           borderRadius: "9999px",
+          background: "transparent",
           cursor: "pointer",
+          padding: 0,
           zIndex: 25,
         }}
       />
       {/* Video button overlay */}
-      <div
+      <button
+        type="button"
         ref={vidBtnOverlayRef}
         onClick={() => {
           currentOnVideoClick?.();
         }}
+        aria-label="Open video call"
         style={{
           display: "none",
           position: "fixed",
@@ -858,8 +865,11 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
           left: 0,
           width: OVERLAY_SIZE,
           height: OVERLAY_SIZE,
+          border: "none",
           borderRadius: "50%",
+          background: "transparent",
           cursor: "pointer",
+          padding: 0,
           zIndex: 25,
         }}
       />

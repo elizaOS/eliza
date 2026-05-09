@@ -936,10 +936,6 @@ const ModelType = {
   AUDIO: "AUDIO",                          // Audio processing
   VIDEO: "VIDEO",                          // Video processing
 
-  // Structured output
-  OBJECT_SMALL: "OBJECT_SMALL",
-  OBJECT_LARGE: "OBJECT_LARGE",
-
   // Research
   RESEARCH: "RESEARCH",
 };

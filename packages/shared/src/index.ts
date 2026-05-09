@@ -258,3 +258,4 @@ export * from "./utils/subscription-auth";
 export * from "./utils/trajectory-format";
 export * from "./utils/tts-debug";
 export * from "./validation-keywords.js";
+export * from "./voice.js";

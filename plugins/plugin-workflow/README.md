@@ -2,23 +2,18 @@
 
 In-process workflow engine for elizaOS agents. Generate and deploy automation workflows from natural language using a RAG pipeline. The plugin embeds its own execution engine — workflows run in the agent process, no separate sidecar.
 
-Built on shared workflow type contracts from `@elizaos/workflows` (a slimmed fork of n8n's workflow type definitions). Supports the upstream node catalog (Gmail, Slack, Stripe, etc.) for routing decisions, with intelligent credential resolution and lifecycle management.
+Built on shared workflow type contracts from `@elizaos/p1p3s`. Supports the bundled node catalog used by the in-process runtime for routing decisions, with intelligent credential resolution and lifecycle management.
 
 ## Configuration
 
-| Env | Required | Description |
-|---|---|---|
-| `WORKFLOW_API_KEY` | only when proxying to a remote engine | API key for an external workflow runner |
-| `WORKFLOW_HOST` | only when proxying to a remote engine | Base URL of an external workflow runner |
-
-In default in-process mode no env vars are required. The plugin's `EmbeddedWorkflowService` runs CRUD + execution + scheduler + webhook handling locally inside the agent, persisted to the agent's Postgres schema.
+No workflow-specific env vars are required. The plugin's `EmbeddedWorkflowService` runs CRUD + execution + scheduler + webhook handling locally inside the agent, persisted to the agent's Postgres schema.
 
 ## Plugin Components
 
 | Component | Purpose |
 |---|---|
 | `EmbeddedWorkflowService` | In-process workflow execution engine (CRUD + node runtime + scheduler + webhooks). |
-| `WorkflowService` | Public service surface used by the agent's `WORKFLOW` umbrella action. Routes to embedded engine or to a remote engine when configured. |
+| `WorkflowService` | Public service surface used by the agent's `WORKFLOW` umbrella action. Routes to the embedded p1p3s engine. |
 | `WorkflowCredentialStore` | Stores workflow-scoped credentials (encrypted at rest). |
 | `workflowStatusProvider` | Exposes engine status to the planner. |
 | `activeWorkflowsProvider` | Lists active workflows for context. |

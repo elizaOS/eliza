@@ -1,3 +1,11 @@
+import type {
+  INode,
+  INodeCredentialsDetails,
+  INodeProperties,
+  INodeTypeDescription,
+  IWorkflowSettings,
+} from '@elizaos/p1p3s';
+
 // Core workflow types
 
 export interface WorkflowDefinition {
@@ -5,15 +13,7 @@ export interface WorkflowDefinition {
   nodes: WorkflowNode[];
   connections: WorkflowConnections;
   active?: boolean;
-  settings?: {
-    executionOrder?: 'v1' | 'v0';
-    saveExecutionProgress?: boolean;
-    saveManualExecutions?: boolean;
-    saveDataErrorExecution?: 'all' | 'none';
-    saveDataSuccessExecution?: 'all' | 'none';
-    executionTimeout?: number;
-    timezone?: string;
-  };
+  settings?: Partial<IWorkflowSettings>;
   tags?: WorkflowTag[];
   meta?: Record<string, unknown>;
   id?: string;
@@ -76,30 +76,17 @@ export interface ClarificationRequest {
   paramPath: string;
 }
 
-export interface WorkflowNode {
+export interface WorkflowNode
+  extends Omit<INode, 'id' | 'parameters' | 'credentials' | 'position'> {
   id?: string;
-  name: string;
-  type: string;
-  typeVersion: number;
   position: [number, number];
   parameters: Record<string, unknown>;
   credentials?: Record<string, WorkflowCredentialReference>;
-  disabled?: boolean;
-  notes?: string;
-  notesInFlow?: boolean;
   color?: string;
-  continueOnFail?: boolean;
-  executeOnce?: boolean;
-  alwaysOutputData?: boolean;
-  retryOnFail?: boolean;
-  maxTries?: number;
-  waitBetweenTries?: number;
-  onError?: 'continueErrorOutput' | 'continueRegularOutput' | 'stopWorkflow';
 }
 
-export interface WorkflowCredentialReference {
+export interface WorkflowCredentialReference extends Omit<INodeCredentialsDetails, 'id'> {
   id: string;
-  name: string;
 }
 
 export interface WorkflowConnections {
@@ -181,15 +168,14 @@ export interface WorkflowTag {
 
 // Node catalog types (from workflows-intelligence)
 
-export interface NodeDefinition {
-  name: string;
-  displayName: string;
-  description: string;
+export interface NodeDefinition
+  extends Omit<
+    INodeTypeDescription,
+    'credentials' | 'group' | 'icon' | 'iconUrl' | 'inputs' | 'outputs' | 'properties'
+  > {
   icon?: string;
   iconUrl?: string;
   group: string[];
-  version: number | number[];
-  subtitle?: string;
   defaults: {
     name: string;
     color?: string;
@@ -207,13 +193,10 @@ export interface NodeDefinition {
   triggerPanel?: unknown;
 }
 
-export interface NodeProperty {
-  displayName: string;
-  name: string;
+export interface NodeProperty
+  extends Omit<INodeProperties, 'default' | 'displayOptions' | 'options' | 'routing' | 'type'> {
   type: string;
   default: unknown;
-  required?: boolean;
-  description?: string;
   options?: Array<{
     name: string;
     value: string | number | boolean;

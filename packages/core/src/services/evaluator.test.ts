@@ -114,9 +114,10 @@ describe("EvaluatorService", () => {
 		runtime.registerEvaluator(second);
 
 		const useModel = vi.fn(async (modelType, params) => {
-			expect(modelType).toBe(ModelType.OBJECT_LARGE);
-			expect(params.schema.properties).toHaveProperty("first");
-			expect(params.schema.properties).toHaveProperty("second");
+			expect(modelType).toBe(ModelType.TEXT_LARGE);
+			expect(params.responseSchema.properties).toHaveProperty("first");
+			expect(params.responseSchema.properties).toHaveProperty("second");
+			expect(params.responseFormat).toEqual({ type: "json_object" });
 			expect(params.prompt).toContain("### first");
 			expect(params.prompt).toContain("### second");
 			return {

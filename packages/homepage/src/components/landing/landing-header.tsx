@@ -35,8 +35,11 @@ export function LandingHeader() {
         {/* Get Started button with QR code hover */}
         <div
           className="relative"
+          role="group"
           onMouseEnter={() => setShowQR(true)}
           onMouseLeave={() => setShowQR(false)}
+          onFocus={() => setShowQR(true)}
+          onBlur={() => setShowQR(false)}
         >
           <Button
             size="sm"

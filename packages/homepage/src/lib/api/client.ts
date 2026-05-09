@@ -24,7 +24,9 @@ function buildUrl(path: string, params?: Record<string, string>): string {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const url = new URL(normalizedPath, getBaseUrl());
   if (params) {
-    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+    Object.entries(params).forEach(([k, v]) => {
+      url.searchParams.set(k, v);
+    });
   }
   return url.toString();
 }

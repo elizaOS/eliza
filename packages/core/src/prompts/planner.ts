@@ -6,6 +6,7 @@ rules:
 - use only tools from the tools array; smallest grounded queue
 - arguments grounded in user request or prior tool results
 - respect each tool's parameter schema; array params must be JSON arrays, not comma-separated strings
+- never use empty strings, placeholders, or invented values for required tool arguments; gather missing content with another grounded tool or choose no tool if no tool can supply it
 - when a tool matches the requested operation, call it even if details are missing; the tool/action handler owns follow-up questions, drafts, confirmations, refusal
 - do not ask a follow-up via messageToUser when a matching tool exists
 - messageToUser is shown directly to user; never put thoughts, analysis, tool names, function syntax, JSON/tool-call attempts, or "call MESSAGE" in it
@@ -17,22 +18,7 @@ rules:
 - when a relevant exposed tool can attempt the needed work, call it instead of replying "I cannot browse/search/run/inspect/build/deploy/verify"
 - if no tool fits or task is complete, return no toolCalls and set messageToUser
 
-domain routing (when the action is available):
-- live LifeOps status (todos, tasks, reminders, habits, routines, goals, alarms, "what's on my list today") -> LIFE; do not answer from provider summaries
-- inbox respond/reply -> MESSAGE operation=triage first; never draft for newsletters/digests/promotional/list mail; prefer operation=respond when user asked to respond/send; include concrete body grounded in source message, no "please provide reply content" placeholders
-- explicit call/phone/dial a person/business -> VOICE_CALL first (calendar/email secondary)
-- relationship cadence ("follow up with David", "how long since I talked to X") -> RELATIONSHIP; one-off dated reminders to call/text ("remember to call mom Sunday") -> LIFE
-- morning/night/daily check-in -> CHECKIN; never invent AUTOMATION_RUN
-- broadcast/device-targeted reminders ("to my phone", "all devices") -> DEVICE_INTENT, not LIFE or REPLY
-- owner-scoped outbound Telegram/Signal/Discord/email/SMS/iMessage/DM -> MESSAGE operation=send_draft; use operation=send only if draft workflow unavailable
-- durable owner facts, reusable preferences, travel/booking preferences -> PROFILE; not extraction/memory/REPLY
-- X/Twitter DMs -> MESSAGE source=x; X timeline/feed/mentions/post search -> POST source=x; never invent X/SOCIAL_POSTING/WEB_SEARCH/SEARCH_WEB
-- login/password/form field fill -> AUTOFILL; PASSWORD_MANAGER only for credential search/list/copy/inject
-- real flight/hotel/trip booking -> BOOK_TRAVEL; no browse-first or web-search-first
-- Calendly availability + single-use booking links -> CALENDAR; never WEB_GET/WEB_SEARCH/BROWSER for Calendly URLs
-- health/wearable reads ("step count", "sleep last night") -> HEALTH; no summaries/REPLY
-- LifeOps browser bridge settings + companion connection state -> MANAGE_BROWSER_BRIDGE refresh; extension setup/open -> install/open_manager; BROWSER is only for tab/page operations
-- desktop/computer/native-app screenshots or control -> COMPUTER_USE; never invent takeScreenshot
+When the context includes a "# Routing hints" section, follow those hints — each line names which action handles a specific kind of request. Hints are sourced from the action's own routingHint metadata, so the list reflects only actions actually exposed for this turn.
 
 context_object:
 {{contextObject}}

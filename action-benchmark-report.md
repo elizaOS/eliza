@@ -1,31 +1,33 @@
 # Action Selection Benchmark
 
-**Selection Accuracy:** 100.0% (7/7)
-**Latency:** avg 3653ms · p50 3213ms · p95 6482ms
-**Planner Accuracy:** 100.0% (7/7)
-**Execution Accuracy:** 100.0% (7/7)
-**LLM Token Usage:** input 101954 · output 7563 · total 109517 (24/39 calls reported usage)
-**Cache Read:** 40.4% (41216/101954 input tokens)
-**Cache Write:** 0.0% (0/101954 input tokens)
+**Selection Accuracy:** 0.0% (0/1)
+**Latency:** avg 3269ms · p50 3269ms · p95 3269ms
+**Planner Accuracy:** 0.0% (0/1)
+**Execution Accuracy:** 0.0% (0/1)
+**LLM Token Usage:** input 6312 · output 1546 · total 7858 (2/4 calls reported usage)
+**Cache Read:** 0.0% (0/6312 input tokens)
+**Cache Write:** 0.0% (0/6312 input tokens)
 
 ## By tag
 
 | Tag | Passed | Total | Accuracy |
 | --- | ---: | ---: | ---: |
-| browser | 1 | 1 | 100.0% |
-| computer-use | 1 | 1 | 100.0% |
-| critical | 5 | 5 | 100.0% |
-| email | 1 | 1 | 100.0% |
-| standard | 2 | 2 | 100.0% |
-| subscriptions | 4 | 4 | 100.0% |
+| profile | 0 | 1 | 0.0% |
+| standard | 0 | 1 | 0.0% |
 
 ## By failure mode
 
 | Mode | Count |
 | --- | ---: |
-| passed | 7 |
+| passed | 0 |
 | validate_filtered | 0 |
-| llm_chose_reply | 0 |
+| llm_chose_reply | 1 |
 | llm_chose_other_action | 0 |
 | no_response | 0 |
 | error | 0 |
+
+## Failures (1)
+
+| Case | Expected | Planned | Completed | Failure Mode | Error |
+| --- | --- | --- | --- | --- | --- |
+| owner-profile-travel-prefs | PROFILE | (none) | (none) | llm_chose_reply |  |

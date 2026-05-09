@@ -419,15 +419,18 @@ function renderPlannerModelInput(params: {
 	).trim();
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
 	const availableActionsBlock = renderAvailableActionsBlock(params.context);
-	const contextSegments = availableActionsBlock
-		? [
-				...renderedContext.promptSegments,
-				{
-					content: availableActionsBlock,
-					stable: false,
-				} satisfies PromptSegment,
-			]
-		: renderedContext.promptSegments;
+	const routingHintsBlock = renderRoutingHintsBlock(params.context);
+	const extraSegments: PromptSegment[] = [];
+	if (availableActionsBlock) {
+		extraSegments.push({ content: availableActionsBlock, stable: false });
+	}
+	if (routingHintsBlock) {
+		extraSegments.push({ content: routingHintsBlock, stable: false });
+	}
+	const contextSegments =
+		extraSegments.length > 0
+			? [...renderedContext.promptSegments, ...extraSegments]
+			: renderedContext.promptSegments;
 	// The planner stage instructions are template-derived (`v5PlannerTemplate`)
 	// and structurally identical across iterations and across user turns, so they
 	// belong in the cached prefix. Marking the segment `stable: true` lets the
@@ -500,6 +503,33 @@ function renderToolForAvailableActions(tool: ContextObjectTool): string {
 		lines.push(`  parameters: ${JSON.stringify(parameterSummary)}`);
 	}
 	return lines.join("\n");
+}
+
+/**
+ * Build a "Routing hints" block from each available action's
+ * {@link Action.routingHint}. Replaces the hand-written domain-routing prose
+ * that used to live inline in `v5PlannerTemplate` — each action now carries
+ * its own one-line hint as metadata, and the planner sees them only when the
+ * action is actually exposed for this turn.
+ *
+ * Returns `null` when no exposed action has a `routingHint` set, so the
+ * planner prompt simply omits the section.
+ */
+function renderRoutingHintsBlock(context: ContextObject): string | null {
+	const seen = new Set<string>();
+	const lines: string[] = [];
+	for (const event of context.events ?? []) {
+		if (event.type !== "tool" || !("tool" in event)) continue;
+		const tool = event.tool as ContextObjectTool;
+		const hint = tool.action?.routingHint?.trim();
+		if (!hint) continue;
+		const key = normalizePlannerToolName(tool.name);
+		if (seen.has(key)) continue;
+		seen.add(key);
+		lines.push(`- ${hint}`);
+	}
+	if (lines.length === 0) return null;
+	return ["# Routing hints", ...lines].join("\n");
 }
 
 function renderAvailableActionsBlock(context: ContextObject): string | null {

@@ -1846,6 +1846,75 @@ function replaceStage1PlanContexts(
 	delete messageHandler.plan.reply;
 }
 
+function getStage1OwnerPreferenceRepairPlan(args: {
+	message: Memory;
+	availableContexts: readonly ContextDefinition[];
+}): {
+	contexts: AgentContext[];
+	candidateActions: string[];
+	parentActionHints: string[];
+} | null {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	if (!text) {
+		return null;
+	}
+	const lower = text.toLowerCase();
+	const explicitDocumentArtifactIntent =
+		/\b(?:document|doc|file|markdown|pdf|spreadsheet|sheet|notes?\s+(?:file|document|page)|save\s+(?:this|that|it)\s+as)\b/.test(
+			lower,
+		);
+	const stablePreferenceIntent =
+		/\b(?:remember|save|store|record|keep|note)\b[\s\S]{0,120}\b(?:i|me|my)\b[\s\S]{0,80}\b(?:prefer|preference|preferences|prefs?|like|usually|always)\b/.test(
+			lower,
+		) ||
+		/\b(?:travel|booking|flight|hotel)\s+(?:preference|preferences|prefs?)\b/.test(
+			lower,
+		);
+	if (!stablePreferenceIntent || explicitDocumentArtifactIntent) {
+		return null;
+	}
+	const travelPreferenceIntent =
+		/\b(?:travel|booking|flight|flights?|seat|seats?|aisle|window|carry-?on|checked bags?|luggage|hotel|hotels?|venue|venues?)\b/.test(
+			lower,
+		);
+	const contexts = (["memory", "settings", "calendar"] as AgentContext[]).filter(
+		(context) => contextAvailableForRepair(context, args.availableContexts),
+	);
+	return {
+		contexts: contexts.length > 0 ? contexts : ["general"],
+		candidateActions: travelPreferenceIntent
+			? [
+					"save_travel_preferences",
+					"store_travel_preferences",
+					"store_preference",
+				]
+			: ["store_preference", "save_owner_profile"],
+		parentActionHints: ["PROFILE"],
+	};
+}
+
+function buildFallbackStage1PlanForKnownToolRequest(args: {
+	message: Memory;
+	availableContexts: readonly ContextDefinition[];
+}): MessageHandlerResult | null {
+	const repair = getStage1OwnerPreferenceRepairPlan(args);
+	if (!repair) {
+		return null;
+	}
+	return {
+		processMessage: "RESPOND",
+		thought:
+			"Deterministic fallback: durable owner preference request requires PROFILE routing.",
+		plan: {
+			contexts: repair.contexts,
+			requiresTool: true,
+			simple: false,
+			candidateActions: repair.candidateActions,
+			parentActionHints: repair.parentActionHints,
+		},
+	};
+}
+
 function repairStage1PlanForKnownToolRequests(args: {
 	message: Memory;
 	messageHandler: MessageHandlerResult;
@@ -1881,38 +1950,18 @@ function repairStage1PlanForKnownToolRequests(args: {
 		});
 	}
 
-	const explicitDocumentArtifactIntent =
-		/\b(?:document|doc|file|markdown|pdf|spreadsheet|sheet|notes?\s+(?:file|document|page)|save\s+(?:this|that|it)\s+as)\b/.test(
-			lower,
+	const ownerPreferenceRepair = getStage1OwnerPreferenceRepairPlan({
+		message: args.message,
+		availableContexts: args.availableContexts,
+	});
+	if (ownerPreferenceRepair) {
+		replaceStage1PlanContexts(
+			args.messageHandler,
+			ownerPreferenceRepair.contexts,
 		);
-	const stablePreferenceIntent =
-		/\b(?:remember|save|store|record|keep|note)\b[\s\S]{0,120}\b(?:i|me|my)\b[\s\S]{0,80}\b(?:prefer|preference|preferences|prefs?|like|usually|always)\b/.test(
-			lower,
-		) ||
-		/\b(?:travel|booking|flight|hotel)\s+(?:preference|preferences|prefs?)\b/.test(
-			lower,
-		);
-	const travelPreferenceIntent =
-		stablePreferenceIntent &&
-		/\b(?:travel|booking|flight|flights?|seat|seats?|aisle|window|carry-?on|checked bags?|luggage|hotel|hotels?|venue|venues?)\b/.test(
-			lower,
-		);
-	if (stablePreferenceIntent && !explicitDocumentArtifactIntent) {
-		const contexts = (["memory", "settings", "calendar"] as AgentContext[]).filter(
-			(context) => contextAvailableForRepair(context, args.availableContexts),
-		);
-		if (contexts.length > 0) {
-			replaceStage1PlanContexts(args.messageHandler, contexts);
-		}
 		appendStage1PlanHints(args.messageHandler, {
-			candidateActions: travelPreferenceIntent
-				? [
-						"save_travel_preferences",
-						"store_travel_preferences",
-						"store_preference",
-					]
-				: ["store_preference", "save_owner_profile"],
-			parentActionHints: ["PROFILE"],
+			candidateActions: ownerPreferenceRepair.candidateActions,
+			parentActionHints: ownerPreferenceRepair.parentActionHints,
 		});
 	}
 
@@ -3318,7 +3367,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			},
 		)) as string | GenerateTextResult;
 		const messageHandlerEndedAt = Date.now();
-		const messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
+		let messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
+		if (!messageHandler) {
+			messageHandler = buildFallbackStage1PlanForKnownToolRequest({
+				message: args.message,
+				availableContexts,
+			});
+		}
 		if (!messageHandler && process.env.MILADY_DEBUG_STAGE1 === "1") {
 			args.runtime.logger?.warn?.(
 				{

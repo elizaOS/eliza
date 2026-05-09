@@ -332,9 +332,10 @@ export class EvaluatorService extends BaseService {
 			options,
 		});
 		const schema = buildMergedSchema(preparedEntries);
-		const raw = await this.runtime.useModel(ModelType.OBJECT_LARGE, {
+		const raw = await this.runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt,
-			schema,
+			responseSchema: schema,
+			responseFormat: { type: "json_object" },
 			temperature: 0,
 		});
 		const output = coerceObjectOutput(raw);

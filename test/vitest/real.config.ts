@@ -261,6 +261,7 @@ const realResolveAlias: ModuleAlias[] = [
     "app-steward",
     "app-training",
     "app-vincent",
+    "app-wallet",
   ]),
   {
     find: /^@elizaos\/app-companion\/(.*)/,
