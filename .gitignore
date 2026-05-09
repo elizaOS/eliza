@@ -249,6 +249,10 @@ packages/python/elizaos/types/generated/
 packages/rust/src/types/generated/
 packages/rust/.cargo-tools/
 
+# buf module cache (populated by `buf build` / `buf mod update`,
+# excluded from the buf source scan via packages/schemas/buf.yaml).
+packages/schemas/v3/
+
 # i18n keyword codegen (regenerated from keywords/*.keywords.json)
 packages/shared/src/i18n/generated/
 packages/core/src/i18n/generated/
