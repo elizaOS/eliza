@@ -26,7 +26,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "workspace:*",
+    "ws": "^8.18.0"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
@@ -34,6 +35,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
     "@types/node": "24.12.2",
+    "@types/ws": "^8.5.13",
     "tsup": "8.5.1",
     "typescript": "^6.0.3"
   },
