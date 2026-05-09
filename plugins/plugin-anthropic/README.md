@@ -29,10 +29,10 @@ const text = await runtime.useModel(ModelType.TEXT_LARGE, {
   prompt: "Explain quantum computing in simple terms",
 });
 
-// Generate JSON object
-const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
+// Generate JSON object via TEXT_LARGE with a responseSchema (native tool calling)
+const result = await runtime.useModel(ModelType.TEXT_LARGE, {
   prompt: "Create a user profile with name, email, and age",
-  schema: { type: "object" },
+  responseSchema: { type: "object" },
 });
 ```
 ## Installation
@@ -70,31 +70,25 @@ All implementations use the same environment variables:
 
 ### Model Types
 
-- `TEXT_SMALL` - Text generation with small model
-- `TEXT_LARGE` - Text generation with large model
+- `TEXT_SMALL` - Text generation with small model (supports tools, toolChoice, responseSchema for structured output via native tool calling)
+- `TEXT_LARGE` - Text generation with large model (supports tools, toolChoice, responseSchema for structured output via native tool calling)
 - `IMAGE_DESCRIPTION` - Image analysis with title and description output
-- `OBJECT_SMALL` - JSON generation with small model
-- `OBJECT_LARGE` - JSON generation with large model
 
 ### Text Generation Parameters
 
-| Parameter       | Type      | Description                                   |
-| --------------- | --------- | --------------------------------------------- |
-| `prompt`        | string    | The prompt to generate from                   |
-| `system`        | string?   | Optional system prompt                        |
-| `maxTokens`     | number?   | Maximum tokens to generate                    |
-| `temperature`   | number?   | Randomness (0-1, can't use with topP)         |
-| `topP`          | number?   | Nucleus sampling (can't use with temperature) |
-| `stopSequences` | string[]? | Stop generation at these sequences            |
-| `stream`        | boolean?  | Return a streaming text result when `true`    |
-
-### Object Generation Parameters
-
-| Parameter     | Type    | Description                                     |
-| ------------- | ------- | ----------------------------------------------- |
-| `prompt`      | string  | Description of the object to generate           |
-| `schema`      | object? | Optional JSON schema                            |
-| `temperature` | number? | Randomness (default: 0.2 for structured output) |
+| Parameter       | Type      | Description                                                              |
+| --------------- | --------- | ------------------------------------------------------------------------ |
+| `prompt`        | string    | The prompt to generate from                                              |
+| `messages`      | array?    | Multi-turn message history (supersedes prompt when both supplied)        |
+| `system`        | string?   | Optional system prompt                                                   |
+| `maxTokens`     | number?   | Maximum tokens to generate                                               |
+| `temperature`   | number?   | Randomness (0-1, can't use with topP)                                    |
+| `topP`          | number?   | Nucleus sampling (can't use with temperature)                            |
+| `stopSequences` | string[]? | Stop generation at these sequences                                       |
+| `stream`        | boolean?  | Return a streaming text result when `true`                               |
+| `tools`         | ToolSet?  | Native Anthropic tool definitions for tool calling                       |
+| `toolChoice`    | object?   | Tool selection hint (`auto`, `required`, `none`, or named tool)          |
+| `responseSchema`| object?   | JSON Schema for structured output (routes through native tool calling)   |
 
 ## Project Structure
 
