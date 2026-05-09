@@ -62,7 +62,7 @@ export interface RouteHelpers {
   readJsonBody: <T extends object>(
     req: http.IncomingMessage,
     res: http.ServerResponse,
-    options?: ReadJsonBodyOptions,
+    options?: ReadJsonBodyOptions
   ) => Promise<T | null>;
 }
 
@@ -134,7 +134,7 @@ interface IMessageServiceLike {
       removePhones?: string[];
       addEmails?: Array<{ label?: string; value: string }>;
       removeEmails?: string[];
-    },
+    }
   ): Promise<boolean>;
   deleteContact(personId: string): Promise<boolean>;
 }
@@ -188,7 +188,7 @@ export async function handleIMessageRoute(
   pathname: string,
   method: string,
   state: IMessageRouteState,
-  helpers: RouteHelpers,
+  helpers: RouteHelpers
 ): Promise<boolean> {
   if (!pathname.startsWith("/api/imessage")) return false;
 
@@ -221,10 +221,7 @@ export async function handleIMessageRoute(
     }
     const url = new URL(req.url ?? pathname, "http://localhost");
     const limitParam = url.searchParams.get("limit");
-    const limit = Math.min(
-      Math.max(1, Number.parseInt(limitParam ?? "50", 10) || 50),
-      500,
-    );
+    const limit = Math.min(Math.max(1, Number.parseInt(limitParam ?? "50", 10) || 50), 500);
     try {
       const messages = await service.getRecentMessages(limit);
       helpers.json(res, { messages, count: messages.length });
@@ -232,7 +229,7 @@ export async function handleIMessageRoute(
       helpers.error(
         res,
         `failed to read messages: ${error instanceof Error ? error.message : String(error)}`,
-        500,
+        500
       );
     }
     return true;
@@ -252,7 +249,7 @@ export async function handleIMessageRoute(
       helpers.error(
         res,
         `failed to read chats: ${error instanceof Error ? error.message : String(error)}`,
-        500,
+        500
       );
     }
     return true;
@@ -272,7 +269,7 @@ export async function handleIMessageRoute(
       helpers.error(
         res,
         `failed to read contacts: ${error instanceof Error ? error.message : String(error)}`,
-        500,
+        500
       );
     }
     return true;
@@ -293,17 +290,8 @@ export async function handleIMessageRoute(
     }>(req, res, { maxBytes: MAX_BODY_BYTES });
     if (!body) return true; // helpers.readJsonBody has already sent the error.
 
-    if (
-      !body.firstName &&
-      !body.lastName &&
-      !body.phones?.length &&
-      !body.emails?.length
-    ) {
-      helpers.error(
-        res,
-        "at least one of firstName, lastName, phones, or emails is required",
-        400,
-      );
+    if (!body.firstName && !body.lastName && !body.phones?.length && !body.emails?.length) {
+      helpers.error(res, "at least one of firstName, lastName, phones, or emails is required", 400);
       return true;
     }
 
@@ -318,7 +306,7 @@ export async function handleIMessageRoute(
         helpers.error(
           res,
           "contact creation failed — see server logs. Common cause: Contacts write permission not granted yet.",
-          500,
+          500
         );
         return true;
       }
@@ -327,7 +315,7 @@ export async function handleIMessageRoute(
       helpers.error(
         res,
         `addContact threw: ${error instanceof Error ? error.message : String(error)}`,
-        500,
+        500
       );
     }
     return true;
@@ -368,7 +356,7 @@ export async function handleIMessageRoute(
         helpers.error(
           res,
           "contact update failed — see server logs. Contact may not exist, or write permission may be denied.",
-          500,
+          500
         );
         return true;
       }
@@ -377,7 +365,7 @@ export async function handleIMessageRoute(
       helpers.error(
         res,
         `updateContact threw: ${error instanceof Error ? error.message : String(error)}`,
-        500,
+        500
       );
     }
     return true;
@@ -401,7 +389,7 @@ export async function handleIMessageRoute(
         helpers.error(
           res,
           "contact delete failed — see server logs. Contact may not exist, or write permission may be denied.",
-          500,
+          500
         );
         return true;
       }
@@ -410,7 +398,7 @@ export async function handleIMessageRoute(
       helpers.error(
         res,
         `deleteContact threw: ${error instanceof Error ? error.message : String(error)}`,
-        500,
+        500
       );
     }
     return true;

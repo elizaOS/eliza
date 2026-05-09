@@ -65,7 +65,8 @@ actions:
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
 
-export const AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE = autonomyContinuousContinueTemplate;
+export const AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE =
+  autonomyContinuousContinueTemplate;
 
 export const autonomyContinuousFirstTemplate = `Your job: reflect on context, decide what you want to do next, and act if appropriate.
 - Use available actions/tools when they can advance the goal.
@@ -88,7 +89,8 @@ actions:
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
 
-export const AUTONOMY_CONTINUOUS_FIRST_TEMPLATE = autonomyContinuousFirstTemplate;
+export const AUTONOMY_CONTINUOUS_FIRST_TEMPLATE =
+  autonomyContinuousFirstTemplate;
 
 export const autonomyTaskContinueTemplate = `You are running in AUTONOMOUS TASK MODE.
 
@@ -1110,7 +1112,8 @@ Example:
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
 
-export const SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE = shouldRespondWithContextTemplate;
+export const SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE =
+  shouldRespondWithContextTemplate;
 
 export const shouldUnfollowRoomTemplate = `task: Decide whether {{agentName}} should unfollow this room.
 

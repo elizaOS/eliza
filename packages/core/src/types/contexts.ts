@@ -1,5 +1,5 @@
 import type { Role } from "./environment";
-import type { JsonValue } from "./proto.js";
+import type { JsonValue } from "./primitives";
 
 export type FirstPartyAgentContext =
 	| "simple"

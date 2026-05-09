@@ -7,28 +7,17 @@ import type { Room } from "./environment";
 import type { Memory } from "./memory";
 import type { ModelType } from "./model";
 import type { Content, Media, MentionContext, UUID } from "./primitives";
-import type {
-	MessageProcessingMode as ProtoMessageProcessingMode,
-	MessageProcessingOptions as ProtoMessageProcessingOptions,
-	ShouldRespondModelType as ProtoShouldRespondModelType,
-} from "./proto.js";
 import type { IAgentRuntime } from "./runtime";
 import type { State } from "./state";
 
 /**
  * Configuration options for message processing
  */
-export interface MessageProcessingOptions
-	extends Omit<
-		ProtoMessageProcessingOptions,
-		| "$typeName"
-		| "$unknown"
-		| "maxRetries"
-		| "timeoutDuration"
-		| "shouldRespondModel"
-	> {
+export interface MessageProcessingOptions {
 	maxRetries?: number;
 	timeoutDuration?: number;
+	useMultiStep?: boolean;
+	maxMultiStepIterations?: number;
 	shouldRespondModel?: ShouldRespondModelType;
 	onStreamChunk?: StreamChunkCallback;
 	/**
@@ -81,7 +70,6 @@ export interface ContextRoutedResponseDecision extends ResponseDecision {
 }
 
 export type ShouldRespondModelType =
-	| ProtoShouldRespondModelType
 	| "nano"
 	| "small"
 	| "large"
@@ -93,7 +81,6 @@ export type ShouldRespondModelType =
 	| typeof ModelType.TEXT_MEGA
 	| typeof ModelType.RESPONSE_HANDLER;
 export type MessageProcessingMode =
-	| ProtoMessageProcessingMode
 	| "simple"
 	| "actions"
 	| "none"

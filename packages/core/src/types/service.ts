@@ -1,5 +1,4 @@
-import type { Metadata } from "./primitives";
-import type { JsonValue } from "./proto.js";
+import type { JsonValue, Metadata } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 
 /**

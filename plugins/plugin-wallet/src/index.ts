@@ -21,12 +21,12 @@ export {
 } from "./analytics/token-info/index.js";
 export * from "./audit/audit-log.js";
 export { walletRouterAction } from "./chains/wallet-action.js";
+export * from "./contracts.js";
 export {
   canUseLocalTradeExecution,
   resolveTradePermissionMode,
   resolveWalletExportRejection,
 } from "./lib/server-wallet-trade.js";
-export * from "./contracts.js";
 // Consolidated LP management surface (formerly @elizaos/plugin-lp-manager).
 // Includes Solana DEX adapters (Raydium / Orca / Meteora) under
 // chains/solana/dex/* and EVM DEX adapters (Uniswap / PancakeSwap / Aerodrome)

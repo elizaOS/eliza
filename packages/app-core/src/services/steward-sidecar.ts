@@ -50,14 +50,6 @@ import {
 } from "./steward-sidecar/types";
 import { ensureWalletSetup } from "./steward-sidecar/wallet-setup";
 
-// Re-export types for external consumers
-export type {
-  StewardCredentials,
-  StewardSidecarConfig,
-  StewardSidecarStatus,
-  StewardWalletInfo,
-} from "./steward-sidecar/types";
-
 // Re-export helpers for external consumers (used by @elizaos/app-steward).
 export {
   allocateFirstFreeLoopbackPort,
@@ -66,6 +58,13 @@ export {
   generateMasterPassword,
   resolveDataDir,
 } from "./steward-sidecar/helpers";
+// Re-export types for external consumers
+export type {
+  StewardCredentials,
+  StewardSidecarConfig,
+  StewardSidecarStatus,
+  StewardWalletInfo,
+} from "./steward-sidecar/types";
 
 interface BunSubprocessLike {
   kill: (signal?: string) => void;

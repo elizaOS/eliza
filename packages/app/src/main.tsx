@@ -16,6 +16,10 @@ import {
   THREE,
   useCompanionSceneStatus,
 } from "@elizaos/app-companion";
+import { PhoneCompanionApp } from "@elizaos/app-phone";
+import { Agent } from "@elizaos/capacitor-agent";
+import { Desktop } from "@elizaos/capacitor-desktop";
+import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
 import type { BrandingConfig } from "@elizaos/ui";
 import {
   AGENT_READY_EVENT,
@@ -66,10 +70,6 @@ import {
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui";
-import { PhoneCompanionApp } from "@elizaos/app-phone";
-import { Agent } from "@elizaos/capacitor-agent";
-import { Desktop } from "@elizaos/capacitor-desktop";
-import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "@elizaos/app-companion";
@@ -86,14 +86,14 @@ import "@elizaos/app-hyperscape";
 import "@elizaos/app-2004scape";
 import "@elizaos/app-defense-of-the-agents";
 import "@clawville/app-clawville/ui";
+import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "@elizaos/app-lifeops";
 import {
   AppBlockerSettingsCard,
   LifeOpsBrowserSetupPanel as BrowserBridgeSetupPanel,
-  dispatchQueuedLifeOpsGithubCallbackFromUrl,
   LifeOpsActivitySignalsEffect,
   LifeOpsPageView,
   WebsiteBlockerSettingsCard,
-} from "@elizaos/app-lifeops";
+} from "@elizaos/app-lifeops/ui";
 import {
   ApprovalQueue,
   StewardLogo,
@@ -105,7 +105,7 @@ import {
   CodingAgentTasksPanel,
   PtyConsoleDrawer,
 } from "@elizaos/app-task-coordinator";
-import { FineTuningView } from "@elizaos/app-training";
+import { FineTuningView } from "@elizaos/app-training/ui";
 import "@elizaos/app-trajectory-logger";
 import "@elizaos/app-shopify";
 import "@elizaos/app-vincent";

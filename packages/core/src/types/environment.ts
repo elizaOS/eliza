@@ -1,46 +1,38 @@
-import type { ChannelType, Metadata } from "./primitives";
-import type {
-	Component as ProtoComponent,
-	Entity as ProtoEntity,
-	Participant as ProtoParticipant,
-	Relationship as ProtoRelationship,
-	Room as ProtoRoom,
-	World as ProtoWorld,
-	WorldMetadata as ProtoWorldMetadata,
-} from "./proto.js";
+import type { ChannelType, Metadata, UUID } from "./primitives";
 import type { WorldSettings } from "./settings";
 
 export type TimestampValue = number;
 
-export interface Component
-	extends Omit<
-		ProtoComponent,
-		"$typeName" | "$unknown" | "createdAt" | "data"
-	> {
+export interface Component {
+	id: UUID;
+	entityId: UUID;
+	agentId: UUID;
+	roomId: UUID;
+	worldId: UUID;
+	sourceEntityId: UUID;
+	type: string;
 	createdAt: TimestampValue;
 	data?: Metadata;
 }
 
 /**
- * Represents a user account
+ * Represents a user account / entity.
  */
-export interface Entity
-	extends Omit<
-		ProtoEntity,
-		"$typeName" | "$unknown" | "metadata" | "components"
-	> {
+export interface Entity {
+	/** Unique identifier, optional on creation */
+	id?: UUID;
+	/** Names of the entity */
+	names: string[];
+	/** Additional metadata */
 	metadata?: Metadata;
+	/** Agent ID this entity is related to */
+	agentId: UUID;
+	/** Optional array of components */
 	components?: Component[];
 }
 
 /**
  * Defines roles within a system, typically for access control or permissions, often within a `World`.
- * - `OWNER`: Represents the highest level of control, typically the creator or primary administrator.
- * - `ADMIN`: Represents administrative privileges, usually a subset of owner capabilities.
- * - `MEMBER`: Represents a regular member with standard permissions.
- * - `GUEST`: Represents a guest with limited, read-oriented permissions.
- * - `NONE`: Indicates no specific role or default, minimal permissions.
- * These roles are often used in `World.metadata.roles` to assign roles to entities.
  */
 export const Role = {
 	OWNER: "OWNER",
@@ -56,11 +48,7 @@ export interface WorldOwnership {
 	ownerId: string;
 }
 
-export interface WorldMetadata
-	extends Omit<
-		ProtoWorldMetadata,
-		"$typeName" | "$unknown" | "roles" | "extra" | "ownership"
-	> {
+export interface WorldMetadata {
 	type?: string;
 	description?: string;
 	ownership?: WorldOwnership;
@@ -75,14 +63,23 @@ export interface WorldMetadata
 	[key: string]: unknown;
 }
 
-export interface World
-	extends Omit<ProtoWorld, "$typeName" | "$unknown" | "metadata"> {
+export interface World {
+	id: UUID;
+	name?: string;
+	agentId: UUID;
+	messageServerId?: UUID;
 	metadata?: WorldMetadata;
 }
 
-export interface Room
-	extends Omit<ProtoRoom, "$typeName" | "$unknown" | "type" | "metadata"> {
+export interface Room {
+	id: UUID;
+	name?: string;
+	agentId?: UUID;
+	source: string;
 	type: ChannelType;
+	channelId?: string;
+	messageServerId?: UUID;
+	worldId?: UUID;
 	metadata?: Metadata;
 	/** Platform server/guild/chat ID that owns this room */
 	serverId?: string;
@@ -93,17 +90,22 @@ export type RoomMetadata = Metadata;
 /**
  * Room participant with account details
  */
-export interface Participant
-	extends Omit<ProtoParticipant, "$typeName" | "$unknown" | "entity"> {
+export interface Participant {
+	id: UUID;
 	entity: Entity;
 }
 
 /**
  * Represents a relationship between users
  */
-export interface Relationship
-	extends Omit<ProtoRelationship, "$typeName" | "$unknown" | "metadata"> {
+export interface Relationship {
+	id: UUID;
+	sourceEntityId: UUID;
+	targetEntityId: UUID;
+	agentId: UUID;
+	tags: string[];
 	metadata?: Metadata;
+	createdAt?: string;
 }
 
 // Re-export Metadata for convenience

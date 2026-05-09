@@ -15,9 +15,9 @@ import {
   applyPluginManifestVerdicts,
   evaluatePluginManifest,
   evaluatePluginManifests,
-  pluginShortId,
   type PluginManifestCandidate,
   type PluginManifestVerdict,
+  pluginShortId,
 } from "../plugin-manifest";
 
 let tmpRoot: string;
@@ -116,7 +116,7 @@ describe("evaluatePluginManifest", () => {
     const candidate = await writeFakePlugin({
       pkgName: "@x/env-match",
       checkSource:
-        'export function shouldEnable(ctx) { return Boolean(ctx.env.MY_KEY); }',
+        "export function shouldEnable(ctx) { return Boolean(ctx.env.MY_KEY); }",
     });
     const verdict = await evaluatePluginManifest(candidate, {
       ...baseCtx,
@@ -131,7 +131,7 @@ describe("evaluatePluginManifest", () => {
     const candidate = await writeFakePlugin({
       pkgName: "@x/env-miss",
       checkSource:
-        'export function shouldEnable(ctx) { return Boolean(ctx.env.MY_KEY); }',
+        "export function shouldEnable(ctx) { return Boolean(ctx.env.MY_KEY); }",
     });
     const verdict = await evaluatePluginManifest(candidate, baseCtx);
     expect(verdict?.enabled).toBe(false);
@@ -141,8 +141,7 @@ describe("evaluatePluginManifest", () => {
   it("supports default-export check modules", async () => {
     const candidate = await writeFakePlugin({
       pkgName: "@x/default-export",
-      checkSource:
-        'export default { shouldEnable: () => true };',
+      checkSource: "export default { shouldEnable: () => true };",
     });
     const verdict = await evaluatePluginManifest(candidate, baseCtx);
     expect(verdict?.enabled).toBe(true);
@@ -268,7 +267,12 @@ describe("applyPluginManifestVerdicts", () => {
   }
 
   it("adds enabled plugins to plugins.allow with both shortId and full name", () => {
-    const config: { plugins?: { allow?: string[]; entries?: Record<string, { enabled?: boolean }> } } = {};
+    const config: {
+      plugins?: {
+        allow?: string[];
+        entries?: Record<string, { enabled?: boolean }>;
+      };
+    } = {};
     const changes: string[] = [];
     applyPluginManifestVerdicts(
       config,
@@ -324,11 +328,7 @@ describe("applyPluginManifestVerdicts", () => {
 
   it("surfaces verdict errors as changes", () => {
     const changes: string[] = [];
-    applyPluginManifestVerdicts(
-      {},
-      [makeVerdict({ error: "boom" })],
-      changes,
-    );
+    applyPluginManifestVerdicts({}, [makeVerdict({ error: "boom" })], changes);
     expect(changes[0]).toMatch(/Plugin auto-enable error for @x\/test: boom/);
   });
 });

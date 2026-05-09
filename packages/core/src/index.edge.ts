@@ -12,6 +12,7 @@ export * from "./actions";
 export * from "./character";
 export * from "./character-utils";
 export * from "./connection";
+export * from "./connectors";
 export * from "./connectors/account-manager";
 export * from "./connectors/privacy";
 export {

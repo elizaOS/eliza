@@ -97,6 +97,10 @@ import {
   handleCloudStatusRoutes,
   isCloudProvisionedContainer,
 } from "@elizaos/plugin-elizacloud";
+// BlueBubbles routes extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
+// resolveBlueBubblesWebhookPath stays in @elizaos/plugin-imessage so the auth gate can compute
+// the webhook path before the runtime plugin route dispatcher runs.
+import { resolveBlueBubblesWebhookPath } from "@elizaos/plugin-imessage";
 import { isStreamingDestinationConfigured } from "@elizaos/shared";
 import {
   type ElizaConfig,
@@ -187,10 +191,6 @@ import { handleAppPackageRoutes } from "./app-package-routes.js";
 import { handleAppsRoutes } from "./apps-routes.js";
 import { handleAuthRoutes } from "./auth-routes.js";
 import { handleAvatarRoutes } from "./avatar-routes.js";
-// BlueBubbles routes extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
-// resolveBlueBubblesWebhookPath stays in @elizaos/plugin-imessage so the auth gate can compute
-// the webhook path before the runtime plugin route dispatcher runs.
-import { resolveBlueBubblesWebhookPath } from "@elizaos/plugin-imessage";
 import { handleBugReportRoutes } from "./bug-report-routes.js";
 import { handleCharacterRoutes } from "./character-routes.js";
 import {

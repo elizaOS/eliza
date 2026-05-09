@@ -1,14 +1,5 @@
 import type { DocumentSourceItem } from "./documents";
-import type { Content } from "./primitives";
-import type {
-	JsonValue,
-	Agent as ProtoAgent,
-	AgentStatus as ProtoAgentStatus,
-	Character as ProtoCharacter,
-	CharacterSettings as ProtoCharacterSettingsType,
-	MessageExample as ProtoMessageExample,
-	MessageExampleGroup as ProtoMessageExampleGroup,
-} from "./proto.js";
+import type { Content, JsonObject, JsonValue } from "./primitives";
 import type { State } from "./state";
 
 export type TemplateType =
@@ -23,23 +14,37 @@ export type TemplateType =
 /**
  * Example message for demonstration
  */
-export interface MessageExample
-	extends Omit<ProtoMessageExample, "$typeName" | "$unknown" | "content"> {
+export interface MessageExample {
+	name: string;
 	content: Content;
 }
 
-export interface MessageExampleGroup
-	extends Omit<
-		ProtoMessageExampleGroup,
-		"$typeName" | "$unknown" | "examples"
-	> {
+export interface MessageExampleGroup {
 	examples: MessageExample[];
 }
 
-export type CharacterSettings = Omit<
-	ProtoCharacterSettingsType,
-	"$typeName" | "$unknown" | "secrets" | "enableDocuments"
-> & {
+/**
+ * Character settings (well-known keys with expected types).
+ */
+export interface CharacterSettings {
+	shouldRespondModel?: string;
+	useMultiStep?: boolean;
+	maxMultistepIterations?: number;
+	basicCapabilitiesDefllmoff?: boolean;
+	basicCapabilitiesKeepResp?: boolean;
+	providersTotalTimeoutMs?: number;
+	maxWorkingMemoryEntries?: number;
+	alwaysRespondChannels?: string;
+	alwaysRespondSources?: string;
+	defaultTemperature?: number;
+	defaultMaxTokens?: number;
+	defaultFrequencyPenalty?: number;
+	defaultPresencePenalty?: number;
+	disableBasicCapabilities?: boolean;
+	enableExtendedCapabilities?: boolean;
+	extra?: JsonObject;
+	enableRelationships?: boolean;
+	enableTrajectories?: boolean;
 	ENABLE_AUTONOMY?: boolean | string;
 	DISABLE_BASIC_CAPABILITIES?: boolean | string;
 	ENABLE_EXTENDED_CAPABILITIES?: boolean | string;
@@ -52,21 +57,19 @@ export type CharacterSettings = Omit<
 	ENABLE_TRAJECTORIES?: boolean | string;
 	secrets?: Record<string, string | boolean | number>;
 	[key: string]: JsonValue | undefined;
-};
-export type ProtoCharacterSettings = ProtoCharacterSettingsType;
-export type Character = Partial<
-	Omit<
-		ProtoCharacter,
-		| "$typeName"
-		| "$unknown"
-		| "settings"
-		| "messageExamples"
-		| "knowledge"
-		| "documents"
-		| "secrets"
-		| "style"
-	>
-> & {
+}
+
+export interface Character {
+	id?: string;
+	name?: string;
+	username?: string;
+	system?: string;
+	templates?: { [key: string]: string };
+	bio?: string[];
+	postExamples?: string[];
+	topics?: string[];
+	adjectives?: string[];
+	plugins?: string[];
 	settings?: CharacterSettings;
 	secrets?: Record<string, string | number | boolean>;
 	messageExamples?: MessageExampleGroup[];
@@ -77,7 +80,7 @@ export type Character = Partial<
 	advancedPlanning?: boolean;
 	/** Enable advanced memory capabilities for this character */
 	advancedMemory?: boolean;
-};
+}
 
 export enum AgentStatus {
 	ACTIVE = "active",
@@ -86,26 +89,10 @@ export enum AgentStatus {
 
 /**
  * Represents an operational agent, extending the `Character` definition with runtime status and timestamps.
- * While `Character` defines the blueprint, `Agent` represents an instantiated and potentially running version.
- * It includes:
- * - `enabled`: A boolean indicating if the agent is currently active or disabled.
- * - `status`: The current operational status, typically `AgentStatus.ACTIVE` or `AgentStatus.INACTIVE`.
- * - `createdAt`, `updatedAt`: Timestamps for when the agent record was created and last updated in the database.
- * This interface is primarily used by the `IDatabaseAdapter` for agent management.
  */
-export interface Agent
-	extends Character,
-		Omit<
-			ProtoAgent,
-			| "$typeName"
-			| "$unknown"
-			| "character"
-			| "status"
-			| "createdAt"
-			| "updatedAt"
-			| "secrets"
-		> {
-	status?: AgentStatus | ProtoAgentStatus;
+export interface Agent extends Character {
+	enabled?: boolean;
+	status?: AgentStatus;
 	createdAt: number | bigint;
 	updatedAt: number | bigint;
 	/** Arbitrary metadata persisted alongside the agent record. */

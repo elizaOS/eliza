@@ -11,6 +11,7 @@
  * each surface's runtime cost optional for hosts that only need one.
  */
 
+export { placeCallAction } from "./actions/place-call";
 export { PhoneCompanionApp } from "./companion/components/PhoneCompanionApp";
 export { PhoneAppView } from "./components/PhoneAppView";
 export {
@@ -19,5 +20,4 @@ export {
   registerPhoneApp,
 } from "./components/phone-app";
 export { appPhonePlugin, default } from "./plugin";
-export { placeCallAction } from "./actions/place-call";
 export { phoneCallLogProvider } from "./providers/call-log";
