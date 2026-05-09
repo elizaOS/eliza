@@ -14,10 +14,10 @@
     "plugin-submodules:restore": "bun scripts/plugin-submodules-dev.mjs --restore",
     "ensure-plugin-test-conventions": "bun scripts/ensure-plugin-test-conventions.mjs",
     "ensure-plugin-test-conventions:check": "bun scripts/ensure-plugin-test-conventions.mjs --check",
-  "audit:duplicate-components": "node scripts/audit-duplicate-components.mjs",
-  "audit:duplicate-components:self-check": "node scripts/audit-duplicate-components.mjs --self-check",
-  "audit:action-availability": "node scripts/audit-action-availability.mjs",
-  "audit:package-barrels": "node scripts/audit-package-barrels.mjs",
+    "audit:duplicate-components": "node scripts/audit-duplicate-components.mjs",
+    "audit:duplicate-components:self-check": "node scripts/audit-duplicate-components.mjs --self-check",
+    "audit:action-availability": "node scripts/audit-action-availability.mjs",
+    "audit:package-barrels": "node scripts/audit-package-barrels.mjs",
     "audit:package-barrels:check": "node scripts/audit-package-barrels.mjs --check",
     "audit:prompt-compliance": "node scripts/audit-prompt-compliance.mjs",
     "audit:description-compressed": "node scripts/audit-prompt-compliance.mjs --description-compressed-only",
@@ -94,7 +94,9 @@
     "verify:cloud": "bun run --cwd cloud verify",
     "db:cloud:generate": "bun run --cwd cloud db:generate",
     "db:cloud:migrate": "bun run --cwd cloud db:migrate",
-    "db:cloud:studio": "bun run --cwd cloud db:studio"
+    "db:cloud:studio": "bun run --cwd cloud db:studio",
+    "publish:dry-run": "bun scripts/publish-from-dist.mjs",
+    "publish:packages": "bun scripts/publish-from-dist.mjs --apply"
   },
   "packageManager": "bun@1.3.5",
   "workspaces": [
