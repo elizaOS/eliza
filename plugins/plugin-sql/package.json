@@ -28,8 +28,12 @@
   },
   "./schema": {
     "types": "./typescript/dist/schema/index.d.ts",
-    "import": "./typescript/dist/schema/index.js",
-    "default": "./typescript/dist/schema/index.js"
+    "bun": {
+      "types": "./typescript/schema/index.ts",
+      "default": "./typescript/schema/index.ts"
+    },
+    "import": "./typescript/schema/index.ts",
+    "default": "./typescript/schema/index.ts"
   },
   "./drizzle": {
     "types": "./typescript/dist/drizzle/index.d.ts",
