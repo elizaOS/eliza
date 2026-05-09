@@ -146,9 +146,7 @@ export const skillAction: Action = {
 		},
 	],
 	validate: async (runtime: IAgentRuntime) => {
-		return Boolean(
-			runtime.getService<unknown>("AGENT_SKILLS_SERVICE"),
-		);
+		return Boolean(runtime.getService("AGENT_SKILLS_SERVICE"));
 	},
 	handler: async (
 		runtime: IAgentRuntime,

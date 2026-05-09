@@ -130,7 +130,6 @@ describe('EmbeddedN8nService', () => {
         await client.close();
         await rm(dir, { recursive: true, force: true });
       }
-      process.exit(0);
     `;
 
     const proc = Bun.spawn([process.execPath, '-e', script], {
