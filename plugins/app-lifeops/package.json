@@ -141,8 +141,10 @@
     "test:integration": "cd ../../.. && vitest run --config eliza/test/vitest/integration.config.ts eliza/plugins/app-lifeops/test/life-smoke.integration.test.ts",
     "test:scenarios": "cd ../../.. && bun run scenarios:lifeops",
     "verify:live-schedule": "bun run ./scripts/verify-live-schedule-data.ts",
-    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "clean": "rm -rf dist"
+    "build": "bun run build:js && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc -p ../tsconfig.build.shared.json"
   },
   "dependencies": {
     "@capacitor/core": "8.3.1",

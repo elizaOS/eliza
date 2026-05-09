@@ -10,8 +10,10 @@
     "test": "bunx vitest run --config ./vitest.config.ts",
     "storybook": "storybook dev -p 6007",
     "build-storybook": "storybook build",
-    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "clean": "rm -rf dist"
+    "build": "bun run build:js && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc -p ../tsconfig.build.shared.json"
   },
   "exports": {
     "./package.json": "./package.json",

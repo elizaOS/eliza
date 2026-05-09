@@ -8,6 +8,6 @@ export default defineConfig({
   clean: true,
   format: ["esm"],
   // Upstream sources are not strict against current @elizaos/core types; ship JS only.
-  dts: false,
+  dts: true,
   external: ["dotenv", "fs", "path"],
 });
