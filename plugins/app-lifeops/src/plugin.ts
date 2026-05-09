@@ -39,12 +39,26 @@ import {
   FOLLOWUP_TRACKER_TASK_NAME,
   registerFollowupTrackerWorker,
 } from "./followup/index.js";
+import {
+  createChannelRegistry,
+  registerChannelRegistry,
+  registerDefaultChannelPack,
+} from "./lifeops/channels/index.js";
+import {
+  createConnectorRegistry,
+  registerConnectorRegistry,
+  registerDefaultConnectorPack,
+} from "./lifeops/connectors/index.js";
 import { BrowserBridgeAdapter } from "./lifeops/messaging/adapters/browser-bridge-adapter.js";
 import { CalendlyAdapter } from "./lifeops/messaging/adapters/calendly-adapter.js";
 import { LifeOpsGmailAdapter } from "./lifeops/messaging/adapters/gmail-adapter.js";
 import { XDmAdapter } from "./lifeops/messaging/adapters/x-dm-adapter.js";
 import { createOwnerSendPolicy } from "./lifeops/messaging/owner-send-policy.js";
 import { LifeOpsRepository } from "./lifeops/repository.js";
+import {
+  createSendPolicyRegistry,
+  registerSendPolicyRegistry,
+} from "./lifeops/send-policy/index.js";
 // LifeOps runtime (scheduler task worker + registration)
 import {
   ensureLifeOpsSchedulerTask,
@@ -326,6 +340,19 @@ const rawAppLifeOpsPlugin: Plugin = {
         `[selfcontrol] Plugin loaded, but local website blocking is unavailable: ${status.reason ?? "unknown reason"}`,
       );
     }
+
+    // W1-F — register the connector / channel / send-policy registries.
+    // Empty in Wave 1; W1-B (`plugin-health`) and Wave 2 (W2-B) populate them.
+    const connectorRegistry = createConnectorRegistry();
+    registerDefaultConnectorPack(connectorRegistry);
+    registerConnectorRegistry(runtime, connectorRegistry);
+
+    const channelRegistry = createChannelRegistry();
+    registerDefaultChannelPack(channelRegistry);
+    registerChannelRegistry(runtime, channelRegistry);
+
+    const sendPolicyRegistry = createSendPolicyRegistry();
+    registerSendPolicyRegistry(runtime, sendPolicyRegistry);
 
     // Owner outbound-message approval policy: gmail drafts require explicit
     // owner approval; everything else passes straight through.
