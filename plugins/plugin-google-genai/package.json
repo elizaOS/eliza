@@ -31,8 +31,21 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "text-large",
+        "text-small",
+        "tool-use",
+        "embedding",
+        "image-description"
+      ]
+    }
+  },
   "sideEffects": false,
   "dependencies": {
     "@google/genai": "^1.5.1",

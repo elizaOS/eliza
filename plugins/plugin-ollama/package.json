@@ -31,8 +31,19 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "text-large",
+        "text-small",
+        "embedding"
+      ]
+    }
+  },
   "sideEffects": false,
   "dependencies": {
     "@ai-sdk/ui-utils": "^1.2.8",

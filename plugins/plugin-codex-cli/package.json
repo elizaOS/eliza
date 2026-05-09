@@ -28,7 +28,13 @@
       "default": "./dist/node/index.node.js"
     }
   },
-  "files": ["dist"],
+  "files": ["dist", "auto-enable.ts"],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": ["text-large", "text-small", "tool-use"]
+    }
+  },
   "dependencies": {},
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

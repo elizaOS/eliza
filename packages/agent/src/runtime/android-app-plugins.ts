@@ -2,26 +2,25 @@
  * Android-only overlay-app runtime plugin registration.
  *
  * This file is only a mobile bundle escape hatch: it imports the runtime
- * plugin subpaths from the owning app packages, applies the agent-side hosted
- * app session gate, and pins those modules into STATIC_ELIZA_PLUGINS for the
- * custom AOSP bundle. The action/provider implementations live in
- * `plugins/app-{wifi,contacts,phone}` so desktop/server builds do not carry
- * duplicate Android stubs here.
+ * owning app package barrels, applies the agent-side hosted app session gate,
+ * and pins those modules into STATIC_ELIZA_PLUGINS for the custom AOSP bundle.
+ * The action/provider implementations live in `plugins/app-{wifi,contacts,phone}`
+ * so desktop/server builds do not carry duplicate Android stubs here.
  */
 
 import {
   contactsProvider,
   appContactsPlugin as rawContactsPlugin,
-} from "@elizaos/app-contacts/plugin";
+} from "@elizaos/app-contacts";
 import {
   phoneCallLogProvider,
   placeCallAction,
   appPhonePlugin as rawPhonePlugin,
-} from "@elizaos/app-phone/plugin";
+} from "@elizaos/app-phone";
 import {
   appWifiPlugin as rawWifiPlugin,
   wifiNetworksProvider,
-} from "@elizaos/app-wifi/plugin";
+} from "@elizaos/app-wifi";
 import { gatePluginSessionForHostedApp } from "../services/app-session-gate.js";
 import { STATIC_ELIZA_PLUGINS } from "./plugin-types.js";
 
