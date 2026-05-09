@@ -1,25 +1,31 @@
 #!/usr/bin/env node
 /**
- * Wave-1 default-pack prompt-content linter.
+ * Default-pack prompt-content linter.
  *
- * Per IMPL §3.4 + GAP §8.9: scans `src/default-packs/*` `promptInstructions`
- * for known PII, absolute paths, hardcoded ISO times outside owner-fact
- * references, and embedded conditional logic.
+ * Per IMPL §7.2 + GAP §8.9: scans `src/default-packs/*` `promptInstructions`
+ * for the corpus documented in `docs/audit/prompt-content-lint.md`:
+ *   - PII names, email addresses, phone numbers
+ *   - absolute filesystem paths
+ *   - hardcoded ISO times / datetimes outside owner-fact references
+ *   - embedded conditional logic
+ *   - hardcoded URLs
+ *   - Wave-N / W<N>-<L> narrative leaks
+ *   - leftover slop markers (TODO / FIXME / XXX / HACK)
  *
- * Wave-1 ships **warnings only**: this script always exits 0 unless invoked
- * with `--fail-on-finding` (which W3-B will flip on by default).
+ * W3-B promotion: this runner exits non-zero on any finding by default.
+ * `--allow-warnings` opts back into the legacy warnings-only behavior; it
+ * exists only so a maintainer can re-run without CI failing while triaging
+ * a wave of changes locally.
  *
  * Usage:
- *   node scripts/lint-default-packs.mjs                 # warnings only (default)
- *   node scripts/lint-default-packs.mjs --fail-on-finding   # CI-fail mode (W3-B)
+ *   node scripts/lint-default-packs.mjs                  # CI-fail mode (default)
+ *   node scripts/lint-default-packs.mjs --allow-warnings # warnings-only
  *
  * The script reads each `src/default-packs/*.ts` file as text and runs the
  * same regex corpus the runtime `lintPromptText` uses. Reading the source
  * files directly (instead of importing the registered packs) keeps the
- * linter independent of the W1-A spine landing — and avoids needing a TS
- * runtime in `bun run verify`.
- *
- * The corpus is documented in `docs/audit/prompt-content-lint.md`.
+ * linter independent of the W1-A spine and avoids needing a TS runtime in
+ * `bun run verify`.
  */
 
 import fs from "node:fs";
@@ -31,6 +37,11 @@ const packsDir = path.resolve(here, "..", "src", "default-packs");
 
 const PII_NAMES = ["Jill", "Marco", "Sarah", "Suran", "Samantha"];
 const PII_REGEX = new RegExp(`\\b(${PII_NAMES.join("|")})\\b`, "g");
+
+const EMAIL_REGEX = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+
+const PHONE_REGEX =
+  /(?:\+\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]\d{3}[\s.-]\d{4}\b/g;
 
 const ABSOLUTE_PATH_REGEX =
   /(?:^|[\s"'`(])(?:\/[A-Za-z0-9_.\-/]{2,}|~\/[A-Za-z0-9_.\-/]{2,}|[A-Z]:\\[A-Za-z0-9_.\\\-]{2,})/g;
@@ -48,14 +59,22 @@ const OWNER_FACT_TIME_PATTERNS = [
 ];
 
 const CONDITIONAL_REGEX =
-  /\b(if user(?:'s)?|when [A-Za-z_]+\s*[=:]+|if owner|if the user is|if name is|when name is)/gi;
+  /\b(if user(?:'s)?|when [A-Za-z_]+\s*[=:]+|if owner|if the user is|if name is|when name is|unless owner|unless user|else if\b|case [A-Za-z_]+ when\b)/gi;
+
+const URL_REGEX = /\bhttps?:\/\/[^\s'"`)<>]+/g;
+
+const WAVE_NARRATIVE_REGEX = /\b(?:Wave[\s-]?\d+|W[1-9]\d*-[A-Z])\b/g;
+
+const SLOP_REGEX = /\b(TODO|FIXME|XXX|HACK)\b/g;
 
 /**
  * Extract every `promptInstructions: "..."` string from a TS source file.
  * Handles single-line strings and `+`-concatenated multi-line literals.
  *
- * Crude on purpose — Wave-1 ships warnings; the false-positive cost is low
- * and the script must run without a TS runtime.
+ * Crude on purpose — the script must run without a TS runtime, and
+ * `promptInstructions` values are by convention plain string literals
+ * (single-quoted, double-quoted, or backtick-quoted). The runtime
+ * `lintPromptText` is what backs in-process pack registration.
  */
 function extractPrompts(source) {
   const prompts = [];
@@ -88,6 +107,24 @@ function lintPromptText(packKey, recordIndex, prompt) {
       packKey,
       recordIndex,
       message: `PII name "${m[1]}" embedded in prompt; reference owner facts via contextRequest.includeOwnerFacts.preferredName instead.`,
+      match: m[0],
+    });
+  }
+  for (const m of prompt.matchAll(EMAIL_REGEX)) {
+    findings.push({
+      rule: "email_pii",
+      packKey,
+      recordIndex,
+      message: `Concrete email address "${m[0]}" embedded in prompt; reference the owner or an EntityStore contact instead.`,
+      match: m[0],
+    });
+  }
+  for (const m of prompt.matchAll(PHONE_REGEX)) {
+    findings.push({
+      rule: "phone_pii",
+      packKey,
+      recordIndex,
+      message: `Phone number "${m[0]}" embedded in prompt; reference the owner or an EntityStore contact instead.`,
       match: m[0],
     });
   }
@@ -132,6 +169,33 @@ function lintPromptText(packKey, recordIndex, prompt) {
       match: m[0],
     });
   }
+  for (const m of prompt.matchAll(URL_REGEX)) {
+    findings.push({
+      rule: "hardcoded_url",
+      packKey,
+      recordIndex,
+      message: `Concrete URL "${m[0]}" embedded in prompt; reference a connector capability rather than baking in a host-specific URL.`,
+      match: m[0],
+    });
+  }
+  for (const m of prompt.matchAll(WAVE_NARRATIVE_REGEX)) {
+    findings.push({
+      rule: "wave_narrative",
+      packKey,
+      recordIndex,
+      message: `Internal milestone reference "${m[0]}" in prompt; Wave/W-prefixed labels belong in comments and docs, not in runtime prompt content.`,
+      match: m[0],
+    });
+  }
+  for (const m of prompt.matchAll(SLOP_REGEX)) {
+    findings.push({
+      rule: "prompt_slop",
+      packKey,
+      recordIndex,
+      message: `Leftover marker "${m[0]}" in prompt; finish the prompt or remove the placeholder.`,
+      match: m[0],
+    });
+  }
   return findings;
 }
 
@@ -153,10 +217,12 @@ function packKeyFromFilename(filename) {
 
 function main() {
   if (!fs.existsSync(packsDir)) {
-    console.warn(`[lint-default-packs] no default-packs directory found at ${packsDir}; skipping.`);
-    process.exit(0);
+    console.error(
+      `[lint-default-packs] FAIL: no default-packs directory found at ${packsDir}.`,
+    );
+    process.exit(1);
   }
-  const failOnFinding = process.argv.includes("--fail-on-finding");
+  const allowWarnings = process.argv.includes("--allow-warnings");
 
   const files = fs
     .readdirSync(packsDir)
@@ -180,8 +246,7 @@ function main() {
     process.exit(0);
   }
 
-  const isWarning = !failOnFinding;
-  const prefix = isWarning ? "WARN" : "FAIL";
+  const prefix = allowWarnings ? "WARN" : "FAIL";
   console.error(
     `[lint-default-packs] ${prefix}: ${allFindings.length} finding(s) across default packs:`,
   );
@@ -190,13 +255,16 @@ function main() {
       `  [${finding.rule}] ${finding.packKey}#${finding.recordIndex}: ${finding.message} (matched: ${JSON.stringify(finding.match)})`,
     );
   }
-  if (failOnFinding) {
-    process.exit(1);
+  if (allowWarnings) {
+    console.error(
+      "[lint-default-packs] --allow-warnings: exiting 0 despite findings.",
+    );
+    process.exit(0);
   }
   console.error(
-    "[lint-default-packs] Wave-1 ships warnings only; promoted to CI-fail by W3-B.",
+    "[lint-default-packs] failing CI on findings (W3-B). Re-run with --allow-warnings only for local triage.",
   );
-  process.exit(0);
+  process.exit(1);
 }
 
 main();
