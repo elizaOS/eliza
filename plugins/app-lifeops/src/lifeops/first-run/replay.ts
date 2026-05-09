@@ -47,12 +47,22 @@ export function partialAnswersFromFacts(
   facts: OwnerFacts,
 ): Partial<CustomizeAnswers> {
   const partial: Partial<CustomizeAnswers> = {};
-  if (facts.preferredName) partial.preferredName = facts.preferredName;
-  if (facts.timezone) partial.timezone = facts.timezone;
-  if (facts.morningWindow) partial.morningWindow = facts.morningWindow;
-  if (facts.eveningWindow) partial.eveningWindow = facts.eveningWindow;
+  if (facts.preferredName) partial.preferredName = facts.preferredName.value;
+  if (facts.timezone) partial.timezone = facts.timezone.value;
+  if (facts.morningWindow) {
+    partial.morningWindow = {
+      startLocal: facts.morningWindow.value.startLocal,
+      endLocal: facts.morningWindow.value.endLocal,
+    };
+  }
+  if (facts.eveningWindow) {
+    partial.eveningWindow = {
+      startLocal: facts.eveningWindow.value.startLocal,
+      endLocal: facts.eveningWindow.value.endLocal,
+    };
+  }
   if (facts.preferredNotificationChannel) {
-    partial.channel = facts.preferredNotificationChannel;
+    partial.channel = facts.preferredNotificationChannel.value;
   }
   return partial;
 }

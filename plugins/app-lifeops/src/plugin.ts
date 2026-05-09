@@ -70,6 +70,15 @@ import {
   createActivitySignalBus,
   registerActivitySignalBus,
 } from "./lifeops/signals/bus.js";
+import {
+  createOwnerFactStore,
+  registerOwnerFactStore,
+} from "./lifeops/owner/fact-store.js";
+import {
+  createMultilingualPromptRegistry,
+  registerDefaultPromptPack,
+  registerMultilingualPromptRegistry,
+} from "./lifeops/i18n/prompt-registry.js";
 import { BrowserBridgeAdapter } from "./lifeops/messaging/adapters/browser-bridge-adapter.js";
 import { CalendlyAdapter } from "./lifeops/messaging/adapters/calendly-adapter.js";
 import { LifeOpsGmailAdapter } from "./lifeops/messaging/adapters/gmail-adapter.js";
@@ -414,6 +423,19 @@ const rawAppLifeOpsPlugin: Plugin = {
     const activitySignalBus = createActivitySignalBus({ familyRegistry });
     registerActivitySignalBus(runtime, activitySignalBus);
 
+    // W2-E — real `OwnerFactStore` (canonical typed-with-provenance store
+    // for owner facts and policies; replaces the W1-C interim wrapper) and
+    // `MultilingualPromptRegistry` (action-example translation table;
+    // ships with the en+es brush-teeth pair the planner regression-tests
+    // against). PROFILE / first-run / scheduled-task gates read through
+    // the registered store instead of `LifeOpsOwnerProfile` directly.
+    const ownerFactStore = createOwnerFactStore(runtime);
+    registerOwnerFactStore(runtime, ownerFactStore);
+
+    const promptRegistry = createMultilingualPromptRegistry();
+    registerDefaultPromptPack(promptRegistry);
+    registerMultilingualPromptRegistry(runtime, promptRegistry);
+
     // Owner outbound-message approval policy: gmail drafts require explicit
     // owner approval; everything else passes straight through.
     registerSendPolicy(runtime, createOwnerSendPolicy());
@@ -664,6 +686,42 @@ export {
   type OwnerFacts,
   type OwnerFactsPatch,
 } from "./lifeops/first-run/state.js";
+// W2-E — canonical OwnerFactStore (typed entries with provenance) +
+// runtime-registry surface. Re-exports the same `createOwnerFactStore`
+// the first-run state.ts re-exports; here the additional registry /
+// policy-patch surfaces show through.
+export {
+  ownerFactsToView,
+  registerOwnerFactStore,
+  resolveOwnerFactStore,
+  getOwnerFactStore,
+  type EscalationRule,
+  type OwnerFactEntry,
+  type OwnerFactProvenance,
+  type OwnerFactProvenanceSource,
+  type OwnerFactWindow,
+  type OwnerQuietHours,
+  type PolicyPatchEscalationRule,
+  type PolicyPatchReminderIntensity,
+  type ReminderIntensity,
+} from "./lifeops/owner/fact-store.js";
+// W2-E — MultilingualPromptRegistry. Localized `ActionExample` table;
+// other actions resolve example pairs by `exampleKey` instead of
+// inlining locale-specific strings.
+export {
+  createMultilingualPromptRegistry,
+  getDefaultPromptExamplePair,
+  getDefaultPromptRegistry,
+  getMultilingualPromptRegistry,
+  PROMPT_REGISTRY_DEFAULT_LOCALE,
+  registerDefaultPromptPack,
+  registerMultilingualPromptRegistry,
+  resolveActionExamplePairs,
+  type MultilingualPromptRegistry,
+  type PromptExampleEntry,
+  type PromptLocale,
+  type PromptRegistryFilter,
+} from "./lifeops/i18n/prompt-registry.js";
 export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
 export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
 export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
