@@ -41,6 +41,19 @@ describe("LifeOps Google plugin registration", () => {
     expect(lifeAction?.contexts).toContain("todos");
   });
 
+  it("validates normal owner todo requests for the LIFE action", async () => {
+    const lifeAction = appLifeOpsPlugin.actions?.find(
+      (action) => action.name === "LIFE",
+    );
+
+    await expect(
+      lifeAction?.validate?.(
+        { getRoom: async () => null } as unknown as IAgentRuntime,
+        { content: { text: "add a todo: pick up dry cleaning tomorrow" } } as never,
+      ),
+    ).resolves.toBe(true);
+  });
+
   it("declares plugin-google for app and route plugin dependency resolution", () => {
     expect(appLifeOpsPlugin.dependencies).toContain("@elizaos/plugin-google");
     expect(lifeopsPlugin.dependencies).toContain("@elizaos/plugin-google");
