@@ -181,6 +181,9 @@ const TEXT_REASONING_LARGE_MODEL_TYPE = (ModelType.TEXT_REASONING_LARGE ??
 export const anthropicPlugin: Plugin = {
   name: "anthropic",
   description: "Anthropic plugin (supports text, object, and image description generation)",
+  autoEnable: {
+    envKeys: ["ANTHROPIC_API_KEY", "CLAUDE_API_KEY"],
+  },
 
   config: {
     ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? null,

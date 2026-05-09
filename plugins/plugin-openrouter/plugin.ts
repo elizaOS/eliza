@@ -44,6 +44,9 @@ const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER")
 export const openrouterPlugin: Plugin = {
   name: "openrouter",
   description: "OpenRouter multi-model AI gateway plugin",
+  autoEnable: {
+    envKeys: ["OPENROUTER_API_KEY"],
+  },
 
   config: {
     OPENROUTER_API_KEY: env.OPENROUTER_API_KEY ?? null,

@@ -214,6 +214,9 @@ const env = getProcessEnv();
 export const googleGenAIPlugin: Plugin = {
   name: "google-genai",
   description: "Google Generative AI plugin for Gemini models",
+  autoEnable: {
+    envKeys: ["GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"],
+  },
 
   config: {
     GOOGLE_GENERATIVE_AI_API_KEY: env.GOOGLE_GENERATIVE_AI_API_KEY ?? null,

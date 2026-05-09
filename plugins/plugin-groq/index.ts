@@ -407,6 +407,9 @@ function getTextModelForType(runtime: IAgentRuntime, modelType: string): string 
 export const groqPlugin: Plugin = {
   name: "groq",
   description: "Groq LLM provider - fast inference with Llama and other models",
+  autoEnable: {
+    envKeys: ["GROQ_API_KEY"],
+  },
 
   config: {
     GROQ_API_KEY: typeof process !== "undefined" ? (process.env.GROQ_API_KEY ?? null) : null,

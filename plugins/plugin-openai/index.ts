@@ -57,6 +57,9 @@ const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER")
 export const openaiPlugin: Plugin = {
   name: "openai",
   description: "OpenAI API integration for text, image, audio, and embedding models",
+  autoEnable: {
+    envKeys: ["OPENAI_API_KEY"],
+  },
 
   config: {
     OPENAI_API_KEY: env.OPENAI_API_KEY ?? null,
