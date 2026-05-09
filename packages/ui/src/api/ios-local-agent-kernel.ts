@@ -1033,13 +1033,18 @@ function catalogForAvailableModel(model: {
   path?: string;
 }): CatalogModel | undefined {
   const haystack = `${model.name ?? ""} ${model.path ?? ""}`.toLowerCase();
-  return MODEL_CATALOG.find((candidate) => {
-    const id = candidate.id.toLowerCase();
+  const filenameCandidates = [model.name, model.path?.split(/[\\/]/).pop()]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.toLowerCase());
+  const fileMatch = MODEL_CATALOG.find((candidate) => {
     const file = candidate.ggufFile.split("/").pop()?.toLowerCase() ?? "";
-    return (
-      haystack.includes(id) || (file.length > 0 && haystack.includes(file))
-    );
+    return file.length > 0 && filenameCandidates.includes(file);
   });
+  if (fileMatch) return fileMatch;
+
+  return [...MODEL_CATALOG]
+    .sort((a, b) => b.id.length - a.id.length)
+    .find((candidate) => haystack.includes(candidate.id.toLowerCase()));
 }
 
 function mobileRecommendedBucket(
@@ -1182,6 +1187,7 @@ function buildMobileLoadOptions(
   };
   const dflash = catalog?.runtime?.dflash;
   if (!dflash) return options;
+  if (hardware.mobile?.dflashSupported !== true) return options;
 
   const drafter = companionInstalled(installed, dflash.drafterModelId);
   if (!drafter) return options;
@@ -1661,11 +1667,11 @@ function statusLine(
         progress.received,
       )}/${formatGb(progress.total || Math.round(catalogDownloadSizeGb(model, MODEL_CATALOG) * 1024 ** 3))}). Please hold on.`,
     () =>
-      `${model.displayName} is still coming down: ${progress.percent ?? 0}% complete, ${formatGb(
+      `${model.displayName} is still downloading: ${progress.percent ?? 0}% complete, ${formatGb(
         progress.received,
       )} of ${formatGb(progress.total || Math.round(catalogDownloadSizeGb(model, MODEL_CATALOG) * 1024 ** 3))}.`,
     () =>
-      `Local inference is not ready yet. ${model.displayName} is at ${
+      `Local inference is still downloading. ${model.displayName} is at ${
         progress.percent ?? 0
       }% (${formatGb(progress.received)}/${formatGb(
         progress.total ||
