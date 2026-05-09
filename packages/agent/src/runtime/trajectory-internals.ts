@@ -306,10 +306,7 @@ export function enrichTrajectoryLlmCall<T extends Record<string, unknown>>(
   };
 }
 
-export function hasActionNamed(
-  runtime: IAgentRuntime,
-  name: string,
-): boolean {
+export function hasActionNamed(runtime: IAgentRuntime, name: string): boolean {
   const actions = runtime.actions;
   if (!Array.isArray(actions)) return false;
   const target = name.trim().toUpperCase();

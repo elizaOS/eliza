@@ -1156,7 +1156,9 @@ export function generateCatalogPrompt(options?: CatalogPromptOptions): string {
   const mode = options?.mode ?? "generate";
 
   const parts: string[] = [
-    mode === "chat" ? UI_INSTRUCTION_HEADER_CHAT : UI_INSTRUCTION_HEADER_GENERATE,
+    mode === "chat"
+      ? UI_INSTRUCTION_HEADER_CHAT
+      : UI_INSTRUCTION_HEADER_GENERATE,
     UI_PATCH_FORMAT,
     formatComponentCatalogForPrompt({ include: options?.componentFilter }),
     UI_BINDING_DOCS,

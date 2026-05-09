@@ -5,14 +5,14 @@ import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RemoteSigningService } from "../services/remote-signing-service.js";
-import type { SandboxManager } from "../services/sandbox-manager.js";
-import type { SigningRequest } from "../services/signing-policy.js";
 import {
   readJsonBody as parseJsonBody,
   readRequestBody,
   sendJson as sendJsonResponse,
 } from "@elizaos/shared";
+import type { RemoteSigningService } from "../services/remote-signing-service.js";
+import type { SandboxManager } from "../services/sandbox-manager.js";
+import type { SigningRequest } from "../services/signing-policy.js";
 
 interface SandboxRouteState {
   sandboxManager: SandboxManager | null;

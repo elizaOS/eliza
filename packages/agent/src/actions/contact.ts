@@ -42,6 +42,7 @@ import type {
   Memory,
   Metadata,
   ProviderValue,
+  RelationshipsMergeProposalEvidence,
   SearchCategoryRegistration,
   State,
   UUID,
@@ -53,7 +54,6 @@ import {
   parseJSONObjectFromText,
   stringToUuid,
 } from "@elizaos/core";
-import type { RelationshipsMergeProposalEvidence } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import type {
   RelationshipsGraphService,

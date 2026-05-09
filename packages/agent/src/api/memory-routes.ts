@@ -5,17 +5,17 @@ import {
   composePrompt,
   createMessageMemory,
   type Memory,
-  memoryContextQaTemplate,
   ModelType,
+  memoryContextQaTemplate,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/shared";
 import { parsePositiveInteger } from "../utils/number-parsing.js";
 import {
   type DocumentsServiceResult,
   getDocumentsService,
 } from "./documents-service-loader.js";
-import type { RouteRequestContext } from "@elizaos/shared";
 
 const HASH_MEMORY_SOURCE = "hash_memory";
 const UUID_REGEX =

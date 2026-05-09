@@ -1,7 +1,9 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
-import { resolveCloudApiKey } from "@elizaos/plugin-elizacloud";
-import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
+import {
+  isCloudProvisionedContainer,
+  resolveCloudApiKey,
+} from "@elizaos/plugin-elizacloud";
 import type { ElizaConfig } from "../config/config.js";
 import type { ConnectorHealthMonitor } from "./connector-health.js";
 import { getLocalInferenceActiveSnapshot } from "./local-inference-routes.js";

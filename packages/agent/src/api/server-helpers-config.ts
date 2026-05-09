@@ -11,9 +11,9 @@ import {
   normalizeCharacterLanguage,
   ONBOARDING_CLOUD_PROVIDER_OPTIONS,
   ONBOARDING_PROVIDER_CATALOG,
+  sendJsonError,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
-import { sendJsonError } from "@elizaos/shared";
 import { generateWalletKeys, setSolanaWalletEnv } from "./wallet.js";
 
 // ---------------------------------------------------------------------------

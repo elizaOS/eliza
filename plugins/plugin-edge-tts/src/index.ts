@@ -207,9 +207,7 @@ export const edgeTTSPlugin: Plugin = {
       const f = (config?.features as Record<string, unknown> | undefined)?.tts;
       return (
         f === true ||
-        (typeof f === "object" &&
-          f !== null &&
-          (f as { enabled?: unknown }).enabled !== false)
+        (typeof f === "object" && f !== null && (f as { enabled?: unknown }).enabled !== false)
       );
     },
   },

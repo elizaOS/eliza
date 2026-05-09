@@ -296,7 +296,7 @@ export class WorkflowService extends Service {
 
     if (relevantNodes.length === 0) {
       throw new Error(
-        'No relevant p1p3s nodes found for the given prompt. Please be more specific about the integrations you want to use (e.g., Gmail, Slack, Stripe).'
+        'No relevant workflows nodes found for the given prompt. Please be more specific about the integrations you want to use (e.g., Gmail, Slack, Stripe).'
       );
     }
 
@@ -387,7 +387,7 @@ export class WorkflowService extends Service {
     // Fetch the live workflow runtime's node-type registry once per deploy so
     // typeVersion clamping intersects catalog ∩ runtime — necessary
     // because the bundled `defaultNodes.json` can be ahead of the user's
-    // actually-installed p1p3s binary (e.g. catalog says Gmail v2.2 but
+    // actually-installed workflows binary (e.g. catalog says Gmail v2.2 but
     // runtime only ships up to v2.1).
     const generateClient = this.getClient();
     const runtimeVersions = (await generateClient.getRuntimeNodeTypeVersions()) ?? undefined;
@@ -698,7 +698,7 @@ export class WorkflowService extends Service {
     }
 
     // Determine if this is an update (existing workflow) or create (new workflow).
-    // If update fails (workflow deleted on p1p3s), fallback to create.
+    // If update fails (workflow deleted on workflows), fallback to create.
     let deployedWorkflow: WorkflowDefinitionResponse;
     let wasUpdate = false;
     if (workflow.id) {

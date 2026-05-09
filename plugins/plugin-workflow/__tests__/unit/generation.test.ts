@@ -217,7 +217,7 @@ describe('generateWorkflow', () => {
   test('parses valid JSON response', async () => {
     const workflowJson = JSON.stringify({
       name: 'Test Workflow',
-      nodes: [{ name: 'Start', type: 'p1p3s-nodes-base.start', position: [0, 0] }],
+      nodes: [{ name: 'Start', type: 'workflows-nodes-base.start', position: [0, 0] }],
       connections: {},
     });
 
@@ -289,7 +289,7 @@ describe('generateWorkflow', () => {
 
     const nodes = [
       {
-        name: 'p1p3s-nodes-base.httpRequest',
+        name: 'workflows-nodes-base.httpRequest',
         displayName: 'HTTP Request',
         description: 'Make an HTTP request',
         group: ['output'],
@@ -320,7 +320,7 @@ describe('generateWorkflow', () => {
     // Unknown node with no schema
     const nodes = [
       {
-        name: 'p1p3s-nodes-base.unknownNode',
+        name: 'workflows-nodes-base.unknownNode',
         displayName: 'Unknown',
         description: 'No schema',
         group: ['transform'],
@@ -347,14 +347,14 @@ describe('classifyDraftIntent', () => {
       nodes: [
         {
           name: 'Schedule Trigger',
-          type: 'p1p3s-nodes-base.scheduleTrigger',
+          type: 'workflows-nodes-base.scheduleTrigger',
           typeVersion: 1,
           position: [0, 0],
           parameters: {},
         },
         {
           name: 'Gmail',
-          type: 'p1p3s-nodes-base.gmail',
+          type: 'workflows-nodes-base.gmail',
           typeVersion: 2,
           position: [200, 0],
           parameters: { operation: 'send' },

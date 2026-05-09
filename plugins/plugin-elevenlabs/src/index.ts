@@ -1,16 +1,4 @@
-import {
-  type IAgentRuntime,
-  ModelType,
-  type Plugin,
-  logger,
-  parseBooleanFromText,
-} from "@elizaos/core";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
-import {
-  SpeechToTextConvertRequestModelId as SttModelIdEnum,
-  SpeechToTextConvertRequestTimestampsGranularity as SttTimestampsGranularityEnum,
-  TextToSpeechStreamRequestOutputFormat as TtsOutputFormatEnum,
-} from "@elevenlabs/elevenlabs-js/api";
 import type {
   BodySpeechToTextV1SpeechToTextPost,
   MultichannelSpeechToTextResponseModel,
@@ -19,6 +7,18 @@ import type {
   SpeechToTextConvertRequestTimestampsGranularity,
   TextToSpeechStreamRequestOutputFormat,
 } from "@elevenlabs/elevenlabs-js/api";
+import {
+  SpeechToTextConvertRequestModelId as SttModelIdEnum,
+  SpeechToTextConvertRequestTimestampsGranularity as SttTimestampsGranularityEnum,
+  TextToSpeechStreamRequestOutputFormat as TtsOutputFormatEnum,
+} from "@elevenlabs/elevenlabs-js/api";
+import {
+  type IAgentRuntime,
+  logger,
+  ModelType,
+  type Plugin,
+  parseBooleanFromText,
+} from "@elizaos/core";
 
 function parseTtsOutputFormat(
   format: string,
@@ -611,7 +611,7 @@ export const elevenLabsPlugin: Plugin = {
             ];
             for (const format of pcmFormats) {
               if (format.startsWith("pcm_")) {
-                const sampleRate = Number.parseInt(format.slice(4));
+                const sampleRate = Number.parseInt(format.slice(4), 10);
                 if (Number.isNaN(sampleRate) || sampleRate <= 0) {
                   throw new Error(`Invalid PCM format: ${format}`);
                 }
@@ -673,7 +673,7 @@ export const elevenLabsPlugin: Plugin = {
         },
         {
           name: "STT input handling validation",
-          fn: async (runtime: IAgentRuntime) => {
+          fn: async (_runtime: IAgentRuntime) => {
             const testCases = [
               { type: "string URL", valid: true },
               { type: "Buffer", valid: true },

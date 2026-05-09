@@ -43,7 +43,7 @@ function createMockApiClient(overrides?: Partial<CredentialApiClient>): Credenti
   return {
     createCredential: mock(() =>
       Promise.resolve({
-        id: 'p1p3s-cred-123',
+        id: 'workflows-cred-123',
         name: 'gmailOAuth2Api',
         type: 'gmailOAuth2Api',
         createdAt: '2025-01-01T00:00:00Z',
@@ -234,7 +234,7 @@ describe('resolveCredentials', () => {
   // External provider mode — credential_data
   // --------------------------------------------------------------------------
 
-  test('provider mode: creates p1p3s credential from credential_data', async () => {
+  test('provider mode: creates workflows credential from credential_data', async () => {
     const oauthData = {
       clientId: 'goog-client-id',
       clientSecret: 'goog-secret',
@@ -264,11 +264,11 @@ describe('resolveCredentials', () => {
       type: 'gmailOAuth2Api',
       data: oauthData,
     });
-    expect(res.injectedCredentials.get('gmailOAuth2Api')).toBe('p1p3s-cred-123');
+    expect(res.injectedCredentials.get('gmailOAuth2Api')).toBe('workflows-cred-123');
     expect(res.missingConnections).toHaveLength(0);
   });
 
-  test('provider mode: caches p1p3s credential ID after creation', async () => {
+  test('provider mode: caches workflows credential ID after creation', async () => {
     const provider = createMockCredProvider(async () => ({
       status: 'credential_data' as const,
       data: { access_token: 'tok' },
@@ -287,7 +287,7 @@ describe('resolveCredentials', () => {
       testTagName
     );
 
-    expect(credStore.set).toHaveBeenCalledWith('user-001', 'gmailOAuth2Api', 'p1p3s-cred-123');
+    expect(credStore.set).toHaveBeenCalledWith('user-001', 'gmailOAuth2Api', 'workflows-cred-123');
   });
 
   test('provider mode: credential_data without apiClient reports missing', async () => {

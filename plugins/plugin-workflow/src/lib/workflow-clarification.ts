@@ -8,7 +8,7 @@
  *   workflow JSON in place. Supports dot segments and bracketed-string
  *   segments (`nodes["Discord Send"].parameters.channelId`).
  *
- * Kept out of `p1p3s-routes.ts` so the handlers stay focused on transport.
+ * Kept out of `workflows-routes.ts` so the handlers stay focused on transport.
  */
 
 export interface WorkflowClarificationRequest {

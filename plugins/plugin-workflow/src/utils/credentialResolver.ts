@@ -23,7 +23,7 @@ interface CredentialApiClient {
  *   1. Credential store DB — cached mappings from previous resolutions
  *   2. Static config — character.settings.workflows.credentials
  *   3. External provider — registered CredentialProvider service (e.g. cloud OAuth)
- *   4. Missing — reported for manual configuration in p1p3s
+ *   4. Missing — reported for manual configuration in workflows
  */
 export async function resolveCredentials(
   workflow: WorkflowDefinition,
@@ -116,13 +116,13 @@ async function resolveOneCredential(
           return null;
         }
         const credName = `${credType}_${tagName}`;
-        const p1p3sCred = await apiClient.createCredential({
+        const workflowsCred = await apiClient.createCredential({
           name: credName,
           type: credType,
           data: result.data,
         });
         try {
-          await credStore?.set(userId, credType, p1p3sCred.id);
+          await credStore?.set(userId, credType, workflowsCred.id);
         } catch (cacheError) {
           logger.warn(
             { src: 'plugin:workflow:utils:credentials' },
@@ -131,9 +131,9 @@ async function resolveOneCredential(
         }
         logger.info(
           { src: 'plugin:workflow:utils:credentials' },
-          `Created p1p3s credential for ${credType}: ${p1p3sCred.id}`
+          `Created workflows credential for ${credType}: ${workflowsCred.id}`
         );
-        return p1p3sCred.id;
+        return workflowsCred.id;
       }
 
       if (result?.status === 'needs_auth') {

@@ -88,16 +88,26 @@ function isVaultConfigRef(value: string): boolean {
   return value.startsWith("vault://") && value.length > "vault://".length;
 }
 
-import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
-import { handleCloudStatusRoutes } from "@elizaos/plugin-elizacloud";
+import {
+  handleCloudStatusRoutes,
+  isCloudProvisionedContainer,
+} from "@elizaos/plugin-elizacloud";
+import {
+  isStreamingDestinationConfigured,
+  readJsonBody as parseJsonBody,
+  type ReadJsonBodyOptions,
+  readRequestBody,
+  sendJson,
+  sendJsonError,
+} from "@elizaos/shared";
 import {
   type ElizaConfig,
   loadElizaConfig,
   saveElizaConfig,
 } from "../config/config.js";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
-import { isStreamingDestinationConfigured } from "@elizaos/shared";
 import { CharacterSchema } from "../config/zod-schema.js";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
 // ONBOARDING_CLOUD_PROVIDER_OPTIONS, ONBOARDING_PROVIDER_CATALOG moved to server-helpers-config.ts
 import { validateX402Startup } from "../middleware/x402/startup-validator.js";
 import {
@@ -109,7 +119,6 @@ import {
   resolvePreferredProviderId,
   resolvePrimaryModel,
 } from "../runtime/model-resolution.js";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
 import {
   type ClassifyContext,
   createColdStrategy,
@@ -202,13 +211,6 @@ import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.js";
 import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.js";
 import { handleHealthRoutes } from "./health-routes.js";
-import {
-  readJsonBody as parseJsonBody,
-  type ReadJsonBodyOptions,
-  readRequestBody,
-  sendJson,
-  sendJsonError,
-} from "@elizaos/shared";
 // iMessage routes extracted to @elizaos/plugin-imessage setup-routes.ts (Plugin.routes)
 // import { handleIMessageRoute } from "./imessage-routes.js";
 import {

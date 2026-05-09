@@ -26,8 +26,12 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createManager, type SecretsManager } from "@elizaos/vault";
-import { createTestVault, type TestVault } from "@elizaos/vault";
+import {
+  createManager,
+  createTestVault,
+  type SecretsManager,
+  type TestVault,
+} from "@elizaos/vault";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { defaultClassifier } from "./classifier.js";
 import { HealthChecker } from "./health.js";

@@ -62,10 +62,6 @@ function slotToModelType(slot: AgentModelSlot): string | undefined {
       return ModelType.TEXT_LARGE;
     case "TEXT_EMBEDDING":
       return ModelType.TEXT_EMBEDDING;
-    case "OBJECT_SMALL":
-      return ModelType.OBJECT_SMALL;
-    case "OBJECT_LARGE":
-      return ModelType.OBJECT_LARGE;
   }
 }
 

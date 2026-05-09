@@ -4,7 +4,7 @@ import { validateAndRepair } from '../../src/utils/validateAndRepair';
 
 function makeNodeDef(overrides: Partial<NodeDefinition>): NodeDefinition {
   return {
-    name: 'p1p3s-nodes-base.test',
+    name: 'workflows-nodes-base.test',
     displayName: 'Test',
     description: '',
     group: ['transform'],
@@ -33,14 +33,14 @@ const NO_CTX: RuntimeContext | undefined = undefined;
 describe('validateAndRepair — typeVersion clamp', () => {
   test('clamps 2.2 to 2.1 when valid versions are [1, 2, 2.1]', () => {
     const def = makeNodeDef({
-      name: 'p1p3s-nodes-base.gmail',
+      name: 'workflows-nodes-base.gmail',
       version: [1, 2, 2.1],
     });
     const wf = makeWorkflow({
       nodes: [
         {
           name: 'Gmail',
-          type: 'p1p3s-nodes-base.gmail',
+          type: 'workflows-nodes-base.gmail',
           typeVersion: 2.2,
           position: [0, 0],
           parameters: {},
@@ -55,14 +55,14 @@ describe('validateAndRepair — typeVersion clamp', () => {
 
   test('clamps 1.5 down to 1 (highest ≤ requested)', () => {
     const def = makeNodeDef({
-      name: 'p1p3s-nodes-base.gmail',
+      name: 'workflows-nodes-base.gmail',
       version: [1, 2, 2.1],
     });
     const wf = makeWorkflow({
       nodes: [
         {
           name: 'Gmail',
-          type: 'p1p3s-nodes-base.gmail',
+          type: 'workflows-nodes-base.gmail',
           typeVersion: 1.5,
           position: [0, 0],
           parameters: {},
@@ -79,7 +79,7 @@ describe('validateAndRepair — typeVersion clamp', () => {
       nodes: [
         {
           name: 'Test',
-          type: 'p1p3s-nodes-base.test',
+          type: 'workflows-nodes-base.test',
           typeVersion: 2,
           position: [0, 0],
           parameters: {},
@@ -93,24 +93,24 @@ describe('validateAndRepair — typeVersion clamp', () => {
 
   test('runtime versions trump catalog when narrower (Gmail catalog [2,2.1,2.2] but runtime only [2,2.1])', () => {
     // Real-world Session 21 dogfood case: bundled defaultNodes.json claims
-    // Gmail supports 2.2 but the user's actual p1p3s binary only ships up
+    // Gmail supports 2.2 but the user's actual workflows binary only ships up
     // to 2.1. The clamp must use runtime ∩ catalog, not catalog alone.
     const def = makeNodeDef({
-      name: 'p1p3s-nodes-base.gmail',
+      name: 'workflows-nodes-base.gmail',
       version: [2, 2.1, 2.2],
     });
     const wf = makeWorkflow({
       nodes: [
         {
           name: 'Gmail',
-          type: 'p1p3s-nodes-base.gmail',
+          type: 'workflows-nodes-base.gmail',
           typeVersion: 2.2,
           position: [0, 0],
           parameters: {},
         },
       ],
     });
-    const runtimeVersions = new Map<string, number[]>([['p1p3s-nodes-base.gmail', [1, 2, 2.1]]]);
+    const runtimeVersions = new Map<string, number[]>([['workflows-nodes-base.gmail', [1, 2, 2.1]]]);
     const r = validateAndRepair(wf, [def], NO_CTX, runtimeVersions);
     expect(wf.nodes[0].typeVersion).toBe(2.1);
     expect(r.repairs[0].kind).toBe('typeVersionClamp');
@@ -119,21 +119,21 @@ describe('validateAndRepair — typeVersion clamp', () => {
 
   test('falls back to runtime versions when catalog and runtime do not intersect', () => {
     const def = makeNodeDef({
-      name: 'p1p3s-nodes-base.gmail',
+      name: 'workflows-nodes-base.gmail',
       version: [3, 3.1],
     });
     const wf = makeWorkflow({
       nodes: [
         {
           name: 'Gmail',
-          type: 'p1p3s-nodes-base.gmail',
+          type: 'workflows-nodes-base.gmail',
           typeVersion: 3,
           position: [0, 0],
           parameters: {},
         },
       ],
     });
-    const runtimeVersions = new Map<string, number[]>([['p1p3s-nodes-base.gmail', [1, 2, 2.1]]]);
+    const runtimeVersions = new Map<string, number[]>([['workflows-nodes-base.gmail', [1, 2, 2.1]]]);
     const r = validateAndRepair(wf, [def], NO_CTX, runtimeVersions);
     // No catalog ∩ runtime overlap — trust runtime, clamp to highest ≤ 3
     expect(wf.nodes[0].typeVersion).toBe(2.1);
@@ -146,7 +146,7 @@ describe('validateAndRepair — typeVersion clamp', () => {
       nodes: [
         {
           name: 'X',
-          type: 'p1p3s-nodes-base.test',
+          type: 'workflows-nodes-base.test',
           typeVersion: 0.5,
           position: [0, 0],
           parameters: {},
@@ -163,7 +163,7 @@ describe('validateAndRepair — typeVersion clamp', () => {
 describe('validateAndRepair — authentication back-fill', () => {
   test('sets parameters.authentication when Gmail+gmailOAuth2 is attached but auth missing', () => {
     const def = makeNodeDef({
-      name: 'p1p3s-nodes-base.gmail',
+      name: 'workflows-nodes-base.gmail',
       version: [2, 2.1],
       credentials: [
         {
@@ -182,7 +182,7 @@ describe('validateAndRepair — authentication back-fill', () => {
       nodes: [
         {
           name: 'Gmail',
-          type: 'p1p3s-nodes-base.gmail',
+          type: 'workflows-nodes-base.gmail',
           typeVersion: 2.1,
           position: [0, 0],
           parameters: { resource: 'message', operation: 'getAll' },
@@ -197,7 +197,7 @@ describe('validateAndRepair — authentication back-fill', () => {
 
   test('does not overwrite authentication when LLM already set it', () => {
     const def = makeNodeDef({
-      name: 'p1p3s-nodes-base.discord',
+      name: 'workflows-nodes-base.discord',
       credentials: [
         {
           name: 'discordBotApi',
@@ -210,7 +210,7 @@ describe('validateAndRepair — authentication back-fill', () => {
       nodes: [
         {
           name: 'Discord',
-          type: 'p1p3s-nodes-base.discord',
+          type: 'workflows-nodes-base.discord',
           typeVersion: 2,
           position: [0, 0],
           parameters: { authentication: 'botToken' },
@@ -225,7 +225,7 @@ describe('validateAndRepair — authentication back-fill', () => {
 
   test('skips back-fill when displayOptions has multiple auth values (ambiguous)', () => {
     const def = makeNodeDef({
-      name: 'p1p3s-nodes-base.test',
+      name: 'workflows-nodes-base.test',
       credentials: [
         {
           name: 'multiAuth',
@@ -238,7 +238,7 @@ describe('validateAndRepair — authentication back-fill', () => {
       nodes: [
         {
           name: 'X',
-          type: 'p1p3s-nodes-base.test',
+          type: 'workflows-nodes-base.test',
           typeVersion: 1,
           position: [0, 0],
           parameters: {},
@@ -259,13 +259,13 @@ describe('validateAndRepair — output-field reference', () => {
     // Use a Summarize node we control via synthetic schema instead of relying
     // on schemaIndex.json having Gmail (which the real test infrastructure
     // can't load in some sandboxed runs).
-    const summarizeDef = makeNodeDef({ name: 'p1p3s-nodes-base.summarize' });
-    const setDef = makeNodeDef({ name: 'p1p3s-nodes-base.set' });
+    const summarizeDef = makeNodeDef({ name: 'workflows-nodes-base.summarize' });
+    const setDef = makeNodeDef({ name: 'workflows-nodes-base.set' });
     const wf = makeWorkflow({
       nodes: [
         {
           name: 'Summarize',
-          type: 'p1p3s-nodes-base.summarize',
+          type: 'workflows-nodes-base.summarize',
           typeVersion: 1,
           position: [0, 0],
           parameters: {
@@ -276,7 +276,7 @@ describe('validateAndRepair — output-field reference', () => {
         },
         {
           name: 'Send',
-          type: 'p1p3s-nodes-base.set',
+          type: 'workflows-nodes-base.set',
           typeVersion: 1,
           position: [200, 0],
           parameters: {
@@ -309,13 +309,13 @@ describe('validateAndRepair — output-field reference', () => {
   });
 
   test('catches bracket-notation expression {{ $json["X"] }} (not just dot notation)', () => {
-    const summarizeDef = makeNodeDef({ name: 'p1p3s-nodes-base.summarize' });
-    const setDef = makeNodeDef({ name: 'p1p3s-nodes-base.set' });
+    const summarizeDef = makeNodeDef({ name: 'workflows-nodes-base.summarize' });
+    const setDef = makeNodeDef({ name: 'workflows-nodes-base.set' });
     const wf = makeWorkflow({
       nodes: [
         {
           name: 'Summarize',
-          type: 'p1p3s-nodes-base.summarize',
+          type: 'workflows-nodes-base.summarize',
           typeVersion: 1,
           position: [0, 0],
           parameters: {
@@ -326,7 +326,7 @@ describe('validateAndRepair — output-field reference', () => {
         },
         {
           name: 'Send',
-          type: 'p1p3s-nodes-base.set',
+          type: 'workflows-nodes-base.set',
           typeVersion: 1,
           position: [200, 0],
           parameters: {
@@ -362,13 +362,13 @@ describe('validateAndRepair — output-field reference', () => {
     // Gmail simple-mode runtime emits "Subject" capital. The static
     // schemaIndex says lowercase "subject"; the simple-mode override
     // layer must win so Layer 1 catches the case mismatch.
-    const gmailDef = makeNodeDef({ name: 'p1p3s-nodes-base.gmail' });
-    const summarizeDef = makeNodeDef({ name: 'p1p3s-nodes-base.summarize' });
+    const gmailDef = makeNodeDef({ name: 'workflows-nodes-base.gmail' });
+    const summarizeDef = makeNodeDef({ name: 'workflows-nodes-base.summarize' });
     const wf = makeWorkflow({
       nodes: [
         {
           name: 'Gmail',
-          type: 'p1p3s-nodes-base.gmail',
+          type: 'workflows-nodes-base.gmail',
           typeVersion: 2.1,
           position: [0, 0],
           parameters: {
@@ -379,7 +379,7 @@ describe('validateAndRepair — output-field reference', () => {
         },
         {
           name: 'Summarize',
-          type: 'p1p3s-nodes-base.summarize',
+          type: 'workflows-nodes-base.summarize',
           typeVersion: 1,
           position: [200, 0],
           parameters: {
@@ -406,13 +406,13 @@ describe('validateAndRepair — output-field reference', () => {
 
   test('Summarize.fieldsToSummarize.values[].field case-corrects against upstream', () => {
     // Synthetic schema for upstream "Source" Set node: emits "Subject" capital
-    const sourceDef = makeNodeDef({ name: 'p1p3s-nodes-base.set' });
-    const summarizeDef = makeNodeDef({ name: 'p1p3s-nodes-base.summarize' });
+    const sourceDef = makeNodeDef({ name: 'workflows-nodes-base.set' });
+    const summarizeDef = makeNodeDef({ name: 'workflows-nodes-base.summarize' });
     const wf = makeWorkflow({
       nodes: [
         {
           name: 'Source',
-          type: 'p1p3s-nodes-base.set',
+          type: 'workflows-nodes-base.set',
           typeVersion: 1,
           position: [0, 0],
           parameters: {
@@ -423,7 +423,7 @@ describe('validateAndRepair — output-field reference', () => {
         },
         {
           name: 'Summarize',
-          type: 'p1p3s-nodes-base.summarize',
+          type: 'workflows-nodes-base.summarize',
           typeVersion: 1,
           position: [200, 0],
           parameters: {
@@ -450,13 +450,13 @@ describe('validateAndRepair — output-field reference', () => {
   });
 
   test('flags unknown field as ValidationError (not auto-fixed)', () => {
-    const summarizeDef = makeNodeDef({ name: 'p1p3s-nodes-base.summarize' });
-    const setDef = makeNodeDef({ name: 'p1p3s-nodes-base.set' });
+    const summarizeDef = makeNodeDef({ name: 'workflows-nodes-base.summarize' });
+    const setDef = makeNodeDef({ name: 'workflows-nodes-base.set' });
     const wf = makeWorkflow({
       nodes: [
         {
           name: 'Summarize',
-          type: 'p1p3s-nodes-base.summarize',
+          type: 'workflows-nodes-base.summarize',
           typeVersion: 1,
           position: [0, 0],
           parameters: {
@@ -467,7 +467,7 @@ describe('validateAndRepair — output-field reference', () => {
         },
         {
           name: 'Send',
-          type: 'p1p3s-nodes-base.set',
+          type: 'workflows-nodes-base.set',
           typeVersion: 1,
           position: [200, 0],
           parameters: {
@@ -492,19 +492,19 @@ describe('validateAndRepair — output-field reference', () => {
 
 describe('validateAndRepair — node-name uniqueness', () => {
   test('renames duplicate node names with (2) suffix', () => {
-    const def = makeNodeDef({ name: 'p1p3s-nodes-base.test' });
+    const def = makeNodeDef({ name: 'workflows-nodes-base.test' });
     const wf = makeWorkflow({
       nodes: [
         {
           name: 'Step',
-          type: 'p1p3s-nodes-base.test',
+          type: 'workflows-nodes-base.test',
           typeVersion: 1,
           position: [0, 0],
           parameters: {},
         },
         {
           name: 'Step',
-          type: 'p1p3s-nodes-base.test',
+          type: 'workflows-nodes-base.test',
           typeVersion: 1,
           position: [200, 0],
           parameters: {},
@@ -522,19 +522,19 @@ describe('validateAndRepair — node-name uniqueness', () => {
 
 describe('validateAndRepair — connection sanity', () => {
   test('drops edges to non-existent nodes', () => {
-    const def = makeNodeDef({ name: 'p1p3s-nodes-base.test' });
+    const def = makeNodeDef({ name: 'workflows-nodes-base.test' });
     const wf = makeWorkflow({
       nodes: [
         {
           name: 'A',
-          type: 'p1p3s-nodes-base.test',
+          type: 'workflows-nodes-base.test',
           typeVersion: 1,
           position: [0, 0],
           parameters: {},
         },
         {
           name: 'B',
-          type: 'p1p3s-nodes-base.test',
+          type: 'workflows-nodes-base.test',
           typeVersion: 1,
           position: [200, 0],
           parameters: {},
@@ -562,12 +562,12 @@ describe('validateAndRepair — connection sanity', () => {
 
 describe('validateAndRepair — no-op on clean workflow', () => {
   test('clean workflow → empty repairs and errors', () => {
-    const def = makeNodeDef({ name: 'p1p3s-nodes-base.test', version: [1, 2] });
+    const def = makeNodeDef({ name: 'workflows-nodes-base.test', version: [1, 2] });
     const wf = makeWorkflow({
       nodes: [
         {
           name: 'X',
-          type: 'p1p3s-nodes-base.test',
+          type: 'workflows-nodes-base.test',
           typeVersion: 2,
           position: [0, 0],
           parameters: {},

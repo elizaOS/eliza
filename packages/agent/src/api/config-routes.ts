@@ -1,5 +1,6 @@
 import type http from "node:http";
 import { type AgentRuntime, logger } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   isElizaSettingsDebugEnabled,
   normalizeDeploymentTargetConfig,
@@ -11,7 +12,6 @@ import {
 import type { ElizaConfig } from "../config/config.js";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import { buildCharacterFromConfig } from "../runtime/build-character-config.js";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { applyCanonicalOnboardingConfig } from "./provider-switch-config.js";
 
 // ---------------------------------------------------------------------------

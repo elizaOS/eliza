@@ -1,6 +1,7 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   asRecord,
   isElizaSettingsDebugEnabled,
@@ -30,7 +31,6 @@ import type {
   PluginManagerLike,
 } from "../services/plugin-manager-types.js";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { applyPluginRuntimeMutation } from "./plugin-runtime-apply.js";
 import {
   type PluginParamInfo,

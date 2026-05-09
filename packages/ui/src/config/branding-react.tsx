@@ -7,9 +7,10 @@ import { createContext, useContext } from "react";
 import type { BrandingConfig } from "./branding.ts";
 import { DEFAULT_BRANDING } from "./branding.ts";
 
-export const BrandingContext =
-  createContext<BrandingConfig>(DEFAULT_BRANDING);
+export const BrandingContext = createContext<BrandingConfig | undefined>(
+  undefined,
+);
 
 export function useBranding(): BrandingConfig {
-  return useContext(BrandingContext);
+  return useContext(BrandingContext) ?? DEFAULT_BRANDING;
 }

@@ -15,7 +15,7 @@ import type {
 export function createTriggerNode(overrides?: Partial<WorkflowNode>): WorkflowNode {
   return {
     name: 'Schedule Trigger',
-    type: 'p1p3s-nodes-base.scheduleTrigger',
+    type: 'workflows-nodes-base.scheduleTrigger',
     typeVersion: 1,
     position: [250, 300],
     parameters: { rule: { interval: [{ field: 'hours', hoursInterval: 1 }] } },
@@ -26,7 +26,7 @@ export function createTriggerNode(overrides?: Partial<WorkflowNode>): WorkflowNo
 export function createGmailNode(overrides?: Partial<WorkflowNode>): WorkflowNode {
   return {
     name: 'Gmail',
-    type: 'p1p3s-nodes-base.gmail',
+    type: 'workflows-nodes-base.gmail',
     typeVersion: 2,
     position: [500, 300],
     parameters: {
@@ -46,14 +46,14 @@ export function createGmailNode(overrides?: Partial<WorkflowNode>): WorkflowNode
 export function createSlackNode(overrides?: Partial<WorkflowNode>): WorkflowNode {
   return {
     name: 'Slack',
-    type: 'p1p3s-nodes-base.slack',
+    type: 'workflows-nodes-base.slack',
     typeVersion: 2,
     position: [750, 300],
     parameters: {
       resource: 'message',
       operation: 'post',
       channel: '#general',
-      text: 'Hello from p1p3s',
+      text: 'Hello from workflows',
     },
     credentials: {
       slackApi: { id: 'cred-456', name: 'Slack Bot' },
@@ -65,7 +65,7 @@ export function createSlackNode(overrides?: Partial<WorkflowNode>): WorkflowNode
 export function createGmailTriggerNode(overrides?: Partial<WorkflowNode>): WorkflowNode {
   return {
     name: 'Gmail Trigger',
-    type: 'p1p3s-nodes-base.gmailTrigger',
+    type: 'workflows-nodes-base.gmailTrigger',
     typeVersion: 1,
     position: [250, 300],
     parameters: {},
@@ -76,7 +76,7 @@ export function createGmailTriggerNode(overrides?: Partial<WorkflowNode>): Workf
 export function createGithubTriggerNode(overrides?: Partial<WorkflowNode>): WorkflowNode {
   return {
     name: 'GitHub Trigger',
-    type: 'p1p3s-nodes-base.githubTrigger',
+    type: 'workflows-nodes-base.githubTrigger',
     typeVersion: 1,
     position: [250, 300],
     parameters: {},
@@ -196,7 +196,7 @@ export function createSimpleWorkflowNoCredentials(
       createTriggerNode(),
       {
         name: 'Set',
-        type: 'p1p3s-nodes-base.set',
+        type: 'workflows-nodes-base.set',
         typeVersion: 3,
         position: [500, 300],
         parameters: {

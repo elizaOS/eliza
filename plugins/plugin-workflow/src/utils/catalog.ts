@@ -7,7 +7,7 @@ import type {
 } from '../types/index';
 
 /**
- * p1p3s node catalog with keyword-based search
+ * workflows node catalog with keyword-based search
  * @note Uses embedded catalog (457 nodes as of April 2025)
  * @todo Add dynamic refresh via GET /node-types in v2
  */
@@ -22,7 +22,7 @@ export function getAllNodes(): NodeDefinition[] {
 /**
  * Look up a node definition by its type name.
  *
- * Handles full names ("p1p3s-nodes-base.httpRequest") and bare names ("httpRequest").
+ * Handles full names ("workflows-nodes-base.httpRequest") and bare names ("httpRequest").
  */
 export function getNodeDefinition(typeName: string): NodeDefinition | undefined {
   const exact = NODE_CATALOG.find((n) => n.name === typeName);
@@ -30,9 +30,9 @@ export function getNodeDefinition(typeName: string): NodeDefinition | undefined 
     return exact;
   }
 
-  const bare = typeName.replace(/^p1p3s-nodes-base\./, '');
+  const bare = typeName.replace(/^workflows-nodes-base\./, '');
   return NODE_CATALOG.find((n) => {
-    const catalogBare = n.name.replace(/^p1p3s-nodes-base\./, '');
+    const catalogBare = n.name.replace(/^workflows-nodes-base\./, '');
     return catalogBare === bare || n.name === bare;
   });
 }

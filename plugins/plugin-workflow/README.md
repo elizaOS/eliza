@@ -2,7 +2,7 @@
 
 In-process workflow engine for elizaOS agents. Generate and deploy automation workflows from natural language using a RAG pipeline. The plugin embeds its own execution engine — workflows run in the agent process, no separate sidecar.
 
-Built on shared workflow type contracts from `@elizaos/p1p3s` (a slimmed fork of n8n's workflow type definitions). Supports the upstream node catalog (Gmail, Slack, Stripe, etc.) for routing decisions, with intelligent credential resolution and lifecycle management.
+Built on shared workflow type contracts from `@elizaos/workflows` (a slimmed fork of n8n's workflow type definitions). Supports the upstream node catalog (Gmail, Slack, Stripe, etc.) for routing decisions, with intelligent credential resolution and lifecycle management.
 
 ## Configuration
 

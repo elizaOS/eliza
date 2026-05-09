@@ -381,7 +381,7 @@ function createScheduleTriggerNode(): INodeType {
   return {
     description: {
       displayName: 'Schedule Trigger',
-      name: 'p1p3s-nodes-base.scheduleTrigger',
+      name: 'workflows-nodes-base.scheduleTrigger',
       group: ['trigger'],
       version: [1, 1.1, 1.2],
       description: 'Starts the workflow on a schedule.',
@@ -412,7 +412,7 @@ function createSetNode(): INodeType {
   return {
     description: {
       displayName: 'Edit Fields (Set)',
-      name: 'p1p3s-nodes-base.set',
+      name: 'workflows-nodes-base.set',
       group: ['transform'],
       version: [1, 2, 3, 3.1, 3.2, 3.3, 3.4],
       description: 'Sets values on the current item.',
@@ -510,7 +510,7 @@ function createHttpRequestNode(): INodeType {
   return {
     description: {
       displayName: 'HTTP Request',
-      name: 'p1p3s-nodes-base.httpRequest',
+      name: 'workflows-nodes-base.httpRequest',
       group: ['output'],
       version: [1, 2, 3, 4, 4.1, 4.2],
       description: 'Makes an HTTP request.',
@@ -652,7 +652,7 @@ function createManualTriggerNode(): INodeType {
   return {
     description: {
       displayName: 'Manual Trigger',
-      name: 'p1p3s-nodes-base.manualTrigger',
+      name: 'workflows-nodes-base.manualTrigger',
       group: ['trigger'],
       version: [1],
       description: 'Starts the workflow manually.',
@@ -674,7 +674,7 @@ function createWebhookNode(): INodeType {
   return {
     description: {
       displayName: 'Webhook',
-      name: 'p1p3s-nodes-base.webhook',
+      name: 'workflows-nodes-base.webhook',
       group: ['trigger'],
       version: [1, 2],
       description: 'Starts the workflow from an HTTP webhook.',
@@ -704,7 +704,7 @@ function createRespondToWebhookNode(): INodeType {
   return {
     description: {
       displayName: 'Respond to Webhook',
-      name: 'p1p3s-nodes-base.respondToWebhook',
+      name: 'workflows-nodes-base.respondToWebhook',
       group: ['output'],
       version: [1],
       description: 'Returns the current item as a webhook response.',
@@ -730,7 +730,7 @@ function createNoOpNode(): INodeType {
   return {
     description: {
       displayName: 'No Operation, do nothing',
-      name: 'p1p3s-nodes-base.noOp',
+      name: 'workflows-nodes-base.noOp',
       group: ['transform'],
       version: [1],
       description: 'Passes input data through unchanged.',
@@ -750,7 +750,7 @@ function createIfNode(): INodeType {
   return {
     description: {
       displayName: 'If',
-      name: 'p1p3s-nodes-base.if',
+      name: 'workflows-nodes-base.if',
       group: ['transform'],
       version: [1, 2],
       description: 'Routes items based on conditions.',
@@ -779,7 +779,7 @@ function createFilterNode(): INodeType {
   return {
     description: {
       displayName: 'Filter',
-      name: 'p1p3s-nodes-base.filter',
+      name: 'workflows-nodes-base.filter',
       group: ['transform'],
       version: [1, 2],
       description: 'Keeps items that match conditions.',
@@ -801,7 +801,7 @@ function createSwitchNode(): INodeType {
   return {
     description: {
       displayName: 'Switch',
-      name: 'p1p3s-nodes-base.switch',
+      name: 'workflows-nodes-base.switch',
       group: ['transform'],
       version: [1, 2, 3],
       description: 'Routes items to multiple outputs.',
@@ -833,7 +833,7 @@ function createMergeNode(): INodeType {
   return {
     description: {
       displayName: 'Merge',
-      name: 'p1p3s-nodes-base.merge',
+      name: 'workflows-nodes-base.merge',
       group: ['transform'],
       version: [1, 2, 3],
       description: 'Combines items from multiple inputs.',
@@ -859,7 +859,7 @@ function createSplitInBatchesNode(): INodeType {
   return {
     description: {
       displayName: 'Split In Batches',
-      name: 'p1p3s-nodes-base.splitInBatches',
+      name: 'workflows-nodes-base.splitInBatches',
       group: ['transform'],
       version: [1, 2, 3],
       description: 'Emits the next batch of items.',
@@ -885,7 +885,7 @@ function createWaitNode(): INodeType {
   return {
     description: {
       displayName: 'Wait',
-      name: 'p1p3s-nodes-base.wait',
+      name: 'workflows-nodes-base.wait',
       group: ['transform'],
       version: [1, 1.1],
       description: 'Pauses execution for a duration.',
@@ -919,7 +919,7 @@ function createDateTimeNode(): INodeType {
   return {
     description: {
       displayName: 'Date & Time',
-      name: 'p1p3s-nodes-base.dateTime',
+      name: 'workflows-nodes-base.dateTime',
       group: ['transform'],
       version: [1, 2],
       description: 'Adds date/time values to items.',
@@ -948,7 +948,7 @@ function createCryptoNode(): INodeType {
   return {
     description: {
       displayName: 'Crypto',
-      name: 'p1p3s-nodes-base.crypto',
+      name: 'workflows-nodes-base.crypto',
       group: ['transform'],
       version: [1],
       description: 'Hashes data.',
@@ -987,7 +987,7 @@ function createItemListsNode(): INodeType {
   return {
     description: {
       displayName: 'Item Lists',
-      name: 'p1p3s-nodes-base.itemLists',
+      name: 'workflows-nodes-base.itemLists',
       group: ['transform'],
       version: [1, 2, 3],
       description: 'Transforms item lists.',
@@ -1040,7 +1040,7 @@ function createCodeNode(): INodeType {
   return {
     description: {
       displayName: 'Code',
-      name: 'p1p3s-nodes-base.code',
+      name: 'workflows-nodes-base.code',
       group: ['transform'],
       version: [1, 2],
       description: 'Runs JavaScript in a QuickJS sandbox.',
@@ -1578,7 +1578,7 @@ export class EmbeddedWorkflowService extends Service {
     for (const row of rows) {
       const workflow = cloneJson(row.workflow);
       const webhookNode = workflow.nodes.find((node) => {
-        if (node.disabled || node.type !== 'p1p3s-nodes-base.webhook') return false;
+        if (node.disabled || node.type !== 'workflows-nodes-base.webhook') return false;
         const nodePath = normalizeWebhookPath(node.parameters.path);
         const nodeMethod = readString(node.parameters.httpMethod, 'POST').toUpperCase();
         return nodePath === normalizedPath && nodeMethod === normalizedMethod;
@@ -1654,7 +1654,7 @@ export class EmbeddedWorkflowService extends Service {
     this.clearSchedules(workflowId);
     const entry = await this.getStoredWorkflow(workflowId);
     const scheduleNodes = entry.workflow.nodes.filter(
-      (node) => !node.disabled && node.type === 'p1p3s-nodes-base.scheduleTrigger'
+      (node) => !node.disabled && node.type === 'workflows-nodes-base.scheduleTrigger'
     );
     if (scheduleNodes.length === 0) return;
 
@@ -1752,7 +1752,7 @@ export class EmbeddedWorkflowService extends Service {
     if (mode === 'webhook') {
       for (const node of enabledNodes) {
         if (
-          node.type === 'p1p3s-nodes-base.webhook' &&
+          node.type === 'workflows-nodes-base.webhook' &&
           isRecord(node.parameters.__embeddedPayload)
         ) {
           start.add(node.name);
@@ -1760,16 +1760,16 @@ export class EmbeddedWorkflowService extends Service {
       }
       if (start.size === 0) {
         for (const node of enabledNodes) {
-          if (node.type === 'p1p3s-nodes-base.webhook') start.add(node.name);
+          if (node.type === 'workflows-nodes-base.webhook') start.add(node.name);
         }
       }
     } else if (mode === 'trigger') {
       for (const node of enabledNodes) {
-        if (node.type === 'p1p3s-nodes-base.scheduleTrigger') start.add(node.name);
+        if (node.type === 'workflows-nodes-base.scheduleTrigger') start.add(node.name);
       }
     } else {
       for (const node of enabledNodes) {
-        if (node.type === 'p1p3s-nodes-base.manualTrigger') start.add(node.name);
+        if (node.type === 'workflows-nodes-base.manualTrigger') start.add(node.name);
       }
     }
 

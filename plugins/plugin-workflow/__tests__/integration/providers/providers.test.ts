@@ -241,14 +241,14 @@ describe('pendingDraftProvider', () => {
     nodes: [
       {
         name: 'Gmail Trigger',
-        type: 'p1p3s-nodes-base.gmailTrigger',
+        type: 'workflows-nodes-base.gmailTrigger',
         typeVersion: 1,
         position: [0, 0],
         parameters: {},
       },
       {
         name: 'Telegram Send',
-        type: 'p1p3s-nodes-base.telegram',
+        type: 'workflows-nodes-base.telegram',
         typeVersion: 1,
         position: [200, 0],
         parameters: {},

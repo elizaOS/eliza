@@ -36,6 +36,20 @@ describe("v5 evaluator skeleton", () => {
 		expect(output.thought).toBe("Need one more grounded tool result.");
 	});
 
+	it("rejects claimed success when stray JSON appears before evaluator completion", () => {
+		const output = parseEvaluatorOutput(`{
+  "content": "pretend document body"
+}{
+  "success": true,
+  "decision": "FINISH",
+  "thought": "Saved the document."
+}`);
+
+		expect(output.success).toBe(false);
+		expect(output.decision).toBe("CONTINUE");
+		expect(output.thought).toContain("non-evaluator JSON");
+	});
+
 	it("applies message and clipboard effects through injected callbacks", async () => {
 		const copyToClipboard = vi.fn();
 		const messageToUser = vi.fn();

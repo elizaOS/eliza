@@ -10,7 +10,7 @@
  *   2. authentication back-fill    — closes "credentials attached but parameters.authentication missing"
  *   3. output-field validation     — closes "subject vs Subject" + typo classes
  *   4. required-parameter pre-flight
- *   5. node-name uniqueness        — p1p3s rejects duplicates with confusing errors
+ *   5. node-name uniqueness        — workflows rejects duplicates with confusing errors
  *   6. connection sanity           — drop edges to non-existent nodes
  *
  * Mutates the workflow in place AND returns it for ergonomic chaining.
@@ -88,8 +88,8 @@ function applyTypeVersionClamp(
 
   // When the live workflow runtime registry is available, intersect with it.
   // The static plugin catalog is sometimes ahead of the user's running
-  // p1p3s binary (e.g. catalog claims Gmail v2.2 but runtime only has up
-  // to v2.1) — without this intersect, the LLM picks a version p1p3s
+  // workflows binary (e.g. catalog claims Gmail v2.2 but runtime only has up
+  // to v2.1) — without this intersect, the LLM picks a version workflows
   // can't instantiate and activation crashes with `Cannot read
   // properties of undefined (reading 'execute')`.
   const runtime = runtimeVersions?.get(node.type);
@@ -371,7 +371,7 @@ function applyAggregationSourceFieldFix(
   }
 
   for (const node of workflow.nodes) {
-    if (node.type !== 'p1p3s-nodes-base.summarize') {
+    if (node.type !== 'workflows-nodes-base.summarize') {
       continue;
     }
 

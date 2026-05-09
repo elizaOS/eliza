@@ -10,7 +10,6 @@ import {
   type Plugin,
   transformWithEsbuild,
 } from "vite";
-import { resolveAppBranding } from "../../packages/ui/src/config/app-config.ts";
 // Keep workspace-relative TS imports in this config so Vite transpiles them
 // while bundling the config instead of asking Node to load package-exported
 // .ts files directly in CI.
@@ -26,6 +25,7 @@ import {
   resolveDesktopUiPort,
   resolveDesktopUiPortPreference,
 } from "../../packages/shared/src/runtime-env.ts";
+import { resolveAppBranding } from "../../packages/ui/src/config/app-config.ts";
 import { syncElizaEnvAliases } from "../../scripts/lib/sync-eliza-env-aliases.mjs";
 import appConfig from "./app.config";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";

@@ -428,7 +428,24 @@ function parseEvaluatorText(text: string): RawEvaluatorOutput | null {
 	const objects = parseJsonObjects<RawEvaluatorOutput>(text);
 	for (let index = objects.length - 1; index >= 0; index--) {
 		const object = objects[index];
-		if (isEvaluatorShapedObject(object)) return object;
+		if (!isEvaluatorShapedObject(object)) continue;
+		const hasEarlierNonEvaluatorJson = objects
+			.slice(0, index)
+			.some((candidate) => !isEvaluatorShapedObject(candidate));
+		const decision = normalizeEvaluatorRoute(object.decision ?? object.route);
+		if (
+			hasEarlierNonEvaluatorJson &&
+			object.success === true &&
+			decision === "FINISH"
+		) {
+			return {
+				success: false,
+				decision: "CONTINUE",
+				thought:
+					"Evaluator emitted non-evaluator JSON before claiming completion; ignore the claimed finish and replan from recorded tool results.",
+			};
+		}
+		return object;
 	}
 	return direct;
 }

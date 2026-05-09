@@ -71,7 +71,7 @@ describe('GET /nodes', () => {
     };
     expect(data.success).toBe(true);
     expect(data.data.length).toBeGreaterThan(0);
-    expect(data.data[0].name).toBe('p1p3s-nodes-base.httpRequest');
+    expect(data.data[0].name).toBe('workflows-nodes-base.httpRequest');
     // Search results include score and matchReason
     expect(typeof data.data[0].score).toBe('number');
     expect(typeof data.data[0].matchReason).toBe('string');
@@ -102,7 +102,7 @@ describe('GET /nodes', () => {
 describe('GET /nodes/:type', () => {
   test('returns node definition for valid type', async () => {
     const req = createRouteRequest({
-      params: { type: 'p1p3s-nodes-base.httpRequest' },
+      params: { type: 'workflows-nodes-base.httpRequest' },
     });
     const { res, getResult } = createRouteResponse();
 
@@ -115,13 +115,13 @@ describe('GET /nodes/:type', () => {
       data: { name: string; properties: unknown[] };
     };
     expect(data.success).toBe(true);
-    expect(data.data.name).toBe('p1p3s-nodes-base.httpRequest');
+    expect(data.data.name).toBe('workflows-nodes-base.httpRequest');
     expect(data.data.properties.length).toBeGreaterThan(0);
   });
 
   test('returns 404 for unknown node type', async () => {
     const req = createRouteRequest({
-      params: { type: 'p1p3s-nodes-base.nonexistentNode12345' },
+      params: { type: 'workflows-nodes-base.nonexistentNode12345' },
     });
     const { res, getResult } = createRouteResponse();
 

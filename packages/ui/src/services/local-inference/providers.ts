@@ -171,7 +171,7 @@ const ANTHROPIC_PROVIDER: ProviderDefinition = {
   label: "Anthropic API",
   kind: "cloud-api",
   description: "Claude models via the Anthropic API. Requires an API key.",
-  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     const key = process.env.ANTHROPIC_API_KEY?.trim();
     return key
@@ -186,13 +186,7 @@ const OPENAI_PROVIDER: ProviderDefinition = {
   label: "OpenAI API",
   kind: "cloud-api",
   description: "GPT models via the OpenAI API. Requires an API key.",
-  supportedSlots: [
-    "TEXT_SMALL",
-    "TEXT_LARGE",
-    "TEXT_EMBEDDING",
-    "OBJECT_SMALL",
-    "OBJECT_LARGE",
-  ],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
   async getEnableState(): Promise<ProviderEnableState> {
     const key = process.env.OPENAI_API_KEY?.trim();
     return key
@@ -224,13 +218,7 @@ const ELIZACLOUD_PROVIDER: ProviderDefinition = {
   kind: "cloud-subscription",
   description:
     "Eliza-hosted inference routed through your subscription. No API key to manage.",
-  supportedSlots: [
-    "TEXT_SMALL",
-    "TEXT_LARGE",
-    "TEXT_EMBEDDING",
-    "OBJECT_SMALL",
-    "OBJECT_LARGE",
-  ],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
   async getEnableState(): Promise<ProviderEnableState> {
     const token =
       process.env.ELIZA_CLOUD_TOKEN?.trim() ??
@@ -248,12 +236,11 @@ const ANTHROPIC_SUBSCRIPTION_PROVIDER: ProviderDefinition = {
   label: "Claude subscription",
   kind: "cloud-subscription",
   description: "Claude Code task-agent access through linked accounts.",
-  // Claude.ai OAuth subscriptions serve text + structured-object generation
-  // through Anthropic's chat models. Embeddings are not exposed by the
-  // subscription path (Anthropic does not ship an embeddings endpoint), so
-  // TEXT_EMBEDDING is intentionally omitted — that slot needs a separate
-  // API-key provider.
-  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  // Claude.ai OAuth subscriptions serve text generation through Anthropic's
+  // chat models. Embeddings are not exposed by the subscription path
+  // (Anthropic does not ship an embeddings endpoint), so TEXT_EMBEDDING is
+  // intentionally omitted — that slot needs a separate API-key provider.
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     return subscriptionEnableState("anthropic-subscription");
   },
@@ -265,7 +252,7 @@ const OPENAI_CODEX_PROVIDER: ProviderDefinition = {
   label: "Codex subscription",
   kind: "cloud-subscription",
   description: "Codex and ChatGPT subscription access through linked accounts.",
-  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     return subscriptionEnableState("openai-codex");
   },
@@ -277,7 +264,7 @@ const GOOGLE_PROVIDER: ProviderDefinition = {
   label: "Google (Gemini)",
   kind: "cloud-api",
   description: "Gemini models via Google Generative AI. Requires an API key.",
-  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     const key =
       process.env.GOOGLE_API_KEY?.trim() ?? process.env.GEMINI_API_KEY?.trim();
@@ -308,7 +295,7 @@ const DEEPSEEK_PROVIDER: ProviderDefinition = {
   label: "DeepSeek API",
   kind: "cloud-api",
   description: "DeepSeek models via API key or linked account pool.",
-  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     return apiKeyOrLinkedAccountState("deepseek-api", ["DEEPSEEK_API_KEY"]);
   },

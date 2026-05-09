@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-workflow",
   "version": "2.0.0-beta.0",
-  "description": "ElizaOS plugin for generating and running p1p3s workflows in-process",
+  "description": "ElizaOS plugin for generating and running workflows workflows in-process",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -52,7 +52,7 @@
   "keywords": [
     "elizaos",
     "plugin",
-    "p1p3s",
+    "workflows",
     "workflow",
     "automation",
     "ai"
@@ -71,7 +71,7 @@
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/p1p3s": "workspace:*"
+    "@elizaos/workflows": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
@@ -95,7 +95,7 @@
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/p1p3s": "workspace:*",
+    "@elizaos/workflows": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "quickjs-emscripten": "0.32.0"
   }

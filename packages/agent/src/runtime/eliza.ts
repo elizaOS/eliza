@@ -109,6 +109,7 @@ async function importAppCoreRuntime(): Promise<Record<string, any>> {
     Record<string, any>
   >;
 }
+
 import { buildCharacterFromConfig } from "./build-character-config.js";
 import {
   resolvePreferredProviderId,
@@ -2710,7 +2711,8 @@ export async function startEliza(
   // legacy hydration loop below sees real values.
   {
     try {
-      const { hydrateWalletKeysFromNodePlatformSecureStore } = await importAppCoreRuntime();
+      const { hydrateWalletKeysFromNodePlatformSecureStore } =
+        await importAppCoreRuntime();
       await hydrateWalletKeysFromNodePlatformSecureStore();
     } catch (err) {
       logger.warn(
@@ -4323,9 +4325,7 @@ export async function startInCloudMode(
   agentId: string,
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
-  const { CloudManager } = await import(
-    "@elizaos/plugin-elizacloud"
-  );
+  const { CloudManager } = await import("@elizaos/plugin-elizacloud");
 
   const cloudConfig = config.cloud;
   if (!cloudConfig) {

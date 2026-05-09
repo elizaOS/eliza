@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/shared";
 import {
   isElizaSettingsDebugEnabled,
   isPlainObject,
@@ -20,7 +21,7 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "./paths.js";
-import type { ElizaConfig } from "@elizaos/shared";
+
 export type { ElizaConfig } from "@elizaos/shared";
 
 function resolveConfigWritePath(env: NodeJS.ProcessEnv = process.env): string {

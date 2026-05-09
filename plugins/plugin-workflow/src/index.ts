@@ -41,7 +41,7 @@ export const workflowPlugin: Plugin = {
   name: 'workflow',
   description:
     'Generate and deploy workflows from natural language. ' +
-    'Runs supported p1p3s workflow nodes in-process with credential resolution.',
+    'Runs supported workflows workflow nodes in-process with credential resolution.',
 
   services: [EmbeddedWorkflowService, WorkflowService, WorkflowCredentialStore],
 
