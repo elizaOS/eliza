@@ -28,14 +28,13 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
 import {
   getPluginInfo,
-  loadElizaConfig,
   type RegistryPluginInfo,
-  requestRestart,
-  saveElizaConfig,
-} from "@elizaos/agent";
+} from "@elizaos/agent/services/registry-client";
 import { logger } from "@elizaos/core";
+import { requestRestart } from "@elizaos/shared";
 import { createSerialise } from "../utils/serialise";
 
 const execFileAsync = promisify(execFile);

@@ -28,7 +28,7 @@ async function build() {
   const nodeStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-elizacloud for Node...");
   const nodeResult = await Bun.build({
-    entrypoints: ["index.node.ts"],
+    entrypoints: ["src/index.node.ts"],
     outdir: "dist/node",
     target: "node",
     format: "esm",
@@ -45,7 +45,7 @@ async function build() {
   const browserStart = Date.now();
   console.log("🌐 Building @elizaos/plugin-elizacloud for Browser...");
   const browserResult = await Bun.build({
-    entrypoints: ["index.browser.ts"],
+    entrypoints: ["src/index.browser.ts"],
     outdir: "dist/browser",
     target: "browser",
     format: "esm",
@@ -62,7 +62,7 @@ async function build() {
   const cjsStart = Date.now();
   console.log("🧱 Building @elizaos/plugin-elizacloud for Node (CJS)...");
   const cjsResult = await Bun.build({
-    entrypoints: ["index.node.ts"],
+    entrypoints: ["src/index.node.ts"],
     outdir: "dist/cjs",
     target: "node",
     format: "cjs",

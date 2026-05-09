@@ -220,7 +220,7 @@ export function parseStructuredProofDirective(
     if (hasOwnField(obj, field)) {
       return {
         ok: false,
-        reason: `legacy field '${field}' is not supported`,
+        reason: `field '${field}' is not supported`,
       };
     }
   }

@@ -21,6 +21,15 @@ export interface LoadOptions {
   useGpu?: boolean;
   /** Cap on native thread count; native layer picks a reasonable default otherwise. */
   maxThreads?: number;
+  /** Optional draft GGUF for native speculative decoding builds. */
+  draftModelPath?: string;
+  /** Number of draft tokens/samples when the native runtime supports it. */
+  speculativeSamples?: number;
+  /** Mobile runtimes may enable a lower-memory speculative path. */
+  mobileSpeculative?: boolean;
+  /** Optional KV cache types for fork builds such as TurboQuant. */
+  cacheTypeK?: string;
+  cacheTypeV?: string;
 }
 
 export interface GenerateOptions {

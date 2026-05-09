@@ -111,6 +111,41 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("falls back to message-handler text when the provider emits an empty native tool call", async () => {
+		const runtime = makeRuntime([
+			{
+				text: JSON.stringify({
+					processMessage: "RESPOND",
+					thought: "Calendar context is needed.",
+					plan: { contexts: ["calendar"], requiresTool: true },
+				}),
+				toolCalls: [
+					{
+						id: "mh-empty",
+						name: "HANDLE_RESPONSE",
+						input: {},
+					},
+				],
+			},
+			JSON.stringify({
+				thought: "No tool needed in this fixture.",
+				toolCalls: [],
+				messageToUser: "I can help schedule that.",
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(useModelCalls(runtime)[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
+	});
+
 	it("packages Stage 1 as stable system plus dynamic user context without provider internals", async () => {
 		const runtime = makeRuntime([
 			{

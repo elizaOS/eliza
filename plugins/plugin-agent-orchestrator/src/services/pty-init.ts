@@ -247,7 +247,7 @@ export async function initializePTYManager(
     });
   };
 
-  const shouldSuppressLegacyLoginRequired = (sessionId: string): boolean => {
+  const shouldSuppressDuplicateLoginRequired = (sessionId: string): boolean => {
     const at = recentStructuredAuth.get(sessionId);
     if (!at) return false;
     if (Date.now() - at > AUTH_EVENT_DEDUPE_MS) {
@@ -395,7 +395,7 @@ export async function initializePTYManager(
     bunManager.on(
       "login_required",
       (session: WorkerSessionHandle, instructions?: string, url?: string) => {
-        if (shouldSuppressLegacyLoginRequired(session.id)) {
+        if (shouldSuppressDuplicateLoginRequired(session.id)) {
           return;
         }
         // Auto-handle Gemini auth flow
@@ -562,7 +562,7 @@ export async function initializePTYManager(
   nodeManager.on(
     "login_required",
     (session: SessionHandle, instructions?: string, url?: string) => {
-      if (shouldSuppressLegacyLoginRequired(session.id)) {
+      if (shouldSuppressDuplicateLoginRequired(session.id)) {
         return;
       }
       if (session.type === "gemini") {

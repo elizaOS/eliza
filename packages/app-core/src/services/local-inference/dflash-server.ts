@@ -8,7 +8,7 @@
  * prompt semantics as LocalInferenceEngine.
  */
 
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -177,7 +177,7 @@ async function fetchJson(
 }
 
 export class DflashLlamaServer {
-  private child: ChildProcessWithoutNullStreams | null = null;
+  private child: ChildProcess | null = null;
   private baseUrl: string | null = null;
   private stderrTail: string[] = [];
   private loadedPlan: DflashServerPlan | null = null;
@@ -248,16 +248,17 @@ export class DflashLlamaServer {
 
     fs.mkdirSync(path.join(localInferenceRoot(), "logs"), { recursive: true });
     this.stderrTail = [];
-    this.child = spawn(status.binaryPath, args, {
+    const child = spawn(status.binaryPath, args, {
       env: { ...process.env },
       stdio: ["ignore", "pipe", "pipe"],
     });
+    this.child = child;
     this.baseUrl = `http://${host}:${port}`;
     this.loadedPlan = plan;
 
-    this.child.stdout.on("data", (chunk) => this.captureLog(chunk));
-    this.child.stderr.on("data", (chunk) => this.captureLog(chunk));
-    this.child.on("exit", (code, signal) => {
+    child.stdout?.on("data", (chunk) => this.captureLog(chunk));
+    child.stderr?.on("data", (chunk) => this.captureLog(chunk));
+    child.on("exit", (code, signal) => {
       if (this.child && (code !== null || signal !== null)) {
         this.child = null;
         this.baseUrl = null;

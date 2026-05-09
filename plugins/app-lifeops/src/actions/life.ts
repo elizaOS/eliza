@@ -2307,10 +2307,8 @@ export const lifeAction: Action & {
         );
 
         // Parameter enhancement fills gaps when structured planner input is incomplete.
-        // Skip when native options.parameters already contain the complete
+        // Skip when options.parameters already contain the complete
         // definition-create shape, or when reusing a confirmed deferred draft.
-        // TODO(native-parameters): delete this extractor once planners supply
-        // title/details.cadence/details.kind consistently.
         let llmPlan: Awaited<
           ReturnType<typeof extractTaskCreatePlanWithLlm>
         > | null = null;

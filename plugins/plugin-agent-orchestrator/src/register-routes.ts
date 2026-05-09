@@ -17,10 +17,7 @@ async function registerCodingAgentRoutePluginLoader(): Promise<void> {
         return codingAgentRoutePlugin;
       },
     );
-  } catch {
-    // Older app-core package metadata does not expose the route-plugin registry.
-    // In that case the legacy server.ts dispatch path still serves these routes.
-  }
+  } catch {}
 }
 
 void registerCodingAgentRoutePluginLoader();

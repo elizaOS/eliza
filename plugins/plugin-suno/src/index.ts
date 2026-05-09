@@ -15,7 +15,6 @@ export const sunoPlugin: Plugin = {
     name: 'suno',
     description: 'Suno AI Music Generation Plugin for Eliza',
     actions: [musicGeneration],
-    evaluators: [],
     providers: [sunoStatusProvider],
 };
 

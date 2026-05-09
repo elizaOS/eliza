@@ -509,8 +509,6 @@ export class ClientBase {
         ),
       });
 
-      //TODO: load tweets not in cache?
-
       // Create a Set to store the IDs of existing memories
       const existingMemoryIds = new Set(
         existingMemories
@@ -752,11 +750,6 @@ export class ClientBase {
       } else {
         await createMemorySafe(this.runtime, message, "messages");
       }
-
-      await this.runtime.evaluate(message, {
-        ...state,
-        twitterClient: this.twitterClient,
-      });
     }
   }
 

@@ -159,6 +159,7 @@ const NON_SELECTION_ACTION_NAMES = new Set([
   "RELATIONSHIP_EXTRACTION",
   "FACT_EXTRACTOR",
   "REFLECTION",
+  "SKILL_LEARNING",
 ]);
 const ACTION_CANONICAL_NAMES = new Map<string, string>([
   ["GOOGLE_CALENDAR", "CALENDAR"],
@@ -172,8 +173,17 @@ const ACTION_CANONICAL_NAMES = new Map<string, string>([
   ["CALENDAR_FEED", "CALENDAR"],
   ["ADD_TODO", "LIFE"],
   ["CREATE_TODO", "LIFE"],
+  ["TODO_ADD", "LIFE"],
+  ["TODO_CREATE", "LIFE"],
+  ["TASK_ADD", "LIFE"],
+  ["TASK_CREATE", "LIFE"],
   ["LIST_TODOS", "LIFE"],
   ["GET_TODOS", "LIFE"],
+  ["TODO_LIST", "LIFE"],
+  ["TODOS_LIST", "LIFE"],
+  ["TODO_GET", "LIFE"],
+  ["TASK_LIST", "LIFE"],
+  ["TASKS_REVIEW", "LIFE"],
   ["LIFE_GET_TODOS", "LIFE"],
   ["LIFE_TODO", "LIFE"],
   ["ADD_HABIT", "LIFE"],
@@ -206,6 +216,28 @@ const ACTION_CANONICAL_NAMES = new Map<string, string>([
   ["SEARCH_TWITTER", "POST"],
   ["TWITTER_SEARCH", "POST"],
   ["X_SEARCH", "POST"],
+  ["SEARCH_TWITTER_POSTS", "POST"],
+  ["TWITTER_POST_SEARCH", "POST"],
+  ["FETCH_X_TIMELINE", "POST"],
+  ["VIEW_X_FEED", "POST"],
+  ["FETCH_TWITTER_FEED", "POST"],
+  ["FETCH_TWITTER_TIMELINE", "POST"],
+  ["FETCH_TWITTER_DMS", "MESSAGE"],
+  ["READ_TWITTER_DMS", "MESSAGE"],
+  ["READ_TWITTER_DM", "MESSAGE"],
+  ["FETCH_X_DMS", "MESSAGE"],
+  ["READ_X_DMS", "MESSAGE"],
+  ["READ_X_DM", "MESSAGE"],
+  ["DISCORD_POST_MESSAGE", "MESSAGE"],
+  ["DISCORD_SEND_MESSAGE", "MESSAGE"],
+  ["SEND_DISCORD_MESSAGE", "MESSAGE"],
+  ["SLACK_POST_MESSAGE", "MESSAGE"],
+  ["TELEGRAM_SEND_MESSAGE", "MESSAGE"],
+  ["EMAIL_FETCH_LATEST", "MESSAGE"],
+  ["EMAIL_DRAFT_REPLY", "MESSAGE"],
+  ["EMAIL_FETCH_UNREAD", "MESSAGE"],
+  ["FETCH_UNREAD_EMAIL", "MESSAGE"],
+  ["LIST_UNREAD_EMAILS", "MESSAGE"],
   ["BLOCK_WEBSITE", "WEBSITE_BLOCK"],
   ["WEBSITE_BLOCKER", "WEBSITE_BLOCK"],
   ["AUTOMATION_FOCUS_BLOCK", "WEBSITE_BLOCK"],
@@ -227,6 +259,15 @@ const ACTION_CANONICAL_NAMES = new Map<string, string>([
   ["TERMINAL_ACTION", "COMPUTER_USE"],
   ["BROWSER_ACTION", "COMPUTER_USE"],
   ["MANAGE_WINDOW", "COMPUTER_USE"],
+  ["DESKTOP", "COMPUTER_USE"],
+  ["TASKS_ADD_TODO", "LIFE"],
+  ["TASKS_CREATE_TODO", "LIFE"],
+  ["TASKS_CREATE_REMINDER", "LIFE"],
+  ["TASKS_LIST_TODAY", "LIFE"],
+  ["TASKS_LIST_TODOS", "LIFE"],
+  ["TASKS_SET_GOAL", "LIFE"],
+  ["LIST_TASKS", "LIFE"],
+  ["SET_GOAL", "LIFE"],
 ]);
 
 function resolveBenchmarkOwnerEntityId(runtime: AgentRuntime): UUID {
@@ -737,6 +778,34 @@ function parseRecordValue(value: unknown): Record<string, unknown> | undefined {
   return undefined;
 }
 
+function parseArrayValueFromText(value: string): unknown[] | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  const candidates: string[] = [];
+  const fullFence = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  candidates.push(fullFence?.[1]?.trim() ?? trimmed);
+  for (const match of trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi)) {
+    const candidate = match[1]?.trim();
+    if (candidate) candidates.push(candidate);
+  }
+  const start = trimmed.indexOf("[");
+  const end = trimmed.lastIndexOf("]");
+  if (start >= 0 && end > start) {
+    candidates.push(trimmed.slice(start, end + 1));
+  }
+
+  for (const candidate of [...new Set(candidates)]) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return undefined;
+}
+
 function isPlannerWrapperAction(name: string | null): boolean {
   return name === "CALL_ACTION" || name === "PLAN_ACTIONS";
 }
@@ -746,18 +815,7 @@ function isPlannerProtocolAction(name: string | null): boolean {
   return canonical === "HANDLE_RESPONSE" || isPlannerWrapperAction(canonical);
 }
 
-export function parsePlannedActionsFromResponse(response: string): string[] {
-  const parsed = parseJSONObjectFromText(response);
-  if (!parsed) {
-    return [];
-  }
-  const rawActions =
-    parsed.toolCalls ??
-    parsed.tool_calls ??
-    parsed.actions ??
-    parsed.action ??
-    parsed.name ??
-    parsed.actionName;
+function parseActionNamesFromValue(rawActions: unknown): string[] {
   const actionValues = Array.isArray(rawActions) ? rawActions : [rawActions];
   const names = actionValues
     .flatMap((action) => {
@@ -776,6 +834,7 @@ export function parsePlannedActionsFromResponse(response: string): string[] {
           record.action ??
           record.actionName ??
           record.toolName ??
+          record.tool ??
           rawFunction?.name;
         const canonicalRawName =
           typeof rawName === "string" ? canonicalActionName(rawName) : null;
@@ -800,6 +859,34 @@ export function parsePlannedActionsFromResponse(response: string): string[] {
   return [...new Set(names)];
 }
 
+export function parsePlannedActionsFromResponse(response: string): string[] {
+  const parsed = parseJSONObjectFromText(response) ?? parseArrayValueFromText(response);
+  if (!parsed) {
+    return [];
+  }
+  const rawActions =
+    Array.isArray(parsed)
+      ? parsed
+      : parsed.toolCalls ??
+        parsed.tool_calls ??
+        parsed.actions ??
+        parsed.action ??
+        parsed.actionName ??
+        parsed.name ??
+        parsed.tool ??
+        parsed.function;
+  const names = parseActionNamesFromValue(rawActions);
+  if (
+    names.length === 0 &&
+    !Array.isArray(parsed) &&
+    typeof parsed.text === "string" &&
+    parsed.text.trim() !== response.trim()
+  ) {
+    return parsePlannedActionsFromResponse(parsed.text);
+  }
+  return names;
+}
+
 function extractPlannerDecision(
   trajectory: TrajectoryRecord | undefined,
   registeredActions: readonly string[] = [],
@@ -816,6 +903,7 @@ function extractPlannerDecision(
     };
   }
   let fallback: PlannerDecision | null = null;
+  let latestPlanned: PlannerDecision | null = null;
   for (const plannerCall of plannerCalls) {
     const rawAvailableActions = parseAvailableActionsFromPrompt(
       plannerCall.prompt,
@@ -841,10 +929,18 @@ function extractPlannerDecision(
     };
     fallback ??= decision;
     if (plannedActions.length > 0) {
-      return decision;
+      latestPlanned = decision;
+      if (
+        plannedActions.some(
+          (action) => !isGenericActionName(action) && !isNonSelectionActionName(action),
+        )
+      ) {
+        return decision;
+      }
     }
   }
   return (
+    latestPlanned ??
     fallback ?? {
       availableActions: [],
       plannedActions: [],

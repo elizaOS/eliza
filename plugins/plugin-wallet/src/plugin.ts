@@ -30,7 +30,6 @@ const coreWalletPlugin: Plugin = {
   services: [WalletBackendService],
   providers: [unifiedWalletProvider],
   actions: [],
-  evaluators: [],
 };
 
 function concatServices(
@@ -109,7 +108,6 @@ export const walletPlugin: Plugin = {
     analyticsServices,
   ),
   providers: concatPlugins(coreWalletPlugin.providers, evmPlugin.providers),
-  evaluators: concatPlugins(coreWalletPlugin.evaluators, evmPlugin.evaluators),
   actions: concatPlugins(coreWalletPlugin.actions, evmPlugin.actions, [
     tokenInfoAction,
     walletSearchAddressAction,
@@ -123,8 +121,5 @@ export const walletPlugin: Plugin = {
     await initBirdeyeAnalytics(runtime);
   },
 };
-
-/** @deprecated Use {@link walletPlugin} */
-export const agentWalletPlugin = walletPlugin;
 
 export default walletPlugin;

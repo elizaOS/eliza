@@ -25,7 +25,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const app = new Hono<AppEnv>();
 
 const OverrideSchema = z.object({
-  billingSource: z.enum(["gateway", "openrouter", "openai", "groq", "fal", "elevenlabs"]),
+  billingSource: z.enum(["gateway", "openrouter", "openai", "groq", "vast", "fal", "elevenlabs"]),
   provider: z.string().min(1),
   model: z.string().min(1),
   productFamily: z.enum(["language", "embedding", "image", "video", "tts", "stt", "voice_clone"]),

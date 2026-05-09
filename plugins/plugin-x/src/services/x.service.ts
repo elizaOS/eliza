@@ -126,11 +126,11 @@ function normalizeXConnectorQuery(value: string): string {
 
 function clampLimit(
   value: number | undefined,
-  fallback: number,
+  defaultValue: number,
   max: number,
 ): number {
   if (!Number.isFinite(value)) {
-    return fallback;
+    return defaultValue;
   }
   return Math.min(Math.max(1, Math.floor(value as number)), max);
 }

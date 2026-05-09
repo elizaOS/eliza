@@ -825,7 +825,6 @@ export class Client {
     const resolvedAccessToken = accessToken;
     const resolvedAccessSecret = accessSecret;
 
-    // Backward compatible path: build a fixed OAuth1 provider inline.
     const provider: TwitterOAuth1Provider = {
       mode: "env",
       getAccessToken: async () => resolvedAccessToken,
@@ -1010,7 +1009,7 @@ export class Client {
 
   /**
    * Fetches quoted tweets for a given tweet ID.
-   * This method now uses a generator function internally but maintains backward compatibility.
+   * This method collects quoted tweets from the generator-backed search API.
    * @param tweetId The ID of the tweet to fetch quotes for.
    * @param maxQuotes Maximum number of quotes to return.
    * @param cursor Optional cursor for pagination.
@@ -1021,7 +1020,6 @@ export class Client {
     maxQuotes: number = 40,
     _cursor?: string,
   ): Promise<QueryTweetsResponse> {
-    // For backward compatibility, collect quotes from the generator
     const quotes: Tweet[] = [];
     let count = 0;
 

@@ -76,27 +76,8 @@ export async function executePlannedToolCall(
 					`Invalid arguments for action ${action.name}`,
 				{ parameterErrors: validation.errors },
 			),
-		);
+			);
 	}
-	const accountPolicy = await evaluateConnectorAccountPolicies(
-		runtime,
-		action,
-		{
-			message: executorCtx.message,
-			parameters: validation.args as Record<string, unknown>,
-		},
-	);
-	if (!accountPolicy.allowed) {
-		return emitToolResult(
-			toolCall,
-			failureResult(
-				action.name,
-				accountPolicy.reason ??
-					`Action ${action.name} is not allowed for the selected connector account`,
-			),
-		);
-	}
-
 	const previousResults = [...(executorCtx.previousResults ?? [])];
 	const parameters =
 		action.parameters && action.parameters.length > 0
@@ -115,6 +96,51 @@ export async function executePlannedToolCall(
 				),
 		},
 	};
+
+	if (action.validate) {
+		let valid = false;
+		try {
+			valid = await action.validate(
+				runtime,
+				executorCtx.message,
+				executorCtx.state,
+				handlerOptions,
+			);
+		} catch (error) {
+			return emitToolResult(
+				toolCall,
+				failureResult(action.name, stringifyError(error), { error }),
+			);
+		}
+		if (!valid) {
+			return emitToolResult(
+				toolCall,
+				failureResult(
+					action.name,
+					`Action ${action.name} is not available for the current state`,
+				),
+			);
+		}
+	}
+
+	const accountPolicy = await evaluateConnectorAccountPolicies(
+		runtime,
+		action,
+		{
+			message: executorCtx.message,
+			parameters: validation.args as Record<string, unknown>,
+		},
+	);
+	if (!accountPolicy.allowed) {
+		return emitToolResult(
+			toolCall,
+			failureResult(
+				action.name,
+				accountPolicy.reason ??
+					`Action ${action.name} is not allowed for the selected connector account`,
+			),
+			);
+	}
 
 	const messageId = executorCtx.message.id as UUID | undefined;
 	const roomId = executorCtx.message.roomId as UUID;

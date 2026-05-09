@@ -28,7 +28,10 @@ import {
 } from "../runtime/action-catalog";
 import { retrieveActions } from "../runtime/action-retrieval";
 import { tierActionResults } from "../runtime/action-tiering";
-import { filterByContextGate } from "../runtime/context-gates";
+import {
+	filterByContextGate,
+	satisfiesContextGate,
+} from "../runtime/context-gates";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
 	appendContextEvent,
@@ -1201,6 +1204,40 @@ function appendPriorDialogueEvents(
 	}
 }
 
+function getRecentConversationSearchText(
+	state: State | undefined,
+	currentMessage: Memory,
+): string[] {
+	const providers = state?.data?.providers;
+	if (!providers || typeof providers !== "object") {
+		return [];
+	}
+	const recent = (providers as Record<string, unknown>).RECENT_MESSAGES;
+	if (!recent || typeof recent !== "object") {
+		return [];
+	}
+	const data = (recent as { data?: unknown }).data;
+	const recentMessages =
+		data && typeof data === "object" && "recentMessages" in data
+			? (data as { recentMessages?: unknown }).recentMessages
+			: undefined;
+	if (!Array.isArray(recentMessages)) {
+		return [];
+	}
+	return recentMessages
+		.filter((memory): memory is Memory => {
+			if (!memory || typeof memory !== "object") return false;
+			if (memory.id && currentMessage.id && memory.id === currentMessage.id) {
+				return false;
+			}
+			return typeof memory.content?.text === "string";
+		})
+		.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+		.slice(0, 8)
+		.map((memory) => memory.content.text?.trim() ?? "")
+		.filter(Boolean);
+}
+
 function appendStateProviderEvents(
 	events: ContextEvent[],
 	state: State,
@@ -1313,33 +1350,39 @@ async function collectV5PlannerCandidateActions(args: {
 	const appendIfAllowed = async (
 		action: Action,
 		parentActionName?: string,
+		activeContexts: readonly AgentContext[] | undefined = args.selectedContexts,
 	): Promise<boolean> => {
 		const normalizedName = normalizeActionIdentifier(action.name);
 		if (!normalizedName || seen.has(normalizedName)) {
 			return false;
 		}
+		const contextGate = action.contextGate ?? {
+			contexts: action.contexts,
+			roleGate: action.roleGate,
+		};
+		if (!satisfiesContextGate(activeContexts, contextGate, args.userRoles)) {
+			return false;
+		}
 		try {
-			const accountPolicy = await evaluateConnectorAccountPolicies(
-				args.runtime,
-				action,
-				{ message: args.message },
-			);
-				if (!accountPolicy.allowed) {
+			const accountPolicy = await evaluateConnectorAccountPolicies(args.runtime, action, {
+				message: args.message,
+			});
+			if (!accountPolicy.allowed) {
+				return false;
+			}
+			if (action.validate) {
+				const valid = await action.validate(
+					args.runtime,
+					args.message,
+					args.state,
+				);
+				if (!valid) {
 					return false;
 				}
-				if (action.validate) {
-					const valid = await action.validate(
-						args.runtime,
-						args.message,
-						args.state,
-					);
-					if (!valid) {
-						return false;
-					}
-				}
-				seen.add(normalizedName);
-				selectedActions.push(action);
-				return true;
+			}
+			seen.add(normalizedName);
+			selectedActions.push(action);
+			return true;
 		} catch (error) {
 			args.runtime.logger.warn(
 				{
@@ -1360,6 +1403,10 @@ async function collectV5PlannerCandidateActions(args: {
 
 	for (let index = 0; index < selectedActions.length; index += 1) {
 		const parentAction = selectedActions[index];
+		const childActiveContexts = mergeAgentContexts(
+			args.selectedContexts,
+			parentAction.contexts,
+		);
 		for (const subAction of parentAction.subActions ?? []) {
 			const childAction =
 				typeof subAction === "string"
@@ -1377,7 +1424,7 @@ async function collectV5PlannerCandidateActions(args: {
 				);
 				continue;
 			}
-			await appendIfAllowed(childAction, parentAction.name);
+			await appendIfAllowed(childAction, parentAction.name, childActiveContexts);
 		}
 	}
 
@@ -1391,6 +1438,24 @@ function stringArrayProperty(value: unknown): string[] {
 	return value
 		.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
 		.filter((entry) => entry.length > 0);
+}
+
+function mergeAgentContexts(
+	...lists: Array<readonly AgentContext[] | undefined>
+): AgentContext[] {
+	const seen = new Set<string>();
+	const merged: AgentContext[] = [];
+	for (const list of lists) {
+		for (const context of list ?? []) {
+			const id = String(context);
+			if (!id || seen.has(id)) {
+				continue;
+			}
+			seen.add(id);
+			merged.push(context);
+		}
+	}
+	return merged;
 }
 
 function getMessageHandlerCandidateActions(
@@ -1439,6 +1504,7 @@ function buildFullV5PlannerActionSurface(params: {
 function buildV5PlannerActionSurface(params: {
 	actions: readonly Action[];
 	message: Memory;
+	state?: State;
 	messageHandler: MessageHandlerResult;
 }): V5PlannerActionSurface {
 	const candidateActions = getMessageHandlerCandidateActions(
@@ -1462,12 +1528,16 @@ function buildV5PlannerActionSurface(params: {
 	const catalog = buildActionCatalog(
 		params.actions as unknown as RuntimeActionLike[],
 	);
-	const retrieval = retrieveActions({
-		catalog,
-		messageText: getUserMessageText(params.message) ?? "",
-		candidateActions,
-		parentActionHints,
-	});
+		const retrieval = retrieveActions({
+			catalog,
+			messageText: getUserMessageText(params.message) ?? "",
+			recentConversationText: getRecentConversationSearchText(
+				params.state,
+				params.message,
+			),
+			candidateActions,
+			parentActionHints,
+		});
 	const tieredSurface = tierActionResults({
 		catalog,
 		results: retrieval.results,
@@ -1710,9 +1780,8 @@ async function generateDirectReplyOnce(args: {
 
 /**
  * Format the role-filtered context catalog as a compact bullet list for the
- * Stage 1 prompt. Each line is `- <id>: <description>` (or just `- <id>` when
- * no description is available). Order is preserved from the registry, which
- * keeps the rendered prefix byte-stable across iterations.
+ * Stage 1 prompt. Each line includes the id plus compressed metadata that helps
+ * Stage 1 pick generously without inventing contexts.
  */
 export function formatAvailableContextsForPrompt(
 	contexts: readonly ContextDefinition[],
@@ -1723,11 +1792,47 @@ export function formatAvailableContextsForPrompt(
 	return contexts
 		.map((definition) => {
 			const description = definition.description?.trim();
+			const metadata = [
+				definition.label && definition.label !== definition.id
+					? `label=${definition.label}`
+					: undefined,
+				definition.aliases?.length
+					? `aliases=${definition.aliases.join(",")}`
+					: undefined,
+				definition.parent
+					? `parent=${definition.parent}`
+					: definition.parents?.length
+						? `parents=${definition.parents.join(",")}`
+						: undefined,
+				definition.roleGate ? formatRoleGateForPrompt(definition.roleGate) : undefined,
+				definition.sensitivity ? `sensitivity=${definition.sensitivity}` : undefined,
+				definition.cacheScope ? `cache=${definition.cacheScope}` : undefined,
+			].filter(Boolean);
+			const suffix = metadata.length > 0 ? ` [${metadata.join("; ")}]` : "";
 			return description
-				? `- ${definition.id}: ${description}`
-				: `- ${definition.id}`;
+				? `- ${definition.id}${suffix}: ${description}`
+				: `- ${definition.id}${suffix}`;
 		})
 		.join("\n");
+}
+
+function formatRoleGateForPrompt(
+	roleGate: ContextDefinition["roleGate"],
+): string | undefined {
+	if (!roleGate) {
+		return undefined;
+	}
+	if (roleGate.minRole) {
+		return `role>=${roleGate.minRole}`;
+	}
+	const anyOf = [...(roleGate.roles ?? []), ...(roleGate.anyOf ?? [])];
+	if (anyOf.length > 0) {
+		return `role=${anyOf.join("|")}`;
+	}
+	if (roleGate.allOf?.length) {
+		return `role_all=${roleGate.allOf.join("+")}`;
+	}
+	return undefined;
 }
 
 function renderV5MessageHandlerInstructions(
@@ -1831,12 +1936,29 @@ function parseMessageHandlerNativeToolCall(
 		const args = parseToolArguments(
 			record.arguments ?? record.args ?? record.input ?? record.params,
 		);
-		if (!args) {
-			return null;
+		if (!args || !looksLikeMessageHandlerToolArguments(args)) {
+			continue;
 		}
 		return parseMessageHandlerOutput(JSON.stringify(args));
 	}
 	return null;
+}
+
+function looksLikeMessageHandlerToolArguments(
+	args: Record<string, unknown>,
+): boolean {
+	if (Object.keys(args).length === 0) {
+		return false;
+	}
+	return (
+		args.plan !== undefined ||
+		args.processMessage !== undefined ||
+		args.action !== undefined ||
+		args.contexts !== undefined ||
+		args.reply !== undefined ||
+		args.thought !== undefined ||
+		args.extract !== undefined
+	);
 }
 
 function parseMessageHandlerModelOutput(
@@ -2164,9 +2286,10 @@ function shouldTreatPlannerContactAliasAsLifeReminder(
 	toolCall: PlannerToolCall,
 	message: Memory,
 ): boolean {
+	const normalizedName = normalizeActionIdentifier(toolCall.name);
 	if (
-		normalizeActionIdentifier(toolCall.name) !==
-		normalizeActionIdentifier("ADD_CONTACT")
+		normalizedName !== normalizeActionIdentifier("ADD_CONTACT") &&
+		normalizedName !== normalizeActionIdentifier("RELATIONSHIP")
 	) {
 		return false;
 	}
@@ -2270,6 +2393,48 @@ function shouldTreatPlannerConnectorAsPost(
 	);
 }
 
+function shouldTreatPlannerConnectorAsMessage(
+	resolvedName: string,
+	message: Memory,
+): boolean {
+	if (
+		normalizeActionIdentifier(resolvedName) !==
+		normalizeActionIdentifier("CONNECTOR")
+	) {
+		return false;
+	}
+	const text = getUserMessageText(message) ?? "";
+	return (
+		/\b(?:email|gmail|mail|inbox|unread|draft reply|reply to|unsubscribe)\b/i.test(
+			text,
+		) ||
+		(/\b(?:x|twitter)\b/i.test(text) &&
+			/\b(?:dm|dms|direct messages?|messages?)\b/i.test(text)) ||
+		(/\b(?:discord|slack|telegram|signal|whatsapp)\b/i.test(text) &&
+			/\b(?:post|send|message|dm|channel)\b/i.test(text))
+	);
+}
+
+function shouldTreatPlannerDeviceIntentAsLifeReminder(
+	resolvedName: string,
+	message: Memory,
+): boolean {
+	if (
+		normalizeActionIdentifier(resolvedName) !==
+		normalizeActionIdentifier("DEVICE_INTENT")
+	) {
+		return false;
+	}
+	const text = getUserMessageText(message) ?? "";
+	if (/\b(?:device|devices|phone|mobile|desktop|broadcast|push)\b/i.test(text)) {
+		return false;
+	}
+	return (
+		/\b(?:remember|remind|reminder)\b/i.test(text) &&
+		/\b(?:call|phone|text|message|email)\b/i.test(text)
+	);
+}
+
 function inferPostSearchQuery(message: Memory): string | undefined {
 	const text = getUserMessageText(message) ?? "";
 	return (
@@ -2348,6 +2513,7 @@ function normalizePostPlannerParams(
 
 function normalizeMessagePlannerParams(
 	toolCall: PlannerToolCall,
+	message: Memory,
 ): Record<string, unknown> {
 	const params =
 		toolCall.params && typeof toolCall.params === "object"
@@ -2368,9 +2534,30 @@ function normalizeMessagePlannerParams(
 		stringParam(params.email) ??
 		stringParam(params.emailAddress) ??
 		stringParam(params.address);
+	const text = getUserMessageText(message) ?? "";
+	const inferredOperation =
+		/\bdraft\b.*\breply\b/i.test(text)
+			? "draft_reply"
+			: /\b(?:unread|inbox|digest|summarize).*?\b(?:email|gmail|mail|inbox)\b/i.test(
+						text,
+					) ||
+					/\b(?:email|gmail|mail|inbox)\b.*?\b(?:unread|digest|summarize)\b/i.test(
+						text,
+					)
+				? "list_inbox"
+				: /\b(?:x|twitter)\b/i.test(text) &&
+						/\b(?:dm|dms|direct messages?|messages?)\b/i.test(text)
+					? "read_channel"
+					: undefined;
 	return {
-		...(operation ? { operation } : {}),
-		...(source ? { source: source === "twitter" ? "x" : source } : {}),
+		...(inferredOperation ?? operation
+			? { operation: inferredOperation ?? operation }
+			: {}),
+		...(source
+			? { source: source === "twitter" ? "x" : source }
+			: /\b(?:x|twitter)\b/i.test(text)
+				? { source: "x" }
+				: {}),
 		...(target ? { target, sender: target } : {}),
 		...(manageIntent
 			? {
@@ -2490,7 +2677,7 @@ function normalizeAliasedPlannerToolCall(
 			return {
 				...toolCall,
 				name: resolvedName,
-				params: normalizeMessagePlannerParams(toolCall),
+				params: normalizeMessagePlannerParams(toolCall, message),
 			};
 		}
 		if (
@@ -2582,9 +2769,17 @@ async function executeV5PlannedToolCall(
 			resolvedName,
 			args.executorCtx.message,
 		);
+	const forceDeviceIntentToLife =
+		!forceContactReminderToLife &&
+		!forceLifeToDeviceIntent &&
+		shouldTreatPlannerDeviceIntentAsLifeReminder(
+			resolvedName,
+			args.executorCtx.message,
+		);
 	const forceWebToCalendlyCalendar =
 		!forceContactReminderToLife &&
 		!forceLifeToDeviceIntent &&
+		!forceDeviceIntentToLife &&
 		shouldTreatPlannerWebAsCalendlyCalendar(
 			resolvedName,
 			args.executorCtx.message,
@@ -2592,35 +2787,57 @@ async function executeV5PlannedToolCall(
 	const forceWebToBookTravel =
 		!forceContactReminderToLife &&
 		!forceLifeToDeviceIntent &&
+		!forceDeviceIntentToLife &&
 		!forceWebToCalendlyCalendar &&
 		shouldTreatPlannerWebAsBookTravel(resolvedName, args.executorCtx.message);
 	const forceBrowserToAutofill =
 		!forceContactReminderToLife &&
 		!forceLifeToDeviceIntent &&
+		!forceDeviceIntentToLife &&
 		!forceWebToCalendlyCalendar &&
 		!forceWebToBookTravel &&
 		shouldTreatPlannerBrowserAsAutofill(resolvedName, args.executorCtx.message);
 	const forceConnectorToPost =
 		!forceContactReminderToLife &&
 		!forceLifeToDeviceIntent &&
+		!forceDeviceIntentToLife &&
 		!forceWebToCalendlyCalendar &&
 		!forceWebToBookTravel &&
 		!forceBrowserToAutofill &&
+		!shouldTreatPlannerConnectorAsMessage(
+			resolvedName,
+			args.executorCtx.message,
+		) &&
 		shouldTreatPlannerConnectorAsPost(resolvedName, args.executorCtx.message);
+	const forceConnectorToMessage =
+		!forceContactReminderToLife &&
+		!forceLifeToDeviceIntent &&
+		!forceDeviceIntentToLife &&
+		!forceWebToCalendlyCalendar &&
+		!forceWebToBookTravel &&
+		!forceBrowserToAutofill &&
+		shouldTreatPlannerConnectorAsMessage(
+			resolvedName,
+			args.executorCtx.message,
+		);
 	const effectiveResolvedName = forceContactReminderToLife
 		? "LIFE"
 		: forceLifeToDeviceIntent
 			? "DEVICE_INTENT"
-			: forceWebToCalendlyCalendar
-				? "CALENDAR"
-				: forceWebToBookTravel
-					? "BOOK_TRAVEL"
-					: forceBrowserToAutofill
-						? "AUTOFILL"
-						: forceConnectorToPost
-							? "POST"
-							: resolvedName;
-	const toolCallForNormalization = forceContactReminderToLife
+			: forceDeviceIntentToLife
+				? "LIFE"
+				: forceWebToCalendlyCalendar
+					? "CALENDAR"
+					: forceWebToBookTravel
+						? "BOOK_TRAVEL"
+						: forceBrowserToAutofill
+							? "AUTOFILL"
+							: forceConnectorToPost
+								? "POST"
+								: forceConnectorToMessage
+									? "MESSAGE"
+									: resolvedName;
+	const toolCallForNormalization = forceContactReminderToLife || forceDeviceIntentToLife
 		? {
 				...unwrappedToolCall,
 				params: {
@@ -3011,11 +3228,12 @@ export async function runV5MessageRuntimeStage1(args: {
 				selectedContexts,
 				userRoles: [senderRole],
 			});
-			const actionSurface = buildV5PlannerActionSurface({
-				actions: plannerCandidateActions,
-				message: args.message,
-				messageHandler,
-			});
+				const actionSurface = buildV5PlannerActionSurface({
+					actions: plannerCandidateActions,
+					message: args.message,
+					state: plannerState,
+					messageHandler,
+				});
 			const exposedPlannerActions = plannerCandidateActions.filter((action) =>
 				actionSurface.exposedActionNames.has(
 					normalizeActionIdentifier(action.name),
@@ -3603,10 +3821,47 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["SEARCH_TWITTER", "POST"],
 		["TWITTER_SEARCH", "POST"],
 		["X_SEARCH", "POST"],
+		["SEARCH_TWITTER_POSTS", "POST"],
+		["TWITTER_POST_SEARCH", "POST"],
+		["FETCH_X_TIMELINE", "POST"],
+		["VIEW_X_FEED", "POST"],
+		["FETCH_TWITTER_FEED", "POST"],
+		["FETCH_TWITTER_TIMELINE", "POST"],
+		["FETCH_TWITTER_DMS", "MESSAGE"],
+		["READ_TWITTER_DMS", "MESSAGE"],
+		["READ_TWITTER_DM", "MESSAGE"],
+		["FETCH_X_DMS", "MESSAGE"],
+		["READ_X_DMS", "MESSAGE"],
+		["READ_X_DM", "MESSAGE"],
+		["DISCORD_POST_MESSAGE", "MESSAGE"],
+		["DISCORD_SEND_MESSAGE", "MESSAGE"],
+		["SEND_DISCORD_MESSAGE", "MESSAGE"],
+		["SLACK_POST_MESSAGE", "MESSAGE"],
+		["TELEGRAM_SEND_MESSAGE", "MESSAGE"],
+		["EMAIL_FETCH_LATEST", "MESSAGE"],
+		["EMAIL_DRAFT_REPLY", "MESSAGE"],
+		["EMAIL_FETCH_UNREAD", "MESSAGE"],
+		["FETCH_UNREAD_EMAIL", "MESSAGE"],
+		["LIST_UNREAD_EMAILS", "MESSAGE"],
 		["ADD_TODO", "LIFE"],
 		["CREATE_TODO", "LIFE"],
+		["TODO_ADD", "LIFE"],
+		["TODO_CREATE", "LIFE"],
+		["TASK_ADD", "LIFE"],
+		["TASK_CREATE", "LIFE"],
+		["TASKS_ADD_TODO", "LIFE"],
+		["TASKS_CREATE_TODO", "LIFE"],
+		["TASKS_CREATE_REMINDER", "LIFE"],
 		["LIST_TODOS", "LIFE"],
 		["GET_TODOS", "LIFE"],
+		["TODO_LIST", "LIFE"],
+		["TODOS_LIST", "LIFE"],
+		["TODO_GET", "LIFE"],
+		["TASK_LIST", "LIFE"],
+		["TASKS_REVIEW", "LIFE"],
+		["TASKS_LIST_TODAY", "LIFE"],
+		["TASKS_LIST_TODOS", "LIFE"],
+		["LIST_TASKS", "LIFE"],
 		["LIFE_GET_TODOS", "LIFE"],
 		["LIFE_TODO", "LIFE"],
 		["ADD_HABIT", "LIFE"],
@@ -3614,6 +3869,8 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["LIST_HABITS", "LIFE"],
 		["ADD_GOAL", "LIFE"],
 		["CREATE_GOAL", "LIFE"],
+		["TASKS_SET_GOAL", "LIFE"],
+		["SET_GOAL", "LIFE"],
 		["CREATE_REMINDER", "LIFE"],
 		["SET_REMINDER_RULE", "LIFE"],
 		["CHECK_IN", "CHECKIN"],
@@ -3656,6 +3913,7 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["DECLINE_APPROVAL", "RESOLVE_REQUEST"],
 		["REQUEST_UPLOAD", "COMPUTER_USE"],
 		["UPLOAD_PORTAL", "COMPUTER_USE"],
+		["DESKTOP", "COMPUTER_USE"],
 	].map(([from, to]) => [
 		normalizeActionIdentifier(from),
 		normalizeActionIdentifier(to),
@@ -3673,6 +3931,30 @@ const PLANNER_ACTION_ALIAS_DEFAULTS = new Map(
 			{ subaction: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
+			"TODO_ADD",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TODO_CREATE",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TASK_ADD",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TASK_CREATE",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TASKS_ADD_TODO",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TASKS_CREATE_TODO",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
 			"ADD_HABIT",
 			{ subaction: "create", kind: "definition", definitionKind: "habit" },
 		],
@@ -3682,8 +3964,14 @@ const PLANNER_ACTION_ALIAS_DEFAULTS = new Map(
 		],
 		["ADD_GOAL", { subaction: "create", kind: "goal" }],
 		["CREATE_GOAL", { subaction: "create", kind: "goal" }],
+		["TASKS_SET_GOAL", { subaction: "create", kind: "goal" }],
+		["SET_GOAL", { subaction: "create", kind: "goal" }],
 		[
 			"CREATE_REMINDER",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TASKS_CREATE_REMINDER",
 			{ subaction: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
@@ -3692,6 +3980,14 @@ const PLANNER_ACTION_ALIAS_DEFAULTS = new Map(
 		],
 		["LIST_TODOS", { subaction: "review" }],
 		["GET_TODOS", { subaction: "review" }],
+		["TODO_LIST", { subaction: "review" }],
+		["TODOS_LIST", { subaction: "review" }],
+		["TODO_GET", { subaction: "review" }],
+		["TASK_LIST", { subaction: "review" }],
+		["TASKS_REVIEW", { subaction: "review" }],
+		["TASKS_LIST_TODAY", { subaction: "review" }],
+		["TASKS_LIST_TODOS", { subaction: "review" }],
+		["LIST_TASKS", { subaction: "review" }],
 		["LIFE_GET_TODOS", { subaction: "review" }],
 		["LIFE_TODO", {}],
 		["LIST_HABITS", { subaction: "review" }],
@@ -3712,6 +4008,30 @@ const PLANNER_LIFE_SUBACTION_DEFAULTS = new Map(
 			{ subaction: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
+			"TODO_ADD",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TODO_CREATE",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TASK_ADD",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TASK_CREATE",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TASKS_ADD_TODO",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
+			"TASKS_CREATE_TODO",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
 			"ADD_TASK",
 			{ subaction: "create", kind: "definition", definitionKind: "task" },
 		],
@@ -3728,6 +4048,10 @@ const PLANNER_LIFE_SUBACTION_DEFAULTS = new Map(
 			{ subaction: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
+			"TASKS_CREATE_REMINDER",
+			{ subaction: "create", kind: "definition", definitionKind: "task" },
+		],
+		[
 			"ADD_HABIT",
 			{ subaction: "create", kind: "definition", definitionKind: "habit" },
 		],
@@ -3737,8 +4061,18 @@ const PLANNER_LIFE_SUBACTION_DEFAULTS = new Map(
 		],
 		["ADD_GOAL", { subaction: "create", kind: "goal" }],
 		["CREATE_GOAL", { subaction: "create", kind: "goal" }],
+		["TASKS_SET_GOAL", { subaction: "create", kind: "goal" }],
+		["SET_GOAL", { subaction: "create", kind: "goal" }],
 		["LIST_TODOS", { subaction: "review" }],
 		["GET_TODOS", { subaction: "review" }],
+		["TODO_LIST", { subaction: "review" }],
+		["TODOS_LIST", { subaction: "review" }],
+		["TODO_GET", { subaction: "review" }],
+		["TASK_LIST", { subaction: "review" }],
+		["TASKS_REVIEW", { subaction: "review" }],
+		["TASKS_LIST_TODAY", { subaction: "review" }],
+		["TASKS_LIST_TODOS", { subaction: "review" }],
+		["LIST_TASKS", { subaction: "review" }],
 		["LIFE_GET_TODOS", { subaction: "review" }],
 		["LIFE_TODO", {}],
 		["LIST_TASKS", { subaction: "review" }],

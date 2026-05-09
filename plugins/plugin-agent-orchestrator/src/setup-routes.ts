@@ -2,24 +2,13 @@
  * Coding-agent orchestrator HTTP routes — Plugin route registration.
  *
  * Mounts `/api/coding-agents/*`, `/api/workspace/*`, and `/api/issues/*`
- * through `Plugin.routes` with `rawPath: true` so the legacy absolute paths
- * are preserved under the runtime route registry.
- *
- * Migrated out of `packages/agent/src/api/server.ts`. The combined handler
- * delegates to the orchestrator's full dispatcher (`handleCodingAgentRoutes`)
- * first; if that does not handle the request, it falls through to the
- * compatibility fallback (`handleCodingAgentsFallback`) which maps the
- * `CODE_TASK` service onto the same paths.
+ * through `Plugin.routes` with `rawPath: true`.
  */
 
 import type http from "node:http";
-import type { AgentRuntime, IAgentRuntime, Plugin, Route } from "@elizaos/core";
+import type { IAgentRuntime, Plugin, Route } from "@elizaos/core";
 import type { RouteContext } from "./api/route-utils.js";
 import { handleCodingAgentRoutes } from "./api/routes.js";
-import {
-  CODING_AGENTS_FALLBACK_ROUTE_PATHS,
-  handleCodingAgentsFallback,
-} from "./routes/coding-agents-fallback-routes.js";
 import { getCoordinator, type PTYService } from "./services/pty-service.js";
 import type { CodingWorkspaceService } from "./services/workspace-service.js";
 
@@ -52,8 +41,6 @@ function codingAgentRouteHandler(): PluginRouteHandler {
       `http://${httpReq.headers?.host ?? "localhost"}`,
     );
     const pathname = url.pathname;
-    const method = (httpReq.method ?? "GET").toUpperCase();
-
     // Lazily start PTY_SERVICE if it was registered but not yet started.
     // The core runtime only starts services on-demand via getServiceLoadPromise,
     // but downstream route handlers query getService() (which only returns
@@ -81,22 +68,7 @@ function codingAgentRouteHandler(): PluginRouteHandler {
     );
     if (handled) return;
 
-    // 2. Compatibility fallback — task/session/scratch/preflight/auth/status
-    //    sourced from the CODE_TASK service for builds where the full
-    //    orchestrator services are not wired.
-    if (pathname.startsWith("/api/coding-agents")) {
-      const fallbackHandled = await handleCodingAgentsFallback(
-        agentRuntime as unknown as AgentRuntime,
-        pathname,
-        method,
-        httpReq,
-        httpRes,
-      );
-      if (fallbackHandled) return;
-    }
-
-    // No matching sub-handler — return 404 in the same shape the legacy
-    // dispatcher returned.
+    // No matching sub-handler.
     if (!httpRes.headersSent) {
       httpRes.writeHead(404, { "Content-Type": "application/json" });
       httpRes.end(
@@ -153,13 +125,8 @@ const CODING_AGENT_ROUTE_PATHS: Array<{ type: string; path: string }> = [
   { type: "POST", path: "/api/issues/:owner/:repo/:number/close" },
 ];
 
-const ALL_PATHS = [
-  ...CODING_AGENT_ROUTE_PATHS,
-  ...CODING_AGENTS_FALLBACK_ROUTE_PATHS,
-];
-
 const seen = new Set<string>();
-const dedupedPaths = ALL_PATHS.filter((entry) => {
+const dedupedPaths = CODING_AGENT_ROUTE_PATHS.filter((entry) => {
   const key = `${entry.type} ${entry.path}`;
   if (seen.has(key)) return false;
   seen.add(key);

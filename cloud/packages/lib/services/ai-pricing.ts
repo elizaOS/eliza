@@ -926,6 +926,7 @@ async function fetchEntriesForSource(source: PriceLookupSource): Promise<Prepare
       return await fetchFalCatalogEntries();
     case "elevenlabs":
       return await fetchElevenLabsEntries();
+    case "vast":
     case "seed":
       return [];
   }

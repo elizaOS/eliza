@@ -191,24 +191,18 @@ async function resolveSenderRole(
     }
   }
 
-  // Try well-known package specifiers that export checkSenderRole.
-  // Prefer the @elizaos/core barrel; @elizaai/plugin-roles is a legacy
-  // eliza-specific package fallback.
-  const PACKAGE_SPECIFIERS = ["@elizaos/core", "@elizaai/plugin-roles"];
-  for (const specifier of PACKAGE_SPECIFIERS) {
-    try {
-      const rolesModule = (await import(specifier)) as {
-        checkSenderRole?: (
-          runtime: IAgentRuntime,
-          message: Memory,
-        ) => Promise<RoleCheckResult | null>;
-      };
-      if (typeof rolesModule.checkSenderRole === "function") {
-        return await rolesModule.checkSenderRole(runtime, message);
-      }
-    } catch {
-      // Package not available — try next candidate.
+  try {
+    const rolesModule = (await import("@elizaos/core")) as {
+      checkSenderRole?: (
+        runtime: IAgentRuntime,
+        message: Memory,
+      ) => Promise<RoleCheckResult | null>;
+    };
+    if (typeof rolesModule.checkSenderRole === "function") {
+      return await rolesModule.checkSenderRole(runtime, message);
     }
+  } catch {
+    // Package not available in standalone tests.
   }
   return null;
 }

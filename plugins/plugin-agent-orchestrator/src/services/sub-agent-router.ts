@@ -16,7 +16,7 @@ const DEFAULT_ROUND_TRIP_CAP = 32;
  *   - SEND_TO_AGENT to push the sub-agent further,
  *   - or both.
  *
- * Routing keys are read from `session.metadata` populated by createTaskAction
+ * Routing keys are read from `session.metadata` populated by TASKS op=create
  * at spawn time: `roomId`, `worldId`, `userId`, `messageId`, `source`, `label`.
  *
  * Streaming chunks (`agent_message_chunk`, `tool_running`) are intentionally

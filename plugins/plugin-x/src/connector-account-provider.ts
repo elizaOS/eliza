@@ -7,7 +7,7 @@
  *
  * The X plugin runs in two complementary modes:
  *
- *  - **env (legacy)**: a single OAuth1 application credential set lives in
+ *  - **env**: a single OAuth1 application credential set lives in
  *    runtime settings (TWITTER_API_KEY/SECRET/ACCESS_TOKEN/SECRET). At plugin
  *    start we materialize a synthetic `default` account so the rest of the
  *    runtime can address it through the connector account interface.

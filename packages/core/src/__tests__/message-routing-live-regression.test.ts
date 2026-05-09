@@ -62,6 +62,46 @@ describe("live routing regressions", () => {
 		).toEqual(["CALENDAR"]);
 	});
 
+	it("routes invented atomic planner action names through registered parents", () => {
+		const runtime = {
+			actions: [
+				{ name: "LIFE" },
+				{ name: "MESSAGE" },
+				{ name: "POST" },
+				{ name: "COMPUTER_USE" },
+			],
+			logger,
+		} as unknown as Pick<IAgentRuntime, "actions" | "logger">;
+
+		expect(resolvePlannerActionName(runtime, undefined, "TASKS_ADD_TODO")).toEqual([
+			"LIFE",
+		]);
+		expect(resolvePlannerActionName(runtime, undefined, "todo_create")).toEqual([
+			"LIFE",
+		]);
+		expect(resolvePlannerActionName(runtime, undefined, "task_list")).toEqual([
+			"LIFE",
+		]);
+		expect(
+			resolvePlannerActionName(runtime, undefined, "DISCORD_POST_MESSAGE"),
+		).toEqual(["MESSAGE"]);
+		expect(
+			resolvePlannerActionName(runtime, undefined, "SEARCH_TWITTER_POSTS"),
+		).toEqual(["POST"]);
+		expect(
+			resolvePlannerActionName(runtime, undefined, "READ_TWITTER_DM"),
+		).toEqual(["MESSAGE"]);
+		expect(
+			resolvePlannerActionName(runtime, undefined, "EMAIL_FETCH_UNREAD"),
+		).toEqual(["MESSAGE"]);
+		expect(resolvePlannerActionName(runtime, undefined, "SET_GOAL")).toEqual([
+			"LIFE",
+		]);
+		expect(resolvePlannerActionName(runtime, undefined, "DESKTOP")).toEqual([
+			"COMPUTER_USE",
+		]);
+	});
+
 	it("infers safe params for explicit local shell checks", () => {
 		expect(
 			inferLocalShellCommandFromMessageText(

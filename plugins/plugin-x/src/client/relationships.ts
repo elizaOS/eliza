@@ -300,7 +300,7 @@ export async function followUser(
       userResponse.data.id,
     );
 
-    // Return a Response-like object for compatibility
+    // Return the same Response shape used by the rest of the client.
     return new Response(JSON.stringify(result), {
       status: result.data?.following ? 200 : 400,
       headers: new Headers({

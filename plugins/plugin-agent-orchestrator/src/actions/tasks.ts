@@ -1108,13 +1108,9 @@ async function runControl(
   }
 
   const text = typeof content.text === "string" ? content.text : "";
-  // Accept either `action` (canonical) or `operation` (legacy TASK_CONTROL).
   const action = inferControlAction(
     text,
-    textValue(params.action) ??
-      textValue(content.action) ??
-      textValue(params.operation) ??
-      textValue(content.operation),
+    textValue(params.action) ?? textValue(content.action),
   );
 
   if (!action) {
@@ -1900,12 +1896,9 @@ async function runManageIssues(
 
   const text = ((content.text as string) ?? "").slice(0, ISSUE_BODY_MAX_CHARS);
 
-  // Issue sub-action lives under `action` (canonical) or `operation` (legacy MANAGE_ISSUES).
   const action =
     (params.action as string) ??
     (content.action as string) ??
-    (params.operation as string) ??
-    (content.operation as string) ??
     inferIssueAction(text);
   const repo = (params.repo as string) ?? (content.repo as string);
 
@@ -2564,8 +2557,7 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
   },
 };
 
-// Back-compat alias exports — point at the consolidated parent so old imports
-// of e.g. `createTaskAction` keep resolving without breaking call sites.
+// Operation-specific handles resolve to the consolidated TASKS action.
 export const createTaskAction = tasksAction;
 export const startCodingTaskAction = tasksAction;
 export const spawnAgentAction = tasksAction;

@@ -1078,6 +1078,19 @@ export const VALIDATION_KEYWORD_DOCS = {
         },
       },
     },
+    generateMedia: {
+      request: {
+        base: "generate media\ncreate media\nmake media\ngenerate image\ncreate image\ngenerate video\ncreate video\nanimate\nanimation\ngenerate audio\ncreate audio\ngenerate music\nsound effect\ntext to speech\ntts\nvoiceover",
+        locales: {
+          "zh-CN": "生成媒体\n创建媒体\n生成图片\n生成视频\n动画\n生成音频\n音乐\n文字转语音",
+          ko: "미디어 생성\n이미지 생성\n비디오 생성\n영상 생성\n애니메이션\n오디오 생성\n음악 생성\n텍스트 음성 변환",
+          es: "generar media\ncrear media\ngenerar imagen\ncrear imagen\ngenerar video\ncrear video\nanimar\ngenerar audio\ncrear audio\ntexto a voz",
+          pt: "gerar mídia\ngerar midia\ncriar mídia\ncriar midia\ngerar imagem\ncriar imagem\ngerar vídeo\ngerar video\nanimar\ngerar áudio\ngerar audio\ntexto para fala",
+          vi: "tạo media\ntao media\ntạo ảnh\ntao anh\ntạo video\ntao video\nhoạt hình\nhoat hinh\ntạo âm thanh\ntao am thanh\nvăn bản thành giọng nói",
+          tl: "gumawa ng media\nlumikha ng media\ngumawa ng larawan\ngumawa ng video\ni-animate\ngumawa ng audio\ntext to speech",
+        },
+      },
+    },
   },
   validate: {
     codingTaskRequest: {

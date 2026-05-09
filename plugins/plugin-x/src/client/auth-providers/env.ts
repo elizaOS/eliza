@@ -5,9 +5,7 @@ import { resolveRequestedXAccountId } from "../accounts";
 import type { OAuth1Credentials, TwitterOAuth1Provider } from "./types";
 
 /**
- * Legacy env-var auth provider (OAuth 1.0a user context).
- *
- * Backward compatible with the existing configuration:
+ * Env-var auth provider (OAuth 1.0a user context):
  * - TWITTER_API_KEY
  * - TWITTER_API_SECRET_KEY
  * - TWITTER_ACCESS_TOKEN

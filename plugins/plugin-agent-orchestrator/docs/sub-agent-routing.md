@@ -1,10 +1,8 @@
 # Sub-agent routing
 
-> Canonical orchestration path for ACPX sub-agents. Replaces the
-> autonomous-coordinator model from the legacy `swarm-*` services that
-> ship in this same package (`src/services/swarm-coordinator.ts`,
-> `src/services/swarm-decision-loop.ts`, etc.) but are now dormant for
-> ACP-spawned sessions.
+> Canonical orchestration path for ACPX sub-agents. ACP-spawned sessions
+> route through `AcpService` and `SubAgentRouter`; PTY-spawned sessions keep
+> using the coordinator modules that ship in this package.
 
 ## Goals
 
@@ -24,7 +22,7 @@
 
 ### `AcpService` (existing)
 
-Spawn surface. `createTaskAction` records origin context in
+Spawn surface. TASKS op=create records origin context in
 `session.metadata` at spawn time:
 
 ```ts
@@ -171,20 +169,16 @@ the most recent turn stays warm.
 - Dedup prevents accidental double-injection from event re-emission.
 - The round-trip cap (above) is the hard ceiling for ping-pong loops.
 
-## Migration from swarm-coordinator
+## Coordinator Boundary
 
 `plugin-agent-orchestrator`'s `swarm-coordinator.ts` and
 `swarm-decision-loop.ts` are bound to `PTYService` only. Sessions spawned
-through `AcpService` (the canonical path now) bypass them entirely.
+through `AcpService` bypass them entirely.
 
 The swarm coordinator's autonomous decision logic
 (`makeCoordinationDecision`, `buildTurnCompletePrompt`,
 `buildBlockedEventMessage`) is replaced by the main agent's normal action
 selection over the synthetic Memory.
-
-When all PTY-spawned call sites migrate to AcpService, the swarm-* services
-can be removed in a follow-up. Until then they remain dormant alongside
-the new path.
 
 ## Testing
 

@@ -120,8 +120,7 @@ async function extractResolution(
     }
     return { requestId: null, reason: null };
   }
-  // TODO(native-parameters): delete this legacy resolution fallback after the planner
-  // consistently supplies requestId/reason in options.parameters.
+  // LLM resolution path for natural-language approval decisions.
   const prompt = `You are resolving an approval queue decision.
 The user wants to ${intent} one of the pending requests below.
 Understand the user's message in any language. Echo the reason in the user's language.

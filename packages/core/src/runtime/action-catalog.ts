@@ -1,3 +1,9 @@
+import {
+	getActionSearchKeywordSources,
+	getActionSearchKeywordTerms,
+	type ActionSearchKeywordSource,
+} from "../i18n/action-search-keywords";
+
 export type RuntimeActionLike = {
 	name: string;
 	description?: string;
@@ -41,6 +47,9 @@ export type ActionCatalogEntry = {
 	contexts?: unknown;
 	cacheStable?: boolean;
 	cacheScope?: string;
+	keywordKeys: string[];
+	keywordText: string;
+	keywordSources: ActionSearchKeywordSource[];
 	searchText: string;
 	source: RuntimeActionLike;
 };
@@ -233,6 +242,19 @@ export function actionEntrySearchText(
 	]);
 }
 
+export function actionEntryKeywordText(
+	action: RuntimeActionLike,
+	children: ActionCatalogEntry[] = [],
+): string {
+	return compactText([
+		...getActionSearchKeywordTerms({
+			name: action.name,
+			contexts: action.contexts,
+		}),
+		...children.flatMap((child) => child.keywordText),
+	]);
+}
+
 function resolveSubAction(params: {
 	parent: RuntimeActionLike;
 	parentNormalizedName: string;
@@ -318,6 +340,16 @@ function materializeEntry(
 ): ActionCatalogEntry {
 	const normalizedName = normalizeActionName(action.name);
 	const description = String(action.description ?? "").trim();
+	const ownKeywordSources = getActionSearchKeywordSources({
+		name: action.name,
+		contexts: action.contexts,
+	});
+	const childKeywordSources = children.flatMap((child) => child.keywordSources);
+	const keywordSources = dedupeKeywordSources([
+		...ownKeywordSources,
+		...childKeywordSources,
+	]);
+	const keywordKeys = keywordSources.map((source) => source.key);
 
 	return {
 		name: action.name,
@@ -336,6 +368,9 @@ function materializeEntry(
 		contexts: action.contexts,
 		cacheStable: action.cacheStable,
 		cacheScope: normalizeOptionalString(action.cacheScope),
+		keywordKeys,
+		keywordText: actionEntryKeywordText(action, children),
+		keywordSources,
 		searchText: actionEntrySearchText(action, children),
 		source: action,
 	};
@@ -410,4 +445,18 @@ function normalizeTextFragments(value: unknown): string[] {
 
 function extractSearchableText(value: unknown): string {
 	return compactText(normalizeTextFragments(value));
+}
+
+function dedupeKeywordSources(
+	sources: readonly ActionSearchKeywordSource[],
+): ActionSearchKeywordSource[] {
+	const byKey = new Map<string, ActionSearchKeywordSource>();
+	for (const source of sources) {
+		const existing = byKey.get(source.key);
+		byKey.set(source.key, {
+			key: source.key,
+			terms: [...new Set([...(existing?.terms ?? []), ...source.terms])],
+		});
+	}
+	return [...byKey.values()];
 }

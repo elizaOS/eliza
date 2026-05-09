@@ -622,10 +622,6 @@ const server = Bun.serve({
         position: p.position,
         dynamic: p.dynamic ?? false,
       }));
-      const evaluators = (runtime.evaluators ?? []).map((e: any) => ({
-        name: e.name,
-        description: e.description,
-      }));
       const contextsByName: Record<string, any> = {};
       try {
         const list = (runtime as any).contexts?.list?.() ?? [];
@@ -645,11 +641,9 @@ const server = Bun.serve({
         characterName: runtime.character.name,
         actionCount: actions.length,
         providerCount: providers.length,
-        evaluatorCount: evaluators.length,
         contextCount: Object.keys(contextsByName).length,
         actions,
         providers,
-        evaluators,
         contexts: contextsByName,
       });
     }

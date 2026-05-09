@@ -1,9 +1,11 @@
-# vast-pyworker — Qwen3.6 27B NEO-CODE on Vast Serverless
+# vast-pyworker — GGUF / DFlash on Vast Serverless
 
 PyWorker that fronts a `llama.cpp` `llama-server` hosting the Q6_K GGUF of
 [`DavidAU/Qwen3.6-27B-Heretic-Uncensored-FINETUNE-NEO-CODE-Di-IMatrix-MAX-GGUF`][1]
 on a single RTX 5090 worker. Deployed by Vast.ai Serverless; the template
 defines the image and the on-start script, both committed in this repo.
+The same worker can serve Qwen3.5/3.6 DFlash target+drafter pairs when the
+template image provides a DFlash-capable `llama-server` fork.
 
 [1]: https://huggingface.co/DavidAU/Qwen3.6-27B-Heretic-Uncensored-FINETUNE-NEO-CODE-Di-IMatrix-MAX-GGUF
 
@@ -40,12 +42,16 @@ slots.
 
 A Vast template (managed by `cloud/scripts/vast/upsert-template.ts`) declares:
 
-- `image = ghcr.io/ggml-org/llama.cpp:server-cuda` (CUDA build of the official
-  llama.cpp server; bundles `llama-server`, CUDA runtime, python3).
+- `image = ghcr.io/ggml-org/llama.cpp:server-cuda` for stock GGUF. DFlash and
+  TurboQuant KV-cache flags require a fork image, for example one built from
+  `spiritbuun/buun-llama-cpp`, and can be selected with `VAST_IMAGE` plus
+  `LLAMA_SERVER_BIN`.
 - `disk = 60 GB` (room for the GGUF + HF cache + a swap-in alternate quant).
 - `onstart = <inline contents of onstart.sh>`.
 - `env = { PYWORKER_REPO, PYWORKER_REF, MODEL_REPO, MODEL_FILE, MODEL_ALIAS,
-  LLAMA_CONTEXT, LLAMA_PARALLEL, LLAMA_NGL }` — all overridable per-template.
+  LLAMA_CONTEXT, LLAMA_PARALLEL, LLAMA_NGL, DFLASH_DRAFTER_REPO,
+  DFLASH_DRAFTER_FILE, LLAMA_CACHE_TYPE_K, LLAMA_CACHE_TYPE_V }` — all
+  overridable per-template.
 
 On every cold start the on-start script:
 
@@ -86,6 +92,30 @@ bun cloud/scripts/vast/provision-endpoint.ts
 wrangler secret put VAST_BASE_URL    # e.g. https://run.vast.ai/route/abc123
 wrangler secret put VAST_API_KEY     # endpoint-specific token, NOT the CLI key
 ```
+
+## DFlash Template
+
+Use a fork image that understands `--spec-type dflash`, then set the target
+and drafter artifacts:
+
+```bash
+VAST_TEMPLATE_NAME=eliza-cloud-qwen3.6-27b-dflash \
+VAST_IMAGE=ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-dflash \
+MODEL_REPO=bartowski/Qwen_Qwen3.6-27B-GGUF \
+MODEL_FILE=Qwen_Qwen3.6-27B-Q4_K_M.gguf \
+MODEL_ALIAS=vast/qwen3.6-27b-dflash \
+DFLASH_DRAFTER_REPO=spiritbuun/Qwen3.6-27B-DFlash-GGUF \
+DFLASH_DRAFTER_FILE=dflash-draft-3.6-q8_0.gguf \
+LLAMA_CONTEXT=8192 \
+LLAMA_DRAFT_CONTEXT=256 \
+LLAMA_DRAFT_MAX=16 \
+bun cloud/scripts/vast/upsert-template.ts
+```
+
+For Qwen3.5 4B/9B, use `bartowski/Qwen_Qwen3.5-{4B,9B}-GGUF` as the target
+repo and `psychopenguin/Qwen3.5-{4B,9B}-DFlash-FP16-GGUF` with the
+`*-DFlash-Q4_K_M.gguf` drafter. `LLAMA_CACHE_TYPE_K/V` can be set for
+TurboQuant-capable forks; stock upstream images will reject those cache types.
 
 ## Routing from eliza/cloud
 

@@ -42,6 +42,8 @@ rules:
 - named-person relationship cadence requests ("follow up with David", "last talked to Alice", "how long since I spoke with Sam") must include contacts when available; one-off dated reminders or todos to call/text someone must include tasks when available
 - explicit phone/call/dial requests to a third party must include phone and contacts when available. Do not include calendar solely because the call is about an appointment or rescheduling; the requested operation is the call
 - device-targeted or broadcast reminders ("to my phone", "to mobile", "all devices", "broadcast") must include automation and connectors when available; do not route these as simple chat; tasks can be included as secondary context
+- password or saved-login lookup requests from the owner ("look up my GitHub password", "show my saved login") must include settings and secrets when available so PASSWORD_MANAGER can handle the request; do not answer with the raw secret in Stage 1
+- website/social-site focus blocking requests must include automation and settings when available; app blocking requests must include automation and settings, not screen_time unless the user is asking for usage/reporting
 - real flight/hotel/trip booking requests ("book travel", "book a flight", "reserve a hotel") must include browser, calendar, payments, and tasks when available so BOOK_TRAVEL can own the workflow
 - Calendly availability and single-use booking link requests must include calendar and connectors when available, even when the message contains a Calendly API URL
 - health metric requests such as steps, sleep, heart rate, workouts, or wearable summaries must include health when available

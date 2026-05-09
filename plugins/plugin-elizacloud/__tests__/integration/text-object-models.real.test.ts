@@ -1,7 +1,7 @@
 import * as http from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { handleObjectSmall } from "../../models/object";
-import { handleTextSmall } from "../../models/text";
+import { handleObjectSmall } from "../../src/models/object";
+import { handleTextSmall } from "../../src/models/text";
 
 let server: http.Server;
 let baseUrl: string;

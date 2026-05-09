@@ -19,7 +19,7 @@ export type RuntimeServiceDelegationResult<T> =
       value: T;
     }
   | {
-      status: "fallback";
+      status: "unavailable";
       reason: string;
       error?: unknown;
     };
@@ -119,13 +119,13 @@ function connectorTarget(args: {
   } as TargetInfo;
 }
 
-function fallback<T>(
+function unavailable<T>(
   reason: string,
   error?: unknown,
 ): RuntimeServiceDelegationResult<T> {
   return error === undefined
-    ? { status: "fallback", reason }
-    : { status: "fallback", reason, error };
+    ? { status: "unavailable", reason }
+    : { status: "unavailable", reason, error };
 }
 
 type XRuntimeServiceLike = {
@@ -225,7 +225,7 @@ export async function getXAccountStatusWithRuntimeService(args: {
 > {
   const service = getXRuntimeService(args.runtime);
   if (typeof service?.getAccountStatus !== "function") {
-    return fallback("X runtime service getAccountStatus is not registered.");
+    return unavailable("X runtime service getAccountStatus is not registered.");
   }
 
   const accountId = resolveRuntimeConnectorAccountId(args);
@@ -251,7 +251,7 @@ export async function getXAccountStatusWithRuntimeService(args: {
       },
     };
   } catch (error) {
-    return fallback("X runtime service getAccountStatus failed.", error);
+    return unavailable("X runtime service getAccountStatus failed.", error);
   }
 }
 
@@ -273,7 +273,7 @@ export async function sendXDirectMessageWithRuntimeService(args: {
     typeof service?.sendDirectMessageForAccount !== "function" &&
     typeof service?.handleSendMessage !== "function"
   ) {
-    return fallback("X runtime service handleSendMessage is not registered.");
+    return unavailable("X runtime service handleSendMessage is not registered.");
   }
 
   const accountId = resolveRuntimeConnectorAccountId(args);
@@ -293,7 +293,7 @@ export async function sendXDirectMessageWithRuntimeService(args: {
         },
       };
     } catch (error) {
-      return fallback(
+      return unavailable(
         "X runtime service sendDirectMessageForAccount failed.",
         error,
       );
@@ -309,7 +309,7 @@ export async function sendXDirectMessageWithRuntimeService(args: {
   });
   const handleSendMessage = service.handleSendMessage;
   if (typeof handleSendMessage !== "function") {
-    return fallback("X runtime service handleSendMessage is not registered.");
+    return unavailable("X runtime service handleSendMessage is not registered.");
   }
   try {
     await handleSendMessage(args.runtime, target, {
@@ -323,7 +323,7 @@ export async function sendXDirectMessageWithRuntimeService(args: {
       value: { ok: true, status: 201, externalId: null },
     };
   } catch (error) {
-    return fallback("X runtime service handleSendMessage failed.", error);
+    return unavailable("X runtime service handleSendMessage failed.", error);
   }
 }
 
@@ -339,7 +339,7 @@ export async function fetchXDirectMessagesWithRuntimeService(args: {
     typeof service?.fetchDirectMessagesForAccount !== "function" &&
     typeof service?.fetchConnectorMessages !== "function"
   ) {
-    return fallback(
+    return unavailable(
       "X runtime service fetchConnectorMessages is not registered.",
     );
   }
@@ -353,7 +353,7 @@ export async function fetchXDirectMessagesWithRuntimeService(args: {
       });
       return { status: "handled", accountId, value };
     } catch (error) {
-      return fallback(
+      return unavailable(
         "X runtime service fetchDirectMessagesForAccount failed.",
         error,
       );
@@ -370,7 +370,7 @@ export async function fetchXDirectMessagesWithRuntimeService(args: {
     : undefined;
   const fetchConnectorMessages = service.fetchConnectorMessages;
   if (typeof fetchConnectorMessages !== "function") {
-    return fallback(
+    return unavailable(
       "X runtime service fetchConnectorMessages is not registered.",
     );
   }
@@ -386,7 +386,7 @@ export async function fetchXDirectMessagesWithRuntimeService(args: {
     );
     return { status: "handled", accountId, value };
   } catch (error) {
-    return fallback("X runtime service fetchConnectorMessages failed.", error);
+    return unavailable("X runtime service fetchConnectorMessages failed.", error);
   }
 }
 
@@ -402,7 +402,7 @@ export async function createXPostWithRuntimeService(args: {
     typeof service?.createPostForAccount !== "function" &&
     typeof service?.handleSendPost !== "function"
   ) {
-    return fallback(
+    return unavailable(
       "X runtime service createPostForAccount is not registered.",
     );
   }
@@ -416,13 +416,13 @@ export async function createXPostWithRuntimeService(args: {
       });
       return { status: "handled", accountId, value };
     } catch (error) {
-      return fallback("X runtime service createPostForAccount failed.", error);
+      return unavailable("X runtime service createPostForAccount failed.", error);
     }
   }
 
   const handleSendPost = service.handleSendPost;
   if (typeof handleSendPost !== "function") {
-    return fallback("X runtime service handleSendPost is not registered.");
+    return unavailable("X runtime service handleSendPost is not registered.");
   }
 
   try {
@@ -444,7 +444,7 @@ export async function createXPostWithRuntimeService(args: {
     );
     return { status: "handled", accountId, value };
   } catch (error) {
-    return fallback("X runtime service handleSendPost failed.", error);
+    return unavailable("X runtime service handleSendPost failed.", error);
   }
 }
 
@@ -461,7 +461,7 @@ export async function fetchXFeedWithRuntimeService(args: {
     typeof service?.fetchFeedForAccount !== "function" &&
     typeof service?.fetchConnectorFeed !== "function"
   ) {
-    return fallback("X runtime service fetchFeedForAccount is not registered.");
+    return unavailable("X runtime service fetchFeedForAccount is not registered.");
   }
 
   const accountId = resolveRuntimeConnectorAccountId(args);
@@ -474,13 +474,13 @@ export async function fetchXFeedWithRuntimeService(args: {
       });
       return { status: "handled", accountId, value };
     } catch (error) {
-      return fallback("X runtime service fetchFeedForAccount failed.", error);
+      return unavailable("X runtime service fetchFeedForAccount failed.", error);
     }
   }
 
   const fetchConnectorFeed = service.fetchConnectorFeed;
   if (typeof fetchConnectorFeed !== "function") {
-    return fallback("X runtime service fetchConnectorFeed is not registered.");
+    return unavailable("X runtime service fetchConnectorFeed is not registered.");
   }
 
   try {
@@ -497,7 +497,7 @@ export async function fetchXFeedWithRuntimeService(args: {
     });
     return { status: "handled", accountId, value };
   } catch (error) {
-    return fallback("X runtime service fetchConnectorFeed failed.", error);
+    return unavailable("X runtime service fetchConnectorFeed failed.", error);
   }
 }
 
@@ -514,7 +514,7 @@ export async function searchXPostsWithRuntimeService(args: {
     typeof service?.searchPostsForAccount !== "function" &&
     typeof service?.searchConnectorPosts !== "function"
   ) {
-    return fallback(
+    return unavailable(
       "X runtime service searchPostsForAccount is not registered.",
     );
   }
@@ -529,13 +529,13 @@ export async function searchXPostsWithRuntimeService(args: {
       });
       return { status: "handled", accountId, value };
     } catch (error) {
-      return fallback("X runtime service searchPostsForAccount failed.", error);
+      return unavailable("X runtime service searchPostsForAccount failed.", error);
     }
   }
 
   const searchConnectorPosts = service.searchConnectorPosts;
   if (typeof searchConnectorPosts !== "function") {
-    return fallback(
+    return unavailable(
       "X runtime service searchConnectorPosts is not registered.",
     );
   }
@@ -547,7 +547,7 @@ export async function searchXPostsWithRuntimeService(args: {
     );
     return { status: "handled", accountId, value };
   } catch (error) {
-    return fallback("X runtime service searchConnectorPosts failed.", error);
+    return unavailable("X runtime service searchConnectorPosts failed.", error);
   }
 }
 
@@ -568,7 +568,7 @@ export async function sendXConversationMessageWithRuntimeService(args: {
   if (
     typeof service?.sendDirectMessageToConversationForAccount !== "function"
   ) {
-    return fallback(
+    return unavailable(
       "X runtime service sendDirectMessageToConversationForAccount is not registered.",
     );
   }
@@ -592,7 +592,7 @@ export async function sendXConversationMessageWithRuntimeService(args: {
       },
     };
   } catch (error) {
-    return fallback(
+    return unavailable(
       "X runtime service sendDirectMessageToConversationForAccount failed.",
       error,
     );
@@ -615,7 +615,7 @@ export async function createXDirectMessageGroupWithRuntimeService(args: {
 > {
   const service = getXRuntimeService(args.runtime);
   if (typeof service?.createDirectMessageGroupForAccount !== "function") {
-    return fallback(
+    return unavailable(
       "X runtime service createDirectMessageGroupForAccount is not registered.",
     );
   }
@@ -637,7 +637,7 @@ export async function createXDirectMessageGroupWithRuntimeService(args: {
       },
     };
   } catch (error) {
-    return fallback(
+    return unavailable(
       "X runtime service createDirectMessageGroupForAccount failed.",
       error,
     );
@@ -680,7 +680,7 @@ export async function listCalendlyEventTypesWithRuntimeService(args: {
     "calendly",
   ]);
   if (typeof service?.listEventTypes !== "function") {
-    return fallback(
+    return unavailable(
       "Calendly runtime service listEventTypes is not registered.",
     );
   }
@@ -689,7 +689,7 @@ export async function listCalendlyEventTypesWithRuntimeService(args: {
     typeof service.isConnected === "function" &&
     !service.isConnected(accountId)
   ) {
-    return fallback("Calendly runtime service is not connected for accountId.");
+    return unavailable("Calendly runtime service is not connected for accountId.");
   }
   try {
     return {
@@ -698,7 +698,7 @@ export async function listCalendlyEventTypesWithRuntimeService(args: {
       value: await service.listEventTypes(accountId),
     };
   } catch (error) {
-    return fallback("Calendly runtime service listEventTypes failed.", error);
+    return unavailable("Calendly runtime service listEventTypes failed.", error);
   }
 }
 
@@ -712,7 +712,7 @@ export async function getCalendlyBookingUrlWithRuntimeService(args: {
     "calendly",
   ]);
   if (typeof service?.getBookingUrl !== "function") {
-    return fallback(
+    return unavailable(
       "Calendly runtime service getBookingUrl is not registered.",
     );
   }
@@ -721,7 +721,7 @@ export async function getCalendlyBookingUrlWithRuntimeService(args: {
     typeof service.isConnected === "function" &&
     !service.isConnected(accountId)
   ) {
-    return fallback("Calendly runtime service is not connected for accountId.");
+    return unavailable("Calendly runtime service is not connected for accountId.");
   }
   try {
     return {
@@ -730,7 +730,7 @@ export async function getCalendlyBookingUrlWithRuntimeService(args: {
       value: await service.getBookingUrl(args.query, accountId),
     };
   } catch (error) {
-    return fallback("Calendly runtime service getBookingUrl failed.", error);
+    return unavailable("Calendly runtime service getBookingUrl failed.", error);
   }
 }
 
@@ -744,7 +744,7 @@ export async function listCalendlyScheduledEventsWithRuntimeService(args: {
     "calendly",
   ]);
   if (typeof service?.listScheduledEvents !== "function") {
-    return fallback(
+    return unavailable(
       "Calendly runtime service listScheduledEvents is not registered.",
     );
   }
@@ -753,7 +753,7 @@ export async function listCalendlyScheduledEventsWithRuntimeService(args: {
     typeof service.isConnected === "function" &&
     !service.isConnected(accountId)
   ) {
-    return fallback("Calendly runtime service is not connected for accountId.");
+    return unavailable("Calendly runtime service is not connected for accountId.");
   }
   try {
     return {
@@ -762,7 +762,7 @@ export async function listCalendlyScheduledEventsWithRuntimeService(args: {
       value: await service.listScheduledEvents(args.options, accountId),
     };
   } catch (error) {
-    return fallback(
+    return unavailable(
       "Calendly runtime service listScheduledEvents failed.",
       error,
     );
@@ -780,7 +780,7 @@ export async function getCalendlyAvailabilityWithRuntimeService(args: {
     "calendly",
   ]);
   if (typeof service?.getAvailability !== "function") {
-    return fallback(
+    return unavailable(
       "Calendly runtime service getAvailability is not registered.",
     );
   }
@@ -789,7 +789,7 @@ export async function getCalendlyAvailabilityWithRuntimeService(args: {
     typeof service.isConnected === "function" &&
     !service.isConnected(accountId)
   ) {
-    return fallback("Calendly runtime service is not connected for accountId.");
+    return unavailable("Calendly runtime service is not connected for accountId.");
   }
   try {
     return {
@@ -802,7 +802,7 @@ export async function getCalendlyAvailabilityWithRuntimeService(args: {
       ),
     };
   } catch (error) {
-    return fallback("Calendly runtime service getAvailability failed.", error);
+    return unavailable("Calendly runtime service getAvailability failed.", error);
   }
 }
 
@@ -816,7 +816,7 @@ export async function createCalendlySingleUseLinkWithRuntimeService(args: {
     "calendly",
   ]);
   if (typeof service?.createSingleUseLink !== "function") {
-    return fallback(
+    return unavailable(
       "Calendly runtime service createSingleUseLink is not registered.",
     );
   }
@@ -825,7 +825,7 @@ export async function createCalendlySingleUseLinkWithRuntimeService(args: {
     typeof service.isConnected === "function" &&
     !service.isConnected(accountId)
   ) {
-    return fallback("Calendly runtime service is not connected for accountId.");
+    return unavailable("Calendly runtime service is not connected for accountId.");
   }
   try {
     return {
@@ -834,7 +834,7 @@ export async function createCalendlySingleUseLinkWithRuntimeService(args: {
       value: await service.createSingleUseLink(args.eventTypeUri, accountId),
     };
   } catch (error) {
-    return fallback(
+    return unavailable(
       "Calendly runtime service createSingleUseLink failed.",
       error,
     );
@@ -873,7 +873,7 @@ async function searchMessagesWithRuntimeService(args: {
     [args.serviceType],
   );
   if (typeof service?.searchConnectorMessages !== "function") {
-    return fallback(
+    return unavailable(
       `${args.source} runtime service searchConnectorMessages is not registered.`,
     );
   }
@@ -903,7 +903,7 @@ async function searchMessagesWithRuntimeService(args: {
     );
     return { status: "handled", accountId, value };
   } catch (error) {
-    return fallback(
+    return unavailable(
       `${args.source} runtime service searchConnectorMessages failed.`,
       error,
     );
@@ -938,7 +938,7 @@ export async function sendDiscordMessageWithRuntimeService(args: {
     ["discord"],
   );
   if (typeof service?.handleSendMessage !== "function") {
-    return fallback(
+    return unavailable(
       "Discord runtime service handleSendMessage is not registered.",
     );
   }
@@ -956,7 +956,7 @@ export async function sendDiscordMessageWithRuntimeService(args: {
     } as Content);
     return { status: "handled", accountId, value: { ok: true } };
   } catch (error) {
-    return fallback("Discord runtime service handleSendMessage failed.", error);
+    return unavailable("Discord runtime service handleSendMessage failed.", error);
   }
 }
 
@@ -1004,7 +1004,7 @@ export async function sendTelegramMessageWithRuntimeService(args: {
     ["telegram"],
   );
   if (typeof service?.handleSendMessage !== "function") {
-    return fallback(
+    return unavailable(
       "Telegram runtime service handleSendMessage is not registered.",
     );
   }
@@ -1022,7 +1022,7 @@ export async function sendTelegramMessageWithRuntimeService(args: {
     } as Content);
     return { status: "handled", accountId, value: { ok: true } };
   } catch (error) {
-    return fallback(
+    return unavailable(
       "Telegram runtime service handleSendMessage failed.",
       error,
     );
@@ -1051,7 +1051,7 @@ export async function readSignalRecentWithRuntimeService(args: {
     "signal",
   ]);
   if (typeof service?.getRecentMessages !== "function") {
-    return fallback(
+    return unavailable(
       "Signal runtime service getRecentMessages is not registered.",
     );
   }
@@ -1063,7 +1063,7 @@ export async function readSignalRecentWithRuntimeService(args: {
       value: await service.getRecentMessages(args.limit, accountId),
     };
   } catch (error) {
-    return fallback("Signal runtime service getRecentMessages failed.", error);
+    return unavailable("Signal runtime service getRecentMessages failed.", error);
   }
 }
 
@@ -1078,7 +1078,7 @@ export async function sendSignalMessageWithRuntimeService(args: {
     "signal",
   ]);
   if (typeof service?.sendMessage !== "function") {
-    return fallback("Signal runtime service sendMessage is not registered.");
+    return unavailable("Signal runtime service sendMessage is not registered.");
   }
   const accountId = resolveRuntimeConnectorAccountId(args);
   try {
@@ -1087,13 +1087,13 @@ export async function sendSignalMessageWithRuntimeService(args: {
     });
     const timestamp = result.timestamp;
     if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
-      return fallback(
+      return unavailable(
         "Signal runtime service sendMessage returned invalid data.",
       );
     }
     return { status: "handled", accountId, value: { timestamp } };
   } catch (error) {
-    return fallback("Signal runtime service sendMessage failed.", error);
+    return unavailable("Signal runtime service sendMessage failed.", error);
   }
 }
 
@@ -1123,7 +1123,7 @@ export async function sendWhatsAppMessageWithRuntimeService(args: {
     "whatsapp",
   ]);
   if (typeof service?.sendMessage !== "function") {
-    return fallback("WhatsApp runtime service sendMessage is not registered.");
+    return unavailable("WhatsApp runtime service sendMessage is not registered.");
   }
   const accountId = resolveRuntimeConnectorAccountId(args);
   try {
@@ -1136,7 +1136,7 @@ export async function sendWhatsAppMessageWithRuntimeService(args: {
     });
     const messageId = firstMessageId(sent);
     if (!messageId) {
-      return fallback(
+      return unavailable(
         "WhatsApp runtime service sendMessage returned invalid data.",
       );
     }
@@ -1146,7 +1146,7 @@ export async function sendWhatsAppMessageWithRuntimeService(args: {
       value: { ok: true, messageId },
     };
   } catch (error) {
-    return fallback("WhatsApp runtime service sendMessage failed.", error);
+    return unavailable("WhatsApp runtime service sendMessage failed.", error);
   }
 }
 
@@ -1161,7 +1161,7 @@ export async function fetchWhatsAppMessagesWithRuntimeService(args: {
     "whatsapp",
   ]);
   if (typeof service?.fetchConnectorMessages !== "function") {
-    return fallback(
+    return unavailable(
       "WhatsApp runtime service fetchConnectorMessages is not registered.",
     );
   }
@@ -1181,7 +1181,7 @@ export async function fetchWhatsAppMessagesWithRuntimeService(args: {
     );
     return { status: "handled", accountId, value };
   } catch (error) {
-    return fallback(
+    return unavailable(
       "WhatsApp runtime service fetchConnectorMessages failed.",
       error,
     );
@@ -1226,7 +1226,7 @@ export async function sendIMessageWithRuntimeService(args: {
     "imessage",
   ]);
   if (typeof service?.sendMessage !== "function") {
-    return fallback("iMessage runtime service sendMessage is not registered.");
+    return unavailable("iMessage runtime service sendMessage is not registered.");
   }
   const accountId = resolveRuntimeConnectorAccountId(args);
   try {
@@ -1236,13 +1236,13 @@ export async function sendIMessageWithRuntimeService(args: {
       maxBytes: args.maxBytes,
     });
     if (!sent.success) {
-      return fallback(
+      return unavailable(
         sent.error ?? "iMessage runtime service sendMessage failed.",
       );
     }
     return { status: "handled", accountId, value: sent };
   } catch (error) {
-    return fallback("iMessage runtime service sendMessage failed.", error);
+    return unavailable("iMessage runtime service sendMessage failed.", error);
   }
 }
 
@@ -1276,8 +1276,8 @@ export async function readIMessagesWithRuntimeService(args: {
         value: await service.getRecentMessages(args.limit),
       };
     }
-    return fallback("iMessage runtime service read method is not registered.");
+    return unavailable("iMessage runtime service read method is not registered.");
   } catch (error) {
-    return fallback("iMessage runtime service read failed.", error);
+    return unavailable("iMessage runtime service read failed.", error);
   }
 }

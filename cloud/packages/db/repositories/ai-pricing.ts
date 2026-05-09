@@ -149,7 +149,14 @@ export class AiPricingRepository {
   }
 
   async createManualOverride(input: {
-    billingSource: "gateway" | "openrouter" | "openai" | "groq" | "fal" | "elevenlabs";
+    billingSource:
+      | "gateway"
+      | "openrouter"
+      | "openai"
+      | "groq"
+      | "vast"
+      | "fal"
+      | "elevenlabs";
     provider: string;
     model: string;
     productFamily: "language" | "embedding" | "image" | "video" | "tts" | "stt" | "voice_clone";

@@ -190,9 +190,7 @@ async function readRuntimeAccountRecord(
         },
       };
     }
-  } catch {
-    // Fall back to legacy runtime connector account hooks.
-  }
+  } catch {}
 
   try {
     const store = accountRuntime.getConnectorAccountStore?.("x");

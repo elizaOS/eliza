@@ -12,7 +12,7 @@ This plugin connects [Ollama](https://ollama.com/) to ElizaOS so agents can use 
 
 - [Ollama](https://ollama.com/) installed and reachable (same machine or network).
 - ElizaOS runtime with this package enabled.
-- At least one pulled model, e.g. `ollama pull gemma3:latest`.
+- At least one pulled model, e.g. `ollama pull qwen3.5:latest`.
 
 ## Installation
 
@@ -76,8 +76,8 @@ Environment variables (or character `settings` with the same keys—**why:** let
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `OLLAMA_API_ENDPOINT` | `http://localhost:11434` (normalized to `…/api`) | Ollama HTTP API base. |
-| `OLLAMA_SMALL_MODEL` / `SMALL_MODEL` | `gemma3:latest` | Small / fast text model. |
-| `OLLAMA_LARGE_MODEL` / `LARGE_MODEL` | `gemma3:latest` | Larger text model. |
+| `OLLAMA_SMALL_MODEL` / `SMALL_MODEL` | `qwen3.5:latest` | Small / fast text model. |
+| `OLLAMA_LARGE_MODEL` / `LARGE_MODEL` | `qwen3.6:latest` | Larger text model. |
 | `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text:latest` | Embedding model id. |
 | `OLLAMA_DISABLE_STRUCTURED_OUTPUT` | _unset_ | If `1` / `true` / `yes` / `on`, **disables** JSON-schema structured text (see below). |
 
@@ -87,8 +87,8 @@ Optional model overrides: `OLLAMA_NANO_MODEL`, `OLLAMA_MEDIUM_MODEL`, `OLLAMA_ME
 
 ```
 OLLAMA_API_ENDPOINT=http://localhost:11434/api
-OLLAMA_SMALL_MODEL=gemma3:latest
-OLLAMA_LARGE_MODEL=gemma3:latest
+OLLAMA_SMALL_MODEL=qwen3.5:latest
+OLLAMA_LARGE_MODEL=qwen3.6:latest
 OLLAMA_EMBEDDING_MODEL=nomic-embed-text:latest
 ```
 
@@ -98,8 +98,8 @@ OLLAMA_EMBEDDING_MODEL=nomic-embed-text:latest
 {
   "settings": {
     "OLLAMA_API_ENDPOINT": "http://localhost:11434/api",
-    "OLLAMA_SMALL_MODEL": "gemma3:latest",
-    "OLLAMA_LARGE_MODEL": "gemma3:latest",
+    "OLLAMA_SMALL_MODEL": "qwen3.5:latest",
+    "OLLAMA_LARGE_MODEL": "qwen3.6:latest",
     "OLLAMA_EMBEDDING_MODEL": "nomic-embed-text:latest"
   }
 }

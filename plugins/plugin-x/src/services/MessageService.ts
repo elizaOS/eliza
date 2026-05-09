@@ -142,9 +142,9 @@ export class TwitterMessageService implements IMessageService {
       }
 
       const extractedId = await this.extractResultId(result);
-      const fallbackId = (result as { id?: unknown } | null)?.id;
+      const resultId = (result as { id?: unknown } | null)?.id;
       const messageId =
-        extractedId ?? (typeof fallbackId === "string" ? fallbackId : "");
+        extractedId ?? (typeof resultId === "string" ? resultId : "");
 
       const message: Message = {
         id: messageId,

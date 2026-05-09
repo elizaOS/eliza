@@ -63,7 +63,7 @@
     "pluginParameters": {
       "TWITTER_AUTH_MODE": {
         "type": "string",
-        "description": "Auth mode: 'env' (legacy keys/tokens) or 'oauth' (3-legged OAuth2 PKCE).",
+        "description": "Auth mode: 'env' (static keys/tokens) or 'oauth' (3-legged OAuth2 PKCE).",
         "required": false,
         "default": "env",
         "sensitive": false

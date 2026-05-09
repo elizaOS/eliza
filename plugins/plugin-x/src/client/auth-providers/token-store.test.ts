@@ -26,7 +26,7 @@ describe("OAuth token store", () => {
     expect(cache.has("twitter/oauth2/tokens/agent-1/secondary")).toBe(true);
   });
 
-  it("loads OAuth tokens from connector account credential refs before fallback stores", async () => {
+  it("loads OAuth tokens from connector account credential refs before secondary stores", async () => {
     const vaultRef = "connector.agent-1.x.acct_x_1.oauth_tokens";
     const account = {
       id: "acct_x_1",
@@ -88,20 +88,24 @@ describe("OAuth token store", () => {
         return null;
       },
     } as unknown as IAgentRuntime;
-    const fallback: TokenStore = {
+    const secondaryStore: TokenStore = {
       load: vi.fn(async () => null),
       save: vi.fn(async () => undefined),
       clear: vi.fn(async () => undefined),
     };
 
-    const store = new ConnectorAccountTokenStore(runtime, "acct_x_1", fallback);
+    const store = new ConnectorAccountTokenStore(
+      runtime,
+      "acct_x_1",
+      secondaryStore,
+    );
     await expect(store.load()).resolves.toMatchObject({
       access_token: "x-access-token",
       refresh_token: "x-refresh-token",
       expires_at: 123456,
     });
 
-    expect(fallback.load).not.toHaveBeenCalled();
+    expect(secondaryStore.load).not.toHaveBeenCalled();
     expect(vault.reveal).toHaveBeenCalledWith(vaultRef, "plugin-x");
   });
 });

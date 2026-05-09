@@ -60,7 +60,7 @@ function textareaCls(hasError: boolean, className?: string): string {
 
 // ── 1. Text ─────────────────────────────────────────────────────────────
 
-/** Single-line text input. Fallback renderer for unresolved field types. */
+/** Single-line text input for unresolved field types. */
 export function renderTextField(props: FieldRenderProps) {
   const value = props.isSet ? String(props.value ?? "") : "";
   const placeholder =
@@ -125,7 +125,7 @@ function PasswordFieldInner({ fp: props }: { fp: FieldRenderProps }) {
         props.onChange(realValue);
       }
     } else {
-      // Fallback: just toggle type (shows whatever is in the input)
+      // Toggle type directly so the current input value stays visible.
       setVisible(true);
     }
   }, [visible, onReveal, props]);

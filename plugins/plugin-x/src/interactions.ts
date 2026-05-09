@@ -149,7 +149,7 @@ export class TwitterInteractionClient {
     this.runtime = runtime;
     this.state = state;
 
-    // `state` values are typed as strings but legacy callers may pass booleans;
+    // `state` values are typed as strings but runtime settings may pass booleans;
     // widen to unknown so the defensive boolean check below still compiles.
     const dryRunSetting: unknown =
       this.state?.TWITTER_DRY_RUN ??

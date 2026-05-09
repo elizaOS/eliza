@@ -13,6 +13,9 @@ export default defineConfig({
 			"@elizaos/agent": fileURLToPath(
 				new URL("../../packages/agent/src/index.ts", import.meta.url),
 			),
+			"@elizaos/app-core": fileURLToPath(
+				new URL("../../packages/app-core/src/index.ts", import.meta.url),
+			),
 		},
 	},
 	test: {

@@ -69,7 +69,6 @@ export const teePlugin: Plugin = {
   actions: defaultVendor.getActions(),
   providers: defaultVendor.getProviders(),
   services: [TEEService],
-  evaluators: [],
 };
 
 export default teePlugin;

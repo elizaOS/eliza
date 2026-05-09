@@ -72,8 +72,6 @@ export const computerUsePlugin: Plugin = {
   // registered as distinct top-level actions — they cover different surfaces.
   actions: [useComputerAction, desktopAction],
 
-  evaluators: [],
-
   providers: [computerStateProvider],
 
   routes: computerUseRoutes,

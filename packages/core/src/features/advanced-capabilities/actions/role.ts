@@ -675,13 +675,11 @@ export const roleAction: Action = {
 		const room = state?.data?.room ?? (await runtime.getRoom(message.roomId));
 		if (!room?.messageServerId) return false;
 
-		const params = readParams(message, options);
-		if (params.op || params.assignments || params.target) return true;
+			const params = readParams(message, options);
+			if (params.op || params.assignments || params.target) return true;
 
-		const text =
-			typeof message.content.text === "string" ? message.content.text : "";
-		return looksLikeRoleIntent(text);
-	},
+			return true;
+		},
 
 	handler: async (
 		runtime: IAgentRuntime,

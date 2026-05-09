@@ -1,19 +1,26 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "rootDir": ".",
+    "rootDir": "./src",
     "outDir": "./dist",
     "declaration": true,
     "declarationMap": true,
     "emitDeclarationOnly": true,
     "noEmit": false,
     "paths": {
-      "@elizaos/cloud-sdk": ["../../../cloud/packages/sdk/dist/index.d.ts"],
-      "@elizaos/core": ["../packages/core/dist"]
+      "@elizaos/cloud-sdk": ["../../cloud/packages/sdk/dist/index.d.ts"],
+      "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
+      "@elizaos/core/*": ["../../packages/core/dist/*"],
+      "@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/dist/*"],
+      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
+      "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["../../packages/app-core/src/*"]
     },
     "types": ["node", "bun-types"]
   },
-  "include": ["index.ts", "index.node.ts", "index.browser.ts"],
+  "include": ["src/index.ts", "src/index.node.ts", "src/index.browser.ts"],
   "exclude": [
     "node_modules",
     "dist",

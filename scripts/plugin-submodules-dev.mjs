@@ -192,7 +192,7 @@ function submoduleInit() {
  * After fix-workspace-deps --restore, deps that did not exist at HEAD stay workspace:*.
  * Force registry tag for known submodule plugin names on root + agent only.
  */
-function fallbackPluginDepsToRegistry() {
+function pinPluginDepsToRegistry() {
   const names = new Set(PLUGIN_SUBMODULES.map((plugin) => plugin.packageName));
   for (const path of ROOT_AND_AGENT_PKG) {
     if (!existsSync(path)) continue;
@@ -209,7 +209,7 @@ function fallbackPluginDepsToRegistry() {
       if (pkg.dependencies[name] === "workspace:*") {
         pkg.dependencies[name] = PLUGIN_REGISTRY_TAG;
         log(
-          `  fallback  ${relative(ROOT, path)}  dependencies.${name} → "${PLUGIN_REGISTRY_TAG}"`,
+          `  registry  ${relative(ROOT, path)}  dependencies.${name} -> "${PLUGIN_REGISTRY_TAG}"`,
         );
         changed = true;
       }
@@ -298,7 +298,7 @@ if (DEV) {
 log("plugin-submodules-dev: RESTORE\n");
 log("Running fix-workspace-deps.mjs --restore …\n");
 runFixWorkspaceDeps(["--restore"]);
-fallbackPluginDepsToRegistry();
+pinPluginDepsToRegistry();
 stripWorkspaces();
 log("\nResetting submodule typescript/package.json files …\n");
 resetSubmodulePackageJson();

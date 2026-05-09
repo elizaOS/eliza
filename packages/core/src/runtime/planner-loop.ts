@@ -597,6 +597,16 @@ function parseJsonPlannerOutput(raw: string): {
 	const trimmed = raw.trim();
 	const parsed = parseJsonObject<RawPlannerOutput>(trimmed);
 	if (!parsed) {
+		const array = parseJsonArrayFromText(raw);
+		const arrayToolCalls = normalizeToolCalls(array);
+		if (arrayToolCalls.length > 0) {
+			return {
+				thought: undefined,
+				toolCalls: arrayToolCalls,
+				messageToUser: undefined,
+				raw: { toolCalls: array } as Record<string, unknown>,
+			};
+		}
 		return {
 			toolCalls: [],
 			messageToUser: getNonEmptyString(trimmed),
@@ -608,7 +618,13 @@ function parseJsonPlannerOutput(raw: string): {
 		parsed.toolCalls ??
 		parsed.tools ??
 		parsed.actions ??
-		(parsed.action != null ? parsed : undefined);
+		(parsed.action != null ||
+		parsed.actionName != null ||
+		parsed.name != null ||
+		parsed.tool != null ||
+		parsed.function != null
+			? parsed
+			: undefined);
 	const toolCalls = normalizeToolCalls(rawToolCalls);
 	if (toolCalls.length > 0 || messageToUser) {
 		return {
