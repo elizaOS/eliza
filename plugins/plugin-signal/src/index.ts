@@ -132,6 +132,9 @@ export {
 } from "./connector-account-provider";
 // Pairing service (device linking via QR code / signal-cli)
 export {
+  classifySignalPairingErrorStatus,
+  extractSignalCliProvisioningUrl,
+  parseSignalCliAccountsOutput,
   type SignalPairingEvent,
   type SignalPairingOptions,
   SignalPairingSession,

@@ -43,9 +43,8 @@ export { ResearchTaskExecutor } from "./research-task-executor.js";
 export * from "./sandbox-engine.js";
 export * from "./sandbox-manager.js";
 export * from "./self-updater.js";
-// `signal-pairing` and `whatsapp-pairing` both export `sanitizeAccountId`.
-// Re-export each with the function name aliased to the connector to avoid
-// collision while keeping all other names available from the bare barrel.
+// Signal pairing helpers live in @elizaos/plugin-signal. Re-exported here
+// for backward compatibility with code that imports them from @elizaos/agent.
 export {
   classifySignalPairingErrorStatus,
   extractSignalCliProvisioningUrl,
@@ -55,10 +54,10 @@ export {
   SignalPairingSession,
   type SignalPairingSnapshot,
   type SignalPairingStatus,
-  sanitizeAccountId as sanitizeSignalAccountId,
+  sanitizeSignalAccountId,
   signalAuthExists,
   signalLogout,
-} from "./signal-pairing.js";
+} from "@elizaos/plugin-signal";
 export * from "./signing-policy.js";
 export * from "./skill-catalog-client.js";
 export * from "./skill-marketplace.js";

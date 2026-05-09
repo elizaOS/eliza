@@ -225,9 +225,7 @@ export interface PluginRouteContext {
   applySignalQrOverride: (
     plugins: PluginEntry[],
     workspaceDir: string,
-    signalAuthExists: (dir: string) => boolean,
   ) => void;
-  signalAuthExists: (dir: string) => boolean;
   resolvePluginConfigMutationRejections: (
     parameters: PluginParamDef[],
     configObj: Record<string, string>,
@@ -324,7 +322,6 @@ export async function handlePluginRoutes(
     EVM_PLUGIN_PACKAGE,
     applyWhatsAppQrOverride,
     applySignalQrOverride,
-    signalAuthExists,
     resolvePluginConfigMutationRejections,
     requirePluginManager,
     requireCoreManager,
@@ -515,7 +512,6 @@ export async function handlePluginRoutes(
     applySignalQrOverride(
       allPlugins,
       resolveDefaultAgentWorkspaceDir(),
-      signalAuthExists,
     );
 
     for (const plugin of allPlugins) {

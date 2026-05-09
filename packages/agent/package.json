@@ -148,6 +148,7 @@
     "@elizaos/plugin-local-embedding": "workspace:*",
     "@elizaos/plugin-ollama": "workspace:*",
     "@elizaos/plugin-pdf": "workspace:*",
+    "@elizaos/plugin-signal": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-streaming": "workspace:*",
     "@elizaos/plugin-video": "workspace:*",

@@ -292,12 +292,12 @@ export interface ServerState {
   /** Active Signal pairing sessions (device linking flow). */
   signalPairingSessions?: Map<
     string,
-    import("../services/signal-pairing.js").SignalPairingSession
+    import("@elizaos/plugin-signal").SignalPairingSession
   >;
   /** Last known Signal pairing snapshots, including terminal failures. */
   signalPairingSnapshots?: Map<
     string,
-    import("../services/signal-pairing.js").SignalPairingSnapshot
+    import("@elizaos/plugin-signal").SignalPairingSnapshot
   >;
   /** Active Telegram account auth session (user-account login flow). */
   telegramAccountAuthSession?:
