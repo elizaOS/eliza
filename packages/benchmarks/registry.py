@@ -1768,6 +1768,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             provider_lower = (model.provider or "").strip().lower()
             if provider_lower in {"eliza", "eliza-bridge", "eliza-ts"}:
                 system = "eliza-bridge"
+            elif provider_lower in {"cerebras", "openai", "groq", "openrouter", "vllm"}:
+                system = "full"
             else:
                 system = "baseline"
         args.extend(["--system", system])
