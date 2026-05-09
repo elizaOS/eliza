@@ -8,7 +8,7 @@ import {
   type ProviderResult,
   type State,
 } from "@elizaos/core";
-import { hasLifeOpsAccess } from "../actions/lifeops-google-helpers.js";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
 import type {
   LifeOpsGmailTriageSummary,
   LifeOpsGoalDefinition,

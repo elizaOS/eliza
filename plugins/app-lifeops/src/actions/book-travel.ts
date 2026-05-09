@@ -27,7 +27,7 @@ import {
 } from "../lifeops/x402-payment-handler.js";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
-import { INTERNAL_URL } from "./lifeops-google-helpers.js";
+import { INTERNAL_URL } from "../lifeops/access.js";
 
 type BookTravelPassengerInput = {
   offerPassengerId?: string | null;
