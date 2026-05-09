@@ -1,11 +1,9 @@
 import type http from "node:http";
+import { sendJson as httpSendJson, sendJsonError as httpSendJsonError } from "@elizaos/core";
 import { TLSSocket } from "node:tls";
 import { handleConnectorAccountRoutes } from "@elizaos/agent";
 import {
-  readJsonBody as httpReadJsonBody,
-  sendJson as httpSendJson,
-  sendJsonError as httpSendJsonError,
-} from "@elizaos/shared";
+  readJsonBody as httpReadJsonBody } from "@elizaos/shared";
 import type {
   AgentRuntime,
   Plugin,

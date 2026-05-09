@@ -433,7 +433,8 @@
     },
     "@elizaos/plugin-streaming#typecheck": {
       "dependsOn": [
-        "@elizaos/core#build"
+        "@elizaos/core#build",
+        "@elizaos/cloud-routing#build"
       ],
       "outputs": []
     },

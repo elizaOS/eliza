@@ -15,11 +15,12 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, Service } from "@elizaos/core";
 import {
 	type ElizaCuratedAppDefinition,
+	logger,
 	registerCuratedApp,
-} from "@elizaos/shared";
+	Service,
+} from "@elizaos/core";
 
 export const APP_REGISTRY_SERVICE_TYPE = "app-registry";
 

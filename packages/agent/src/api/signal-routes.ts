@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
-import { readJsonBody as parseJsonBody, sendJson } from "@elizaos/shared";
+import { sendJson } from "@elizaos/core";
+import { readJsonBody as parseJsonBody } from "@elizaos/shared";
 import { registerEscalationChannel } from "../services/escalation.js";
 import type {
   SignalPairingEvent,

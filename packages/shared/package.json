@@ -34,7 +34,7 @@
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
-    "build:dist": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/shared",
+    "build:dist": "node ../../scripts/rm-path-recursive.mjs dist && tsc -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/shared",
     "pack:dry-run": "cd dist && npm pack --dry-run"
   },
   "exports": {

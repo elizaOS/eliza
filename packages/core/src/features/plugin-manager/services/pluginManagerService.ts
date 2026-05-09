@@ -67,11 +67,11 @@ export function resetRegistryCache(): void {
 }
 
 /**
- * Detect the best available package manager (bun > pnpm > npm).
+ * Detect the best available package manager (bun > npm).
  * Returns the command name to use for install operations.
  */
 async function detectPackageManager(): Promise<string> {
-	for (const cmd of ["bun", "pnpm", "npm"]) {
+	for (const cmd of ["bun", "npm"]) {
 		try {
 			await execAsync(`${cmd} --version`);
 			return cmd;
@@ -824,9 +824,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 		switch (pm) {
 			case "bun":
 				await execAsync(`bun add ${spec}`, { cwd: targetDir });
-				break;
-			case "pnpm":
-				await execAsync(`pnpm add ${spec} --dir "${targetDir}"`);
 				break;
 			default:
 				await execAsync(`npm install ${spec} --prefix "${targetDir}"`);

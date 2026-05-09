@@ -63,6 +63,18 @@ function getCalendlyBaseUrl(): string {
   return process.env.ELIZA_MOCK_CALENDLY_BASE ?? "https://api.calendly.com";
 }
 
+function resolveCalendlyRequestUrl(path: string): string {
+  const mockBase = process.env.ELIZA_MOCK_CALENDLY_BASE?.trim();
+  if (path.startsWith("http")) {
+    if (mockBase && /^https:\/\/api\.calendly\.com(?:\/|$)/i.test(path)) {
+      const url = new URL(path);
+      return `${mockBase}${url.pathname}${url.search}`;
+    }
+    return path;
+  }
+  return `${getCalendlyBaseUrl()}${path}`;
+}
+
 export function readCalendlyCredentialsFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): CalendlyCredentials | null {
@@ -136,7 +148,7 @@ async function calendlyRequest<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const url = path.startsWith("http") ? path : `${getCalendlyBaseUrl()}${path}`;
+  const url = resolveCalendlyRequestUrl(path);
   const response = await fetch(url, {
     ...init,
     headers: {

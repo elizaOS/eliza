@@ -387,7 +387,13 @@ function resolveExistingUiSourceModule(id: string) {
 
 function resolveExistingTsSourceModule(id: string): string {
   if (fs.existsSync(id)) {
-    return id;
+    try {
+      if (!fs.statSync(id).isDirectory()) {
+        return id;
+      }
+    } catch {
+      return id;
+    }
   }
 
   const candidates = [
@@ -1225,14 +1231,15 @@ export default defineConfig({
             find: /^@elizaos\/app-core\/(.+)$/,
             replacement: `${appCorePkgDir}/src/$1`,
           },
-          {
-            find: /^@elizaos\/ui$/,
-            replacement: path.join(uiSource, "index.ts"),
-          },
-          {
-            find: /^@elizaos\/ui\/(.*)$/,
-            replacement: `${uiSource}/$1/index.ts`, // assumes subpaths are directories
-          },
+      {
+        find: /^@elizaos\/ui$/,
+        replacement: path.join(uiSource, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/(.*)$/,
+        replacement: `${uiSource}/$1`,
+        customResolver: resolveExistingTsSourceModule,
+      },
           // NOTE: App and UI code should import `@elizaos/agent/<subpath>` only.
           // The package root still resolves to `./src/index.ts`, which pulls in
           // server-only modules. Map the bare specifier to a no-op so the client

@@ -1,5 +1,5 @@
 import type http from "node:http";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import type { ReadJsonBodyOptions } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 
 // ---------------------------------------------------------------------------

@@ -25,10 +25,7 @@
  *   GET    /inference/stats?label=&last_minutes=30
  */
 
-import type {
-  RouteHelpers,
-  RouteRequestContext,
-} from "@elizaos/shared";
+import type { RouteHelpers, RouteRequestContext } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   type CreateJobInput,

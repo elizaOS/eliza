@@ -1,7 +1,4 @@
-import type {
-  RouteHelpers,
-  RouteRequestContext,
-} from "@elizaos/shared";
+import type { RouteHelpers, RouteRequestContext } from "@elizaos/core";
 import type { Trajectory } from "@elizaos/agent";
 import { parsePositiveInteger } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";

@@ -1,5 +1,5 @@
 import type http from "node:http";
-import { sendJson } from "@elizaos/shared";
+import { sendJson } from "@elizaos/core";
 
 const EMPTY_APPROVAL_SNAPSHOT = {
   mode: "full_control",

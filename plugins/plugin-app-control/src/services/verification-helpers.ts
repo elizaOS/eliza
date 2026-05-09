@@ -22,7 +22,7 @@ export type Diagnostic = {
 	severity: "error" | "warning";
 };
 
-export type PackageManager = "bun" | "pnpm" | "npm";
+export type PackageManager = "bun" | "npm";
 
 /**
  * Detect the package manager for a workdir by looking at lockfiles.
@@ -33,7 +33,6 @@ export function detectPackageManager(workdir: string): PackageManager {
 	while (true) {
 		if (existsSync(path.join(current, "bun.lock"))) return "bun";
 		if (existsSync(path.join(current, "bun.lockb"))) return "bun";
-		if (existsSync(path.join(current, "pnpm-lock.yaml"))) return "pnpm";
 		if (existsSync(path.join(current, "package-lock.json"))) return "npm";
 		if (existsSync(path.join(current, "yarn.lock"))) return "npm"; // best fallback
 

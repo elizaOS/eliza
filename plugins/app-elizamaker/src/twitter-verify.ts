@@ -14,9 +14,12 @@ import {
   resolveStateDir,
 } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
-import type { VerificationResult } from "@elizaos/shared";
 
-export type { VerificationResult } from "@elizaos/shared";
+export interface VerificationResult {
+  verified: boolean;
+  error: string | null;
+  handle: string | null;
+}
 
 const WHITELIST_FILE = "whitelist.json";
 

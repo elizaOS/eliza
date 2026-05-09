@@ -1,9 +1,10 @@
+import type { RouteRequestMeta } from "@elizaos/core";
 import type { Dirent } from "node:fs";
 import { promises as fs } from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
+import type { RouteHelpers } from "@elizaos/shared";
 import {
   type AppRunActionResult,
   type AppRunSummary,

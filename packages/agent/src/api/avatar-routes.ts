@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import { readRequestBodyBuffer } from "@elizaos/shared";
+import { readRequestBodyBuffer } from "@elizaos/core";
 import { resolveStateDir } from "../config/paths.js";
 import {
   getDiscordAvatarCacheDir,

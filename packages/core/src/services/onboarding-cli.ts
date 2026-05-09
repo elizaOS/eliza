@@ -378,7 +378,6 @@ ${ONBOARDING_STEP_DESCRIPTIONS[OnboardingStep.WELCOME]}`,
 				type: "select",
 				options: [
 					{ value: "bun", label: "Bun", hint: "Recommended" },
-					{ value: "pnpm", label: "pnpm", hint: "" },
 					{ value: "npm", label: "npm", hint: "" },
 				],
 				defaultValue: "bun",
@@ -606,7 +605,7 @@ ${ONBOARDING_STEP_DESCRIPTIONS[OnboardingStep.WELCOME]}`,
 			preferences.useHomebrew = Boolean(input.useHomebrew);
 		}
 		if (input.nodeManager) {
-			preferences.nodeManager = input.nodeManager as "npm" | "pnpm" | "bun";
+			preferences.nodeManager = input.nodeManager as "npm" | "bun";
 		}
 
 		return {
@@ -758,7 +757,7 @@ export async function runNonInteractiveOnboarding(
 		apiKey?: string;
 		channels?: string[];
 		skills?: string[];
-		nodeManager?: "npm" | "pnpm" | "bun";
+		nodeManager?: "npm" | "bun";
 	},
 ): Promise<OnboardingResult> {
 	// Welcome

@@ -1,10 +1,6 @@
 import type http from "node:http";
-import {
-  isMobilePlatform,
-  readRequestBody,
-  sendJson,
-  sendJsonError,
-} from "@elizaos/shared";
+import { readRequestBody, sendJson, sendJsonError } from "@elizaos/core";
+import { isMobilePlatform } from "@elizaos/shared";
 import {
   readStreamSettings,
   validateStreamSettings,

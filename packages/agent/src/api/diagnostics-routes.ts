@@ -1,9 +1,5 @@
 import type http from "node:http";
-import type {
-  ReadJsonBodyOptions,
-  RouteHelpers,
-  RouteRequestMeta,
-} from "@elizaos/shared";
+import type { ReadJsonBodyOptions, RouteHelpers, RouteRequestMeta } from "@elizaos/core";
 import { parseClampedInteger } from "../utils/number-parsing.js";
 
 interface LogEntryLike {

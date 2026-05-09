@@ -31,23 +31,23 @@
     "paths": {
       "@elizaos/plugin-browser": ["./src/index.ts"],
       "@elizaos/plugin-browser/*": ["./src/*"],
-      "@elizaos/agent": ["../agent/src/index.ts"],
-      "@elizaos/agent/*": ["../agent/src/*"],
-      "@elizaos/core": ["../core/src/index.node.ts"],
-      "@elizaos/core/*": ["../core/src/*"],
-      "@elizaos/shared": ["../shared/src/index.ts"],
-      "@elizaos/shared/*": ["../shared/src/*"],
-      "@elizaos/app-core": ["../app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../app-core/src/*"],
+      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
+      "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
       "@elizaos/app-lifeops": ["../../plugins/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["../../plugins/app-lifeops/src/*"],
       "@elizaos/app-companion": ["../../plugins/app-companion/src/index.ts"],
       "@elizaos/app-companion/*": ["../../plugins/app-companion/src/*"],
       "@elizaos/capacitor-appblocker": [
-        "../native-plugins/appblocker/src/index.ts"
+        "../../packages/native-plugins/appblocker/src/index.ts"
       ],
       "@elizaos/capacitor-mobile-signals": [
-        "../native-plugins/mobile-signals/src/index.ts"
+        "../../packages/native-plugins/mobile-signals/src/index.ts"
       ]
     }
   },

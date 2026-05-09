@@ -1,7 +1,4 @@
-import type {
-  RouteHelpers,
-  RouteRequestContext,
-} from "@elizaos/shared";
+import type { RouteHelpers, RouteRequestContext } from "@elizaos/core";
 import {
   parseClampedFloat,
   parsePositiveInteger,

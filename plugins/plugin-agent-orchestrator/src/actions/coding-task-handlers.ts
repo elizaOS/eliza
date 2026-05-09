@@ -91,7 +91,7 @@ const KNOWN_AGENT_PREFIXES = [
 ] as const;
 
 const SHELL_COMMAND_RE =
-  /(?:^|[:\s])(?:awk|bun|cat|curl|cut|echo|find|gh|git|grep|head|jq|node|npm|pnpm|sed|tail|tee|tr|xargs|yarn)\b\s+(?:[-./~"'({[<>&|]|https?:\/\/|\w+=|\w+\.(?:cjs|css|html|js|json|md|mjs|ts|tsx|yaml|yml)\b|\b(?:add|build|commit|diff|exec|fetch|install|log|pull|push|rebase|run|show|status|test)\b)/;
+  /(?:^|[:\s])(?:awk|bun|cat|curl|cut|echo|find|gh|git|grep|head|jq|node|npm|sed|tail|tee|tr|xargs|yarn)\b\s+(?:[-./~"'({[<>&|]|https?:\/\/|\w+=|\w+\.(?:cjs|css|html|js|json|md|mjs|ts|tsx|yaml|yml)\b|\b(?:add|build|commit|diff|exec|fetch|install|log|pull|push|rebase|run|show|status|test)\b)/;
 
 function isShellPipelineBoundary(
   left: string,
@@ -109,7 +109,7 @@ function isShellPipelineBoundary(
     SHELL_COMMAND_RE.test(leftTrimmed) ||
     /[`$;]|\$\(|\b[A-Z][A-Z0-9_]*=/.test(leftTrimmed);
   const rightStartsShell =
-    /^(?:awk|bun|cat|curl|cut|echo|find|gh|git|grep|head|jq|node|npm|pnpm|sed|tail|tee|tr|xargs|yarn)\b/.test(
+    /^(?:awk|bun|cat|curl|cut|echo|find|gh|git|grep|head|jq|node|npm|sed|tail|tee|tr|xargs|yarn)\b/.test(
       rightTrimmed,
     );
   return leftLooksShell && rightStartsShell;

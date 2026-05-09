@@ -1,5 +1,5 @@
 import type http from "node:http";
-import type { RouteHelpers } from "@elizaos/shared";
+import type { RouteHelpers } from "@elizaos/core";
 import {
   clearTelegramAccountAuthState,
   clearTelegramAccountSession,

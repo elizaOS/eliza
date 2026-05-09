@@ -7,8 +7,11 @@
  */
 
 export * from "./actions";
+export * from "./api/http-helpers";
+export * from "./api/route-helpers";
 // Export all core modules
 export * from "./app-route-plugin-registry";
+export * from "./app-registry";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 // Export character utilities
@@ -33,6 +36,7 @@ export {
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
+export * from "./env-utils";
 export * from "./features/advanced-memory";
 // Export capabilities and plugin creation
 export * from "./features/basic-capabilities/index";
@@ -132,6 +136,7 @@ export * from "./runtime/schema-compat";
 export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";
 export * from "./runtime/trajectory-recorder";
+export * from "./runtime-env";
 // Runtime composition (loadCharacters, createRuntimes, getBasicCapabilitiesSettings, mergeSettingsInto) - node only
 export * from "./runtime-composition";
 export * from "./runtime-route-context";

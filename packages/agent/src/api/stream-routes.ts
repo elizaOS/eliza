@@ -10,14 +10,14 @@
 
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { logger } from "@elizaos/core";
 import {
-  formatError,
+  logger,
   readRequestBody,
   readRequestBodyBuffer,
   sendJson,
   sendJsonError,
-} from "@elizaos/shared";
+} from "@elizaos/core";
+import { formatError } from "@elizaos/shared";
 import type { StreamConfig } from "../services/stream-manager.js";
 import {
   getHeadlessCaptureConfig,

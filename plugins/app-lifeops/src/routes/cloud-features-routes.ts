@@ -1,5 +1,5 @@
 import type http from "node:http";
-import { sendJson, sendJsonError } from "@elizaos/shared";
+import { sendJson, sendJsonError } from "@elizaos/core";
 import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud";
 import { resolveCloudApiKey } from "@elizaos/plugin-elizacloud";
 import { validateCloudBaseUrl } from "@elizaos/plugin-elizacloud";

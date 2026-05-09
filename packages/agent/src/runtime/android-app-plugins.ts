@@ -11,16 +11,16 @@
 import {
   contactsProvider,
   appContactsPlugin as rawContactsPlugin,
-} from "@elizaos/app-contacts";
+} from "@elizaos/app-contacts/plugin";
 import {
   phoneCallLogProvider,
   placeCallAction,
   appPhonePlugin as rawPhonePlugin,
-} from "@elizaos/app-phone";
+} from "@elizaos/app-phone/plugin";
 import {
   appWifiPlugin as rawWifiPlugin,
   wifiNetworksProvider,
-} from "@elizaos/app-wifi";
+} from "@elizaos/app-wifi/plugin";
 import { gatePluginSessionForHostedApp } from "../services/app-session-gate.js";
 import { STATIC_ELIZA_PLUGINS } from "./plugin-types.js";
 
