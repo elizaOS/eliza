@@ -49,7 +49,7 @@
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:types": "tsc -p ../tsconfig.build.shared.json"
+    "build:types": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
     "@capacitor/barcode-scanner": "^3.0.0",

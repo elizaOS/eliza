@@ -12,8 +12,6 @@
     "declarationMap": true,
     "emitDeclarationOnly": true,
     "noEmit": false,
-    "outDir": "dist",
-    "rootDir": "./src",
     "paths": {
       "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
       "@elizaos/core/*": ["../../packages/core/dist/*"],
@@ -26,7 +24,5 @@
       "@elizaos/cloud-sdk": ["../../cloud/packages/sdk/dist/index.d.ts"],
       "@elizaos/scenario-runner": ["../../packages/scenario-runner/dist/index.d.ts"]
     }
-  },
-  "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/__tests__/**"]
+  }
 }
