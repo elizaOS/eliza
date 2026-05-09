@@ -17,7 +17,7 @@ import {
   getMobileDeviceBridgeStatus,
   loadMobileDeviceBridgeModel,
   unloadMobileDeviceBridgeModel,
-} from "../runtime/mobile-device-bridge-bootstrap.js";
+} from "@elizaos/plugin-capacitor-bridge";
 
 type ModelRole = "chat" | "embedding" | "drafter";
 type DownloadState =

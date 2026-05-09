@@ -24,8 +24,8 @@ import { registerAospLlamaLoader as __elizaAospLlamaLoader } from "@elizaos/plug
 // symbol out (the only consumer is a dynamic import in `cli/index.ts`,
 // which is enough for resolution but not for inclusion in some Bun.build
 // configurations). Mirror the `__elizaAospLlamaLoader` pattern.
-import { ensureAospLocalInferenceHandlers as __elizaAospLocalInferenceBootstrap } from "@elizaos/plugin-aosp-local-inference";
-import { ensureMobileDeviceBridgeInferenceHandlers as __elizaMobileDeviceBridgeBootstrap } from "./runtime/mobile-device-bridge-bootstrap.js";
+import { ensureAospLocalInferenceHandlers as __elizaAospLocalInferenceBootstrap } from "./runtime/aosp-local-inference-bootstrap.js";
+import { ensureMobileDeviceBridgeInferenceHandlers as __elizaMobileDeviceBridgeBootstrap } from "@elizaos/plugin-capacitor-bridge";
 
 // Pull @elizaos/app-{wifi,contacts,phone}'s runtime plugin adapter into the
 // mobile bundle. The adapter imports each app package's `/plugin` subpath,

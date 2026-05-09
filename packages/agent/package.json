@@ -142,6 +142,7 @@
     "@elizaos/plugin-agent-skills": "workspace:*",
     "@elizaos/plugin-aosp-local-inference": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
+    "@elizaos/plugin-capacitor-bridge": "workspace:*",
     "@elizaos/plugin-computeruse": "workspace:*",
     "@elizaos/plugin-discord-local": "workspace:*",
     "@elizaos/plugin-local-embedding": "workspace:*",
