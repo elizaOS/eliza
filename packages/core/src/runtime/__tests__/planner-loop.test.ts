@@ -556,7 +556,11 @@ describe("v5 planner loop — evaluator gate", () => {
 
 	function plannerNativeWith(opts: {
 		text?: string;
-		toolCalls: Array<{ id: string; name: string; arguments?: Record<string, unknown> }>;
+		toolCalls: Array<{
+			id: string;
+			name: string;
+			arguments?: Record<string, unknown>;
+		}>;
 	}) {
 		// Native-mode return: parsePlannerOutput's native branch infers
 		// messageToUser from `text` but does NOT carry it as an explicit field.
@@ -607,7 +611,9 @@ describe("v5 planner loop — evaluator gate", () => {
 		// `evaluatorOutputs` and as a context event so trajectory dumps and replay
 		// tools see the iteration's outcome (just no recorder evaluation stage).
 		expect(result.trajectory.evaluatorOutputs).toHaveLength(1);
-		expect(result.trajectory.evaluatorOutputs[0]?.thought).toContain("Gated FINISH");
+		expect(result.trajectory.evaluatorOutputs[0]?.thought).toContain(
+			"Gated FINISH",
+		);
 		const evalEvents = (result.trajectory.context.events ?? []).filter(
 			(event) => event.type === "evaluation",
 		);
@@ -634,9 +640,11 @@ describe("v5 planner loop — evaluator gate", () => {
 		}));
 		const recordedStages: Array<Record<string, unknown>> = [];
 		const recorder = {
-			recordStage: vi.fn(async (_trajectoryId: string, stage: Record<string, unknown>) => {
-				recordedStages.push(stage);
-			}),
+			recordStage: vi.fn(
+				async (_trajectoryId: string, stage: Record<string, unknown>) => {
+					recordedStages.push(stage);
+				},
+			),
 		} as unknown as TrajectoryRecorder;
 
 		await runPlannerLoop({
@@ -656,15 +664,19 @@ describe("v5 planner loop — evaluator gate", () => {
 		expect(evalStages).toHaveLength(1);
 		const evalStage = evalStages[0] as Record<string, unknown>;
 		expect((evalStage.evaluation as Record<string, unknown>).gated).toBe(true);
-		expect((evalStage.evaluation as Record<string, unknown>).llmCallSkipped).toBe(true);
+		expect(
+			(evalStage.evaluation as Record<string, unknown>).llmCallSkipped,
+		).toBe(true);
 		expect((evalStage.evaluation as Record<string, unknown>).reason).toBe(
 			"explicit_terminal_reply",
 		);
 		// The decision and message reach the recorder so timeline UIs render them.
-		expect((evalStage.evaluation as Record<string, unknown>).decision).toBe("FINISH");
-		expect((evalStage.evaluation as Record<string, unknown>).messageToUser).toBe(
-			"Status check passed.",
+		expect((evalStage.evaluation as Record<string, unknown>).decision).toBe(
+			"FINISH",
 		);
+		expect(
+			(evalStage.evaluation as Record<string, unknown>).messageToUser,
+		).toBe("Status check passed.");
 		// No `model` block — there was no LLM call to attribute.
 		expect(evalStage.model).toBeUndefined();
 	});
