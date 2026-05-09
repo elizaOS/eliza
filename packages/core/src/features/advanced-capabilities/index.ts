@@ -16,7 +16,7 @@ import { withCanonicalActionDocs } from "../../action-docs.ts";
 import type { IAgentRuntime } from "../../types/index.ts";
 import type { ServiceClass } from "../../types/plugin.ts";
 import {
-	experienceAction,
+	experienceEvaluator,
 	experienceProvider,
 	searchExperiencesAction,
 } from "./experience/index.ts";
@@ -71,7 +71,7 @@ export const advancedProviders = [
  * Advanced actions - extended agent capabilities.
  *
  * Includes both planner actions and post-message `ALWAYS_AFTER` hooks
- * (formerly evaluators) for the consolidated reflection (facts +
+ * (formerly evaluators) for the reflection evaluator (facts +
  * relationships + task completion in one LLM call), pre-message relationship
  * extraction, skill extraction/refinement, and experience learning.
  */
@@ -91,10 +91,10 @@ export const advancedActions = [
 	// Personality actions
 	characterAction,
 	// Post-message ALWAYS_AFTER hooks (replaces legacy evaluators)
-	postMessageActions.consolidatedReflectionAction,
-	postMessageActions.relationshipExtractionAction,
-	postMessageActions.consolidatedSkillAction,
-	experienceAction,
+	postMessageActions.reflectionEvaluator,
+	postMessageActions.relationshipExtractionEvaluator,
+	postMessageActions.skillEvaluator,
+	experienceEvaluator,
 ];
 
 /**

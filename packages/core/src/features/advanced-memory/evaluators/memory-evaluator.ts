@@ -325,11 +325,12 @@ async function evaluateLongTermTrigger(
 	);
 }
 
-export const consolidatedMemoryAction: Action = {
-	name: "MEMORY_CONSOLIDATION",
+export const memoryEvaluator: Action = {
+	name: "MEMORY_EVALUATOR",
 	description:
 		"Rolls forward the conversation summary and extracts long-term entity-tagged memory items in a single LLM pass. Feeds contextSummaryProvider and longTermMemoryProvider.",
 	similes: [
+		"MEMORY_CONSOLIDATION",
 		"MEMORY_SUMMARIZATION",
 		"LONG_TERM_MEMORY_EXTRACTION",
 		"CONTEXT_COMPRESSION",

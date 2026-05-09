@@ -3,9 +3,9 @@ import {
 	postAction,
 } from "../features/advanced-capabilities/actions/index";
 import {
-	consolidatedReflectionAction,
-	consolidatedSkillAction,
-	relationshipExtractionAction,
+	reflectionEvaluator,
+	relationshipExtractionEvaluator,
+	skillEvaluator,
 } from "../features/advanced-capabilities/evaluators/index";
 import {
 	contactsProvider,
@@ -50,10 +50,10 @@ export const relationshipsPlugin: Plugin = {
 		// registering per-operation leaves. The planner unwraps those compact
 		// calls at benchmark/report time.
 		// ALWAYS_AFTER actions (post-message work; replaces legacy evaluators).
-		consolidatedReflectionAction,
-		consolidatedSkillAction,
+		reflectionEvaluator,
+		skillEvaluator,
 		// ALWAYS_BEFORE actions (pre-Stage 1 heuristics; runs even on IGNORE/STOP).
-		relationshipExtractionAction,
+		relationshipExtractionEvaluator,
 	],
 	providers: [
 		contactsProvider,

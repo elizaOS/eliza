@@ -205,8 +205,9 @@ function detectHeuristicSignals(text: string): string[] {
 
 // ─── Evaluator ──────────────────────────────────────────────────────────────
 
-export const securityAction: Action = {
-	name: "securityEvaluator",
+export const securityEvaluator: Action = {
+	name: "SECURITY_EVALUATOR",
+	similes: ["securityEvaluator"],
 	mode: ActionMode.ALWAYS_BEFORE,
 	modePriority: 10,
 	examples: [],
