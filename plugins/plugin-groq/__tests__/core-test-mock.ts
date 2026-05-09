@@ -21,8 +21,6 @@ vi.mock("@elizaos/core", () => {
     }) => character?.system?.trim() || "",
     ModelType: {
       ACTION_PLANNER: "ACTION_PLANNER",
-      OBJECT_LARGE: "OBJECT_LARGE",
-      OBJECT_SMALL: "OBJECT_SMALL",
       RESPONSE_HANDLER: "RESPONSE_HANDLER",
       TEXT_LARGE: "TEXT_LARGE",
       TEXT_MEGA: "TEXT_MEGA",

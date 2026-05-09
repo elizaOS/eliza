@@ -54,10 +54,8 @@ This plugin provides handlers for the following elizaOS model types:
 
 | Model Type              | Description                                     |
 | ----------------------- | ----------------------------------------------- |
-| `TEXT_SMALL`            | Fast text generation with smaller models        |
-| `TEXT_LARGE`            | High-quality text generation with larger models |
-| `OBJECT_SMALL`          | JSON object generation (small)                  |
-| `OBJECT_LARGE`          | JSON object generation (large)                  |
+| `TEXT_SMALL`            | Fast text + structured output via native tool calling (tools, toolChoice, responseSchema) |
+| `TEXT_LARGE`            | Capable text + structured output via native tool calling (tools, toolChoice, responseSchema) |
 | `TRANSCRIPTION`         | Audio transcription with Whisper                |
 | `TEXT_TO_SPEECH`        | Speech synthesis with PlayAI                    |
 | `TEXT_TOKENIZER_ENCODE` | Tokenize text to tokens                         |
