@@ -28,7 +28,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --noCheck -p tsconfig.json",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
