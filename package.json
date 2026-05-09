@@ -18,7 +18,7 @@
     "node": "24.15.0"
   },
   "scripts": {
-    "postinstall": "bun scripts/patch-nested-core-dist.mjs && bun scripts/patch-tsup-dts.mjs && bun scripts/ensure-workspace-symlinks.mjs && node scripts/ensure-native-plugins-linked.mjs && node scripts/patch-llama-cpp-capacitor.mjs",
+    "postinstall": "node scripts/fix-windows-bun-stub.mjs && bun scripts/patch-nested-core-dist.mjs && bun scripts/patch-tsup-dts.mjs && bun scripts/ensure-workspace-symlinks.mjs && node scripts/ensure-native-plugins-linked.mjs && node scripts/patch-llama-cpp-capacitor.mjs",
     "fix-deps": "bun scripts/fix-workspace-deps.mjs",
     "fix-deps:check": "bun scripts/fix-workspace-deps.mjs --check",
     "fix-deps:restore": "bun scripts/fix-workspace-deps.mjs --restore",
