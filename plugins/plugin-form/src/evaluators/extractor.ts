@@ -1,11 +1,12 @@
 /**
  * @module evaluators/extractor
- * @description Form evaluator for field extraction and intent handling
+ * @description Form post-message hook for field extraction and intent handling.
+ * Implemented as an Action with `mode: ActionMode.ALWAYS_AFTER`.
  *
  * ## Role in Form Plugin
  *
- * The evaluator is the "brain" of the form plugin. It runs AFTER
- * each user message and:
+ * This hook is the "brain" of the form plugin. It runs AFTER each user
+ * message and:
  *
  * 1. Detects user intent (submit, cancel, undo, etc.)
  * 2. Extracts field values from natural language
@@ -15,7 +16,7 @@
  *
  * ## Event Emission
  *
- * The evaluator emits standardized events as it processes messages:
+ * The hook emits standardized events as it processes messages:
  *
  * - `FORM_FIELD_EXTRACTED`: Value extracted for a simple field
  * - `FORM_SUBFIELD_UPDATED`: Value extracted for a composite subfield
@@ -23,14 +24,14 @@
  * - `FORM_EXTERNAL_ACTIVATED`: External type activated
  *
  * Widgets DON'T parse messages - they react to these events.
- * This keeps parsing logic centralized in the evaluator.
+ * This keeps parsing logic centralized here.
  *
  * ## Processing Flow
  *
  * ```
- * User Message → Evaluator.validate() → Should we run?
+ * User Message → validate() → Should we run?
  *                        ↓ Yes
- *              Evaluator.handler() →
+ *              handler() →
  *                        ↓
  *              quickIntentDetect() → Fast path for English
  *                        ↓ No match
@@ -47,38 +48,32 @@
  *              Save session
  * ```
  *
- * ## Why Evaluator (Not Action)
+ * ## Why ALWAYS_AFTER
  *
- * We use an evaluator because:
- *
- * 1. **Runs Always**: Evaluators run on every message, not just when
- *    explicitly invoked. Form extraction should happen automatically.
- *
- * 2. **Post-Processing**: Evaluators run after actions, allowing the
- *    provider to set context and REPLY action to generate response.
- *
- * 3. **No Response Generation**: Evaluators don't generate responses,
- *    they just update state. The agent (REPLY) handles responses.
+ * 1. **Runs always**: Fires on every message, not only when the planner
+ *    selects it. Form extraction must happen automatically.
+ * 2. **Post-processing**: Runs after the response so the REPLY can use
+ *    provider context, then we update form state.
+ * 3. **No response generation**: This hook only updates state; REPLY
+ *    handles user-facing text.
  *
  * ## Intent Handling
  *
- * Different intents are handled differently:
- *
- * - **Lifecycle** (submit, stash, cancel): Change session status
- * - **UX** (undo, skip, autofill): Modify session without status change
- * - **Info** (explain, example, progress): No state change, just context
- * - **Data** (fill_form): Extract and update field values
+ * - **Lifecycle** (submit, stash, cancel): change session status
+ * - **UX** (undo, skip, autofill): modify session without status change
+ * - **Info** (explain, example, progress): no state change, just context
+ * - **Data** (fill_form): extract and update field values
  *
  * ## FORM_RESTORE Exception
  *
  * The 'restore' intent is handled by FORM_RESTORE action, not here.
- * This is because restore needs to happen BEFORE the provider runs,
- * so the agent has the restored form context for its response.
+ * Restore needs to happen BEFORE the provider runs so the agent has the
+ * restored form context for its response.
  */
 
 import type {
+  Action,
   ActionResult,
-  Evaluator,
   EventPayload,
   IAgentRuntime,
   JsonValue,
@@ -86,7 +81,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ActionMode, logger } from "@elizaos/core";
 import { llmIntentAndExtract } from "../extraction";
 import { quickIntentDetect } from "../intent";
 import type { FormService } from "../service";
@@ -99,7 +94,7 @@ import type {
 } from "../types";
 
 /**
- * Form Evaluator
+ * Form post-message hook (ALWAYS_AFTER Action)
  *
  * Runs after each message to:
  * 1. Detect user intent (fast path for English, LLM fallback for other languages)
@@ -108,12 +103,14 @@ import type {
  * 4. Handle UX intents (undo, skip, explain, example, progress, autofill)
  * 5. Update session state
  */
-export const formEvaluator: Evaluator = {
+export const formEvaluator: Action = {
   name: "form_evaluator",
   description:
     "Extracts form fields and handles form intents from user messages",
   similes: ["FORM_EXTRACTION", "FORM_HANDLER"],
-  examples: [], // No examples needed for evaluators
+  examples: [],
+  mode: ActionMode.ALWAYS_AFTER,
+  modePriority: 100,
 
   /**
    * Validate: Should this evaluator run?
@@ -545,7 +542,7 @@ async function checkAndActivateExternalField(
  * WHY wrap instead of direct call:
  * - runtime.emitEvent might not exist (older runtimes)
  * - No listeners is normal, not an error
- * - Evaluator should keep running regardless
+ * - The hook should keep running regardless
  *
  * WHY debug log on error:
  * - Helps diagnose missing handlers during development

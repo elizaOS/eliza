@@ -2,31 +2,31 @@
  * @module actions/restore
  * @description Action for restoring stashed form sessions
  *
- * ## Why an Action (Not Evaluator)
+ * ## Why a planner Action (not an ALWAYS_AFTER hook)
  *
  * The restore operation is unique among form intents because:
  *
- * 1. **Timing Matters**: The restored form context must be available
- *    to the agent BEFORE it generates a response. Evaluators run
- *    AFTER response generation.
+ * 1. **Timing matters**: The restored form context must be available
+ *    to the agent BEFORE it generates a response. ALWAYS_AFTER hooks
+ *    run after response generation.
  *
- * 2. **Preemption**: When user says "resume my form", the FORM_RESTORE
- *    action should preempt REPLY, generate its own response with the
- *    restored context, and let the agent continue naturally.
+ * 2. **Preemption**: When the user says "resume my form", FORM_RESTORE
+ *    should preempt REPLY, generate its own response with the restored
+ *    context, and let the agent continue naturally.
  *
- * 3. **Immediate Context**: After restore, the provider runs and gives
+ * 3. **Immediate context**: After restore, the provider runs and gives
  *    the agent the restored form context for its response.
  *
- * ## Flow Comparison
+ * ## Flow comparison
  *
- * ### Other Intents (via Evaluator):
+ * ### Other intents (via the ALWAYS_AFTER form hook):
  * ```
- * Message → Provider (no context) → REPLY → Evaluator (updates state)
+ * Message → Provider (no context) → REPLY → form hook (updates state)
  *                                              ↓
  *                                    Next message has updated context
  * ```
  *
- * ### Restore Intent (via Action):
+ * ### Restore intent (via this action):
  * ```
  * Message → FORM_RESTORE.validate() → true
  *                    ↓
@@ -101,7 +101,7 @@ export const formRestoreAction: Action = {
    * Validate: Only trigger for restore intent with stashed sessions.
    *
    * Fast path: Uses quickIntentDetect for English keywords.
-   * Evaluator handles non-English via LLM.
+   * The ALWAYS_AFTER form hook handles non-English via LLM.
    *
    * @returns true if action should run
    */

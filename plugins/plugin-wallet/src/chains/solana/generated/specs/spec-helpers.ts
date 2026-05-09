@@ -1,20 +1,17 @@
 /**
- * Helper functions to lookup action/provider/evaluator specs by name.
+ * Helper functions to lookup action/provider specs by name.
  * These allow language-specific implementations to import their text content
  * (description, similes, examples) from the centralized specs.
  *
- * DO NOT EDIT the spec data - update prompts/actions.json, prompts/providers.json, prompts/evaluators.json and regenerate.
+ * DO NOT EDIT the spec data - update prompts/actions.json, prompts/providers.json and regenerate.
  */
 
 import {
   type ActionDoc,
   allActionDocs,
-  allEvaluatorDocs,
   allProviderDocs,
   coreActionDocs,
-  coreEvaluatorDocs,
   coreProviderDocs,
-  type EvaluatorDoc,
   type ProviderDoc,
 } from "./specs";
 
@@ -25,12 +22,6 @@ const coreProviderMap = new Map<string, ProviderDoc>(
   coreProviderDocs.map((doc) => [doc.name, doc])
 );
 const allProviderMap = new Map<string, ProviderDoc>(allProviderDocs.map((doc) => [doc.name, doc]));
-const coreEvaluatorMap = new Map<string, EvaluatorDoc>(
-  coreEvaluatorDocs.map((doc) => [doc.name, doc])
-);
-const allEvaluatorMap = new Map<string, EvaluatorDoc>(
-  allEvaluatorDocs.map((doc) => [doc.name, doc])
-);
 
 /**
  * Get an action spec by name from the core specs.
@@ -78,28 +69,5 @@ export function requireProviderSpec(name: string): ProviderDoc {
   return spec;
 }
 
-/**
- * Get an evaluator spec by name from the core specs.
- * @param name - The evaluator name
- * @returns The evaluator spec or undefined if not found
- */
-export function getEvaluatorSpec(name: string): EvaluatorDoc | undefined {
-  return coreEvaluatorMap.get(name) ?? allEvaluatorMap.get(name);
-}
-
-/**
- * Get an evaluator spec by name, throwing if not found.
- * @param name - The evaluator name
- * @returns The evaluator spec
- * @throws Error if the evaluator is not found
- */
-export function requireEvaluatorSpec(name: string): EvaluatorDoc {
-  const spec = getEvaluatorSpec(name);
-  if (!spec) {
-    throw new Error(`Evaluator spec not found: ${name}`);
-  }
-  return spec;
-}
-
 // Re-export types for convenience
-export type { ActionDoc, EvaluatorDoc, ProviderDoc };
+export type { ActionDoc, ProviderDoc };

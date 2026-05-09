@@ -1,5 +1,5 @@
 /**
- * Auto-generated canonical action/provider/evaluator docs for plugin-farcaster.
+ * Auto-generated canonical action/provider docs for plugin-farcaster.
  * DO NOT EDIT - Generated from prompts/specs/**.
  */
 
@@ -18,15 +18,6 @@ export type ProviderDoc = {
   descriptionCompressed?: string;
   position?: number;
   dynamic?: boolean;
-};
-
-export type EvaluatorDoc = {
-  name: string;
-  description: string;
-  descriptionCompressed?: string;
-  similes?: readonly string[];
-  alwaysRun?: boolean;
-  examples?: readonly unknown[];
 };
 
 export const coreActionsSpec = {
@@ -57,18 +48,8 @@ export const allProvidersSpec = {
     },
   ],
 } as const;
-export const coreEvaluatorsSpec = {
-  version: "1.0.0",
-  evaluators: [],
-} as const;
-export const allEvaluatorsSpec = {
-  version: "1.0.0",
-  evaluators: [],
-} as const;
 
 export const coreActionDocs: readonly ActionDoc[] = coreActionsSpec.actions;
 export const allActionDocs: readonly ActionDoc[] = allActionsSpec.actions;
 export const coreProviderDocs: readonly ProviderDoc[] = coreProvidersSpec.providers;
 export const allProviderDocs: readonly ProviderDoc[] = allProvidersSpec.providers;
-export const coreEvaluatorDocs: readonly EvaluatorDoc[] = coreEvaluatorsSpec.evaluators;
-export const allEvaluatorDocs: readonly EvaluatorDoc[] = allEvaluatorsSpec.evaluators;
