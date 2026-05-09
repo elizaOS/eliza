@@ -609,7 +609,11 @@ describe("Agent Runtime E2E", () => {
       "built-in advanced personality capabilities are registered",
       () => {
         expect(
-          runtime.actions.some((action) => action.name === "MODIFY_CHARACTER"),
+          runtime.actions.some(
+            (action) =>
+              action.name === "CHARACTER" ||
+              action.similes?.includes("MODIFY_CHARACTER"),
+          ),
         ).toBe(true);
       },
     );
