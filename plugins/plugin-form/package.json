@@ -31,10 +31,12 @@
   },
   "types": "./src/index.ts",
   "scripts": {
-    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc -p ../tsconfig.build.shared.json"
   },
   "files": [
     "dist"
