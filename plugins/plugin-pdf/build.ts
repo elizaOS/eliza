@@ -58,7 +58,7 @@ async function build(): Promise<void> {
     rootDir,
     "node_modules",
     ".bin",
-    process.platform === "win32" ? "tsc.cmd" : "tsc"
+    process.platform === "win32" ? "tsc.exe" : "tsc"
   );
 
   await $`${tscPath} --project tsconfig.build.json`;
