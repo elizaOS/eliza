@@ -13,36 +13,36 @@ export {
   type TriggerRouteContext,
   type TriggerRouteHelpers,
 } from "@elizaos/plugin-workflow";
-export * from "./accounts-routes.js";
-export * from "./agent-admin-routes.js";
-export * from "./agent-lifecycle-routes.js";
-export * from "./agent-model.js";
-export * from "./agent-transfer-routes.js";
-export * from "./apps-routes.js";
-export * from "./auth-routes.js";
-export * from "./bug-report-routes.js";
-export * from "./character-routes.js";
-export * from "./compat-utils.js";
-export * from "./connector-health.js";
-export * from "./credit-detection.js";
-export * from "./database.js";
-export * from "./diagnostics-routes.js";
-export * from "./documents-routes.js";
-export * from "./documents-service-loader.js";
-export * from "./early-logs.js";
-export * from "./http-helpers.js";
-export * from "./memory-bounds.js";
-export * from "./memory-routes.js";
-export * from "./models-routes.js";
-export * from "./nfa-routes.js";
-export * from "./parse-action-block.js";
-export * from "./permissions-routes.js";
-export * from "./plugin-validation.js";
-export * from "./provider-switch-config.js";
-export * from "./rate-limiter.js";
-export * from "./registry-routes.js";
-export * from "./registry-service.js";
-export * from "./route-helpers.js";
+export * from "./accounts-routes.ts";
+export * from "./agent-admin-routes.ts";
+export * from "./agent-lifecycle-routes.ts";
+export * from "./agent-model.ts";
+export * from "./agent-transfer-routes.ts";
+export * from "./apps-routes.ts";
+export * from "./auth-routes.ts";
+export * from "./bug-report-routes.ts";
+export * from "./character-routes.ts";
+export * from "./compat-utils.ts";
+export * from "./connector-health.ts";
+export * from "./credit-detection.ts";
+export * from "./database.ts";
+export * from "./diagnostics-routes.ts";
+export * from "./documents-routes.ts";
+export * from "./documents-service-loader.ts";
+export * from "./early-logs.ts";
+export * from "./http-helpers.ts";
+export * from "./memory-bounds.ts";
+export * from "./memory-routes.ts";
+export * from "./models-routes.ts";
+export * from "./nfa-routes.ts";
+export * from "./parse-action-block.ts";
+export * from "./permissions-routes.ts";
+export * from "./plugin-validation.ts";
+export * from "./provider-switch-config.ts";
+export * from "./rate-limiter.ts";
+export * from "./registry-routes.ts";
+export * from "./registry-service.ts";
+export * from "./route-helpers.ts";
 // `runtime-plugin-routes.ts` exports `matchPluginRoutePath` (used by plugin
 // authors and their tests, e.g. plugins/app-vincent/src/vincent-plugin-dispatch.test.ts)
 // and the request-handling helper `tryHandleRuntimePluginRoute` (used by
@@ -50,15 +50,15 @@ export * from "./route-helpers.js";
 export {
   matchPluginRoutePath,
   tryHandleRuntimePluginRoute,
-} from "./runtime-plugin-routes.js";
-export * from "./subscription-routes.js";
-export * from "./terminal-run-limits.js";
-export * from "./training-backend-check.js";
-export * from "./training-service-like.js";
-export * from "./tx-service.js";
-export * from "./wallet.js";
-export * from "./wallet-evm-balance.js";
-export * from "./wallet-routes.js";
-export * from "./wallet-rpc.js";
-export * from "./wallet-trading-profile.js";
-export * from "./zip-utils.js";
+} from "./runtime-plugin-routes.ts";
+export * from "./subscription-routes.ts";
+export * from "./terminal-run-limits.ts";
+export * from "./training-backend-check.ts";
+export * from "./training-service-like.ts";
+export * from "./tx-service.ts";
+export * from "./wallet.ts";
+export * from "./wallet-evm-balance.ts";
+export * from "./wallet-routes.ts";
+export * from "./wallet-rpc.ts";
+export * from "./wallet-trading-profile.ts";
+export * from "./zip-utils.ts";

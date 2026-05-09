@@ -58,6 +58,10 @@ export * from "./env-utils";
 export * from "./features/advanced-memory";
 // Export capabilities and plugin creation
 export * from "./features/basic-capabilities/index";
+export {
+	roleAction,
+	updateRoleAction,
+} from "./features/advanced-capabilities/actions/role";
 export * from "./features/documents/index";
 export type {
 	DraftRecord,
@@ -81,7 +85,7 @@ export type {
 // MESSAGE, MESSAGE, adapters, SendPolicy, TriageService).
 // Selective re-export — `MessageParticipant` collides with an unrelated type in
 // `types/service-interfaces.ts`; consumers that need the triage-side participant type
-// import it directly from "@elizaos/core/features/messaging/triage".
+// should import it from the package barrel.
 export {
 	__resetDefaultMessageRefStoreForTests,
 	__resetDefaultTriageServiceForTests,
@@ -222,6 +226,7 @@ export * from "./types/plugin-manifest";
 export type { JsonObject, JsonValue } from "./types/primitives";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
+export { formatError } from "./utils/format-error";
 /** Single implementation — see `utils/batch-queue/semaphore.ts` (was duplicated on `runtime.ts`). */
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";

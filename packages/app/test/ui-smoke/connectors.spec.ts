@@ -263,7 +263,7 @@ test("connector modes keep developer credentials as the default path", async ({
   ).toHaveCount(0);
   await expect(
     discordSection.getByText(
-      "Prefer OAuth? Connect Eliza Cloud to use the shared Discord gateway instead of a local bot token.",
+      /Prefer OAuth\? Connect Eliza Cloud to use the shared (?:Eliza )?Discord gateway instead of a local bot token\./,
     ),
   ).toBeVisible();
 
@@ -289,14 +289,14 @@ test("Cloud-connected Discord exposes the managed gateway only when selected", a
   ).toBeVisible();
   await expect(
     discordSection.getByText(
-      "Prefer OAuth? Managed Discord uses a shared gateway and only works for servers owned by the linking Discord account.",
+      /Prefer OAuth\? Managed Discord uses a shared (?:Eliza )?gateway and only works for servers owned by the linking Discord account\./,
     ),
   ).toHaveCount(0);
 
   await discordSection.getByTestId("connector-mode-discord-managed").click();
   await expect(
     discordSection.getByText(
-      "Prefer OAuth? Managed Discord uses a shared gateway and only works for servers owned by the linking Discord account.",
+      /Prefer OAuth\? Managed Discord uses a shared (?:Eliza )?gateway and only works for servers owned by the linking Discord account\./,
     ),
   ).toBeVisible();
   await expect(

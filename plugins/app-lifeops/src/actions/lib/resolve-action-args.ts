@@ -18,8 +18,8 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import { runExtractorPipeline } from "../../lifeops/llm/extractor-pipeline.js";
+import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import { recentConversationTextsFromState } from "./recent-context.js";
 
 // ── Public types ──────────────────────────────────────
@@ -51,7 +51,13 @@ export interface ResolveActionArgsInput<TSubaction extends string, _TParams> {
 }
 
 export type ResolveActionArgsResult<TSubaction extends string, TParams> =
-  | { ok: true; subaction: TSubaction; params: TParams }
+  | {
+      ok: true;
+      subaction: TSubaction;
+      params: TParams;
+      missing?: never;
+      clarification?: never;
+    }
   | {
       ok: false;
       missing: string[];

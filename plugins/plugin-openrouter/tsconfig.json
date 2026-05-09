@@ -27,9 +27,6 @@
     "paths": {
       "@elizaos/core": [
         "../../../node_modules/@elizaos/core/dist/index.d.ts"
-      ],
-      "@elizaos/core/*": [
-        "../../../node_modules/@elizaos/core/dist/*"
       ]
     },
     "types": [

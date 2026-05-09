@@ -11,11 +11,11 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
-import { parsePositiveInteger } from "../utils/number-parsing.js";
+import { parsePositiveInteger } from "../utils/number-parsing.ts";
 import {
   type DocumentsServiceResult,
   getDocumentsService,
-} from "./documents-service-loader.js";
+} from "./documents-service-loader.ts";
 
 const HASH_MEMORY_SOURCE = "hash_memory";
 const UUID_REGEX =

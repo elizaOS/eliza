@@ -16,8 +16,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { logger, type Plugin } from "@elizaos/core";
 import { formatError } from "@elizaos/shared";
 
-import type { ElizaConfig } from "../config/config.js";
-import type { PluginInstallRecord } from "../config/types.eliza.js";
+import type { ElizaConfig } from "../config/config.ts";
+import type { PluginInstallRecord } from "../config/types.eliza.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -357,10 +357,15 @@ export async function resolvePackageEntry(
           path.join(pkgRoot, "src", "index.ts"),
         ]
       : [
+          path.join(pkgRoot, "dist", subpath),
+          path.join(pkgRoot, "dist", `${subpath}.js`),
+          path.join(pkgRoot, "dist", `${subpath}.mjs`),
           path.join(pkgRoot, subpath),
           path.join(pkgRoot, `${subpath}.mjs`),
+          path.join(pkgRoot, `${subpath}.js`),
           path.join(pkgRoot, `${subpath}.ts`),
           path.join(pkgRoot, "src", subpath),
+          path.join(pkgRoot, "src", `${subpath}.js`),
           path.join(pkgRoot, "src", `${subpath}.mjs`),
           path.join(pkgRoot, "src", `${subpath}.ts`),
         ]),

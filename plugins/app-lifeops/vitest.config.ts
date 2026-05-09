@@ -9,7 +9,7 @@ import { getElizaWorkspaceRoot } from "../../test/vitest/workspace-aliases";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = getElizaWorkspaceRoot(repoRoot);
 const packageRootFromRepo = path
-  .relative(repoRoot, here)
+  .relative(elizaRoot, here)
   .split(path.sep)
   .join("/");
 const appCoreTestSetup = path.join(
@@ -19,6 +19,45 @@ const appCoreTestSetup = path.join(
   "test",
   "setup.ts",
 );
+const lifeopsTestSetup = path.join(here, "test", "setup.ts");
+const lifeopsTestStubsRoot = path.join(here, "test", "stubs");
+const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
+const escapedAgentSourceRoot = agentSourceRoot.replace(
+  /[.*+?^${}()|[\]\\]/g,
+  "\\$&",
+);
+const agentSourceJsToTsPlugin = {
+  name: "lifeops-agent-source-js-to-ts",
+  enforce: "pre" as const,
+  resolveId(source: string, importer?: string) {
+    if (source === "@elizaos/agent") {
+      return path.join(lifeopsTestStubsRoot, "agent.ts");
+    }
+    if (source === "@elizaos/ui") {
+      return path.join(lifeopsTestStubsRoot, "ui.ts");
+    }
+    if (source === "@elizaos/plugin-google") {
+      return path.join(lifeopsTestStubsRoot, "plugin-google.ts");
+    }
+
+    const normalizedImporter = importer?.replace(/^\/@fs/, "");
+    if (
+      normalizedImporter &&
+      (source.startsWith("./") || source.startsWith("../")) &&
+      source.endsWith(".js")
+    ) {
+      const candidate = path.resolve(path.dirname(normalizedImporter), source);
+      if (candidate.startsWith(`${agentSourceRoot}${path.sep}`)) {
+        const tsCandidate = candidate.slice(0, -".js".length) + ".ts";
+        if (fs.existsSync(tsCandidate)) {
+          return tsCandidate;
+        }
+      }
+    }
+
+    return null;
+  },
+};
 function resolveNodePackageRoot(packageName: string): string {
   const directCandidates = [
     path.join(here, "node_modules", packageName),
@@ -72,10 +111,50 @@ const defaultUnitExcludes = [
 
 export default defineConfig({
   ...baseConfig,
-  root: repoRoot,
+  root: elizaRoot,
+  plugins: [
+    ...(Array.isArray(baseConfig.plugins) ? baseConfig.plugins : []),
+    agentSourceJsToTsPlugin,
+  ],
+  ssr: {
+    ...baseConfig.ssr,
+    noExternal: [
+      "@elizaos/agent",
+      "@elizaos/ui",
+      ...(Array.isArray(baseConfig.ssr?.noExternal)
+        ? baseConfig.ssr.noExternal
+        : []),
+    ],
+  },
   resolve: {
     ...baseConfig.resolve,
     alias: [
+      {
+        find: new RegExp(`^${escapedAgentSourceRoot}/(.+)\\.js$`),
+        replacement: `${agentSourceRoot}/$1.ts`,
+      },
+      {
+        find: new RegExp(`^/@fs${escapedAgentSourceRoot}/(.+)\\.js$`),
+        replacement: `${agentSourceRoot}/$1.ts`,
+      },
+      {
+        find: "@elizaos/ui",
+        replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
+      },
+      {
+        find: "@elizaos/agent",
+        replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-workflow$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-workflow",
+          "src",
+          "index.ts",
+        ),
+      },
       {
         find: /^react\/jsx-dev-runtime$/,
         replacement: path.join(reactRoot, "jsx-dev-runtime.js"),
@@ -127,17 +206,19 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/plugin-google$/,
-        replacement: path.join(
-          elizaRoot,
-          "plugins",
-          "plugin-google",
-          "src",
-          "index.ts",
-        ),
+        replacement: path.join(lifeopsTestStubsRoot, "plugin-google.ts"),
       },
       ...(Array.isArray(baseConfig.resolve?.alias)
         ? baseConfig.resolve.alias
         : []),
+      {
+        find: "@elizaos/ui",
+        replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
+      },
+      {
+        find: "@elizaos/agent",
+        replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
+      },
     ],
   },
   test: {
@@ -154,7 +235,14 @@ export default defineConfig({
       `${packageRootFromRepo}/extensions/**/*.test.tsx`,
     ],
     exclude: defaultUnitExcludes,
-    setupFiles: [appCoreTestSetup],
+    setupFiles: [lifeopsTestSetup, appCoreTestSetup],
+    server: {
+      ...baseConfig.test?.server,
+      deps: {
+        ...baseConfig.test?.server?.deps,
+        inline: true,
+      },
+    },
     coverage: {
       ...baseConfig.test?.coverage,
       include: [`${packageRootFromRepo}/src/**/*.{ts,tsx}`],

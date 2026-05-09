@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "echo 'Skipping eliza-vrm-demo build - has Service type issue'",
+    "build": "bun run typecheck && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe ."

@@ -8,10 +8,23 @@ interface TunnelConfig {
   subdomain?: string;
 }
 
+interface NgrokApiTunnel {
+  proto?: string;
+  public_url?: string;
+}
+
+interface NgrokApiResponse {
+  tunnels?: NgrokApiTunnel[];
+}
+
 /** Coerce runtime.getSetting() (string | number | boolean | null) to string. */
 function settingString(value: string | number | boolean | null | undefined): string | undefined {
   if (value === null || value === undefined) return undefined;
   return String(value);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 import { type ChildProcess, spawn } from 'node:child_process';
@@ -95,8 +108,8 @@ export class NgrokService extends Service implements ITunnelService {
     // Validate environment
     try {
       await validateNgrokConfig(this.runtime);
-    } catch (error: any) {
-      throw new Error(`Ngrok environment validation failed: ${error.message}`);
+    } catch (error) {
+      throw new Error(`Ngrok environment validation failed: ${errorMessage(error)}`);
     }
 
     // Enforce rate limiting
@@ -117,8 +130,8 @@ export class NgrokService extends Service implements ITunnelService {
       this.startedAt = new Date();
       elizaLogger.success(`✅ Ngrok tunnel started: ${tunnelUrl}`);
       return tunnelUrl;
-    } catch (error: any) {
-      elizaLogger.error('Failed to start ngrok tunnel:', error);
+    } catch (error) {
+      elizaLogger.error('Failed to start ngrok tunnel:', errorMessage(error));
       throw error;
     }
   }
@@ -131,10 +144,10 @@ export class NgrokService extends Service implements ITunnelService {
     while (attempts < maxAttempts) {
       try {
         return await this.startTunnelInternal(port);
-      } catch (error: any) {
+      } catch (error) {
         attempts++;
 
-        if (error.message?.includes('domain might already be in use')) {
+        if (errorMessage(error).includes('domain might already be in use')) {
           if (attempts < maxAttempts) {
             elizaLogger.warn(
               `Domain conflict detected, retrying in ${baseDelay * attempts}ms (attempt ${attempts}/${maxAttempts})`
@@ -364,8 +377,8 @@ export class NgrokService extends Service implements ITunnelService {
           res.on('data', (chunk) => (data += chunk));
           res.on('end', () => {
             try {
-              const tunnels = JSON.parse(data);
-              const httpsTunnel = tunnels.tunnels?.find((t: any) => t.proto === 'https');
+              const tunnels = JSON.parse(data) as NgrokApiResponse;
+              const httpsTunnel = tunnels.tunnels?.find((t) => t.proto === 'https');
               if (httpsTunnel?.public_url) {
                 resolve(httpsTunnel.public_url);
               } else {

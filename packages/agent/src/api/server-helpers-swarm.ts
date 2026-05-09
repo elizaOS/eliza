@@ -19,19 +19,19 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.js";
-import { resolveClientChatAdminEntityId } from "./client-chat-admin.js";
+import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.ts";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
 import type {
   CoordinationLLMResponse,
   PTYService,
-} from "./parse-action-block.js";
+} from "./parse-action-block.ts";
 import {
   parseActionBlock,
   stripActionBlockFromDisplay,
-} from "./parse-action-block.js";
-import { resolveAppUserName } from "./server-helpers.js";
-import type { ConversationMeta, ServerState } from "./server-types.js";
-import { routeTaskAgentTextToConnector } from "./task-agent-message-routing.js";
+} from "./parse-action-block.ts";
+import { resolveAppUserName } from "./server-helpers.ts";
+import type { ConversationMeta, ServerState } from "./server-types.ts";
+import { routeTaskAgentTextToConnector } from "./task-agent-message-routing.ts";
 
 // ---------------------------------------------------------------------------
 // Autonomy -> User message routing

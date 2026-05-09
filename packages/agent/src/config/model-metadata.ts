@@ -2,7 +2,7 @@ import type {
   ElizaConfig,
   ModelDefinitionConfig,
   ModelProviderConfig,
-} from "./types.js";
+} from "./types.ts";
 
 export const DEFAULT_MODEL_CONTEXT_WINDOW = 128_000;
 export const DEFAULT_MODEL_MAX_TOKENS = 8_192;

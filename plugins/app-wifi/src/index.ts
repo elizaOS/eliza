@@ -15,5 +15,5 @@ export {
 } from "./components/wifi-app";
 export { appWifiPlugin, default } from "./plugin";
 export { wifiNetworksProvider } from "./providers/networks";
-export * from "./ui";
 export * from "./register";
+export * from "./ui";

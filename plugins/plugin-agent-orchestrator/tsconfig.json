@@ -2,7 +2,10 @@
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
-    "lib": ["ESNext", "DOM"],
+    "lib": [
+      "ESNext",
+      "DOM"
+    ],
     "moduleResolution": "bundler",
     "outDir": "dist",
     "strict": true,
@@ -19,9 +22,14 @@
     "noEmitOnError": false,
     "moduleDetection": "force",
     "allowArbitraryExtensions": true,
-    "types": ["node", "bun-types"],
+    "types": [
+      "node",
+      "bun-types"
+    ],
     "paths": {
-      "@elizaos/core": ["../../../packages/core/dist"]
+      "@elizaos/core": [
+        "../../../packages/core/dist"
+      ]
     },
     "noUnusedLocals": false,
     "noUnusedParameters": false,
@@ -31,6 +39,13 @@
     "noUncheckedIndexedAccess": false,
     "noPropertyAccessFromIndexSignature": false
   },
-  "include": ["**/*.ts"],
-  "exclude": ["dist", "node_modules", "src/__tests__/**/*", "**/*.spec.ts"]
+  "include": [
+    "**/*.ts"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "src/__tests__/**/*",
+    "**/*.spec.ts"
+  ]
 }

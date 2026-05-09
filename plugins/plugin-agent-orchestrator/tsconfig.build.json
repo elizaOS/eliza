@@ -11,11 +11,18 @@
     "noEmit": false,
     "allowImportingTsExtensions": false,
     "paths": {
-      "@elizaos/core": ["../../../packages/core/dist"]
+      "@elizaos/core": [
+        "../../../packages/core/dist"
+      ]
     },
-    "types": ["node", "bun-types"]
+    "types": [
+      "node",
+      "bun-types"
+    ]
   },
-  "include": ["**/*.ts"],
+  "include": [
+    "**/*.ts"
+  ],
   "exclude": [
     "build.ts",
     "dist",

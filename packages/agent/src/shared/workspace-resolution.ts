@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { resolveStateDir, resolveUserPath } from "../config/paths.js";
+import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
 
 const EXPLICIT_WORKSPACE_DIR_KEYS = ["ELIZA_WORKSPACE_DIR"] as const;
 const EXPLICIT_STATE_DIR_KEYS = ["ELIZA_STATE_DIR"] as const;

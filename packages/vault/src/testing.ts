@@ -1,7 +1,7 @@
 /**
  * Testing utilities for @elizaos/vault.
  *
- *   import { createTestVault } from "@elizaos/vault/testing";
+ *   import { createTestVault } from "@elizaos/vault";
  *
  *   const test = await createTestVault({ "ui.theme": "dark" });
  *   await test.vault.set("openrouter.apiKey", "k", { sensitive: true });

@@ -1,11 +1,21 @@
 import type http from "node:http";
-import { sendJson } from "@elizaos/app-core";
 
 const EMPTY_APPROVAL_SNAPSHOT = {
   mode: "full_control",
   pendingCount: 0,
   pendingApprovals: [],
 } as const;
+
+function sendJson(
+  res: http.ServerResponse,
+  status: number,
+  body: unknown,
+): void {
+  if (res.headersSent) return;
+  res.statusCode = status;
+  res.setHeader("content-type", "application/json; charset=utf-8");
+  res.end(JSON.stringify(body));
+}
 
 function sendEmptyApprovalStream(res: http.ServerResponse): void {
   res.writeHead(200, {

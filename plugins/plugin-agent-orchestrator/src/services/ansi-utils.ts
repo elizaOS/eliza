@@ -134,8 +134,7 @@ function isLikelyRawPatchOrSourceDump(text: string): boolean {
     SOURCE_PUNCTUATION_LINE.test(line),
   );
   return (
-    addedPatchLines.length > 0 &&
-    removedPatchLines.length > 0 &&
+    (addedPatchLines.length > 0 || removedPatchLines.length > 0) &&
     patchLines.length >= 5 &&
     patchLines.length / lines.length >= 0.8 &&
     sourceLikePatchLines.length >=

@@ -36,7 +36,6 @@ import {
   getAppCoreModuleFallbackPath,
   getAppCorePluginFallbackPath,
   getAppCoreSourceAliases,
-  getElizaCoreRolesEntry,
   getElizaWorkspaceRoot,
   getOptionalInstalledPackageAliases,
   getOptionalPluginSdkAliases,
@@ -54,7 +53,6 @@ interface RootPackageManifest {
 
 const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
 const elizaCoreEntry = getElizaCoreEntry(repoRoot);
-const elizaCoreRolesEntry = getElizaCoreRolesEntry(repoRoot);
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
 const sharedSourceRoot = getSharedSourceRoot(repoRoot);
@@ -231,41 +229,10 @@ const vitestResolveAlias: ModuleAlias[] = [
     replacement: asViteFsPath(path.join(workspaceReactTestRendererDir, "$1")),
   },
   {
-    // `@elizaos/plugin-sql/schema` etc. resolve to TS source via the
-    // package's `exports` field. Vitest's Node-style resolver inside
-    // this config doesn't honour those, so map sub-paths explicitly to
-    // the actual source dir. Without this, anything that transitively
-    // imports `@elizaos/plugin-sql/schema` (auth-store, etc.) fails to
-    // load with "Cannot find package".
     find: /^@elizaos\/plugin-sql$/,
     replacement: path.join(
       elizaWorkspaceRoot,
       "plugins/plugin-sql/src/index.node.ts",
-    ),
-  },
-  {
-    find: /^@elizaos\/plugin-sql\/schema$/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "plugins",
-      "plugin-sql",
-      "typescript",
-      "schema",
-      "index.ts",
-    ),
-  },
-  {
-    find: /^@elizaos\/plugin-sql\/drizzle$/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "plugins/plugin-sql/src/drizzle/index.ts",
-    ),
-  },
-  {
-    find: /^@elizaos\/plugin-sql\/(.+)$/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "plugins/plugin-sql/src/$1",
     ),
   },
   {
@@ -282,17 +249,6 @@ const vitestResolveAlias: ModuleAlias[] = [
       "llama",
       "src",
       "index.ts",
-    ),
-  },
-  {
-    // Transitively imported via app-lifeops; resolve to source so subpath imports work.
-    find: "@elizaos/plugin-telegram/account-auth-service",
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "plugins",
-      "plugin-telegram",
-      "src",
-      "account-auth-service.ts",
     ),
   },
   {
@@ -318,17 +274,8 @@ const vitestResolveAlias: ModuleAlias[] = [
     find: /^@elizaos\/plugin-pdf$/,
     replacement: path.join(pluginPdfSrc, "index.node.ts"),
   },
-  {
-    find: /^@elizaos\/plugin-pdf\/(.+)$/,
-    replacement: path.join(pluginPdfSrc, "$1"),
-  },
   ...workspacePluginSourceAliases,
   ...getOptionalPluginSdkAliases(repoRoot),
-  // Keep the roles shim here so Vitest resolves it when the local eliza checkout is absent.
-  {
-    find: "@elizaos/core/roles",
-    replacement: elizaCoreRolesEntry,
-  },
   ...(elizaCoreEntry
     ? [
         {

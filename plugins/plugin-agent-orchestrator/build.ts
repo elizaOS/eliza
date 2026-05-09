@@ -10,8 +10,6 @@ import { join } from "node:path";
 
 const externalDeps = [
   "@elizaos/core",
-  "@elizaos/agent",
-  "@elizaos/app-core",
   "@elizaos/app-task-coordinator",
   "coding-agent-adapters",
   "drizzle-orm",

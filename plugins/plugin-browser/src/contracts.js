@@ -3,7 +3,7 @@
  *
  * Transport/domain types for the generic browser companion + packaging
  * surface. LifeOps workflow-bound browser *sessions* (with scoping columns
- * and workflowId) remain in `@elizaos/shared/contracts/lifeops` and
+ * and workflowId) remain in the app-facing LifeOps contracts and
  * continue to reference `BrowserBridgeKind` / `BrowserBridgeAction` from
  * this module.
  */

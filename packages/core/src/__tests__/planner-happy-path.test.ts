@@ -724,6 +724,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						success: true,
 						decision: "FINISH",
 						thought: "Got events.",
+						messageToUser: "Got events.",
 					}),
 				},
 				// Outer evaluator: FINISH

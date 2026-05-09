@@ -6,7 +6,7 @@
  * shapes and narrow runtime decoders for rows read back from SQL.
  */
 
-export const BLOCK_RULES_TABLE = "life_block_rules" as const;
+export const BLOCK_RULES_TABLE = "app_lifeops.life_block_rules" as const;
 
 export type BlockRuleGateType =
   | "fixed_duration"

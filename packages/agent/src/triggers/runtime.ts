@@ -5,14 +5,14 @@ import {
   buildTriggerMetadata,
   DISABLED_TRIGGER_INTERVAL_MS,
   MAX_TRIGGER_RUN_HISTORY,
-} from "./scheduling.js";
+} from "./scheduling.ts";
 import type {
   TriggerConfig,
   TriggerHealthSnapshot,
   TriggerRunRecord,
   TriggerSummary,
   TriggerTaskMetadata,
-} from "./types.js";
+} from "./types.ts";
 
 // Phase 2E: triggers always dispatch through the workflow service. The
 // previous autonomy-room memory injection path has been removed; every

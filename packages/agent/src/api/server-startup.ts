@@ -20,5 +20,5 @@ export type {
   SkillEntry,
   StreamEventEnvelope,
   StreamEventType,
-} from "./server.js";
-export { startApiServer } from "./server.js";
+} from "./server.ts";
+export { startApiServer } from "./server.ts";

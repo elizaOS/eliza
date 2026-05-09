@@ -29,26 +29,26 @@ import {
   resolveStylePresetById,
   resolveStylePresetByName,
 } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
-import { resolveStateDir } from "../config/paths.js";
+import type { ElizaConfig } from "../config/config.ts";
+import { resolveStateDir } from "../config/paths.ts";
 import {
   type AgentEventServiceLike,
   getAgentEventService,
-} from "../runtime/agent-event-service.js";
+} from "../runtime/agent-event-service.ts";
 import {
   type CoreManagerLike,
   isCoreManagerLike,
   isPluginManagerLike,
   type PluginManagerLike,
-} from "../services/plugin-manager-types.js";
-import { maybeAugmentChatMessageWithDocuments as augmentChatMessageWithDocuments } from "./chat-augmentation.js";
-import { extractCompatTextContent } from "./compat-utils.js";
-import type { ChatAttachmentWithData, ServerState } from "./server-types.js";
-import { getWalletAddresses } from "./wallet.js";
+} from "../services/plugin-manager-types.ts";
+import { maybeAugmentChatMessageWithDocuments as augmentChatMessageWithDocuments } from "./chat-augmentation.ts";
+import { extractCompatTextContent } from "./compat-utils.ts";
+import type { ChatAttachmentWithData, ServerState } from "./server-types.ts";
+import { getWalletAddresses } from "./wallet.ts";
 import {
   resolvePluginEvmLoaded,
   resolveWalletCapabilityStatus,
-} from "./wallet-capability.js";
+} from "./wallet-capability.ts";
 
 // ---------------------------------------------------------------------------
 // Service accessors
@@ -183,7 +183,7 @@ export interface ConversationMeta {
   id: string;
   title: string;
   roomId: UUID;
-  metadata?: import("./server-types.js").ConversationMetadata;
+  metadata?: import("./server-types.ts").ConversationMetadata;
   createdAt: string;
   updatedAt: string;
 }
@@ -436,7 +436,7 @@ export function cloneWithoutBlockedObjectKeys<T>(value: T): T {
 // Chat language augmentation (re-exported from chat-augmentation.ts)
 // ---------------------------------------------------------------------------
 
-export { maybeAugmentChatMessageWithLanguage } from "./chat-augmentation.js";
+export { maybeAugmentChatMessageWithLanguage } from "./chat-augmentation.ts";
 
 // ---------------------------------------------------------------------------
 // Chat image validation

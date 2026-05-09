@@ -13,8 +13,8 @@
  */
 
 import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
-import { isInsufficientCreditsError } from "../../api/credit-detection.js";
-import type { HealthCheck, HealthCheckResult } from "./types.js";
+import { isInsufficientCreditsError } from "../../api/credit-detection.ts";
+import type { HealthCheck, HealthCheckResult } from "./types.ts";
 
 const LOG_PREFIX = "[runtime-ops:health-checks]";
 

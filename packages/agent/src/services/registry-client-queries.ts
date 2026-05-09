@@ -8,7 +8,7 @@ import type {
   RegistryPluginInfo,
   RegistryPluginListItem,
   RegistrySearchResult,
-} from "./registry-client-types.js";
+} from "./registry-client-types.ts";
 
 export function normalizePluginLookupAlias(name: string): string {
   const trimmed = name.trim();

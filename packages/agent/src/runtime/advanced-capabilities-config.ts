@@ -1,4 +1,4 @@
-import type { ElizaConfig } from "../config/config.js";
+import type { ElizaConfig } from "../config/config.ts";
 
 export const ADVANCED_CAPABILITY_PLUGIN_IDS = [
   "experience",

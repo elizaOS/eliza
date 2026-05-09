@@ -45,4 +45,4 @@ export function createAppClawvillePlugin(): Plugin {
 export const appClawvillePlugin = createAppClawvillePlugin();
 
 export default appClawvillePlugin;
-export * from "./ui.js";
+export * from "./ui/index.js";

@@ -1,1 +1,1 @@
-export * from "../../../core/src/api/route-helpers.js";
+export * from "../../../core/src/api/route-helpers.ts";

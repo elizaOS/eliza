@@ -11,6 +11,7 @@ import {
 } from "@/lib/security/redirect-validation";
 import { requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
+import { sanitizeAppChargeMetadata } from "./app-charge-callbacks";
 import { cryptoPaymentsService } from "./crypto-payments";
 import type { OxaPayNetwork } from "./oxapay";
 
@@ -36,6 +37,10 @@ interface ChargeRequestMetadata {
   paid_provider_payment_id?: string;
   payer_user_id?: string;
   payer_organization_id?: string;
+  callback_url?: string;
+  callback_secret?: string;
+  callback_channel?: Record<string, unknown>;
+  callback_metadata?: Record<string, unknown>;
 }
 
 export interface CreateAppChargeRequestParams {
@@ -47,6 +52,10 @@ export interface CreateAppChargeRequestParams {
   providers?: AppChargeProvider[];
   successUrl?: string;
   cancelUrl?: string;
+  callbackUrl?: string;
+  callbackSecret?: string;
+  callbackChannel?: Record<string, unknown>;
+  callbackMetadata?: Record<string, unknown>;
   lifetimeSeconds?: number;
   metadata?: Record<string, unknown>;
 }
@@ -124,7 +133,7 @@ function toChargeRequest(payment: CryptoPayment): AppChargeRequest | null {
     createdAt: payment.created_at,
     successUrl: typeof metadata.success_url === "string" ? metadata.success_url : undefined,
     cancelUrl: typeof metadata.cancel_url === "string" ? metadata.cancel_url : undefined,
-    metadata,
+    metadata: sanitizeAppChargeMetadata(metadata),
   };
 }
 
@@ -184,6 +193,15 @@ function validateRedirects(params: {
   };
 }
 
+function validateCallbackUrl(app: App, callbackUrl?: string): string | undefined {
+  if (!callbackUrl) return undefined;
+  return assertAllowedAbsoluteRedirectUrl(
+    callbackUrl,
+    allowedRedirectOrigins(app),
+    "callback_url",
+  ).toString();
+}
+
 export class AppChargeRequestsService {
   async create(params: CreateAppChargeRequestParams): Promise<AppChargeRequest> {
     const app = await appsRepository.findById(params.appId);
@@ -204,6 +222,7 @@ export class AppChargeRequestsService {
       cancelUrl: params.cancelUrl,
       defaultCancelUrl: paymentUrl,
     });
+    const callbackUrl = validateCallbackUrl(app, params.callbackUrl);
     const providers = params.providers?.length ? params.providers : ["stripe", "oxapay"];
     const expiresAt = new Date(Date.now() + normalizeLifetime(params.lifetimeSeconds) * 1000);
 
@@ -229,6 +248,10 @@ export class AppChargeRequestsService {
         payment_url: paymentUrl,
         success_url: redirects.successUrl,
         cancel_url: redirects.cancelUrl,
+        callback_url: callbackUrl,
+        callback_secret: params.callbackSecret,
+        callback_channel: params.callbackChannel,
+        callback_metadata: params.callbackMetadata,
         creator_user_id: params.creatorUserId,
         creator_organization_id: params.creatorOrganizationId,
         created_by: "app_charge_requests",
@@ -315,6 +338,17 @@ export class AppChargeRequestsService {
     successUrl.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
     successUrl.searchParams.set("charge_request_id", request.id);
 
+    const checkoutMetadata = {
+      type: "app_credit_purchase",
+      source: "miniapp_app",
+      app_id: params.appId,
+      charge_request_id: params.chargeRequestId,
+      user_id: params.payerUserId,
+      organization_id: params.payerOrganizationId,
+      credits: request.amountUsd.toFixed(2),
+      amount: request.amountUsd.toFixed(2),
+    };
+
     const session = await requireStripe().checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [
@@ -334,15 +368,9 @@ export class AppChargeRequestsService {
       success_url: successUrl.toString(),
       cancel_url: redirects.cancelUrl,
       customer_email: params.payerEmail || undefined,
-      metadata: {
-        type: "app_credit_purchase",
-        source: "miniapp_app",
-        app_id: params.appId,
-        charge_request_id: params.chargeRequestId,
-        user_id: params.payerUserId,
-        organization_id: params.payerOrganizationId,
-        credits: request.amountUsd.toFixed(2),
-        amount: request.amountUsd.toFixed(2),
+      metadata: checkoutMetadata,
+      payment_intent_data: {
+        metadata: checkoutMetadata,
       },
     });
 

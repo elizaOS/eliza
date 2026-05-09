@@ -46,10 +46,6 @@ type TelegramLoginApi = {
   };
 };
 
-type TelegramLoginWindow = Window & {
-  Telegram?: TelegramLoginApi;
-};
-
 declare global {
   interface Window {
     Telegram?: TelegramLoginApi;

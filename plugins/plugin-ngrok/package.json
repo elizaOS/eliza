@@ -29,7 +29,13 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."
   },
-  "keywords": ["elizaos", "plugin", "tunnel", "ngrok", "networking"],
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "tunnel",
+    "ngrok",
+    "networking"
+  ],
   "peerDependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-tunnel": "workspace:*"

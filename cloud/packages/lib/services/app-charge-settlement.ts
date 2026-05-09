@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { dbWrite } from "@/db/helpers";
 import { cryptoPayments } from "@/db/schemas/crypto-payments";
 import { logger } from "@/lib/utils/logger";
+import { appChargeCallbacksService } from "./app-charge-callbacks";
 
 export type AppChargeSettlementProvider = "stripe" | "oxapay";
 
@@ -32,6 +33,7 @@ export class AppChargeSettlementService {
     const paidAt = new Date();
     const amount =
       typeof params.amountUsd === "number" ? params.amountUsd.toFixed(2) : params.amountUsd;
+    let didMarkPaid = false;
 
     await dbWrite.transaction(async (tx) => {
       const [chargeRequest] = await tx
@@ -68,14 +70,35 @@ export class AppChargeSettlementService {
           },
         })
         .where(eq(cryptoPayments.id, params.chargeRequestId));
+
+      didMarkPaid = true;
     });
 
-    logger.info("[AppCharges] Marked charge request paid", {
-      appId: params.appId,
-      chargeRequestId: params.chargeRequestId,
-      provider: params.provider,
-      providerPaymentId: params.providerPaymentId,
-    });
+    if (didMarkPaid) {
+      await appChargeCallbacksService.dispatch({
+        appId: params.appId,
+        chargeRequestId: params.chargeRequestId,
+        status: "paid",
+        provider: params.provider,
+        providerPaymentId: params.providerPaymentId,
+        amountUsd: amount,
+        payerUserId: params.payerUserId,
+        payerOrganizationId: params.payerOrganizationId,
+        metadata: params.metadata,
+      });
+    }
+
+    logger.info(
+      didMarkPaid
+        ? "[AppCharges] Marked charge request paid"
+        : "[AppCharges] Charge request already paid",
+      {
+        appId: params.appId,
+        chargeRequestId: params.chargeRequestId,
+        provider: params.provider,
+        providerPaymentId: params.providerPaymentId,
+      },
+    );
   }
 }
 

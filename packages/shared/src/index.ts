@@ -12,10 +12,10 @@ export * from "./app-hero-art.js";
 // Awareness + themes barrels
 export * from "./awareness/index.js";
 // Re-export moved app-core modules so consumers can import the package barrel.
-export * from "./config/index.js";
 export * from "./config/allowed-hosts.js";
 export * from "./config/api-key-prefix-hints.js";
 export * from "./config/app-config.js";
+export * from "./config/app-manifest.js";
 export * from "./config/boot-config.js";
 // boot-config-react.tsx and branding-react.tsx are not barrel-exported
 // from the package root because they pull in React at module load time.
@@ -28,9 +28,11 @@ export * from "./config/config-catalog.js";
 export * from "./config/config-paths.js";
 export * from "./config/env-vars.js";
 export * from "./config/plugin-auto-enable.js";
+export * from "./config/plugin-manifest.js";
 export * from "./config/plugin-ui-spec.js";
 export * from "./config/runtime-overrides.js";
 export * from "./config/schema.js";
+export * from "./config/types.eliza.js";
 // Config barrel — collides with `contracts/inbox` on `InboxAutoReplyConfig`
 // and `InboxTriageRules`. Surface those config-level shapes under aliased
 // names; the canonical shapes remain in `./contracts`.
@@ -193,15 +195,12 @@ export * from "./connectors.js";
 // `contracts/theme` is intentionally NOT pulled in here; it reaches the public
 // surface through `./themes`, which already re-exports the same identifiers.
 export * from "./contracts/index.js";
-export { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "./contracts/service-routing.js";
+export {
+  DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
+  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+} from "./contracts/service-routing.js";
 export * from "./dev-settings-banner-style.js";
 export * from "./dev-settings-table.js";
-// `eliza-core-roles` is intentionally NOT re-exported from this barrel.
-// It pulls runtime imports (`logger`, `createUniqueUuid`) from `@elizaos/core`,
-// which would drag the entire `@elizaos/core` source graph (plugin-sql,
-// transformers, onnxruntime) into every consumer of `@elizaos/shared`.
-// Callers that need the vendored role helpers must import them through the
-// dedicated subpath: `import { ROLE_RANK } from "@elizaos/shared/eliza-core-roles"`.
 export * from "./env-utils.js";
 export * from "./events/index.js";
 export * from "./format-error.js";
@@ -226,7 +225,6 @@ export * from "./test-support/test-helpers.js";
 export * from "./themes/index.js";
 export * from "./type-guards.js";
 export * from "./types/index.js";
-export * from "./utils/index.js";
 export * from "./utils/asset-url.js";
 export * from "./utils/assistant-text.js";
 export * from "./utils/browser-tab-kit-types.js";

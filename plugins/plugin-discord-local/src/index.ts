@@ -6,7 +6,6 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { resolveStateDir } from "@elizaos/agent";
 import {
   ChannelType,
   ContentType,
@@ -22,6 +21,7 @@ import {
   type RouteRequest,
   type RouteResponse,
   Service,
+  resolveStateDir,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";

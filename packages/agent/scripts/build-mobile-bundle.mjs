@@ -422,7 +422,7 @@ const zodCjsResolverPlugin = {
   },
 };
 
-// `@elizaos/ui/capacitor-shell` and any other workspace UI module that
+// host-specific UI modules and any other workspace UI module that
 // pulls in CSS would otherwise be included in the bundle. Bun.build emits
 // a `.css` artifact in addition to the `.js`, and our `naming` template
 // fixes the output filename for both — leading to "Multiple files share

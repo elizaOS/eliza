@@ -4,7 +4,7 @@
  * Fetches MCP servers from the official registry and manages local config.
  */
 
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 
 const MCP_REGISTRY_BASE_URL = "https://registry.modelcontextprotocol.io";
 

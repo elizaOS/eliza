@@ -11,15 +11,18 @@
 
 const externalDeps = [
   "@elizaos/core",
-  "@elizaos/agent",
-  "@elizaos/shared",
   "@modelcontextprotocol/sdk",
+  "@node-llama-cpp",
   "ajv",
   "json5",
+  "node-llama-cpp",
 ];
 
 async function build(): Promise<void> {
   const totalStart = Date.now();
+  const { rm } = await import("node:fs/promises");
+
+  await rm("dist", { recursive: true, force: true });
 
   const nodeStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-mcp for Node (ESM)...");

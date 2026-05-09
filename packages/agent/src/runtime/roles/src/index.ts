@@ -18,23 +18,16 @@ import {
   type IAgentRuntime,
   logger,
   type Plugin,
+  roleAction,
 } from "@elizaos/core";
-// `roleAction` is reached through a 4-hop barrel chain inside `@elizaos/core`
-// (basic-capabilities → advanced-capabilities → actions/index → role.ts).
-// Bun.build (1.3.13) renames the leaf `roleAction` to `roleAction2` to dodge
-// a shadowing collision but never adds the `roleAction = roleAction2` binding
-// the consumer scope needs, so accessing the bare name throws ReferenceError
-// at runtime. Hop directly to the leaf file via the agent's tsconfig path
-// alias so Bun gets a fresh consumer it cannot collapse.
-import { roleAction } from "@elizaos/core/features/advanced-capabilities/actions/role";
-import { rolesProvider } from "./provider.js";
-import type { RolesConfig, RolesWorldMetadata } from "./types.js";
+import { rolesProvider } from "./provider.ts";
+import type { RolesConfig, RolesWorldMetadata } from "./types.ts";
 import {
   hasConfiguredCanonicalOwner,
   matchEntityToConnectorAdminWhitelist,
   normalizeRole,
   resolveCanonicalOwnerId,
-} from "./utils.js";
+} from "./utils.ts";
 
 const BOOTSTRAP_RETRY_TIMERS_KEY = Symbol.for(
   "@elizaos/runtime.roles.bootstrapRetries",
@@ -46,8 +39,8 @@ type RuntimeWithBootstrapRetries = IAgentRuntime & {
   [BOOTSTRAP_RETRY_TIMERS_KEY]?: Map<string, ReturnType<typeof setTimeout>>;
 };
 
-export { roleAction } from "@elizaos/core/features/advanced-capabilities/actions/role";
-export { rolesProvider } from "./provider.js";
+export { roleAction };
+export { rolesProvider } from "./provider.ts";
 export type {
   ConnectorAdminWhitelist,
   RoleCheckResult,
@@ -55,8 +48,8 @@ export type {
   RoleName,
   RolesConfig,
   RolesWorldMetadata,
-} from "./types.js";
-export { ROLE_RANK } from "./types.js";
+} from "./types.ts";
+export { ROLE_RANK } from "./types.ts";
 export {
   canModifyRole,
   checkSenderPrivateAccess,
@@ -73,7 +66,7 @@ export {
   resolveWorldForMessage,
   setConnectorAdminWhitelist,
   setEntityRole,
-} from "./utils.js";
+} from "./utils.ts";
 
 async function updateWorldMetadata(
   runtime: IAgentRuntime,

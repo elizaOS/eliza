@@ -5,13 +5,59 @@ import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
-import { readRequestBody, sendJson as sendJsonResponse } from "@elizaos/core";
-import { readJsonBody as parseJsonBody } from "@elizaos/shared";
-import type {
-  RemoteSigningService,
-  SandboxManager,
-  SigningRequest,
-} from "@elizaos/agent";
+import {
+  readJsonBody as parseJsonBody,
+  readRequestBody,
+  sendJson as sendJsonResponse,
+} from "@elizaos/core";
+
+interface SandboxExecResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+  executedInSandbox: boolean;
+}
+
+interface SandboxManager {
+  getStatus(): unknown;
+  getEventLog(): unknown[];
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  recover(): Promise<void>;
+  exec(options: {
+    command: string;
+    workdir?: string;
+    timeoutMs?: number;
+  }): Promise<SandboxExecResult>;
+  getBrowserCdpEndpoint(): string | null;
+  getBrowserWsEndpoint(): string | null;
+  getBrowserNoVncEndpoint(): string | null;
+}
+
+interface SigningRequest {
+  requestId: string;
+  chainId: number;
+  to: string;
+  value: string;
+  data: string;
+  nonce?: number;
+  gasLimit?: string;
+  createdAt: number;
+}
+
+interface SigningResult {
+  success: boolean;
+  [key: string]: unknown;
+}
+
+interface RemoteSigningService {
+  submitSigningRequest(request: SigningRequest): Promise<SigningResult>;
+  approveRequest(requestId: string): Promise<SigningResult>;
+  rejectRequest(requestId: string): boolean;
+  getPendingApprovals(): unknown[];
+  getAddress(): Promise<string>;
+}
 
 interface SandboxRouteState {
   sandboxManager: SandboxManager | null;

@@ -7,7 +7,7 @@
  */
 
 import type { Task } from "@elizaos/core";
-import { readTriggerConfig } from "../triggers/runtime.js";
+import { readTriggerConfig } from "../triggers/runtime.ts";
 
 // ---------------------------------------------------------------------------
 // Constants

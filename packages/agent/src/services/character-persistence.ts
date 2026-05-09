@@ -3,12 +3,12 @@ import {
   type ElizaConfig,
   loadElizaConfig,
   saveElizaConfig,
-} from "../config/config.js";
+} from "../config/config.ts";
 import {
   type CharacterHistorySource,
   type RuntimeCharacterLike,
   recordCharacterHistory,
-} from "./character-history.js";
+} from "./character-history.ts";
 
 export const CHARACTER_PERSISTENCE_SERVICE = "eliza_character_persistence";
 

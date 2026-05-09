@@ -13,6 +13,7 @@ import { mkdir, readFile, writeFile } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
 import { parseArgs } from "util";
+import { fileURLToPath } from "url";
 import { AGENT_CONTEXTS, type AgentContext } from "./context-types.js";
 import {
   createAnthropicTeacher,
@@ -548,7 +549,9 @@ Environment:
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

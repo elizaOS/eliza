@@ -46,15 +46,8 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "exports": {
-    ".": "./src/index.ts",
     "./package.json": "./package.json",
-    "./config": "./src/config/index.ts",
-    "./config/*": "./src/config/*.ts",
-    "./services/*": "./src/services/*.ts",
-    "./api/*": "./src/api/*.ts",
-    "./runtime/*": "./src/runtime/*.ts",
-    "./*": "./src/*.ts",
-    "./*.js": "./src/*.ts"
+    ".": "./src/index.ts"
   },
   "publishConfig": {
     "access": "public",
@@ -63,9 +56,6 @@
   "dependencies": {
     "@clack/prompts": "^1.0.0",
     "@elizaos/app-elizamaker": "workspace:*",
-    "@elizaos/app-lifeops": "workspace:*",
-    "@elizaos/app-task-coordinator": "workspace:*",
-    "@elizaos/app-training": "workspace:*",
     "@elizaos/capacitor-contacts": "workspace:*",
     "@elizaos/capacitor-phone": "workspace:*",
     "@elizaos/capacitor-wifi": "workspace:*",

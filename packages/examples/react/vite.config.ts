@@ -1,50 +1,62 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig, type Plugin } from "vite";
+import { fileURLToPath } from "node:url";
+import { defineConfig } from "vite";
 
-/**
- * Plugin to handle PGlite's Node.js-only dynamic imports.
- * PGlite has conditional imports for fs/promises that are only used
- * in Node.js, but Vite still tries to resolve them. This plugin
- * rewrites those imports to empty modules.
- */
-function pgliteBrowserPlugin(): Plugin {
-  return {
-    name: "pglite-browser",
-    enforce: "pre",
-    resolveId(id) {
-      // Only intercept bare module specifiers for Node.js built-ins
-      if (
-        (id === "fs" ||
-          id === "fs/promises" ||
-          id === "path" ||
-          id === "url") &&
-        !id.startsWith(".") &&
-        !id.startsWith("/")
-      ) {
-        return "\0virtual:node-stub";
-      }
-      return null;
-    },
-    load(id) {
-      if (id === "\0virtual:node-stub") {
-        return `
-          export default {};
-          export const readFile = async () => { throw new Error('fs not available in browser'); };
-          export const writeFile = async () => { throw new Error('fs not available in browser'); };
-          export const existsSync = () => false;
-          export const join = (...args) => args.join('/');
-          export const resolve = (...args) => args.join('/');
-          export const dirname = (p) => p;
-          export const fileURLToPath = (url) => url;
-        `;
-      }
-      return null;
-    },
-  };
+const nodeStub = fileURLToPath(
+  new URL("./src/stubs/node-builtins.ts", import.meta.url),
+);
+
+const nodeBuiltinIds = [
+  "assert",
+  "async_hooks",
+  "buffer",
+  "child_process",
+  "constants",
+  "crypto",
+  "dns/promises",
+  "events",
+  "fs",
+  "fs/promises",
+  "http",
+  "http2",
+  "https",
+  "module",
+  "net",
+  "os",
+  "path",
+  "stream",
+  "tls",
+  "url",
+  "util",
+  "vm",
+  "zlib",
+];
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const nodeBuiltinAliases = [
+  ...nodeBuiltinIds.flatMap((id) => {
+    const escaped = escapeRegExp(id);
+    return [
+      { find: new RegExp(`^${escaped}$`), replacement: nodeStub },
+      { find: new RegExp(`^node:${escaped}$`), replacement: nodeStub },
+    ];
+  }),
+  ...["fs-extra", "graceful-fs", "jsonfile"].map((id) => ({
+    find: new RegExp(`^${escapeRegExp(id)}$`),
+    replacement: nodeStub,
+  })),
+];
+
+function isPgliteEvalWarning(log: { code?: string; id?: string; message?: string }) {
+  const source = `${log.id ?? ""} ${log.message ?? ""}`;
+  return log.code === "EVAL" && source.includes("@electric-sql/pglite");
 }
 
 export default defineConfig({
-  plugins: [pgliteBrowserPlugin(), react()],
+  plugins: [react()],
   server: {
     port: 5173,
     open: true,
@@ -64,18 +76,48 @@ export default defineConfig({
   },
   resolve: {
     conditions: ["browser", "import", "module", "default"],
+    alias: nodeBuiltinAliases,
   },
   optimizeDeps: {
     // Exclude PGlite from pre-bundling - it handles its own WASM loading
     exclude: ["@electric-sql/pglite"],
-    esbuildOptions: {
-      target: "esnext",
-    },
   },
   build: {
     target: "esnext",
+    chunkSizeWarningLimit: 7500,
     modulePreload: {
       polyfill: true,
+    },
+    rolldownOptions: {
+      onLog(level, log, defaultHandler) {
+        if (isPgliteEvalWarning(log)) return;
+        defaultHandler(level, log);
+      },
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: "react-vendor",
+              test: /node_modules[\\/](?:\.bun[\\/])?(?:react|react-dom|scheduler)/,
+              priority: 4,
+            },
+            {
+              name: "pglite",
+              test: (id) =>
+                id.includes("@electric-sql/pglite") ||
+                id.endsWith("/src/pglite-browser.ts"),
+              priority: 3,
+            },
+            {
+              name: "eliza-runtime",
+              test: (id) =>
+                id.includes("/packages/core/") ||
+                id.includes("/packages/plugin-"),
+              priority: 2,
+            },
+          ],
+        },
+      },
     },
   },
 });

@@ -1,5 +1,5 @@
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
-import type { RegistryPluginInfo } from "./registry-client-types.js";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
+import type { RegistryPluginInfo } from "./registry-client-types.ts";
 
 const REGISTRY_FETCH_TIMEOUT_MS = 2_500;
 

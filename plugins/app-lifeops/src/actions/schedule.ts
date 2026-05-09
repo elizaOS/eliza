@@ -214,12 +214,12 @@ export const scheduleAction: Action = {
     const data = toActionData(scheduleInspectionActionData(inspection));
     await callback?.({
       text,
-      data,
+      data: data as any,
     });
     return {
       text,
       success: true,
-      data,
+      data: data as any,
     };
   },
 };

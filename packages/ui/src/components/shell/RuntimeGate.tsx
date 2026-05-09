@@ -20,16 +20,7 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import {
-  Button,
-  Card,
-  CardContent,
-  Checkbox,
-  Input,
-  Spinner,
-  TooltipHint,
-} from "@elizaos/ui";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as React from "react";
 import { client } from "../../api";
 import type {
   CloudCompatAgent,
@@ -78,6 +69,12 @@ import {
   resolveAppAssetUrl,
 } from "../../utils";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
+import { Button } from "../ui/button";
+import { Card, CardContent } from "../ui/card";
+import { Checkbox } from "../ui/checkbox";
+import { Input } from "../ui/input";
+import { Spinner } from "../ui/spinner";
+import { TooltipHint } from "../ui/tooltip";
 import { ThemeToggle } from "../shared/ThemeToggle";
 
 const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
@@ -393,31 +390,31 @@ export function RuntimeGate() {
     t,
   } = useApp();
 
-  const setUiLanguage = useCallback(
+  const setUiLanguage = React.useCallback(
     (lang: UiLanguage) => setState("uiLanguage", normalizeLanguage(lang)),
     [setState],
   );
 
-  const [subView, setSubView] = useState<SubView>("chooser");
-  const [discoveredGateways, setDiscoveredGateways] = useState<
+  const [subView, setSubView] = React.useState<SubView>("chooser");
+  const [discoveredGateways, setDiscoveredGateways] = React.useState<
     GatewayDiscoveryEndpoint[]
   >([]);
 
   // Cloud sub-view
-  const [cloudStage, setCloudStage] = useState<CloudStage>(
+  const [cloudStage, setCloudStage] = React.useState<CloudStage>(
     elizaCloudConnected ? "loading" : "login",
   );
-  const [agents, setAgents] = useState<CloudCompatAgent[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [provisionStatus, setProvisionStatus] = useState("");
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [agents, setAgents] = React.useState<CloudCompatAgent[]>([]);
+  const [error, setError] = React.useState<string | null>(null);
+  const [provisionStatus, setProvisionStatus] = React.useState("");
+  const pollTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Remote sub-view
-  const [remoteUrl, setRemoteUrl] = useState("");
-  const [remoteToken, setRemoteToken] = useState("");
+  const [remoteUrl, setRemoteUrl] = React.useState("");
+  const [remoteToken, setRemoteToken] = React.useState("");
 
   // Local embeddings toggle (elizacloud only, default unchecked)
-  const [useLocalEmbeddings, setUseLocalEmbeddings] = useState(false);
+  const [useLocalEmbeddings, setUseLocalEmbeddings] = React.useState(false);
 
   // Local-runtime setup wizard. When the user picks "Local" in the
   // chooser we render an in-place wizard (provider list → API key entry)
@@ -425,15 +422,15 @@ export function RuntimeGate() {
   // the user straight into chat with no model provider configured —
   // their first send hits the no_provider gate (commit 28e19c8023) and
   // they have to backtrack to Settings. The wizard saves the round-trip.
-  const [localStage, setLocalStage] = useState<LocalStage>("provider");
-  const [localProviderId, setLocalProviderId] = useState<string | null>(null);
-  const [localApiKey, setLocalApiKey] = useState("");
-  const [localSaving, setLocalSaving] = useState(false);
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [localStage, setLocalStage] = React.useState<LocalStage>("provider");
+  const [localProviderId, setLocalProviderId] = React.useState<string | null>(null);
+  const [localApiKey, setLocalApiKey] = React.useState("");
+  const [localSaving, setLocalSaving] = React.useState(false);
+  const [localError, setLocalError] = React.useState<string | null>(null);
 
   // Filter catalog to direct API-key providers (group:"local" excludes
   // managed cloud + subscription paths — those have their own flows).
-  const localProviderCatalog = useMemo<readonly OnboardingProviderOption[]>(
+  const localProviderCatalog = React.useMemo<readonly OnboardingProviderOption[]>(
     () =>
       ONBOARDING_PROVIDER_CATALOG.filter(
         (provider) =>
@@ -451,7 +448,7 @@ export function RuntimeGate() {
   const isDesktop = isDesktopPlatform();
   const isDev = Boolean(import.meta.env.DEV);
   const synchronousLocal = isDesktop || isDev;
-  const [localProbeResult, setLocalProbeResult] = useState<boolean | null>(
+  const [localProbeResult, setLocalProbeResult] = React.useState<boolean | null>(
     synchronousLocal ? true : isAndroid || isIOS ? null : false,
   );
 
@@ -468,7 +465,7 @@ export function RuntimeGate() {
   const pickerTargetOverride = readPickerTargetOverride();
   const elizaOSAutoLocal = isElizaOS() && !pickerOverride;
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (synchronousLocal) return;
     if (!isAndroid && !isIOS) return;
     let cancelled = false;
@@ -505,7 +502,7 @@ export function RuntimeGate() {
   const showLocalOption = localProbeResult === true;
   const localProbePending = localProbeResult === null;
 
-  const runtimeChoices = useMemo(
+  const runtimeChoices = React.useMemo(
     () =>
       resolveRuntimeChoices({
         isAndroid,
@@ -519,7 +516,7 @@ export function RuntimeGate() {
   );
   const runtimeChoiceKey = runtimeChoices.join("|");
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!pickerOverride || !pickerTargetOverride) return;
     if (!runtimeChoices.includes(pickerTargetOverride)) return;
     setSubView((current) =>
@@ -528,7 +525,7 @@ export function RuntimeGate() {
   }, [pickerOverride, pickerTargetOverride, runtimeChoices]);
 
   // ── Gateway discovery (LAN autodetect) ────────────────────────────
-  useEffect(() => {
+  React.useEffect(() => {
     if (subView !== "chooser" && subView !== "remote") return;
     let cancelled = false;
     discoverGatewayEndpoints()
@@ -544,14 +541,14 @@ export function RuntimeGate() {
   }, [subView]);
 
   // ── Cleanup poll on unmount ───────────────────────────────────────
-  useEffect(() => {
+  React.useEffect(() => {
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     };
   }, []);
 
   // ── Cloud: auto-advance from login when connected ─────────────────
-  useEffect(() => {
+  React.useEffect(() => {
     if (elizaCloudConnected && cloudStage === "login") {
       setCloudStage("loading");
     }
@@ -559,7 +556,7 @@ export function RuntimeGate() {
 
   // ── Completion helpers ─────────────────────────────────────────────
 
-  const finishAsCloud = useCallback(
+  const finishAsCloud = React.useCallback(
     (agent: CloudCompatAgent) => {
       // Refuse to complete cloud onboarding without a usable agent URL —
       // persisting an active server with no apiBase puts the next boot
@@ -619,7 +616,7 @@ export function RuntimeGate() {
     [completeOnboarding, setState, t, useLocalEmbeddings],
   );
 
-  const finishAsLocal = useCallback(() => {
+  const finishAsLocal = React.useCallback(() => {
     setError(null);
     const localApiBase =
       isAndroid || isIOS
@@ -699,13 +696,13 @@ export function RuntimeGate() {
   // The vanilla Android APK (no ElizaOS user-agent suffix) does not enter
   // this branch — it renders the chooser tiles like iOS / web and waits for
   // a user choice.
-  useEffect(() => {
+  React.useEffect(() => {
     if (!elizaOSAutoLocal) return;
     if (!showLocalOption) return;
     finishAsLocal();
   }, [elizaOSAutoLocal, finishAsLocal, showLocalOption]);
 
-  const finishAsRemoteGateway = useCallback(
+  const finishAsRemoteGateway = React.useCallback(
     (gateway: GatewayDiscoveryEndpoint) => {
       const apiBase = gatewayEndpointToApiBase(gateway);
       client.setBaseUrl(apiBase);
@@ -725,7 +722,7 @@ export function RuntimeGate() {
     [completeOnboarding, setState, startupCoordinator],
   );
 
-  const finishAsRemote = useCallback(() => {
+  const finishAsRemote = React.useCallback(() => {
     const url = normalizeRemoteTarget(remoteUrl);
     if (!url) {
       setError(
@@ -761,19 +758,19 @@ export function RuntimeGate() {
     t,
   ]);
 
-  const handleLocalSelectProvider = useCallback((providerId: string) => {
+  const handleLocalSelectProvider = React.useCallback((providerId: string) => {
     setLocalProviderId(providerId);
     setLocalApiKey("");
     setLocalError(null);
     setLocalStage("config");
   }, []);
 
-  const handleLocalConfigBack = useCallback(() => {
+  const handleLocalConfigBack = React.useCallback(() => {
     setLocalStage("provider");
     setLocalError(null);
   }, []);
 
-  const handleLocalSave = useCallback(async () => {
+  const handleLocalSave = React.useCallback(async () => {
     if (!localProviderId) {
       setLocalError(
         t("runtimegate.localPickProvider", {
@@ -815,7 +812,7 @@ export function RuntimeGate() {
 
   // ── Cloud: provision + connect ─────────────────────────────────────
 
-  const provisionAndConnect = useCallback(
+  const provisionAndConnect = React.useCallback(
     async (agentId: string, existingJobId?: string) => {
       if (pollTimerRef.current) {
         clearInterval(pollTimerRef.current);
@@ -1098,7 +1095,7 @@ export function RuntimeGate() {
     [finishAsCloud, t],
   );
 
-  const handleConnectCloudAgent = useCallback(
+  const handleConnectCloudAgent = React.useCallback(
     (agent: CloudCompatAgent) => {
       if (agent.status === "failed") {
         return;
@@ -1125,7 +1122,7 @@ export function RuntimeGate() {
   // The user asked for a single-agent assumption during onboarding: if
   // they already have agents, pick the first one; if not, create one
   // named "My Agent" and connect. No list-selection UX during first run.
-  useEffect(() => {
+  React.useEffect(() => {
     if (subView !== "cloud" || cloudStage !== "loading") return;
     let cancelled = false;
 
@@ -1242,13 +1239,13 @@ export function RuntimeGate() {
     };
   }, [subView, cloudStage, finishAsCloud, provisionAndConnect, t]);
 
-  const handleLogin = useCallback(async () => {
+  const handleLogin = React.useCallback(async () => {
     const win = preOpenWindow();
     setError(null);
     await handleCloudLogin(win);
   }, [handleCloudLogin]);
 
-  const handleRefreshAgents = useCallback(() => {
+  const handleRefreshAgents = React.useCallback(() => {
     setError(null);
     setCloudStage("loading");
   }, []);
@@ -2046,7 +2043,7 @@ function WelcomeChooser({
   onConnectRemote,
   t,
 }: WelcomeChooserProps) {
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = React.useState(false);
 
   return (
     <div className="flex w-full flex-col items-center gap-6 text-center sm:gap-7">

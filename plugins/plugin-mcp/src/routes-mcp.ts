@@ -1,7 +1,6 @@
 import type http from "node:http";
-import { getMcpServerDetails, parseClampedInteger, searchMcpMarketplace } from "@elizaos/agent";
-import { logger } from "@elizaos/core";
-import type { ElizaConfig, ReadJsonBodyOptions } from "@elizaos/shared";
+import { logger, type ReadJsonBodyOptions } from "@elizaos/core";
+import { getMcpServerDetails, searchMcpMarketplace } from "./mcp-marketplace.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -14,7 +13,7 @@ export interface McpRouteContext {
   pathname: string;
   url: URL;
   state: {
-    config: ElizaConfig;
+    config: McpRouteConfig;
     runtime: { getService: (name: string) => unknown } | null;
   };
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
@@ -24,7 +23,7 @@ export interface McpRouteContext {
     res: http.ServerResponse,
     options?: ReadJsonBodyOptions
   ) => Promise<T | null>;
-  saveElizaConfig: (config: ElizaConfig) => void;
+  saveElizaConfig: (config: McpRouteConfig) => void;
   redactDeep: (val: unknown) => unknown;
   isBlockedObjectKey: (key: string) => boolean;
   cloneWithoutBlockedObjectKeys: <T>(value: T) => T;
@@ -35,6 +34,46 @@ export interface McpRouteContext {
     body: { terminalToken?: string }
   ) => { reason: string; status: number } | null;
   decodePathComponent: (raw: string, res: http.ServerResponse, label: string) => string | null;
+}
+
+type McpConfigServer = Record<string, unknown> & {
+  type: string;
+  command?: string;
+  args?: string[];
+  url?: string;
+  env?: Record<string, string>;
+  headers?: Record<string, string>;
+  cwd?: string;
+  timeoutInMillis?: number;
+};
+
+export interface McpRouteConfig {
+  mcp?: {
+    servers?: Record<string, McpConfigServer>;
+  };
+}
+
+interface ParseClampedIntegerOptions {
+  min?: number;
+  max?: number;
+  fallback?: number;
+}
+
+function parseClampedInteger(
+  value: string | null | undefined,
+  options: ParseClampedIntegerOptions = {}
+): number | undefined {
+  const raw = value == null ? "" : value.trim();
+  if (!raw) return Number.isFinite(options.fallback) ? options.fallback : undefined;
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) {
+    return Number.isFinite(options.fallback) ? options.fallback : undefined;
+  }
+
+  if (options.min !== undefined && parsed < options.min) return options.min;
+  if (options.max !== undefined && parsed > options.max) return options.max;
+  return parsed;
 }
 
 // ---------------------------------------------------------------------------

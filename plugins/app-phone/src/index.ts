@@ -7,22 +7,22 @@
  *  - The Phone Companion — Capacitor pairing + chat-mirror + remote-session
  *    surface that runs alongside (or in place of) the desktop UI.
  *
- * Subpath imports (`./companion`, `./register-companion-page`, etc.) keep
- * each surface's runtime cost optional for hosts that only need one.
+ * Both surfaces are exported from the package barrel; hosts choose what they
+ * render without importing package subpaths.
  */
 
-export { placeCallAction } from "./actions/place-call";
-export { PhoneCompanionApp } from "./companion/components/PhoneCompanionApp";
-export { PhoneAppView } from "./components/PhoneAppView";
+export { placeCallAction } from "./actions/place-call.js";
+export { PhoneCompanionApp } from "./companion/components/PhoneCompanionApp.js";
+export * from "./companion/index.js";
+export * from "./companion/services/index.js";
+export { PhoneAppView } from "./components/PhoneAppView.js";
 export {
   PHONE_APP_NAME,
   phoneApp,
   registerPhoneApp,
-} from "./components/phone-app";
-export { appPhonePlugin, default } from "./plugin";
-export { phoneCallLogProvider } from "./providers/call-log";
-export * from "./ui";
-export * from "./register";
-export * from "./register-companion-page";
-export * from "./companion";
-export * from "./companion/services";
+} from "./components/phone-app.js";
+export { appPhonePlugin, default } from "./plugin.js";
+export { phoneCallLogProvider } from "./providers/call-log.js";
+export * from "./register.js";
+export * from "./register-companion-page.js";
+export * from "./ui.js";

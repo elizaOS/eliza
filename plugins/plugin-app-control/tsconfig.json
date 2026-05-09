@@ -1,23 +1,34 @@
 {
-	"compilerOptions": {
-		"target": "ES2022",
-		"module": "ESNext",
-		"moduleResolution": "bundler",
-		"esModuleInterop": true,
-		"strict": true,
-		"skipLibCheck": true,
-		"declaration": true,
-		"declarationMap": true,
-		"outDir": "./dist",
-		"rootDir": "../../../",
-		"lib": ["ES2022", "DOM"],
-		"types": ["node"],
-		"allowImportingTsExtensions": true,
-		"paths": {
-			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
-			"@elizaos/core/*": ["../../packages/core/src/*"]
-		}
-	},
-	"include": ["src/**/*"],
-	"exclude": ["node_modules", "dist"]
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": "./dist",
+    "rootDir": "../../../",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [
+      "node"
+    ],
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@elizaos/core": [
+        "../../packages/core/src/index.node.ts"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

@@ -2,7 +2,7 @@ import type { RouteHelpers, RouteRequestMeta } from "@elizaos/core";
 import {
   type AppRouteModule,
   importAppRouteModule,
-} from "../services/app-package-modules.js";
+} from "../services/app-package-modules.ts";
 
 export interface AppPackageRouteContext
   extends RouteRequestMeta,

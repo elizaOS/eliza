@@ -18,14 +18,29 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "target": "ES2022",
-    "lib": ["ES2022", "DOM"],
-    "types": ["bun-types", "node"],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [
+      "bun-types",
+      "node"
+    ],
     "resolvePackageJsonExports": true,
     "resolvePackageJsonImports": true,
     "paths": {
-      "@elizaos/core": ["../../../packages/core/dist"]
+      "@elizaos/core": [
+        "../../../packages/core/dist"
+      ]
     }
   },
-  "include": ["**/*.ts"],
-  "exclude": ["node_modules", "dist", "__tests__", "**/*.test.ts"]
+  "include": [
+    "**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "__tests__",
+    "**/*.test.ts"
+  ]
 }

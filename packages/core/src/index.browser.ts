@@ -22,7 +22,6 @@ export * from "./database/inMemoryAdapter";
 export * from "./entities";
 export * from "./features/advanced-memory";
 export { AutonomyService } from "./features/autonomy/index";
-export { createBasicCapabilitiesPlugin } from "./features/basic-capabilities/index";
 export {
 	__setDocumentUrlFetchImplForTests,
 	type FetchDocumentFromUrlOptions,
@@ -73,6 +72,7 @@ export * from "./types/message-service";
 export type { JsonObject, JsonValue } from "./types/primitives";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
+export { formatError } from "./utils/format-error";
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 export * from "./utils/description-compressed-lint";
