@@ -98,7 +98,7 @@ describe("action selection benchmark scoring helpers", () => {
   it("ignores background evaluator actions when picking the observed action", () => {
     const observed = pickObservedAction(
       [
-        { phase: "completed", actionName: "RELATIONSHIP_EXTRACTION" },
+        { phase: "completed", actionName: "REFLECTION" },
         {
           phase: "completed",
           actionName: "GOOGLE_CALENDAR",
@@ -136,7 +136,6 @@ describe("action selection benchmark scoring helpers", () => {
   it("does not count evaluator-only turns as real actions", () => {
     const observed = pickObservedAction(
       [
-        { phase: "completed", actionName: "RELATIONSHIP_EXTRACTION" },
         { phase: "completed", actionName: "FACT_EXTRACTOR" },
         { phase: "completed", actionName: "REFLECTION" },
         { phase: "completed", actionName: "SKILL_LEARNING" },

@@ -43,31 +43,70 @@ def evaluate_outcome(outcome: ExpectedOutcome, turn: TurnResult) -> OutcomeResul
 
 
 
-def compute_turn_score(results: list[OutcomeResult]) -> float:
+def compute_turn_score(
+    results: list[OutcomeResult],
+    *,
+    has_runtime_signal: bool = False,
+) -> float:
     """Compute the weighted score for a turn from its outcome results.
 
     Returns a float in [0.0, 1.0].  If there are no outcomes, returns 1.0
     (a turn with no assertions always passes).
+
+    Selecting any forbidden action (``ACTION_NOT_MATCH`` violation) caps
+    the turn score at 0.5 regardless of how many keyword (``TEXT_CONTAINS``)
+    or other positive outcomes pass — accidental keyword overlap should
+    not erase a hard distractor failure.
     """
     if not results:
         return 1.0
-    total_weight = sum(r.outcome.weight for r in results)
+
+    scoreable = [
+        r for r in results
+        if is_scoreable_outcome(r.outcome, has_runtime_signal=has_runtime_signal)
+    ]
+    if not scoreable:
+        return 1.0
+
+    total_weight = sum(r.outcome.weight for r in scoreable)
     if total_weight <= 0:
         return 1.0
-    weighted_sum = sum(r.outcome.weight for r in results if r.passed)
-    return weighted_sum / total_weight
+    weighted_sum = sum(r.outcome.weight for r in scoreable if r.passed)
+    base = weighted_sum / total_weight
+
+    forbidden_violation = any(
+        not r.passed and r.outcome.outcome_type == OutcomeType.ACTION_NOT_MATCH
+        for r in scoreable
+    )
+    if forbidden_violation:
+        return min(base, 0.5)
+    return base
 
 
-def compute_scenario_score(turn_results: list[TurnResult]) -> float:
+def compute_scenario_score(
+    turn_results: list[TurnResult],
+    *,
+    has_runtime_signal: bool = False,
+) -> float:
     """Compute the overall score for a scenario from its turn results.
 
     Only turns with expected outcomes contribute to the score.  Turns without
     outcomes (context-setting turns) are excluded.
+
+    ``has_runtime_signal`` should be True only when the runner can populate
+    ``providers_requested`` from a real elizaOS runtime (the eliza-bridge
+    path). When False, runtime-only outcome types are skipped at scoring
+    time instead of being treated as guaranteed failures.
     """
     scored_turns: list[float] = []
     for tr in turn_results:
         if tr.outcome_results:
-            scored_turns.append(compute_turn_score(tr.outcome_results))
+            scored_turns.append(
+                compute_turn_score(
+                    tr.outcome_results,
+                    has_runtime_signal=has_runtime_signal,
+                )
+            )
     if not scored_turns:
         return 1.0
     return sum(scored_turns) / len(scored_turns)
