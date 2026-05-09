@@ -3106,9 +3106,23 @@ async function dispatchPaymentMockCallback(
   request: PaymentMockRequest,
   event: "payment_request.paid" | "payment_request.failed",
 ): Promise<boolean> {
-  if (!request.callbackUrl) return false;
-
   const createdAt = new Date().toISOString();
+  if (!request.callbackUrl) {
+    if (!request.channel) return false;
+    const roomId =
+      typeof request.channel.roomId === "string" ? request.channel.roomId : request.id;
+    state.callbacks.push({
+      paymentRequestId: request.id,
+      event,
+      url: `channel://${encodeURIComponent(roomId)}`,
+      delivered: true,
+      statusCode: 202,
+      createdAt,
+      completedAt: createdAt,
+    });
+    return true;
+  }
+
   const payload = {
     event,
     createdAt,

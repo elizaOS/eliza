@@ -63,15 +63,15 @@ describe("App charge requests", () => {
     expect(res.status).toBe(401);
   });
 
-  test("happy path: creates a one dollar card/crypto charge with callback metadata", async () => {
+  test("happy path: creates a five dollar card/crypto charge with callback metadata", async () => {
     if (!shouldRunAuthed()) return;
     const appId = await createTestApp();
 
     const res = await api.post(
       `/api/v1/apps/${appId}/charges`,
       {
-        amount: 1,
-        description: "Test $1 payment request",
+        amount: 5,
+        description: "Agent says: sure, please send me $5",
         providers: ["stripe", "oxapay"],
         callback_url: "https://example.com/payment-callback",
         callback_secret: "test-callback-secret",
@@ -103,7 +103,7 @@ describe("App charge requests", () => {
 
     expect(body.success).toBe(true);
     expect(body.charge?.appId).toBe(appId);
-    expect(body.charge?.amountUsd).toBe(1);
+    expect(body.charge?.amountUsd).toBe(5);
     expect(body.charge?.status).toBe("requested");
     expect(body.charge?.providers).toEqual(["stripe", "oxapay"]);
     expect(body.charge?.paymentUrl).toContain(`/payment/app-charge/${appId}/`);
@@ -114,9 +114,22 @@ describe("App charge requests", () => {
     expect(publicRes.status).toBe(200);
     const publicBody = (await publicRes.json()) as {
       charge?: { amountUsd?: number; metadata?: Record<string, unknown> };
+      app?: { id?: string; name?: string };
     };
-    expect(publicBody.charge?.amountUsd).toBe(1);
+    expect(publicBody.charge?.amountUsd).toBe(5);
+    expect(publicBody.app?.id).toBe(appId);
     expect(publicBody.charge?.metadata?.callback_secret).toBeUndefined();
+
+    const listRes = await api.get(`/api/v1/apps/${appId}/charges?limit=5`, {
+      headers: bearerHeaders(),
+    });
+    expect(listRes.status).toBe(200);
+    const listBody = (await listRes.json()) as {
+      charges?: Array<{ id?: string; amountUsd?: number; paymentUrl?: string }>;
+    };
+    const listed = listBody.charges?.find((charge) => charge.id === body.charge?.id);
+    expect(listed?.amountUsd).toBe(5);
+    expect(listed?.paymentUrl).toBe(body.charge?.paymentUrl);
   });
 
   test("validation: rejects charges below one dollar", async () => {

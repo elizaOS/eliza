@@ -164,6 +164,7 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-browser",
   "plugin-capacitor-bridge",
   "plugin-computeruse",
+  "plugin-discord",
   "plugin-local-inference",
   "plugin-mcp",
   "plugin-signal",
