@@ -762,7 +762,10 @@ async function buildNodeOnly() {
 	console.log("🚀 Starting Node-only build process for @elizaos/core");
 	const totalStart = Date.now();
 
-	await Promise.all([buildNode(), buildTesting()]);
+	const skipTesting = process.argv.includes("--skip-testing");
+	const tasks: Array<Promise<void>> = [buildNode()];
+	if (!skipTesting) tasks.push(buildTesting());
+	await Promise.all(tasks);
 	await generateTypeScriptDeclarations();
 
 	const totalDuration = ((Date.now() - totalStart) / 1000).toFixed(2);
