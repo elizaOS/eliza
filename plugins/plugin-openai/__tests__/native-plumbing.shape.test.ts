@@ -1,10 +1,39 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const aiMocks = vi.hoisted(() => ({
   generateText: vi.fn(),
   streamText: vi.fn(),
 }));
+
+// `getSetting` in utils/config falls back to `process.env` when the runtime
+// stub returns undefined. These tests assert provider-shape behavior against
+// explicit runtime settings, so we scrub process-env keys that would shadow
+// or alias them (e.g. CI running with `OPENAI_BASE_URL=cerebras.ai/v1` flips
+// the codepath into Cerebras mode and mutates providerOptions / model defaults).
+const ENV_KEYS = [
+  "MILADY_PROVIDER",
+  "OPENAI_BASE_URL",
+  "CEREBRAS_API_KEY",
+  "OPENAI_API_KEY",
+  "OPENAI_SMALL_MODEL",
+  "SMALL_MODEL",
+  "OPENAI_LARGE_MODEL",
+  "LARGE_MODEL",
+  "OPENAI_RESPONSE_HANDLER_MODEL",
+  "OPENAI_SHOULD_RESPOND_MODEL",
+  "RESPONSE_HANDLER_MODEL",
+  "SHOULD_RESPOND_MODEL",
+] as const;
+
+const originalEnv = new Map<string, string | undefined>();
+
+beforeEach(() => {
+  for (const key of ENV_KEYS) {
+    originalEnv.set(key, process.env[key]);
+    delete process.env[key];
+  }
+});
 
 vi.mock("ai", () => ({
   generateText: aiMocks.generateText,
@@ -63,6 +92,15 @@ function expectNativeTextResult(value: unknown): asserts value is Record<string,
 }
 
 afterEach(() => {
+  for (const key of ENV_KEYS) {
+    const value = originalEnv.get(key);
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+  originalEnv.clear();
   vi.clearAllMocks();
 });
 

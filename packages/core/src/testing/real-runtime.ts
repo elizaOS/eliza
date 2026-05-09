@@ -87,6 +87,11 @@ type AgentRuntimeModule = {
 	configureLocalEmbeddingPlugin?: (plugin: Plugin) => void;
 };
 
+type RuntimePluginModule = {
+	default?: Plugin;
+	elizaPlugin?: Plugin;
+};
+
 async function flushPendingTrajectoryWrites(
 	runtime: AgentRuntime,
 ): Promise<void> {
@@ -156,16 +161,20 @@ export async function createRealTestRuntime(
 	});
 
 	// Always register plugin-sql for PGLite database
-	const { default: pluginSql } = await import("@elizaos/plugin-sql");
+	const pluginSqlModule = (await import(
+		["@elizaos", "plugin-sql"].join("/")
+	)) as RuntimePluginModule;
+	const pluginSql = pluginSqlModule.default ?? pluginSqlModule.elizaPlugin;
+	if (!pluginSql) {
+		throw new Error("plugin-sql did not export a plugin");
+	}
 	await runtime.registerPlugin(pluginSql as RegisterablePlugin);
 
 	if (options?.withLLM) {
 		try {
 			const pluginModule = (await import(
-				"@elizaos/plugin-local-embedding"
-			)) as typeof import("@elizaos/plugin-local-embedding") & {
-				elizaPlugin?: Plugin;
-			};
+				["@elizaos", "plugin-local-embedding"].join("/")
+			)) as RuntimePluginModule;
 			const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
 			if (plugin) {
 				const modulePath = "../../../agent/src/runtime/eliza";
@@ -221,10 +230,8 @@ export async function createRealTestRuntime(
 	if (options?.withDiscord && process.env.DISCORD_BOT_TOKEN?.trim()) {
 		try {
 			const discordModule = (await import(
-				"@elizaos/plugin-discord"
-			)) as typeof import("@elizaos/plugin-discord") & {
-				elizaPlugin?: Plugin;
-			};
+				["@elizaos", "plugin-discord"].join("/")
+			)) as RuntimePluginModule;
 			const plugin = discordModule.default ?? discordModule.elizaPlugin;
 			if (plugin) {
 				await runtime.registerPlugin(plugin as RegisterablePlugin);
@@ -239,10 +246,8 @@ export async function createRealTestRuntime(
 	if (options?.withTelegram && process.env.TELEGRAM_BOT_TOKEN?.trim()) {
 		try {
 			const telegramModule = (await import(
-				"@elizaos/plugin-telegram"
-			)) as typeof import("@elizaos/plugin-telegram") & {
-				elizaPlugin?: Plugin;
-			};
+				["@elizaos", "plugin-telegram"].join("/")
+			)) as RuntimePluginModule;
 			const plugin = telegramModule.default ?? telegramModule.elizaPlugin;
 			if (plugin) {
 				await runtime.registerPlugin(plugin as RegisterablePlugin);

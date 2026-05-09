@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import {
   type TriggerRunRecord as CoreTriggerRunRecord,
   type IAgentRuntime,
+  type RouteHelpers,
   type RouteRequestContext,
   stringToUuid,
   type Task,
@@ -11,17 +12,12 @@ import {
   type TriggerWakeMode,
   type UUID,
 } from "@elizaos/core";
-import type { RouteHelpers } from "@elizaos/shared";
-import type {
-  TriggerExecutionOptions,
-  TriggerExecutionResult,
-} from "@elizaos/agent";
 import type {
   DeployedTriggerWorkflow,
-  TextTriggerWorkflowDraft,
-} from "../triggers/text-to-workflow.js";
-import type {
   NormalizedTriggerDraft,
+  TriggerExecutionOptions,
+  TriggerExecutionResult,
+  TextTriggerWorkflowDraft,
   TriggerHealthSnapshot,
   TriggerSummary,
   TriggerTaskMetadata,
