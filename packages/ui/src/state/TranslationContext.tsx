@@ -16,6 +16,11 @@ import {
   useState,
 } from "react";
 import { client } from "../api";
+import {
+  appNameInterpolationVars,
+  type BrandingConfig,
+  DEFAULT_BRANDING,
+} from "../config/branding";
 import { createTranslator, normalizeLanguage, type UiLanguage } from "../i18n";
 import { loadUiLanguage, saveUiLanguage } from "./persistence";
 
@@ -38,10 +43,18 @@ const TranslationCtx = createContext<TranslationContextValue | null>(null);
 export function TranslationProvider({
   children,
   onLanguageSyncError,
+  branding,
 }: {
   children: ReactNode;
   /** Optional callback when the server config sync fails. */
   onLanguageSyncError?: (language: UiLanguage) => void;
+  /**
+   * Branding used to seed `{{appName}}` in translated strings. Threaded
+   * down explicitly because `TranslationProvider` wraps `AppProviderInner`,
+   * which is where `BrandingContext.Provider` lives — `useContext`
+   * here would always read the static default.
+   */
+  branding?: Partial<BrandingConfig>;
 }) {
   const [uiLanguage, setUiLanguageRaw] = useState<UiLanguage>(loadUiLanguage);
 
@@ -73,7 +86,15 @@ export function TranslationProvider({
     }
   }, [uiLanguage]);
 
-  const t = useMemo(() => createTranslator(uiLanguage), [uiLanguage]);
+  const mergedBranding = useMemo<BrandingConfig>(
+    () => ({ ...DEFAULT_BRANDING, ...branding }),
+    [branding],
+  );
+  const t = useMemo(
+    () =>
+      createTranslator(uiLanguage, appNameInterpolationVars(mergedBranding)),
+    [uiLanguage, mergedBranding],
+  );
 
   const value = useMemo<TranslationContextValue>(
     () => ({ t, uiLanguage, setUiLanguage }),

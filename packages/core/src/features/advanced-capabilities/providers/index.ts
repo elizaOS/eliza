@@ -4,7 +4,7 @@
  * Extended providers that can be enabled with `advancedCapabilities: true`.
  */
 
-export { contactsProvider } from "./contacts.ts";
+export { advancedContactsProvider } from "./contacts.ts";
 export { factsProvider } from "./facts.ts";
 export { followUpsProvider } from "./followUps.ts";
 export { relationshipsProvider } from "./relationships.ts";

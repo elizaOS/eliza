@@ -1,10 +1,10 @@
-import { isPlainObject } from "../type-guards";
+import { isPlainObject } from "../type-guards.js";
 import {
   parseConfigPath,
   setConfigValueAtPath,
   unsetConfigValueAtPath,
-} from "./config-paths";
-import type { ElizaConfig } from "./types.eliza";
+} from "./config-paths.js";
+import type { ElizaConfig } from "./types.eliza.js";
 
 type OverrideTree = Record<string, unknown>;
 

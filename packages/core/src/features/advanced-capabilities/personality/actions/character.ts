@@ -12,7 +12,7 @@ import type {
 } from "../../../../types/index.ts";
 import { MemoryType } from "../../../../types/memory.ts";
 import { ModelType } from "../../../../types/model.ts";
-import { hasActionContextOrKeyword } from "../../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../../utils/action-validation.ts";
 import { getCharacterPersistenceService } from "../character-persistence.ts";
 import type { CharacterFileManager } from "../services/character-file-manager.ts";
 import {
@@ -165,7 +165,7 @@ export const characterAction: Action = {
 		if (!fileManager) {
 			return false;
 		}
-		return hasActionContextOrKeyword(message, state, {
+		return hasActionContext(message, state, {
 			contexts: ["settings", "agent_internal", "media", "admin"],
 			keywords: [
 				"personality",

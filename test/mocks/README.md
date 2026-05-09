@@ -90,7 +90,7 @@ bunx @mockoon/cli start \
   --data test/mocks/environments/browser-workspace.json \
   --data test/mocks/environments/bluebubbles.json \
   --data test/mocks/environments/github.json \
-  --data test/mocks/environments/lifeops-samantha.json
+  --data test/mocks/environments/lifeops-presence-active.json
 ```
 
 Then point the clients at the mocks:
@@ -110,7 +110,7 @@ export ELIZA_IMESSAGE_BACKEND=bluebubbles
 export ELIZA_BLUEBUBBLES_URL=http://127.0.0.1:3008
 export ELIZA_BLUEBUBBLES_PASSWORD=mock-bluebubbles-password
 export ELIZA_MOCK_GITHUB_BASE=http://127.0.0.1:3009
-export ELIZA_MOCK_LIFEOPS_SAMANTHA_BASE=http://127.0.0.1:3010
+export ELIZA_MOCK_LIFEOPS_PRESENCE_ACTIVE_BASE=http://127.0.0.1:3010
 ```
 
 ## Test usage
@@ -198,30 +198,30 @@ MTProto through `telegram-local-client.ts` and already exposes a dependency
 injection seam (`TelegramLocalClientDeps`) for tests. Adding a fake Telegram
 HTTP gateway would not match a real consumer path.
 
-## Samantha interaction scenario mocks
+## Presence-active interaction scenario mocks
 
-`fixtures/lifeops-samantha.ts` is the executable catalog for the seven assistant
+`fixtures/lifeops-presence-active.ts` is the executable catalog for the seven assistant
 interaction moves from the Samantha/Theodore setup and email scene: intake
 affect, assistant identity, permissioned context scan, bulk email curation,
 contact resolution, document review, and proactive multi-hop follow-up.
 
-The in-process runner serves the catalog only from the `lifeops-samantha` mock
+The in-process runner serves the catalog only from the `lifeops-presence-active` mock
 base URL:
 
-- `GET /__mock/lifeops/samantha/scenarios` returns scenario summaries, provider
+- `GET /__mock/lifeops/presence-active/scenarios` returns scenario summaries, provider
   coverage, API example counts, and edge-case counts.
-- `GET /__mock/lifeops/samantha/scenarios/:id` returns the full scenario with
+- `GET /__mock/lifeops/presence-active/scenarios/:id` returns the full scenario with
   lined-up mock records, API examples, expected workflow, assertions, safety
   gates, and edge cases.
-- `POST /__mock/lifeops/samantha/tasks` starts a synthetic long-running task for
+- `POST /__mock/lifeops/presence-active/tasks` starts a synthetic long-running task for
   the multi-hop vendor packet scenario.
-- `GET /__mock/lifeops/samantha/tasks/:id` returns the current deterministic
+- `GET /__mock/lifeops/presence-active/tasks/:id` returns the current deterministic
   task snapshot without advancing it.
-- `POST /__mock/lifeops/samantha/tasks/:id/advance` moves the in-process task
+- `POST /__mock/lifeops/presence-active/tasks/:id/advance` moves the in-process task
   through queued, running, waiting-for-input, and completed snapshots.
 
 For manual Mockoon API testing, load
-`test/mocks/environments/lifeops-samantha.json`. It exposes representative local
+`test/mocks/environments/lifeops-presence-active.json`. It exposes representative local
 LifeOps endpoints for onboarding affect, organization scans, email curation,
 explicit preference memory, contact resolution, document proofread,
 long-running task polling, task advance, and edge variants for provider

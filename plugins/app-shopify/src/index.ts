@@ -8,3 +8,4 @@ export * from "./ShopifyAppView";
 export * from "./StoreOverviewCard";
 export { SHOPIFY_APP_NAME, shopifyApp } from "./shopify-app";
 export * from "./useShopifyDashboard";
+export * from "./register";

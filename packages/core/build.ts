@@ -629,6 +629,7 @@ const browserExternals = [
 	"async_hooks", // Node.js built-in module
 	"node:diagnostics_channel", // Node.js built-in module
 	"node:async_hooks", // Node.js built-in module
+	"fs-extra", // Node-only fs library; host bundlers stub this for browser/Capacitor
 ];
 
 // Node-specific externals (native modules and node-specific packages)
@@ -652,10 +653,7 @@ async function buildNode() {
 	const runNode = createBuildRunner({
 		...sharedConfig,
 		buildOptions: {
-			entrypoints: [
-				`${TS_SRC}/index.node.ts`,
-				`${TS_SRC}/roles.ts`,
-			],
+			entrypoints: [`${TS_SRC}/index.node.ts`, `${TS_SRC}/roles.ts`],
 			outdir: "dist/node",
 			target: "node",
 			format: "esm",

@@ -26,6 +26,49 @@ logger = logging.getLogger(__name__)
 StepInfoType = dict[str, str | int | float | bool | None]
 
 
+_CONVERSATIONAL_PREFIXES = (
+    "got it",
+    "sure",
+    "okay",
+    "ok,",
+    "ok ",
+    "ok.",
+    "let me",
+    "i'll",
+    "i will",
+    "i can",
+    "i'd",
+    "i would",
+    "want me to",
+    "would you like",
+    "should i",
+    "shall i",
+    "yes,",
+    "no,",
+    "alright",
+    "of course",
+    "absolutely",
+    "happy to",
+    "no problem",
+    "sounds good",
+)
+
+
+def _looks_conversational(text: str) -> bool:
+    """Return True if *text* looks like an English chat reply, not a command."""
+    if not text:
+        return False
+    head = text.strip().lower()
+    if head.startswith(_CONVERSATIONAL_PREFIXES):
+        return True
+    # Multi-sentence prose that ends with a question mark or wraps a question
+    # ("...Want me to go ahead?") — agents emit this when the chat planner
+    # picks REPLY instead of an executable action.
+    if head.endswith("?") and len(head.split()) > 4:
+        return True
+    return False
+
+
 class OSEnvironmentAdapter(EnvironmentAdapter):
     """
     Adapter for Operating System (Linux terminal) environment.
@@ -333,6 +376,12 @@ class OSEnvironmentAdapter(EnvironmentAdapter):
             for prefix in ["Action:", "Command:", "Execute:"]:
                 if action.startswith(prefix):
                     action = action[len(prefix) :].strip()
+            # Reject obvious conversational responses — these come from the
+            # chat planner picking REPLY and emitting prose like "Got it, I'll
+            # set up the test_dir...". Executing such a string as a shell
+            # command burns a step on a guaranteed-fail.
+            if _looks_conversational(action):
+                return ""
             return action
 
         return ""

@@ -42,6 +42,17 @@ type AdminRole = "super_admin" | "moderator" | "viewer";
 type ModerationStatus = "clean" | "warned" | "spammer" | "scammer" | "banned";
 type ModerationAction = "refused" | "warned" | "flagged_for_ban" | "banned";
 
+const ELIZALABS_ADMIN_EMAIL_DOMAIN = "@elizalabs.ai";
+
+interface AdminIdentity {
+  email?: string | null;
+  wallet_address?: string | null;
+}
+
+export function isElizaLabsAdminEmail(email?: string | null): boolean {
+  return Boolean(email?.trim().toLowerCase().endsWith(ELIZALABS_ADMIN_EMAIL_DOMAIN));
+}
+
 class AdminService {
   /**
    * Check if a wallet address is an admin
@@ -70,11 +81,33 @@ class AdminService {
       where: eq(users.id, userId),
     });
 
-    if (!user?.wallet_address) {
+    if (!user) {
       return false;
     }
 
-    return this.isAdmin(user.wallet_address);
+    const status = await this.getAdminStatusForUser(user);
+    return status.isAdmin;
+  }
+
+  /**
+   * Get admin status from a full authenticated user record.
+   *
+   * Any Steward-authenticated @elizalabs.ai account is a super_admin. This
+   * keeps Google workspace admins working even when the user has not linked a
+   * wallet, while preserving wallet-admin records for non-ElizaLabs users.
+   */
+  async getAdminStatusForUser(
+    user: AdminIdentity,
+  ): Promise<{ isAdmin: boolean; role: AdminRole | null }> {
+    if (isElizaLabsAdminEmail(user.email)) {
+      return { isAdmin: true, role: "super_admin" };
+    }
+
+    if (!user.wallet_address) {
+      return { isAdmin: false, role: null };
+    }
+
+    return this.getAdminStatus(user.wallet_address);
   }
 
   /**

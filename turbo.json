@@ -21,6 +21,7 @@
         "@elizaos/plugin-browser#build",
         "@elizaos/plugin-elizacloud#build",
         "@elizaos/plugin-pdf#build",
+        "@elizaos/plugin-streaming#build",
         "@elizaos/capacitor-contacts#build",
         "@elizaos/capacitor-phone#build",
         "@elizaos/capacitor-wifi#build"
@@ -341,30 +342,6 @@
       "dependsOn": [],
       "outputs": []
     },
-    "@elizaos/app-core#typecheck": {
-      "dependsOn": [],
-      "outputs": []
-    },
-    "@elizaos/scenario-runner#typecheck": {
-      "dependsOn": [],
-      "outputs": []
-    },
-    "@elizaos/ui#typecheck": {
-      "dependsOn": [],
-      "outputs": []
-    },
-    "@elizaos/app#typecheck": {
-      "dependsOn": [],
-      "outputs": []
-    },
-    "@elizaos/example-autonomous#typecheck": {
-      "dependsOn": [],
-      "outputs": []
-    },
-    "@elizaos/gcp-examples#typecheck": {
-      "dependsOn": [],
-      "outputs": []
-    },
     "@elizaos/example-farcaster#build": {
       "dependsOn": [
         "@elizaos/core#build",
@@ -390,10 +367,6 @@
       "outputs": [
         "dist/**"
       ]
-    },
-    "@elizaos/plugin-streaming#typecheck": {
-      "dependsOn": [],
-      "outputs": []
     },
     "format": {
       "outputs": []

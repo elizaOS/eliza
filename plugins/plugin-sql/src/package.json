@@ -29,6 +29,7 @@
       },
       "bun": {
         "types": "./dist/index.d.ts",
+        "import": "./dist/node/index.node.js",
         "default": "./dist/node/index.node.js"
       },
       "default": "./dist/node/index.node.js"
@@ -81,7 +82,7 @@
     "migrate:generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json *.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write --config-path ./biome.json .",
     "format:check": "bunx @biomejs/biome format --config-path ./biome.json .",
     "lint": "bunx @biomejs/biome check --write --config-path ./biome.json .",

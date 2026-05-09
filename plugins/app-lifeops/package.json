@@ -18,149 +18,12 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./client": {
-      "types": "./dist/client.d.ts",
-      "import": "./dist/client.js",
-      "default": "./dist/client.js"
-    },
-    "./platform": {
-      "types": "./src/platform/index.ts",
-      "import": "./dist/platform/index.js",
-      "default": "./dist/platform/index.js"
-    },
-    "./components/*": {
-      "types": "./src/components/*.tsx",
-      "import": "./dist/components/*.js",
-      "default": "./dist/components/*.js"
-    },
-    "./components/*/*": {
-      "types": "./src/components/*/*.tsx",
-      "import": "./dist/components/*/*.js",
-      "default": "./dist/components/*/*.js"
-    },
-    "./components/*/*/*": {
-      "types": "./src/components/*/*/*.tsx",
-      "import": "./dist/components/*/*/*.js",
-      "default": "./dist/components/*/*/*.js"
-    },
-    "./components/*/*/*/*": {
-      "types": "./src/components/*/*/*/*.tsx",
-      "import": "./dist/components/*/*/*/*.js",
-      "default": "./dist/components/*/*/*/*.js"
-    },
-    "./inbox/types": {
-      "types": "./dist/inbox/types.d.ts",
-      "import": "./dist/inbox/types.js",
-      "default": "./dist/inbox/types.js"
-    },
-    "./types": {
-      "types": "./dist/types/index.d.ts",
-      "import": "./dist/types/index.js",
-      "default": "./dist/types/index.js"
-    },
-    "./types/app-blocker-settings-card": {
-      "types": "./dist/types/app-blocker-settings-card.d.ts",
-      "import": "./dist/types/app-blocker-settings-card.js",
-      "default": "./dist/types/app-blocker-settings-card.js"
-    },
-    "./types/website-blocker-settings-card": {
-      "types": "./dist/types/website-blocker-settings-card.d.ts",
-      "import": "./dist/types/website-blocker-settings-card.js",
-      "default": "./dist/types/website-blocker-settings-card.js"
-    },
-    "./ui": {
-      "types": "./dist/ui.d.ts",
-      "import": "./dist/ui.js",
-      "default": "./dist/ui.js"
-    },
-    "./agent-lifeops": {
-      "types": "./dist/agent-lifeops.d.ts",
-      "import": "./dist/agent-lifeops.js",
-      "default": "./dist/agent-lifeops.js"
-    },
-    "./plugin": {
-      "types": "./dist/plugin.d.ts",
-      "import": "./dist/plugin.js",
-      "default": "./dist/plugin.js"
-    },
-    "./widgets": {
-      "types": "./dist/widgets/index.d.ts",
-      "import": "./dist/widgets/index.js",
-      "default": "./dist/widgets/index.js"
-    },
-    "./selfcontrol": {
-      "types": "./dist/website-blocker/public.d.ts",
-      "import": "./dist/website-blocker/public.js",
-      "default": "./dist/website-blocker/public.js"
-    },
-    "./selfcontrol/selfcontrol": {
-      "types": "./dist/website-blocker/engine.d.ts",
-      "import": "./dist/website-blocker/engine.js",
-      "default": "./dist/website-blocker/engine.js"
-    },
-    "./website-blocker": {
-      "types": "./dist/website-blocker/public.d.ts",
-      "import": "./dist/website-blocker/public.js",
-      "default": "./dist/website-blocker/public.js"
-    },
-    "./lifeops": {
-      "types": "./dist/lifeops/index.d.ts",
-      "import": "./dist/lifeops/index.js",
-      "default": "./dist/lifeops/index.js"
-    },
-    "./lifeops/*": {
-      "types": "./dist/lifeops/*.d.ts",
-      "import": "./dist/lifeops/*.js",
-      "default": "./dist/lifeops/*.js"
-    },
-    "./inbox/*": {
-      "types": "./dist/inbox/*.d.ts",
-      "import": "./dist/inbox/*.js",
-      "default": "./dist/inbox/*.js"
-    },
-    "./actions/*": {
-      "types": "./dist/actions/*.d.ts",
-      "import": "./dist/actions/*.js",
-      "default": "./dist/actions/*.js"
-    },
-    "./actions/*.js": {
-      "types": "./dist/actions/*.d.ts",
-      "import": "./dist/actions/*.js",
-      "default": "./dist/actions/*.js"
-    },
-    "./api/client-lifeops": {
-      "types": "./dist/api/client-lifeops.d.ts",
-      "import": "./dist/api/client-lifeops.js",
-      "default": "./dist/api/client-lifeops.js"
-    },
-    "./providers/*": {
-      "types": "./dist/providers/*.d.ts",
-      "import": "./dist/providers/*.js",
-      "default": "./dist/providers/*.js"
-    },
-    "./routes/*": {
-      "types": "./dist/routes/*.d.ts",
-      "import": "./dist/routes/*.js",
-      "default": "./dist/routes/*.js"
-    },
-    "./contracts": {
-      "types": "./dist/contracts/index.d.ts",
-      "import": "./dist/contracts/index.js",
-      "default": "./dist/contracts/index.js"
-    },
-    "./contracts/lifeops": {
-      "types": "./dist/contracts/lifeops.d.ts",
-      "import": "./dist/contracts/lifeops.js",
-      "default": "./dist/contracts/lifeops.js"
-    },
-    "./public": {
-      "types": "./dist/public.d.ts",
-      "import": "./dist/public.js",
-      "default": "./dist/public.js"
     }
   },
   "scripts": {
+    "lint:default-packs": "node scripts/lint-default-packs.mjs",
+    "verify": "bun run lint:default-packs && bun run build:types && bun run test",
+    "pretest": "node scripts/lint-default-packs.mjs",
     "test": "vitest run --config vitest.config.ts",
     "test:app-state": "vitest run --config vitest.config.ts eliza/plugins/app-lifeops/test/lifeops-app-state.test.ts",
     "test:integration": "cd ../../.. && vitest run --config eliza/test/vitest/integration.config.ts eliza/plugins/app-lifeops/test/life-smoke.integration.test.ts",
@@ -183,6 +46,7 @@
     "@elizaos/plugin-discord": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-google": "workspace:*",
+    "@elizaos/plugin-health": "workspace:*",
     "@elizaos/plugin-imessage": "workspace:*",
     "@elizaos/plugin-signal": "workspace:*",
     "@elizaos/plugin-telegram": "workspace:*",
@@ -194,7 +58,8 @@
     "drizzle-orm": "0.45.2",
     "lucide-react": "^1.0.0",
     "react-plaid-link": "^4.0.1",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.4.0",

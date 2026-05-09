@@ -6,7 +6,7 @@
  * fields used by API clients and asset helpers.
  */
 
-import type { BrandingConfig } from "./branding";
+import type { BrandingConfig } from "./branding.js";
 
 export interface BundledVrmAsset {
   title: string;

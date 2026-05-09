@@ -391,7 +391,9 @@ export class SecureTokenRedemptionService {
     // ATOMIC TRANSACTION PHASE (Fix #1, #5)
     // ========================================
 
-    const requiresReview = usdValue.toNumber() >= SECURE_CONFIG.ADMIN_APPROVAL_THRESHOLD_USD;
+    // Current operational policy: every payout request is manually reviewed
+    // before the hot-wallet processor is allowed to send tokens.
+    const requiresReview = true;
 
     // Generate idempotency key if not provided
     const finalIdempotencyKey = idempotencyKey || randomUUID();
@@ -507,7 +509,7 @@ export class SecureTokenRedemptionService {
           network,
           payout_address: payoutAddress,
           address_signature: signature,
-          status: requiresReview ? "pending" : "approved",
+          status: "pending",
           requires_review: requiresReview,
           metadata: {
             user_agent: metadata?.userAgent ? sanitizeForLog(metadata.userAgent) : undefined,

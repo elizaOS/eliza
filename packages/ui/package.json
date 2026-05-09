@@ -37,27 +37,7 @@
     "pack:dry-run": "cd dist && npm pack --dry-run"
   },
   "exports": {
-    ".": "./dist/index.js",
-    "./app-shell-registry": "./dist/app-shell-registry.js",
-    "./voice": "./dist/voice/index.js",
-    "./components/*": "./dist/components/*",
-    "./components/*/*": "./dist/components/*/*",
-    "./components/*/*/*": "./dist/components/*/*/*",
-    "./components/ui/*": "./dist/components/ui/*.js",
-    "./api/*": "./dist/api/*.js",
-    "./components/composites/page-panel": "./dist/components/composites/page-panel/index.js",
-    "./components/composites/*": "./dist/components/composites/*",
-    "./components/composites/*/*": "./dist/components/composites/*/*.js",
-    "./hooks": "./dist/hooks/index.js",
-    "./hooks/*": "./dist/hooks/*",
-    "./layouts": "./dist/layouts/index.js",
-    "./layouts/*": "./dist/layouts/*",
-    "./widgets": "./dist/widgets/index.js",
-    "./widgets/registry-store": "./dist/widgets/registry-store.js",
-    "./widgets/*": "./dist/widgets/*",
-    "./bridge/*": "./dist/bridge/*.js",
-    "./lib/*": "./dist/lib/*",
-    "./styles/*": "./dist/styles/*"
+    ".": "./dist/index.js"
   },
   "peerDependencies": {
     "react": "^19.0.0",
@@ -83,6 +63,10 @@
     "tailwind-merge": "^3.0.0"
   },
   "devDependencies": {
+    "@capacitor/core": "8.3.1",
+    "@capacitor/haptics": "8.0.2",
+    "@capacitor/keyboard": "8.0.3",
+    "@capacitor/preferences": "^8.0.1",
     "@storybook/react": "^10.3.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

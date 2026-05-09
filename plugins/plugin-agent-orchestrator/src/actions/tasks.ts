@@ -32,7 +32,6 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
-  Service,
   State,
 } from "@elizaos/core";
 import { logger as coreLogger } from "@elizaos/core";
@@ -46,6 +45,7 @@ import type {
   CodingWorkspaceService,
   WorkspaceResult,
 } from "../services/workspace-service.js";
+import { getCodingWorkspaceService } from "../services/workspace-service.js";
 import {
   callbackText,
   contentRecord,
@@ -299,11 +299,13 @@ async function runCreate(
     const agentType = parsed.agentType as AgentType;
     const label = baseLabel ?? labelFrom(parsed.task, index);
     const msg = failureMessage(outcome.reason);
-    logger(runtime).error?.("TASKS:create launch failed", {
-      error: msg,
-      agentType,
-      workdir,
-    });
+    logger(runtime).error?.(
+      `TASKS:create launch failed: ${JSON.stringify({
+        error: msg,
+        agentType,
+        workdir,
+      })}`,
+    );
     results.push({
       sessionId: "",
       id: "",
@@ -392,11 +394,13 @@ async function runSpawnAgent(
     });
 
     setCurrentSession(state, session);
-    logger(runtime).info?.("Spawned acpx task agent", {
-      sessionId: session.sessionId,
-      agentType: session.agentType,
-      workdir: session.workdir,
-    });
+    logger(runtime).info?.(
+      `Spawned acpx task agent: ${JSON.stringify({
+        sessionId: session.sessionId,
+        agentType: session.agentType,
+        workdir: session.workdir,
+      })}`,
+    );
 
     return {
       success: true,
@@ -1321,9 +1325,7 @@ async function runProvisionWorkspace(
     return { success: false, error: "FORBIDDEN", text: access.reason };
   }
 
-  const workspaceService = runtime.getService("CODING_WORKSPACE_SERVICE") as
-    | (Service & CodingWorkspaceService)
-    | undefined;
+  const workspaceService = getCodingWorkspaceService(runtime);
   if (!workspaceService) {
     if (callback)
       await callback({ text: "Workspace Service is not available." });
@@ -1450,9 +1452,7 @@ async function runSubmitWorkspace(
     return { success: false, error: "FORBIDDEN", text: access.reason };
   }
 
-  const workspaceService = runtime.getService("CODING_WORKSPACE_SERVICE") as
-    | (Service & CodingWorkspaceService)
-    | undefined;
+  const workspaceService = getCodingWorkspaceService(runtime);
   if (!workspaceService) {
     if (callback)
       await callback({ text: "Workspace Service is not available." });
@@ -1860,28 +1860,28 @@ async function runManageIssues(
     return { success: false, error: "FORBIDDEN", text: access.reason };
   }
 
-  const workspaceService = runtime.getService("CODING_WORKSPACE_SERVICE") as
-    | (Service & CodingWorkspaceService)
-    | undefined;
+  const workspaceService = getCodingWorkspaceService(runtime);
   if (!workspaceService) {
     if (callback)
       await callback({ text: "Workspace Service is not available." });
     return { success: false, error: "SERVICE_UNAVAILABLE" };
   }
 
-  workspaceService.setAuthPromptCallback((prompt) => {
-    const delivered =
-      getCoordinator(runtime)?.sendChatMessage(
-        formatGitHubAuthPrompt(prompt),
-        "github-auth",
-      ) === true;
-    if (!delivered) {
-      coreLogger.warn(
-        "[TASKS:manage_issues] GitHub OAuth prompt requires immediate delivery, but the coordinator chat bridge is not wired",
-      );
-    }
-    return delivered;
-  });
+  workspaceService.setAuthPromptCallback(
+    (prompt: Parameters<AuthPromptCallback>[0]) => {
+      const delivered =
+        getCoordinator(runtime)?.sendChatMessage(
+          formatGitHubAuthPrompt(prompt),
+          "github-auth",
+        ) === true;
+      if (!delivered) {
+        coreLogger.warn(
+          "[TASKS:manage_issues] GitHub OAuth prompt requires immediate delivery, but the coordinator chat bridge is not wired",
+        );
+      }
+      return delivered;
+    },
+  );
 
   const text = ((content.text as string) ?? "").slice(0, ISSUE_BODY_MAX_CHARS);
 

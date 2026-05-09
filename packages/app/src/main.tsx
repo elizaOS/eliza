@@ -1,6 +1,4 @@
 import { ErrorBoundary } from "@elizaos/ui";
-import "@elizaos/ui/styles/styles.css";
-import "@elizaos/ui/styles/brand-gold.css";
 import "@elizaos/app-core";
 
 import { App as CapacitorApp } from "@capacitor/app";
@@ -85,7 +83,7 @@ import "@elizaos/app-scape";
 import "@elizaos/app-hyperscape";
 import "@elizaos/app-2004scape";
 import "@elizaos/app-defense-of-the-agents";
-import "@clawville/app-clawville/ui";
+import "@clawville/app-clawville";
 import {
   AppBlockerSettingsCard,
   LifeOpsBrowserSetupPanel as BrowserBridgeSetupPanel,

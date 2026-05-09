@@ -19,7 +19,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { parseJsonModelRecord } from "../../utils/json-model-output.js";
-import { runExtractorPipeline } from "../extractor-pipeline.js";
+import { runExtractorPipeline } from "../../lifeops/llm/extractor-pipeline.js";
 import { recentConversationTextsFromState } from "./recent-context.js";
 
 // ── Public types ──────────────────────────────────────

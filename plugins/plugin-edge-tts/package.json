@@ -27,16 +27,6 @@
         "default": "./dist/node/index.node.js"
       },
       "default": "./dist/node/index.node.js"
-    },
-    "./node": {
-      "types": "./dist/node/index.d.ts",
-      "import": "./dist/node/index.node.js",
-      "default": "./dist/node/index.node.js"
-    },
-    "./browser": {
-      "types": "./dist/browser/index.d.ts",
-      "import": "./dist/browser/index.browser.js",
-      "default": "./dist/browser/index.browser.js"
     }
   },
   "files": [
@@ -65,7 +55,7 @@
     "build": "bun run build.ts",
     "dev": "bun --hot build.ts",
     "test": "vitest run --config ./vitest.config.ts",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

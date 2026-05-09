@@ -8,10 +8,17 @@ import {
 import { validateTailscaleConfig } from "./environment";
 
 function runtime(settings: Record<string, unknown>): IAgentRuntime {
-  return {
+  return Object.assign(Object.create(null) as IAgentRuntime, {
     character: {},
-    getSetting: vi.fn((key: string) => settings[key]),
-  } as IAgentRuntime;
+    getSetting: vi.fn((key: string) => {
+      const value = settings[key];
+      return typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean"
+        ? value
+        : null;
+    }),
+  });
 }
 
 describe("Tailscale account resolution", () => {

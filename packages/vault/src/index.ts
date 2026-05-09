@@ -151,3 +151,4 @@ export type {
   RoutingScope,
   RoutingScopeKind,
 } from "./profiles.js";
+export * from "./testing.js";

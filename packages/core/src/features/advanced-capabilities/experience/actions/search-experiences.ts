@@ -9,7 +9,7 @@ import type {
 import type { Memory } from "../../../../types/memory.ts";
 import type { IAgentRuntime } from "../../../../types/runtime.ts";
 import type { State } from "../../../../types/state.ts";
-import { hasActionContextOrKeyword } from "../../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../../utils/action-validation.ts";
 import type { ExperienceService } from "../service.ts";
 import { formatExperienceForPrompt } from "../utils/experienceFormatter.ts";
 
@@ -122,7 +122,7 @@ export const searchExperiencesAction: Action = {
 				text,
 			) &&
 				/\b(search|find|explore|what|show|recall|know)\b/.test(text)) ||
-			hasActionContextOrKeyword(message, _state, {
+			hasActionContext(message, _state, {
 				contexts: ["memory", "documents", "agent_internal"],
 				keywords: [
 					"search experiences",

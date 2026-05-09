@@ -47,7 +47,7 @@
   "scripts": {
     "build": "bun run build.ts",
     "dev": "bun --hot build.ts",
-    "clean": "rm -rf dist .turbo node_modules",
+    "clean": "rm -rf dist .turbo",
     "test": "vitest run",
     "typecheck": "bunx tsc --noEmit -p tsconfig.json",
     "lint": "echo \"Lint skipped\"",

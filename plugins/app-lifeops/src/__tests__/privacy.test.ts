@@ -140,7 +140,7 @@ function makeRuntimeWithManager(accounts: ConnectorAccount[]): IAgentRuntime {
     getService: vi.fn((serviceType: string) =>
       serviceType === CONNECTOR_ACCOUNT_SERVICE_TYPE ? manager : null,
     ),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 describe("LifeOps privacy lattice", () => {

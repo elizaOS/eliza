@@ -20,14 +20,39 @@ export {
 } from "./loader";
 export * from "./schema";
 
-const moduleDir = dirname(fileURLToPath(import.meta.url));
-const entriesDir = join(moduleDir, "entries");
+// Bun.build collapses these top-level `const` declarations into `var`s
+// inside an `__esm` wrapper, and `import.meta.url` inside that wrapper
+// can resolve to `undefined` on the on-device runtime when the registry
+// module is initialised through the `Promise.resolve().then(() => init_xxx())`
+// adapter the bundler emits for dynamic-import re-exports of `@elizaos/app-core`.
+// The fallback to `process.argv[1]` matches the bundle's own entrypoint
+// (e.g. `/data/data/.../agent-bundle.js`) so the registry sits at
+// `<bundle-dir>/entries/`. Phase A asset extraction stages the `entries/`
+// payload alongside the bundle.
+function resolveEntriesDir(): string {
+  const url =
+    typeof import.meta.url === "string" && import.meta.url
+      ? import.meta.url
+      : null;
+  let moduleDir: string;
+  if (url) {
+    try {
+      moduleDir = dirname(fileURLToPath(url));
+    } catch {
+      moduleDir = dirname(process.argv[1] ?? process.cwd());
+    }
+  } else {
+    moduleDir = dirname(process.argv[1] ?? process.cwd());
+  }
+  return join(moduleDir, "entries");
+}
 
 let cache: LoadedRegistry | null = null;
 
 export function loadRegistry(): LoadedRegistry {
   if (cache) return cache;
 
+  const entriesDir = resolveEntriesDir();
   const raws: { file: string; data: unknown }[] = [];
   for (const kind of ["apps", "plugins", "connectors"] as const) {
     const kindDir = join(entriesDir, kind);

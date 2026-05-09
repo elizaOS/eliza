@@ -27,9 +27,11 @@ type AppCoreRuntimeModule = {
 };
 
 async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
-  const moduleId = "@elizaos/app-core";
+  // String-literal dynamic import — see comment in
+  // ../runtime/eliza.ts#importAppCoreRuntime for the AOSP bundle issue
+  // that requires Bun.build to statically follow this specifier.
   return import(
-    /* webpackIgnore: true */ moduleId
+    /* webpackIgnore: true */ "@elizaos/app-core"
   ) as Promise<AppCoreRuntimeModule>;
 }
 

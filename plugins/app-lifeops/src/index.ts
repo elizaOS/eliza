@@ -2,6 +2,8 @@ export { appBlockAction } from "./actions/app-block.js";
 export { autofillAction } from "./actions/autofill.js";
 export { bookTravelAction } from "./actions/book-travel.js";
 export { calendarAction } from "./actions/calendar.js";
+export { calendlyAction } from "./actions/lib/calendly-handler.js";
+export { schedulingNegotiationAction } from "./actions/scheduling-negotiation.js";
 export { checkinAction } from "./actions/checkin.js";
 export { connectorAction } from "./actions/connector.js";
 export { deviceIntentAction } from "./actions/device-intent.js";
@@ -21,10 +23,16 @@ export { voiceCallAction } from "./actions/voice-call.js";
 export { websiteBlockAction } from "./actions/website-block.js";
 export { getAppBlockerStatus } from "./app-blocker/engine.js";
 export * from "./contracts/index.js";
-export { detectHealthBackend } from "./lifeops/health-bridge.js";
+export { detectHealthBackend } from "@elizaos/plugin-health";
+export {
+  createApprovalQueue,
+  PgApprovalQueue,
+  type ApprovalQueueOptions,
+} from "./lifeops/approval-queue.js";
 export * from "./lifeops/messaging/index.js";
 export { detectPasswordManagerBackend } from "./lifeops/password-manager-bridge.js";
 export { detectRemoteDesktopBackend } from "./lifeops/remote-desktop.js";
+export { LifeOpsRepository } from "./lifeops/repository.js";
 export { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.js";
 export * from "./platform/index.js";
 export type {
@@ -95,3 +103,17 @@ export {
   WebsiteBlockerService,
   websiteBlockerProvider,
 } from "./website-blocker/public.js";
+export * from "./client.js";
+export * from "./platform.js";
+export * from "./inbox/types.js";
+export * from "./types.js";
+export * from "./types/app-blocker-settings-card.js";
+export * from "./types/website-blocker-settings-card.js";
+export * from "./agent-lifeops.js";
+export * from "./widgets.js";
+export * from "./website-blocker/engine.js";
+export * from "./lifeops.js";
+export * from "./api/client-lifeops.js";
+export * from "./contracts.js";
+export * from "./contracts/lifeops.js";
+export * from "./public.js";

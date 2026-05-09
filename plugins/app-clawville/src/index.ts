@@ -7,6 +7,7 @@ export {
   resolveLaunchSession,
   stopRun,
 } from "./routes.js";
+export * from "./ui/index.js";
 
 export function createAppClawvillePlugin(): Plugin {
   return {
@@ -44,3 +45,4 @@ export function createAppClawvillePlugin(): Plugin {
 export const appClawvillePlugin = createAppClawvillePlugin();
 
 export default appClawvillePlugin;
+export * from "./ui.js";

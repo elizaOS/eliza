@@ -163,21 +163,15 @@ function isTrajectoryMarkdownReviewEnabled(
   );
 }
 
-function safeStringify(value: unknown, max = 64_000): string {
-  try {
-    if (typeof value === "string") return value.slice(0, max);
-    const text = JSON.stringify(value, (_k, v) =>
-      typeof v === "bigint" ? v.toString() : v,
-    );
-    return text.length > max ? `${text.slice(0, max)}…[truncated]` : text;
-  } catch {
-    return String(value).slice(0, max);
-  }
+const MARKDOWN_MAX_LINE_LENGTH = 180;
+
+function truncateText(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)}…[truncated]` : text;
 }
 
-function stringifyTrajectoryRecord(value: unknown): string {
+function stringifyJson(value: unknown, space = 0): string {
   const seen = new WeakSet<object>();
-  return JSON.stringify(
+  const text = JSON.stringify(
     value,
     (_key, currentValue) => {
       if (typeof currentValue === "function") {
@@ -194,8 +188,69 @@ function stringifyTrajectoryRecord(value: unknown): string {
       }
       return currentValue;
     },
-    2,
+    space,
   );
+  return text ?? String(value);
+}
+
+function safeStringify(value: unknown, max = 64_000): string {
+  try {
+    if (typeof value === "string") return truncateText(value, max);
+    return truncateText(stringifyJson(value), max);
+  } catch {
+    return truncateText(String(value), max);
+  }
+}
+
+function stringifyTrajectoryRecord(value: unknown): string {
+  return stringifyJson(value, 2);
+}
+
+function prettyJsonString(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed || (trimmed[0] !== "{" && trimmed[0] !== "[")) return null;
+  try {
+    return stringifyJson(JSON.parse(trimmed), 2);
+  } catch {
+    return null;
+  }
+}
+
+function formatMarkdownPayload(value: unknown, max = 64_000): string {
+  try {
+    const text =
+      typeof value === "string"
+        ? (prettyJsonString(value) ?? value)
+        : stringifyJson(value, 2);
+    return truncateText(text, max);
+  } catch {
+    return truncateText(String(value), max);
+  }
+}
+
+function wrapMarkdownLongLines(
+  value: string,
+  max = MARKDOWN_MAX_LINE_LENGTH,
+): string {
+  return value
+    .split(/\r?\n/)
+    .flatMap((line) => {
+      if (line.length <= max) return [line];
+
+      const chunks: string[] = [];
+      let remaining = line;
+      while (remaining.length > max) {
+        let splitAt = remaining.lastIndexOf(" ", max);
+        if (splitAt < Math.floor(max * 0.6)) splitAt = max;
+        chunks.push(remaining.slice(0, splitAt));
+        remaining = remaining.slice(
+          /\s/.test(remaining.charAt(splitAt)) ? splitAt + 1 : splitAt,
+        );
+      }
+      if (remaining.length > 0) chunks.push(remaining);
+      return chunks;
+    })
+    .join("\n");
 }
 
 function redactMarkdownSecrets(text: string): string {
@@ -235,8 +290,9 @@ function formatDuration(durationMs: number): string {
 }
 
 function markdownFence(value: string, language = ""): string[] {
-  const fence = value.includes("```") ? "````" : "```";
-  return [language ? `${fence}${language}` : fence, value, fence];
+  const body = wrapMarkdownLongLines(value);
+  const fence = body.includes("```") ? "````" : "```";
+  return [language ? `${fence}${language}` : fence, body, fence];
 }
 
 function summarizeEmbeddingResponse(response: string): string | null {
@@ -292,14 +348,14 @@ function formatUsageLine(call: TrajectoryLlmCall): string | null {
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-function markdownTableCell(value: unknown): string {
-  return String(value ?? "")
+function markdownTableCell(value: unknown, max = 160): string {
+  return truncateText(String(value ?? ""), max)
     .replace(/\\/g, "\\\\")
     .replace(/\|/g, "\\|")
     .replace(/\r?\n/g, "<br>");
 }
 
-function renderTrajectoryRecordMarkdown(record: TrajectoryRecord): string {
+export function renderTrajectoryRecordMarkdown(record: TrajectoryRecord): string {
   const lines: string[] = [];
   lines.push(
     `# Recorded Test Trajectory ${record.caseId ?? record.scenarioId ?? ""}`.trim(),
@@ -320,7 +376,7 @@ function renderTrajectoryRecordMarkdown(record: TrajectoryRecord): string {
     lines.push("");
     lines.push("## Metadata");
     lines.push("");
-    lines.push(...markdownFence(safeStringify(record.metadata), "json"));
+    lines.push(...markdownFence(formatMarkdownPayload(record.metadata), "json"));
   }
 
   if (record.transcript.length > 0) {
@@ -356,16 +412,18 @@ function renderTrajectoryRecordMarkdown(record: TrajectoryRecord): string {
         lines.push("");
         lines.push("#### System Prompt");
         lines.push("");
-        lines.push(...markdownFence(call.systemPrompt));
+        lines.push(...markdownFence(formatMarkdownPayload(call.systemPrompt)));
       }
       lines.push("");
       lines.push("#### Prompt");
       lines.push("");
-      lines.push(...markdownFence(call.prompt));
+      lines.push(...markdownFence(formatMarkdownPayload(call.prompt)));
       lines.push("");
       lines.push("#### Response");
       lines.push("");
-      lines.push(...markdownFence(llmResponseForMarkdown(call)));
+      lines.push(
+        ...markdownFence(formatMarkdownPayload(llmResponseForMarkdown(call))),
+      );
     }
   }
 
@@ -399,7 +457,7 @@ function renderTrajectoryRecordMarkdown(record: TrajectoryRecord): string {
           `- include: ${snapshot.includeList.map((name) => `\`${name}\``).join(", ")}`,
         );
       }
-      lines.push(...markdownFence(safeStringify(snapshot), "json"));
+      lines.push(...markdownFence(formatMarkdownPayload(snapshot), "json"));
     }
   }
 
@@ -407,14 +465,16 @@ function renderTrajectoryRecordMarkdown(record: TrajectoryRecord): string {
     lines.push("");
     lines.push("## Memory Writes");
     lines.push("");
-    lines.push(...markdownFence(safeStringify(record.memoriesWritten), "json"));
+    lines.push(
+      ...markdownFence(formatMarkdownPayload(record.memoriesWritten), "json"),
+    );
   }
 
   if (record.events.length > 0) {
     lines.push("");
     lines.push("## Events");
     lines.push("");
-    lines.push(...markdownFence(safeStringify(record.events), "json"));
+    lines.push(...markdownFence(formatMarkdownPayload(record.events), "json"));
   }
 
   return `${redactMarkdownSecrets(lines.join("\n")).trimEnd()}\n`;

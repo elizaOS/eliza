@@ -170,12 +170,12 @@ async function seedLocalGmail(runtime: AgentRuntime, stateDir: string) {
       agentId,
       grantId,
       accountEmail: "shawmakesmagic@gmail.com",
-      id: "gmail-live-suran-recent",
-      externalId: "gmail-live-suran-recent-ext",
-      threadId: "gmail-live-suran-thread-recent",
-      subject: "Suran follow-up",
-      from: "Suran Lee",
-      fromEmail: "suran@example.com",
+      id: "gmail-live-pat-recent",
+      externalId: "gmail-live-pat-recent-ext",
+      threadId: "gmail-live-pat-thread-recent",
+      subject: "Pat follow-up",
+      from: "Pat Smith",
+      fromEmail: "pat@example.com",
       snippet:
         "Wanted to follow up on the last few weeks and see if next week works.",
       receivedAt: "2026-04-09T16:00:00.000Z",
@@ -307,14 +307,14 @@ async function runDraftFlow(
   const searchResponse = await sendChat(
     port,
     conversationId,
-    "Search my email and tell me if anyone named Suran emailed me.",
+    "Search my email and tell me if anyone named Pat emailed me.",
   );
-  expect(searchResponse).toMatch(/suran/i);
+  expect(searchResponse).toMatch(/pat/i);
 
   return await sendChat(
     port,
     conversationId,
-    "Draft a reply to Suran thanking him and saying next week works. Do not send it yet.",
+    "Draft a reply to Pat thanking him and saying next week works. Do not send it yet.",
     options,
   );
 }
@@ -339,10 +339,10 @@ describeIf(LIVE_GMAIL_CHAT_ENABLED)("life-ops gmail live chat flows", () => {
       const responseText = await sendChat(
         server?.port ?? 0,
         conversationId,
-        "Search my email and tell me if anyone named Suran emailed me.",
+        "Search my email and tell me if anyone named Pat emailed me.",
       );
 
-      expect(responseText).toMatch(/suran/i);
+      expect(responseText).toMatch(/pat/i);
     },
     { perRunTimeoutMs: 180_000, label: "gmail-chat/narrative-search" },
   );

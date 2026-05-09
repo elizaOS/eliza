@@ -14,7 +14,7 @@ import type {
   LifeOpsTelemetryEvent,
   LifeOpsTelemetryPayload,
 } from "@elizaos/shared";
-import { resolveActivitySignalReliability } from "./source-reliability.js";
+import { resolveActivitySignalReliability } from "@elizaos/plugin-health";
 
 export function deriveTelemetryDedupeKey(
   family: string,

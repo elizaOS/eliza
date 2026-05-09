@@ -1,3 +1,28 @@
+diff --git a/LlamaCpp.podspec b/LlamaCpp.podspec
+index fc84a44..35d9505 100644
+--- a/LlamaCpp.podspec
++++ b/LlamaCpp.podspec
+@@ -16,5 +16,5 @@ Pod::Spec.new do |s|
+   s.swift_version = '5.1'
+   
+   # Include the native llama-cpp framework
+-  s.vendored_frameworks = 'ios/Frameworks/llama-cpp.framework'
++  s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.framework'
+ end
+diff --git a/LlamaCppCapacitor.podspec b/LlamaCppCapacitor.podspec
+index 4b8af43..16b7823 100644
+--- a/LlamaCppCapacitor.podspec
++++ b/LlamaCppCapacitor.podspec
+@@ -16,8 +16,5 @@ Pod::Spec.new do |s|
+   s.swift_version = '5.1'
+   
+   # Include the native llama-cpp framework
+-  s.vendored_frameworks = 'ios/Frameworks/llama-cpp.framework'
+-  s.pod_target_xcconfig = {
+-    'FRAMEWORK_SEARCH_PATHS' => '$(inherited) "$(PODS_TARGET_SRCROOT)/ios/Frameworks"'
+-  }
++  s.vendored_frameworks = 'ios/Frameworks-xcframework/LlamaCpp.xcframework'
+ end
 diff --git a/android/build.gradle b/android/build.gradle
 index 772361a..c76814f 100644
 --- a/android/build.gradle
@@ -37,26 +62,8 @@ index 772361a..c76814f 100644
      }
      
      compileOptions {
-diff --git a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java b/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
-index 0000000..0000001 100644
---- a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
-+++ b/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
-@@ -315,8 +315,11 @@
-             System.loadLibrary(libraryName);
-             Log.i(TAG, "Successfully loaded llama-cpp native library: " + libraryName);
-         } catch (UnsatisfiedLinkError e) {
--            Log.e(TAG, "Failed to load llama-cpp native library: " + e.getMessage());
--            throw e;
-+            // Don't re-throw — the plugin's static initializer would crash
-+            // the entire host app even when llama-cpp isn't actually used.
-+            // Native API calls will fail later with their own errors; that's
-+            // the appropriate failure surface, not a process-level kill.
-+            Log.e(TAG, "Failed to load llama-cpp native library (continuing without on-device inference): " + e.getMessage());
-         }
-     }
- 
 diff --git a/android/src/main/jni.cpp b/android/src/main/jni.cpp
-index 0000000..0000001 100644
+index 6377592..dd412fb 100644
 --- a/android/src/main/jni.cpp
 +++ b/android/src/main/jni.cpp
 @@ -1481,19 +1481,22 @@ Java_ai_annadata_plugin_capacitor_LlamaCpp_embeddingNative(
@@ -91,8 +98,2168 @@ index 0000000..0000001 100644
                      }
                  }
              }
+diff --git a/build-native.sh b/build-native.sh
+index 8909b49..b07f9e4 100755
+--- a/build-native.sh
++++ b/build-native.sh
+@@ -112,15 +112,23 @@ build_ios() {
+     
+     # CMake builds the framework directly (FRAMEWORK TRUE in CMakeLists.txt)
+     # Verify the framework was created
+-    if [ -d "llama-cpp.framework" ]; then
+-        print_success "iOS framework built successfully at: $(pwd)/llama-cpp.framework"
++    if [ -d "LlamaCpp.framework" ] || [ -d "llama-cpp.framework" ]; then
++        FRAMEWORK_DIR="LlamaCpp.framework"
++        if [ ! -d "$FRAMEWORK_DIR" ]; then
++            FRAMEWORK_DIR="llama-cpp.framework"
++        fi
++        print_success "iOS framework built successfully at: $(pwd)/$FRAMEWORK_DIR"
+         
+         # Binary location: CMake may produce flat (llama-cpp) or Versions/A/ layout
+         BINARY=""
+-        if [ -f "llama-cpp.framework/llama-cpp" ]; then
+-            BINARY="llama-cpp.framework/llama-cpp"
+-        elif [ -f "llama-cpp.framework/Versions/A/llama-cpp" ]; then
+-            BINARY="llama-cpp.framework/Versions/A/llama-cpp"
++        if [ -f "$FRAMEWORK_DIR/LlamaCpp" ]; then
++            BINARY="$FRAMEWORK_DIR/LlamaCpp"
++        elif [ -f "$FRAMEWORK_DIR/Versions/A/LlamaCpp" ]; then
++            BINARY="$FRAMEWORK_DIR/Versions/A/LlamaCpp"
++        elif [ -f "$FRAMEWORK_DIR/llama-cpp" ]; then
++            BINARY="$FRAMEWORK_DIR/llama-cpp"
++        elif [ -f "$FRAMEWORK_DIR/Versions/A/llama-cpp" ]; then
++            BINARY="$FRAMEWORK_DIR/Versions/A/llama-cpp"
+         fi
+         if [ -n "$BINARY" ]; then
+             if xcrun strip -x -S "$BINARY" 2>/dev/null; then
+@@ -134,12 +142,28 @@ build_ios() {
+             cd ../..
+             return 1
+         fi
+-        rm -rf ../Frameworks/llama-cpp.framework
+-        mkdir -p ../Frameworks/llama-cpp.framework/Resources
+-        cp "$BINARY" ../Frameworks/llama-cpp.framework/llama-cpp
+-        [ -f llama-cpp.framework/Info.plist ] && cp llama-cpp.framework/Info.plist ../Frameworks/llama-cpp.framework/
+-        [ -f llama-cpp.framework/Versions/A/Resources/Info.plist ] && cp llama-cpp.framework/Versions/A/Resources/Info.plist ../Frameworks/llama-cpp.framework/Resources/
+-        print_success "iOS framework copied to ios/Frameworks/ for npm package (flat, no duplication)"
++        rm -rf ../Frameworks/LlamaCpp.framework ../Frameworks/llama-cpp.framework
++        mkdir -p ../Frameworks/LlamaCpp.framework/Headers ../Frameworks/LlamaCpp.framework/Modules
++        cp "$BINARY" ../Frameworks/LlamaCpp.framework/LlamaCpp
++        if [ -f "$FRAMEWORK_DIR/Info.plist" ]; then
++            cp "$FRAMEWORK_DIR/Info.plist" ../Frameworks/LlamaCpp.framework/
++        elif [ -f "$FRAMEWORK_DIR/Versions/A/Resources/Info.plist" ]; then
++            cp "$FRAMEWORK_DIR/Versions/A/Resources/Info.plist" ../Frameworks/LlamaCpp.framework/
++        fi
++        if command -v plutil >/dev/null 2>&1 && [ -f ../Frameworks/LlamaCpp.framework/Info.plist ]; then
++            plutil -replace CFBundleExecutable -string LlamaCpp ../Frameworks/LlamaCpp.framework/Info.plist
++            plutil -replace CFBundleIdentifier -string com.arusatech.LlamaCpp ../Frameworks/LlamaCpp.framework/Info.plist
++            plutil -replace CFBundleName -string LlamaCpp ../Frameworks/LlamaCpp.framework/Info.plist
++        fi
++        printf '' > ../Frameworks/LlamaCpp.framework/Headers/LlamaCpp.h
++        printf 'framework module LlamaCpp {\n  umbrella header "LlamaCpp.h"\n  export *\n}\n' > ../Frameworks/LlamaCpp.framework/Modules/module.modulemap
++        if command -v install_name_tool >/dev/null 2>&1; then
++            install_name_tool -id @rpath/LlamaCpp.framework/LlamaCpp ../Frameworks/LlamaCpp.framework/LlamaCpp 2>/dev/null || true
++        fi
++        if command -v codesign >/dev/null 2>&1; then
++            codesign --remove-signature ../Frameworks/LlamaCpp.framework/LlamaCpp 2>/dev/null || true
++        fi
++        print_success "iOS framework copied to ios/Frameworks/LlamaCpp.framework for npm package (flat, no duplication)"
+     else
+         print_error "iOS framework not found after build"
+         cd ../..
+diff --git a/cpp/cap-bridge.cpp b/cpp/cap-bridge.cpp
+new file mode 100644
+index 0000000..e6bdbd5
+--- /dev/null
++++ b/cpp/cap-bridge.cpp
+@@ -0,0 +1,383 @@
++#include "cap-llama.h"
++#include "cap-completion.h"
++
++#include <chrono>
++#include <cstdlib>
++#include <cstring>
++#include <exception>
++#include <map>
++#include <memory>
++#include <mutex>
++#include <string>
++#include <vector>
++
++using json = nlohmann::ordered_json;
++
++namespace capllama {
++bool capllama_verbose = false;
++}
++
++namespace {
++
++std::map<int64_t, std::unique_ptr<capllama::llama_cap_context>> g_contexts;
++std::mutex g_contexts_mutex;
++std::string g_last_error;
++int64_t g_next_context_id = 1;
++
++char * copy_string(const std::string & value) {
++    char * out = static_cast<char *>(std::malloc(value.size() + 1));
++    if (out == nullptr) {
++        return nullptr;
++    }
++    std::memcpy(out, value.c_str(), value.size() + 1);
++    return out;
++}
++
++json parse_json(const char * input) {
++    if (input == nullptr || input[0] == '\0') {
++        return json::object();
++    }
++    try {
++        const auto parsed = json::parse(input, nullptr, false);
++        return parsed.is_discarded() || !parsed.is_object() ? json::object() : parsed;
++    } catch (...) {
++        return json::object();
++    }
++}
++
++bool get_bool(const json & value, const char * key, bool fallback) {
++    if (!value.contains(key) || value[key].is_null()) return fallback;
++    if (value[key].is_boolean()) return value[key].get<bool>();
++    if (value[key].is_number_integer()) return value[key].get<int>() != 0;
++    return fallback;
++}
++
++int get_int(const json & value, const char * key, int fallback) {
++    if (!value.contains(key) || value[key].is_null()) return fallback;
++    if (value[key].is_number_integer()) return value[key].get<int>();
++    if (value[key].is_number_float()) return static_cast<int>(value[key].get<double>());
++    return fallback;
++}
++
++float get_float(const json & value, const char * key, float fallback) {
++    if (!value.contains(key) || value[key].is_null()) return fallback;
++    if (value[key].is_number()) return value[key].get<float>();
++    return fallback;
++}
++
++std::string get_string(const json & value, const char * key, const std::string & fallback = "") {
++    if (!value.contains(key) || value[key].is_null()) return fallback;
++    if (value[key].is_string()) return value[key].get<std::string>();
++    return fallback;
++}
++
++void apply_context_params(common_params & params, const json & input, const std::string & model_path) {
++    params.model.path = model_path;
++    params.n_ctx = get_int(input, "n_ctx", params.n_ctx);
++    params.n_batch = get_int(input, "n_batch", params.n_batch);
++    params.n_ubatch = get_int(input, "n_ubatch", params.n_ubatch);
++    params.n_keep = get_int(input, "n_keep", params.n_keep);
++    params.n_gpu_layers = get_bool(input, "no_gpu_devices", false)
++        ? 0
++        : get_int(input, "n_gpu_layers", params.n_gpu_layers);
++    params.cpuparams.n_threads = get_int(input, "n_threads", params.cpuparams.n_threads);
++    params.use_mmap = get_bool(input, "use_mmap", params.use_mmap);
++    params.use_mlock = get_bool(input, "use_mlock", params.use_mlock);
++    params.ctx_shift = get_bool(input, "ctx_shift", params.ctx_shift);
++    params.flash_attn = get_bool(input, "flash_attn", params.flash_attn);
++    params.embedding = get_bool(input, "embedding", params.embedding);
++    params.chat_template = get_string(input, "chat_template", params.chat_template);
++    params.rope_freq_base = get_float(input, "rope_freq_base", params.rope_freq_base);
++    params.rope_freq_scale = get_float(input, "rope_freq_scale", params.rope_freq_scale);
++    params.yarn_ext_factor = get_float(input, "yarn_ext_factor", params.yarn_ext_factor);
++    params.yarn_attn_factor = get_float(input, "yarn_attn_factor", params.yarn_attn_factor);
++    params.yarn_beta_fast = get_float(input, "yarn_beta_fast", params.yarn_beta_fast);
++    params.yarn_beta_slow = get_float(input, "yarn_beta_slow", params.yarn_beta_slow);
++    params.yarn_orig_ctx = get_int(input, "yarn_orig_ctx", params.yarn_orig_ctx);
++
++    const std::string cache_type_k = get_string(input, "cache_type_k");
++    const std::string cache_type_v = get_string(input, "cache_type_v");
++    if (!cache_type_k.empty()) params.cache_type_k = capllama::kv_cache_type_from_str(cache_type_k);
++    if (!cache_type_v.empty()) params.cache_type_v = capllama::kv_cache_type_from_str(cache_type_v);
++
++    params.speculative.n_max = get_int(input, "speculative_samples", params.speculative.n_max);
++    params.speculative.n_max = get_int(input, "draft_max", params.speculative.n_max);
++    params.speculative.n_min = get_int(input, "draft_min", params.speculative.n_min);
++    params.speculative.model.path = get_string(input, "draft_model", params.speculative.model.path);
++}
++
++void apply_completion_params(common_params & params, const json & input, const char * prompt) {
++    params.prompt = prompt == nullptr ? "" : std::string(prompt);
++    params.n_predict = get_int(input, "n_predict", params.n_predict > 0 ? params.n_predict : 256);
++    params.cpuparams.n_threads = get_int(input, "n_threads", params.cpuparams.n_threads);
++    params.sampling.temp = get_float(input, "temperature", params.sampling.temp);
++    params.sampling.top_k = get_int(input, "top_k", params.sampling.top_k);
++    params.sampling.top_p = get_float(input, "top_p", params.sampling.top_p);
++    params.sampling.min_p = get_float(input, "min_p", params.sampling.min_p);
++    params.sampling.typ_p = get_float(input, "typical_p", params.sampling.typ_p);
++    params.sampling.penalty_repeat = get_float(input, "penalty_repeat", params.sampling.penalty_repeat);
++    params.sampling.penalty_freq = get_float(input, "penalty_freq", params.sampling.penalty_freq);
++    params.sampling.penalty_present = get_float(input, "penalty_present", params.sampling.penalty_present);
++    params.sampling.n_probs = get_int(input, "n_probs", params.sampling.n_probs);
++    params.sampling.seed = get_int(input, "seed", params.sampling.seed);
++
++    params.antiprompt.clear();
++    if (input.contains("stop") && input["stop"].is_array()) {
++        for (const auto & stop : input["stop"]) {
++            if (stop.is_string()) {
++                params.antiprompt.push_back(stop.get<std::string>());
++            }
++        }
++    }
++}
++
++json model_info_json(const capllama::llama_cap_context & ctx) {
++    char desc[256] = {0};
++    if (ctx.model != nullptr) {
++        llama_model_desc(ctx.model, desc, sizeof(desc));
++    }
++    json metadata = json::object();
++    if (ctx.model != nullptr) {
++        const int count = llama_model_meta_count(ctx.model);
++        char key[256] = {0};
++        char value[2048] = {0};
++        for (int i = 0; i < count; ++i) {
++            if (llama_model_meta_key_by_index(ctx.model, i, key, sizeof(key)) >= 0 &&
++                llama_model_meta_val_str_by_index(ctx.model, i, value, sizeof(value)) >= 0) {
++                metadata[key] = value;
++            }
++        }
++    }
++    return {
++        {"desc", desc[0] == '\0' ? "GGUF model" : desc},
++        {"size", ctx.model == nullptr ? 0 : llama_model_size(ctx.model)},
++        {"nEmbd", ctx.model == nullptr ? 0 : llama_model_n_embd(ctx.model)},
++        {"nParams", ctx.model == nullptr ? 0 : llama_model_n_params(ctx.model)},
++        {"metadata", metadata},
++        {"isChatTemplateSupported", true},
++        {"chatTemplates", {
++            {"llamaChat", true},
++            {"minja", {
++                {"default", true},
++                {"defaultCaps", {
++                    {"tools", true},
++                    {"toolCalls", true},
++                    {"toolResponses", true},
++                    {"systemRole", true},
++                    {"parallelToolCalls", true},
++                    {"toolCallId", true}
++                }},
++                {"toolUse", true},
++                {"toolUseCaps", {
++                    {"tools", true},
++                    {"toolCalls", true},
++                    {"toolResponses", true},
++                    {"systemRole", true},
++                    {"parallelToolCalls", true},
++                    {"toolCallId", true}
++                }}
++            }}
++        }}
++    };
++}
++
++json timings_json(const llama_perf_context_data & perf, size_t prompt_tokens, size_t predicted_tokens) {
++    const double prompt_ms = perf.t_p_eval_ms;
++    const double predicted_ms = perf.t_eval_ms;
++    return {
++        {"prompt_n", static_cast<int>(prompt_tokens)},
++        {"prompt_ms", prompt_ms},
++        {"prompt_per_token_ms", prompt_tokens > 0 ? prompt_ms / static_cast<double>(prompt_tokens) : 0.0},
++        {"prompt_per_second", prompt_ms > 0 ? 1000.0 * static_cast<double>(prompt_tokens) / prompt_ms : 0.0},
++        {"predicted_n", static_cast<int>(predicted_tokens)},
++        {"predicted_ms", predicted_ms},
++        {"predicted_per_token_ms", predicted_tokens > 0 ? predicted_ms / static_cast<double>(predicted_tokens) : 0.0},
++        {"predicted_per_second", predicted_ms > 0 ? 1000.0 * static_cast<double>(predicted_tokens) / predicted_ms : 0.0}
++    };
++}
++
++capllama::llama_cap_context * find_context_locked(int64_t context_id) {
++    const auto it = g_contexts.find(context_id);
++    if (it == g_contexts.end()) return nullptr;
++    return it->second.get();
++}
++
++} // namespace
++
++extern "C" char * llama_get_last_error(void) {
++    std::lock_guard<std::mutex> lock(g_contexts_mutex);
++    return copy_string(g_last_error.empty() ? "No detailed native error captured" : g_last_error);
++}
++
++extern "C" void llama_free_string(char * value) {
++    if (value != nullptr) {
++        std::free(value);
++    }
++}
++
++extern "C" int64_t llama_init_context(const char * model_path, const char * params_json) {
++    if (model_path == nullptr || model_path[0] == '\0') {
++        return -1;
++    }
++    try {
++        auto context = std::make_unique<capllama::llama_cap_context>();
++        common_params params;
++        apply_context_params(params, parse_json(params_json), model_path);
++        if (!context->loadModel(params)) {
++            std::lock_guard<std::mutex> lock(g_contexts_mutex);
++            g_last_error = std::string("Failed to load model: ") + model_path;
++            return -1;
++        }
++
++        const auto input = parse_json(params_json);
++        const std::string draft_model = get_string(input, "draft_model");
++        if (!draft_model.empty()) {
++            context->mobile_speculative = get_bool(input, "mobile_speculative", true);
++            context->speculative_samples = get_int(input, "speculative_samples", context->speculative_samples);
++            if (!context->loadDraftModel(draft_model)) {
++                std::lock_guard<std::mutex> lock(g_contexts_mutex);
++                g_last_error = "DFlash/speculative draft model loading is not available in this mobile framework build.";
++                return -1;
++            }
++        }
++
++        std::lock_guard<std::mutex> lock(g_contexts_mutex);
++        const int64_t context_id = g_next_context_id++;
++        g_contexts[context_id] = std::move(context);
++        return context_id;
++    } catch (const std::exception & e) {
++        capllama::log("ERROR", __func__, __LINE__, "llama_init_context failed: %s", e.what());
++        std::lock_guard<std::mutex> lock(g_contexts_mutex);
++        g_last_error = e.what();
++        return -1;
++    } catch (...) {
++        capllama::log("ERROR", __func__, __LINE__, "llama_init_context failed with unknown exception");
++        std::lock_guard<std::mutex> lock(g_contexts_mutex);
++        g_last_error = "llama_init_context failed with unknown exception";
++        return -1;
++    }
++}
++
++extern "C" void * llama_get_context_ptr(int64_t context_id) {
++    std::lock_guard<std::mutex> lock(g_contexts_mutex);
++    return find_context_locked(context_id);
++}
++
++extern "C" char * llama_get_model_info(int64_t context_id) {
++    try {
++        std::lock_guard<std::mutex> lock(g_contexts_mutex);
++        auto * ctx = find_context_locked(context_id);
++        if (ctx == nullptr) return nullptr;
++        return copy_string(model_info_json(*ctx).dump());
++    } catch (...) {
++        return nullptr;
++    }
++}
++
++extern "C" void llama_release_context(int64_t context_id) {
++    std::lock_guard<std::mutex> lock(g_contexts_mutex);
++    g_contexts.erase(context_id);
++}
++
++extern "C" char * llama_get_formatted_chat(int64_t context_id, const char * messages, const char * chat_template) {
++    try {
++        std::lock_guard<std::mutex> lock(g_contexts_mutex);
++        auto * ctx = find_context_locked(context_id);
++        if (ctx == nullptr) return nullptr;
++        const auto formatted = ctx->getFormattedChat(
++            messages == nullptr ? "[]" : messages,
++            chat_template == nullptr ? "" : chat_template
++        );
++        return copy_string(json(formatted).dump());
++    } catch (const std::exception & e) {
++        return copy_string(std::string("{\"error\":\"") + e.what() + "\"}");
++    } catch (...) {
++        return nullptr;
++    }
++}
++
++extern "C" char * llama_completion(int64_t context_id, const char * prompt, const char * params_json) {
++    const auto started = std::chrono::steady_clock::now();
++    try {
++        capllama::llama_cap_context * ctx = nullptr;
++        {
++            std::lock_guard<std::mutex> lock(g_contexts_mutex);
++            ctx = find_context_locked(context_id);
++        }
++        if (ctx == nullptr || ctx->ctx == nullptr || ctx->model == nullptr || ctx->completion == nullptr) {
++            return copy_string("{\"error\":\"Native context is not loaded\"}");
++        }
++
++        apply_completion_params(ctx->params, parse_json(params_json), prompt);
++        auto * completion = ctx->completion;
++        completion->rewind();
++        if (!completion->initSampling()) {
++            return copy_string("{\"error\":\"Failed to initialize sampler\"}");
++        }
++
++        completion->loadPrompt({});
++        completion->beginCompletion();
++        while (completion->has_next_token && !completion->is_interrupted) {
++            const size_t before_size = completion->generated_text.size();
++            if (ctx->isSpectulativeEnabled()) {
++                completion->nextTokenSpeculative();
++            } else {
++                completion->doCompletion();
++            }
++            const size_t last_token_size = completion->generated_text.size() - before_size;
++            const size_t stop_pos = completion->findStoppingStrings(completion->generated_text, last_token_size, capllama::STOP_FULL);
++            if (stop_pos != std::string::npos) {
++                completion->generated_text = completion->generated_text.substr(0, stop_pos);
++            }
++        }
++        completion->endCompletion();
++
++        std::string generated = completion->generated_text;
++
++        const auto perf = llama_perf_context(ctx->ctx);
++        const auto elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
++        json result = {
++            {"text", generated},
++            {"content", generated},
++            {"reasoning_content", ""},
++            {"tool_calls", json::array()},
++            {"chat_format", completion->current_chat_format},
++            {"tokens_predicted", static_cast<int>(completion->num_tokens_predicted)},
++            {"tokens_evaluated", static_cast<int>(completion->num_prompt_tokens)},
++            {"truncated", completion->truncated},
++            {"stopped_eos", completion->stopped_eos},
++            {"stopped_word", completion->stopped_word},
++            {"stopped_limit", completion->stopped_limit},
++            {"stopping_word", completion->stopping_word},
++            {"context_full", completion->context_full},
++            {"interrupted", completion->is_interrupted},
++            {"tokens_cached", static_cast<int>(completion->n_past)},
++            {"timings", timings_json(perf, completion->num_prompt_tokens, completion->num_tokens_predicted)}
++        };
++        if (result["timings"]["predicted_ms"].get<double>() <= 0.0) {
++            result["timings"]["predicted_ms"] = elapsed;
++            result["timings"]["predicted_per_token_ms"] =
++                completion->num_tokens_predicted > 0 ? elapsed / static_cast<double>(completion->num_tokens_predicted) : 0.0;
++            result["timings"]["predicted_per_second"] =
++                elapsed > 0 ? 1000.0 * static_cast<double>(completion->num_tokens_predicted) / elapsed : 0.0;
++        }
++        return copy_string(result.dump());
++    } catch (const std::exception & e) {
++        return copy_string((json{{"error", e.what()}}).dump());
++    } catch (...) {
++        return copy_string("{\"error\":\"Unknown native completion failure\"}");
++    }
++}
++
++extern "C" void llama_stop_completion(int64_t context_id) {
++    std::lock_guard<std::mutex> lock(g_contexts_mutex);
++    auto * ctx = find_context_locked(context_id);
++    if (ctx != nullptr && ctx->completion != nullptr) {
++        ctx->completion->is_interrupted = true;
++    }
++}
++
++extern "C" bool llama_toggle_native_log(bool enabled) {
++    capllama::capllama_verbose = enabled;
++    return true;
++}
+diff --git a/cpp/cap-embedding.cpp b/cpp/cap-embedding.cpp
+index c6e0f56..968e58e 100644
+--- a/cpp/cap-embedding.cpp
++++ b/cpp/cap-embedding.cpp
+@@ -98,7 +98,7 @@ extern "C" float* llama_embedding(int64_t contextId, const char* text, const cha
+         
+         // Add tokens to batch with embeddings enabled
+         for (size_t i = 0; i < tokens.size(); i++) {
+-            llama_batch_add(&batch, tokens[i], i, {0}, true); // logits=true to get embeddings
++            capllama::llama_batch_add(&batch, tokens[i], i, {0}, true); // logits=true to get embeddings
+         }
+         
+         // Decode the batch to get embeddings
+diff --git a/cpp/cap-llama.cpp b/cpp/cap-llama.cpp
+index c65af7e..d205c90 100644
+--- a/cpp/cap-llama.cpp
++++ b/cpp/cap-llama.cpp
+@@ -368,9 +368,7 @@ bool llama_cap_context::loadDraftModel(const std::string &draft_model_path) {
+         // draft_model = llama_load_model_from_file(draft_model_path.c_str(), draft_params);
+         // draft_ctx = llama_new_context_with_model(draft_model, draft_params);
+         
+-        // For this implementation, we'll disable speculative decoding
+-        // until proper model loading is implemented
+-        printf("Draft model loading not yet implemented - falling back to regular decoding\n");
++        printf("DFlash/speculative draft model loading is not available in this mobile framework build\n");
+         speculative_enabled = false;
+         return false;
+         
+diff --git a/ios/CMakeLists-arm64.txt b/ios/CMakeLists-arm64.txt
+index c268b43..ba248b4 100644
+--- a/ios/CMakeLists-arm64.txt
++++ b/ios/CMakeLists-arm64.txt
+@@ -1,5 +1,5 @@
+ cmake_minimum_required(VERSION 3.16)
+-project(llama-cpp VERSION 1.0.0 LANGUAGES CXX C)
++project(LlamaCpp VERSION 1.0.0 LANGUAGES CXX C)
+ 
+ set(CMAKE_CXX_STANDARD 17)
+ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+@@ -36,7 +36,7 @@ set(PUBLIC_HEADERS
+ )
+ 
+ # Create library target
+-add_library(llama-cpp SHARED
++add_library(LlamaCpp SHARED
+     ${SOURCE_DIR}/ggml.c
+     ${SOURCE_DIR}/ggml-alloc.c
+     ${SOURCE_DIR}/ggml-backend.cpp
+@@ -98,15 +98,18 @@ add_library(llama-cpp SHARED
+     ${SOURCE_DIR}/tools/mtmd/clip.cpp
+     ${SOURCE_DIR}/cap-llama.cpp
+     ${SOURCE_DIR}/cap-completion.cpp
++    ${SOURCE_DIR}/cap-bridge.cpp
+     ${SOURCE_DIR}/cap-tts.cpp
+     ${SOURCE_FILES_ARCH}
+ )
+ 
++set_source_files_properties(${SOURCE_DIR}/cap-bridge.cpp PROPERTIES COMPILE_OPTIONS "-O0")
++
+ # Set target properties
+-set_target_properties(llama-cpp PROPERTIES
++set_target_properties(LlamaCpp PROPERTIES
+     FRAMEWORK TRUE
+     FRAMEWORK_VERSION A
+-    MACOSX_FRAMEWORK_IDENTIFIER com.arusatech.llama-cpp
++    MACOSX_FRAMEWORK_IDENTIFIER com.arusatech.LlamaCpp
+     MACOSX_FRAMEWORK_BUNDLE_VERSION 1.0.0
+     MACOSX_FRAMEWORK_SHORT_VERSION_STRING 1.0.0
+     XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "iPhone Developer"
+@@ -116,7 +119,7 @@ set_target_properties(llama-cpp PROPERTIES
+ )
+ 
+ # Include directories
+-target_include_directories(llama-cpp PRIVATE
++target_include_directories(LlamaCpp PRIVATE
+     ${SOURCE_DIR}
+     ${SOURCE_DIR}/ggml-cpu
+     ${SOURCE_DIR}/tools/mtmd
+@@ -125,7 +128,7 @@ target_include_directories(llama-cpp PRIVATE
+ # ARM64: rely on Clang's default tuning; no x86‑specific -march flags here
+ 
+ # Link frameworks via linker flags
+-target_link_options(llama-cpp PRIVATE
++target_link_options(LlamaCpp PRIVATE
+     "-Wl,-framework,Accelerate"
+     "-Wl,-framework,Metal"
+     "-Wl,-framework,MetalKit"
+@@ -134,16 +137,15 @@ target_link_options(llama-cpp PRIVATE
+ )
+ 
+ # Public headers
+-set_target_properties(llama-cpp PROPERTIES
++set_target_properties(LlamaCpp PROPERTIES
+     PUBLIC_HEADER "${PUBLIC_HEADERS}"
+ )
+ 
+ # Install rules
+-install(TARGETS llama-cpp
++install(TARGETS LlamaCpp
+     FRAMEWORK DESTINATION .
+ )
+ 
+-message(STATUS "Building llama-cpp for ARM64 (devices)")
++message(STATUS "Building LlamaCpp for ARM64 (devices)")
+ message(STATUS "Source directory: ${SOURCE_DIR}")
+ message(STATUS "Architecture: arm64")
+-
+diff --git a/ios/CMakeLists-x86_64.txt b/ios/CMakeLists-x86_64.txt
+index b3652e9..054f5f3 100644
+--- a/ios/CMakeLists-x86_64.txt
++++ b/ios/CMakeLists-x86_64.txt
+@@ -1,5 +1,5 @@
+ cmake_minimum_required(VERSION 3.16)
+-project(llama-cpp VERSION 1.0.0 LANGUAGES CXX C)
++project(LlamaCpp VERSION 1.0.0 LANGUAGES CXX C)
+ 
+ set(CMAKE_CXX_STANDARD 17)
+ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+@@ -45,7 +45,7 @@ set(PUBLIC_HEADERS
+ )
+ 
+ # Create library target
+-add_library(llama-cpp SHARED
++add_library(LlamaCpp SHARED
+     ${SOURCE_DIR}/ggml.c
+     ${SOURCE_DIR}/ggml-alloc.c
+     ${SOURCE_DIR}/ggml-backend.cpp
+@@ -111,15 +111,18 @@ add_library(llama-cpp SHARED
+     ${SOURCE_DIR}/nlohmann/json_fwd.hpp
+     ${SOURCE_DIR}/cap-llama.cpp
+     ${SOURCE_DIR}/cap-completion.cpp
++    ${SOURCE_DIR}/cap-bridge.cpp
+     ${SOURCE_DIR}/cap-tts.cpp
+     ${SOURCE_FILES_ARCH}
+ )
+ 
++set_source_files_properties(${SOURCE_DIR}/cap-bridge.cpp PROPERTIES COMPILE_OPTIONS "-O0")
++
+ # Set target properties
+-set_target_properties(llama-cpp PROPERTIES
++set_target_properties(LlamaCpp PROPERTIES
+     FRAMEWORK TRUE
+     FRAMEWORK_VERSION A
+-    MACOSX_FRAMEWORK_IDENTIFIER com.arusatech.llama-cpp
++    MACOSX_FRAMEWORK_IDENTIFIER com.arusatech.LlamaCpp
+     MACOSX_FRAMEWORK_BUNDLE_VERSION 1.0.0
+     MACOSX_FRAMEWORK_SHORT_VERSION_STRING 1.0.0
+     XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "iPhone Developer"
+@@ -129,14 +132,14 @@ set_target_properties(llama-cpp PROPERTIES
+ )
+ 
+ # Set include directories
+-target_include_directories(llama-cpp PRIVATE
++target_include_directories(LlamaCpp PRIVATE
+     ${SOURCE_DIR}
+     ${SOURCE_DIR}/ggml-cpu
+     ${SOURCE_DIR}/tools/mtmd
+ )
+ 
+ # Set compile options for x86_64 optimization
+-target_compile_options(llama-cpp PRIVATE
++target_compile_options(LlamaCpp PRIVATE
+     -march=x86-64
+     -mtune=generic
+     -mavx2
+@@ -151,7 +154,7 @@ target_compile_options(llama-cpp PRIVATE
+ # NOTE:
+ # Use -Wl,-framework,<Name> so that the compiler driver passes the correct
+ # framework flags through to the linker as a single option.
+-target_link_options(llama-cpp PRIVATE
++target_link_options(LlamaCpp PRIVATE
+     "-Wl,-framework,Accelerate"
+     "-Wl,-framework,Metal"
+     "-Wl,-framework,MetalKit"
+@@ -160,17 +163,17 @@ target_link_options(llama-cpp PRIVATE
+ )
+ 
+ # Set public headers
+-set_target_properties(llama-cpp PROPERTIES
++set_target_properties(LlamaCpp PROPERTIES
+     PUBLIC_HEADER "${PUBLIC_HEADERS}"
+ )
+ 
+ # Install rules
+-install(TARGETS llama-cpp
++install(TARGETS LlamaCpp
+     FRAMEWORK DESTINATION .
+ )
+ 
+ # Print build information
+-message(STATUS "Building llama-cpp for x86_64 (emulator)")
++message(STATUS "Building LlamaCpp for x86_64 (emulator)")
+ message(STATUS "Source directory: ${SOURCE_DIR}")
+ message(STATUS "Architecture: x86_64")
+ message(STATUS "Optimizations: AVX2, AVX, SSE3, SSE, FMA, F16C")
+diff --git a/ios/CMakeLists.txt b/ios/CMakeLists.txt
+index c268b43..ba248b4 100644
+--- a/ios/CMakeLists.txt
++++ b/ios/CMakeLists.txt
+@@ -1,5 +1,5 @@
+ cmake_minimum_required(VERSION 3.16)
+-project(llama-cpp VERSION 1.0.0 LANGUAGES CXX C)
++project(LlamaCpp VERSION 1.0.0 LANGUAGES CXX C)
+ 
+ set(CMAKE_CXX_STANDARD 17)
+ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+@@ -36,7 +36,7 @@ set(PUBLIC_HEADERS
+ )
+ 
+ # Create library target
+-add_library(llama-cpp SHARED
++add_library(LlamaCpp SHARED
+     ${SOURCE_DIR}/ggml.c
+     ${SOURCE_DIR}/ggml-alloc.c
+     ${SOURCE_DIR}/ggml-backend.cpp
+@@ -98,15 +98,18 @@ add_library(llama-cpp SHARED
+     ${SOURCE_DIR}/tools/mtmd/clip.cpp
+     ${SOURCE_DIR}/cap-llama.cpp
+     ${SOURCE_DIR}/cap-completion.cpp
++    ${SOURCE_DIR}/cap-bridge.cpp
+     ${SOURCE_DIR}/cap-tts.cpp
+     ${SOURCE_FILES_ARCH}
+ )
+ 
++set_source_files_properties(${SOURCE_DIR}/cap-bridge.cpp PROPERTIES COMPILE_OPTIONS "-O0")
++
+ # Set target properties
+-set_target_properties(llama-cpp PROPERTIES
++set_target_properties(LlamaCpp PROPERTIES
+     FRAMEWORK TRUE
+     FRAMEWORK_VERSION A
+-    MACOSX_FRAMEWORK_IDENTIFIER com.arusatech.llama-cpp
++    MACOSX_FRAMEWORK_IDENTIFIER com.arusatech.LlamaCpp
+     MACOSX_FRAMEWORK_BUNDLE_VERSION 1.0.0
+     MACOSX_FRAMEWORK_SHORT_VERSION_STRING 1.0.0
+     XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "iPhone Developer"
+@@ -116,7 +119,7 @@ set_target_properties(llama-cpp PROPERTIES
+ )
+ 
+ # Include directories
+-target_include_directories(llama-cpp PRIVATE
++target_include_directories(LlamaCpp PRIVATE
+     ${SOURCE_DIR}
+     ${SOURCE_DIR}/ggml-cpu
+     ${SOURCE_DIR}/tools/mtmd
+@@ -125,7 +128,7 @@ target_include_directories(llama-cpp PRIVATE
+ # ARM64: rely on Clang's default tuning; no x86‑specific -march flags here
+ 
+ # Link frameworks via linker flags
+-target_link_options(llama-cpp PRIVATE
++target_link_options(LlamaCpp PRIVATE
+     "-Wl,-framework,Accelerate"
+     "-Wl,-framework,Metal"
+     "-Wl,-framework,MetalKit"
+@@ -134,16 +137,15 @@ target_link_options(llama-cpp PRIVATE
+ )
+ 
+ # Public headers
+-set_target_properties(llama-cpp PROPERTIES
++set_target_properties(LlamaCpp PROPERTIES
+     PUBLIC_HEADER "${PUBLIC_HEADERS}"
+ )
+ 
+ # Install rules
+-install(TARGETS llama-cpp
++install(TARGETS LlamaCpp
+     FRAMEWORK DESTINATION .
+ )
+ 
+-message(STATUS "Building llama-cpp for ARM64 (devices)")
++message(STATUS "Building LlamaCpp for ARM64 (devices)")
+ message(STATUS "Source directory: ${SOURCE_DIR}")
+ message(STATUS "Architecture: arm64")
+-
+diff --git a/ios/Frameworks-xcframework/LlamaCpp.xcframework/Info.plist b/ios/Frameworks-xcframework/LlamaCpp.xcframework/Info.plist
+new file mode 100644
+index 0000000..ab641ec
+--- /dev/null
++++ b/ios/Frameworks-xcframework/LlamaCpp.xcframework/Info.plist
+@@ -0,0 +1,43 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
++<plist version="1.0">
++<dict>
++	<key>AvailableLibraries</key>
++	<array>
++		<dict>
++			<key>BinaryPath</key>
++			<string>LlamaCpp.framework/LlamaCpp</string>
++			<key>LibraryIdentifier</key>
++			<string>ios-arm64</string>
++			<key>LibraryPath</key>
++			<string>LlamaCpp.framework</string>
++			<key>SupportedArchitectures</key>
++			<array>
++				<string>arm64</string>
++			</array>
++			<key>SupportedPlatform</key>
++			<string>ios</string>
++		</dict>
++		<dict>
++			<key>BinaryPath</key>
++			<string>LlamaCpp.framework/LlamaCpp</string>
++			<key>LibraryIdentifier</key>
++			<string>ios-arm64-simulator</string>
++			<key>LibraryPath</key>
++			<string>LlamaCpp.framework</string>
++			<key>SupportedArchitectures</key>
++			<array>
++				<string>arm64</string>
++			</array>
++			<key>SupportedPlatform</key>
++			<string>ios</string>
++			<key>SupportedPlatformVariant</key>
++			<string>simulator</string>
++		</dict>
++	</array>
++	<key>CFBundlePackageType</key>
++	<string>XFWK</string>
++	<key>XCFrameworkFormatVersion</key>
++	<string>1.0</string>
++</dict>
++</plist>
+diff --git a/ios/Frameworks/llama-cpp.framework/Info.plist b/ios/Frameworks-xcframework/LlamaCpp.xcframework/ios-arm64-simulator/LlamaCpp.framework/Info.plist
+similarity index 91%
+rename from ios/Frameworks/llama-cpp.framework/Info.plist
+rename to ios/Frameworks-xcframework/LlamaCpp.xcframework/ios-arm64-simulator/LlamaCpp.framework/Info.plist
+index 79b6cdc..3740776 100644
+--- a/ios/Frameworks/llama-cpp.framework/Info.plist
++++ b/ios/Frameworks-xcframework/LlamaCpp.xcframework/ios-arm64-simulator/LlamaCpp.framework/Info.plist
+@@ -5,11 +5,11 @@
+ 	<key>CFBundleDevelopmentRegion</key>
+ 	<string>English</string>
+ 	<key>CFBundleExecutable</key>
+-	<string>llama-cpp</string>
++	<string>LlamaCpp</string>
+ 	<key>CFBundleIconFile</key>
+ 	<string></string>
+ 	<key>CFBundleIdentifier</key>
+-	<string>com.arusatech.llama-cpp</string>
++	<string>com.arusatech.LlamaCpp</string>
+ 	<key>CFBundleInfoDictionaryVersion</key>
+ 	<string>6.0</string>
+ 	<key>CFBundleName</key>
+diff --git a/ios/Frameworks-xcframework/LlamaCpp.xcframework/ios-arm64/LlamaCpp.framework/Headers/LlamaCpp.h b/ios/Frameworks-xcframework/LlamaCpp.xcframework/ios-arm64/LlamaCpp.framework/Headers/LlamaCpp.h
+new file mode 100644
+index 0000000..e69de29
+diff --git a/ios/Frameworks-xcframework/LlamaCpp.xcframework/ios-arm64/LlamaCpp.framework/Info.plist b/ios/Frameworks-xcframework/LlamaCpp.xcframework/ios-arm64/LlamaCpp.framework/Info.plist
+new file mode 100644
+index 0000000..c96f8fe
+--- /dev/null
++++ b/ios/Frameworks-xcframework/LlamaCpp.xcframework/ios-arm64/LlamaCpp.framework/Info.plist
+@@ -0,0 +1,28 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
++<plist version="1.0">
++<dict>
++	<key>CFBundleDevelopmentRegion</key>
++	<string>English</string>
++	<key>CFBundleExecutable</key>
++	<string>LlamaCpp</string>
++	<key>CFBundleIconFile</key>
++	<string></string>
++	<key>CFBundleIdentifier</key>
++	<string>com.arusatech.LlamaCpp</string>
++	<key>CFBundleInfoDictionaryVersion</key>
++	<string>6.0</string>
++	<key>CFBundleName</key>
++	<string>LlamaCpp</string>
++	<key>CFBundlePackageType</key>
++	<string>FMWK</string>
++	<key>CFBundleShortVersionString</key>
++	<string>1.0.0</string>
++	<key>CFBundleSignature</key>
++	<string>????</string>
++	<key>CFBundleVersion</key>
++	<string>1.0.0</string>
++	<key>CSResourcesFileMapped</key>
++	<true/>
++</dict>
++</plist>
+diff --git a/ios/Frameworks-xcframework/LlamaCpp.xcframework/ios-arm64/LlamaCpp.framework/Modules/module.modulemap b/ios/Frameworks-xcframework/LlamaCpp.xcframework/ios-arm64/LlamaCpp.framework/Modules/module.modulemap
+new file mode 100644
+index 0000000..964fc83
+--- /dev/null
++++ b/ios/Frameworks-xcframework/LlamaCpp.xcframework/ios-arm64/LlamaCpp.framework/Modules/module.modulemap
+@@ -0,0 +1,4 @@
++framework module LlamaCpp {
++  umbrella header "LlamaCpp.h"
++  export *
++}
+diff --git a/ios/Sources/LlamaCppPlugin/LlamaCpp.swift b/ios/Sources/LlamaCppPlugin/LlamaCpp.swift
+index 98f0ad0..a20a549 100644
+--- a/ios/Sources/LlamaCppPlugin/LlamaCpp.swift
++++ b/ios/Sources/LlamaCppPlugin/LlamaCpp.swift
+@@ -1,50 +1,127 @@
+ import Foundation
+ import Capacitor
++import Darwin
+ 
+ // MARK: - Native Library Integration
+ private var contexts: [Int64: UnsafeMutableRawPointer] = [:]
+ private var nextContextId: Int64 = 1
+ 
++private typealias NativeInitContext = @convention(c) (UnsafePointer<CChar>, UnsafePointer<CChar>) -> Int64
++private typealias NativeReleaseContext = @convention(c) (Int64) -> Void
++private typealias NativeCompletion = @convention(c) (Int64, UnsafePointer<CChar>, UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>?
++private typealias NativeStopCompletion = @convention(c) (Int64) -> Void
++private typealias NativeGetFormattedChat = @convention(c) (Int64, UnsafePointer<CChar>, UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>?
++private typealias NativeToggleLog = @convention(c) (Bool) -> Bool
++private typealias NativeEmbedding = @convention(c) (Int64, UnsafePointer<CChar>, UnsafePointer<CChar>) -> UnsafePointer<Float>?
++private typealias NativeRegisterEmbeddingContext = @convention(c) (Int64, UnsafeMutableRawPointer) -> Void
++private typealias NativeUnregisterEmbeddingContext = @convention(c) (Int64) -> Void
++private typealias NativeGetModelInfo = @convention(c) (Int64) -> UnsafeMutablePointer<CChar>?
++private typealias NativeGetContextPtr = @convention(c) (Int64) -> UnsafeMutableRawPointer?
++private typealias NativeGetLastError = @convention(c) () -> UnsafeMutablePointer<CChar>?
++private typealias NativeFreeString = @convention(c) (UnsafeMutablePointer<CChar>?) -> Void
++
+ // Load the native library (use enum to avoid lazy-on-global Swift error)
+ private enum LibraryLoader {
+     static var llamaLibrary: UnsafeMutableRawPointer? = {
+-        guard let libraryPath = Bundle.main.path(forResource: "llama-cpp", ofType: "framework") else {
+-            print("Error: llama-cpp framework not found")
+-            return nil
++        var candidates: [String] = []
++        if let frameworkPath = Bundle.main.path(forResource: "LlamaCpp", ofType: "framework") {
++            candidates.append((frameworkPath as NSString).appendingPathComponent("LlamaCpp"))
++            candidates.append(frameworkPath)
++        }
++        if let privateFrameworkURL = Bundle.main.privateFrameworksURL?.appendingPathComponent("LlamaCpp.framework/LlamaCpp") {
++            candidates.append(privateFrameworkURL.path)
++        }
++        if let frameworkPath = Bundle.main.path(forResource: "llama-cpp", ofType: "framework") {
++            candidates.append((frameworkPath as NSString).appendingPathComponent("llama-cpp"))
++            candidates.append(frameworkPath)
++        }
++        if let privateFrameworkURL = Bundle.main.privateFrameworksURL?.appendingPathComponent("llama-cpp.framework/llama-cpp") {
++            candidates.append(privateFrameworkURL.path)
+         }
+-        guard let handle = dlopen(libraryPath, RTLD_NOW) else {
+-            print("Error: Failed to load llama-cpp library: \(String(cString: dlerror()))")
+-            return nil
++        for path in candidates where FileManager.default.fileExists(atPath: path) {
++            if let handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL) {
++                return handle
++            }
++            if let error = dlerror() {
++                print("Error: Failed to load llama-cpp library at \(path): \(String(cString: error))")
++            }
+         }
+-        return handle
++        print("Error: llama-cpp framework binary not found")
++        return nil
+     }()
+ }
+ private var llamaLibrary: UnsafeMutableRawPointer? { LibraryLoader.llamaLibrary }
+ 
+ // Function pointers for native calls
+-private var initContextFunc: ((String, UnsafePointer<Int8>) -> Int64)?
+-private var releaseContextFunc: ((Int64) -> Void)?
+-private var completionFunc: ((Int64, String, UnsafePointer<Int8>) -> String?)?
+-private var stopCompletionFunc: ((Int64) -> Void)?
+-private var getFormattedChatFunc: ((Int64, String, String) -> String?)?
+-private var toggleNativeLogFunc: ((Bool) -> Bool)?
+-private var embeddingFunc: ((Int64, String, UnsafePointer<Int8>) -> UnsafePointer<Float>?)?
+-private var registerEmbeddingContextFunc: ((Int64, UnsafeMutableRawPointer) -> Void)?
+-private var unregisterEmbeddingContextFunc: ((Int64) -> Void)?
++private var initContextFunc: NativeInitContext?
++private var releaseContextFunc: NativeReleaseContext?
++private var completionFunc: NativeCompletion?
++private var stopCompletionFunc: NativeStopCompletion?
++private var getFormattedChatFunc: NativeGetFormattedChat?
++private var toggleNativeLogFunc: NativeToggleLog?
++private var embeddingFunc: NativeEmbedding?
++private var registerEmbeddingContextFunc: NativeRegisterEmbeddingContext?
++private var unregisterEmbeddingContextFunc: NativeUnregisterEmbeddingContext?
++private var getModelInfoFunc: NativeGetModelInfo?
++private var getContextPtrFunc: NativeGetContextPtr?
++private var getLastErrorFunc: NativeGetLastError?
++private var freeStringFunc: NativeFreeString?
++
++private func loadSymbol<T>(_ name: String, as type: T.Type) -> T? {
++    guard let library = llamaLibrary else { return nil }
++    guard let symbol = dlsym(library, name) else {
++        print("Error: native symbol \(name) not found")
++        return nil
++    }
++    return unsafeBitCast(symbol, to: type)
++}
+ 
+ private func loadFunctionPointers() {
+-    guard let library = llamaLibrary else { return }
+-    
+-    // Load function pointers from the native library
+-    initContextFunc = unsafeBitCast(dlsym(library, "llama_init_context"), to: ((String, UnsafePointer<Int8>) -> Int64).self)
+-    releaseContextFunc = unsafeBitCast(dlsym(library, "llama_release_context"), to: ((Int64) -> Void).self)
+-    completionFunc = unsafeBitCast(dlsym(library, "llama_completion"), to: ((Int64, String, UnsafePointer<Int8>) -> String?).self)
+-    stopCompletionFunc = unsafeBitCast(dlsym(library, "llama_stop_completion"), to: ((Int64) -> Void).self)
+-    getFormattedChatFunc = unsafeBitCast(dlsym(library, "llama_get_formatted_chat"), to: ((Int64, String, String) -> String?).self)
+-    toggleNativeLogFunc = unsafeBitCast(dlsym(library, "llama_toggle_native_log"), to: ((Bool) -> Bool).self)
+-    embeddingFunc = unsafeBitCast(dlsym(library, "llama_embedding"), to: ((Int64, String, UnsafePointer<Int8>) -> UnsafePointer<Float>?).self)
+-    registerEmbeddingContextFunc = unsafeBitCast(dlsym(library, "llama_embedding_register_context"), to: ((Int64, UnsafeMutableRawPointer) -> Void).self)
+-    unregisterEmbeddingContextFunc = unsafeBitCast(dlsym(library, "llama_embedding_unregister_context"), to: ((Int64) -> Void).self)
++    initContextFunc = loadSymbol("llama_init_context", as: NativeInitContext.self)
++    releaseContextFunc = loadSymbol("llama_release_context", as: NativeReleaseContext.self)
++    completionFunc = loadSymbol("llama_completion", as: NativeCompletion.self)
++    stopCompletionFunc = loadSymbol("llama_stop_completion", as: NativeStopCompletion.self)
++    getFormattedChatFunc = loadSymbol("llama_get_formatted_chat", as: NativeGetFormattedChat.self)
++    toggleNativeLogFunc = loadSymbol("llama_toggle_native_log", as: NativeToggleLog.self)
++    embeddingFunc = loadSymbol("llama_embedding", as: NativeEmbedding.self)
++    registerEmbeddingContextFunc = loadSymbol("llama_embedding_register_context", as: NativeRegisterEmbeddingContext.self)
++    unregisterEmbeddingContextFunc = loadSymbol("llama_embedding_unregister_context", as: NativeUnregisterEmbeddingContext.self)
++    getModelInfoFunc = loadSymbol("llama_get_model_info", as: NativeGetModelInfo.self)
++    getContextPtrFunc = loadSymbol("llama_get_context_ptr", as: NativeGetContextPtr.self)
++    getLastErrorFunc = loadSymbol("llama_get_last_error", as: NativeGetLastError.self)
++    freeStringFunc = loadSymbol("llama_free_string", as: NativeFreeString.self)
++}
++
++private func nativeLastError() -> String {
++    guard let pointer = getLastErrorFunc?() else {
++        return "Failed to initialize native context"
++    }
++    let message = String(cString: pointer)
++    freeStringFunc?(pointer)
++    return message.isEmpty ? "Failed to initialize native context" : message
++}
++
++private func jsonObjectFromNativeString(_ pointer: UnsafeMutablePointer<CChar>?) throws -> Any {
++    guard let pointer else {
++        throw LlamaError.operationFailed("Native function returned null")
++    }
++    let jsonText = String(cString: pointer)
++    freeStringFunc?(pointer)
++    guard let data = jsonText.data(using: .utf8) else {
++        throw LlamaError.operationFailed("Native JSON was not valid UTF-8")
++    }
++    return try JSONSerialization.jsonObject(with: data)
++}
++
++private func dictionaryFromNativeString(_ pointer: UnsafeMutablePointer<CChar>?) throws -> [String: Any] {
++    let object = try jsonObjectFromNativeString(pointer)
++    guard let dictionary = object as? [String: Any] else {
++        throw LlamaError.operationFailed("Native JSON did not contain an object")
++    }
++    if let error = dictionary["error"] as? String, !error.isEmpty {
++        throw LlamaError.operationFailed(error)
++    }
++    return dictionary
+ }
+ 
+ // MARK: - Result Types
+@@ -56,7 +133,7 @@ enum LlamaError: Error, LocalizedError {
+     case invalidParameters
+     case operationFailed(String)
+     case notImplemented
+-    
++
+     var errorDescription: String? {
+         switch self {
+         case .contextNotFound:
+@@ -79,7 +156,7 @@ class LlamaContext {
+     var model: LlamaModel?
+     var isMultimodalEnabled: Bool = false
+     var isVocoderEnabled: Bool = false
+-    
++
+     init(id: Int) {
+         self.id = id
+     }
+@@ -93,7 +170,7 @@ class LlamaModel {
+     let nParams: Int
+     let chatTemplates: ChatTemplates
+     let metadata: [String: Any]
+-    
++
+     init(path: String, desc: String, size: Int, nEmbd: Int, nParams: Int, chatTemplates: ChatTemplates, metadata: [String: Any]) {
+         self.path = path
+         self.desc = desc
+@@ -108,7 +185,7 @@ class LlamaModel {
+ struct ChatTemplates {
+     let llamaChat: Bool
+     let minja: MinjaTemplates
+-    
++
+     init(llamaChat: Bool, minja: MinjaTemplates) {
+         self.llamaChat = llamaChat
+         self.minja = minja
+@@ -120,7 +197,7 @@ struct MinjaTemplates {
+     let defaultCaps: MinjaCaps
+     let toolUse: Bool
+     let toolUseCaps: MinjaCaps
+-    
++
+     init(default: Bool, defaultCaps: MinjaCaps, toolUse: Bool, toolUseCaps: MinjaCaps) {
+         self.default = `default`
+         self.defaultCaps = defaultCaps
+@@ -136,7 +213,7 @@ struct MinjaCaps {
+     let systemRole: Bool
+     let parallelToolCalls: Bool
+     let toolCallId: Bool
+-    
++
+     init(tools: Bool, toolCalls: Bool, toolResponses: Bool, systemRole: Bool, parallelToolCalls: Bool, toolCallId: Bool) {
+         self.tools = tools
+         self.toolCalls = toolCalls
+@@ -148,18 +225,39 @@ struct MinjaCaps {
+ }
+ 
+ // MARK: - Main Implementation
+-@objc public class LlamaCpp: NSObject {
++@objc public class LlamaCpp: NSObject, URLSessionDownloadDelegate {
+     private var contexts: [Int: LlamaContext] = [:]
+     private var nativeContexts: [Int64: UnsafeMutableRawPointer] = [:]
+     private var contextIdToNative: [Int: Int64] = [:]
+     private var contextCounter: Int = 0
+     private var contextLimit: Int = 10
+     private var nativeLogEnabled: Bool = false
+-    
++    private struct DownloadContext {
++        let url: String
++        let localURL: URL
++        let completion: (LlamaResult<String>) -> Void
++        var lastBytes: Int64
++        var lastUpdatedAt: Date
++    }
++    private var downloadProgressByUrl: [String: [String: Any]] = [:]
++    private var downloadTasksByUrl: [String: URLSessionDownloadTask] = [:]
++    private var downloadContextsByTaskId: [Int: DownloadContext] = [:]
++    private lazy var downloadSession: URLSession = {
++        let configuration = URLSessionConfiguration.default
++        configuration.waitsForConnectivity = true
++        configuration.allowsExpensiveNetworkAccess = true
++        configuration.allowsConstrainedNetworkAccess = true
++        return URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
++    }()
++
+     // MARK: - Core initialization and management
+-    
++
+     func toggleNativeLog(enabled: Bool, completion: @escaping (LlamaResult<Void>) -> Void) {
+         nativeLogEnabled = enabled
++        if toggleNativeLogFunc == nil {
++            loadFunctionPointers()
++        }
++        _ = toggleNativeLogFunc?(enabled)
+         if enabled {
+             print("[LlamaCpp] Native logging enabled")
+         } else {
+@@ -167,13 +265,13 @@ struct MinjaCaps {
+         }
+         completion(.success(()))
+     }
+-    
++
+     func setContextLimit(limit: Int, completion: @escaping (LlamaResult<Void>) -> Void) {
+         contextLimit = limit
+         print("[LlamaCpp] Context limit set to \(limit)")
+         completion(.success(()))
+     }
+-    
++
+     func modelInfo(path: String, skip: [String], completion: @escaping (LlamaResult<[String: Any]>) -> Void) {
+         // This would typically load model info from the GGUF file
+         // For now, return a basic structure
+@@ -186,23 +284,23 @@ struct MinjaCaps {
+         ]
+         completion(.success(modelInfo))
+     }
+-    
++
+     func initContext(contextId: Int, params: [String: Any], completion: @escaping (LlamaResult<[String: Any]>) -> Void) {
+         // Check context limit
+         if contexts.count >= contextLimit {
+             completion(.failure(.operationFailed("Context limit reached")))
+             return
+         }
+-        
++
+         // Extract parameters
+         guard let modelPath = params["model"] as? String else {
+             completion(.failure(.invalidParameters))
+             return
+         }
+-        
++
+         // Create context
+         let context = LlamaContext(id: contextId)
+-        
++
+         // Create model info (this would typically load from GGUF file)
+         let chatTemplates = ChatTemplates(
+             llamaChat: true,
+@@ -227,8 +325,8 @@ struct MinjaCaps {
+                 )
+             )
+         )
+-        
+-        let model = LlamaModel(
++
++        var model = LlamaModel(
+             path: modelPath,
+             desc: "Sample model",
+             size: 0,
+@@ -237,9 +335,9 @@ struct MinjaCaps {
+             chatTemplates: chatTemplates,
+             metadata: [:]
+         )
+-        
++
+         context.model = model
+-        
++
+         // Call native initContext to create the actual C++ context
+         // Convert params to JSON string
+         var paramsJson = "{}"
+@@ -250,41 +348,64 @@ struct MinjaCaps {
+             completion(.failure(.operationFailed("Failed to serialize params: \(error.localizedDescription)")))
+             return
+         }
+-        
++
+         // Ensure function pointers are loaded
+         if initContextFunc == nil {
+             loadFunctionPointers()
+         }
+-        
++
+         // Call native function to initialize context
+         guard let initFunc = initContextFunc else {
+             completion(.failure(.operationFailed("Native initContext function not available")))
+             return
+         }
+-        
+-        let nativeContextId = initFunc(modelPath, paramsJson.cString(using: .utf8)!)
++
++        let nativeContextId = modelPath.withCString { modelCString in
++            paramsJson.withCString { paramsCString in
++                initFunc(modelCString, paramsCString)
++            }
++        }
+         if nativeContextId > 0 {
++            if let modelInfoPtr = getModelInfoFunc?(nativeContextId),
++               let modelInfo = try? dictionaryFromNativeString(modelInfoPtr) {
++                let numberSize = modelInfo["size"] as? NSNumber
++                let numberEmbd = modelInfo["nEmbd"] as? NSNumber
++                let numberParams = modelInfo["nParams"] as? NSNumber
++                model = LlamaModel(
++                    path: modelPath,
++                    desc: modelInfo["desc"] as? String ?? model.desc,
++                    size: numberSize?.intValue ?? model.size,
++                    nEmbd: numberEmbd?.intValue ?? model.nEmbd,
++                    nParams: numberParams?.intValue ?? model.nParams,
++                    chatTemplates: chatTemplates,
++                    metadata: modelInfo["metadata"] as? [String: Any] ?? [:]
++                )
++                context.model = model
++            }
+             // Store the LlamaContext for Swift bookkeeping
+             contexts[contextId] = context
+             // Store the native context pointer and mapping for C layer
+-            let nativePtr = UnsafeMutableRawPointer(bitPattern: Int(nativeContextId))
+-            nativeContexts[nativeContextId] = nativePtr
++            let nativePtr = getContextPtrFunc?(nativeContextId)
++            if let nativePtr {
++                nativeContexts[nativeContextId] = nativePtr
++            }
+             contextIdToNative[contextId] = nativeContextId
+-            
++
+             // Register with embedding system if available
+-            if let registerFunc = registerEmbeddingContextFunc, let ptr = nativePtr {
+-                registerFunc(nativeContextId, ptr)
++            if let registerFunc = registerEmbeddingContextFunc, let nativePtr {
++                registerFunc(nativeContextId, nativePtr)
+             }
+         } else {
+-            completion(.failure(.operationFailed("Failed to initialize native context")))
++            completion(.failure(.operationFailed(nativeLastError())))
+             return
+         }
+-        
++
+         // Return context info
++        let gpuRequested = (params["no_gpu_devices"] as? Bool) != true && ((params["n_gpu_layers"] as? Int) ?? 0) != 0
+         let contextInfo: [String: Any] = [
+             "contextId": contextId,
+-            "gpu": false,
+-            "reasonNoGPU": "Not implemented",
++            "gpu": gpuRequested,
++            "reasonNoGPU": gpuRequested ? "" : "GPU disabled by load options",
+             "model": [
+                 "desc": model.desc,
+                 "size": model.size,
+@@ -317,34 +438,34 @@ struct MinjaCaps {
+                 "isChatTemplateSupported": true
+             ]
+         ]
+-        
++
+         completion(.success(contextInfo))
+     }
+-    
++
+     func releaseContext(contextId: Int, completion: @escaping (LlamaResult<Void>) -> Void) {
+         guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         let nativeId = contextIdToNative[contextId] ?? Int64(contextId)
+-        
++
+         // Unregister from embedding system if available
+         if let unregisterFunc = unregisterEmbeddingContextFunc {
+             unregisterFunc(nativeId)
+         }
+-        
++
+         // Call native release function
+         if let releaseFunc = releaseContextFunc {
+             releaseFunc(nativeId)
+         }
+-        
++
+         contexts.removeValue(forKey: contextId)
+         nativeContexts.removeValue(forKey: nativeId)
+         contextIdToNative.removeValue(forKey: contextId)
+         completion(.success(()))
+     }
+-    
++
+     func releaseAllContexts(completion: @escaping (LlamaResult<Void>) -> Void) {
+         // Unregister all contexts from embedding system
+         if let unregisterFunc = unregisterEmbeddingContextFunc {
+@@ -352,95 +473,122 @@ struct MinjaCaps {
+                 unregisterFunc(nativeId)
+             }
+         }
+-        
++        if let releaseFunc = releaseContextFunc {
++            for (_, nativeId) in contextIdToNative {
++                releaseFunc(nativeId)
++            }
++        }
++
+         contexts.removeAll()
+         nativeContexts.removeAll()
+         contextIdToNative.removeAll()
+         completion(.success(()))
+     }
+-    
++
+     // MARK: - Chat and completion
+-    
++
+     func getFormattedChat(contextId: Int, messages: String, chatTemplate: String?, params: [String: Any]?, completion: @escaping (LlamaResult<[String: Any]>) -> Void) {
+-        guard let context = contexts[contextId] else {
++        guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
+-        // This would typically format the chat using the model's chat templates
+-        // For now, return a basic formatted chat
+-        let formattedChat: [String: Any] = [
+-            "type": "llama-chat",
+-            "prompt": messages,
+-            "has_media": false,
+-            "media_paths": []
+-        ]
+-        
+-        completion(.success(formattedChat))
++        if getFormattedChatFunc == nil {
++            loadFunctionPointers()
++        }
++        guard let nativeId = contextIdToNative[contextId],
++              let formatFunc = getFormattedChatFunc else {
++            completion(.failure(.operationFailed("Native getFormattedChat function not available")))
++            return
++        }
++        let template = chatTemplate ?? ""
++        do {
++            let formatted = try messages.withCString { messagesCString in
++                try template.withCString { templateCString in
++                    let ptr = formatFunc(nativeId, messagesCString, templateCString)
++                    let object = try jsonObjectFromNativeString(ptr)
++                    return object as? String ?? messages
++                }
++            }
++            let formattedChat: [String: Any] = [
++                "type": "llama-chat",
++                "prompt": formatted,
++                "has_media": false,
++                "media_paths": []
++            ]
++            completion(.success(formattedChat))
++        } catch let error as LlamaError {
++            completion(.failure(error))
++        } catch {
++            completion(.failure(.operationFailed(error.localizedDescription)))
++        }
+     }
+-    
++
+     func completion(contextId: Int, params: [String: Any], completion: @escaping (LlamaResult<[String: Any]>) -> Void) {
+-        guard let context = contexts[contextId] else {
++        guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
+-        // This would typically perform the completion using llama.cpp
+-        // For now, return a basic completion result
+-        let completionResult: [String: Any] = [
+-            "text": "Sample completion text",
+-            "reasoning_content": "",
+-            "tool_calls": [],
+-            "content": "Sample completion text",
+-            "chat_format": 0,
+-            "tokens_predicted": 0,
+-            "tokens_evaluated": 0,
+-            "truncated": false,
+-            "stopped_eos": false,
+-            "stopped_word": "",
+-            "stopped_limit": 0,
+-            "stopping_word": "",
+-            "context_full": false,
+-            "interrupted": false,
+-            "tokens_cached": 0,
+-            "timings": [
+-                "prompt_n": 0,
+-                "prompt_ms": 0,
+-                "prompt_per_token_ms": 0,
+-                "prompt_per_second": 0,
+-                "predicted_n": 0,
+-                "predicted_ms": 0,
+-                "predicted_per_token_ms": 0,
+-                "predicted_per_second": 0
+-            ]
+-        ]
+-        
+-        completion(.success(completionResult))
++        if completionFunc == nil {
++            loadFunctionPointers()
++        }
++        guard let nativeId = contextIdToNative[contextId],
++              let completionFunc else {
++            completion(.failure(.operationFailed("Native completion function not available")))
++            return
++        }
++        guard let prompt = params["prompt"] as? String, !prompt.isEmpty else {
++            completion(.failure(.invalidParameters))
++            return
++        }
++        var paramsJson = "{}"
++        do {
++            let paramsData = try JSONSerialization.data(withJSONObject: params)
++            paramsJson = String(data: paramsData, encoding: .utf8) ?? "{}"
++        } catch {
++            completion(.failure(.operationFailed("Failed to serialize params: \(error.localizedDescription)")))
++            return
++        }
++        do {
++            let result = try prompt.withCString { promptCString in
++                try paramsJson.withCString { paramsCString in
++                    try dictionaryFromNativeString(completionFunc(nativeId, promptCString, paramsCString))
++                }
++            }
++            completion(.success(result))
++        } catch let error as LlamaError {
++            completion(.failure(error))
++        } catch {
++            completion(.failure(.operationFailed(error.localizedDescription)))
++        }
+     }
+-    
++
+     func stopCompletion(contextId: Int, completion: @escaping (LlamaResult<Void>) -> Void) {
+         guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
+-        // This would typically stop any ongoing completion
++
++        if stopCompletionFunc == nil {
++            loadFunctionPointers()
++        }
++        let nativeId = contextIdToNative[contextId] ?? Int64(contextId)
++        stopCompletionFunc?(nativeId)
+         completion(.success(()))
+     }
+-    
++
+     // MARK: - Chat-first methods (like llama-cli -sys)
+-    
++
+     func chat(contextId: Int, messages: [JSObject], system: String?, chatTemplate: String?, params: [String: Any]?, completion: @escaping (LlamaResult<[String: Any]>) -> Void) {
+         guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         do {
+             // Convert JSObject messages to JSON string
+             let messagesData = try JSONSerialization.data(withJSONObject: messages)
+             let messagesJson = String(data: messagesData, encoding: .utf8) ?? "[]"
+-            
++
+             // Add system message if provided
+             var allMessages = messages
+             if let system = system, !system.isEmpty {
+@@ -451,35 +599,35 @@ struct MinjaCaps {
+                 let jsSystem = JSTypes.coerceDictionaryToJSObject(systemMessage) ?? [:]
+                 allMessages.insert(jsSystem, at: 0)
+             }
+-            
++
+             // Convert to JSON string for getFormattedChat
+             let allMessagesData = try JSONSerialization.data(withJSONObject: allMessages)
+             let allMessagesJson = String(data: allMessagesData, encoding: .utf8) ?? "[]"
+-            
++
+             // First, format the chat
+             getFormattedChat(contextId: contextId, messages: allMessagesJson, chatTemplate: chatTemplate, params: nil) { [weak self] result in
+                 switch result {
+                 case .success(let formattedResult):
+                     // Extract the formatted prompt
+                     let formattedPrompt = formattedResult["prompt"] as? String ?? ""
+-                    
++
+                     // Create completion parameters
+                     var completionParams = params ?? [:]
+                     completionParams["prompt"] = formattedPrompt
+-                    
++
+                     // Call completion with formatted prompt
+                     self?.completion(contextId: contextId, params: completionParams, completion: completion)
+-                    
++
+                 case .failure(let error):
+                     completion(.failure(error))
+                 }
+             }
+-            
++
+         } catch {
+             completion(.failure(.contextNotFound)) // Use a more appropriate error
+         }
+     }
+-    
++
+     func chatWithSystem(contextId: Int, system: String, message: String, params: [String: Any]?, completion: @escaping (LlamaResult<[String: Any]>) -> Void) {
+         // Create a simple message array
+         let userMessage: [String: Any] = [
+@@ -488,60 +636,60 @@ struct MinjaCaps {
+         ]
+         let jsUser = JSTypes.coerceDictionaryToJSObject(userMessage) ?? [:]
+         let messages: [JSObject] = [jsUser]
+-        
++
+         // Call the main chat method
+         chat(contextId: contextId, messages: messages, system: system, chatTemplate: nil, params: params, completion: completion)
+     }
+-    
++
+     func generateText(contextId: Int, prompt: String, params: [String: Any]?, completion: @escaping (LlamaResult<[String: Any]>) -> Void) {
+         guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         // Create completion parameters
+         var completionParams = params ?? [:]
+         completionParams["prompt"] = prompt
+-        
++
+         // Call completion method directly
+         self.completion(contextId: contextId, params: completionParams, completion: completion)
+     }
+-    
++
+     // MARK: - Session management
+-    
++
+     func loadSession(contextId: Int, filepath: String, completion: @escaping (LlamaResult<[String: Any]>) -> Void) {
+         guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         // This would typically load session from file
+         let sessionResult: [String: Any] = [
+             "tokens_loaded": 0,
+             "prompt": ""
+         ]
+-        
++
+         completion(.success(sessionResult))
+     }
+-    
++
+     func saveSession(contextId: Int, filepath: String, size: Int, completion: @escaping (LlamaResult<Int>) -> Void) {
+         guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         // This would typically save session to file
+         completion(.success(0))
+     }
+-    
++
+     // MARK: - Tokenization
+-    
++
+     func tokenize(contextId: Int, text: String, imagePaths: [String], completion: @escaping (LlamaResult<[String: Any]>) -> Void) {
+         guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         // This would typically tokenize the text using the model's tokenizer
+         let tokenizeResult: [String: Any] = [
+             "tokens": [],
+@@ -550,33 +698,33 @@ struct MinjaCaps {
+             "chunk_pos": [],
+             "chunk_pos_images": []
+         ]
+-        
++
+         completion(.success(tokenizeResult))
+     }
+-    
++
+     func detokenize(contextId: Int, tokens: [Int], completion: @escaping (LlamaResult<String>) -> Void) {
+         guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         // This would typically detokenize using the model's tokenizer
+         completion(.success(""))
+     }
+-    
++
+     // MARK: - Embeddings and reranking
+-    
++
+     func embedding(contextId: Int, text: String, params: [String: Any], completion: @escaping (LlamaResult<[String: Any]>) -> Void) {
+         guard let context = contexts[contextId] else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         // Ensure function pointers are loaded
+         if embeddingFunc == nil {
+             loadFunctionPointers()
+         }
+-        
++
+         // Check if native embedding function is available
+         guard let embeddingFunction = embeddingFunc else {
+             // Native function not available - this means the C++ layer needs to implement it
+@@ -585,13 +733,13 @@ struct MinjaCaps {
+             completion(.failure(.notImplemented))
+             return
+         }
+-        
++
+         // Get embedding dimension from model
+         guard let nEmbd = context.model?.nEmbd, nEmbd > 0 else {
+             completion(.failure(.operationFailed("Model embedding dimension (n_embd) not available. Model may not be loaded or may not support embeddings.")))
+             return
+         }
+-        
++
+         // Convert params to JSON string for native call
+         var paramsJson = "{}"
+         if !params.isEmpty {
+@@ -602,249 +750,256 @@ struct MinjaCaps {
+                 print("Error serializing params: \(error)")
+             }
+         }
+-        
+-        // Call native embedding function
+-        let paramsCString = paramsJson.cString(using: .utf8)
+-        guard let baseAddress = paramsCString else {
+-            completion(.failure(.operationFailed("Failed to convert params to C string")))
+-            return
++
++        let nativeId = contextIdToNative[contextId] ?? Int64(contextId)
++        let embeddingPtr = text.withCString { textCString in
++            paramsJson.withCString { paramsCString in
++                embeddingFunction(nativeId, textCString, paramsCString)
++            }
+         }
+-        
+-        // Get embedding vector from native layer
+-        // Note: The native function signature should be: 
+-        // UnsafePointer<Float>? llama_embedding(Int64 contextId, String text, UnsafePointer<Int8> params)
+-        // The returned pointer should point to an array of nEmbd floats
+-        if let embeddingPtr = embeddingFunction(Int64(contextId), text, baseAddress) {
++        if let embeddingPtr {
+             // Convert C array to Swift array
+             let embeddingArray = Array(UnsafeBufferPointer(start: embeddingPtr, count: nEmbd))
+-            
++
+             // Convert Float array to Double array for JSON compatibility
+             let embeddingDoubles = embeddingArray.map { Double($0) }
+-            
++
+             let embeddingResult: [String: Any] = [
+                 "embedding": embeddingDoubles,
+                 "n_embd": nEmbd
+             ]
+-            
++
+             completion(.success(embeddingResult))
+         } else {
+             completion(.failure(.operationFailed("Native embedding function returned null. Check native C++ implementation.")))
+         }
+     }
+-    
++
+     func rerank(contextId: Int, query: String, documents: [String], params: [String: Any]?, completion: @escaping (LlamaResult<[[String: Any]]>) -> Void) {
+         guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         // This would typically perform reranking
+         let rerankResults: [[String: Any]] = []
+         completion(.success(rerankResults))
+     }
+-    
++
+     // MARK: - Benchmarking
+-    
++
+     func bench(contextId: Int, pp: Int, tg: Int, pl: Int, nr: Int, completion: @escaping (LlamaResult<String>) -> Void) {
+         guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         // This would typically run benchmarks
+         let benchResult = "[]"
+         completion(.success(benchResult))
+     }
+-    
++
+     // MARK: - LoRA adapters
+-    
++
+     func applyLoraAdapters(contextId: Int, loraAdapters: [[String: Any]], completion: @escaping (LlamaResult<Void>) -> Void) {
+         guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         // This would typically apply LoRA adapters
+         completion(.success(()))
+     }
+-    
++
+     func removeLoraAdapters(contextId: Int, completion: @escaping (LlamaResult<Void>) -> Void) {
+         guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         // This would typically remove LoRA adapters
+         completion(.success(()))
+     }
+-    
++
+     func getLoadedLoraAdapters(contextId: Int, completion: @escaping (LlamaResult<[[String: Any]]>) -> Void) {
+         guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         // This would typically return loaded LoRA adapters
+         let adapters: [[String: Any]] = []
+         completion(.success(adapters))
+     }
+-    
++
+     // MARK: - Multimodal methods
+-    
++
+     func initMultimodal(contextId: Int, path: String, useGpu: Bool, completion: @escaping (LlamaResult<Bool>) -> Void) {
+         guard let context = contexts[contextId] else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         context.isMultimodalEnabled = true
+         completion(.success(true))
+     }
+-    
++
+     func isMultimodalEnabled(contextId: Int, completion: @escaping (LlamaResult<Bool>) -> Void) {
+         guard let context = contexts[contextId] else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         completion(.success(context.isMultimodalEnabled))
+     }
+-    
++
+     func getMultimodalSupport(contextId: Int, completion: @escaping (LlamaResult<[String: Any]>) -> Void) {
+         guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         let support: [String: Any] = [
+             "vision": true,
+             "audio": true
+         ]
+-        
++
+         completion(.success(support))
+     }
+-    
++
+     func releaseMultimodal(contextId: Int, completion: @escaping (LlamaResult<Void>) -> Void) {
+         guard let context = contexts[contextId] else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         context.isMultimodalEnabled = false
+         completion(.success(()))
+     }
+-    
++
+     // MARK: - TTS methods
+-    
++
+     func initVocoder(contextId: Int, path: String, nBatch: Int?, completion: @escaping (LlamaResult<Bool>) -> Void) {
+         guard let context = contexts[contextId] else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         context.isVocoderEnabled = true
+         completion(.success(true))
+     }
+-    
++
+     func isVocoderEnabled(contextId: Int, completion: @escaping (LlamaResult<Bool>) -> Void) {
+         guard let context = contexts[contextId] else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         completion(.success(context.isVocoderEnabled))
+     }
+-    
++
+     func getFormattedAudioCompletion(contextId: Int, speakerJsonStr: String, textToSpeak: String, completion: @escaping (LlamaResult<[String: Any]>) -> Void) {
+         guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         let audioCompletion: [String: Any] = [
+             "prompt": "",
+             "grammar": NSNull()
+         ]
+-        
++
+         completion(.success(audioCompletion))
+     }
+-    
++
+     func getAudioCompletionGuideTokens(contextId: Int, textToSpeak: String, completion: @escaping (LlamaResult<[Int]>) -> Void) {
+         guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         let tokens: [Int] = []
+         completion(.success(tokens))
+     }
+-    
++
+     func decodeAudioTokens(contextId: Int, tokens: [Int], completion: @escaping (LlamaResult<[Int]>) -> Void) {
+         guard contexts[contextId] != nil else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         let decodedTokens: [Int] = []
+         completion(.success(decodedTokens))
+     }
+-    
++
+     func releaseVocoder(contextId: Int, completion: @escaping (LlamaResult<Void>) -> Void) {
+         guard let context = contexts[contextId] else {
+             completion(.failure(.contextNotFound))
+             return
+         }
+-        
++
+         context.isVocoderEnabled = false
+         completion(.success(()))
+     }
+-    
++
+     // MARK: - Model download and management
+-    
++
+     func downloadModel(url: String, filename: String, completion: @escaping (LlamaResult<String>) -> Void) {
+-        // Get the documents directory
+         let fileManager = FileManager.default
+         guard let documentsDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
+             completion(.failure(.operationFailed("Could not access documents directory")))
+             return
+         }
+-        
++
+         let localPath = documentsDir.appendingPathComponent(filename).path
+-        
++
+         // Check if file already exists
+         if fileManager.fileExists(atPath: localPath) {
+             completion(.success(localPath))
+             return
+         }
+-        
+-        // Download the file asynchronously
+-        DispatchQueue.global(qos: .background).async {
+-            guard let downloadURL = URL(string: url) else {
+-                DispatchQueue.main.async {
+-                    completion(.failure(.operationFailed("Invalid URL")))
+-                }
+-                return
+-            }
+-            
+-            do {
+-                let data = try Data(contentsOf: downloadURL)
+-                try data.write(to: URL(fileURLWithPath: localPath))
+-                
+-                DispatchQueue.main.async {
+-                    completion(.success(localPath))
+-                }
+-            } catch {
+-                DispatchQueue.main.async {
+-                    completion(.failure(.operationFailed("Download failed: \(error.localizedDescription)")))
+-                }
+-            }
++
++        guard let downloadURL = URL(string: url) else {
++            completion(.failure(.operationFailed("Invalid URL")))
++            return
++        }
++
++        if let existing = downloadTasksByUrl[url] {
++            downloadProgressByUrl[url] = [
++                "url": url,
++                "downloaded": existing.countOfBytesReceived,
++                "total": existing.countOfBytesExpectedToReceive,
++                "percentage": existing.countOfBytesExpectedToReceive > 0
++                    ? Double(existing.countOfBytesReceived) / Double(existing.countOfBytesExpectedToReceive) * 100.0
++                    : 0.0,
++                "bytesPerSec": 0.0,
++                "etaMs": NSNull()
++            ]
++            return
+         }
++
++        let task = downloadSession.downloadTask(with: downloadURL)
++        downloadTasksByUrl[url] = task
++        downloadContextsByTaskId[task.taskIdentifier] = DownloadContext(
++            url: url,
++            localURL: URL(fileURLWithPath: localPath),
++            completion: completion,
++            lastBytes: 0,
++            lastUpdatedAt: Date()
++        )
++        downloadProgressByUrl[url] = [
++            "url": url,
++            "downloaded": 0,
++            "total": 0,
++            "percentage": 0.0,
++            "bytesPerSec": 0.0,
++            "etaMs": NSNull()
++        ]
++        task.resume()
+     }
+-    
++
+     func getDownloadProgress(url: String, completion: @escaping (LlamaResult<[String: Any]>) -> Void) {
+-        // For now, return a placeholder progress
+-        // In a real implementation, this would track download progress
+-        let progress: [String: Any] = [
++        let progress = downloadProgressByUrl[url] ?? [
+             "url": url,
+             "downloaded": 0,
+             "total": 0,
+@@ -852,34 +1007,150 @@ struct MinjaCaps {
+         ]
+         completion(.success(progress))
+     }
+-    
++
+     func cancelDownload(url: String, completion: @escaping (LlamaResult<Bool>) -> Void) {
+-        // For now, return success
+-        // In a real implementation, this would cancel the ongoing download
++        if let task = downloadTasksByUrl[url] {
++            task.cancel()
++            downloadTasksByUrl.removeValue(forKey: url)
++            downloadContextsByTaskId.removeValue(forKey: task.taskIdentifier)
++        }
++        downloadProgressByUrl[url] = [
++            "url": url,
++            "downloaded": downloadProgressByUrl[url]?["downloaded"] ?? 0,
++            "total": downloadProgressByUrl[url]?["total"] ?? 0,
++            "percentage": downloadProgressByUrl[url]?["percentage"] ?? 0.0,
++            "bytesPerSec": 0.0,
++            "etaMs": NSNull(),
++            "cancelled": true
++        ]
+         completion(.success(true))
+     }
+-    
++
++    public func urlSession(
++        _ session: URLSession,
++        downloadTask: URLSessionDownloadTask,
++        didWriteData bytesWritten: Int64,
++        totalBytesWritten: Int64,
++        totalBytesExpectedToWrite: Int64
++    ) {
++        guard var context = downloadContextsByTaskId[downloadTask.taskIdentifier] else {
++            return
++        }
++        let now = Date()
++        let elapsed = max(0.001, now.timeIntervalSince(context.lastUpdatedAt))
++        let delta = max(0, totalBytesWritten - context.lastBytes)
++        let bytesPerSec = Double(delta) / elapsed
++        context.lastBytes = totalBytesWritten
++        context.lastUpdatedAt = now
++        downloadContextsByTaskId[downloadTask.taskIdentifier] = context
++        let total = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : downloadTask.countOfBytesExpectedToReceive
++        let etaMs: Any = total > totalBytesWritten && bytesPerSec > 0
++            ? ((Double(total - totalBytesWritten) / bytesPerSec) * 1000.0)
++            : NSNull()
++        downloadProgressByUrl[context.url] = [
++            "url": context.url,
++            "downloaded": totalBytesWritten,
++            "total": max(0, total),
++            "percentage": total > 0 ? Double(totalBytesWritten) / Double(total) * 100.0 : 0.0,
++            "bytesPerSec": bytesPerSec,
++            "etaMs": etaMs
++        ]
++    }
++
++    public func urlSession(
++        _ session: URLSession,
++        downloadTask: URLSessionDownloadTask,
++        didFinishDownloadingTo location: URL
++    ) {
++        guard let context = downloadContextsByTaskId[downloadTask.taskIdentifier] else {
++            return
++        }
++        do {
++            let fileManager = FileManager.default
++            let dir = context.localURL.deletingLastPathComponent()
++            try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
++            if fileManager.fileExists(atPath: context.localURL.path) {
++                try fileManager.removeItem(at: context.localURL)
++            }
++            try fileManager.moveItem(at: location, to: context.localURL)
++            let total = (try? fileManager.attributesOfItem(atPath: context.localURL.path)[.size] as? NSNumber)?.int64Value ?? downloadTask.countOfBytesReceived
++            downloadProgressByUrl[context.url] = [
++                "url": context.url,
++                "downloaded": total,
++                "total": total,
++                "percentage": 100.0,
++                "bytesPerSec": 0.0,
++                "etaMs": 0
++            ]
++            downloadTasksByUrl.removeValue(forKey: context.url)
++            downloadContextsByTaskId.removeValue(forKey: downloadTask.taskIdentifier)
++            DispatchQueue.main.async {
++                context.completion(.success(context.localURL.path))
++            }
++        } catch {
++            downloadProgressByUrl[context.url] = [
++                "url": context.url,
++                "downloaded": downloadTask.countOfBytesReceived,
++                "total": max(0, downloadTask.countOfBytesExpectedToReceive),
++                "percentage": 0.0,
++                "bytesPerSec": 0.0,
++                "etaMs": NSNull(),
++                "error": error.localizedDescription
++            ]
++            downloadTasksByUrl.removeValue(forKey: context.url)
++            downloadContextsByTaskId.removeValue(forKey: downloadTask.taskIdentifier)
++            DispatchQueue.main.async {
++                context.completion(.failure(.operationFailed("Download failed: \(error.localizedDescription)")))
++            }
++        }
++    }
++
++    public func urlSession(
++        _ session: URLSession,
++        task: URLSessionTask,
++        didCompleteWithError error: Error?
++    ) {
++        guard let error,
++              let context = downloadContextsByTaskId[task.taskIdentifier] else {
++            return
++        }
++        downloadProgressByUrl[context.url] = [
++            "url": context.url,
++            "downloaded": task.countOfBytesReceived,
++            "total": max(0, task.countOfBytesExpectedToReceive),
++            "percentage": 0.0,
++            "bytesPerSec": 0.0,
++            "etaMs": NSNull(),
++            "error": error.localizedDescription
++        ]
++        downloadTasksByUrl.removeValue(forKey: context.url)
++        downloadContextsByTaskId.removeValue(forKey: task.taskIdentifier)
++        DispatchQueue.main.async {
++            context.completion(.failure(.operationFailed("Download failed: \(error.localizedDescription)")))
++        }
++    }
++
+     func getAvailableModels(completion: @escaping (LlamaResult<[[String: Any]]>) -> Void) {
+         let fileManager = FileManager.default
+         var models: [[String: Any]] = []
+-        
++
+         // Search common model directories
+         let searchPaths = [
+             fileManager.urls(for: .documentDirectory, in: .userDomainMask).first,
+             fileManager.urls(for: .downloadsDirectory, in: .userDomainMask).first
+         ].compactMap { $0 }
+-        
++
+         for searchPath in searchPaths {
+             do {
+                 let files = try fileManager.contentsOfDirectory(at: searchPath, includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey])
+-                
++
+                 for file in files {
+                     let pathExtension = file.pathExtension.lowercased()
+                     // Check for common model file extensions
+                     if pathExtension == "gguf" || pathExtension == "ggml" || pathExtension == "bin" {
+                         let attributes = try fileManager.attributesOfItem(atPath: file.path)
+                         let fileSize = attributes[.size] as? Int64 ?? 0
+-                        
++
+                         let model: [String: Any] = [
+                             "id": file.lastPathComponent,
+                             "name": file.lastPathComponent,
+@@ -896,12 +1167,12 @@ struct MinjaCaps {
+                 continue
+             }
+         }
+-        
++
+         completion(.success(models))
+     }
+-    
++
+     // MARK: - Grammar utilities
+-    
++
+     func convertJsonSchemaToGrammar(schema: String, completion: @escaping (LlamaResult<String>) -> Void) {
+         // For now, return the schema as-is
+         // In a real implementation, this would convert JSON schema to GBNF grammar
 diff --git a/ios/Sources/LlamaCppPlugin/LlamaCppPlugin.swift b/ios/Sources/LlamaCppPlugin/LlamaCppPlugin.swift
-index 0000000..0000001 100644
+index eaaa61c..2639810 100644
 --- a/ios/Sources/LlamaCppPlugin/LlamaCppPlugin.swift
 +++ b/ios/Sources/LlamaCppPlugin/LlamaCppPlugin.swift
 @@ -1,5 +1,8 @@
@@ -112,7 +2279,7 @@ index 0000000..0000001 100644
          
          // Chat and completion
          CAPPluginMethod(name: "getFormattedChat", returnType: CAPPluginReturnPromise),
-@@ -76,6 +80,74 @@ public class LlamaCppPlugin: CAPPlugin, CAPBridgedPlugin {
+@@ -78,7 +82,75 @@ public class LlamaCppPlugin: CAPPlugin, CAPBridgedPlugin {
      
      private let implementation = LlamaCpp()
  
@@ -172,7 +2339,7 @@ index 0000000..0000001 100644
 +            "lowPowerMode": ProcessInfo.processInfo.isLowPowerModeEnabled,
 +            "thermalState": thermalStateString(ProcessInfo.processInfo.thermalState),
 +            "dflashSupported": false,
-+            "dflashReason": "llama-cpp-capacitor 0.1.5 exposes draft_model parameters but iOS loadDraftModel is not implemented in the bundled native runtime.",
++            "dflashReason": "DFlash requires the buun-llama-cpp fork and is not exported by this mobile framework yet.",
 +            "source": "native"
 +        ]
 +        if let freeStorage = freeStorageGb() {
@@ -188,3 +2355,33 @@ index 0000000..0000001 100644
      
      @objc func toggleNativeLog(_ call: CAPPluginCall) {
          let enabled = call.getBool("enabled") ?? false
+diff --git a/package.json b/package.json
+index 37d536f..2abe69a 100644
+--- a/package.json
++++ b/package.json
+@@ -18,6 +18,7 @@
+     "ios/CMakeLists-x86_64.txt",
+     "ios/Sources",
+     "ios/Frameworks",
++    "ios/Frameworks-xcframework",
+     "Package.swift",
+     "LlamaCpp.podspec",
+     "LlamaCppCapacitor.podspec",
+diff --git a/types/llama-cpp-capacitor.d.ts b/types/llama-cpp-capacitor.d.ts
+index 61e2672..cb687cb 100644
+--- a/types/llama-cpp-capacitor.d.ts
++++ b/types/llama-cpp-capacitor.d.ts
+@@ -29,6 +29,13 @@ declare module 'llama-cpp-capacitor' {
+     n_cpu_moe?: number;
+     embedding?: boolean;
+     embd_normalize?: number;
++    draft_model?: string;
++    n_ctx_draft?: number;
++    draft_min?: number;
++    draft_max?: number;
++    speculative_samples?: number;
++    mobile_speculative?: boolean;
++    reasoning?: boolean;
+   }
+ 
+   export interface NativeCompletionParams {

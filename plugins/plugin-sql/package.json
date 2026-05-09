@@ -11,6 +11,7 @@
       "types": "./src/dist/index.node.d.ts",
       "bun": {
         "types": "./src/index.ts",
+        "import": "./src/index.ts",
         "default": "./src/index.ts"
       },
       "browser": {
@@ -25,25 +26,6 @@
       },
       "import": "./src/dist/index.js",
       "default": "./src/dist/index.js"
-    },
-    "./schema": {
-      "types": "./src/dist/schema/index.d.ts",
-      "bun": {
-        "types": "./src/schema/index.ts",
-        "default": "./src/schema/index.ts"
-      },
-      "import": "./src/schema/index.ts",
-      "default": "./src/schema/index.ts"
-    },
-    "./drizzle": {
-      "types": "./src/dist/drizzle/index.d.ts",
-      "import": "./src/dist/drizzle/index.js",
-      "default": "./src/dist/drizzle/index.js"
-    },
-    "./types": {
-      "types": "./src/dist/types.d.ts",
-      "import": "./src/dist/types.js",
-      "default": "./src/dist/types.js"
     }
   },
   "files": [
@@ -65,7 +47,7 @@
     "typecheck": "tsc --noEmit -p src/tsconfig.json",
     "lint": "cd src && bun run lint",
     "lint:check": "cd src && bun run lint:check",
-    "clean": "rm -rf src/dist .turbo node_modules",
+    "clean": "rm -rf src/dist .turbo",
     "format": "cd src && bun run format",
     "format:check": "cd src && bun run format:check",
     "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",

@@ -19,38 +19,6 @@
         "default": "./dist/index.mjs"
       }
     },
-    "./sdk": {
-      "import": {
-        "types": "./dist/sdk/index.d.mts",
-        "default": "./dist/sdk/index.mjs"
-      }
-    },
-    "./wallet-action": {
-      "import": {
-        "types": "./dist/wallet-action.d.mts",
-        "default": "./dist/wallet-action.mjs"
-      }
-    },
-    "./plugin": {
-      "types": "./dist/routes/plugin.d.ts",
-      "import": "./dist/routes/plugin.js",
-      "default": "./dist/routes/plugin.js"
-    },
-    "./register-routes": {
-      "types": "./dist/register-routes.d.ts",
-      "import": "./dist/register-routes.js",
-      "default": "./dist/register-routes.js"
-    },
-    "./routes/*": {
-      "types": "./dist/routes/*.d.ts",
-      "import": "./dist/routes/*.js",
-      "default": "./dist/routes/*.js"
-    },
-    "./lib/*": {
-      "types": "./dist/lib/*.d.mts",
-      "import": "./dist/lib/*.mjs",
-      "default": "./dist/lib/*.mjs"
-    },
     "./package.json": "./package.json"
   },
   "files": [

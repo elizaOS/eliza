@@ -54,7 +54,7 @@ async function makeRuntime(): Promise<TestRuntimeContext> {
       const idx = tasks.findIndex((t) => t.id === id);
       if (idx >= 0) tasks.splice(idx, 1);
     },
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 
   return {
     runtime,

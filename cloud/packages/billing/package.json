@@ -9,11 +9,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./markup": {
-      "types": "./dist/markup.d.ts",
-      "import": "./dist/markup.js",
-      "default": "./dist/markup.js"
     }
   },
   "scripts": {

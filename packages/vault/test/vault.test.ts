@@ -58,13 +58,15 @@ describe("vault — set / get / has / remove", () => {
   it("rejects empty / non-string keys", async () => {
     await expect(test.vault.set("", "v")).rejects.toThrow();
     await expect(
-      test.vault.set(123 as unknown as string, "v"),
+      // @ts-expect-error exercises runtime validation for invalid callers.
+      test.vault.set(123, "v"),
     ).rejects.toThrow();
   });
 
   it("rejects non-string values", async () => {
     await expect(
-      test.vault.set("k", 42 as unknown as string),
+      // @ts-expect-error exercises runtime validation for invalid callers.
+      test.vault.set("k", 42),
     ).rejects.toThrow();
   });
 });
@@ -171,7 +173,8 @@ describe("vault — references (1Password, Proton Pass)", () => {
   it("rejects unsupported sources", async () => {
     await expect(
       test.vault.setReference("k", {
-        source: "lastpass" as unknown as "1password",
+        // @ts-expect-error exercises runtime validation for unsupported sources.
+        source: "lastpass",
         path: "x",
       }),
     ).rejects.toThrow();

@@ -717,13 +717,14 @@ export class SignalService extends Service implements ISignalService {
       }) as Memory;
       memory.metadata = {
         ...(memory.metadata ?? {}),
+        type: "message",
         accountId,
         messageIdFull: String(result.timestamp),
         signalTimestamp: result.timestamp,
         signal: {
           timestamp: result.timestamp,
         },
-      } as unknown as Memory["metadata"];
+      } satisfies Memory["metadata"];
       return memory;
     };
 
@@ -1753,6 +1754,7 @@ export class SignalService extends Service implements ISignalService {
         ...memory,
         metadata: {
           ...(memory.metadata ?? {}),
+          type: "message",
           accountId,
           source: "signal",
           provider: "signal",
@@ -1761,7 +1763,7 @@ export class SignalService extends Service implements ISignalService {
           signal: {
             timestamp: args.timestamp,
           },
-        } as unknown as Memory["metadata"],
+        } satisfies Memory["metadata"],
         createdAt: args.timestamp,
       },
       "messages"

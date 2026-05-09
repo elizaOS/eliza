@@ -9,14 +9,8 @@
  * @module providers/action-examples
  */
 
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  Service,
-  State,
-} from "@elizaos/core";
-import type { PTYService } from "../services/pty-service.js";
+import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import { getPtyService } from "../services/pty-service.js";
 import {
   formatTaskAgentFrameworkLine,
   getTaskAgentFrameworkState,
@@ -45,9 +39,7 @@ export const codingAgentExamplesProvider: Provider = {
         (typeof message.content === "string"
           ? message.content
           : message.content?.text) ?? "";
-      const ptyService = runtime.getService("PTY_SERVICE") as
-        | (Service & PTYService)
-        | undefined;
+      const ptyService = getPtyService(runtime) ?? undefined;
       const frameworkState = await getTaskAgentFrameworkState(
         runtime,
         ptyService,
