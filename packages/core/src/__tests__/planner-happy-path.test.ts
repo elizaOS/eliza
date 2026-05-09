@@ -417,7 +417,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(evalStage?.evaluation?.decision).toBe("FINISH");
 	});
 
-	it("records evaluator success: false when a tool fails and evaluator says so", async () => {
+	it("records terminal task failure separately from evaluator failures", async () => {
 		const brokenAction = makeMockAction({
 			name: "BROKEN_ACTION",
 			handler: async () => ({
@@ -485,7 +485,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		};
 
 		expect(trajectory.metrics.toolCallFailures).toBe(1);
-		expect(trajectory.metrics.evaluatorFailures).toBe(1);
+		expect(trajectory.metrics.evaluatorFailures).toBe(0);
 		expect(trajectory.metrics.finalDecision).toBe("FINISH");
 
 		const evalStage = trajectory.stages.find((s) => s.kind === "evaluation");

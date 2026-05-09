@@ -48,6 +48,7 @@
       "dependsOn": [
         "@elizaos/agent#build",
         "@elizaos/core#build",
+        "@elizaos/shared#build",
         "@elizaos/plugin-pdf#build"
       ],
       "env": [
@@ -143,6 +144,7 @@
     "@elizaos/plugin-commands#build": {
       "dependsOn": [
         "@elizaos/core#build",
+        "@elizaos/shared#build",
         "^build"
       ],
       "outputs": [
@@ -152,6 +154,7 @@
     "@elizaos/plugin-discord#build": {
       "dependsOn": [
         "@elizaos/core#build",
+        "@elizaos/shared#build",
         "^build"
       ],
       "outputs": [
@@ -161,6 +164,7 @@
     "@elizaos/plugin-elizacloud#build": {
       "dependsOn": [
         "@elizaos/core#build",
+        "@elizaos/shared#build",
         "@elizaos/cloud-sdk#build",
         "^build"
       ],
@@ -171,6 +175,7 @@
     "@elizaos/plugin-groq#build": {
       "dependsOn": [
         "@elizaos/core#build",
+        "@elizaos/shared#build",
         "^build"
       ],
       "outputs": [
@@ -180,6 +185,7 @@
     "@elizaos/plugin-imessage#build": {
       "dependsOn": [
         "@elizaos/core#build",
+        "@elizaos/shared#build",
         "^build"
       ],
       "outputs": [
@@ -189,6 +195,7 @@
     "@elizaos/plugin-agent-skills#build": {
       "dependsOn": [
         "@elizaos/core#build",
+        "@elizaos/shared#build",
         "^build"
       ],
       "outputs": [
@@ -218,6 +225,7 @@
     "@elizaos/plugin-edge-tts#build": {
       "dependsOn": [
         "@elizaos/core#build",
+        "@elizaos/shared#build",
         "^build"
       ],
       "outputs": [
@@ -245,6 +253,7 @@
     "@elizaos/plugin-ollama#build": {
       "dependsOn": [
         "@elizaos/core#build",
+        "@elizaos/shared#build",
         "^build"
       ],
       "outputs": [
@@ -254,6 +263,7 @@
     "@elizaos/plugin-openai#build": {
       "dependsOn": [
         "@elizaos/core#build",
+        "@elizaos/shared#build",
         "^build"
       ],
       "outputs": [
@@ -263,6 +273,7 @@
     "@elizaos/plugin-openrouter#build": {
       "dependsOn": [
         "@elizaos/core#build",
+        "@elizaos/shared#build",
         "^build"
       ],
       "outputs": [
@@ -281,6 +292,7 @@
     "@elizaos/plugin-shell#build": {
       "dependsOn": [
         "@elizaos/core#build",
+        "@elizaos/shared#build",
         "^build"
       ],
       "outputs": [
@@ -308,6 +320,7 @@
     "@elizaos/plugin-whatsapp#build": {
       "dependsOn": [
         "@elizaos/core#build",
+        "@elizaos/shared#build",
         "^build"
       ],
       "outputs": [

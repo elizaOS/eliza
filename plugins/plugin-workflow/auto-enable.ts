@@ -3,7 +3,7 @@
 // Plugin manifest entry-point — referenced by package.json's
 // `elizaos.plugin.autoEnableModule`. Keep this module light: config reads
 // only, no service init, no transitive imports of the full plugin runtime.
-import type { PluginAutoEnableContext } from "@elizaos/shared";
+import type { PluginAutoEnableContext } from "@elizaos/core";
 
 /**
  * Default-on: enable workflows in-process unless the user's config has

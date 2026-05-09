@@ -21,7 +21,7 @@ describe("v5 evaluator skeleton", () => {
 		});
 	});
 
-	it("prefers evaluator-shaped JSON when the model emits stray JSON first", () => {
+	it("rejects evaluator text that contains multiple JSON objects", () => {
 		const output = parseEvaluatorOutput(`{
   "action": "OPEN_URL",
   "url": "https://example.test"
@@ -33,10 +33,11 @@ describe("v5 evaluator skeleton", () => {
 
 		expect(output.success).toBe(false);
 		expect(output.decision).toBe("CONTINUE");
-		expect(output.thought).toBe("Need one more grounded tool result.");
+		expect(output.parseError).toBe("response is not a single JSON object");
+		expect(output.thought).toContain("Invalid evaluator output");
 	});
 
-	it("rejects claimed success when stray JSON appears before evaluator completion", () => {
+	it("does not salvage claimed success from malformed evaluator text", () => {
 		const output = parseEvaluatorOutput(`{
   "content": "pretend document body"
 }{
@@ -47,7 +48,7 @@ describe("v5 evaluator skeleton", () => {
 
 		expect(output.success).toBe(false);
 		expect(output.decision).toBe("CONTINUE");
-		expect(output.thought).toContain("non-evaluator JSON");
+		expect(output.parseError).toBe("response is not a single JSON object");
 	});
 
 	it("applies message and clipboard effects through injected callbacks", async () => {

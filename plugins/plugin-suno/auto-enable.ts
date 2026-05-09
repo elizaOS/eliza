@@ -4,7 +4,7 @@
 // `elizaos.plugin.autoEnableModule`. Keep this module light: env reads only,
 // no service init, no transitive imports of the full plugin runtime. The
 // auto-enable engine loads dozens of these per boot.
-import type { PluginAutoEnableContext } from "@elizaos/shared";
+import type { PluginAutoEnableContext } from "@elizaos/core";
 
 /**
  * Enable when a Suno API key is in the environment, or when the user has

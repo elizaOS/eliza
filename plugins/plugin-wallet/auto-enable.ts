@@ -8,7 +8,7 @@
 // EVM detection mirrors `evmAutoEnableReasonFromCapability` in
 // packages/agent/src/services/evm-signing-capability.ts — kept inline so this
 // module has no cross-package import that would pull in agent/runtime code.
-import type { PluginAutoEnableContext } from "@elizaos/shared";
+import type { PluginAutoEnableContext } from "@elizaos/core";
 
 const PLACEHOLDER_RE =
   /^\[?\s*(REDACTED|PLACEHOLDER|T(?:O)D(?:O)|CHANGEME|EMPTY)\s*]?$/i;
