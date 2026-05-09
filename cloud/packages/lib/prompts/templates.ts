@@ -133,7 +133,7 @@ Build a complete SaaS app:
 
 **Key components:**
 \`\`\`tsx
-import { ProtectedRoute, SignInButton, UserMenu, AppCreditDisplay } from "@elizaos/cloud-ui/components/eliza";
+import { ProtectedRoute, SignInButton, UserMenu, AppCreditDisplay } from "@elizaos/cloud-ui";
 \`\`\`
 
 **page.tsx must render a landing page or dashboard based on auth state.**

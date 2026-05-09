@@ -13,9 +13,9 @@
 import { LogIn, Menu } from "lucide-react";
 import { memo, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { BrandButton } from "@elizaos/cloud-ui/components/brand/brand-button";
+import { BrandButton } from "@elizaos/cloud-ui";
 import { HeaderInviteButton } from "./header-invite-button";
-import { usePageHeader } from "@elizaos/cloud-ui/primitives";
+import { usePageHeader } from "@elizaos/cloud-ui";
 import UserMenu from "./user-menu";
 
 interface HeaderProps {

@@ -25,7 +25,7 @@ import {
   TabsTrigger,
   useSetPageHeader,
 } from "@elizaos/cloud-ui";
-import Image from "@elizaos/cloud-ui/runtime/image";
+import Image from "@elizaos/cloud-ui";
 import {
   BarChart3,
   CheckCircle2,

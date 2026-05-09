@@ -2,7 +2,7 @@ import type {
   RelationshipsGraphService,
   RelationshipsPersonDetail,
   RelationshipsPersonSummary,
-} from "@elizaos/core/services/relationships-graph-builder";
+} from "@elizaos/core";
 import {
   type AgentRuntime,
   ChannelType,

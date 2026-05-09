@@ -24,9 +24,9 @@ import type {
   LifeOpsOwnerBrowserAuthState,
   LifeOpsOwnerBrowserNextAction,
   LifeOpsOwnerBrowserTabState,
-} from "@elizaos/shared/contracts/lifeops";
-import { LIFEOPS_DISCORD_CAPABILITIES } from "@elizaos/shared/contracts/lifeops";
-import { asRecord } from "@elizaos/shared/type-guards";
+} from "@elizaos/shared";
+import { LIFEOPS_DISCORD_CAPABILITIES } from "@elizaos/shared";
+import { asRecord } from "@elizaos/shared";
 import {
   captureDiscordDeliveryStatus,
   closeDiscordTab,

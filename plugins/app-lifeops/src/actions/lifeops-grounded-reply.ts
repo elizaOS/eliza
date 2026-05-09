@@ -26,7 +26,7 @@
  * rewriter when the model returns structured/JSON output or the call throws.
  */
 
-import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
+import { renderGroundedActionReply } from "@elizaos/agent";
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 
 export type RenderLifeOpsActionReplyArgs = {

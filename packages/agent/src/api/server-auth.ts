@@ -8,7 +8,7 @@ import { isIP } from "node:net";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
 import {
   resolveApiSecurityConfig,
   resolveApiToken,

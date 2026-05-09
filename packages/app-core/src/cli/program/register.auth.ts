@@ -88,7 +88,7 @@ async function openAuthStoreFromCli(): Promise<{
   if (!adapter.db) {
     throw new Error("CLI auth: adapter has no .db handle");
   }
-  const db = adapter.db as import("@elizaos/plugin-sql/types").DrizzleDatabase;
+  const db = adapter.db as import("@elizaos/plugin-sql").DrizzleDatabase;
   const migrations = new DatabaseMigrationService();
   await migrations.initializeWithDatabase(db);
   migrations.discoverAndRegisterPluginSchemas([plugin]);

@@ -11,4 +11,4 @@ export {
   type DocumentVisibilityScope,
   getDocumentsService,
   getDocumentsServiceTimeoutMs,
-} from "@elizaos/agent/api/documents-service-loader";
+} from "@elizaos/agent";

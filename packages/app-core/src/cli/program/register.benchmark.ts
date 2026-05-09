@@ -12,7 +12,7 @@ export function registerBenchmarkCommand(program: Command) {
     .option("--timeout <ms>", "Timeout per task in milliseconds", "120000")
     .action(
       async (opts: { task?: string; server?: boolean; timeout: string }) => {
-        const { runBenchmark } = await import("@elizaos/agent/cli/benchmark");
+        const { runBenchmark } = await import("@elizaos/agent");
         await runBenchmark(opts);
       },
     );

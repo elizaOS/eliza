@@ -2,12 +2,12 @@
  * Orchestrator-only settings table for `eliza/packages/app-core/scripts/dev-platform.mjs`.
  * Plain string (figlet heading + framed table + footer); TTY color applied by dev-platform.
  */
-import { prependDevSubsystemFigletHeading } from "@elizaos/shared/dev-settings-figlet-heading";
-import { formatDevSettingsTable } from "@elizaos/shared/dev-settings-table";
+import { prependDevSubsystemFigletHeading } from "@elizaos/shared";
+import { formatDevSettingsTable } from "@elizaos/shared";
 import {
   resolveDesktopApiPortPreference,
   resolveDesktopUiPortPreference,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 
 /**
  * @param {object} p
@@ -61,7 +61,7 @@ export function formatOrchestratorDesktopDevBanner(p) {
   const rendererChange =
     "bun run dev:desktop -- --force-renderer or ELIZA_DESKTOP_RENDERER_BUILD=always; omit to follow mtime heuristic";
 
-  /** @type {import("@elizaos/shared/dev-settings-table").DevSettingsRow[]} */
+  /** @type {import("@elizaos/shared").DevSettingsRow[]} */
   const rows = [
     {
       setting: ".env.worktree",

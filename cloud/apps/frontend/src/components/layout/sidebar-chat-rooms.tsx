@@ -20,8 +20,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@elizaos/cloud-ui/components/alert-dialog";
-import { Button } from "@elizaos/cloud-ui/components/button";
+} from "@elizaos/cloud-ui";
+import { Button } from "@elizaos/cloud-ui";
 
 export function SidebarChatRooms() {
   const navigate = useNavigate();

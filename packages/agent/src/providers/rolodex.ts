@@ -9,7 +9,7 @@ import { logger } from "@elizaos/core";
 import type {
   RelationshipsGraphService,
   RelationshipsPersonSummary,
-} from "@elizaos/core/services/relationships-graph-builder";
+} from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import { hasAdminAccess } from "../security/access.js";
 

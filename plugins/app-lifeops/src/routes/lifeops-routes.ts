@@ -3,8 +3,8 @@ import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   checkRateLimit,
   type RateLimitConfig,
-} from "@elizaos/agent/api/rate-limiter";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+} from "@elizaos/agent";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import type {
   AcknowledgeLifeOpsReminderRequest,

@@ -6,7 +6,7 @@
  *   POST /api/wallet/transfer/execute — token / BNB transfer execution
  */
 import type http from "node:http";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
+import { loadElizaConfig } from "@elizaos/agent";
 import { ensureCompatApiAuthorized } from "@elizaos/app-core";
 import {
   type CompatRuntimeState,
@@ -20,7 +20,7 @@ import { logger } from "@elizaos/core";
 import {
   canUseLocalTradeExecution as _canUseLocalTradeExecution,
   resolveTradePermissionMode as _resolveTradePermissionMode,
-} from "@elizaos/plugin-wallet/lib/server-wallet-trade";
+} from "@elizaos/plugin-wallet";
 import { type PolicyResult, StewardApiError } from "@stwd/sdk";
 import { ethers } from "ethers";
 import {

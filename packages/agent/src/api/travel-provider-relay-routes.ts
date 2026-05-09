@@ -1,8 +1,8 @@
 import type http from "node:http";
 import type { IAgentRuntime, Service } from "@elizaos/core";
-import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud/base-url";
-import { resolveCloudApiKey } from "@elizaos/plugin-elizacloud/cloud/cloud-api-key";
-import { validateCloudBaseUrl } from "@elizaos/plugin-elizacloud/cloud/validate-url";
+import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud";
+import { resolveCloudApiKey } from "@elizaos/plugin-elizacloud";
+import { validateCloudBaseUrl } from "@elizaos/plugin-elizacloud";
 import type { CloudProxyConfigLike } from "../types/config-like.js";
 import { sendJson, sendJsonError } from "@elizaos/shared";
 

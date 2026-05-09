@@ -2,7 +2,7 @@ import {
   normalizeCloudSecret as normalizeSecret,
   resolveCloudApiBaseUrl,
   resolveCloudApiKey,
-} from "@elizaos/plugin-elizacloud/cloud/cloud-api-key";
+} from "@elizaos/plugin-elizacloud";
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
   isElizaCloudServiceSelectedInConfig,

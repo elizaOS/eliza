@@ -3,7 +3,7 @@ import type {
   RelationshipsGraphQuery,
   RelationshipsGraphService,
   RelationshipsMergeProposalEvidence,
-} from "@elizaos/core/services/relationships-graph-builder";
+} from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
 
 type RelationshipsFeatureRuntime = IAgentRuntime & {

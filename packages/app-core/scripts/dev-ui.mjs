@@ -23,7 +23,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   resolveDesktopApiPort,
   resolveDesktopUiPort,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import * as JSON5Module from "json5";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";

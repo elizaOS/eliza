@@ -6,7 +6,7 @@
 // Refactoring requires either declaration-merging every cross-mixin method
 // or moving to a single composed interface — tracked as separate work.
 
-import { computeNextCronRunAtMs } from "@elizaos/agent/triggers/scheduling";
+import { computeNextCronRunAtMs } from "@elizaos/agent";
 import type {
   CreateLifeOpsWorkflowRequest,
   LifeOpsBrowserSession,

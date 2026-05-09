@@ -9,7 +9,7 @@
 import {
   buildWalletRpcUpdateRequest,
   resolveInitialWalletRpcSelections,
-} from "@elizaos/app-wallet/wallet-rpc";
+} from "@elizaos/app-wallet";
 import type { WalletRpcSelections } from "@elizaos/shared";
 import {
   Button,

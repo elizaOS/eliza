@@ -33,7 +33,7 @@ import {
   type ElizaConfig,
   loadElizaConfig,
   saveElizaConfig,
-} from "@elizaos/agent/config";
+} from "@elizaos/agent";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger } from "@elizaos/core";
@@ -55,7 +55,7 @@ export {
   ensureCloudTtsApiKeyAlias,
   resolveCloudTtsBaseUrl,
   resolveElevenLabsApiKeyForCloudMode,
-} from "@elizaos/plugin-elizacloud/lib/server-cloud-tts";
+} from "@elizaos/plugin-elizacloud";
 export {
   type CompatRuntimeState,
   DATABASE_UNAVAILABLE_MESSAGE,
@@ -154,7 +154,7 @@ const lazyEnsureTTS = () =>
 import {
   clearCloudSecrets,
   getCloudSecret,
-} from "@elizaos/plugin-elizacloud/lib/cloud-secrets";
+} from "@elizaos/plugin-elizacloud";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
 import { hydrateWalletKeysFromNodePlatformSecureStore } from "../security/hydrate-wallet-keys-from-platform-store";
 import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
@@ -168,7 +168,7 @@ import {
   handleCloudTtsPreviewRoute as _handleCloudTtsPreviewRoute,
   ensureCloudTtsApiKeyAlias,
   mirrorCompatHeaders,
-} from "@elizaos/plugin-elizacloud/lib/server-cloud-tts";
+} from "@elizaos/plugin-elizacloud";
 import { filterConfigEnvForResponse as _filterConfigEnvForResponse } from "./server-config-filter";
 
 // ---------------------------------------------------------------------------

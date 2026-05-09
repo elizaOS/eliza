@@ -18,7 +18,7 @@ describe("Cloud login persist real route coverage", () => {
     delete process.env.ELIZAOS_CLOUD_API_KEY;
     delete process.env.ELIZAOS_CLOUD_ENABLED;
     const { elizaCloudRoutePlugin } = await import(
-      "@elizaos/plugin-elizacloud/plugin"
+      "@elizaos/plugin-elizacloud"
     );
     runtimeResult = await createRealTestRuntime({
       characterName: "CloudLoginPersistLive",

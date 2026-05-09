@@ -14,7 +14,7 @@
 "use client";
 
 import { ChevronDown, Download, Upload } from "lucide-react";
-import { Button } from "@elizaos/cloud-ui/components/button";
+import { Button } from "@elizaos/cloud-ui";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,7 +22,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@elizaos/cloud-ui/components/dropdown-menu";
+} from "@elizaos/cloud-ui";
 
 interface ExportButtonProps {
   startDate: Date | string;

@@ -14,7 +14,7 @@
 "use client";
 
 import { Button } from "@elizaos/cloud-ui";
-import Image from "@elizaos/cloud-ui/runtime/image";
+import Image from "@elizaos/cloud-ui";
 import { Download, Sparkles } from "lucide-react";
 
 interface ImageDisplayProps {

@@ -1,4 +1,4 @@
-export * from "@elizaos/plugin-wallet/lib/server-wallet-trade";
+export * from "@elizaos/plugin-wallet";
 export * from "./ApprovalQueue";
 export * from "./api/tx-service";
 export * from "./api/wallet-dex-prices";

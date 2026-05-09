@@ -1,11 +1,11 @@
 import type http from "node:http";
-import { persistConfigEnv } from "@elizaos/agent/api/config-env";
+import { persistConfigEnv } from "@elizaos/agent";
 import type {
   RouteHelpers,
   RouteRequestMeta,
 } from "@elizaos/shared";
-import type { ElizaConfig } from "@elizaos/agent/config";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+import type { ElizaConfig } from "@elizaos/agent";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {

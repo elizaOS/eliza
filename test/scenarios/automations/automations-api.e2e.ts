@@ -11,18 +11,18 @@
  * Exits non-zero on any failed case. Prints a per-case summary.
  */
 
-import type { TriggerSummary } from "@elizaos/agent/triggers/types";
+import type { TriggerSummary } from "@elizaos/agent";
 import type {
   WorkflowStatusResponse,
   WorkflowDefinition,
-} from "@elizaos/ui/api/client-types-chat";
+} from "@elizaos/ui";
 import type {
   AutomationItem,
   AutomationListResponse,
   AutomationNodeCatalogResponse,
   AutomationNodeDescriptor,
   WorkbenchTask,
-} from "@elizaos/ui/api/client-types-config";
+} from "@elizaos/ui";
 
 const API_BASE = process.env.ELIZA_API_BASE ?? "http://127.0.0.1:31337";
 const AUTH_TOKEN = process.env.ELIZA_API_TOKEN ?? "";

@@ -1193,7 +1193,7 @@ async function executeTickTurn(args: {
       : undefined;
   const startedAt = Date.now();
   const { executeLifeOpsSchedulerTask } = await import(
-    "@elizaos/app-lifeops/lifeops/runtime"
+    "@elizaos/app-lifeops"
   );
   const result = await withTimeout(
     executeLifeOpsSchedulerTask(args.runtime, {

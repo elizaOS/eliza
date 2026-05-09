@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Trajectory } from "@elizaos/agent/types/trajectory";
+import type { Trajectory } from "@elizaos/agent";
 import { ELIZA_NATIVE_TRAJECTORY_FORMAT } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

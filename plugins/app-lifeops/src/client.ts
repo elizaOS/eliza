@@ -14,7 +14,7 @@ import {
   type InstalledApp,
   type SelectAppsResult,
   type UnblockAppsResult,
-} from "@elizaos/ui/bridge/native-plugins";
+} from "@elizaos/ui";
 
 function requireAppBlockerPlugin(): AppBlockerPluginLike {
   const plugin = getAppBlockerPlugin();

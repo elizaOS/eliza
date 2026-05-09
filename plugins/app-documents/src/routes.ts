@@ -5,7 +5,7 @@ import type {
 import {
   parseClampedFloat,
   parsePositiveInteger,
-} from "@elizaos/agent/utils/number-parsing";
+} from "@elizaos/agent";
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
 import {
   __setDocumentUrlFetchImplForTests,

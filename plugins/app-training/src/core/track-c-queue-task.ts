@@ -4,7 +4,7 @@
  */
 
 import type { IAgentRuntime, Task } from "@elizaos/core";
-import { computeNextCronRunAtMs } from "@elizaos/agent/triggers/scheduling";
+import { computeNextCronRunAtMs } from "@elizaos/agent";
 
 export const TRACK_C_QUEUE_TAGS = ["queue", "repeat", "track-c"] as const;
 

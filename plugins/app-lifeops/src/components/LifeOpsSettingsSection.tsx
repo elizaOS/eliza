@@ -1,6 +1,6 @@
 import { Button, SegmentedControl, useApp } from "@elizaos/app-core";
 import { client } from "@elizaos/app-core";
-import type { ModelOption } from "@elizaos/shared/contracts/onboarding";
+import type { ModelOption } from "@elizaos/shared";
 import {
   Activity,
   AlertTriangle,

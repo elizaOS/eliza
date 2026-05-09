@@ -1,8 +1,8 @@
 import {
   loadOwnerContactsConfig,
   resolveOwnerContactWithFallback,
-} from "@elizaos/agent/config/owner-contacts";
-import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
+} from "@elizaos/agent";
+import { getAgentEventService } from "@elizaos/agent";
 import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
 import {
   logger,

@@ -9,7 +9,7 @@
  * The renderer never mounts the main shell (sidebars, header, chat panes).
  */
 
-import { InventoryView } from "@elizaos/app-wallet/ui";
+import { InventoryView } from "@elizaos/app-wallet";
 import {
   type JSX,
   Suspense,

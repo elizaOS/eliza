@@ -18,7 +18,7 @@ import {
   parseJSONObjectFromText,
   type UUID,
 } from "@elizaos/core";
-import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
 import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.js";
 import { extractCompatTextContent } from "./compat-utils.js";

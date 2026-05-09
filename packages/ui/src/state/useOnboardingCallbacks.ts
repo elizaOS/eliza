@@ -49,7 +49,7 @@ async function startNativeAgentIfAvailable(): Promise<void> {
   }
 }
 
-import { buildWalletRpcUpdateRequest } from "@elizaos/app-wallet/wallet-rpc";
+import { buildWalletRpcUpdateRequest } from "@elizaos/app-wallet";
 import {
   getDesktopRuntimeMode,
   invokeDesktopBridgeRequest,

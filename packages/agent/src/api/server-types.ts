@@ -6,7 +6,7 @@
 
 import type http from "node:http";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
-import type { CloudRouteState } from "@elizaos/plugin-elizacloud/routes/cloud-routes-autonomous";
+import type { CloudRouteState } from "@elizaos/plugin-elizacloud";
 import type { ElizaConfig } from "../config/config.js";
 import type { AppManager } from "../services/app-manager.js";
 import type { SandboxManager } from "../services/sandbox-manager.js";
@@ -273,7 +273,7 @@ export interface ServerState {
   /** System permission states (cached from the desktop bridge). */
   permissionStates?: Record<
     string,
-    import("@elizaos/shared/contracts/permissions").PermissionState
+    import("@elizaos/shared").PermissionState
   >;
   /** Whether shell access is enabled (can be toggled in UI). */
   shellEnabled?: boolean;

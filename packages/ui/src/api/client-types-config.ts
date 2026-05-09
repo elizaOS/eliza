@@ -23,7 +23,7 @@ export type {
   BrowserBridgeTabSummary,
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser/contracts";
+} from "@elizaos/plugin-browser";
 export type {
   CompleteLifeOpsBrowserSessionRequest as CompleteBrowserBridgeSessionRequest,
   CompleteLifeOpsOccurrenceRequest,

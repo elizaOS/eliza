@@ -7,7 +7,7 @@
 // or moving to a single composed interface — tracked as separate work.
 
 import type { Memory } from "@elizaos/core";
-import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared";
 import {
   fetchWhatsAppMessagesWithRuntimeService,
   sendWhatsAppMessageWithRuntimeService,

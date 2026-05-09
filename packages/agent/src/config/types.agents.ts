@@ -1,1 +1,1 @@
-export * from "@elizaos/shared/config/types.agents";
+export * from "@elizaos/shared";

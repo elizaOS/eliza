@@ -6,7 +6,7 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { isIP } from "node:net";
 import { logger } from "@elizaos/core";
-import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
 import {
   isNullOriginAllowed,
   resolveAllowedHosts,

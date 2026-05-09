@@ -13,7 +13,7 @@
 import type {
   BrowserWorkspaceSnapshot,
   BrowserWorkspaceTab,
-} from "@elizaos/plugin-browser/workspace";
+} from "@elizaos/plugin-browser";
 import type {
   AllPermissionsState,
   AudioGenConfig,

@@ -1,4 +1,4 @@
-import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
+import { extractActionParamsViaLlm } from "@elizaos/agent";
 import {
   type Action,
   type ActionExample,

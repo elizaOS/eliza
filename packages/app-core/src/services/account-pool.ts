@@ -29,11 +29,11 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AccountCredentialRecord } from "@elizaos/agent/auth/account-storage";
+import type { AccountCredentialRecord } from "@elizaos/agent";
 import {
   getAccessToken as getAccountAccessToken,
   listProviderAccounts,
-} from "@elizaos/agent/auth/credentials";
+} from "@elizaos/agent";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
   DIRECT_ACCOUNT_PROVIDER_ENV,
@@ -41,7 +41,7 @@ import {
   type DirectAccountProvider,
   isSubscriptionProvider,
   type SubscriptionProvider,
-} from "@elizaos/agent/auth/types";
+} from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import type {
   LinkedAccountConfig,

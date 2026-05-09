@@ -30,13 +30,13 @@ export {
   type RelationshipsServiceLike,
   type RelationshipsUserPersonalityPreference,
   searchMemoriesForCluster,
-} from "@elizaos/core/services/relationships-graph-builder";
+} from "@elizaos/core";
 
 import type { IAgentRuntime } from "@elizaos/core";
 import type {
   RelationshipsGraphService,
   RelationshipsServiceLike,
-} from "@elizaos/core/services/relationships-graph-builder";
+} from "@elizaos/core";
 import { resolveOwnerEntityId } from "../runtime/owner-entity.js";
 import { fetchConfiguredOwnerName } from "./owner-name.js";
 

@@ -99,7 +99,7 @@ function lazyNamedView<
   });
 }
 
-import { InventoryView } from "@elizaos/app-wallet/ui";
+import { InventoryView } from "@elizaos/app-wallet";
 import { fetchWithCsrf } from "./api/csrf-client";
 import {
   type AppShellPageRegistration,

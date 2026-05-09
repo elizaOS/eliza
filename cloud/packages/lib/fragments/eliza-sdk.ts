@@ -47,6 +47,6 @@ import { chat, generateImage, textToSpeech } from '@/lib/eliza';
 import { useChat, useChatStream, useImageGeneration } from '@/hooks/use-eliza';
 
 // Auth & Credits
-import { useElizaAuth, useAppCredits, ProtectedRoute } from "@elizaos/cloud-ui/components/eliza";
+import { useElizaAuth, useAppCredits, ProtectedRoute } from "@elizaos/cloud-ui";
 \`\`\`
 `;

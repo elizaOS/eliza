@@ -18,7 +18,7 @@ import {
   sendJson,
   sendJsonError,
 } from "@elizaos/shared";
-import { createZipArchive } from "@elizaos/agent/api/zip-utils";
+import { createZipArchive } from "@elizaos/agent";
 import {
   enrichTrajectoryLlmCall,
   executeRawSql,
@@ -26,7 +26,7 @@ import {
   type PersistedStep,
   type PersistedTrajectory,
   saveTrajectory,
-} from "@elizaos/agent/runtime/trajectory-internals";
+} from "@elizaos/agent";
 import type {
   Trajectory,
   TrajectoryExportFormat,
@@ -38,7 +38,7 @@ import type {
   TrajectoryLlmCall,
   TrajectoryStatus,
   TrajectoryStep,
-} from "@elizaos/agent/types/trajectory";
+} from "@elizaos/agent";
 import {
   ELIZA_NATIVE_TRAJECTORY_FORMAT,
   type AgentRuntime,

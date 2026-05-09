@@ -14,7 +14,7 @@ import type {
   LifeOpsXFeedItem,
   LifeOpsXFeedType,
   LifeOpsXSyncState,
-} from "@elizaos/shared/contracts/lifeops-extensions";
+} from "@elizaos/shared";
 import {
   LIFEOPS_INBOX_CHANNELS,
   type LifeOpsActivitySignal,

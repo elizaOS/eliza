@@ -1,6 +1,6 @@
 import type http from "node:http";
 import { TLSSocket } from "node:tls";
-import { handleConnectorAccountRoutes } from "@elizaos/agent/api/connector-account-routes";
+import { handleConnectorAccountRoutes } from "@elizaos/agent";
 import {
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,

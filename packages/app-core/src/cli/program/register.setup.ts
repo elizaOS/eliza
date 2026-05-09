@@ -317,9 +317,9 @@ export function registerSetupCommand(program: Command) {
         wizard: boolean;
       }) => {
         await runCommandWithRuntime(defaultRuntime, async () => {
-          const { loadElizaConfig } = await import("@elizaos/agent/config/config");
+          const { loadElizaConfig } = await import("@elizaos/agent");
           const { ensureAgentWorkspace, resolveDefaultAgentWorkspaceDir } =
-            await import("@elizaos/agent/providers/workspace");
+            await import("@elizaos/agent");
 
           const configPath = resolveConfigPath();
           const keyFromStdin = opts.keyStdin ? await readStdinValue() : "";

@@ -220,7 +220,7 @@ async function fetchBrowserBridgeCompanionLiveStatus(): Promise<
 async function renderBrowserLiveState(): Promise<string | null> {
   try {
     const { getBrowserWorkspaceSnapshot } = await import(
-      "@elizaos/plugin-browser/workspace"
+      "@elizaos/plugin-browser"
     );
     const snapshot = await getBrowserWorkspaceSnapshot();
     const lines: string[] = [

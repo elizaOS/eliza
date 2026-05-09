@@ -10,7 +10,7 @@ import {
   isBrowserCaptureSupported,
   startBrowserCapture,
   stopBrowserCapture,
-} from "@elizaos/plugin-browser/workspace/browser-capture";
+} from "@elizaos/plugin-browser";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../test/helpers/conditional-tests.ts";
 import { LifeOpsScreenContextSampler } from "../src/lifeops/screen-context.js";

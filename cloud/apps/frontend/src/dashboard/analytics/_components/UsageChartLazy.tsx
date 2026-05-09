@@ -6,7 +6,7 @@
 "use client";
 
 import { Skeleton } from "@elizaos/cloud-ui";
-import dynamic from "@elizaos/cloud-ui/runtime/dynamic";
+import dynamic from "@elizaos/cloud-ui";
 import { ComponentProps } from "react";
 
 const UsageChartComponent = dynamic(

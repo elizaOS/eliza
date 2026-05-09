@@ -33,7 +33,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
-import type { Voice } from "@elizaos/cloud-ui/components/voice/types";
+import type { Voice } from "@elizaos/cloud-ui";
 
 interface VoiceCardProps {
   voice: Voice;

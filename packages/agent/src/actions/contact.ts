@@ -53,7 +53,7 @@ import {
   parseJSONObjectFromText,
   stringToUuid,
 } from "@elizaos/core";
-import type { RelationshipsMergeProposalEvidence } from "@elizaos/core/services/relationships-graph-builder";
+import type { RelationshipsMergeProposalEvidence } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import type {
   RelationshipsGraphService,

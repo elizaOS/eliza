@@ -11,7 +11,7 @@ import type {
   LifeOpsOverview,
   LifeOpsScheduleInsight,
   LifeOpsXConnectorStatus,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import {
   ArrowRight,
   AtSign,

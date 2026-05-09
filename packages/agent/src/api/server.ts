@@ -88,8 +88,8 @@ function isVaultConfigRef(value: string): boolean {
   return value.startsWith("vault://") && value.length > "vault://".length;
 }
 
-import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/routes/cloud-provisioning";
-import { handleCloudStatusRoutes } from "@elizaos/plugin-elizacloud/routes/cloud-status-routes-autonomous";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
+import { handleCloudStatusRoutes } from "@elizaos/plugin-elizacloud";
 import {
   type ElizaConfig,
   loadElizaConfig,

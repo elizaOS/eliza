@@ -1,8 +1,8 @@
-import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
+import { renderGroundedActionReply } from "@elizaos/agent";
 import {
   extractConversationMetadataFromRoom,
   isPageScopedConversationMetadata,
-} from "@elizaos/agent/api/conversation-metadata";
+} from "@elizaos/agent";
 import type {
   Action,
   HandlerOptions,
