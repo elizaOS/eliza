@@ -441,7 +441,35 @@ export async function startBenchmarkServer() {
     }
     try {
       const { default: openaiPlugin } = await import("@elizaos/plugin-openai");
-      plugins.push(toPlugin(openaiPlugin, "@elizaos/plugin-openai"));
+      const openaiPluginResolved = toPlugin(
+        openaiPlugin,
+        "@elizaos/plugin-openai",
+      );
+      // Cerebras has no /v1/embeddings endpoint. The openai plugin's
+      // TEXT_EMBEDDING handler will 404 against api.cerebras.ai and stall
+      // Stage 1 of the message pipeline before the planner picks an action.
+      // Strip TEXT_EMBEDDING when cerebras is the explicit intent so
+      // plugin-local-embedding (loaded via CORE_PLUGINS) wins for embeddings
+      // while the openai plugin still serves TEXT_LARGE / TEXT_SMALL.
+      let strippedEmbedding = false;
+      if (
+        (baseUrlIsCerebras || providerIsCerebras) &&
+        openaiPluginResolved.models &&
+        "TEXT_EMBEDDING" in openaiPluginResolved.models
+      ) {
+        const filteredModels = { ...openaiPluginResolved.models } as Record<
+          string,
+          unknown
+        >;
+        delete filteredModels.TEXT_EMBEDDING;
+        plugins.push({
+          ...openaiPluginResolved,
+          models: filteredModels as typeof openaiPluginResolved.models,
+        });
+        strippedEmbedding = true;
+      } else {
+        plugins.push(openaiPluginResolved);
+      }
       elizaLogger.info(
         `[bench] Loaded LLM plugin: @elizaos/plugin-openai (baseURL=${openAiBaseURL ?? "default"}, key=${
           openAiApiKey
@@ -449,8 +477,13 @@ export async function startBenchmarkServer() {
             : cerebrasApiKey
               ? "CEREBRAS_API_KEY"
               : "none"
-        })`,
+        }${strippedEmbedding ? ", TEXT_EMBEDDING stripped (cerebras)" : ""})`,
       );
+      if (strippedEmbedding) {
+        elizaLogger.info(
+          "[bench] Cerebras detected: removed openai plugin's TEXT_EMBEDDING handler so @elizaos/plugin-local-embedding serves embeddings.",
+        );
+      }
     } catch (error: unknown) {
       elizaLogger.warn(
         `[bench] OpenAI plugin not available: ${formatUnknownError(error)}`,
