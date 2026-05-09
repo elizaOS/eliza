@@ -285,6 +285,12 @@ export class Downloader {
         source: "eliza-download",
         sha256,
         lastVerifiedAt: new Date().toISOString(),
+        ...(catalogEntry.runtimeRole
+          ? { runtimeRole: catalogEntry.runtimeRole }
+          : {}),
+        ...(catalogEntry.companionForModelId
+          ? { companionFor: catalogEntry.companionForModelId }
+          : {}),
       };
       await upsertElizaModel(installed);
 
@@ -292,7 +298,31 @@ export class Downloader {
       // empty slot so chat works without a Settings detour. Idempotent —
       // ignores slots the user has already configured. See
       // assignments.ts#ensureDefaultAssignment for the per-slot policy.
-      await ensureDefaultAssignment(installed.id);
+      if (catalogEntry.runtimeRole !== "dflash-drafter") {
+        await ensureDefaultAssignment(installed.id);
+      }
+
+      for (const companionId of catalogEntry.companionModelIds ?? []) {
+        if (!this.isActive(companionId)) {
+          void this.start(companionId).catch((err) => {
+            this.emit({
+              type: "failed",
+              job: {
+                jobId: randomUUID(),
+                modelId: companionId,
+                state: "failed",
+                received: 0,
+                total: 0,
+                bytesPerSec: 0,
+                etaMs: null,
+                startedAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                error: err instanceof Error ? err.message : String(err),
+              },
+            });
+          });
+        }
+      }
 
       this.updateState(record, "completed");
       record.job.received = finalStat.size;

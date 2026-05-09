@@ -14,7 +14,7 @@
  *     4. Run `scripts/fix-workspace-deps.mjs` when `--check` fails (otherwise skip)
  *
  * Idempotent: safe to run repeatedly; skips submodule update, workspace/self-dep edits, and fix-deps when already satisfied.
- * Writes `.eliza/plugin-dev-needs-install` when anything changed so `scripts/dev.mjs` can run `bun install` only then.
+ * Writes `.eliza/plugin-dev-needs-install` when anything changed so `scripts/dev-harness.mjs` can run `bun install` only then.
  *
  *   RESTORE (--restore):
  *     1. Run `scripts/fix-workspace-deps.mjs --restore` (parent-repo package.json only)
@@ -26,7 +26,7 @@
  *   - `scripts/replace-workspace-versions.js` for publish (Lerna)
  *
  * Usage:
- *   bun run dev                    # root dev.mjs runs this, then agent watch
+ *   bun run dev:harness            # runs this, then agent watch
  *   node scripts/plugin-submodules-dev.mjs
  *   node scripts/plugin-submodules-dev.mjs --restore
  *   node scripts/plugin-submodules-dev.mjs --quiet
@@ -40,7 +40,7 @@ const ROOT = resolve(import.meta.dirname, "..");
 const DEV = !process.argv.includes("--restore");
 const QUIET = process.argv.includes("--quiet");
 
-/** Written when package.json / workspace state changed; dev.mjs runs `bun install` then deletes it. */
+/** Written when package.json / workspace state changed; dev-harness runs `bun install` then deletes it. */
 const INSTALL_STAMP = join(ROOT, ".eliza", "plugin-dev-needs-install");
 
 function touchInstallStamp() {

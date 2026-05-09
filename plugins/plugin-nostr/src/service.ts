@@ -136,9 +136,7 @@ export class NostrService extends Service implements INostrService {
       return;
     }
 
-    const services = serviceInstance.getAccountServiceList();
-    const registerLegacyHandler = services.length <= 1;
-    for (const accountService of services) {
+    for (const accountService of serviceInstance.getAccountServiceList()) {
       const accountId = accountService.getAccountId(runtime);
       accountService.registerPostConnector(runtime);
 
@@ -176,10 +174,6 @@ export class NostrService extends Service implements INostrService {
           "Registered Nostr DM connector"
         );
         continue;
-      }
-
-      if (registerLegacyHandler) {
-        runtime.registerSendHandler("nostr", sendHandler);
       }
     }
   }

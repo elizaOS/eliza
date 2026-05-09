@@ -38,7 +38,7 @@ export class LocalInferenceService {
   private bundledBootstrap: Promise<void> | null = null;
 
   getCatalog() {
-    return MODEL_CATALOG;
+    return MODEL_CATALOG.filter((model) => !model.hiddenFromCatalog);
   }
 
   /**

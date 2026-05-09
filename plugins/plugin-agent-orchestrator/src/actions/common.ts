@@ -251,7 +251,6 @@ export function emitSessionEvent(
   event: SessionEventName,
   data: unknown,
 ): void {
-  // TODO(W7-integration): AcpService.emitSessionEvent is currently private though CREATE_TASK parity needs it.
   service.emitSessionEvent?.(sessionId, event, data);
 }
 

@@ -143,9 +143,7 @@ export class TwitchService extends Service implements ITwitchService {
       return;
     }
 
-    const services = serviceInstance.getAccountServiceList();
-    const registerLegacyHandler = services.length <= 1;
-    for (const accountService of services) {
+    for (const accountService of serviceInstance.getAccountServiceList()) {
       const accountId = accountService.getAccountId(runtime);
       const sendHandler = accountService.handleSendMessage.bind(accountService);
       if (typeof runtime.registerMessageConnector === "function") {
@@ -179,10 +177,6 @@ export class TwitchService extends Service implements ITwitchService {
           "Registered Twitch chat connector",
         );
         continue;
-      }
-
-      if (registerLegacyHandler) {
-        runtime.registerSendHandler("twitch", sendHandler);
       }
     }
   }

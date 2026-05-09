@@ -16,6 +16,15 @@
  * instead of crashing the process.
  */
 
+import { findCatalogModel } from "./catalog";
+import {
+  dflashLlamaServer,
+  dflashRequired,
+  getDflashRuntimeStatus,
+  type DflashServerPlan,
+} from "./dflash-server";
+import { listInstalledModels } from "./registry";
+
 export interface GenerateArgs {
   prompt: string;
   stopSequences?: string[];
@@ -97,14 +106,18 @@ export class LocalInferenceEngine {
   }
 
   currentModelPath(): string | null {
+    if (dflashLlamaServer.hasLoadedModel()) {
+      return dflashLlamaServer.currentModelPath();
+    }
     return this.loadedPath;
   }
 
   hasLoadedModel(): boolean {
-    return this.loadedModel !== null;
+    return this.loadedModel !== null || dflashLlamaServer.hasLoadedModel();
   }
 
   async unload(): Promise<void> {
+    await dflashLlamaServer.stop();
     if (!this.loadedModel) return;
     const session = this.loadedSession;
     const context = this.loadedContext;
@@ -130,6 +143,22 @@ export class LocalInferenceEngine {
 
   async load(modelPath: string): Promise<void> {
     if (this.loadedPath === modelPath && this.loadedModel) return;
+    if (dflashLlamaServer.currentModelPath() === modelPath) return;
+
+    const dflashPlan = await this.resolveDflashPlan(modelPath);
+    if (dflashPlan) {
+      try {
+        await this.unload();
+        await dflashLlamaServer.start(dflashPlan);
+        return;
+      } catch (err) {
+        if (dflashRequired()) throw err;
+        console.warn(
+          "[local-inference] DFlash llama-server unavailable; falling back to node-llama-cpp:",
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+    }
 
     if (!(await this.available()) || !this.bindingModule) {
       throw new Error(
@@ -167,6 +196,9 @@ export class LocalInferenceEngine {
    * stays consistent.
    */
   async generate(args: GenerateArgs): Promise<string> {
+    if (dflashLlamaServer.hasLoadedModel()) {
+      return dflashLlamaServer.generate(args);
+    }
     if (!this.loadedSession) {
       throw new Error(
         "No local model is active. Select one in Settings → Local models before using local inference.",
@@ -208,6 +240,43 @@ export class LocalInferenceEngine {
     } catch {
       return null;
     }
+  }
+
+  private async resolveDflashPlan(
+    modelPath: string,
+  ): Promise<DflashServerPlan | null> {
+    const installed = await listInstalledModels();
+    const target = installed.find((m) => m.path === modelPath);
+    if (!target) return null;
+    const catalog = findCatalogModel(target.id);
+    const dflash = catalog?.runtime?.dflash;
+    if (!dflash) return null;
+
+    const status = getDflashRuntimeStatus();
+    if (!status.enabled) {
+      if (status.required) throw new Error(`[dflash] ${status.reason}`);
+      return null;
+    }
+
+    const drafter = installed.find((m) => m.id === dflash.drafterModelId);
+    if (!drafter) {
+      const message = `[dflash] ${catalog.displayName} requires companion drafter ${dflash.drafterModelId}. Download the model again or start a download for the companion id.`;
+      if (status.required) throw new Error(message);
+      console.warn(`${message} Falling back to node-llama-cpp.`);
+      return null;
+    }
+
+    return {
+      targetModelPath: target.path,
+      drafterModelPath: drafter.path,
+      contextSize: dflash.contextSize,
+      draftContextSize: dflash.draftContextSize,
+      draftMin: dflash.draftMin,
+      draftMax: dflash.draftMax,
+      gpuLayers: dflash.gpuLayers,
+      draftGpuLayers: dflash.draftGpuLayers,
+      disableThinking: dflash.disableThinking,
+    };
   }
 }
 

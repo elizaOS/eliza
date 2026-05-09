@@ -90,7 +90,6 @@ export const agentSkillsPlugin: Plugin = {
 	actions: ALL_ACTIONS,
 	providers: ALL_PROVIDERS,
 
-	evaluators: [],
 	routes: [],
 
 	// Initialize background task when plugin loads.

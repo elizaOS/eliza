@@ -19,6 +19,7 @@
 import fs from "node:fs/promises";
 import { getDefaultAccountPool } from "../account-pool";
 import { deviceBridge } from "./device-bridge";
+import { getDflashRuntimeStatus } from "./dflash-server";
 import { handlerRegistry } from "./handler-registry";
 import { localInferenceRoot } from "./paths";
 import type { AgentModelSlot } from "./types";
@@ -84,7 +85,7 @@ const LOCAL_PROVIDER: ProviderDefinition = {
   label: "Local llama.cpp",
   kind: "local",
   description:
-    "On-device inference using node-llama-cpp. Free, private, runs on your machine's CPU/GPU.",
+    "On-device inference using node-llama-cpp, with DFlash llama-server acceleration when the managed binary and drafter companion are installed.",
   supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     // Enabled when at least one model file lives under our root and the
@@ -97,9 +98,11 @@ const LOCAL_PROVIDER: ProviderDefinition = {
       const hasModel = entries.some(
         (e) => e.isFile() && e.name.toLowerCase().endsWith(".gguf"),
       );
-      return hasModel
-        ? { enabled: true, reason: "GGUF model installed" }
-        : { enabled: false, reason: "No local model installed" };
+      if (!hasModel) return { enabled: false, reason: "No local model installed" };
+      const dflash = getDflashRuntimeStatus();
+      return dflash.enabled
+        ? { enabled: true, reason: "GGUF model installed; DFlash available" }
+        : { enabled: true, reason: "GGUF model installed" };
     } catch {
       return { enabled: false, reason: "No local model installed" };
     }

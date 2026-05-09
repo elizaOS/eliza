@@ -1,5 +1,5 @@
 import { type IAgentRuntime, logger, type Plugin } from '@elizaos/core';
-import { N8nWorkflowService, N8nCredentialStore } from './services/index';
+import { N8nWorkflowService, N8nCredentialStore, EmbeddedN8nService } from './services/index';
 import * as dbSchema from './db/index';
 import {
   workflowStatusProvider,
@@ -46,7 +46,7 @@ export const n8nWorkflowPlugin: Plugin = {
     'Supports 450+ native n8n nodes (Gmail, Slack, Stripe, etc.) with intelligent ' +
     'credential resolution and workflow management.',
 
-  services: [N8nWorkflowService, N8nCredentialStore],
+  services: [EmbeddedN8nService, N8nWorkflowService, N8nCredentialStore],
 
   schema: dbSchema,
 
@@ -59,19 +59,26 @@ export const n8nWorkflowPlugin: Plugin = {
   init: async (_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
     const apiKey = runtime.getSetting('N8N_API_KEY');
     const host = runtime.getSetting('N8N_HOST');
+    const embeddedEnabled =
+      runtime.getSetting('N8N_BACKEND') === 'embedded' ||
+      runtime.getSetting('N8N_MODE') === 'embedded' ||
+      runtime.getSetting('N8N_HOST')?.toString().startsWith('embedded://') ||
+      ['1', 'true', 'yes', 'on'].includes(
+        runtime.getSetting('N8N_EMBEDDED_ENABLED')?.toString().toLowerCase() ?? ''
+      );
 
     logger.info(
-      `n8n Workflow Plugin - API Key: ${apiKey ? 'configured' : 'not configured'}, Host: ${host || 'not set'}`
+      `n8n Workflow Plugin - Backend: ${embeddedEnabled ? 'embedded' : 'http'}, API Key: ${apiKey ? 'configured' : 'not configured'}, Host: ${host || 'not set'}`
     );
 
-    if (!apiKey) {
+    if (!embeddedEnabled && !apiKey) {
       logger.warn(
         'N8N_API_KEY not provided - plugin will not be functional. ' +
           'Please set N8N_API_KEY in your environment or character settings.'
       );
     }
 
-    if (!host) {
+    if (!embeddedEnabled && !host) {
       logger.warn(
         'N8N_HOST not provided - plugin will not be functional. ' +
           'Please set N8N_HOST to your n8n instance URL (e.g., https://your.n8n.cloud).'

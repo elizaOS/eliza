@@ -7,7 +7,14 @@ import type {
   CredentialProvider,
   N8nCredentialStoreApi,
 } from '../types/index';
-import type { N8nApiClient } from './api';
+
+interface CredentialApiClient {
+  createCredential(credential: {
+    name: string;
+    type: string;
+    data: Record<string, unknown>;
+  }): Promise<{ id: string }>;
+}
 
 /**
  * Resolve and inject credentials into workflow.
@@ -24,7 +31,7 @@ export async function resolveCredentials(
   config: N8nPluginConfig,
   credStore: N8nCredentialStoreApi | null,
   credProvider: CredentialProvider | null,
-  apiClient: N8nApiClient | null,
+  apiClient: CredentialApiClient | null,
   tagName: string
 ): Promise<CredentialResolutionResult> {
   const requiredCredTypes = extractRequiredCredentialTypes(workflow);
@@ -72,7 +79,7 @@ async function resolveOneCredential(
   config: N8nPluginConfig,
   credStore: N8nCredentialStoreApi | null,
   credProvider: CredentialProvider | null,
-  apiClient: N8nApiClient | null,
+  apiClient: CredentialApiClient | null,
   missingConnections: MissingConnection[],
   tagName: string
 ): Promise<string | null> {

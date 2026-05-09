@@ -1,8 +1,8 @@
 import {
   Button,
   Checkbox,
-  SELECT_FLOATING_LAYER_NAME,
-  SELECT_FLOATING_LAYER_Z_INDEX,
+  CONFIG_SELECT_FLOATING_LAYER_NAME,
+  CONFIG_SELECT_FLOATING_LAYER_Z_INDEX,
   Select,
   SelectContent,
   SelectItem,
@@ -473,7 +473,7 @@ function SearchableSelectInner({
       top: rect.bottom + 4,
       left: rect.left,
       width: rect.width,
-      zIndex: SELECT_FLOATING_LAYER_Z_INDEX,
+      zIndex: CONFIG_SELECT_FLOATING_LAYER_Z_INDEX,
     };
   }, []);
 
@@ -540,7 +540,7 @@ function SearchableSelectInner({
         createPortal(
           <div
             ref={dropdownRef}
-            data-floating-layer={SELECT_FLOATING_LAYER_NAME}
+            data-floating-layer={CONFIG_SELECT_FLOATING_LAYER_NAME}
             style={dropdownStyle}
             className="border border-border bg-card shadow-lg rounded-sm"
           >

@@ -17,6 +17,5 @@ export const Z_SHELL_OVERLAY = 10000;
 export const Z_GLOBAL_EMOTE = 11000;
 export const Z_SELECT_FLOAT = 12000;
 
-// ── Legacy aliases (preserved for backwards compat) ───────────
-export const SELECT_FLOATING_LAYER_NAME = "config-select";
-export const SELECT_FLOATING_LAYER_Z_INDEX = Z_SELECT_FLOAT;
+export const CONFIG_SELECT_FLOATING_LAYER_NAME = "config-select";
+export const CONFIG_SELECT_FLOATING_LAYER_Z_INDEX = Z_SELECT_FLOAT;
