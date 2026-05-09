@@ -108,14 +108,7 @@ export interface LocalInferenceChatResult {
 }
 
 type Assignments = Partial<
-  Record<
-    | "TEXT_SMALL"
-    | "TEXT_LARGE"
-    | "TEXT_EMBEDDING"
-    | "OBJECT_SMALL"
-    | "OBJECT_LARGE",
-    string
-  >
+  Record<"TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING", string>
 >;
 
 interface RoutingPreferences {
