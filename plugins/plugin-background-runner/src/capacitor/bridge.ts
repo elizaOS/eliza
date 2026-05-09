@@ -43,8 +43,10 @@ export interface CapacitorEnvironment {
 export async function resolveCapacitorEnvironment(): Promise<CapacitorEnvironment> {
   let isCapacitor = false;
   try {
-    const core = (await import('@capacitor/core')) as { Capacitor?: { isNativePlatform?: () => boolean } };
-    isCapacitor = core.Capacitor?.isNativePlatform?.() === true;
+    const core = (await tryImport('@capacitor/core')) as {
+      Capacitor?: { isNativePlatform?: () => boolean };
+    } | null;
+    isCapacitor = core?.Capacitor?.isNativePlatform?.() === true;
   } catch {
     return { isCapacitor: false, runner: null };
   }
@@ -53,15 +55,24 @@ export async function resolveCapacitorEnvironment(): Promise<CapacitorEnvironmen
     return { isCapacitor: false, runner: null };
   }
 
-  try {
-    const mod = (await import('@capacitor-community/background-runner')) as {
-      BackgroundRunner?: BackgroundRunnerLike;
-    };
-    if (!mod.BackgroundRunner) {
-      return { isCapacitor: true, runner: null };
-    }
-    return { isCapacitor: true, runner: mod.BackgroundRunner };
-  } catch {
+  const mod = (await tryImport('@capacitor-community/background-runner')) as {
+    BackgroundRunner?: BackgroundRunnerLike;
+  } | null;
+  if (mod?.BackgroundRunner == null) {
     return { isCapacitor: true, runner: null };
+  }
+  return { isCapacitor: true, runner: mod.BackgroundRunner };
+}
+
+/**
+ * Dynamic import behind an indirection so TypeScript treats the specifier as
+ * a runtime value. Optional peers may not be installed; a missing module
+ * resolves to `null` rather than throwing through to the caller.
+ */
+async function tryImport(specifier: string): Promise<unknown> {
+  try {
+    return (await import(/* @vite-ignore */ specifier)) as unknown;
+  } catch {
+    return null;
   }
 }

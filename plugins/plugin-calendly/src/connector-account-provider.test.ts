@@ -10,13 +10,6 @@ import {
   createCalendlyConnectorAccountProvider,
 } from "./connector-account-provider.js";
 
-function runtime(settings: Record<string, unknown>): IAgentRuntime {
-  return createTestRuntime({
-    character: {},
-    getSetting: vi.fn((key: string) => toRuntimeSetting(settings[key])),
-  });
-}
-
 type RuntimeSetting = string | number | boolean | null;
 
 interface TestRuntimeShape {
@@ -36,6 +29,13 @@ function toRuntimeSetting(value: unknown): RuntimeSetting {
 
 function createTestRuntime(runtimeShape: TestRuntimeShape): IAgentRuntime {
   return Object.assign(Object.create(null) as IAgentRuntime, runtimeShape);
+}
+
+function runtime(settings: Record<string, unknown>): IAgentRuntime {
+  return createTestRuntime({
+    character: {},
+    getSetting: vi.fn((key: string) => toRuntimeSetting(settings[key])),
+  });
 }
 
 describe("Calendly ConnectorAccountManager provider", () => {

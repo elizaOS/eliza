@@ -34,17 +34,6 @@ import {
   type UUID,
 } from "@elizaos/core";
 
-type AutonomyRoomService = {
-  getAutonomousRoomId?(): UUID;
-};
-
-function isAutonomyRoomService(
-  service: unknown,
-): service is AutonomyRoomService {
-  return typeof service === "object" && service !== null;
-}
-
-import { v4 as uuidv4 } from "uuid";
 import {
   executeTriggerTask,
   readTriggerConfig,
@@ -58,6 +47,16 @@ import {
   parseScheduledAtIso,
 } from "../triggers/scheduling.js";
 import type { TriggerTaskMetadata } from "../triggers/types.js";
+
+type AutonomyRoomService = {
+  getAutonomousRoomId?(): UUID;
+};
+
+function isAutonomyRoomService(
+  service: unknown,
+): service is AutonomyRoomService {
+  return typeof service === "object" && service !== null;
+}
 
 const TRIGGER_OPS = ["create", "update", "delete", "run", "toggle"] as const;
 type TriggerOp = (typeof TRIGGER_OPS)[number];
@@ -284,7 +283,7 @@ async function opCreate(
     });
   }
 
-  const triggerId = stringToUuid(uuidv4());
+  const triggerId = stringToUuid(crypto.randomUUID());
   const triggerConfig: TriggerConfig = {
     version: TRIGGER_SCHEMA_VERSION,
     triggerId,

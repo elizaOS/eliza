@@ -42,7 +42,10 @@ declare module "./client-base" {
     activateWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
     deactivateWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
     deleteWorkflowDefinition(id: string): Promise<{ ok: boolean }>;
-    getWorkflowExecutions(id: string, limit?: number): Promise<WorkflowExecution[]>;
+    getWorkflowExecutions(
+      id: string,
+      limit?: number,
+    ): Promise<WorkflowExecution[]>;
   }
 }
 

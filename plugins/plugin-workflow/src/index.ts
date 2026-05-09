@@ -1,4 +1,5 @@
 import { type IAgentRuntime, logger, type Plugin } from '@elizaos/core';
+import { workflowAction } from './actions/index';
 import * as dbSchema from './db/index';
 import {
   activeWorkflowsProvider,
@@ -22,7 +23,7 @@ import './register-routes';
 /**
  * Workflow Plugin for ElizaOS
  *
- * Generate and manage workflows from natural language using RAG pipeline.
+ * Generate and manage workflows from natural language using a RAG pipeline.
  * Supports workflow CRUD, execution management, and credential resolution.
  *
  * **Optional Configuration:**
@@ -48,13 +49,13 @@ export const workflowPlugin: Plugin = {
   name: 'workflow',
   description:
     'Generate and deploy workflows from natural language. ' +
-    'Runs supported workflows workflow nodes in-process with credential resolution.',
+    'Runs supported workflow nodes in-process with credential resolution.',
 
   services: [EmbeddedWorkflowService, WorkflowService, WorkflowCredentialStore],
 
   schema: dbSchema,
 
-  actions: [],
+  actions: [workflowAction],
 
   providers: [workflowStatusProvider, activeWorkflowsProvider, pendingDraftProvider],
 

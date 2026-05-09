@@ -22,7 +22,12 @@ const CreateChargeSchema = z.object({
   providers: z.array(ProviderSchema).min(1).max(2).optional(),
   success_url: z.string().url().optional(),
   cancel_url: z.string().url().optional(),
-  lifetime_seconds: z.number().int().min(60).max(30 * 24 * 60 * 60).optional(),
+  lifetime_seconds: z
+    .number()
+    .int()
+    .min(60)
+    .max(30 * 24 * 60 * 60)
+    .optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 

@@ -12,7 +12,6 @@ import {
   memoriesRepository,
   participantsRepository,
   type Room,
-  type RoomWithPreview,
   roomsRepository,
 } from "@/db/repositories";
 import { entityTable, participantTable, roomTable } from "@/db/schemas/eliza";
@@ -42,7 +41,7 @@ export interface RoomWithMessages {
 
 /**
  * Room preview for sidebar/list views
- * Transformed from RoomWithPreview for API response
+ * Transformed from repository `RoomWithPreview` for API response.
  */
 export interface RoomPreview {
   id: string;
@@ -55,9 +54,6 @@ export interface RoomPreview {
   isLocked?: boolean; // Whether the room is locked (character was created/saved)
   isBuildRoom?: boolean; // Whether this is a legacy builder room
 }
-
-// Re-export for convenience
-export type { RoomWithPreview };
 
 export class RoomsService {
   /**

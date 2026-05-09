@@ -46,8 +46,6 @@ Run `eliza doctor` after changing ports or state paths to catch mismatches befor
 |----------|---------|
 | `ELIZA_DISABLE_EDGE_TTS` | Set to `1` to prevent auto-loading `@elizaos/plugin-edge-tts`. When the agent orchestrator is loaded, Eliza adds Edge TTS by default so swarm/PTY paths have a TTS handler -- this makes outbound calls to Microsoft's cloud. Disable if you want no network TTS. |
 | `ELIZA_DISABLE_AUTO_BOOTSTRAP` | Set to `1` to skip the one-shot native optimization bootstrap at runtime boot. |
-| `EXECUTECODE_TIMEOUT_MS` | Default script timeout for the `EXECUTE_CODE` action, in ms. Default: `30000`. |
-| `EXECUTECODE_DISABLE` | Set to `true` or `1` to disable the `EXECUTE_CODE` action entirely. |
 | `ELIZA_DISABLE_TRAJECTORY_LOGGING` | Set to `1` to opt out of trajectory persistence. Also disabled when `NODE_ENV=test`. |
 | `ELIZA_ENABLE_CHILD_SKILL_CALLBACK` | Set to `0` to disable the child→parent `USE_SKILL` bridge for spawned coding agents. Default: enabled. |
 | `ATROPOS_DATA_DIR` | Staging directory used by the atropos training backend for dataset files. |

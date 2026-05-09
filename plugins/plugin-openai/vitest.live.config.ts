@@ -6,7 +6,7 @@ const pluginSqlRoot = path.join(
 	elizaRoot,
 	"plugins",
 	"plugin-sql",
-	"typescript",
+	"src",
 );
 const coreSrc = path.join(elizaRoot, "packages", "core", "src");
 

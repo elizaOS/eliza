@@ -1,5 +1,11 @@
 {
 	"compilerOptions": {
+		"baseUrl": ".",
+		"paths": {
+			"@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
+			"@elizaos/plugin-browser/*": ["../plugin-browser/src/*"]
+		},
+		"ignoreDeprecations": "6.0",
 		"target": "ES2022",
 		"module": "ESNext",
 		"moduleResolution": "bundler",

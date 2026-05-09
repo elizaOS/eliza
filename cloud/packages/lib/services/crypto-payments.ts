@@ -861,7 +861,10 @@ class CryptoPaymentsService {
     const { payment, purchaseAmount, txHash } = params;
     if (!payment.user_id) return;
 
-    const { splits } = await referralsService.calculateRevenueSplits(payment.user_id, purchaseAmount);
+    const { splits } = await referralsService.calculateRevenueSplits(
+      payment.user_id,
+      purchaseAmount,
+    );
     if (splits.length === 0) return;
 
     for (const split of splits) {

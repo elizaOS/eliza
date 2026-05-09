@@ -13,6 +13,7 @@ import type {
 	IAgentRuntime,
 	JSONSchema,
 	Memory,
+	RegisteredEvaluator,
 } from "../../../types/index.ts";
 import { MemoryType } from "../../../types/memory.ts";
 import type { Plugin } from "../../../types/plugin.ts";
@@ -576,7 +577,7 @@ ${prepared.trajectoryDigest}`;
 	],
 };
 
-export const skillItems: NonNullable<Plugin["evaluators"]> = [
+export const skillItems: RegisteredEvaluator[] = [
 	skillProposalEvaluator,
 	skillRefinementEvaluator,
 ];

@@ -86,8 +86,7 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
       );
     }
 
-    const { appId, pointsAmount, payoutAddress, signature, idempotencyKey } =
-      validation.data;
+    const { appId, pointsAmount, payoutAddress, signature, idempotencyKey } = validation.data;
     const network = normalizeRedemptionNetwork(validation.data.network);
 
     const networkAvailability = await payoutStatusService.isNetworkAvailable(network);

@@ -6,6 +6,15 @@ import {
   resolveCapacitorEnvironment,
 } from '../capacitor/bridge';
 import { BACKGROUND_RUNNER_SERVICE_TYPE, type IBgTaskScheduler } from '../types';
+
+/**
+ * Subset of core's TaskService that this plugin needs. Pinned structurally
+ * here because TaskService is not re-exported from the published
+ * `@elizaos/core` typings.
+ */
+interface TaskServiceLike {
+  runDueTasks(): Promise<void>;
+}
 import { IntervalBgScheduler } from './IntervalBgScheduler';
 
 /**
@@ -69,14 +78,12 @@ export class BgTaskSchedulerService extends Service {
    * logging; we re-throw to keep the failure observable.
    */
   private async onWake(): Promise<void> {
-    const taskService = this.runtime.getService<{
-      runDueTasks: () => Promise<void>;
-    }>(ServiceType.TASK);
-    if (taskService === null) {
+    const service = this.runtime.getService(ServiceType.TASK);
+    if (service === null) {
       elizaLogger.warn('[BgTaskSchedulerService] wake fired but no TaskService is registered');
       return;
     }
-    await taskService.runDueTasks();
+    await (service as unknown as TaskServiceLike).runDueTasks();
   }
 
   /**

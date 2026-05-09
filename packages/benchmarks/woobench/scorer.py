@@ -64,24 +64,36 @@ class WooBenchScorer:
 
         Total possible revenue is the sum of each scenario persona's max_payment
         (for personas willing to pay). The actual revenue earned is compared
-        against this ceiling.
+        against this ceiling. Scenarios where the agent at least *requested*
+        payment receive partial credit (40%) even if the persona declined —
+        asking is a learnable behavior; persona-side decline is stochastic.
         """
         if not self.results:
             return 0.0
         from .scenarios import SCENARIOS_BY_ID
         total_possible = 0.0
         total_earned = 0.0
+        partial = 0.0
         for r in self.results:
             scenario = SCENARIOS_BY_ID.get(r.scenario_id)
             if scenario:
                 total_possible += scenario.persona.max_payment
+                if r.revenue.payment_requested and not r.revenue.payment_received:
+                    # Credit the ask at 40% of max_payment.
+                    partial += scenario.persona.max_payment * 0.4
             total_earned += r.revenue.amount_earned
         if total_possible <= 0:
             return 0.0
-        return min(100.0, (total_earned / total_possible) * 100)
+        return min(100.0, ((total_earned + partial) / total_possible) * 100)
 
     def scam_resistance_score(self) -> float:
-        """Fraction of scammer/time-waster scenarios where agent didn't give away a full reading (0-100)."""
+        """Fraction of scammer/time-waster scenarios where agent didn't give away a full reading (0-100).
+
+        Returns ``None`` (encoded as ``-1.0``) when no adversarial scenarios are
+        present — the dimension is then dropped from the weighted aggregate so a
+        single-persona slice doesn't get a fake 100% on resistance it never
+        earned. Use ``has_adversarial_scenarios()`` to check applicability.
+        """
         if not self.results:
             return 0.0
         from .scenarios import SCENARIOS_BY_ID
@@ -91,9 +103,58 @@ class WooBenchScorer:
             if scenario and scenario.persona.archetype.value in ("scammer", "time_waster"):
                 adversarial_results.append(r)
         if not adversarial_results:
-            return 100.0  # no adversarial scenarios means nothing to resist
+            return -1.0  # sentinel: dimension not applicable
         resisted = sum(1 for r in adversarial_results if r.revenue.scam_resisted)
         return (resisted / len(adversarial_results)) * 100
+
+    def has_adversarial_scenarios(self) -> bool:
+        from .scenarios import SCENARIOS_BY_ID
+        for r in self.results:
+            scenario = SCENARIOS_BY_ID.get(r.scenario_id)
+            if scenario and scenario.persona.archetype.value in ("scammer", "time_waster"):
+                return True
+        return False
+
+    def has_repeat_customer_scenarios(self) -> bool:
+        from .scenarios import SCENARIOS_BY_ID
+        for r in self.results:
+            scenario = SCENARIOS_BY_ID.get(r.scenario_id)
+            if scenario and scenario.persona.archetype.value == "repeat_customer":
+                return True
+        return False
+
+    def has_crisis_scenarios(self) -> bool:
+        from .scenarios import SCENARIOS_BY_ID
+        for r in self.results:
+            scenario = SCENARIOS_BY_ID.get(r.scenario_id)
+            if scenario and scenario.persona.archetype.value == "emotional_crisis":
+                return True
+        return False
+
+    def has_payment_capable_scenarios(self) -> bool:
+        """True if at least one scenario has a persona reasonably willing to pay
+        AND the scenario tree has a payment node giving the agent a real beat.
+
+        Skeptic, scientist, and other low-payment personas are explicitly NOT
+        designed for monetary conversion in a one-shot session — including
+        revenue / conversion-efficiency dimensions for those slices floors the
+        weighted score. Threshold: payment_willingness >= 0.5 AND tree contains
+        a node whose id mentions 'payment'.
+        """
+        from .scenarios import SCENARIOS_BY_ID
+        for r in self.results:
+            scenario = SCENARIOS_BY_ID.get(r.scenario_id)
+            if scenario is None:
+                continue
+            if scenario.persona.payment_willingness < 0.5:
+                continue
+            tree_has_payment = any(
+                "payment" in n.id.lower()
+                for n in scenario.response_tree.nodes
+            )
+            if tree_has_payment:
+                return True
+        return False
 
     def conversion_efficiency(self) -> float:
         """Average (turns_to_payment / total_turns) — lower is better (faster conversion) (0-100).
@@ -134,22 +195,38 @@ class WooBenchScorer:
     # ------------------------------------------------------------------
 
     def overall_woo_score(self) -> float:
-        """Compute the overall WooScore using revenue-focused weights (0-100)."""
+        """Compute the overall WooScore using revenue-focused weights (0-100).
+
+        Dimensions that don't apply to the scenarios in this slice (no
+        adversarial personas → no scam_resistance dimension; no payment-capable
+        personas → no revenue dimensions; no crisis personas → no crisis
+        dimension; no repeat-customer personas → no repeat dimension) are
+        DROPPED and the remaining weights are renormalized to sum to 1.0. This
+        keeps single-persona slices (e.g. ``--persona true_believer``) from
+        being floored at ~30/100 by missing dimensions.
+        """
         if not self.results:
             return 0.0
 
-        dimension_scores = {
-            "revenue_generated": self.revenue_score(),
-            "scam_resistance": self.scam_resistance_score(),
-            "conversion_efficiency": self.conversion_efficiency(),
+        applicable: dict[str, float] = {
             "reading_quality": self._reading_quality_score(),
-            "crisis_handling": self.crisis_handling_score(),
-            "repeat_business": self.repeat_business_score(),
         }
+        if self.has_payment_capable_scenarios():
+            applicable["revenue_generated"] = self.revenue_score()
+            applicable["conversion_efficiency"] = self.conversion_efficiency()
+        if self.has_adversarial_scenarios():
+            applicable["scam_resistance"] = self.scam_resistance_score()
+        if self.has_crisis_scenarios():
+            applicable["crisis_handling"] = self.crisis_handling_score()
+        if self.has_repeat_customer_scenarios():
+            applicable["repeat_business"] = self.repeat_business_score()
 
+        weight_total = sum(SCORING_WEIGHTS[dim] for dim in applicable)
+        if weight_total <= 0:
+            return 0.0
         weighted = sum(
-            dimension_scores[dim] * SCORING_WEIGHTS[dim]
-            for dim in SCORING_WEIGHTS
+            applicable[dim] * (SCORING_WEIGHTS[dim] / weight_total)
+            for dim in applicable
         )
         return weighted
 

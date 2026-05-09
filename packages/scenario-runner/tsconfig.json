@@ -15,6 +15,7 @@
     "types": ["node"],
     "paths": {
       "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/core/testing": ["../core/src/testing/index.ts"],
       "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/agent/*": ["../agent/src/*"],
@@ -45,7 +46,7 @@
       "@elizaos/plugin-local-embedding": [
         "../../plugins/plugin-local-embedding/src/index.ts"
       ],
-      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/typescript/index.ts"],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-telegram": [
         "../../plugins/plugin-telegram/src/index.ts"
       ],
@@ -66,6 +67,7 @@
       "@elizaos/app-core/components/pages/PageScopedChatPane": [
         "../app-core/src/components/pages/PageScopedChatPane.tsx"
       ],
+      "@elizaos/app-lifeops": ["./src/shims/eliza-app-lifeops.ts"],
       "@elizaos/app-lifeops/lifeops/runtime": [
         "./src/shims/elizaos-app-lifeops-runtime.ts"
       ]
@@ -73,6 +75,7 @@
   },
   "include": [
     "src/**/*.ts",
+    "src/**/*.d.ts",
     "../../plugins/app-companion/src/ambient-modules.d.ts"
   ]
 }
