@@ -74,7 +74,7 @@ export function sanitizePromptString(val: string): boolean {
 }
 
 /**
- * Schema for validating legacy client-provided character editor state.
+ * Schema for validating client-provided character editor state (including grouped message examples).
  */
 export const clientCharacterStateSchema = z
   .object({

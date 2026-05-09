@@ -192,23 +192,25 @@ export interface LifeOpsScheduleObservationRecord
 export interface LifeOpsScheduleMergedStateRecord
   extends LifeOpsScheduleMergedState {}
 
-export type LifeOpsPersistedSleepEpisodeSource =
-  | LifeOpsSleepCycleEvidence["source"]
-  | "manual";
-
-export interface LifeOpsSleepEpisodeRecord {
-  id: string;
-  agentId: string;
-  startAt: string;
-  endAt: string | null;
-  source: LifeOpsPersistedSleepEpisodeSource;
-  confidence: number;
-  cycleType: LifeOpsSleepCycleType;
-  sealed: boolean;
-  evidence: LifeOpsSleepCycleEvidence[];
-  createdAt: string;
-  updatedAt: string;
-}
+// Sleep- and health-record types + factories owned by `@elizaos/plugin-health`
+// (Wave-1 W1-B extraction). Re-exported here for backward compatibility —
+// every existing app-lifeops importer of these names continues to resolve
+// via the repository module.
+export type {
+  LifeOpsPersistedSleepEpisodeSource,
+  LifeOpsSleepEpisodeRecord,
+} from "@elizaos/plugin-health";
+export {
+  createLifeOpsHealthMetricSample,
+  createLifeOpsHealthSleepEpisode,
+  createLifeOpsHealthSyncState,
+  createLifeOpsHealthWorkout,
+  createLifeOpsSleepEpisode,
+} from "@elizaos/plugin-health";
+import type {
+  LifeOpsPersistedSleepEpisodeSource,
+  LifeOpsSleepEpisodeRecord,
+} from "@elizaos/plugin-health";
 
 export interface LifeOpsCachedInboxMessage extends LifeOpsInboxMessage {
   cachedAt: string;
@@ -2252,6 +2254,114 @@ function errorMessagesWithCauses(error: unknown): string[] {
   return messages;
 }
 
+// ---------------------------------------------------------------------------
+// W1-A — ScheduledTask row parsers (private helpers).
+// ---------------------------------------------------------------------------
+
+function parseOptionalJsonRecord<T>(value: unknown): T | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "string" && value.length === 0) return undefined;
+  const parsed = parseJsonRecord(value);
+  if (Object.keys(parsed).length === 0) return undefined;
+  return parsed as T;
+}
+
+function parseScheduledTaskRow(
+  row: Record<string, unknown>,
+): import("./scheduled-task/types.js").ScheduledTask {
+  type StateShape =
+    import("./scheduled-task/types.js").ScheduledTaskState;
+  type TaskShape = import("./scheduled-task/types.js").ScheduledTask;
+  const stateRaw = parseJsonRecord(row.state_json);
+  const state: StateShape = {
+    status: ((stateRaw.status as string) ??
+      "scheduled") as StateShape["status"],
+    firedAt:
+      typeof stateRaw.firedAt === "string" ? stateRaw.firedAt : undefined,
+    acknowledgedAt:
+      typeof stateRaw.acknowledgedAt === "string"
+        ? stateRaw.acknowledgedAt
+        : undefined,
+    completedAt:
+      typeof stateRaw.completedAt === "string"
+        ? stateRaw.completedAt
+        : undefined,
+    followupCount:
+      typeof stateRaw.followupCount === "number" ? stateRaw.followupCount : 0,
+    lastFollowupAt:
+      typeof stateRaw.lastFollowupAt === "string"
+        ? stateRaw.lastFollowupAt
+        : undefined,
+    pipelineParentId:
+      typeof stateRaw.pipelineParentId === "string"
+        ? stateRaw.pipelineParentId
+        : undefined,
+    lastDecisionLog:
+      typeof stateRaw.lastDecisionLog === "string"
+        ? stateRaw.lastDecisionLog
+        : undefined,
+  };
+  const subjectKind = toText(row.subject_kind, "");
+  const subjectId = toText(row.subject_id, "");
+  return {
+    taskId: toText(row.id),
+    kind: toText(row.kind) as TaskShape["kind"],
+    promptInstructions: toText(row.prompt_instructions),
+    contextRequest: parseOptionalJsonRecord<TaskShape["contextRequest"]>(
+      row.context_request_json,
+    ),
+    trigger: parseJsonRecord(row.trigger_json) as TaskShape["trigger"],
+    priority: toText(row.priority, "medium") as TaskShape["priority"],
+    shouldFire: parseOptionalJsonRecord<TaskShape["shouldFire"]>(
+      row.should_fire_json,
+    ),
+    completionCheck: parseOptionalJsonRecord<TaskShape["completionCheck"]>(
+      row.completion_check_json,
+    ),
+    escalation: parseOptionalJsonRecord<TaskShape["escalation"]>(
+      row.escalation_json,
+    ),
+    output: parseOptionalJsonRecord<TaskShape["output"]>(row.output_json),
+    pipeline: parseOptionalJsonRecord<TaskShape["pipeline"]>(row.pipeline_json),
+    subject:
+      subjectKind && subjectId
+        ? ({
+            kind: subjectKind,
+            id: subjectId,
+          } as TaskShape["subject"])
+        : undefined,
+    idempotencyKey:
+      typeof row.idempotency_key === "string" && row.idempotency_key.length > 0
+        ? row.idempotency_key
+        : undefined,
+    respectsGlobalPause: toBoolean(row.respects_global_pause, true),
+    state,
+    source: toText(row.source, "user_chat") as TaskShape["source"],
+    createdBy: toText(row.created_by, ""),
+    ownerVisible: toBoolean(row.owner_visible, true),
+    metadata: parseOptionalJsonRecord<Record<string, unknown>>(
+      row.metadata_json,
+    ),
+  };
+}
+
+function parseScheduledTaskLogRow(
+  row: Record<string, unknown>,
+): import("./scheduled-task/types.js").ScheduledTaskLogEntry {
+  type LogShape =
+    import("./scheduled-task/types.js").ScheduledTaskLogEntry;
+  return {
+    logId: toText(row.id),
+    taskId: toText(row.task_id),
+    agentId: toText(row.agent_id),
+    occurredAtIso: toText(row.occurred_at),
+    transition: toText(row.transition) as LogShape["transition"],
+    reason: typeof row.reason === "string" ? row.reason : undefined,
+    rolledUp: toBoolean(row.rolled_up, false),
+    detail: parseOptionalJsonRecord<Record<string, unknown>>(row.detail_json),
+  };
+}
+
 export class LifeOpsRepository {
   /**
    * Per-agent counter for telemetry-mirror failures inside
@@ -2264,6 +2374,27 @@ export class LifeOpsRepository {
   private static telemetryMirrorFailures = new Map<string, number>();
 
   constructor(private readonly runtime: IAgentRuntime) {}
+
+  /**
+   * EntityStore / RelationshipStore accessors. Wave-1 W1-E shipping the
+   * graph primitive; existing legacy-table accessors (`upsertRelationship`,
+   * `listRelationships`, etc.) remain in place for backward compat with
+   * `service-mixin-relationships.ts`. New code paths should consume the
+   * graph via these factories. Wave-2 W2-A removes the legacy mixin.
+   */
+  async entityStore(
+    agentId: string,
+  ): Promise<import("./entities/store.js").EntityStore> {
+    const mod = await import("./entities/store.js");
+    return new mod.EntityStore(this.runtime, agentId);
+  }
+
+  async relationshipStore(
+    agentId: string,
+  ): Promise<import("./relationships/store.js").RelationshipStore> {
+    const mod = await import("./relationships/store.js");
+    return new mod.RelationshipStore(this.runtime, agentId);
+  }
 
   static async bootstrapSchema(runtime: IAgentRuntime): Promise<void> {
     const adapter = runtime.adapter;
@@ -7524,6 +7655,302 @@ export class LifeOpsRepository {
           AND id = ${sqlQuote(id)}`,
     );
   }
+
+  // -------------------------------------------------------------------------
+  // W1-A — ScheduledTask spine. Source of truth:
+  // `docs/audit/wave1-interfaces.md` §1.6 + IMPL §3.1.
+  //
+  // The runner is the only writer for these tables. Tables are created
+  // by the drizzle plugin-migration system from `lifeOpsSchema`.
+  // -------------------------------------------------------------------------
+
+  async upsertScheduledTask(
+    agentId: string,
+    task: import("./scheduled-task/types.js").ScheduledTask,
+  ): Promise<void> {
+    const now = isoNow();
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_scheduled_tasks (
+        id, agent_id, kind, prompt_instructions, context_request_json,
+        trigger_json, priority, should_fire_json, completion_check_json,
+        escalation_json, output_json, pipeline_json, subject_kind, subject_id,
+        idempotency_key, respects_global_pause, state_json, source,
+        created_by, owner_visible, metadata_json, created_at, updated_at
+      ) VALUES (
+        ${sqlQuote(task.taskId)},
+        ${sqlQuote(agentId)},
+        ${sqlQuote(task.kind)},
+        ${sqlQuote(task.promptInstructions)},
+        ${sqlText(task.contextRequest ? JSON.stringify(task.contextRequest) : null)},
+        ${sqlJson(task.trigger as unknown as Record<string, unknown>)},
+        ${sqlQuote(task.priority)},
+        ${sqlText(task.shouldFire ? JSON.stringify(task.shouldFire) : null)},
+        ${sqlText(task.completionCheck ? JSON.stringify(task.completionCheck) : null)},
+        ${sqlText(task.escalation ? JSON.stringify(task.escalation) : null)},
+        ${sqlText(task.output ? JSON.stringify(task.output) : null)},
+        ${sqlText(task.pipeline ? JSON.stringify(task.pipeline) : null)},
+        ${sqlText(task.subject?.kind ?? null)},
+        ${sqlText(task.subject?.id ?? null)},
+        ${sqlText(task.idempotencyKey ?? null)},
+        ${sqlBoolean(task.respectsGlobalPause)},
+        ${sqlJson(task.state as unknown as Record<string, unknown>)},
+        ${sqlQuote(task.source)},
+        ${sqlQuote(task.createdBy)},
+        ${sqlBoolean(task.ownerVisible)},
+        ${sqlJson(task.metadata ?? {})},
+        ${sqlQuote(now)},
+        ${sqlQuote(now)}
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        kind = EXCLUDED.kind,
+        prompt_instructions = EXCLUDED.prompt_instructions,
+        context_request_json = EXCLUDED.context_request_json,
+        trigger_json = EXCLUDED.trigger_json,
+        priority = EXCLUDED.priority,
+        should_fire_json = EXCLUDED.should_fire_json,
+        completion_check_json = EXCLUDED.completion_check_json,
+        escalation_json = EXCLUDED.escalation_json,
+        output_json = EXCLUDED.output_json,
+        pipeline_json = EXCLUDED.pipeline_json,
+        subject_kind = EXCLUDED.subject_kind,
+        subject_id = EXCLUDED.subject_id,
+        idempotency_key = EXCLUDED.idempotency_key,
+        respects_global_pause = EXCLUDED.respects_global_pause,
+        state_json = EXCLUDED.state_json,
+        source = EXCLUDED.source,
+        created_by = EXCLUDED.created_by,
+        owner_visible = EXCLUDED.owner_visible,
+        metadata_json = EXCLUDED.metadata_json,
+        updated_at = ${sqlQuote(now)}`,
+    );
+  }
+
+  async getScheduledTask(
+    agentId: string,
+    taskId: string,
+  ): Promise<import("./scheduled-task/types.js").ScheduledTask | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_scheduled_tasks
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(taskId)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseScheduledTaskRow(row) : null;
+  }
+
+  async getScheduledTaskByIdempotencyKey(
+    agentId: string,
+    idempotencyKey: string,
+  ): Promise<import("./scheduled-task/types.js").ScheduledTask | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_scheduled_tasks
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND idempotency_key = ${sqlQuote(idempotencyKey)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseScheduledTaskRow(row) : null;
+  }
+
+  async listScheduledTasks(
+    agentId: string,
+    filter?: {
+      kind?: string;
+      status?: string | string[];
+      subjectKind?: string;
+      subjectId?: string;
+      source?: string;
+      ownerVisibleOnly?: boolean;
+    },
+  ): Promise<import("./scheduled-task/types.js").ScheduledTask[]> {
+    const clauses: string[] = [`agent_id = ${sqlQuote(agentId)}`];
+    if (filter?.kind) {
+      clauses.push(`kind = ${sqlQuote(filter.kind)}`);
+    }
+    if (filter?.subjectKind) {
+      clauses.push(`subject_kind = ${sqlQuote(filter.subjectKind)}`);
+    }
+    if (filter?.subjectId) {
+      clauses.push(`subject_id = ${sqlQuote(filter.subjectId)}`);
+    }
+    if (filter?.source) {
+      clauses.push(`source = ${sqlQuote(filter.source)}`);
+    }
+    if (filter?.ownerVisibleOnly) {
+      clauses.push(`owner_visible = TRUE`);
+    }
+    if (filter?.status) {
+      const arr = Array.isArray(filter.status) ? filter.status : [filter.status];
+      const inList = arr
+        .filter((s) => typeof s === "string" && s.length > 0)
+        .map((s) => sqlQuote(s))
+        .join(", ");
+      if (inList.length > 0) {
+        // status is stored inside state_json — we filter post-fetch
+        // but include the full row in case the caller wants it.
+        clauses.push(
+          `(state_json::jsonb ->> 'status') IN (${inList})`,
+        );
+      }
+    }
+    const where = clauses.join(" AND ");
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_scheduled_tasks
+        WHERE ${where}
+        ORDER BY created_at ASC`,
+    );
+    return rows.map(parseScheduledTaskRow);
+  }
+
+  async deleteScheduledTask(
+    agentId: string,
+    taskId: string,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `DELETE FROM app_lifeops.life_scheduled_tasks
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(taskId)}`,
+    );
+    await executeRawSql(
+      this.runtime,
+      `DELETE FROM app_lifeops.life_scheduled_task_log
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND task_id = ${sqlQuote(taskId)}`,
+    );
+  }
+
+  async appendScheduledTaskLog(
+    entry: import("./scheduled-task/types.js").ScheduledTaskLogEntry,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_scheduled_task_log (
+        id, agent_id, task_id, occurred_at, transition, reason, rolled_up, detail_json
+      ) VALUES (
+        ${sqlQuote(entry.logId)},
+        ${sqlQuote(entry.agentId)},
+        ${sqlQuote(entry.taskId)},
+        ${sqlQuote(entry.occurredAtIso)},
+        ${sqlQuote(entry.transition)},
+        ${sqlText(entry.reason ?? null)},
+        ${sqlBoolean(entry.rolledUp)},
+        ${sqlText(entry.detail ? JSON.stringify(entry.detail) : null)}
+      )`,
+    );
+  }
+
+  async listScheduledTaskLog(args: {
+    agentId: string;
+    taskId: string;
+    sinceIso?: string;
+    untilIso?: string;
+    excludeRollups?: boolean;
+    limit?: number;
+  }): Promise<import("./scheduled-task/types.js").ScheduledTaskLogEntry[]> {
+    const clauses: string[] = [
+      `agent_id = ${sqlQuote(args.agentId)}`,
+      `task_id = ${sqlQuote(args.taskId)}`,
+    ];
+    if (args.sinceIso) clauses.push(`occurred_at >= ${sqlQuote(args.sinceIso)}`);
+    if (args.untilIso) clauses.push(`occurred_at < ${sqlQuote(args.untilIso)}`);
+    if (args.excludeRollups) clauses.push(`rolled_up = FALSE`);
+    const limit =
+      typeof args.limit === "number" && args.limit > 0
+        ? `LIMIT ${sqlInteger(args.limit)}`
+        : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_scheduled_task_log
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY occurred_at ASC
+        ${limit}`,
+    );
+    return rows.map(parseScheduledTaskLogRow);
+  }
+
+  async rollupScheduledTaskLog(args: {
+    agentId: string;
+    olderThanIso: string;
+  }): Promise<{ rolledUp: number; deletedRaw: number }> {
+    // Read all expired raw rows for the agent.
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_scheduled_task_log
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND rolled_up = FALSE
+          AND occurred_at < ${sqlQuote(args.olderThanIso)}`,
+    );
+    if (rows.length === 0) {
+      return { rolledUp: 0, deletedRaw: 0 };
+    }
+    const summary = new Map<
+      string,
+      {
+        taskId: string;
+        transition: string;
+        dayIso: string;
+        count: number;
+        firstReason: string | null;
+      }
+    >();
+    for (const r of rows) {
+      const occurredAt = toText(r.occurred_at);
+      const dayIso = occurredAt.slice(0, 10);
+      const key = `${toText(r.task_id)}::${dayIso}::${toText(r.transition)}`;
+      const existing = summary.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        summary.set(key, {
+          taskId: toText(r.task_id),
+          transition: toText(r.transition),
+          dayIso,
+          count: 1,
+          firstReason: typeof r.reason === "string" ? r.reason : null,
+        });
+      }
+    }
+    // Delete the raw rows we just summarized.
+    await executeRawSql(
+      this.runtime,
+      `DELETE FROM app_lifeops.life_scheduled_task_log
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND rolled_up = FALSE
+          AND occurred_at < ${sqlQuote(args.olderThanIso)}`,
+    );
+    let counter = 0;
+    for (const s of summary.values()) {
+      counter += 1;
+      const id = `rollup-${s.taskId}-${s.dayIso}-${s.transition}-${counter}`;
+      await executeRawSql(
+        this.runtime,
+        `INSERT INTO app_lifeops.life_scheduled_task_log (
+          id, agent_id, task_id, occurred_at, transition, reason, rolled_up, detail_json
+        ) VALUES (
+          ${sqlQuote(id)},
+          ${sqlQuote(args.agentId)},
+          ${sqlQuote(s.taskId)},
+          ${sqlQuote(`${s.dayIso}T00:00:00.000Z`)},
+          ${sqlQuote(s.transition)},
+          ${sqlText(s.firstReason ?? null)},
+          ${sqlBoolean(true)},
+          ${sqlText(JSON.stringify({ rollupCount: s.count }))}
+        )`,
+      );
+    }
+    return { rolledUp: summary.size, deletedRaw: rows.length };
+  }
 }
 
 export function createLifeOpsTaskDefinition(
@@ -7645,17 +8072,8 @@ export function createLifeOpsActivitySignal(
   };
 }
 
-export function createLifeOpsSleepEpisode(
-  params: Omit<LifeOpsSleepEpisodeRecord, "id" | "createdAt" | "updatedAt">,
-): LifeOpsSleepEpisodeRecord {
-  const timestamp = isoNow();
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
+// `createLifeOpsSleepEpisode` moved to `@elizaos/plugin-health` (Wave-1 W1-B).
+// Re-exported at the top of this file for backward compatibility.
 
 export function createLifeOpsConnectorGrant(
   params: Omit<
@@ -7701,51 +8119,8 @@ export function createLifeOpsConnectorGrant(
   };
 }
 
-export function createLifeOpsHealthMetricSample(
-  params: Omit<LifeOpsHealthMetricSample, "id" | "createdAt" | "updatedAt">,
-): LifeOpsHealthMetricSample {
-  const timestamp = isoNow();
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
-export function createLifeOpsHealthWorkout(
-  params: Omit<LifeOpsHealthWorkout, "id" | "createdAt" | "updatedAt">,
-): LifeOpsHealthWorkout {
-  const timestamp = isoNow();
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
-export function createLifeOpsHealthSleepEpisode(
-  params: Omit<LifeOpsHealthSleepEpisode, "id" | "createdAt" | "updatedAt">,
-): LifeOpsHealthSleepEpisode {
-  const timestamp = isoNow();
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
-export function createLifeOpsHealthSyncState(
-  params: Omit<LifeOpsHealthSyncState, "id" | "updatedAt">,
-): LifeOpsHealthSyncState {
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    updatedAt: isoNow(),
-  };
-}
+// `createLifeOpsHealth*` factories moved to `@elizaos/plugin-health` (Wave-1 W1-B).
+// Re-exported at the top of this file for backward compatibility.
 
 export function createLifeOpsCalendarSyncState(
   params: Omit<LifeOpsCalendarSyncState, "id" | "updatedAt">,

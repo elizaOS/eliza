@@ -171,6 +171,7 @@ export * from "./services";
 export * from "./services/agentEvent";
 export * from "./services/approval";
 export * from "./services/evaluator";
+export * from "./services/evaluator-priorities";
 export * from "./services/hook";
 export * from "./services/message";
 export * from "./services/onboarding-cli";
@@ -201,6 +202,7 @@ export {
 	settingsDebugCloudSummary,
 } from "./settings-debug";
 export { sanitizeSpeechText } from "./spoken-text";
+export * from "./testing";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
 export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";

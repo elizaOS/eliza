@@ -8,7 +8,9 @@ import {
   type ProviderResult,
   type State,
 } from "@elizaos/core";
-import { hasLifeOpsAccess } from "../actions/lifeops-google-helpers.js";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
+import { getConnectorRegistry } from "../lifeops/connectors/registry.js";
+import type { ConnectorStatus } from "../lifeops/connectors/contract.js";
 import type {
   LifeOpsGmailTriageSummary,
   LifeOpsGoalDefinition,
@@ -39,6 +41,48 @@ const MAX_ACCOUNT_LINES = 5;
 
 function formatCount(label: string, count: number): string {
   return `${label}: ${count}`;
+}
+
+/**
+ * Inspect every registered W1-F connector and surface degraded / disconnected
+ * connectors so the morning brief and planner context highlight them. The
+ * status itself comes from `ConnectorContribution.status()`; this helper
+ * just maps that into one-line strings the planner can quote verbatim.
+ */
+async function summarizeConnectorDegradation(
+  runtime: IAgentRuntime,
+): Promise<string[]> {
+  const registry = getConnectorRegistry(runtime);
+  if (!registry) return [];
+  const contributions = registry.list();
+  if (contributions.length === 0) return [];
+  const statuses = await Promise.all(
+    contributions.map(async (contribution) => {
+      try {
+        const status = await contribution.status();
+        return { contribution, status };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          contribution,
+          status: {
+            state: "disconnected",
+            message,
+            observedAt: new Date().toISOString(),
+          } satisfies ConnectorStatus,
+        };
+      }
+    }),
+  );
+  const lines: string[] = [];
+  for (const { contribution, status } of statuses) {
+    if (status.state === "ok") continue;
+    const detail = status.message ? `: ${status.message}` : "";
+    lines.push(
+      `Connector ${contribution.describe.label} ${status.state}${detail}`,
+    );
+  }
+  return lines;
 }
 
 function truncateGoalTitle(title: string): string {
@@ -488,6 +532,9 @@ export const lifeOpsProvider: Provider = {
         );
       }
 
+      const connectorDegradationLines =
+        await summarizeConnectorDegradation(runtime);
+
       return {
         text: [
           "## Life Ops",
@@ -534,6 +581,7 @@ export const lifeOpsProvider: Provider = {
           ...accountLines,
           ...calendarLines,
           ...emailLines,
+          ...connectorDegradationLines,
           formatCount(
             "Agent open occurrences",
             overview.agentOps.summary.activeOccurrenceCount,

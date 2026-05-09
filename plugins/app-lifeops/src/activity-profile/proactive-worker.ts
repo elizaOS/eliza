@@ -11,6 +11,7 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
+import { buildSeedingOfferMessage } from "../default-packs/index.js";
 import { loadLifeOpsAppState } from "../lifeops/app-state.js";
 import {
   type BackgroundJobContext,
@@ -578,11 +579,10 @@ export async function executeProactiveTask(
   return { nextInterval: PROACTIVE_TASK_INTERVAL_MS };
 }
 
-const SEEDING_MESSAGE =
-  "I notice you haven't set up any routines yet. Want me to set up some " +
-  "foundational habits? I can add: brush teeth, drink water, stretch breaks, " +
-  "vitamins, workout, shower, and shave reminders. Say 'set up my routines' " +
-  "or pick and choose.";
+// Generated from `default-packs/habit-starters.ts` metadata so adding /
+// removing a habit starter updates the offer message automatically. Replaces
+// the hardcoded literal flagged by HARDCODING_AUDIT and IMPL §3.4.
+const SEEDING_MESSAGE = buildSeedingOfferMessage();
 
 async function planSeedingOffer(
   runtime: IAgentRuntime,

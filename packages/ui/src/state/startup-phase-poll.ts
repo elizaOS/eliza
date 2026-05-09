@@ -197,6 +197,20 @@ export async function runPollingBackend(
         dispatch({ type: "BACKEND_AUTH_REQUIRED" });
         return;
       }
+      // Token holder, but the server still says auth is required (e.g. the
+      // remote owner password has not been set yet, so /api/auth/me will
+      // return 401 with reason="remote_password_not_configured"). Don't
+      // loop polling forever — advance the coordinator to "ready" so the
+      // top-level auth gate can render LoginView with an actionable
+      // "Remote access blocked" message. Without this, the phone is stuck
+      // on the splash because every onboarding/runtime endpoint returns 401.
+      if (auth.required && !auth.authenticated && client.hasToken()) {
+        deps.setAuthRequired(false);
+        deps.setOnboardingComplete(true);
+        deps.setOnboardingLoading(false);
+        dispatch({ type: "BACKEND_REACHED", onboardingComplete: true });
+        return;
+      }
       const onboardingStatusRes = await client.getOnboardingStatus();
       const { complete, cloudProvisioned } = onboardingStatusRes;
       if (cancelled.current) return;
@@ -319,8 +333,28 @@ export async function runPollingBackend(
         dispatch({ type: "BACKEND_AUTH_REQUIRED" });
         return;
       }
+      if (
+        (ae?.status === 401 || ae?.status === 429) &&
+        client.hasToken() &&
+        latestAuth.authenticated
+      ) {
+        // Bearer-only token (paired but no password session). /api/auth/status
+        // returned authenticated:true but a downstream endpoint
+        // (onboarding-status, etc.) still 401s, or the server's auth rate
+        // limiter starts returning 429 ("Too many authentication attempts")
+        // because every poll re-checks bearer-vs-session. /api/auth/me responds
+        // with reason="remote_auth_required" in this state. Don't loop forever
+        // — advance to ready so the top-level auth gate can render LoginView
+        // with an actionable "Sign in" / "Remote access blocked" prompt.
+        deps.setAuthRequired(false);
+        deps.setOnboardingComplete(true);
+        deps.setOnboardingLoading(false);
+        dispatch({ type: "BACKEND_REACHED", onboardingComplete: true });
+        return;
+      }
       if (ae?.status === 401 && client.hasToken()) {
-        // Transient 401: retry; pairing is gated by /api/auth/status.
+        // 401-with-token but auth/status hasn't confirmed we're authenticated
+        // yet — port race / pre-bearer endpoint window. Fall through to retry.
       }
       if (ae?.status === 404) {
         deps.setStartupError(describeBackendFailure(err, false));

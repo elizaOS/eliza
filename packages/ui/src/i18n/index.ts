@@ -60,10 +60,16 @@ export function t(
   return interpolate(template, vars);
 }
 
-export function createTranslator(lang: UiLanguage | string | null | undefined) {
+export function createTranslator(
+  lang: UiLanguage | string | null | undefined,
+  defaultVars?: TranslationVars,
+) {
   const normalized = normalizeLanguage(lang);
-  return (key: string, vars?: TranslationVars): string =>
-    t(normalized, key, vars);
+  return (key: string, vars?: TranslationVars): string => {
+    const merged =
+      defaultVars && vars ? { ...defaultVars, ...vars } : (vars ?? defaultVars);
+    return t(normalized, key, merged);
+  };
 }
 
 export {

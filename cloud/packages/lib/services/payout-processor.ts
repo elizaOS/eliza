@@ -52,6 +52,11 @@ const PAYOUT_CONFIG = {
   // Maximum price slippage allowed from quote (5%)
   MAX_PRICE_SLIPPAGE: 0.05,
 
+  // Default false: redemption requests lock the USD value and token amount at
+  // request time. Admin approval may happen later, so re-pricing during payout
+  // would break the fixed-dollar guarantee.
+  ENFORCE_PRICE_VALIDATION: process.env.PAYOUT_ENFORCE_PRICE_VALIDATION === "true",
+
   // Worker ID for distributed locking
   WORKER_ID: process.env.PAYOUT_WORKER_ID || `worker-${process.pid}`,
 
@@ -246,23 +251,32 @@ export class PayoutProcessorService {
   ): Promise<PayoutResult> {
     const network = redemption.network as SupportedNetwork;
 
-    // Check quote hasn't expired
-    if (new Date() > redemption.price_quote_expires_at) {
-      return {
-        success: false,
-        error: "Price quote expired",
-        retryable: false, // Requires new quote
-      };
-    }
+    if (PAYOUT_CONFIG.ENFORCE_PRICE_VALIDATION) {
+      // Optional legacy guard for fully automated payout deployments.
+      if (new Date() > redemption.price_quote_expires_at) {
+        return {
+          success: false,
+          error: "Price quote expired",
+          retryable: false,
+        };
+      }
 
-    // Re-validate current price
-    const priceValidation = await this.validatePrice(network, Number(redemption.eliza_price_usd));
-    if (!priceValidation.valid) {
-      return {
-        success: false,
-        error: priceValidation.error,
-        retryable: false, // Price moved too much
-      };
+      const priceValidation = await this.validatePrice(network, Number(redemption.eliza_price_usd));
+      if (!priceValidation.valid) {
+        return {
+          success: false,
+          error: priceValidation.error,
+          retryable: false,
+        };
+      }
+    } else if (new Date() > redemption.price_quote_expires_at) {
+      logger.info("[PayoutProcessor] Processing redemption with expired quote window", {
+        redemptionId: redemption.id,
+        network,
+        quotedElizaAmount: redemption.eliza_amount,
+        quotedPriceUsd: redemption.eliza_price_usd,
+        quoteExpiredAt: redemption.price_quote_expires_at,
+      });
     }
 
     // Execute payout based on network

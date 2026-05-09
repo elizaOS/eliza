@@ -3171,7 +3171,7 @@ ${report.tokenReports.join("\n")}
 
 		if (!componentResult) {
 			// Create new profile for user
-			const newProfile: UserTrustProfile = {
+			const newProfile: TrustMarketplaceComponentData = {
 				version: "1.0.0",
 				userId: userId,
 				trustScore: 0,
@@ -3188,7 +3188,7 @@ ${report.tokenReports.join("\n")}
 				sourceEntityId: runtime.agentId!,
 				type: TRUST_MARKETPLACE_COMPONENT_TYPE,
 				createdAt: Date.now(),
-				data: newProfile as unknown as ComponentData,
+				data: newProfile,
 			});
 
 			this.registerUser(userId);
@@ -3198,7 +3198,7 @@ ${report.tokenReports.join("\n")}
 			return 0; // Return 0 for new user
 		}
 
-		const userProfile = componentResult.data as unknown as UserTrustProfile;
+		const userProfile = componentResult.data as TrustMarketplaceComponentData;
 
 		// Ensure recommendations array exists
 		if (!Array.isArray(userProfile.recommendations)) {
@@ -3276,7 +3276,7 @@ ${report.tokenReports.join("\n")}
 		// Update the component
 		await runtime.updateComponent({
 			...componentResult,
-			data: userProfile as unknown as ComponentData,
+			data: userProfile,
 		});
 
 		this.registerUser(userId);
@@ -3456,7 +3456,7 @@ ${report.tokenReports.join("\n")}
 			await runtime.deleteTask(task.id as UUID);
 			return;
 		}
-		const userProfile = componentResult.data as unknown as UserTrustProfile;
+		const userProfile = componentResult.data as TrustMarketplaceComponentData;
 		let recommendation = userProfile.recommendations.find(
 			(r) => r.id === recommendationId,
 		);
@@ -3503,7 +3503,7 @@ ${report.tokenReports.join("\n")}
 			return;
 		}
 		const updatedUserProfile =
-			updatedComponent.data as unknown as UserTrustProfile;
+			updatedComponent.data as TrustMarketplaceComponentData;
 		const finalTrustScore = updatedUserProfile.trustScore;
 		// Refresh recommendation from potentially updated profile data
 		recommendation =
@@ -3530,7 +3530,7 @@ ${report.tokenReports.join("\n")}
 			}
 			await runtime.updateComponent({
 				...updatedComponent,
-				data: updatedUserProfile as unknown as ComponentData,
+				data: updatedUserProfile,
 			});
 			await runtime.deleteTask(task.id as UUID);
 			return;
@@ -3581,7 +3581,7 @@ ${report.tokenReports.join("\n")}
 
 		await runtime.updateComponent({
 			...updatedComponent,
-			data: updatedUserProfile as unknown as ComponentData,
+			data: updatedUserProfile,
 		});
 		await runtime.deleteTask(task.id as UUID);
 		logger.info(
@@ -3630,7 +3630,7 @@ ${report.tokenReports.join("\n")}
 
 				if (component?.data) {
 					const profileData =
-						component.data as unknown as TrustMarketplaceComponentData;
+						component.data as TrustMarketplaceComponentData;
 					const entityDetails = await runtime.getEntityById(component.entityId);
 
 					const recommendations = Array.isArray(profileData.recommendations)
@@ -4041,7 +4041,7 @@ RESPOND WITH JSON CONTAINING EXACTLY ${batchSize} RECOMMENDATION ENTRIES:`;
 				recommendations: [],
 			};
 		} else {
-			userProfile = component.data as unknown as UserTrustProfile;
+			userProfile = component.data as TrustMarketplaceComponentData;
 			if (!Array.isArray(userProfile.recommendations))
 				userProfile.recommendations = [];
 		}
@@ -4135,7 +4135,7 @@ RESPOND WITH JSON CONTAINING EXACTLY ${batchSize} RECOMMENDATION ENTRIES:`;
 			if (component) {
 				await this.runtime.updateComponent({
 					...component,
-					data: userProfile as unknown as ComponentData,
+					data: userProfile,
 				});
 			} else {
 				const newComponentId = asUUID(
@@ -4150,7 +4150,7 @@ RESPOND WITH JSON CONTAINING EXACTLY ${batchSize} RECOMMENDATION ENTRIES:`;
 					sourceEntityId: this.runtime.agentId!,
 					type: TRUST_MARKETPLACE_COMPONENT_TYPE,
 					createdAt: Date.now(),
-					data: userProfile as unknown as ComponentData,
+					data: userProfile,
 				});
 			}
 			await this.calculateUserTrustScore(userId, this.runtime);

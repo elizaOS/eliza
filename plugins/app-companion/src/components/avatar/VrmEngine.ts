@@ -245,15 +245,72 @@ function getSharedDracoLoader(): CompatibleDracoLoader {
   }
   // three/examples and the current GLTF loader declarations diverge on the
   // decoder surface, but this runtime instance is the loader we use in app.
-  return sharedDracoLoader as unknown as CompatibleDracoLoader;
+  return sharedDracoLoader as CompatibleDracoLoader;
 }
+
+function callMeshoptFunction(name: string, ...args: unknown[]): unknown {
+  const method = Reflect.get(MeshoptDecoder, name);
+  if (typeof method !== "function") {
+    throw new Error(`MeshoptDecoder.${name} is unavailable`);
+  }
+  return method.apply(MeshoptDecoder, args);
+}
+
+const compatibleMeshoptDecoder: NonNullable<CompatibleMeshoptDecoder> = {
+  supported: MeshoptDecoder.supported,
+  ready: MeshoptDecoder.ready,
+  useWorkers(count) {
+    callMeshoptFunction("useWorkers", count);
+  },
+  decodeVertexBuffer(target, count, size, source, filter) {
+    callMeshoptFunction(
+      "decodeVertexBuffer",
+      target,
+      count,
+      size,
+      source,
+      filter,
+    );
+  },
+  decodeIndexBuffer(target, count, size, source) {
+    callMeshoptFunction("decodeIndexBuffer", target, count, size, source);
+  },
+  decodeIndexSequence(target, count, size, source) {
+    callMeshoptFunction("decodeIndexSequence", target, count, size, source);
+  },
+  decodeGltfBuffer(target, count, size, source, mode, filter) {
+    callMeshoptFunction(
+      "decodeGltfBuffer",
+      target,
+      count,
+      size,
+      source,
+      mode,
+      filter,
+    );
+  },
+  async decodeGltfBufferAsync(count, size, source, mode, filter) {
+    const decoded = await callMeshoptFunction(
+      "decodeGltfBufferAsync",
+      count,
+      size,
+      source,
+      mode,
+      filter,
+    );
+    if (!(decoded instanceof Uint8Array)) {
+      throw new Error(
+        "MeshoptDecoder.decodeGltfBufferAsync returned an invalid buffer",
+      );
+    }
+    return decoded;
+  },
+};
 
 function configureVrmGltfLoader(loader: GLTFLoader): void {
   // three/examples and the current GLTF loader declarations diverge on the
   // meshopt decoder surface, but this runtime instance is the decoder we ship.
-  loader.setMeshoptDecoder(
-    MeshoptDecoder as unknown as CompatibleMeshoptDecoder,
-  );
+  loader.setMeshoptDecoder(compatibleMeshoptDecoder);
   loader.setDRACOLoader(getSharedDracoLoader());
 }
 
@@ -475,7 +532,7 @@ async function createRenderer(
         canvas,
         alpha: true,
         antialias: true,
-      }) as unknown as RendererLike & { init?: () => Promise<unknown> };
+      }) as RendererLike & { init?: () => Promise<unknown> };
       await renderer.init?.();
       console.info("[VrmEngine] Using WebGPURenderer");
       return { backend: "webgpu", renderer };
@@ -914,7 +971,7 @@ export class VrmEngine {
     ) {
       return;
     }
-    const lookAtState = vrm.lookAt as unknown as
+    const lookAtState = vrm.lookAt as
       | ({ _yaw?: number; _pitch?: number } & object)
       | null
       | undefined;
@@ -1704,9 +1761,7 @@ export class VrmEngine {
       if (webGpuNodes) {
         const mtoonOptions = {
           materialType: webGpuNodes.MToonNodeMaterial as unknown,
-        } as unknown as ConstructorParameters<
-          typeof MToonMaterialLoaderPlugin
-        >[1];
+        } as ConstructorParameters<typeof MToonMaterialLoaderPlugin>[1];
         const mtoonMaterialPlugin = new MToonMaterialLoaderPlugin(
           parser,
           mtoonOptions,

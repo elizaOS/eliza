@@ -4,9 +4,9 @@ import {
   isCloudProvisionedContainer,
   resolveCloudApiKey,
 } from "@elizaos/plugin-elizacloud";
+import { getLocalInferenceActiveSnapshot } from "@elizaos/plugin-local-inference";
 import type { ElizaConfig } from "../config/config.js";
 import type { ConnectorHealthMonitor } from "./connector-health.js";
-import { getLocalInferenceActiveSnapshot } from "./local-inference-routes.js";
 
 // ---------------------------------------------------------------------------
 // Types

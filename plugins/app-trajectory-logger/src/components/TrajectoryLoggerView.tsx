@@ -1,4 +1,4 @@
-import { Button, type OverlayAppContext } from "@elizaos/app-core";
+import { Button, type OverlayAppContext } from "@elizaos/ui";
 import { Activity, ChevronLeft, History } from "lucide-react";
 import { useState } from "react";
 import type { TrajectoryListItem } from "../api-client";

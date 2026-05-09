@@ -5,11 +5,11 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  findLifeOpsSamanthaScenario,
-  LIFEOPS_SAMANTHA_FIXTURE_CATALOG,
-  lifeOpsSamanthaScenarioSummaries,
-  lifeOpsSamanthaTaskSnapshots,
-} from "../fixtures/lifeops-samantha.ts";
+  findLifeOpsPresenceActiveScenario,
+  LIFEOPS_PRESENCE_ACTIVE_FIXTURE_CATALOG,
+  lifeOpsPresenceActiveScenarioSummaries,
+  lifeOpsPresenceActiveTaskSnapshots,
+} from "../fixtures/lifeops-presence-active.ts";
 import {
   getLifeOpsSimulatorPerson,
   LIFEOPS_SIMULATOR_CHANNEL_MESSAGES,
@@ -60,7 +60,7 @@ export const MOCK_PROVIDER_ENVIRONMENTS = [
   "vision",
 ] as const;
 
-export const MOCK_SCENARIO_ENVIRONMENTS = ["lifeops-samantha", "lifeops-presence"] as const;
+export const MOCK_SCENARIO_ENVIRONMENTS = ["lifeops-presence-active", "lifeops-presence"] as const;
 
 export const MOCK_ENVIRONMENTS = [
   ...MOCK_PROVIDER_ENVIRONMENTS,
@@ -131,7 +131,7 @@ export interface MockRequestLedgerEntry {
   browserWorkspace?: BrowserWorkspaceRequestLedgerMetadata;
   bluebubbles?: BlueBubblesRequestLedgerMetadata;
   github?: GitHubRequestLedgerMetadata;
-  lifeopsSamantha?: LifeOpsSamanthaRequestLedgerMetadata;
+  lifeopsPresenceActive?: LifeOpsPresenceActiveRequestLedgerMetadata;
 }
 
 interface XRequestLedgerMetadata {
@@ -188,7 +188,7 @@ interface GitHubRequestLedgerMetadata {
   runId?: string;
 }
 
-interface LifeOpsSamanthaRequestLedgerMetadata {
+interface LifeOpsPresenceActiveRequestLedgerMetadata {
   action: string;
   scenarioId?: string;
   taskId?: string;
@@ -278,8 +278,8 @@ function envVarsFor(
   if (envs.includes("vision")) {
     out.ELIZA_MOCK_VISION_BASE = baseUrls.vision;
   }
-  if (envs.includes("lifeops-samantha")) {
-    out.ELIZA_MOCK_LIFEOPS_SAMANTHA_BASE = baseUrls["lifeops-samantha"];
+  if (envs.includes("lifeops-presence-active")) {
+    out.ELIZA_MOCK_LIFEOPS_PRESENCE_ACTIVE_BASE = baseUrls["lifeops-presence-active"];
   }
   return out;
 }
@@ -3341,8 +3341,8 @@ async function startFixtureServer(
   const environment = readEnvironment(dataPath);
   const routes = compileRoutes(environment);
   const requests: MockRequestLedgerEntry[] = [];
-  const isLifeOpsSamanthaEnvironment =
-    environment.name === "LifeOps Samantha Scenarios";
+  const isLifeOpsPresenceActiveEnvironment =
+    environment.name === "LifeOps Presence Active Scenarios";
   const lifeOpsTasks = new Map<
     string,
     { scenarioId: string; snapshotIndex: number }
@@ -3392,35 +3392,35 @@ async function startFixtureServer(
       };
       requests.push(ledgerEntry);
       if (
-        isLifeOpsSamanthaEnvironment &&
+        isLifeOpsPresenceActiveEnvironment &&
         method === "GET" &&
-        requestUrl.pathname === "/__mock/lifeops/samantha/scenarios"
+        requestUrl.pathname === "/__mock/lifeops/presence-active/scenarios"
       ) {
-        ledgerEntry.lifeopsSamantha =
-          withRunId<LifeOpsSamanthaRequestLedgerMetadata>(ledgerEntry, {
+        ledgerEntry.lifeopsPresenceActive =
+          withRunId<LifeOpsPresenceActiveRequestLedgerMetadata>(ledgerEntry, {
             action: "scenarios.list",
           });
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({
-            version: LIFEOPS_SAMANTHA_FIXTURE_CATALOG.version,
-            scenarioCount: LIFEOPS_SAMANTHA_FIXTURE_CATALOG.scenarioCount,
-            providers: LIFEOPS_SAMANTHA_FIXTURE_CATALOG.providers,
-            scenarios: lifeOpsSamanthaScenarioSummaries(),
+            version: LIFEOPS_PRESENCE_ACTIVE_FIXTURE_CATALOG.version,
+            scenarioCount: LIFEOPS_PRESENCE_ACTIVE_FIXTURE_CATALOG.scenarioCount,
+            providers: LIFEOPS_PRESENCE_ACTIVE_FIXTURE_CATALOG.providers,
+            scenarios: lifeOpsPresenceActiveScenarioSummaries(),
           }),
         );
         return;
       }
-      const lifeOpsScenarioId = isLifeOpsSamanthaEnvironment
+      const lifeOpsScenarioId = isLifeOpsPresenceActiveEnvironment
         ? routeParam(
             requestUrl.pathname,
-            /^\/__mock\/lifeops\/samantha\/scenarios\/([^/]+)\/?$/,
+            /^\/__mock\/lifeops\/presence-active\/scenarios\/([^/]+)\/?$/,
           )
         : null;
       if (method === "GET" && lifeOpsScenarioId) {
-        const scenario = findLifeOpsSamanthaScenario(lifeOpsScenarioId);
-        ledgerEntry.lifeopsSamantha =
-          withRunId<LifeOpsSamanthaRequestLedgerMetadata>(ledgerEntry, {
+        const scenario = findLifeOpsPresenceActiveScenario(lifeOpsScenarioId);
+        ledgerEntry.lifeopsPresenceActive =
+          withRunId<LifeOpsPresenceActiveRequestLedgerMetadata>(ledgerEntry, {
             action: "scenarios.get",
             scenarioId: lifeOpsScenarioId,
           });
@@ -3434,18 +3434,18 @@ async function startFixtureServer(
         return;
       }
       if (
-        isLifeOpsSamanthaEnvironment &&
+        isLifeOpsPresenceActiveEnvironment &&
         method === "POST" &&
-        requestUrl.pathname === "/__mock/lifeops/samantha/tasks"
+        requestUrl.pathname === "/__mock/lifeops/presence-active/tasks"
       ) {
         const scenarioId =
           typeof requestBody.scenarioId === "string"
             ? requestBody.scenarioId
             : "move-07-proactive-multihop-and-long-running";
-        const scenario = findLifeOpsSamanthaScenario(scenarioId);
+        const scenario = findLifeOpsPresenceActiveScenario(scenarioId);
         if (!scenario) {
-          ledgerEntry.lifeopsSamantha =
-            withRunId<LifeOpsSamanthaRequestLedgerMetadata>(ledgerEntry, {
+          ledgerEntry.lifeopsPresenceActive =
+            withRunId<LifeOpsPresenceActiveRequestLedgerMetadata>(ledgerEntry, {
               action: "tasks.create.rejected",
               scenarioId,
               status: "unknown_scenario",
@@ -3454,13 +3454,13 @@ async function startFixtureServer(
           res.end(JSON.stringify({ error: "unknown_scenario", scenarioId }));
           return;
         }
-        const snapshots = lifeOpsSamanthaTaskSnapshots(scenarioId);
+        const snapshots = lifeOpsPresenceActiveTaskSnapshots(scenarioId);
         if (
           snapshots.length === 0 ||
           !scenario.useCases.includes("long-running")
         ) {
-          ledgerEntry.lifeopsSamantha =
-            withRunId<LifeOpsSamanthaRequestLedgerMetadata>(ledgerEntry, {
+          ledgerEntry.lifeopsPresenceActive =
+            withRunId<LifeOpsPresenceActiveRequestLedgerMetadata>(ledgerEntry, {
               action: "tasks.create.rejected",
               scenarioId,
               status: "not_long_running",
@@ -3476,8 +3476,8 @@ async function startFixtureServer(
         }
         const taskId = `lifeops-${crypto.randomUUID()}`;
         lifeOpsTasks.set(taskId, { scenarioId, snapshotIndex: 0 });
-        ledgerEntry.lifeopsSamantha =
-          withRunId<LifeOpsSamanthaRequestLedgerMetadata>(ledgerEntry, {
+        ledgerEntry.lifeopsPresenceActive =
+          withRunId<LifeOpsPresenceActiveRequestLedgerMetadata>(ledgerEntry, {
             action: "tasks.create",
             scenarioId,
             taskId,
@@ -3497,15 +3497,15 @@ async function startFixtureServer(
                   nextPollMs: 1000,
                 },
             taskId,
-            pollUrl: `/__mock/lifeops/samantha/tasks/${taskId}`,
+            pollUrl: `/__mock/lifeops/presence-active/tasks/${taskId}`,
           }),
         );
         return;
       }
-      const lifeOpsAdvanceTaskId = isLifeOpsSamanthaEnvironment
+      const lifeOpsAdvanceTaskId = isLifeOpsPresenceActiveEnvironment
         ? routeParam(
             requestUrl.pathname,
-            /^\/__mock\/lifeops\/samantha\/tasks\/([^/]+)\/advance\/?$/,
+            /^\/__mock\/lifeops\/presence-active\/tasks\/([^/]+)\/advance\/?$/,
           )
         : null;
       if (method === "POST" && lifeOpsAdvanceTaskId) {
@@ -3518,8 +3518,8 @@ async function startFixtureServer(
               }
             : null);
         if (!task) {
-          ledgerEntry.lifeopsSamantha =
-            withRunId<LifeOpsSamanthaRequestLedgerMetadata>(ledgerEntry, {
+          ledgerEntry.lifeopsPresenceActive =
+            withRunId<LifeOpsPresenceActiveRequestLedgerMetadata>(ledgerEntry, {
               action: "tasks.advance.not_found",
               taskId: lifeOpsAdvanceTaskId,
             });
@@ -3527,15 +3527,15 @@ async function startFixtureServer(
           res.end(JSON.stringify({ error: "task_not_found" }));
           return;
         }
-        const snapshots = lifeOpsSamanthaTaskSnapshots(task.scenarioId);
+        const snapshots = lifeOpsPresenceActiveTaskSnapshots(task.scenarioId);
         task.snapshotIndex = Math.min(
           task.snapshotIndex + 1,
           Math.max(0, snapshots.length - 1),
         );
         lifeOpsTasks.set(lifeOpsAdvanceTaskId, task);
         const snapshot = snapshots[task.snapshotIndex] ?? null;
-        ledgerEntry.lifeopsSamantha =
-          withRunId<LifeOpsSamanthaRequestLedgerMetadata>(ledgerEntry, {
+        ledgerEntry.lifeopsPresenceActive =
+          withRunId<LifeOpsPresenceActiveRequestLedgerMetadata>(ledgerEntry, {
             action: "tasks.advance",
             scenarioId: task.scenarioId,
             taskId: lifeOpsAdvanceTaskId,
@@ -3551,10 +3551,10 @@ async function startFixtureServer(
         );
         return;
       }
-      const lifeOpsTaskId = isLifeOpsSamanthaEnvironment
+      const lifeOpsTaskId = isLifeOpsPresenceActiveEnvironment
         ? routeParam(
             requestUrl.pathname,
-            /^\/__mock\/lifeops\/samantha\/tasks\/([^/]+)\/?$/,
+            /^\/__mock\/lifeops\/presence-active\/tasks\/([^/]+)\/?$/,
           )
         : null;
       if (method === "GET" && lifeOpsTaskId) {
@@ -3567,8 +3567,8 @@ async function startFixtureServer(
               }
             : null);
         if (!task) {
-          ledgerEntry.lifeopsSamantha =
-            withRunId<LifeOpsSamanthaRequestLedgerMetadata>(ledgerEntry, {
+          ledgerEntry.lifeopsPresenceActive =
+            withRunId<LifeOpsPresenceActiveRequestLedgerMetadata>(ledgerEntry, {
               action: "tasks.get.not_found",
               taskId: lifeOpsTaskId,
             });
@@ -3576,10 +3576,10 @@ async function startFixtureServer(
           res.end(JSON.stringify({ error: "task_not_found" }));
           return;
         }
-        const snapshots = lifeOpsSamanthaTaskSnapshots(task.scenarioId);
+        const snapshots = lifeOpsPresenceActiveTaskSnapshots(task.scenarioId);
         const snapshot = snapshots[task.snapshotIndex] ?? null;
-        ledgerEntry.lifeopsSamantha =
-          withRunId<LifeOpsSamanthaRequestLedgerMetadata>(ledgerEntry, {
+        ledgerEntry.lifeopsPresenceActive =
+          withRunId<LifeOpsPresenceActiveRequestLedgerMetadata>(ledgerEntry, {
             action: "tasks.get",
             scenarioId: task.scenarioId,
             taskId: lifeOpsTaskId,

@@ -626,7 +626,14 @@ export function Header({
           <div
             className={
               isMobileViewport
-                ? "grid min-h-[2.75rem] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-2"
+                ? `grid ${
+                    mobileLeft ||
+                    breadcrumbNode ||
+                    chatInferenceNotice ||
+                    pageRightExtras
+                      ? "min-h-[2.75rem]"
+                      : "min-h-0"
+                  } grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-2`
                 : "grid min-h-[2.375rem] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-3"
             }
             data-window-titlebar-padding={
@@ -654,7 +661,7 @@ export function Header({
                   className={
                     breadcrumbNode || chatInferenceNotice
                       ? "flex h-[2.375rem] min-w-0 items-center justify-center gap-2"
-                      : "pointer-events-none h-[2.375rem] min-w-0"
+                      : "pointer-events-none min-w-0"
                   }
                   data-testid={
                     showMacDesktopTitleBar

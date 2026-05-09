@@ -78,7 +78,7 @@ describe("@elizaos/plugin-wechat", () => {
   it("chunks long outgoing text through the proxy client", async () => {
     const client = {
       sendText: vi.fn(async () => undefined),
-    } as unknown as ProxyClient;
+    } as ProxyClient;
     const dispatcher = new ReplyDispatcher({ client, chunkSize: 5 });
 
     await dispatcher.sendText("wxid_alice", "hello world");

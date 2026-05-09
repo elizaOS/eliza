@@ -1,0 +1,73 @@
+{
+  "name": "@elizaos/plugin-health",
+  "version": "2.0.0-beta.0",
+  "description": "Health, sleep, circadian and screen-time domain plugin for elizaOS — extracted from app-lifeops in Wave 1 (W1-B). Owns connectors (Apple Health, Google Fit, Strava, Fitbit, Withings, Oura), sleep/circadian/regularity engines, screen-time aggregation, and the wake/bedtime/nap anchor contributions consumed by app-lifeops via the W1-F connector / channel / signal-bus contracts.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./contracts": {
+      "types": "./dist/contracts/health.d.ts",
+      "import": "./dist/contracts/health.js",
+      "default": "./dist/contracts/health.js"
+    },
+    "./sleep": {
+      "types": "./dist/sleep/index.d.ts",
+      "import": "./dist/sleep/index.js",
+      "default": "./dist/sleep/index.js"
+    },
+    "./health-bridge": {
+      "types": "./dist/health-bridge/index.d.ts",
+      "import": "./dist/health-bridge/index.js",
+      "default": "./dist/health-bridge/index.js"
+    },
+    "./screen-time": {
+      "types": "./dist/screen-time/index.d.ts",
+      "import": "./dist/screen-time/index.js",
+      "default": "./dist/screen-time/index.js"
+    },
+    "./actions": {
+      "types": "./dist/actions/index.d.ts",
+      "import": "./dist/actions/index.js",
+      "default": "./dist/actions/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "build": "bun run build:js && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc -p tsconfig.build.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check ."
+  },
+  "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

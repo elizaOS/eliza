@@ -14,7 +14,7 @@ import type {
 	Memory,
 	State,
 } from "../../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../../utils/action-validation.ts";
 import {
 	ALL_MESSAGE_SOURCES,
 	type ManageOperation,
@@ -28,60 +28,12 @@ export const MESSAGE_ACTION_CONTEXTS = [
 	"contacts",
 ] satisfies AgentContext[];
 
-export const MESSAGE_ACTION_KEYWORDS = [
-	"message",
-	"messages",
-	"email",
-	"inbox",
-	"mail",
-	"draft",
-	"reply",
-	"respond",
-	"send",
-	"schedule",
-	"triage",
-	"unread",
-	"archive",
-	"trash",
-	"spam",
-	"label",
-	"tag",
-	"follow up",
-	"check in",
-	"buscar mensaje",
-	"correo",
-	"bandeja de entrada",
-	"responder",
-	"enviar",
-	"mensagem",
-	"caixa de entrada",
-	"responder",
-	"enviar",
-	"邮件",
-	"消息",
-	"回复",
-	"发送",
-	"이메일",
-	"메시지",
-	"답장",
-	"보내",
-	"tin nhắn",
-	"email",
-	"trả lời",
-	"gửi",
-	"mensahe",
-	"koreo",
-	"sagot",
-	"ipadala",
-];
-
 export function validateMessageAction(
 	message: Memory,
 	state: State | undefined,
 	contexts: readonly AgentContext[] = MESSAGE_ACTION_CONTEXTS,
-	keywords: readonly string[] = MESSAGE_ACTION_KEYWORDS,
 ): boolean {
-	return hasActionContextOrKeyword(message, state, { contexts, keywords });
+	return hasActionContext(message, state, { contexts });
 }
 
 export const messageSourceParameter: ActionParameter = {

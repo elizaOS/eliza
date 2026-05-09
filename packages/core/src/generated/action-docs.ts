@@ -5157,6 +5157,174 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "MUSIC",
+			description:
+				"Unified music action. Use flat op for everything: library (playlist, play_query, search_youtube, download), playback transport (pause, resume, skip, stop, queue), play_audio, routing, zones. ",
+			parameters: [
+				{
+					name: "op",
+					description:
+						"Flat operation: playlist | play_query | search_youtube | download | pause | resume | skip | stop | queue | play_audio | routing | zones (hyphens and legacy aliases accepted).",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"playlist",
+							"play_query",
+							"search_youtube",
+							"download",
+							"pause",
+							"resume",
+							"skip",
+							"stop",
+							"queue",
+							"play_audio",
+							"routing",
+							"zones",
+						],
+					},
+					descriptionCompressed:
+						"Flat operation: playlist | play_query | search_youtube | download | pause | resume | skip | stop | queue | play_audio | routing | zones (hyphens and legacy...",
+				},
+				{
+					name: "subaction",
+					description:
+						"Playlist subaction when op=playlist (save, load, delete, add, …).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Playlist subaction when op=playlist (save, load, delete, add, …).",
+				},
+				{
+					name: "query",
+					description: "Search/play/queue query depending on op.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Search/play/queue query depending on op.",
+				},
+				{
+					name: "url",
+					description: "Direct media URL when using play_audio.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Direct media URL when using play_audio.",
+				},
+				{
+					name: "playlistName",
+					description: "Playlist name for playlist ops.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Playlist name for playlist ops.",
+				},
+				{
+					name: "song",
+					description: "Song query for playlist add.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Song query for playlist add.",
+				},
+				{
+					name: "limit",
+					description: "Search result limit (YouTube / library helpers).",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+						maximum: 10,
+					},
+					descriptionCompressed:
+						"Search result limit (YouTube/library helpers).",
+				},
+				{
+					name: "confirmed",
+					description:
+						"Must be true when the underlying operation requires confirmation.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"Must be true when the underlying operation requires confirmation.",
+				},
+				{
+					name: "operation",
+					description:
+						"Structured routing operation when using routing (set_mode, start_route, …).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Structured routing operation when using routing (set_mode, start_route, …).",
+				},
+				{
+					name: "mode",
+					description: "Routing mode for routing operations.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Routing mode for routing operations.",
+				},
+				{
+					name: "sourceId",
+					description: "Stream/source id for routing.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Stream/source id for routing.",
+				},
+				{
+					name: "targetIds",
+					description: "Routing target ids.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "Routing target ids.",
+				},
+			],
+			descriptionCompressed:
+				"Flat op: playlist/play_query/search_youtube/download/pause/resume/skip/stop/queue/play_audio/routing/zones.",
+			exampleCalls: [
+				{
+					user: "Use MUSIC with the provided parameters.",
+					actions: ["MUSIC"],
+					params: {
+						MUSIC: {
+							op: "playlist",
+							subaction: "example",
+							query: "example",
+							url: "example",
+							playlistName: "example",
+							song: "example",
+							limit: 1,
+							confirmed: false,
+							operation: "example",
+							mode: "example",
+							sourceId: "example",
+							targetIds: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "MUSIC_GENERATION",
 			description:
 				"Generate music through Suno. Use subaction generate for a simple prompt, custom for style/BPM/key/reference parameters, or extend for an existing audio_id and duration.",

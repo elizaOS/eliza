@@ -9,7 +9,10 @@
     "rootDir": "src",
     "strict": true,
     "skipLibCheck": true,
-    "noEmit": false
+    "noEmit": false,
+    "paths": {
+      "@elizaos/plugin-groq": ["./src/provider-plugin.d.ts"]
+    }
   },
   "include": ["src/**/*.ts"],
   "extends": "../../../../../tsconfig.dist-paths.json"

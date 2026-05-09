@@ -1,4 +1,5 @@
 export * from "./useActivityEvents";
+export * from "./useAutomationDeepLink";
 export * from "./useBugReport";
 export * from "./useChatAvatarVoiceBridge";
 export * from "./useConnectorAccounts";
@@ -14,3 +15,4 @@ export * from "./useStreamPopoutNavigation";
 export * from "./useTimeout";
 export * from "./useVoiceChat";
 export * from "./useWhatsAppPairing";
+export * from "./useWorkflowGenerationState";

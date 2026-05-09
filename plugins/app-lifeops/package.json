@@ -161,6 +161,9 @@
     }
   },
   "scripts": {
+    "lint:default-packs": "node scripts/lint-default-packs.mjs",
+    "verify": "bun run lint:default-packs && bun run build:types && bun run test",
+    "pretest": "node scripts/lint-default-packs.mjs",
     "test": "vitest run --config vitest.config.ts",
     "test:app-state": "vitest run --config vitest.config.ts eliza/plugins/app-lifeops/test/lifeops-app-state.test.ts",
     "test:integration": "cd ../../.. && vitest run --config eliza/test/vitest/integration.config.ts eliza/plugins/app-lifeops/test/life-smoke.integration.test.ts",
@@ -183,6 +186,7 @@
     "@elizaos/plugin-discord": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-google": "workspace:*",
+    "@elizaos/plugin-health": "workspace:*",
     "@elizaos/plugin-imessage": "workspace:*",
     "@elizaos/plugin-signal": "workspace:*",
     "@elizaos/plugin-telegram": "workspace:*",
@@ -194,7 +198,8 @@
     "drizzle-orm": "0.45.2",
     "lucide-react": "^1.0.0",
     "react-plaid-link": "^4.0.1",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.4.0",

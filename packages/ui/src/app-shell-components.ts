@@ -23,10 +23,7 @@ export { ConversationsSidebar } from "./components/conversations/ConversationsSi
 export { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 export { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 export { AppsPageView } from "./components/pages/AppsPageView";
-export {
-  AutomationsDesktopShell,
-  AutomationsView,
-} from "./components/pages/AutomationsView";
+export { AutomationsFeed } from "./components/pages/AutomationsFeed";
 export { BrowserWorkspaceView } from "./components/pages/BrowserWorkspaceView";
 export { ChatView } from "./components/pages/ChatView";
 export { ConnectorsPageView } from "./components/pages/ConnectorsPageView";

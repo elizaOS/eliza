@@ -2,6 +2,7 @@ import {
   createUniqueUuid,
   type IAgentRuntime,
   logger,
+  type Metadata,
   type UUID,
 } from "@elizaos/core";
 import { v4 } from "uuid";
@@ -21,6 +22,14 @@ export interface DJTip {
   roomId?: UUID;
 }
 
+interface TopTipper {
+  userId: string;
+  username: string;
+  totalAmount: number;
+  currency: string;
+  tipCount: number;
+}
+
 /**
  * DJ Tip Statistics
  */
@@ -28,13 +37,7 @@ export interface DJTipStats {
   totalTips: number;
   totalAmount: Record<string, number>; // {currency: amount}
   tips: DJTip[];
-  topTippers: Array<{
-    userId: string;
-    username: string;
-    totalAmount: number;
-    currency: string;
-    tipCount: number;
-  }>;
+  topTippers: TopTipper[];
 }
 
 const DJ_TIPS_COMPONENT_TYPE = "dj_tips";
@@ -45,6 +48,46 @@ function getDJTipsEntityId(runtime: IAgentRuntime): UUID {
     runtime,
     `${DJ_TIPS_ENTITY_PREFIX}-${runtime.agentId}`,
   );
+}
+
+function createEmptyDJTipStats(): DJTipStats {
+  return {
+    totalTips: 0,
+    totalAmount: {},
+    tips: [],
+    topTippers: [],
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toDJTipStats(data: unknown): DJTipStats {
+  if (!isRecord(data)) return createEmptyDJTipStats();
+  return {
+    totalTips: typeof data.totalTips === "number" ? data.totalTips : 0,
+    totalAmount: isRecord(data.totalAmount)
+      ? Object.fromEntries(
+          Object.entries(data.totalAmount).filter(
+            (entry): entry is [string, number] => typeof entry[1] === "number",
+          ),
+        )
+      : {},
+    tips: Array.isArray(data.tips) ? (data.tips as DJTip[]) : [],
+    topTippers: Array.isArray(data.topTippers)
+      ? (data.topTippers as TopTipper[])
+      : [],
+  };
+}
+
+function statsToMetadata(stats: DJTipStats): Metadata {
+  return {
+    totalTips: stats.totalTips,
+    totalAmount: stats.totalAmount,
+    tips: stats.tips.map((tip) => ({ ...tip })),
+    topTippers: stats.topTippers.map((tipper) => ({ ...tipper })),
+  };
 }
 
 /**
@@ -79,18 +122,13 @@ export async function trackDJTip(
       sourceEntityId: runtime.agentId,
       type: DJ_TIPS_COMPONENT_TYPE,
       createdAt: Date.now(),
-      data: {
-        totalTips: 0,
-        totalAmount: {},
-        tips: [],
-        topTippers: [],
-      },
+      data: statsToMetadata(createEmptyDJTipStats()),
     };
 
     await runtime.createComponent(component);
   }
 
-  const stats = component.data as unknown as DJTipStats;
+  const stats = toDJTipStats(component.data);
 
   // Add tip
   const tipWithRoom: DJTip = { ...tip, roomId };
@@ -131,7 +169,7 @@ export async function trackDJTip(
 
   await runtime.updateComponent({
     ...component,
-    data: stats as unknown as typeof component.data,
+    data: statsToMetadata(stats),
   });
 
   logger.info(`Tracked DJ tip: ${tip.amount} ${tip.currency} from ${tip.from}`);
@@ -152,15 +190,10 @@ export async function getDJTipStats(
   );
 
   if (!component?.data) {
-    return {
-      totalTips: 0,
-      totalAmount: {},
-      tips: [],
-      topTippers: [],
-    };
+    return createEmptyDJTipStats();
   }
 
-  return component.data as unknown as DJTipStats;
+  return toDJTipStats(component.data);
 }
 
 /**

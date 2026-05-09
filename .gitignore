@@ -31,6 +31,12 @@ packages/app/electrobun/
 
 dist/
 
+# Stray declaration emit (canonical declarations live under dist/)
+plugins/**/auto-enable.d.ts
+plugins/**/auto-enable.d.ts.map
+**/vitest.config.d.ts
+**/vitest.config.d.ts.map
+
 *.gguf
 *.onnx
 *.wav

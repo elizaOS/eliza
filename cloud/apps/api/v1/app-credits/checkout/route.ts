@@ -94,9 +94,11 @@ app.post("/", async (c) => {
       customer_email: user.email || undefined,
       metadata: {
         type: "app_credit_purchase",
+        source: "miniapp_app",
         app_id,
         user_id: user.id,
         organization_id: user.organization_id || "",
+        credits: amount.toString(),
         amount: amount.toString(),
       },
     });

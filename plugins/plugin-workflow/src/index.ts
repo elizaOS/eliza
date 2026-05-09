@@ -168,3 +168,9 @@ async function runLegacyMigrations(runtime: IAgentRuntime): Promise<void> {
 }
 
 export default workflowPlugin;
+
+export {
+  handleTriggerRoutes,
+  type TriggerRouteContext,
+  type TriggerRouteHelpers,
+} from './trigger-routes.js';

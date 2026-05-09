@@ -1,18 +1,6 @@
 import type { GenerateTextParams } from '@elizaos/core';
 import { type IAgentRuntime, logger, ModelType } from '@elizaos/core';
 import {
-  ACTION_RESPONSE_SYSTEM_PROMPT,
-  DRAFT_INTENT_SYSTEM_PROMPT,
-  FEASIBILITY_CHECK_PROMPT,
-  FIELD_CORRECTION_SYSTEM_PROMPT,
-  FIELD_CORRECTION_USER_PROMPT,
-  KEYWORD_EXTRACTION_SYSTEM_PROMPT,
-  PARAM_CORRECTION_SYSTEM_PROMPT,
-  PARAM_CORRECTION_USER_PROMPT,
-  WORKFLOW_GENERATION_SYSTEM_PROMPT,
-} from '../prompts/index';
-import { WORKFLOW_MATCHING_SYSTEM_PROMPT } from '../prompts/workflowMatching';
-import {
   draftIntentSchema,
   feasibilitySchema,
   keywordExtractionSchema,
@@ -39,6 +27,18 @@ import {
   loadOutputSchema,
 } from './outputSchema';
 import type { UnknownParamDetection } from './workflow';
+import {
+  ACTION_RESPONSE_SYSTEM_PROMPT,
+  DRAFT_INTENT_SYSTEM_PROMPT,
+  FEASIBILITY_CHECK_PROMPT,
+  FIELD_CORRECTION_SYSTEM_PROMPT,
+  FIELD_CORRECTION_USER_PROMPT,
+  KEYWORD_EXTRACTION_SYSTEM_PROMPT,
+  PARAM_CORRECTION_SYSTEM_PROMPT,
+  PARAM_CORRECTION_USER_PROMPT,
+  WORKFLOW_GENERATION_SYSTEM_PROMPT,
+} from './workflow-prompts/index';
+import { WORKFLOW_MATCHING_SYSTEM_PROMPT } from './workflow-prompts/workflowMatching';
 
 type StructuredModelRunner = {
   useModel<T>(

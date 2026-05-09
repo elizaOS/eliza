@@ -3,6 +3,7 @@
 		"target": "ESNext",
 		"module": "ESNext",
 		"moduleResolution": "bundler",
+		"jsx": "react-jsx",
 		"strict": true,
 		"esModuleInterop": true,
 		"skipLibCheck": true,
@@ -13,8 +14,32 @@
 		"noEmit": true,
 		"declaration": false,
 		"outDir": "./dist",
-		"rootDir": ".",
-		"types": ["bun-types"]
+		"rootDir": "../../../..",
+		"types": ["bun-types"],
+		"paths": {
+			"@elizaos/app-core": ["../../src/index.ts"],
+			"@elizaos/app-core/*": ["../../src/*"],
+			"@elizaos/agent": ["../../../agent/src/index.ts"],
+			"@elizaos/agent/*": ["../../../agent/src/*"],
+			"@elizaos/core": ["../../../core/src/index.node.ts"],
+			"@elizaos/core/*": ["../../../core/src/*"],
+			"@elizaos/shared": ["../../../shared/src/index.ts"],
+			"@elizaos/shared/*": ["../../../shared/src/*"],
+			"@elizaos/ui": ["../../../ui/src/index.ts"],
+			"@elizaos/ui/*": ["../../../ui/src/*"],
+			"@elizaos/plugin-elizacloud": [
+				"../../../../plugins/plugin-elizacloud/src/index.node.ts"
+			],
+			"@elizaos/plugin-elizacloud/*": [
+				"../../../../plugins/plugin-elizacloud/src/*"
+			],
+			"@elizaos/plugin-signal": [
+				"../../../../plugins/plugin-signal/src/index.ts"
+			],
+			"@elizaos/plugin-signal/*": [
+				"../../../../plugins/plugin-signal/src/*"
+			]
+		}
 	},
 	"include": ["src/**/*.ts", "scripts/**/*.ts"],
 	"exclude": ["node_modules", "dist"]

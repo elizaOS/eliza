@@ -23,27 +23,35 @@ import { Button, PagePanel, Spinner, StatusBadge } from "@elizaos/ui";
 import {
   Calendar,
   CheckCircle2,
+  ChevronRight,
   ListChecks,
+  MessageSquare,
   Pause,
   Play,
   Plus,
   RefreshCw,
   Workflow,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
   AutomationItem,
   AutomationListResponse,
 } from "../../api/client-types-config";
+import { useAutomationDeepLink } from "../../hooks/useAutomationDeepLink";
 import {
   type FeedFilter,
   passesFilter,
 } from "../../utils/automation-feed-filter";
 import { formatSchedule } from "../../utils/cron-format";
 import { decodeScheduleTags } from "../../utils/task-schedule";
+import { AutomationsChatPane } from "./AutomationsChatPane";
 import { TaskEditor } from "./TaskEditor";
 import { WorkflowEditor } from "./WorkflowEditor";
+import {
+  VISUALIZE_WORKFLOW_EVENT,
+  type VisualizeWorkflowEventDetail,
+} from "./workflow-graph-events";
 
 export type { FeedFilter } from "../../utils/automation-feed-filter";
 export { passesFilter } from "../../utils/automation-feed-filter";
@@ -54,6 +62,21 @@ type EditorState =
   | { kind: "none" }
   | { kind: "task"; taskId: string | null }
   | { kind: "workflow"; workflowId: string | null };
+
+export interface AutomationsFeedProps {
+  /**
+   * Cred types the user has already connected. Used to compute the
+   * per-row "Connect <Provider> →" missing-creds banner. Keep this
+   * driven from the host (App.tsx pulls connector accounts) so the feed
+   * stays a pure display component.
+   */
+  connectedCredTypes?: ReadonlySet<string>;
+  /**
+   * Render the in-shell chat sidebar. Default: false (host opts in).
+   * Hidden on narrow viewports via the layout regardless.
+   */
+  showChatPane?: boolean;
+}
 
 const FILTER_LABELS: Record<FeedFilter, string> = {
   all: "All",
@@ -109,13 +132,42 @@ function automationToRow(item: AutomationItem): FeedRow {
   };
 }
 
-export function AutomationsFeed() {
+export function AutomationsFeed({
+  connectedCredTypes,
+  showChatPane = false,
+}: AutomationsFeedProps = {}) {
   const [data, setData] = useState<AutomationListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FeedFilter>("all");
   const [chooser, setChooser] = useState<ChooserState>("closed");
-  const [editor, setEditor] = useState<EditorState>({ kind: "none" });
+  const { link, setLink } = useAutomationDeepLink();
+  const [chatOpen, setChatOpen] = useState(showChatPane);
+  const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
+
+  const editor: EditorState = useMemo(() => {
+    if (link.kind === "list") return { kind: "none" };
+    if (link.kind === "workflow")
+      return { kind: "workflow", workflowId: link.id };
+    return { kind: "task", taskId: link.id };
+  }, [link]);
+
+  const setEditor = useCallback(
+    (next: EditorState) => {
+      if (next.kind === "none") setLink({ kind: "list" });
+      else if (next.kind === "workflow")
+        setLink(
+          next.workflowId
+            ? { kind: "workflow", id: next.workflowId }
+            : { kind: "list" },
+        );
+      else
+        setLink(
+          next.taskId ? { kind: "task", id: next.taskId } : { kind: "list" },
+        );
+    },
+    [setLink],
+  );
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -133,6 +185,33 @@ export function AutomationsFeed() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Behavior #4: external "show only failed runs" / chip filter dispatcher.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ filter?: FeedFilter }>).detail;
+      if (detail?.filter) setFilter(detail.filter);
+    };
+    window.addEventListener("eliza:automations:setFilter", handler);
+    return () =>
+      window.removeEventListener("eliza:automations:setFilter", handler);
+  }, []);
+
+  // Behavior #3: chat agent says "show me this workflow" → scroll + open.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<VisualizeWorkflowEventDetail>)
+        .detail;
+      if (!detail?.workflowId) return;
+      setLink({ kind: "workflow", id: detail.workflowId });
+      const row = rowRefs.current.get(detail.workflowId);
+      row?.scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+    window.addEventListener(VISUALIZE_WORKFLOW_EVENT, handler);
+    return () => window.removeEventListener(VISUALIZE_WORKFLOW_EVENT, handler);
+  }, [setLink]);
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -185,8 +264,10 @@ export function AutomationsFeed() {
     );
   }
 
-  return (
-    <div className="device-layout mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-4 lg:px-6">
+  const feedContent = (
+    <div
+      className={`device-layout mx-auto flex w-full ${chatOpen ? "max-w-3xl" : "max-w-5xl"} flex-col gap-4 px-4 py-4 lg:px-6`}
+    >
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-1.5">
@@ -199,6 +280,15 @@ export function AutomationsFeed() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setChatOpen((v) => !v)}
+            aria-label={chatOpen ? "Hide chat" : "Show chat"}
+            data-testid="automations-feed-chat-toggle"
+          >
+            <MessageSquare className="h-3.5 w-3.5" aria-hidden />
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -271,6 +361,12 @@ export function AutomationsFeed() {
               <FeedRowItem
                 key={row.key}
                 row={row}
+                connectedCredTypes={connectedCredTypes}
+                registerRef={(el) => {
+                  const id = row.source.workflowId ?? row.source.id;
+                  if (el) rowRefs.current.set(id, el);
+                  else rowRefs.current.delete(id);
+                }}
                 onOpen={() => {
                   if (row.kind === "task") {
                     setEditor({
@@ -317,20 +413,51 @@ export function AutomationsFeed() {
       )}
     </div>
   );
+
+  if (!chatOpen) return feedContent;
+  return (
+    <div className="flex h-full min-h-0 w-full">
+      <div className="min-w-0 flex-1 overflow-y-auto">{feedContent}</div>
+      <aside
+        className="hidden w-[360px] shrink-0 border-l border-border/40 bg-bg/40 lg:block"
+        data-testid="automations-feed-chat-pane"
+      >
+        <div className="flex items-center justify-between border-b border-border/30 px-3 py-2 text-xs font-medium text-txt">
+          <span>Ask the agent</span>
+          <button
+            type="button"
+            onClick={() => setChatOpen(false)}
+            className="text-muted-strong hover:text-txt"
+            aria-label="Collapse chat"
+          >
+            <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </div>
+        <AutomationsChatPane className="h-[calc(100%-37px)]" />
+      </aside>
+    </div>
+  );
 }
 
 function FeedRowItem({
   row,
   onOpen,
   onRunNow,
+  connectedCredTypes: _connectedCredTypes,
+  registerRef,
 }: {
   row: FeedRow;
   onOpen: () => void;
   onRunNow: () => void;
+  connectedCredTypes?: ReadonlySet<string>;
+  registerRef?: (el: HTMLLIElement | null) => void;
 }) {
   const Icon = row.kind === "workflow" ? Workflow : CheckCircle2;
   return (
-    <li className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-accent/40">
+    <li
+      ref={registerRef}
+      className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-accent/40"
+    >
       <button
         type="button"
         onClick={onOpen}

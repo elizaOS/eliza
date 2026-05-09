@@ -386,6 +386,11 @@ export interface PluginWidgetDeclaration {
 	componentExport?: string;
 }
 
+export interface PluginAppUiExtension {
+	/** Detail panel id registered by the app's UI package. */
+	detailPanelId?: string;
+}
+
 export interface PluginApp {
 	displayName?: string;
 	category?: string;
@@ -399,6 +404,7 @@ export interface PluginApp {
 	viewer?: PluginAppViewer;
 	session?: PluginAppSession;
 	bridgeExport?: string;
+	uiExtension?: PluginAppUiExtension;
 	/**
 	 * If true, the app is a developer-tooling surface (logs, trajectory
 	 * viewer, etc.) and is hidden from the main UI unless Developer Mode is

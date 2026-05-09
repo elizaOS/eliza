@@ -65,7 +65,7 @@
   "scripts": {
     "dev": "bun run build.ts --watch",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "clean": "rm -rf dist node_modules",
+    "clean": "rm -rf dist",
     "format": "bunx @biomejs/biome format --write .",
     "test": "vitest run --config vitest.config.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

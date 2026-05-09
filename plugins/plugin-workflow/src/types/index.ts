@@ -203,19 +203,31 @@ export interface NodeDefinition
   triggerPanel?: unknown;
 }
 
+export interface NodePropertyOption {
+  name: string;
+  value?: string | number | boolean;
+  displayName?: string;
+  description?: string;
+  [key: string]: unknown;
+}
+
+export interface NodePropertyCollection {
+  name: string;
+  displayName?: string;
+  values: NodeProperty[];
+  [key: string]: unknown;
+}
+
 export interface NodeProperty
   extends Omit<INodeProperties, 'default' | 'displayOptions' | 'options' | 'routing' | 'type'> {
   type: string;
   default: unknown;
-  options?: Array<{
-    name: string;
-    value: string | number | boolean;
-    description?: string;
-  }>;
+  options?: Array<NodePropertyOption | NodePropertyCollection>;
   displayOptions?: unknown;
   placeholder?: string;
   hint?: string;
   routing?: unknown;
+  [key: string]: unknown;
 }
 
 export interface NodeSearchResult {

@@ -68,6 +68,15 @@ type PdfTextService = {
   convertPdfToText(pdfBuffer: Buffer): Promise<string>;
 };
 
+function isPdfTextService(service: unknown): service is PdfTextService {
+  return (
+    typeof service === "object" &&
+    service !== null &&
+    typeof (service as { convertPdfToText?: unknown }).convertPdfToText ===
+      "function"
+  );
+}
+
 type TelegramMediaSender = (
   chatId: number | string,
   media: string | { source: fs.ReadStream },
@@ -269,9 +278,10 @@ export class MessageManager {
     documentUrl: string,
   ): Promise<DocumentProcessingResult> {
     try {
-      const pdfService = this.runtime.getService(
-        ServiceType.PDF,
-      ) as unknown as PdfTextService | null;
+      const pdfServiceCandidate = this.runtime.getService(ServiceType.PDF);
+      const pdfService = isPdfTextService(pdfServiceCandidate)
+        ? pdfServiceCandidate
+        : null;
       if (!pdfService) {
         logger.warn(
           { src: "plugin:telegram", agentId: this.runtime.agentId },
