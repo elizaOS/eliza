@@ -96,7 +96,8 @@
     "db:cloud:migrate": "bun run --cwd cloud db:migrate",
     "db:cloud:studio": "bun run --cwd cloud db:studio",
     "publish:dry-run": "bun scripts/publish-from-dist.mjs",
-    "publish:packages": "bun scripts/publish-from-dist.mjs --apply"
+    "publish:packages": "bun scripts/publish-from-dist.mjs --apply",
+    "typecheck:dist": "tsc --noEmit -p tsconfig.dist-paths.json"
   },
   "packageManager": "bun@1.3.5",
   "workspaces": [
