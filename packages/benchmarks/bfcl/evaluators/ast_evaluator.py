@@ -240,15 +240,11 @@ class ASTEvaluator:
         # actually defines as list[str]. Only meaningful for primitive lists.
         if not self.strict_type_matching:
             if isinstance(predicted, str) and isinstance(expected, list):
-                pred_split = [part.strip().strip("'\"") for part in predicted.split(",")]
-                if len(pred_split) == len(expected):
-                    if all(self._values_match(p, e) for p, e in zip(pred_split, expected, strict=True)):
-                        return True
+                if self._delimited_string_matches_list(predicted, expected):
+                    return True
             if isinstance(expected, str) and isinstance(predicted, list):
-                exp_split = [part.strip().strip("'\"") for part in expected.split(",")]
-                if len(exp_split) == len(predicted):
-                    if all(self._values_match(p, e) for p, e in zip(predicted, exp_split, strict=True)):
-                        return True
+                if self._delimited_string_matches_list(expected, predicted):
+                    return True
 
         # Dict comparison
         if isinstance(predicted, dict) and isinstance(expected, dict):
@@ -282,6 +278,24 @@ class ASTEvaluator:
             except ValueError:
                 pass
         return None
+
+    def _delimited_string_matches_list(self, text: str, expected: list) -> bool:
+        """Treat a delimited string as a flat list and compare element-wise.
+
+        Accepts comma-separated, whitespace-separated, or space-after-comma
+        variants. Only fires for primitive (non-nested) expected lists.
+        """
+        if any(isinstance(e, (list, dict)) for e in expected):
+            return False
+        for parts in (
+            [p.strip().strip("'\"") for p in text.split(",") if p.strip()],
+            text.split(),
+        ):
+            if len(parts) == len(expected) and all(
+                self._values_match(p, e) for p, e in zip(parts, expected, strict=True)
+            ):
+                return True
+        return False
 
     def _try_parse_stringified_list(self, value: str) -> Optional[list]:
         """Decode a string that wraps a Python/JSON list literal."""
