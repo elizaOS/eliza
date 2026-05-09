@@ -1,5 +1,5 @@
 import type http from "node:http";
-import { sendJson } from "@elizaos/core";
+import { sendJson } from "@elizaos/app-core/api/response";
 
 const EMPTY_APPROVAL_SNAPSHOT = {
   mode: "full_control",
@@ -29,7 +29,7 @@ export async function handleComputerUseRoutes(
   }
 
   if (method === "GET" && pathname === "/api/computer-use/approvals") {
-    sendJson(res, EMPTY_APPROVAL_SNAPSHOT);
+    sendJson(res, 200, EMPTY_APPROVAL_SNAPSHOT);
     return true;
   }
 
@@ -42,7 +42,7 @@ export async function handleComputerUseRoutes(
   }
 
   if (method === "POST" && pathname === "/api/computer-use/approval-mode") {
-    sendJson(res, { mode: EMPTY_APPROVAL_SNAPSHOT.mode });
+    sendJson(res, 200, { mode: EMPTY_APPROVAL_SNAPSHOT.mode });
     return true;
   }
 
@@ -50,14 +50,10 @@ export async function handleComputerUseRoutes(
     pathname,
   );
   if (method === "POST" && approvalDecision) {
-    sendJson(
-      res,
-      {
-        error: "Computer-use approval is not pending.",
-        id: decodeURIComponent(approvalDecision[1] ?? ""),
-      },
-      404,
-    );
+    sendJson(res, 404, {
+      error: "Computer-use approval is not pending.",
+      id: decodeURIComponent(approvalDecision[1] ?? ""),
+    });
     return true;
   }
 

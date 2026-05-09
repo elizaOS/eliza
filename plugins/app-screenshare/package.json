@@ -26,6 +26,7 @@
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-computeruse": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0"

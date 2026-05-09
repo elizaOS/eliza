@@ -3,8 +3,8 @@ import {
   type DesktopControlCapabilities,
   detectDesktopControlCapabilities,
   getDesktopPlatformName,
-} from "@elizaos/agent";
-import type { AppSessionState } from "@elizaos/shared";
+} from "@elizaos/plugin-computeruse";
+import type { AppSessionState } from "@elizaos/shared/contracts/apps";
 
 export const SCREENSHARE_APP_NAME = "@elizaos/app-screenshare";
 export const SCREENSHARE_DISPLAY_NAME = "Screen Share";

@@ -10,7 +10,7 @@ import {
   performDesktopMouseMove,
   performDesktopScroll,
   performDesktopTextInput,
-} from "@elizaos/agent";
+} from "@elizaos/plugin-computeruse";
 import type {
   AppLaunchDiagnostic,
   AppLaunchPreparation,

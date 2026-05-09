@@ -1,6 +1,5 @@
 declare module "@elizaos/plugin-agent-orchestrator";
 declare module "@elizaos/plugin-agent-skills";
-declare module "@elizaos/plugin-computeruse";
 declare module "@elizaos/plugin-telegram/account-auth-service" {
   export interface TelegramAccountAuthSessionLike {
     getSnapshot(): TelegramAccountAuthSnapshot;
