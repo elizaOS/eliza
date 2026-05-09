@@ -62,7 +62,7 @@ type CapabilityKey = (typeof CAPABILITY_KEYS)[number];
 
 const MODEL_SLOTS = ["nano", "small", "medium", "large", "mega"] as const;
 
-const TRAINING_CONFIG_MODULE = "@elizaos/app-training/core/training-config";
+const TRAINING_CONFIG_MODULE = "@elizaos/app-training";
 
 interface TrainingConfig {
   autoTrain: boolean;

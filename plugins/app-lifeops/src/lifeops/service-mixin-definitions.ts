@@ -72,11 +72,22 @@ export interface LifeOpsDefinitionService {
   createDefinition(
     request: CreateLifeOpsDefinitionRequest,
   ): Promise<LifeOpsDefinitionRecord>;
+  /**
+   * @deprecated Use the FIRST_RUN action via `FirstRunService` instead. The
+   * mixin entry point is kept so existing callers (e.g. legacy onboarding
+   * messages) keep compiling, but new work should call into the first-run
+   * capability — `eliza/plugins/app-lifeops/src/lifeops/first-run/service.ts`.
+   */
   checkAndOfferSeeding(): Promise<{
     needsSeeding: boolean;
     availableTemplates: RoutineSeedTemplate[];
   }>;
+  /** @deprecated Tracked through the FIRST_RUN state machine going forward. */
   markSeedingOffered(): Promise<void>;
+  /**
+   * @deprecated Routine seeding moves into the FIRST_RUN customize path
+   * ("habit starters" question). New code should not call this directly.
+   */
   applySeedRoutines(keys: string[], timezone?: string): Promise<string[]>;
   updateDefinition(
     definitionId: string,

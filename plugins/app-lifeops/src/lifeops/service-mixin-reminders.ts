@@ -75,7 +75,7 @@ import {
   buildSleepRecapFromSchedule,
   shouldRunMorningCheckinFromSleepCycle,
   shouldRunNightCheckinFromSleepCycle,
-} from "./checkin/sleep-cycle-dispatch.js";
+} from "@elizaos/plugin-health";
 import {
   type ContactRoutePurpose,
   resolveContactRouteCandidates,
@@ -193,11 +193,11 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
-import { normalizeHealthSignal } from "./service-normalize-health.js";
 import {
+  normalizeHealthSignal,
   deriveSleepWakeEvents,
   type LifeOpsDerivedEvent,
-} from "./sleep-wake-events.js";
+} from "@elizaos/plugin-health";
 import {
   pickStretchReminderCopy,
   shouldStretchNow,

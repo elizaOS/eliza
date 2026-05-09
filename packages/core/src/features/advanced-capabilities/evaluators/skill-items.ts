@@ -8,6 +8,7 @@ import {
 import { join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { logger } from "../../../logger.ts";
+import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import type {
 	Evaluator,
 	IAgentRuntime,
@@ -243,20 +244,53 @@ function pickMostRecent(
 	return [...items].sort((a, b) => (b.endTime ?? 0) - (a.endTime ?? 0))[0];
 }
 
+/**
+ * Per-message memoization for the latest trajectory lookup. Both skill
+ * evaluators (proposal + refinement) call this from `shouldRun` and `prepare`,
+ * which the EvaluatorService runs in parallel — without memoization that's
+ * 4 trajectory-store round-trips per turn for the same data.
+ *
+ * Keyed by message id with FIFO trim. The cache is single-tick scoped: once
+ * a new message lands, the old entry is no longer hit and gets evicted as
+ * newer messages arrive.
+ */
+const TRAJECTORY_CACHE_MAX = 32;
+const trajectoryCache = new Map<
+	string,
+	Promise<{ service: SkillTrajectoryService; trajectory: Trajectory } | null>
+>();
+
 async function getLatestTrajectory(
 	runtime: IAgentRuntime,
+	messageId?: string,
 ): Promise<{ service: SkillTrajectoryService; trajectory: Trajectory } | null> {
-	const service = getTrajectoryService(runtime);
-	if (!service?.listTrajectories || !service.getTrajectoryDetail) return null;
-	const list = await service.listTrajectories({ limit: 5 });
-	const latest = pickMostRecent(list.trajectories ?? []);
-	if (!latest) return null;
-	const trajectory = await service.getTrajectoryDetail(latest.id);
-	return trajectory ? { service, trajectory } : null;
+	if (messageId && trajectoryCache.has(messageId)) {
+		return trajectoryCache.get(messageId) ?? null;
+	}
+	const promise = (async () => {
+		const service = getTrajectoryService(runtime);
+		if (!service?.listTrajectories || !service.getTrajectoryDetail) return null;
+		const list = await service.listTrajectories({ limit: 5 });
+		const latest = pickMostRecent(list.trajectories ?? []);
+		if (!latest) return null;
+		const trajectory = await service.getTrajectoryDetail(latest.id);
+		return trajectory ? { service, trajectory } : null;
+	})();
+	if (messageId) {
+		trajectoryCache.set(messageId, promise);
+		if (trajectoryCache.size > TRAJECTORY_CACHE_MAX) {
+			const oldest = trajectoryCache.keys().next().value;
+			if (oldest !== undefined) trajectoryCache.delete(oldest);
+		}
+	}
+	return promise;
 }
 
-async function shouldRunProposal(runtime: IAgentRuntime): Promise<boolean> {
-	const latest = await getLatestTrajectory(runtime);
+async function shouldRunProposal(
+	runtime: IAgentRuntime,
+	messageId?: string,
+): Promise<boolean> {
+	const latest = await getLatestTrajectory(runtime, messageId);
 	if (!latest) return false;
 	const { trajectory } = latest;
 	const stepCount = trajectory.steps?.length ?? 0;
@@ -268,8 +302,11 @@ async function shouldRunProposal(runtime: IAgentRuntime): Promise<boolean> {
 	);
 }
 
-async function shouldRunRefinement(runtime: IAgentRuntime): Promise<boolean> {
-	const latest = await getLatestTrajectory(runtime);
+async function shouldRunRefinement(
+	runtime: IAgentRuntime,
+	messageId?: string,
+): Promise<boolean> {
+	const latest = await getLatestTrajectory(runtime, messageId);
 	if (!latest) return false;
 	return (
 		trajectoryFailedOrRetried(latest.trajectory) &&
@@ -357,13 +394,13 @@ export const skillProposalEvaluator: Evaluator<
 	name: "skillProposal",
 	description:
 		"Proposes a new SKILL.md when a successful trajectory contains a reusable procedure.",
-	priority: 400,
+	priority: EvaluatorPriority.SKILL_PROPOSAL,
 	schema: skillProposalSchema,
-	async shouldRun({ runtime }) {
-		return shouldRunProposal(runtime);
+	async shouldRun({ runtime, message }) {
+		return shouldRunProposal(runtime, message.id);
 	},
-	async prepare({ runtime }) {
-		const latest = await getLatestTrajectory(runtime);
+	async prepare({ runtime, message }) {
+		const latest = await getLatestTrajectory(runtime, message.id);
 		if (!latest) throw new Error("No trajectory available");
 		return {
 			service: latest.service,
@@ -439,13 +476,13 @@ export const skillRefinementEvaluator: Evaluator<
 	name: "skillRefinement",
 	description:
 		"Refines active skills that participated in a failed or retried trajectory.",
-	priority: 410,
+	priority: EvaluatorPriority.SKILL_REFINEMENT,
 	schema: skillRefinementSchema,
-	async shouldRun({ runtime }) {
-		return shouldRunRefinement(runtime);
+	async shouldRun({ runtime, message }) {
+		return shouldRunRefinement(runtime, message.id);
 	},
-	async prepare({ runtime }) {
-		const latest = await getLatestTrajectory(runtime);
+	async prepare({ runtime, message }) {
+		const latest = await getLatestTrajectory(runtime, message.id);
 		if (!latest) throw new Error("No trajectory available");
 		const skills = trajectoryUsedSkills(latest.trajectory)
 			.map((name) => {

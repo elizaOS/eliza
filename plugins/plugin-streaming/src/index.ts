@@ -2,7 +2,39 @@
  * @elizaos/plugin-streaming — RTMP destinations (Twitch, YouTube, X, pump.fun, custom/named ingest).
  */
 
+export {
+  getHeadlessCaptureConfig,
+  parseDestinationQuery,
+  readOverlayLayout,
+  readStreamSettings,
+  type StreamVisualSettings,
+  type StreamVoiceSettings,
+  safeDestId,
+  seedOverlayDefaults,
+  validateStreamSettings,
+  writeOverlayLayout,
+  writeStreamSettings,
+} from "./api/stream-persistence.ts";
+export type { StreamRouteState } from "./api/stream-route-state.ts";
+export {
+  detectCaptureMode,
+  ensureXvfb,
+  getActiveDestination,
+  handleStreamRoute,
+} from "./api/stream-routes.ts";
+export {
+  mergeStreamingText,
+  resolveStreamingUpdate,
+  type StreamingUpdate,
+  type StreamingUpdateKind,
+} from "./api/streaming-text.ts";
+export { handleTtsRoutes, type TtsRouteContext } from "./api/tts-routes.ts";
 export * from "./core.ts";
+export {
+  type AudioSource,
+  type StreamConfig,
+  streamManager,
+} from "./services/stream-manager.ts";
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import {

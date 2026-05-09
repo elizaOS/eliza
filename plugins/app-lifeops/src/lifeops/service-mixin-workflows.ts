@@ -55,7 +55,7 @@ import type {
   LifeOpsWorkflowSchedulerState,
 } from "./service-types.js";
 import { LifeOpsServiceError } from "./service-types.js";
-import type { LifeOpsDerivedEvent } from "./sleep-wake-events.js";
+import type { LifeOpsDerivedEvent } from "@elizaos/plugin-health";
 import { addMinutes } from "./time.js";
 
 export interface LifeOpsWorkflowService {

@@ -12,7 +12,7 @@ import {
   type GoalGroundingState,
   mergeGoalGroundingMetadata,
 } from "../../lifeops/goal-grounding.js";
-import { runExtractorPipeline } from "../extractor-pipeline.js";
+import { runExtractorPipeline } from "../../lifeops/llm/extractor-pipeline.js";
 import { recentConversationTexts } from "./recent-context.js";
 
 export const GOAL_GROUNDING_FIELD_VALUES = [

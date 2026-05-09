@@ -77,8 +77,8 @@ import {
   formatOverviewForQuery,
   messageText,
   toActionData,
-} from "./lifeops-google-helpers.js";
-import { normalizeExplicitTimeZoneToken } from "./timezone-normalization.js";
+} from "../lifeops/google/format-helpers.js";
+import { normalizeExplicitTimeZoneToken } from "../lifeops/time/timezone.js";
 
 // ── Types ─────────────────────────────────────────────
 
@@ -2246,11 +2246,11 @@ export const lifeAction: Action & {
         let windowPolicy:
           | CreateLifeOpsDefinitionRequest["windowPolicy"]
           | undefined = editingDeferredDefinitionDraft
-          ? ((detailObject(details, "windowPolicy") as unknown as
+          ? ((detailObject(details, "windowPolicy") as
               | CreateLifeOpsDefinitionRequest["windowPolicy"]
               | undefined) ?? deferredDefinitionDraft?.request.windowPolicy)
           : (deferredDefinitionDraft?.request.windowPolicy ??
-            (detailObject(details, "windowPolicy") as unknown as
+            (detailObject(details, "windowPolicy") as
               | CreateLifeOpsDefinitionRequest["windowPolicy"]
               | undefined));
         const explicitPriority = detailNumber(details, "priority");
@@ -2494,7 +2494,7 @@ export const lifeAction: Action & {
             metadata: definitionMetadata,
             windowPolicy,
             websiteAccess:
-              (detailObject(details, "websiteAccess") as unknown as
+              (detailObject(details, "websiteAccess") as
                 | CreateLifeOpsDefinitionRequest["websiteAccess"]
                 | undefined) ?? deferredDefinitionDraft?.request.websiteAccess,
           },
@@ -2866,7 +2866,7 @@ export const lifeAction: Action & {
           windowPolicy: detailObject(
             details,
             "windowPolicy",
-          ) as unknown as UpdateLifeOpsDefinitionRequest["windowPolicy"],
+          ) as UpdateLifeOpsDefinitionRequest["windowPolicy"],
           reminderPlan: detailObject(
             details,
             "reminderPlan",
@@ -2955,7 +2955,7 @@ export const lifeAction: Action & {
           description: detailString(details, "description"),
           cadence: normalizeCadenceDetail(
             detailObject(details, "cadence"),
-          ) as unknown as UpdateLifeOpsGoalRequest["cadence"],
+          ) as UpdateLifeOpsGoalRequest["cadence"],
           supportStrategy: detailObject(details, "supportStrategy"),
           successCriteria: detailObject(details, "successCriteria"),
         };
@@ -3513,7 +3513,7 @@ export const lifeAction: Action & {
       {
         name: "{{agentName}}",
         content: {
-          text: 'Puedo guardar el hábito "Brush teeth" para la mañana y la noche. Confirma y lo guardo.',
+          text: 'Puedo guardar ese hábito para la mañana y la noche. Confirma y lo guardo.',
           actions: ["LIFE"],
         },
       },

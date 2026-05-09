@@ -10,7 +10,8 @@ import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { CheckinService } from "../lifeops/checkin/checkin-service.js";
 import type { CheckinKind } from "../lifeops/checkin/types.js";
 import { LifeOpsService } from "../lifeops/service.js";
-import { hasLifeOpsAccess, toActionData } from "./lifeops-google-helpers.js";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
+import { toActionData } from "../lifeops/google/format-helpers.js";
 
 type CheckinParams = {
   kind?: CheckinKind | string;

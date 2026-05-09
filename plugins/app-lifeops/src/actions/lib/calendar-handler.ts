@@ -33,6 +33,11 @@ import { TravelTimeUnavailableError } from "../../travel-time/service.js";
 import {
   calendarReadUnavailableMessage,
   calendarWriteUnavailableMessage,
+  getGoogleCapabilityStatus,
+  hasLifeOpsAccess,
+  INTERNAL_URL,
+} from "../../lifeops/access.js";
+import {
   detailArray,
   detailBoolean,
   detailNumber,
@@ -40,15 +45,12 @@ import {
   formatCalendarEventDateTime,
   formatCalendarFeed,
   formatNextEventContext,
-  getGoogleCapabilityStatus,
-  hasLifeOpsAccess,
-  INTERNAL_URL,
   messageText,
   parseLifeOpsJsonRecord,
   runLifeOpsJsonModel,
   runLifeOpsTextModel,
   toActionData,
-} from "../lifeops-google-helpers.js";
+} from "../../lifeops/google/format-helpers.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
 
 type CalendarSubaction =
@@ -579,7 +581,7 @@ async function resolveCalendarLookupBoundaryWithLlm(args: {
     "request: What's my next meeting?",
     "subaction: next_event",
     "",
-    "request: meetings with Sarah this week",
+    "request: meetings with my colleague this week",
     "subaction: search_events",
     "",
     "request: 帰りの便を探して",
@@ -1912,7 +1914,7 @@ export async function extractCalendarPlanWithLlm(
     "When the user supplies timing for a new calendar item, that is usually create_event even if the subject could also be searched later.",
     "",
     "For feed, search_events, trip_window, update_event, or delete_event, infer an exact timeMin/timeMax window when the request names or implies a date or date range.",
-    "For search_events specifically: only set timeMin/timeMax when the user's literal words name a date, day, week, or month. Leave them null for timeless queries like 'find my flight' or 'meetings with Sarah' so the search does not silently narrow away the target event.",
+    "For search_events specifically: only set timeMin/timeMax when the user's literal words name a date, day, week, or month. Leave them null for timeless queries like 'find my flight' or 'meetings with my colleague' so the search does not silently narrow away the target event.",
     "timeMin and timeMax must be ISO 8601 datetimes that the API can use directly.",
     "windowLabel should be a short natural-language label like on monday, this weekend, next month, or tonight.",
     "For search_events, update_event, delete_event, or trip_window, extract up to 3 short search queries.",
@@ -4229,13 +4231,13 @@ export const calendarAction: Action & {
       {
         name: "{{name1}}",
         content: {
-          text: "Need to book 1 hour per day for time with Jill. Any time is fine, ideally before sleep.",
+          text: "Need to book 1 hour per day for time with my partner. Any time is fine, ideally before sleep.",
         },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "I'll create a recurring daily one-hour block with Jill, placed before your sleep window when possible.",
+          text: "I'll create a recurring daily one-hour block, placed before your sleep window when possible.",
         },
       },
     ],

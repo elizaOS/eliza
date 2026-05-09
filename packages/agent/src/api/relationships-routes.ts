@@ -20,6 +20,23 @@ export interface RelationshipsRouteContext extends RouteRequestContext {
 // RelationshipsGraphService surface directly.
 type RelationshipsServiceWithGraph = RelationshipsGraphService;
 
+function isRelationshipsServiceWithGraph(
+  service: unknown,
+): service is RelationshipsServiceWithGraph {
+  return (
+    typeof service === "object" &&
+    service !== null &&
+    typeof (service as { getGraphSnapshot?: unknown }).getGraphSnapshot ===
+      "function" &&
+    typeof (service as { getPersonDetail?: unknown }).getPersonDetail ===
+      "function" &&
+    typeof (service as { getCandidateMerges?: unknown }).getCandidateMerges ===
+      "function" &&
+    typeof (service as { acceptMerge?: unknown }).acceptMerge === "function" &&
+    typeof (service as { rejectMerge?: unknown }).rejectMerge === "function"
+  );
+}
+
 function parseQuery(reqUrl: string | undefined): RelationshipsGraphQuery {
   const url = new URL(reqUrl ?? "/api/relationships/graph", "http://localhost");
   const parseInteger = (
@@ -67,11 +84,8 @@ async function getRelationshipsGraphService(
     await runtimeWithFeatures.enableRelationships();
   }
 
-  return (
-    (runtime.getService(
-      "relationships",
-    ) as unknown as RelationshipsServiceWithGraph | null) ?? null
-  );
+  const service = runtime.getService("relationships");
+  return isRelationshipsServiceWithGraph(service) ? service : null;
 }
 
 type LinkRequestBody = {

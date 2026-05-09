@@ -281,8 +281,8 @@ async function tryRegisterAospLlamaLoader(
   if (process.env.ELIZA_LOCAL_LLAMA?.trim() !== "1") return false;
   try {
     const mod = (await import(
-      "@elizaos/agent"
-    )) as typeof import("@elizaos/agent") & {
+      "@elizaos/plugin-aosp-local-inference"
+    )) as typeof import("@elizaos/plugin-aosp-local-inference") & {
       registerAospLlamaLoader?: (r: AgentRuntime) => Promise<boolean> | boolean;
     };
     if (typeof mod.registerAospLlamaLoader !== "function") {
@@ -315,9 +315,9 @@ async function tryRegisterCapacitorLoader(
     const { registerCapacitorLlamaLoader } = await import(
       "@elizaos/capacitor-llama"
     );
-    registerCapacitorLlamaLoader(
-      runtime as unknown as Parameters<typeof registerCapacitorLlamaLoader>[0],
-    );
+    const capacitorRuntime: Parameters<typeof registerCapacitorLlamaLoader>[0] =
+      Object.create(runtime);
+    registerCapacitorLlamaLoader(capacitorRuntime);
     logger.info(
       "[local-inference] Registered capacitor-llama loader for mobile on-device inference",
     );

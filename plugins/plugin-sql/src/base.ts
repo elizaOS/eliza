@@ -105,6 +105,14 @@ function asMetadata(value: unknown): Metadata | undefined {
   return (value ?? undefined) as Metadata | undefined;
 }
 
+function normalizeAgentBio(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+  if (typeof value === "string" && value.trim()) return [value];
+  return undefined;
+}
+
 type CountMemoriesParams = {
   roomIds?: UUID[];
   unique?: boolean;
@@ -154,6 +162,58 @@ import {
   taskTable,
   worldTable,
 } from "./schema/index";
+
+type AgentRow = typeof agentTable.$inferSelect;
+type AgentMessageExamples = NonNullable<Agent["messageExamples"]>;
+type AgentKnowledge = NonNullable<Agent["knowledge"]>;
+
+function normalizeAgentMessageExamples(messageExamples: unknown): AgentMessageExamples {
+  if (!Array.isArray(messageExamples) || messageExamples.length === 0) {
+    return [];
+  }
+  return messageExamples.flatMap((entry): AgentMessageExamples => {
+    if (Array.isArray(entry)) {
+      return [{ examples: entry }];
+    }
+    if (
+      entry &&
+      typeof entry === "object" &&
+      Array.isArray((entry as { examples?: unknown }).examples)
+    ) {
+      return [entry as AgentMessageExamples[number]];
+    }
+    return [];
+  });
+}
+
+function normalizeAgentKnowledge(knowledge: AgentRow["knowledge"]): AgentKnowledge {
+  return knowledge.flatMap((item): AgentKnowledge => {
+    if (typeof item === "string") {
+      return [{ item: { case: "path", value: item } }];
+    }
+    if (item && typeof item === "object" && typeof item.path === "string") {
+      return [{ item: { case: "path", value: item.path } }];
+    }
+    return [];
+  });
+}
+
+function mapAgentRow(row: AgentRow): Agent {
+  const agent: Agent = {
+    ...row,
+    username: row.username || "",
+    id: row.id as UUID,
+    system: !row.system ? undefined : row.system,
+    bio: normalizeAgentBio(row.bio),
+    messageExamples: normalizeAgentMessageExamples(row.messageExamples),
+    knowledge: normalizeAgentKnowledge(row.knowledge),
+    settings: row.settings as Agent["settings"],
+    createdAt: row.createdAt.getTime(),
+    updatedAt: row.updatedAt.getTime(),
+  };
+  return agent;
+}
+
 import {
   ConnectorAccountStore,
   type ListConnectorAccountAuditEventsParams,
@@ -410,19 +470,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
       if (rows.length === 0) return null;
 
-      const row = rows[0];
-      const agent = {
-        ...row,
-        username: row.username || "",
-        id: row.id as UUID,
-        system: !row.system ? undefined : row.system,
-        bio: agentBioRowsFromDb(row.bio),
-        createdAt: row.createdAt.getTime(),
-        updatedAt: row.updatedAt.getTime(),
-        messageExamples: messageExamplesFromDb(row.messageExamples),
-        knowledge: documentsFromDb(row.knowledge),
-      } as Agent;
-      return agent;
+      return mapAgentRow(rows[0]);
     });
   }
 
@@ -457,20 +505,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     if (agentIds.length === 0) return [];
     return this.withDatabase(async () => {
       const rows = await this.db.select().from(agentTable).where(inArray(agentTable.id, agentIds));
-      return rows.map((row) => {
-        const agent = {
-          ...row,
-          username: row.username || "",
-          id: row.id as UUID,
-          system: !row.system ? undefined : row.system,
-          bio: agentBioRowsFromDb(row.bio),
-          createdAt: row.createdAt.getTime(),
-          updatedAt: row.updatedAt.getTime(),
-          messageExamples: messageExamplesFromDb(row.messageExamples),
-          knowledge: documentsFromDb(row.knowledge),
-        } as Agent;
-        return agent;
-      });
+      return rows.map((row) => mapAgentRow(row));
     });
   }
 

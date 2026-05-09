@@ -12,6 +12,22 @@ const CONSOLE_LOG_PATCH_MARK = Symbol.for("elizaos.test.consoleLogPatched");
 const MEDIA_PATCH_MARK = Symbol.for("elizaos.test.mediaMocksInstalled");
 const AUDIO_PATCH_MARK = Symbol.for("elizaos.test.audioMocksInstalled");
 
+interface AudioShimConstructor {
+	new (src?: string): HTMLAudioElement;
+}
+
+type PatchedAudioConstructor = AudioShimConstructor & {
+	[AUDIO_PATCH_MARK]?: boolean;
+};
+
+function isPatchedAudioConstructor(
+	value: unknown,
+): value is PatchedAudioConstructor {
+	return (
+		typeof value === "function" && Reflect.get(value, AUDIO_PATCH_MARK) === true
+	);
+}
+
 /**
  * Create an in-memory Storage implementation backed by a Map.
  */
@@ -208,12 +224,10 @@ export function installMediaElementShims(): void {
 	}
 
 	const globalObject = globalThis as typeof globalThis & {
-		Audio?: typeof Audio & {
-			[AUDIO_PATCH_MARK]?: boolean;
-		};
+		Audio?: AudioShimConstructor;
 	};
 	if (typeof document === "undefined") return;
-	if (globalObject.Audio?.[AUDIO_PATCH_MARK]) return;
+	if (isPatchedAudioConstructor(globalObject.Audio)) return;
 
 	const AudioShim = function AudioShim(src?: string) {
 		const audio = document.createElement("audio");
@@ -221,10 +235,12 @@ export function installMediaElementShims(): void {
 			audio.src = src;
 		}
 		return audio;
-	} as unknown as typeof Audio & {
-		[AUDIO_PATCH_MARK]?: boolean;
 	};
-	AudioShim[AUDIO_PATCH_MARK] = true;
+	Object.defineProperty(AudioShim, AUDIO_PATCH_MARK, {
+		value: true,
+		writable: true,
+		configurable: true,
+	});
 
 	Object.defineProperty(globalObject, "Audio", {
 		value: AudioShim,

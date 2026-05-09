@@ -15,7 +15,7 @@ packages/prompts/
 │   ├── choose_option.ts
 │   ├── image_generation.ts
 │   └── ...
-├── specs/            # Action specs (JSON)
+├── specs/            # Canonical merged action/provider specs (JSON) + generated plugins.generated.json
 └── scripts/          # Spec + docs generators
     ├── generate-action-docs.js
     ├── generate-plugin-action-spec.js
@@ -32,6 +32,10 @@ Prompts use Handlebars-style variables:
 - `{{#if condition}}...{{/if}}` - conditional
 
 Use camelCase for variables (`{{agentName}}`, `{{providers}}`, `{{recentMessages}}`).
+
+## Plugin-local `prompts/*.json` (under `plugins/**`)
+
+Some plugins keep **hand-edited** `actions.json` / `evaluators.json` / `providers.json` next to their source. Those files feed **per-plugin codegen** (for example `generated/specs/spec-helpers.ts` via each plugin’s own workflow). They are **not** inputs to `scripts/generate-plugin-action-spec.js`, which instead scans `plugins/**/*.ts` for `export const …: Action` blocks and writes `specs/actions/plugins.generated.json`.
 
 ## Building
 
@@ -76,4 +80,4 @@ const prompt = composePrompt({
 npm run check:secrets
 ```
 
-Scans `packages/prompts/src/**/*.ts` and `plugins/**/prompts/**/*.ts` for credential-like strings.
+Scans `packages/prompts/src/**/*.ts`, plugin prompt TS modules (paths matching `prompts/**/*.ts`, `workflow-prompts/**/*.ts`, etc.), and a few explicit files — see `scripts/check-secrets.js`.

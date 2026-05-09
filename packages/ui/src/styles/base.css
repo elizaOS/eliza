@@ -275,7 +275,11 @@ body.desktop {
 
 /* ─── Mobile (native iOS / Android) lockdown ───
    The native shell is a fixed-viewport app: no pinch zoom, no rubber-band
-   bounce, no two-finger drag, no callout/long-press menu, no scrollbars. */
+   bounce, no two-finger drag, no callout/long-press menu, no scrollbars.
+   Safe-area padding is applied at `#root` (see `styles.css`) instead of
+   here — `#root` is locked to `100dvh` so body-level padding wouldn't
+   shrink the React tree's flex container, and inner shells would still
+   render under the status bar. */
 body.native,
 body.platform-ios,
 body.platform-android {

@@ -9,7 +9,8 @@ import type {
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import type { LifeOpsScheduleInspection } from "../lifeops/schedule-insight.js";
 import { LifeOpsService } from "../lifeops/service.js";
-import { hasLifeOpsAccess, toActionData } from "./lifeops-google-helpers.js";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
+import { toActionData } from "../lifeops/google/format-helpers.js";
 
 type ScheduleSubaction = "summary" | "inspect";
 

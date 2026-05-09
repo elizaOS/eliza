@@ -18,7 +18,7 @@ import {
   StatusBadge,
   Switch,
 } from "@elizaos/cloud-ui";
-import Image from "@elizaos/cloud-ui/runtime/image";
+import { Image } from "@elizaos/cloud-ui";
 import {
   Copy,
   Globe,

@@ -1,10 +1,42 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const aiMocks = vi.hoisted(() => ({
   generateText: vi.fn(),
   streamText: vi.fn(),
 }));
+
+// `getSetting` in utils/config falls back to `process.env` when the runtime
+// stub returns undefined. The repo-root `.env` is auto-loaded by bun (and
+// re-injected on dynamic import), so a developer or CI environment with
+// `OPENAI_BASE_URL=https://api.cerebras.ai/v1` or `OPENAI_SMALL_MODEL=...`
+// flips the Cerebras codepath / overrides the model default. We use
+// `vi.stubEnv` to pin env vars deterministically — vitest restores them
+// in `vi.unstubAllEnvs`, and the stubs survive bun's dotenv re-injection.
+//
+// `OPENAI_BASE_URL` is pinned to a non-Cerebras URL (rather than empty)
+// because empty strings short-circuit `getSetting` to `""`, which is not
+// the same as "unset" for downstream callers.
+const ENV_KEYS_TO_CLEAR = [
+  "MILADY_PROVIDER",
+  "CEREBRAS_API_KEY",
+  "OPENAI_SMALL_MODEL",
+  "SMALL_MODEL",
+  "OPENAI_LARGE_MODEL",
+  "LARGE_MODEL",
+  "OPENAI_RESPONSE_HANDLER_MODEL",
+  "OPENAI_SHOULD_RESPOND_MODEL",
+  "RESPONSE_HANDLER_MODEL",
+  "SHOULD_RESPOND_MODEL",
+] as const;
+
+beforeEach(() => {
+  vi.stubEnv("OPENAI_BASE_URL", "https://api.openai.com/v1");
+  vi.stubEnv("OPENAI_API_KEY", "test-key");
+  for (const key of ENV_KEYS_TO_CLEAR) {
+    vi.stubEnv(key, undefined);
+  }
+});
 
 vi.mock("ai", () => ({
   generateText: aiMocks.generateText,
@@ -63,6 +95,7 @@ function expectNativeTextResult(value: unknown): asserts value is Record<string,
 }
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.clearAllMocks();
 });
 

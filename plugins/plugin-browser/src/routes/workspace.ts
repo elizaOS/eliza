@@ -21,7 +21,7 @@ import {
   openBrowserWorkspaceTab,
   showBrowserWorkspaceTab,
   snapshotBrowserWorkspaceTab,
-} from "@elizaos/plugin-browser/workspace";
+} from "../workspace/index.js";
 import {
   assertBrowserWorkspaceCommandConnectorAccountGate,
   assertBrowserWorkspaceConnectorAccountGate,

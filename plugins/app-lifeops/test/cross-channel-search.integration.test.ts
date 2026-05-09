@@ -134,31 +134,31 @@ beforeAll(async () => {
   // room even though the surrounding text is different per platform.
   await seedMessage({
     platform: "discord",
-    speakerName: "Jill",
+    speakerName: "PartnerOne",
     text: "ProjectAtlas timeline slipped again — we need to regroup before Friday.",
     ageMs: 60_000,
   });
   await seedMessage({
     platform: "telegram",
-    speakerName: "Jill",
+    speakerName: "PartnerOne",
     text: "Just sent you the ProjectAtlas milestone doc, please review tonight.",
     ageMs: 30_000,
   });
   await seedMessage({
     platform: "imessage",
-    speakerName: "Jill",
+    speakerName: "PartnerOne",
     text: "Heads up: ProjectAtlas standup is moving to 9am tomorrow.",
     ageMs: 10_000,
   });
   await seedMessage({
     platform: "signal",
-    speakerName: "Jill",
+    speakerName: "PartnerOne",
     text: "ProjectAtlas Signal fallback thread has the vendor call note.",
     ageMs: 8_000,
   });
   await seedMessage({
     platform: "whatsapp",
-    speakerName: "Jill",
+    speakerName: "PartnerOne",
     text: "ProjectAtlas WhatsApp room has the launch checklist screenshot.",
     ageMs: 6_000,
   });

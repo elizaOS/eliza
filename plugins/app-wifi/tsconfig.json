@@ -21,6 +21,8 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
+      "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],

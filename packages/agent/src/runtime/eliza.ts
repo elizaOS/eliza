@@ -125,9 +125,14 @@ type AppCoreRuntimeModule = {
 };
 
 async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
-  const moduleId = "@elizaos/app-core";
+  // Use a string-literal dynamic import (no indirection through a `const`)
+  // so Bun.build can statically follow it and inline `@elizaos/app-core`
+  // into the mobile bundle. The previous indirect form
+  // (`const moduleId = "@elizaos/app-core"; import(moduleId)`) defeated
+  // Bun's resolver and produced a runtime `Cannot find module` on AOSP
+  // where there is no node_modules tree.
   return import(
-    /* webpackIgnore: true */ moduleId
+    /* webpackIgnore: true */ "@elizaos/app-core"
   ) as Promise<AppCoreRuntimeModule>;
 }
 
@@ -139,8 +144,7 @@ import {
 } from "./model-resolution.js";
 
 const ELIZAMAKER_MODULE: string = "@elizaos/app-elizamaker";
-const STEWARD_EVM_BRIDGE_MODULE: string =
-  "@elizaos/app-steward/services/steward-evm-bridge";
+const STEWARD_EVM_BRIDGE_MODULE: string = "@elizaos/app-steward";
 
 type ElizaMakerModule = {
   initializeOGCode?: () => void;
@@ -197,7 +201,6 @@ import {
 } from "../shared/workspace-resolution.js";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
 import { seedBundledDocuments } from "./default-documents.js";
-import discordLocalPlugin from "./discord-local-plugin.js";
 import { createElizaPlugin } from "./eliza-plugin.js";
 import { detectEmbeddingPreset } from "./embedding-presets.js";
 import {
@@ -270,9 +273,8 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
 // Solution: lazy-load and memoize each module, and register the static map
 // inside `ensureCoreStaticPluginsRegistered()` which is awaited from every
 // runtime entry point (`startEliza`, `startInCloudMode`).
-let _pluginSqlPromise:
-  | Promise<typeof import("@elizaos/plugin-sql")>
-  | null = null;
+let _pluginSqlPromise: Promise<typeof import("@elizaos/plugin-sql")> | null =
+  null;
 async function getPluginSql(): Promise<typeof import("@elizaos/plugin-sql")> {
   if (!_pluginSqlPromise) {
     _pluginSqlPromise = loadRequiredPluginSql();
@@ -280,9 +282,9 @@ async function getPluginSql(): Promise<typeof import("@elizaos/plugin-sql")> {
   return _pluginSqlPromise;
 }
 
-let _pluginLocalEmbeddingPromise:
-  | Promise<typeof import("@elizaos/plugin-local-embedding") | null>
-  | null = null;
+let _pluginLocalEmbeddingPromise: Promise<
+  typeof import("@elizaos/plugin-local-embedding") | null
+> | null = null;
 async function getPluginLocalEmbedding(): Promise<
   typeof import("@elizaos/plugin-local-embedding") | null
 > {
@@ -380,7 +382,6 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       // `@elizaos/app-lifeops` and `@elizaos/app-companion` are intentionally
       // omitted from the static map — see the comment near the top of this file.
       // They resolve via headless dynamic-import entrypoints in plugin-resolver.ts.
-      "@elizaos/plugin-discord-local": discordLocalPlugin,
       // personality: now built-in advanced capability (advancedCapabilities: true)
     });
     _coreStaticPluginsRegistered = true;
@@ -3444,7 +3445,7 @@ export async function startEliza(
   if (process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
     try {
       const { ensureAospLocalInferenceHandlers } = await import(
-        "./aosp-local-inference-bootstrap.js"
+        "@elizaos/plugin-aosp-local-inference"
       );
       await ensureAospLocalInferenceHandlers(runtime);
     } catch (err) {
@@ -3455,7 +3456,7 @@ export async function startEliza(
   } else if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1") {
     try {
       const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-        "./mobile-device-bridge-bootstrap.js"
+        "@elizaos/plugin-capacitor-bridge"
       );
       await ensureMobileDeviceBridgeInferenceHandlers(runtime);
     } catch (err) {
@@ -4381,6 +4382,12 @@ export async function startEliza(
  * Start in cloud mode — connect to a remote cloud agent via the thin client.
  * Skips all local runtime construction (plugins, database, etc.).
  */
+type CloudRuntimeProxyLike = {
+  agentName: string;
+  handleChatMessageStream: (text: string) => AsyncIterable<string>;
+  handleChatMessage: (text: string) => Promise<string>;
+};
+
 export async function startInCloudMode(
   config: ElizaConfig,
   agentId: string,
@@ -4410,7 +4417,7 @@ export async function startInCloudMode(
 
   try {
     await manager.init();
-    const proxy = await manager.connect(agentId);
+    const proxy = (await manager.connect(agentId)) as CloudRuntimeProxyLike;
 
     if (opts?.headless || opts?.serverOnly) {
       // In headless/server mode, start the API server with the cloud proxy.

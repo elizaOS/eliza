@@ -107,6 +107,7 @@ export type {
   DesktopWindowInfo,
 } from "./services/desktop-control.js";
 export { handleComputerUseRoutes } from "./routes/computer-use-routes.js";
+export { handleSandboxRoute } from "./routes/sandbox-routes.js";
 // Re-export types for consumers
 export type {
   ActionHistoryEntry,
@@ -142,3 +143,4 @@ export type {
   WindowActionType,
   WindowInfo,
 } from "./types.js";
+export * from "./register-routes.js";

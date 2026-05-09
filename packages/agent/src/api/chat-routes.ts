@@ -27,6 +27,13 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import {
+  getLocalInferenceChatStatus,
+  handleLocalInferenceChatCommand,
+  type LocalInferenceChatMetadata,
+  type LocalInferenceCommandIntent,
+} from "@elizaos/plugin-local-inference";
+import { resolveStreamingUpdate } from "@elizaos/plugin-streaming";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { asRecord, normalizeCharacterLanguage } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
@@ -60,12 +67,6 @@ import {
   isInsufficientCreditsMessage,
 } from "./credit-detection.js";
 import {
-  getLocalInferenceChatStatus,
-  handleLocalInferenceChatCommand,
-  type LocalInferenceChatMetadata,
-  type LocalInferenceCommandIntent,
-} from "./local-inference-routes.js";
-import {
   buildWalletActionNotExecutedReply,
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
@@ -80,7 +81,6 @@ import {
   trimWalletProgressPrefix,
   validateChatImages,
 } from "./server-helpers.js";
-import { resolveStreamingUpdate } from "./streaming-text.js";
 
 const CHAT_MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB (image-capable)
 
@@ -1559,7 +1559,7 @@ export async function generateChatResponse(
                   text: localResult.text,
                   source: "client_chat",
                   actions: ["REPLY"],
-                  localInference: localResult.localInference as unknown as
+                  localInference: localResult.localInference as
                     | Record<string, unknown>
                     | undefined,
                   failureKind:
@@ -1567,7 +1567,7 @@ export async function generateChatResponse(
                     localResult.localInference.status === "no_space"
                       ? "local_inference"
                       : undefined,
-                } as unknown as Content,
+                } as Content,
                 responseMessages: [],
               } as typeof result;
               responseText = localResult.text;

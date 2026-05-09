@@ -62,6 +62,7 @@ export type {
 } from "./contracts";
 export { Broadcast } from "./core";
 export type { CrossFadeOptions, QueuedTrack } from "./queue";
+export { tryHandleMusicPlayerStatusFallback } from "./route-fallback";
 export {
   type AudioRouteConfig,
   AudioRouter,

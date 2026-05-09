@@ -388,6 +388,7 @@ describe("Agent Runtime E2E", () => {
 
   const corePluginNames = [
     "@elizaos/plugin-agent-skills",
+    "@elizaos/plugin-workflow",
     // NOTE: @elizaos/plugin-commands is excluded — commented out as "not yet ready" in core-plugins.ts
   ];
 
@@ -609,7 +610,11 @@ describe("Agent Runtime E2E", () => {
       "built-in advanced personality capabilities are registered",
       () => {
         expect(
-          runtime.actions.some((action) => action.name === "MODIFY_CHARACTER"),
+          runtime.actions.some(
+            (action) =>
+              action.name === "CHARACTER" ||
+              action.similes?.includes("MODIFY_CHARACTER"),
+          ),
         ).toBe(true);
       },
     );

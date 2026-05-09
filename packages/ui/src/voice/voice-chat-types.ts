@@ -41,10 +41,26 @@ export interface WindowWithSpeechRecognition extends Window {
   webkitSpeechRecognition?: SpeechRecognitionCtor;
 }
 
+function isSpeechRecognitionCtor(
+  value: unknown,
+): value is SpeechRecognitionCtor {
+  return typeof value === "function" && "prototype" in value;
+}
+
 /** Access browser SpeechRecognition APIs which may live under a vendor prefix. */
 export function getSpeechRecognitionCtor(): SpeechRecognitionCtor | undefined {
-  const w = window as WindowWithSpeechRecognition;
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition;
+  const speechRecognition: unknown = Reflect.get(window, "SpeechRecognition");
+  if (isSpeechRecognitionCtor(speechRecognition)) {
+    return speechRecognition;
+  }
+
+  const webkitSpeechRecognition: unknown = Reflect.get(
+    window,
+    "webkitSpeechRecognition",
+  );
+  return isSpeechRecognitionCtor(webkitSpeechRecognition)
+    ? webkitSpeechRecognition
+    : undefined;
 }
 
 // ── Public types ──────────────────────────────────────────────────────

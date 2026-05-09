@@ -9,3 +9,4 @@ export * from "./VincentAppView";
 export * from "./VincentConnectionCard";
 export { VINCENT_APP_NAME, vincentApp } from "./vincent-app";
 export * from "./WalletStatusCard";
+export * from "./register";

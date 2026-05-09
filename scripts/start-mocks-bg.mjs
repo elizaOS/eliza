@@ -45,7 +45,7 @@ const ENV_LIST = [
   "github",
   "cloud-managed",
   "lifeops-presence",
-  "lifeops-samantha",
+  "lifeops-presence-active",
 ];
 
 fs.mkdirSync(tmpDir, { recursive: true });

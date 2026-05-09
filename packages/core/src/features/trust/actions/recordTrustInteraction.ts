@@ -6,7 +6,7 @@ import type {
 	State,
 	UUID,
 } from "../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 import { parseJSONObjectFromText } from "../../../utils.ts";
 import type { TrustEngineServiceWrapper } from "../services/wrappers.ts";
 import { TrustEvidenceType, type TrustInteraction } from "../types/trust.ts";
@@ -61,7 +61,7 @@ export const recordTrustInteractionAction: ElizaAction = {
 				typeof params.type === "string" && params.type.trim().length > 0;
 			return (
 				hasStructuredType ||
-				hasActionContextOrKeyword(message, state, {
+				hasActionContext(message, state, {
 					contexts: ["admin", "settings", "agent_internal"],
 					keywords: [
 						"record trust",

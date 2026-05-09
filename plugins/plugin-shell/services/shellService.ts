@@ -138,7 +138,7 @@ export class ShellService extends Service {
     }
 
     // Sandbox remote mode: route to host capability API
-    if (this.runtime && (this.runtime as unknown as Record<string, unknown>).sandboxMode) {
+    if (this.runtime && "sandboxMode" in this.runtime && this.runtime.sandboxMode) {
       const hostApiUrl =
         (this.runtime.getSetting("SANDBOX_HOST_API_URL") as string | null) ??
         "http://localhost:2138";

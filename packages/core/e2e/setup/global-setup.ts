@@ -130,13 +130,31 @@ function applyProviderSettings(
 	providerName: string,
 ): void {
 	switch (providerName) {
-		case "openai":
+		case "openai": {
 			runtime.setSetting(
 				"OPENAI_API_KEY",
 				process.env.OPENAI_API_KEY ?? "",
 				true,
 			);
+			const apiKey = (process.env.OPENAI_API_KEY ?? "").trim();
+			const explicitBase = process.env.OPENAI_BASE_URL?.trim();
+			if (explicitBase) {
+				runtime.setSetting("OPENAI_BASE_URL", explicitBase, true);
+			} else if (/^csk-/i.test(apiKey)) {
+				// Cerebras keys are OpenAI-compatible but must not hit api.openai.com.
+				runtime.setSetting(
+					"OPENAI_BASE_URL",
+					"https://api.cerebras.ai/v1",
+					true,
+				);
+				runtime.setSetting("MILADY_PROVIDER", "cerebras", true);
+			}
+			const explicitMiladyProvider = process.env.MILADY_PROVIDER?.trim();
+			if (explicitMiladyProvider) {
+				runtime.setSetting("MILADY_PROVIDER", explicitMiladyProvider, true);
+			}
 			break;
+		}
 		case "anthropic":
 			runtime.setSetting(
 				"ANTHROPIC_API_KEY",

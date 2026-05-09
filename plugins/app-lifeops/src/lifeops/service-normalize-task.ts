@@ -82,7 +82,7 @@ function normalizeCreateTaskRequest(
     `${field}.windowPolicy`,
   );
   if (windowPolicy) {
-    request.windowPolicy = windowPolicy as unknown as LifeOpsWindowPolicy;
+    request.windowPolicy = windowPolicy as LifeOpsWindowPolicy;
   }
   const progressionRule = normalizeOptionalRecord(
     input.progressionRule,
@@ -98,7 +98,7 @@ function normalizeCreateTaskRequest(
         : (requireRecord(
             input.websiteAccess,
             `${field}.websiteAccess`,
-          ) as unknown as LifeOpsWebsiteAccessPolicy);
+          ) as LifeOpsWebsiteAccessPolicy);
   }
   if (input.reminderPlan !== undefined) {
     request.reminderPlan =

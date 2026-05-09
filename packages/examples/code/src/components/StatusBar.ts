@@ -10,8 +10,6 @@ export class StatusBar implements Component {
   invalidate(): void {}
 
   render(width: number): string[] {
-    this.width = width;
-
     // Periodically update CWD
     const now = Date.now();
     if (now - this.lastCwdCheck > 500) {

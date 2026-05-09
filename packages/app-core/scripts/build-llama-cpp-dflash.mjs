@@ -688,6 +688,9 @@ template [[host_name("kernel_set_rows_turbo4_i32")]] kernel set_rows_turbo4_t ke
 // See local-inference/kernels/README.md.
 function patchVulkanKernels(cacheDir) {
   if (process.env.ELIZA_DFLASH_PATCH_VULKAN_KERNELS !== "1") return;
+  console.warn(
+    "[dflash-build] WARNING: ELIZA_DFLASH_PATCH_VULKAN_KERNELS=1 injects DRAFT Vulkan shaders that are KNOWN-BROKEN on Mesa llvmpipe (0/8 numerical match). Run kernels/verify/vulkan_verify against the resulting build before trusting it. See local-inference/kernels/README.md.",
+  );
   const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
   const srcDir = path.join(repoRoot, "local-inference", "kernels", "vulkan");
   if (!fs.existsSync(srcDir)) {

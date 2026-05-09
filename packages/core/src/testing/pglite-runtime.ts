@@ -49,14 +49,24 @@ type TrajectoryWriteService = {
 	writeQueues?: Map<string, Promise<void>>;
 };
 
+type TrajectoryStorageModule = {
+	flushTrajectoryWrites?: (runtime: AgentRuntime) => Promise<void>;
+};
+
+type RuntimePluginModule = {
+	default?: Plugin;
+	elizaPlugin?: Plugin;
+};
+
 async function flushPendingTrajectoryWrites(
 	runtime: AgentRuntime,
 ): Promise<void> {
 	try {
-		const { flushTrajectoryWrites } = await import(
-			"../../../agent/src/runtime/trajectory-storage"
-		);
-		await flushTrajectoryWrites(runtime);
+		const modulePath = "../../../agent/src/runtime/trajectory-storage";
+		const { flushTrajectoryWrites } = (await import(
+			modulePath
+		)) as TrajectoryStorageModule;
+		await flushTrajectoryWrites?.(runtime);
 	} catch {
 		// Best effort only. Some test runtimes do not register this helper.
 	}
@@ -110,7 +120,13 @@ export async function createTestRuntime(
 		enableAutonomy: false,
 	});
 
-	const { default: pluginSql } = await import("@elizaos/plugin-sql");
+	const pluginSqlModule = (await import(
+		["@elizaos", "plugin-sql"].join("/")
+	)) as RuntimePluginModule;
+	const pluginSql = pluginSqlModule.default ?? pluginSqlModule.elizaPlugin;
+	if (!pluginSql) {
+		throw new Error("plugin-sql did not export a plugin");
+	}
 	await runtime.registerPlugin(pluginSql);
 	for (const plugin of options?.plugins ?? []) {
 		await runtime.registerPlugin(plugin);

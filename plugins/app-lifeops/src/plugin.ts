@@ -10,11 +10,15 @@ import { appBlockAction } from "./actions/app-block.js";
 import { autofillAction } from "./actions/autofill.js";
 import { bookTravelAction } from "./actions/book-travel.js";
 import { calendarAction } from "./actions/calendar.js";
+import { calendlyAction } from "./actions/lib/calendly-handler.js";
 import { checkinAction } from "./actions/checkin.js";
 import { connectorAction } from "./actions/connector.js";
 import { deviceIntentAction } from "./actions/device-intent.js";
+import { firstRunAction } from "./actions/first-run.js";
 import { healthAction } from "./actions/health.js";
 import { lifeAction } from "./actions/life.js";
+import { lifeOpsPauseAction } from "./actions/lifeops-pause.js";
+import { messageHandoffAction } from "./actions/message-handoff.js";
 import { passwordManagerAction } from "./actions/password-manager.js";
 import { paymentsAction } from "./actions/payments.js";
 import { profileAction } from "./actions/profile.js";
@@ -22,6 +26,7 @@ import { relationshipAction } from "./actions/relationship.js";
 import { remoteDesktopAction } from "./actions/remote-desktop.js";
 import { resolveRequestAction } from "./actions/resolve-request.js";
 import { scheduleAction } from "./actions/schedule.js";
+import { schedulingNegotiationAction } from "./actions/scheduling-negotiation.js";
 import { screenTimeAction } from "./actions/screen-time.js";
 import { subscriptionsAction } from "./actions/subscriptions.js";
 import { toggleFeatureAction } from "./actions/toggle-feature.js";
@@ -39,12 +44,26 @@ import {
   FOLLOWUP_TRACKER_TASK_NAME,
   registerFollowupTrackerWorker,
 } from "./followup/index.js";
+import {
+  createChannelRegistry,
+  registerChannelRegistry,
+  registerDefaultChannelPack,
+} from "./lifeops/channels/index.js";
+import {
+  createConnectorRegistry,
+  registerConnectorRegistry,
+  registerDefaultConnectorPack,
+} from "./lifeops/connectors/index.js";
 import { BrowserBridgeAdapter } from "./lifeops/messaging/adapters/browser-bridge-adapter.js";
 import { CalendlyAdapter } from "./lifeops/messaging/adapters/calendly-adapter.js";
 import { LifeOpsGmailAdapter } from "./lifeops/messaging/adapters/gmail-adapter.js";
 import { XDmAdapter } from "./lifeops/messaging/adapters/x-dm-adapter.js";
 import { createOwnerSendPolicy } from "./lifeops/messaging/owner-send-policy.js";
 import { LifeOpsRepository } from "./lifeops/repository.js";
+import {
+  createSendPolicyRegistry,
+  registerSendPolicyRegistry,
+} from "./lifeops/send-policy/index.js";
 // LifeOps runtime (scheduler task worker + registration)
 import {
   ensureLifeOpsSchedulerTask,
@@ -59,9 +78,13 @@ import { appBlockerProvider } from "./providers/app-blocker.js";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.js";
 
 // LifeOps core providers
+import { firstRunProvider } from "./providers/first-run.js";
 import { healthProvider } from "./providers/health.js";
 import { inboxTriageProvider } from "./providers/inbox-triage.js";
 import { lifeOpsProvider } from "./providers/lifeops.js";
+import { pendingPromptsProvider } from "./providers/pending-prompts.js";
+import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
+import { roomPolicyProvider } from "./providers/room-policy.js";
 import { websiteBlockerProvider } from "./providers/website-blocker.js";
 import { BrowserBridgePluginService } from "./service.js";
 import {
@@ -272,10 +295,15 @@ const rawAppLifeOpsPlugin: Plugin = {
     releaseBlockAction,
     appBlockAction,
     calendarAction,
+    calendlyAction,
+    schedulingNegotiationAction,
     checkinAction,
     resolveRequestAction,
     deviceIntentAction,
+    firstRunAction,
     lifeAction,
+    lifeOpsPauseAction,
+    messageHandoffAction,
     bookTravelAction,
     profileAction,
     relationshipAction,
@@ -296,7 +324,11 @@ const rawAppLifeOpsPlugin: Plugin = {
     browserBridgeProvider,
     websiteBlockerProvider,
     appBlockerProvider,
+    firstRunProvider,
+    roomPolicyProvider,
     lifeOpsProvider,
+    pendingPromptsProvider,
+    recentTaskStatesProvider,
     healthProvider,
     inboxTriageProvider,
     crossChannelContextProvider,
@@ -326,6 +358,19 @@ const rawAppLifeOpsPlugin: Plugin = {
         `[selfcontrol] Plugin loaded, but local website blocking is unavailable: ${status.reason ?? "unknown reason"}`,
       );
     }
+
+    // W1-F connector / channel / send-policy registries; W2-B populates the
+    // default packs with the 10 connector contributions and the 13 channels.
+    const connectorRegistry = createConnectorRegistry();
+    registerDefaultConnectorPack(connectorRegistry, runtime);
+    registerConnectorRegistry(runtime, connectorRegistry);
+
+    const channelRegistry = createChannelRegistry();
+    registerDefaultChannelPack(channelRegistry, runtime);
+    registerChannelRegistry(runtime, channelRegistry);
+
+    const sendPolicyRegistry = createSendPolicyRegistry();
+    registerSendPolicyRegistry(runtime, sendPolicyRegistry);
 
     // Owner outbound-message approval policy: gmail drafts require explicit
     // owner approval; everything else passes straight through.
@@ -516,11 +561,125 @@ export {
   resolveLifeOpsTaskIntervalMs,
 } from "./lifeops/runtime.js";
 export { appBlockerProvider } from "./providers/app-blocker.js";
+export { firstRunProvider } from "./providers/first-run.js";
+export type { FirstRunAffordance } from "./providers/first-run.js";
 export { healthProvider } from "./providers/health.js";
 export { inboxTriageProvider } from "./providers/inbox-triage.js";
 export { lifeOpsProvider } from "./providers/lifeops.js";
+export {
+  createPendingPromptsProvider,
+  pendingPromptsProvider,
+} from "./providers/pending-prompts.js";
+export type {
+  PendingPrompt,
+  PendingPromptsProvider,
+} from "./providers/pending-prompts.js";
+export {
+  createRecentTaskStatesProvider,
+  recentTaskStatesProvider,
+} from "./providers/recent-task-states.js";
+export type {
+  RecentTaskStatesProvider,
+  RecentTaskStatesSummary,
+} from "./providers/recent-task-states.js";
+export { firstRunAction } from "./actions/first-run.js";
+export { lifeOpsPauseAction } from "./actions/lifeops-pause.js";
+export {
+  createGlobalPauseStore,
+  type GlobalPauseStore,
+  type GlobalPauseStatus,
+  type GlobalPauseWindow,
+} from "./lifeops/global-pause/store.js";
+export {
+  createHandoffStore,
+  describeResumeCondition,
+  evaluateResume,
+  type HandoffEnterOpts,
+  type HandoffStatus,
+  type HandoffStore,
+  type ResumeCondition,
+  type ResumeEvaluation,
+  type ResumeEvaluationInput,
+} from "./lifeops/handoff/store.js";
+export { messageHandoffAction } from "./actions/message-handoff.js";
+export { roomPolicyProvider } from "./providers/room-policy.js";
+export {
+  createPendingPromptsStore,
+  type PendingPromptsStore,
+  type PendingPromptRecordInput,
+} from "./lifeops/pending-prompts/store.js";
+export {
+  FirstRunService,
+  setScheduledTaskRunner,
+  type ScheduledTaskRunnerLike,
+} from "./lifeops/first-run/service.js";
+export {
+  createOwnerFactStore,
+  createFirstRunStateStore,
+  type FirstRunRecord,
+  type FirstRunStateStore,
+  type OwnerFactStore,
+  type OwnerFacts,
+  type OwnerFactsPatch,
+} from "./lifeops/first-run/state.js";
 export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
 export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
 export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
 export { handleWebsiteBlockerRoutes } from "./routes/website-blocker-routes.js";
+// W1-A — ScheduledTask spine. Source of truth:
+// `docs/audit/wave1-interfaces.md` §1.
+// Other Wave-1 agents import from `@elizaos/app-lifeops` to consume
+// these types and the runtime wiring helper.
+export {
+  createAnchorRegistry,
+  createCompletionCheckRegistry,
+  createConsolidationRegistry,
+  createEscalationLadderRegistry,
+  createInMemoryScheduledTaskLogStore,
+  createInMemoryScheduledTaskStore,
+  createScheduledTaskRunner,
+  createTaskGateRegistry,
+  DEFAULT_ESCALATION_LADDERS,
+  PRIORITY_DEFAULT_LADDER_KEYS,
+  registerBuiltInCompletionChecks,
+  registerBuiltInGates,
+  registerDefaultEscalationLadders,
+  registerStubAnchors,
+  STATE_LOG_DEFAULT_RETENTION_DAYS,
+} from "./lifeops/scheduled-task/index.js";
+export type {
+  AnchorContribution,
+  AnchorConsolidationPolicy,
+  AnchorRegistry,
+  CompletionCheckContribution,
+  CompletionCheckRegistry,
+  EscalationLadder,
+  EscalationLadderRegistry,
+  EscalationStep,
+  GateDecision,
+  ScheduledTask,
+  ScheduledTaskCompletionCheck,
+  ScheduledTaskContextRequest,
+  ScheduledTaskEscalation,
+  ScheduledTaskFilter,
+  ScheduledTaskKind,
+  ScheduledTaskLogEntry,
+  ScheduledTaskOutput,
+  ScheduledTaskPipeline,
+  ScheduledTaskPriority,
+  ScheduledTaskRef,
+  ScheduledTaskRunner,
+  ScheduledTaskRunnerHandle,
+  ScheduledTaskShouldFire,
+  ScheduledTaskState,
+  ScheduledTaskStatus,
+  ScheduledTaskSubject,
+  ScheduledTaskTrigger,
+  ScheduledTaskVerb,
+  TaskGateContribution,
+  TaskGateRegistry,
+  TerminalState,
+} from "./lifeops/scheduled-task/index.js";
+export { createRuntimeScheduledTaskRunner } from "./lifeops/scheduled-task/runtime-wiring.js";
+export type { CreateRuntimeRunnerOptions } from "./lifeops/scheduled-task/runtime-wiring.js";
 export { BrowserBridgePluginService, browserBridgeProvider };

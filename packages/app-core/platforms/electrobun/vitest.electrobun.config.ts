@@ -41,6 +41,10 @@ export default defineConfig({
 				find: /^bun:ffi$/,
 				replacement: path.resolve(__dirname, "src/__stubs__/bun-ffi.ts"),
 			},
+			{
+				find: /^electrobun\/bun$/,
+				replacement: path.resolve(__dirname, "src/__stubs__/electrobun-bun.ts"),
+			},
 		],
 	},
 	test: {

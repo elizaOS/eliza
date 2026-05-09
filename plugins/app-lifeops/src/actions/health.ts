@@ -21,17 +21,15 @@ import type {
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type { LifeOpsHealthSummaryResponse } from "../contracts/index.js";
-import type { HealthDataPoint } from "../lifeops/health-bridge.js";
+import type { HealthDataPoint } from "@elizaos/plugin-health";
 import { LifeOpsService } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
-import {
-  hasLifeOpsAccess,
-  runLifeOpsJsonModel,
-} from "./lifeops-google-helpers.js";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
+import { runLifeOpsJsonModel } from "../lifeops/google/format-helpers.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
-} from "./lifeops-grounded-reply.js";
+} from "../lifeops/voice/grounded-reply.js";
 
 type Subaction = "today" | "trend" | "by_metric" | "status";
 

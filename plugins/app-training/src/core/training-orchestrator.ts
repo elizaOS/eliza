@@ -523,7 +523,7 @@ export async function triggerTraining(
   await mkdir(outputDir, { recursive: true });
   // privacy filter applied above
   const dataset = await exportTrajectoryTaskDatasets(
-    filtered.trajectories as unknown as Parameters<
+    filtered.trajectories as Parameters<
       typeof exportTrajectoryTaskDatasets
     >[0],
     outputDir,

@@ -1,5 +1,5 @@
 import chalk, { Chalk } from "chalk";
-import { CLI_PALETTE } from "./palette";
+import { CLI_PALETTE } from "./palette.js";
 
 const hasForceColor =
   typeof process.env.FORCE_COLOR === "string" &&

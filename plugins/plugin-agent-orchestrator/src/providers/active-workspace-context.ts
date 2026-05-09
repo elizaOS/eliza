@@ -9,15 +9,8 @@
  * @module providers/active-workspace-context
  */
 
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  Service,
-  State,
-} from "@elizaos/core";
-import type { PTYService } from "../services/pty-service.js";
-import { getCoordinator } from "../services/pty-service.js";
+import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import { getCoordinator, getPtyService } from "../services/pty-service.js";
 import type { SessionInfo } from "../services/pty-types.js";
 import {
   formatTaskAgentStatus,
@@ -25,10 +18,8 @@ import {
   TASK_AGENT_FRAMEWORK_LABELS,
   truncateTaskAgentText,
 } from "../services/task-agent-frameworks.js";
-import type {
-  CodingWorkspaceService,
-  WorkspaceResult,
-} from "../services/workspace-service.js";
+import type { WorkspaceResult } from "../services/workspace-service.js";
+import { getCodingWorkspaceService } from "../services/workspace-service.js";
 
 interface TaskLike {
   sessionId: string;
@@ -76,12 +67,8 @@ export const activeWorkspaceContextProvider: Provider = {
   cacheScope: "turn",
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
-    const ptyService = runtime.getService("PTY_SERVICE") as
-      | (Service & PTYService)
-      | undefined;
-    const wsService = runtime.getService("CODING_WORKSPACE_SERVICE") as
-      | (Service & CodingWorkspaceService)
-      | undefined;
+    const ptyService = getPtyService(runtime) ?? undefined;
+    const wsService = getCodingWorkspaceService(runtime);
     const coordinator = getCoordinator(runtime);
     let frameworkState = FALLBACK_FRAMEWORK_STATE;
     try {
