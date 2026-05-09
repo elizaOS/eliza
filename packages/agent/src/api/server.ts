@@ -154,8 +154,7 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
-// signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout extracted to @elizaos/plugin-signal
-import { signalAuthExists } from "../services/signal-pairing.js";
+// signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout, signalAuthExists owned by @elizaos/plugin-signal
 import { streamManager } from "../services/stream-manager.js";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
 // telegram-account-auth helpers moved to @elizaos/plugin-telegram (account-setup-routes.ts).
@@ -256,8 +255,8 @@ import {
   handleLifeOpsRuntimePluginRoute,
   handleSandboxRouteGroup,
 } from "./server-route-dispatch.js";
-// signal-routes: handleSignalRoute dispatch extracted to @elizaos/plugin-signal (setup-routes.ts)
-import { applySignalQrOverride } from "./signal-routes.js";
+// signal-routes: handleSignalRoute dispatch and applySignalQrOverride extracted to @elizaos/plugin-signal (setup-routes.ts)
+import { applySignalQrOverride } from "@elizaos/plugin-signal";
 import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
@@ -1792,7 +1791,6 @@ async function handleRequest(
         EVM_PLUGIN_PACKAGE,
         applyWhatsAppQrOverride,
         applySignalQrOverride,
-        signalAuthExists,
         resolvePluginConfigMutationRejections,
         requirePluginManager,
         requireCoreManager,

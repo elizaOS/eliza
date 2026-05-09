@@ -37,14 +37,7 @@ export {
   tryHandleRuntimePluginRoute,
 } from "./runtime-plugin-routes.js";
 export * from "./sandbox-routes.js";
-export {
-  applySignalQrOverride,
-  handleSignalRoute,
-  type SignalPairingEventLike,
-  type SignalPairingSessionLike,
-  type SignalRouteDeps,
-  type SignalRouteState,
-} from "./signal-routes.js";
+export { applySignalQrOverride } from "@elizaos/plugin-signal";
 export * from "./stream-route-state.js";
 export * from "./stream-routes.js";
 export * from "./streaming-text.js";
