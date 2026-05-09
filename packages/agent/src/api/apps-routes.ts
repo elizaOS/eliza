@@ -1067,7 +1067,7 @@ export async function handleAppsRoutes(
         // service. The runtime plugin resolver already searches that dir.
         const { installPlugin: installPluginDirect } = (await import(
           /* webpackIgnore: true */ "@elizaos/app-core"
-        )) as {
+        )) as unknown as {
           installPlugin: (
             name: string,
             onProgress?: (progress: InstallProgressLike) => void,

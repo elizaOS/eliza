@@ -7,15 +7,19 @@ const aiMocks = vi.hoisted(() => ({
 }));
 
 // `getSetting` in utils/config falls back to `process.env` when the runtime
-// stub returns undefined. These tests assert provider-shape behavior against
-// explicit runtime settings, so we scrub process-env keys that would shadow
-// or alias them (e.g. CI running with `OPENAI_BASE_URL=cerebras.ai/v1` flips
-// the codepath into Cerebras mode and mutates providerOptions / model defaults).
-const ENV_KEYS = [
+// stub returns undefined. The repo-root `.env` is auto-loaded by bun (and
+// re-injected on dynamic import), so a developer or CI environment with
+// `OPENAI_BASE_URL=https://api.cerebras.ai/v1` or `OPENAI_SMALL_MODEL=...`
+// flips the Cerebras codepath / overrides the model default. We use
+// `vi.stubEnv` to pin env vars deterministically — vitest restores them
+// in `vi.unstubAllEnvs`, and the stubs survive bun's dotenv re-injection.
+//
+// `OPENAI_BASE_URL` is pinned to a non-Cerebras URL (rather than empty)
+// because empty strings short-circuit `getSetting` to `""`, which is not
+// the same as "unset" for downstream callers.
+const ENV_KEYS_TO_CLEAR = [
   "MILADY_PROVIDER",
-  "OPENAI_BASE_URL",
   "CEREBRAS_API_KEY",
-  "OPENAI_API_KEY",
   "OPENAI_SMALL_MODEL",
   "SMALL_MODEL",
   "OPENAI_LARGE_MODEL",
@@ -26,15 +30,12 @@ const ENV_KEYS = [
   "SHOULD_RESPOND_MODEL",
 ] as const;
 
-const originalEnv = new Map<string, string | undefined>();
-
 beforeEach(() => {
-  for (const key of ENV_KEYS) {
-    originalEnv.set(key, process.env[key]);
-    delete process.env[key];
+  vi.stubEnv("OPENAI_BASE_URL", "https://api.openai.com/v1");
+  vi.stubEnv("OPENAI_API_KEY", "test-key");
+  for (const key of ENV_KEYS_TO_CLEAR) {
+    vi.stubEnv(key, undefined as unknown as string);
   }
-  // eslint-disable-next-line no-console
-  console.log("[BEFORE_EACH] OPENAI_BASE_URL:", process.env.OPENAI_BASE_URL);
 });
 
 vi.mock("ai", () => ({
@@ -94,15 +95,7 @@ function expectNativeTextResult(value: unknown): asserts value is Record<string,
 }
 
 afterEach(() => {
-  for (const key of ENV_KEYS) {
-    const value = originalEnv.get(key);
-    if (value === undefined) {
-      delete process.env[key];
-    } else {
-      process.env[key] = value;
-    }
-  }
-  originalEnv.clear();
+  vi.unstubAllEnvs();
   vi.clearAllMocks();
 });
 
@@ -116,8 +109,6 @@ describe("OpenAI native text plumbing", () => {
     });
 
     const { handleTextSmall } = await import("../models/text");
-    // eslint-disable-next-line no-console
-    console.log("[POST_IMPORT] OPENAI_BASE_URL:", process.env.OPENAI_BASE_URL);
     const messages = [{ role: "user", content: "use the tool" }];
     const tools = { lookup: { description: "Lookup", inputSchema: { type: "object" } } };
     const toolChoice = { type: "tool", toolName: "lookup" };
