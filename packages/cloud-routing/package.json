@@ -31,7 +31,7 @@
   "scripts": {
     "clean": "rm -rf dist",
     "prepublishOnly": "bun run build",
-    "build": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/cloud-routing",
+    "build": "node ../../scripts/rm-path-recursive.mjs dist && tsc -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/cloud-routing",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check src",

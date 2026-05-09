@@ -199,6 +199,27 @@ async function loadModelProviderPlugin(): Promise<Plugin | null> {
           mod.default ??
           null) as Plugin | null;
         if (plugin) {
+          // Cerebras (api.cerebras.ai) has no /v1/embeddings endpoint.
+          // The openai plugin's TEXT_EMBEDDING handler 404s and blocks
+          // memory writes. Strip TEXT_EMBEDDING when the base URL points
+          // at cerebras so the local-embedding fallback can take over.
+          const baseUrl = process.env.OPENAI_BASE_URL?.trim() ?? "";
+          const isCerebras = /(^|\.)cerebras\.ai(\/|$)/i.test(baseUrl);
+          if (isCerebras && plugin.models && "TEXT_EMBEDDING" in plugin.models) {
+            const filteredModels = { ...plugin.models } as Record<
+              string,
+              unknown
+            >;
+            delete filteredModels.TEXT_EMBEDDING;
+            const filteredPlugin: Plugin = {
+              ...plugin,
+              models: filteredModels as typeof plugin.models,
+            };
+            console.log(
+              "[ElizaHandler] Loaded model provider plugin: openai (TEXT_EMBEDDING stripped — cerebras base URL detected)",
+            );
+            return filteredPlugin;
+          }
           console.log("[ElizaHandler] Loaded model provider plugin: openai");
           return plugin;
         }
@@ -559,6 +580,33 @@ export const elizaHandler: Handler = {
       return;
     }
     plugins.push(modelProviderPlugin);
+
+    // When the model provider is openai-compat against cerebras (no /v1/embeddings),
+    // load plugin-local-embedding so TEXT_EMBEDDING resolves. Without this,
+    // memory writes 404 and Stage 1 of the message pipeline stalls.
+    const baseUrl = process.env.OPENAI_BASE_URL?.trim() ?? "";
+    const isCerebrasBase = /(^|\.)cerebras\.ai(\/|$)/i.test(baseUrl);
+    if (isCerebrasBase) {
+      try {
+        const mod = (await import("@elizaos/plugin-local-embedding")) as Record<
+          string,
+          unknown
+        >;
+        const localEmbeddingPlugin = (mod.default ?? null) as Plugin | null;
+        if (localEmbeddingPlugin) {
+          plugins.push(localEmbeddingPlugin);
+          console.log(
+            "[ElizaHandler] Loaded @elizaos/plugin-local-embedding for TEXT_EMBEDDING (cerebras has no /v1/embeddings)",
+          );
+        }
+      } catch (err) {
+        console.warn(
+          `[ElizaHandler] @elizaos/plugin-local-embedding not available: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
 
     const agentId = crypto.randomUUID();
     runtime = new AgentRuntimeCtor({

@@ -7,12 +7,12 @@
  */
 
 import type http from "node:http";
-import { TLSSocket } from "node:tls";
 import {
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
-} from "@elizaos/shared";
+} from "@elizaos/core";
+import { TLSSocket } from "node:tls";
 import type { IAgentRuntime, Route } from "@elizaos/core";
 import {
   BROWSER_WORKSPACE_ROUTE_PATHS,

@@ -13,11 +13,7 @@
  */
 
 import type http from "node:http";
-import {
-  readJsonBody as parseJsonBody,
-  sendJson,
-  sendJsonError,
-} from "@elizaos/shared";
+import { readJsonBody as parseJsonBody, sendJson, sendJsonError } from "@elizaos/core";
 import { createZipArchive } from "@elizaos/agent";
 import {
   enrichTrajectoryLlmCall,

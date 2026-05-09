@@ -1,13 +1,11 @@
 import type http from "node:http";
 import {
-  getWalletAddresses,
-} from "@elizaos/agent";
-import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
-import {
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
-} from "@elizaos/shared";
+} from "@elizaos/core";
+import { getWalletAddresses, } from "@elizaos/agent";
+import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
 import { handleDropRoutes } from "./drop-routes.js";
 import { getElizaMakerDropService } from "./drop-service-registry.js";
 import { initializeRegistryAndDropServices } from "./init-registry-services.js";

@@ -4,15 +4,10 @@
 
 import type http from "node:http";
 import path from "node:path";
+import { sendJsonError } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
-  getDefaultStylePreset,
-  getStylePresets,
-  normalizeCharacterLanguage,
-  ONBOARDING_CLOUD_PROVIDER_OPTIONS,
-  ONBOARDING_PROVIDER_CATALOG,
-  sendJsonError,
-} from "@elizaos/shared";
+  getDefaultStylePreset, getStylePresets, normalizeCharacterLanguage, ONBOARDING_CLOUD_PROVIDER_OPTIONS, ONBOARDING_PROVIDER_CATALOG } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { generateWalletKeys, setSolanaWalletEnv } from "./wallet.js";
 

@@ -1,8 +1,9 @@
+import { RouteRequestMeta } from "@elizaos/core";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
+import type { RouteHelpers } from "@elizaos/shared";
 import { readJsonFile } from "../utils/atomic-json.js";
 
 function emptyMerkleRoot(): string {

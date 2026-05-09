@@ -4,19 +4,14 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
+import { sendJsonError } from "@elizaos/core";
 import { isIP } from "node:net";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
 import {
-  resolveApiSecurityConfig,
-  resolveApiToken,
-  sendJsonError,
-  setApiToken,
-  type WalletExportRejection,
-  type WalletExportRequestBody,
-} from "@elizaos/shared";
+  resolveApiSecurityConfig, resolveApiToken, setApiToken, type WalletExportRejection, type WalletExportRequestBody } from "@elizaos/shared";
 import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.js";
 import type { ConversationMeta } from "./server-helpers.js";
 
