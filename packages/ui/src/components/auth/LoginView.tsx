@@ -224,10 +224,38 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
           {remotePasswordMissing ? (
             <div
               role="alert"
-              className="rounded-lg border border-border/60 bg-bg/50 px-4 py-3 text-sm leading-6 text-muted-foreground"
+              className="space-y-3 rounded-lg border border-border/60 bg-bg/50 px-4 py-3 text-sm leading-6 text-muted-foreground"
             >
-              Open Eliza on the host machine via localhost, then set a remote
-              password in Settings.
+              <p>
+                The remote agent has no owner password configured yet, so it
+                cannot accept logins from another machine. Set one on the host
+                first.
+              </p>
+              <div className="space-y-2">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground/70">
+                  Two ways to fix it:
+                </p>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground/80">
+                    From a browser on the host machine, open this URL then go
+                    to Settings → Security:
+                  </p>
+                  <code className="block break-all rounded bg-bg/70 px-2 py-1.5 font-mono text-[11px] text-foreground">
+                    http://localhost:31337/
+                  </code>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground/80">
+                    Or via SSH (replace YOURNAME and YOURPASS with your own):
+                  </p>
+                  <code className="block break-all rounded bg-bg/70 px-2 py-1.5 font-mono text-[11px] text-foreground">
+                    {`curl -X POST http://127.0.0.1:31337/api/auth/setup -H "Content-Type: application/json" -d '{"displayName":"YOURNAME","password":"YOURPASS"}'`}
+                  </code>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground/70">
+                Then return to this screen — it will refresh automatically.
+              </p>
             </div>
           ) : (
             <PasswordTab onLoginSuccess={onLoginSuccess} loginFn={loginFn} />
