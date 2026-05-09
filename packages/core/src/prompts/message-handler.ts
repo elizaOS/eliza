@@ -58,7 +58,8 @@ rules:
 - extract is OPTIONAL. Populate it ONLY when the user's message states a durable fact about the user, a person they know, or a relationship between two entities. Examples worth extracting: "my birthday is March 5", "Alice is my manager", "I live in Brooklyn". Do NOT extract: questions, requests, ephemeral state, agent self-talk, or anything already obvious from the agent persona.
 - extract.facts entries are short factual statements in the user's voice ("the user's birthday is 1990-03-05"). Keep each entry under ~120 chars and self-contained.
 - extract.relationships entries are subject-predicate-object triples where subject and object are short entity names ("user", "Alice", "Acme Corp") and predicate is a snake_case relation ("works_with", "lives_in", "manages").
-- omit extract entirely when nothing durable was stated. Do not invent facts to fill it.
+- extract.addressedTo is OPTIONAL. Populate with entity UUIDs (preferred) or participant names from the available context that this specific message is directed at. Use the agent's id/name if the user is talking to the agent; use another participant's id/name when the user is addressing them by name or @-mention. Omit / empty array when broadcast or unclear. Do not guess.
+- omit extract entirely when nothing durable was stated and no addressee can be identified. Do not invent facts to fill it.
 - call ${HANDLE_RESPONSE_TOOL_NAME} exactly once with the plan
 - do not answer in plain text
 

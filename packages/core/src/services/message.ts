@@ -50,6 +50,7 @@ import {
 	type ExecutePlannedToolCallOptions,
 	executePlannedToolCall,
 } from "../runtime/execute-planned-tool-call";
+import { applyAddressedTo } from "../runtime/addressed-to";
 import {
 	type FactsAndRelationshipsRunResult,
 	runFactsAndRelationshipsStage,
@@ -2925,6 +2926,28 @@ export async function runV5MessageRuntimeStage1(args: {
 					result: null,
 					error,
 				}));
+		}
+
+		// Persist `addressedTo` as relationship edges from the speaker to each
+		// addressee. No LLM call: UUIDs pass through verbatim, names resolve
+		// against the room's participants. Fire-and-forget like the facts task;
+		// failures land in the logger but never block the reply.
+		const addressedTo = messageHandler.extract?.addressedTo ?? [];
+		if (addressedTo.length > 0) {
+			void applyAddressedTo({
+				runtime: args.runtime,
+				message: args.message,
+				addressedTo,
+			}).catch((error) => {
+				args.runtime.logger?.warn?.(
+					{
+						err: error,
+						messageId: args.message.id,
+						addressedToCount: addressedTo.length,
+					},
+					"[message] applyAddressedTo failed",
+				);
+			});
 		}
 
 		messageHandler.plan.contexts = filterSelectedContextsForRole(

@@ -158,12 +158,22 @@ function parseExtract(raw: unknown): MessageHandlerExtract | undefined {
 						entry !== null,
 				)
 		: [];
-	if (facts.length === 0 && relationships.length === 0) {
+	const addressedTo = Array.isArray(source.addressedTo)
+		? source.addressedTo
+				.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+				.filter((entry): entry is string => entry.length > 0)
+		: [];
+	if (
+		facts.length === 0 &&
+		relationships.length === 0 &&
+		addressedTo.length === 0
+	) {
 		return undefined;
 	}
 	const result: MessageHandlerExtract = {};
 	if (facts.length > 0) result.facts = facts;
 	if (relationships.length > 0) result.relationships = relationships;
+	if (addressedTo.length > 0) result.addressedTo = addressedTo;
 	return result;
 }
 
