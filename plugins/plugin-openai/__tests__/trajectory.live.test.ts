@@ -3,8 +3,7 @@ import { runWithTrajectoryContext } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 
 import { describeLive } from "../../../packages/app-core/test/helpers/live-agent-test";
-import { handleObjectSmall } from "../models/object";
-import { handleTextSmall } from "../models/text";
+import { handleTextLarge, handleTextSmall } from "../models/text";
 
 interface CapturedLlmCall {
   stepId: string;
@@ -39,7 +38,7 @@ describeLive(
   "OpenAI trajectory wrapping (live)",
   { requiredEnv: ["OPENAI_API_KEY"] },
   ({ harness }) => {
-    it("records text and object generation through recordLlmCall", async () => {
+    it("records text and structured-output generation through recordLlmCall", async () => {
       const { runtime } = harness();
       const calls = attachTrajectoryCapture(runtime);
 
@@ -47,21 +46,26 @@ describeLive(
         await handleTextSmall(runtime, {
           prompt: "Reply with the single word: hello",
         });
-        await handleObjectSmall(runtime, {
+        await handleTextLarge(runtime, {
           prompt: 'Return JSON with shape {"ok": true} and nothing else.',
-        });
+          responseSchema: {
+            type: "object",
+            properties: { ok: { type: "boolean" } },
+            required: ["ok"],
+          },
+        } as unknown as Parameters<typeof handleTextLarge>[1]);
       });
 
       expect(calls).toHaveLength(2);
-      const [textCall, objectCall] = calls;
+      const [textCall, structuredCall] = calls;
       expect(textCall.stepId).toBe("step-openai-live");
       expect(textCall.actionType).toBe("ai.generateText");
       expect(textCall.promptTokens ?? 0).toBeGreaterThan(0);
       expect(textCall.completionTokens ?? 0).toBeGreaterThan(0);
-      expect(objectCall.stepId).toBe("step-openai-live");
-      expect(objectCall.actionType).toBe("ai.generateObject");
-      expect(objectCall.promptTokens ?? 0).toBeGreaterThan(0);
-      expect(objectCall.completionTokens ?? 0).toBeGreaterThan(0);
+      expect(structuredCall.stepId).toBe("step-openai-live");
+      expect(structuredCall.actionType).toBe("ai.generateText");
+      expect(structuredCall.promptTokens ?? 0).toBeGreaterThan(0);
+      expect(structuredCall.completionTokens ?? 0).toBeGreaterThan(0);
     }, 120_000);
   }
 );
