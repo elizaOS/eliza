@@ -63,7 +63,35 @@ interface ConnectorSetupService {
 }
 
 function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
-  return runtime.getService("connector-setup") as unknown as ConnectorSetupService | null;
+  const service = runtime.getService("connector-setup");
+  if (!service || typeof service !== "object") {
+    return null;
+  }
+
+  const candidate = service as Partial<ConnectorSetupService>;
+  if (
+    typeof candidate.getConfig !== "function" ||
+    typeof candidate.updateConfig !== "function" ||
+    typeof candidate.registerEscalationChannel !== "function" ||
+    typeof candidate.setOwnerContact !== "function" ||
+    typeof candidate.getWorkspaceDir !== "function" ||
+    typeof candidate.broadcastWs !== "function"
+  ) {
+    return null;
+  }
+
+  return candidate as ConnectorSetupService;
+}
+
+type SignalStatusService = {
+  connected?: unknown;
+  isConnected?: unknown;
+  isServiceConnected?: () => boolean;
+};
+
+function getSignalStatusService(runtime: IAgentRuntime): SignalStatusService | null {
+  const service = runtime.getService("signal");
+  return service && typeof service === "object" ? (service as SignalStatusService) : null;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -269,7 +297,7 @@ async function handleStatus(
 
   let serviceConnected = false;
   try {
-    const sigService = runtime.getService("signal") as unknown as Record<string, unknown> | null;
+    const sigService = getSignalStatusService(runtime);
     if (sigService) {
       serviceConnected =
         Boolean(sigService.connected) ||

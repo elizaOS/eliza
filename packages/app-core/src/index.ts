@@ -25,7 +25,6 @@ export * from "./security/platform-secure-store-node";
 export * from "./security/wallet-os-store-actions";
 export * from "./services/account-pool";
 export * from "./services/auth-store";
-export * from "./services/plugin-installer";
 export * from "./services/steward-credentials";
 export * from "./services/steward-sidecar";
 export * from "./services/vault-bootstrap";

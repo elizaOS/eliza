@@ -13,7 +13,7 @@ await build({
 
 // Generate type declarations
 const proc = Bun.spawn(
-  ["bunx", "tsc", "--emitDeclarationOnly", "--declaration", "--declarationMap"],
+  ["bunx", "tsc", "--emitDeclarationOnly", "--project", "tsconfig.build.json"],
   {
     cwd: import.meta.dir,
     stdout: "inherit",
@@ -21,6 +21,9 @@ const proc = Bun.spawn(
   }
 );
 
-await proc.exited;
+const declarationExitCode = await proc.exited;
+if (declarationExitCode !== 0) {
+  process.exit(declarationExitCode);
+}
 
 console.log("Build complete!");

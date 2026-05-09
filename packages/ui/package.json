@@ -52,6 +52,7 @@
     "./hooks/*": "./dist/hooks/*",
     "./layouts": "./dist/layouts/index.js",
     "./layouts/*": "./dist/layouts/*",
+    "./platform/native-plugin-entrypoints": "./dist/platform/native-plugin-entrypoints.js",
     "./widgets": "./dist/widgets/index.js",
     "./widgets/registry-store": "./dist/widgets/registry-store.js",
     "./widgets/*": "./dist/widgets/*",

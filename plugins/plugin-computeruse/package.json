@@ -44,6 +44,7 @@
     "vitest": "4.1.5"
   },
   "dependencies": {
+    "@elizaos/shared": "workspace:*",
     "@nut-tree-fork/nut-js": "^4.2.6",
     "puppeteer-core": "^24.9.0"
   },

@@ -48,7 +48,8 @@ const pluginBrowserBridgeSrcRoot = path.join(
   "plugins/plugin-browser/src",
 );
 const appCoreNativePluginEntrypoints = path.join(
-  appCoreSrcRoot,
+  elizaRoot,
+  "packages/ui/src",
   "platform/native-plugin-entrypoints.ts",
 );
 const uiPkgRoot = path.join(elizaRoot, "packages/ui");

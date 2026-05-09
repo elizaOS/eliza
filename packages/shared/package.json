@@ -60,6 +60,7 @@
     "./themes/presets": "./dist/themes/presets.js",
     "./contracts/wallet": "./dist/contracts/wallet.js",
     "./config": "./dist/config/types.js",
+    "./config/allowed-hosts": "./dist/config/allowed-hosts.js",
     "./config/types.agent-defaults": "./dist/config/types.agent-defaults.js",
     "./config/types.agents": "./dist/config/types.agents.js",
     "./config/types.eliza": "./dist/config/types.eliza.js",

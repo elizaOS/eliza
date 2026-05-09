@@ -27,6 +27,12 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  DEFAULT_ACCOUNT_ID,
+  listEnabledSignalAccounts,
+  normalizeAccountId as normalizeSignalAccountId,
+  resolveDefaultSignalAccountId,
+} from "./accounts";
+import {
   createSignalEventStream,
   parseSignalEventData,
   signalCheck,
@@ -37,12 +43,6 @@ import {
   signalSendReaction,
   signalSendTyping,
 } from "./rpc";
-import {
-  DEFAULT_ACCOUNT_ID,
-  listEnabledSignalAccounts,
-  normalizeAccountId as normalizeSignalAccountId,
-  resolveDefaultSignalAccountId,
-} from "./accounts";
 
 type MessageService = Pick<IMessageService, "handleMessage">;
 type MessageConnectorRegistration = Parameters<IAgentRuntime["registerMessageConnector"]>[0];
@@ -714,6 +714,7 @@ export class SignalService extends Service implements ISignalService {
       }) as Memory;
       memory.metadata = {
         ...(memory.metadata ?? {}),
+        type: "message",
         accountId,
         messageIdFull: String(result.timestamp),
         signalTimestamp: result.timestamp,

@@ -35,7 +35,7 @@
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
-    "build:dist": "node ../../scripts/rm-path-recursive.mjs dist && tsc -p tsconfig.build.json && node ../../scripts/flatten-tsc-package-output.mjs packages/app-core && node ../../scripts/copy-package-assets.mjs packages/app-core src/styles src/i18n/locales scripts platforms packaging patches test/scripts test/helpers && node ../../scripts/prepare-package-dist.mjs packages/app-core",
+    "build:dist": "node ../../scripts/rm-path-recursive.mjs dist && tsc -p tsconfig.build.json && node ../../scripts/flatten-tsc-package-output.mjs packages/app-core && node ../../scripts/copy-package-assets.mjs packages/app-core src/styles scripts platforms packaging patches test/scripts test/helpers && node ../../scripts/prepare-package-dist.mjs packages/app-core",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "benchmark:server": "node --import tsx src/benchmark/server.ts"
   },
@@ -44,6 +44,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./api/auth": {
+      "types": "./dist/api/auth.d.ts",
+      "import": "./dist/api/auth.js",
+      "default": "./dist/api/auth.js"
     },
     "./api/automation-node-contributors": {
       "types": "./dist/api/automation-node-contributors.d.ts",
@@ -55,15 +60,30 @@
       "import": "./dist/api/client-base.js",
       "default": "./dist/api/client-base.js"
     },
+    "./api/compat-route-shared": {
+      "types": "./dist/api/compat-route-shared.d.ts",
+      "import": "./dist/api/compat-route-shared.js",
+      "default": "./dist/api/compat-route-shared.js"
+    },
     "./api/response": {
       "types": "./dist/api/response.d.ts",
       "import": "./dist/api/response.js",
       "default": "./dist/api/response.js"
     },
+    "./platform/empty-node-module": {
+      "types": "./dist/platform/empty-node-module.d.ts",
+      "import": "./dist/platform/empty-node-module.js",
+      "default": "./dist/platform/empty-node-module.js"
+    },
     "./runtime/app-route-plugin-registry": {
       "types": "./dist/runtime/app-route-plugin-registry.d.ts",
       "import": "./dist/runtime/app-route-plugin-registry.js",
       "default": "./dist/runtime/app-route-plugin-registry.js"
+    },
+    "./services/plugin-installer": {
+      "types": "./dist/services/plugin-installer.d.ts",
+      "import": "./dist/services/plugin-installer.js",
+      "default": "./dist/services/plugin-installer.js"
     },
     "./services/steward-sidecar": {
       "types": "./dist/services/steward-sidecar.d.ts",
