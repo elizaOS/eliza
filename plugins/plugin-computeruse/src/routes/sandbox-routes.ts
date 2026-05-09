@@ -7,9 +7,11 @@ import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import { readRequestBody, sendJson as sendJsonResponse } from "@elizaos/core";
 import { readJsonBody as parseJsonBody } from "@elizaos/shared";
-import type { RemoteSigningService } from "@elizaos/agent/services/remote-signing-service";
-import type { SandboxManager } from "@elizaos/agent/services/sandbox-manager";
-import type { SigningRequest } from "@elizaos/agent/services/signing-policy";
+import type {
+  RemoteSigningService,
+  SandboxManager,
+  SigningRequest,
+} from "@elizaos/agent";
 
 interface SandboxRouteState {
   sandboxManager: SandboxManager | null;

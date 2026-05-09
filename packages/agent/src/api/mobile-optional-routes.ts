@@ -5,7 +5,7 @@ import {
   readStreamSettings,
   validateStreamSettings,
   writeStreamSettings,
-} from "./stream-persistence.js";
+} from "@elizaos/plugin-streaming";
 
 function mobileLocalCompatibilityEnabled(): boolean {
   return (

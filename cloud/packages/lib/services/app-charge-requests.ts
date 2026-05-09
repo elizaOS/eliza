@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import Decimal from "decimal.js";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { dbRead } from "@/db/helpers";
+import { dbRead, dbWrite } from "@/db/helpers";
 import { type App, appsRepository } from "@/db/repositories/apps";
 import { type CryptoPayment, cryptoPaymentsRepository } from "@/db/repositories/crypto-payments";
 import { cryptoPayments } from "@/db/schemas/crypto-payments";
@@ -212,7 +212,9 @@ export class AppChargeRequestsService {
   }
 
   async getForApp(appId: string, chargeRequestId: string): Promise<AppChargeRequest | null> {
-    const payment = await cryptoPaymentsRepository.findById(chargeRequestId);
+    const payment = await dbWrite.query.cryptoPayments.findFirst({
+      where: eq(cryptoPayments.id, chargeRequestId),
+    });
     if (!payment) return null;
 
     const request = toChargeRequest(payment);

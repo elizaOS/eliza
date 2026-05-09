@@ -15,13 +15,13 @@ import type { RouteHelpers } from "@elizaos/shared";
 import type {
   TriggerExecutionOptions,
   TriggerExecutionResult,
-} from "@elizaos/agent/triggers/runtime";
+} from "@elizaos/agent";
 import type {
   NormalizedTriggerDraft,
   TriggerHealthSnapshot,
   TriggerSummary,
   TriggerTaskMetadata,
-} from "@elizaos/agent/triggers/types";
+} from "@elizaos/agent";
 
 export type TriggerRouteHelpers = RouteHelpers;
 
