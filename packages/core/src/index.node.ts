@@ -38,7 +38,6 @@ export * from "./entities";
 // the basic-capabilities barrel, which leaves dangling exports in dist.
 export {
 	reflectionEvaluator,
-	relationshipExtractionEvaluator,
 	skillEvaluator,
 } from "./features/advanced-capabilities/evaluators/index";
 export * from "./features/advanced-memory";

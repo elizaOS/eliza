@@ -86,6 +86,7 @@ describe("action selection benchmark scoring helpers", () => {
   it("matches task and desktop atomic aliases to parent benchmark actions", () => {
     expect(caseMatches("TASKS_ADD_TODO", "LIFE", undefined)).toBe(true);
     expect(caseMatches("TODO_CREATE", "LIFE", undefined)).toBe(true);
+    expect(caseMatches("TODOS_CREATE", "LIFE", undefined)).toBe(true);
     expect(caseMatches("TASK_LIST", "LIFE", undefined)).toBe(true);
     expect(caseMatches("TASKS_LIST_TODAY", "LIFE", undefined)).toBe(true);
     expect(caseMatches("TASKS_SET_GOAL", "LIFE", undefined)).toBe(true);

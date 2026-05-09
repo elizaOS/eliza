@@ -510,10 +510,7 @@ export function shouldRunObservationExtraction(
   const explicitValue = toOptionalBoolean(explicitSetting);
   if (explicitValue !== undefined) return explicitValue;
 
-  if (
-    hasActionNamed(runtime, "REFLECTION") ||
-    hasActionNamed(runtime, "RELATIONSHIP_EXTRACTION")
-  ) {
+  if (hasActionNamed(runtime, "REFLECTION")) {
     return false;
   }
   return true;

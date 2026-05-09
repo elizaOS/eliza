@@ -175,14 +175,22 @@ const ACTION_CANONICAL_NAMES = new Map<string, string>([
   ["CREATE_TODO", "LIFE"],
   ["TODO_ADD", "LIFE"],
   ["TODO_CREATE", "LIFE"],
+  ["TODOS_ADD", "LIFE"],
+  ["TODOS_CREATE", "LIFE"],
   ["TASK_ADD", "LIFE"],
   ["TASK_CREATE", "LIFE"],
+  ["ADD_TASK", "LIFE"],
+  ["CREATE_TASK", "LIFE"],
   ["LIST_TODOS", "LIFE"],
   ["GET_TODOS", "LIFE"],
   ["TODO_LIST", "LIFE"],
+  ["TODO_LIST_TODAY", "LIFE"],
   ["TODOS_LIST", "LIFE"],
   ["TODO_GET", "LIFE"],
+  ["TODOS_GET", "LIFE"],
+  ["TODOS_REVIEW", "LIFE"],
   ["TASK_LIST", "LIFE"],
+  ["TASK_LIST_TODAY", "LIFE"],
   ["TASKS_REVIEW", "LIFE"],
   ["LIFE_GET_TODOS", "LIFE"],
   ["LIFE_TODO", "LIFE"],
@@ -806,6 +814,57 @@ function parseArrayValueFromText(value: string): unknown[] | undefined {
   return undefined;
 }
 
+function extractFirstJsonObjectText(value: string): string | undefined {
+  const start = value.indexOf("{");
+  if (start < 0) return undefined;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < value.length; index += 1) {
+    const char = value[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+    if (char !== "}") continue;
+    depth -= 1;
+    if (depth === 0) {
+      return value.slice(start, index + 1);
+    }
+  }
+  return undefined;
+}
+
+function parseObjectValueFromText(
+  value: string,
+): Record<string, unknown> | undefined {
+  const objectText = extractFirstJsonObjectText(value);
+  if (!objectText) return undefined;
+  try {
+    const parsed = JSON.parse(objectText);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function isPlannerWrapperAction(name: string | null): boolean {
   return name === "CALL_ACTION" || name === "PLAN_ACTIONS";
 }
@@ -860,7 +919,10 @@ function parseActionNamesFromValue(rawActions: unknown): string[] {
 }
 
 export function parsePlannedActionsFromResponse(response: string): string[] {
-  const parsed = parseJSONObjectFromText(response) ?? parseArrayValueFromText(response);
+  const parsed =
+    parseJSONObjectFromText(response) ??
+    parseObjectValueFromText(response) ??
+    parseArrayValueFromText(response);
   if (!parsed) {
     return [];
   }

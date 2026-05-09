@@ -152,6 +152,7 @@ Message: "I have a flat cortisol curve confirmed via lab"
       "verification_status": "confirmed" }
   ] },
   "relationships": [],
+  "identities": [],
   "task": { "completed": true, "reason": "User reported a fact; no follow-up required." }
 }
 
@@ -163,6 +164,7 @@ Message: "I'm anxious this morning"
       "structured_fields": { "emotion": "anxious", "window": "morning" } }
   ] },
   "relationships": [],
+  "identities": [],
   "task": { "completed": true, "reason": "User shared a feeling; conversation is in a stable state." }
 }
 
@@ -177,7 +179,37 @@ Message: "Actually I moved to Tokyo last month"
       "structured_fields": { "event": "relocation", "to": "Tokyo" } }
   ] },
   "relationships": [],
+  "identities": [],
   "task": { "completed": true, "reason": "Information update acknowledged." }
+}
+
+Sender: Shaw (ID: 11111111-1111-1111-1111-111111111111)
+Message: "fyi my github is shawmakesmusic and I'm @shawwalters on twitter"
+{
+  "thought": "User shared two platform handles for themselves.",
+  "facts": { "ops": [] },
+  "relationships": [],
+  "identities": [
+    { "entityId": "11111111-1111-1111-1111-111111111111", "platform": "github",
+      "handle": "shawmakesmusic", "confidence": 0.9 },
+    { "entityId": "11111111-1111-1111-1111-111111111111", "platform": "twitter",
+      "handle": "shawwalters", "confidence": 0.85 }
+  ],
+  "task": { "completed": true, "reason": "Acknowledged shared identities." }
+}
+
+Entities in Room include Bob (ID: 22222222-2222-2222-2222-222222222222)
+Sender: Alice (ID: 33333333-3333-3333-3333-333333333333)
+Message: "Bob is on telegram as @bobby btw"
+{
+  "thought": "Alice attributed a telegram handle to Bob, who is in the room.",
+  "facts": { "ops": [] },
+  "relationships": [],
+  "identities": [
+    { "entityId": "22222222-2222-2222-2222-222222222222", "platform": "telegram",
+      "handle": "@bobby", "confidence": 0.7 }
+  ],
+  "task": { "completed": true, "reason": "Identity recorded for known participant." }
 }
 
 ## Inputs
@@ -217,19 +249,29 @@ Latest message:
     { "sourceEntityId": "<uuid>", "targetEntityId": "<uuid>",
       "tags": [string, ...], "metadata": { ... } }
   ],
+  "identities": [
+    { "entityId": "<uuid>", "platform": string, "handle": string, "confidence": number }
+  ],
   "task": { "completed": boolean, "reason": string }
 }
 
 If nothing should change, return:
-{ "thought": "", "facts": { "ops": [] }, "relationships": [], "task": { "completed": true, "reason": "..." } }`;
+{ "thought": "", "facts": { "ops": [] }, "relationships": [], "identities": [], "task": { "completed": true, "reason": "..." } }`;
 
-// Schema for the relationships + task portion of the output. Facts use the
-// existing ExtractorOutputSchema unchanged.
+// Schema for the relationships + identities + task portion of the output.
+// Facts use the existing ExtractorOutputSchema unchanged.
 const RelationshipUpdateSchema = z.object({
 	sourceEntityId: z.string().min(1),
 	targetEntityId: z.string().min(1),
 	tags: z.array(z.string()).optional(),
 	metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+const IdentityUpdateSchema = z.object({
+	entityId: z.string().min(1),
+	platform: z.string().min(1),
+	handle: z.string().min(1),
+	confidence: z.number().min(0).max(1),
 });
 
 const TaskAssessmentSchema = z.object({
@@ -240,16 +282,19 @@ const TaskAssessmentSchema = z.object({
 const ReflectionExtraSchema = z.object({
 	thought: z.string().optional(),
 	relationships: z.array(RelationshipUpdateSchema).optional(),
+	identities: z.array(IdentityUpdateSchema).optional(),
 	task: TaskAssessmentSchema.optional(),
 });
 
 type RelationshipUpdate = z.infer<typeof RelationshipUpdateSchema>;
+type IdentityUpdate = z.infer<typeof IdentityUpdateSchema>;
 type TaskAssessment = z.infer<typeof TaskAssessmentSchema>;
 
 interface ConsolidatedOutput {
 	thought: string;
 	ops: ExtractorOp[];
 	relationships: RelationshipUpdate[];
+	identities: IdentityUpdate[];
 	task: TaskAssessment | null;
 }
 
@@ -540,6 +585,7 @@ function parseConsolidatedResponse(
 		thought: extrasValidated.data.thought ?? "",
 		ops: factsValidated.data.ops,
 		relationships: extrasValidated.data.relationships ?? [],
+		identities: extrasValidated.data.identities ?? [],
 		task: extrasValidated.data.task ?? null,
 	};
 }
@@ -907,6 +953,63 @@ async function storeTaskCompletionReflection(
 	}
 }
 
+async function applyIdentityUpdates(
+	runtime: IAgentRuntime,
+	identities: IdentityUpdate[],
+	entities: Entity[],
+	messageId: UUID | undefined,
+): Promise<number> {
+	if (identities.length === 0) return 0;
+
+	const relationshipsService = runtime.getService(
+		"relationships",
+	) as RelationshipsService | null;
+	if (
+		!relationshipsService ||
+		typeof relationshipsService.upsertIdentity !== "function"
+	) {
+		runtime.logger.debug(
+			{
+				src: "plugin:advanced-capabilities:evaluator:reflection",
+				agentId: runtime.agentId,
+			},
+			"RelationshipsService.upsertIdentity unavailable; skipping identities",
+		);
+		return 0;
+	}
+
+	const evidenceMessageIds: UUID[] = messageId ? [messageId] : [];
+	const knownEntityIds = new Set<string>();
+	for (const entity of entities) {
+		if (entity.id) knownEntityIds.add(entity.id);
+	}
+
+	let applied = 0;
+	for (const identity of identities) {
+		if (identity.confidence < IDENTITY_CONFIDENCE_THRESHOLD) continue;
+		const entityIdRaw = normalizeEntityReference(identity.entityId);
+		if (!isValidUuid(entityIdRaw)) continue;
+		if (!knownEntityIds.has(entityIdRaw)) continue;
+		const platform = identity.platform.trim().toLowerCase();
+		const handle = identity.handle.trim();
+		if (!platform || !handle) continue;
+		await relationshipsService.upsertIdentity(
+			entityIdRaw as UUID,
+			{
+				platform,
+				handle,
+				verified: false,
+				confidence: identity.confidence,
+				source: "reflection",
+			},
+			evidenceMessageIds,
+		);
+		applied += 1;
+	}
+
+	return applied;
+}
+
 async function applyRelationshipUpdates(
 	runtime: IAgentRuntime,
 	relationships: RelationshipUpdate[],
@@ -1035,6 +1138,7 @@ async function handler(
 				decayed: 0,
 				contradicted: 0,
 				relationshipCount: 0,
+				identitiesUpserted: 0,
 				taskAssessed: false,
 				taskCompleted: false,
 			},
@@ -1057,6 +1161,7 @@ async function handler(
 				decayed: 0,
 				contradicted: 0,
 				relationshipCount: 0,
+				identitiesUpserted: 0,
 				taskAssessed: false,
 				taskCompleted: false,
 			},
@@ -1193,6 +1298,7 @@ async function handler(
 				decayed: 0,
 				contradicted: 0,
 				relationshipCount: 0,
+				identitiesUpserted: 0,
 				taskAssessed: false,
 				taskCompleted: false,
 			},
@@ -1248,7 +1354,15 @@ async function handler(
 		message.entityId,
 	);
 
-	// 3. Apply task completion.
+	// 3. Apply identity updates (LLM-extracted platform handles).
+	const identitiesUpserted = await applyIdentityUpdates(
+		runtime,
+		parsed.identities,
+		entities,
+		message.id as UUID | undefined,
+	);
+
+	// 4. Apply task completion.
 	const taskCompletion = normalizeTaskCompletion(
 		parsed.thought,
 		parsed.task,
@@ -1275,6 +1389,7 @@ async function handler(
 			decayed,
 			contradicted,
 			relationshipCount,
+			identitiesUpserted,
 			taskAssessed: taskCompletion.assessed,
 			taskCompleted: taskCompletion.completed,
 		},
@@ -1290,6 +1405,7 @@ async function handler(
 			decayed,
 			contradicted,
 			relationshipCount,
+			identitiesUpserted,
 			taskCompleted: taskCompletion.completed,
 			taskCompletionAssessed: taskCompletion.assessed,
 			taskCompletionReason: taskCompletion.reason,
@@ -1300,6 +1416,7 @@ async function handler(
 			decayed,
 			contradicted,
 			relationshipCount,
+			identitiesUpserted,
 			taskAssessed: taskCompletion.assessed,
 			taskCompleted: taskCompletion.completed,
 			taskCompletion,
@@ -1309,14 +1426,14 @@ async function handler(
 
 /**
  * Consolidated post-response reflection. One LLM call extracts facts,
- * relationship updates, and task completion in a single pass — replacing
- * the legacy factExtractorAction + reflectionAction + the LLM-style semantic
- * relationship analysis from relationshipExtractionEvaluator.
+ * relationship updates, platform identities, and task completion in a single
+ * pass — replacing the legacy factExtractorAction + reflectionAction +
+ * relationshipExtractionEvaluator.
  */
 export const reflectionEvaluator: Action = {
 	name: "REFLECTION",
 	description:
-		"Post-response reflection: extracts facts, semantic relationship details, and task completion in a single LLM call. Runs only after the agent has actually responded.",
+		"Post-response reflection: extracts facts, semantic relationship details, platform identities, and task completion in a single LLM call. Runs only after the agent has actually responded.",
 	similes: [
 		"REFLECT",
 		"SELF_REFLECT",

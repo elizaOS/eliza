@@ -79,6 +79,9 @@ describe("live routing regressions", () => {
 		expect(resolvePlannerActionName(runtime, undefined, "todo_create")).toEqual([
 			"LIFE",
 		]);
+		expect(resolvePlannerActionName(runtime, undefined, "todos_create")).toEqual([
+			"LIFE",
+		]);
 		expect(resolvePlannerActionName(runtime, undefined, "task_list")).toEqual([
 			"LIFE",
 		]);

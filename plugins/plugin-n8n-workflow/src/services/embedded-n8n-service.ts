@@ -1,19 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { createRequire } from 'node:module';
 import { type IAgentRuntime, logger, Service } from '@elizaos/core';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type {
-  IExecuteFunctions,
-  INodeExecutionData,
-  INodeType,
-  INodeTypes,
-  IWorkflowExecuteAdditionalData,
-  WorkflowExecuteMode,
-} from 'n8n-workflow';
-import type {
   N8nCredential,
   N8nExecution,
+  N8nNode,
   N8nTag,
   N8nWorkflow,
   N8nWorkflowResponse,
@@ -28,12 +20,41 @@ import {
 
 export const N8N_EMBEDDED_SERVICE_TYPE = 'n8n_embedded_workflow';
 
-type N8nCoreRuntime = typeof import('n8n-core');
-type N8nWorkflowRuntime = typeof import('n8n-workflow');
+type WorkflowExecuteMode = N8nExecution['mode'];
 
-interface EmbeddedRuntimeModules {
-  core: N8nCoreRuntime;
-  workflow: N8nWorkflowRuntime;
+interface INodeExecutionData {
+  json: Record<string, unknown>;
+  binary?: Record<string, unknown>;
+  pairedItem?: { item: number } | Array<{ item: number }>;
+}
+
+interface IExecuteFunctions {
+  getInputData(inputIndex?: number): INodeExecutionData[];
+  getNode(): N8nNode;
+}
+
+interface INodeTypeDescription {
+  displayName: string;
+  name: string;
+  group: string[];
+  version: number | number[];
+  description: string;
+  defaults: { name: string };
+  inputs: unknown[];
+  outputs: unknown[];
+  properties: unknown[];
+}
+
+interface INodeType {
+  description: INodeTypeDescription;
+  execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]>;
+  trigger?(): Promise<unknown>;
+}
+
+interface INodeTypes {
+  getByName(nodeType: string): INodeType;
+  getByNameAndVersion(nodeType: string): INodeType;
+  getKnownTypes(): Record<string, { sourcePath: string; className: string }>;
 }
 
 interface StoredCredential extends N8nCredential {
@@ -56,49 +77,16 @@ interface ExecuteOptions {
   mode?: WorkflowExecuteMode;
 }
 
-const N8N_CORE_PACKAGE = 'n8n-core';
-const N8N_WORKFLOW_PACKAGE = 'n8n-workflow';
+interface IncomingConnection {
+  source: string;
+  sourceOutputIndex: number;
+  destinationInputIndex: number;
+}
+
 const EMBEDDED_HOST = 'embedded://local';
 const DEFAULT_SCHEDULE_INTERVAL_MS = 60_000;
 
-let loadedModules: Promise<EmbeddedRuntimeModules> | null = null;
 let loadedQuickJs: Promise<typeof import('quickjs-emscripten')> | null = null;
-
-async function loadN8nRuntime(): Promise<EmbeddedRuntimeModules> {
-  if (!loadedModules) {
-    loadedModules = (async () => {
-      try {
-        const [core, workflow] = await Promise.all([
-          import(N8N_CORE_PACKAGE),
-          import(N8N_WORKFLOW_PACKAGE),
-        ]);
-        return { core, workflow };
-      } catch (importError) {
-        // Node ESM currently trips over n8n-workflow's extensionless ESM
-        // internals. Bun handles it, but the CJS condition is a safe fallback
-        // for tests/tools that run this plugin under Node.
-        const require = createRequire(import.meta.url);
-        try {
-          return {
-            core: require(N8N_CORE_PACKAGE) as N8nCoreRuntime,
-            workflow: require(N8N_WORKFLOW_PACKAGE) as N8nWorkflowRuntime,
-          };
-        } catch (requireError) {
-          throw new Error(
-            `Failed to load embedded n8n runtime: ${
-              requireError instanceof Error
-                ? requireError.message
-                : importError instanceof Error
-                  ? importError.message
-                  : String(requireError)
-            }`
-          );
-        }
-      }
-    })();
-  }
-  return loadedModules;
-}
 
 async function loadQuickJs(): Promise<typeof import('quickjs-emscripten')> {
   loadedQuickJs ??= import('quickjs-emscripten');
@@ -171,6 +159,12 @@ function resolveScheduleIntervalMs(parameters: Record<string, unknown>): number 
   if (unit === 'days') return readNumber(first.daysInterval, 1) * 86_400_000;
 
   return DEFAULT_SCHEDULE_INTERVAL_MS;
+}
+
+function normalizeWebhookPath(path: unknown): string {
+  return readString(path, '')
+    .trim()
+    .replace(/^\/+|\/+$/g, '');
 }
 
 function normalizeHeaderEntries(value: unknown): Record<string, string> {
@@ -1523,6 +1517,43 @@ export class EmbeddedN8nService extends Service {
   async executeWorkflow(id: string, options: ExecuteOptions = {}): Promise<N8nExecution> {
     const entry = await this.getStoredWorkflow(id);
     return this.runWorkflow(entry.workflow, options.mode ?? 'manual');
+  }
+
+  async executeWebhook(
+    path: string,
+    payload: Record<string, unknown>,
+    method = 'POST'
+  ): Promise<N8nExecution> {
+    await this.ensureSchema();
+    const normalizedPath = normalizeWebhookPath(path);
+    const normalizedMethod = method.toUpperCase();
+    const rows = await this.getDb()
+      .select()
+      .from(embeddedWorkflows)
+      .where(eq(embeddedWorkflows.active, true));
+
+    for (const row of rows) {
+      const workflow = cloneJson(row.workflow);
+      const webhookNode = workflow.nodes.find((node) => {
+        if (node.disabled || node.type !== 'n8n-nodes-base.webhook') return false;
+        const nodePath = normalizeWebhookPath(node.parameters.path);
+        const nodeMethod = readString(node.parameters.httpMethod, 'POST').toUpperCase();
+        return nodePath === normalizedPath && nodeMethod === normalizedMethod;
+      });
+      if (!webhookNode) continue;
+      webhookNode.parameters = {
+        ...webhookNode.parameters,
+        __embeddedPayload: {
+          ...payload,
+          headers: isRecord(payload.headers) ? payload.headers : {},
+          method: normalizedMethod,
+          path: normalizedPath,
+        },
+      };
+      return this.runWorkflow(workflow, 'webhook');
+    }
+
+    throw new N8nApiError(`Webhook not found: ${normalizedMethod} /${normalizedPath}`, 404);
   }
 
   async triggerSchedulesOnce(workflowId?: string): Promise<N8nExecution[]> {

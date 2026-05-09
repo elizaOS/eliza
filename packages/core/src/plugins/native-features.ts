@@ -4,7 +4,6 @@ import {
 } from "../features/advanced-capabilities/actions/index";
 import {
 	reflectionEvaluator,
-	relationshipExtractionEvaluator,
 	skillEvaluator,
 } from "../features/advanced-capabilities/evaluators/index";
 import {
@@ -50,10 +49,10 @@ export const relationshipsPlugin: Plugin = {
 		// registering per-operation leaves. The planner unwraps those compact
 		// calls at benchmark/report time.
 		// ALWAYS_AFTER actions (post-message work; replaces legacy evaluators).
+		// reflectionEvaluator extracts facts, relationships, platform
+		// identities, and task completion in a single LLM call.
 		reflectionEvaluator,
 		skillEvaluator,
-		// ALWAYS_BEFORE actions (pre-Stage 1 heuristics; runs even on IGNORE/STOP).
-		relationshipExtractionEvaluator,
 	],
 	providers: [
 		contactsProvider,
