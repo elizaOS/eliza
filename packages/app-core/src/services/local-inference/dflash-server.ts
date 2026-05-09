@@ -136,7 +136,11 @@ export interface DflashBinaryCapabilities {
   binaries: string[];
 }
 
-let capabilitiesCache: { path: string; mtimeMs: number; caps: DflashBinaryCapabilities } | null = null;
+let capabilitiesCache: {
+  path: string;
+  mtimeMs: number;
+  caps: DflashBinaryCapabilities;
+} | null = null;
 
 /**
  * Read CAPABILITIES.json for the currently-installed binary, if present.
@@ -170,7 +174,11 @@ export function readDflashBinaryCapabilities(): DflashBinaryCapabilities | null 
       typeof parsed.kernels === "object" &&
       parsed.kernels !== null
     ) {
-      capabilitiesCache = { path: capsPath, mtimeMs: stat.mtimeMs, caps: parsed };
+      capabilitiesCache = {
+        path: capsPath,
+        mtimeMs: stat.mtimeMs,
+        caps: parsed,
+      };
       return parsed;
     }
   } catch {

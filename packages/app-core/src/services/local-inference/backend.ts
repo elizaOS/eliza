@@ -280,9 +280,9 @@ export class BackendDispatcher implements LocalInferenceBackend {
      * "rebuild your fork binary" error instead of a kernel SIGSEGV at
      * generation time.
      */
-    private readonly probeBinaryKernels?: () =>
-      | Partial<Record<string, boolean>>
-      | null,
+    private readonly probeBinaryKernels?: () => Partial<
+      Record<string, boolean>
+    > | null,
   ) {}
 
   async available(): Promise<boolean> {
