@@ -6,14 +6,11 @@
 import type { MessageExampleContent } from "@elizaos/shared";
 import type { ConfigUiHint } from "../types";
 import type {
-  CreateTriggerRequest as _CreateTriggerRequest,
-  TriggerHealthSnapshot as _TriggerHealthSnapshot,
-  TriggerRunRecord as _TriggerRunRecord,
-  TriggerSummary as _TriggerSummary,
-  UpdateTriggerRequest as _UpdateTriggerRequest,
   ConversationScope,
   ReleaseChannel,
-} from "./agent-client-type-shim";
+  TriggerRunRecord,
+  TriggerSummary,
+} from "./client-types-core";
 
 export type {
   BrowserBridgeCompanionPackageStatus,
@@ -198,12 +195,6 @@ export interface ConfigSchemaResponse {
   version: string;
   generatedAt: string;
 }
-
-export type TriggerSummary = _TriggerSummary;
-export type TriggerRunRecord = _TriggerRunRecord;
-export type TriggerHealthSnapshot = _TriggerHealthSnapshot;
-export type CreateTriggerRequest = _CreateTriggerRequest;
-export type UpdateTriggerRequest = _UpdateTriggerRequest;
 
 export interface TriggerEventDispatchResponse {
   ok: boolean;

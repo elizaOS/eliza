@@ -49,6 +49,7 @@ import {
   type KeyObject,
   SignJWT,
 } from "jose";
+import type { AgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { _resetSensitiveLimiters } from "./auth/index";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
@@ -117,7 +118,7 @@ async function startApiServer(db: DrizzleDatabase): Promise<{
   // `adapter.db`. The bootstrap exchange route only reads `adapter.db`,
   // so a minimal stub is sufficient for the smoke contract.
   const state: CompatRuntimeState = {
-    current: { adapter: { db } },
+    current: { adapter: { db } } as AgentRuntime,
     pendingAgentName: null,
     pendingRestartReasons: [],
   };
