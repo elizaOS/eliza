@@ -164,7 +164,7 @@ describe("POST /api/local-inference/active", () => {
 
   it("accepts the legacy { modelId } body shape (no overrides)", async () => {
     setActiveMock.mockResolvedValue({
-      modelId: "qwen2.5-coder-7b",
+      modelId: "qwen3.5-4b-dflash",
       loadedAt: "2026-05-09T00:00:00.000Z",
       status: "ready",
     });
@@ -174,7 +174,7 @@ describe("POST /api/local-inference/active", () => {
       fakeReq({
         method: "POST",
         pathname: "/api/local-inference/active",
-        body: { modelId: "qwen2.5-coder-7b" },
+        body: { modelId: "qwen3.5-4b-dflash" },
       }),
       res.res,
       STATE,
@@ -184,14 +184,14 @@ describe("POST /api/local-inference/active", () => {
     expect(res.status()).toBe(200);
     expect(setActiveMock).toHaveBeenCalledWith(
       null,
-      "qwen2.5-coder-7b",
+      "qwen3.5-4b-dflash",
       undefined,
     );
   });
 
   it("forwards a parsed overrides block to setActive", async () => {
     setActiveMock.mockResolvedValue({
-      modelId: "qwen2.5-coder-7b",
+      modelId: "qwen3.5-4b-dflash",
       loadedAt: "2026-05-09T00:00:00.000Z",
       status: "ready",
     });
@@ -202,7 +202,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "qwen2.5-coder-7b",
+          modelId: "qwen3.5-4b-dflash",
           overrides: {
             contextSize: 131072,
             cacheTypeK: "f16",
@@ -217,7 +217,7 @@ describe("POST /api/local-inference/active", () => {
     );
 
     expect(res.status()).toBe(200);
-    expect(setActiveMock).toHaveBeenCalledWith(null, "qwen2.5-coder-7b", {
+    expect(setActiveMock).toHaveBeenCalledWith(null, "qwen3.5-4b-dflash", {
       contextSize: 131072,
       cacheTypeK: "f16",
       cacheTypeV: "q8_0",
@@ -256,7 +256,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "qwen2.5-coder-7b",
+          modelId: "qwen3.5-4b-dflash",
           overrides: { contextSize: 100 },
         },
       }),
@@ -276,7 +276,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "qwen2.5-coder-7b",
+          modelId: "qwen3.5-4b-dflash",
           overrides: { kvOffload: "magic" },
         },
       }),
@@ -290,7 +290,7 @@ describe("POST /api/local-inference/active", () => {
 
   it("accepts kvOffload object form { gpuLayers: N }", async () => {
     setActiveMock.mockResolvedValue({
-      modelId: "qwen2.5-coder-7b",
+      modelId: "qwen3.5-4b-dflash",
       loadedAt: "2026-05-09T00:00:00.000Z",
       status: "ready",
     });
@@ -301,7 +301,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "qwen2.5-coder-7b",
+          modelId: "qwen3.5-4b-dflash",
           overrides: { kvOffload: { gpuLayers: 16 } },
         },
       }),
@@ -310,7 +310,7 @@ describe("POST /api/local-inference/active", () => {
     );
 
     expect(res.status()).toBe(200);
-    expect(setActiveMock).toHaveBeenCalledWith(null, "qwen2.5-coder-7b", {
+    expect(setActiveMock).toHaveBeenCalledWith(null, "qwen3.5-4b-dflash", {
       kvOffload: { gpuLayers: 16 },
     });
   });
@@ -321,7 +321,7 @@ describe("POST /api/local-inference/active", () => {
       fakeReq({
         method: "POST",
         pathname: "/api/local-inference/active",
-        body: { modelId: "qwen2.5-coder-7b", overrides: "nope" },
+        body: { modelId: "qwen3.5-4b-dflash", overrides: "nope" },
       }),
       res.res,
       STATE,

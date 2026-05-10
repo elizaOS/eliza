@@ -1,19 +1,5 @@
 export type { LocalInferenceLoader } from "./active-model";
 export {
-  type BackendDecision,
-  BackendDispatcher,
-  type BackendOverride,
-  type BackendPlan,
-  decideBackend,
-  type EmbedArgs,
-  type EmbedResult,
-  type GenerateArgs as BackendGenerateArgs,
-  type GenerateResult,
-  type LocalInferenceBackend,
-  readBackendOverride,
-  resolveCatalogForPlan,
-} from "./backend";
-export {
   ELIZA_1_PLACEHOLDER_IDS,
   findCatalogModel,
   FIRST_RUN_DEFAULT_MODEL_ID,
@@ -47,10 +33,6 @@ export type {
   LocalInferenceDownloadStatus,
   LocalInferenceReadiness,
   LocalInferenceSlotReadiness,
-  LocalRuntimeAcceleration,
-  LocalRuntimeBackend,
-  LocalRuntimeKernel,
-  LocalRuntimeOptimizations,
   ModelBucket,
   ModelCategory,
   ModelHubSnapshot,

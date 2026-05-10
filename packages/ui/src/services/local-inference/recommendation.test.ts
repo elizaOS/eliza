@@ -75,13 +75,10 @@ describe("local inference recommendations", () => {
     expect(recommended.TEXT_LARGE.model?.id).toBe("qwen3.5-9b-dflash");
   });
 
-  it("downshifts iOS below each mobile minspec tier", () => {
+  it("falls back to the smallest TBQ/DFlash entry on minimal mobile", () => {
     const cases: Array<[number, string | null]> = [
-      [4.9, "llama-3.2-3b"],
-      [3.9, "smollm2-1.7b"],
-      [2.9, "llama-3.2-1b"],
-      [1.9, "smollm2-360m"],
-      [0.9, null],
+      [4.9, "eliza-1-2b"],
+      [3.5, null],
     ];
 
     for (const [totalRamGb, expectedId] of cases) {
