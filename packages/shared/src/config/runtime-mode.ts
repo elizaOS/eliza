@@ -15,8 +15,8 @@ export interface RuntimeModeConfig {
 }
 
 export interface RuntimeExecutionModeConfigSource {
-  runtime?: unknown;
-  deploymentTarget?: unknown;
+  runtime?: RuntimeModeConfig | Record<string, unknown> | null;
+  deploymentTarget?: DeploymentTargetConfig | null;
 }
 
 export interface RuntimeExecutionModeDefinition {
