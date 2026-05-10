@@ -137,6 +137,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.14",
     "@capacitor/core": "8.3.1",
+    "chalk": "^5.3.0",
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-lifeops": "workspace:*",
     "@elizaos/core": "workspace:*",
