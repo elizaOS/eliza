@@ -134,12 +134,11 @@ when that lands; for now this is the single ledger.
    constant struct), generate fixtures via the existing
    `qjl_polar_ref.c`. ~1 session.
 
-5. **DFlash drafter pairing acceptance-rate measurement.** The fork
-   carries the DFlash CLI surface (v0.2.0). Acceptance rate
-   (`n_drafted / n_accepted` from the Prometheus counters) hasn't
-   been measured against any model pair yet. Bonsai-8B + Qwen3-0.6B
-   is the documented matched-vocab pair; benchmark harness already
-   captures the metric. ~1 session per (target, drafter) pair.
+5. **Eliza-1 DFlash acceptance-rate measurement.** The fork carries the
+   DFlash CLI surface (v0.2.0). Acceptance rate (`n_drafted /
+   n_accepted` from the Prometheus counters) still needs measurement on
+   the published Eliza-1 target/drafter bundles. The benchmark harness
+   already captures the metric. ~1 session per Eliza-1 tier.
 
 6. **TBQ3_TCQ encoder.** Decoder already exists across CPU/Metal/Vulkan;
    encoder needs a 512-state Viterbi over 128 timesteps. Pure

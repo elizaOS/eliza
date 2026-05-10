@@ -4,12 +4,12 @@
  * Folds the previous standalone `APP_BLOCK` (phone apps) and `WEBSITE_BLOCK`
  * (desktop hosts file / SelfControl) actions into a single umbrella keyed by
  * `target: "app" | "website"`. The runtime backends stay untouched: each
- * subaction dispatches into the existing backend handlers.
+ * action value dispatches into the existing backend handlers.
  *
- * Subactions (union of both legacy surfaces):
+ * Actions (union of both legacy surfaces):
  *   block | unblock | status | request_permission | release | list_active
  *
- * Target/subaction support matrix:
+ * Target/action support matrix:
  *   app:     block, unblock, status
  *   website: block, unblock, status, request_permission, release, list_active
  *
@@ -178,7 +178,7 @@ function resolveTarget(
   // `packageNames` or `hostnames` already declared its surface.
   const fromParams = inferTargetFromParams(params);
   if (fromParams) return fromParams;
-  const subactionRaw = params.subaction;
+  const subactionRaw = params.action ?? params.subaction;
   const fromSubaction = inferTargetFromSubaction(
     typeof subactionRaw === "string" ? subactionRaw.trim().toLowerCase() : undefined,
   );
@@ -202,10 +202,13 @@ function withTarget(
   const incoming = (options ?? {}) as HandlerOptions;
   const incomingParams: ActionParameters = (incoming.parameters ??
     {}) as ActionParameters;
-  // Strip the `target` from the params we forward — the underlying actions do
-  // not understand it.
+  // Strip the `target` from the params we forward. The underlying legacy
+  // handlers still read `subaction`, so mirror canonical `action` for them.
   const next: ActionParameters = { ...incomingParams };
   delete (next as Record<string, unknown>).target;
+  if (next.subaction === undefined && next.action !== undefined) {
+    next.subaction = next.action;
+  }
   return { ...incoming, parameters: next };
 }
 
@@ -297,10 +300,10 @@ export const blockAction: Action & {
   description:
     "Block or unblock phone apps and desktop websites. " +
     "Pick `target: app` for phone-app blocking (Family Controls / Usage Access) or `target: website` for desktop website blocking (hosts file / SelfControl). " +
-    "Subactions: block, unblock, status (all targets); request_permission, release, list_active (website only). " +
+    "Actions: block, unblock, status (all targets); request_permission, release, list_active (website only). " +
     "Website blocks always draft first and require confirmed:true; release also requires confirmed:true.",
   descriptionCompressed:
-    "block/unblock apps+websites; subactions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
+    "block/unblock apps+websites; actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
   contexts: ["screen_time", "browser", "automation", "tasks", "settings"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -321,12 +324,12 @@ export const blockAction: Action & {
       name: "target",
       description:
         "Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl). " +
-        "Inferred from `subaction` (request_permission/release/list_active → website), from app/website-only param shape, or from the user's text when omitted.",
+        "Inferred from `action` (request_permission/release/list_active -> website), from app/website-only param shape, or from the user's text when omitted.",
       required: false,
       schema: { type: "string" as const, enum: [...ALL_TARGETS] },
     },
     {
-      name: "subaction",
+      name: "action",
       description:
         "One of: block, unblock, status, request_permission, release, list_active. " +
         "request_permission, release, and list_active are website-only.",
@@ -338,7 +341,7 @@ export const blockAction: Action & {
     {
       name: "intent",
       description:
-        "Free-form description of what the owner wants. Used by the block subaction to extract apps/hostnames + duration.",
+        "Free-form description of what the owner wants. Used by the block action to extract apps/hostnames + duration.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -359,27 +362,27 @@ export const blockAction: Action & {
     },
     {
       name: "ruleId",
-      description: "(target=website, subaction=release) ID of the managed block rule to release.",
+      description: "(target=website, action=release) ID of the managed block rule to release.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "reason",
-      description: "(target=website, subaction=release) Optional reason recorded on the rule when released.",
+      description: "(target=website, action=release) Optional reason recorded on the rule when released.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "includeLiveStatus",
       description:
-        "(target=website, subaction=list_active) Include the current hosts-file/SelfControl live block state. Default true.",
+        "(target=website, action=list_active) Include the current hosts-file/SelfControl live block state. Default true.",
       required: false,
       schema: { type: "boolean" as const },
     },
     {
       name: "includeManagedRules",
       description:
-        "(target=website, subaction=list_active) Include managed LifeOps block rules. Default true.",
+        "(target=website, action=list_active) Include managed owner block rules. Default true.",
       required: false,
       schema: { type: "boolean" as const },
     },
@@ -428,7 +431,7 @@ export const blockAction: Action & {
       };
     }
 
-    const subactionRaw = params.subaction;
+    const subactionRaw = params.action ?? params.subaction;
     const subaction =
       typeof subactionRaw === "string"
         ? subactionRaw.trim().toLowerCase()

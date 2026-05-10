@@ -166,8 +166,8 @@ publish `@milady-ai/node-llama-cpp` to npm (path (b) in
 | `block_q4_polar`, `dequantize_row_q4_polar`, `dequantize_row_q4_polar_neon`, `ggml_vec_dot_q4_polar_q8_0_neon` | `libggml-base.so` + `libggml-cpu.so` | Q4_POLAR=47 (slot bumped from 45). NEON dequant bit-exact under QEMU (W2-B). |
 | `ggml_attn_score_qjl` + `GGML_OP_ATTN_SCORE_QJL` op dispatch | `libggml-cpu.so` | Custom op; QJL packed-K + query → unscaled scores. |
 | `eliza_llama_context_params_set_type_k` / `_set_type_v` | `libeliza-llama-shim.so` | KV cache type configurable per call from JS. |
-| `looksLikeBonsai(modelPath)` auto-routing | `aosp-llama-adapter.ts` | Any GGUF whose filename matches `/bonsai/i` auto-selects `{k:"tbq4_0", v:"tbq3_0"}`. |
-| `looksLikeQjl(modelPath)` + `qjl1_256` cache type | `aosp-llama-adapter.ts` | Set `ELIZA_LLAMA_CACHE_TYPE_K=qjl1_256` to compose with TBQ V. Auto-detect QJL > Bonsai precedence. |
+| Eliza-1 catalog KV routing | `aosp-llama-adapter.ts` | Eliza-1 GGUFs receive KV-cache settings from catalog runtime metadata or explicit `ELIZA_LLAMA_CACHE_TYPE_*` overrides. |
+| `qjl1_256` cache type | `aosp-llama-adapter.ts` | Set `ELIZA_LLAMA_CACHE_TYPE_K=qjl1_256` to compose with TBQ V when the selected Eliza-1 bundle supports it. |
 | `block_qjl1_256` + `GGML_OP_ATTN_SCORE_QJL` | `milady-ai/llama.cpp` unified fork | QJL packed-K cache type and custom attention-score op are tracked in the fork instead of a local-only patch stack. |
 | `block_q4_polar` (`Q4_POLAR=47`) | `milady-ai/llama.cpp` unified fork | PolarQuant weight type is tracked in the fork; slot 47 is the shipped value. |
 | Speculative-decoding API | DFlash CLI surface landed on `milady-ai/llama.cpp @ v0.2.0-milady` (Wave-3 agent A, 2026-05-09): `--spec-type dflash`, `--draft-min-prob`, `n_drafted_total` + `n_drafted_accepted_total` Prometheus counters. arm64-v8a + x86_64 musl cross-builds verified clean via `compile-libllama.mjs --src-dir`. Local llama-server smoke: chat completion + metrics counters confirmed (acceptance rate 13/13 with target=drafter). | spiritbuun/buun-llama-cpp pin retired. Both AOSP and host build paths now consume the same unified-fork commit. |

@@ -8,9 +8,11 @@ import { describe, expect, it } from "vitest";
 import {
   applyCompaction,
   approxTokens,
+  buildRealisticSystemPrompt,
   buildUserTurn,
   type ChatMessage,
   type CliArgs,
+  FACT_KINDS,
   KNOWN_STRATEGIES,
   type ModelClient,
   makeFakeClient,
@@ -18,6 +20,7 @@ import {
   parseArgs,
   parseJudgeResponse,
   planFacts,
+  planToolCalls,
   rng,
   runDriftHarness,
 } from "./drift-harness";
@@ -33,6 +36,12 @@ const DEFAULT_TEST_ARGS: CliArgs = {
   model: "gpt-oss-120b",
   baseUrl: "https://api.cerebras.ai/v1",
   judgeModel: "gpt-oss-120b",
+  agentReasoningEffort: "medium",
+  judgeReasoningEffort: "medium",
+  compactorReasoningEffort: "low",
+  realisticSystemPrompt: false,
+  withToolCalls: false,
+  probeMaxTokens: 600,
   help: false,
 };
 
@@ -405,5 +414,130 @@ describe("runDriftHarness end-to-end (fake client)", () => {
     await expect(
       runDriftHarness({ args, client: failingClient }),
     ).rejects.toThrow(/boom/);
+  });
+});
+
+describe("planFacts balanced kind distribution", () => {
+  it("gives every fact a distinct kind when count <= number of kinds", () => {
+    const facts = planFacts({ totalTurns: 50, count: 4, seed: 1 });
+    const kinds = facts.map((f) => f.kind);
+    expect(new Set(kinds).size).toBe(4);
+  });
+
+  it("balances kinds for count >= number of kinds", () => {
+    // With 24 facts and 12 kinds, every kind should appear exactly twice.
+    const facts = planFacts({ totalTurns: 200, count: 24, seed: 17 });
+    const counts = new Map<string, number>();
+    for (const f of facts) {
+      counts.set(f.kind, (counts.get(f.kind) ?? 0) + 1);
+    }
+    expect(counts.size).toBe(FACT_KINDS.length);
+    for (const v of counts.values()) {
+      expect(v).toBe(2);
+    }
+  });
+
+  it("does not produce api_key facts", () => {
+    const facts = planFacts({ totalTurns: 200, count: 24, seed: 5 });
+    expect(facts.some((f) => (f.kind as string) === "api_key")).toBe(false);
+  });
+
+  it("includes safer high-information kinds", () => {
+    expect(FACT_KINDS).toContain("book_title");
+    expect(FACT_KINDS).toContain("isbn");
+    expect(FACT_KINDS).toContain("date_iso");
+    expect(FACT_KINDS).toContain("birthday");
+    expect(FACT_KINDS).toContain("flight_number");
+    expect(FACT_KINDS).toContain("uuid");
+    expect(FACT_KINDS).toContain("zipcode");
+  });
+});
+
+describe("buildRealisticSystemPrompt", () => {
+  it("produces a ~5KB Eliza-style prompt", () => {
+    const prompt = buildRealisticSystemPrompt();
+    // ~5KB target with at least 3KB of meaningful content; deterministic.
+    expect(prompt.length).toBeGreaterThan(3000);
+    expect(prompt.length).toBeLessThan(20000);
+    expect(prompt).toMatch(/Available Actions/);
+    expect(prompt).toMatch(/Loaded Plugins/);
+    expect(prompt).toMatch(/USE_SKILL/);
+  });
+
+  it("is deterministic", () => {
+    expect(buildRealisticSystemPrompt()).toBe(buildRealisticSystemPrompt());
+  });
+});
+
+describe("per-kind summary breakdown", () => {
+  it("emits perKindAccuracy keyed by FactKind", async () => {
+    const args: CliArgs = {
+      ...DEFAULT_TEST_ARGS,
+      turns: 6,
+      compactEvery: 100,
+      plantFacts: 3,
+    };
+    const sink = await runDriftHarness({ args, client: makeFakeClient() });
+    const summary = sink.events.find((e) => e.event === "summary");
+    expect(summary).toBeDefined();
+    if (!summary || summary.event !== "summary") throw new Error("unreachable");
+    expect(summary.perKindAccuracy).toBeDefined();
+    const totalFromBreakdown = Object.values(summary.perKindAccuracy).reduce(
+      (acc, v) => acc + v.total,
+      0,
+    );
+    expect(totalFromBreakdown).toBe(summary.totalProbes);
+    for (const [, v] of Object.entries(summary.perKindAccuracy)) {
+      expect(v.total).toBeGreaterThan(0);
+      expect(v.accuracy).toBeGreaterThanOrEqual(0);
+      expect(v.accuracy).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+describe("planToolCalls and tool-call probes", () => {
+  it("plans tool calls every 5 turns", () => {
+    const tcs = planToolCalls({ totalTurns: 20, seed: 1 });
+    expect(tcs.map((t) => t.turn)).toEqual([5, 10, 15, 20]);
+    for (const tc of tcs) {
+      expect(tc.toolName).toMatch(/^[a-z_]+$/);
+      expect(tc.toolValue.length).toBeGreaterThan(0);
+      expect(tc.question).toContain(`turn ${tc.turn}`);
+    }
+  });
+
+  it("probes tool-call results when --with-tool-calls is set", async () => {
+    const args: CliArgs = {
+      ...DEFAULT_TEST_ARGS,
+      turns: 5,
+      compactEvery: 100,
+      plantFacts: 0,
+      withToolCalls: true,
+    };
+    const sink = await runDriftHarness({ args, client: makeFakeClient() });
+    const probes = sink.events.filter((e) => e.event === "probe");
+    // 1 tool call (turn 5) probed at final.
+    expect(probes.length).toBe(1);
+    const probe = probes[0]!;
+    if (probe.event !== "probe") throw new Error("unreachable");
+    expect(probe.kind).toBe("tool_call");
+    expect(probe.correct).toBe(true);
+    const summary = sink.events.find((e) => e.event === "summary");
+    if (!summary || summary.event !== "summary") throw new Error("unreachable");
+    expect(summary.perKindAccuracy.tool_call?.total).toBe(1);
+  });
+
+  it("emits tool_call/tool_result turn events alongside the user/assistant pair", async () => {
+    const args: CliArgs = {
+      ...DEFAULT_TEST_ARGS,
+      turns: 5,
+      compactEvery: 100,
+      plantFacts: 0,
+      withToolCalls: true,
+    };
+    const sink = await runDriftHarness({ args, client: makeFakeClient() });
+    const turnEvents = sink.events.filter((e) => e.event === "turn");
+    // 5 turns × (user + assistant) = 10, plus 2 extra for the tool pair at turn 5.
+    expect(turnEvents.length).toBe(12);
   });
 });

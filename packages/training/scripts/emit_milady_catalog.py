@@ -1,5 +1,4 @@
-"""Emit a catalog.ts diff that points the on-device runtime at the new
-``milady-ai/<name>-milady-optimized`` HF repo.
+"""Emit a catalog.ts diff that points the on-device runtime at Eliza-1.
 
 The repo's catalog of downloadable models lives at
 ``packages/app-core/src/services/local-inference/catalog.ts`` (and the
@@ -17,13 +16,13 @@ file.
 Usage::
 
     uv run python scripts/emit_milady_catalog.py \\
-        --manifest checkpoints/qwen3-0.6b-milady/gguf/milady_manifest.json \\
+        --manifest checkpoints/eliza-1-lite/gguf/milady_manifest.json \\
         --catalog packages/app-core/src/services/local-inference/catalog.ts \\
-        --output reports/training/catalog-milady-qwen3-0.6b.diff
+        --output reports/training/catalog-eliza-1-lite.diff
 
     # Or just print the new entry block to stdout:
     uv run python scripts/emit_milady_catalog.py \\
-        --manifest checkpoints/qwen3-0.6b-milady/gguf/milady_manifest.json \\
+        --manifest checkpoints/eliza-1-lite/gguf/milady_manifest.json \\
         --print-entry
 """
 
@@ -47,37 +46,37 @@ log = logging.getLogger("emit_milady_catalog")
 # Heuristic mapping from base model name → catalog metadata. New
 # entries go here when adding a new optimization target.
 KNOWN_BASE_MODELS = {
-    "Qwen/Qwen3-0.6B": {
+    "elizaos/eliza-1-lite-0_6b": {
         "params": "1B",  # catalog enum has no "0.6B" — round up like upstream
-        "context_length": 40960,  # native Qwen3-0.6B
-        "tokenizer_family": "qwen3",
+        "context_length": 32768,
+        "tokenizer_family": "eliza1",
         "category": "chat",
         "bucket": "small",
         "min_ram_gb": 2,
         "size_gb_estimate": 0.4,  # Q4_POLAR 0.6B ≈ 380-450 MB
     },
-    "Qwen/Qwen3.5-2B": {
+    "elizaos/eliza-1-mobile-1_7b": {
         "params": "2B",
-        "context_length": 131072,
-        "tokenizer_family": "qwen3",
+        "context_length": 32768,
+        "tokenizer_family": "eliza1",
         "category": "chat",
         "bucket": "small",
         "min_ram_gb": 4,
         "size_gb_estimate": 1.4,
     },
-    "Qwen/Qwen3.5-9B": {
+    "elizaos/eliza-1-desktop-9b": {
         "params": "9B",
         "context_length": 131072,
-        "tokenizer_family": "qwen3",
+        "tokenizer_family": "eliza1",
         "category": "chat",
         "bucket": "mid",
         "min_ram_gb": 8,
         "size_gb_estimate": 5.5,
     },
-    "Qwen/Qwen3.6-27B": {
+    "elizaos/eliza-1-pro-27b": {
         "params": "27B",
         "context_length": 131072,
-        "tokenizer_family": "qwen3",
+        "tokenizer_family": "eliza1",
         "category": "chat",
         "bucket": "large",
         "min_ram_gb": 32,
@@ -159,12 +158,9 @@ class MiladyCatalogEntry:
 
 
 def _slug_from_repo(hf_repo: str) -> str:
-    """Convert ``milady-ai/qwen3-0.6b-milady-optimized`` →
-    ``qwen3-0.6b-milady`` for catalog ids.
+    """Convert ``elizaos/eliza-1-mobile-1_7b`` to a catalog id.
     """
     last = hf_repo.split("/")[-1]
-    if last.endswith("-milady-optimized"):
-        last = last[: -len("-milady-optimized")] + "-milady"
     return last.lower()
 
 

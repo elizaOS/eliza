@@ -2,13 +2,13 @@
  * CREDENTIALS umbrella — Audit B Defer #5.
  *
  * Folds the previous standalone `AUTOFILL` (browser-extension form fill, 3
- * subactions) and `PASSWORD_MANAGER` (1Password / ProtonPass CLI clipboard
- * inject, 4 subactions) actions into a single umbrella keyed only by the
- * subaction name (no `target` field — the verbs are unique across the union).
+ * actions) and `PASSWORD_MANAGER` (1Password / ProtonPass CLI clipboard
+ * inject, 4 actions) actions into a single umbrella keyed only by the
+ * action name (no `target` field - the verbs are unique across the union).
  *
- * Subaction enum (union of both legacy surfaces):
- *   fill | whitelist_add | whitelist_list      → AUTOFILL backend
- *   search | list | inject_username | inject_password → PASSWORD_MANAGER backend
+ * Action enum (union of both legacy surfaces):
+ *   fill | whitelist_add | whitelist_list -> AUTOFILL backend
+ *   search | list | inject_username | inject_password -> PASSWORD_MANAGER backend
  */
 import type {
   Action,
@@ -138,12 +138,12 @@ export const credentialsAction: Action & {
   ],
   description:
     "Owner-only password and autofill operations across browser autofill (LifeOps extension) and the OS password manager (1Password / ProtonPass). " +
-    "Subactions: fill (one-field autofill on a whitelisted site), whitelist_add (add a domain; requires confirmed:true), whitelist_list, search (match items by query), list (bounded), inject_username, inject_password (copy to OS clipboard; both require confirmed:true). " +
+    "Actions: fill (one-field autofill on a whitelisted site), whitelist_add (add a domain; requires confirmed:true), whitelist_list, search (match items by query), list (bounded), inject_username, inject_password (copy to OS clipboard; both require confirmed:true). " +
     "Plaintext credentials never appear in chat — only the OS clipboard.",
   descriptionCompressed:
     "credentials: fill|whitelist_add|whitelist_list|search|list|inject_username|inject_password; clipboard-only; confirmed:true required for inject and whitelist_add",
   routingHint:
-    "credential search/list/copy/inject -> CREDENTIALS subaction=search|list|inject_*; on-page form fill -> CREDENTIALS subaction=fill",
+    "credential search/list/copy/inject -> CREDENTIALS action=search|list|inject_*; on-page form fill -> CREDENTIALS action=fill",
   contexts: ["browser", "secrets", "settings", "automation"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -152,7 +152,7 @@ export const credentialsAction: Action & {
 
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description:
         "fill | whitelist_add | whitelist_list (autofill) | search | list | inject_username | inject_password (password manager).",
       required: true,
@@ -162,55 +162,55 @@ export const credentialsAction: Action & {
     {
       name: "field",
       description:
-        "(subaction=fill) One of email, password, name, phone, custom. Tells the password manager which field to resolve.",
+        "(action=fill) One of email, password, name, phone, custom. Tells the password manager which field to resolve.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "domain",
       description:
-        "(subaction=fill | whitelist_add) Domain to act on. For fill, used as the tab URL when url is omitted.",
+        "(action=fill | whitelist_add) Domain to act on. For fill, used as the tab URL when url is omitted.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "url",
       description:
-        "(subaction=fill) Optional explicit tab URL (used for whitelist enforcement).",
+        "(action=fill) Optional explicit tab URL (used for whitelist enforcement).",
       required: false,
       schema: { type: "string" as const },
     },
     // Password-manager-side params.
     {
       name: "intent",
-      description: "(subaction=search) Natural-language description of the lookup intent.",
+      description: "(action=search) Natural-language description of the lookup intent.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "query",
       description:
-        "(subaction=search) Search string matched against item title, URL, username, and tags.",
+        "(action=search) Search string matched against item title, URL, username, and tags.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "itemId",
       description:
-        "(subaction=inject_username | inject_password) Password manager item id.",
+        "(action=inject_username | inject_password) Password manager item id.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "limit",
-      description: "(subaction=list) Optional item limit (default 20).",
+      description: "(action=list) Optional item limit (default 20).",
       required: false,
       schema: { type: "number" as const },
     },
     {
       name: "confirmed",
       description:
-        "Required true for whitelist_add and for either inject_* subaction. Ensures the owner approved the change.",
+        "Required true for whitelist_add and for either inject_* action. Ensures the owner approved the change.",
       required: false,
       schema: { type: "boolean" as const },
     },
@@ -225,13 +225,18 @@ export const credentialsAction: Action & {
     options: HandlerOptions | undefined,
   ): Promise<ActionResult> => {
     const params = readPlannerParams(options);
-    const subactionRaw = params.subaction;
+    const subactionRaw = params.action ?? params.subaction;
     const subaction =
       typeof subactionRaw === "string" ? subactionRaw.trim().toLowerCase() : "";
 
+    const forwardedOptions = {
+      ...(options ?? {}),
+      parameters: { ...params, subaction },
+    } as HandlerOptions;
+
     if (AUTOFILL_SUBACTIONS.has(subaction)) {
-      return autofillActionImpl.handler(runtime, message, state, options);
+      return autofillActionImpl.handler(runtime, message, state, forwardedOptions);
     }
-    return passwordManagerActionImpl.handler(runtime, message, state, options);
+    return passwordManagerActionImpl.handler(runtime, message, state, forwardedOptions);
   },
 };

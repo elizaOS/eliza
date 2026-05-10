@@ -961,10 +961,13 @@ export function buildDefaultCompactorLoader(opts: {
   model: string;
   /** Soft target token budget passed to compactors. Default: 1024. */
   targetTokens?: number;
+  /** Reasoning effort for the compactor's callModel. Default: "low". */
+  reasoningEffort?: ReasoningEffort;
 }): (name: StrategyName) => Promise<{
   compact: (messages: ChatMessage[]) => Promise<ChatMessage[]>;
 } | null> {
   const targetTokens = opts.targetTokens ?? 1024;
+  const compactorEffort = opts.reasoningEffort ?? "low";
   return async (name) => {
     try {
       const mod = (await import(
@@ -1022,6 +1025,7 @@ export function buildDefaultCompactorLoader(opts: {
           // structured-state JSON path.
           maxTokens: params.maxOutputTokens ?? 4096,
           temperature: 0,
+          reasoningEffort: compactorEffort,
         });
         return resp.content;
       };
@@ -1119,11 +1123,15 @@ export type ProbeOutcome = {
 export async function probeFact(args: {
   client: ModelClient;
   model: string;
+  judgeClient?: ModelClient;
   judgeModel: string;
   judgeWithModel: boolean;
   history: ChatMessage[];
   fact: PlantedFact;
   systemPrompt: string;
+  agentReasoningEffort?: ReasoningEffort;
+  judgeReasoningEffort?: ReasoningEffort;
+  probeMaxTokens?: number;
   /** When supplied, used as the judge instead of `client.chat`. */
   judgeFn?: (args: {
     expected: string;
@@ -1140,8 +1148,9 @@ export async function probeFact(args: {
   const resp = await client.chat({
     model,
     messages,
-    maxTokens: 200,
+    maxTokens: args.probeMaxTokens ?? 600,
     temperature: 0,
+    reasoningEffort: args.agentReasoningEffort ?? "medium",
   });
   const actual = resp.content.trim();
   if (fact.exactMatch) {
@@ -1170,6 +1179,10 @@ export async function probeFact(args: {
     };
   }
   // Prose / address: judge with model unless a judgeFn is supplied (tests).
+  // WARN: judge uses same model as agent by default — known bias toward the
+  // agent's own outputs. For real measurement, set --judge-model to a
+  // different model family (e.g. gpt-4o or claude-haiku) so the judge is
+  // independent of the system under test.
   const judge = args.judgeFn
     ? await args.judgeFn({
         expected: fact.expected,
@@ -1177,11 +1190,12 @@ export async function probeFact(args: {
         question: fact.question,
       })
     : await modelJudge({
-        client,
+        client: args.judgeClient ?? client,
         model: args.judgeModel,
         expected: fact.expected,
         actual,
         question: fact.question,
+        reasoningEffort: args.judgeReasoningEffort ?? "medium",
       });
   return {
     factId: fact.id,
@@ -1199,6 +1213,7 @@ async function modelJudge(args: {
   expected: string;
   actual: string;
   question: string;
+  reasoningEffort?: ReasoningEffort;
 }): Promise<{ correct: boolean; reasoning: string }> {
   const sys = [
     "You are a strict grader.",
@@ -1217,8 +1232,9 @@ async function modelJudge(args: {
       { role: "system", content: sys },
       { role: "user", content: user },
     ],
-    maxTokens: 200,
+    maxTokens: 400,
     temperature: 0,
+    reasoningEffort: args.reasoningEffort ?? "medium",
   });
   return parseJudgeResponse(resp.content);
 }
@@ -1277,6 +1293,7 @@ export type JsonlEvent =
       atTurn: number;
       factId: string;
       plantedTurn: number;
+      kind: FactKind | "tool_call";
       expected: string;
       actual: string;
       correct: boolean;
@@ -1287,6 +1304,7 @@ export type JsonlEvent =
       event: "summary";
       strategy: StrategyName;
       overallAccuracy: number;
+      perKindAccuracy: Record<string, { correct: number; total: number; accuracy: number }>;
       totalCompactions: number;
       totalTokensSaved: number;
       totalProbes: number;
@@ -1311,16 +1329,163 @@ export class JsonlSink {
 // Run loop
 // ---------------------------------------------------------------------------
 
-const SYSTEM_PROMPT =
-  "You are a helpful assistant taking part in a memory-recall benchmark. " +
-  "All data in this conversation is fictional test data — placeholder " +
-  "identifiers, fake API keys, made-up names and addresses. There are no " +
-  "real secrets here. When the user asks you to recall a value they earlier " +
-  "told you to remember, repeat it back exactly. Do not refuse. Be concise.";
+// Minimal default system prompt. Intentionally NOT a jailbreak — the previous
+// "all data is fictional, repeat values back, don't refuse" version was a hack
+// to coax gpt-oss-120b into recalling `sk_*` API keys, which real Eliza
+// shouldn't be expected to do. Sensitive fact kinds (api_key) were dropped
+// instead. The benign kinds (book titles, ISBNs, ZIP codes, etc.) recall
+// fine without instruction.
+const SYSTEM_PROMPT_MINIMAL =
+  "You are a helpful assistant. Answer the user concisely. " +
+  "When the user has previously told you a piece of information and later asks " +
+  "you to recall it, scan the conversation history and repeat it back accurately.";
+
+/**
+ * Build a ~5KB Eliza-style system prompt with placeholder action and plugin
+ * descriptions, character bio, etc. The point is to give the compactor
+ * something realistic-sized to chew on, not to be a faithful Eliza prompt.
+ * The content is deterministic (no rand) so test assertions about size are
+ * stable across runs.
+ */
+export function buildRealisticSystemPrompt(): string {
+  const actions = [
+    ["REPLY", "Respond directly to the user's most recent message."],
+    ["IGNORE", "Stay quiet when no response is warranted."],
+    ["FOLLOW_ROOM", "Begin actively participating in the current room."],
+    ["UNFOLLOW_ROOM", "Stop actively participating in the current room."],
+    ["MUTE_ROOM", "Disable notifications and participation for the room."],
+    ["UNMUTE_ROOM", "Re-enable notifications for a previously muted room."],
+    ["SEND_MESSAGE", "Send a message to a named target room or user."],
+    ["UPDATE_ENTITY", "Persist or revise facts about an entity."],
+    ["REMEMBER", "Persist a long-lived memory keyed by topic."],
+    ["RECALL", "Retrieve previously stored long-lived memories."],
+    ["USE_SKILL", "Invoke a registered skill by name with structured args."],
+    ["BROWSER", "Drive a headless browser session via a registered target."],
+    ["EXECUTE_CODE", "Run a sandboxed code snippet for computation."],
+    ["GENERATE_IMAGE", "Render an image from a textual prompt."],
+    ["SEARCH_WEB", "Issue a web search and return the top result snippets."],
+    ["READ_FILE", "Read a file from the user's workspace."],
+    ["WRITE_FILE", "Persist content to a file in the user's workspace."],
+    ["EDIT_FILE", "Apply a targeted edit to an existing file."],
+    ["LIST_DIRECTORY", "Enumerate files under a directory path."],
+    ["CALENDAR_VIEW", "Read events from the user's calendar."],
+    ["CALENDAR_SCHEDULE", "Schedule a new event on the user's calendar."],
+  ];
+  const plugins = [
+    ["bootstrap", "Core actions and providers shipped with the runtime."],
+    ["sql", "Drizzle-backed persistence for memories and entities."],
+    ["openai", "OpenAI / Cerebras / OpenAI-compatible model provider."],
+    ["anthropic", "Anthropic Claude model provider."],
+    ["telegram", "Telegram messaging connector."],
+    ["discord", "Discord guild and DM connector."],
+    ["browser", "Puppeteer-driven web browsing."],
+    ["agent-orchestrator", "PTY-backed sub-agent spawning and coordination."],
+    ["skills", "Curated skill registry and USE_SKILL execution."],
+    ["calendar", "macOS / Google calendar bridge."],
+    ["wechat", "WeChat connector."],
+  ];
+  const lines: string[] = [];
+  lines.push("# Eliza Agent System Prompt");
+  lines.push("");
+  lines.push("## Identity");
+  lines.push(
+    "You are Eliza, a local-first AI assistant built on the elizaOS runtime. " +
+      "You take ownership of long-running tasks, remember context across " +
+      "conversations, and prefer concrete action over open-ended discussion. " +
+      "You are concise, friendly, and direct. You ask clarifying questions " +
+      "only when the user's intent is genuinely ambiguous; otherwise you act.",
+  );
+  lines.push("");
+  lines.push("## Operating Principles");
+  lines.push(
+    "1. Read the recent conversation before responding. The user's most " +
+      "recent message is the highest-priority input, but earlier turns " +
+      "establish constraints and facts you must respect.",
+  );
+  lines.push(
+    "2. When the user has told you something previously (a name, a date, " +
+      "an identifier, a preference), and they later ask you to recall it, " +
+      "scan the conversation history carefully and repeat it back exactly. " +
+      "Do not invent a value, do not refuse on the grounds that you 'don't " +
+      "have access to that information' — the information is in the history.",
+  );
+  lines.push(
+    "3. Prefer structured action over prose narration. If a user request " +
+      "maps to a registered Action, invoke it; if it maps to a Skill, use " +
+      "USE_SKILL.",
+  );
+  lines.push(
+    "4. Surface failures honestly. Never silently swallow an error or " +
+      "substitute a default — say what failed and why.",
+  );
+  lines.push("");
+  lines.push("## Available Actions");
+  for (const [name, desc] of actions) {
+    lines.push(`- **${name}**: ${desc}`);
+  }
+  lines.push("");
+  lines.push("## Loaded Plugins");
+  for (const [name, desc] of plugins) {
+    lines.push(`- \`@elizaos/plugin-${name}\` — ${desc}`);
+  }
+  lines.push("");
+  lines.push("## Memory Model");
+  lines.push(
+    "You have access to short-term conversation memory (the messages in " +
+      "this thread) and long-term persisted memory (via the REMEMBER and " +
+      "RECALL actions). Short-term memory is the source of truth for " +
+      "anything the user has said in this session. When asked to recall " +
+      "session-local facts, scan the message history; do not delegate to " +
+      "RECALL for those.",
+  );
+  lines.push("");
+  lines.push("## Response Style");
+  lines.push(
+    "- Default to short, direct answers. One paragraph or fewer for most " +
+      "questions; one sentence for factual recall.",
+  );
+  lines.push(
+    "- When recalling a value, lead with the value itself. Optional context " +
+      "comes after, not before.",
+  );
+  lines.push(
+    "- Avoid filler phrases like 'I'd be happy to help', 'Great question', " +
+      "or apologetic preambles.",
+  );
+  lines.push(
+    "- Use markdown sparingly. Code goes in fenced blocks; everything else " +
+      "is plain prose.",
+  );
+  lines.push("");
+  lines.push("## Safety");
+  lines.push(
+    "- Refuse requests that would cause real-world harm, exfiltrate real " +
+      "credentials, or violate user privacy. The session-local facts " +
+      "(addresses, names, dates, codenames) the user shares with you for " +
+      "recall benchmarking are not in this category — recall them as asked.",
+  );
+  lines.push(
+    "- When uncertain whether a request is safe, ask one clarifying " +
+      "question rather than refusing outright or proceeding blindly.",
+  );
+  lines.push("");
+  lines.push("## Tool Use");
+  lines.push(
+    "When you invoke a tool, the tool's response is appended to the " +
+      "conversation as a message tagged `[tool_result:<name>]`. Treat tool " +
+      "results as authoritative for the values they return; quote them " +
+      "verbatim when the user asks what a tool returned.",
+  );
+  lines.push("");
+  lines.push("## End of system prompt.");
+  return lines.join("\n");
+}
 
 export type RunOptions = {
   args: CliArgs;
   client: ModelClient;
+  /** Independent judge client (for cross-model judging). Defaults to client. */
+  judgeClient?: ModelClient;
   loadCompactor?: (name: StrategyName) => Promise<{
     compact: (messages: ChatMessage[]) => Promise<ChatMessage[]>;
   } | null>;
@@ -1332,8 +1497,49 @@ export type RunOptions = {
   }) => Promise<{ correct: boolean; reasoning: string }>;
 };
 
+export type ToolCallProbe = {
+  id: string;
+  turn: number;
+  toolName: string;
+  toolValue: string;
+  question: string;
+};
+
+/**
+ * Plan synthetic tool-call/tool-result pairs every 5 turns (starting at
+ * turn 5). Each tool-result is paired with a probe asking what that specific
+ * tool returned at that turn. Probes are reproducible from the seed.
+ */
+export function planToolCalls(args: {
+  totalTurns: number;
+  seed: number;
+}): ToolCallProbe[] {
+  const out: ToolCallProbe[] = [];
+  const rand = rng(args.seed ^ 0x517cc1b7);
+  const tools = [
+    "get_weather",
+    "lookup_stock",
+    "search_inventory",
+    "fetch_metric",
+    "query_calendar",
+  ];
+  for (let t = 5; t <= args.totalTurns; t += 5) {
+    const tool = tools[Math.floor(rand() * tools.length)]!;
+    const value = `${randHex(rand, 6).toUpperCase()}-${Math.floor(rand() * 1000)}`;
+    out.push({
+      id: `tool_${t}`,
+      turn: t,
+      toolName: tool,
+      toolValue: value,
+      question: `What did the ${tool} tool return when called at turn ${t}?`,
+    });
+  }
+  return out;
+}
+
 export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
   const { args, client } = opts;
+  const judgeClient = opts.judgeClient ?? client;
   const sink = new JsonlSink();
   const facts = planFacts({
     totalTurns: args.turns,
@@ -1343,12 +1549,30 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
   const factByTurn = new Map<number, PlantedFact>();
   for (const f of facts) factByTurn.set(f.turn, f);
 
+  const toolCalls = args.withToolCalls
+    ? planToolCalls({ totalTurns: args.turns, seed: args.seed })
+    : [];
+  const toolByTurn = new Map<number, ToolCallProbe>();
+  for (const tc of toolCalls) toolByTurn.set(tc.turn, tc);
+
+  const systemPrompt = args.realisticSystemPrompt
+    ? buildRealisticSystemPrompt()
+    : SYSTEM_PROMPT_MINIMAL;
+
   const rand = rng(args.seed ^ 0x9e3779b9);
   const history: ChatMessage[] = [];
   let totalCompactions = 0;
   let totalTokensSaved = 0;
   let totalProbes = 0;
   let totalCorrect = 0;
+  // Per-kind accuracy tally. Keys are FactKind strings plus "tool_call".
+  const perKind: Record<string, { correct: number; total: number }> = {};
+  const tally = (kind: string, correct: boolean): void => {
+    const slot = perKind[kind] ?? { correct: 0, total: 0 };
+    slot.total++;
+    if (correct) slot.correct++;
+    perKind[kind] = slot;
+  };
 
   for (let i = 1; i <= args.turns; i++) {
     const fact = factByTurn.get(i);
@@ -1364,7 +1588,7 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
     });
 
     const messages: ChatMessage[] = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: systemPrompt },
       ...history,
     ];
     const resp = await client.chat({
@@ -1372,6 +1596,7 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
       messages,
       maxTokens: 256,
       temperature: 0.7,
+      reasoningEffort: args.agentReasoningEffort,
     });
     history.push({ role: "assistant", content: resp.content });
     sink.push({
@@ -1381,6 +1606,31 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
       contentLen: resp.content.length,
       tokens: approxTokens(resp.content),
     });
+
+    // After the assistant's reply, optionally inject a synthetic tool call
+    // and tool result. We model both as plain user/assistant messages with
+    // explicit tags so the compactor sees them as natural text.
+    const toolCall = toolByTurn.get(i);
+    if (toolCall) {
+      const callMsg = `[tool_call:${toolCall.toolName}] {"turn": ${i}}`;
+      const resultMsg = `[tool_result:${toolCall.toolName}] ${toolCall.toolValue}`;
+      history.push({ role: "assistant", content: callMsg });
+      history.push({ role: "user", content: resultMsg });
+      sink.push({
+        event: "turn",
+        turn: i,
+        role: "assistant",
+        contentLen: callMsg.length,
+        tokens: approxTokens(callMsg),
+      });
+      sink.push({
+        event: "turn",
+        turn: i,
+        role: "user",
+        contentLen: resultMsg.length,
+        tokens: approxTokens(resultMsg),
+      });
+    }
 
     const shouldCompact = i % args.compactEvery === 0 && i < args.turns;
     if (shouldCompact) {
@@ -1411,13 +1661,9 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
       } else {
         totalCompactions++;
         totalTokensSaved += result.originalTokens - result.compactedTokens;
-        // Replace history with the compacted version (system message lives
-        // outside `history`; we strip it from the result if present).
         history.length = 0;
         for (const m of result.newMessages) {
           if (m.role === "system" && history.length === 0) {
-            // First system message becomes part of the compacted summary
-            // and is treated as user-visible context. Push it as-is.
             history.push(m);
             continue;
           }
@@ -1430,21 +1676,56 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
         if (f.turn > i) continue;
         const outcome = await probeFact({
           client,
+          judgeClient,
           model: args.model,
           judgeModel: args.judgeModel,
           judgeWithModel: !args.dryRun,
           history,
           fact: f,
-          systemPrompt: SYSTEM_PROMPT,
+          systemPrompt,
+          agentReasoningEffort: args.agentReasoningEffort,
+          judgeReasoningEffort: args.judgeReasoningEffort,
+          probeMaxTokens: args.probeMaxTokens,
           judgeFn: opts.judgeFn,
         });
         totalProbes++;
         if (outcome.correct) totalCorrect++;
+        tally(f.kind, outcome.correct);
         sink.push({
           event: "probe",
           atTurn: i,
           factId: outcome.factId,
           plantedTurn: outcome.turn,
+          kind: f.kind,
+          expected: outcome.expected,
+          actual: outcome.actual,
+          correct: outcome.correct,
+          judgeReasoning: outcome.judgeReasoning,
+          phase: "post-compact",
+        });
+      }
+
+      // Probe tool-call results whose turn <= i.
+      for (const tc of toolCalls) {
+        if (tc.turn > i) continue;
+        const outcome = await probeToolCall({
+          client,
+          model: args.model,
+          history,
+          toolCall: tc,
+          systemPrompt,
+          agentReasoningEffort: args.agentReasoningEffort,
+          probeMaxTokens: args.probeMaxTokens,
+        });
+        totalProbes++;
+        if (outcome.correct) totalCorrect++;
+        tally("tool_call", outcome.correct);
+        sink.push({
+          event: "probe",
+          atTurn: i,
+          factId: outcome.factId,
+          plantedTurn: outcome.turn,
+          kind: "tool_call",
           expected: outcome.expected,
           actual: outcome.actual,
           correct: outcome.correct,
@@ -1459,21 +1740,55 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
   for (const f of facts) {
     const outcome = await probeFact({
       client,
+      judgeClient,
       model: args.model,
       judgeModel: args.judgeModel,
       judgeWithModel: !args.dryRun,
       history,
       fact: f,
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt,
+      agentReasoningEffort: args.agentReasoningEffort,
+      judgeReasoningEffort: args.judgeReasoningEffort,
+      probeMaxTokens: args.probeMaxTokens,
       judgeFn: opts.judgeFn,
     });
     totalProbes++;
     if (outcome.correct) totalCorrect++;
+    tally(f.kind, outcome.correct);
     sink.push({
       event: "probe",
       atTurn: args.turns,
       factId: outcome.factId,
       plantedTurn: outcome.turn,
+      kind: f.kind,
+      expected: outcome.expected,
+      actual: outcome.actual,
+      correct: outcome.correct,
+      judgeReasoning: outcome.judgeReasoning,
+      phase: "final",
+    });
+  }
+
+  // Final probe of every tool-call result.
+  for (const tc of toolCalls) {
+    const outcome = await probeToolCall({
+      client,
+      model: args.model,
+      history,
+      toolCall: tc,
+      systemPrompt,
+      agentReasoningEffort: args.agentReasoningEffort,
+      probeMaxTokens: args.probeMaxTokens,
+    });
+    totalProbes++;
+    if (outcome.correct) totalCorrect++;
+    tally("tool_call", outcome.correct);
+    sink.push({
+      event: "probe",
+      atTurn: args.turns,
+      factId: outcome.factId,
+      plantedTurn: outcome.turn,
+      kind: "tool_call",
       expected: outcome.expected,
       actual: outcome.actual,
       correct: outcome.correct,
@@ -1483,10 +1798,22 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
   }
 
   const overallAccuracy = totalProbes > 0 ? totalCorrect / totalProbes : 0;
+  const perKindAccuracy: Record<
+    string,
+    { correct: number; total: number; accuracy: number }
+  > = {};
+  for (const [kind, { correct, total }] of Object.entries(perKind)) {
+    perKindAccuracy[kind] = {
+      correct,
+      total,
+      accuracy: total > 0 ? correct / total : 0,
+    };
+  }
   sink.push({
     event: "summary",
     strategy: args.strategy,
     overallAccuracy,
+    perKindAccuracy,
     totalCompactions,
     totalTokensSaved,
     totalProbes,
@@ -1497,6 +1824,41 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
     plantFacts: args.plantFacts,
   });
   return sink;
+}
+
+async function probeToolCall(args: {
+  client: ModelClient;
+  model: string;
+  history: ChatMessage[];
+  toolCall: ToolCallProbe;
+  systemPrompt: string;
+  agentReasoningEffort?: ReasoningEffort;
+  probeMaxTokens?: number;
+}): Promise<ProbeOutcome> {
+  const messages: ChatMessage[] = [
+    { role: "system", content: args.systemPrompt },
+    ...args.history,
+    { role: "user", content: args.toolCall.question },
+  ];
+  const resp = await args.client.chat({
+    model: args.model,
+    messages,
+    maxTokens: args.probeMaxTokens ?? 600,
+    temperature: 0,
+    reasoningEffort: args.agentReasoningEffort ?? "medium",
+  });
+  const actual = resp.content.trim();
+  const correct = actual.includes(args.toolCall.toolValue);
+  return {
+    factId: args.toolCall.id,
+    turn: args.toolCall.turn,
+    expected: args.toolCall.toolValue,
+    actual,
+    correct,
+    judgeReasoning: correct
+      ? "tool-call: expected substring present"
+      : "tool-call: expected substring missing",
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1537,7 +1899,11 @@ export async function main(argv: readonly string[]): Promise<number> {
     // hits the same Cerebras client.
     loadCompactor: args.dryRun
       ? undefined
-      : buildDefaultCompactorLoader({ client, model: args.model }),
+      : buildDefaultCompactorLoader({
+          client,
+          model: args.model,
+          reasoningEffort: args.compactorReasoningEffort,
+        }),
   });
   await Bun.write(args.output, sink.serialize());
   const summary = sink.events.find((e) => e.event === "summary");

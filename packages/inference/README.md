@@ -79,56 +79,93 @@
 >     turbo as user-visible cache types and `ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN=1`
 >     remains the explicit acknowledgement of the routing gap.
 >
->   * Deferred dispatch wiring (Wave-6 audit, 2026-05-10): `ggml-metal-ops.cpp`
->     and `ggml-metal-device.m` do NOT yet contain dispatch sites for
->     `GGML_TYPE_TBQ3_0`, `GGML_TYPE_TBQ4_0`, `GGML_TYPE_TBQ3_TCQ`,
->     `GGML_TYPE_QJL1_256`, `GGML_TYPE_Q4_POLAR`. After Wave-5 the kernel
->     SYMBOLS are present in the metallib (`strings default.metallib | grep
->     kernel_turbo3_dot` hits), but the runtime cannot select them via the
->     type-traits table.
+>   * Dispatch wiring status (Wave-6 follow-up, 2026-05-10): the parallel
+>     dispatch path (option (c) below) has now landed for `GGML_TYPE_QJL1_256`
+>     and `GGML_TYPE_Q4_POLAR`. The patch ships in
+>     `packages/app-core/scripts/kernel-patches/metal-kernels.mjs`
+>     (`patchMetalDispatch`, sentinel `// MILADY-DISPATCH-V1`) and adds:
 >
->     **Wave-6 finding — kernel ABI is incompatible with the standard
->     ggml-metal mul_mv dispatch contract.** The fork's
->     `ggml_metal_library_get_pipeline_mul_mv` constructs a pipeline name
->     `kernel_mul_mv_<typename_src0>_<typename_src1>_nsg=N`, sets a function
->     constant `nsg` (subgroup count) at index `FC_MUL_MV+0`, binds buffers
->     in the layout `ggml_metal_kargs_mul_mv` from `ggml-metal-impl.h`, and
->     dispatches with `nsg`-many simdgroups per row. The verified standalone
->     `kernel_mul_mv_qjl1_256_f32` and `kernel_mul_mv_q4_polar_f32`
->     entrypoints take a custom argument struct (`qjl_score_args`,
->     `polar_dequant_args`), do NOT declare an `nsg` function constant, and
->     dispatch one threadgroup per row (fixed `threadgroup_size=32`).
->     Calling them via the standard pipeline path crashes the Metal
->     compiler at constant-binding time.
+>       1. `ggml_metal_library_get_pipeline_milady_mul_mv()` and
+>          `_milady_get_rows()` in `ggml-metal-device.cpp` — pipeline
+>          lookups that bypass the `nsg` function constant by calling
+>          `ggml_metal_library_compile_pipeline(lib, name, name, nullptr)`
+>          (the standalones do not declare any function constants, so the
+>          standard helper crashes at constantValue-binding).
+>       2. `ggml_metal_op_mul_mv_milady_quant()` and
+>          `_get_rows_milady_quant()` static helpers in `ggml-metal-ops.cpp`
+>          that build the standalone arg structs (`qjl_mv_args`,
+>          `polar_mv_args`, `qjl_dequant_args`, `polar_dequant_args`),
+>          set buffers + custom args, and dispatch with the
+>          `tg_size=32`, one-threadgroup-per-row shape that
+>          `metal_verify` proved correct.
+>      3. Early-out at the top of `ggml_metal_op_mul_mat()` and
+>          `ggml_metal_op_get_rows()` that diverts the five milady ggml
+>          types into the parallel dispatcher BEFORE any of the standard
+>          kernel-selection logic that depends on
+>          `get_pipeline_mul_mv` runs.
 >
->     Symbol-only state (Metal): `kernel_turbo3_dot`, `kernel_turbo4_dot`,
->     `kernel_turbo3_tcq_dot`, `kernel_attn_score_qjl1_256`,
->     `kernel_get_rows_qjl1_256`, `kernel_mul_mv_qjl1_256_f32`,
->     `kernel_get_rows_q4_polar`, `kernel_mul_mv_q4_polar_f32` all linked
->     into `default.metallib`; verified by `strings`. Reachability via
->     `MTLDevice.newLibraryWithSource` JIT (the `metal_verify` harness)
->     confirmed 8/8 PASS. Reachability from `ggml_compute_*` graph
->     evaluation is NOT confirmed and requires either:
+>     `nm -gU libggml-metal.dylib` shows the new public symbols
+>     (`_ggml_metal_library_get_pipeline_milady_mul_mv`,
+>     `_ggml_metal_library_get_pipeline_milady_get_rows`); the static op
+>     helpers are TU-private and therefore stripped from the export
+>     table, but `verify/dispatch_smoke` exercises them by submitting a
+>     real `GGML_OP_MUL_MAT` graph node through `ggml_backend_metal_init`
+>     + `ggml_backend_graph_compute` and reading back the result.
+>
+>     **What's now reachable:**
+>
+>       - `GGML_TYPE_Q4_POLAR` — full `MUL_MAT` + `GET_ROWS` dispatch via
+>         `kernel_mul_mv_q4_polar_f32` / `kernel_get_rows_q4_polar`.
+>         `dispatch_smoke` reports `q4_polar PASS dispatch=OK numerics OK
+>         (max_err=3.81e-6 over 4 rows)` against the CPU dequant + fp32
+>         dot reference.
+>       - `GGML_TYPE_QJL1_256` — `MUL_MAT` + `GET_ROWS` dispatch via
+>         `kernel_mul_mv_qjl1_256_f32` / `kernel_get_rows_qjl1_256`.
+>         Dispatch path runs without crashing; `dispatch_smoke` reports
+>         `qjl1_256 PASS dispatch=OK numerics=skipped`. Numeric
+>         comparison vs CPU dequant is intentionally skipped — the
+>         standalone kernel expects a pre-projected sketch (proj_dim=256)
+>         as its `q` activation, not a raw head-dim vector. Wiring a
+>         semantically-correct generic-graph QJL path requires either
+>         host-side query pre-projection at the call site or a separate
+>         `ATTN_SCORE_QJL` op with explicit sketch handling — Wave-7
+>         work.
+>
+>     **What's still gated:**
+>
+>       - `GGML_TYPE_TBQ3_0`, `GGML_TYPE_TBQ4_0`, `GGML_TYPE_TBQ3_TCQ` —
+>         the standalones expose ONLY attention-score kernels
+>         (`kernel_turbo3_dot`, `kernel_turbo4_dot`,
+>         `kernel_turbo3_tcq_dot`), not `mul_mv`-shaped kernels. There is
+>         no kernel symbol available for `MUL_MAT` against these types.
+>         The patch's parallel dispatcher detects this and emits a
+>         structured `GGML_ABORT("milady_quant: tbq* MUL_MAT not yet
+>         wired")` rather than crashing the metallib compiler. Closing
+>         the gap requires a new GGML op (`ATTN_SCORE_TBQ3` /
+>         `ATTN_SCORE_TBQ4` / `ATTN_SCORE_TBQ3_TCQ`) with its own
+>         per-type dispatcher that calls the existing `kernel_turbo*_dot`
+>         entrypoints — Wave-7 work, sister to the QJL attention bridge.
+>
+>     **Original Wave-6 audit alternatives, for the record:**
 >
 >       (a) editing the standalones to take `ggml_metal_kargs_*` and
 >           `nsg` function constants — forbidden by the standalone
->           freeze contract, or
+>           freeze contract.
 >       (b) shipping bridge wrapper kernels in `ggml-metal.metal` that
 >           accept the standard kargs ABI and trampoline into the
->           standalone entrypoints with a translated argument struct —
->           pending design, or
+>           standalone entrypoints — not pursued; (c) is simpler.
 >       (c) carving a parallel dispatch path
 >           (`ggml_metal_op_mul_mv_milady_quant`) in `ggml-metal-ops.cpp`
 >           that bypasses `get_pipeline_mul_mv` and binds the standalones'
->           custom argument structs directly — pending design.
+>           custom argument structs directly — **chosen, landed**.
 >
->     CUDA is the only backend whose v0.4.0-milady binary fully satisfies
->     AGENTS.md §3 today (the CUDA fork has explicit dispatch entries in
->     `ggml-cuda/ggml-cuda.cu` for these types). Metal kernels are
->     production-shipped as JIT-loadable artifacts in `default.metallib`
->     but the graph executor cannot route ops to them without one of (b)
->     or (c). `requiredKernelsMissing()` reports them as missing for any
->     Metal target that uses help-string detection.
+>     CUDA is still the only backend whose v0.4.0-milady binary covers
+>     all five types (it has dispatch entries for `attn_score_qjl_cuda`,
+>     `dequantize_row_q4_polar_cuda`, `dequantize_row_tbq3_tcq_cuda`,
+>     plus the `tbq_decode_block_cuda` device helpers for tbq3/tbq4).
+>     Metal now covers QJL + Polar `MUL_MAT`/`GET_ROWS`. The tbq* triplet
+>     remains symbol-shipped + JIT-reachable but graph-executor-unreachable
+>     until the ATTN_SCORE op lands.
 >
 >   * Wave-6 darwin shared-lib link fix: ggml-base on darwin defaults to
 >     `BUILD_SHARED_LIBS=ON` and links with `-undefined error`, so

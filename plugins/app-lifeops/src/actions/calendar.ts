@@ -656,7 +656,7 @@ export const calendarAction: Action & {
   },
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description:
         "Which calendar operation to run. Google Calendar: feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule. Availability: check_availability, propose_times. Preferences: update_preferences.",
       required: false,

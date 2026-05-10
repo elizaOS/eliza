@@ -4,7 +4,7 @@ End-to-end recipe for taking a base HuggingFace causal-LM, applying every
 Milady inference optimization (PolarQuant Q4 weights, QJL K-cache
 projection, TurboQuant V-cache, DFlash speculative decoding) on top of
 the `milady-ai/llama.cpp` v0.4.0-milady fork, and publishing the
-resulting GGUF + manifest to a `milady-ai/<name>-milady-optimized`
+resulting GGUF + manifest to an `elizaos/eliza-1-<tier>`
 HuggingFace repo so phones can download it via the existing in-app
 downloader.
 
@@ -30,7 +30,7 @@ that the on-device downloader consumes.
 ## What each optimization buys
 
 Numbers below are taken from the per-technique READMEs (last measured
-on Qwen3-0.6B / RTX 5080 Laptop unless noted).
+on Eliza-1 lite / RTX 5080 Laptop unless noted).
 
 | Technique    | Where it acts            | Win                                       | Cost |
 |--------------|--------------------------|-------------------------------------------|------|
@@ -77,7 +77,7 @@ stage-turboquant/  (HF ckpt + turboquant.json)
     ↓  convert_hf_to_gguf.py (milady-ai/llama.cpp v0.4.0-milady)
 gguf/<name>-milady-Q4_POLAR.gguf + milady_manifest.json + README.md
     ↓  push_model_to_hf.py --milady-manifest
-HuggingFace: milady-ai/<name>-milady-optimized
+HuggingFace: elizaos/eliza-1-<tier>
 ```
 
 ## Running it
@@ -87,10 +87,10 @@ HuggingFace: milady-ai/<name>-milady-optimized
 ```bash
 cd packages/training
 uv run python scripts/optimize_for_milady.py \
-    --base-model Qwen/Qwen3-0.6B \
-    --output-dir checkpoints/qwen3-0.6b-milady \
+    --base-model elizaos/eliza-1-lite-0_6b \
+    --output-dir checkpoints/eliza-1-lite \
     --apply polarquant qjl turboquant \
-    --hf-repo milady-ai/qwen3-0.6b-milady-optimized \
+    --hf-repo elizaos/eliza-1-lite-0_6b \
     --dry-run
 ```
 
@@ -106,12 +106,12 @@ consumers know the V-cache config falls back to the framework default.
 HF_TOKEN=hf_xxx \
 LLAMA_CPP_DIR=$HOME/src/milady-llama.cpp \
 uv run python scripts/optimize_for_milady.py \
-    --base-model Qwen/Qwen3-0.6B \
-    --output-dir checkpoints/qwen3-0.6b-milady \
+    --base-model elizaos/eliza-1-lite-0_6b \
+    --output-dir checkpoints/eliza-1-lite \
     --apply polarquant qjl turboquant \
     --calibration data/final/val.jsonl \
     --calibration-samples 128 \
-    --hf-repo milady-ai/qwen3-0.6b-milady-optimized
+    --hf-repo elizaos/eliza-1-lite-0_6b
 ```
 
 Production runs need:
@@ -123,7 +123,7 @@ Production runs need:
   `$LLAMA_CPP_DIR`. The fork is the only place `convert_hf_to_gguf.py`
   understands `--outtype q4_polar`.
 - An `HF_TOKEN` (or `HUGGINGFACE_HUB_TOKEN`) with write access to the
-  `milady-ai` HF org.
+  `elizaos` HF org.
 
 ### Catalog wiring
 
@@ -131,9 +131,9 @@ After publish, run:
 
 ```bash
 uv run python scripts/emit_milady_catalog.py \
-    --manifest checkpoints/qwen3-0.6b-milady/gguf/milady_manifest.json \
+    --manifest checkpoints/eliza-1-lite/gguf/milady_manifest.json \
     --catalog ../app-core/src/services/local-inference/catalog.ts \
-    --output reports/training/catalog-milady-qwen3-0.6b.diff
+    --output reports/training/catalog-eliza-1-lite.diff
 ```
 
 The diff appends a `MODEL_CATALOG` entry pointing at the new HF repo,
@@ -144,15 +144,15 @@ do not collide on the same lines).
 
 ## Expected file sizes
 
-For Qwen3-0.6B (base ~1.16 GB bf16, 484 MB Q4_K_M baseline):
+For Eliza-1 lite (base ~1.16 GB bf16, 484 MB Q4_K_M baseline):
 
 | Stage             | Output                                  | Approx. size |
 |-------------------|-----------------------------------------|--------------|
-| base              | `Qwen/Qwen3-0.6B` HF safetensors         | 1.16 GB |
+| base              | `elizaos/eliza-1-lite-0_6b` HF safetensors         | 1.16 GB |
 | stage-polarquant/ | reconstructed fp16 + polar codes sidecar | 1.16 GB + 70 MB sidecar |
 | stage-qjl/        | unchanged + qjl_config.json              | 1.16 GB + <1 KB |
 | stage-turboquant/ | unchanged + turboquant.json              | 1.16 GB + <1 KB |
-| gguf/             | `qwen3-0-6b-milady-Q4_POLAR.gguf`        | ~380 MB |
+| gguf/             | `eliza-1-lite-Q4_POLAR.gguf`        | ~380 MB |
 
 The GGUF is what phones download; the intermediate stage directories
 stay on the build host.
@@ -164,7 +164,7 @@ invocation phones run after download:
 
 ```bash
 llama-server \
-  --model qwen3-0-6b-milady-Q4_POLAR.gguf \
+  --model eliza-1-lite-Q4_POLAR.gguf \
   --draft-model <drafter>.gguf \
   --spec-type dflash \
   --cache-type-k qjl1_256 \
@@ -177,20 +177,20 @@ exist in the milady-ai fork; the manifest pins
 fork can refuse the model up front instead of failing at first
 inference call.
 
-## Verified outputs (dry-run on Qwen3-0.6B)
+## Verified outputs (dry-run on Eliza-1 lite)
 
 ```
 $ uv run python scripts/optimize_for_milady.py \
-      --base-model Qwen/Qwen3-0.6B \
-      --output-dir /tmp/qwen3-0.6b-milady-test \
+      --base-model elizaos/eliza-1-lite-0_6b \
+      --output-dir /tmp/eliza-1-lite-test \
       --apply polarquant qjl turboquant \
-      --hf-repo milady-ai/qwen3-0.6b-milady-optimized --dry-run
+      --hf-repo elizaos/eliza-1-lite-0_6b --dry-run
 …
 2026-05-10 02:49:01 polarquant_apply --dry-run → exit=0 (6.0s)
 2026-05-10 02:49:04 qjl_apply --dry-run → exit=0 (3.2s)
 2026-05-10 02:49:04 turboquant skipped — CUDA unavailable
-2026-05-10 02:49:04 (dry-run) GGUF target = qwen3-0-6b-milady-Q4_POLAR.gguf
-2026-05-10 02:49:04 (dry-run) push to milady-ai/qwen3-0.6b-milady-optimized
+2026-05-10 02:49:04 (dry-run) GGUF target = eliza-1-lite-Q4_POLAR.gguf
+2026-05-10 02:49:04 (dry-run) push to elizaos/eliza-1-lite-0_6b
 2026-05-10 02:49:04 pipeline ok
 ```
 
@@ -200,8 +200,8 @@ The dry-run on this CPU-only Linux x86_64 box validates:
 - QJL apply CLI parses on `--device cpu`.
 - TurboQuant is correctly identified as needing CUDA and is skipped
   with a manifest entry (`applied: false, reason: "CUDA unavailable"`).
-- The GGUF target filename is computed correctly from the base model
-  slug (`qwen3-0-6b-milady-Q4_POLAR.gguf`).
+- The GGUF target filename is computed correctly from the Eliza-1 tier
+  slug (`eliza-1-lite-Q4_POLAR.gguf`).
 - The manifest serializes with the right GGML type slot numbers
   (`Q4_POLAR=47`, `QJL1_256=46`, `TBQ3_0=43`).
 - The runtime block declares the exact `llama-server` flag set the
