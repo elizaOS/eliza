@@ -67,9 +67,10 @@ export function formatPendingPermissionLine(
   now: number,
 ): string {
   const id = state.id;
-  if (state.status === "denied" && state.lastBlock) {
-    const when = formatRelativeTime(now, state.lastBlock.blockedAt);
-    return `- ${id}: denied ${when} (${state.lastBlock.feature})`;
+  const block = state.lastBlockedFeature;
+  if (state.status === "denied" && block) {
+    const when = formatRelativeTime(now, block.at);
+    return `- ${id}: denied ${when} (${block.app}.${block.action})`;
   }
   if (state.status === "denied") {
     return `- ${id}: denied`;
@@ -126,7 +127,9 @@ export const pendingPermissionsProvider: Provider = {
         pendingPermissions: pending.map((s) => ({
           id: s.id,
           status: s.status,
-          feature: s.lastBlock?.feature,
+          feature: s.lastBlockedFeature
+            ? `${s.lastBlockedFeature.app}.${s.lastBlockedFeature.action}`
+            : undefined,
         })),
       },
     };

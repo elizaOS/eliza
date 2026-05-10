@@ -56,8 +56,8 @@ with a specific code (see "Exit codes" below):
    backend verified pass; the validator rejects mis-uses of that flag.
 5. **README render.** Renders
    `scripts/publish/templates/README.md.j2` from the manifest data.
-   No marketing copy. No user-visible Qwen/Llama strings — the upstream
-   lineage is recorded in the manifest's `lineage` block.
+   No marketing copy. User-visible text stays Eliza-1-first; upstream
+   lineage is recorded only in the manifest's `lineage` block.
 6. **HF push + git tag.** Uploads weights, manifest, README, licenses,
    and eval blobs to `elizaos/eliza-1-<tier>` via
    `huggingface_hub.HfApi.create_commit`, then tags the local training
@@ -267,7 +267,7 @@ from your local machine:
 ```bash
 # Option A: use the existing provision-and-train flow with HF bootstrap.
 bash scripts/train_vast.sh provision-and-train \
-    --registry-key qwen3.5-9b --epochs 1 --bootstrap hf
+    --registry-key eliza-1-desktop-9b --epochs 1 --bootstrap hf
 
 # Option B: take it step by step.
 bash scripts/train_vast.sh provision
@@ -301,41 +301,40 @@ powered off after `bootstrap-from-hf` returns.
 
 ---
 
-## milady-ai org — fused-kernel optimized models
+## elizaos org — fused-kernel optimized models
 
-The `elizaos/eliza-1-*` repos above ship the *base* Milady fine-tunes in
-stock GGUF / fp8 / polarquant flavors (one optimization at a time). The
-`milady-ai/*` org is the home for the **fused-kernel** GGUFs that
-combine all of the milady stack's tricks in a single file:
+The `elizaos/eliza-1-*` repos ship the Eliza-1 device-tier bundles. Each
+published GGUF should be the fused-kernel artifact the local runtimes
+actually install:
 
 - **Q4_POLAR** weight quantization (4-bit, Hadamard-rotated, ~38% of bf16)
 - **QJL1_256** 1-bit JL-transform K-cache (~7.5x KV-K reduction realized)
 - **TBQ V-cache** (`tbq3_0` / `tbq4_0`, ~3-4x KV-V reduction)
-- **DFlash** speculative decoding pairing with a milady-trained drafter
+- **DFlash** speculative decoding pairing with an Eliza-1 drafter
 - llama-server kernels from `milady-ai/llama.cpp` (fork of ggml-org/llama.cpp)
 
-These are the models the on-device Milady runtime wants to load: a single
+These are the models the on-device Eliza runtime wants to load: a single
 GGUF that exercises every kernel the build-llama-cpp-dflash.mjs pipeline
-ships (TBQ, QJL, Q4_POLAR, DFlash). The `elizaos/eliza-1-*-gguf-q4_k_m`
-repos remain available for operators who want a stock llama.cpp build
-without the kernel patches.
+ships (TBQ, QJL, Q4_POLAR, DFlash). Stock-format variants can live under
+the same repo's `text/` directory only when the manifest makes their role
+explicit.
 
 ### Org
 
-- **URL:** https://huggingface.co/milady-ai
-- **Owner:** Milady core team. Add new members via HF org settings.
+- **URL:** https://huggingface.co/elizaos
+- **Owner:** Eliza core team. Add new members via HF org settings.
 - **Visibility:** repos are public by default once the GGUF is real. Use
   `--no-public` on `publish_milady_model.py` to create a private repo
   for staging.
 
 ### One-time org setup
 
-Anyone with org-admin rights at https://huggingface.co/milady-ai does
+Anyone with org-admin rights at https://huggingface.co/elizaos does
 this once:
 
-1. Sign in to HuggingFace with the `milady-ai` admin account.
+1. Sign in to HuggingFace with the `elizaos` admin account.
 2. Visit https://huggingface.co/organizations/new and create the
-   `milady-ai` org with a readable display name ("Milady AI").
+   `elizaos` org if it does not already exist.
 3. Invite the publishing service account so CI can push.
 
 If the org doesn't exist yet, `publish_milady_model.py` errors out
@@ -343,15 +342,15 @@ explicitly with the URL above — it does not silently create the org.
 
 ### Token requirements
 
-Push tokens need **write access scoped to the `milady-ai` org**:
+Push tokens need **write access scoped to the `elizaos` org**:
 
 ```bash
 # 1. Visit https://huggingface.co/settings/tokens
 # 2. Create a "Fine-grained" token with:
 #    - Repo: read+write
-#    - Org: milady-ai (selected)
-#    - Token name: e.g. milady-ai-publisher
-# 3. Export it locally OR set it as a GitHub secret named MILADY_HF_TOKEN.
+#    - Org: elizaos (selected)
+#    - Token name: e.g. eliza-1-publisher
+# 3. Export it locally OR set it as a GitHub secret named ELIZA_HF_TOKEN.
 export HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxx
 ```
 
@@ -363,43 +362,43 @@ public for public repos.
 
 | Role                     | Repo                                                  |
 |--------------------------|-------------------------------------------------------|
-| Inference target (full)  | `milady-ai/<base>-milady-optimized`                   |
-| Drafter for that target  | `milady-ai/<base>-milady-drafter`                     |
+| Inference target (full)  | `elizaos/eliza-1-<tier>`                              |
+| Drafter for that target  | hidden companion file in the same `elizaos/eliza-1-<tier>` repo |
 | Pairing manifest (siblings) | `manifest.json` inside each repo (target points at drafter) |
 
-`<base>` follows the catalog id minus any quant suffix: `qwen3.5-4b`,
-`qwen3.5-9b`, `qwen3.6-27b`, `bonsai-8b-1bit`, `eliza-1-2b`,
-`eliza-1-9b`, `eliza-1-27b`. `<base>-milady-optimized` is always the
-target the user installs; `<base>-milady-drafter` is hidden from the
-catalog and only downloaded as a companion (matching the `runtimeRole:
-"dflash-drafter"` pattern in `catalog.ts`).
+`<tier>` follows the catalog ids: `lite-0_6b`, `mobile-1_7b`,
+`desktop-9b`, `pro-27b`, and `server-h200`. The target the user installs
+is visible; the drafter is hidden from the catalog and only downloaded
+as a companion (matching the `runtimeRole: "dflash-drafter"` pattern in
+`catalog.ts`).
 
 **Why two repos per pair instead of one with two GGUFs?** HuggingFace
 caches the resolve URL per file, the existing downloader keys by
 `(hfRepo, ggufFile)`, and the catalog already encodes companion ids.
-Splitting target and drafter keeps each catalog entry pointing at one
-file in one repo, which is what the downloader already supports.
+Keeping target and drafter in the same Eliza-1 repo keeps one ownership
+boundary per device tier while preserving the downloader's explicit
+`(hfRepo, ggufFile)` key.
 
 ### Drafter pairing manifest
 
-Every `milady-ai/<base>-milady-optimized` repo ships a `manifest.json`
-alongside its GGUF that records which drafter and which optimization
-stack the file expects. Schema:
+Every `elizaos/eliza-1-<tier>` repo ships a `manifest.json` alongside
+its GGUFs that records which drafter and which optimization stack the
+file expects. Schema:
 
 ```json
 {
   "version": 1,
-  "kind": "milady-optimized",
-  "modelId": "qwen3.5-4b",
+  "kind": "eliza-1-optimized",
+  "modelId": "eliza-1-mobile-1_7b",
   "base": {
-    "name": "qwen3.5-4b",
-    "displayName": "Qwen3.5 4B",
-    "params": "4B",
-    "tokenizerFamily": "qwen3",
-    "contextLength": 131072
+    "name": "eliza-1-mobile-1_7b",
+    "displayName": "Eliza-1 Mobile 1.7B",
+    "params": "1.7B",
+    "tokenizerFamily": "eliza1",
+    "contextLength": 32768
   },
   "gguf": {
-    "file": "qwen3.5-4b-milady-optimized.gguf",
+    "file": "text/eliza-1-mobile-1_7b-q4_k_m.gguf",
     "sha256": "<64-hex>",
     "sizeBytes": 0,
     "quant": "Q4_POLAR + QJL1_256 K + TBQ V"
@@ -428,7 +427,7 @@ stack the file expects. Schema:
 ```
 
 The drafter repo ships the inverse — a `manifest.json` whose
-`"kind": "milady-drafter"` block points back at the target repo so the
+`"kind": "eliza-1-drafter"` block points back at the target repo so the
 catalog sync script can walk either side and reconstruct pairings.
 
 ### Publishing flow
@@ -471,7 +470,7 @@ class the iOS / Android runtimes use, points its state directory at a
 temp dir, and reports time + bytes/sec. Run it from the repo root:
 
 ```bash
-node scripts/verify-phone-download.mjs --model-id qwen3.5-4b-milady-optimized
+node scripts/verify-phone-download.mjs --model-id eliza-1-mobile-1_7b
 ```
 
 This is the gate W5-Catalog uses to decide whether to land a catalog

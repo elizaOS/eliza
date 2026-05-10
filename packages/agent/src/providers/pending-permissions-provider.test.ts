@@ -11,10 +11,13 @@ import {
 function makeRegistry(pending: PermissionState[]): IPermissionsRegistry {
   return {
     get: vi.fn(),
+    check: vi.fn(),
     request: vi.fn(),
     recordBlock: vi.fn(),
+    list: vi.fn(() => pending),
     pending: vi.fn(() => pending),
     subscribe: vi.fn(() => () => {}),
+    registerProber: vi.fn(),
   };
 }
 
@@ -40,9 +43,11 @@ describe("formatPendingPermissionLine", () => {
           status: "denied",
           lastChecked: NOW,
           canRequest: false,
-          lastBlock: {
-            feature: "lifeops.reminders.create",
-            blockedAt: NOW - 2 * 24 * 60 * 60 * 1000,
+          platform: "darwin",
+          lastBlockedFeature: {
+            app: "lifeops",
+            action: "reminders.create",
+            at: NOW - 2 * 24 * 60 * 60 * 1000,
           },
         },
         NOW,
@@ -58,6 +63,7 @@ describe("formatPendingPermissionLine", () => {
           status: "not-determined",
           lastChecked: NOW,
           canRequest: true,
+          platform: "darwin",
         },
         NOW,
       ),
@@ -73,6 +79,7 @@ describe("formatPendingPermissionLine", () => {
           restrictedReason: "entitlement_required",
           lastChecked: NOW,
           canRequest: false,
+          platform: "darwin",
         },
         NOW,
       ),
@@ -94,9 +101,11 @@ describe("buildPendingPermissionsContext", () => {
           status: "denied",
           lastChecked: NOW,
           canRequest: false,
-          lastBlock: {
-            feature: "lifeops.reminders.create",
-            blockedAt: NOW - 2 * 24 * 60 * 60 * 1000,
+          platform: "darwin",
+          lastBlockedFeature: {
+            app: "lifeops",
+            action: "reminders.create",
+            at: NOW - 2 * 24 * 60 * 60 * 1000,
           },
         },
         {
@@ -104,6 +113,7 @@ describe("buildPendingPermissionsContext", () => {
           status: "not-determined",
           lastChecked: NOW,
           canRequest: true,
+          platform: "darwin",
         },
       ],
       NOW,
@@ -146,9 +156,11 @@ describe("pendingPermissionsProvider", () => {
           status: "denied",
           lastChecked: NOW,
           canRequest: false,
-          lastBlock: {
-            feature: "lifeops.reminders.create",
-            blockedAt: NOW - 5_000,
+          platform: "darwin",
+          lastBlockedFeature: {
+            app: "lifeops",
+            action: "reminders.create",
+            at: NOW - 5_000,
           },
         },
       ]),

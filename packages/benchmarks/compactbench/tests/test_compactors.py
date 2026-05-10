@@ -125,15 +125,16 @@ async def test_compactor_forwards_previous_artifact_for_drift(
 
     def fake_run(strategy: str, transcript: dict[str, Any], options: dict[str, Any]) -> dict[str, Any]:
         captured["options"] = options
+        captured["transcript"] = transcript
         return {
             "schemaVersion": "1.0.0",
             "summaryText": "second cycle",
             "structured_state": {
-                "immutable_facts": [],
-                "locked_decisions": [],
+                "immutable_facts": ["alice is the user"],
+                "locked_decisions": ["use kebab-case"],
                 "deferred_items": [],
                 "forbidden_behaviors": [],
-                "entity_map": {},
+                "entity_map": {"alice": "user"},
                 "unresolved_items": [],
             },
             "selectedSourceTurnIds": [],
@@ -149,5 +150,127 @@ async def test_compactor_forwards_previous_artifact_for_drift(
     first = await compactor.compact(_build_transcript())
     await compactor.compact(_build_transcript(), previous_artifact=first)
 
+    # Both channels must carry the prior artifact: structured under
+    # options.previousArtifact (for any TS strategy that wants the typed
+    # shape) and rendered as a string under transcript.metadata.priorLedger
+    # (the channel hybrid-ledger actually reads from).
     assert "previousArtifact" in captured["options"]
     assert captured["options"]["previousArtifact"]["summaryText"] == "second cycle"
+    metadata = captured["transcript"].get("metadata") or {}
+    assert "priorLedger" in metadata
+    prior_ledger = metadata["priorLedger"]
+    assert isinstance(prior_ledger, str)
+    assert "alice is the user" in prior_ledger
+    assert "use kebab-case" in prior_ledger
+    assert "alice: user" in prior_ledger
+
+
+async def test_compactor_omits_metadata_on_first_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """First-cycle calls must NOT carry a priorLedger — there is no prior
+    artifact yet, and emitting an empty one would confuse the TS prompt.
+    """
+    captured: dict[str, Any] = {}
+
+    def fake_run(strategy: str, transcript: dict[str, Any], options: dict[str, Any]) -> dict[str, Any]:
+        captured["transcript"] = transcript
+        return {
+            "schemaVersion": "1.0.0",
+            "summaryText": "x",
+            "structured_state": {
+                "immutable_facts": [],
+                "locked_decisions": [],
+                "deferred_items": [],
+                "forbidden_behaviors": [],
+                "entity_map": {},
+                "unresolved_items": [],
+            },
+            "selectedSourceTurnIds": [],
+            "warnings": [],
+            "methodMetadata": {},
+        }
+
+    monkeypatch.setattr(eliza_compactors, "run_ts_compactor", fake_run)
+    compactor = eliza_compactors.HybridLedgerCompactor(
+        provider=_StubProvider(), model="gpt-oss-120b"
+    )
+    await compactor.compact(_build_transcript())
+    assert "metadata" not in captured["transcript"]
+
+
+async def test_compactor_handles_empty_transcript(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_run(strategy: str, transcript: dict[str, Any], options: dict[str, Any]) -> dict[str, Any]:
+        captured["transcript"] = transcript
+        return {
+            "schemaVersion": "1.0.0",
+            "summaryText": "",
+            "structured_state": {
+                "immutable_facts": [],
+                "locked_decisions": [],
+                "deferred_items": [],
+                "forbidden_behaviors": [],
+                "entity_map": {},
+                "unresolved_items": [],
+            },
+            "selectedSourceTurnIds": [],
+            "warnings": [],
+            "methodMetadata": {"replacement_message_count": 0},
+        }
+
+    monkeypatch.setattr(eliza_compactors, "run_ts_compactor", fake_run)
+    compactor = eliza_compactors.NaiveSummaryCompactor(
+        provider=_StubProvider(), model="gpt-oss-120b"
+    )
+    artifact = await compactor.compact(Transcript(turns=[]))
+    assert captured["transcript"]["turns"] == []
+    assert artifact.summary_text == ""
+    assert artifact.method_metadata.get("replacement_message_count") == 0
+
+
+def test_previous_artifact_to_prior_ledger_renders_all_sections() -> None:
+    """The string ledger must include every populated section of the
+    structured state plus the summary text. Missing sections must be
+    omitted (not rendered as empty headers).
+    """
+    from compactbench.contracts import CompactionArtifact, StructuredState
+
+    state = StructuredState(
+        immutable_facts=["alice is engineer"],
+        locked_decisions=["ship monday"],
+        deferred_items=["pick scope"],
+        forbidden_behaviors=["no fallbacks"],
+        entity_map={"alice": "engineer"},
+        unresolved_items=["estimate eta"],
+    )
+    artifact = CompactionArtifact(
+        schemaVersion="1.0.0",
+        summaryText="status: planning sprint 4",
+        structured_state=state,
+        selectedSourceTurnIds=[0, 1],
+        warnings=[],
+        methodMetadata={},
+    )
+    rendered = eliza_compactors._previous_artifact_to_prior_ledger(artifact)
+    assert "# summary" in rendered
+    assert "status: planning sprint 4" in rendered
+    assert "# immutable_facts" in rendered and "alice is engineer" in rendered
+    assert "# locked_decisions" in rendered and "ship monday" in rendered
+    assert "# deferred_items" in rendered and "pick scope" in rendered
+    assert "# forbidden_behaviors" in rendered and "no fallbacks" in rendered
+    assert "# unresolved_items" in rendered and "estimate eta" in rendered
+    assert "# entity_map" in rendered and "alice: engineer" in rendered
+
+    empty_artifact = CompactionArtifact(
+        schemaVersion="1.0.0",
+        summaryText="",
+        structured_state=StructuredState(),
+        selectedSourceTurnIds=[],
+        warnings=[],
+        methodMetadata={},
+    )
+    assert eliza_compactors._previous_artifact_to_prior_ledger(empty_artifact) == ""
