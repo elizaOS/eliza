@@ -31,6 +31,7 @@ import {
 	type IAgentRuntime,
 	logger,
 	ModelType,
+	resolveStateDir,
 	type TextEmbeddingParams,
 } from "@elizaos/core";
 
@@ -553,13 +554,6 @@ export const mobileDeviceBridge = new MobileDeviceBridge();
 function readTimeoutMs(envKey: string, fallback: number): number {
 	const parsed = Number.parseInt(process.env[envKey]?.trim() ?? "", 10);
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function resolveStateDir(): string {
-	const explicit = process.env.ELIZA_STATE_DIR?.trim();
-	if (explicit) return explicit;
-	const home = process.env.HOME ?? process.cwd();
-	return path.join(home, ".eliza");
 }
 
 function modelsDir(): string {

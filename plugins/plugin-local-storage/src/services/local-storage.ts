@@ -1,8 +1,13 @@
 import { promises as fsp } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
 import { Storage } from "@brighter/storage-adapter-local";
-import { type IAgentRuntime, logger, Service, ServiceType } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  resolveStateDir,
+  Service,
+  ServiceType,
+} from "@elizaos/core";
 
 import type { JsonUploadResult, JsonValue, UploadResult } from "../types";
 
@@ -23,7 +28,7 @@ interface LocalStorage {
  *
  *   1. `runtime.getSetting("LOCAL_STORAGE_PATH")`
  *   2. `process.env.LOCAL_STORAGE_PATH`
- *   3. `${ELIZA_STATE_DIR ?? `${os.homedir()}/.eliza`}/attachments`
+ *   3. `<resolveStateDir()>/attachments`
  */
 function resolveStorageRoot(runtime: IAgentRuntime): string {
   const fromRuntime = runtime.getSetting("LOCAL_STORAGE_PATH");
@@ -34,8 +39,7 @@ function resolveStorageRoot(runtime: IAgentRuntime): string {
   if (typeof fromEnv === "string" && fromEnv.length > 0) {
     return path.resolve(fromEnv);
   }
-  const stateDir = process.env.ELIZA_STATE_DIR ?? path.join(homedir(), ".eliza");
-  return path.join(stateDir, "attachments");
+  return path.join(resolveStateDir(), "attachments");
 }
 
 function joinKey(...segments: Array<string | undefined>): string {

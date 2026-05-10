@@ -4,11 +4,10 @@ import {
   constants as fsConstants,
   promises as fsp,
 } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { elizaLogger } from "@elizaos/core";
+import { elizaLogger, resolveStateDir } from "@elizaos/core";
 import youtubeDl from "youtube-dl-exec";
 
 export type YtDlpRunner = (
@@ -498,9 +497,7 @@ export class BinaryResolver {
 function defaultBinariesDir(): string {
   const explicit = process.env.ELIZA_BINARIES_DIR;
   if (explicit) return explicit;
-  const stateDir =
-    process.env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
-  return path.join(stateDir, "binaries");
+  return path.join(resolveStateDir(), "binaries");
 }
 
 export function ytDlpAssetName(): string {

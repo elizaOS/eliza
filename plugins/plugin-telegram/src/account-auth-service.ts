@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 import { Api, TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 
@@ -101,12 +102,6 @@ const TELEGRAM_ACCOUNT_AUTH_STATUSES = new Set<TelegramAccountAuthStatus>([
   "connected",
   "error",
 ]);
-
-function resolveStateDir(): string {
-  return (
-    process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza")
-  );
-}
 
 function resolveTelegramAccountSessionDir(): string {
   const sessionDir = path.join(resolveStateDir(), "telegram-account");
