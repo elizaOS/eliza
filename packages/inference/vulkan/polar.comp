@@ -1,5 +1,5 @@
 // DRAFT: COMPILE-VERIFIED on Linux (glslc 2022.3, target Vulkan 1.1 / SPIR-V 1.3).
-// Hardware verification still required — see local-inference/kernels/README.md
+// Hardware verification still required — see packages/inference/README.md
 // "Verification matrix".
 //
 // PolarQuant 4-bit block (block_q4_polar, 82 bytes):

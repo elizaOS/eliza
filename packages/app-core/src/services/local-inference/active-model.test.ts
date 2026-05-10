@@ -166,13 +166,13 @@ describe("validateLocalInferenceLoadArgs", () => {
         { cacheTypeK: "tbq4_0" },
         { allowFork: false },
       ),
-    ).toThrow(/apothic|fork/i);
+    ).toThrow(/milady-ai\/llama\.cpp|fork/i);
     expect(() =>
       validateLocalInferenceLoadArgs(
         { cacheTypeV: "qjl1_256" },
         { allowFork: false },
       ),
-    ).toThrow(/apothic|fork/i);
+    ).toThrow(/milady-ai\/llama\.cpp|fork/i);
   });
 
   it("accepts fork KV cache types when allowFork is true (AOSP path)", () => {
