@@ -1,7 +1,6 @@
 import type { DeploymentTargetConfig } from "../contracts/service-routing.js";
 import { normalizeDeploymentTargetConfig } from "../contracts/service-routing.js";
 import { isPlainObject } from "../type-guards.js";
-import type { ElizaConfig } from "./types.eliza.js";
 
 export const RUNTIME_EXECUTION_MODES = [
   "cloud",
@@ -83,14 +82,13 @@ export function runtimeExecutionModeForDeploymentTarget(
   return deploymentTarget?.runtime === "cloud" ? "cloud" : "local-safe";
 }
 
+export interface RuntimeExecutionModeConfigSource {
+  runtime?: RuntimeModeConfig | Record<string, unknown> | null;
+  deploymentTarget?: DeploymentTargetConfig | null;
+}
+
 export function readRuntimeExecutionModeConfig(
-  // Structural — the keys we read off the eliza config. Avoid `Pick`-from-
-  // `ElizaConfig` since `runtime` and `deploymentTarget` are not declared
-  // top-level on that type yet (they live under nested namespaces).
-  config:
-    | { runtime?: unknown; deploymentTarget?: unknown }
-    | null
-    | undefined,
+  config: RuntimeExecutionModeConfigSource | null | undefined,
 ): RuntimeExecutionMode {
   const runtimeConfig = isPlainObject(config?.runtime)
     ? config.runtime
