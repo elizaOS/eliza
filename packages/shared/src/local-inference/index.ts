@@ -11,13 +11,6 @@
  */
 
 export {
-  AGENT_MODEL_SLOTS,
-  type AgentModelSlot,
-  type InstalledModel,
-  type ModelAssignments,
-  type TextGenerationSlot,
-} from "./types.js";
-export {
   downloadsStagingDir,
   elizaModelsDir,
   isWithinElizaRoot,
@@ -26,17 +19,24 @@ export {
 } from "./paths.js";
 export {
   DEFAULT_ROUTING_POLICY,
-  readRoutingPreferences,
   type RoutingPolicy,
   type RoutingPreferences,
+  readRoutingPreferences,
   setPolicy,
   setPreferredProvider,
   writeRoutingPreferences,
 } from "./routing-preferences.js";
 export {
+  AGENT_MODEL_SLOTS,
+  type AgentModelSlot,
+  type InstalledModel,
+  type ModelAssignments,
+  type TextGenerationSlot,
+} from "./types.js";
+export {
   __registryPathForTests,
   hashFile,
-  verifyInstalledModel,
   type VerifyResult,
   type VerifyState,
+  verifyInstalledModel,
 } from "./verify.js";
