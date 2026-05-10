@@ -14,11 +14,37 @@
 //   node apply-patches.mjs --repo <path> --series qjl,polarquant
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+// Read the first ~64 KB of a patch file as utf8 — enough to see the
+// `Subject:` line. Patches can be hundreds of KB once they include the
+// vendored kernel sources, so we cap the read.
+function readPatchFile(p) {
+  const buf = readFileSync(p);
+  return buf.subarray(0, Math.min(buf.length, 64 * 1024)).toString("utf8");
+}
+
+// Pull the `Subject:` line out of a `git format-patch`-style header.
+// Multi-line subjects are joined; the leading `[PATCH n/N]` prefix is
+// stripped so the subject matches what `git log --format=%s` emits.
+function extractSubject(text) {
+  const m = /^Subject:\s*(.+(?:\n[ \t]+.+)*)/m.exec(text);
+  if (!m) return null;
+  const joined = m[1].replace(/\n[ \t]+/g, " ").trim();
+  return joined.replace(/^\[PATCH[^\]]*\]\s*/i, "").trim();
+}
+
+// Escape a string for `git log --grep=<pattern>` when used with
+// --fixed-strings. We pass it through directly; --fixed-strings makes
+// regex metacharacters literal, so the only thing to guard against is
+// embedded newlines (subjects are joined to one line in extractSubject).
+function escapeGrep(s) {
+  return s;
+}
 
 const args = process.argv.slice(2);
 const flag = (name) => {
@@ -82,16 +108,41 @@ for (const series of seriesNames) {
 
   for (const p of patches) {
     const full = path.join(seriesDir, p);
-    // Check if patch is already applied: `git apply --check -R` exits 0
-    // when the patch can be reversed (i.e. it's already applied).
-    const reverseCheck = spawnSync("git", ["apply", "--check", "-R", full], {
-      cwd: repo,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    if (reverseCheck.status === 0) {
-      console.log(`[patches]   skip (already applied): ${series}/${p}`);
-      skippedCount += 1;
-      continue;
+    // Idempotency: skip patches whose commit subject is already in the git
+    // log on top of the base. We can't use `git apply --check -R` alone
+    // because earlier patches in a series may be modified by later ones,
+    // making a stand-alone reverse-apply false-negative even when the patch
+    // is in the tree (e.g. qjl/0002 introduces a file that qjl/0004 then
+    // edits — reverse-applying 0002 against the post-0004 tree fails
+    // because the file no longer matches the patch's pre-image).
+    //
+    // Strategy: parse the `Subject:` line out of the patch file and grep
+    // `git log --grep=` for an exact subject match in the current branch's
+    // history. Falls back to the reverse-apply check for patches without a
+    // recognisable subject header.
+    const patchText = readPatchFile(full);
+    const subject = extractSubject(patchText);
+    if (subject) {
+      const found = spawnSync(
+        "git",
+        ["log", "--all", `--grep=${escapeGrep(subject)}`, "--fixed-strings", "--format=%H"],
+        { cwd: repo, stdio: ["ignore", "pipe", "pipe"] },
+      );
+      if (found.status === 0 && (found.stdout?.toString().trim() ?? "") !== "") {
+        console.log(`[patches]   skip (already in git log): ${series}/${p}`);
+        skippedCount += 1;
+        continue;
+      }
+    } else {
+      const reverseCheck = spawnSync("git", ["apply", "--check", "-R", full], {
+        cwd: repo,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      if (reverseCheck.status === 0) {
+        console.log(`[patches]   skip (reverse-apply ok): ${series}/${p}`);
+        skippedCount += 1;
+        continue;
+      }
     }
 
     // Apply via git am to preserve commit metadata. Fall back to
