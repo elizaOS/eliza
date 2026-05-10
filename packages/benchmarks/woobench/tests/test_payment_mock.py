@@ -66,7 +66,7 @@ class FakePaymentClient:
         assert app_id == "woobench-mock-app"
         assert "oxapay" in providers
         assert callback_channel["source"] == "woobench"
-        assert metadata["payment_action"] == "CREATE_APP_CHARGE"
+        assert metadata["payment_action"] in {"CREATE_APP_CHARGE", "TEXT_PAYMENT_REQUEST"}
         self.created_charges.append(amount_usd)
         return SimpleNamespace(
             id="charge_test",
@@ -165,7 +165,7 @@ def payment_check_scenario() -> Scenario:
 
 
 @pytest.mark.asyncio
-async def test_woobench_collects_mock_backed_payment():
+async def test_woobench_collects_text_payment_through_app_charge_mock():
     payment_client = FakePaymentClient()
     evaluator = WooBenchEvaluator(evaluator_mode="heuristic", payment_client=payment_client)
 
@@ -177,12 +177,16 @@ async def test_woobench_collects_mock_backed_payment():
     assert result.revenue.payment_requested is True
     assert result.revenue.payment_received is True
     assert result.revenue.amount_earned == 1.0
-    assert result.revenue.payment_provider == "mock"
-    assert result.revenue.payment_request_id == "payreq_test"
-    assert result.revenue.payment_status == "paid"
-    assert result.revenue.payment_url == "http://mock.test/checkout/payreq_test"
-    assert result.revenue.payment_transaction_hash == "woobench_payment_test_1"
-    assert payment_client.created_amounts == [1.0]
+    assert result.revenue.payment_provider == "mock-app-charge:oxapay"
+    assert result.revenue.payment_request_id == "charge_test"
+    assert result.revenue.payment_status == "confirmed"
+    assert result.revenue.payment_url == "http://mock.test/payment/app-charge/woobench-mock-app/charge_test"
+    assert result.revenue.payment_checkout_url == "http://mock.test/checkout/charge_test?provider=oxapay"
+    assert result.revenue.payment_transaction_hash == "woobench_payment_mock_smoke_1"
+    assert result.revenue.payment_action == "TEXT_PAYMENT_REQUEST"
+    assert result.revenue.payment_action_source == "text"
+    assert payment_client.created_amounts == []
+    assert payment_client.created_charges == [1.0]
 
 
 @pytest.mark.asyncio
