@@ -102,12 +102,12 @@ describe("PAYMENTS action integration", () => {
     expect(addedSource?.institution).toBe("Chase");
     expect(addedSource?.accountMask).toBe("1234");
 
-    // Legacy `mode` alias still resolves for one release.
+    // `subaction` is the only canonical discriminator.
     const listResult = await paymentsAction.handler?.(
       runtime,
       ownerMessage(runtime.agentId, "list payment sources"),
       undefined,
-      { parameters: { mode: "list_sources" } },
+      { parameters: { subaction: "list_sources" } },
       undefined,
       [],
     );
@@ -128,7 +128,7 @@ describe("PAYMENTS action integration", () => {
       undefined,
       {
         parameters: {
-          mode: "add_source",
+          subaction: "add_source",
           kind: "manual",
           label: "Manual",
         },
@@ -146,7 +146,7 @@ describe("PAYMENTS action integration", () => {
       undefined,
       {
         parameters: {
-          mode: "import_csv",
+          subaction: "import_csv",
           sourceId,
           csvText: SAMPLE_CSV,
         },
@@ -168,7 +168,7 @@ describe("PAYMENTS action integration", () => {
       ownerMessage(runtime.agentId, "import csv again"),
       undefined,
       {
-        parameters: { mode: "import_csv", sourceId, csvText: SAMPLE_CSV },
+        parameters: { subaction: "import_csv", sourceId, csvText: SAMPLE_CSV },
       },
       undefined,
       [],
@@ -183,7 +183,7 @@ describe("PAYMENTS action integration", () => {
       runtime,
       ownerMessage(runtime.agentId, "list transactions"),
       undefined,
-      { parameters: { mode: "list_transactions", sourceId } },
+      { parameters: { subaction: "list_transactions", sourceId } },
       undefined,
       [],
     );
@@ -204,7 +204,7 @@ describe("PAYMENTS action integration", () => {
       ownerMessage(runtime.agentId, "add"),
       undefined,
       {
-        parameters: { mode: "add_source", kind: "manual", label: "Daily" },
+        parameters: { subaction: "add_source", kind: "manual", label: "Daily" },
       },
       undefined,
       [],
@@ -218,7 +218,7 @@ describe("PAYMENTS action integration", () => {
       undefined,
       {
         parameters: {
-          mode: "import_csv",
+          subaction: "import_csv",
           sourceId,
           csvText: SAMPLE_CSV,
         },
@@ -231,7 +231,7 @@ describe("PAYMENTS action integration", () => {
       runtime,
       ownerMessage(runtime.agentId, "show dashboard"),
       undefined,
-      { parameters: { mode: "dashboard", windowDays: 30 } },
+      { parameters: { subaction: "dashboard", windowDays: 30 } },
       undefined,
       [],
     );
@@ -258,7 +258,7 @@ describe("PAYMENTS action integration", () => {
       ownerMessage(runtime.agentId, "add"),
       undefined,
       {
-        parameters: { mode: "add_source", kind: "manual", label: "Throwaway" },
+        parameters: { subaction: "add_source", kind: "manual", label: "Throwaway" },
       },
       undefined,
       [],
@@ -270,7 +270,7 @@ describe("PAYMENTS action integration", () => {
       runtime,
       ownerMessage(runtime.agentId, "remove"),
       undefined,
-      { parameters: { mode: "remove_source", sourceId } },
+      { parameters: { subaction: "remove_source", sourceId } },
       undefined,
       [],
     );
@@ -280,7 +280,7 @@ describe("PAYMENTS action integration", () => {
       runtime,
       ownerMessage(runtime.agentId, "list"),
       undefined,
-      { parameters: { mode: "list_sources" } },
+      { parameters: { subaction: "list_sources" } },
       undefined,
       [],
     );
@@ -297,7 +297,7 @@ describe("PAYMENTS action integration", () => {
       runtime,
       ownerMessage(runtime.agentId, "add"),
       undefined,
-      { parameters: { mode: "add_source" } },
+      { parameters: { subaction: "add_source" } },
       undefined,
       [],
     );

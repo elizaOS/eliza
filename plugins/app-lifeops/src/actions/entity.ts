@@ -1,37 +1,19 @@
 /**
  * LifeOps `ENTITY` umbrella action.
  *
- * Wave-2 W2-A renamed the prior `RELATIONSHIP` umbrella. The action
- * now exposes both entity CRUD and relationship-edge CRUD; the data
- * layer remains two stores (`EntityStore` + `RelationshipStore`, see
- * W1-E). `RELATIONSHIP` is kept as a simile for one release so the
- * planner does not regress on prompts like "follow up with David" or
- * "Pat is my manager".
- *
  * Canonical subactions (entity / relationship CRUD):
- *   - `add` (new): add a person/entity to the contacts/Rolodex.
- *     Legacy alias `add_contact` is preserved for one release.
- *   - `list` (new): list known entities. Legacy alias `list_contacts`
- *     is preserved for one release.
- *   - `set_identity` (new): observe a (platform, handle) identity for
- *     an entity via `EntityStore.observeIdentity` with `verified: true`.
- *   - `set_relationship` (new): upsert a typed edge between two
- *     entities via `RelationshipStore.upsert`.
- *   - `log_interaction`: record an outbound/inbound interaction.
- *   - `merge` (new): merge duplicate entities via
- *     `EntityStore.merge(targetId, sourceIds)`.
+ *   - `add`              add a person/entity to the contacts/Rolodex
+ *   - `list`             list known entities
+ *   - `set_identity`     observe a (platform, handle) identity for an entity
+ *   - `set_relationship` upsert a typed edge between two entities
+ *   - `log_interaction`  record an outbound/inbound interaction
+ *   - `merge`            merge duplicate entities
  *
- * Transitional follow-up subactions (deprecated; one-release back-compat):
- *   - `add_follow_up`, `complete_follow_up`, `follow_up_list`,
- *     `days_since`, `list_overdue_followups`, `mark_followup_done`,
- *     `set_followup_threshold` — these collapsed onto the canonical
- *     `SCHEDULED_TASK` umbrella in W3-C (`SCHEDULED_TASK.list({ kind:
- *     "followup", subject: { kind: "relationship", id } })` etc). The
- *     same verb names are registered as `SCHEDULED_TASK` similes so the
- *     planner picks the canonical action for new prompts. ENTITY keeps
- *     these subactions for one release as a planner-cache alias; the
- *     handler logic stays here for that release and is removed in the
- *     next wave.
+ * Follow-up cadence (`add_follow_up`, `complete_follow_up`,
+ * `follow_up_list`, `days_since`, `list_overdue_followups`,
+ * `mark_followup_done`, `set_followup_threshold`) lives on `SCHEDULED_TASK`.
+ * The legacy `RELATIONSHIP` umbrella name is preserved as a simile so the
+ * planner does not regress on cached prompts.
  */
 
 import type {
@@ -58,25 +40,12 @@ import {
 import { LifeOpsRepository } from "../lifeops/repository.js";
 
 type Subaction =
-  // Canonical ENTITY subactions (W2-A).
   | "add"
   | "list"
   | "log_interaction"
   | "set_identity"
   | "set_relationship"
-  | "merge"
-  // Transitional follow-up subactions (deprecated; collapse to
-  // SCHEDULED_TASK queries when that umbrella ships in W3-C).
-  | "add_follow_up"
-  | "complete_follow_up"
-  | "follow_up_list"
-  | "days_since"
-  | "list_overdue_followups"
-  | "mark_followup_done"
-  | "set_followup_threshold"
-  // Legacy RELATIONSHIP subaction names (one-release back-compat).
-  | "list_contacts"
-  | "add_contact";
+  | "merge";
 
 type EntityParameters = {
   subaction?: Subaction;
@@ -88,12 +57,8 @@ type EntityParameters = {
   phone?: string;
   notes?: string;
   relationshipId?: string;
-  followUpId?: string;
   reason?: string;
-  dueAt?: string;
-  thresholdDays?: number | string;
   confirmed?: boolean;
-  // ENTITY-specific (W2-A) parameters.
   /** Target entity id for set_identity/set_relationship/merge. */
   entityId?: string;
   /** Optional explicit platform when calling set_identity. */
@@ -112,15 +77,9 @@ type EntityParameters = {
   evidence?: string;
 };
 
-// Backward-compat alias for any importer that still references the old type
-// name. Will be removed in Wave 3.
-type RelationshipParameters = EntityParameters;
-
-function getParams(
-  options: HandlerOptions | undefined,
-): RelationshipParameters {
+function getParams(options: HandlerOptions | undefined): EntityParameters {
   const params = (options as HandlerOptions | undefined)?.parameters as
-    | RelationshipParameters
+    | EntityParameters
     | undefined;
   return params ?? {};
 }
@@ -223,7 +182,7 @@ async function resolveRelationshipIdFromText(
 
 async function resolveRelationshipId(
   service: LifeOpsService,
-  params: Pick<RelationshipParameters, "relationshipId" | "name" | "intent">,
+  params: Pick<EntityParameters, "relationshipId" | "name" | "intent">,
   body?: string,
 ): Promise<string | null> {
   const explicitRelationshipId = normalizedNonEmpty(params.relationshipId);
@@ -263,104 +222,14 @@ async function resolveRelationshipId(
   return resolveRelationshipIdFromText(service, name);
 }
 
-function normalizeFollowUpDueAt(rawDueAt: string): string | null {
-  const trimmed = rawDueAt.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const directMs = Date.parse(trimmed);
-  if (Number.isFinite(directMs)) {
-    return new Date(directMs).toISOString();
-  }
-
-  const normalized = normalizeLookup(trimmed);
-  const base = new Date();
-  const atDefaultFollowUpTime = (date: Date): string => {
-    const copy = new Date(date);
-    copy.setHours(9, 0, 0, 0);
-    return copy.toISOString();
-  };
-
-  if (/\btoday\b/.test(normalized)) {
-    return atDefaultFollowUpTime(base);
-  }
-  if (/\btomorrow\b/.test(normalized)) {
-    const tomorrow = new Date(base);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return atDefaultFollowUpTime(tomorrow);
-  }
-  if (
-    /\bnext week\b/.test(normalized) ||
-    /\bin a week\b/.test(normalized) ||
-    /\ba week from now\b/.test(normalized)
-  ) {
-    const nextWeek = new Date(base);
-    nextWeek.setDate(nextWeek.getDate() + 7);
-    return atDefaultFollowUpTime(nextWeek);
-  }
-
-  const weekdayMap: Record<string, number> = {
-    sunday: 0,
-    monday: 1,
-    tuesday: 2,
-    wednesday: 3,
-    thursday: 4,
-    friday: 5,
-    saturday: 6,
-  };
-  const weekdayMatch = normalized.match(
-    /\b(?:(next)\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/,
-  );
-  if (weekdayMatch) {
-    const qualifier = weekdayMatch[1] ?? "";
-    const weekdayToken = weekdayMatch[2] ?? "";
-    const targetWeekday = weekdayMap[weekdayToken];
-    if (targetWeekday !== undefined) {
-      const currentWeekday = base.getDay();
-      let delta = (targetWeekday - currentWeekday + 7) % 7;
-      if (qualifier === "next") {
-        delta = delta === 0 ? 7 : delta + 7;
-      } else if (delta === 0) {
-        delta = 7;
-      }
-      const resolved = new Date(base);
-      resolved.setDate(resolved.getDate() + delta);
-      return atDefaultFollowUpTime(resolved);
-    }
-  }
-
-  return null;
-}
-
 const ENTITY_SUBACTIONS: readonly Subaction[] = [
-  // Canonical (W2-A).
   "add",
   "list",
   "log_interaction",
   "set_identity",
   "set_relationship",
   "merge",
-  // Transitional follow-up subactions (collapse onto SCHEDULED_TASK
-  // queries in W3-C).
-  "add_follow_up",
-  "complete_follow_up",
-  "follow_up_list",
-  "days_since",
-  "list_overdue_followups",
-  "mark_followup_done",
-  "set_followup_threshold",
-  // Legacy aliases preserved for one release.
-  "list_contacts",
-  "add_contact",
 ];
-
-/** Canonicalize legacy subaction names to the W2-A spelling. */
-function canonicalizeSubaction(value: Subaction): Subaction {
-  if (value === "list_contacts") return "list";
-  if (value === "add_contact") return "add";
-  return value;
-}
 
 function normalizeRelationshipSubaction(value: unknown): Subaction | null {
   if (typeof value !== "string") return null;
@@ -368,7 +237,7 @@ function normalizeRelationshipSubaction(value: unknown): Subaction | null {
   if (!(ENTITY_SUBACTIONS as readonly string[]).includes(normalized)) {
     return null;
   }
-  return canonicalizeSubaction(normalized as Subaction);
+  return normalized as Subaction;
 }
 
 function normalizeShouldAct(value: unknown): boolean | null {
@@ -387,11 +256,11 @@ function normalizePlannerResponse(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-type RelationshipLlmPlan = {
+type EntityLlmPlan = {
   subaction: Subaction | null;
   shouldAct: boolean | null;
   response?: string;
-  params?: Partial<RelationshipParameters>;
+  params?: Partial<EntityParameters>;
 };
 
 function normalizeMessageChannel(
@@ -411,21 +280,12 @@ function normalizeStringParam(value: unknown): string | undefined {
   return trimmed;
 }
 
-function normalizeNumberParam(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim().length > 0) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return undefined;
-}
-
 function normalizeBooleanParam(value: unknown): boolean | undefined {
   const normalized = normalizeShouldAct(value);
   return normalized === null ? undefined : normalized;
 }
 
-function relationshipParamsFromJson(
+function entityParamsFromJson(
   parsed: Record<string, unknown>,
 ): Partial<EntityParameters> {
   const params: Partial<EntityParameters> = {};
@@ -440,9 +300,7 @@ function relationshipParamsFromJson(
     "phone",
     "notes",
     "relationshipId",
-    "followUpId",
     "reason",
-    "dueAt",
     "entityId",
     "platform",
     "displayName",
@@ -468,11 +326,6 @@ function relationshipParamsFromJson(
     }
   }
 
-  const thresholdDays = normalizeNumberParam(parsed.thresholdDays);
-  if (thresholdDays !== undefined) {
-    params.thresholdDays = thresholdDays;
-  }
-
   const confirmed = normalizeBooleanParam(parsed.confirmed);
   if (confirmed !== undefined) {
     params.confirmed = confirmed;
@@ -481,79 +334,13 @@ function relationshipParamsFromJson(
   return params;
 }
 
-const DEFAULT_FOLLOWUP_THRESHOLD_DAYS = 30;
-
-type OverdueRelationshipRecord = {
-  relationshipId: string;
-  name: string;
-  lastContactedAt: string;
-  thresholdDays: number;
-  daysOverdue: number;
-};
-
-function parseThresholdDays(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    return Math.floor(value);
-  }
-  if (typeof value === "string" && value.trim().length > 0) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return Math.floor(parsed);
-    }
-  }
-  return null;
-}
-
-function resolveRelationshipThresholdDays(relationship: {
-  metadata: Record<string, unknown>;
-}): number {
-  return (
-    parseThresholdDays(relationship.metadata.followupThresholdDays) ??
-    DEFAULT_FOLLOWUP_THRESHOLD_DAYS
-  );
-}
-
-async function listOverdueRelationships(
-  service: LifeOpsService,
-  nowMs: number = Date.now(),
-): Promise<OverdueRelationshipRecord[]> {
-  const overdue: OverdueRelationshipRecord[] = [];
-  const relationships = await service.listRelationships({ limit: 200 });
-
-  for (const relationship of relationships) {
-    if (!relationship.lastContactedAt) {
-      continue;
-    }
-    const lastContactedMs = new Date(relationship.lastContactedAt).getTime();
-    if (!Number.isFinite(lastContactedMs)) {
-      continue;
-    }
-    const thresholdDays = resolveRelationshipThresholdDays(relationship);
-    const thresholdMs = thresholdDays * 24 * 60 * 60 * 1000;
-    const ageMs = nowMs - lastContactedMs;
-    if (ageMs <= thresholdMs) {
-      continue;
-    }
-    overdue.push({
-      relationshipId: relationship.id,
-      name: relationship.name,
-      lastContactedAt: relationship.lastContactedAt,
-      thresholdDays,
-      daysOverdue: Math.floor((ageMs - thresholdMs) / (24 * 60 * 60 * 1000)),
-    });
-  }
-
-  overdue.sort((left, right) => right.daysOverdue - left.daysOverdue);
-  return overdue;
-}
-
-async function resolveRelationshipPlanWithLlm(args: {
+async function resolveEntityPlanWithLlm(args: {
   runtime: IAgentRuntime;
   message: Memory;
   state: State | undefined;
   intent: string;
-  params: RelationshipParameters;
-}): Promise<RelationshipLlmPlan> {
+  params: EntityParameters;
+}): Promise<EntityLlmPlan> {
   if (typeof args.runtime.useModel !== "function") {
     return { subaction: null, shouldAct: null };
   }
@@ -571,10 +358,10 @@ async function resolveRelationshipPlanWithLlm(args: {
       ? args.message.content.text
       : "";
   const prompt = [
-    "Plan the ENTITY (people / relationships / follow-ups) subaction for this request.",
+    "Plan the ENTITY (people / relationships) subaction for this request.",
     "The user may speak in any language.",
     "Return JSON only as a single object with exactly these fields:",
-    "subaction: add, list, log_interaction, set_identity, set_relationship, merge, add_follow_up, complete_follow_up, follow_up_list, days_since, list_overdue_followups, mark_followup_done, set_followup_threshold, or null",
+    "subaction: add, list, log_interaction, set_identity, set_relationship, merge, or null",
     "shouldAct: true or false",
     "response: short clarifying question, or null",
     "intent: concise restatement of the user request, or null",
@@ -585,10 +372,7 @@ async function resolveRelationshipPlanWithLlm(args: {
     "phone: phone number, or null",
     "notes: interaction/contact notes, or null",
     "relationshipId: explicit relationship id/name, or null",
-    "followUpId: explicit follow-up id, or null",
-    "reason: follow-up reason, or null",
-    "dueAt: due date/time in user wording or ISO, or null",
-    "thresholdDays: positive integer cadence threshold, or null",
+    "reason: short reason note, or null",
     "confirmed: true, false, or null",
     "entityId: explicit entity id (set_identity / set_relationship / merge), or null",
     "platform: identity platform (set_identity), or null",
@@ -598,7 +382,7 @@ async function resolveRelationshipPlanWithLlm(args: {
     "relationshipType: edge type label (set_relationship; e.g. 'manages', 'colleague_of', 'works_at'), or null",
     "sourceEntityIds: array of duplicate entity ids to fold into the target (merge), or null",
     "evidence: short evidence string for set_identity / set_relationship, or null",
-    'Example: {"subaction":"add_follow_up","shouldAct":true,"response":null,"intent":"follow up with Sam tomorrow","name":"Sam","channel":null,"handle":null,"email":null,"phone":null,"notes":null,"relationshipId":null,"followUpId":null,"reason":"follow up","dueAt":"tomorrow","thresholdDays":null,"confirmed":null,"entityId":null,"platform":null,"displayName":null,"toEntityId":null,"fromEntityId":null,"relationshipType":null,"sourceEntityIds":null,"evidence":null}',
+    'Example: {"subaction":"add","shouldAct":true,"response":null,"intent":"add Sam to my Rolodex","name":"Sam","channel":"telegram","handle":"@sam","email":null,"phone":null,"notes":null,"relationshipId":null,"reason":null,"confirmed":null,"entityId":null,"platform":null,"displayName":null,"toEntityId":null,"fromEntityId":null,"relationshipType":null,"sourceEntityIds":null,"evidence":null}',
     "",
     "Choose list when the user wants to see, browse, list, or recall who is in the contacts/Rolodex.",
     "Choose add when the user wants to remember a new person, store a handle, or add them to the contact list.",
@@ -606,21 +390,13 @@ async function resolveRelationshipPlanWithLlm(args: {
     "Choose set_identity when the user adds a (platform, handle) for an existing entity, e.g. 'Pat's Slack handle is @pat'.",
     "Choose set_relationship when the user describes a typed edge between two entities, e.g. 'Pat is my manager', 'Sam works at Acme', 'Carol is my colleague'.",
     "Choose merge when the user says two contact entries are the same person and should be combined.",
-    "Choose add_follow_up when the user wants to schedule a future reminder to reach out to a contact.",
-    "Choose complete_follow_up when the user marks an existing follow-up as done or finished.",
-    "Choose follow_up_list when the user asks what follow-ups are pending or due.",
-    "Choose days_since when the user asks how long it has been since they last talked to or contacted a person.",
-    "Choose list_overdue_followups when the user asks who is overdue, who they owe a follow-up to, or who they have not contacted in too long.",
-    "Choose mark_followup_done when the user says they already followed up, closed the loop, or wants an overdue follow-up marked done for a contact.",
-    "Choose set_followup_threshold when the user wants a durable cadence like every 14 days for a specific contact.",
+    "If the user wants to schedule, list, or close a follow-up cadence, set shouldAct=false and tell them to use SCHEDULED_TASK — that umbrella owns follow-up verbs.",
     "Set shouldAct=false only when the request is too vague to safely choose any of the subactions.",
     "When shouldAct=false, response must be a short clarifying question in the user's language.",
-    "Extract only values stated or clearly implied by the request or recent conversation. Do not invent ids, handles, dates, or thresholds.",
+    "Extract only values stated or clearly implied by the request or recent conversation. Do not invent ids, handles, or notes.",
     "For add, extract name plus channel and handle when present.",
     "For set_identity, extract entityId or name plus platform and handle.",
     "For set_relationship, extract fromEntityId/toEntityId or names plus relationshipType.",
-    "For add_follow_up, extract name/relationshipId, reason, and dueAt when present.",
-    "For set_followup_threshold, extract name/relationshipId and thresholdDays.",
     "",
     `Current request:\n${currentMessage}`,
     `Resolved intent:\n${args.intent}`,
@@ -648,7 +424,7 @@ async function resolveRelationshipPlanWithLlm(args: {
     subaction,
     shouldAct: subaction ? true : normalizeShouldAct(parsed.shouldAct),
     response: normalizePlannerResponse(parsed.response),
-    params: relationshipParamsFromJson(parsed),
+    params: entityParamsFromJson(parsed),
   };
 }
 
@@ -674,27 +450,20 @@ export const entityAction: Action & {
     "RELATIONSHIP",
     "CONTACTS",
     "ROLODEX",
-    "FOLLOW_UPS",
     "LOG_INTERACTION",
-    "ADD_CONTACT",
     "ADD_ENTITY",
     "ADD_PERSON",
     "MERGE_ENTITIES",
     "MERGE_CONTACTS",
     "SET_IDENTITY",
     "SET_RELATIONSHIP",
-    "DAYS_SINCE",
-    "OVERDUE_FOLLOWUPS",
-    "LIST_OVERDUE_FOLLOWUPS",
-    "MARK_FOLLOWUP_DONE",
-    "SET_FOLLOWUP_THRESHOLD",
   ],
   description:
-    "Owner-only. The ENTITY umbrella: people / organizations / projects / concepts the owner cares about, plus typed relationships between them. Subactions cover entity CRUD (add, list, set_identity, log_interaction, merge), edge CRUD (set_relationship), and transitional follow-up cadence (add_follow_up, complete_follow_up, follow_up_list, days_since, list_overdue_followups, mark_followup_done, set_followup_threshold). Replaces the prior RELATIONSHIP umbrella.",
+    "Owner-only. The ENTITY umbrella: people / organizations / projects / concepts the owner cares about, plus typed relationships between them. Subactions cover entity CRUD (add, list, set_identity, log_interaction, merge) and edge CRUD (set_relationship). Follow-up cadence belongs to SCHEDULED_TASK.",
   descriptionCompressed:
-    "ENTITY = people/relationships/follow-ups. subactions add list log_interaction set_identity set_relationship merge add_follow_up complete_follow_up follow_up_list days_since list_overdue_followups mark_followup_done set_followup_threshold; one-off dated call/text reminders belong to LIFE",
+    "ENTITY = people/relationships. subactions add list log_interaction set_identity set_relationship merge; follow-up cadence belongs to SCHEDULED_TASK; one-off dated call/text reminders belong to LIFE",
   routingHint:
-    'people/contacts/relationships ("add Pat to my contacts", "Pat is my manager", "follow up with David", "how long since I talked to X") -> ENTITY; one-off dated reminders to call/text someone ("remember to call mom Sunday") -> LIFE',
+    'people/contacts/relationships ("add Pat to my contacts", "Pat is my manager") -> ENTITY; follow-up cadence ("follow up with David", "how long since I talked to X", "who is overdue") -> SCHEDULED_TASK; one-off dated reminders to call/text someone ("remember to call mom Sunday") -> LIFE',
   contexts: ["contacts", "tasks", "calendar", "messaging", "memory"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -756,7 +525,7 @@ export const entityAction: Action & {
     let subaction: Subaction | null = explicitSubaction;
     if (!subaction) {
       const planIntent = (params.intent ?? body).trim();
-      const plan = await resolveRelationshipPlanWithLlm({
+      const plan = await resolveEntityPlanWithLlm({
         runtime,
         message,
         state,
@@ -772,7 +541,7 @@ export const entityAction: Action & {
       if (plan.shouldAct === false || !subaction) {
         const fallback =
           plan.response ??
-          "Tell me whether you want to list contacts, add a contact, log an interaction, schedule a follow-up, complete a follow-up, list overdue follow-ups, change a follow-up threshold, or check days since last contact.";
+          "Tell me whether you want to list contacts, add a contact, log an interaction, set an identity, set a relationship, or merge duplicates. (Follow-up scheduling lives on SCHEDULED_TASK.)";
         return respond({
           success: false,
           scenario: "planner_clarification",
@@ -1020,250 +789,10 @@ export const entityAction: Action & {
       });
     }
 
-    if (subaction === "add_follow_up") {
-      const relationshipId = await resolveRelationshipId(service, params, body);
-      const dueAtSource = normalizedNonEmpty(params.dueAt) ?? body;
-      const dueAt = dueAtSource ? normalizeFollowUpDueAt(dueAtSource) : null;
-      const reason = params.reason ?? params.notes ?? "";
-      if (!relationshipId || !dueAt) {
-        const fallback = !relationshipId
-          ? "I need a known contact to schedule a follow-up."
-          : "I need a due date or time to schedule a follow-up.";
-        // Selection + execution were correct: the user asked to add a
-        // follow-up, the action ran, and we're now waiting on the user to
-        // disambiguate the contact or supply a due date. Mark as
-        // awaiting-confirmation.
-        return respond({
-          success: false,
-          scenario: "relationship_add_followup_missing",
-          fallback,
-          context: { hasRelationshipId: Boolean(relationshipId) },
-          values: { requiresConfirmation: true },
-          data: {
-            subaction,
-            error: "MISSING_FIELDS",
-            requiresConfirmation: true,
-          },
-        });
-      }
-      const followUp = await service.createFollowUp({
-        relationshipId,
-        dueAt,
-        reason,
-        priority: 3,
-        draft: null,
-        completedAt: null,
-        metadata: {},
-      });
-      return respond({
-        success: true,
-        scenario: "relationship_add_followup",
-        fallback: `Scheduled follow-up for ${dueAt}: ${reason || "(no reason)"}.`,
-        context: { dueAt, reason: reason || null },
-        data: { subaction, followUp },
-      });
-    }
-
-    if (subaction === "complete_follow_up") {
-      const followUpId = params.followUpId;
-      if (!followUpId) {
-        return respond({
-          success: false,
-          scenario: "relationship_complete_followup_missing_id",
-          fallback: "I need the followUpId to complete.",
-          data: { subaction, error: "MISSING_FOLLOW_UP_ID" },
-        });
-      }
-      await service.completeFollowUp(followUpId);
-      return respond({
-        success: true,
-        scenario: "relationship_complete_followup",
-        fallback: `Marked follow-up ${followUpId} as completed.`,
-        context: { followUpId },
-        data: { subaction, followUpId },
-      });
-    }
-
-    if (subaction === "follow_up_list") {
-      const queue = await service.getDailyFollowUpQueue({ limit: 50 });
-      const fallback =
-        queue.length === 0
-          ? "No follow-ups due today."
-          : `You have ${queue.length} follow-up${queue.length === 1 ? "" : "s"} due:\n${queue
-              .map((fu) => `- ${fu.dueAt} — ${fu.reason} (id: ${fu.id})`)
-              .join("\n")}`;
-      return respond({
-        success: true,
-        scenario: "relationship_followup_list",
-        fallback,
-        context: { dueCount: queue.length },
-        data: { subaction, followUps: queue },
-      });
-    }
-
-    if (subaction === "days_since") {
-      const relationshipId = await resolveRelationshipId(service, params, body);
-      if (!relationshipId) {
-        return respond({
-          success: false,
-          scenario: "relationship_days_since_missing_id",
-          fallback: "I need a known contact to check last contact.",
-          data: { subaction, error: "MISSING_RELATIONSHIP_ID" },
-        });
-      }
-      const rel = await service.getRelationship(relationshipId);
-      const days = await service.getDaysSinceContact(relationshipId);
-      const fallback =
-        days === null
-          ? `No contact has been logged with ${rel?.name ?? relationshipId}.`
-          : `It has been ${days} day${days === 1 ? "" : "s"} since you contacted ${rel?.name ?? relationshipId}.`;
-      return respond({
-        success: true,
-        scenario: "relationship_days_since",
-        fallback,
-        context: { name: rel?.name ?? null, days },
-        data: { subaction, relationshipId, days },
-      });
-    }
-
-    if (subaction === "list_overdue_followups") {
-      const overdue = await listOverdueRelationships(service);
-      const fallback =
-        overdue.length === 0
-          ? "No overdue follow-ups."
-          : `Overdue follow-ups (${overdue.length}):\n${overdue
-              .map(
-                (entry) =>
-                  `- ${entry.name}: last contacted ${entry.lastContactedAt} (+${entry.daysOverdue}d over ${entry.thresholdDays}d threshold)`,
-              )
-              .join("\n")}`;
-      return respond({
-        success: true,
-        scenario: "relationship_overdue_list",
-        fallback,
-        context: { overdueCount: overdue.length },
-        data: { subaction, overdue },
-      });
-    }
-
-    if (subaction === "mark_followup_done") {
-      const relationshipId = await resolveRelationshipId(service, params, body);
-      if (!relationshipId) {
-        return respond({
-          success: false,
-          scenario: "relationship_mark_done_missing_id",
-          fallback: "I need a known contact to mark that follow-up done.",
-          data: { subaction, error: "MISSING_RELATIONSHIP_ID" },
-        });
-      }
-      const relationship = await service.getRelationship(relationshipId);
-      if (!relationship) {
-        return respond({
-          success: false,
-          scenario: "relationship_mark_done_not_found",
-          fallback: `No contact found with id ${relationshipId}.`,
-          context: { relationshipId },
-          data: { subaction, error: "NOT_FOUND" },
-        });
-      }
-      const nowIso = new Date().toISOString();
-      await service.upsertRelationship({
-        id: relationship.id,
-        name: relationship.name,
-        primaryChannel: relationship.primaryChannel,
-        primaryHandle: relationship.primaryHandle,
-        email: relationship.email,
-        phone: relationship.phone,
-        notes: relationship.notes,
-        tags: relationship.tags,
-        relationshipType: relationship.relationshipType,
-        lastContactedAt: nowIso,
-        metadata: {
-          ...relationship.metadata,
-          lastFollowupNote: params.notes ?? params.reason ?? null,
-        },
-      });
-      const pendingFollowUps = (
-        await service.listFollowUps({ status: "pending", limit: 100 })
-      ).filter((followUp) => followUp.relationshipId === relationship.id);
-      for (const followUp of pendingFollowUps) {
-        await service.completeFollowUp(followUp.id);
-      }
-      const fallback =
-        pendingFollowUps.length > 0
-          ? `Marked ${relationship.name} as followed up and completed ${pendingFollowUps.length} open follow-up${pendingFollowUps.length === 1 ? "" : "s"}.`
-          : `Marked ${relationship.name} as followed up.`;
-      return respond({
-        success: true,
-        scenario: "relationship_mark_done",
-        fallback,
-        context: {
-          name: relationship.name,
-          completedCount: pendingFollowUps.length,
-        },
-        data: {
-          subaction,
-          relationshipId: relationship.id,
-          completedFollowUpIds: pendingFollowUps.map((followUp) => followUp.id),
-          lastContactedAt: nowIso,
-        },
-      });
-    }
-
-    if (subaction === "set_followup_threshold") {
-      const relationshipId = await resolveRelationshipId(service, params, body);
-      const thresholdDays = parseThresholdDays(params.thresholdDays);
-      if (!relationshipId || thresholdDays === null) {
-        const fallback = !relationshipId
-          ? "I need a known contact to change the follow-up threshold."
-          : "I need a positive threshold in days.";
-        return respond({
-          success: false,
-          scenario: "relationship_set_threshold_missing",
-          fallback,
-          context: { hasRelationshipId: Boolean(relationshipId) },
-          data: { subaction, error: "MISSING_FIELDS" },
-        });
-      }
-      const relationship = await service.getRelationship(relationshipId);
-      if (!relationship) {
-        return respond({
-          success: false,
-          scenario: "relationship_set_threshold_not_found",
-          fallback: `No contact found with id ${relationshipId}.`,
-          context: { relationshipId },
-          data: { subaction, error: "NOT_FOUND" },
-        });
-      }
-      await service.upsertRelationship({
-        id: relationship.id,
-        name: relationship.name,
-        primaryChannel: relationship.primaryChannel,
-        primaryHandle: relationship.primaryHandle,
-        email: relationship.email,
-        phone: relationship.phone,
-        notes: relationship.notes,
-        tags: relationship.tags,
-        relationshipType: relationship.relationshipType,
-        lastContactedAt: relationship.lastContactedAt,
-        metadata: {
-          ...relationship.metadata,
-          followupThresholdDays: thresholdDays,
-        },
-      });
-      return respond({
-        success: true,
-        scenario: "relationship_set_threshold",
-        fallback: `Set follow-up threshold for ${relationship.name} to ${thresholdDays} days.`,
-        context: { name: relationship.name, thresholdDays },
-        data: { subaction, relationshipId: relationship.id, thresholdDays },
-      });
-    }
-
     return respond({
       success: false,
       scenario: "relationship_unknown_subaction",
-      fallback: `Unknown relationship subaction: ${subaction}.`,
+      fallback: `Unknown ENTITY subaction: ${subaction}.`,
       context: { subaction },
       data: { error: "UNKNOWN_SUBACTION", subaction },
     });
@@ -1272,7 +801,7 @@ export const entityAction: Action & {
     {
       name: "subaction",
       description:
-        "Which ENTITY operation to run. Canonical: add, list, log_interaction, set_identity, set_relationship, merge. Transitional follow-up subactions (collapse onto SCHEDULED_TASK in W3-C): add_follow_up, complete_follow_up, follow_up_list, days_since, list_overdue_followups, mark_followup_done, set_followup_threshold. Legacy aliases (one-release back-compat): list_contacts, add_contact.",
+        "Which ENTITY operation to run: add, list, log_interaction, set_identity, set_relationship, merge. Follow-up cadence belongs to SCHEDULED_TASK.",
       schema: { type: "string" as const },
     },
     {
@@ -1319,26 +848,9 @@ export const entityAction: Action & {
       schema: { type: "string" as const },
     },
     {
-      name: "followUpId",
-      description: "Target follow-up id.",
-      schema: { type: "string" as const },
-    },
-    {
       name: "reason",
-      description: "Reason or purpose for a follow-up.",
+      description: "Optional reason note.",
       schema: { type: "string" as const },
-    },
-    {
-      name: "dueAt",
-      description:
-        "Follow-up due time. Accepts natural language like 'tomorrow', 'next week', or 'next Tuesday at 3pm', or an ISO-8601 timestamp.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "thresholdDays",
-      description:
-        "Durable overdue threshold in days for this contact. Use for cadence rules like every 14 days.",
-      schema: { type: "number" as const },
     },
     {
       name: "confirmed",
@@ -1443,40 +955,12 @@ export const entityAction: Action & {
     [
       {
         name: "{{name1}}",
-        content: {
-          text: "Remind me to follow up with Carol next Monday about the contract.",
-        },
+        content: { text: "Pat is my manager." },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "Scheduled follow-up for 2026-04-20T09:00:00Z: the contract.",
-          action: "ENTITY",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "What follow-ups do I have today?" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "You have 2 follow-ups due: ...",
-          action: "ENTITY",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "How long has it been since I talked to Dan?" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "It has been 14 days since you contacted Dan.",
+          text: "Recorded self -[manages]-> Pat.",
           action: "ENTITY",
         },
       },

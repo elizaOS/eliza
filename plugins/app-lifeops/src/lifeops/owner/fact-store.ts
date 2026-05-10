@@ -10,8 +10,8 @@
  * typed in first-run customize from one the agent inferred from a connector
  * — and so audits can trace the origin.
  *
- * `set_reminder_preference` and `configure_escalation` (previously routed
- * through `PROFILE`) write into the store's policy entries.
+ * Reminder intensity and escalation policy (`LIFE.policy_set_reminder` /
+ * `LIFE.policy_configure_escalation`) write into the store's policy entries.
  *
  * Persistence: cache-backed, single record per agent. The cache key is
  * `eliza:lifeops:owner-fact-store:v1`. The legacy `LifeOpsOwnerProfile`

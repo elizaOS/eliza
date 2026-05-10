@@ -25,8 +25,6 @@ type PaymentsSubaction =
 
 type PaymentsActionParams = {
   subaction?: PaymentsSubaction;
-  /** One-release alias for `subaction`; planner cache hits keep working. */
-  mode?: PaymentsSubaction;
   sourceId?: string;
   kind?: LifeOpsPaymentSourceKind;
   label?: string;
@@ -97,12 +95,7 @@ async function runPaymentsAction(
   void message;
   const params = mergeParams(message, options);
   const service = new LifeOpsService(runtime);
-  // Accept the legacy `mode` alias for one release so cached planner outputs
-  // keep resolving; new callers should use `subaction`.
-  const subaction =
-    normalizeSubaction(params.subaction) ??
-    normalizeSubaction(params.mode) ??
-    "dashboard";
+  const subaction = normalizeSubaction(params.subaction) ?? "dashboard";
 
   switch (subaction) {
     case "dashboard": {
@@ -296,13 +289,6 @@ export const paymentsAction: Action & {
       name: "subaction",
       description:
         "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges (defaults dashboard).",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "mode",
-      description:
-        "Legacy alias for `subaction`. Accepted for one release so cached planner outputs keep resolving; new callers should use `subaction`.",
       required: false,
       schema: { type: "string" as const },
     },

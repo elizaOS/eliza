@@ -13,14 +13,22 @@
  *
  *   2. ENTITY is the canonical entry point for people / contacts / typed
  *      relationships. The legacy `RELATIONSHIP` name is a one-release simile
- *      so cached planner outputs keep resolving.
+ *      so cached planner outputs keep resolving. Follow-up cadence belongs
+ *      to SCHEDULED_TASK; ENTITY's flat subaction surface is exactly
+ *      `add | list | log_interaction | set_identity | set_relationship | merge`.
  *
  *   3. SCHEDULED_TASK is the canonical entry point for runner-managed
- *      reminders / check-ins / follow-ups / approvals (W3-C drift D-2). The
- *      transitional ENTITY follow-up verbs collapse onto its simile list.
+ *      reminders / check-ins / follow-ups / approvals.
  *
- *   4. LIFE.policy_* owns owner-policy writes (W3-C drift D-3). PROFILE
- *      keeps the legacy simile names registered for one release.
+ *   4. LIFE.policy_* is the only home for owner-policy writes
+ *      (`policy_set_reminder`, `policy_configure_escalation`). PROFILE's
+ *      flat surface is exactly `save | capture_phone`.
+ *
+ *   5. SUBSCRIPTIONS + PAYMENTS expose only `subaction`; the legacy `mode`
+ *      alias is gone.
+ *
+ *   6. VOICE_CALL exposes a single `dial` verb with a `recipientKind`
+ *      discriminator (`owner` | `external` | `e164`).
  *
  * Uses a real AgentRuntime with PGLite (plugin-sql) — no SQL mocks — so the
  * access helpers (`resolveCanonicalOwnerIdForMessage`, `checkSenderRole`) and
@@ -108,9 +116,9 @@ describe("LifeOps plugin action gating", () => {
       "MESSAGE",
       "BOOK_TRAVEL",
       "RESOLVE_REQUEST",
-      // W3-C drift D-2: the SCHEDULED_TASK umbrella is the canonical home
-      // for the runner's verbs; ENTITY's transitional follow-up subactions
-      // collapse onto it.
+      // SCHEDULED_TASK is the canonical home for runner-managed
+      // reminders / check-ins / follow-ups; ENTITY's surface no longer
+      // carries the follow-up verbs.
       "SCHEDULED_TASK",
     ]) {
       expect(actionNames).toContain(expected);
@@ -137,11 +145,40 @@ describe("LifeOps plugin action gating", () => {
     }
   });
 
+  it("ENTITY exposes a flat 6-verb canonical surface (no transitional follow-up similes)", () => {
+    const entity = findAction("ENTITY");
+    const subactionParam = (entity.parameters ?? []).find(
+      (p) => p.name === "subaction",
+    );
+    if (!subactionParam) {
+      throw new Error("ENTITY has no `subaction` parameter");
+    }
+    // Follow-up cadence lives on SCHEDULED_TASK now; the transitional
+    // subaction names (`add_follow_up`, `complete_follow_up`,
+    // `follow_up_list`, `days_since`, `list_overdue_followups`,
+    // `mark_followup_done`, `set_followup_threshold`) and the legacy
+    // contact aliases (`add_contact`, `list_contacts`) must be gone from
+    // ENTITY's similes so the planner is never tempted to land them here.
+    for (const dropped of [
+      "ADD_FOLLOW_UP",
+      "COMPLETE_FOLLOW_UP",
+      "FOLLOW_UP_LIST",
+      "DAYS_SINCE",
+      "LIST_OVERDUE_FOLLOWUPS",
+      "MARK_FOLLOWUP_DONE",
+      "SET_FOLLOWUP_THRESHOLD",
+      "FOLLOW_UPS",
+      "OVERDUE_FOLLOWUPS",
+      "ADD_CONTACT",
+    ]) {
+      expect(entity.similes ?? []).not.toContain(dropped);
+    }
+  });
+
   it("registers the 7 transitional ENTITY follow-up subactions as SCHEDULED_TASK similes", () => {
-    // W3-C drift D-2: the follow-up verbs collapse onto SCHEDULED_TASK; the
-    // simile registration is what lets the planner pick SCHEDULED_TASK when
-    // the user asks to add/list/complete a follow-up. ENTITY still keeps the
-    // simile names registered for one release as a planner-cache alias.
+    // SCHEDULED_TASK is the canonical home for follow-up cadence; the simile
+    // registration is what lets the planner pick SCHEDULED_TASK when the user
+    // asks to add/list/complete a follow-up.
     const scheduledTask = (appLifeOpsPlugin.actions ?? []).find(
       (a) => a.name === "SCHEDULED_TASK",
     );
@@ -163,12 +200,11 @@ describe("LifeOps plugin action gating", () => {
     }
   });
 
-  it("LIFE owns the canonical policy.* subactions (W3-C drift D-3)", () => {
-    // W3-C drift D-3: LIFE.policy_set_reminder + LIFE.policy_configure_escalation
-    // are the canonical homes for owner-policy writes; PROFILE keeps the legacy
-    // simile names registered for one release as a planner-cache alias.
-    const life = (appLifeOpsPlugin.actions ?? []).find((a) => a.name === "LIFE");
-    if (!life) throw new Error("LIFE is not registered in appLifeOpsPlugin.actions");
+  it("LIFE owns the canonical policy.* subactions; PROFILE no longer carries the policy aliases", () => {
+    // LIFE.policy_set_reminder + LIFE.policy_configure_escalation are the
+    // only home for owner-policy writes. PROFILE's flat surface is
+    // `save | capture_phone`.
+    const life = findAction("LIFE");
     const subactionParam = (life.parameters ?? []).find(
       (p) => p.name === "subaction",
     );
@@ -179,18 +215,54 @@ describe("LifeOps plugin action gating", () => {
     expect(enumValues).toContain("policy_configure_escalation");
     expect(life.similes ?? []).toContain("SET_REMINDER_INTENSITY");
     expect(life.similes ?? []).toContain("CONFIGURE_ESCALATION");
+
+    const profile = findAction("PROFILE");
+    const profileSubactionParam = (profile.parameters ?? []).find(
+      (p) => p.name === "subaction",
+    );
+    if (!profileSubactionParam) {
+      throw new Error("PROFILE has no `subaction` parameter");
+    }
+    const profileEnum =
+      (profileSubactionParam.schema as { enum?: readonly string[] } | undefined)
+        ?.enum ?? [];
+    expect(profileEnum).toEqual(["save", "capture_phone"]);
+    expect(profile.similes ?? []).not.toContain("SET_REMINDER_INTENSITY");
+    expect(profile.similes ?? []).not.toContain("CONFIGURE_ESCALATION");
   });
 
-  it("SUBSCRIPTIONS + PAYMENTS use canonical `subaction` parameter (W3-C drift D-5)", () => {
-    // W3-C drift D-5: rename `mode` → `subaction`; legacy `mode` stays as a
-    // one-release alias param so cached planner outputs keep resolving.
+  it("SUBSCRIPTIONS + PAYMENTS expose only canonical `subaction` (mode alias dropped)", () => {
     for (const name of ["SUBSCRIPTIONS", "PAYMENTS"]) {
-      const action = (appLifeOpsPlugin.actions ?? []).find((a) => a.name === name);
-      if (!action) throw new Error(`${name} is not registered in appLifeOpsPlugin.actions`);
+      const action = findAction(name);
       const paramNames = (action.parameters ?? []).map((p) => p.name);
       expect(paramNames).toContain("subaction");
-      expect(paramNames).toContain("mode");
+      expect(paramNames).not.toContain("mode");
     }
+  });
+
+  it("VOICE_CALL exposes a single `dial` verb with a recipientKind discriminator", () => {
+    const voiceCall = findAction("VOICE_CALL");
+    const subactionParam = (voiceCall.parameters ?? []).find(
+      (p) => p.name === "subaction",
+    );
+    if (!subactionParam) {
+      throw new Error("VOICE_CALL has no `subaction` parameter");
+    }
+    const enumValues =
+      (subactionParam.schema as { enum?: readonly string[] } | undefined)
+        ?.enum ?? [];
+    expect(enumValues).toEqual(["dial"]);
+
+    const recipientKindParam = (voiceCall.parameters ?? []).find(
+      (p) => p.name === "recipientKind",
+    );
+    if (!recipientKindParam) {
+      throw new Error("VOICE_CALL has no `recipientKind` parameter");
+    }
+    const recipientEnum =
+      (recipientKindParam.schema as { enum?: readonly string[] } | undefined)
+        ?.enum ?? [];
+    expect(recipientEnum).toEqual(["owner", "external", "e164"]);
   });
 });
 
