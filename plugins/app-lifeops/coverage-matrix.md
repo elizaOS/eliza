@@ -90,6 +90,49 @@ input per domain: schedule → fire → verb → pipeline → terminal.
 Remaining ambiguity that surfaced during the replay is captured in
 `docs/audit/post-Wave-2-ambiguity-register.md`.
 
+## Phase 2 — extended coverage
+
+`test/journey-extended-coverage.test.ts` extends the structural 28-domain
+replay with the long-tail journeys cataloged in
+`docs/audit/missing-journeys-audit.md`. The extended set covers
+categories the base replay deliberately under-samples — cross-domain
+composition, ambient behavior, connector recovery, identity rename
+stability, time-shift edge cases, mid-conversation locale mixing, agent
+self-discovery, negotiation under uncertainty, "be-my-Samantha"
+delegation contracts, composite recovery, privacy / consent revocation,
+and signal-source conflict. Every Phase-2 entry composes from the
+existing primitives (`ScheduledTask` spine + `OwnerFactStore` +
+`ActivitySignalBus` + `EntityStore` / `RelationshipStore` +
+`ChannelRegistry` + ladder registry); none required a new primitive.
+
+| Phase 2 row | Category | Test file |
+|---|---|---|
+| P2.1 | Cross-domain composition (calendar → email → reminder → followup) | `test/journey-extended-coverage.test.ts` |
+| P2.2 | Cross-domain composition (travel → calendar → during_travel gate → blocker) | `test/journey-extended-coverage.test.ts` |
+| P2.3 | Ambient behavior (anticipated check-in after long quiet window) | `test/journey-extended-coverage.test.ts` |
+| P2.4 | Connector recovery (escalation cursor advance under degradation) | `test/journey-extended-coverage.test.ts` |
+| P2.5 | Connector recovery (reconnect followup carries surface metadata) | `test/journey-extended-coverage.test.ts` |
+| P2.6 | Identity stability (entity-anchored watcher survives handle rename) | `test/journey-extended-coverage.test.ts` |
+| P2.7 | Time-shift (owner-fact timezone change observable mid-flight) | `test/journey-extended-coverage.test.ts` |
+| P2.8 | Time-shift (completedAt ISO is stable across midnight) | `test/journey-extended-coverage.test.ts` |
+| P2.9 | Multi-locale (mixed Spanish-English promptInstructions) | `test/journey-extended-coverage.test.ts` |
+| P2.10 | Agent self-discovery (inspectRegistries surface for help-card) | `test/journey-extended-coverage.test.ts` |
+| P2.11 | Negotiation (one capped clarifying question via onSkip) | `test/journey-extended-coverage.test.ts` |
+| P2.12 | Delegation (be-my-Samantha window via `once` + flipBack child) | `test/journey-extended-coverage.test.ts` |
+| P2.13 | Delegation revocation (dismiss verb records audit reason) | `test/journey-extended-coverage.test.ts` |
+| P2.14 | Composite recovery (`pipeline.onFail` explanatory followup) | `test/journey-extended-coverage.test.ts` |
+| P2.15 | Privacy revocation (subject filter + dismiss verb) | `test/journey-extended-coverage.test.ts` |
+| P2.16 | Conflict between captures (spine does not adjudicate signals) | `test/journey-extended-coverage.test.ts` |
+
+The Phase 2 file is intentionally a single extra file rather than a new
+matrix row per category — it sits alongside `journey-domain-coverage`
+as a long-tail regression guard. The 28-row structural matrix above is
+unchanged; the contract test (`prd-coverage.contract.test.ts`) does
+not require an extension here. Adding a new category in the future
+just requires adding another `describe` block to the same file (or, if
+a new primitive is introduced, promoting it from `gap_in_coverage`
+to a matrix row).
+
 ## Rationale for domain-anchored shape
 
 Per `GAP_ASSESSMENT.md` §8.5, the previous "20 PRD journey rows" form was
