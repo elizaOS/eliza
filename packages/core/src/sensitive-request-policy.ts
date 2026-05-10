@@ -181,9 +181,7 @@ export function redactSensitiveRequestMetadata(value: unknown): unknown {
 	}
 
 	const redacted: Record<string, unknown> = {};
-	for (const [key, item] of Object.entries(
-		value as Record<string, unknown>,
-	)) {
+	for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
 		redacted[key] = SENSITIVE_REQUEST_METADATA_KEY_RE.test(key)
 			? "[redacted]"
 			: redactSensitiveRequestMetadata(item);

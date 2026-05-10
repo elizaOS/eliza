@@ -187,12 +187,11 @@ export async function runResponseHandlerEvaluators(args: {
 	availableContexts: readonly ContextDefinition[];
 	evaluators?: readonly ResponseHandlerEvaluator[];
 }): Promise<ResponseHandlerEvaluationRunResult> {
-	const registered =
-		(args.runtime.responseHandlerEvaluators ?? []) as readonly ResponseHandlerEvaluator[];
+	const registered = (args.runtime.responseHandlerEvaluators ??
+		[]) as readonly ResponseHandlerEvaluator[];
 	const candidates = [...(args.evaluators ?? []), ...registered].sort(
 		(a, b) =>
-			(a.priority ?? 100) - (b.priority ?? 100) ||
-			a.name.localeCompare(b.name),
+			(a.priority ?? 100) - (b.priority ?? 100) || a.name.localeCompare(b.name),
 	);
 	const result: ResponseHandlerEvaluationRunResult = {
 		activeEvaluators: [],

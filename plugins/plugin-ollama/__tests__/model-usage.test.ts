@@ -17,8 +17,7 @@ const RESET = "\x1b[0m";
 const OLLAMA_ENDPOINT =
   process.env.OLLAMA_API_ENDPOINT?.trim() || process.env.OLLAMA_API_URL?.trim() || "";
 const OLLAMA_SMALL_MODEL = process.env.OLLAMA_SMALL_MODEL?.trim() || "eliza-1-2b";
-const OLLAMA_EMBEDDING_MODEL =
-  process.env.OLLAMA_EMBEDDING_MODEL?.trim() || "eliza-1-2b";
+const OLLAMA_EMBEDDING_MODEL = process.env.OLLAMA_EMBEDDING_MODEL?.trim() || "eliza-1-2b";
 
 type MinimalRuntime = {
   character: { system: string };

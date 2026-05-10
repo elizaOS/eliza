@@ -2463,9 +2463,7 @@ function buildKnownToolRequestResponseHandlerPatch(args: {
 		simple: false,
 		clearReply: true,
 		...(patch.setContexts ? { setContexts: patch.setContexts } : {}),
-		...(patch.addContexts.length > 0
-			? { addContexts: patch.addContexts }
-			: {}),
+		...(patch.addContexts.length > 0 ? { addContexts: patch.addContexts } : {}),
 		...(patch.addCandidateActions.length > 0
 			? { addCandidateActions: patch.addCandidateActions }
 			: {}),
@@ -2476,20 +2474,22 @@ function buildKnownToolRequestResponseHandlerPatch(args: {
 	};
 }
 
-const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] = [
-	{
-		name: "core.known_tool_request_repair",
-		description:
-			"Deterministically repairs Stage 1 routing for explicit known tool requests.",
-		priority: 20,
-		shouldRun: ({ message }) => Boolean((getUserMessageText(message) ?? "").trim()),
-	evaluate: ({ message, availableContexts }) =>
-			buildKnownToolRequestResponseHandlerPatch({
-				message,
-				availableContexts,
-			}) ?? undefined,
-	},
-];
+const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
+	[
+		{
+			name: "core.known_tool_request_repair",
+			description:
+				"Deterministically repairs Stage 1 routing for explicit known tool requests.",
+			priority: 20,
+			shouldRun: ({ message }) =>
+				Boolean((getUserMessageText(message) ?? "").trim()),
+			evaluate: ({ message, availableContexts }) =>
+				buildKnownToolRequestResponseHandlerPatch({
+					message,
+					availableContexts,
+				}) ?? undefined,
+		},
+	];
 
 async function generateDirectReplyOnce(args: {
 	runtime: IAgentRuntime;
