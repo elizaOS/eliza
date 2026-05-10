@@ -158,3 +158,119 @@ re-run.
 - D-4 lands when `plugin-health` absorbs the inference action surface.
 - D-5 needs a planner-prompt + benchmark re-run to confirm the rename does
   not regress `SUBSCRIPTIONS` / `PAYMENTS` recall.
+
+## F. Post-Final-Fix (W3-C drift D-2 / D-3 / D-4 / D-5 — resolved)
+
+This section lands after the four medium-confidence drift items were
+resolved in a single follow-up commit on `shaw/more-cache-toolcalling`.
+
+### D-2 — SCHEDULED_TASK umbrella + ENTITY follow-up collapse — RESOLVED
+
+- New action: `plugins/app-lifeops/src/actions/scheduled-task.ts` exposes
+  the canonical umbrella (`list | get | create | update | snooze | skip |
+  complete | dismiss | cancel | reopen | history`). Each subaction is a
+  thin verb that delegates to the existing `ScheduledTaskRunner` (via
+  `createRuntimeScheduledTaskRunner`) and the state-log reader on
+  `LifeOpsRepository`. `cancel` is a planner-friendly alias for the
+  runner's `dismiss` verb — both terminate without firing pipeline hooks.
+- `SCHEDULED_TASK` registers the 7 transitional ENTITY follow-up verbs as
+  similes (`ADD_FOLLOW_UP`, `COMPLETE_FOLLOW_UP`, `FOLLOW_UP_LIST`,
+  `DAYS_SINCE`, `LIST_OVERDUE_FOLLOWUPS`, `MARK_FOLLOWUP_DONE`,
+  `SET_FOLLOWUP_THRESHOLD`) so the planner picks SCHEDULED_TASK when the
+  user asks to add/list/complete a follow-up. ENTITY keeps the same
+  simile names on its own list for one release as a planner-cache alias
+  (per the W2-A `RELATIONSHIP` → `ENTITY` rename pattern).
+- Registered in `plugin.ts` alongside the other umbrella actions.
+- Tests: new `test/scheduled-task-action.test.ts` drives create / list /
+  snooze / complete against the real PGLite-backed runtime, plus a
+  missing-subaction reject + a NOT_FOUND get test. The
+  `lifeops-action-gating.integration.test.ts` adds an explicit assertion
+  that the 7 follow-up verbs land on SCHEDULED_TASK.similes.
+
+### D-3 — PROFILE.set_reminder_preference / configure_escalation → LIFE.policy.* — RESOLVED
+
+- New canonical subactions on `LIFE`:
+  - `policy_set_reminder` — writes the reminder-intensity policy to
+    `OwnerFactStore.setReminderIntensity` (global default) +
+    `LifeOpsService.setReminderPreference` (per-definition override).
+  - `policy_configure_escalation` — writes escalation rules to
+    `OwnerFactStore.upsertEscalationRule` (global) or to the definition's
+    `reminderPlan.steps` (per-target).
+- Shared writer: `actions/lib/owner-policy-writes.ts` exposes
+  `applyOwnerPolicySetReminder` + `applyOwnerPolicyConfigureEscalation`.
+  The helper takes the resolver as a function parameter so it does not
+  import from `actions/life.ts` (the file that owns
+  `resolveDefinitionFromIntent`); both LIFE and PROFILE pass the same
+  resolver in.
+- PROFILE keeps `set_reminder_preference` + `configure_escalation`
+  registered for one release; the handlers now delegate to the same
+  `applyOwnerPolicy*` helpers so OwnerFactStore stays the single source
+  of truth.
+- LIFE adds `SET_REMINDER_INTENSITY` + `CONFIGURE_ESCALATION` to its
+  similes for one release so cached planner outputs continue to land on
+  the canonical action.
+- The LIFE_OPERATION_VALUES enum gains `policy_set_reminder` +
+  `policy_configure_escalation`; the LIFE planner / extractor pick them
+  up via the existing `resolveActionArgs` substrate.
+- Tests: `lifeops-action-gating.integration.test.ts` asserts the new
+  enum members + simile names land on LIFE.
+
+### D-4 — SCHEDULE → plugin-health CircadianInsightContract — RESOLVED
+
+- New typed seam: `plugins/plugin-health/src/contracts/circadian.ts`
+  defines `CircadianInsightContract` (`getCurrentSleepWindow`,
+  `inferOptimalSchedulingWindow`, `getLatestInsight`) plus
+  `register/getCircadianInsightContract` for runtime registration via a
+  module-private symbol key (the same pattern OwnerFactStore uses).
+- Default impl: `plugins/plugin-health/src/contracts/circadian-default.ts`
+  ships a conservative "uncalibrated" implementation that returns
+  `state=null` / `recommendedAtIso=null` until a richer impl is registered.
+- Plugin-health init now registers the default contract on the runtime so
+  every consumer reads through the same seam.
+- `actions/schedule.ts` consumes the contract for the high-level sleep
+  read (`getCurrentSleepWindow`) and surfaces the contract view alongside
+  the existing inspection record. The action no longer reaches into
+  `plugin-health` internals — the deep-import surface (computational
+  helpers like `computeAwakeProbability` / `scoreCircadianRules`) stays
+  inside `lifeops/schedule-insight.ts`, which is the scheduler tick's
+  internal worker, not the action surface.
+- Re-exported through `plugin-health/src/index.ts` so consumers can
+  `import { getCircadianInsightContract, type SleepWindow } from
+  "@elizaos/plugin-health"`.
+
+### D-5 — SUBSCRIPTIONS + PAYMENTS `mode` → `subaction` rename — RESOLVED
+
+- Both actions accept `subaction` as the canonical discriminator.
+- Both keep `mode` registered as a one-release alias parameter so cached
+  planner outputs keep resolving. The handler reads `subaction` first and
+  falls back to `mode` only when `subaction` is absent.
+- The SUBSCRIPTIONS in-handler LLM prompt was updated to advertise
+  `subaction` (the example JSON also uses it). The planner returns
+  `subaction` as the primary key; `mode` stays accepted in the parsed
+  output as an alias.
+- Tests: `lifeops-action-gating.integration.test.ts` asserts both
+  parameters are registered on SUBSCRIPTIONS + PAYMENTS. The
+  `payments-action.test.ts` add_source test now uses `subaction`; a
+  follow-up `mode` call exercises the back-compat alias.
+
+### Simile rollback policy
+
+Each rename / collapse keeps the legacy name registered for **one
+release** so cached planner outputs and prior trajectory data continue to
+resolve. The aliases land at:
+
+- ENTITY action — keeps the 7 transitional follow-up subaction names on
+  its own SUBACTIONS list and similes; the canonical execution surface is
+  SCHEDULED_TASK.
+- SCHEDULED_TASK action — registers the same 7 names as similes so the
+  planner picks the canonical action.
+- LIFE action — registers `SET_REMINDER_INTENSITY` +
+  `CONFIGURE_ESCALATION` as similes; the canonical subactions are
+  `policy_set_reminder` + `policy_configure_escalation`.
+- PROFILE action — keeps `set_reminder_preference` + `configure_escalation`
+  subactions registered; the handlers delegate to the same
+  `OwnerFactStore` writers as LIFE.policy_*.
+- SUBSCRIPTIONS / PAYMENTS — keep `mode` accepted as an alias parameter;
+  the canonical parameter is `subaction`.
+
+The aliases are removed in the next wave.
