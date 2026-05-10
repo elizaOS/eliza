@@ -297,7 +297,19 @@ emits finite, plausible-magnitude scores for every kernel:
 
     turbo3=-2.501480 turbo4=-4.138101 turbo3_tcq=-4.822659 qjl=3.696591 polar=-1.994053
 
-(deterministic with the seeded PRNG in this repo). What "NEEDS HARDWARE"
+(deterministic with the seeded PRNG in this repo). The same `--self-test`
+also runs two internal-consistency parity checks before printing those
+scores, so the references can't silently disagree with each other:
+
+  * QJL: `qjl_score_qk` and `qjl_mul_mv` must return the same scalar when
+    `n_heads = n_kv_heads = n_tokens = 1` (no GQA fanout, just a single
+    projected dot product). Tolerance 1e-5.
+  * Polar: `polar_mul_mv` must equal `polar_dequantize_row` reconstructed
+    and then manually dotted against `q[]`. Tolerance 1e-3.
+
+These are reference-vs-reference checks; they verify that the two C
+references the Metal shaders mirror agree with each other, not that the
+shaders agree with hardware. What "NEEDS HARDWARE"
 means: no shader compiler (`glslangValidator`, `glslc`, `xcrun metal`) is
 installed in the agent's working environment, so even the textual SPIR-V /
 AIR compile step is unverified. The shaders are written to match the
