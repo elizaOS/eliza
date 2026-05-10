@@ -247,7 +247,7 @@ describe("v5 tiered action surface", () => {
 		expect(prompt).toContain("MUSIC");
 		expect(prompt).toContain("PLAY_MUSIC");
 		expect(prompt).toContain("PAUSE_MUSIC");
-		expect(prompt).toContain("SEND_EMAIL");
+		expect(prompt).not.toContain("SEND_EMAIL");
 	});
 
 	it("repairs owner travel preference memory toward profile", async () => {
