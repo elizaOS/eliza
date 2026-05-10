@@ -11,9 +11,12 @@
  * The variant is decided at process start; we do not refresh it mid-run.
  */
 
-export type BuildVariant = "store" | "direct";
+export const BUILD_VARIANTS = ["store", "direct"] as const;
+export type BuildVariant = (typeof BUILD_VARIANTS)[number];
 
-const VARIANT_VALUES: ReadonlySet<BuildVariant> = new Set(["store", "direct"]);
+export const DEFAULT_BUILD_VARIANT: BuildVariant = "direct";
+
+const VARIANT_VALUES: ReadonlySet<BuildVariant> = new Set(BUILD_VARIANTS);
 
 const DIRECT_DOWNLOAD_URL = "https://milady.so/download";
 
@@ -41,6 +44,14 @@ export function getBuildVariant(): BuildVariant {
 
 export function getDirectDownloadUrl(): string {
 	return DIRECT_DOWNLOAD_URL;
+}
+
+export function isStoreBuild(): boolean {
+	return getBuildVariant() === "store";
+}
+
+export function isDirectBuild(): boolean {
+	return getBuildVariant() === "direct";
 }
 
 /** Test hook only. Resets cached variant so tests can swap env vars. */
