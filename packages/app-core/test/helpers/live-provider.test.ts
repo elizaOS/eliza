@@ -9,6 +9,7 @@ describe("selectLiveProvider", () => {
       "ELIZA_E2E_GROQ_API_KEY",
       "OPENAI_API_KEY",
       "ELIZA_E2E_OPENAI_API_KEY",
+      "OPENAI_BASE_URL",
       "ANTHROPIC_API_KEY",
       "ELIZA_E2E_ANTHROPIC_API_KEY",
       "GOOGLE_API_KEY",
@@ -16,6 +17,7 @@ describe("selectLiveProvider", () => {
       "ELIZA_E2E_GOOGLE_GENERATIVE_AI_API_KEY",
       "OPENROUTER_API_KEY",
       "ELIZA_E2E_OPENROUTER_API_KEY",
+      "MILADY_PROVIDER",
     ]) {
       vi.stubEnv(key, "");
     }
@@ -85,10 +87,11 @@ describe("selectLiveProvider", () => {
     expect(selectLiveProvider()?.apiKey).toBe("gsk_canonical");
   });
 
-  it("selects cerebras when only CEREBRAS_API_KEY is set", async () => {
+  it("selects cerebras when explicitly selected with MILADY_PROVIDER", async () => {
     vi.stubEnv("CEREBRAS_API_KEY", "csk_test_cerebras_key");
     vi.stubEnv("GROQ_API_KEY", "");
     vi.stubEnv("OPENAI_API_KEY", "");
+    vi.stubEnv("MILADY_PROVIDER", "cerebras");
 
     const { selectLiveProvider } = await import("./live-provider.ts");
 
@@ -100,13 +103,13 @@ describe("selectLiveProvider", () => {
     expect(provider?.env.MILADY_PROVIDER).toBe("cerebras");
   });
 
-  it("prefers cerebras over groq when both keys are set", async () => {
+  it("prefers groq over a bare cerebras eval key unless cerebras is explicitly selected", async () => {
     vi.stubEnv("CEREBRAS_API_KEY", "csk_test_cerebras_key");
     vi.stubEnv("GROQ_API_KEY", "gsk_test_groq_key");
 
     const { selectLiveProvider } = await import("./live-provider.ts");
 
-    expect(selectLiveProvider()?.name).toBe("cerebras");
+    expect(selectLiveProvider()?.name).toBe("groq");
   });
 
   it("rejects csk-prefixed keys for openai provider selection", async () => {
