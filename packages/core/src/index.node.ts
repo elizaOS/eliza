@@ -155,10 +155,37 @@ export * from "./providers/skill-eligibility";
 export * from "./provisioning";
 export * from "./roles";
 export * from "./runtime";
+export {
+	type ActionCatalog,
+	type ActionCatalogChild,
+	type ActionCatalogEntry,
+	type ActionCatalogParent,
+	type ActionCatalogWarning,
+	type ActionCatalogWarningCode,
+	type BuildActionCatalogOptions,
+	buildActionCatalog,
+	type LocalizedActionExamplePair,
+	type LocalizedActionExampleResolver,
+	normalizeActionName,
+	type RuntimeActionLike,
+} from "./runtime/action-catalog";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/cost-table";
 export * from "./runtime/execute-planned-tool-call";
+export {
+	__resetLocalizedExamplesProviderForTests,
+	getLocalizedExamplesProvider,
+	type LocalizedExamplesProvider,
+	type LocalizedExamplesProviderInput,
+	registerLocalizedExamplesProvider,
+} from "./runtime/localized-examples-provider";
+export {
+	detectLocaleFromText,
+	resolveOwnerLocale,
+	type ResolveOwnerLocaleOptions,
+	type SupportedLocale,
+} from "./runtime/locale-detection";
 export * from "./runtime/schema-compat";
 export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";

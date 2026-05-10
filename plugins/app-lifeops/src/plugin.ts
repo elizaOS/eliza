@@ -5,6 +5,7 @@ import {
   messagingTriageActions,
   type Plugin,
   promoteSubactionsToActions,
+  registerLocalizedExamplesProvider,
   registerSendPolicy,
 } from "@elizaos/core";
 import { blockAction } from "./actions/block.js";
@@ -53,6 +54,7 @@ import {
   registerDefaultConnectorPack,
 } from "./lifeops/connectors/index.js";
 import { applyMockoonEnvOverrides } from "./lifeops/connectors/mockoon-redirect.js";
+import { createOwnerLocaleExamplesProvider } from "./lifeops/i18n/localized-examples-provider.js";
 import {
   createMultilingualPromptRegistry,
   registerDefaultPromptPack,
@@ -438,6 +440,14 @@ const rawAppLifeOpsPlugin: Plugin = {
     const promptRegistry = createMultilingualPromptRegistry();
     registerDefaultPromptPack(promptRegistry);
     registerMultilingualPromptRegistry(runtime, promptRegistry);
+
+    // End-to-end locale wiring: the planner (in core) reads this provider
+    // each turn, awaits the resolved owner-locale, and passes the
+    // resulting `LocalizedActionExampleResolver` into `buildActionCatalog`.
+    registerLocalizedExamplesProvider(
+      runtime,
+      createOwnerLocaleExamplesProvider(runtime),
+    );
 
     // Owner outbound-message approval policy: gmail drafts require explicit
     // owner approval; everything else passes straight through.
