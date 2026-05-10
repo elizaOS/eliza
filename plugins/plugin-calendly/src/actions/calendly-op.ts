@@ -320,7 +320,7 @@ export const calendlyOpAction: Action = {
   descriptionCompressed: "Calendly slot ops: book, cancel.",
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: "Operation to perform: 'book' or 'cancel'.",
       required: true,
       schema: { type: "string" as const, enum: ["book", "cancel"] },

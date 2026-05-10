@@ -152,4 +152,39 @@ export const writeAction: Action = {
       bytes,
     });
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Create /tmp/test.md with the text 'Hello'.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Wrote /tmp/test.md.",
+          actions: ["WRITE"],
+          thought:
+            "New file with literal content maps to WRITE with path and content set.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Overwrite docs/intro.md with the new draft I pasted.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Wrote docs/intro.md.",
+          actions: ["WRITE"],
+          thought:
+            "Whole-file overwrite maps to WRITE; readBeforeWrite is enforced internally so the agent doesn't clobber unread changes.",
+        },
+      },
+    ],
+  ],
 };

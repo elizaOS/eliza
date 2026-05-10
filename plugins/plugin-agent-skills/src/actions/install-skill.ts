@@ -32,7 +32,13 @@ export const installSkillAction = {
 	contexts: ["automation", "settings", "connectors"],
 	contextGate: { anyOf: ["automation", "settings", "connectors"] },
 	roleGate: { minRole: "USER" },
-	similes: [],
+	similes: [
+		"INSTALL_SKILL",
+		"DOWNLOAD_SKILL",
+		"ADD_SKILL",
+		"GET_SKILL",
+		"FETCH_SKILL",
+	],
 	description:
 		"Install a skill from the ClawHub registry. The skill will be security-scanned before activation. " +
 		'Provide a skill slug or search term, e.g. "install weather" or "add github".',

@@ -388,10 +388,19 @@ CONFORMANCE_SCENARIOS: list[Scenario] = [
 
 
 def _scenarios_to_test() -> list[Scenario]:
-    """All conformance + every executor-supported registry scenario."""
+    """All conformance + every executor-supported STATIC registry scenario.
+
+    LIVE scenarios are excluded: they intentionally have no ground-truth
+    actions (the LLM judge replaces scripted scoring), so they would always
+    look "supported" to this filter and break the suite — and the conformance
+    rubric (PerfectAgent must score 1.0, WrongAgent must score 0.0) is only
+    well-defined for scripted scenarios.
+    """
     supported = supported_actions()
     extra: list[Scenario] = []
     for s in ALL_SCENARIOS:
+        if s.mode is not ScenarioMode.STATIC:
+            continue
         gt_names = {a.name for a in s.ground_truth_actions}
         if gt_names.issubset(supported):
             extra.append(s)
@@ -410,6 +419,30 @@ def _skipped_registry_scenarios() -> list[tuple[str, set[str]]]:
     return skipped
 
 
+def _world_factory_for(scenario: Scenario):
+    """Pick the world factory matching a scenario's `world_seed`.
+
+    Wave 2A scenarios reference the medium snapshot (seed=2026, ids like
+    `event_00040`, `email_000002`, `contact_00001`). Tiny snapshot is
+    seed=42. Anything else is an inline conformance fixture (`ev_existing`,
+    `ct_boss`, etc.) so we fall back to `_seed_world_for_conformance`.
+    """
+    if scenario.world_seed in {2026, 42}:
+        from eliza_lifeops_bench.lifeworld.snapshots import (
+            SNAPSHOT_SPECS,
+            build_world_for,
+        )
+
+        spec_name = "medium_seed_2026" if scenario.world_seed == 2026 else "tiny_seed_42"
+        spec = next(s for s in SNAPSHOT_SPECS if s.name == spec_name)
+
+        def _factory(_seed: int, _now_iso: str):
+            return build_world_for(spec)
+
+        return _factory
+    return _seed_world_for_conformance
+
+
 def _run_scenario_sync(
     scenario: Scenario,
     agent_factory,
@@ -424,7 +457,7 @@ def _run_scenario_sync(
 
         runner = LifeOpsBenchRunner(
             agent_fn=agent_fn,
-            world_factory=_seed_world_for_conformance,
+            world_factory=_world_factory_for(scenario),
             scenarios=[scenario],
             concurrency=1,
             seeds=1,
@@ -448,7 +481,7 @@ def _diagnose(scenario: Scenario, score: float) -> str:
 
         runner = LifeOpsBenchRunner(
             agent_fn=agent_fn,
-            world_factory=_seed_world_for_conformance,
+            world_factory=_world_factory_for(scenario),
             scenarios=[scenario],
             concurrency=1,
             seeds=1,

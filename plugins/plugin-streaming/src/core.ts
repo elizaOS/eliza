@@ -537,7 +537,7 @@ export function buildStreamOpAction(
   };
 
   const opParam: ActionParameter = {
-    name: "op",
+    name: "subaction",
     description:
       "Operation to perform: start (go live), stop (go offline), or status.",
     descriptionCompressed: "Op: start|stop|status.",

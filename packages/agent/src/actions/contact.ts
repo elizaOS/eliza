@@ -1919,7 +1919,7 @@ export const contactAction: Action = {
     "manage Rolodex contacts; op-based dispatch (create read search update delete link merge activity followup)",
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: `Operation: ${CONTACT_OPS.join(", ")}.`,
       required: true,
       schema: { type: "string" as const, enum: [...CONTACT_OPS] },

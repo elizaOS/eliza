@@ -553,7 +553,7 @@ export const playbackOp: Action = {
     "Music playback ops: pause, resume, skip, stop, queue.",
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: "Playback operation: pause, resume, skip, stop, or queue.",
       required: true,
       schema: {

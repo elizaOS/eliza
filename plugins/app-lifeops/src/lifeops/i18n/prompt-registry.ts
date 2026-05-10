@@ -15,6 +15,9 @@
  */
 
 import type { ActionExample, IAgentRuntime } from "@elizaos/core";
+import { life_es_examples } from "./generated/life.es.js";
+import { message_handoff_es_examples } from "./generated/message-handoff.es.js";
+import { scheduled_task_es_examples } from "./generated/scheduled-task.es.js";
 
 export type PromptLocale = "en" | "es" | "fr" | "ja";
 
@@ -199,11 +202,32 @@ const LIFE_BRUSH_TEETH_EXAMPLES: ReadonlyArray<PromptExampleEntry> = [
   },
 ];
 
+/**
+ * Generated translation packs from
+ * `plugins/app-lifeops/scripts/translate-action-examples.mjs`. Each entry is
+ * a Spanish translation of an English ActionExample pair found in the source
+ * action file. The registry composite key is `<actionName>.example.<index>`,
+ * which matches the index of the source pair in the action's
+ * `examples: ActionExample[][]` array.
+ */
+const GENERATED_TRANSLATION_PACKS: ReadonlyArray<
+  ReadonlyArray<PromptExampleEntry>
+> = [
+  life_es_examples,
+  message_handoff_es_examples,
+  scheduled_task_es_examples,
+];
+
 export function registerDefaultPromptPack(
   registry: MultilingualPromptRegistry,
 ): void {
   for (const entry of LIFE_BRUSH_TEETH_EXAMPLES) {
     registry.register(entry);
+  }
+  for (const pack of GENERATED_TRANSLATION_PACKS) {
+    for (const entry of pack) {
+      registry.register(entry);
+    }
   }
 }
 

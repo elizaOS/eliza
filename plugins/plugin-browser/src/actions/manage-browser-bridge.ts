@@ -561,19 +561,8 @@ export const manageBrowserBridgeAction: Action = {
     "BROWSER_BRIDGE_OPEN_MANAGER",
     "BROWSER_BRIDGE_REFRESH",
   ],
-  description: JSON.stringify({
-    manage_browser_bridge: {
-      purpose:
-        "Owner-only management of the Agent Browser Bridge companion extension that connects Eliza to the user's Chrome and Safari browsers. Use refresh for showing settings/status/connection state. Use install for setup. Use reveal_folder for the build folder. Use open_manager only when the owner explicitly asks to open chrome://extensions or the extension manager.",
-      subactions: ["install", "reveal_folder", "open_manager", "refresh"],
-      params: {
-        subaction:
-          "Optional; inferred from message text if omitted. show/settings/status => refresh; open chrome extensions/extension manager => open_manager.",
-      },
-      provider_state:
-        "Prefer provider state for passive companion status; use this action's `refresh` subaction for an explicit live refresh.",
-    },
-  }),
+  description:
+    "Owner-only management of the Agent Browser Bridge companion extension that connects Eliza to the user's Chrome and Safari browsers. Subactions: refresh (show settings/status/connection state), install (build and reveal the extension for setup), reveal_folder (open the built extension folder), open_manager (open chrome://extensions only when the owner explicitly asks). The subaction parameter is inferred from message text when omitted; show/settings/status maps to refresh and 'open chrome extensions' maps to open_manager. Prefer the browser-bridge provider for passive companion status and use this action's refresh subaction only for an explicit live refresh.",
   descriptionCompressed:
     "Manage LifeOps Browser Bridge: refresh shows settings/status; install setup; reveal_folder build folder; open_manager chrome://extensions.",
   validate: async (
@@ -642,5 +631,51 @@ export const manageBrowserBridgeAction: Action = {
       },
     },
   ],
-  examples: [],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Show the browser bridge status.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Refreshing the browser bridge status.",
+          actions: ["MANAGE_BROWSER_BRIDGE"],
+          thought:
+            "Show/status request maps to MANAGE_BROWSER_BRIDGE subaction=refresh.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Install the agent browser bridge extension.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Building and revealing the bridge extension.",
+          actions: ["MANAGE_BROWSER_BRIDGE"],
+          thought:
+            "Setup intent maps to MANAGE_BROWSER_BRIDGE subaction=install.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Open chrome://extensions for me.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Opening the extension manager.",
+          actions: ["MANAGE_BROWSER_BRIDGE"],
+          thought:
+            "Explicit chrome://extensions request maps to MANAGE_BROWSER_BRIDGE subaction=open_manager.",
+        },
+      },
+    ],
+  ],
 };

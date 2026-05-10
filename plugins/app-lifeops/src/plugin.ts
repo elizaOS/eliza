@@ -7,11 +7,11 @@ import {
   promoteSubactionsToActions,
   registerSendPolicy,
 } from "@elizaos/core";
-import { appBlockAction } from "./actions/app-block.js";
-import { autofillAction } from "./actions/autofill.js";
+import { blockAction } from "./actions/block.js";
 import { bookTravelAction } from "./actions/book-travel.js";
 import { calendarAction } from "./actions/calendar.js";
 import { connectorAction } from "./actions/connector.js";
+import { credentialsAction } from "./actions/credentials.js";
 import { deviceIntentAction } from "./actions/device-intent.js";
 import { entityAction } from "./actions/entity.js";
 import { firstRunAction } from "./actions/first-run.js";
@@ -20,8 +20,7 @@ import { calendlyAction } from "./actions/lib/calendly-handler.js";
 import { lifeAction } from "./actions/life.js";
 import { lifeOpsPauseAction } from "./actions/lifeops-pause.js";
 import { messageHandoffAction } from "./actions/message-handoff.js";
-import { passwordManagerAction } from "./actions/password-manager.js";
-import { paymentsAction } from "./actions/payments.js";
+import { moneyAction } from "./actions/money.js";
 import { profileAction } from "./actions/profile.js";
 import { remoteDesktopAction } from "./actions/remote-desktop.js";
 import { resolveRequestAction } from "./actions/resolve-request.js";
@@ -29,10 +28,8 @@ import { scheduleAction } from "./actions/schedule.js";
 import { scheduledTaskAction } from "./actions/scheduled-task.js";
 import { schedulingNegotiationAction } from "./actions/scheduling-negotiation.js";
 import { screenTimeAction } from "./actions/screen-time.js";
-import { subscriptionsAction } from "./actions/subscriptions.js";
 import { toggleFeatureAction } from "./actions/toggle-feature.js";
 import { voiceCallAction } from "./actions/voice-call.js";
-import { websiteBlockAction } from "./actions/website-block.js";
 import { ActivityTrackerService } from "./activity-profile/activity-tracker-service.js";
 import { PresenceSignalBridgeService } from "./activity-profile/presence-signal-bridge-service.js";
 import {
@@ -318,8 +315,14 @@ const rawAppLifeOpsPlugin: Plugin = {
   dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE],
   schema: lifeOpsSchema,
   actions: [
-    websiteBlockAction,
-    appBlockAction,
+    // Audit B umbrella folds (D-1, D-4, D-5): one umbrella per folded pair.
+    // Each umbrella registers itself + its per-subaction virtuals via
+    // `promoteSubactionsToActions` so the planner sees a discoverable
+    // top-level entry for every flat subaction (e.g. `BLOCK_BLOCK`,
+    // `BLOCK_LIST_ACTIVE`, `MONEY_DASHBOARD`, `CREDENTIALS_FILL`, …).
+    ...promoteSubactionsToActions(blockAction),
+    ...promoteSubactionsToActions(moneyAction),
+    ...promoteSubactionsToActions(credentialsAction),
     ...promoteSubactionsToActions(calendarAction),
     calendlyAction,
     schedulingNegotiationAction,
@@ -337,11 +340,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     remoteDesktopAction,
     scheduleAction,
     ...promoteSubactionsToActions(scheduledTaskAction),
-    passwordManagerAction,
-    autofillAction,
     healthAction,
-    ...promoteSubactionsToActions(subscriptionsAction),
-    paymentsAction,
     ...promoteSubactionsToActions(connectorAction),
     toggleFeatureAction,
     ...messagingTriageActions,

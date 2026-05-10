@@ -2152,7 +2152,7 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
   suppressPostActionContinuation: true,
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description:
         "Task operation: create, spawn_agent, send, stop_agent, list_agents, cancel, history, control, share, provision_workspace, submit_workspace, manage_issues, archive, reopen.",
       required: false,
@@ -2550,6 +2550,81 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
         return errorResult("UNKNOWN", `Unknown TASKS op: ${String(op)}`);
     }
   },
+
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Spawn a coding agent to refactor the auth module.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Creating the task and dispatching a coding sub-agent.",
+          actions: ["TASKS"],
+          thought:
+            "User asked to delegate a coding job; TASKS subaction=create with kind=coding routes to the orchestrator's spawn path.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "What's the status of my running tasks?",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Listing active tasks.",
+          actions: ["TASKS"],
+          thought:
+            "Status check maps to TASKS subaction=list filtering for in_progress / queued tasks.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Stop the migration task; I'll come back to it later.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Pausing the task.",
+          actions: ["TASKS"],
+          thought:
+            "Halt-and-keep-state maps to TASKS subaction=pause; archive/reopen are for fully resolved tasks.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Show me the worktree for task TASK-12.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Opening the worktree.",
+          actions: ["TASKS"],
+          thought:
+            "Worktree inspection maps to TASKS subaction=worktree with the explicit task id.",
+        },
+      },
+    ],
+  ],
 };
 
 // Operation-specific handles resolve to the consolidated TASKS action.

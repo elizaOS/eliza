@@ -120,37 +120,82 @@ export const deviceIntentAction: Action & {
     {
       name: "subaction",
       description: "Only supported subaction: broadcast.",
+      descriptionCompressed: "op: broadcast",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, enum: ["broadcast"] },
     },
     {
       name: "kind",
       description:
         "Intent kind: user_action_requested, routine_reminder, attention_request, or state_sync.",
+      descriptionCompressed:
+        "kind: user_action_requested|routine_reminder|attention_request|state_sync",
       required: false,
-      schema: { type: "string" as const },
+      schema: {
+        type: "string" as const,
+        enum: [
+          "user_action_requested",
+          "routine_reminder",
+          "attention_request",
+          "state_sync",
+        ],
+      },
     },
     {
       name: "target",
       description: "Target device group: all, mobile, desktop, or specific.",
+      descriptionCompressed: "target: all|mobile|desktop|specific",
       required: false,
-      schema: { type: "string" as const },
+      schema: {
+        type: "string" as const,
+        enum: ["all", "mobile", "desktop", "specific"],
+      },
+      examples: ["mobile", "all"],
     },
     {
       name: "targetDeviceId",
       description: "Specific device id when target=specific.",
+      descriptionCompressed: "device id when target=specific",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "title",
       description: "Short notification title.",
+      descriptionCompressed: "notification title",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "body",
       description: "Notification body.",
+      descriptionCompressed: "notification body",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "priority",
+      description: "Notification priority: low, medium, high, urgent.",
+      descriptionCompressed: "priority: low|medium|high|urgent (default medium)",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["low", "medium", "high", "urgent"],
+      },
+    },
+    {
+      name: "expiresInMinutes",
+      description:
+        "Optional auto-expire window in minutes (intent stops broadcasting after this).",
+      descriptionCompressed: "expires-in mins optional",
+      required: false,
+      schema: { type: "number" as const, minimum: 1 },
+    },
+    {
+      name: "actionUrl",
+      description:
+        "Optional deep link / URL the notification should open when tapped.",
+      descriptionCompressed: "deep-link URL on tap",
       required: false,
       schema: { type: "string" as const },
     },
@@ -196,4 +241,42 @@ export const deviceIntentAction: Action & {
       },
     };
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Send a reminder to my phone titled 'Take meds' saying 'Time for evening meds'.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Broadcast "Take meds" to mobile.',
+          actions: ["DEVICE_INTENT"],
+          thought:
+            "Owner asked for a phone-targeted notification; DEVICE_INTENT subaction=broadcast with target=mobile, title and body extracted from quotes.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Broadcast a routine reminder to all my devices: stretch break.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Broadcast "Device reminder" to all.',
+          actions: ["DEVICE_INTENT"],
+          thought:
+            "Cross-device routine maps to DEVICE_INTENT subaction=broadcast with target=all and kind=routine_reminder.",
+        },
+      },
+    ],
+  ],
 };

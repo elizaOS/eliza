@@ -103,7 +103,7 @@ export const characterAction: Action = {
 	suppressPostActionContinuation: true,
 	parameters: [
 		{
-			name: "op",
+			name: "subaction",
 			description:
 				"Which character sub-operation to run: modify (LLM-driven personality edit), persist (flush runtime.character), or update_identity (set name/system prompt).",
 			required: true,

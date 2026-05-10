@@ -25,7 +25,13 @@ export const uninstallSkillAction = {
 	contexts: ["automation", "settings"],
 	contextGate: { anyOf: ["automation", "settings"] },
 	roleGate: { minRole: "USER" },
-	similes: [],
+	similes: [
+		"UNINSTALL_SKILL",
+		"REMOVE_SKILL",
+		"DELETE_SKILL",
+		"PURGE_SKILL",
+		"DROP_SKILL",
+	],
 	description:
 		"Uninstall a non-bundled skill. Bundled skills cannot be removed. " +
 		'Provide the skill slug, e.g. "uninstall weather".',

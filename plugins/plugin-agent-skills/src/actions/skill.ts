@@ -134,11 +134,23 @@ export const skillAction: Action = {
 		"Skill catalog: search, details, sync, toggle, install, uninstall.",
 	contexts: ["automation", "knowledge", "settings", "connectors"],
 	contextGate: { anyOf: ["automation", "knowledge", "settings", "connectors"] },
-	similes: [],
+	similes: [
+		"MANAGE_SKILL",
+		"MANAGE_SKILLS",
+		"SKILL_CATALOG",
+		"SKILLS",
+		"AGENT_SKILL",
+		"AGENT_SKILLS",
+		"INSTALL_SKILL",
+		"UNINSTALL_SKILL",
+		"SEARCH_SKILLS",
+		"SYNC_SKILL_CATALOG",
+		"TOGGLE_SKILL",
+	],
 	roleGate: { minRole: "USER" },
 	parameters: [
 		{
-			name: "op",
+			name: "subaction",
 			description:
 				"Operation to perform. One of: search, details, sync, toggle, install, uninstall. Inferred from message text when omitted.",
 			required: false,

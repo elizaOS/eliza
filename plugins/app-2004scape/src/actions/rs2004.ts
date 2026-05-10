@@ -510,7 +510,7 @@ export const rs2004Action: Action = {
   examples: [],
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: "Operation to run.",
       descriptionCompressed: "Op.",
       required: true,

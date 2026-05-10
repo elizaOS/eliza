@@ -601,7 +601,7 @@ export const triggerAction: Action = {
 
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: `Sub-action: ${TRIGGER_OPS.join(", ")}.`,
       required: true,
       schema: { type: "string" as const, enum: [...TRIGGER_OPS] },

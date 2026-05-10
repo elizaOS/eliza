@@ -7,7 +7,8 @@ export type RetrievalStageName =
 	| "regex"
 	| "keyword"
 	| "bm25"
-	| "embedding";
+	| "embedding"
+	| "contextMatch";
 
 export type ActionEmbeddingTieBreaker = {
 	enabled?: boolean;
@@ -22,6 +23,14 @@ export type RetrieveActionsInput = {
 	parentActionHints?: string[];
 	embedding?: ActionEmbeddingTieBreaker;
 	limit?: number;
+	/**
+	 * The messageHandler-selected contexts for this turn. Used as a *weight*
+	 * (boost actions whose declared `contexts` intersect this set) — never
+	 * as a filter. Filtering by context masked LIFE/CALENDAR/etc. when the
+	 * messageHandler routed to "general"; weighting keeps them retrievable
+	 * while still preferring on-context candidates when scores are close.
+	 */
+	selectedContexts?: readonly string[];
 };
 
 export type ActionRetrievalResult = {
@@ -96,6 +105,9 @@ export function retrieveActions(
 	const maxBm25 = Math.max(0, ...bm25Scores.values());
 	const maxEmbedding = Math.max(0, ...embeddingScores.values());
 
+	const selectedContextSet = new Set(
+		(input.selectedContexts ?? []).map((c) => c.toLowerCase()),
+	);
 	const results = input.catalog.parents.map((parent) => {
 		const normalizedName = parent.normalizedName;
 		const exact = exactScores.get(normalizedName) ?? 0;
@@ -126,16 +138,34 @@ export function retrieveActions(
 			stageScores.embedding = roundScore(embedding);
 		}
 
-		const score = clampScore(
-			Math.max(
-				exact,
-				regex,
-				keyword > 0 ? 0.35 + keyword * 0.5 : 0,
-				bm25 > 0 ? 0.28 + bm25 * (isBareSingleTokenQuery ? 0.38 : 0.49) : 0,
-				embedding > 0 ? 0.25 + embedding * 0.45 : 0,
-				rrf > 0 ? 0.2 + rrf * (isBareSingleTokenQuery ? 0.45 : 0.5) : 0,
-			),
+		// Context-match boost: when the messageHandler picked contexts that
+		// intersect this parent's declared `contexts`, give it a small
+		// additive bump. Caps at +0.15 so it never overrides an unambiguous
+		// retrieval signal but reliably breaks ties between similarly-scored
+		// candidates. Always keep the parent retrievable — never filter.
+		const parentContexts = Array.isArray(parent.contexts)
+			? (parent.contexts as readonly unknown[])
+			: [];
+		let contextBoost = 0;
+		if (selectedContextSet.size > 0 && parentContexts.length > 0) {
+			const intersect = parentContexts.some((c) =>
+				selectedContextSet.has(String(c).toLowerCase()),
+			);
+			if (intersect) {
+				contextBoost = 0.15;
+				stageScores.contextMatch = contextBoost;
+			}
+		}
+
+		const baseScore = Math.max(
+			exact,
+			regex,
+			keyword > 0 ? 0.35 + keyword * 0.5 : 0,
+			bm25 > 0 ? 0.28 + bm25 * (isBareSingleTokenQuery ? 0.38 : 0.49) : 0,
+			embedding > 0 ? 0.25 + embedding * 0.45 : 0,
+			rrf > 0 ? 0.2 + rrf * (isBareSingleTokenQuery ? 0.45 : 0.5) : 0,
 		);
+		const score = clampScore(baseScore + contextBoost);
 
 		return {
 			parent,

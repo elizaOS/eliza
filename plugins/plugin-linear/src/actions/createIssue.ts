@@ -26,7 +26,8 @@ export const createIssueAction: Action = {
   contexts: ["tasks", "connectors", "automation"],
   contextGate: { anyOf: ["tasks", "connectors", "automation"] },
   roleGate: { minRole: "USER" },
-  description: "Create a new issue in Linear",
+  description:
+    "Create a new Linear issue with title, description, priority, team, assignee, and labels. Use when the user wants to file, log, or track a new ticket, bug, story, or task in Linear from chat.",
   descriptionCompressed: "create new issue Linear",
   parameters: [
     {

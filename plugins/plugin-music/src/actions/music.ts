@@ -239,7 +239,7 @@ export const musicAction: Action = {
     "Flat op: playlist/play_query/search_youtube/download/pause/resume/skip/stop/queue/play_audio/routing/zones.",
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description:
         "Flat operation: playlist | play_query | search_youtube | download | pause | resume | skip | stop | queue | play_audio | routing | zones (hyphens and legacy aliases accepted).",
       required: false,

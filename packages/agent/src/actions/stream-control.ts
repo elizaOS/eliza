@@ -130,7 +130,7 @@ export const streamAction: Action = {
     "control live stream: op=go_live start broadcast active destination; op=go_offline stop release capture RTMP",
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: `Operation: ${STREAM_OPS.join(", ")}.`,
       required: true,
       schema: { type: "string" as const, enum: [...STREAM_OPS] },
