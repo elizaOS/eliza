@@ -62,10 +62,8 @@
 // Pull in the in-fork block-layout definitions and the device-side helpers.
 // turboquant.cuh provides tbq_decode_block_cuda; common.cuh provides the
 // block_tbq3_0 / block_tbq4_0 / etc structs through ggml-common.h.
-#define GGML_CUDA_TBQ3_TCQ
-#define GGML_CUDA_QJL
-#define GGML_CUDA_POLARQUANT
-
+// (Feature gates GGML_CUDA_TBQ3_TCQ / GGML_CUDA_QJL / GGML_CUDA_POLARQUANT
+// are passed via -D from the Makefile.)
 #include "ggml-cuda/common.cuh"
 #include "ggml-cuda/turboquant.cuh"
 #include "ggml-cuda/turbo-tcq.cuh"

@@ -223,16 +223,53 @@ endif
 endif
 
 # Compile-only preprocessor pass. Validates that cuda_verify.cu finds every
-# header and that the in-fork API surface is reachable, without needing nvcc
-# to actually emit a binary. Runs anywhere a C++ compiler exists. We pretend
-# to be nvcc by defining __CUDACC__ and giving cuda_runtime.h a stub.
+# in-fork header and that the API names/types referenced by the harness
+# match the published CUDA surface, without needing nvcc to actually emit a
+# binary. Runs anywhere a C++ compiler exists. When CUDA_HOME isn't on disk
+# (e.g. macOS with no CUDA toolkit) the target uses a tiny shim that
+# satisfies cuda_runtime.h's symbols (cudaError_t, cudaStream_t, cudaMalloc,
+# cudaMemcpy, cudaMemset, cudaFree, cudaSetDevice, cudaGetDeviceCount,
+# cudaGetLastError, cudaDeviceSynchronize, cudaGetErrorString, cudaSuccess,
+# cudaMemcpyHostToDevice, cudaMemcpyDeviceToHost, dim3, blockIdx/threadIdx).
+# That's enough to drive the preprocessor cleanly through the in-fork
+# headers. The shim is NEVER linked against — it exists only for the -E
+# pass.
 cuda-preprocess-check:
 ifeq ($(wildcard $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda/turboquant.cuh),)
 	@echo "[cuda-preprocess-check] skipped — missing $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda"
 else
 	@echo "[cuda-preprocess-check] preprocessor pass over cuda_verify.cu (no nvcc backend)"
+	@mkdir -p .cuda-shim
+	@printf '%s\n' \
+		'#pragma once' \
+		'#include <cstdint>' \
+		'#include <cstddef>' \
+		'typedef int cudaError_t;' \
+		'typedef struct CUstream_st * cudaStream_t;' \
+		'enum { cudaSuccess = 0, cudaMemcpyHostToDevice = 1, cudaMemcpyDeviceToHost = 2 };' \
+		'cudaError_t cudaMalloc(void **, size_t);' \
+		'cudaError_t cudaFree(void *);' \
+		'cudaError_t cudaMemcpy(void *, const void *, size_t, int);' \
+		'cudaError_t cudaMemset(void *, int, size_t);' \
+		'cudaError_t cudaSetDevice(int);' \
+		'cudaError_t cudaGetDeviceCount(int *);' \
+		'cudaError_t cudaGetLastError(void);' \
+		'cudaError_t cudaDeviceSynchronize(void);' \
+		'const char * cudaGetErrorString(cudaError_t);' \
+		'struct dim3 { unsigned x,y,z; dim3(unsigned X=1,unsigned Y=1,unsigned Z=1):x(X),y(Y),z(Z){} };' \
+		'#define __global__' \
+		'#define __device__' \
+		'#define __host__' \
+		'#define __forceinline__ inline' \
+		'#define __restrict__' \
+		'#define __half2float(x) ((float)(x))' \
+		'#define __float2half(x) ((unsigned short)(x))' \
+		'#define __shfl_xor_sync(m,v,d) (v)' \
+		'struct __bI { unsigned x,y,z; }; struct __tI { unsigned x,y,z; };' \
+		'static __bI blockIdx; static __tI threadIdx;' \
+		> .cuda-shim/cuda_runtime.h
 	$(CXX) -E -x c++ -std=c++17 \
-		$(CUDA_INCLUDES) $(CUDA_DEFINES) \
+		-I.cuda-shim $(CUDA_INCLUDES) $(CUDA_DEFINES) \
 		-D__CUDACC__=1 -D__CUDA_ARCH__=860 \
 		cuda_verify.cu > /dev/null
 	@echo "[cuda-preprocess-check] OK"

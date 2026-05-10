@@ -1,5 +1,6 @@
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
+  type Eliza1TierId,
   FIRST_RUN_DEFAULT_MODEL_ID,
   MODEL_CATALOG,
 } from "./catalog";
@@ -10,6 +11,16 @@ import type {
   HardwareProbe,
   TextGenerationSlot,
 } from "./types";
+
+// Local tier-id constants derived once from the manifest-driven catalog
+// type so the ladder definitions can't drift from the canonical list.
+// Adding a tier requires extending the manifest module; this file picks
+// it up automatically.
+const TIER_LITE: Eliza1TierId = "eliza-1-lite-0_6b";
+const TIER_MOBILE: Eliza1TierId = "eliza-1-mobile-1_7b";
+const TIER_DESKTOP: Eliza1TierId = "eliza-1-desktop-9b";
+const TIER_PRO: Eliza1TierId = "eliza-1-pro-27b";
+const TIER_SERVER: Eliza1TierId = "eliza-1-server-h200";
 
 export type RecommendationPlatformClass =
   | "mobile"
@@ -39,45 +50,31 @@ const BYTES_PER_GB = 1024 ** 3;
  */
 const SLOT_LADDERS: Record<
   RecommendationPlatformClass,
-  Record<TextGenerationSlot, string[]>
+  Record<TextGenerationSlot, ReadonlyArray<Eliza1TierId>>
 > = {
   mobile: {
-    TEXT_SMALL: ["eliza-1-lite-0_6b", "eliza-1-mobile-1_7b"],
-    TEXT_LARGE: ["eliza-1-mobile-1_7b", "eliza-1-lite-0_6b"],
+    TEXT_SMALL: [TIER_LITE, TIER_MOBILE],
+    TEXT_LARGE: [TIER_MOBILE, TIER_LITE],
   },
   "apple-silicon": {
-    TEXT_SMALL: ["eliza-1-mobile-1_7b", "eliza-1-lite-0_6b"],
-    TEXT_LARGE: [
-      "eliza-1-pro-27b",
-      "eliza-1-desktop-9b",
-      "eliza-1-mobile-1_7b",
-    ],
+    TEXT_SMALL: [TIER_MOBILE, TIER_LITE],
+    TEXT_LARGE: [TIER_PRO, TIER_DESKTOP, TIER_MOBILE],
   },
   "linux-gpu": {
-    TEXT_SMALL: ["eliza-1-mobile-1_7b", "eliza-1-lite-0_6b"],
-    TEXT_LARGE: [
-      "eliza-1-server-h200",
-      "eliza-1-pro-27b",
-      "eliza-1-desktop-9b",
-      "eliza-1-mobile-1_7b",
-    ],
+    TEXT_SMALL: [TIER_MOBILE, TIER_LITE],
+    TEXT_LARGE: [TIER_SERVER, TIER_PRO, TIER_DESKTOP, TIER_MOBILE],
   },
   "linux-cpu": {
-    TEXT_SMALL: ["eliza-1-mobile-1_7b", "eliza-1-lite-0_6b"],
-    TEXT_LARGE: ["eliza-1-desktop-9b", "eliza-1-mobile-1_7b"],
+    TEXT_SMALL: [TIER_MOBILE, TIER_LITE],
+    TEXT_LARGE: [TIER_DESKTOP, TIER_MOBILE],
   },
   "desktop-gpu": {
-    TEXT_SMALL: ["eliza-1-mobile-1_7b", "eliza-1-lite-0_6b"],
-    TEXT_LARGE: [
-      "eliza-1-server-h200",
-      "eliza-1-pro-27b",
-      "eliza-1-desktop-9b",
-      "eliza-1-mobile-1_7b",
-    ],
+    TEXT_SMALL: [TIER_MOBILE, TIER_LITE],
+    TEXT_LARGE: [TIER_SERVER, TIER_PRO, TIER_DESKTOP, TIER_MOBILE],
   },
   "desktop-cpu": {
-    TEXT_SMALL: ["eliza-1-mobile-1_7b", "eliza-1-lite-0_6b"],
-    TEXT_LARGE: ["eliza-1-desktop-9b", "eliza-1-mobile-1_7b"],
+    TEXT_SMALL: [TIER_MOBILE, TIER_LITE],
+    TEXT_LARGE: [TIER_DESKTOP, TIER_MOBILE],
   },
 };
 
@@ -95,8 +92,16 @@ function chatCandidates(catalog: CatalogModel[]): CatalogModel[] {
 export function classifyRecommendationPlatform(
   hardware: HardwareProbe,
 ): RecommendationPlatformClass {
-  const platform = hardware.platform as string;
-  if (platform === "android" || platform === "ios") return "mobile";
+  // Mobile detection comes from the typed `hardware.mobile.platform`
+  // field (`"ios" | "android" | "web"`). `NodeJS.Platform` doesn't
+  // include those values — the previous `process.platform as string`
+  // cast was hiding that the cast was the only way the comparison
+  // type-checked. Reading the proper typed field is both safer and
+  // accurate when a host advertises mobile via the mobile probe.
+  const mobilePlatform = hardware.mobile?.platform;
+  if (mobilePlatform === "android" || mobilePlatform === "ios") return "mobile";
+
+  const platform = hardware.platform;
   if (hardware.appleSilicon) return "apple-silicon";
   if (platform === "linux" && hardware.gpu) return "linux-gpu";
   if (platform === "linux") return "linux-cpu";
