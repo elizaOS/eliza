@@ -42,6 +42,18 @@ export type LifeOpsFeatureKey =
   | "email.send"
   | "cloud.duffel";
 
+/**
+ * Open-key sibling of `LifeOpsFeatureKey`. The closed union remains the
+ * compile-time authority for the built-in 10 flags (Cloud-default policy,
+ * `BASE_FEATURE_DEFAULTS`, typed gate calls). The runtime
+ * `FeatureFlagRegistry` is the source of truth for what flags exist —
+ * including 3rd-party plugin contributions — so anywhere that ingests a
+ * key from outside (chat input, REST routes, dev-registries view) uses
+ * `LifeOpsFeatureFlagKey`. Parallel to W2-D's
+ * `LifeOpsBusFamily = LifeOpsTelemetryFamily | string`.
+ */
+export type LifeOpsFeatureFlagKey = LifeOpsFeatureKey | string;
+
 export type FeatureFlagSource = "default" | "local" | "cloud";
 
 export interface FeatureFlagDefault {
@@ -202,7 +214,7 @@ export function isLifeOpsFeatureKey(
 }
 
 export interface FeatureFlagState {
-  readonly featureKey: LifeOpsFeatureKey;
+  readonly featureKey: LifeOpsFeatureFlagKey;
   readonly enabled: boolean;
   readonly source: FeatureFlagSource;
   readonly enabledAt: Date | null;
@@ -214,7 +226,7 @@ export interface FeatureFlagState {
 }
 
 export interface LifeOpsFeatureFlagRowDto {
-  readonly featureKey: LifeOpsFeatureKey;
+  readonly featureKey: LifeOpsFeatureFlagKey;
   readonly enabled: boolean;
   readonly source: FeatureFlagSource;
   readonly label: string;
@@ -240,7 +252,7 @@ export interface LifeOpsFeatureToggleResponse {
 }
 
 export interface FeatureToggleRequest {
-  readonly featureKey: LifeOpsFeatureKey;
+  readonly featureKey: LifeOpsFeatureFlagKey;
   readonly enabled: boolean;
   readonly source: FeatureFlagSource;
   readonly enabledBy: string | null;
@@ -250,17 +262,17 @@ export interface FeatureToggleRequest {
 export type FeatureFlagChangeListener = (state: FeatureFlagState) => void;
 
 export interface FeatureFlagService {
-  isEnabled(key: LifeOpsFeatureKey): Promise<boolean>;
-  get(key: LifeOpsFeatureKey): Promise<FeatureFlagState>;
+  isEnabled(key: LifeOpsFeatureFlagKey): Promise<boolean>;
+  get(key: LifeOpsFeatureFlagKey): Promise<FeatureFlagState>;
   list(): Promise<ReadonlyArray<FeatureFlagState>>;
   enable(
-    key: LifeOpsFeatureKey,
+    key: LifeOpsFeatureFlagKey,
     source: FeatureFlagSource,
     enabledBy: string | null,
     metadata?: Readonly<Record<string, unknown>>,
   ): Promise<FeatureFlagState>;
   disable(
-    key: LifeOpsFeatureKey,
+    key: LifeOpsFeatureFlagKey,
     source: FeatureFlagSource,
     enabledBy: string | null,
   ): Promise<FeatureFlagState>;
@@ -275,16 +287,22 @@ export interface FeatureFlagService {
  */
 export class FeatureNotEnabledError extends Error {
   readonly code = "FEATURE_NOT_ENABLED" as const;
-  readonly featureKey: LifeOpsFeatureKey;
+  readonly featureKey: LifeOpsFeatureFlagKey;
   readonly cloudOptIn: boolean;
   readonly cloudLinked: boolean;
 
   constructor(
-    featureKey: LifeOpsFeatureKey,
-    args?: { cloudLinked?: boolean; message?: string },
+    featureKey: LifeOpsFeatureFlagKey,
+    args?: { cloudLinked?: boolean; message?: string; costsMoney?: boolean },
   ) {
-    const def = BASE_FEATURE_DEFAULTS[featureKey];
-    const cloudOptIn = def.costsMoney;
+    // Built-in: pull `costsMoney` from `BASE_FEATURE_DEFAULTS`. Otherwise the
+    // caller supplies it from the registry contribution metadata so the
+    // Cloud opt-in suggestion stays accurate for 3rd-party flags.
+    const builtinCostsMoney = isLifeOpsFeatureKey(featureKey)
+      ? BASE_FEATURE_DEFAULTS[featureKey].costsMoney
+      : null;
+    const cloudOptIn =
+      builtinCostsMoney ?? args?.costsMoney ?? false;
     const cloudLinked = args?.cloudLinked === true;
     const text =
       args?.message ??
@@ -298,7 +316,7 @@ export class FeatureNotEnabledError extends Error {
 }
 
 function buildFeatureDisabledMessage(
-  featureKey: LifeOpsFeatureKey,
+  featureKey: LifeOpsFeatureFlagKey,
   args: { cloudOptIn: boolean; cloudLinked: boolean },
 ): string {
   const base = `Feature '${featureKey}' is off.`;

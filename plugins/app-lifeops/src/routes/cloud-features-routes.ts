@@ -150,7 +150,9 @@ function toRowDto(state: FeatureFlagState): LifeOpsFeatureFlagRowDto {
     enabledAt: state.enabledAt ? state.enabledAt.toISOString() : null,
     enabledBy: state.enabledBy,
     packageId: typeof packageId === "string" ? packageId : null,
-    cloudDefaultOn: isCloudLinkedDefaultOnFeatureKey(state.featureKey),
+    cloudDefaultOn: isLifeOpsFeatureKey(state.featureKey)
+      ? isCloudLinkedDefaultOnFeatureKey(state.featureKey)
+      : false,
   };
 }
 

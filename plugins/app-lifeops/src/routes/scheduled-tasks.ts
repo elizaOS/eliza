@@ -24,6 +24,7 @@ import {
   getBlockerRegistry,
   getEventKindRegistry,
   getFamilyRegistry,
+  getFeatureFlagRegistry,
   getWorkflowStepRegistry,
 } from "../lifeops/registries/index.js";
 import type {
@@ -136,6 +137,14 @@ export interface DevRegistriesView {
     description: string;
     provider: string;
   }>;
+  featureFlags: Array<{
+    key: string;
+    label: string;
+    description: string;
+    defaultEnabled: boolean;
+    namespace: string | null;
+    builtin: boolean;
+  }>;
 }
 
 function composeDevRegistriesView(
@@ -154,6 +163,7 @@ function composeDevRegistriesView(
   const workflowStepRegistry = runtime
     ? getWorkflowStepRegistry(runtime)
     : null;
+  const featureFlagRegistry = runtime ? getFeatureFlagRegistry(runtime) : null;
 
   return {
     gates: runnerView.gates,
@@ -211,6 +221,16 @@ function composeDevRegistriesView(
           label: s.describe.label,
           description: s.describe.description,
           provider: s.describe.provider,
+        }))
+      : [],
+    featureFlags: featureFlagRegistry
+      ? featureFlagRegistry.list().map((f) => ({
+          key: f.key,
+          label: f.label,
+          description: f.description,
+          defaultEnabled: f.defaultEnabled,
+          namespace: f.namespace ?? null,
+          builtin: featureFlagRegistry.isBuiltin(f.key),
         }))
       : [],
   };
