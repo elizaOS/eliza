@@ -623,6 +623,13 @@ export type ModelClient = {
     messages: ChatMessage[];
     maxTokens?: number;
     temperature?: number;
+    /**
+     * Reasoning effort for reasoning-capable models (gpt-oss-*, etc).
+     * Set "low" for structured extraction (compactor) where deep reasoning
+     * wastes the budget; set "medium"/"high" for the agent and judge so
+     * they actually scan history instead of producing lazy refusals.
+     */
+    reasoningEffort?: ReasoningEffort;
   }): Promise<{ content: string; latencyMs: number }>;
 };
 
@@ -639,22 +646,24 @@ export function makeOpenAICompatibleClient(opts: {
   const f = opts.fetchImpl ?? fetch;
   const retries = opts.retries ?? DEFAULT_RETRIES;
   const baseBackoff = opts.baseBackoffMs ?? BASE_BACKOFF_MS;
-  // gpt-oss-* are reasoning models. Without reasoning_effort:"low" they
-  // burn most of the token budget on internal reasoning before producing
-  // visible content. For the drift-harness conversation flow ("respond
-  // briefly to this turn", "is this answer correct given expected X")
-  // there's no deep reasoning required, so "low" is the right default.
-  // Override via CEREBRAS_REASONING_EFFORT for experiments.
-  const reasoningEffort = process.env.CEREBRAS_REASONING_EFFORT ?? "low";
+  // gpt-oss-* are reasoning models. Effort is set per call site by the
+  // harness: "low" for the compactor (structured extraction), "medium" for
+  // agent turns and judge calls (needs to actually scan history). The
+  // global env override stays as an escape hatch for experiments.
+  const envEffort = process.env.CEREBRAS_REASONING_EFFORT as
+    | ReasoningEffort
+    | undefined;
   return {
-    async chat({ model, messages, maxTokens, temperature }) {
+    async chat({ model, messages, maxTokens, temperature, reasoningEffort }) {
       const url = `${opts.baseUrl.replace(/\/$/, "")}/chat/completions`;
+      const effort: ReasoningEffort =
+        envEffort ?? reasoningEffort ?? "medium";
       const body = JSON.stringify({
         model,
         messages,
         max_tokens: maxTokens,
         temperature: temperature ?? 0.7,
-        reasoning_effort: reasoningEffort,
+        reasoning_effort: effort,
       });
       let lastErr: unknown;
       for (let attempt = 0; attempt <= retries; attempt++) {
@@ -738,19 +747,49 @@ export function makeFakeClient(): ModelClient {
       if (/AWS account ID/i.test(text)) {
         return scanAndAnswer(messages, /AWS account ID is (\d{12})/i);
       }
-      if (/staging API key/i.test(text)) {
-        return scanAndAnswer(messages, /staging API key is (sk_[0-9a-f]+)/i);
-      }
       if (/contact at the vendor/i.test(text)) {
         return scanAndAnswer(messages, /vendor is ([A-Z][a-z]+ [A-Z][a-z]+)/);
       }
       if (/shipping address/i.test(text)) {
         return scanAndAnswer(messages, /Ship to: ([^.]+)\./);
       }
-      if (/codename/i.test(text)) {
+      if (/quarter's project codename/i.test(text)) {
         return scanAndAnswer(
           messages,
           /codename for this quarter: ([A-Z0-9]+)/,
+        );
+      }
+      if (/book my friend recommended/i.test(text)) {
+        return scanAndAnswer(messages, /is called "([^"]+)"/);
+      }
+      if (/internal codename for the new initiative/i.test(text)) {
+        return scanAndAnswer(messages, /initiative is "([^"]+)"/);
+      }
+      if (/ISBN/i.test(text)) {
+        return scanAndAnswer(messages, /ISBN of that book is (\d{13})/);
+      }
+      if (/contract effective date/i.test(text)) {
+        return scanAndAnswer(messages, /effective date is (\d{4}-\d{2}-\d{2})/);
+      }
+      if (/birthday/i.test(text)) {
+        return scanAndAnswer(messages, /birthday is (\d{2}\/\d{2})/);
+      }
+      if (/flight number/i.test(text)) {
+        return scanAndAnswer(messages, /flight is ([A-Z]{2}\d{3,4})/);
+      }
+      if (/ticket UUID/i.test(text)) {
+        return scanAndAnswer(
+          messages,
+          /UUID is ([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/,
+        );
+      }
+      if (/warehouse ZIP code/i.test(text)) {
+        return scanAndAnswer(messages, /ZIP code is (\d{5})/);
+      }
+      if (/tool return/i.test(text)) {
+        return scanAndAnswer(
+          messages,
+          /\[tool_result:[^\]]+\] ([^\n]+?)(?:\s*$|\n)/,
         );
       }
       return { content: "Sure, here's a friendly reply.", latencyMs: 1 };

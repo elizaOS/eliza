@@ -351,20 +351,69 @@ const STRUCTURED_SYSTEM_PROMPT =
   '  - "entities": object — entity name → short description\n' +
   "Output ONLY the JSON object, no prose, no markdown fences.";
 
-function safeParseStructured(raw: string): StructuredState {
-  // Tolerate ```json fences and surrounding prose by extracting the first
-  // {...} balanced block. Falls back to an empty state on parse failure.
-  const trimmed = raw.trim();
-  let body = trimmed;
-  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch) body = fenceMatch[1].trim();
-  else {
-    const firstBrace = trimmed.indexOf("{");
-    const lastBrace = trimmed.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace > firstBrace) {
-      body = trimmed.slice(firstBrace, lastBrace + 1);
+/**
+ * Scan a string for the first balanced `{...}` block, respecting JSON string
+ * literals so prose like `<reasoning>alt {plan}</reasoning>{ "facts": [] }`
+ * resolves to the JSON object, not the prose-fragment range.
+ *
+ * Returns the substring including the outer braces, or null if no balanced
+ * block exists.
+ */
+function extractFirstBalancedJsonObject(input: string): string | null {
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (ch === "\\") {
+        escape = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}") {
+      if (depth > 0) {
+        depth--;
+        if (depth === 0 && start !== -1) {
+          return input.slice(start, i + 1);
+        }
+      }
     }
   }
+  return null;
+}
+
+function extractJsonBody(raw: string): string {
+  const trimmed = raw.trim();
+  // ```json ... ``` fence first — strict so prose-as-fence doesn't match.
+  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) {
+    const inside = fenceMatch[1].trim();
+    const balanced = extractFirstBalancedJsonObject(inside);
+    if (balanced) return balanced;
+    return inside;
+  }
+  const balanced = extractFirstBalancedJsonObject(trimmed);
+  if (balanced) return balanced;
+  return trimmed;
+}
+
+function safeParseStructured(raw: string): StructuredState {
+  // Tolerate ```json fences and surrounding prose by extracting the first
+  // balanced {...} block. Falls back to an empty state on parse failure.
+  const body = extractJsonBody(raw);
   const parsed = JSON.parse(body) as Partial<StructuredState>;
   return {
     facts: Array.isArray(parsed.facts) ? parsed.facts.map(String) : [],
@@ -690,17 +739,7 @@ type HybridParsed = {
 };
 
 function safeParseHybrid(raw: string): HybridParsed {
-  const trimmed = raw.trim();
-  let body = trimmed;
-  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch) body = fenceMatch[1].trim();
-  else {
-    const firstBrace = trimmed.indexOf("{");
-    const lastBrace = trimmed.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace > firstBrace) {
-      body = trimmed.slice(firstBrace, lastBrace + 1);
-    }
-  }
+  const body = extractJsonBody(raw);
   const parsed = JSON.parse(body) as {
     state?: Partial<StructuredState>;
     ledger?: Array<{ index?: number; note?: string }>;
