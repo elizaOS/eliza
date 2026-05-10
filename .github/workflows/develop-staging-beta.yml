@@ -82,6 +82,12 @@ jobs:
           ignored_names_json='["Develop Staging Beta Release","NPM Release","Release Orchestrator"]'
 
           while [ "$SECONDS" -lt "$deadline" ]; do
+            DEVELOP_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/develop" --jq '.object.sha')"
+            if [ "$TARGET_SHA" != "$DEVELOP_SHA" ]; then
+              echo "Target ${TARGET_SHA} is no longer develop HEAD (${DEVELOP_SHA}); a newer develop run will handle staging beta." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+
             gh api \
               "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&per_page=100" \
               > /tmp/workflow-runs.json
@@ -128,6 +134,11 @@ jobs:
               exit 0
             fi
             if [ "$status" -eq 2 ]; then
+              DEVELOP_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/develop" --jq '.object.sha')"
+              if [ "$TARGET_SHA" != "$DEVELOP_SHA" ]; then
+                echo "Target ${TARGET_SHA} was superseded by ${DEVELOP_SHA}; ignoring cancelled checks from the old head." >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
               echo "::error::At least one workflow failed for ${TARGET_SHA}; beta release blocked."
               exit 1
             fi
