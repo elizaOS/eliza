@@ -15,6 +15,7 @@ from ..types import MessageTurn
 from ._openai_compat import OpenAICompatAgent
 from .cerebras_direct import build_cerebras_direct_agent
 from .hermes import build_hermes_agent
+from .openclaw import OpenClawAgent, build_openclaw_agent
 from .perfect import PerfectAgent
 from .wrong import WrongAgent, WrongMode
 
@@ -66,10 +67,12 @@ def build_eliza_agent(
 
 __all__ = [
     "OpenAICompatAgent",
+    "OpenClawAgent",
     "PerfectAgent",
     "WrongAgent",
     "WrongMode",
     "build_cerebras_direct_agent",
     "build_eliza_agent",
     "build_hermes_agent",
+    "build_openclaw_agent",
 ]

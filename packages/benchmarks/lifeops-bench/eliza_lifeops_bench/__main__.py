@@ -147,15 +147,28 @@ def _list_scenarios() -> None:
     print()
 
 
+def _build_agent_factory(name: str):
+    """Per-scenario agents (perfect/wrong) need a fresh instance per scenario.
+
+    Returns a `Callable[[Scenario], AgentFn]` for stateful scenario-bound
+    agents, or None if the named agent is stateless and should use the
+    singleton path via `_build_agent_fn`.
+    """
+    if name == "perfect":
+        from .agents import PerfectAgent
+        return lambda scenario: PerfectAgent(scenario)
+    if name == "wrong":
+        from .agents import WrongAgent
+        return lambda scenario: WrongAgent(scenario)
+    return None
+
+
 def _build_agent_fn(name: str):
     if name in {"perfect", "wrong"}:
-        try:
-            from .agents import PerfectAgent, WrongAgent  # type: ignore[attr-defined]
-        except ImportError as exc:
-            raise SystemExit(
-                f"Agent '{name}' not yet wired (Wave 2F): {exc}"
-            ) from exc
-        return PerfectAgent() if name == "perfect" else WrongAgent()
+        # Caller should use _build_agent_factory for these. Returning a
+        # placeholder keeps the CLI surface uniform; the runner prefers
+        # agent_factory when both are set.
+        return None
     if name == "eliza":
         try:
             from .agents import build_eliza_agent  # type: ignore[attr-defined]
@@ -210,16 +223,26 @@ def _build_agent_fn(name: str):
 
 
 def _build_world_factory():
-    try:
-        from .lifeworld import LifeWorld
-    except ImportError as exc:
-        raise SystemExit(
-            "LifeWorld is not implemented yet (Wave 1C). "
-            "Use --list-scenarios to inspect the registry without running."
-        ) from exc
+    """Snapshot-aware world factory.
 
-    def factory(seed: int) -> LifeWorld:
-        return LifeWorld(seed)
+    Wave 2A scenarios reference the medium snapshot (seed=2026, ids like
+    `event_00040`); the tiny snapshot is seed=42. Both load from the on-disk
+    JSON snapshots so referenced entity ids resolve. Anything else falls back
+    to a fresh `WorldGenerator` populated at the small scale.
+    """
+    from .lifeworld import LifeWorld
+    from .lifeworld.generators import WorldGenerator
+    from .lifeworld.snapshots import SNAPSHOT_SPECS, build_world_for
+
+    specs_by_seed = {spec.seed: spec for spec in SNAPSHOT_SPECS}
+
+    def factory(seed: int, now_iso: str) -> LifeWorld:
+        spec = specs_by_seed.get(seed)
+        if spec is not None:
+            return build_world_for(spec)
+        return WorldGenerator(seed=seed, now_iso=now_iso).generate_default_world(
+            scale="small"
+        )
 
     return factory
 
@@ -238,8 +261,23 @@ async def _run(args: argparse.Namespace) -> None:
     domain = Domain(args.domain) if args.domain else None
     mode = ScenarioMode(args.mode) if args.mode else None
 
+    # When the operator hasn't wired live-judge clients (no Cerebras +
+    # Anthropic in env), LIVE scenarios will crash inside the runner. Default
+    # to STATIC-only in that case so `--agent perfect` works out of the box.
+    # Operator can opt back in with `--mode live` once they wire the clients.
+    if mode is None and not (os.environ.get("CEREBRAS_API_KEY") and os.environ.get("ANTHROPIC_API_KEY")):
+        mode = ScenarioMode.STATIC
+        logging.getLogger(__name__).info(
+            "No CEREBRAS_API_KEY+ANTHROPIC_API_KEY in env; restricting to STATIC scenarios. "
+            "Pass --mode live to override (will need both keys for the live judge)."
+        )
+
+    agent_factory = _build_agent_factory(args.agent)
+    agent_fn = _build_agent_fn(args.agent) if agent_factory is None else None
+
     runner = LifeOpsBenchRunner(
-        agent_fn=_build_agent_fn(args.agent),
+        agent_fn=agent_fn,
+        agent_factory=agent_factory,
         world_factory=_build_world_factory(),
         evaluator_model=args.evaluator_model,
         judge_model=args.judge_model,

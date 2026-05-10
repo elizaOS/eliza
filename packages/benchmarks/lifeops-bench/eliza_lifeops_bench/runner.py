@@ -76,6 +76,7 @@ logger = logging.getLogger(__name__)
 
 AgentFn = Callable[[list[MessageTurn], list[dict[str, Any]]], Awaitable[MessageTurn]]
 WorldFactory = Callable[[int, str], LifeWorld]
+AgentFactory = Callable[["Scenario"], AgentFn]
 
 
 class CostBudgetExceeded(Exception):
@@ -945,8 +946,8 @@ class LifeOpsBenchRunner:
 
     def __init__(
         self,
-        agent_fn: AgentFn,
-        world_factory: WorldFactory,
+        agent_fn: AgentFn | None = None,
+        world_factory: WorldFactory | None = None,
         evaluator_model: str = "gpt-oss-120b",
         judge_model: str = "claude-opus-4-7",
         scenarios: list[Scenario] | None = None,
@@ -959,8 +960,14 @@ class LifeOpsBenchRunner:
         evaluator: LifeOpsEvaluator | None = None,
         live_judge_min_turn: int = 5,
         abort_on_budget_exceeded: bool = True,
+        agent_factory: AgentFactory | None = None,
     ) -> None:
+        if agent_fn is None and agent_factory is None:
+            raise ValueError("LifeOpsBenchRunner requires agent_fn or agent_factory")
+        if world_factory is None:
+            raise ValueError("LifeOpsBenchRunner requires world_factory")
         self.agent_fn = agent_fn
+        self.agent_factory = agent_factory
         self.world_factory = world_factory
         self.evaluator_model = evaluator_model
         self.judge_model = judge_model
@@ -1115,9 +1122,16 @@ class LifeOpsBenchRunner:
         for d in scenario.disruptions:
             disruptions_by_turn.setdefault(d.at_turn, []).append(d)
 
+        # Per-scenario agents (PerfectAgent/WrongAgent) need a fresh instance
+        # per scenario because they hold scenario-specific state (action index,
+        # ground-truth lookup). A factory wins over a singleton agent_fn.
+        active_agent_fn: AgentFn = (
+            self.agent_factory(scenario) if self.agent_factory is not None else self.agent_fn  # type: ignore[assignment]
+        )
+
         for turn_number in range(1, scenario.max_turns + 1):
             tool_manifest = _empty_tool_manifest(world)
-            agent_turn = await self.agent_fn(list(history), tool_manifest)
+            agent_turn = await active_agent_fn(list(history), tool_manifest)
             history.append(agent_turn)
 
             agent_actions = _extract_actions_from_turn(agent_turn)

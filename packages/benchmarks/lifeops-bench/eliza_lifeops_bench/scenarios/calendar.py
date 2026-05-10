@@ -272,5 +272,116 @@ CALENDAR_SCENARIOS: list[Scenario] = [
         world_seed=2026,
         max_turns=5,
         description="Pure search across the seeded calendar.",
+    ),    Scenario(
+        id='calendar.reschedule_dentist_to_friday',
+        name='Reschedule dentist appointment to Friday morning',
+        domain=Domain.CALENDAR,
+        mode=ScenarioMode.STATIC,
+        persona=PERSONA_RIA_PM,
+        instruction='Please move my dentist appointment to Friday at 10am UTC.',
+        ground_truth_actions=[
+            Action(
+                name='CALENDAR',
+                kwargs={
+                    'subaction': 'update_event',
+                    'intent': 'move dentist appointment to Friday morning',
+                    'details': {
+                        'eventId': 'event_00030',
+                        'calendarId': 'cal_primary',
+                        'start': '2026-05-12T10:00:00Z',
+                        'end': '2026-05-12T10:30:00Z',
+                    },
+                },
+            ),
+        ],
+        required_outputs=['dentist', 'Friday'],
+        first_question_fallback=FirstQuestionFallback(
+            canned_answer='Yes, keep it on my primary calendar.',
+            applies_when='agent asks which calendar',
+        ),
+        world_seed=2026,
+        max_turns=8,
+        description='Reschedules a single existing event to a new day and time, testing correct update_event payload.',
     ),
+    Scenario(
+        id='calendar.cancel_yoga_class',
+        name='Cancel weekly yoga class',
+        domain=Domain.CALENDAR,
+        mode=ScenarioMode.STATIC,
+        persona=PERSONA_MAYA_PARENT,
+        instruction='Cancel my yoga class that repeats every Wednesday at 6pm on my family calendar.',
+        ground_truth_actions=[
+            Action(
+                name='CALENDAR',
+                kwargs={
+                    'subaction': 'delete_event',
+                    'intent': 'cancel yoga class on Wednesday evening',
+                    'details': {
+                        'eventId': 'event_00055',
+                        'calendarId': 'cal_family',
+                    },
+                },
+            ),
+        ],
+        required_outputs=['canceled', 'yoga'],
+        first_question_fallback=None,
+        world_seed=2026,
+        max_turns=8,
+        description='Deletes a recurring event, ensuring the correct calendar and event IDs are used.',
+    ),
+    Scenario(
+        id='calendar.propose_meeting_with_alex',
+        name='Propose three 30‑minute slots for meeting with Alex',
+        domain=Domain.CALENDAR,
+        mode=ScenarioMode.STATIC,
+        persona=PERSONA_DEV_FREELANCER,
+        instruction='Suggest three 30‑minute windows next week (May 13‑19) for a meeting with Alex.',
+        ground_truth_actions=[
+            Action(
+                name='CALENDAR',
+                kwargs={
+                    'subaction': 'propose_times',
+                    'intent': 'propose three 30‑minute slots for meeting with Alex',
+                    'durationMinutes': 30,
+                    'slotCount': 3,
+                    'windowStart': '2026-05-13T09:00:00Z',
+                    'windowEnd': '2026-05-19T17:00:00Z',
+                    'title': 'Meeting with Alex',
+                },
+            ),
+        ],
+        required_outputs=['slot', 'Alex'],
+        first_question_fallback=FirstQuestionFallback(
+            canned_answer='30 minutes, no attendees needed.',
+            applies_when='agent asks for duration or attendees',
+        ),
+        world_seed=2026,
+        max_turns=8,
+        description='Tests availability proposal generation with specific duration and window constraints.',
+    ),
+    Scenario(
+        id='calendar.check_monday_morning_block',
+        name='Check availability Monday morning 2‑hour block',
+        domain=Domain.CALENDAR,
+        mode=ScenarioMode.STATIC,
+        persona=PERSONA_LIN_OPS,
+        instruction='Am I free Monday from 9am to 11am UTC?',
+        ground_truth_actions=[
+            Action(
+                name='CALENDAR',
+                kwargs={
+                    'subaction': 'check_availability',
+                    'intent': 'check free slot Monday 09:00‑11:00 UTC',
+                    'startAt': '2026-05-13T09:00:00Z',
+                    'endAt': '2026-05-13T11:00:00Z',
+                },
+            ),
+        ],
+        required_outputs=[],
+        first_question_fallback=None,
+        world_seed=2026,
+        max_turns=8,
+        description='Simple availability query for a fixed two‑hour window.',
+    ),
+
 ]

@@ -410,6 +410,75 @@ def _check_taxonomy_alignment(
         )
 
 
+def _check_live_extras(
+    c: dict[str, Any], issues: list[ValidationIssue]
+) -> None:
+    """For LIVE mode: enforce success_criteria, world_assertions, and that
+    static-only fields are empty/null."""
+    actions = c.get("ground_truth_actions")
+    if actions != []:
+        issues.append(
+            ValidationIssue(
+                path="ground_truth_actions",
+                message="LIVE scenarios must have an empty list",
+            )
+        )
+    required_outputs = c.get("required_outputs")
+    if required_outputs != []:
+        issues.append(
+            ValidationIssue(
+                path="required_outputs",
+                message="LIVE scenarios must have an empty list",
+            )
+        )
+    fallback = c.get("first_question_fallback")
+    if fallback is not None:
+        issues.append(
+            ValidationIssue(
+                path="first_question_fallback",
+                message="LIVE scenarios must use null",
+            )
+        )
+    success = c.get("success_criteria")
+    if not isinstance(success, list) or not all(_is_str(x) for x in success):
+        issues.append(
+            ValidationIssue(
+                path="success_criteria",
+                message="must be a non-empty list of strings",
+            )
+        )
+    elif not (2 <= len(success) <= 6):
+        issues.append(
+            ValidationIssue(
+                path="success_criteria",
+                message=f"must have 2-6 entries, got {len(success)}",
+            )
+        )
+    assertions = c.get("world_assertions")
+    if not isinstance(assertions, list) or not all(_is_str(x) for x in assertions):
+        issues.append(
+            ValidationIssue(
+                path="world_assertions",
+                message="must be a non-empty list of strings",
+            )
+        )
+    elif not (1 <= len(assertions) <= 4):
+        issues.append(
+            ValidationIssue(
+                path="world_assertions",
+                message=f"must have 1-4 entries, got {len(assertions)}",
+            )
+        )
+    cid = c.get("id")
+    if isinstance(cid, str) and not cid.startswith("live."):
+        issues.append(
+            ValidationIssue(
+                path="id",
+                message="LIVE scenario id must start with 'live.'",
+            )
+        )
+
+
 def validate_candidate(
     candidate: dict[str, Any],
     *,
@@ -422,14 +491,22 @@ def validate_candidate(
     When ``valid_action_tags`` is provided, also produces soft taxonomy
     warnings for ground-truth actions whose ``domain:*`` tag does not match
     the scenario's ``Domain`` field.
+
+    LIVE-mode candidates take a separate path: their ``ground_truth_actions``
+    must be empty, ``success_criteria`` and ``world_assertions`` must be
+    populated, and the static-action checks are skipped.
     """
     issues: list[ValidationIssue] = []
     warnings: list[ValidationIssue] = []
     _check_top_level(candidate, issues)
-    if not issues or all(i.path != "ground_truth_actions" for i in issues):
-        _check_actions(candidate, valid_actions, valid_world_ids, issues)
-    if valid_action_tags is not None:
-        _check_taxonomy_alignment(candidate, valid_action_tags, warnings)
+    mode = candidate.get("mode")
+    if mode == "live":
+        _check_live_extras(candidate, issues)
+    else:
+        if not issues or all(i.path != "ground_truth_actions" for i in issues):
+            _check_actions(candidate, valid_actions, valid_world_ids, issues)
+        if valid_action_tags is not None:
+            _check_taxonomy_alignment(candidate, valid_action_tags, warnings)
     candidate_id = candidate.get("id") if isinstance(candidate.get("id"), str) else "<unknown>"
     return ValidationResult(
         candidate_id=str(candidate_id),

@@ -60,6 +60,10 @@ DOMAIN_TO_LIST_NAME: dict[str, str] = {
     "focus": "FOCUS_SCENARIOS",
 }
 
+DOMAIN_TO_LIVE_LIST_NAME: dict[str, str] = {
+    domain: f"LIVE_{name}" for domain, name in DOMAIN_TO_LIST_NAME.items()
+}
+
 
 def _render_value(value: Any, indent: int) -> str:
     """Render a JSON-shaped value as a Python literal with stable formatting."""
@@ -115,13 +119,28 @@ def _render_fallback(fallback: dict[str, Any] | None, indent: int) -> str:
 
 def _render_scenario(candidate: dict[str, Any]) -> str:
     persona_var = PERSONA_VAR_BY_ID[candidate["persona_id"]]
-    actions_block = ",\n            ".join(
-        _render_action(a, 12) for a in candidate["ground_truth_actions"]
-    )
+    actions = candidate["ground_truth_actions"]
+    if actions:
+        actions_block = (
+            "[\n            "
+            + ",\n            ".join(_render_action(a, 12) for a in actions)
+            + ",\n        ]"
+        )
+    else:
+        actions_block = "[]"
     required = repr(candidate.get("required_outputs", []))
     description = candidate["description"]
     domain_value = candidate["domain"].upper()
     mode_value = candidate["mode"].upper()
+    extra = ""
+    success = candidate.get("success_criteria")
+    if success:
+        rendered_success = "[\n            " + ",\n            ".join(repr(s) for s in success) + ",\n        ]"
+        extra += f"        success_criteria={rendered_success},\n"
+    assertions = candidate.get("world_assertions")
+    if assertions:
+        rendered_assertions = "[\n            " + ",\n            ".join(repr(s) for s in assertions) + ",\n        ]"
+        extra += f"        world_assertions={rendered_assertions},\n"
     return (
         "    Scenario(\n"
         f"        id={candidate['id']!r},\n"
@@ -130,14 +149,13 @@ def _render_scenario(candidate: dict[str, Any]) -> str:
         f"        mode=ScenarioMode.{mode_value},\n"
         f"        persona={persona_var},\n"
         f"        instruction={candidate['instruction']!r},\n"
-        f"        ground_truth_actions=[\n"
-        f"            {actions_block},\n"
-        "        ],\n"
+        f"        ground_truth_actions={actions_block},\n"
         f"        required_outputs={required},\n"
         f"        first_question_fallback={_render_fallback(candidate.get('first_question_fallback'), 8)},\n"
         f"        world_seed={candidate['world_seed']},\n"
         f"        max_turns={candidate['max_turns']},\n"
         f"        description={description!r},\n"
+        f"{extra}"
         "    ),\n"
     )
 
@@ -161,6 +179,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="import_reviewed")
     parser.add_argument("input", type=Path, help="Reviewed candidates JSON file.")
     parser.add_argument("--domain", required=True, choices=list(DOMAIN_TO_LIST_NAME))
+    parser.add_argument("--mode", default="static", choices=["static", "live"])
     parser.add_argument("--world-seed", type=int, default=2026)
     args = parser.parse_args(argv)
 
@@ -184,6 +203,9 @@ def main(argv: list[str] | None = None) -> int:
                       file=sys.stderr)
         return 2
 
+    from .live import LIVE_SCENARIOS_BY_ID
+
+    expected_mode = args.mode
     for candidate in candidates:
         if candidate["domain"] != args.domain:
             print(
@@ -192,7 +214,14 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
-        if candidate["id"] in SCENARIOS_BY_ID:
+        if candidate.get("mode") != expected_mode:
+            print(
+                f"candidate {candidate['id']} has mode {candidate.get('mode')!r}, "
+                f"expected {expected_mode!r}",
+                file=sys.stderr,
+            )
+            return 2
+        if candidate["id"] in SCENARIOS_BY_ID or candidate["id"] in LIVE_SCENARIOS_BY_ID:
             print(
                 f"candidate {candidate['id']} already exists in the corpus",
                 file=sys.stderr,
@@ -200,8 +229,12 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     rendered_blocks = "".join(_render_scenario(c) for c in candidates)
-    module_path = SCENARIOS_DIR / f"{args.domain}.py"
-    list_name = DOMAIN_TO_LIST_NAME[args.domain]
+    if args.mode == "live":
+        module_path = SCENARIOS_DIR / "live" / f"{args.domain}.py"
+        list_name = DOMAIN_TO_LIVE_LIST_NAME[args.domain]
+    else:
+        module_path = SCENARIOS_DIR / f"{args.domain}.py"
+        list_name = DOMAIN_TO_LIST_NAME[args.domain]
     _splice_into_module(module_path, list_name, rendered_blocks)
     print(f"appended {len(candidates)} scenarios to {module_path}")
     return 0
