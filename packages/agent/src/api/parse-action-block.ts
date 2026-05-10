@@ -8,6 +8,26 @@ export interface CoordinationLLMResponse {
   response?: string;
   useKeys?: boolean;
   keys?: string[];
+  /**
+   * Set when `action === "permission_request"`. The chat renderer consumes
+   * this payload to render an inline `<PermissionCard>` below the message.
+   */
+  permissionRequest?: ParsedPermissionRequest;
+}
+
+import { isPermissionId, type PermissionId } from "@elizaos/shared";
+
+/**
+ * Parsed shape for the `permission_request` action. The agent emits this
+ * inline alongside its natural-language response; the chat surface renders
+ * a permission card and (after grant) the agent retries the original action.
+ */
+export interface ParsedPermissionRequest {
+  permission: PermissionId;
+  reason: string;
+  feature: string;
+  fallbackOffered: boolean;
+  fallbackLabel?: string;
 }
 
 /** Console bridge exposed by PTYService for terminal I/O. */
@@ -24,13 +44,25 @@ export interface PTYService {
   stopSession?(sessionId: string): Promise<void>;
 }
 
-const VALID_ACTIONS = ["respond", "escalate", "ignore", "complete"];
+const VALID_ACTIONS = [
+  "respond",
+  "escalate",
+  "ignore",
+  "complete",
+  "permission_request",
+];
 const ACTION_KEYS = new Set([
   "action",
   "reasoning",
   "response",
   "useKeys",
   "keys",
+  // permission_request fields
+  "permission",
+  "reason",
+  "feature",
+  "fallback_offered",
+  "fallback_label",
 ]);
 
 function isValidActionEnvelope(
@@ -53,6 +85,15 @@ function isValidActionEnvelope(
     return false;
 
   if (record.action === "respond") {
+    if (
+      "permission" in record ||
+      "feature" in record ||
+      "fallback_offered" in record ||
+      "fallback_label" in record ||
+      "reason" in record
+    ) {
+      return false;
+    }
     const hasResponse =
       typeof record.response === "string" && record.response.length > 0;
     const hasKeys =
@@ -62,10 +103,47 @@ function isValidActionEnvelope(
     return hasResponse || hasKeys;
   }
 
-  // Non-respond actions should not carry respond-only fields.
-  if ("response" in record || "useKeys" in record || "keys" in record) {
+  if (record.action === "permission_request") {
+    if (!isPermissionId(record.permission)) return false;
+    if (typeof record.reason !== "string" || record.reason.trim().length === 0)
+      return false;
+    if (
+      typeof record.feature !== "string" ||
+      record.feature.trim().length === 0
+    )
+      return false;
+    if (
+      "fallback_offered" in record &&
+      typeof record.fallback_offered !== "boolean"
+    )
+      return false;
+    if (
+      "fallback_label" in record &&
+      record.fallback_label !== undefined &&
+      typeof record.fallback_label !== "string"
+    )
+      return false;
+    if ("response" in record || "useKeys" in record || "keys" in record) {
+      return false;
+    }
+    return true;
+  }
+
+  // Non-respond, non-permission_request actions should not carry
+  // respond-only or permission_request fields.
+  if (
+    "response" in record ||
+    "useKeys" in record ||
+    "keys" in record ||
+    "permission" in record ||
+    "feature" in record ||
+    "fallback_offered" in record ||
+    "fallback_label" in record
+  ) {
     return false;
   }
+  // `reason` is reserved for permission_request only.
+  if ("reason" in record) return false;
   return true;
 }
 
@@ -141,6 +219,23 @@ export function parseActionBlock(text: string): CoordinationLLMResponse | null {
       } else if (typeof parsed.response === "string") {
         result.response = parsed.response;
       } else return null;
+    }
+    if (parsed.action === "permission_request") {
+      const permission = parsed.permission;
+      if (!isPermissionId(permission)) return null;
+      const reason = String(parsed.reason ?? "");
+      const feature = String(parsed.feature ?? "");
+      const fallbackOffered = parsed.fallback_offered === true;
+      const rawLabel = parsed.fallback_label;
+      result.permissionRequest = {
+        permission,
+        reason,
+        feature,
+        fallbackOffered,
+        ...(typeof rawLabel === "string" && rawLabel.length > 0
+          ? { fallbackLabel: rawLabel }
+          : {}),
+      };
     }
     return result;
   } catch {

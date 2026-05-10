@@ -251,6 +251,7 @@ export * from "./utils/name-tokens.js";
 export * from "./utils/namespace-defaults.js";
 export * from "./utils/number-parsing.js";
 export * from "./utils/owner-name.js";
+export * from "./utils/permission-deep-links.js";
 export * from "./utils/rate-limiter.js";
 export * from "./utils/serialise.js";
 export * from "./utils/sql-compat.js";
