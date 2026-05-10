@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   PostInstallAppRequestSchema,
   PostLaunchAppRequestSchema,
+  PostRelaunchAppRequestSchema,
   PostStopAppRequestSchema,
 } from "./apps-lifecycle-routes.js";
 
@@ -112,6 +113,56 @@ describe("PostStopAppRequestSchema", () => {
   it("rejects extra fields (strict)", () => {
     expect(() =>
       PostStopAppRequestSchema.parse({ name: "x", graceful: true }),
+    ).toThrow();
+  });
+});
+
+describe("PostRelaunchAppRequestSchema", () => {
+  it("accepts name only", () => {
+    const parsed = PostRelaunchAppRequestSchema.parse({ name: "companion" });
+    expect(parsed).toEqual({ name: "companion" });
+  });
+
+  it("accepts name + runId + verify", () => {
+    const parsed = PostRelaunchAppRequestSchema.parse({
+      name: "companion",
+      runId: "run-abc",
+      verify: true,
+    });
+    expect(parsed).toEqual({
+      name: "companion",
+      runId: "run-abc",
+      verify: true,
+    });
+  });
+
+  it("trims name and runId", () => {
+    const parsed = PostRelaunchAppRequestSchema.parse({
+      name: "  companion  ",
+      runId: "  run-abc  ",
+    });
+    expect(parsed).toEqual({ name: "companion", runId: "run-abc" });
+  });
+
+  it("rejects missing name", () => {
+    expect(() =>
+      PostRelaunchAppRequestSchema.parse({ runId: "abc" }),
+    ).toThrow();
+  });
+
+  it("rejects empty name", () => {
+    expect(() => PostRelaunchAppRequestSchema.parse({ name: "" })).toThrow();
+  });
+
+  it("rejects non-boolean verify", () => {
+    expect(() =>
+      PostRelaunchAppRequestSchema.parse({ name: "x", verify: "true" }),
+    ).toThrow();
+  });
+
+  it("rejects extra fields (strict)", () => {
+    expect(() =>
+      PostRelaunchAppRequestSchema.parse({ name: "x", force: true }),
     ).toThrow();
   });
 });

@@ -79,6 +79,39 @@ export const PostStopAppRequestSchema = z
     ...(value.runId ? { runId: value.runId.trim() } : {}),
   }));
 
+/**
+ * /relaunch accepts the launch fields plus optional `runId` (used to
+ * stop a specific run before relaunching, instead of the broader
+ * "stop everything matching `name`" behaviour) and a `verify`
+ * boolean that triggers post-launch verification. The route already
+ * required `name` even when `runId` was supplied — so no
+ * cross-field refine like /stop has.
+ */
+export const PostRelaunchAppRequestSchema = z
+  .object({
+    name: z.string().min(1, "name is required"),
+    runId: z.string().min(1).optional(),
+    verify: z.boolean().optional(),
+  })
+  .strict()
+  .transform((value) => ({
+    name: value.name.trim(),
+    ...(value.runId ? { runId: value.runId.trim() } : {}),
+    ...(typeof value.verify === "boolean" ? { verify: value.verify } : {}),
+  }))
+  .pipe(
+    z
+      .object({
+        name: z.string().min(1, "name is required"),
+        runId: z.string().min(1).optional(),
+        verify: z.boolean().optional(),
+      })
+      .strict(),
+  );
+
 export type PostLaunchAppRequest = z.infer<typeof PostLaunchAppRequestSchema>;
 export type PostInstallAppRequest = z.infer<typeof PostInstallAppRequestSchema>;
 export type PostStopAppRequest = z.infer<typeof PostStopAppRequestSchema>;
+export type PostRelaunchAppRequest = z.infer<
+  typeof PostRelaunchAppRequestSchema
+>;
