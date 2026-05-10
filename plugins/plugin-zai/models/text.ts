@@ -120,7 +120,7 @@ async function generateTextWithModel(
   const { text, usage } = await generateText(generateParams as Parameters<typeof generateText>[0]);
 
   if (usage) {
-    emitModelUsageEvent(runtime, modelType, resolved.prompt, usage);
+    emitModelUsageEvent(runtime, modelType, usage);
   }
 
   return text;
