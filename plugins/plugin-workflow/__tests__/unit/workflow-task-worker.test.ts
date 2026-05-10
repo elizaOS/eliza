@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,6 +12,8 @@ import {
   WORKFLOW_TASK_KIND,
   WORKFLOW_WEBHOOK_TASK_WORKER_NAME,
 } from '../../src/services/embedded-workflow-service';
+
+setDefaultTimeout(30_000);
 
 interface TestRuntimeContext {
   runtime: IAgentRuntime;

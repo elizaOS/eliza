@@ -19,7 +19,8 @@ export type {
 } from "./types.cloud-api.js";
 
 export const DEFAULT_ELIZA_CLOUD_BASE_URL = "https://www.elizacloud.ai";
-export const DEFAULT_ELIZA_CLOUD_API_BASE_URL = `${DEFAULT_ELIZA_CLOUD_BASE_URL}/api/v1`;
+export const DEFAULT_ELIZA_CLOUD_API_ORIGIN = "https://api.elizacloud.ai";
+export const DEFAULT_ELIZA_CLOUD_API_BASE_URL = `${DEFAULT_ELIZA_CLOUD_API_ORIGIN}/api/v1`;
 
 export type JsonPrimitive = boolean | number | string | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
@@ -198,6 +199,336 @@ export interface CreditSummaryResponse extends Record<string, unknown> {
     autoTopUpAmount?: number | null;
     hasPaymentMethod?: boolean;
   };
+}
+
+export interface CreateCreditsCheckoutRequest {
+  credits: number;
+  success_url: string;
+  cancel_url: string;
+}
+
+export interface CreateCreditsCheckoutResponse extends Record<string, unknown> {
+  url?: string | null;
+  sessionId?: string;
+  checkoutUrl?: string | null;
+}
+
+export interface AppCreditsBalanceResponse extends Record<string, unknown> {
+  success: boolean;
+  balance?: number;
+  totalPurchased?: number;
+  totalSpent?: number;
+  isLow?: boolean;
+  error?: string;
+}
+
+export interface CreateAppCreditsCheckoutRequest {
+  app_id: string;
+  amount: number;
+  success_url: string;
+  cancel_url: string;
+}
+
+export interface CreateAppCreditsCheckoutResponse extends Record<string, unknown> {
+  success: boolean;
+  url?: string | null;
+  sessionId?: string;
+  error?: string;
+}
+
+export interface VerifyAppCreditsCheckoutResponse extends Record<string, unknown> {
+  success: boolean;
+  amount?: number;
+  message?: string;
+  status?: string;
+  error?: string;
+}
+
+export type AppChargeProvider = "stripe" | "oxapay";
+export type AppChargePaymentContext = "verified_payer" | "any_payer";
+export type AppChargeStatus = "requested" | "pending" | "confirmed" | "expired" | string;
+
+export interface PaymentCallbackChannel extends Record<string, unknown> {
+  roomId?: string;
+  room_id?: string;
+  agentId?: string;
+  agent_id?: string;
+  source?: string;
+}
+
+export interface AppChargeRequestView extends Record<string, unknown> {
+  id: string;
+  appId: string;
+  amountUsd: number;
+  description: string | null;
+  providers: AppChargeProvider[];
+  paymentContext: AppChargePaymentContext;
+  paymentUrl: string;
+  status: AppChargeStatus;
+  paidAt: string | null;
+  paidProvider?: AppChargeProvider;
+  providerPaymentId?: string;
+  payerUserId?: string;
+  payerOrganizationId?: string;
+  expiresAt: string;
+  createdAt: string;
+  successUrl?: string;
+  cancelUrl?: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface CreateAppChargeRequest {
+  amount: number;
+  description?: string;
+  providers?: AppChargeProvider[];
+  payment_context?: AppChargePaymentContext;
+  success_url?: string;
+  cancel_url?: string;
+  callback_url?: string;
+  callback_secret?: string;
+  callback_channel?: PaymentCallbackChannel;
+  callback_metadata?: Record<string, unknown>;
+  lifetime_seconds?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CreateAppChargeResponse extends Record<string, unknown> {
+  success: boolean;
+  charge: AppChargeRequestView;
+}
+
+export interface ListAppChargesResponse extends Record<string, unknown> {
+  success: boolean;
+  charges: AppChargeRequestView[];
+}
+
+export interface GetAppChargeResponse extends Record<string, unknown> {
+  success: boolean;
+  charge: AppChargeRequestView;
+  app?: {
+    id: string;
+    name: string;
+    description?: string | null;
+    logo_url?: string | null;
+    website_url?: string | null;
+  };
+}
+
+export type OxaPayNetwork = "ERC20" | "TRC20" | "BEP20" | "POLYGON" | "SOL" | "BASE" | "ARB" | "OP";
+
+export interface CreateAppChargeCheckoutRequest {
+  provider: AppChargeProvider;
+  success_url?: string;
+  cancel_url?: string;
+  return_url?: string;
+  payCurrency?: string;
+  network?: OxaPayNetwork;
+}
+
+export interface CreateAppChargeCheckoutResponse extends Record<string, unknown> {
+  success: boolean;
+  checkout: Record<string, unknown> & {
+    provider: AppChargeProvider;
+    url?: string | null;
+    sessionId?: string;
+    paymentId?: string;
+    trackId?: string;
+    payLink?: string;
+    expiresAt?: string;
+  };
+}
+
+export interface AffiliateCodeView extends Record<string, unknown> {
+  id?: string;
+  code?: string;
+  userId?: string;
+  markupPercent?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AffiliateCodeResponse extends Record<string, unknown> {
+  code: AffiliateCodeView | string | null;
+}
+
+export interface UpsertAffiliateCodeRequest {
+  markupPercent: number;
+}
+
+export interface LinkAffiliateRequest {
+  code: string;
+}
+
+export interface LinkAffiliateResponse extends Record<string, unknown> {
+  success: boolean;
+  link?: Record<string, unknown>;
+  error?: string;
+}
+
+export interface X402SupportedResponse extends Record<string, unknown> {
+  success: boolean;
+  version?: string;
+  kinds?: unknown[];
+  schemes?: string[];
+  networks?: string[];
+  addresses?: Record<string, string>;
+  error?: string;
+  code?: string;
+}
+
+export interface X402FacilitatorPaymentRequest {
+  paymentPayload: unknown;
+  paymentRequirements: unknown;
+}
+
+export interface X402VerifyResponse extends Record<string, unknown> {
+  isValid: boolean;
+  invalidReason?: string;
+  payer?: string;
+}
+
+export interface X402SettleResponse extends Record<string, unknown> {
+  success: boolean;
+  transaction: string;
+  network: string;
+  payer?: string;
+  errorReason?: string;
+}
+
+export interface X402PaymentRequestView extends Record<string, unknown> {
+  id: string;
+  status: string;
+  paid: boolean;
+  amountUsd: number;
+  platformFeeUsd: number;
+  serviceFeeUsd: number;
+  totalChargedUsd: number;
+  network: string;
+  asset: string;
+  payTo: string;
+  description: string;
+  appId?: string;
+  callbackUrl?: string;
+  transaction?: string | null;
+  payer?: string;
+  createdAt: string;
+  expiresAt: string;
+  paidAt?: string | null;
+}
+
+export interface CreateX402PaymentRequest {
+  amountUsd: number;
+  network?: string;
+  description?: string;
+  callbackUrl?: string;
+  callback_channel?: PaymentCallbackChannel;
+  appId?: string;
+  metadata?: Record<string, unknown>;
+  expiresInSeconds?: number;
+}
+
+export interface CreateX402PaymentRequestResponse extends Record<string, unknown> {
+  success: boolean;
+  paymentRequest: X402PaymentRequestView;
+  paymentRequired: Record<string, unknown>;
+  paymentRequiredHeader: string;
+}
+
+export interface ListX402PaymentRequestsResponse extends Record<string, unknown> {
+  success: boolean;
+  paymentRequests: X402PaymentRequestView[];
+}
+
+export interface GetX402PaymentRequestResponse extends Record<string, unknown> {
+  success: boolean;
+  paymentRequest: X402PaymentRequestView;
+}
+
+export interface SettleX402PaymentRequestResponse extends Record<string, unknown> {
+  success: boolean;
+  paymentRequest: X402PaymentRequestView;
+}
+
+export type RedemptionNetwork = "ethereum" | "base" | "bnb" | "bsc" | "solana";
+
+export interface CreateRedemptionRequest {
+  appId?: string;
+  pointsAmount: number;
+  network: RedemptionNetwork;
+  payoutAddress: string;
+  signature?: string;
+  idempotencyKey?: string;
+}
+
+export interface CreateRedemptionResponse extends Record<string, unknown> {
+  success: boolean;
+  redemptionId?: string;
+  quote?: Record<string, unknown>;
+  warnings?: string[];
+  message?: string;
+  error?: string;
+}
+
+export interface ListRedemptionsResponse extends Record<string, unknown> {
+  success: boolean;
+  redemptions: Array<Record<string, unknown>>;
+  paused?: boolean;
+}
+
+export interface RedemptionBalanceResponse extends Record<string, unknown> {
+  success: boolean;
+  balance?: Record<string, unknown>;
+  earningsBySource?: Array<Record<string, unknown>>;
+  recentEarnings?: Array<Record<string, unknown>>;
+  error?: string;
+}
+
+export interface RedemptionQuoteResponse extends Record<string, unknown> {
+  success: boolean;
+  quote?: Record<string, unknown>;
+  canRedeem?: boolean;
+  availableNetworks?: string[];
+  error?: string;
+}
+
+export interface RedemptionStatusResponse extends Record<string, unknown> {
+  success: boolean;
+  operational?: boolean;
+  canRedeem?: boolean;
+  message?: string;
+  availableNetworks?: string[];
+  unavailableNetworks?: string[];
+  wallets?: Record<string, unknown>;
+  networks?: Array<Record<string, unknown>>;
+  warnings?: string[];
+  lastChecked?: string;
+}
+
+export interface AppEarningsResponse extends Record<string, unknown> {
+  success: boolean;
+  earnings?: Record<string, unknown>;
+  monetization?: Record<string, unknown>;
+  error?: string;
+}
+
+export interface AppEarningsHistoryResponse extends Record<string, unknown> {
+  success: boolean;
+  transactions?: Array<Record<string, unknown>>;
+  pagination?: Record<string, unknown>;
+  error?: string;
+}
+
+export interface WithdrawAppEarningsRequest {
+  amount: number;
+  idempotency_key?: string;
+}
+
+export interface WithdrawAppEarningsResponse extends Record<string, unknown> {
+  success: boolean;
+  message?: string;
+  transactionId?: string;
+  newBalance?: number;
+  error?: string;
 }
 
 export type ContainerStatus =

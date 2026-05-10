@@ -51,6 +51,10 @@ Cloud already exposes:
 - checkout / top-up flows
 - payment methods
 - billing history
+- app charge requests that let agents ask a user to pay a specific dollar
+  amount through Stripe or OxaPay and receive app credits after payment
+- x402 payment requests for direct crypto settlement, with status checks and
+  callbacks into the originating channel
 
 In Eliza, billing is intended to stay inside the app where possible, with hosted URLs treated as fallback.
 
@@ -83,9 +87,30 @@ Redeemable earnings in this repo explicitly include:
 
 That means apps, public agents, and MCP products can all participate in monetized Cloud flows.
 
+Payout requests use `/api/v1/redemptions`. The creator chooses a payout network
+(`base`, `bsc`/`bnb`, `ethereum`, or `solana`) and a payout address. The request
+is fixed to a dollar value at request time; admin review and payout processing
+send the equivalent elizaOS token amount for that fixed USD value.
+
 ## Affiliate And Marked-Up Usage
 
 The Cloud UI also includes affiliate markup flows where a code can add markup to usage and credit top-ups. This is separate from per-app monetization, but it reinforces the same principle: Cloud is designed to let builders earn on top of platform usage rather than only consume credits.
+
+Use `/api/v1/affiliates` to create/update the current user's affiliate code and
+`/api/v1/affiliates/link` to attach a paying user to a referring code.
+
+## Agent-Initiated Payments
+
+For "please send me $5" style flows, prefer:
+
+- `/api/v1/apps/{id}/charges` when the payer should buy app credits through
+  Stripe or OxaPay.
+- `/api/v1/x402/requests` when the payer already has crypto and can settle a
+  direct x402 request.
+
+Both request types carry callback URL/channel metadata. Include the initiating
+room and agent id in the callback channel so success/failure events can be
+written back to the same conversation.
 
 ## Source Of Truth When Docs Drift
 
@@ -94,6 +119,10 @@ Prefer these implementation surfaces:
 - `eliza/cloud/packages/db/schemas/app-billing.ts`
 - `eliza/cloud/packages/db/schemas/apps.ts`
 - `eliza/cloud/packages/db/schemas/redeemable-earnings.ts`
+- `eliza/cloud/packages/lib/services/app-charge-requests.ts`
+- `eliza/cloud/packages/lib/services/x402-payment-requests.ts`
+- `eliza/cloud/apps/api/v1/apps/[id]/charges/route.ts`
+- `eliza/cloud/apps/api/v1/x402/requests/route.ts`
 - `eliza/cloud/packages/ui/src/components/apps/app-monetization-settings.tsx`
 - `eliza/cloud/packages/ui/src/components/apps/app-earnings-dashboard.tsx`
 - `eliza/cloud/packages/ui/src/components/auth/authorize-content.tsx`

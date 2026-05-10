@@ -37,7 +37,10 @@ export const ELIZA_HISTORY_TEXT =
   "ELIZA was created by Joseph Weizenbaum at MIT in the mid-1960s and is widely regarded as one of the earliest chatbots. Its best-known script, DOCTOR, used pattern matching to imitate a Rogerian psychotherapist and showed how simple language rules could feel surprisingly conversational. ELIZA helped define the history of chatbots and influenced later work on conversational agents.";
 
 export const ELIZA_CLOUD_BASICS_TEXT =
-  "Eliza Cloud is the managed backend and app platform for Eliza when cloud mode is enabled. Builders can create an app, keep its appId, use Cloud login and redirect flows so app users can authenticate against Cloud, route chat and media APIs through Cloud, monetize app usage with inference markup and purchase-share settings, and deploy Docker containers when an app needs server-side execution.";
+  "Eliza Cloud is the managed backend and app platform for Eliza and Milady when cloud mode is enabled. Builders can create and manage apps, keep an appId, use Cloud login and redirect flows so app users can authenticate against Cloud, route chat and media through Cloud, monetize app usage with inference markup and purchase-share settings, promote apps, connect payment requests, and deploy Docker containers when an app needs server-side execution.";
+
+export const ELIZA_CLOUD_MONETIZATION_TEXT =
+  "Eliza and Milady can help builders make money with Cloud apps: create monetized apps, set inference markup and app-credit purchase share, send payment requests through Stripe/OxaPay app credits or x402 crypto payments, track whether requests were paid, route payment results back into the initiating conversation, earn from affiliate and creator revenue-share flows, and request admin-reviewed elizaOS token payouts on Base, BSC, Ethereum, or Solana. Paid actions require explicit user confirmation.";
 
 export const DEFAULT_DOCUMENTS: readonly DefaultDocumentDefinition[] = [
   {
@@ -66,13 +69,25 @@ export const DEFAULT_DOCUMENTS: readonly DefaultDocumentDefinition[] = [
   },
   {
     key: "eliza-cloud-basics",
-    version: 1,
+    version: 2,
     filename: "eliza-cloud-basics.txt",
     contentType: "text/plain",
     text: ELIZA_CLOUD_BASICS_TEXT,
     fragments: [
       {
         text: ELIZA_CLOUD_BASICS_TEXT,
+      },
+    ],
+  },
+  {
+    key: "eliza-cloud-monetization",
+    version: 1,
+    filename: "eliza-cloud-monetization.txt",
+    contentType: "text/plain",
+    text: ELIZA_CLOUD_MONETIZATION_TEXT,
+    fragments: [
+      {
+        text: ELIZA_CLOUD_MONETIZATION_TEXT,
       },
     ],
   },

@@ -67,10 +67,20 @@ const cloudAppSkill: FakeSkill = {
   tags: ["cloud", "container", "monetization", "domain"],
 };
 
+const elizaCloudSkill: FakeSkill = {
+  slug: "eliza-cloud",
+  name: "Eliza Cloud",
+  description:
+    "Manage Eliza Cloud apps, auth, containers, app charges, x402 payments, affiliate earnings, redemptions, and payouts.",
+  tags: ["cloud", "payments", "x402", "payouts"],
+};
+
 describe("recommendSkillsForTask", () => {
-  it("forces the Cloud app-build skill for normal app prompts", async () => {
+  it("forces paired Cloud build and backend skills for normal app prompts", async () => {
     const recommendations = await recommendSkillsForTask(
-      createRuntime({ skills: [...genericSkills, cloudAppSkill] }),
+      createRuntime({
+        skills: [...genericSkills, cloudAppSkill, elizaCloudSkill],
+      }),
       {
         taskText: "build me a simple wellness buddy chat app",
         max: 5,
@@ -78,10 +88,12 @@ describe("recommendSkillsForTask", () => {
       },
     );
 
-    expect(recommendations[0]).toMatchObject({
-      slug: "build-monetized-app",
-      score: 1,
-    });
+    expect(recommendations.slice(0, 2).map((skill) => skill.slug)).toEqual([
+      "build-monetized-app",
+      "eliza-cloud",
+    ]);
+    expect(recommendations[0]?.score).toBe(1);
+    expect(recommendations[1]?.score).toBe(1);
   });
 
   it("does not force the Cloud app-build skill when it is disabled", async () => {
