@@ -2,6 +2,7 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { CapabilityBroker } from "./capability-broker.ts";
 import {
   VirtualFilesystemError,
   VirtualFilesystemService,
@@ -109,6 +110,38 @@ describe("VirtualFilesystemService", () => {
       ["/b.txt", "added"],
       ["/delete-me.txt", "deleted"],
     ]);
+  });
+
+  it("refuses read/write/list/delete when the capability broker denies", async () => {
+    // The broker has no native policy that denies vfs:// targets. We
+    // construct a stub CapabilityBroker instance and override its `check`
+    // method so VFS operations see a deny decision regardless of profile.
+    const denyingBroker = new CapabilityBroker({
+      stateDir: tmpDir,
+      mode: () => "local-yolo",
+      distributionProfile: () => "unrestricted",
+    });
+    denyingBroker.check = () => ({
+      allowed: false,
+      reason: "test-deny",
+      policyKey: "test:deny",
+    });
+
+    const vfs = service({ broker: denyingBroker });
+    await vfs.initialize();
+
+    await expect(vfs.writeFile("a.txt", "hi")).rejects.toThrow(
+      /capability denied: test-deny/,
+    );
+    await expect(vfs.readFile("a.txt")).rejects.toThrow(
+      /capability denied: test-deny/,
+    );
+    await expect(vfs.list("/")).rejects.toThrow(
+      /capability denied: test-deny/,
+    );
+    await expect(vfs.delete("a.txt")).rejects.toThrow(
+      /capability denied: test-deny/,
+    );
   });
 
   it("rolls back to a snapshot and records rollback metadata", async () => {
