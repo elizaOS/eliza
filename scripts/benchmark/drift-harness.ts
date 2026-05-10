@@ -159,7 +159,8 @@ export function parseArgs(argv: readonly string[]): CliArgs {
     }
   }
   if (out.turns <= 0) throw new Error("--turns must be positive");
-  if (out.compactEvery <= 0) throw new Error("--compact-every must be positive");
+  if (out.compactEvery <= 0)
+    throw new Error("--compact-every must be positive");
   if (out.plantFacts < 0) throw new Error("--plant-facts must be >= 0");
   if (out.plantFacts > out.turns) {
     throw new Error("--plant-facts cannot exceed --turns");
@@ -194,7 +195,12 @@ export function rng(seed: number): () => number {
 // Fact planting
 // ---------------------------------------------------------------------------
 
-export type FactKind = "aws_account" | "api_key" | "person_name" | "address" | "code";
+export type FactKind =
+  | "aws_account"
+  | "api_key"
+  | "person_name"
+  | "address"
+  | "code";
 
 export type PlantedFact = {
   id: string;
@@ -270,7 +276,10 @@ function pickKind(rand: () => number): FactKind {
   return kinds[Math.floor(rand() * kinds.length)]!;
 }
 
-function makeFact(kind: FactKind, rand: () => number): {
+function makeFact(
+  kind: FactKind,
+  rand: () => number,
+): {
   utterance: string;
   expected: string;
   question: string;
@@ -296,8 +305,21 @@ function makeFact(kind: FactKind, rand: () => number): {
       };
     }
     case "person_name": {
-      const first = pick(rand, ["Mira", "Jules", "Aki", "Ramon", "Soren", "Zane"]);
-      const last = pick(rand, ["Tanaka", "Okafor", "Ramirez", "Lindholm", "Khoury"]);
+      const first = pick(rand, [
+        "Mira",
+        "Jules",
+        "Aki",
+        "Ramon",
+        "Soren",
+        "Zane",
+      ]);
+      const last = pick(rand, [
+        "Tanaka",
+        "Okafor",
+        "Ramirez",
+        "Lindholm",
+        "Khoury",
+      ]);
       return {
         utterance: `My contact at the vendor is ${first} ${last}, just FYI.`,
         expected: `${first} ${last}`,
@@ -381,7 +403,10 @@ export function approxTokens(text: string): number {
 // Model invocation (Cerebras / OpenAI-compatible)
 // ---------------------------------------------------------------------------
 
-export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+export type ChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
 
 export type ModelClient = {
   chat(args: {
@@ -432,14 +457,12 @@ export function makeOpenAICompatibleClient(opts: {
               `upstream ${resp.status}: ${text.slice(0, 200)}`,
             );
             if (attempt === retries) break;
-            await sleep(baseBackoff * Math.pow(2, attempt));
+            await sleep(baseBackoff * 2 ** attempt);
             continue;
           }
           if (!resp.ok) {
             const text = await safeReadText(resp);
-            throw new Error(
-              `upstream ${resp.status}: ${text.slice(0, 200)}`,
-            );
+            throw new Error(`upstream ${resp.status}: ${text.slice(0, 200)}`);
           }
           const data = (await resp.json()) as {
             choices?: Array<{ message?: { content?: string } }>;
@@ -449,7 +472,7 @@ export function makeOpenAICompatibleClient(opts: {
         } catch (err) {
           lastErr = err;
           if (attempt === retries) break;
-          await sleep(baseBackoff * Math.pow(2, attempt));
+          await sleep(baseBackoff * 2 ** attempt);
         }
       }
       throw lastErr instanceof Error
@@ -499,7 +522,10 @@ export function makeFakeClient(): ModelClient {
         return scanAndAnswer(messages, /Ship to: ([^.]+)\./);
       }
       if (/codename/i.test(text)) {
-        return scanAndAnswer(messages, /codename for this quarter: ([A-Z0-9]+)/);
+        return scanAndAnswer(
+          messages,
+          /codename for this quarter: ([A-Z0-9]+)/,
+        );
       }
       return { content: "Sure, here's a friendly reply.", latencyMs: 1 };
     },
@@ -513,7 +539,7 @@ function scanAndAnswer(
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]!;
     const hit = m.content.match(re);
-    if (hit && hit[1]) return { content: hit[1], latencyMs: 1 };
+    if (hit?.[1]) return { content: hit[1], latencyMs: 1 };
   }
   return { content: "I don't recall that detail.", latencyMs: 1 };
 }
@@ -577,9 +603,7 @@ export async function applyCompaction(args: {
    * upstream package has not landed yet — caller must log + skip rather
    * than crashing.
    */
-  loadCompactor?: (
-    name: StrategyName,
-  ) => Promise<{
+  loadCompactor?: (name: StrategyName) => Promise<{
     compact: (messages: ChatMessage[]) => Promise<ChatMessage[]>;
   } | null>;
 }): Promise<CompactionResult> {
@@ -658,9 +682,9 @@ function approxTokensMessages(messages: readonly ChatMessage[]): number {
  * returns null otherwise. Kept narrow so the harness never crashes when
  * the parallel agent's work has not yet landed.
  */
-export async function defaultCompactorLoader(
-  name: StrategyName,
-): Promise<{ compact: (messages: ChatMessage[]) => Promise<ChatMessage[]> } | null> {
+export async function defaultCompactorLoader(name: StrategyName): Promise<{
+  compact: (messages: ChatMessage[]) => Promise<ChatMessage[]>;
+} | null> {
   try {
     // Dynamic import — path-resolution failure is treated as "not yet implemented".
     const mod = (await import(
@@ -686,7 +710,10 @@ export async function defaultCompactorLoader(
           messages: messages.map((m) => ({ role: m.role, content: m.content })),
         };
         const artifact = await (
-          fn as (t: unknown, o: unknown) => Promise<{
+          fn as (
+            t: unknown,
+            o: unknown,
+          ) => Promise<{
             replacementMessages: Array<{ role: string; content: string }>;
           }>
         )(transcript, { targetTokens: 1024, preserveTailMessages: 0 });
@@ -735,7 +762,12 @@ export async function probeFact(args: {
     ...history,
     { role: "user", content: fact.question },
   ];
-  const resp = await client.chat({ model, messages, maxTokens: 200, temperature: 0 });
+  const resp = await client.chat({
+    model,
+    messages,
+    maxTokens: 200,
+    temperature: 0,
+  });
   const actual = resp.content.trim();
   if (fact.exactMatch) {
     const correct = actual.includes(fact.expected);
@@ -812,7 +844,10 @@ export function parseJudgeResponse(raw: string): {
   const objMatch = raw.match(/\{[\s\S]*\}/);
   const text = objMatch ? objMatch[0] : raw;
   try {
-    const parsed = JSON.parse(text) as { correct?: unknown; reasoning?: unknown };
+    const parsed = JSON.parse(text) as {
+      correct?: unknown;
+      reasoning?: unknown;
+    };
     const correct = parsed.correct === true;
     const reasoning =
       typeof parsed.reasoning === "string" ? parsed.reasoning : "no reasoning";
@@ -820,7 +855,9 @@ export function parseJudgeResponse(raw: string): {
   } catch {
     // Fallback: look for an explicit "true"/"false" near the start of the answer.
     const lc = raw.toLowerCase();
-    const correct = /\btrue\b/.test(lc) && !/\bfalse\b/.test(lc.slice(0, lc.indexOf("true") + 4));
+    const correct =
+      /\btrue\b/.test(lc) &&
+      !/\bfalse\b/.test(lc.slice(0, lc.indexOf("true") + 4));
     return { correct, reasoning: "could not parse judge JSON" };
   }
 }
@@ -830,7 +867,14 @@ export function parseJudgeResponse(raw: string): {
 // ---------------------------------------------------------------------------
 
 export type JsonlEvent =
-  | { event: "turn"; turn: number; role: "user" | "assistant"; contentLen: number; tokens: number; factId?: string }
+  | {
+      event: "turn";
+      turn: number;
+      role: "user" | "assistant";
+      contentLen: number;
+      tokens: number;
+      factId?: string;
+    }
   | {
       event: "compact";
       atTurn: number;
@@ -872,7 +916,7 @@ export class JsonlSink {
     this.events.push(e);
   }
   serialize(): string {
-    return this.events.map((e) => JSON.stringify(e)).join("\n") + "\n";
+    return `${this.events.map((e) => JSON.stringify(e)).join("\n")}\n`;
   }
 }
 
@@ -886,9 +930,9 @@ const SYSTEM_PROMPT =
 export type RunOptions = {
   args: CliArgs;
   client: ModelClient;
-  loadCompactor?: (
-    name: StrategyName,
-  ) => Promise<{ compact: (messages: ChatMessage[]) => Promise<ChatMessage[]> } | null>;
+  loadCompactor?: (name: StrategyName) => Promise<{
+    compact: (messages: ChatMessage[]) => Promise<ChatMessage[]>;
+  } | null>;
   /** Optional judge override (used in unit tests). */
   judgeFn?: (args: {
     expected: string;
@@ -1111,7 +1155,11 @@ export async function main(argv: readonly string[]): Promise<number> {
   const unavailable = sink.events.find(
     (e) => e.event === "compact" && e.event === "compact" && e.unavailable,
   );
-  if (unavailable && unavailable.event === "compact" && unavailable.unavailable) {
+  if (
+    unavailable &&
+    unavailable.event === "compact" &&
+    unavailable.unavailable
+  ) {
     process.stdout.write(
       `[harness] strategy ${args.strategy} not yet implemented — skipping (${unavailable.unavailableReason ?? ""})\n`,
     );
@@ -1124,8 +1172,8 @@ const isMain =
   typeof Bun !== "undefined" && import.meta.url === Bun.main
     ? true
     : typeof process !== "undefined" &&
-        process.argv[1] &&
-        import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"));
+      process.argv[1] &&
+      import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"));
 
 if (isMain) {
   const argv = process.argv.slice(2);

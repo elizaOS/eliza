@@ -6,10 +6,13 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  KNOWN_STRATEGIES,
   applyCompaction,
   approxTokens,
   buildUserTurn,
+  type ChatMessage,
+  type CliArgs,
+  KNOWN_STRATEGIES,
+  type ModelClient,
   makeFakeClient,
   makeOpenAICompatibleClient,
   parseArgs,
@@ -17,9 +20,6 @@ import {
   planFacts,
   rng,
   runDriftHarness,
-  type CliArgs,
-  type ChatMessage,
-  type ModelClient,
 } from "./drift-harness";
 
 const DEFAULT_TEST_ARGS: CliArgs = {
@@ -85,7 +85,14 @@ describe("parseArgs", () => {
 
   it("knows every advertised strategy", () => {
     for (const s of KNOWN_STRATEGIES) {
-      const a = parseArgs(["--strategy", s, "--turns", "1", "--plant-facts", "0"]);
+      const a = parseArgs([
+        "--strategy",
+        s,
+        "--turns",
+        "1",
+        "--plant-facts",
+        "0",
+      ]);
       expect(a.strategy).toBe(s);
     }
   });
@@ -141,13 +148,17 @@ describe("approxTokens", () => {
 
 describe("parseJudgeResponse", () => {
   it("extracts JSON object from prose", () => {
-    const r = parseJudgeResponse('Here you go: {"correct": true, "reasoning": "match"}');
+    const r = parseJudgeResponse(
+      'Here you go: {"correct": true, "reasoning": "match"}',
+    );
     expect(r.correct).toBe(true);
     expect(r.reasoning).toBe("match");
   });
 
   it("treats false as false", () => {
-    const r = parseJudgeResponse('{"correct": false, "reasoning": "wrong city"}');
+    const r = parseJudgeResponse(
+      '{"correct": false, "reasoning": "wrong city"}',
+    );
     expect(r.correct).toBe(false);
   });
 
@@ -179,7 +190,7 @@ describe("applyCompaction", () => {
       strategy: "prompt-stripping",
       inputs: { messages, preserveTail: 0 },
     });
-    expect(r.newMessages[0]!.content).toBe("there friend");
+    expect(r.newMessages[0]?.content).toBe("there friend");
   });
 
   it("reports unavailable when loader returns null", async () => {
@@ -207,7 +218,9 @@ describe("applyCompaction", () => {
       strategy: "hybrid-ledger",
       inputs: { messages, preserveTail: 1 },
     });
-    expect(r.newMessages.some((m) => m.content.startsWith("[Summary]"))).toBe(true);
+    expect(r.newMessages.some((m) => m.content.startsWith("[Summary]"))).toBe(
+      true,
+    );
   });
 });
 
@@ -303,7 +316,12 @@ describe("runDriftHarness end-to-end (fake client)", () => {
   });
 
   it("produces a parseable JSONL serialization", async () => {
-    const args: CliArgs = { ...DEFAULT_TEST_ARGS, turns: 3, plantFacts: 1, compactEvery: 100 };
+    const args: CliArgs = {
+      ...DEFAULT_TEST_ARGS,
+      turns: 3,
+      plantFacts: 1,
+      compactEvery: 100,
+    };
     const sink = await runDriftHarness({ args, client: makeFakeClient() });
     const text = sink.serialize();
     const lines = text.trim().split("\n");
@@ -333,7 +351,9 @@ describe("runDriftHarness end-to-end (fake client)", () => {
     const compactEvents = sink.events.filter((e) => e.event === "compact");
     expect(compactEvents.length).toBeGreaterThanOrEqual(1);
     expect(
-      compactEvents.every((e) => e.event === "compact" && e.unavailable === true),
+      compactEvents.every(
+        (e) => e.event === "compact" && e.unavailable === true,
+      ),
     ).toBe(true);
     // Summary still emitted; totalCompactions reflects only successful events.
     const summary = sink.events.find((e) => e.event === "summary");
@@ -376,7 +396,12 @@ describe("runDriftHarness end-to-end (fake client)", () => {
         throw new Error("boom");
       },
     };
-    const args: CliArgs = { ...DEFAULT_TEST_ARGS, turns: 1, plantFacts: 0, compactEvery: 100 };
+    const args: CliArgs = {
+      ...DEFAULT_TEST_ARGS,
+      turns: 1,
+      plantFacts: 0,
+      compactEvery: 100,
+    };
     await expect(
       runDriftHarness({ args, client: failingClient }),
     ).rejects.toThrow(/boom/);
