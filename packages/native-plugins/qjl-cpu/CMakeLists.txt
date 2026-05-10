@@ -55,3 +55,11 @@ endif()
 add_executable(qjl_bench test/qjl_bench.c)
 target_link_libraries(qjl_bench PRIVATE qjl m)
 target_compile_options(qjl_bench PRIVATE -O3 -Wall -Wextra)
+
+# qjl_fork_parity: dlopen the apothic/llama.cpp-1bit-turboquant fork's
+# libggml-cpu.so and assert quantize_row_qjl1_256 produces bit-exact
+# output against the standalone library's qjl_quantize_row_ref for 100
+# random vectors. See test/qjl_fork_parity.c for usage.
+add_executable(qjl_fork_parity test/qjl_fork_parity.c)
+target_link_libraries(qjl_fork_parity PRIVATE qjl m ${CMAKE_DL_LIBS})
+target_compile_options(qjl_fork_parity PRIVATE -O2 -Wall -Wextra)
