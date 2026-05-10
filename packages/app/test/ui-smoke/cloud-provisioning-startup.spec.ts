@@ -48,6 +48,7 @@ for (const viewport of VIEWPORTS) {
     let provisionRequests = 0;
     let jobPollRequests = 0;
     let agentDetailRequests = 0;
+    let launchRequests = 0;
 
     await page.setViewportSize({
       width: viewport.width,
@@ -224,8 +225,36 @@ for (const viewport of VIEWPORTS) {
       });
     });
 
+    const fulfillLaunch = async (route: Route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      launchRequests += 1;
+      await fulfillJson(route, 200, {
+        success: true,
+        data: {
+          agentId: "agent-1",
+          agentName: "My Agent",
+          appUrl: apiBase,
+          launchSessionId: "launch-1",
+          issuedAt: "2026-01-01T00:00:02.000Z",
+          connection: {
+            apiBase,
+            token: "agent-token",
+          },
+        },
+      });
+    };
+
     await page.route(
       "**/api/cloud/compat/agents/agent-1/launch",
+      fulfillLaunch,
+    );
+    await page.route("**/api/compat/agents/agent-1/launch", fulfillLaunch);
+
+    await page.route(
+      "**/api/cloud/v1/app/agents/agent-1/launch",
       async (route) => {
         if (route.request().method() !== "POST") {
           await route.fallback();
@@ -258,6 +287,7 @@ for (const viewport of VIEWPORTS) {
     await expect.poll(() => provisionRequests).toBe(1);
     await expect.poll(() => jobPollRequests).toBeGreaterThan(0);
     await expect.poll(() => agentDetailRequests).toBeGreaterThan(0);
+    await expect.poll(() => launchRequests).toBe(1);
     await expect(page.getByTestId("chat-composer-textarea")).toBeVisible();
 
     await expect

@@ -20,6 +20,7 @@ export * from "./boot-env";
 export * from "./character";
 // Export character utilities
 export * from "./character-utils";
+export * from "./cloud-routing";
 // Connection management (ensureConnection/ensureConnections) - standalone batch helpers
 export * from "./connection";
 export * from "./connectors";
