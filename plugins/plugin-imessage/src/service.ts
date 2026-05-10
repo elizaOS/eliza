@@ -457,12 +457,18 @@ export class IMessageService extends Service implements IIMessageService {
   private chatDbPath: string = DEFAULT_CHAT_DB_PATH;
   /**
    * Cached handle → display name map from the user's Apple Contacts.
-   * Populated once on service start via AppleScript against Contacts.app
-   * and used to rewrite raw phone numbers and email addresses into real
-   * contact names in Memory metadata. Empty map means either the user
-   * hasn't authorized Contacts access yet or the address book is empty.
+   * Populated lazily on first inbound message via AppleScript against
+   * Contacts.app, NOT at service start. Loading at boot would trigger
+   * the macOS Contacts TCC dialog at app launch, even though the user
+   * may never receive an inbound iMessage. We defer the AppleScript
+   * call (and its TCC prompt) until the first message that actually
+   * needs handle→name resolution. Empty map means either the user
+   * hasn't authorized Contacts access yet, the address book is empty,
+   * or no inbound message has triggered the lazy load yet.
    */
   private contacts: ContactsMap = new Map();
+  /** Whether the lazy contact load has been attempted this session. */
+  private contactsLoadAttempted = false;
 
   /**
    * Start the iMessage service.
@@ -512,11 +518,13 @@ export class IMessageService extends Service implements IIMessageService {
       );
     }
 
-    // Load the Apple Contacts map so we can turn raw phone numbers and
-    // email addresses into real names when building Memory objects for
-    // inbound messages. Failure here is non-fatal — the service proceeds
-    // with anonymous handles and logs its own warning.
-    service.contacts = await loadContacts();
+    // NOTE: We intentionally do NOT call loadContacts() here. Loading
+    // contacts at service start runs an AppleScript against Contacts.app,
+    // which triggers the macOS Contacts TCC dialog the first time. App
+    // launch must not trigger TCC dialogs implicitly — the dialog is
+    // deferred to the first inbound message that actually needs name
+    // resolution (see ensureContactsLoaded() below). Outbound-only users
+    // never see the prompt.
 
     // Start polling only when chat.db is available. When the database cannot
     // be opened, the service is intentionally send-only until the next start.
@@ -1014,6 +1022,28 @@ export class IMessageService extends Service implements IIMessageService {
   }
 
   /**
+   * Lazy-load the Apple Contacts map on first call. Subsequent calls
+   * are no-ops. We split this out from `start()` so the macOS Contacts
+   * TCC dialog only fires when the runtime actually needs handle→name
+   * resolution — typically the first inbound message — instead of at
+   * app launch. Failure is non-fatal; the cached map stays empty and
+   * the service falls back to raw handles.
+   */
+  private async ensureContactsLoaded(): Promise<void> {
+    if (this.contactsLoadAttempted) {
+      return;
+    }
+    this.contactsLoadAttempted = true;
+    try {
+      this.contacts = await loadContacts();
+    } catch (err) {
+      logger.warn(
+        `[imessage] Lazy contact load failed: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  /**
    * List every contact in the user's address book as a full record with
    * id, name, and all phones/emails. Delegates to contacts-reader's
    * `listAllContacts` which goes through Contacts.app's AppleScript
@@ -1415,9 +1445,12 @@ export class IMessageService extends Service implements IIMessageService {
 
     const channelType: ChannelType = row.chatType === "group" ? ChannelType.GROUP : ChannelType.DM;
 
-    // Resolve the sender handle against the Apple Contacts map loaded at
-    // service start. On a miss we fall back to the raw handle, so the
+    // Resolve the sender handle against the Apple Contacts map. The map
+    // is loaded lazily on first inbound message — see ensureContactsLoaded
+    // for the rationale (deferring the macOS Contacts TCC dialog away from
+    // app launch). On a miss we fall back to the raw handle, so the
     // conversation still works — it just looks uglier in logs and state.
+    await this.ensureContactsLoaded();
     const resolvedContact = this.contacts.get(normalizeContactHandle(row.handle)) ?? null;
     const resolvedName = resolvedContact?.name ?? null;
 

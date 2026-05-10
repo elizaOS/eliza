@@ -1,38 +1,13 @@
-/** Platform utilities — onboarding permissions and platform initialization helpers. */
-
-import type {
-  AllPermissionsState,
-  PermissionStatus,
-  SystemPermissionId,
-} from "../api/client";
+/** Platform utilities — platform initialization helpers. */
 
 export type * from "./types";
 
-// ── Onboarding permissions ──────────────────────────────────────────────
-
-export const REQUIRED_ONBOARDING_PERMISSION_IDS: ReadonlyArray<SystemPermissionId> =
-  ["accessibility", "screen-recording", "microphone"];
-
-export function isOnboardingPermissionGranted(
-  status: PermissionStatus | undefined,
-): boolean {
-  return status === "granted" || status === "not-applicable";
-}
-
-export function getMissingOnboardingPermissions(
-  permissions: AllPermissionsState | null | undefined,
-): SystemPermissionId[] {
-  if (!permissions) return [...REQUIRED_ONBOARDING_PERMISSION_IDS];
-  return REQUIRED_ONBOARDING_PERMISSION_IDS.filter((id) => {
-    return !isOnboardingPermissionGranted(permissions[id]?.status);
-  });
-}
-
-export function hasRequiredOnboardingPermissions(
-  permissions: AllPermissionsState | null | undefined,
-): boolean {
-  return getMissingOnboardingPermissions(permissions).length === 0;
-}
+// Onboarding no longer requests system permissions up front. Permissions
+// are requested just-in-time when a feature actually needs them (via the
+// permissions registry / chat surface). The legacy
+// `REQUIRED_ONBOARDING_PERMISSION_IDS` and `hasRequiredOnboardingPermissions`
+// helpers were removed when the latent first-run permission walkthrough
+// was deleted from `PermissionsSection.tsx`.
 
 // ── Platform init ───────────────────────────────────────────────────────
 
