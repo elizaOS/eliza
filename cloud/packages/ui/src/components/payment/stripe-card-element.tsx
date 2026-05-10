@@ -1,8 +1,8 @@
 "use client";
 
-import { Label } from "../primitives";
 import { CardElement } from "@stripe/react-stripe-js";
 import type { StripeCardElementChangeEvent } from "@stripe/stripe-js";
+import { Label } from "../primitives";
 
 interface StripeCardElementProps {
   onReady?: () => void;

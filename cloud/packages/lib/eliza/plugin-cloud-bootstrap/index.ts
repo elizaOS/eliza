@@ -161,11 +161,7 @@ const events = {
 export const cloudBootstrapPlugin: Plugin = {
   name: "cloud-bootstrap",
   description: "Native planner message execution with action params for cloud",
-  actions: [
-    generateMediaAction,
-    finishAction,
-    oauthAction,
-  ] as Plugin["actions"],
+  actions: [generateMediaAction, finishAction, oauthAction] as Plugin["actions"],
   providers: [
     actionStateProvider,
     actionsProvider,

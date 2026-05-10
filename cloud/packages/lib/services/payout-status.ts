@@ -8,6 +8,7 @@
 import { type Address, createPublicClient, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { ELIZA_DECIMALS, EVM_CHAINS } from "@/lib/config/token-constants";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { logger } from "@/lib/utils/logger";
 import { ELIZA_TOKEN_ADDRESSES, type SupportedNetwork } from "./eliza-token-price";
 
@@ -61,9 +62,10 @@ class PayoutStatusService {
 
     const networks: NetworkStatus[] = [];
     const warnings: string[] = [];
+    const env = getCloudAwareEnv();
 
     // Check EVM networks (support both naming conventions)
-    const evmPrivateKey = process.env.EVM_PAYOUT_PRIVATE_KEY || process.env.EVM_PRIVATE_KEY;
+    const evmPrivateKey = env.EVM_PAYOUT_PRIVATE_KEY || env.EVM_PRIVATE_KEY;
     const evmWalletAddress = evmPrivateKey ? this.getEvmWalletAddress(evmPrivateKey) : null;
 
     for (const network of ["ethereum", "base", "bnb"] as const) {
@@ -76,7 +78,7 @@ class PayoutStatusService {
     }
 
     // Check Solana
-    const solanaPrivateKey = process.env.SOLANA_PAYOUT_PRIVATE_KEY;
+    const solanaPrivateKey = env.SOLANA_PAYOUT_PRIVATE_KEY;
     const solanaWalletAddress = solanaPrivateKey
       ? this.getSolanaWalletAddress(solanaPrivateKey)
       : null;
@@ -144,8 +146,9 @@ class PayoutStatusService {
    * Get user-friendly message for payout unavailability
    */
   getUserMessage(network?: SupportedNetwork): string | null {
-    const evmConfigured = !!(process.env.EVM_PAYOUT_PRIVATE_KEY || process.env.EVM_PRIVATE_KEY);
-    const solanaConfigured = !!process.env.SOLANA_PAYOUT_PRIVATE_KEY;
+    const env = getCloudAwareEnv();
+    const evmConfigured = !!(env.EVM_PAYOUT_PRIVATE_KEY || env.EVM_PRIVATE_KEY);
+    const solanaConfigured = !!env.SOLANA_PAYOUT_PRIVATE_KEY;
 
     if (!evmConfigured && !solanaConfigured) {
       return "Token redemption is temporarily unavailable. We're setting up our payout infrastructure. Please check back soon!";
@@ -291,7 +294,8 @@ class PayoutStatusService {
       };
     }
 
-    const solanaRpc = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+    const env = getCloudAwareEnv();
+    const solanaRpc = env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
     const { Connection, PublicKey } =
       require("@solana/web3.js") as typeof import("@solana/web3.js");
     const { getAssociatedTokenAddress, getAccount } =

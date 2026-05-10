@@ -13,7 +13,7 @@ import {
   normalizeOnboardingProviderId,
   normalizeServiceRoutingConfig,
 } from "@elizaos/shared";
-import { ensureRouteAuthorized } from "./auth";
+import { ensureRouteAuthorized } from "./auth.ts";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
 import {

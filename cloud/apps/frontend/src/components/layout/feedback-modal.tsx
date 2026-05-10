@@ -4,21 +4,21 @@
  */
 "use client";
 
-import { Loader2, MessageSquare, Send } from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
-import { Button } from "@elizaos/cloud-ui";
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Input,
+  Label,
+  Textarea,
 } from "@elizaos/cloud-ui";
-import { Input } from "@elizaos/cloud-ui";
-import { Label } from "@elizaos/cloud-ui";
-import { Textarea } from "@elizaos/cloud-ui";
+import { Loader2, MessageSquare, Send } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 function feedbackErrorMessage(value: unknown): string | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;

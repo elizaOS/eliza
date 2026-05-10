@@ -13,9 +13,7 @@ describe("plugin consolidation", () => {
   test("exports the local OAuth plugin object", () => {
     expect(oauthPlugin).toBe(namedOauthPlugin);
     expect(oauthPlugin.name).toBe("eliza-cloud-oauth");
-    expect(oauthPlugin.actions?.map((action) => action.name).sort()).toEqual([
-      "OAUTH",
-    ]);
+    expect(oauthPlugin.actions?.map((action) => action.name).sort()).toEqual(["OAUTH"]);
     expect(oauthPlugin.providers?.map((provider) => provider.name)).toContain("USER_AUTH_STATUS");
   });
 

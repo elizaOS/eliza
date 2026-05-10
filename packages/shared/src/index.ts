@@ -207,6 +207,9 @@ export * from "./dev-settings-table.js";
 export * from "./env-utils.js";
 export * from "./events/index.js";
 export * from "./format-error.js";
+// Local-inference shared subset (types, paths, routing-preferences, verify).
+// Server runtime (KV cache, llama-server lifecycle, etc.) stays in @elizaos/app-core.
+export * from "./local-inference/index.js";
 export * from "./onboarding-presets.characters.js";
 export * from "./onboarding-presets.js";
 export * from "./platform/is-native-server.js";

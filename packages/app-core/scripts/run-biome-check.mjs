@@ -8,8 +8,6 @@ const APP_CORE_ROOT = path.resolve(SCRIPT_DIR, "..");
 
 const BIOME_CRASHER_PATHS = new Set([
   "eliza/packages/native-plugins/screencapture/src/web.ts",
-  "eliza/packages/native-plugins/talkmode/electrobun/src/index.d.ts",
-  "eliza/packages/native-plugins/gateway/electrobun/src/index.ts",
   "eliza/packages/app-core/src/types/elizaos-tui-fallback.d.ts",
   "eliza/packages/app-core/src/types/optional-plugin-modules.d.ts",
   "scripts/type-audit-report.json",

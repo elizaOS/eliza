@@ -8,7 +8,7 @@ function fakeContext(): AppContext {
   return {
     env: { NEXT_PUBLIC_APP_URL: "https://api.example.test" },
     req: { url: "https://api.example.test/api/a2a", header: () => undefined },
-  } as AppContext;
+  } as unknown as AppContext;
 }
 
 describe("platform protocol surfaces", () => {

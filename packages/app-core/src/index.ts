@@ -40,4 +40,3 @@ export * from "./services/steward-sidecar.ts";
 export * from "./services/steward-sidecar/helpers";
 export * from "./services/vault-bootstrap";
 export * from "./services/vault-mirror";
-export * from "./ui-compat";

@@ -9,9 +9,9 @@
 
 "use client";
 
+import type { Voice } from "@elizaos/cloud-ui";
 import { useSetPageHeader } from "@elizaos/cloud-ui";
 import { useState } from "react";
-import type { Voice } from "@elizaos/cloud-ui";
 import { VoiceStudioAdvanced } from "./voice-studio-advanced";
 
 interface VoicePageClientProps {

@@ -30,7 +30,9 @@ When(Server)
 const lastPhase = new Map<string, string>();
 
 function hasStatus(error: unknown, status: number): boolean {
-  return typeof error === "object" && error !== null && "status" in error && error.status === status;
+  return (
+    typeof error === "object" && error !== null && "status" in error && error.status === status
+  );
 }
 
 When(a.Deployment)

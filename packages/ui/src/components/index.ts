@@ -1,12 +1,6 @@
 // Re-export primitives from local modules (avoid `from "@elizaos/ui"` here — it
 // creates a barrel cycle and breaks consumers' type resolution for the package root).
-export {
-  ConfirmDialog as ConfirmModal,
-  type ConfirmDialogProps as ConfirmModalProps,
-  PromptDialog as PromptModal,
-  type PromptDialogProps as PromptModalProps,
-} from "./ui/confirm-dialog";
-export { SaveFooter as ConfigSaveFooter } from "./ui/save-footer";
+
 export * from "../utils/documents-upload-image";
 export * from "../utils/labels";
 export * from "../utils/trajectory-format";
@@ -112,4 +106,11 @@ export * from "./shell/ShortcutsOverlay";
 export * from "./shell/StartupFailureView";
 export * from "./shell/StartupShell";
 export * from "./shell/SystemWarningBanner";
+export {
+  ConfirmDialog as ConfirmModal,
+  type ConfirmDialogProps as ConfirmModalProps,
+  PromptDialog as PromptModal,
+  type PromptDialogProps as PromptModalProps,
+} from "./ui/confirm-dialog";
+export { SaveFooter as ConfigSaveFooter } from "./ui/save-footer";
 export * from "./workspace/AppWorkspaceChrome";

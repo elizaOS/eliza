@@ -1,7 +1,6 @@
 import { DashboardErrorState, DashboardLoadingState } from "@elizaos/cloud-ui";
 import { useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { AnalyticsPageClient } from "./_components/analytics-page-client";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import {
   type AnalyticsBreakdown,
@@ -10,6 +9,7 @@ import {
   useAnalyticsBreakdown,
   useAnalyticsProjections,
 } from "../../lib/data/analytics";
+import { AnalyticsPageClient } from "./_components/analytics-page-client";
 
 function adaptBreakdown(b: AnalyticsBreakdown) {
   return {

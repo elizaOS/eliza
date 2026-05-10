@@ -45,6 +45,7 @@ export interface AppChargeCallbackPayload {
     appId: string;
     amountUsd: number;
     status: AppChargeCallbackStatus;
+    paymentContext: "verified_payer" | "any_payer";
     description?: string;
     paymentUrl?: string;
   };
@@ -173,6 +174,8 @@ export function createAppChargeCallbackPayload(
       appId: params.appId,
       amountUsd: numberValue(chargeMetadata.amount_usd, amount),
       status: params.status,
+      paymentContext:
+        chargeMetadata.payment_context === "any_payer" ? "any_payer" : "verified_payer",
       description: stringValue(chargeMetadata, "description"),
       paymentUrl: stringValue(chargeMetadata, "payment_url"),
     },

@@ -5,7 +5,7 @@ import {
   sanitizeIdentifier,
   sqlLiteral,
 } from "@elizaos/shared";
-import { ensureRouteAuthorized } from "./auth";
+import { ensureRouteAuthorized } from "./auth.ts";
 import {
   type CompatRuntimeState,
   DATABASE_UNAVAILABLE_MESSAGE,

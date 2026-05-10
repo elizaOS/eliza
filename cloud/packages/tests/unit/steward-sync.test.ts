@@ -59,21 +59,21 @@ describe("syncUserFromSteward", () => {
     })) as typeof organizationsService.update;
     organizationsService.delete = (async () => {}) as typeof organizationsService.delete;
 
-    creditsService.addCredits = (async () => {}) as typeof creditsService.addCredits;
+    creditsService.addCredits = (async () => {}) as unknown as typeof creditsService.addCredits;
     emailService.sendWelcomeEmail =
-      (async () => {}) as typeof emailService.sendWelcomeEmail;
+      (async () => {}) as unknown as typeof emailService.sendWelcomeEmail;
     discordService.logUserSignup =
-      (async () => {}) as typeof discordService.logUserSignup;
+      (async () => {}) as unknown as typeof discordService.logUserSignup;
     apiKeysService.listByOrganization =
       (async () => []) as typeof apiKeysService.listByOrganization;
     apiKeysService.create = (async () => ({
       id: "api-key-1",
-    })) as typeof apiKeysService.create;
+    })) as unknown as typeof apiKeysService.create;
     charactersService.listByOrganization =
       (async () => []) as typeof charactersService.listByOrganization;
     charactersService.create = (async () => ({
       id: "char-1",
-    })) as typeof charactersService.create;
+    })) as unknown as typeof charactersService.create;
   });
 
   test("links an existing wallet user for wallet-only Steward sessions", async () => {
@@ -100,7 +100,7 @@ describe("syncUserFromSteward", () => {
     usersService.getByWalletAddress = (async (address: string) => {
       expect(address).toBe("0xabc123");
       return existingUser;
-    }) as typeof usersService.getByWalletAddress;
+    }) as unknown as typeof usersService.getByWalletAddress;
     usersService.linkStewardId = (async (userId, stewardUserId) => {
       expect(userId).toBe(existingUser.id);
       expect(stewardUserId).toBe("stwd-wallet-1");
@@ -200,7 +200,7 @@ describe("syncUserFromSteward", () => {
     usersService.getByEmailWithOrganization = (async (email: string) => {
       expect(email).toBe("shadow@example.com");
       return existingByEmail;
-    }) as typeof usersService.getByEmailWithOrganization;
+    }) as unknown as typeof usersService.getByEmailWithOrganization;
     usersService.update = (async (id, data) => {
       expect(id).toBe(existingByEmail.id);
       updatedPayload = data;

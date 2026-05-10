@@ -18,10 +18,7 @@ import {
 } from "@elizaos/core";
 import { oauthService } from "@/lib/services/oauth";
 import { type OAuthConnectionRole } from "@/lib/services/oauth/types";
-import {
-  type ActionWithParams,
-  defineActionParameters,
-} from "../../plugin-cloud-bootstrap/types";
+import { type ActionWithParams, defineActionParameters } from "../../plugin-cloud-bootstrap/types";
 import {
   capitalize,
   extractParams,
@@ -42,15 +39,16 @@ function normalizeRole(value: unknown): OAuthConnectionRole | undefined {
 
 function normalizeScopes(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  const scopes = value.filter(
-    (scope): scope is string => typeof scope === "string" && !!scope,
-  );
+  const scopes = value.filter((scope): scope is string => typeof scope === "string" && !!scope);
   return scopes.length > 0 ? scopes : undefined;
 }
 
 function normalizeOp(value: unknown): OAuthOp | null {
   if (typeof value !== "string") return null;
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   const aliases: Record<string, OAuthOp> = {
     connect_account: "connect",
     connect_oauth: "connect",
@@ -81,9 +79,7 @@ function normalizeOp(value: unknown): OAuthOp | null {
     revoke_connection: "revoke",
   };
   if (aliases[normalized]) return aliases[normalized];
-  return (OAUTH_OPS as readonly string[]).includes(normalized)
-    ? (normalized as OAuthOp)
-    : null;
+  return (OAUTH_OPS as readonly string[]).includes(normalized) ? (normalized as OAuthOp) : null;
 }
 
 function inferOpFromMessage(text: string): OAuthOp | null {
@@ -120,9 +116,7 @@ function inferOpFromMessage(text: string): OAuthOp | null {
     return "list";
   }
   if (
-    /\b(check|verify|status|is\s+(my|the))\b.*\b(connect|connection|connected)\b/.test(
-      lower,
-    ) ||
+    /\b(check|verify|status|is\s+(my|the))\b.*\b(connect|connection|connected)\b/.test(lower) ||
     /^\s*(done|finished|completed)\s*[!?.]?\s*$/.test(lower) ||
     /\bdid\s+it\s+work\b/.test(lower)
   ) {
@@ -213,8 +207,7 @@ async function runConnect(
       organizationId,
       userId: user.id,
       platform,
-      redirectUrl:
-        typeof params.redirectUrl === "string" ? params.redirectUrl : undefined,
+      redirectUrl: typeof params.redirectUrl === "string" ? params.redirectUrl : undefined,
       scopes: normalizeScopes(params.scopes),
       connectionRole: normalizeRole(params.connectionRole),
     });
@@ -242,10 +235,7 @@ async function runConnect(
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error(
-      { platform, error: errorMessage },
-      "[OAUTH/connect] failed to start OAuth",
-    );
+    logger.error({ platform, error: errorMessage }, "[OAUTH/connect] failed to start OAuth");
     return failureResult(
       `Failed to start ${platformName} connection. Please try again later.`,
       "OAUTH_INITIATION_FAILED",
@@ -270,11 +260,7 @@ async function runGet(
 
   try {
     if (platform) {
-      const isConnected = await oauthService.isPlatformConnected(
-        organizationId,
-        platform,
-        user.id,
-      );
+      const isConnected = await oauthService.isPlatformConnected(organizationId, platform, user.id);
       const platformName = capitalize(platform);
 
       if (isConnected) {
@@ -354,9 +340,7 @@ async function runGet(
     };
   } catch (error) {
     const errorMessage =
-      error instanceof Error
-        ? error.message
-        : "Failed to check OAuth connection status.";
+      error instanceof Error ? error.message : "Failed to check OAuth connection status.";
     logger.error("[OAUTH/get] failed to load connection status", errorMessage);
     return failureResult(
       platform
@@ -372,10 +356,7 @@ async function runGet(
   }
 }
 
-async function runList(
-  message: Memory,
-  callback?: HandlerCallback,
-): Promise<ActionResult> {
+async function runList(message: Memory, callback?: HandlerCallback): Promise<ActionResult> {
   logger.info(`[OAUTH/list] entityId=${message.entityId}`);
 
   const userResult = await lookupUser(message.entityId as string, "OAUTH");
@@ -388,8 +369,7 @@ async function runList(
   });
 
   if (connections.length === 0) {
-    const text =
-      "You don't have any connected accounts. Say 'connect google' to get started.";
+    const text = "You don't have any connected accounts. Say 'connect google' to get started.";
     if (callback) await callback({ text, actions: ["OAUTH"] });
     return {
       text,
@@ -561,14 +541,12 @@ export const oauthAction: ActionWithParams = {
     },
     redirectUrl: {
       type: "string",
-      description:
-        "For op=connect: optional URL to redirect to after OAuth completes.",
+      description: "For op=connect: optional URL to redirect to after OAuth completes.",
       required: false,
     },
     connectionRole: {
       type: "string",
-      description:
-        "For op=connect or op=revoke: connection role: owner or agent.",
+      description: "For op=connect or op=revoke: connection role: owner or agent.",
       required: false,
       enum: ["owner", "agent"],
     },
@@ -579,10 +557,7 @@ export const oauthAction: ActionWithParams = {
     },
   }),
 
-  validate: async (
-    _runtime: IAgentRuntime,
-    message: Memory,
-  ): Promise<boolean> => {
+  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     return !!message.entityId;
   },
 
@@ -597,9 +572,7 @@ export const oauthAction: ActionWithParams = {
     const explicitOp = normalizeOp(params.op ?? params.subaction);
     const op =
       explicitOp ??
-      inferOpFromMessage(
-        typeof message.content?.text === "string" ? message.content.text : "",
-      );
+      inferOpFromMessage(typeof message.content?.text === "string" ? message.content.text : "");
 
     if (!op) {
       const text = `OAUTH could not determine the operation. Specify one of: ${OAUTH_OPS.join(", ")}.`;

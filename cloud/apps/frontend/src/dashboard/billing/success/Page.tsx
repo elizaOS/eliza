@@ -12,9 +12,9 @@ import { ArrowRight, CheckCircle, XCircle } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Helmet } from "react-helmet-async";
 import { Link, useSearchParams } from "react-router-dom";
-import { CreditBalanceDisplay } from "../_components/success-client";
 import { useRequireAuth } from "../../../lib/auth-hooks";
 import { useVerifyCheckout } from "../../../lib/data/credits";
+import { CreditBalanceDisplay } from "../_components/success-client";
 
 export default function BillingSuccessPage() {
   const session = useRequireAuth();

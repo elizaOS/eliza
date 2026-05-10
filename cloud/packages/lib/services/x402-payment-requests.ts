@@ -1,6 +1,16 @@
+import {
+  SOLANA_DEVNET_CAIP2,
+  SOLANA_MAINNET_CAIP2,
+  SOLANA_TESTNET_CAIP2,
+  USDC_DEVNET_ADDRESS,
+  USDC_MAINNET_ADDRESS,
+  USDC_TESTNET_ADDRESS,
+  validateSvmAddress,
+} from "@x402/svm";
 import Decimal from "decimal.js";
 import { isAddress } from "viem";
 import { type CryptoPayment, cryptoPaymentsRepository } from "@/db/repositories/crypto-payments";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
 import { x402FacilitatorService } from "@/lib/services/x402-facilitator";
 import { logger } from "@/lib/utils/logger";
@@ -13,6 +23,7 @@ type NetworkConfig = {
   asset: string;
   decimals: number;
   scheme: "exact" | "exact_permit";
+  family: "evm" | "solana";
 };
 
 const NETWORKS: Record<string, NetworkConfig> = {
@@ -21,36 +32,70 @@ const NETWORKS: Record<string, NetworkConfig> = {
     asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     decimals: 6,
     scheme: "exact",
+    family: "evm",
   },
   "base-sepolia": {
     caip2: "eip155:84532",
     asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     decimals: 6,
     scheme: "exact",
+    family: "evm",
   },
   ethereum: {
     caip2: "eip155:1",
     asset: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
     decimals: 6,
     scheme: "exact",
+    family: "evm",
   },
   sepolia: {
     caip2: "eip155:11155111",
     asset: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
     decimals: 6,
     scheme: "exact",
+    family: "evm",
   },
   bsc: {
     caip2: "eip155:56",
     asset: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
     decimals: 18,
     scheme: "exact_permit",
+    family: "evm",
   },
   "bsc-testnet": {
     caip2: "eip155:97",
     asset: "0x64544969ed7EBf5f083679233325356EBe738930",
     decimals: 18,
     scheme: "exact_permit",
+    family: "evm",
+  },
+  solana: {
+    caip2: SOLANA_MAINNET_CAIP2,
+    asset: USDC_MAINNET_ADDRESS,
+    decimals: 6,
+    scheme: "exact",
+    family: "solana",
+  },
+  "solana-mainnet": {
+    caip2: SOLANA_MAINNET_CAIP2,
+    asset: USDC_MAINNET_ADDRESS,
+    decimals: 6,
+    scheme: "exact",
+    family: "solana",
+  },
+  "solana-devnet": {
+    caip2: SOLANA_DEVNET_CAIP2,
+    asset: USDC_DEVNET_ADDRESS,
+    decimals: 6,
+    scheme: "exact",
+    family: "solana",
+  },
+  "solana-testnet": {
+    caip2: SOLANA_TESTNET_CAIP2,
+    asset: USDC_TESTNET_ADDRESS,
+    decimals: 6,
+    scheme: "exact",
+    family: "solana",
   },
 };
 
@@ -125,7 +170,8 @@ export class X402PaymentRequestError extends Error {
 }
 
 function normalizeNetwork(raw?: string): NetworkConfig {
-  const value = raw?.trim() || process.env.X402_NETWORK || "base";
+  const env = getCloudAwareEnv();
+  const value = raw?.trim() || env.X402_NETWORK || "base";
   const byCaip = Object.values(NETWORKS).find((entry) => entry.caip2 === value);
   const config = byCaip ?? NETWORKS[value];
   if (!config) {
@@ -135,10 +181,11 @@ function normalizeNetwork(raw?: string): NetworkConfig {
 }
 
 function publicBaseUrl(): string {
+  const env = getCloudAwareEnv();
   return (
-    process.env.X402_PUBLIC_BASE_URL ??
-    process.env.X402_BASE_URL ??
-    process.env.NEXT_PUBLIC_API_URL ??
+    env.X402_PUBLIC_BASE_URL ??
+    env.X402_BASE_URL ??
+    env.NEXT_PUBLIC_API_URL ??
     "https://x402.elizaos.ai"
   ).replace(/\/$/, "");
 }
@@ -158,20 +205,24 @@ function usdToAtomic(amountUsd: Decimal, decimals: number): string {
 function validateCallbackUrl(callbackUrl?: string): string | undefined {
   if (!callbackUrl) return undefined;
   const url = new URL(callbackUrl);
+  const env = getCloudAwareEnv();
   const isLocalDev =
-    process.env.NODE_ENV !== "production" &&
-    (url.hostname === "localhost" || url.hostname === "127.0.0.1");
+    env.NODE_ENV !== "production" && (url.hostname === "localhost" || url.hostname === "127.0.0.1");
   if (url.protocol !== "https:" && !(isLocalDev && url.protocol === "http:")) {
     throw new X402PaymentRequestError("callbackUrl must be https", 400, "bad_callback_url");
   }
   return url.toString();
 }
 
-async function resolvePaymentRecipient(): Promise<string> {
-  const configured = process.env.X402_RECIPIENT_ADDRESS?.trim();
+async function resolvePaymentRecipient(network: NetworkConfig): Promise<string> {
+  const env = getCloudAwareEnv();
+  const configured =
+    network.family === "solana"
+      ? (env.X402_SOLANA_RECIPIENT_ADDRESS ?? env.SOLANA_PAYOUT_WALLET_ADDRESS)?.trim()
+      : env.X402_RECIPIENT_ADDRESS?.trim();
   if (configured) return configured;
   await x402FacilitatorService.initialize();
-  const signer = x402FacilitatorService.getSignerAddress();
+  const signer = x402FacilitatorService.getSignerAddressForNetwork(network.caip2);
   if (!signer) {
     throw new X402PaymentRequestError(
       "x402 recipient address is not configured",
@@ -234,6 +285,27 @@ function decodePaymentPayload(input: unknown): Parameters<typeof x402Facilitator
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isDecodedPaymentPayload(
+  value: unknown,
+): value is Parameters<typeof x402FacilitatorService.settle>[0] {
+  if (!isRecord(value) || typeof value.x402Version !== "number") return false;
+  if (!isRecord(value.accepted) || !isRecord(value.payload)) return false;
+  const hasEvmSignature = typeof value.payload.signature === "string";
+  const hasSvmTransaction = typeof value.payload.transaction === "string";
+  return (
+    typeof value.accepted.scheme === "string" &&
+    typeof value.accepted.network === "string" &&
+    typeof value.accepted.asset === "string" &&
+    typeof value.accepted.amount === "string" &&
+    typeof value.accepted.payTo === "string" &&
+    (hasEvmSignature || hasSvmTransaction)
+  );
+}
+
 async function triggerCallback(payment: CryptoPayment, event: Record<string, unknown>) {
   const callbackUrl = metadataOf(payment).callbackUrl;
   if (typeof callbackUrl !== "string") return;
@@ -272,10 +344,17 @@ class X402PaymentRequestsService {
     }
 
     const network = normalizeNetwork(input.network);
-    const payTo = await resolvePaymentRecipient();
-    if (!isAddress(payTo)) {
+    const payTo = await resolvePaymentRecipient(network);
+    if (network.family === "evm" && !isAddress(payTo)) {
       throw new X402PaymentRequestError(
         "x402 recipient address must be an EVM address",
+        503,
+        "bad_recipient",
+      );
+    }
+    if (network.family === "solana" && !validateSvmAddress(payTo)) {
+      throw new X402PaymentRequestError(
+        "x402 recipient address must be a Solana address",
         503,
         "bad_recipient",
       );
@@ -294,10 +373,24 @@ class X402PaymentRequestsService {
       }
     }
 
+    let solanaFeePayer: string | null = null;
+    if (network.family === "solana") {
+      await x402FacilitatorService.initialize();
+      solanaFeePayer = x402FacilitatorService.getSignerAddressForNetwork(network.caip2);
+      if (!solanaFeePayer) {
+        throw new X402PaymentRequestError(
+          "x402 Solana facilitator signer is not configured",
+          503,
+          "x402_not_configured",
+        );
+      }
+    }
+
     const callbackUrl = validateCallbackUrl(input.callbackUrl);
     const amount = new Decimal(input.amountUsd);
-    const platformFeeBps = new Decimal(process.env.X402_PLATFORM_FEE_BPS ?? "100");
-    const serviceFee = new Decimal(process.env.X402_SERVICE_FEE_USD ?? "0.01");
+    const env = getCloudAwareEnv();
+    const platformFeeBps = new Decimal(env.X402_PLATFORM_FEE_BPS ?? "100");
+    const serviceFee = new Decimal(env.X402_SERVICE_FEE_USD ?? "0.01");
     const platformFee = amount.mul(platformFeeBps).div(10_000).toDecimalPlaces(4, Decimal.ROUND_UP);
     const totalCharged = amount.plus(platformFee).plus(serviceFee).toDecimalPlaces(4);
     const amountAtomic = usdToAtomic(totalCharged, network.decimals);
@@ -330,6 +423,10 @@ class X402PaymentRequestsService {
             feeTo: ZERO_ADDRESS,
             feeAmount: "0",
           },
+        }),
+        ...(solanaFeePayer && {
+          feePayer: solanaFeePayer,
+          memo: id,
         }),
       },
     };
@@ -402,7 +499,10 @@ class X402PaymentRequestsService {
       return { paymentRequest: this.toView(payment), paymentResponse };
     }
     if (payment.expires_at.getTime() < Date.now()) {
-      await cryptoPaymentsRepository.markAsExpired(payment.id);
+      const expired = (await cryptoPaymentsRepository.markAsExpired(payment.id)) ?? payment;
+      await this.triggerFailureCallback(expired, "expired", {
+        expiredAt: payment.expires_at.toISOString(),
+      });
       throw new X402PaymentRequestError(
         `Payment request expired at ${payment.expires_at.toISOString()}`,
         410,
@@ -418,9 +518,37 @@ class X402PaymentRequestsService {
       throw new X402PaymentRequestError("Payment request is missing requirements", 500);
     }
 
-    const paymentPayload = decodePaymentPayload(paymentPayloadInput);
-    const settlement = await x402FacilitatorService.settle(paymentPayload, requirements);
+    let paymentPayload: Parameters<typeof x402FacilitatorService.settle>[0];
+    try {
+      paymentPayload = decodePaymentPayload(paymentPayloadInput);
+    } catch (error) {
+      await this.triggerFailureCallback(payment, "invalid_payment_payload", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+    if (!isDecodedPaymentPayload(paymentPayload)) {
+      await this.triggerFailureCallback(payment, "invalid_payment_payload");
+      throw new X402PaymentRequestError(
+        "Invalid x402 payment payload",
+        400,
+        "invalid_payment_payload",
+      );
+    }
+
+    let settlement: Awaited<ReturnType<typeof x402FacilitatorService.settle>>;
+    try {
+      settlement = await x402FacilitatorService.settle(paymentPayload, requirements);
+    } catch (error) {
+      await this.triggerFailureCallback(payment, "settlement_error", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new X402PaymentRequestError("x402 settlement failed", 402, "settlement_failed");
+    }
     if (!settlement.success) {
+      await this.triggerFailureCallback(payment, settlement.errorReason ?? "settlement_failed", {
+        settlement,
+      });
       throw new X402PaymentRequestError(
         settlement.errorReason ?? "x402 settlement failed",
         402,
@@ -478,6 +606,19 @@ class X402PaymentRequestsService {
       paymentRequest: this.toView(settledPayment),
       paymentResponse: Buffer.from(JSON.stringify(settlement)).toString("base64"),
     };
+  }
+
+  private async triggerFailureCallback(
+    payment: CryptoPayment,
+    reason: string,
+    details?: Record<string, unknown>,
+  ): Promise<void> {
+    await triggerCallback(payment, {
+      type: "x402.payment_request.failed",
+      paymentRequest: this.toView(payment),
+      reason,
+      ...(details && { details }),
+    });
   }
 
   toView(payment: CryptoPayment): X402PaymentRequestView {

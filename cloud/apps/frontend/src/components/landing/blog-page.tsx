@@ -1,8 +1,8 @@
 "use client";
 
-import Footer from "./Footer";
 import LandingHeader from "../layout/landing-header";
 import BayerDitheringBackground from "./BayerDitheringBackground";
+import Footer from "./Footer";
 
 interface BlogPageProps {
   children: React.ReactNode;

@@ -1,0 +1,41 @@
+# Symbol counts in libggml-cuda.so for the W4-B CUDA additions.
+# Captured from the sm_80 single-arch build at /home/shaw/work-cuda-extra/llama.cpp
+# (multi-arch build is the same .cu set + same kernel definitions; per-kernel
+# symbol count is independent of arch).
+
+QJL family: 9 symbols (was 0 in v0.3.0-milady per W3-D's audit)
+  T attn_score_qjl_cuda
+  T dequantize_row_qjl1_256_cuda
+  T quantize_row_qjl1_256_cuda
+  T _Z16qjl_score_kernelPKfPK14block_qjl1_256iiiPf            # device kernel
+  T _Z19qjl_quantize_kernelPKfP14block_qjl1_256S0_i           # device kernel
+  T _Z21qjl_dequantize_kernelPK14block_qjl1_256PfPKfi         # device kernel
+  T _Z60__device_stub__Z16qjl_score_kernel...                 # nvcc launch stub
+  T _Z61__device_stub__Z19qjl_quantize_kernel...
+  T _Z63__device_stub__Z21qjl_dequantize_kernel...
+
+Polar family: 10 symbols (was 0 in v0.3.0-milady)
+  T dequantize_row_q4_polar_cuda
+  T get_rows_q4_polar_cuda
+  T mul_mat_q4_polar_q8_0_cuda
+  T _Z34polar_mul_mat_q4_polar_q8_0_kernel...
+  T _Z90__device_stub__Z34polar_mul_mat_q4_polar_q8_0_kernel...
+  W _Z21polar_get_rows_kernelI13__nv_bfloat16E...             # template instance
+  W _Z21polar_get_rows_kernelI6__halfE...
+  W _Z21polar_get_rows_kernelIfE...
+  W _Z23polar_dequantize_kernelIfE...
+  b _ZL25k_polar_q4_centroids_cuda                            # __constant__ table
+
+TBQ3_TCQ family: 7 symbols (was 0 in v0.3.0-milady)
+  T dequantize_row_tbq3_tcq_cuda
+  T mul_mat_tbq3_tcq_q8_0_cuda
+  T _Z23tbq3_tcq_mul_mat_kernel...
+  T _Z26tbq3_tcq_dequantize_kernel...
+  T _Z65__device_stub__Z26tbq3_tcq_dequantize_kernel...
+  T _Z78__device_stub__Z23tbq3_tcq_mul_mat_kernel...
+  b _ZL24k_tbq3_tcq_codebook_cuda                             # __constant__ table
+
+Existing TBQ3_0/TBQ4_0 family preserved: 88 symbols (matches W3-D baseline).
+
+Verification command:
+  nm --defined-only build-cuda/bin/libggml-cuda.so | grep -iE '(qjl|polar|tbq3_tcq)'

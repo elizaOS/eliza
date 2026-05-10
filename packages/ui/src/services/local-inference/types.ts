@@ -1,10 +1,32 @@
 /**
- * Local inference model-management types.
+ * Local inference model-management types (UI-side public subset).
  *
  * Shared across the service layer, API routes, and renderer.
  * The catalog is Eliza-curated; installed models are tracked locally in a
  * JSON registry under the state dir.
+ *
+ * Foundational types that are byte-identical between the UI client and the
+ * app-core server (`AgentModelSlot`, `InstalledModel`, `ModelAssignments`,
+ * `TextGenerationSlot`, `AGENT_MODEL_SLOTS`) live in
+ * `@elizaos/shared/local-inference` and are re-exported here so existing
+ * import paths keep working.
  */
+
+import {
+  AGENT_MODEL_SLOTS,
+  type AgentModelSlot,
+  type InstalledModel,
+  type ModelAssignments,
+  type TextGenerationSlot,
+} from "@elizaos/shared";
+
+export {
+  AGENT_MODEL_SLOTS,
+  type AgentModelSlot,
+  type InstalledModel,
+  type ModelAssignments,
+  type TextGenerationSlot,
+};
 
 export type ModelBucket = "small" | "mid" | "large" | "xl";
 
@@ -168,39 +190,6 @@ export interface HardwareProbe {
   mobile?: MobileHardwareProbe;
 }
 
-export interface InstalledModel {
-  /** Matches CatalogModel.id when installed from the curated catalog. */
-  id: string;
-  displayName: string;
-  /** Absolute path to the GGUF file on disk. */
-  path: string;
-  sizeBytes: number;
-  /** HF repo this came from, when known. */
-  hfRepo?: string;
-  /** ISO timestamp of install completion. */
-  installedAt: string;
-  /** ISO timestamp of last activation (null if never loaded). */
-  lastUsedAt: string | null;
-  /** Where we got this model from. Determines whether Eliza owns the file. */
-  source: "eliza-download" | "external-scan";
-  /**
-   * When source === "external-scan", which tool the file belonged to.
-   * Prevents Eliza from deleting files other apps own.
-   */
-  externalOrigin?:
-    | "lm-studio"
-    | "jan"
-    | "ollama"
-    | "huggingface"
-    | "text-gen-webui";
-  /** SHA256 of the GGUF file recorded at install time. Optional for legacy entries. */
-  sha256?: string;
-  /** ISO timestamp of the last successful re-verification. Absent = never verified since install. */
-  lastVerifiedAt?: string;
-  runtimeRole?: "chat" | "dflash-drafter";
-  companionFor?: string;
-}
-
 export type DownloadState =
   | "queued"
   | "downloading"
@@ -253,31 +242,13 @@ export interface DownloadEvent {
   job: DownloadJob;
 }
 
-/**
- * Agent model-type slots Eliza lets the user wire to local models. These
- * match the `ModelType` enum in `@elizaos/core` — kept as string literals
- * here so the types file stays framework-free.
- */
-export type AgentModelSlot = "TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING";
-
-export type TextGenerationSlot = Extract<
-  AgentModelSlot,
-  "TEXT_SMALL" | "TEXT_LARGE"
->;
-
-export const AGENT_MODEL_SLOTS: AgentModelSlot[] = [
-  "TEXT_SMALL",
-  "TEXT_LARGE",
-  "TEXT_EMBEDDING",
-];
+// AgentModelSlot, TextGenerationSlot, AGENT_MODEL_SLOTS, ModelAssignments
+// are re-exported above from @elizaos/shared.
 
 export const TEXT_GENERATION_SLOTS: TextGenerationSlot[] = [
   "TEXT_SMALL",
   "TEXT_LARGE",
 ];
-
-/** User-configured mapping of agent model slots → installed model ids. */
-export type ModelAssignments = Partial<Record<AgentModelSlot, string>>;
 
 export interface LocalInferenceSlotReadiness {
   slot: TextGenerationSlot;

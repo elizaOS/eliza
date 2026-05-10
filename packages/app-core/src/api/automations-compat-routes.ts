@@ -20,7 +20,7 @@ import type {
   AutomationNodeCatalogResponse,
   AutomationNodeDescriptor,
 } from "@elizaos/ui";
-import { ensureRouteAuthorized } from "./auth";
+import { ensureRouteAuthorized } from "./auth.ts";
 import { listAutomationNodeContributors } from "./automation-node-contributors";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import {

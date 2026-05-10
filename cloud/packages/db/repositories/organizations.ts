@@ -59,7 +59,9 @@ export class OrganizationsRepository {
     });
   }
 
-  async listForAdminDashboard(limit: number): Promise<
+  async listForAdminDashboard(
+    limit: number,
+  ): Promise<
     Array<
       Pick<
         Organization,

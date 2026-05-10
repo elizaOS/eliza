@@ -24,16 +24,33 @@ const localPackages = [
   "eliza/plugins/app-shopify",
   "eliza/plugins/app-vincent",
   "eliza/packages/app-core",
+  "eliza/cloud/packages/sdk",
+  "eliza/packages/cloud-routing",
   "eliza/packages/shared",
   "eliza/packages/skills",
+  "eliza/packages/ui",
   "eliza/packages/vault",
   "eliza/plugins/plugin-agent-skills",
   "eliza/plugins/plugin-browser",
+  "eliza/plugins/plugin-capacitor-bridge",
+  "eliza/plugins/plugin-coding-tools",
+  "eliza/plugins/plugin-computeruse",
+  "eliza/plugins/plugin-discord",
+  "eliza/plugins/plugin-elizacloud",
+  "eliza/plugins/plugin-imessage",
   "eliza/plugins/plugin-local-embedding",
+  "eliza/plugins/plugin-local-inference",
+  "eliza/plugins/plugin-mcp",
   "eliza/plugins/plugin-pdf",
+  "eliza/plugins/plugin-signal",
+  "eliza/plugins/plugin-streaming",
   "eliza/packages/native-plugins/activity-tracker",
   "eliza/plugins/plugin-sql",
   "eliza/plugins/plugin-telegram",
+  "eliza/plugins/plugin-video",
+  "eliza/plugins/plugin-whatsapp",
+  "eliza/plugins/plugin-workflow",
+  "eliza/plugins/plugin-x402",
 ];
 
 function resolveSourceExportPath(packageDir, exportPath) {
@@ -304,6 +321,21 @@ for (const packagePath of localPackages) {
       } catch {
         // Not all deps may be installed; non-fatal.
       }
+    }
+  }
+
+  if (pkg.name === "@elizaos/app-core") {
+    for (const rootDep of ["@node-rs/argon2", "jose"]) {
+      linkRootDependency({
+        packageName: rootDep,
+        target: path.join(packageDir, "node_modules", rootDep),
+      });
+      // Also ensure root-level node_modules has it so ESM resolution always
+      // finds the package regardless of which symlink depth Node traverses.
+      linkRootDependency({
+        packageName: rootDep,
+        target: path.join(repoRoot, "node_modules", rootDep),
+      });
     }
   }
 }

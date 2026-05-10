@@ -123,7 +123,7 @@ describe.skipIf(!hasDatabaseUrl)("Runtime Invalidation During Operations", () =>
    * 2. Long-running database operations start (simulating evaluator)
    * 3. Config change triggers invalidation
    * 4. Operations should complete without pool closure errors
-  */
+   */
   it(
     "should handle runtime invalidation during DB operations",
     async () => {
