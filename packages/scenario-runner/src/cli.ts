@@ -36,6 +36,7 @@ interface ParsedArgs {
   dir: string;
   reportPath?: string;
   reportDir?: string;
+  runDir?: string;
   runId?: string;
   filter?: Set<string>;
   fileGlobs?: string[];
@@ -44,7 +45,7 @@ interface ParsedArgs {
 function usageAndExit(message: string, code: number): never {
   process.stderr.write(`[eliza-scenarios] ${message}\n`);
   process.stderr.write(
-    "Usage:\n  eliza-scenarios run  <dir> [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [fileGlob ...]\n  eliza-scenarios list <dir> [fileGlob ...]\n",
+    "Usage:\n  eliza-scenarios run  <dir> [--run-dir <dir>] [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [fileGlob ...]\n  eliza-scenarios list <dir> [fileGlob ...]\n",
   );
   process.exit(code);
 }
@@ -63,6 +64,7 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
   }
   let reportPath: string | undefined;
   let reportDir: string | undefined;
+  let runDir: string | undefined;
   let runId: string | undefined;
   let filter: Set<string> | undefined;
   const fileGlobs: string[] = [];
@@ -80,6 +82,11 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
       const next = argv[i + 1];
       if (!next) usageAndExit("--report-dir missing value", 2);
       reportDir = next;
+      i += 1;
+    } else if (arg === "--run-dir") {
+      const next = argv[i + 1];
+      if (!next) usageAndExit("--run-dir missing value", 2);
+      runDir = next;
       i += 1;
     } else if (arg === "--runId") {
       const next = argv[i + 1];
@@ -106,6 +113,7 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
     dir: path.resolve(dir),
     reportPath: reportPath ? path.resolve(reportPath) : undefined,
     reportDir: reportDir ? path.resolve(reportDir) : undefined,
+    runDir: runDir ? path.resolve(runDir) : undefined,
     runId,
     filter,
     fileGlobs,
@@ -183,6 +191,22 @@ async function main(): Promise<number> {
   );
 
   const startedAtIso = new Date().toISOString();
+
+  // Run-level results dir. When set, every scenario in this run drops its
+  // trajectories under <runDir>/trajectories/ and the aggregator post-step
+  // can produce per-scenario JSONL + report.md + steps.csv. Also exports
+  // MILADY_LIFEOPS_RUN_ID so the recorder picks it up.
+  const effectiveRunId = parsed.runId ?? crypto.randomUUID();
+  if (parsed.runDir) {
+    const trajectoryDir = path.join(parsed.runDir, "trajectories");
+    process.env.MILADY_TRAJECTORY_DIR = trajectoryDir;
+    process.env.MILADY_LIFEOPS_RUN_ID = effectiveRunId;
+    process.env.MILADY_LIFEOPS_RUN_DIR = parsed.runDir;
+    logger.info(
+      `[eliza-scenarios] run-dir: ${parsed.runDir} (trajectories → ${trajectoryDir}, runId=${effectiveRunId})`,
+    );
+  }
+
   // Note: a single bun process can only instantiate PGLite once reliably —
   // attempting to tear down and recreate the native binding segfaults. So the
   // CLI always uses a single shared runtime. For true per-scenario isolation
@@ -195,6 +219,9 @@ async function main(): Promise<number> {
   try {
     for (const { scenario } of loaded) {
       logger.info(`[eliza-scenarios] ▶ ${scenario.id}`);
+      // Surface scenario id to the recorder via env so trajectories are
+      // tagged with the right scenarioId without changing internal APIs.
+      process.env.MILADY_LIFEOPS_SCENARIO_ID = scenario.id;
       const report = await runScenario(scenario, runtime, {
         providerName,
         minJudgeScore,
@@ -215,7 +242,7 @@ async function main(): Promise<number> {
     providerName,
     startedAtIso,
     completedAtIso,
-    parsed.runId ?? crypto.randomUUID(),
+    effectiveRunId,
   );
 
   if (parsed.reportPath) {
@@ -223,6 +250,11 @@ async function main(): Promise<number> {
   }
   if (parsed.reportDir) {
     writeReportBundle(aggregate, parsed.reportDir);
+  }
+  if (parsed.runDir) {
+    // Drop the matrix.json next to trajectories/ so the aggregator can find it.
+    const matrixPath = path.join(parsed.runDir, "matrix.json");
+    writeReport(aggregate, matrixPath);
   }
   printStdoutSummary(aggregate);
 
