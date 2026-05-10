@@ -96,6 +96,7 @@
     "dev:cloud:web": "bun run --cwd cloud dev:web",
     "dev:cloud:full": "bun run --cwd cloud dev:full",
     "build:cloud": "bun run --cwd cloud build",
+    "build:android:cloud": "node packages/app-core/scripts/run-mobile-build.mjs android-cloud",
     "build:android:system": "node packages/app-core/scripts/run-mobile-build.mjs android-system",
     "test:cloud": "bun run --cwd cloud test",
     "test:ci": "TEST_LANE=pr node scripts/run-all-tests.mjs --no-cloud",
