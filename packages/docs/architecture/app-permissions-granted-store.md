@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft.** Phase 1, slice 2 — backend only (store + HTTP endpoints + auto-grant for first-party). The Settings → Apps consent UI is a follow-up slice (separate PR; React surface review).
+**Draft.** Phase 1 — backend store, HTTP endpoints, first-party auto-grant, and the Settings → App Permissions panel. The grant state is advisory until Phase 2 enforcement reads it.
 
 ## Scope
 
@@ -10,7 +10,6 @@ This spec defines how *grants* — the user's decision to allow an app's declare
 
 ## Non-goals (this slice)
 
-- Any consent UI in `apps/app/`. The HTTP endpoints exist so a future React surface can drive grants; this slice does not ship that surface.
 - Glob-level / host-level granular grants. Slice 2 grants at the **namespace** level only (`fs`, `net`). A user either grants the app's declared `fs` set or doesn't. Granular per-glob grants can land later if a real product need surfaces.
 - Per-app `statePath` assignment. Mentioned in slice 1's phase map as "slice 2" but moved out — it pairs more naturally with Phase 2's `isolation: "worker"` execution path. This slice does not assign state paths.
 - Enforcement. The granted set is **advisory** in this slice — no FS or network gating reads it yet. Phase 2 wires the enforcement.
@@ -108,9 +107,9 @@ Validation:
 
 Returns the same `AppPermissionsView` shape as `GET`, reflecting the post-update state.
 
-### `GET /api/apps` (additive — existing route)
+### `GET /api/apps/permissions`
 
-The existing list response gains a `permissions` field per item with the same `AppPermissionsView` shape (minus `slug`, which is on the parent). Optional/null when the app has no manifest. This lets the future Settings → Apps surface render the whole list with one fetch.
+Returns `AppPermissionsView[]`, one permissions view per registered app. This lets the Settings → App Permissions panel render the whole grant surface with one fetch.
 
 ## Service surface
 
@@ -123,8 +122,9 @@ class AppRegistryService extends Service {
     slug: string,
     namespaces: string[],
     actor: "user" | "first-party-auto",
-  ): Promise<void>;
+  ): Promise<{ ok: true; view: AppPermissionsView } | { ok: false; reason: string }>;
   async getPermissionsView(slug: string): Promise<AppPermissionsView | null>;
+  async listPermissionsViews(): Promise<AppPermissionsView[]>;
 }
 ```
 

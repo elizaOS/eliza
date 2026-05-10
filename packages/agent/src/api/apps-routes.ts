@@ -13,8 +13,8 @@ import {
   hasAppInterface,
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
+  parseAppPermissions,
 } from "@elizaos/shared";
-import { parseAppPermissions } from "@elizaos/shared";
 import {
   importAppRouteModule,
   resolveWorkspacePackageDir,
