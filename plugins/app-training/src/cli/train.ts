@@ -142,25 +142,59 @@ export async function runTrainCli(argv: string[]): Promise<number> {
       const optimizer = parsed.optimizer ?? "instruction-search";
       const task: TrajectoryTrainingTask = parsed.task ?? "should_respond";
       const baselinePrompt = await loadBaselinePrompt(parsed);
-      // CLI invocation runs without a registered runtime/useModel, so we
-      // fall back to the deterministic stub adapter that returns the
-      // dataset's expected output verbatim. This makes the CLI useful as
-      // a smoke test (validates the dataset + optimizer pipeline)
-      // without requiring an LLM provider. Production callers go through
-      // services/training-trigger.ts which wires the real runtime.
-      const stubAdapter = {
-        async complete(input: { user: string }): Promise<string> {
-          return input.user;
-        },
-      };
+      // Pick the adapter:
+      //   - When TRAIN_MODEL_PROVIDER=cerebras (or TRAINING_PROVIDER), route
+      //     scoring + variant generation through the real Cerebras
+      //     gpt-oss-120b client (lifeops-eval-model.ts). This is the path
+      //     `bun run lifeops:optimize` exercises against captured
+      //     trajectories.
+      //   - Otherwise fall back to the deterministic stub that echoes the
+      //     user prompt — useful as a smoke test of the optimizer
+      //     plumbing without an LLM provider.
+      const trainProvider =
+        process.env.TRAIN_MODEL_PROVIDER?.trim() ??
+        process.env.TRAINING_PROVIDER?.trim();
+      let adapter: { complete: (input: { system?: string; user: string; temperature?: number; maxTokens?: number; }) => Promise<string> };
+      let useModel: (input: { prompt: string; temperature?: number; maxTokens?: number; }) => Promise<string>;
+      if (trainProvider === "cerebras") {
+        const helperPath =
+          "../../../app-lifeops/test/helpers/lifeops-eval-model.ts";
+        const { getTrainingUseModelAdapter } = (await import(
+          helperPath
+        )) as typeof import("../../../app-lifeops/test/helpers/lifeops-eval-model.ts");
+        useModel = getTrainingUseModelAdapter();
+        adapter = {
+          async complete(input) {
+            const prompt = input.system
+              ? `${input.system}\n\n${input.user}`
+              : input.user;
+            return await useModel({
+              prompt,
+              temperature: input.temperature,
+              maxTokens: input.maxTokens,
+            });
+          },
+        };
+        console.log("[train] adapter: cerebras gpt-oss-120b (TRAIN_MODEL_PROVIDER=cerebras)");
+      } else {
+        adapter = {
+          async complete(input) {
+            return input.user;
+          },
+        };
+        useModel = async () => "";
+        console.log(
+          "[train] adapter: stub (echoes user prompt). Set TRAIN_MODEL_PROVIDER=cerebras for real scoring.",
+        );
+      }
       const result = await runNativeBackend({
         datasetPath: parsed.dataset,
         task,
         optimizer,
         baselinePrompt,
         datasetId: parsed.dataset,
-        runtime: { useModel: async () => "" },
-        adapter: stubAdapter,
+        runtime: { useModel },
+        adapter,
       });
       for (const note of result.notes) console.log(`[train] ${note}`);
       if (!result.invoked) return 1;
@@ -168,6 +202,42 @@ export async function runTrainCli(argv: string[]): Promise<number> {
         `[train] native ${optimizer} task=${task} dataset=${result.datasetSize} ` +
           `baseline=${result.baselineScore.toFixed(3)} optimized=${result.score.toFixed(3)}`,
       );
+
+      // Persist the optimized prompt + lineage so the operator can inspect
+      // and deploy it. Mirrors the live trigger path that lands artifacts in
+      // ~/.milady/optimized-prompts/<task>/.
+      const path = await import("node:path");
+      const fs = await import("node:fs/promises");
+      const os = await import("node:os");
+      const stateDir =
+        process.env.MILADY_STATE_DIR?.trim() ||
+        process.env.ELIZA_STATE_DIR?.trim() ||
+        path.join(os.homedir(), ".milady");
+      const artifactDir = path.join(stateDir, "optimized-prompts", task);
+      await fs.mkdir(artifactDir, { recursive: true });
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const artifactPath = path.join(artifactDir, `${optimizer}-${stamp}.json`);
+      await fs.writeFile(
+        artifactPath,
+        JSON.stringify(
+          {
+            task,
+            optimizer,
+            baselinePrompt,
+            optimizedPrompt: result.result.optimizedPrompt,
+            baselineScore: result.baselineScore,
+            score: result.score,
+            datasetSize: result.datasetSize,
+            datasetId: parsed.dataset,
+            generatedAt: stamp,
+            lineage: result.result.lineage,
+          },
+          null,
+          2,
+        ) + "\n",
+        "utf-8",
+      );
+      console.log(`[train] artifact: ${artifactPath}`);
       return 0;
     }
     default: {
