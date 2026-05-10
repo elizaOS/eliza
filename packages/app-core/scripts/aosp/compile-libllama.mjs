@@ -34,8 +34,14 @@
 //
 // llama.cpp pin (matches plugins/plugin-aosp-local-inference/src/aosp-llama-adapter.ts):
 //   fork:   https://github.com/milady-ai/llama.cpp
-//   tag:    v0.1.0-milady          (milady/integration HEAD)
-//   commit: edd55d8b0a1f4b4279f17eb08a903e52b9a7cc4e
+//   tag:    v0.2.0-milady          (milady/integration HEAD)
+//   commit: 7c7818aafc7599996268226e2e56099f4f38e972
+//
+//   v0.2.0-milady adds DFlash speculative decoding CLI surface
+//   (--spec-type dflash, --draft-min-prob alias, n_drafted_total /
+//   n_drafted_accepted_total Prometheus counters) on top of v0.1.0-milady.
+//   Both AOSP and host (build-llama-cpp-dflash.mjs) now pin to the same
+//   unified-fork commit — the previous spiritbuun split is retired.
 //
 // Why this fork (not stock ggml-org/llama.cpp b8198):
 //   The Milady fork composes four techniques onto upstream b8198:
@@ -178,8 +184,8 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 // flow is now replaced by a single canonical fork — the patches are
 // baked in. apply-patches.mjs is kept around for one release as a
 // rollback path; see scripts/aosp/llama-cpp-patches/README.md.
-export const LLAMA_CPP_TAG = "v0.1.0-milady";
-export const LLAMA_CPP_COMMIT = "edd55d8b0a1f4b4279f17eb08a903e52b9a7cc4e";
+export const LLAMA_CPP_TAG = "v0.2.0-milady";
+export const LLAMA_CPP_COMMIT = "7c7818aafc7599996268226e2e56099f4f38e972";
 export const LLAMA_CPP_REMOTE =
   "https://github.com/milady-ai/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";

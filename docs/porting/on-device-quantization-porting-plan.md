@@ -136,7 +136,7 @@ DFlash hardening landed in the same session (W1-G):
 | `looksLikeQjl(modelPath)` + `qjl1_256` cache type | `aosp-llama-adapter.ts` (worktree-agent-a55644a05aeeed035 commit `f674c14160`) | Set `ELIZA_LLAMA_CACHE_TYPE_K=qjl1_256` to compose with TBQ V. Auto-detect QJL > Bonsai precedence. |
 | `block_qjl1_256` + `GGML_OP_ATTN_SCORE_QJL` | `/tmp/llama-cpp-qjl @ qjl-kcache` (4 commits, NOT in shipped fork yet) | Not pushed to GitHub; vendor commit on Apothic side needed before next AOSP rebuild picks it up. |
 | `block_q4_polar` (`Q4_POLAR=45`) | `/tmp/llama-cpp-polar @ polarquant-q4` (4 commits, NOT in shipped fork yet) | Same — vendor + push to Apothic remote required. |
-| Speculative-decoding API | source landed (`aosp-dflash-adapter.ts`, llama-server cross-compile in `compile-libllama.mjs`); build env unblocked 2026-05-09 (W1-G); cross-compile artifact still pending CI run | Bundle now builds; `bun run --cwd packages/agent build:mobile` produces a fresh `agent-bundle.js`. llama-server arm64-v8a/musl build is the next step. |
+| Speculative-decoding API | DFlash CLI surface landed on `milady-ai/llama.cpp @ v0.2.0-milady` (Wave-3 agent A, 2026-05-09): `--spec-type dflash`, `--draft-min-prob`, `n_drafted_total` + `n_drafted_accepted_total` Prometheus counters. arm64-v8a + x86_64 musl cross-builds verified clean via `compile-libllama.mjs --src-dir`. Local llama-server smoke: chat completion + metrics counters confirmed (acceptance rate 13/13 with target=drafter). | spiritbuun/buun-llama-cpp pin retired. Both AOSP and host build paths now consume the same unified-fork commit. |
 | Capacitor Android local-agent runtime | source landed (worktree-agent-a58ffa46f33215b6a) | ElizaAgentService gated on AOSP_BUILD; in-WebView local-agent kernel (`local-agent-kernel.ts`) generalized for both iOS and Android; shared TBQ resolver across adapters. |
 | Catalog `tokenizerFamily` field + DFlash pair guard | source landed on develop (W1-G commit, originally worktree-agent-a3b48813556536b5d `04a3fdb24d`) + acceptance-rate telemetry + dflash-doctor parity check | Backfilled across every catalog entry. `maybeRepairDflashDrafter` deleted (dead — every DFlash pair is now Qwen3↔Qwen3 vocab). |
 | QJL standalone kernel library | `packages/native-plugins/qjl-cpu/` (worktree-agent-a7e72f45ecf16deab) | 1100 LOC, scalar+AVX2+NEON, 100/100 bit-parity vs Python ref. |
@@ -200,27 +200,32 @@ small drafter model. Upstream llama.cpp ships
 `examples/speculative/speculative.cpp` and `common/speculative.cpp` —
 not used today because the shim only exposes single-model decode.
 
-Two viable paths:
+**Status (2026-05-09, Wave-3 agent A):** path (a) landed on the unified
+fork at `milady-ai/llama.cpp @ v0.2.0-milady`. The fork now exposes
+`--spec-type dflash` (alias for the upstream draft-model path),
+`--draft-min-prob` (alias for upstream `--draft-p-min`), and Prometheus
+counters `llamacpp:n_drafted_total` / `llamacpp:n_drafted_accepted_total`
+on `/metrics`. Both `compile-libllama.mjs` (AOSP cross-compile) and
+`build-llama-cpp-dflash.mjs` (host build) pin the same commit; the
+spiritbuun pin is retired. See `unified-fork-strategy.md` §H step 8 for
+the full migration story. Path (b) (in-process shim entrypoints) is
+deferred behind hardware perf measurement of (a).
 
-- **(a) llama-server route.** Cross-compile `llama-server` for
-  android-arm64 musl using the same `compile-libllama.mjs` toolchain,
-  ship it next to `bun`. Have `ElizaAgentService` spawn it with
-  `--draft <drafter.gguf> --model <target.gguf>`. Bun talks to it over
-  loopback OpenAI-shaped HTTP (already what the host-side
-  `dflash-server.ts` does). **Pro:** zero new shim symbols. **Con:**
-  doubles the resident process count and adds cold-start cost. ~2 days.
+Two viable paths (recorded for posterity):
 
-- **(b) Shim entrypoint route.** Add `eliza_llama_create_speculative`,
-  `eliza_llama_decode_speculative` to `llama-shim/eliza_llama_shim.c`
-  that wrap the `common_speculative_*` helpers. Drafter and target
-  share the same llama.cpp process. Bun:ffi-binds the new entrypoints
-  in `aosp-llama-adapter.ts`. **Pro:** single process, lower cold start.
-  **Con:** new wire format work in `eliza_llama_shim.c`, need to expose
-  acceptance-rate telemetry. ~5 days.
+- **(a) llama-server route — LANDED.** Cross-compiled `llama-server`
+  for android-arm64 + x86_64 musl using `compile-libllama.mjs` (now
+  pointing at the unified fork's `v0.2.0-milady` tag). Bun spawns it
+  via `aosp-dflash-adapter.ts` and talks to it over loopback OpenAI
+  HTTP, same shape as the host-side `dflash-server.ts`. Adds one
+  resident process per loaded target; cold-start cost is the price
+  of zero new shim symbols.
 
-Path (a) is cheaper to validate; path (b) is the production answer.
-Doing (a) first to land a perf number, then (b) as the durable wiring,
-is the recommended order.
+- **(b) Shim entrypoint route — deferred.** Would add
+  `eliza_llama_create_speculative` / `eliza_llama_decode_speculative` to
+  `llama-shim/eliza_llama_shim.c` wrapping `common_speculative_*`,
+  letting drafter and target share one llama.cpp process. ~5 days when
+  perf measurement of (a) shows the cold-start cost is worth removing.
 
 ### 3. QJL NEON kernel + GGML K-cache hook
 
