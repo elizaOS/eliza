@@ -131,7 +131,7 @@ export async function runCommandWithTimeout(
   }
   if (mode === "local-safe") {
     throw new Error(
-      "[shell] runCommandWithTimeout cannot route through SandboxManager from this code path; use the runtime-aware shell action.",
+      "[shell] runCommandWithTimeout cannot route through SandboxManager from this code path; use the runtime-aware shell action."
     );
   }
 

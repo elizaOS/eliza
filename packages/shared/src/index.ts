@@ -30,6 +30,7 @@ export * from "./config/env-vars.js";
 export * from "./config/plugin-auto-enable.js";
 export * from "./config/plugin-manifest.js";
 export * from "./config/plugin-ui-spec.js";
+export * from "./config/runtime-mode.js";
 export * from "./config/runtime-overrides.js";
 export * from "./config/schema.js";
 export * from "./config/types.eliza.js";

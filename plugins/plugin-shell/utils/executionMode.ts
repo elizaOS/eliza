@@ -19,7 +19,7 @@ function normalizeMode(value: unknown): RuntimeExecutionMode | null {
 }
 
 export function resolveRuntimeExecutionMode(
-  runtime?: Pick<IAgentRuntime, "getSetting"> | null,
+  runtime?: Pick<IAgentRuntime, "getSetting"> | null
 ): RuntimeExecutionMode {
   const candidates: unknown[] = [
     runtime?.getSetting?.("ELIZA_RUNTIME_MODE"),
@@ -37,20 +37,18 @@ export function resolveRuntimeExecutionMode(
 }
 
 export function resolveLocalExecutionMode(
-  runtime?: Pick<IAgentRuntime, "getSetting"> | null,
+  runtime?: Pick<IAgentRuntime, "getSetting"> | null
 ): LocalExecutionMode {
   const mode = resolveRuntimeExecutionMode(runtime);
   return mode === "local-safe" ? "local-safe" : "local-yolo";
 }
 
 export function shouldUseSandboxExecution(
-  runtime?: Pick<IAgentRuntime, "getSetting"> | null,
+  runtime?: Pick<IAgentRuntime, "getSetting"> | null
 ): boolean {
   return resolveRuntimeExecutionMode(runtime) === "local-safe";
 }
 
-export function isCloudExecutionMode(
-  runtime?: Pick<IAgentRuntime, "getSetting"> | null,
-): boolean {
+export function isCloudExecutionMode(runtime?: Pick<IAgentRuntime, "getSetting"> | null): boolean {
   return resolveRuntimeExecutionMode(runtime) === "cloud";
 }

@@ -18,7 +18,7 @@ on every build. The host-side DFlash server is built from
 `spiritbuun/buun-llama-cpp @ master` (min commit `b9d01582b`). Stock desktop
 runs `node-llama-cpp@3.18.1`, which embeds yet a third llama.cpp build
 without TurboQuant/QJL/PolarQuant. The Metal kernel work in
-`local-inference/kernels/metal/` is staged as opt-in patch hooks in
+`packages/inference/metal/` is staged as opt-in patch hooks in
 `scripts/build-llama-cpp-dflash.mjs` because no fork actually owns the
 .metal sources yet. This is unmaintainable: a feature only ships when
 two unrelated forks happen to carry the same patch series.
@@ -55,7 +55,7 @@ every technique manually.
 | Upstream base | `ggml-org/llama.cpp` master, rebase nightly to a tagged commit |
 | Default branch | `milady/main` |
 | Pin at fork creation | upstream `b8198` (matches the apothic base — verified compatible with TBQ patches and the b8198 sampler/vocab API the AOSP shim binds against; see `compile-libllama.mjs:36-63`) |
-| Per-technique branches | `milady/turboquant-cpu`, `milady/turboquant-cuda`, `milady/turboquant-metal`, `milady/turboquant-vulkan`, `milady/qjl-cpu`, `milady/qjl-metal`, `milady/qjl-cuda`, `milady/polar-cpu`, `milady/polar-metal`, `milady/polar-cuda`, `milady/dflash-server`, `milady/head-quant`, `milady/kv-paging` |
+| Per-technique branches | `milady/turboquant-cpu`, `milady/turboquant-cuda`, `milady/turboquant-metal`, `milady/turboquant-vulkan`, `milady/qjl-cpu`, `milady/qjl-metal`, `milady/qjl-cuda`, `milady/polar-cpu`, `milady/polar-metal`, `milady/polar-cuda`, `milady/dflash-server`, `milady/head-quant`, `milady/kv-paging`, `milady/fused-cpu` (W3-B), `milady/fused-cuda` (W3-D) |
 | Integration branch | `milady/integration` — fast-forwarded from per-technique branches, what every Milady consumer pins against |
 | CI tag | `milady-vYYYY.MM.DD-<short-sha>` — one tag per green CI matrix, what `compile-libllama.mjs` and `build-llama-cpp-dflash.mjs` consume |
 
@@ -98,7 +98,7 @@ unified across both build scripts. Output paths fixed at
 GH-hosted runners cover everything except CUDA, ROCm, Apple Silicon, and
 the Windows CUDA path. Self-hosted runner labels: `cuda-l4`, `rocm-gfx1100`,
 `apple-m3-pro`, `windows-rtx`. Apple Silicon also drives the Metal kernel
-verification (`local-inference/kernels/verify/metal_verify`).
+verification (`packages/inference/verify/metal_verify`).
 
 ## D. Per-technique × per-platform table
 
@@ -109,7 +109,7 @@ kernel landed correctly. Status legend: `✓` shipped on the unified fork,
 
 | Technique | Linux CPU | Linux CUDA | Linux Vulkan | macOS Metal | iOS Metal | Android arm64 musl CPU | Android NDK Vulkan | Owner / source | Validation |
 |---|---|---|---|---|---|---|---|---|---|
-| **TBQ3_0/TBQ4_0** (V-side KV) | ✓ Apothic base | ✓ via spiritbuun cherry-pick | ☐ via `local-inference/kernels/vulkan/turbo*.comp` | ☐ always-on `patchMetalTurbo4` + opt-in `turbo3.metal` | ☐ same | ✓ libggml-base.so symbol verified (porting plan §"Symbols verified") | ☐ NDK build path | W1-A (Apothic), Agent-D (Metal) | `metal_verify .../turbo3.metal kernel_turbo3_dot fixtures/turbo3.json` |
+| **TBQ3_0/TBQ4_0** (V-side KV) | ✓ Apothic base | ✓ via spiritbuun cherry-pick | ☐ via `packages/inference/vulkan/turbo*.comp` | ☐ always-on `patchMetalTurbo4` + opt-in `turbo3.metal` | ☐ same | ✓ libggml-base.so symbol verified (porting plan §"Symbols verified") | ☐ NDK build path | W1-A (Apothic), Agent-D (Metal) | `metal_verify .../turbo3.metal kernel_turbo3_dot fixtures/turbo3.json` |
 | **TBQ3_TCQ** (trellis-coded) | ☐ ref C only | ▲ Viterbi encoder needs warp-shuffle port | ☐ `vulkan/turbo3_tcq.comp` (decode-only) | ☐ `metal/turbo3_tcq.metal` (decode-only) | ☐ same | ☐ ref C → NEON encoder | ☐ | W1-D | `metal_verify ... turbo3_tcq fixtures/turbo3_tcq.json` |
 | **QJL1_256** (K-side KV) | ☐ vendored patch series `qjl/0001..0004` (`block_qjl1_256` + `GGML_OP_ATTN_SCORE_QJL`); CPU AVX2/NEON exists in `packages/native-plugins/qjl-cpu/` | ☐ port from `packages/training/scripts/quantization/qjl/csrc/` | ☐ port to `.comp` | ☐ `metal/qjl.metal` exists (opt-in via `ELIZA_DFLASH_PATCH_METAL_QJL=1`) | ☐ same | ☐ NEON path validated 100/100 host parity, needs arm64 hardware | ☐ | W1-A (CPU), Agent-D (Metal) | `qjl_bench --parity` (host) + `metal_verify ... qjl fixtures/qjl.json` |
 | **Q4_POLAR** (weight-side) | ☐ vendored patch series `polarquant/0001..0004` (scalar ref); NEON/AVX2 = next-session work | ☐ port from `polarquant/csrc/` (training-side, codes-only) | ☐ port to `.comp` | ☐ `metal/polar.metal` exists (opt-in via `ELIZA_DFLASH_PATCH_METAL_POLAR=1`) | ☐ same | ☐ scalar landed, NEON/AVX2 next session | ☐ | W1-B, Agent-D | `polar_roundtrip` + `polar_dot` + `metal_verify ... polar fixtures/polar.json` + Wikitext-2 PPL Δ ≤ +0.05 |
@@ -118,6 +118,8 @@ kernel landed correctly. Status legend: `✓` shipped on the unified fork,
 | **KV paging / split-by-layer offload** (recommended new addition — see §E) | ☐ extend slot-save-path + `n_keep` to a per-layer CPU↔disk pager | n/a | n/a | n/a | n/a | ☐ disk-paged KV is the >128k context unlock on phones | n/a | new branch `milady/kv-paging` | 256k context PPL on a 1B model with no OOM and tok/s ≥ baseline + 20% |
 | **BitNet b1.58** (recommended add — see §E) | ☐ port `bitnet.cpp` ternary kernels onto our base; ggml type `TL1`/`TL2` | ☐ CUDA via bitnet.cpp's `bitnet_kernels.cu` | ☐ Vulkan TBD | ☐ MSL TBD | ☐ same | ☐ NEON ternary unpack | ☐ | new branch `milady/bitnet` | bitnet-b1.58-2B-4T inference matches HF reference |
 | **MXFP4 / NVFP4** (recommended add — see §E) | ✓ already in upstream master (Apr 2026); rebase free | ✓ Blackwell tensor-core path also upstream | ☐ Vulkan TBD | ☐ Apple Silicon FP4 not real (memory savings only) | ☐ same | ✓ memory savings on phones | ☐ | upstream rebase | upstream `llama-bench` |
+| **Fused QJL+TBQ attention** (W3-B; CPU-only) | ✓ scalar + AVX2 + NEON; `GGML_OP_FUSED_ATTN_QJL_TBQ` | ☐ W3-D CUDA fused attn | ☐ Vulkan TBD | ☐ Metal TBD | ☐ same | ✓ NEON path compiled (parity validated on x86; arm64 pending hardware) | ☐ | W3-B (`milady/fused-cpu`) | `tests/test-fused-kernels.cpp` (parity ≤ 5e-3 over 100 random contexts) + `tests/bench-fused-kernels.cpp` (target ≥1.5x AVX2 / ≥1.3x NEON; observed 4.5x on AVX2 at n_kv=512) |
+| **Fused Q4_POLAR x Q8_0 dot** (W3-B; CPU-only) | ✓ scalar + AVX2 + NEON; folded into `ggml_vec_dot_q4_polar_q8_0_fused` | ☐ port to CUDA | ☐ Vulkan TBD | ☐ Metal TBD | ☐ same | ✓ NEON path compiled | ☐ | W3-B (`milady/fused-cpu`) | bit-exact (0.00e+00 max-rel-err) vs unfused over 100 random blocks |
 | Hexagon HVX / NNAPI / EdgeTPU / WebGPU | ✗ explicitly out of scope per current porting plan §"Out of scope (explicit)" | | | | | | | n/a | n/a |
 
 ## E. Capabilities not yet bundled but should be — ranked
@@ -258,7 +260,7 @@ This proposal collapses both into a single workflow against
 `milady/main`. Self-hosted-runner label conventions follow Anthropic's
 internal usage; if no Apple Silicon runner is available, Metal kernels
 get hardware-validated only on developer machines (and the
-`local-inference/kernels/README.md` matrix row stays "NEEDS HARDWARE"
+`packages/inference/README.md` matrix row stays "NEEDS HARDWARE"
 until that's fixed).
 
 For PR gating: `fork-build-host` + `fork-build-cross` + `kernel-verify-gpu`
@@ -285,7 +287,7 @@ unified fork. Each step is a single agent session unless noted.
    `packages/native-plugins/qjl-cpu/` source as the kernel directly under
    `ggml/src/ggml-cpu/qjl/` instead of vendoring a separate CMake target.
 5. **Apply Polar patch series to `milady/polar-cpu`**, same shape. Then
-   add the `local-inference/kernels/metal/{qjl,polar}.metal` files
+   add the `packages/inference/metal/{qjl,polar}.metal` files
    directly to `ggml/src/ggml-metal/` on `milady/qjl-metal` and
    `milady/polar-metal`. Drop the `ELIZA_DFLASH_PATCH_METAL_*` opt-in
    gates once `metal_verify` reports 8/8 PASS — they become always-on.
@@ -341,7 +343,7 @@ script edit.
   paging branch).
 - `withcatai/node-llama-cpp` v3.18.1 release notes (`experimentalKvCache*`
   options surface, stock `GgmlType` enum).
-- `local-inference/kernels/README.md` (current Metal/Vulkan port status,
+- `packages/inference/README.md` (current Metal/Vulkan port status,
   `metal_verify`/`vulkan_verify` harness, fixture protocol).
 - `docs/porting/dflash-drafter-strategy.md` (matched-vocab drafter
   decision; SmolLM2-360M → Qwen3-0.6B).

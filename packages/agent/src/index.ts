@@ -144,7 +144,8 @@ export {
 } from "./runtime/plugin-resolver.ts";
 export * from "./runtime/plugin-types.ts";
 export * from "./runtime/release-plugin-policy.ts";
-export * from "./runtime/restart.ts";
+// `./runtime/restart.ts` was removed during a prior cleanup; the export
+// reference is dropped here so the package builds cleanly.
 export * from "./runtime/trajectory-internals.ts";
 export * from "./runtime/trajectory-persistence.ts";
 export * from "./runtime/trajectory-query.ts";
@@ -166,22 +167,12 @@ export {
   resolveJsRuntimeBridge,
 } from "./services/js-runtime-bridge.ts";
 export * from "./services/plugin-installer";
-export {
-  type ClusterMemoriesQuery,
-  type ClusterSearchQuery,
-  createNativeRelationshipsGraphService,
-  getMemoriesForCluster,
-  type RelationshipsGraphEdge,
-  type RelationshipsGraphQuery,
-  type RelationshipsGraphService,
-  type RelationshipsGraphSnapshot,
-  type RelationshipsGraphStats,
-  type RelationshipsPersonDetail,
-  type RelationshipsPersonFact,
-  type RelationshipsPersonSummary,
-  resolveRelationshipsGraphService,
-  searchMemoriesForCluster,
-} from "./services/relationships-graph.ts";
+// Only `resolveRelationshipsGraphService` is actually defined in the
+// relationships-graph module — the other exports referenced here in a
+// prior version of this barrel were removed during the relationships
+// service refactor. The shape types are now consumed via the UI's
+// `client-types-relationships` module, so dropping them here is safe.
+export { resolveRelationshipsGraphService } from "./services/relationships-graph.ts";
 // Re-export the shell-execution router by name to keep a stable surface for
 // callers that consume the chokepoint directly without unpacking the wider
 // services barrel.
