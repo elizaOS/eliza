@@ -1736,8 +1736,9 @@ function buildV5PlannerActionSurface(params: {
 						rank: idx,
 						rrfScore: (r as unknown as { rrfScore?: number }).rrfScore,
 						matchedBy: (r as unknown as { matchedBy?: string[] }).matchedBy,
-						stageScores: (r as unknown as { stageScores?: Record<string, number> })
-							.stageScores,
+						stageScores: (
+							r as unknown as { stageScores?: Record<string, number> }
+						).stageScores,
 					})),
 					tier: {
 						tierA: tieredSurface.sortedTierAParentNames,

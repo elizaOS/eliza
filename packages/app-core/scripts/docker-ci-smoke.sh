@@ -290,6 +290,17 @@ for plugin in plugin-sql plugin-video plugin-agent-skills plugin-pdf; do
   fi
 done
 
+log "Building all @elizaos/app workspace deps (turbo)"
+# apps/app's build:web (Vite) resolves every workspace package via its
+# `exports` map, which points at `dist/`. Without prior builds those
+# entry points don't exist and Vite errors with
+#   "Failed to resolve entry for package \"@elizaos/shared\""
+#   "Cannot find module '@elizaos/ui/dist/config/app-config.js'"
+# build:docker-dist only emits the agent package, so we run the full
+# turbo build of @elizaos/app's dep graph (build:core covers a subset
+# but misses @elizaos/ui and the @elizaos/app-* surface packages).
+"$BUN_BIN" run build:client
+
 log "Building agent workspace"
 pushd "$AGENT_DIR" >/dev/null
 "$BUN_BIN" run build:docker-dist
