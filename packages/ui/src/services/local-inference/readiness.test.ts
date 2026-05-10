@@ -59,8 +59,8 @@ describe("local inference text readiness", () => {
   it("marks a downloaded active assignment ready", () => {
     const installed: InstalledModel[] = [
       {
-        id: "llama-3.2-3b",
-        displayName: "Llama 3.2 3B Instruct",
+        id: "eliza-1-2b",
+        displayName: "Eliza-1 2B (Qwen3.5)",
         path: "/tmp/llama.gguf",
         sizeBytes: 2048,
         installedAt: new Date().toISOString(),
@@ -71,11 +71,11 @@ describe("local inference text readiness", () => {
 
     const readiness = buildTextGenerationReadiness({
       assignments: {
-        TEXT_SMALL: "llama-3.2-3b",
+        TEXT_SMALL: "eliza-1-2b",
       },
       installed,
       active: {
-        modelId: "llama-3.2-3b",
+        modelId: "eliza-1-2b",
         loadedAt: new Date().toISOString(),
         status: "ready",
       },
