@@ -73,6 +73,31 @@ export interface NetPermissions {
   outbound?: string[];
 }
 
+/**
+ * Source classification computed by the loader at register time. NOT
+ * declared by the app — the loader assigns this based on where the
+ * directory came from (in-tree first-party dir vs. external load).
+ */
+export type AppTrust = "first-party" | "external";
+
+/**
+ * Merged view of declared + recognised + granted permission state for one
+ * app. Returned by the registry service and the
+ * `GET/PUT /api/apps/permissions/:slug` HTTP routes.
+ */
+export interface AppPermissionsView {
+  slug: string;
+  trust: AppTrust;
+  /** Raw `elizaos.app.permissions` block from the app's package.json. */
+  requestedPermissions: Record<string, unknown> | null;
+  /** Intersection of declared namespaces with what this Milady recognises. */
+  recognisedNamespaces: RecognisedPermissionNamespace[];
+  /** Subset of `recognisedNamespaces` the user / loader has granted. */
+  grantedNamespaces: RecognisedPermissionNamespace[];
+  /** ISO timestamp of the first grant, or null if never granted. */
+  grantedAt: string | null;
+}
+
 export interface AppPermissionsManifest {
   /**
    * Raw declared object as it appears under `elizaos.app.permissions`,
