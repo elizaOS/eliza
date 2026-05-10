@@ -306,4 +306,58 @@ export const desktopAction: Action = {
       undefined,
     );
   },
+
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Read the file /tmp/notes.md.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Reading the file.",
+          actions: ["DESKTOP"],
+          thought:
+            "Local filesystem read maps to DESKTOP subaction=file with action=read; the computer-use service handles the path.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "List the open windows on my desktop.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Listing windows.",
+          actions: ["DESKTOP"],
+          thought:
+            "Window inventory routes to DESKTOP subaction=window with action=list.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Run `git status` in the repo terminal session.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Running the command.",
+          actions: ["DESKTOP"],
+          thought:
+            "Shell execution belongs on DESKTOP subaction=terminal with action=execute and command='git status'.",
+        },
+      },
+    ],
+  ],
 };

@@ -38,7 +38,12 @@ vi.mock("../../access.js", () => ({
   getSelfControlAccess: vi.fn(async () => ({ allowed: true, role: "OWNER" })),
 }));
 
-import { websiteBlockAction } from "../../../actions/website-block.js";
+// Audit B Defer #1 folded `WEBSITE_BLOCK` into the `BLOCK` umbrella; the
+// underlying implementation is exported as `websiteBlockActionImpl` so this
+// test continues to exercise the website-blocker reader/writer dispatch
+// directly. The legacy `websiteBlockAction` symbol is now an alias for the
+// umbrella (`blockAction`).
+import { websiteBlockActionImpl as websiteBlockAction } from "../../../actions/website-block.js";
 import * as websiteBlockerEngine from "../../engine.js";
 import { BlockRuleReader, BlockRuleWriter } from "../block-rule-service.js";
 import {

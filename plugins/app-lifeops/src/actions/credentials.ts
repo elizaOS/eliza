@@ -1,0 +1,235 @@
+/**
+ * CREDENTIALS umbrella — Audit B Defer #5.
+ *
+ * Folds the previous standalone `AUTOFILL` (browser-extension form fill, 3
+ * subactions) and `PASSWORD_MANAGER` (1Password / ProtonPass CLI clipboard
+ * inject, 4 subactions) actions into a single umbrella keyed only by the
+ * subaction name (no `target` field — the verbs are unique across the union).
+ *
+ * Subaction enum (union of both legacy surfaces):
+ *   fill | whitelist_add | whitelist_list      → AUTOFILL backend
+ *   search | list | inject_username | inject_password → PASSWORD_MANAGER backend
+ */
+import type {
+  Action,
+  ActionExample,
+  ActionResult,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
+import { autofillActionImpl } from "./autofill.js";
+import { passwordManagerActionImpl } from "./password-manager.js";
+
+const ACTION_NAME = "CREDENTIALS";
+
+type AutofillSubaction = "fill" | "whitelist_add" | "whitelist_list";
+type PasswordManagerSubaction =
+  | "search"
+  | "list"
+  | "inject_username"
+  | "inject_password";
+type CredentialsSubaction = AutofillSubaction | PasswordManagerSubaction;
+
+const AUTOFILL_SUBACTIONS: ReadonlySet<string> = new Set([
+  "fill",
+  "whitelist_add",
+  "whitelist_list",
+]);
+
+const ALL_SUBACTIONS: readonly CredentialsSubaction[] = [
+  "fill",
+  "whitelist_add",
+  "whitelist_list",
+  "search",
+  "list",
+  "inject_username",
+  "inject_password",
+];
+
+function readPlannerParams(
+  options: HandlerOptions | undefined,
+): Record<string, unknown> {
+  const raw = (options as Record<string, unknown> | undefined)?.parameters;
+  return raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+}
+
+const examples: ActionExample[][] = [
+  [
+    {
+      name: "{{name1}}",
+      content: { text: "Can you log me into github? I'm on the sign-in page." },
+    },
+    {
+      name: "{{agentName}}",
+      content: {
+        text: "Requested password autofill on github.com via the browser extension.",
+        actions: [ACTION_NAME],
+      },
+    },
+  ],
+  [
+    {
+      name: "{{name1}}",
+      content: { text: "Yes, trust notion.so for autofill going forward." },
+    },
+    {
+      name: "{{agentName}}",
+      content: {
+        text: "Added notion.so to the autofill whitelist.",
+        actions: [ACTION_NAME],
+      },
+    },
+  ],
+  [
+    { name: "{{name1}}", content: { text: "Find my GitHub login" } },
+    {
+      name: "{{agentName}}",
+      content: {
+        text: "Searching your password manager for GitHub.",
+        actions: [ACTION_NAME],
+      },
+    },
+  ],
+  [
+    {
+      name: "{{name1}}",
+      content: { text: "Copy my AWS password to clipboard" },
+    },
+    {
+      name: "{{agentName}}",
+      content: {
+        text: "Copied the AWS password to your clipboard (clears in 30s).",
+        actions: [ACTION_NAME],
+      },
+    },
+  ],
+];
+
+export const credentialsAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
+  name: ACTION_NAME,
+  similes: [
+    // Legacy umbrella names — keep so cached planner outputs and the
+    // `lifeops` provider's route hints keep resolving.
+    "AUTOFILL",
+    "PASSWORD_MANAGER",
+    // Legacy similes from the two folded actions.
+    "FILL_PASSWORD",
+    "TRUST_SITE",
+    "SHOW_AUTOFILL_DOMAINS",
+    "ONEPASSWORD",
+    "PROTONPASS",
+    "CREDENTIAL_LOOKUP",
+    "COPY_CREDENTIAL",
+    "SHOW_LOGINS",
+  ],
+  description:
+    "Owner-only. Manage credentials across browser autofill (LifeOps extension) and the OS password manager (1Password / ProtonPass). " +
+    "Subactions (autofill side): " +
+    "fill (one-field autofill on a whitelisted site), " +
+    "whitelist_add (add a domain to the autofill allowlist; requires confirmed:true), " +
+    "whitelist_list (list the effective allowlist). " +
+    "Subactions (password manager side): " +
+    "search (match items by query), " +
+    "list (return a bounded number of items), " +
+    "inject_username (copy username to OS clipboard; requires confirmed:true), " +
+    "inject_password (copy password to OS clipboard; requires confirmed:true). " +
+    "Plaintext credentials NEVER appear in chat — only clipboard.",
+  descriptionCompressed:
+    "credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitelist_list — search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+  routingHint:
+    "credential search/list/copy/inject -> CREDENTIALS subaction=search|list|inject_*; on-page form fill -> CREDENTIALS subaction=fill",
+  contexts: ["browser", "secrets", "settings", "automation"],
+  roleGate: { minRole: "OWNER" },
+  suppressPostActionContinuation: true,
+
+  validate: async () => true,
+
+  parameters: [
+    {
+      name: "subaction",
+      description:
+        "fill | whitelist_add | whitelist_list (autofill) | search | list | inject_username | inject_password (password manager).",
+      required: true,
+      schema: { type: "string" as const, enum: [...ALL_SUBACTIONS] },
+    },
+    // Autofill-side params.
+    {
+      name: "field",
+      description:
+        "(subaction=fill) One of email, password, name, phone, custom. Tells the password manager which field to resolve.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "domain",
+      description:
+        "(subaction=fill | whitelist_add) Domain to act on. For fill, used as the tab URL when url is omitted.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "url",
+      description:
+        "(subaction=fill) Optional explicit tab URL (used for whitelist enforcement).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    // Password-manager-side params.
+    {
+      name: "intent",
+      description: "(subaction=search) Natural-language description of the lookup intent.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "query",
+      description:
+        "(subaction=search) Search string matched against item title, URL, username, and tags.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "itemId",
+      description:
+        "(subaction=inject_username | inject_password) Password manager item id.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "limit",
+      description: "(subaction=list) Optional item limit (default 20).",
+      required: false,
+      schema: { type: "number" as const },
+    },
+    {
+      name: "confirmed",
+      description:
+        "Required true for whitelist_add and for either inject_* subaction. Ensures the owner approved the change.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+  ],
+
+  examples,
+
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State | undefined,
+    options: HandlerOptions | undefined,
+  ): Promise<ActionResult> => {
+    const params = readPlannerParams(options);
+    const subactionRaw = params.subaction;
+    const subaction =
+      typeof subactionRaw === "string" ? subactionRaw.trim().toLowerCase() : "";
+
+    if (AUTOFILL_SUBACTIONS.has(subaction)) {
+      return autofillActionImpl.handler(runtime, message, state, options);
+    }
+    return passwordManagerActionImpl.handler(runtime, message, state, options);
+  },
+};

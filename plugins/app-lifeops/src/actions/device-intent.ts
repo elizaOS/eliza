@@ -196,4 +196,42 @@ export const deviceIntentAction: Action & {
       },
     };
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Send a reminder to my phone titled 'Take meds' saying 'Time for evening meds'.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Broadcast "Take meds" to mobile.',
+          actions: ["DEVICE_INTENT"],
+          thought:
+            "Owner asked for a phone-targeted notification; DEVICE_INTENT subaction=broadcast with target=mobile, title and body extracted from quotes.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Broadcast a routine reminder to all my devices: stretch break.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Broadcast "Device reminder" to all.',
+          actions: ["DEVICE_INTENT"],
+          thought:
+            "Cross-device routine maps to DEVICE_INTENT subaction=broadcast with target=all and kind=routine_reminder.",
+        },
+      },
+    ],
+  ],
 };

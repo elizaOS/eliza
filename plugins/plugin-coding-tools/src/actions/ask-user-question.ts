@@ -222,4 +222,36 @@ export const askUserQuestionAction: Action = {
       requiresUserInteraction: true,
     });
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Set up the deploy config.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Which environment should I deploy to (staging/production)?",
+          actions: ["ASK_USER_QUESTION"],
+          thought:
+            "Required input is missing; ASK_USER_QUESTION pauses execution and surfaces a clarifying question to the user.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Migrate the schema.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Which database should I migrate against, and do you want a dry run first?",
+          actions: ["ASK_USER_QUESTION"],
+          thought:
+            "Two ambiguities at once; bundle into a single ASK_USER_QUESTION rather than dispatching twice.",
+        },
+      },
+    ],
+  ],
 };

@@ -140,4 +140,36 @@ export const createPlanAction: Action = {
 			});
 		}
 	},
+	examples: [
+		[
+			{
+				name: "{{name1}}",
+				content: { text: "Plan a project to migrate our auth service.", source: "chat" },
+			},
+			{
+				name: "{{agentName}}",
+				content: {
+					text: "Created a multi-phase plan.",
+					actions: ["CREATE_PLAN"],
+					thought:
+						"Open-ended migration request maps to CREATE_PLAN with goal text; the planner returns phases and tasks.",
+				},
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: { text: "Build me a 3-phase plan for the website redesign.", source: "chat" },
+			},
+			{
+				name: "{{agentName}}",
+				content: {
+					text: "Created a 3-phase plan.",
+					actions: ["CREATE_PLAN"],
+					thought:
+						"Explicit phase count maps to CREATE_PLAN with phaseCount=3 alongside the goal.",
+				},
+			},
+		],
+	],
 };

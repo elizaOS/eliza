@@ -233,4 +233,39 @@ export const bashAction: Action = {
       signal,
     });
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Run `git status` in the current repo.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "$ git status\n[exit 0]",
+          actions: ["BASH"],
+          thought:
+            "Plain shell command request maps to BASH with command='git status' in the session cwd.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Build the project: run `bun run build` with a 5-minute timeout.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "$ bun run build\n[exit 0]",
+          actions: ["BASH"],
+          thought:
+            "Long-running build maps to BASH with command and timeout=300000 to fit the 5-minute window.",
+        },
+      },
+    ],
+  ],
 };

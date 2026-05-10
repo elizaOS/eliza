@@ -172,4 +172,36 @@ export const enterWorktreeAction: Action = {
       message: text,
     });
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Enter a worktree on the feature/login branch.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Created and entered worktree on feature/login.",
+          actions: ["ENTER_WORKTREE"],
+          thought:
+            "Branch-scoped sandbox work maps to ENTER_WORKTREE with branch=feature/login; the session cwd is pushed.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Spin up a worktree for the upgrade work, branch upgrade-deps.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Entered worktree on upgrade-deps.",
+          actions: ["ENTER_WORKTREE"],
+          thought:
+            "Same flow with explicit branch name; ENTER_WORKTREE creates the worktree if it doesn't exist and switches the session cwd.",
+        },
+      },
+    ],
+  ],
 };

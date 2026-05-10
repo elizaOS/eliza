@@ -35,7 +35,14 @@ export const getSkillDetailsAction = {
 	contexts: ["knowledge", "automation", "settings"],
 	contextGate: { anyOf: ["knowledge", "automation", "settings"] },
 	roleGate: { minRole: "USER" },
-	similes: ["SKILL_INFO", "SKILL_DETAILS"],
+	similes: [
+		"SKILL_INFO",
+		"SKILL_DETAILS",
+		"DESCRIBE_SKILL",
+		"GET_SKILL_DETAILS",
+		"SHOW_SKILL_INFO",
+		"SKILL_README",
+	],
 	description:
 		"Get detailed information about a specific skill including version, owner, and stats.",
 	descriptionCompressed: "Get skill version, owner, stats.",

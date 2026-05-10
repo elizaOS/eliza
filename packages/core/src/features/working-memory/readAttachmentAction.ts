@@ -367,7 +367,41 @@ export const readAttachmentAction: Action = {
 			schema: { type: "boolean" as const, default: false },
 		},
 	],
-	examples: [],
+	examples: [
+		[
+			{
+				name: "{{name1}}",
+				content: { text: "What does the PDF I just sent you say?", source: "chat" },
+			},
+			{
+				name: "{{agentName}}",
+				content: {
+					text: "Reading the attachment.",
+					actions: ["READ_ATTACHMENT"],
+					thought:
+						"User refers to a recently-attached file; READ_ATTACHMENT auto-selects the latest attachment when no id is given.",
+				},
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Open the link I shared above and summarise it.",
+					source: "chat",
+				},
+			},
+			{
+				name: "{{agentName}}",
+				content: {
+					text: "Reading the page.",
+					actions: ["READ_ATTACHMENT"],
+					thought:
+						"Link previews are stored as attachments; READ_ATTACHMENT pulls the extracted text and answers the user's summary request.",
+				},
+			},
+		],
+	],
 };
 
 export default readAttachmentAction;
