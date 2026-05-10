@@ -57,6 +57,22 @@ export {
   registerBuiltinTelemetryFamilies,
   registerFamilyRegistry,
 } from "./family-registry.js";
+export {
+  APP_LIFEOPS_WORKFLOW_STEP_CONTRIBUTIONS,
+  registerDefaultWorkflowStepPack,
+} from "./workflow-step-default-pack.js";
+export {
+  __resetWorkflowStepRegistryForTests,
+  type AnyWorkflowStepContribution,
+  createWorkflowStepRegistry,
+  getWorkflowStepRegistry,
+  registerWorkflowStepRegistry,
+  UnknownWorkflowStepError,
+  type WorkflowStepContribution,
+  type WorkflowStepExecuteArgs,
+  type WorkflowStepExecuteContext,
+  type WorkflowStepRegistry,
+} from "./workflow-step-registry.js";
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { appBlockerContribution } from "./app-blocker-contribution.js";
