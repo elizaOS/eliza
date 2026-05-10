@@ -17,15 +17,15 @@
  */
 
 import type { Action, IAgentRuntime, Logger } from "@elizaos/core";
+import {
+  PARENT_AGENT_BROKER_SLUG,
+  runParentAgentBroker,
+} from "./parent-agent-broker.js";
 import type { PTYService } from "./pty-service.js";
 import {
   LIFEOPS_CONTEXT_BROKER_SLUG,
   runLifeOpsContextBroker,
 } from "./skill-lifeops-context-broker.js";
-import {
-  PARENT_AGENT_BROKER_SLUG,
-  runParentAgentBroker,
-} from "./parent-agent-broker.js";
 
 const LOG_PREFIX = "[SkillCallback]";
 /**
