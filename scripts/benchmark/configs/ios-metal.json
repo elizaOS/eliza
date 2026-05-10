@@ -1,7 +1,7 @@
 {
   "$schema": "../profile-config.schema.json",
   "description": "iOS / iPadOS Metal profiling matrix. Targets the @elizaos/llama-cpp-capacitor build once the dylib lands (porting plan task #21). Excludes QJL until the MSL kernel is shipped. Includes DFlash because spec-decode is host-side and ports cleanly to Metal.",
-  "models": ["llama-3.2-1b", "bonsai-8b-1bit"],
+  "models": ["qwen3.5-4b-dflash", "bonsai-8b-1bit"],
   "kvCacheConfigs": [
     { "name": "baseline-fp16", "k": "f16", "v": "f16" },
     { "name": "tbq4-tbq3", "k": "tbq4_0", "v": "tbq3_0" }

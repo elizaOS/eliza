@@ -444,7 +444,10 @@ export const workflowAction: Action = {
     [
       {
         name: '{{name1}}',
-        content: { text: 'Create a workflow that posts daily summaries to Slack at 5pm.', source: 'chat' },
+        content: {
+          text: 'Create a workflow that posts daily summaries to Slack at 5pm.',
+          source: 'chat',
+        },
       },
       {
         name: '{{agentName}}',

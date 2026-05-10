@@ -75,13 +75,14 @@ describe("local inference recommendations", () => {
     expect(recommended.TEXT_LARGE.model?.id).toBe("qwen3.5-9b-dflash");
   });
 
-  it("downshifts iOS below each mobile minspec tier", () => {
+  it("falls back to the smallest TBQ/DFlash entry on minimal mobile", () => {
+    // The qwen3.5-4b-dflash pair (target 2.5 GB + drafter 0.51 GB) needs
+    // ~5 GB of RAM headroom; below that the ladder collapses to the
+    // eliza-1-2b placeholder. eliza-1-2b's minRamGb is 4 GB, so the
+    // boundary case below that produces no fitting model.
     const cases: Array<[number, string | null]> = [
-      [4.9, "llama-3.2-3b"],
-      [3.9, "smollm2-1.7b"],
-      [2.9, "llama-3.2-1b"],
-      [1.9, "smollm2-360m"],
-      [0.9, null],
+      [4.9, "eliza-1-2b"],
+      [3.5, null],
     ];
 
     for (const [totalRamGb, expectedId] of cases) {
@@ -155,7 +156,8 @@ describe("local inference recommendations", () => {
     });
 
     // qwen3.x DFlash entries declare requiresKernel: ["dflash"]; with the
-    // stock binary they must drop out of the ladder.
+    // stock binary they must drop out of the ladder. The eliza-1
+    // placeholders have no DFlash block yet, so they are still eligible.
     expect(recommended.TEXT_SMALL.model?.id).not.toMatch(/dflash/);
     expect(recommended.TEXT_LARGE.model?.id).not.toMatch(/dflash/);
   });
@@ -174,12 +176,10 @@ describe("local inference recommendations", () => {
   });
 
   it("prefers long-context entries within the ladder on hosts with >= 16 GB RAM/VRAM", () => {
-    // 64 GB workstation with 24 GB VRAM — long-context (>= 64k) entries
-    // should sort to the front of the ladder before equal-rank short-
-    // context entries. The Linux GPU TEXT_LARGE ladder leads with
-    // qwen3.6-27b-dflash (131072), so this test would also pass without
-    // the bump; assert the alternatives ordering instead so we can
-    // verify the long-context preference applies.
+    // Every kept entry in the catalog has a 131072 ceiling, so this test
+    // becomes a smoke test for the ranking helper rather than a tight
+    // ordering check. Assert that the top alternative still has a long
+    // contextLength once we land on a workstation-class host.
     const probe = hardware({
       totalRamGb: 64,
       freeRamGb: 48,
@@ -187,15 +187,8 @@ describe("local inference recommendations", () => {
       source: "node-llama-cpp",
     });
     const recommended = selectRecommendedModels(probe);
-    const altIds = recommended.TEXT_LARGE.alternatives.map((m) => m.id);
-    // qwen2.5-coder-14b is short-context (32k native ceiling for the
-    // base); it must NOT outrank the qwen3.x DFlash entries that
-    // declare contextLength=131072.
-    const longCoderIdx = altIds.indexOf("qwen3.6-27b-dflash");
-    const shortCoderIdx = altIds.indexOf("qwen2.5-coder-14b");
-    if (longCoderIdx >= 0 && shortCoderIdx >= 0) {
-      expect(longCoderIdx).toBeLessThan(shortCoderIdx);
-    }
+    const top = recommended.TEXT_LARGE.alternatives[0];
+    expect(top?.contextLength ?? 0).toBeGreaterThanOrEqual(65536);
   });
 
   it("does NOT prefer long-context entries on memory-constrained hosts", () => {

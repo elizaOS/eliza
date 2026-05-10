@@ -9,9 +9,9 @@
 import { registerPlugin } from "@capacitor/core";
 
 import {
+  type JsValue as AgentJsValue,
   type JsRuntimeBridge,
   type JsRuntimeKind,
-  type JsValue as AgentJsValue,
   registerJsRuntimeFactory,
 } from "@elizaos/agent";
 
@@ -105,7 +105,14 @@ class CapacitorQuickJsBridge implements JsRuntimeBridge {
 registerJsRuntimeFactory({
   kind: "quickjs-android",
   async create() {
-    const cap = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string } }).Capacitor;
+    const cap = (
+      globalThis as {
+        Capacitor?: {
+          isNativePlatform?: () => boolean;
+          getPlatform?: () => string;
+        };
+      }
+    ).Capacitor;
     if (!cap?.isNativePlatform?.() || cap.getPlatform?.() !== "android") {
       return null;
     }
@@ -116,13 +123,17 @@ registerJsRuntimeFactory({
 registerJsRuntimeFactory({
   kind: "quickjs-ios-fallback",
   async create() {
-    const cap = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string } }).Capacitor;
+    const cap = (
+      globalThis as {
+        Capacitor?: {
+          isNativePlatform?: () => boolean;
+          getPlatform?: () => string;
+        };
+      }
+    ).Capacitor;
     if (!cap?.isNativePlatform?.() || cap.getPlatform?.() !== "ios") {
       return null;
     }
-    return new CapacitorQuickJsBridge(
-      CapacitorQuickJs,
-      "quickjs-ios-fallback",
-    );
+    return new CapacitorQuickJsBridge(CapacitorQuickJs, "quickjs-ios-fallback");
   },
 });

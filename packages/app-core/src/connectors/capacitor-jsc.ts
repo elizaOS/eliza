@@ -9,8 +9,8 @@
 import { registerPlugin } from "@capacitor/core";
 
 import {
-  type JsRuntimeBridge,
   type JsValue as AgentJsValue,
+  type JsRuntimeBridge,
   registerJsRuntimeFactory,
 } from "@elizaos/agent";
 
@@ -53,9 +53,7 @@ export interface CapacitorJscPlugin {
    * marshalled into the {@link JsValue} wire format. Reject the call with
    * `Error("timeout")` when `timeoutMs` elapses.
    */
-  evaluate(
-    options: CapacitorJscEvaluateOptions,
-  ): Promise<{ value: JsValue }>;
+  evaluate(options: CapacitorJscEvaluateOptions): Promise<{ value: JsValue }>;
 
   /**
    * Load and evaluate the module at `absolutePath` (which must already exist
@@ -100,7 +98,14 @@ class CapacitorJscBridge implements JsRuntimeBridge {
 registerJsRuntimeFactory({
   kind: "jsc-ios",
   async create() {
-    const cap = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string } }).Capacitor;
+    const cap = (
+      globalThis as {
+        Capacitor?: {
+          isNativePlatform?: () => boolean;
+          getPlatform?: () => string;
+        };
+      }
+    ).Capacitor;
     if (!cap?.isNativePlatform?.() || cap.getPlatform?.() !== "ios") {
       return null;
     }

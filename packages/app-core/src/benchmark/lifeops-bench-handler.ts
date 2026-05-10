@@ -89,10 +89,7 @@ export interface LifeOpsBenchHandlerOptions {
   /** Provided by the bench server: invokes Eliza's planner against `userText`. */
   invokePlanner: LifeOpsPlannerInvocation;
   /** Optional auth wrapper — same shape as the main bench server's checkAuth. */
-  checkAuth?: (
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-  ) => boolean;
+  checkAuth?: (req: http.IncomingMessage, res: http.ServerResponse) => boolean;
   /** Maximum body size in bytes for POST routes. */
   maxBodyBytes?: number;
 }
@@ -151,7 +148,11 @@ export class LifeOpsBenchHandler {
     // Path was under our prefix but no route matched — return 404 ourselves
     // so the request doesn't fall through to the bench server's catch-all.
     res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: `No lifeops_bench route for ${req.method} ${pathname}` }));
+    res.end(
+      JSON.stringify({
+        error: `No lifeops_bench route for ${req.method} ${pathname}`,
+      }),
+    );
     return true;
   }
 
@@ -237,7 +238,11 @@ export class LifeOpsBenchHandler {
 
     const session = this.sessions.get(taskId);
     if (!session) {
-      writeError(res, 404, `No lifeops_bench session for task_id=${taskId}; call /reset first`);
+      writeError(
+        res,
+        404,
+        `No lifeops_bench session for task_id=${taskId}; call /reset first`,
+      );
       return;
     }
 

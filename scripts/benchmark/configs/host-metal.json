@@ -1,7 +1,7 @@
 {
   "$schema": "../profile-config.schema.json",
   "description": "Host Metal profiling matrix (macOS / Apple Silicon). Excludes the QJL kvCache leg until the MSL kernel lands (porting plan task #21). DFlash works on Metal once the shim is wired (task #22) — kept in the matrix so reports document the gap.",
-  "models": ["llama-3.2-1b", "bonsai-8b-1bit"],
+  "models": ["qwen3.5-4b-dflash", "bonsai-8b-1bit"],
   "kvCacheConfigs": [
     { "name": "baseline-fp16", "k": "f16", "v": "f16" },
     { "name": "tbq4-tbq3", "k": "tbq4_0", "v": "tbq3_0" }

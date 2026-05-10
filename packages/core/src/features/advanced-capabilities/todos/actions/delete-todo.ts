@@ -134,7 +134,10 @@ export const deleteTodoAction: Action = {
 		[
 			{
 				name: "{{name1}}",
-				content: { text: "Remove the 'old prototype' todo I added last month.", source: "chat" },
+				content: {
+					text: "Remove the 'old prototype' todo I added last month.",
+					source: "chat",
+				},
 			},
 			{
 				name: "{{agentName}}",

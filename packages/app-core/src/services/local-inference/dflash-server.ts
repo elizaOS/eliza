@@ -722,6 +722,26 @@ export class DflashLlamaServer implements LocalInferenceBackend {
   }
 
   /**
+   * Scrape the running llama-server's `/metrics` endpoint and return a
+   * `DflashMetricsSnapshot` with `drafted` / `accepted` / `decoded` counts.
+   * Returns `null` when no server is loaded, the endpoint isn't reachable,
+   * or the response doesn't contain the expected speculative counters.
+   * Mirrors the UI twin's API so `dflash-doctor` works against either copy.
+   */
+  async getMetrics(): Promise<DflashMetricsSnapshot | null> {
+    if (!this.baseUrl) return null;
+    try {
+      const res = await fetch(`${this.baseUrl.replace(/\/$/, "")}/metrics`, {
+        method: "GET",
+      });
+      if (!res.ok) return null;
+      return parseDflashMetrics(await res.text());
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Parallel slot count negotiated at `start()`. Used by the engine's
    * conversation handle API to size new conversations into available
    * slots. Returns the static default when no server is running.

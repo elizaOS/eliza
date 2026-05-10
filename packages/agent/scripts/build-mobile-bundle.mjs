@@ -307,6 +307,14 @@ const optionalPluginStubs = {
   // bindings into the mobile bundle, which is wrong on every axis.
   "@elizaos/plugin-whatsapp": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-signal": path.join(stubsDir, "null-plugin.cjs"),
+  // `plugin-streaming` carries the TTS / SSE plumbing for desktop +
+  // server. Mobile never runs the streaming worker pool — the agent
+  // statically imports `streamManager` and `handleTtsRoutes`, so we
+  // stub the package with the same null-plugin proxy. The runtime
+  // log otherwise spams `[eliza-api] Failed to load
+  // @elizaos/plugin-streaming destinations: ResolveMessage: Cannot
+  // find module '@elizaos/plugin-streaming'` on every chat turn.
+  "@elizaos/plugin-streaming": path.join(stubsDir, "null-plugin.cjs"),
 };
 
 const stubAliases = { ...nativeStubs, ...optionalPluginStubs };
@@ -732,28 +740,125 @@ if (!existsSync(bundlePath)) {
 // stubbed by `externalsAsStubs` or has a multi-entry-point exports map.
 // `apply*Override3` collisions come from the same path: a stubbed plugin
 // (e.g. `@elizaos/plugin-whatsapp`) leaves a numbered alias unbound.
+// Same root cause produces the `AutonomyService failed to start:
+// AutonomyService2 is not defined` warning at boot — the dedup'd alias
+// for the autonomy service class never gets bound when the consumer
+// `startAndRegisterAutonomyService2` runs before the second copy's init.
 //
 // The bundle still references these identifiers at runtime, so chat
 // completion crashes with "default10 is not defined". Prepend a polyfill
 // header that defines the few known offenders. Each one is either a uuid
-// generator (use the platform crypto) or a no-op for stubbed plugins.
+// generator (use the platform crypto), a no-op for stubbed plugins, or
+// (for AutonomyService2) an alias to the original class that DID get
+// bound by `init_service2`.
 //
 // The right long-term fix is to make Bun.build emit consistent bindings
 // for stubbed modules; until then, this prefix keeps the agent runnable.
+//
+// The polyfill is split into two phases:
+//   1. The header is prepended at the top of the bundle. These are
+//      `var X` declarations that get hoisted; consumers further down the
+//      bundle that read them before the underlying module's init runs
+//      see the polyfill value instead of `undefined`.
+//   2. The footer `if`-guard runs AFTER the bundle has finished loading
+//      (so the original module inits have run and `AutonomyService` etc.
+//      are populated). It reassigns the dedup'd alias to point at the
+//      now-bound original where one exists. No-op when the original
+//      isn't there either.
 const bundleSrc = await Bun.file(bundlePath).text();
-const polyfillHeader =
-  "// auto-injected polyfills for Bun.build identifier-resolution gaps\n" +
-  "var default10 = () => globalThis.crypto.randomUUID();\n" +
-  "var applyWhatsAppQrOverride3 = () => {};\n";
+// `AutonomyService2` is the dedup'd consumer-side alias for the
+// autonomy Service class. The class itself (`class AutonomyService
+// extends Service { static async start(runtime) {...} }`) lives in a
+// lazy `init_service2()` body that doesn't run until something pulls
+// the autonomy module — but `startAndRegisterAutonomyService2` reads
+// `AutonomyService2` BEFORE that init runs. The bundle ships the alias
+// without a binding, so the runtime sees `AutonomyService2 is not
+// defined` at boot.
+//
+// Polyfill it as a no-op service class so `startAndRegisterAutonomyService2`
+// just returns null. Autonomy is opt-in, so a no-op class is safe.
+//
+// Generic phase: scan the bundle for identifiers that match known
+// rename patterns (`defaultN`, `applyXxxNN`) and ensure every called-but-
+// undeclared one gets a polyfill. UUID-shaped renames (most `defaultN`)
+// fall back to crypto.randomUUID. apply* renames fall back to no-ops.
+// Real declarations in the bundle shadow these polyfills via `var`
+// hoisting + same-name redeclaration semantics.
+function scanUndeclaredRenames(src) {
+  const declRegex =
+    /(?:\bvar\s+|\blet\s+|\bconst\s+|\bfunction\s+|\bclass\s+)([A-Za-z_$][\w$]*)/g;
+  const declared = new Set();
+  for (const m of src.matchAll(declRegex)) declared.add(m[1]);
+  const candidateRegex =
+    /\b(default\d+|apply[A-Za-z]+Override\d+|[A-Za-z]+Service\d+)\b/g;
+  const seen = new Set();
+  const undeclaredDefaults = new Set();
+  const undeclaredApplies = new Set();
+  const undeclaredServices = new Set();
+  for (const m of src.matchAll(candidateRegex)) {
+    const name = m[1];
+    if (seen.has(name)) continue;
+    seen.add(name);
+    if (declared.has(name)) continue;
+    if (name.startsWith("default")) undeclaredDefaults.add(name);
+    else if (name.startsWith("apply")) undeclaredApplies.add(name);
+    else undeclaredServices.add(name);
+  }
+  return { undeclaredDefaults, undeclaredApplies, undeclaredServices };
+}
+
+const renames = scanUndeclaredRenames(bundleSrc);
+const polyfillLines = [
+  "// auto-injected polyfills for Bun.build identifier-resolution gaps",
+];
+// Always-on: the few hand-curated overrides that need specific shapes.
+polyfillLines.push("var default10 = () => globalThis.crypto.randomUUID();");
+polyfillLines.push("var applyWhatsAppQrOverride3 = () => {};");
+polyfillLines.push("var applySignalQrOverride3 = () => {};");
+polyfillLines.push(
+  "var AutonomyService2 = class AutonomyServicePolyfill {\n" +
+    "  static serviceType = 'AUTONOMY';\n" +
+    "  static async start(_runtime) { return null; }\n" +
+    "  async stop() {}\n" +
+    "};",
+);
+const SKIP_DEFAULTS = new Set(["default10"]);
+const SKIP_APPLIES = new Set([
+  "applyWhatsAppQrOverride3",
+  "applySignalQrOverride3",
+]);
+const SKIP_SERVICES = new Set(["AutonomyService2"]);
+for (const name of renames.undeclaredDefaults) {
+  if (SKIP_DEFAULTS.has(name)) continue;
+  polyfillLines.push(`var ${name} = () => globalThis.crypto.randomUUID();`);
+}
+for (const name of renames.undeclaredApplies) {
+  if (SKIP_APPLIES.has(name)) continue;
+  polyfillLines.push(`var ${name} = () => {};`);
+}
+for (const name of renames.undeclaredServices) {
+  if (SKIP_SERVICES.has(name)) continue;
+  polyfillLines.push(
+    `var ${name} = class ${name}Polyfill { static async start(_runtime) { return null; } async stop() {} };`,
+  );
+}
+console.log(
+  `[build-mobile] polyfill: ${renames.undeclaredDefaults.size} default*, ` +
+    `${renames.undeclaredApplies.size} apply*, ` +
+    `${renames.undeclaredServices.size} *Service* identifiers covered`,
+);
+const polyfillHeader = polyfillLines.join("\n") + "\n";
+const polyfillFooter = "";
 let prefixed;
 if (bundleSrc.startsWith("#!")) {
   const nlIndex = bundleSrc.indexOf("\n");
   prefixed =
     bundleSrc.slice(0, nlIndex + 1) +
     polyfillHeader +
-    bundleSrc.slice(nlIndex + 1);
+    bundleSrc.slice(nlIndex + 1) +
+    polyfillFooter;
 } else {
-  prefixed = polyfillHeader + bundleSrc;
+  prefixed = polyfillHeader + bundleSrc + polyfillFooter;
 }
 await Bun.write(bundlePath, prefixed);
 

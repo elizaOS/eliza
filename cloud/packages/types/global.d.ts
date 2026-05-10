@@ -45,3 +45,4 @@ interface ImportMeta {
 declare module "@xyflow/react/dist/style.css";
 declare module "@xterm/xterm/css/xterm.css";
 declare module "highlight.js/styles/github-dark.css";
+declare module "*.css";

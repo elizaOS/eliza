@@ -21,6 +21,11 @@
 //   --steps <csv>           Override the default screenshot step list.
 //   --label <text>          Free-form label appended to PNG names.
 //   --app-config <PATH>     Override the host app.config.ts path.
+//   --smoke-cuttlefish-only Run only the cuttlefish-style health + chat
+//                           smoke (smoke-cuttlefish.mjs). Skips boot
+//                           validation and screenshot capture. Useful
+//                           in CI where the only ABI to exercise is
+//                           x86_64 against a running cvd.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -46,6 +51,7 @@ function parseArgs(argv) {
     steps: ["home", "dialer", "sms", "assist", "recents", "launcher"],
     label: null,
     appConfigPath: null,
+    smokeCuttlefishOnly: false,
   };
   const readFlagValue = (flag, index) => {
     const value = argv[index + 1];
@@ -82,9 +88,11 @@ function parseArgs(argv) {
     } else if (arg === "--app-config") {
       args.appConfigPath = path.resolve(readFlagValue(arg, i));
       i += 1;
+    } else if (arg === "--smoke-cuttlefish-only") {
+      args.smokeCuttlefishOnly = true;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node eliza/packages/app-core/scripts/aosp/e2e-validate.mjs --out <DIR> [--serial S] [--adb P] [--timeout-ms N] [--skip-boot-validate] [--steps a,b,c] [--label TEXT] [--app-config PATH]",
+        "Usage: node eliza/packages/app-core/scripts/aosp/e2e-validate.mjs --out <DIR> [--serial S] [--adb P] [--timeout-ms N] [--skip-boot-validate] [--steps a,b,c] [--label TEXT] [--app-config PATH] [--smoke-cuttlefish-only]",
       );
       process.exit(0);
     } else {
@@ -113,6 +121,41 @@ async function main(argv = process.argv.slice(2)) {
   const variant = fs.existsSync(cfgPath)
     ? loadAospVariantConfig({ appConfigPath: cfgPath })
     : null;
+
+  // CI-only fast path: run the cuttlefish health + chat smoke and bail.
+  // Useful when the only goal is to confirm /api/health + a chat
+  // round-trip on x86_64 cvd; the boot-validate / screenshot path
+  // requires a built AOSP variant image which CI typically doesn't have.
+  if (args.smokeCuttlefishOnly) {
+    if (!variant) {
+      throw new Error(
+        "[e2e] --smoke-cuttlefish-only requires app.config.ts > aosp.packageName to resolve the package id.",
+      );
+    }
+    const { runSmoke, formatResult, summarize } = await import(
+      "./smoke-cuttlefish.mjs"
+    );
+    const results = await runSmoke({
+      packageName: variant.packageName,
+      appName: variant.appName,
+    });
+    const smokeReport = {
+      startedAt: new Date().toISOString(),
+      mode: "smoke-cuttlefish-only",
+      packageName: variant.packageName,
+      results,
+    };
+    fs.writeFileSync(
+      path.join(args.outDir, "report.json"),
+      JSON.stringify(smokeReport, null, 2),
+    );
+    for (const r of results) {
+      console.log(formatResult(r.step, r.label, r.ok, r.detail));
+    }
+    const { line, allPassed } = summarize(results);
+    console.log(line);
+    process.exit(allPassed ? 0 : 1);
+  }
 
   const report = {
     startedAt: new Date().toISOString(),

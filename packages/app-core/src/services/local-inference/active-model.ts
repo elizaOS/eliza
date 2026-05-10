@@ -11,14 +11,21 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import { findCatalogModel } from "./catalog";
+import {
+  ELIZA_1_PLACEHOLDER_IDS,
+  FIRST_RUN_DEFAULT_MODEL_ID,
+  findCatalogModel,
+} from "./catalog";
 import { localInferenceEngine } from "./engine";
+import { recommendForFirstRun } from "./recommendation";
 import { listInstalledModels, touchElizaModel } from "./registry";
-import type {
-  ActiveModelState,
-  CatalogModel,
-  InstalledModel,
-} from "./types";
+import type { ActiveModelState, CatalogModel, InstalledModel } from "./types";
+
+export {
+  ELIZA_1_PLACEHOLDER_IDS,
+  FIRST_RUN_DEFAULT_MODEL_ID,
+  recommendForFirstRun,
+};
 
 /**
  * KV cache placement strategy. `node-llama-cpp` does not currently expose a
@@ -29,11 +36,7 @@ import type {
  * binding maps any non-default value to a `gpuLayers` override or warns
  * loudly when the value cannot be honoured.
  */
-export type KvOffloadMode =
-  | "cpu"
-  | "gpu"
-  | "split"
-  | { gpuLayers: number };
+export type KvOffloadMode = "cpu" | "gpu" | "split" | { gpuLayers: number };
 
 /**
  * Per-load overrides accepted by `localInferenceLoader.loadModel(...)` and
@@ -342,10 +345,7 @@ function applyCatalogDefaults(
 
   // mmap / mlock from catalog optimizations. `noMmap === true` means
   // disable mmap explicitly; otherwise leave the loader default.
-  if (
-    runtime?.optimizations?.noMmap !== undefined &&
-    args.mmap === undefined
-  ) {
+  if (runtime?.optimizations?.noMmap !== undefined && args.mmap === undefined) {
     args.mmap = !runtime.optimizations.noMmap;
   }
   if (runtime?.optimizations?.mlock !== undefined && args.mlock === undefined) {
@@ -358,9 +358,12 @@ function mergeOverrides(
   overrides: LocalInferenceLoadOverrides | undefined,
 ): void {
   if (!overrides) return;
-  if (overrides.contextSize !== undefined) args.contextSize = overrides.contextSize;
-  if (overrides.cacheTypeK !== undefined) args.cacheTypeK = overrides.cacheTypeK;
-  if (overrides.cacheTypeV !== undefined) args.cacheTypeV = overrides.cacheTypeV;
+  if (overrides.contextSize !== undefined)
+    args.contextSize = overrides.contextSize;
+  if (overrides.cacheTypeK !== undefined)
+    args.cacheTypeK = overrides.cacheTypeK;
+  if (overrides.cacheTypeV !== undefined)
+    args.cacheTypeV = overrides.cacheTypeV;
   if (overrides.gpuLayers !== undefined) args.gpuLayers = overrides.gpuLayers;
   if (overrides.kvOffload !== undefined) args.kvOffload = overrides.kvOffload;
   if (overrides.flashAttention !== undefined) {
@@ -369,7 +372,8 @@ function mergeOverrides(
   if (overrides.mmap !== undefined) args.mmap = overrides.mmap;
   if (overrides.mlock !== undefined) args.mlock = overrides.mlock;
   if (overrides.useGpu !== undefined) args.useGpu = overrides.useGpu;
-  if (overrides.maxThreads !== undefined) args.maxThreads = overrides.maxThreads;
+  if (overrides.maxThreads !== undefined)
+    args.maxThreads = overrides.maxThreads;
 }
 
 export async function resolveLocalInferenceLoadArgs(
@@ -489,7 +493,10 @@ export class ActiveModelCoordinator {
     const loader = this.getLoader(runtime);
 
     try {
-      const resolved = await resolveLocalInferenceLoadArgs(installed, overrides);
+      const resolved = await resolveLocalInferenceLoadArgs(
+        installed,
+        overrides,
+      );
       if (loader) {
         await loader.unloadModel();
         await loader.loadModel(resolved);

@@ -45,6 +45,12 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const BUN_VERSION = "1.3.13";
+// Bun 1.3.13 has a segfault we hit during inference on Cuttlefish at
+// peak ~2.3 GB RSS ("panic(main thread): Segmentation fault at address
+// 0x5420"). The canary channel ships the upstream fix while we wait for
+// 1.3.14+. MILADY_BUN_CHANNEL=stable forces back to BUN_VERSION; default
+// is canary so AOSP/cvd inference doesn't crash mid-token.
+const BUN_CHANNEL = (process.env.MILADY_BUN_CHANNEL ?? "canary").toLowerCase();
 const ALPINE_BRANCH = "v3.21";
 
 /**
@@ -177,15 +183,31 @@ async function downloadFile(url, targetPath) {
 }
 
 async function ensureBunBinary({ cacheDir, bunArch, log }) {
-  const archCache = path.join(cacheDir, `bun-${bunArch}`);
+  const channelTag =
+    BUN_CHANNEL === "canary" ? "canary" : `bun-${BUN_VERSION}`;
+  const cacheKey = BUN_CHANNEL === "canary" ? "canary" : BUN_VERSION;
+  const archCache = path.join(cacheDir, `bun-${bunArch}-${cacheKey}`);
   const bunPath = path.join(archCache, "bun");
-  if (fs.existsSync(bunPath) && fs.statSync(bunPath).size > 1_000_000) {
-    return bunPath;
-  }
+  // Canary cache invalidates after 24h so we pull bug-fix snapshots
+  // automatically without forcing every CI run to re-download.
+  const isFresh = (() => {
+    if (!fs.existsSync(bunPath)) return false;
+    const st = fs.statSync(bunPath);
+    if (st.size <= 1_000_000) return false;
+    if (BUN_CHANNEL !== "canary") return true;
+    const ageMs = Date.now() - st.mtimeMs;
+    return ageMs < 24 * 60 * 60 * 1000;
+  })();
+  if (isFresh) return bunPath;
   fs.mkdirSync(archCache, { recursive: true });
   const zipPath = path.join(archCache, "bun.zip");
-  const url = `https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-${bunArch}-musl.zip`;
-  log(`Downloading bun-${BUN_VERSION} (${bunArch}-musl) from ${url}`);
+  const url =
+    BUN_CHANNEL === "canary"
+      ? `https://github.com/oven-sh/bun/releases/download/canary/bun-linux-${bunArch}-musl.zip`
+      : `https://github.com/oven-sh/bun/releases/download/${channelTag}/bun-linux-${bunArch}-musl.zip`;
+  const channelLabel =
+    BUN_CHANNEL === "canary" ? "bun-canary" : `bun-${BUN_VERSION}`;
+  log(`Downloading ${channelLabel} (${bunArch}-musl) from ${url}`);
   await downloadFile(url, zipPath);
   await run("unzip", ["-q", "-o", zipPath, "-d", archCache]);
   const extractedDir = path.join(archCache, `bun-linux-${bunArch}-musl`);
@@ -193,6 +215,7 @@ async function ensureBunBinary({ cacheDir, bunArch, log }) {
   if (!fs.existsSync(extractedBun)) {
     throw new Error(`bun zip did not contain bun at ${extractedBun}`);
   }
+  if (fs.existsSync(bunPath)) fs.unlinkSync(bunPath);
   fs.renameSync(extractedBun, bunPath);
   fs.rmSync(extractedDir, { recursive: true, force: true });
   fs.rmSync(zipPath, { force: true });
@@ -408,7 +431,7 @@ export async function stageAndroidAgentRuntime({
     os.homedir(),
     ".cache",
     "eliza-android-agent",
-    `bun-${BUN_VERSION}`,
+    `bun-${BUN_CHANNEL === "canary" ? "canary" : BUN_VERSION}`,
   ),
   log = console.log,
 } = {}) {
