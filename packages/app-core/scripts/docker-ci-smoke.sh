@@ -278,7 +278,7 @@ fi
 # inside the COPY-into-Docker tree or the runtime fails with
 # ERR_MODULE_NOT_FOUND. Build them explicitly here — `bun install
 # --ignore-scripts` skipped per-package postinstall hooks.
-for plugin in plugin-sql plugin-video plugin-agent-skills plugin-pdf plugin-capacitor-bridge; do
+for plugin in plugin-sql plugin-video plugin-agent-skills plugin-pdf plugin-capacitor-bridge plugin-computeruse; do
   plugin_dir="$PLUGINS_DIR/$plugin"
   if [[ -f "$plugin_dir/package.json" ]]; then
     if jq -e '.scripts.build' "$plugin_dir/package.json" >/dev/null; then
