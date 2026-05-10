@@ -340,7 +340,10 @@ function run(command, args, { cwd, env = process.env } = {}) {
  *
  * Also runs `patchLlamaCppSourceForMusl()` on every checkout so the patch
  * survives cache reuse (the source-patch sentinel sits next to the
- * checkout sentinel and is keyed off LLAMA_CPP_COMMIT).
+ * checkout sentinel and is keyed off LLAMA_CPP_COMMIT), and applies the
+ * vendored QJL + PolarQuant patch series via `applyVendoredPatches()` so
+ * the cross-compile picks up the GGML quant types and custom ops the
+ * AOSP runtime adapter expects (qjl1_256 / q4_polar).
  */
 export function ensureLlamaCppCheckout({
   cacheDir,
@@ -355,6 +358,7 @@ export function ensureLlamaCppCheckout({
   ) {
     log(`[compile-libllama] Reusing cached llama.cpp checkout at ${cacheDir}`);
     patchLlamaCppSourceForMusl({ srcDir: cacheDir, log });
+    applyVendoredPatches({ srcDir: cacheDir, log });
     return cacheDir;
   }
   if (!fs.existsSync(path.join(cacheDir, ".git"))) {
@@ -387,7 +391,53 @@ export function ensureLlamaCppCheckout({
   });
   fs.writeFileSync(sentinel, `${LLAMA_CPP_COMMIT}\n`, "utf8");
   patchLlamaCppSourceForMusl({ srcDir: cacheDir, log });
+  applyVendoredPatches({ srcDir: cacheDir, log });
   return cacheDir;
+}
+
+/**
+ * Run the vendored patch applier (`llama-cpp-patches/apply-patches.mjs`)
+ * against the cached llama.cpp checkout. The applier is idempotent: it
+ * checks each patch with `git apply --check -R` first and skips any that
+ * are already on the tree, so cache reuse stays correct across pin bumps
+ * and across partial-failure re-runs.
+ *
+ * Patches under `llama-cpp-patches/qjl/` add `GGML_TYPE_QJL1_256` (=46),
+ * the QJL kernel sources vendored from `packages/native-plugins/qjl-cpu/`,
+ * the type-traits + op-dispatch wiring, and the `tests/test-qjl-cache.cpp`
+ * synthetic-graph test.
+ *
+ * Series selection is scoped: today only `qjl` is applied here. The
+ * `polarquant` series under the same directory exists but conflicts with
+ * `qjl` over the GGML_TYPE_COUNT tag (PolarQuant claims id 45, QJL
+ * claims 46) and is owned by a separate landing. When that series is
+ * unified with QJL, append it here.
+ *
+ * Order is:
+ *   1. checkout -> 2. patchLlamaCppSourceForMusl -> 3. applyVendoredPatches.
+ *
+ * Failure mode is loud — if a patch fails to apply (e.g. the upstream
+ * commit drifted), the script aborts the in-progress `git am` and exits
+ * non-zero. A successful run leaves the tree with the QJL commits on top
+ * of LLAMA_CPP_COMMIT.
+ */
+export function applyVendoredPatches({
+  srcDir,
+  log = console.log,
+  spawn = run,
+}) {
+  const applierPath = path.join(here, "llama-cpp-patches", "apply-patches.mjs");
+  if (!fs.existsSync(applierPath)) {
+    throw new Error(
+      `[compile-libllama] Vendored patch applier missing at ${applierPath}. ` +
+        `The llama-cpp-patches/ directory is the canonical location for QJL ` +
+        `fork patches; restore it from git history.`,
+    );
+  }
+  log(
+    `[compile-libllama] Applying vendored llama.cpp patches (qjl) to ${srcDir}`,
+  );
+  spawn("node", [applierPath, "--repo", srcDir, "--series", "qjl"], {});
 }
 
 /**
