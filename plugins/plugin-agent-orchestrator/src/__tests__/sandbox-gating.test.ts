@@ -7,6 +7,11 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Re-importing @elizaos/core via vi.resetModules() pays a one-time cold start
+// that comfortably exceeds vitest's 5s default. Bump per-test timeouts to 30s
+// so cold cache resolution does not flake CI.
+const SLOW = 30_000;
+
 describe("agent-orchestrator sandbox gating", () => {
   let originalVariant: string | undefined;
 
@@ -25,7 +30,9 @@ describe("agent-orchestrator sandbox gating", () => {
     core._resetBuildVariantForTests();
   });
 
-  it("flags isLocalCodeExecutionAllowed=false under store variant", async () => {
+  it("flags isLocalCodeExecutionAllowed=false under store variant", {
+    timeout: SLOW,
+  }, async () => {
     process.env.MILADY_BUILD_VARIANT = "store";
     vi.resetModules();
     const core = await import("@elizaos/core");
@@ -34,7 +41,9 @@ describe("agent-orchestrator sandbox gating", () => {
     expect(core.isLocalCodeExecutionAllowed()).toBe(false);
   });
 
-  it("flags isLocalCodeExecutionAllowed=true under direct variant", async () => {
+  it("flags isLocalCodeExecutionAllowed=true under direct variant", {
+    timeout: SLOW,
+  }, async () => {
     process.env.MILADY_BUILD_VARIANT = "direct";
     vi.resetModules();
     const core = await import("@elizaos/core");
@@ -43,7 +52,9 @@ describe("agent-orchestrator sandbox gating", () => {
     expect(core.isLocalCodeExecutionAllowed()).toBe(true);
   });
 
-  it("registers no spawn services and only a TASKS stub under store builds", async () => {
+  it("registers no spawn services and only a TASKS stub under store builds", {
+    timeout: SLOW,
+  }, async () => {
     process.env.MILADY_BUILD_VARIANT = "store";
     vi.resetModules();
     const core = await import("@elizaos/core");
@@ -57,7 +68,9 @@ describe("agent-orchestrator sandbox gating", () => {
     expect(actions[0]?.name).toBe("TASKS");
   });
 
-  it("returns a structured STORE_BUILD_BLOCKED result from the stub handler", async () => {
+  it("returns a structured STORE_BUILD_BLOCKED result from the stub handler", {
+    timeout: SLOW,
+  }, async () => {
     process.env.MILADY_BUILD_VARIANT = "store";
     vi.resetModules();
     const core = await import("@elizaos/core");
