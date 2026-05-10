@@ -51,7 +51,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "typecheck": "tsc --project tsconfig.build.json --noEmit"
+    "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "publishConfig": {
     "access": "public"

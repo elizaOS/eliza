@@ -80,7 +80,7 @@ describe("AccountPool provider-scoped account resolution", () => {
     await pool.refreshUsage("shared-id", "token", {
       providerId: "openai-codex",
       codexAccountId: "org_1",
-      fetch: async () =>
+      fetch: (async () =>
         new Response(
           JSON.stringify({
             rate_limit: {
@@ -91,7 +91,7 @@ describe("AccountPool provider-scoped account resolution", () => {
             },
           }),
           { status: 200 },
-        ),
+        )) as unknown as typeof fetch,
     });
 
     expect(writes).toHaveLength(1);

@@ -290,7 +290,12 @@ describe("applyPluginManifestVerdicts", () => {
   });
 
   it("respects entries.enabled=false (does not add)", () => {
-    const config = {
+    const config: {
+      plugins: {
+        entries: Record<string, { enabled?: boolean }>;
+        allow?: string[];
+      };
+    } = {
       plugins: { entries: { test: { enabled: false } } },
     };
     const changes: string[] = [];
@@ -304,7 +309,12 @@ describe("applyPluginManifestVerdicts", () => {
   });
 
   it("force overrides entries.enabled=false", () => {
-    const config = {
+    const config: {
+      plugins: {
+        entries: Record<string, { enabled?: boolean }>;
+        allow?: string[];
+      };
+    } = {
       plugins: { entries: { test: { enabled: false } } },
     };
     const changes: string[] = [];

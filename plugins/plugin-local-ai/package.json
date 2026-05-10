@@ -6,7 +6,7 @@
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
   "types": "dist/index.d.ts",
-  "browser": "index.browser.ts",
+  "browser": "dist/browser/index.browser.js",
   "sideEffects": false,
   "repository": {
     "type": "git",
@@ -17,9 +17,9 @@
     ".": {
       "types": "./dist/index.d.ts",
       "browser": {
-        "types": "./index.d.ts",
-        "import": "./index.browser.ts",
-        "default": "./index.browser.ts"
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
       },
       "node": {
         "types": "./dist/node/index.d.ts",

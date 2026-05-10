@@ -113,6 +113,17 @@ import "@elizaos/app-vincent";
 // page, and chat sidebar wallet-status widget) with the app shell registries.
 // Must precede the first shell render.
 import "@elizaos/app-wallet";
+// Side-effect: register the AOSP-only Phone / Contacts / WiFi overlay apps.
+// Each `register` module gates itself on `isElizaOS()` so stock Android, iOS,
+// desktop, and web bundles bring the modules in without registering anything.
+// On Eliza-derived AOSP images (ElizaOS, MiladyOS, …) the corresponding
+// overlay app shows up in the apps catalog and is launchable as a system
+// surface. `@elizaos/app-phone` already side-effect-registers via the
+// `PhoneCompanionApp` named import above, but the explicit imports here keep
+// the three apps symmetric and survive a future barrel cleanup that drops
+// `register.js` from the package index.
+import "@elizaos/app-contacts";
+import "@elizaos/app-wifi";
 import { shouldUseCloudOnlyBranding } from "@elizaos/ui";
 import {
   APP_BRANDING_BASE,

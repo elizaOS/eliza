@@ -26,9 +26,10 @@
   "exclude": [
     "node_modules",
     "dist",
-    "test/**",
+    "build.ts",
     "**/__tests__/**",
     "**/*.test.ts",
-    "build.ts"
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
   ]
 }

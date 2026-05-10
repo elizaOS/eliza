@@ -299,9 +299,9 @@ describe("verifyBootstrapToken — adversarial cases", () => {
   });
 
   it("fails closed when the JWKS endpoint is unreachable", async () => {
-    const failingFetch: typeof fetch = (async () => {
+    const failingFetch = (async () => {
       throw new Error("network down");
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
     const token = await sign({ privateKey: harness.privateKey });
     const result = await verifyBootstrapToken(token, {
       env: envFor(harness),

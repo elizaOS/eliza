@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CloudApiClient, createElizaCloudClient, ElizaCloudClient } from "./index";
+import { CloudApiClient, createElizaCloudClient, ElizaCloudClient } from "./index.js";
 
 const trimmed = (value: string | undefined): string | undefined => {
   if (value === undefined) return undefined;
@@ -214,7 +214,7 @@ containerDescribe("ElizaCloudClient real API e2e: container lifecycle", () => {
     const created = await client.createContainer({
       name: `sdk-e2e-${Date.now()}`,
       project_name: "sdk-e2e",
-      ecr_image_uri: imageUri,
+      image: imageUri,
     });
     const containerId = created.data.id;
     expect(containerId).toBeTruthy();
@@ -245,7 +245,9 @@ agentDescribe("ElizaCloudClient real API e2e: Eliza agent lifecycle", () => {
     try {
       await expect(client.getAgent(agentId)).resolves.toHaveProperty("success", true);
       await expect(
-        client.updateAgent(agentId, { agentName: created.data.agentName }),
+        client.updateAgent(agentId, {
+          agentName: created.data.agentName ?? undefined,
+        }),
       ).resolves.toBeTruthy();
       await expect(client.listAgentBackups(agentId)).resolves.toBeTruthy();
       await expect(

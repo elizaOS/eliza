@@ -305,7 +305,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
             AND constraint_type = 'FOREIGN KEY'`
       );
 
-      const fkCount = parseInt(String((result.rows[0] as CountRow).count), 10);
+      const fkCount = parseInt(String((result.rows[0] as unknown as CountRow).count), 10);
       expect(fkCount).toBeGreaterThan(0);
 
       if (fkCount > 0) {
@@ -357,7 +357,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
             WHERE plugin_name = 'plugin-sql'`
       );
 
-      const count = parseInt(String((result.rows[0] as CountRow).count), 10);
+      const count = parseInt(String((result.rows[0] as unknown as CountRow).count), 10);
       expect(count).toBe(1);
 
       if (count === 1) {
@@ -434,7 +434,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
             AND indexname LIKE 'idx_%'`
       );
 
-      const indexCount = parseInt(String((result.rows[0] as CountRow).count), 10);
+      const indexCount = parseInt(String((result.rows[0] as unknown as CountRow).count), 10);
       console.log("Count of idx_ indexes:", indexCount);
 
       // Our schema does create indexes with idx_ prefix
@@ -458,7 +458,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
             AND contype = 'c'`
       );
 
-      const checkCount = parseInt(String((result.rows[0] as CountRow).count), 10);
+      const checkCount = parseInt(String((result.rows[0] as unknown as CountRow).count), 10);
 
       // Our schema does create check constraints (e.g., in memories table)
       if (checkCount > 0) {
@@ -505,7 +505,8 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
             AND table_name = 'invalidTable'`
       );
 
-      const invalidTableExists = parseInt(String((tablesResult.rows[0] as CountRow).count), 10) > 0;
+      const invalidTableExists =
+        parseInt(String((tablesResult.rows[0] as unknown as CountRow).count), 10) > 0;
       expect(invalidTableExists).toBe(false);
 
       if (!invalidTableExists) {
@@ -571,7 +572,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
       interface QueryRow {
         count: string;
       }
-      const count = parseInt((dataResult.rows[0] as QueryRow).count, 10);
+      const count = parseInt((dataResult.rows[0] as unknown as QueryRow).count, 10);
       expect(count).toBeGreaterThan(0);
 
       if (count > 0) {
@@ -655,7 +656,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
             WHERE plugin_name = 'dry-run-test'`
       );
 
-      const count = parseInt(String((result.rows[0] as CountRow).count), 10);
+      const count = parseInt(String((result.rows[0] as unknown as CountRow).count), 10);
       expect(count).toBe(0);
 
       if (count === 0) {

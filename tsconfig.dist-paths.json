@@ -403,7 +403,10 @@
         "./plugins/app-wifi/dist/index.d.ts"
       ],
       "@elizaos/plugin-xai": [
-        "./plugins/plugin-xai/dist/index.d.ts"
+        "./plugins/plugin-xai/index.ts"
+      ],
+      "@elizaos/plugin-xai/*": [
+        "./plugins/plugin-xai/*"
       ],
       "@elizaos/plugin-cli": [
         "./plugins/plugin-cli/dist/index.d.ts"
@@ -499,12 +502,7 @@
   "exclude": [
     "**/node_modules/**",
     "**/dist/**",
-    "**/*.test.ts",
-    "**/*.test.tsx",
-    "**/*.spec.ts",
-    "**/*.spec.tsx",
     "**/*.stories.ts",
-    "**/*.stories.tsx",
-    "**/__tests__/**"
+    "**/*.stories.tsx"
   ]
 }

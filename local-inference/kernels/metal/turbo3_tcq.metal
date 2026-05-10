@@ -1,23 +1,21 @@
-// DRAFT: NOT VALIDATED ON HARDWARE — see kernels/README.md
+// DRAFT: COMPILED locally NOT YET — agent runs on Linux without xcrun metal.
+// SOURCE-LEVEL VERIFIED against the CUDA dequantize_turbo3_tcq decode path
+// (sliding 9-bit window, codebook lookup) at
+// ggml/src/ggml-cuda/turbo-quant-cuda.cuh and the reference C impl in
+// kernels/reference/turbo_kernels.c. Hardware verification still required.
 //
 // turbo3_tcq KV cache dequant + Q·K dot product (Metal Shading Language).
 //
-// Decode-only port of buun-llama-cpp's CUDA dequantize_turbo3_tcq from
-// ggml/src/ggml-cuda/turbo-quant-cuda.cuh (commit 6575873e9c). The 512-state
-// Viterbi ENCODE path (k_set_rows_turbo3_tcq) is intentionally omitted — it
-// requires a 64×128-byte threadgroup-shared backtrace and 512 threads per
-// group, which exceeds many Apple GPU threadgroup-size budgets and is
-// unnecessary for the FA dot-product hot path. Encode happens host-side
-// today; if/when on-device encode is needed, port the Viterbi pass in a
-// separate shader.
+// Decode-only: the 512-state Viterbi encode path runs host-side via the
+// reference C impl. Decode = read_9_bits(qs, t*3); recon = codebook[state] * norm.
 //
-// Block layout (block_turbo3_tcq in ggml-common.h, 52 bytes):
+// Block layout (block_turbo3_tcq in ggml-common.h, 52 bytes, alignment 2):
 //     half  norm                 // [0..1]
 //     uchar qs[49]               // [2..50]  6 prefix bits + 128 × 3-bit symbols
 //     uchar pad                  // [51]
 //
-// Decode: state[t] = read_9_bits(qs, t*3); recon[t] = codebook[state[t]] * norm
-// (matches CUDA dequantize_turbo3_tcq exactly).
+// Dispatch: one threadgroup per (n_kv, n_head). Threadgroup size MUST equal
+// 32 (one Apple SIMD-group). Each thread handles 4 of the 128 timesteps.
 
 #include <metal_stdlib>
 using namespace metal;
@@ -33,11 +31,12 @@ struct turbo_dot_args {
     uint n_kv;
     uint kv_stride_blocks;  // 1 for d=128
     uint q_head;
-    uint head_offset_bytes;
+    uint head_offset_bytes; // must be a multiple of sizeof(block_turbo3_tcq) (52)
 };
 
-// Codebook supplied as a const constant buffer (2 KB). 512 entries inlined
-// would also work but bloats every shader variant; binding makes it shareable.
+// Codebook bound at buffer(3) (512 entries = 2 KB; well under Apple's
+// constant-address-space cap). Sharing as a buffer instead of inlining
+// avoids 2 KB of constant memory per shader-variant baked into the library.
 kernel void kernel_turbo3_tcq_dot(
         device const float            * q             [[buffer(0)]],
         device const block_turbo3_tcq * k_blocks      [[buffer(1)]],
@@ -61,11 +60,12 @@ kernel void kernel_turbo3_tcq_dot(
         uint bit_pos = t * 3;
         uint byte_idx = bit_pos >> 3;
         uint bit_off  = bit_pos & 7;
-        // Two-byte window is sufficient (max bit_off + 9 = 16).
+        // Two-byte window covers max bit_off + 9 = 16. Last byte (idx 48) has
+        // 6 trailing bits we never read past in a 128*3=384-bit stream.
         uint b0 = blk->qs[byte_idx];
-        uint b1 = (byte_idx + 1 < 49) ? blk->qs[byte_idx + 1] : 0;
+        uint b1 = (byte_idx + 1 < 49) ? blk->qs[byte_idx + 1] : 0u;
         uint raw = b0 | (b1 << 8);
-        uint state = (raw >> bit_off) & 0x1FF;
+        uint state = (raw >> bit_off) & 0x1FFu;
         float k_val = codebook[state] * norm;
         float q_val = q[args.q_head * args.head_dim + t];
         acc += q_val * k_val;

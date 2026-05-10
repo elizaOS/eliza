@@ -48,13 +48,13 @@ describe("server reset hop (regression for #7409)", () => {
   });
 
   it("stops the runtime and removes the .elizadb dir without issuing any HTTP requests", async () => {
-    const fetchSpy: typeof globalThis.fetch = vi.fn(async () => {
+    const fetchSpy = vi.fn(async () => {
       throw new Error("loopback fetch detected — would deadlock");
-    });
+    }) as unknown as typeof globalThis.fetch;
     globalThis.fetch = fetchSpy;
 
     const stop = vi.fn().mockResolvedValue(undefined);
-    const runtime = { stop } as Parameters<
+    const runtime = { stop } as unknown as Parameters<
       typeof _clearCompatPgliteDataDirForTests
     >[0];
 

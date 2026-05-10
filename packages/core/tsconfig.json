@@ -4,6 +4,8 @@
 	"compilerOptions": {
 		"outDir": "./dist",
 		"rootDir": "../../",
+		"sourceMap": false,
+		"inlineSourceMap": false,
 		"typeRoots": [
 			"../../node_modules/@types",
 			"../../node_modules/.bun/node_modules/@types",
@@ -46,11 +48,10 @@
 		"../agent/src/external-modules.d.ts"
 	],
 	"exclude": [
-		"src/**/*.test.ts",
-		"src/**/*.spec.ts",
-		"src/**/__tests__/**",
 		"vitest.config.ts",
 		"node_modules",
-		"dist"
+		"dist",
+		"src/**/__tests__/**",
+		"src/**/*.test.ts"
 	]
 }

@@ -1,4 +1,9 @@
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import type {
+  ActionResult,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { TODOS_SERVICE_TYPE } from "../types.js";
@@ -179,12 +184,13 @@ class FakeTodosService {
 }
 
 function mockRuntime(service: FakeTodosService): IAgentRuntime {
-  return {
+  const stub = {
     agentId: AGENT,
-    getSetting: () => undefined,
-    getService: (name: string) =>
-      name === TODOS_SERVICE_TYPE ? (service as unknown) : null,
-  } as IAgentRuntime;
+    getSetting: (): string | boolean | number | null => null,
+    getService: ((name: string) =>
+      name === TODOS_SERVICE_TYPE ? service : null) as IAgentRuntime["getService"],
+  };
+  return stub as never as IAgentRuntime;
 }
 
 function makeMessage(
@@ -203,8 +209,13 @@ async function invoke(
   runtime: IAgentRuntime,
   parameters: Record<string, unknown>,
   message: Memory = makeMessage(),
-) {
-  return todoAction.handler!(runtime, message, undefined, { parameters });
+): Promise<ActionResult> {
+  const opts = { parameters } as HandlerOptions;
+  const result = await todoAction.handler!(runtime, message, undefined, opts);
+  if (result === undefined) {
+    throw new Error("todoAction.handler returned undefined");
+  }
+  return result;
 }
 
 describe("TODO action", () => {

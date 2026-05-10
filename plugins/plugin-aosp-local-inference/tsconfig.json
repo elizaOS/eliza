@@ -3,11 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": [
-      "ES2023",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
@@ -18,23 +14,18 @@
     "declaration": true,
     "declarationMap": true,
     "allowImportingTsExtensions": true,
-    "types": [
-      "node",
-      "bun-types"
-    ],
+    "types": ["node", "bun-types"],
     "paths": {
-      "@elizaos/core": [
-        "../../packages/core/dist/node"
-      ]
+      "@elizaos/core": ["../../packages/core/dist/node"]
     }
   },
-  "include": [
-    "./src/**/*.ts"
-  ],
+  "include": ["./src/**/*.ts"],
   "exclude": [
     "node_modules",
     "dist",
     "**/__tests__/**",
-    "**/*.test.ts"
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
   ]
 }

@@ -1,5 +1,11 @@
 {
-  "$schema": "https://turborepo.org/schema.json",
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [
+    "package.json",
+    "bun.lock",
+    "bunfig.toml",
+    "turbo.json"
+  ],
   "tasks": {
     "build": {
       "dependsOn": [
@@ -613,12 +619,6 @@
     },
     "clean": {
       "cache": false
-    },
-    "typecheck:dist": {
-      "dependsOn": [
-        "^build"
-      ],
-      "outputs": []
     }
   }
 }

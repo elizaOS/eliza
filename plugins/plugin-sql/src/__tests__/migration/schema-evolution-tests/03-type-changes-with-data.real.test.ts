@@ -4,6 +4,8 @@ import { RuntimeMigrator } from "../../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../../runtime-migrator/types";
 import { createIsolatedTestDatabaseForSchemaEvolutionTests } from "../../test-helpers";
 
+type ContentObject = Record<string, unknown>;
+
 /**
  * Schema Evolution Test 3: Type Changes with Incompatible Data
  *

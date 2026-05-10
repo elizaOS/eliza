@@ -16,6 +16,7 @@
  */
 
 #include "turbo_kernels.h"
+#include "qjl_polar_ref.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -161,6 +162,98 @@ static int gen_turbo3_tcq(const char * outdir) {
     return 0;
 }
 
+/* ---------- QJL ---------- */
+
+#define QJL_N_HEADS    1
+#define QJL_N_KV_HEADS 1
+#define QJL_N_TOKENS   N_KV
+
+static int gen_qjl(const char * outdir) {
+    char path[512];
+    snprintf(path, sizeof(path), "%s/qjl.json", outdir);
+    FILE * f = fopen(path, "w");
+    if (!f) { perror(path); return 1; }
+
+    /* Random JL projection (deterministic seed). */
+    static float prj[ELIZA_QJL_HEAD_DIM * ELIZA_QJL_PROJECTION_DIM];
+    eliza_qjl_make_projection(prj, 0xCAFEBABE12345678ULL);
+
+    /* One Q row -> one Q sketch (n_heads = 1). */
+    float q_row[ELIZA_QJL_HEAD_DIM];
+    for (int i = 0; i < ELIZA_QJL_HEAD_DIM; i++) q_row[i] = rand_normal();
+    float q_sketch[ELIZA_QJL_PROJECTION_DIM];
+    eliza_qjl_sketch_query(q_row, prj, q_sketch);
+
+    /* QJL_N_TOKENS keys, packed. */
+    eliza_block_qjl1_256 packed[QJL_N_TOKENS];
+    for (int t = 0; t < QJL_N_TOKENS; t++) {
+        float k[ELIZA_QJL_HEAD_DIM];
+        for (int i = 0; i < ELIZA_QJL_HEAD_DIM; i++) k[i] = rand_normal();
+        eliza_qjl_quantize_row(k, prj, &packed[t]);
+    }
+
+    float scores[QJL_N_TOKENS];
+    eliza_qjl_score_qk(q_sketch, packed,
+                       QJL_N_HEADS, QJL_N_KV_HEADS, QJL_N_TOKENS, scores);
+
+    fprintf(f, "{\n");
+    fprintf(f, "  \"kernel\": \"qjl\",\n");
+    fprintf(f, "  \"head_dim\": %d,\n", ELIZA_QJL_HEAD_DIM);
+    fprintf(f, "  \"proj_dim\": %d,\n", ELIZA_QJL_PROJECTION_DIM);
+    fprintf(f, "  \"n_heads\": %d,\n", QJL_N_HEADS);
+    fprintf(f, "  \"n_kv_heads\": %d,\n", QJL_N_KV_HEADS);
+    fprintf(f, "  \"n_tokens\": %d,\n", QJL_N_TOKENS);
+    fprintf(f, "  \"block_bytes\": 34,\n");
+    fprintf(f, "  \"q_sketch\": "); write_floats_json(f, q_sketch, ELIZA_QJL_PROJECTION_DIM); fprintf(f, ",\n");
+    fprintf(f, "  \"k_blocks\": "); write_bytes_json(f, (uint8_t *)packed, sizeof(packed)); fprintf(f, ",\n");
+    fprintf(f, "  \"expected_scores\": "); write_floats_json(f, scores, QJL_N_TOKENS); fprintf(f, "\n");
+    fprintf(f, "}\n");
+    fclose(f);
+    printf("[gen_fixture] wrote %s (%d tokens)\n", path, QJL_N_TOKENS);
+    return 0;
+}
+
+/* ---------- PolarQuant ---------- */
+
+#define POLAR_N_ROWS N_KV
+
+static int gen_polar(const char * outdir) {
+    char path[512];
+    snprintf(path, sizeof(path), "%s/polar.json", outdir);
+    FILE * f = fopen(path, "w");
+    if (!f) { perror(path); return 1; }
+
+    /* Activation chunk Q (one block of QK_POLAR = 128 floats). */
+    float q[ELIZA_QK_POLAR];
+    for (int i = 0; i < ELIZA_QK_POLAR; i++) q[i] = rand_normal();
+
+    /* POLAR_N_ROWS quantized blocks (use_qjl = 0 to keep the fixture compact;
+     * the with-QJL path is exercised by the round-trip self-test). */
+    eliza_block_q4_polar blocks[POLAR_N_ROWS];
+    for (int r = 0; r < POLAR_N_ROWS; r++) {
+        float src[ELIZA_QK_POLAR];
+        for (int i = 0; i < ELIZA_QK_POLAR; i++) src[i] = rand_normal();
+        eliza_polar_quantize_row(src, &blocks[r], ELIZA_QK_POLAR, /*use_qjl=*/0);
+    }
+
+    float scores[POLAR_N_ROWS];
+    eliza_polar_mul_mv(blocks, q, POLAR_N_ROWS, /*use_qjl=*/0, scores);
+
+    fprintf(f, "{\n");
+    fprintf(f, "  \"kernel\": \"polar\",\n");
+    fprintf(f, "  \"head_dim\": %d,\n", ELIZA_QK_POLAR);
+    fprintf(f, "  \"n_rows\": %d,\n", POLAR_N_ROWS);
+    fprintf(f, "  \"block_bytes\": 82,\n");
+    fprintf(f, "  \"use_qjl\": 0,\n");
+    fprintf(f, "  \"q\": "); write_floats_json(f, q, ELIZA_QK_POLAR); fprintf(f, ",\n");
+    fprintf(f, "  \"k_blocks\": "); write_bytes_json(f, (uint8_t *)blocks, sizeof(blocks)); fprintf(f, ",\n");
+    fprintf(f, "  \"expected_scores\": "); write_floats_json(f, scores, POLAR_N_ROWS); fprintf(f, "\n");
+    fprintf(f, "}\n");
+    fclose(f);
+    printf("[gen_fixture] wrote %s (%d rows)\n", path, POLAR_N_ROWS);
+    return 0;
+}
+
 static int self_test(void) {
     /* Reference vs reference: dequant(quant(x)) followed by Q · K should be
      * close to the dot product of Q against the rotated centroid grid. We
@@ -184,8 +277,50 @@ static int self_test(void) {
     float stcq = eliza_dot_q_turbo3_tcq(q, &gtcq);
     if (!isfinite(stcq)) { fprintf(stderr, "turbo3_tcq self-test: non-finite score %g\n", (double)stcq); return 1; }
 
-    printf("[self-test] turbo3=%.6f turbo4=%.6f turbo3_tcq=%.6f (all finite)\n",
-           (double)s3, (double)s4, (double)stcq);
+    /* QJL self-test: build a projection, quantize one key row, score it. */
+    static float prj[ELIZA_QJL_HEAD_DIM * ELIZA_QJL_PROJECTION_DIM];
+    eliza_qjl_make_projection(prj, 0xCAFEBABE12345678ULL);
+    float qsketch[ELIZA_QJL_PROJECTION_DIM];
+    eliza_qjl_sketch_query(q, prj, qsketch);
+    eliza_block_qjl1_256 qblk;
+    eliza_qjl_quantize_row(x, prj, &qblk);
+    float sqjl;
+    eliza_qjl_score_qk(qsketch, &qblk, 1, 1, 1, &sqjl);
+    if (!isfinite(sqjl)) { fprintf(stderr, "qjl self-test: non-finite score %g\n", (double)sqjl); return 1; }
+
+    /* QJL parity: score_qk and mul_mv must return the same scalar when
+     * n_heads = n_kv_heads = n_tokens = 1 (no GQA fanout). The two paths
+     * are intended to be equivalent up to that boundary. */
+    float sqjl_mv;
+    eliza_qjl_mul_mv(&qblk, qsketch, 1, &sqjl_mv);
+    if (fabsf(sqjl - sqjl_mv) > 1e-5f) {
+        fprintf(stderr, "qjl parity: score_qk=%g vs mul_mv=%g (diff=%g)\n",
+                (double)sqjl, (double)sqjl_mv, (double)fabsf(sqjl - sqjl_mv));
+        return 1;
+    }
+
+    /* Polar self-test: encode one block, dot against q, expect finite. */
+    eliza_block_q4_polar pblk;
+    eliza_polar_quantize_row(x, &pblk, ELIZA_QK_POLAR, /*use_qjl=*/0);
+    float spolar;
+    eliza_polar_mul_mv(&pblk, q, 1, /*use_qjl=*/0, &spolar);
+    if (!isfinite(spolar)) { fprintf(stderr, "polar self-test: non-finite score %g\n", (double)spolar); return 1; }
+
+    /* Polar parity: dequantize_row + manual dot should match mul_mv to fp32
+     * round-off. Catches any drift between the two paths the Metal shaders
+     * mirror (kernel_get_rows_q4_polar vs kernel_mul_mv_q4_polar_f32). */
+    float pdec[ELIZA_QK_POLAR];
+    eliza_polar_dequantize_row(&pblk, pdec, ELIZA_QK_POLAR, /*use_qjl=*/0);
+    double spolar_manual = 0.0;
+    for (int i = 0; i < ELIZA_QK_POLAR; i++) spolar_manual += (double)pdec[i] * (double)q[i];
+    if (fabs((double)spolar - spolar_manual) > 1e-3) {
+        fprintf(stderr, "polar parity: mul_mv=%g vs dequant·q=%g (diff=%g)\n",
+                (double)spolar, spolar_manual, fabs((double)spolar - spolar_manual));
+        return 1;
+    }
+
+    printf("[self-test] turbo3=%.6f turbo4=%.6f turbo3_tcq=%.6f qjl=%.6f polar=%.6f (all finite)\n",
+           (double)s3, (double)s4, (double)stcq, (double)sqjl, (double)spolar);
     return 0;
 }
 
@@ -197,6 +332,8 @@ int main(int argc, char ** argv) {
     if (gen_turbo3(outdir))     return 1;
     if (gen_turbo4(outdir))     return 1;
     if (gen_turbo3_tcq(outdir)) return 1;
+    if (gen_qjl(outdir))        return 1;
+    if (gen_polar(outdir))      return 1;
     printf("[gen_fixture] OK — fixtures written to %s/\n", outdir);
     return 0;
 }

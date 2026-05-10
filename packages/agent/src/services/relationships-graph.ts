@@ -1,36 +1,7 @@
 /**
- * Compatibility shim — the relationships-graph service has been merged into
- * `RelationshipsService` in `@elizaos/core`. This file re-exports the public
- * surface from the new core location so existing barrel exports continue to
- * resolve. New code should import from `@elizaos/core` directly.
+ * Agent-side wiring for the merged relationships graph in `@elizaos/core`.
+ * Import graph types and helpers from `@elizaos/core` directly.
  */
-export {
-  type ClusterMemoriesQuery,
-  type ClusterSearchQuery,
-  createNativeRelationshipsGraphService,
-  getMemoriesForCluster,
-  type RelationshipsConversationMessage,
-  type RelationshipsConversationSnippet,
-  type RelationshipsFactExtractedInformation,
-  type RelationshipsFactProvenance,
-  type RelationshipsGraphEdge,
-  type RelationshipsGraphQuery,
-  type RelationshipsGraphService,
-  type RelationshipsGraphSnapshot,
-  type RelationshipsGraphStats,
-  type RelationshipsIdentityEdge,
-  type RelationshipsIdentityHandle,
-  type RelationshipsIdentitySummary,
-  type RelationshipsMergeCandidate,
-  type RelationshipsPersonDetail,
-  type RelationshipsPersonFact,
-  type RelationshipsPersonSummary,
-  type RelationshipsProfile,
-  type RelationshipsRelevantMemory,
-  type RelationshipsServiceLike,
-  type RelationshipsUserPersonalityPreference,
-  searchMemoriesForCluster,
-} from "@elizaos/core";
 
 import type {
   IAgentRuntime,

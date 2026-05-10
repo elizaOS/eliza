@@ -30,10 +30,10 @@ import {
   getGlobalAwarenessRegistry,
   getValidationKeywordTerms,
   isSelfEditEnabled,
+  requestRestart,
   resolveServerOnlyPort,
   textIncludesKeywordTerm,
 } from "@elizaos/shared";
-import { requestRestart } from "../runtime/restart.ts";
 
 const RUNTIME_OPS = [
   "status",

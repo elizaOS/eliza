@@ -36,7 +36,7 @@ describe("Cascade Delete Tests", () => {
       id: worldId,
       name: "Test World",
       agentId: agentId,
-      serverId: uuidv4() as UUID,
+      messageServerId: uuidv4() as UUID,
     });
 
     // Create rooms
@@ -61,7 +61,7 @@ describe("Cascade Delete Tests", () => {
         id: entityId,
         agentId: agentId,
         names: ["Test Entity"],
-        metadata: { type: "test" },
+        metadata: { type: "custom" },
       },
     ]);
 

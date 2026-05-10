@@ -43,6 +43,9 @@
       "@elizaos/ui": [
         "../ui/src/index.ts"
       ],
+      "@elizaos/ui/api/client-types-cloud": [
+        "../ui/src/api/client-types-cloud.ts"
+      ],
       "@elizaos/agent": [
         "../agent/src/index.ts"
       ],
@@ -54,6 +57,23 @@
       ],
       "@elizaos/plugin-computeruse": [
         "../../plugins/plugin-computeruse/src/index.ts"
+      ],
+      "@elizaos/plugin-computeruse/*": [
+        "../../plugins/plugin-computeruse/src/*"
+      ],
+      "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
+      "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
+      "@elizaos/plugin-discord-local": [
+        "../../plugins/plugin-discord-local/src/index.ts"
+      ],
+      "@elizaos/plugin-discord-local/*": [
+        "../../plugins/plugin-discord-local/src/*"
+      ],
+      "@elizaos/plugin-local-inference": [
+        "../../plugins/plugin-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/*": [
+        "../../plugins/plugin-local-inference/src/*"
       ],
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"
@@ -115,9 +135,7 @@
     "src/cli/**",
     "src/benchmark/**",
     "src/**/*.stories.ts",
-    "src/**/*.stories.tsx",
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx"
+    "src/**/*.stories.tsx"
   ],
   "include": [
     "src",

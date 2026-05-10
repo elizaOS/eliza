@@ -309,7 +309,6 @@ async function startRuntime(
 	const configPath = path.join(tempRoot, "eliza.json");
 	const logPath = path.join(tempRoot, "runtime.log");
 	const apiPort = await getFreePort();
-	const uiPort = await getFreePort();
 	const logs: string[] = [];
 
 	await mkdir(stateDir, { recursive: true });
@@ -323,12 +322,9 @@ async function startRuntime(
 			ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES: "1",
 			ELIZA_SKIP_LOCAL_UPSTREAMS: "1",
 			ELIZA_CONFIG_PATH: configPath,
-			ELIZA_SKIP_LOCAL_UPSTREAMS: "1",
-			ELIZA_CONFIG_PATH: configPath,
 			ELIZA_STATE_DIR: stateDir,
 			ELIZA_PORT: String(apiPort),
 			ELIZA_API_PORT: String(apiPort),
-			ELIZA_PORT: String(uiPort),
 			ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1",
 			DISCORD_API_TOKEN: discordToken,
 			DISCORD_BOT_TOKEN: discordToken,

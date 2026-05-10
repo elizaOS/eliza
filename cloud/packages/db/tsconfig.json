@@ -4,5 +4,5 @@
     "tsBuildInfoFile": ".tsbuildinfo"
   },
   "include": ["**/*.ts", "../types/**/*.d.ts"],
-  "exclude": ["node_modules", "dist", "migrations", "**/*.test.ts", "**/*.test.tsx"]
+  "exclude": ["node_modules", "dist", "migrations"]
 }

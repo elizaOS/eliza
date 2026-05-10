@@ -2,26 +2,61 @@
   "name": "@elizaos/plugin-localdb",
   "version": "2.0.0-beta.0",
   "type": "module",
-  "main": "./index.ts",
-  "module": "./index.ts",
-  "types": "./index.ts",
-  "browser": "./index.browser.ts",
+  "description": "File-backed (Node) and localStorage (browser) persistence via plugin-inmemorydb; ships compiled ESM in dist/.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "browser": "./dist/index.browser.js",
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./index.ts",
+      "types": "./dist/index.d.ts",
       "browser": {
-        "types": "./index.browser.ts",
-        "import": "./index.browser.ts",
-        "default": "./index.browser.ts"
+        "types": "./dist/index.browser.d.ts",
+        "import": "./dist/index.browser.js",
+        "default": "./dist/index.browser.js"
       },
-      "import": "./index.ts",
-      "default": "./index.ts"
+      "node": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
   "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup --config tsup.config.ts",
+    "dev": "tsup --config tsup.config.ts --watch",
+    "clean": "rm -rf dist .turbo",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "echo \"Lint skipped\"",
+    "lint:check": "bun run lint",
+    "test": "echo \"No tests\""
+  },
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-inmemorydb": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "25.6.2",
+    "tsup": "8.5.1",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-inmemorydb": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos/eliza.git",
+    "directory": "plugins/plugin-localdb"
   }
 }

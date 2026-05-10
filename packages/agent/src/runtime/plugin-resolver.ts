@@ -1468,7 +1468,9 @@ export async function resolvePlugins(
         // so Bun can still inline the required SQL plugin if module init order
         // leaves the registry empty.
         const sqlPluginModule = await import("@elizaos/plugin-sql");
-        mod = Object.fromEntries(Object.entries(sqlPluginModule));
+        mod = Object.fromEntries(
+          Object.entries(sqlPluginModule),
+        ) as PluginModuleShape;
       } else if (workspaceOverridePath) {
         const shouldPreferRepoNodeModules =
           isOfficialElizaPlugin &&

@@ -57,12 +57,8 @@
     }
   },
   "exclude": [
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx",
     "../app-core/src/ui/**/*.stories.ts",
-    "../app-core/src/ui/**/*.stories.tsx",
-    "../app-core/src/ui/**/*.test.ts",
-    "../app-core/src/ui/**/*.test.tsx"
+    "../app-core/src/ui/**/*.stories.tsx"
   ],
   "include": [
     "src",

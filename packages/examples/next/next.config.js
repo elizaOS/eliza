@@ -1,7 +1,9 @@
+import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 const distDir = process.env.NEXT_DIST_DIR;
 
 /** @type {import('next').NextConfig} */
@@ -15,9 +17,16 @@ const nextConfig = {
     "@elizaos/core",
     "@elizaos/plugin-openai",
     "@elizaos/plugin-sql",
+    "zlib-sync",
   ],
   webpack: (config, { isServer }) => {
     if (isServer) {
+      config.resolve = config.resolve ?? {};
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        "zlib-sync": require.resolve("zlib-sync"),
+      };
+
       config.ignoreWarnings = [
         ...(config.ignoreWarnings || []),
         {

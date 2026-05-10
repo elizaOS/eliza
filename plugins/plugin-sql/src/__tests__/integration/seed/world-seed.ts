@@ -35,7 +35,7 @@ export const worldTestWorlds: World[] = [
     id: uuidv4() as UUID,
     agentId: worldTestAgentId,
     name: "Test World 1",
-    serverId: "test-server-1",
+    messageServerId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as UUID,
     metadata: {
       ownership: {
         ownerId: worldTestEntityId,
@@ -49,7 +49,7 @@ export const worldTestWorlds: World[] = [
     id: uuidv4() as UUID,
     agentId: worldTestAgentId,
     name: "Test World 2",
-    serverId: "test-server-2",
+    messageServerId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" as UUID,
     metadata: {
       ownership: {
         ownerId: worldTestEntityId,
@@ -60,7 +60,7 @@ export const worldTestWorlds: World[] = [
     id: uuidv4() as UUID,
     agentId: worldTestAgentId,
     name: "Test World 3",
-    serverId: "test-server-3",
+    messageServerId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as UUID,
     metadata: {
       custom: "value",
       tags: ["test", "integration"],

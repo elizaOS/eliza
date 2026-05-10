@@ -98,7 +98,7 @@ export async function createTestDatabase(
     runtime.registerDatabaseAdapter(adapter);
 
     const migrationService = new DatabaseMigrationService();
-    await migrationService.initializeWithDatabase(adapter.getDatabase());
+    await migrationService.initializeWithDatabase(adapter.getDatabase() as DrizzleDatabase);
     migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
     await migrationService.runAllPluginMigrations();
 
@@ -229,7 +229,7 @@ export async function createIsolatedTestDatabase(
 
     // Run migrations
     const migrationService = new DatabaseMigrationService();
-    await migrationService.initializeWithDatabase(adapter.getDatabase());
+    await migrationService.initializeWithDatabase(adapter.getDatabase() as DrizzleDatabase);
     migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
     await migrationService.runAllPluginMigrations();
 
@@ -349,7 +349,7 @@ export async function createIsolatedTestDatabaseForMigration(testName: string): 
     const adapter = new PgliteDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
 
-    const db = adapter.getDatabase();
+    const db = adapter.getDatabase() as DrizzleDatabase;
 
     const cleanup = async () => {
       await adapter.close();

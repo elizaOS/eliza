@@ -150,7 +150,9 @@ describe("applyAppManifestDefaults", () => {
   });
 
   it("user-set entries win over defaults", () => {
-    const config = {
+    const config: {
+      plugins: { entries: Record<string, { enabled?: boolean }> };
+    } = {
       plugins: { entries: { wallet: { enabled: true } } },
     };
     const applied = applyAppManifestDefaults(config, {

@@ -1,6 +1,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import {
   AgentRuntime,
+  ChannelType,
   type Character,
   type Entity,
   type IAgentRuntime,
@@ -96,8 +97,8 @@ async function createMigratedAdapter(agentId: UUID): Promise<PgliteDatabaseAdapt
   await adapter.init();
 
   const migrationService = new DatabaseMigrationService();
-  const db = adapter.getDatabase();
-  await migrationService.initializeWithDatabase(db as DrizzleDatabase);
+  const db = adapter.getDatabase() as DrizzleDatabase;
+  await migrationService.initializeWithDatabase(db);
   migrationService.discoverAndRegisterPluginSchemas([
     { name: "@elizaos/plugin-sql", description: "SQL plugin", schema },
   ]);
@@ -126,7 +127,7 @@ async function createConversationRoom(
     agentId: runtime.agentId,
     worldId,
     source: "test",
-    type: "dm",
+    type: ChannelType.DM,
     name: "Test Room",
     metadata: {},
     createdAt: new Date(),
@@ -218,7 +219,9 @@ describe("plugin-sql advanced memory storage", () => {
     StubEntityResolutionService.links.set(entityA, [entityB]);
     StubEntityResolutionService.links.set(entityB, [entityA]);
 
-    const memoryService = (await runtime.getServiceLoadPromise("memory")) as RuntimeMemoryService;
+    const memoryService = (await runtime.getServiceLoadPromise(
+      "memory"
+    )) as unknown as RuntimeMemoryService;
 
     const stored = await memoryService.storeLongTermMemory({
       agentId: runtime.agentId,
@@ -251,7 +254,9 @@ describe("plugin-sql advanced memory storage", () => {
     await createEntities(runtime, [entityId]);
     const { roomId } = await createConversationRoom(runtime);
 
-    const memoryService = (await runtime.getServiceLoadPromise("memory")) as RuntimeMemoryService;
+    const memoryService = (await runtime.getServiceLoadPromise(
+      "memory"
+    )) as unknown as RuntimeMemoryService;
 
     await memoryService.storeSessionSummary({
       agentId: runtime.agentId,
