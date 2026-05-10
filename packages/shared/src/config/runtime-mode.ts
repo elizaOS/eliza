@@ -14,11 +14,6 @@ export interface RuntimeModeConfig {
   executionMode?: RuntimeExecutionMode;
 }
 
-export interface RuntimeExecutionModeConfigSource {
-  runtime?: unknown;
-  deploymentTarget?: unknown;
-}
-
 export interface RuntimeExecutionModeDefinition {
   mode: RuntimeExecutionMode;
   local: boolean;
