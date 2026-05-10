@@ -55,7 +55,7 @@ export function createApp(): Hono<AppEnv> {
 
   app.get("/", (c) => {
     const hostname = new URL(c.req.url).hostname;
-    if (hostname === "x402.elizaos.ai") {
+    if (hostname === "x402.elizacloud.ai" || hostname === "x402.elizaos.ai") {
       return c.json({
         name: "eliza-x402",
         description: "Eliza Cloud x402 facilitator",
