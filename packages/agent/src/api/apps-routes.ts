@@ -12,6 +12,7 @@ import {
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
 } from "@elizaos/shared";
+import { parseAppPermissions } from "@elizaos/shared/contracts/app-permissions";
 import {
   importAppRouteModule,
   resolveWorkspacePackageDir,
@@ -1294,8 +1295,17 @@ export async function handleAppsRoutes(
           ctx?: {
             requesterEntityId?: string | null;
             requesterRoomId?: string | null;
+            trust?: "first-party" | "external";
           },
         ) => Promise<void>;
+        recordManifestRejection?: (rejection: {
+          directory: string;
+          packageName: string | null;
+          reason: string;
+          path: string;
+          requesterEntityId?: string | null;
+          requesterRoomId?: string | null;
+        }) => Promise<void>;
       } | null;
     } | null;
     const registry = runtimeWithServices?.getService?.("app-registry") ?? null;
@@ -1308,6 +1318,12 @@ export async function handleAppsRoutes(
       const entries = await fs.readdir(directory, { withFileTypes: true });
       let registered = 0;
       const items: Array<{ slug: string; canonicalName: string }> = [];
+      const rejectedManifests: Array<{
+        directory: string;
+        packageName: string | null;
+        reason: string;
+        path: string;
+      }> = [];
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         const subdir = path.join(directory, entry.name);
@@ -1327,6 +1343,24 @@ export async function handleAppsRoutes(
         const packageName =
           typeof parsed.name === "string" ? parsed.name : null;
         if (!packageName) continue;
+
+        const permissionsResult = parseAppPermissions(appMeta.permissions);
+        if (permissionsResult.ok === false) {
+          const rejection = {
+            directory: subdir,
+            packageName,
+            reason: permissionsResult.reason,
+            path: permissionsResult.path,
+          };
+          rejectedManifests.push(rejection);
+          await registry.recordManifestRejection?.({
+            ...rejection,
+            requesterEntityId: null,
+            requesterRoomId: null,
+          });
+          continue;
+        }
+
         const basename = packageName.replace(/^@[^/]+\//, "").trim();
         const slug =
           (typeof appMeta.slug === "string" && appMeta.slug.trim()) ||
@@ -1338,23 +1372,31 @@ export async function handleAppsRoutes(
         const aliases = Array.isArray(appMeta.aliases)
           ? appMeta.aliases.filter((v): v is string => typeof v === "string")
           : [];
-        await registry.register(
-          {
-            slug,
-            canonicalName: packageName,
-            aliases,
-            directory: subdir,
-            displayName,
-          },
-          {
-            requesterEntityId: null,
-            requesterRoomId: null,
-          },
-        );
+        const entryRecord: Record<string, unknown> = {
+          slug,
+          canonicalName: packageName,
+          aliases,
+          directory: subdir,
+          displayName,
+        };
+        if (permissionsResult.manifest.raw !== null) {
+          entryRecord.requestedPermissions = permissionsResult.manifest.raw;
+        }
+        await registry.register(entryRecord, {
+          requesterEntityId: null,
+          requesterRoomId: null,
+          trust: "external",
+        });
         registered += 1;
         items.push({ slug, canonicalName: packageName });
       }
-      json(res, { ok: true, directory, registered, items });
+      json(res, {
+        ok: true,
+        directory,
+        registered,
+        items,
+        rejectedManifests,
+      });
     } catch (err) {
       error(
         res,

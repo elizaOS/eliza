@@ -15,6 +15,10 @@ import type {
 	Memory,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import {
+	type AppPermissionsManifest,
+	parseAppPermissions,
+} from "@elizaos/shared/contracts/app-permissions";
 import { readStringOption } from "../params.js";
 import {
 	isProtected,
@@ -33,6 +37,7 @@ interface DiscoveredApp {
 	displayName: string;
 	slug: string;
 	aliases: string[];
+	permissions: AppPermissionsManifest;
 }
 
 async function readPackageJson(
@@ -61,14 +66,25 @@ function packageBasename(name: string): string {
 	return name.replace(/^@[^/]+\//, "").trim();
 }
 
-async function discoverApps(directory: string): Promise<DiscoveredApp[]> {
+interface DiscoveryResult {
+	apps: DiscoveredApp[];
+	rejectedManifests: Array<{
+		directory: string;
+		packageName: string | null;
+		reason: string;
+		path: string;
+	}>;
+}
+
+async function discoverApps(directory: string): Promise<DiscoveryResult> {
 	const stat = await fs.stat(directory).catch(() => null);
 	if (!stat?.isDirectory()) {
 		throw new Error(`Not a directory: ${directory}`);
 	}
 
 	const entries = await fs.readdir(directory, { withFileTypes: true });
-	const found: DiscoveredApp[] = [];
+	const apps: DiscoveredApp[] = [];
+	const rejectedManifests: DiscoveryResult["rejectedManifests"] = [];
 
 	for (const entry of entries) {
 		if (!entry.isDirectory()) continue;
@@ -89,6 +105,17 @@ async function discoverApps(directory: string): Promise<DiscoveredApp[]> {
 		const packageName = readString(pkg.name);
 		if (!packageName) continue;
 
+		const permissionsResult = parseAppPermissions(appMeta.permissions);
+		if (!permissionsResult.ok) {
+			rejectedManifests.push({
+				directory: subdir,
+				packageName,
+				reason: permissionsResult.reason,
+				path: permissionsResult.path,
+			});
+			continue;
+		}
+
 		const slug =
 			readString(appMeta.slug) ??
 			packageBasename(packageName).replace(/^app-/, "");
@@ -96,16 +123,17 @@ async function discoverApps(directory: string): Promise<DiscoveredApp[]> {
 			readString(appMeta.displayName) ?? packageBasename(packageName);
 		const aliases = readStringArray(appMeta.aliases);
 
-		found.push({
+		apps.push({
 			directory: subdir,
 			packageName,
 			displayName,
 			slug,
 			aliases,
+			permissions: permissionsResult.manifest,
 		});
 	}
 
-	return found;
+	return { apps, rejectedManifests };
 }
 
 export interface RunLoadFromDirectoryInput {
@@ -168,8 +196,8 @@ export async function runLoadFromDirectory({
 		return { success: false, text };
 	}
 
-	const discovered = await discoverApps(directory);
-	if (discovered.length === 0) {
+	const { apps: discovered, rejectedManifests } = await discoverApps(directory);
+	if (discovered.length === 0 && rejectedManifests.length === 0) {
 		const text = `No apps found under ${directory} (no subdir contained a package.json with elizaos.app).`;
 		await callback?.({ text });
 		return { success: true, text, data: { directory, registered: [] } };
@@ -183,6 +211,20 @@ export async function runLoadFromDirectory({
 
 	const registered: AppRegistryEntry[] = [];
 	const rejected: RejectedApp[] = [];
+
+	for (const rejection of rejectedManifests) {
+		logger.warn(
+			`[plugin-app-control][permissions] rejected manifest name=${rejection.packageName ?? "unknown"} directory=${rejection.directory} path=${rejection.path} reason="${rejection.reason}" requesterEntityId=${requesterEntityId ?? "null"} requesterRoomId=${requesterRoomId ?? "null"}`,
+		);
+		await service.recordManifestRejection({
+			directory: rejection.directory,
+			packageName: rejection.packageName,
+			reason: rejection.reason,
+			path: rejection.path,
+			requesterEntityId,
+			requesterRoomId,
+		});
+	}
 
 	for (const app of discovered) {
 		const matchedOn = findProtectedMatch(app, protectedApps);
@@ -200,16 +242,20 @@ export async function runLoadFromDirectory({
 			aliases: app.aliases,
 			directory: app.directory,
 			displayName: app.displayName,
+			...(app.permissions.raw !== null
+				? { requestedPermissions: app.permissions.raw }
+				: {}),
 		};
 		await service.register(entry, {
 			requesterEntityId,
 			requesterRoomId,
+			trust: "external",
 		});
 		registered.push(entry);
 	}
 
 	logger.info(
-		`[plugin-app-control] APP/load_from_directory ${directory} registered=${registered.length} rejected=${rejected.length}`,
+		`[plugin-app-control] APP/load_from_directory ${directory} registered=${registered.length} rejected=${rejected.length} rejectedManifests=${rejectedManifests.length}`,
 	);
 
 	const lines: string[] = [];
@@ -228,6 +274,16 @@ export async function runLoadFromDirectory({
 			`Skipped ${rejected.length} protected app${rejected.length === 1 ? "" : "s"}: ${names} (cannot override first-party apps).`,
 		);
 	}
+	if (rejectedManifests.length > 0) {
+		const summaries = rejectedManifests.map(
+			(r) => `${r.packageName ?? r.directory}: ${r.reason} (${r.path})`,
+		);
+		lines.push(
+			"",
+			`Skipped ${rejectedManifests.length} app${rejectedManifests.length === 1 ? "" : "s"} with malformed elizaos.app.permissions:`,
+			...summaries.map((s) => `  - ${s}`),
+		);
+	}
 	if (registered.length > 0) {
 		lines.push("", "Apps are registered only — none were launched.");
 	}
@@ -242,6 +298,7 @@ export async function runLoadFromDirectory({
 			directory,
 			registeredCount: registered.length,
 			rejectedCount: rejected.length,
+			rejectedManifestsCount: rejectedManifests.length,
 		},
 		data: {
 			directory,
@@ -251,6 +308,7 @@ export async function runLoadFromDirectory({
 				directory: r.app.directory,
 				matchedOn: r.matchedOn,
 			})),
+			rejectedManifests,
 		},
 	};
 }

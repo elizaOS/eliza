@@ -45,6 +45,7 @@
     "./format-error": "./src/format-error.ts",
     "./runtime-env": "./src/runtime-env.ts",
     "./contracts": "./src/contracts/index.ts",
+    "./contracts/app-permissions": "./src/contracts/app-permissions.ts",
     "./contracts/apps": "./src/contracts/apps.ts",
     "./contracts/awareness": "./src/contracts/awareness.ts",
     "./contracts/config": "./src/contracts/config.ts",
