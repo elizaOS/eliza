@@ -141,36 +141,6 @@ export function getLocalInferenceActiveModelId(): string | undefined {
 
 const CATALOG: CatalogModel[] = [
 	{
-		id: "smollm2-360m",
-		displayName: "SmolLM2 360M Instruct",
-		hfRepo: "bartowski/SmolLM2-360M-Instruct-GGUF",
-		ggufFile: "SmolLM2-360M-Instruct-Q4_K_M.gguf",
-		params: "360M",
-		quant: "Q4_K_M",
-		sizeGb: 0.27,
-		minRamGb: 1,
-		category: "tiny",
-		bucket: "small",
-		blurb:
-			"Mobile-friendly tiny chat model for simulator and low-RAM smoke tests.",
-		role: "chat",
-	},
-	{
-		id: "llama-3.2-1b",
-		displayName: "Llama 3.2 1B Instruct",
-		hfRepo: "bartowski/Llama-3.2-1B-Instruct-GGUF",
-		ggufFile: "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
-		params: "1B",
-		quant: "Q4_K_M",
-		sizeGb: 0.8,
-		minRamGb: 2,
-		category: "tiny",
-		bucket: "small",
-		blurb:
-			"Recommended mobile local chat default with a larger context window.",
-		role: "chat",
-	},
-	{
 		id: "qwen3.5-4b-dflash",
 		displayName: "Qwen3.5 4B DFlash (Q4_K_M)",
 		hfRepo: "bartowski/Qwen_Qwen3.5-4B-GGUF",

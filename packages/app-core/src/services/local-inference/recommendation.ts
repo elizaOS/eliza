@@ -1,4 +1,4 @@
-import { MODEL_CATALOG } from "./catalog";
+import { FIRST_RUN_DEFAULT_MODEL_ID, MODEL_CATALOG } from "./catalog";
 import { assessFit } from "./hardware";
 import type {
   CatalogModel,
@@ -26,105 +26,73 @@ export interface RecommendedModelSelection {
 
 const BYTES_PER_GB = 1024 ** 3;
 
+/**
+ * Per-platform slot ladders. Every entry is either a TurboQuant /
+ * DFlash-equipped model wired to our fused-kernel runtime, or an
+ * `eliza-1` Milady fine-tune placeholder. Ladders bias toward the
+ * smallest TBQ/DFlash pair that fits the platform; desktops/servers
+ * pick larger DFlash pairs first when memory headroom allows.
+ */
 const SLOT_LADDERS: Record<
   RecommendationPlatformClass,
   Record<TextGenerationSlot, string[]>
 > = {
   mobile: {
-    TEXT_SMALL: [
-      "qwen3.5-4b-dflash",
-      "llama-3.2-3b",
-      "smollm2-1.7b",
-      "llama-3.2-1b",
-      "smollm2-360m",
-    ],
+    TEXT_SMALL: ["qwen3.5-4b-dflash", "eliza-1-2b", "bonsai-8b-1bit-dflash"],
     TEXT_LARGE: [
       "qwen3.5-9b-dflash",
       "qwen3.5-4b-dflash",
-      "llama-3.2-3b",
-      "smollm2-1.7b",
-      "llama-3.2-1b",
-      "smollm2-360m",
+      "bonsai-8b-1bit-dflash",
+      "eliza-1-9b",
+      "eliza-1-2b",
     ],
   },
   "apple-silicon": {
-    TEXT_SMALL: [
-      "qwen3.5-4b-dflash",
-      "llama-3.2-3b",
-      "smollm2-1.7b",
-      "llama-3.2-1b",
-    ],
+    TEXT_SMALL: ["qwen3.5-4b-dflash", "eliza-1-2b"],
     TEXT_LARGE: [
       "qwen3.6-27b-dflash",
       "qwen3.5-9b-dflash",
       "qwen3.5-4b-dflash",
-      "gemma-2-9b",
-      "llama-3.1-8b",
-      "llama-3.2-3b",
+      "eliza-1-27b",
+      "eliza-1-9b",
     ],
   },
   "linux-gpu": {
-    TEXT_SMALL: [
-      "qwen3.5-4b-dflash",
-      "llama-3.2-3b",
-      "smollm2-1.7b",
-      "llama-3.2-1b",
-    ],
+    TEXT_SMALL: ["qwen3.5-4b-dflash", "eliza-1-2b"],
     TEXT_LARGE: [
       "qwen3.6-27b-dflash",
       "qwen3.5-9b-dflash",
       "qwen3.5-4b-dflash",
-      "qwen2.5-coder-14b",
-      "gemma-2-9b",
-      "llama-3.1-8b",
+      "eliza-1-27b",
+      "eliza-1-9b",
     ],
   },
   "linux-cpu": {
-    TEXT_SMALL: [
-      "qwen3.5-4b-dflash",
-      "llama-3.2-3b",
-      "smollm2-1.7b",
-      "llama-3.2-1b",
-      "smollm2-360m",
-    ],
+    TEXT_SMALL: ["qwen3.5-4b-dflash", "eliza-1-2b"],
     TEXT_LARGE: [
       "qwen3.5-9b-dflash",
       "qwen3.5-4b-dflash",
-      "llama-3.2-3b",
-      "smollm2-1.7b",
-      "llama-3.2-1b",
+      "eliza-1-9b",
+      "eliza-1-2b",
     ],
   },
   "desktop-gpu": {
-    TEXT_SMALL: [
-      "qwen3.5-4b-dflash",
-      "llama-3.2-3b",
-      "smollm2-1.7b",
-      "llama-3.2-1b",
-    ],
+    TEXT_SMALL: ["qwen3.5-4b-dflash", "eliza-1-2b"],
     TEXT_LARGE: [
       "qwen3.6-27b-dflash",
       "qwen3.5-9b-dflash",
       "qwen3.5-4b-dflash",
-      "qwen2.5-coder-14b",
-      "gemma-2-9b",
-      "llama-3.1-8b",
+      "eliza-1-27b",
+      "eliza-1-9b",
     ],
   },
   "desktop-cpu": {
-    TEXT_SMALL: [
-      "qwen3.5-4b-dflash",
-      "llama-3.2-3b",
-      "smollm2-1.7b",
-      "llama-3.2-1b",
-      "smollm2-360m",
-    ],
+    TEXT_SMALL: ["qwen3.5-4b-dflash", "eliza-1-2b"],
     TEXT_LARGE: [
       "qwen3.5-9b-dflash",
       "qwen3.5-4b-dflash",
-      "llama-3.2-3b",
-      "smollm2-1.7b",
-      "llama-3.2-1b",
+      "eliza-1-9b",
+      "eliza-1-2b",
     ],
   },
 };
@@ -382,6 +350,39 @@ export function selectRecommendedModels(
       options,
     ),
   };
+}
+
+/**
+ * Pick the model the engine should auto-load on first run when no user
+ * preference exists. Always resolves to a Milady-shippable
+ * (TBQ/DFlash) entry — never a generic upstream GGUF — so the engine
+ * cannot land on a model that bypasses our fused-kernel runtime.
+ *
+ * Resolution order:
+ *   1. `FIRST_RUN_DEFAULT_MODEL_ID` (`qwen3.5-4b-dflash`) when present
+ *      in the catalog. This is the smallest TBQ/DFlash pair we ship.
+ *   2. The first DFlash chat target in the catalog as a defensive
+ *      fallback if the default id is somehow missing (catalog lint
+ *      should prevent this; see catalog.test.ts).
+ *
+ * Returns null only when no DFlash entry exists at all — which means
+ * the catalog is misconfigured and the caller should surface a hard
+ * error rather than degrade silently.
+ */
+export function recommendForFirstRun(
+  catalog: CatalogModel[] = MODEL_CATALOG,
+): CatalogModel | null {
+  const byId = catalogById(catalog);
+  const preferred = byId.get(FIRST_RUN_DEFAULT_MODEL_ID);
+  if (preferred && preferred.runtime?.dflash) return preferred;
+  return (
+    catalog.find(
+      (model) =>
+        !model.hiddenFromCatalog &&
+        model.runtimeRole !== "dflash-drafter" &&
+        model.runtime?.dflash !== undefined,
+    ) ?? null
+  );
 }
 
 export function chooseSmallerFallbackModel(
