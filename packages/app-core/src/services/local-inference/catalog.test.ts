@@ -34,6 +34,9 @@ describe("local inference catalog", () => {
   });
 
   it("declares contextLength on every entry whose blurb claims a long window", () => {
+    // Catches the regression class this task exists to prevent: a blurb
+    // saying "128k window" but no `contextLength` on the entry, so the
+    // loader silently uses the default (8k or 4k).
     const longContextRegex =
       /\b(?:128k|256k|long.*context|long-context|128 ?k tokens?)\b/i;
     const offenders: string[] = [];
@@ -52,6 +55,9 @@ describe("local inference catalog", () => {
   });
 
   it("sets contextLength on the canonical 128k catalog entries", () => {
+    // Per the porting plan + task brief: these are the entries that
+    // legitimately advertise a 128k+ ceiling and must declare it
+    // programmatically, not just in marketing prose.
     const expected = {
       "qwen2.5-coder-7b": 131072,
       "qwen2.5-coder-14b": 131072,
@@ -77,6 +83,9 @@ describe("local inference catalog", () => {
   });
 
   it("sets a tokenizerFamily on every chat/code/reasoning entry", () => {
+    // tokenizerFamily is required for DFlash drafter pair guards and for
+    // any future code that needs to make tokenizer-aware decisions. Drafter
+    // entries inherit their family from the target model's family.
     const offenders: string[] = [];
     for (const model of MODEL_CATALOG) {
       if (!model.tokenizerFamily) {
