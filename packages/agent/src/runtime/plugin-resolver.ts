@@ -971,6 +971,73 @@ function stageFullPluginPackageEnabled(): boolean {
   return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
+const DEFAULT_PLUGIN_INSTANCE_KEEP = 3;
+
+function pluginInstanceKeepCount(): number {
+  const raw = process.env.ELIZA_PLUGIN_INSTANCE_KEEP;
+  if (!raw) return DEFAULT_PLUGIN_INSTANCE_KEEP;
+  const parsed = Number.parseInt(raw.trim(), 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return DEFAULT_PLUGIN_INSTANCE_KEEP;
+  }
+  return parsed;
+}
+
+/**
+ * Prune sibling plugin staging directories under `stagingBaseDir`, keeping
+ * only the `keepCount` newest by mtime. Each call to `stagePluginImportRoot`
+ * mints a new `mkdtemp` directory and the previous ones are never reused, so
+ * without this cleanup the directory grows unbounded — on long-running dev
+ * boxes the same plugin can accumulate thousands of stale installs (each
+ * carrying its own `node_modules` copy) and consume hundreds of GB.
+ *
+ * Failures are logged but never thrown — staging the new install must not be
+ * blocked by failure to clean up old ones.
+ *
+ * Exported for unit testing.
+ */
+export async function pruneStalePluginInstances(
+  stagingBaseDir: string,
+  keepCount: number,
+): Promise<void> {
+  let entries;
+  try {
+    entries = await fs.readdir(stagingBaseDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  const candidates: { path: string; mtimeMs: number }[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const fullPath = path.join(stagingBaseDir, entry.name);
+    try {
+      const stat = await fs.stat(fullPath);
+      candidates.push({ path: fullPath, mtimeMs: stat.mtimeMs });
+    } catch {
+      // dir vanished concurrently — fine, skip it
+    }
+  }
+  if (candidates.length <= keepCount) return;
+  candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  const toDelete = candidates.slice(keepCount);
+  let deleted = 0;
+  for (const victim of toDelete) {
+    try {
+      await fs.rm(victim.path, { recursive: true, force: true });
+      deleted += 1;
+    } catch (error) {
+      logger.warn(
+        `[eliza] Failed to prune stale plugin instance ${victim.path}: ${formatError(error)}`,
+      );
+    }
+  }
+  if (deleted > 0) {
+    logger.debug(
+      `[eliza] Pruned ${deleted} stale plugin instance(s) under ${stagingBaseDir}, kept newest ${keepCount}`,
+    );
+  }
+}
+
 function createPluginPackageStageFilter(packageRoot: string) {
   const distPath = path.join(packageRoot, "dist");
   const stageBuiltPackageOnly =
@@ -1059,6 +1126,10 @@ async function stagePluginImportRoot(params: {
   );
   await fs.mkdir(stagingBaseDir, { recursive: true });
 
+  // Prune BEFORE mkdtemp so concurrent stages of the same plugin can't have
+  // their just-minted (still-empty) sibling deleted by another process's pruner
+  // that ranks it as the oldest in the batch.
+  await pruneStalePluginInstances(stagingBaseDir, pluginInstanceKeepCount());
   const stagingDir = await fs.mkdtemp(
     path.join(stagingBaseDir, `${Date.now()}-${crypto.randomUUID()}-`),
   );
