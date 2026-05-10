@@ -153,6 +153,7 @@ export default defineConfig({
   },
   resolve: {
     ...baseConfig.resolve,
+    preserveSymlinks: false,
     alias: [
       // These packages are imported by @elizaos/core while this suite inlines
       // core. Resolve them through Bun's real package-store path so their own
