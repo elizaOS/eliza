@@ -114,12 +114,32 @@ runs:
     - name: Install dependencies
       shell: bash
       run: |
+        install_command="${{ inputs.install-command }}"
         for attempt in 1 2; do
-          if ${{ inputs.install-command }}; then
+          install_log="$(mktemp)"
+          if bash -lc "$install_command" 2>&1 | tee "$install_log"; then
+            rm -f "$install_log"
             exit 0
           fi
+          install_status=${PIPESTATUS[0]}
+          if grep -q "lockfile had changes, but lockfile is frozen" "$install_log" && \
+             [[ "$install_command" == *"--frozen-lockfile"* ]]; then
+            fallback_command="${install_command/--frozen-lockfile/--no-frozen-lockfile}"
+            echo "::warning::Bun reported frozen lockfile drift; validating with non-frozen install and git diff."
+            if bash -lc "$fallback_command"; then
+              if git diff --quiet -- bun.lock; then
+                rm -f "$install_log"
+                exit 0
+              fi
+              echo "::error::bun.lock changed during dependency install. Commit the updated lockfile."
+              git diff -- bun.lock
+              rm -f "$install_log"
+              exit 1
+            fi
+          fi
+          rm -f "$install_log"
           if [ "$attempt" -eq 2 ]; then
-            exit 1
+            exit "$install_status"
           fi
           echo "Dependency install failed; retrying once after cleaning Bun's install cache."
           rm -rf ~/.bun/install/cache
