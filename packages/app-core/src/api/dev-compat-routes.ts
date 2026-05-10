@@ -1,5 +1,5 @@
 import type http from "node:http";
-import { ensureRouteAuthorized } from "./auth";
+import { ensureRouteAuthorized } from "./auth.ts";
 import {
   type CompatRuntimeState,
   isLoopbackRemoteAddress,
