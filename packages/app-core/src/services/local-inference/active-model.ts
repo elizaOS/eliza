@@ -11,14 +11,25 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import { findCatalogModel } from "./catalog";
+import {
+  ELIZA_1_PLACEHOLDER_IDS,
+  FIRST_RUN_DEFAULT_MODEL_ID,
+  findCatalogModel,
+} from "./catalog";
 import { localInferenceEngine } from "./engine";
+import { recommendForFirstRun } from "./recommendation";
 import { listInstalledModels, touchElizaModel } from "./registry";
 import type {
   ActiveModelState,
   CatalogModel,
   InstalledModel,
 } from "./types";
+
+export {
+  ELIZA_1_PLACEHOLDER_IDS,
+  FIRST_RUN_DEFAULT_MODEL_ID,
+  recommendForFirstRun,
+};
 
 /**
  * KV cache placement strategy. `node-llama-cpp` does not currently expose a
