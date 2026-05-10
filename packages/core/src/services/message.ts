@@ -158,10 +158,12 @@ import {
 import {
 	AVAILABLE_CONTEXTS_STATE_KEY,
 	attachAvailableContexts,
+	CONTEXT_ROUTING_METADATA_KEY,
 	CONTEXT_ROUTING_STATE_KEY,
 	type ContextRoutingDecision,
 	getActiveRoutingContexts,
 	inferContextRoutingFromMessage,
+	isPageScopedRoutingContext,
 	parseContextRoutingMetadata,
 	setContextRoutingMetadata,
 } from "../utils/context-routing";
@@ -886,6 +888,23 @@ function hasInboundBenchmarkContext(message: Memory): boolean {
 	);
 }
 
+function hasPageScopedRoutingMetadata(message: Memory): boolean {
+	const metadataCandidates = [message.content?.metadata, message.metadata];
+	for (const rawMetadata of metadataCandidates) {
+		if (!rawMetadata || typeof rawMetadata !== "object") continue;
+		const routing = parseContextRoutingMetadata(
+			(rawMetadata as Record<string, unknown>)[CONTEXT_ROUTING_METADATA_KEY],
+		);
+		if (
+			isPageScopedRoutingContext(routing.primaryContext) ||
+			routing.secondaryContexts?.some(isPageScopedRoutingContext)
+		) {
+			return true;
+		}
+	}
+	return false;
+}
+
 function composeResponseState(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -894,6 +913,14 @@ function composeResponseState(
 	const providers = hasInboundBenchmarkContext(message)
 		? [...CORE_RESPONSE_STATE_PROVIDERS, "CONTEXT_BENCH"]
 		: CORE_RESPONSE_STATE_PROVIDERS;
+	if (hasPageScopedRoutingMetadata(message)) {
+		return runtime.composeState(
+			message,
+			[...providers, "page-scoped-context"],
+			true,
+			skipCache,
+		);
+	}
 	return runtime.composeState(message, providers, true, skipCache);
 }
 
@@ -1942,9 +1969,10 @@ function filterSelectedContextsForRole(
 
 function contextAvailableForRepair(
 	context: AgentContext,
-	availableContexts: readonly ContextDefinition[],
+	availableContexts: readonly ContextDefinition[] | undefined,
 ): boolean {
 	return (
+		!availableContexts ||
 		availableContexts.length === 0 ||
 		availableContexts.some((definition) => definition.id === context)
 	);
@@ -2214,6 +2242,89 @@ function getStage1CalendlyRepairPlan(args: {
 	};
 }
 
+function looksLikeCalendarTravelFeasibilityRequest(text: string): boolean {
+	const lower = text.toLowerCase();
+	const hasTravelSignal =
+		/\b(?:flight|flights?|airport|arriv(?:e|es|al|ing)|land(?:s|ed|ing)?|depart(?:s|ed|ure)?|itinerary|travel|jfk|sfo|lax|ord|ewr|lga)\b/u.test(
+			lower,
+		);
+	const hasCalendarSignal =
+		/\b(?:meeting|board|calendar|schedule|appointment|event|conflict|make\s+(?:my|the|it))\b/u.test(
+			lower,
+		);
+	const hasFeasibilitySignal =
+		/\b(?:can|could|will|would|make|given|tight|conflict|overlap|rebook|move|reschedule|enough time)\b/u.test(
+			lower,
+		);
+	return hasTravelSignal && hasCalendarSignal && hasFeasibilitySignal;
+}
+
+function getStage1CalendarTravelRepairPlan(args: {
+	message: Memory;
+	availableContexts: readonly ContextDefinition[];
+}): {
+	contexts: AgentContext[];
+	candidateActions: string[];
+	parentActionHints: string[];
+} | null {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	if (!text || !looksLikeCalendarTravelFeasibilityRequest(text)) {
+		return null;
+	}
+	const contexts = (["calendar", "tasks"] as AgentContext[]).filter((context) =>
+		contextAvailableForRepair(context, args.availableContexts),
+	);
+	return {
+		contexts: contexts.length > 0 ? contexts : ["calendar"],
+		candidateActions: [
+			"check_flight_conflict",
+			"flight_conflict_rebooking",
+			"calendar_search_events",
+			"calendar_read",
+		],
+		parentActionHints: ["CALENDAR"],
+	};
+}
+
+function looksLikeCalendarSignatureDeadlineRequest(text: string): boolean {
+	const lower = text.toLowerCase();
+	const hasSignatureSignal =
+		/\b(?:nda|docusign|signature|signed|signing|sign\s+(?:the|a)?\s*(?:document|doc|nda)|document\s+sign(?:ing|ature)?)\b/u.test(
+			lower,
+		);
+	const hasCalendarDeadlineSignal =
+		/\b(?:meeting|appointment|kick-?off|deadline|before|due|in\s+\d+\s+days?|partnership)\b/u.test(
+			lower,
+		);
+	const hasInitiationSignal =
+		/\b(?:initiate|start|begin|draft|queue|prepare|send|get\s+(?:it|the\s+nda)\s+signed|signing\s+flow)\b/u.test(
+			lower,
+		);
+	return hasSignatureSignal && hasCalendarDeadlineSignal && hasInitiationSignal;
+}
+
+function getStage1CalendarSignatureDeadlineRepairPlan(args: {
+	message: Memory;
+	availableContexts: readonly ContextDefinition[];
+}): {
+	contexts: AgentContext[];
+	candidateActions: string[];
+	parentActionHints: string[];
+} | null {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	if (!text || !looksLikeCalendarSignatureDeadlineRequest(text)) {
+		return null;
+	}
+	const contexts = (["calendar"] as AgentContext[]).filter((context) =>
+		contextAvailableForRepair(context, args.availableContexts),
+	);
+	return {
+		contexts: contexts.length > 0 ? contexts : ["calendar"],
+		candidateActions: ["calendar_search_events", "calendar_read"],
+		parentActionHints: ["CALENDAR"],
+	};
+}
+
 function getStage1KnownToolRepairPlan(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
@@ -2226,6 +2337,8 @@ function getStage1KnownToolRepairPlan(args: {
 		getStage1ApprovalResolutionRepairPlan(args) ??
 		getStage1PasswordManagerRepairPlan(args) ??
 		getStage1CheckinRepairPlan(args) ??
+		getStage1CalendarSignatureDeadlineRepairPlan(args) ??
+		getStage1CalendarTravelRepairPlan(args) ??
 		getStage1CalendlyRepairPlan(args) ??
 		getStage1OwnerPreferenceRepairPlan(args)
 	);
@@ -2303,6 +2416,36 @@ function repairStage1PlanForKnownToolRequests(args: {
 		appendStage1PlanHints(args.messageHandler, {
 			candidateActions: checkinRepair.candidateActions,
 			parentActionHints: checkinRepair.parentActionHints,
+		});
+	}
+
+	const calendarSignatureRepair = getStage1CalendarSignatureDeadlineRepairPlan({
+		message: args.message,
+		availableContexts: args.availableContexts,
+	});
+	if (calendarSignatureRepair) {
+		replaceStage1PlanContexts(
+			args.messageHandler,
+			calendarSignatureRepair.contexts,
+		);
+		appendStage1PlanHints(args.messageHandler, {
+			candidateActions: calendarSignatureRepair.candidateActions,
+			parentActionHints: calendarSignatureRepair.parentActionHints,
+		});
+	}
+
+	const calendarTravelRepair = getStage1CalendarTravelRepairPlan({
+		message: args.message,
+		availableContexts: args.availableContexts,
+	});
+	if (calendarTravelRepair) {
+		replaceStage1PlanContexts(
+			args.messageHandler,
+			calendarTravelRepair.contexts,
+		);
+		appendStage1PlanHints(args.messageHandler, {
+			candidateActions: calendarTravelRepair.candidateActions,
+			parentActionHints: calendarTravelRepair.parentActionHints,
 		});
 	}
 

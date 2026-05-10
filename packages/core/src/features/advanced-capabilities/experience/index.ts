@@ -18,6 +18,7 @@ export * from "./types.ts";
 import { searchExperiencesAction as _bs_1_searchExperiencesAction } from "./actions/search-experiences.ts";
 import { experiencePatternEvaluator as _bs_2_experiencePatternEvaluator } from "./evaluators/experience-items.ts";
 import { experienceProvider as _bs_3_experienceProvider } from "./providers/experienceProvider.ts";
+
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
 // biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.

@@ -116,6 +116,7 @@ describe("LifeOps native options.parameters migration", () => {
 
   it("CALENDAR exposes concrete context and child action metadata", () => {
     expect(calendarAction.contexts).toEqual([
+      "general",
       "calendar",
       "contacts",
       "tasks",

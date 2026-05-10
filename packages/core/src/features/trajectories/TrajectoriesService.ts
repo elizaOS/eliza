@@ -392,7 +392,6 @@ function normalizeActionAttempt(value: unknown): ActionAttempt | null {
 	const parameters = isJsonObject(value.parameters) ? value.parameters : null;
 	const success = booleanValue(value.success);
 	if (
-		!attemptId ||
 		timestamp === null ||
 		!actionType ||
 		!actionName ||
@@ -402,7 +401,7 @@ function normalizeActionAttempt(value: unknown): ActionAttempt | null {
 		return null;
 	}
 	const action: ActionAttempt = {
-		attemptId,
+		attemptId: attemptId || "pending",
 		timestamp,
 		actionType,
 		actionName,
@@ -768,6 +767,7 @@ export class TrajectoriesService extends Service {
 			logger.warn(
 				"[trajectory-logger] No runtime adapter available, skipping initialization",
 			);
+			this.enabled = false;
 			return;
 		}
 
@@ -776,6 +776,7 @@ export class TrajectoriesService extends Service {
 			logger.warn(
 				"[trajectory-logger] Runtime adapter does not support db.execute (likely InMemory adapter); skipping table setup",
 			);
+			this.enabled = false;
 			return;
 		}
 
@@ -1002,7 +1003,7 @@ export class TrajectoriesService extends Service {
 
 	private createPendingAction(stepTimestamp: number): ActionAttempt {
 		return {
-			attemptId: "",
+			attemptId: uuidv4(),
 			timestamp: stepTimestamp,
 			actionType: "pending",
 			actionName: "pending",

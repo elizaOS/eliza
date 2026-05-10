@@ -46,6 +46,7 @@ import { providersProvider as _bs_13_providersProvider } from "./providers.ts";
 import { recentMessagesProvider as _bs_14_recentMessagesProvider } from "./recentMessages.ts";
 import { uiContextProvider as _bs_15_uiContextProvider } from "./uiContext.ts";
 import { worldProvider as _bs_16_worldProvider } from "./world.ts";
+
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
 // biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
