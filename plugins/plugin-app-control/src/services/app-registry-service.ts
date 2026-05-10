@@ -329,7 +329,18 @@ export class AppRegistryService extends Service {
 		ctx: RegisterContext = {},
 	): Promise<void> {
 		const trust: AppTrust = ctx.trust ?? entry.trust ?? "external";
-		const isolation: AppIsolation = entry.isolation ?? "none";
+		// Phase 3 policy: apps loaded as `trust: "external"` default to
+		// `isolation: "worker"` even if they did not declare it. Apps
+		// can request *more* isolation (declaring "worker" while
+		// trust:"first-party") but never *less* — an external app that
+		// declared "none" still gets promoted to "worker" here. This is
+		// the load-bearing default-tightening for the sandbox story:
+		// once Phase 1 + 2 plumbing is in place, external apps simply
+		// can't reach the in-process fast path without an explicit
+		// first-party trust override.
+		const declaredIsolation: AppIsolation = entry.isolation ?? "none";
+		const isolation: AppIsolation =
+			trust === "external" ? "worker" : declaredIsolation;
 		const persistedEntry: AppRegistryEntry = { ...entry, trust, isolation };
 		registerCuratedApp(persistedEntry);
 
