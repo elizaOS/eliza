@@ -291,10 +291,51 @@ describe("AppRegistryService permissions surface", () => {
 		});
 	});
 
-	describe("isolation persistence (Phase 2.1)", () => {
-		it("defaults isolation to 'none' when entry omits it", async () => {
+	describe("Phase 3 — default isolation:'worker' for trust:'external'", () => {
+		it("forces isolation:'worker' on an external app even when the manifest declared 'none'", async () => {
+			const service = new AppRegistryService(NOOP_RUNTIME);
+			await service.register(makeEntry({ isolation: "none" }), {
+				trust: "external",
+			});
+			const view = await service.getPermissionsView("demo");
+			expect(view?.trust).toBe("external");
+			expect(view?.isolation).toBe("worker");
+		});
+
+		it("forces isolation:'worker' on an external app that omitted isolation entirely", async () => {
 			const service = new AppRegistryService(NOOP_RUNTIME);
 			await service.register(makeEntry({}), { trust: "external" });
+			const view = await service.getPermissionsView("demo");
+			expect(view?.isolation).toBe("worker");
+		});
+
+		it("respects isolation:'none' on a first-party app (in-process fast path stays available)", async () => {
+			const service = new AppRegistryService(NOOP_RUNTIME);
+			await service.register(makeEntry({ isolation: "none" }), {
+				trust: "first-party",
+			});
+			const view = await service.getPermissionsView("demo");
+			expect(view?.trust).toBe("first-party");
+			expect(view?.isolation).toBe("none");
+		});
+
+		it("respects isolation:'worker' on a first-party app that asked for more isolation than policy", async () => {
+			const service = new AppRegistryService(NOOP_RUNTIME);
+			await service.register(makeEntry({ isolation: "worker" }), {
+				trust: "first-party",
+			});
+			const view = await service.getPermissionsView("demo");
+			expect(view?.isolation).toBe("worker");
+		});
+	});
+
+	describe("isolation persistence (Phase 2.1)", () => {
+		it("defaults isolation to 'none' for a first-party app with no isolation declared", async () => {
+			// Use trust:"first-party" to bypass Phase 3's default-flip
+			// to "worker" for external apps; this test exercises the
+			// raw entry-level default before policy is applied.
+			const service = new AppRegistryService(NOOP_RUNTIME);
+			await service.register(makeEntry({}), { trust: "first-party" });
 			const view = await service.getPermissionsView("demo");
 			expect(view?.isolation).toBe("none");
 		});
