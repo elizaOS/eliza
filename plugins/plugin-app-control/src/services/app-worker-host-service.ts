@@ -23,6 +23,7 @@
  */
 
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
@@ -75,6 +76,10 @@ interface SpawnedWorker {
 	readyPromise: Promise<void>;
 }
 
+interface RuntimeWithServiceLoadPromise {
+	getServiceLoadPromise?: (serviceType: string) => Promise<Service>;
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SOURCE_WORKER_ENTRY = path.resolve(
@@ -89,6 +94,66 @@ const WORKER_ENTRY = existsSync(SOURCE_WORKER_ENTRY)
 	? SOURCE_WORKER_ENTRY
 	: DIST_WORKER_ENTRY;
 const SHUTDOWN_GRACE_MS = 5_000;
+
+function readString(value: unknown): string | null {
+	if (typeof value !== "string") return null;
+	const trimmed = value.trim();
+	return trimmed.length > 0 ? trimmed : null;
+}
+
+function readStringFromExports(value: unknown): string | null {
+	if (typeof value === "string") return readString(value);
+	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+	const record = value as Record<string, unknown>;
+	return (
+		readString(record.import) ??
+		readString(record.default) ??
+		readString(record.require)
+	);
+}
+
+async function resolvePluginEntryPath(
+	entry: AppRegistryEntry,
+): Promise<string | null> {
+	const pkgPath = path.join(entry.directory, "package.json");
+	const raw = await readFile(pkgPath, "utf8").catch(() => null);
+	if (raw === null) return null;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return null;
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return null;
+	}
+	const pkg = parsed as Record<string, unknown>;
+	const exportsEntry =
+		readStringFromExports(pkg.exports) ??
+		(pkg.exports &&
+		typeof pkg.exports === "object" &&
+		!Array.isArray(pkg.exports)
+			? readStringFromExports((pkg.exports as Record<string, unknown>)["."])
+			: null);
+	const candidates = [
+		exportsEntry,
+		readString(pkg.module),
+		readString(pkg.main),
+		"src/index.ts",
+		"src/index.js",
+		"dist/index.js",
+		"index.ts",
+		"index.js",
+	].filter((candidate): candidate is string => candidate !== null);
+
+	for (const candidate of candidates) {
+		const resolved = path.isAbsolute(candidate)
+			? candidate
+			: path.resolve(entry.directory, candidate);
+		if (existsSync(resolved)) return resolved;
+	}
+	return null;
+}
 
 /**
  * Internal helper so tests can construct a worker without going
@@ -129,7 +194,9 @@ export class AppWorkerHostService extends Service {
 	static override async start(
 		runtime: IAgentRuntime,
 	): Promise<AppWorkerHostService> {
-		return new AppWorkerHostService(runtime);
+		const service = new AppWorkerHostService(runtime);
+		await service.bootstrapRegisteredWorkers();
+		return service;
 	}
 
 	override async stop(): Promise<void> {
@@ -172,12 +239,20 @@ export class AppWorkerHostService extends Service {
 			};
 		}
 		const view = await registry.getPermissionsView(slug);
+		const pluginEntryPath = await resolvePluginEntryPath(entry);
+		if (!pluginEntryPath) {
+			return {
+				ok: false,
+				reason: `No worker plugin entry found for app ${slug} under ${entry.directory}`,
+			};
+		}
 		const snapshot = await this.spawn({
 			slug,
 			isolation: "worker",
 			statePath: path.join(this.stateDir, "app-state", slug),
 			requestedPermissions: entry.requestedPermissions ?? null,
 			grantedNamespaces: view?.grantedNamespaces ?? [],
+			pluginEntryPath,
 		});
 		return { ok: true, snapshot };
 	}
@@ -352,6 +427,36 @@ export class AppWorkerHostService extends Service {
 
 	list(): SpawnedWorkerSnapshot[] {
 		return Array.from(this.workers.values()).map((w) => this.snapshot(w));
+	}
+
+	private async bootstrapRegisteredWorkers(): Promise<void> {
+		let registry = this.runtime?.getService(APP_REGISTRY_SERVICE_TYPE) as
+			| AppRegistryService
+			| null
+			| undefined;
+		if (!registry) {
+			registry = (await (
+				this.runtime as RuntimeWithServiceLoadPromise | undefined
+			)
+				?.getServiceLoadPromise?.(APP_REGISTRY_SERVICE_TYPE)
+				.catch(() => null)) as AppRegistryService | null | undefined;
+		}
+		if (!registry?.list) return;
+		const entries = await registry.list();
+		for (const entry of entries) {
+			if (entry.isolation !== "worker") continue;
+			const result = await this.startForRegisteredApp(entry.slug).catch(
+				(error: unknown) => ({
+					ok: false as const,
+					reason: error instanceof Error ? error.message : String(error),
+				}),
+			);
+			if (!result.ok) {
+				logger.warn(
+					`[app-worker-host] bootstrap spawn failed for slug=${entry.slug}: ${result.reason}`,
+				);
+			}
+		}
 	}
 
 	private snapshot(spawned: SpawnedWorker): SpawnedWorkerSnapshot {

@@ -357,7 +357,7 @@ describe("AppRegistryService permissions surface", () => {
 			expect(afterRestart?.isolation).toBe("worker");
 		});
 
-		it("defaults missing isolation to 'none' for back-compat with pre-Phase-2 entries", async () => {
+		it("forces missing isolation to 'worker' for legacy external entries", async () => {
 			const fs = await import("node:fs/promises");
 			const registryPath = path.join(state.stateDir, "app-registry.json");
 			await fs.writeFile(
@@ -371,6 +371,32 @@ describe("AppRegistryService permissions surface", () => {
 							aliases: [],
 							directory: "/tmp/legacy",
 							displayName: "Legacy",
+							// No isolation field
+						},
+					],
+				}),
+			);
+			const service = new AppRegistryService(NOOP_RUNTIME);
+			const view = await service.getPermissionsView("legacy");
+			expect(view?.trust).toBe("external");
+			expect(view?.isolation).toBe("worker");
+		});
+
+		it("keeps missing isolation as 'none' for legacy first-party entries", async () => {
+			const fs = await import("node:fs/promises");
+			const registryPath = path.join(state.stateDir, "app-registry.json");
+			await fs.writeFile(
+				registryPath,
+				JSON.stringify({
+					version: 1,
+					entries: [
+						{
+							slug: "legacy",
+							canonicalName: "@example/app-legacy",
+							aliases: [],
+							directory: "/tmp/legacy",
+							displayName: "Legacy",
+							trust: "first-party",
 							// No isolation field
 						},
 					],

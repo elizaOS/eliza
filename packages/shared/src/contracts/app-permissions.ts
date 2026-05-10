@@ -115,7 +115,7 @@ export function parseAppIsolation(value: unknown): AppIsolation {
 export interface AppPermissionsView {
   slug: string;
   trust: AppTrust;
-  /** Execution isolation mode declared by the app (defaults to "none"). */
+  /** Effective execution isolation mode after loader policy is applied. */
   isolation: AppIsolation;
   /** Raw `elizaos.app.permissions` block from the app's package.json. */
   requestedPermissions: Record<string, unknown> | null;
