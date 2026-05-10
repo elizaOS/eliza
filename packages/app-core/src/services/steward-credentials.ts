@@ -14,9 +14,14 @@ import path from "node:path";
 // that only need state-dir resolution (e.g. the Electrobun bun bundle, which
 // would otherwise transitively bundle plugin-sql, transformers, and onnxruntime).
 // Mirrors the canonical implementation in @elizaos/core's
-// src/utils/state-dir.ts: ELIZA_STATE_DIR > ELIZA_STATE_DIR > ~/.eliza.
+// src/utils/state-dir.ts: MILADY_STATE_DIR > ELIZA_STATE_DIR > ~/.${ELIZA_NAMESPACE ?? "eliza"}.
 function resolveStateDir(): string {
-  return process.env.ELIZA_STATE_DIR?.trim() || path.join(homedir(), ".eliza");
+  const explicit =
+    process.env.MILADY_STATE_DIR?.trim() ||
+    process.env.ELIZA_STATE_DIR?.trim();
+  if (explicit) return explicit;
+  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
+  return path.join(homedir(), `.${namespace}`);
 }
 
 export interface PersistedStewardCredentials {

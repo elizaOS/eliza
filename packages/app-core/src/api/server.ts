@@ -34,7 +34,7 @@ import {
 } from "@elizaos/agent";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
-import { type AgentRuntime, logger } from "@elizaos/core";
+import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared";
 import {
   ensureCompatSensitiveRouteAuthorized,
@@ -209,10 +209,13 @@ function resolveCompatConfigPaths(): {
   elizaConfigPath?: string;
   appConfigPath?: string;
 } {
-  const sharedStateDir = process.env.ELIZA_STATE_DIR?.trim();
+  const explicitConfig = process.env.ELIZA_CONFIG_PATH?.trim();
+  const hasStateOverride =
+    Boolean(process.env.MILADY_STATE_DIR?.trim()) ||
+    Boolean(process.env.ELIZA_STATE_DIR?.trim());
   const configPath =
-    process.env.ELIZA_CONFIG_PATH?.trim() ||
-    (sharedStateDir ? path.join(sharedStateDir, "eliza.json") : undefined);
+    explicitConfig ||
+    (hasStateOverride ? path.join(resolveStateDir(), "eliza.json") : undefined);
 
   return { elizaConfigPath: configPath, appConfigPath: configPath };
 }
