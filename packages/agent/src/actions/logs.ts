@@ -309,7 +309,7 @@ export const logsAction: Action = {
   },
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: "Operation: search | delete | set_level.",
       required: true,
       schema: { type: "string" as const, enum: [...LOGS_OPS] },

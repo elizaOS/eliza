@@ -138,7 +138,7 @@ export const shopifyAction: Action = {
   roleGate: { minRole: "USER" },
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description:
         "Operation to perform. One of: search, products, inventory, orders, customers. Inferred from message text when omitted.",
       required: false,

@@ -170,5 +170,3 @@ export const analyzeImageAction: Action = {
     ],
   ] as ActionExample[][],
 };
-
-export const mediaActions = [analyzeImageAction];

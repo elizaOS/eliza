@@ -596,7 +596,7 @@ export const liquidityAction: Action = {
     "Manage LP positions by op, chain, dex, pool, position, amount, range, token filters.",
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description:
         "Liquidity operation: onboard, list_pools, open, close, reposition, list_positions, get_position, set_preferences.",
       required: true,

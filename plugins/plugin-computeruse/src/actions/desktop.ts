@@ -96,7 +96,7 @@ export const desktopAction: Action = {
     "Single DESKTOP action; op=file|window|terminal dispatches to the matching computer-use op (screenshot/ocr/detect_elements reserved).",
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description:
         "Desktop operation group. Reserved future values: screenshot, ocr, detect_elements (currently on COMPUTER_USE).",
       required: true,

@@ -459,7 +459,7 @@ export const todoAction: Action = {
     "todo manage list; op: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId).",
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description:
         "Operation: write, create, update, complete, cancel, delete, list, clear.",
       required: true,

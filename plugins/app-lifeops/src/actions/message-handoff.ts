@@ -111,8 +111,11 @@ function resolveRoomId(
 }
 
 export const messageHandoffAction: Action = {
-  name: "MESSAGE.handoff",
+  name: "MESSAGE_HANDOFF",
   similes: [
+    // Cached planner outputs from the previous one-release window may still
+    // emit the dotted name. Keep it as a simile so they continue to route.
+    "MESSAGE.handoff",
     "HANDOFF",
     "HAND_OFF",
     "STEP_BACK",
@@ -124,7 +127,7 @@ export const messageHandoffAction: Action = {
   description:
     "Multi-party room handoff control. verb=enter flips the current room into handoff mode (agent stops contributing until the resume condition fires); verb=resume exits handoff; verb=status reports state.",
   descriptionCompressed:
-    "MESSAGE.handoff verb: enter|resume|status; gates agent contributions per resumeOn condition.",
+    "MESSAGE_HANDOFF verb: enter|resume|status; gates agent contributions per resumeOn condition.",
   contexts: ["messaging", "automation"],
   validate: async () => true,
   parameters: [

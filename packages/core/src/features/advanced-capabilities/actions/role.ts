@@ -606,7 +606,7 @@ export const roleAction: Action = {
 		"Accepts structured assignments[] or single target name with recent-room disambiguation.",
 	parameters: [
 		{
-			name: "op",
+			name: "subaction",
 			description: "Operation to perform: assign, revoke, or list.",
 			required: false,
 			schema: {

@@ -199,38 +199,31 @@ export const musicLibraryAction: Action = {
     ...downloadMusicSimiles,
   ]),
   description:
-    "Consolidated music library action. Use op=playlist with subaction=save, load, delete, or add for playlist management; op=play-query to research and queue complex music requests; op=search-youtube to return YouTube links; op=download to fetch music into the local library. Queue changes, downloads, and playlist mutations require confirmed:true.",
+    "Consolidated music library action. Use subaction=playlist with playlistOp=save, load, delete, or add for playlist management; subaction=play_query to research and queue complex music requests; subaction=search_youtube to return YouTube links; subaction=download to fetch music into the local library. Queue changes, downloads, and playlist mutations require confirmed:true.",
   descriptionCompressed:
-    "Music library ops: playlist(subaction save/load/delete/add), play-query, search-youtube, download. Mutations require confirmed:true.",
+    "Music library subactions: playlist(playlistOp save/load/delete/add), play_query, search_youtube, download. Mutations require confirmed:true.",
   parameters: [
-    {
-      name: "op",
-      description:
-        "Music library operation: playlist, play-query, search-youtube, or download.",
-      required: true,
-      schema: {
-        type: "string",
-        enum: [
-          "playlist",
-          "play-query",
-          "play_query",
-          "search-youtube",
-          "search_youtube",
-          "download",
-        ],
-      },
-    },
     {
       name: "subaction",
       description:
-        "Playlist subaction when op=playlist: save, load, delete, or add.",
+        "Music library operation: playlist, play_query, search_youtube, or download.",
+      required: true,
+      schema: {
+        type: "string",
+        enum: ["playlist", "play_query", "search_youtube", "download"],
+      },
+    },
+    {
+      name: "playlistOp",
+      description:
+        "Playlist operation when subaction=playlist: save, load, delete, or add.",
       required: false,
       schema: { type: "string", enum: ["save", "load", "delete", "add"] },
     },
     {
       name: "query",
       description:
-        "Song, artist, album, or video query for play-query, search-youtube, download, or playlist add.",
+        "Song, artist, album, or video query for play_query, search_youtube, download, or playlist add.",
       required: false,
       schema: { type: "string" },
     },
@@ -286,7 +279,7 @@ export const musicLibraryAction: Action = {
 
     if (!op) {
       const text =
-        "Could not determine music library op. Use op=playlist, play-query, search-youtube, or download.";
+        "Could not determine music library subaction. Use subaction=playlist, play_query, search_youtube, or download.";
       if (callback) await callback({ text, source: message.content.source });
       return { success: false, error: text };
     }

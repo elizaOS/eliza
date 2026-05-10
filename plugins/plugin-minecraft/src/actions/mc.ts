@@ -273,7 +273,7 @@ export const minecraftAction: Action = {
     "minecraft ops: connect|disconnect|goto|stop|look|control|waypoint_*|dig|place|chat|attack",
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: "Operation to run.",
       descriptionCompressed: "Op.",
       required: true,

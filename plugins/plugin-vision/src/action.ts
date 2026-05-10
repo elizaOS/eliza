@@ -1314,7 +1314,7 @@ export const visionAction: Action = {
     "Vision: describe / capture / set_mode / name_entity / identify_person / track_entity.",
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description:
         "Operation to perform: describe, capture, set_mode, name_entity, identify_person, or track_entity. Inferred from message text when omitted.",
       required: false,

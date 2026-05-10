@@ -569,7 +569,7 @@ function refreshDescriptions(action: Action, runtime: IAgentRuntime): void {
 
 export const POST_PARAMETERS: ActionParameter[] = [
 	{
-		name: "op",
+		name: "subaction",
 		description: "Post subaction: send, read, or search.",
 		required: false,
 		schema: { type: "string", enum: [...POST_OPS] },

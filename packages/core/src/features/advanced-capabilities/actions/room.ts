@@ -500,7 +500,7 @@ export const roomOpAction: Action = {
 		"room subscription state: op=mute|unmute|follow|unfollow + optional roomId|platform+chatName + durationMinutes (mute auto-unmute hint)",
 	parameters: [
 		{
-			name: "op",
+			name: "subaction",
 			description:
 				"Operation: mute | unmute | follow | unfollow. Inferred from message text when omitted.",
 			required: false,
