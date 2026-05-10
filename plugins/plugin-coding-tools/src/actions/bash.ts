@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import {
   type Action,
@@ -18,6 +17,8 @@ import {
   successActionResult,
   truncate,
 } from "../lib/format.js";
+import { resolveRuntimeExecutionMode } from "../lib/execution-mode.js";
+import { runShell, type ShellResult } from "../lib/run-shell.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
 import {
@@ -52,64 +53,6 @@ function formatStreams(stdout: string, stderr: string): string {
   return lines.join("\n");
 }
 
-interface BashRunResult {
-  exitCode: number | null;
-  signal: NodeJS.Signals | null;
-  stdout: string;
-  stderr: string;
-  timedOut: boolean;
-}
-
-function runBash(
-  command: string,
-  cwd: string,
-  timeoutMs: number,
-): Promise<BashRunResult> {
-  return new Promise((resolve) => {
-    const proc = spawn("/bin/bash", ["-c", command], {
-      cwd,
-      env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-
-    proc.stdout?.on("data", (chunk: Buffer) => {
-      if (stdout.length < STREAM_CAP_CHARS * 2) {
-        stdout += chunk.toString("utf8");
-      }
-    });
-    proc.stderr?.on("data", (chunk: Buffer) => {
-      if (stderr.length < STREAM_CAP_CHARS * 2) {
-        stderr += chunk.toString("utf8");
-      }
-    });
-
-    const timer = setTimeout(() => {
-      timedOut = true;
-      proc.kill("SIGTERM");
-      setTimeout(() => {
-        try {
-          proc.kill("SIGKILL");
-        } catch {
-          // already dead
-        }
-      }, 1500);
-    }, timeoutMs);
-    if (typeof timer.unref === "function") timer.unref();
-
-    proc.on("close", (code, signal) => {
-      clearTimeout(timer);
-      resolve({ exitCode: code, signal, stdout, stderr, timedOut });
-    });
-    proc.on("error", (err) => {
-      clearTimeout(timer);
-      stderr += `\n${err.message}`;
-      resolve({ exitCode: -1, signal: null, stdout, stderr, timedOut });
-    });
-  });
-}
 
 export const bashAction: Action = {
   name: "BASH",
@@ -229,34 +172,65 @@ export const bashAction: Action = {
     );
 
     const startedAt = Date.now();
-    const result = await runBash(command, cwd, timeout);
+    const mode = resolveRuntimeExecutionMode(runtime);
+    if (mode === "cloud") {
+      coreLogger.error(
+        `${CODING_TOOLS_LOG_PREFIX} BASH cloud-mode denied: local exec disabled`,
+      );
+      return failureToActionResult(
+        {
+          reason: "internal",
+          message: "Local shell execution disabled in cloud mode.",
+        },
+        { cwd },
+      );
+    }
+
+    coreLogger.info(
+      `${CODING_TOOLS_LOG_PREFIX} BASH mode=${mode} cwd=${cwd}`,
+    );
+
+    let result: ShellResult;
+    try {
+      result = await runShell(runtime, { command, cwd, timeoutMs: timeout });
+    } catch (err) {
+      const message = (err as Error).message;
+      coreLogger.error(`${CODING_TOOLS_LOG_PREFIX} BASH dispatch failed: ${message}`);
+      return failureToActionResult({ reason: "internal", message }, { cwd });
+    }
+
     const took = Date.now() - startedAt;
-    const head = result.timedOut
+    const timedOut = result.timedOut;
+    const signal = result.signal;
+    const head = timedOut
       ? `$ ${command}\n[timeout ${timeout}ms] (cwd=${cwd}, took=${took}ms)`
-      : `$ ${command}\n[exit ${result.exitCode ?? -1}] (cwd=${cwd}, took=${took}ms)`;
+      : `$ ${command}\n[exit ${result.exitCode}] (cwd=${cwd}, took=${took}ms)`;
     const streams = formatStreams(result.stdout, result.stderr);
     const text = streams.length > 0 ? `${head}\n${streams}` : head;
 
     if (callback) await callback({ text, source: "coding-tools" });
 
-    if (result.timedOut) {
+    if (timedOut) {
       return failureToActionResult(
         { reason: "timeout", message: `command timed out after ${timeout}ms` },
         { cwd, output: text },
       );
     }
-    if ((result.exitCode ?? -1) !== 0) {
+    if (result.exitCode !== 0) {
       return failureToActionResult(
         {
           reason: "command_failed",
-          message: `command exited with code ${result.exitCode ?? -1}`,
+          message: `command exited with code ${result.exitCode}`,
         },
-        { exit_code: result.exitCode ?? -1, cwd, output: text },
+        { exit_code: result.exitCode, cwd, output: text },
       );
     }
     return successActionResult(text, {
-      exit_code: result.exitCode ?? 0,
+      exit_code: result.exitCode,
       cwd,
+      execution_route: result.sandbox === "host" ? "host" : "sandbox",
+      sandbox_backend: result.sandbox,
+      signal,
     });
   },
 };
