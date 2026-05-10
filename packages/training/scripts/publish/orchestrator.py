@@ -71,6 +71,7 @@ from scripts.manifest.eliza1_manifest import (  # noqa: E402
     KernelVerification,
     LineageEntry,
     build_manifest,
+    parse_text_ctx_from_filename,
 )
 
 # ---------------------------------------------------------------------------
@@ -484,23 +485,6 @@ def _collect_files_for_manifest(
     def rel(p: Path) -> str:
         return str(p.relative_to(bundle_root))
 
-    def parse_ctx(p: Path) -> int | None:
-        # eliza-1-desktop-9b-64k.gguf  → 65536
-        # eliza-1-desktop-9b-128k.gguf → 131072
-        stem = p.stem
-        if not stem.endswith("k"):
-            for sep in ("-",):
-                parts = stem.split(sep)
-                for tok in reversed(parts):
-                    if tok.endswith("k") and tok[:-1].isdigit():
-                        return int(tok[:-1]) * 1024
-            return None
-        # robust: walk back to find <num>k
-        last = stem.split("-")[-1]
-        if last.endswith("k") and last[:-1].isdigit():
-            return int(last[:-1]) * 1024
-        return None
-
     files: dict[str, list[FileEntry]] = {
         "text": [],
         "voice": [],
@@ -522,7 +506,7 @@ def _collect_files_for_manifest(
             entry = FileEntry(
                 path=rel(p),
                 sha256=_sha256_file(p),
-                ctx=parse_ctx(p) if kind_src == "text" else None,
+                ctx=parse_text_ctx_from_filename(p) if kind_src == "text" else None,
             )
             files[kind_dst].append(entry)
 
@@ -571,13 +555,10 @@ def _required_kernels_for(tier: str, layout: Mapping[str, Sequence[Path]]) -> tu
     req = list(REQUIRED_KERNELS_BY_TIER[tier])
     opt: list[str] = []
     for p in layout.get("text", []):
-        stem = p.stem
-        last = stem.split("-")[-1]
-        if last.endswith("k") and last[:-1].isdigit():
-            ctx = int(last[:-1]) * 1024
-            if ctx > 65536:
-                if "turbo3_tcq" not in req and "turbo3_tcq" not in opt:
-                    opt.append("turbo3_tcq")
+        ctx = parse_text_ctx_from_filename(p)
+        if ctx is not None and ctx > 65536:
+            if "turbo3_tcq" not in req and "turbo3_tcq" not in opt:
+                opt.append("turbo3_tcq")
     return req, opt
 
 
@@ -629,8 +610,18 @@ def assemble_manifest(
     # only source of truth and matches the manifest validator's rules.
     text_eval_passed = _gate_passed(gate_report, "text_eval")
     voice_rtf_passed = _gate_passed(gate_report, "voice_rtf")
-    e2e_loop_ok = _gate_passed(gate_report, "thirty_turn_ok")
-    thirty_turn_ok = bool(results.get("thirty_turn_ok", False))
+    # ``e2e_loop_ok`` and ``thirty_turn_ok`` are independent boolean
+    # contract gates per AGENTS.md §6 (manifest fields ``evals.e2eLoopOk``
+    # and ``evals.thirtyTurnOk``). Read each from the eval blob directly
+    # so the manifest reflects what was actually measured. The previous
+    # alias (e2e_loop_ok ← thirty_turn_ok gate result) hid the fact that
+    # one of the two gates had no measurement.
+    thirty_turn_ok = _read_independent_bool(results, "thirty_turn_ok")
+    e2e_loop_ok = _read_independent_bool(
+        results,
+        "e2e_loop_ok",
+        opt_in_alias_for="thirty_turn_ok",
+    )
 
     required_kernels, optional_kernels = _required_kernels_for(ctx.tier, layout)
 
@@ -680,6 +671,83 @@ def _gate_passed(report: GateReport, name: str) -> bool:
             return g.passed
     # Gate not configured for this tier → treat as pass.
     return True
+
+
+# Operator opt-in for collapsing two independent contract booleans onto
+# a single observed measurement. Set to "1" to allow the orchestrator
+# to source ``e2e_loop_ok`` from the ``thirty_turn_ok`` measurement when
+# the eval blob doesn't carry an ``e2e_loop_ok`` key. Without the opt-in,
+# a missing key is publish-blocking.
+PUBLISH_ALLOW_GATE_ALIAS_ENV = "ELIZA_PUBLISH_ALLOW_GATE_ALIAS"
+
+
+def _read_independent_bool(
+    results: Mapping[str, Any],
+    key: str,
+    *,
+    opt_in_alias_for: str | None = None,
+) -> bool:
+    """Read an independent contract boolean from the eval results blob.
+
+    When ``key`` is missing AND ``opt_in_alias_for`` is provided, the
+    orchestrator falls back to the alias key only if the operator has
+    set ``ELIZA_PUBLISH_ALLOW_GATE_ALIAS=1`` — and logs a clear warning
+    that two independent manifest fields are being sourced from one
+    measurement. Without the opt-in, the missing key raises
+    ``OrchestratorError`` so the publish surfaces the contract gap
+    instead of silently emitting a manifest with one half of the gate
+    inferred.
+    """
+    if key in results:
+        value = results[key]
+        if not isinstance(value, bool):
+            raise OrchestratorError(
+                f"evals/aggregate.json results.{key!r} must be a bool, "
+                f"got {type(value).__name__}",
+                EXIT_EVAL_GATE_FAIL,
+            )
+        return value
+
+    if opt_in_alias_for is None:
+        raise OrchestratorError(
+            f"evals/aggregate.json missing required boolean results.{key!r}",
+            EXIT_EVAL_GATE_FAIL,
+        )
+
+    if os.environ.get(PUBLISH_ALLOW_GATE_ALIAS_ENV) != "1":
+        raise OrchestratorError(
+            f"evals/aggregate.json missing results.{key!r}; the manifest "
+            f"contract requires it as an independent measurement from "
+            f"{opt_in_alias_for!r}. To temporarily alias it to "
+            f"{opt_in_alias_for!r} (lower-fidelity publish), re-run with "
+            f"{PUBLISH_ALLOW_GATE_ALIAS_ENV}=1.",
+            EXIT_EVAL_GATE_FAIL,
+        )
+
+    if opt_in_alias_for not in results:
+        raise OrchestratorError(
+            f"evals/aggregate.json missing both results.{key!r} and the "
+            f"alias source results.{opt_in_alias_for!r}; nothing to alias.",
+            EXIT_EVAL_GATE_FAIL,
+        )
+
+    aliased = results[opt_in_alias_for]
+    if not isinstance(aliased, bool):
+        raise OrchestratorError(
+            f"evals/aggregate.json results.{opt_in_alias_for!r} must be "
+            f"a bool to be aliased to {key!r}, got {type(aliased).__name__}",
+            EXIT_EVAL_GATE_FAIL,
+        )
+    log.warning(
+        "[evals] aliasing results.%s ← results.%s "
+        "(opt-in via %s=1). Two independent manifest contract gates are "
+        "being sourced from one measurement; this is a lower-fidelity "
+        "publish.",
+        key,
+        opt_in_alias_for,
+        PUBLISH_ALLOW_GATE_ALIAS_ENV,
+    )
+    return aliased
 
 
 # ---------------------------------------------------------------------------

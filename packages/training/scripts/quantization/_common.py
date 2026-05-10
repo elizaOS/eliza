@@ -12,12 +12,20 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Mapping
+from typing import TYPE_CHECKING, Mapping
 
 import torch
 import torch.nn as nn
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+
+if TYPE_CHECKING:
+    # Static-only import. ``PretrainedConfig`` is the upstream type for
+    # every HF causal-LM config (``model.config``); importing it eagerly
+    # would force transformers at import time even for tests that just
+    # want the helpers below. Behind ``TYPE_CHECKING`` mypy/pyright still
+    # see the strong type and reject helpers that misuse the config.
+    from transformers import PretrainedConfig
 
 log = logging.getLogger(__name__)
 

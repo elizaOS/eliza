@@ -112,6 +112,19 @@ function readHeader(view: DataView): {
   };
 }
 
+function copyFloat32(
+  bytes: Uint8Array,
+  /** Offset relative to `bytes` (i.e. relative to bytes.byteOffset). */
+  relativeOffset: number,
+  byteLength: number,
+): Float32Array {
+  // The source byte offset is not guaranteed to be 4-aligned in the file
+  // buffer, so we copy raw bytes into a fresh ArrayBuffer first.
+  const aligned = new Uint8Array(byteLength);
+  aligned.set(bytes.subarray(relativeOffset, relativeOffset + byteLength));
+  return new Float32Array(aligned.buffer, 0, byteLength / 4);
+}
+
 function readEmbedding(bytes: Uint8Array, sec: SectionView): Float32Array {
   if (sec.length % 4 !== 0) {
     throw new VoicePresetFormatError(
@@ -119,15 +132,7 @@ function readEmbedding(bytes: Uint8Array, sec: SectionView): Float32Array {
       "bad-embedding-length",
     );
   }
-  // Copy out so the result is independent of the source buffer.
-  const out = new Float32Array(sec.length / 4);
-  const src = new Float32Array(
-    bytes.buffer,
-    bytes.byteOffset + sec.offset,
-    sec.length / 4,
-  );
-  out.set(src);
-  return out;
+  return copyFloat32(bytes, sec.offset, sec.length);
 }
 
 function readPhrases(
@@ -191,13 +196,7 @@ function readPhrases(
         "bad-phrase-record",
       );
     }
-    const pcm = new Float32Array(pcmByteLen / 4);
-    const src = new Float32Array(
-      bytes.buffer,
-      bytes.byteOffset + sec.offset + pos,
-      pcmByteLen / 4,
-    );
-    pcm.set(src);
+    const pcm = copyFloat32(bytes, sec.offset + pos, pcmByteLen);
     pos += pcmByteLen;
     out.push({ text, sampleRate, pcm });
   }

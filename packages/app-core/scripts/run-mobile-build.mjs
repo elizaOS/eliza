@@ -2495,69 +2495,6 @@ async function generateAndroidBrandAssets() {
 
 // ── Phase 6: Native builds ──────────────────────────────────────────────
 
-function findFrameworkBinary(frameworkDir) {
-  return firstExisting([
-    path.join(frameworkDir, path.basename(frameworkDir, ".framework")),
-    path.join(
-      frameworkDir,
-      "Versions",
-      "A",
-      path.basename(frameworkDir, ".framework"),
-    ),
-  ]);
-}
-
-function readMachOPlatform(binaryPath) {
-  const result = spawnSync("otool", ["-l", binaryPath], {
-    encoding: "utf8",
-  });
-  if (result.status !== 0) return null;
-  const match = result.stdout.match(
-    /cmd LC_BUILD_VERSION[\s\S]*?platform\s+(\d+)/,
-  );
-  return match ? Number(match[1]) : null;
-}
-
-function readMachOArchs(binaryPath) {
-  const result = spawnSync("lipo", ["-archs", binaryPath], {
-    encoding: "utf8",
-  });
-  if (result.status !== 0) return [];
-  return result.stdout.trim().split(/\s+/).filter(Boolean);
-}
-
-function frameworkMatches({ frameworkDir, platform, arch }) {
-  const binaryPath = findFrameworkBinary(frameworkDir);
-  if (!binaryPath || !fs.existsSync(binaryPath)) return false;
-  return (
-    readMachOPlatform(binaryPath) === platform &&
-    readMachOArchs(binaryPath).includes(arch)
-  );
-}
-
-function hasSimulatorSlice(xcframeworkDir) {
-  if (!fs.existsSync(xcframeworkDir)) return false;
-  const pending = [xcframeworkDir];
-  while (pending.length) {
-    const current = pending.pop();
-    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-      const entryPath = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        pending.push(entryPath);
-        continue;
-      }
-      if (
-        (entry.name === "LlamaCpp" || entry.name === "llama-cpp") &&
-        readMachOPlatform(entryPath) === 7 &&
-        readMachOArchs(entryPath).includes("arm64")
-      ) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 export function patchLlamaCppCapacitorPodspecForXcframework(
   packageDir,
   {
@@ -2609,80 +2546,68 @@ export function patchLlamaCppCapacitorPodspecForXcframework(
   }
 }
 
-function moveDeviceOnlyLlamaCppFrameworkForSimulator(frameworksDir) {
-  const deviceFramework = firstExisting([
-    path.join(frameworksDir, "LlamaCpp.framework"),
-    path.join(frameworksDir, "llama-cpp.framework"),
-  ]);
-  if (!deviceFramework || !fs.existsSync(deviceFramework)) return;
+// Wave-4-F (iOS pipeline rewire): the iOS LlamaCpp.xcframework is now
+// produced by `build-llama-cpp-dflash.mjs --target ios-arm64-metal` +
+// `--target ios-arm64-simulator-metal` and assembled by
+// `ios-xcframework/build-xcframework.mjs --verify`. The previous in-process
+// cmake invocation that built `llama-cpp-capacitor`'s bundled `ios/`
+// source produced a STOCK llama.cpp framework with none of the milady
+// kernels (TurboQuant / QJL / PolarQuant / DFlash) and silently violated
+// AGENTS.md §3 on every iOS build. Delegating to the dflash builder
+// ensures the same kernel-set lands on iOS as on darwin/linux/android.
+//
+// AGENTS.md §3 enforcement: build-llama-cpp-dflash.mjs hard-throws on
+// missing kernels via writeCapabilities()/requiredKernelsMissing(); the
+// xcframework packaging --verify step additionally greps the static
+// archives for AGENTS.md §3 kernel symbols. Either failure aborts the
+// iOS build before the npm-bundled stock framework can be linked.
+const DFLASH_BUILD_SCRIPT = path.resolve(
+  __dirname,
+  "build-llama-cpp-dflash.mjs",
+);
+const IOS_XCFRAMEWORK_BUILD_SCRIPT = path.resolve(
+  __dirname,
+  "ios-xcframework",
+  "build-xcframework.mjs",
+);
 
-  const archivedFramework = path.join(
-    frameworksDir,
-    `${path.basename(deviceFramework, ".framework")}-device.framework`,
-  );
-  fs.rmSync(archivedFramework, { recursive: true, force: true });
-  fs.renameSync(deviceFramework, archivedFramework);
-  console.log(
-    "[mobile-build] Moved device-only llama.cpp framework out of simulator framework search path.",
+function elizaStateDirForBuild() {
+  const env = process.env.ELIZA_STATE_DIR?.trim();
+  if (env) return env;
+  return path.join(os.homedir(), ".eliza");
+}
+
+function dflashTargetOutDir(target) {
+  return path.join(
+    elizaStateDirForBuild(),
+    "local-inference",
+    "bin",
+    "dflash",
+    target,
   );
 }
 
-async function buildIosLlamaCppSimulatorFramework(packageDir) {
-  if (!resolveExecutable("cmake")) {
+async function ensureDflashIosTarget(target) {
+  const outDir = dflashTargetOutDir(target);
+  const capabilities = path.join(outDir, "CAPABILITIES.json");
+  if (fs.existsSync(capabilities)) {
+    console.log(
+      `[mobile-build] Reusing existing dflash artifact for ${target} at ${outDir}`,
+    );
+    return outDir;
+  }
+  console.log(`[mobile-build] Building dflash artifact for ${target}`);
+  await run("node", [DFLASH_BUILD_SCRIPT, "--target", target]);
+  if (!fs.existsSync(capabilities)) {
     throw new Error(
-      "cmake is required to build llama.cpp for the iOS simulator.",
+      `[mobile-build] dflash build for ${target} did not produce CAPABILITIES.json at ${capabilities}. ` +
+        `AGENTS.md §3 forbids shipping an iOS framework without the full kernel set; aborting.`,
     );
   }
-
-  const iosSourceDir = path.join(packageDir, "ios");
-  const buildDir = path.join(iosSourceDir, "build-simulator-arm64");
-  fs.rmSync(buildDir, { recursive: true, force: true });
-  fs.mkdirSync(buildDir, { recursive: true });
-
-  await run(
-    "cmake",
-    [
-      "..",
-      "-DCMAKE_BUILD_TYPE=Release",
-      "-DCMAKE_OSX_SYSROOT=iphonesimulator",
-      "-DCMAKE_OSX_ARCHITECTURES=arm64",
-      "-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0",
-      "-DCMAKE_XCODE_ATTRIBUTE_ENABLE_BITCODE=NO",
-    ],
-    { cwd: buildDir },
-  );
-  await run(
-    "cmake",
-    [
-      "--build",
-      ".",
-      "--config",
-      "Release",
-      "--",
-      `-j${Math.max(os.cpus().length, 1)}`,
-    ],
-    { cwd: buildDir },
-  );
-
-  const frameworkDir = firstExisting([
-    path.join(buildDir, "LlamaCpp.framework"),
-    path.join(buildDir, "Release", "LlamaCpp.framework"),
-    path.join(buildDir, "llama-cpp.framework"),
-    path.join(buildDir, "Release", "llama-cpp.framework"),
-  ]);
-  if (
-    !frameworkDir ||
-    !frameworkMatches({ frameworkDir, platform: 7, arch: "arm64" })
-  ) {
-    throw new Error(
-      "Built llama.cpp framework is not an arm64 iOS simulator framework.",
-    );
-  }
-  return frameworkDir;
+  return outDir;
 }
 
-async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
-  if (!isIosSimulatorBuildTarget(buildTarget)) return;
+async function ensureIosLlamaCppVendoredFramework({ buildTarget: _buildTarget }) {
   // When llama is excluded from the build (cloud-only / App Store thin
   // client), the pod is not generated and the vendored framework is not
   // referenced. Skipping here avoids spinning up xcodebuild for an
@@ -2692,8 +2617,20 @@ async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
     isTruthyEnv(process.env.MILADY_IOS_INCLUDE_LLAMA);
   if (!includeLlama) return;
 
+  if (process.platform !== "darwin") {
+    throw new Error(
+      "[mobile-build] iOS llama.cpp xcframework build requires a macOS host with Xcode. " +
+        "Either run on macOS or unset ELIZA_IOS_INCLUDE_LLAMA / MILADY_IOS_INCLUDE_LLAMA.",
+    );
+  }
+
   const packageDir = resolvePackageAbsolutePath("llama-cpp-capacitor");
-  if (!packageDir) return;
+  if (!packageDir) {
+    throw new Error(
+      "[mobile-build] llama-cpp-capacitor package not found in node_modules; " +
+        "either install it or unset ELIZA_IOS_INCLUDE_LLAMA / MILADY_IOS_INCLUDE_LLAMA.",
+    );
+  }
 
   const frameworksDir = path.join(packageDir, "ios", "Frameworks");
   const xcframeworksDir = path.join(
@@ -2704,54 +2641,55 @@ async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
   const xcframeworkDir = path.join(xcframeworksDir, "LlamaCpp.xcframework");
   patchLlamaCppCapacitorPodspecForXcframework(packageDir);
 
-  if (hasSimulatorSlice(xcframeworkDir)) {
-    moveDeviceOnlyLlamaCppFrameworkForSimulator(frameworksDir);
-    return;
-  }
+  // Build (or reuse) both per-platform slices via the dflash builder so
+  // the iOS xcframework carries the same milady kernel set as every
+  // other supported backend. Per AGENTS.md §3, missing kernels here are
+  // a hard error: build-llama-cpp-dflash.mjs already enforces that and
+  // throws via writeCapabilities() before producing CAPABILITIES.json.
+  await ensureDflashIosTarget("ios-arm64-metal");
+  await ensureDflashIosTarget("ios-arm64-simulator-metal");
 
-  const simulatorFramework =
-    await buildIosLlamaCppSimulatorFramework(packageDir);
-  const deviceFramework = firstExisting([
-    path.join(frameworksDir, "LlamaCpp.framework"),
-    path.join(frameworksDir, "llama-cpp.framework"),
-  ]);
-  const createArgs = ["-create-xcframework"];
-  if (
-    deviceFramework &&
-    frameworkMatches({
-      frameworkDir: deviceFramework,
-      platform: 2,
-      arch: "arm64",
-    })
-  ) {
-    createArgs.push("-framework", deviceFramework);
-  }
-  createArgs.push("-framework", simulatorFramework);
   fs.mkdirSync(xcframeworksDir, { recursive: true });
   fs.rmSync(xcframeworkDir, { recursive: true, force: true });
-  await run("xcodebuild", [...createArgs, "-output", xcframeworkDir], {
-    cwd: packageDir,
-  });
-  // CocoaPods adds the parent directory of every `vendored_frameworks` entry
-  // to FRAMEWORK_SEARCH_PATHS. With both `llama-cpp.framework` (the original
-  // device-only one shipped in the npm tarball) and the freshly-created
-  // `llama-cpp.xcframework` sitting in the same parent dir, the linker's
-  // -F path resolves `-framework llama-cpp` to the device-only `.framework`
-  // first and fails simulator builds with:
+  await run("node", [
+    IOS_XCFRAMEWORK_BUILD_SCRIPT,
+    "--output",
+    xcframeworkDir,
+    "--device-archive-dir",
+    dflashTargetOutDir("ios-arm64-metal"),
+    "--sim-archive-dir",
+    dflashTargetOutDir("ios-arm64-simulator-metal"),
+    "--verify",
+  ]);
+
+  // CocoaPods adds the parent directory of every `vendored_frameworks`
+  // entry to FRAMEWORK_SEARCH_PATHS. The npm package ships a stock
+  // device-only `LlamaCpp.framework` / `llama-cpp.framework` next to
+  // the (now-replaced) xcframework slot. With both present the linker
+  // resolves `-framework LlamaCpp` to the stock .framework first and
+  // fails simulator builds with:
   //   ld: building for 'iOS-simulator', but linking in dylib (...) built for 'iOS'
-  // Move the device-only framework out of the search path so only the
-  // xcframework's per-platform slice can resolve.
-  if (deviceFramework && fs.existsSync(deviceFramework)) {
-    const archivedDeviceFramework = path.join(
+  // Move the npm-bundled stock frameworks out of the search path so the
+  // xcframework's per-platform slice is the only resolvable target.
+  for (const stale of [
+    path.join(frameworksDir, "LlamaCpp.framework"),
+    path.join(frameworksDir, "llama-cpp.framework"),
+  ]) {
+    if (!fs.existsSync(stale)) continue;
+    const archived = path.join(
       packageDir,
       "ios",
-      ".llama-cpp-device-archive",
+      `.${path.basename(stale, ".framework")}-stock-archive`,
     );
-    fs.rmSync(archivedDeviceFramework, { recursive: true, force: true });
-    fs.renameSync(deviceFramework, archivedDeviceFramework);
+    fs.rmSync(archived, { recursive: true, force: true });
+    fs.renameSync(stale, archived);
+    console.log(
+      `[mobile-build] Archived stock npm framework: ${stale} -> ${archived} ` +
+        `(stock build has no Eliza-1 kernels — see AGENTS.md §3).`,
+    );
   }
   console.log(
-    "[mobile-build] Prepared llama.cpp xcframework for iOS simulator (device-only .framework moved out of FRAMEWORK_SEARCH_PATHS).",
+    "[mobile-build] iOS LlamaCpp.xcframework wired to milady-built kernels (device + simulator slices).",
   );
 }
 

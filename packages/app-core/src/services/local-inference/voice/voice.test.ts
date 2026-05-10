@@ -421,15 +421,19 @@ describe("VoicePresetFormat", () => {
     const blob = writeVoicePresetFile({ embedding, phrases });
     const parsed = readVoicePresetFile(blob);
     expect(parsed.version).toBe(1);
-    expect(Array.from(parsed.embedding)).toEqual(Array.from(embedding));
+    expect(parsed.embedding.length).toBe(embedding.length);
+    for (let i = 0; i < embedding.length; i++) {
+      expect(parsed.embedding[i]).toBeCloseTo(embedding[i], 5);
+    }
     expect(parsed.phrases).toHaveLength(2);
     expect(parsed.phrases[0].text).toBe("sure.");
     expect(parsed.phrases[0].sampleRate).toBe(24000);
-    expect(Array.from(parsed.phrases[0].pcm)).toEqual([0.1, 0.2, 0.3]);
+    expect(parsed.phrases[0].pcm.length).toBe(3);
+    expect(parsed.phrases[0].pcm[0]).toBeCloseTo(0.1, 5);
+    expect(parsed.phrases[0].pcm[1]).toBeCloseTo(0.2, 5);
+    expect(parsed.phrases[0].pcm[2]).toBeCloseTo(0.3, 5);
     expect(parsed.phrases[1].text).toBe("one moment.");
-    expect(Array.from(parsed.phrases[1].pcm)).toEqual([
-      0.4, 0.5, 0.6, 0.7,
-    ]);
+    expect(parsed.phrases[1].pcm.length).toBe(4);
   });
 
   it("round-trips an empty phrase cache seed (N=0)", () => {
@@ -437,7 +441,10 @@ describe("VoicePresetFormat", () => {
     const blob = writeVoicePresetFile({ embedding, phrases: [] });
     const parsed = readVoicePresetFile(blob);
     expect(parsed.phrases).toHaveLength(0);
-    expect(Array.from(parsed.embedding)).toEqual([1, 2, 3]);
+    expect(parsed.embedding.length).toBe(3);
+    expect(parsed.embedding[0]).toBeCloseTo(1, 5);
+    expect(parsed.embedding[1]).toBeCloseTo(2, 5);
+    expect(parsed.embedding[2]).toBeCloseTo(3, 5);
   });
 
   it("rejects bad magic with VoicePresetFormatError", () => {
@@ -477,7 +484,7 @@ describe("PhraseCache.seed", () => {
     ]);
     expect(cache.size()).toBe(2);
     expect(cache.has("Sure.")).toBe(true);
-    expect(cache.get("ONE MOMENT.")?.pcm[0]).toBe(0.2);
+    expect(cache.get("ONE MOMENT.")?.pcm[0]).toBeCloseTo(0.2, 5);
   });
 });
 

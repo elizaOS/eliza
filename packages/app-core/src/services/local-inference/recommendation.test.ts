@@ -65,18 +65,36 @@ describe("local inference recommendations", () => {
   });
 
   it("uses the mobile ladder and prefers the Eliza-1 mobile tier when it fits", () => {
+    // Mobile detection now reads `hardware.mobile.platform`
+    // (`"ios"|"android"|"web"`) — the typed source of truth — instead of
+    // pretending the Node platform string was one of those values.
     const probe = hardware({
       totalRamGb: 8,
       freeRamGb: 5,
-      platform: "android" as NodeJS.Platform,
+      platform: "linux",
       arch: "arm64",
       recommendedBucket: "small",
+      mobile: { platform: "android" },
     });
 
     const recommended = selectRecommendedModels(probe);
 
     expect(classifyRecommendationPlatform(probe)).toBe("mobile");
     expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-lite-0_6b");
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-mobile-1_7b");
+  });
+
+  it("classifies an iOS mobile probe as mobile and lands on the mobile tier", () => {
+    const probe = hardware({
+      totalRamGb: 8,
+      freeRamGb: 5,
+      platform: "darwin",
+      arch: "arm64",
+      recommendedBucket: "small",
+      mobile: { platform: "ios" },
+    });
+    expect(classifyRecommendationPlatform(probe)).toBe("mobile");
+    const recommended = selectRecommendedModels(probe);
     expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-mobile-1_7b");
   });
 
@@ -92,9 +110,10 @@ describe("local inference recommendations", () => {
       const probe = hardware({
         totalRamGb,
         freeRamGb: Math.max(totalRamGb - 1, 0),
-        platform: "ios" as NodeJS.Platform,
+        platform: "darwin",
         arch: "arm64",
         recommendedBucket: "small",
+        mobile: { platform: "ios" },
       });
 
       expect(
@@ -108,9 +127,10 @@ describe("local inference recommendations", () => {
     const probe = hardware({
       totalRamGb: 6,
       freeRamGb: 4,
-      platform: "ios" as NodeJS.Platform,
+      platform: "darwin",
       arch: "arm64",
       recommendedBucket: "mid",
+      mobile: { platform: "ios" },
     });
     const desktop = findCatalogModel("eliza-1-desktop-9b");
 

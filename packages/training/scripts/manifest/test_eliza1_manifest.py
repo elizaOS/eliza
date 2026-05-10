@@ -15,6 +15,8 @@ from scripts.manifest.eliza1_manifest import (
     KernelVerification,
     LineageEntry,
     build_manifest,
+    parse_ctx_string,
+    parse_text_ctx_from_filename,
     validate_manifest,
     write_manifest,
 )
@@ -230,3 +232,52 @@ def test_write_manifest_refuses_invalid(tmp_path: Path):
     with pytest.raises(Eliza1ManifestError):
         write_manifest(manifest, out)
     assert not out.exists()
+
+
+# ---------------------------------------------------------------------------
+# Context-suffix parser (shared by publish + manifest builder)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("64k", 65536),
+        ("256k", 262144),
+        ("1k", 1024),
+    ],
+)
+def test_parse_ctx_string_accepts_k_suffix(value: str, expected: int):
+    assert parse_ctx_string(value) == expected
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "32",      # no `k` suffix
+        "k",       # no digits
+        "64K",     # uppercase K not accepted
+        "64kb",    # extra chars
+        "",
+        "64.5k",   # not an integer
+    ],
+)
+def test_parse_ctx_string_rejects_bad_input(bad: str):
+    with pytest.raises(ValueError):
+        parse_ctx_string(bad)
+
+
+def test_parse_text_ctx_from_filename_finds_suffix_token():
+    assert (
+        parse_text_ctx_from_filename(Path("text/eliza-1-desktop-9b-64k.gguf"))
+        == 65536
+    )
+    assert (
+        parse_text_ctx_from_filename(Path("text/eliza-1-server-h200-256k.gguf"))
+        == 262144
+    )
+
+
+def test_parse_text_ctx_from_filename_returns_none_when_no_suffix():
+    assert parse_text_ctx_from_filename(Path("text/eliza-1-mobile-1_7b.gguf")) is None
+    assert parse_text_ctx_from_filename(Path("dflash/drafter-9b.gguf")) is None

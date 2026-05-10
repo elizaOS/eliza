@@ -39,6 +39,53 @@ export function shouldForwardToRemoteTarget(
   );
 }
 
+// Per RFC 7230 §6.1, hop-by-hop headers MUST NOT be forwarded by an
+// intermediary. Re-using an upstream `Connection: keep-alive` or stale
+// `Transfer-Encoding` against the target's connection corrupts framing.
+const HOP_BY_HOP_HEADERS: ReadonlySet<string> = new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+]);
+
+/**
+ * Build the outbound `Headers` for the target. Visible for testing.
+ *
+ * Per RFC 7230 §3.2.2, multi-valued request headers (`Cookie`, `Accept`,
+ * `Forwarded`, etc.) are equivalent to a single comma-joined value.
+ * Node parses `set-cookie` and any duplicated header as `string[]`;
+ * we forward every value via `headers.append(name, v)` instead of
+ * silently dropping the array (the previous behavior).
+ */
+export function buildForwardHeaders(
+  incoming: http.IncomingHttpHeaders,
+  targetHost: string,
+  remoteAccessToken: string | null,
+): Headers {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(incoming)) {
+    if (value === undefined) continue;
+    if (HOP_BY_HOP_HEADERS.has(name.toLowerCase())) continue;
+    if (Array.isArray(value)) {
+      for (const v of value) headers.append(name, v);
+    } else {
+      headers.set(name, value);
+    }
+  }
+  // Replace the Host header — we are addressing the target now, not the
+  // controller.
+  headers.set("host", targetHost);
+  if (remoteAccessToken) {
+    headers.set("authorization", `Bearer ${remoteAccessToken}`);
+  }
+  return headers;
+}
+
 async function readRequestBody(req: http.IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
@@ -79,32 +126,11 @@ export async function forwardRemoteCloudMutation(
   const body: BodyInit | undefined =
     rawBody && rawBody.length > 0 ? rawBody.toString("utf8") : undefined;
 
-  // Per RFC 7230 §6.1, hop-by-hop headers MUST NOT be forwarded by an
-  // intermediary. Strip them — re-using values like an upstream
-  // `Connection: keep-alive` or a stale `Transfer-Encoding` against the
-  // target's connection produces corrupt framing.
-  const HOP_BY_HOP = new Set([
-    "connection",
-    "keep-alive",
-    "proxy-authenticate",
-    "proxy-authorization",
-    "te",
-    "trailer",
-    "transfer-encoding",
-    "upgrade",
-  ]);
-  const headers: Record<string, string> = {};
-  for (const [name, value] of Object.entries(req.headers)) {
-    if (typeof value !== "string") continue;
-    if (HOP_BY_HOP.has(name.toLowerCase())) continue;
-    headers[name] = value;
-  }
-  // Replace the Host header — we are addressing the target now, not the
-  // controller.
-  headers.host = targetUrl.host;
-  if (snapshot.remoteAccessToken) {
-    headers.authorization = `Bearer ${snapshot.remoteAccessToken}`;
-  }
+  const headers = buildForwardHeaders(
+    req.headers,
+    targetUrl.host,
+    snapshot.remoteAccessToken,
+  );
 
   const upstream = await fetchWithTimeoutGuard(
     targetUrl.toString(),
