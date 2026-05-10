@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
-import type { ChannelType, IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import { createUniqueUuid, logger, stringToUuid } from "@elizaos/core";
-import { websiteBlockAction } from "../../actions/website-block.js";
+import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { executeRawSql, sqlQuote, sqlText } from "../../lifeops/sql.js";
+import { activateBlockRule } from "./block-activator.js";
 import {
   BLOCK_RULES_TABLE,
   type BlockRule,
@@ -75,75 +75,7 @@ function assertCreateInput(input: CreateBlockRuleInput): void {
   }
 }
 
-function makeSyntheticMessage(
-  runtime: IAgentRuntime,
-  websites: readonly string[],
-): Memory {
-  const roomId = stringToUuid(
-    `block-rule-service-room-${String(runtime.agentId)}`,
-  );
-  return {
-    id: createUniqueUuid(runtime, `block-rule-${Date.now()}`),
-    entityId: runtime.agentId as UUID,
-    agentId: runtime.agentId as UUID,
-    roomId,
-    content: {
-      text: `Block ${websites.join(", ")}.`,
-      source: "agent",
-    },
-  } as Memory;
-}
-
-async function ensureSyntheticMessageContext(
-  runtime: IAgentRuntime,
-  message: Memory,
-): Promise<void> {
-  if (
-    typeof runtime.ensureWorldExists !== "function" ||
-    typeof runtime.ensureConnection !== "function" ||
-    typeof runtime.ensureParticipantInRoom !== "function"
-  ) {
-    return;
-  }
-
-  const worldId = stringToUuid(
-    `block-rule-service-world-${String(runtime.agentId)}`,
-  );
-  const metadata = {
-    ownership: {
-      ownerId: runtime.agentId,
-    },
-    roles: {
-      [runtime.agentId]: "OWNER",
-    },
-  } as const;
-
-  await runtime.ensureWorldExists({
-    id: worldId,
-    name: "Block Rule Service",
-    agentId: runtime.agentId,
-    messageServerId: worldId,
-    metadata,
-  } as Parameters<typeof runtime.ensureWorldExists>[0]);
-
-  await runtime.ensureConnection({
-    entityId: runtime.agentId,
-    roomId: message.roomId,
-    worldId,
-    worldName: "Block Rule Service",
-    userName: "BlockRuleWriter",
-    name: "BlockRuleWriter",
-    source: "agent",
-    channelId: message.roomId,
-    type: "DM" as ChannelType,
-    messageServerId: worldId,
-    metadata,
-  } as Parameters<typeof runtime.ensureConnection>[0]);
-
-  await runtime.ensureParticipantInRoom(runtime.agentId, message.roomId);
-}
-
-function computeHandlerOptionsForCreate(
+function computeActivationDurationMinutes(
   input: CreateBlockRuleInput,
 ): number | null {
   if (input.gateType === "fixed_duration") {
@@ -191,29 +123,21 @@ export class BlockRuleWriter {
        )`,
     );
 
-    const message = makeSyntheticMessage(this.runtime, input.websites);
-    await ensureSyntheticMessageContext(this.runtime, message);
-    const durationMinutes = computeHandlerOptionsForCreate(input);
-    const handler = websiteBlockAction.handler;
-    const result = handler
-      ? await handler(this.runtime, message, undefined, {
-          parameters: {
-            subaction: "block",
-            hostnames: input.websites,
-            durationMinutes,
-            confirmed: true,
-          },
-        })
-      : { success: false, text: "WEBSITE_BLOCK handler unavailable." };
+    const durationMinutes = computeActivationDurationMinutes(input);
+    const activation = await activateBlockRule({
+      runtime: this.runtime,
+      websites: input.websites,
+      durationMinutes,
+    });
 
-    if (result?.success === false) {
+    if (activation.success === false) {
       // The rule is the source of truth. Activation failures
       // (missing admin permission, unsupported platform, no helper binary)
       // are logged but do not tear down the rule — the reconciler keeps
       // the lifecycle and a retry on rule creation will re-attempt
       // activation.
       logger.warn(
-        `[BlockRuleWriter] SelfControl activation did not complete for rule ${id}: ${result.text ?? "unknown error"}`,
+        `[BlockRuleWriter] SelfControl activation did not complete for rule ${id}: ${activation.error}`,
       );
     }
 

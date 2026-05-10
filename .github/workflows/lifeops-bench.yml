@@ -1,0 +1,207 @@
+# LifeOps Benchmark + Scenario Gate
+#
+# Runs the LifeOps prompt benchmark + scenario pipeline (`bun run lifeops:full
+# --skip-integration`) on every PR that touches the lifeops surface area, using
+# Cerebras gpt-oss-120b as the eval/judge teacher and Anthropic Opus 4.7 as the
+# agent under test. See `eliza/docs/audits/lifeops-2026-05-09/REPORT.md`
+# (followup F13) for the design notes and resource budget.
+#
+# Local equivalent (run before pushing):
+#
+#     bun run lifeops:verify-cerebras && \
+#       bun run lifeops:full --skip-integration --variants direct
+#
+# The job uploads the per-run directory from `~/.milady/runs/lifeops/<runId>/`
+# (report.md, steps.csv, benchmark-report-*.json, per-scenario JSONL bundles)
+# and posts the cache hit % + accuracy summary as a PR comment.
+#
+# Required secrets (job is skipped, NOT failed, when either is absent):
+#   CEREBRAS_API_KEY  — eval/judge/teacher provider (gpt-oss-120b)
+#   ANTHROPIC_API_KEY — agent under test (Opus 4.7)
+
+name: LifeOps Benchmark
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "plugins/app-lifeops/**"
+      - "plugins/app-training/**"
+      - "packages/scenario-runner/**"
+      - "packages/core/src/runtime/**"
+      - "test/scenarios/lifeops.**"
+      - "scripts/lifeops-*.mjs"
+      - "scripts/aggregate-lifeops-run.mjs"
+      - ".github/workflows/lifeops-bench.yml"
+  workflow_dispatch:
+    inputs:
+      variants:
+        description: "Comma-separated benchmark variants (default: direct)"
+        required: false
+        type: string
+        default: "direct"
+
+concurrency:
+  group: lifeops-bench-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  BUN_VERSION: "1.3.13"
+  NODE_VERSION: "22.20.0"
+
+jobs:
+  lifeops-bench:
+    name: "lifeops-bench: ${{ matrix.variant }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: ["${{ inputs.variants || 'direct' }}"]
+    steps:
+      - name: Check secrets
+        id: gate
+        env:
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "${CEREBRAS_API_KEY:-}" ] || [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "[lifeops-bench] CEREBRAS_API_KEY or ANTHROPIC_API_KEY not configured — skipping benchmark."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        if: steps.gate.outputs.skip != 'true'
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+
+      - name: Typecheck (lifeops + training + scenario-runner + core)
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          set -e
+          bun run --cwd packages/core typecheck
+          bun run --cwd packages/scenario-runner typecheck
+          bunx tsc --noEmit -p plugins/app-lifeops/tsconfig.build.json
+          bunx tsc --noEmit -p plugins/app-training/tsconfig.json
+
+      - name: Verify Cerebras wiring
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: bun run lifeops:verify-cerebras
+
+      - name: Run lifeops benchmark + scenarios
+        if: steps.gate.outputs.skip != 'true'
+        id: run
+        env:
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          set -e
+          bun run lifeops:full --skip-integration --variants "$VARIANT" | tee lifeops-full.log
+          # The script prints `RUN_DIR=...` to stdout; surface it for later steps.
+          RUN_DIR=$(grep -oE 'RUN_DIR=[^ ]+' lifeops-full.log | tail -n1 | cut -d= -f2-)
+          if [ -z "$RUN_DIR" ] || [ ! -d "$RUN_DIR" ]; then
+            echo "[lifeops-bench] Could not resolve RUN_DIR from script output." >&2
+            exit 1
+          fi
+          echo "run-dir=$RUN_DIR" >> "$GITHUB_OUTPUT"
+          echo "run-id=$(basename "$RUN_DIR")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload run artifacts
+        if: steps.gate.outputs.skip != 'true' && always() && steps.run.outputs.run-dir != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: lifeops-run-${{ matrix.variant }}-${{ github.run_id }}
+          path: |
+            ${{ steps.run.outputs.run-dir }}/report.md
+            ${{ steps.run.outputs.run-dir }}/steps.csv
+            ${{ steps.run.outputs.run-dir }}/benchmark-report-*.json
+            ${{ steps.run.outputs.run-dir }}/benchmark-report-*.md
+            ${{ steps.run.outputs.run-dir }}/benchmark-ax-*.jsonl
+            ${{ steps.run.outputs.run-dir }}/scenarios/**
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Annotate PR with cache + accuracy summary
+        if: steps.gate.outputs.skip != 'true' && github.event_name == 'pull_request' && steps.run.outputs.run-dir != ''
+        uses: actions/github-script@v9
+        env:
+          RUN_DIR: ${{ steps.run.outputs.run-dir }}
+          RUN_ID: ${{ steps.run.outputs.run-id }}
+          VARIANT: ${{ matrix.variant }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const runDir = process.env.RUN_DIR;
+            const runId = process.env.RUN_ID;
+            const variant = process.env.VARIANT;
+            const reportPath = path.join(runDir, 'report.md');
+            if (!fs.existsSync(reportPath)) {
+              core.warning(`report.md not found at ${reportPath}`);
+              return;
+            }
+            const md = fs.readFileSync(reportPath, 'utf8');
+            // Parse cache hit % + accuracy from the aggregator markdown table.
+            const grab = (re) => {
+              const m = md.match(re);
+              return m ? m[1].trim() : null;
+            };
+            const cacheHit = grab(/cache hit %\s*\|\s*\**\s*([0-9.]+%)/i);
+            const passed = grab(/passed\s*\|\s*([0-9]+)/i);
+            const failed = grab(/failed\s*\|\s*([0-9]+)/i);
+            const accuracy = grab(/accuracy\s*\|\s*([0-9.]+%)/i);
+            const totalCost = grab(/cost \(USD\)\s*\|\s*\$?([0-9.]+)/i);
+            const wallTime = grab(/wall time\s*\|\s*([0-9.]+s)/i);
+            const lines = [
+              `### LifeOps Benchmark — \`${variant}\``,
+              ``,
+              `Run ID: \`${runId}\``,
+              ``,
+              `| metric | value |`,
+              `| --- | ---: |`,
+              `| cache hit % | ${cacheHit ?? 'n/a'} |`,
+              `| accuracy | ${accuracy ?? 'n/a'} |`,
+              `| passed | ${passed ?? 'n/a'} |`,
+              `| failed | ${failed ?? 'n/a'} |`,
+              `| cost (USD) | ${totalCost ? '$' + totalCost : 'n/a'} |`,
+              `| wall time | ${wallTime ?? 'n/a'} |`,
+              ``,
+              `Full artifacts: see the \`lifeops-run-${variant}-${{ github.run_id }}\` upload on this run.`,
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: lines,
+            });
+
+      - name: Skipped notice
+        if: steps.gate.outputs.skip == 'true'
+        run: |
+          echo "::notice::LifeOps benchmark skipped — CEREBRAS_API_KEY and/or ANTHROPIC_API_KEY are not configured for this repo."

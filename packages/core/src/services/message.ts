@@ -1643,6 +1643,12 @@ function buildV5PlannerActionSurface(params: {
 	message: Memory;
 	state?: State;
 	messageHandler: MessageHandlerResult;
+	// Optional recorder hook. When provided the function emits a `toolSearch`
+	// stage to the trajectory before returning. Fire-and-forget — the caller
+	// does not need to await.
+	recorder?: TrajectoryRecorder;
+	trajectoryId?: string;
+	logger?: IAgentRuntime["logger"];
 }): V5PlannerActionSurface {
 	const candidateActions = getMessageHandlerCandidateActions(
 		params.messageHandler,
@@ -1662,6 +1668,7 @@ function buildV5PlannerActionSurface(params: {
 		});
 	}
 
+	const toolSearchStartedAt = Date.now();
 	const catalog = buildActionCatalog([...params.actions]);
 	const retrieval = retrieveActions({
 		catalog,
@@ -1677,6 +1684,7 @@ function buildV5PlannerActionSurface(params: {
 		catalog,
 		results: retrieval.results,
 	});
+	const toolSearchEndedAt = Date.now();
 	const exposedActionNames = new Set(
 		tieredSurface.exposedActionNames.map(normalizeActionIdentifier),
 	);
@@ -1704,6 +1712,50 @@ function buildV5PlannerActionSurface(params: {
 	const exposedActionCount = params.actions.filter((action) =>
 		exposedActionNames.has(normalizeActionIdentifier(action.name)),
 	).length;
+
+	if (params.recorder && params.trajectoryId) {
+		const stageId = `stage-toolsearch-${toolSearchStartedAt}`;
+		const trajectoryId = params.trajectoryId;
+		void params.recorder
+			.recordStage(trajectoryId, {
+				stageId,
+				kind: "toolSearch",
+				startedAt: toolSearchStartedAt,
+				endedAt: toolSearchEndedAt,
+				latencyMs: toolSearchEndedAt - toolSearchStartedAt,
+				toolSearch: {
+					query: {
+						text: getUserMessageText(params.message) ?? "",
+						tokens: retrieval.query.tokens,
+						candidateActions: [...candidateActions],
+						parentActionHints: [...parentActionHints],
+					},
+					results: retrieval.results.slice(0, 25).map((r, idx) => ({
+						name: r.name,
+						score: r.score,
+						rank: idx,
+						rrfScore: (r as unknown as { rrfScore?: number }).rrfScore,
+						matchedBy: (r as unknown as { matchedBy?: string[] }).matchedBy,
+						stageScores: (
+							r as unknown as { stageScores?: Record<string, number> }
+						).stageScores,
+					})),
+					tier: {
+						tierA: tieredSurface.sortedTierAParentNames,
+						tierB: tieredSurface.sortedTierBParentNames,
+						omitted: tieredSurface.omittedParentNames.length,
+					},
+					durationMs: toolSearchEndedAt - toolSearchStartedAt,
+					fallback,
+				},
+			})
+			.catch((err) => {
+				params.logger?.warn?.(
+					{ err: (err as Error).message, trajectoryId },
+					"[TrajectoryRecorder] failed to record toolSearch stage",
+				);
+			});
+	}
 
 	return {
 		exposedActionNames,
@@ -3935,6 +3987,14 @@ export async function runV5MessageRuntimeStage1(args: {
 			cacheProviderOptions({
 				prefixHash: stage1PrefixHash,
 				segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
+				promptSegments: messageHandlerInput.promptSegments,
+				// Use `roomId` as the conversation id for local-inference slot
+				// pinning. Cloud providers ignore it; local backends route
+				// every turn of the same room to the same KV slot, which is
+				// the dominant cache reuse signal for chat.
+				conversationId: args.message.roomId
+					? String(args.message.roomId)
+					: undefined,
 			}),
 			buildModelInputBudget({
 				messages: messageHandlerInput.messages,
@@ -4152,6 +4212,9 @@ export async function runV5MessageRuntimeStage1(args: {
 			message: args.message,
 			state: plannerState,
 			messageHandler,
+			recorder,
+			trajectoryId,
+			logger: args.runtime.logger,
 		});
 		const exposedPlannerActions = plannerCandidateActions.filter((action) =>
 			actionSurface.exposedActionNames.has(

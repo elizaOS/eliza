@@ -2,9 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { client } from "../api/client";
 import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "./useConnectorAccounts";
 
-export type { SignalPairingStatus } from "../api/agent-client-type-shim";
+export type { SignalPairingStatus } from "../api/client-types-core";
 
-import type { SignalPairingStatus } from "../api/agent-client-type-shim";
+import type { SignalPairingStatus } from "../api/client-types-core";
 
 interface SignalPairingState {
   status: SignalPairingStatus;

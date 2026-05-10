@@ -17,5 +17,6 @@
     "allowArbitraryExtensions": true,
     "types": ["node", "bun-types"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/__tests__/**", "**/*.test.ts", "**/*.test.tsx", "**/*.e2e.test.ts"]
 }

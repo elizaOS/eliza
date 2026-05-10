@@ -100,13 +100,10 @@ if (!existsSync(sharedGeneratedFile)) {
 function findPgliteDist() {
   // pglite.wasm + pglite.data MUST match the @electric-sql/pglite version
   // that the bundled agent JS resolves at runtime — they're a triple
-  // (engine + filesystem image + JS shim). The agent imports from
-  // @elizaos/plugin-sql, which pins ^0.3.3, while the eliza repo's
-  // top-level deps may pull in a newer 0.4.x for unrelated reasons.
-  // Bun's hoisting can park a 0.4.x copy at the top of `node_modules/.bun`
-  // and a `readdirSync` walk will pick that up first. The runtime then
-  // throws "Invalid FS bundle size: <new> !== <old>" because the bundled
-  // 0.3.x WASM expects the 0.3.x .data while we shipped 0.4.x.
+  // (engine + filesystem image + JS shim). The agent imports
+  // `@electric-sql/pglite` transitively through `@elizaos/plugin-sql`
+  // which pins `^0.4.0`. Bun's bundler picks the matching workspace
+  // resolution; we just need to ship the same version's `.wasm`/`.data`.
   //
   // Resolve plugin-sql's OWN private node_modules first so the staged
   // assets always match the bundled engine. Fall back to the repoRoot
@@ -117,7 +114,6 @@ function findPgliteDist() {
       repoRoot,
       "plugins",
       "plugin-sql",
-      "typescript",
       "node_modules",
       "@electric-sql",
       "pglite",
@@ -127,11 +123,27 @@ function findPgliteDist() {
   ];
   const bunDir = path.join(repoRoot, "node_modules", ".bun");
   if (existsSync(bunDir)) {
-    // Sort .bun entries by version so that 0.3.x wins over 0.4.x —
-    // matches the plugin-sql ^0.3.3 pin without forcing a manual list.
+    // Sort `.bun` entries by version DESCENDING so the newest pglite (the
+    // one plugin-sql currently pins) wins. The pin is `^0.4.0` today;
+    // `0.4.5 < 0.4.10` lexicographically, so use a numeric-aware compare.
     const sortedEntries = readdirSyncSafe(bunDir)
       .filter((e) => e.startsWith("@electric-sql+pglite@"))
-      .sort();
+      .sort((a, b) => {
+        const va = a
+          .replace(/^@electric-sql\+pglite@/, "")
+          .split(".")
+          .map((n) => Number.parseInt(n, 10) || 0);
+        const vb = b
+          .replace(/^@electric-sql\+pglite@/, "")
+          .split(".")
+          .map((n) => Number.parseInt(n, 10) || 0);
+        for (let i = 0; i < Math.max(va.length, vb.length); i++) {
+          const da = va[i] ?? 0;
+          const db = vb[i] ?? 0;
+          if (da !== db) return db - da;
+        }
+        return 0;
+      });
     for (const entry of sortedEntries) {
       candidates.push(
         path.join(
@@ -197,6 +209,17 @@ const nativeStubs = {
   "@node-llama-cpp/mac-arm64": path.join(stubsDir, "node-llama-cpp.cjs"),
   "@node-llama-cpp/mac-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
   "@node-llama-cpp/win-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
+  // llama-cpp-capacitor is the WebView-side JNI binding for the Capacitor
+  // mobile build. The bun-side AOSP agent uses bun:ffi against libllama.so
+  // directly via aosp-llama-adapter.ts, never this package — but Bun.build
+  // still has to resolve the dynamic import in
+  // packages/native-plugins/llama/src/capacitor-llama-adapter.ts.
+  "llama-cpp-capacitor": path.join(stubsDir, "llama-cpp-capacitor.cjs"),
+  // zlib-sync is a discord.js optional native binding for compressed
+  // gateway frames. No AOSP prebuild ships, and discord.js falls back to
+  // uncompressed transport when the binding is missing. Stub keeps the
+  // bundle building.
+  "zlib-sync": path.join(stubsDir, "zlib-sync.cjs"),
   "onnxruntime-node": path.join(stubsDir, "onnxruntime-node.cjs"),
   "@huggingface/transformers": path.join(
     stubsDir,
@@ -206,6 +229,21 @@ const nativeStubs = {
   "pty-manager": path.join(stubsDir, "pty-manager.cjs"),
   sharp: path.join(stubsDir, "sharp.cjs"),
   canvas: path.join(stubsDir, "canvas.cjs"),
+  // `zlib-sync` is a synchronous prebuild-aware zlib wrapper that ships
+  // `require("./build/Release/zlib_sync.node")` and depends on the host's
+  // `node-gyp` install spitting out a per-platform `.node` artifact. Discord
+  // pulls it in transitively for opportunistic compression. The mobile
+  // bundle has no native build step, no Discord runtime path, and no
+  // ELIZA_PLATFORM=android codepath that needs sync zlib — fall back to
+  // the throw-on-call stub.
+  "zlib-sync": path.join(stubsDir, "null-plugin.cjs"),
+  // `@elizaos/core/testing` re-exports `real-connector.ts`, which calls
+  // `await import("dotenv")` at module top level. Bun's bundler then
+  // refuses to merge any module that does `require("@elizaos/core")`
+  // because the resulting CJS-style namespace object would force the
+  // require'er to wait on the TLA. Mobile never runs the integration-test
+  // harness, so swap the entire testing surface for an empty stub.
+  "@elizaos/core/testing": path.join(stubsDir, "empty.cjs"),
   // React + react-dom stubs: workspace plugins (`@elizaos/app-lifeops`,
   // `@elizaos/app-companion`, etc.) re-export their UI subtree from
   // `src/index.ts` for the host app to consume. The agent only loads each
@@ -257,6 +295,33 @@ const optionalPluginStubs = {
 
 const stubAliases = { ...nativeStubs, ...optionalPluginStubs };
 
+// `@elizaos/core/src/index.node.ts` does `export * from "./testing"`, and
+// that subtree's `real-connector.ts:24` calls `await import("dotenv")` at
+// module top level. Bun's bundler then refuses every CJS-style
+// `require("@elizaos/core")` upstream (eliza-plugin.ts, embedding-manager-
+// support, etc.) because the resulting namespace would have to wait on
+// the TLA, which CJS can't express. Mobile never runs the integration
+// test harness — strip the entire testing subtree at bundle time so the
+// TLA chain never enters the graph.
+const coreTestingStripPlugin = {
+  name: "eliza-mobile-strip-core-testing",
+  setup(build) {
+    const emptyStub = path.join(stubsDir, "empty.cjs");
+    build.onResolve({ filter: /^\.\.?\/testing(\/.*)?$/ }, (args) => {
+      if (!args.importer) return undefined;
+      const norm = args.importer.replace(/\\/g, "/");
+      if (norm.includes("/packages/core/src/")) {
+        return { path: emptyStub, namespace: "file" };
+      }
+      return undefined;
+    });
+    build.onResolve({ filter: /testing\/real-connector/ }, () => ({
+      path: emptyStub,
+      namespace: "file",
+    }));
+  },
+};
+
 const stubResolverPlugin = {
   name: "eliza-mobile-stubs",
   setup(build) {
@@ -282,6 +347,7 @@ const stubResolverPlugin = {
       if (best === null) return undefined;
       return { path: stubAliases[best], namespace: "file" };
     });
+
   },
 };
 
@@ -326,11 +392,15 @@ const dedupeTargets = {
   // so the bundled `BaseDrizzleAdapter` is missing methods the current runtime
   // depends on. Building from src against the same `@elizaos/core` source the
   // runtime uses keeps the adapter and the runtime in lockstep.
+  //
+  // The on-disk layout is `plugins/plugin-sql/src/index.node.ts`. (An earlier
+  // refactor staged a `plugins/plugin-sql/typescript/` mirror; that's gone
+  // now and the path here was stale.)
   "@elizaos/plugin-sql": path.resolve(
     repoRoot,
     "plugins",
     "plugin-sql",
-    "typescript",
+    "src",
     "index.node.ts",
   ),
 };
@@ -606,6 +676,7 @@ const buildResult = await Bun.build({
     "process.env.ELIZA_DISABLE_DIRECT_RUN": JSON.stringify("1"),
   },
   plugins: [
+    coreTestingStripPlugin,
     zodCjsResolverPlugin,
     stubCssPlugin,
     dedupePlugin,
@@ -648,11 +719,24 @@ console.log(
 // Copy PGlite assets next to the bundle. The bundle's `import.meta.url` will
 // resolve to its location at runtime, and `new URL("./pglite.wasm", ...)`
 // lands here.
+// `initdb.wasm` is optional. Older pglite (≤0.3.x) inlined the initdb
+// stage into `pglite.wasm`; only 0.4.x onwards split it back out as a
+// separate asset. Keeping it optional lets the same bundle script work
+// against either pglite drop without forcing a transitive bump.
+const PGLITE_REQUIRED = new Set(["pglite.wasm", "pglite.data"]);
 for (const asset of ["pglite.wasm", "initdb.wasm", "pglite.data"]) {
   const src = path.join(pgliteDist, asset);
   if (!existsSync(src)) {
-    console.error(`[build-mobile] FATAL: missing ${asset} in ${pgliteDist}`);
-    process.exit(1);
+    if (PGLITE_REQUIRED.has(asset)) {
+      console.error(
+        `[build-mobile] FATAL: missing ${asset} in ${pgliteDist}`,
+      );
+      process.exit(1);
+    }
+    console.log(
+      `[build-mobile] skipping ${asset} (not present in pglite ${pgliteDist}; assumed inlined upstream)`,
+    );
+    continue;
   }
   await copyFile(src, path.join(outDir, asset));
   const sz = (await stat(src)).size;

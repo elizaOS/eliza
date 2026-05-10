@@ -62,7 +62,7 @@
         "../app-core/src/index.ts"
       ],
       "@elizaos/agent": [
-        "./src/api/agent-client-type-shim.ts"
+        "../agent/src/index.ts"
       ],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
@@ -79,27 +79,24 @@
       "@elizaos/capacitor-mobile-signals": [
         "../native-plugins/mobile-signals/src/index.ts"
       ],
-      "@elizaos/shared": [
-        "../shared/src/index.ts"
-      ],
-      "@elizaos/skills": [
-        "../skills/src/index.ts"
-      ],
-      "@elizaos/core": [
-        "../core/src/index.ts"
-      ],
-      "@elizaos/ui": [
-        "./src/index.ts"
-      ]
+      "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/shared/*": ["../shared/src/*"],
+      "@elizaos/skills": ["../skills/src/index.ts"],
+      "@elizaos/skills/*": ["../skills/src/*"],
+      "@elizaos/core": ["../core/src/index.ts"],
+      "@elizaos/core/*": ["../core/src/*"],
+      "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
+      "@elizaos/app-wallet/*": ["../../plugins/app-wallet/src/*"],
+      "@elizaos/ui": ["./src/index.ts"],
+      "@elizaos/ui/*": ["./src/*"],
+      "@elizaos/*": ["../../node_modules/@elizaos/*"]
     }
   },
   "exclude": [
     "src/**/*.stories.ts",
     "src/**/*.stories.tsx",
     "../../plugins/app-companion/src/**/*.stories.tsx",
-    "../../plugins/app-companion/src/**/*.stories.ts",
-    "../../plugins/app-companion/src/**/*.test.ts",
-    "../../plugins/app-companion/src/**/*.test.tsx"
+    "../../plugins/app-companion/src/**/*.stories.ts"
   ],
   "include": [
     "src",

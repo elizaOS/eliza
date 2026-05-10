@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { participantTable } from "../../schema";
+import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
 describe("Participant Integration Tests", () => {
@@ -52,7 +53,7 @@ describe("Participant Integration Tests", () => {
 
   describe("Participant Tests", () => {
     beforeEach(async () => {
-      await adapter.getDatabase().delete(participantTable);
+      await (adapter.getDatabase() as DrizzleDatabase).delete(participantTable);
     });
 
     it("should add and retrieve a participant", async () => {

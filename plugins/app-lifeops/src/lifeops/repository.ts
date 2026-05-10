@@ -192,10 +192,9 @@ export interface LifeOpsScheduleObservationRecord
 export interface LifeOpsScheduleMergedStateRecord
   extends LifeOpsScheduleMergedState {}
 
-// Sleep- and health-record types + factories owned by `@elizaos/plugin-health`
-// (Wave-1 W1-B extraction). Re-exported here for backward compatibility —
-// every existing app-lifeops importer of these names continues to resolve
-// via the repository module.
+// Sleep- and health-record types + factories owned by `@elizaos/plugin-health`,
+// re-exported here so existing app-lifeops importers keep resolving via the
+// repository module.
 export type {
   LifeOpsPersistedSleepEpisodeSource,
   LifeOpsSleepEpisodeRecord,
@@ -2254,9 +2253,7 @@ function errorMessagesWithCauses(error: unknown): string[] {
   return messages;
 }
 
-// ---------------------------------------------------------------------------
-// W1-A — ScheduledTask row parsers (private helpers).
-// ---------------------------------------------------------------------------
+// ScheduledTask row parsers (private helpers).
 
 function parseOptionalJsonRecord<T>(value: unknown): T | undefined {
   if (value === null || value === undefined) return undefined;
@@ -2376,11 +2373,9 @@ export class LifeOpsRepository {
   constructor(private readonly runtime: IAgentRuntime) {}
 
   /**
-   * EntityStore / RelationshipStore accessors. Wave-1 W1-E shipping the
-   * graph primitive; existing legacy-table accessors (`upsertRelationship`,
-   * `listRelationships`, etc.) remain in place for backward compat with
-   * `service-mixin-relationships.ts`. New code paths should consume the
-   * graph via these factories. Wave-2 W2-A removes the legacy mixin.
+   * EntityStore / RelationshipStore accessors for the typed graph. New code
+   * paths should consume the graph via these factories rather than the
+   * legacy `upsertRelationship` / `listRelationships` helpers.
    */
   async entityStore(
     agentId: string,
@@ -7656,13 +7651,9 @@ export class LifeOpsRepository {
     );
   }
 
-  // -------------------------------------------------------------------------
-  // W1-A — ScheduledTask spine. Source of truth:
-  // `docs/audit/wave1-interfaces.md` §1.6 + IMPL §3.1.
-  //
-  // The runner is the only writer for these tables. Tables are created
-  // by the drizzle plugin-migration system from `lifeOpsSchema`.
-  // -------------------------------------------------------------------------
+  // ScheduledTask spine. The runner is the only writer for these tables;
+  // tables are created by the drizzle plugin-migration system from
+  // `lifeOpsSchema`.
 
   async upsertScheduledTask(
     agentId: string,
@@ -8072,8 +8063,8 @@ export function createLifeOpsActivitySignal(
   };
 }
 
-// `createLifeOpsSleepEpisode` moved to `@elizaos/plugin-health` (Wave-1 W1-B).
-// Re-exported at the top of this file for backward compatibility.
+// `createLifeOpsSleepEpisode` lives in `@elizaos/plugin-health`; re-exported
+// at the top of this file.
 
 export function createLifeOpsConnectorGrant(
   params: Omit<
@@ -8119,8 +8110,8 @@ export function createLifeOpsConnectorGrant(
   };
 }
 
-// `createLifeOpsHealth*` factories moved to `@elizaos/plugin-health` (Wave-1 W1-B).
-// Re-exported at the top of this file for backward compatibility.
+// `createLifeOpsHealth*` factories live in `@elizaos/plugin-health`;
+// re-exported at the top of this file.
 
 export function createLifeOpsCalendarSyncState(
   params: Omit<LifeOpsCalendarSyncState, "id" | "updatedAt">,

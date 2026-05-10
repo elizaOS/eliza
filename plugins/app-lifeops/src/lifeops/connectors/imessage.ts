@@ -1,5 +1,5 @@
 /**
- * W2-B — iMessage connector contribution.
+ * iMessage connector contribution.
  *
  * Wraps the LifeOps iMessage mixin (`service-mixin-imessage.ts`). Local-only;
  * the iMessage runtime service is provided by `@elizaos/plugin-imessage` /

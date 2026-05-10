@@ -48,13 +48,10 @@ import {
   normalizeWebsiteAccessPolicy,
 } from "./service-normalize-task.js";
 
-// Wave-2 W2-A removed `applySeedRoutines`, `checkAndOfferSeeding`,
-// `markSeedingOffered`, the legacy `RoutineSeedTemplate` shape, and the
-// `load-test-user-profile:*` metadata prefix. Routine seeding is now a
-// FIRST_RUN customize-path concern — see
+// Routine seeding is a FIRST_RUN customize-path concern — see
 // `src/lifeops/first-run/service.ts`. The migrator at
 // `src/lifeops/seed-routine-migration/migrator.ts` rewrites legacy
-// `seedKey: "load-test-user-profile:*"` definitions onto the new
+// `seedKey: "load-test-user-profile:*"` definitions onto the
 // `default-packs/habit-starters.ts` `ScheduledTask` records.
 
 export interface LifeOpsDefinitionService {

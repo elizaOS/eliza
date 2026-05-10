@@ -620,7 +620,7 @@ describe("Entity Methods Integration Tests", () => {
         id: uuidv4() as UUID,
         agentId: testAgentId,
         names: ["Entity to Delete"],
-        metadata: { type: "test" },
+        metadata: { type: "custom" },
       };
 
       // Create entity

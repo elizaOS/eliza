@@ -28,12 +28,24 @@ export * from "./agent-export.ts";
 export * from "./app-manager.ts";
 export * from "./app-session-gate.ts";
 export {
+  type AuditedDecision,
+  type BrokerOptions,
+  type BrokerSnapshot,
+  CapabilityBroker,
+  type CapabilityDecision,
+  type CapabilityKind,
+  type CapabilityOp,
+  type CapabilityRequest,
+  getCapabilityBroker,
+} from "./capability-broker.ts";
+export {
   EscalationService,
   type EscalationState,
   registerEscalationChannel,
 } from "./escalation.ts";
 export * from "./mcp-marketplace.ts";
 export * from "./overlay-app-presence.ts";
+export * from "./plugin-compiler.ts";
 // `plugin-manager-types` re-exports `RegistryPluginInfo` and
 // `RegistrySearchResult` from `./registry-client-types.js`, which collide with
 // the same names exported from `./registry-client.js`. Re-export the
@@ -69,7 +81,17 @@ export { ResearchTaskExecutor } from "./research-task-executor.ts";
 export * from "./sandbox-engine.ts";
 export * from "./sandbox-manager.ts";
 export * from "./self-updater.ts";
+export {
+  resolveShellExecutionMode,
+  runShell,
+  type ShellExecutionMode,
+  type ShellRequest,
+  type ShellResult,
+  type ShellRouterContext,
+  type ShellSandboxBackend,
+} from "./shell-execution-router.ts";
 export * from "./signing-policy.ts";
 export * from "./task-executor.ts";
 export * from "./update-checker.ts";
 export * from "./version-compat.ts";
+export * from "./virtual-filesystem.ts";

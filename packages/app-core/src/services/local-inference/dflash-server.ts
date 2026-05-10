@@ -28,6 +28,11 @@ import {
   slotSavePath,
 } from "./cache-bridge";
 import { findCatalogModel } from "./catalog";
+import {
+  diffSnapshots,
+  fetchMetricsSnapshot,
+  type LocalUsageBlock,
+} from "./llama-server-metrics";
 import { localInferenceRoot } from "./paths";
 import type { LocalRuntimeOptimizations } from "./types";
 
@@ -56,6 +61,25 @@ export interface DflashGenerateArgs {
    * preserves prefix tokens across restarts.
    */
   cacheKey?: string;
+  /**
+   * Explicit slot id, set when the caller already reserved a slot via
+   * `conversationRegistry.open()`. Wins over `cacheKey` derivation. -1
+   * disables slot pinning ("any free slot").
+   */
+  slotId?: number;
+}
+
+/**
+ * Per-call result from `generateWithUsage`. The `text` field matches the
+ * existing `generate` return; `usage` is the Anthropic-shape block scraped
+ * from llama-server's `/metrics` endpoint plus the response's own
+ * per-call `usage` body. `slotId` is reported back so callers that did
+ * not pre-reserve a slot can see which one the server picked.
+ */
+export interface DflashGenerateResult {
+  text: string;
+  usage: LocalUsageBlock;
+  slotId: number;
 }
 
 export interface DflashRuntimeStatus {
@@ -586,6 +610,25 @@ export function appendOptimizationFlags(
   return args;
 }
 
+/**
+ * Default eviction sweep interval. Set to 5 minutes to match the short
+ * TTL — a slot file at most one short-TTL window stale before it's
+ * deleted. Override via `ELIZA_LOCAL_EVICTION_INTERVAL_MS`.
+ */
+const DEFAULT_EVICTION_INTERVAL_MS = 5 * 60 * 1000;
+
+function resolveEvictionIntervalMs(): number {
+  const raw = process.env.ELIZA_LOCAL_EVICTION_INTERVAL_MS?.trim();
+  if (!raw) return DEFAULT_EVICTION_INTERVAL_MS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 60_000) {
+    // Anything under a minute is almost certainly a typo; clamp to
+    // protect the disk from sweep storms.
+    return DEFAULT_EVICTION_INTERVAL_MS;
+  }
+  return parsed;
+}
+
 export class DflashLlamaServer implements LocalInferenceBackend {
   readonly id = "llama-server" as const;
 
@@ -601,6 +644,20 @@ export class DflashLlamaServer implements LocalInferenceBackend {
   private cacheModelHash: string | null = null;
   private cacheParallel: number = DEFAULT_CACHE_PARALLEL;
   private cacheSlotDir: string | null = null;
+  private evictionTimer: NodeJS.Timeout | null = null;
+  /**
+   * Per-conversation slot files persisted on shutdown for cross-restart
+   * KV reuse. Distinct from the per-slot save dir: this directory keys
+   * by conversation id, so a conversation that comes back with a different
+   * slot id (e.g. after a --parallel resize) can still find its KV.
+   */
+  private conversationKvDir: string | null = null;
+  /**
+   * Track which conversation ids have written KV state so far this
+   * process lifetime. Used for diagnostics and the "did the last save
+   * actually happen" assertion in tests.
+   */
+  private readonly persistedConversations = new Set<string>();
 
   hasLoadedModel(): boolean {
     return this.child !== null && this.loadedPlan !== null;
@@ -608,6 +665,15 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 
   currentModelPath(): string | null {
     return this.loadedPlan?.targetModelPath ?? null;
+  }
+
+  /**
+   * Parallel slot count negotiated at `start()`. Used by the engine's
+   * conversation handle API to size new conversations into available
+   * slots. Returns the static default when no server is running.
+   */
+  parallelSlots(): number {
+    return this.cacheParallel;
   }
 
   /** Soft probe — does the binary resolve and is DFlash enabled. */
@@ -656,15 +722,30 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       );
     }
 
+    // Per-load overrides win over catalog defaults. The active-model
+    // coordinator merges these in before the dispatcher is called; this
+    // keeps the same precedence on the llama-server path so a benchmark
+    // run that asks for `contextSize: 131072` actually starts the server
+    // with `--ctx-size 131072` instead of the smaller catalog default.
+    const overrides = plan.overrides;
+    const contextSize =
+      typeof overrides?.contextSize === "number"
+        ? overrides.contextSize
+        : dflash.contextSize;
+    const gpuLayers =
+      typeof overrides?.gpuLayers === "number"
+        ? overrides.gpuLayers
+        : dflash.gpuLayers;
+
     await this.start(
       {
         targetModelPath: target.path,
         drafterModelPath: drafter.path,
-        contextSize: dflash.contextSize,
+        contextSize,
         draftContextSize: dflash.draftContextSize,
         draftMin: dflash.draftMin,
         draftMax: dflash.draftMax,
-        gpuLayers: dflash.gpuLayers,
+        gpuLayers,
         draftGpuLayers: dflash.draftGpuLayers,
         disableThinking: dflash.disableThinking,
       },
@@ -713,15 +794,19 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       extra: `ctx=${plan.contextSize};parallel=${parallel}`,
     });
     const slotDir = slotSavePath(modelHash);
+    const conversationKvDir = path.join(slotDir, "conversations");
     fs.mkdirSync(slotDir, { recursive: true });
+    fs.mkdirSync(conversationKvDir, { recursive: true });
     // Fire-and-forget eviction: stale slot files on disk shouldn't block
     // server startup, but we don't want them to grow without bound.
     void evictExpired(slotDir, DEFAULT_CACHE_TTLS).catch(() => {
       // Best effort; an EACCES or similar should not prevent server start.
     });
+    void evictExpired(conversationKvDir, DEFAULT_CACHE_TTLS).catch(() => {});
     this.cacheModelHash = modelHash;
     this.cacheParallel = parallel;
     this.cacheSlotDir = slotDir;
+    this.conversationKvDir = conversationKvDir;
     const args = [
       "--model",
       plan.targetModelPath,
@@ -815,17 +900,64 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     });
 
     await this.waitUntilReady(DEFAULT_START_TIMEOUT_MS);
+
+    // Periodic eviction sweep — short TTL or shorter, capped to one
+    // sweep per minute. Without this, stale slot files accumulate to
+    // gigabytes over a long-running session because eviction was only
+    // ever fired at startup.
+    this.startEvictionTimer();
+  }
+
+  /**
+   * Set up the periodic eviction sweep that keeps stale slot files from
+   * accumulating. Runs `evictExpired` against both the per-slot save
+   * directory (used by llama-server's own KV save) and the per-conversation
+   * directory (used by our `persistConversationKv` saves) so neither can
+   * grow without bound.
+   */
+  private startEvictionTimer(): void {
+    if (this.evictionTimer) return;
+    const intervalMs = resolveEvictionIntervalMs();
+    const timer = setInterval(() => {
+      const slotDir = this.cacheSlotDir;
+      const conversationDir = this.conversationKvDir;
+      if (slotDir) {
+        void evictExpired(slotDir, DEFAULT_CACHE_TTLS).catch(() => {
+          // Don't crash the timer on a single failed sweep — we'll try again
+          // on the next tick.
+        });
+      }
+      if (conversationDir) {
+        void evictExpired(conversationDir, DEFAULT_CACHE_TTLS).catch(() => {});
+      }
+    }, intervalMs);
+    timer.unref();
+    this.evictionTimer = timer;
   }
 
   async stop(): Promise<void> {
+    if (this.evictionTimer) {
+      clearInterval(this.evictionTimer);
+      this.evictionTimer = null;
+    }
     const child = this.child;
+    const baseUrl = this.baseUrl;
+    const conversationDir = this.conversationKvDir;
     this.child = null;
     this.baseUrl = null;
     this.loadedPlan = null;
     this.cacheModelHash = null;
     this.cacheSlotDir = null;
+    this.conversationKvDir = null;
     this.cacheParallel = DEFAULT_CACHE_PARALLEL;
     if (!child) return;
+    // Best-effort: tell llama-server to flush per-conversation KV state
+    // to disk before we kill it. If the dispatcher restarts the server
+    // (or the whole process restarts), conversations re-opening with the
+    // same id will lazy-restore from these files on first generate.
+    if (baseUrl && conversationDir) {
+      await this.persistAllConversationsBeforeStop(baseUrl, conversationDir);
+    }
     child.kill("SIGTERM");
     await Promise.race([
       new Promise<void>((resolve) => child.once("exit", () => resolve())),
@@ -833,6 +965,147 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         if (!child.killed) child.kill("SIGKILL");
       }),
     ]);
+  }
+
+  /**
+   * Issue `POST /slots/<slot_id>?action=save` for every conversation slot
+   * the registry knows about. Best-effort — a single slot's save failing
+   * must not block the rest of the shutdown sequence.
+   *
+   * The slot file path is `<conversationDir>/<conversationId>.bin`, which
+   * is what `restoreConversationKv` reads on the next `generate` for the
+   * same conversation id.
+   */
+  private async persistAllConversationsBeforeStop(
+    baseUrl: string,
+    conversationDir: string,
+  ): Promise<void> {
+    // Inline import to avoid a hard cycle with the engine, which imports
+    // this file at module load time.
+    const { conversationRegistry } = await import("./conversation-registry");
+    const handles = conversationRegistry.snapshot();
+    if (handles.length === 0) return;
+    const tasks = handles.map(async (handle) => {
+      const targetPath = path.join(
+        conversationDir,
+        `${handle.conversationId}.bin`,
+      );
+      try {
+        await this.requestSlotSave(baseUrl, handle.slotId, targetPath);
+        this.persistedConversations.add(handle.conversationId);
+      } catch {
+        // A single failed slot save must not block the stop path —
+        // the worst case is that conversation cold-prefills on next use.
+      }
+    });
+    await Promise.all(tasks);
+  }
+
+  /**
+   * Issue a single slot save. Splits out so `persistConversationKv` can
+   * call it from any path (graceful save, periodic checkpoint), not just
+   * the shutdown path.
+   *
+   * The fork's REST API: `POST /slots/<id>?action=save` with a JSON
+   * `{ filename: "<absolute-path>" }` body. llama-server writes the slot
+   * KV to that absolute path. Filename MUST be a basename within the
+   * directory llama-server was started with `--slot-save-path`; we
+   * generate filenames inside that root so the constraint is satisfied
+   * naturally.
+   */
+  private async requestSlotSave(
+    baseUrl: string,
+    slotId: number,
+    targetPath: string,
+  ): Promise<void> {
+    if (slotId < 0) return;
+    // llama-server expects `filename` as a basename inside the
+    // --slot-save-path root, not a full path. Strip the path prefix
+    // before sending; we reconstruct it from `cacheSlotDir` below.
+    const baseName = path.basename(targetPath);
+    await fetchJson(
+      `${baseUrl}/slots/${slotId}?action=save`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ filename: baseName }),
+      },
+      10_000,
+    );
+  }
+
+  /**
+   * Issue a single slot restore. Mirror of `requestSlotSave`. Skips when
+   * the file doesn't exist — a fresh conversation has no KV to restore.
+   */
+  private async requestSlotRestore(
+    baseUrl: string,
+    slotId: number,
+    sourcePath: string,
+  ): Promise<boolean> {
+    if (slotId < 0) return false;
+    if (!fs.existsSync(sourcePath)) return false;
+    const baseName = path.basename(sourcePath);
+    await fetchJson(
+      `${baseUrl}/slots/${slotId}?action=restore`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ filename: baseName }),
+      },
+      10_000,
+    );
+    return true;
+  }
+
+  /**
+   * Persist this conversation's KV state to a stable, cross-restart
+   * filename. Callers should fire this on a long-cache TTL boundary, on
+   * `closeConversation`, and at process shutdown.
+   *
+   * Returns true when a save was issued, false when there was no slot to
+   * save (e.g. slot pinning disabled, server not running).
+   */
+  async persistConversationKv(
+    conversationId: string,
+    slotId: number,
+  ): Promise<boolean> {
+    const baseUrl = this.baseUrl;
+    const conversationDir = this.conversationKvDir;
+    if (!baseUrl || !conversationDir || slotId < 0) return false;
+    const targetPath = path.join(conversationDir, `${conversationId}.bin`);
+    try {
+      await this.requestSlotSave(baseUrl, slotId, targetPath);
+      this.persistedConversations.add(conversationId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Lazy-restore a previously-persisted conversation's KV state into the
+   * given slot. Called from the generate path on the first request for a
+   * conversation id whose registry handle was just opened.
+   */
+  async restoreConversationKv(
+    conversationId: string,
+    slotId: number,
+  ): Promise<boolean> {
+    const baseUrl = this.baseUrl;
+    const conversationDir = this.conversationKvDir;
+    if (!baseUrl || !conversationDir || slotId < 0) return false;
+    const sourcePath = path.join(conversationDir, `${conversationId}.bin`);
+    try {
+      const restored = await this.requestSlotRestore(
+        baseUrl,
+        slotId,
+        sourcePath,
+      );
+      return restored;
+    } catch {
+      return false;
+    }
   }
 
   /** Diagnostic snapshot of the on-disk slot save directory for this server. */
@@ -861,10 +1134,32 @@ export class DflashLlamaServer implements LocalInferenceBackend {
   async generate(
     args: DflashGenerateArgs | BackendGenerateArgs,
   ): Promise<string> {
-    if (!this.baseUrl) {
+    const result = await this.generateWithUsage(args);
+    return result.text;
+  }
+
+  /**
+   * Run one generation and return both the text AND the Anthropic-shape
+   * usage block. The usage block is built by differencing two `/metrics`
+   * snapshots taken before/after the request, plus the per-call
+   * `usage` body the chat-completion response itself returns.
+   *
+   * Falls back to zero counters when the metrics scrape fails — the
+   * response text is still surfaced. Callers that don't need usage can
+   * keep using `generate()`.
+   */
+  async generateWithUsage(
+    args: DflashGenerateArgs | BackendGenerateArgs,
+  ): Promise<DflashGenerateResult> {
+    const baseUrl = this.baseUrl;
+    if (!baseUrl) {
       throw new Error("[dflash] llama-server is not running");
     }
-    const slotId = deriveSlotId(args.cacheKey ?? "", this.cacheParallel);
+    const dflashArgs = args as DflashGenerateArgs;
+    const slotId =
+      typeof dflashArgs.slotId === "number" && dflashArgs.slotId >= -1
+        ? dflashArgs.slotId
+        : deriveSlotId(args.cacheKey ?? "", this.cacheParallel);
     const payload: Record<string, unknown> = {
       model: "local-dflash",
       messages: [{ role: "user", content: args.prompt }],
@@ -880,26 +1175,17 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       cache_prompt: true,
       slot_id: slotId,
     };
-    const json = (await fetchJson(`${this.baseUrl}/v1/chat/completions`, {
+    const before = await fetchMetricsSnapshot(baseUrl);
+    const json = (await fetchJson(`${baseUrl}/v1/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     })) as Record<string, unknown>;
-    const choice = Array.isArray(json.choices) ? json.choices[0] : null;
-    const message =
-      choice && typeof choice === "object"
-        ? (choice as { message?: unknown }).message
-        : null;
-    const content =
-      message && typeof message === "object"
-        ? (message as { content?: unknown }).content
-        : null;
-    if (typeof content === "string") return content;
-    const text = json.text;
-    if (typeof text === "string") return text;
-    throw new Error(
-      `[dflash] Unexpected llama-server response: ${JSON.stringify(json)}`,
-    );
+    const after = await fetchMetricsSnapshot(baseUrl);
+    const text = extractCompletionText(json);
+    const responseUsage = extractResponseUsage(json);
+    const usage = diffSnapshots(before, after, responseUsage);
+    return { text, usage, slotId };
   }
 
   private captureLog(chunk: Buffer | string): void {
@@ -947,3 +1233,47 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 }
 
 export const dflashLlamaServer = new DflashLlamaServer();
+
+/**
+ * Extract the assistant text from a llama-server `/v1/chat/completions`
+ * response. Throws when no recognised text shape is present — silently
+ * returning empty would mask a real protocol mismatch.
+ */
+function extractCompletionText(json: Record<string, unknown>): string {
+  const choice = Array.isArray(json.choices) ? json.choices[0] : null;
+  const message =
+    choice && typeof choice === "object"
+      ? (choice as { message?: unknown }).message
+      : null;
+  const content =
+    message && typeof message === "object"
+      ? (message as { content?: unknown }).content
+      : null;
+  if (typeof content === "string") return content;
+  const text = json.text;
+  if (typeof text === "string") return text;
+  throw new Error(
+    `[dflash] Unexpected llama-server response: ${JSON.stringify(json)}`,
+  );
+}
+
+/**
+ * Extract the per-call usage block from a llama-server response. Returns
+ * undefined when the response did not include one — `diffSnapshots` then
+ * falls back to the metric-delta input/output counts.
+ */
+function extractResponseUsage(
+  json: Record<string, unknown>,
+): { prompt_tokens?: number; completion_tokens?: number } | undefined {
+  const usage = json.usage;
+  if (!usage || typeof usage !== "object") return undefined;
+  const u = usage as Record<string, unknown>;
+  const out: { prompt_tokens?: number; completion_tokens?: number } = {};
+  if (typeof u.prompt_tokens === "number") {
+    out.prompt_tokens = u.prompt_tokens;
+  }
+  if (typeof u.completion_tokens === "number") {
+    out.completion_tokens = u.completion_tokens;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}

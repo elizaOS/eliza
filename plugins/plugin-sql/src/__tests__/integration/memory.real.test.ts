@@ -14,6 +14,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { embeddingTable, memoryTable } from "../../schema";
+import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 import {
   documentMemoryId,
@@ -87,7 +88,7 @@ describe("Memory Integration Tests", () => {
 
   beforeEach(async () => {
     // Clean up memories and embeddings before each test
-    const db = adapter.getDatabase();
+    const db = adapter.getDatabase() as DrizzleDatabase;
     // Delete embeddings first due to foreign key constraints
     await db.delete(embeddingTable);
     await db.delete(memoryTable);
@@ -126,7 +127,7 @@ describe("Memory Integration Tests", () => {
 
   afterEach(async () => {
     // Clean up memories after each test to ensure isolation
-    const db = adapter.getDatabase();
+    const db = adapter.getDatabase() as DrizzleDatabase;
     // Delete in correct order to avoid foreign key constraint violations
     await db.delete(embeddingTable);
     await db.delete(memoryTable);

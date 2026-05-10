@@ -24,9 +24,10 @@
 		"node_modules",
 		"dist",
 		"**/node_modules/**",
+		"vitest.config.ts",
+		"**/__tests__/**",
 		"**/*.test.ts",
-		"**/*.spec.ts",
-		"cypress/**/*",
-		"vitest.config.ts"
+		"**/*.test.tsx",
+		"**/*.e2e.test.ts"
 	]
 }

@@ -1,23 +1,182 @@
 // ---------------------------------------------------------------------------
 // Core types — Database*, Agent*, ApiError, Runtime*, WebSocket*, ConnectionState*, Sandbox*
-// Re-exports from external packages included here.
 // ---------------------------------------------------------------------------
 
 import type {
+  TrajectoryExportFormat,
+  TriggerConfig,
+  TriggerKind,
+  TriggerLastStatus,
+  TriggerRunRecord,
+  TriggerType,
+  TriggerWakeMode,
+  UUID,
+} from "@elizaos/core";
+import type {
+  CustomActionDef,
+  CustomActionHandler,
   DatabaseProviderType,
-  StreamEventType,
-  TradePermissionMode as WalletTradePermissionMode,
-} from "./agent-client-type-shim";
+  ReleaseChannel,
+} from "@elizaos/shared";
+
+export type {
+  CustomActionDef,
+  CustomActionHandler,
+  DatabaseProviderType,
+  ReleaseChannel,
+  TrajectoryExportFormat,
+  TriggerLastStatus,
+  TriggerRunRecord,
+  TriggerType,
+  TriggerWakeMode,
+};
 
 // Use server-types / types only — do not re-export from api/server or
 // api/trajectory-routes (those modules pull the full API + app-training into Vite).
-export type {
-  StreamEventType,
-  TrajectoryExportFormat,
-  TriggerLastStatus,
-  TriggerType,
-  TriggerWakeMode,
-} from "./agent-client-type-shim";
+
+export type ConversationScope =
+  | "general"
+  | "automation-coordinator"
+  | "automation-workflow"
+  | "automation-workflow-draft"
+  | "automation-draft"
+  | "page-character"
+  | "page-apps"
+  | "page-connectors"
+  | "page-phone"
+  | "page-plugins"
+  | "page-lifeops"
+  | "page-settings"
+  | "page-wallet"
+  | "page-browser"
+  | "page-automations";
+
+export type ConversationAutomationType = "coordinator_text" | "workflow";
+
+export interface ConversationMetadata {
+  scope?: ConversationScope;
+  automationType?: ConversationAutomationType;
+  taskId?: string;
+  triggerId?: string;
+  workflowId?: string;
+  workflowName?: string;
+  draftId?: string;
+  pageId?: string;
+  sourceConversationId?: string;
+  terminalBridgeConversationId?: string;
+}
+
+export type StreamEventType =
+  | "agent_event"
+  | "heartbeat_event"
+  | "training_event";
+
+export type TradePermissionMode =
+  | "user-sign-only"
+  | "agent-auto"
+  | "manual-local-key"
+  | "disabled";
+
+export type SignalPairingStatus =
+  | "idle"
+  | "initializing"
+  | "waiting_for_qr"
+  | "connected"
+  | "disconnected"
+  | "timeout"
+  | "error";
+
+export type WhatsAppPairingStatus = SignalPairingStatus;
+
+export interface TriggerTaskMetadata {
+  updatedAt?: number;
+  updateInterval?: number;
+  blocking?: boolean;
+  trigger?: TriggerConfig;
+  triggerRuns?: TriggerRunRecord[];
+  [key: string]:
+    | string
+    | number
+    | boolean
+    | string[]
+    | number[]
+    | Record<string, string | number | boolean>
+    | undefined
+    | TriggerConfig
+    | TriggerRunRecord[];
+}
+
+export interface TriggerSummary {
+  id: UUID;
+  taskId: UUID;
+  displayName: string;
+  instructions: string;
+  triggerType: TriggerType;
+  enabled: boolean;
+  wakeMode: TriggerWakeMode;
+  createdBy: string;
+  timezone?: string;
+  intervalMs?: number;
+  scheduledAtIso?: string;
+  cronExpression?: string;
+  eventKind?: string;
+  maxRuns?: number;
+  runCount: number;
+  nextRunAtMs?: number;
+  lastRunAtIso?: string;
+  lastStatus?: TriggerLastStatus;
+  lastError?: string;
+  updatedAt?: number;
+  updateInterval?: number;
+  kind?: TriggerKind;
+  workflowId?: string;
+  workflowName?: string;
+}
+
+export interface TriggerHealthSnapshot {
+  triggersEnabled: boolean;
+  activeTriggers: number;
+  disabledTriggers: number;
+  totalExecutions: number;
+  totalFailures: number;
+  totalSkipped: number;
+  lastExecutionAt?: number;
+}
+
+export interface CreateTriggerRequest {
+  displayName?: string;
+  instructions?: string;
+  triggerType?: TriggerType;
+  wakeMode?: TriggerWakeMode;
+  enabled?: boolean;
+  createdBy?: string;
+  timezone?: string;
+  intervalMs?: number;
+  scheduledAtIso?: string;
+  cronExpression?: string;
+  eventKind?: string;
+  maxRuns?: number;
+  kind?: TriggerKind;
+  workflowId?: string;
+  workflowName?: string;
+}
+
+export interface UpdateTriggerRequest {
+  displayName?: string;
+  instructions?: string;
+  triggerType?: TriggerType;
+  wakeMode?: TriggerWakeMode;
+  enabled?: boolean;
+  timezone?: string;
+  intervalMs?: number;
+  scheduledAtIso?: string;
+  cronExpression?: string;
+  eventKind?: string;
+  maxRuns?: number;
+  kind?: TriggerKind;
+  workflowId?: string;
+  workflowName?: string;
+}
 
 export interface DatabaseStatus {
   provider: DatabaseProviderType;
@@ -132,8 +291,6 @@ export interface ProviderModelRecord {
   name: string;
   category: ProviderModelCategory;
 }
-
-export type TradePermissionMode = WalletTradePermissionMode;
 
 export interface AgentAutomationModeResponse {
   mode: AgentAutomationMode;

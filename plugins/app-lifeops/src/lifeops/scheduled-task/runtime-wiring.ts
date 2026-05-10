@@ -1,24 +1,15 @@
 /**
- * Wave-1 runtime wiring for the ScheduledTask spine (W1-A).
+ * Runtime wiring for the ScheduledTask spine.
  *
  * Bridges the runner's typed dependencies to the live `IAgentRuntime` /
- * `LifeOpsRepository`. Other Wave-1 agents replace the stub providers
- * here when their deliverables ship:
- *
- *   - W1-C → `OwnerFactStore` (we ship a minimal `OwnerFactsView`
- *     today that reads `LifeOpsOwnerProfile` if present).
- *   - W1-C → `GlobalPauseStore` (we ship a no-op `GlobalPauseView`).
- *   - W1-E → `EntityStore` / `RelationshipStore` (we ship a no-op
- *     `SubjectStoreView`).
- *   - W1-F → `ConnectorRegistry` / `ChannelRegistry` (the dispatcher
- *     here is a no-op — outbound landing is W1-F + W2-B's surface).
- *
- * The wiring is intentionally narrow — every stub is documented so the
- * integration replace is surgical.
+ * `LifeOpsRepository`. Stub providers below stand in until callers register
+ * the production `OwnerFactStore`, `GlobalPauseStore`, `EntityStore`,
+ * `RelationshipStore`, and connector / channel registries.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
 
+import { getChannelRegistry } from "../channels/index.js";
 import { LifeOpsRepository } from "../repository.js";
 import {
   createCompletionCheckRegistry,
@@ -124,17 +115,14 @@ function makeRepositoryBackedStores(
 }
 
 /**
- * Stub `OwnerFactsView` provider. W1-C ships the production wrapper
- * around `LifeOpsOwnerProfile`; this stub returns an empty view so
- * gates that depend on owner facts no-op-allow.
+ * Stub `OwnerFactsView` provider — returns an empty view so gates that
+ * depend on owner facts no-op-allow.
  */
 function defaultOwnerFactsProvider(): () => Promise<OwnerFactsView> {
   return async () => ({});
 }
 
-/**
- * Stub `GlobalPauseView`. W1-C ships the real `GlobalPauseStore`.
- */
+/** Stub `GlobalPauseView` — defaults to inactive. */
 const noopGlobalPause: GlobalPauseView = {
   async current() {
     return { active: false };
@@ -142,9 +130,8 @@ const noopGlobalPause: GlobalPauseView = {
 };
 
 /**
- * Stub `ActivitySignalBusView`. W1-B's `plugin-health` and W2 work
- * register real subscribers; without them, completion-checks that
- * depend on bus signals always return false.
+ * Stub `ActivitySignalBusView` — without registered subscribers,
+ * completion-checks that depend on bus signals always return false.
  */
 const noopActivityBus: ActivitySignalBusView = {
   hasSignalSince() {
@@ -152,9 +139,7 @@ const noopActivityBus: ActivitySignalBusView = {
   },
 };
 
-/**
- * Stub `SubjectStoreView`. W1-E ships the production stores.
- */
+/** Stub `SubjectStoreView` — defaults to "no recent update". */
 const noopSubjectStore: SubjectStoreView = {
   wasUpdatedSince() {
     return false;
@@ -203,5 +188,10 @@ export function createRuntimeScheduledTaskRunner(
     globalPause: opts.globalPause ?? noopGlobalPause,
     activity: opts.activity ?? noopActivityBus,
     subjectStore: opts.subjectStore ?? noopSubjectStore,
+    channelKeys: () => {
+      const registry = getChannelRegistry(opts.runtime);
+      if (!registry) return new Set();
+      return new Set(registry.list().map((c) => c.kind));
+    },
   });
 }

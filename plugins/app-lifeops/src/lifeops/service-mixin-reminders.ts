@@ -559,16 +559,11 @@ function buildReminderBody(args: {
   return parts.join("\n");
 }
 
-// Stretch-specific dispatch gate (`isStretchDefinition` /
-// `evaluateStretchReminderGate`) and the supporting `stretch-decider.ts`
-// were removed by Wave-2 W2-A. The cadence + walk-out / weekend /
-// late-evening rules now live as registered gate-registry entries
-// composed on the stretch starter task in
-// `default-packs/habit-starters.ts` (`weekend_skip`,
-// `late_evening_skip`, `stretch.walk_out_reset`). Title-string match
-// against `STRETCH_ROUTINE_TITLE` is no longer wired into the legacy
-// reminder dispatch loop; the new `ScheduledTask` runner consults the
-// gate registry directly.
+// Stretch cadence + walk-out / weekend / late-evening rules live as
+// registered gate-registry entries composed on the stretch starter task in
+// `default-packs/habit-starters.ts` (`weekend_skip`, `late_evening_skip`,
+// `stretch.walk_out_reset`). The `ScheduledTask` runner consults the gate
+// registry directly.
 
 function buildReminderVoiceContext(runtime: IAgentRuntime): string {
   if (!runtime.character) return "";
@@ -4712,13 +4707,6 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         ) {
           continue;
         }
-        // Stretch carve-out (W2-A): the legacy
-        // `evaluateStretchReminderGate` was removed; its rules
-        // (weekend / late-evening / cadence / walk-out reset) are now
-        // gate-registry entries composed on the stretch starter task in
-        // `default-packs/habit-starters.ts`. The new ScheduledTask runner
-        // consults the registry directly; the legacy reminder dispatch
-        // loop no longer suppresses by definition title.
         const attempt = await this.dispatchReminderAttempt({
           plan,
           ownerType: "occurrence",

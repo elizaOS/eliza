@@ -1,3 +1,4 @@
+import type { CustomActionDef, CustomActionHandler } from "@elizaos/shared";
 import {
   Banner,
   Button,
@@ -17,10 +18,6 @@ import {
 } from "@elizaos/ui";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
-import type {
-  CustomActionDef,
-  CustomActionHandler,
-} from "../../api/agent-client-type-shim";
 import { client } from "../../api/client";
 import { useApp } from "../../state/useApp";
 import {

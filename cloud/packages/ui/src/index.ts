@@ -1,5 +1,6 @@
 export * from "./components/primitives";
 export * from "./components/auth/authorize-content";
+export * from "./components/auth/authorize-return";
 export * from "./components/image-gen";
 export * from "./components/monetization";
 export * from "./components/promotion/promote-app-dialog";

@@ -352,9 +352,30 @@ export async function runPollingBackend(
         dispatch({ type: "BACKEND_REACHED", onboardingComplete: true });
         return;
       }
+      if (
+        ae?.status === 401 &&
+        client.hasToken() &&
+        latestAuth.required &&
+        latestAuth.authenticated === false
+      ) {
+        // Stale bearer: token is in storage and we've already seen
+        // /api/auth/status report `required:true, authenticated:false`.
+        // Server is definitively rejecting this session — retrying every
+        // 250-1000ms for 15s won't change that, it just dead-ends on
+        // BACKEND_TIMEOUT with the last 401 detail. Route straight to the
+        // pairing/login gate so the user can re-pair or sign in.
+        deps.setAuthRequired(true);
+        deps.setPairingEnabled(latestAuth.pairingEnabled);
+        deps.setPairingExpiresAt(latestAuth.expiresAt);
+        deps.setOnboardingLoading(false);
+        dispatch({ type: "BACKEND_AUTH_REQUIRED" });
+        return;
+      }
       if (ae?.status === 401 && client.hasToken()) {
-        // 401-with-token but auth/status hasn't confirmed we're authenticated
-        // yet — port race / pre-bearer endpoint window. Fall through to retry.
+        // 401-with-token but auth/status hasn't confirmed authenticated:true
+        // OR authenticated:false yet — port race / pre-bearer endpoint
+        // window before the first auth/status poll completes. Fall through
+        // to retry.
       }
       if (ae?.status === 404) {
         deps.setStartupError(describeBackendFailure(err, false));

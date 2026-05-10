@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { relationshipTable } from "../../schema";
+import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
 describe("Relationship Integration Tests", () => {
@@ -48,7 +49,7 @@ describe("Relationship Integration Tests", () => {
 
   describe("Relationship Tests", () => {
     beforeEach(async () => {
-      await adapter.getDatabase().delete(relationshipTable);
+      await (adapter.getDatabase() as DrizzleDatabase).delete(relationshipTable);
     });
 
     it("should create and retrieve a relationship", async () => {

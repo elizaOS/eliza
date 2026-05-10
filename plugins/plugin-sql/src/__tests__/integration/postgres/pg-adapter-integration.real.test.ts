@@ -7,6 +7,7 @@ import { DatabaseMigrationService } from "../../../migration-service";
 import { PgliteDatabaseAdapter } from "../../../pglite/adapter";
 import { PGliteClientManager } from "../../../pglite/manager";
 import * as schema from "../../../schema";
+import type { DrizzleDatabase } from "../../../types";
 
 describe("PostgreSQL Adapter Direct Integration Tests", () => {
   describe("PostgreSQL Adapter Direct Tests", () => {
@@ -23,7 +24,7 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
 
       // Run migrations
       const migrationService = new DatabaseMigrationService();
-      const db = adapter.getDatabase();
+      const db = adapter.getDatabase() as DrizzleDatabase;
       await migrationService.initializeWithDatabase(db);
       migrationService.discoverAndRegisterPluginSchemas([
         { name: "@elizaos/plugin-sql", description: "SQL plugin", schema },
@@ -33,7 +34,7 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
 
     afterAll(async () => {
       // Clean up test data
-      const db = adapter.getDatabase();
+      const db = adapter.getDatabase() as DrizzleDatabase;
       await db.execute(sql`DELETE FROM agents WHERE id = ${testAgentId}`);
       await adapter.close();
     });
@@ -50,7 +51,7 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
       });
 
       it("should get database instance", () => {
-        const db = adapter.getDatabase();
+        const db = adapter.getDatabase() as DrizzleDatabase;
         expect(db).toBeDefined();
         expect(db.execute).toBeDefined();
       });
@@ -63,7 +64,7 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
 
     describe("Raw Database Operations", () => {
       it("should execute raw SQL through adapter database", async () => {
-        const db = adapter.getDatabase();
+        const db = adapter.getDatabase() as DrizzleDatabase;
 
         const result = await db.execute(sql`SELECT 1 as value`);
 
@@ -74,7 +75,7 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
       });
 
       it("should handle transactions through adapter", async () => {
-        const db = adapter.getDatabase();
+        const db = adapter.getDatabase() as DrizzleDatabase;
 
         // Create test table
         await db.execute(sql`
@@ -108,7 +109,7 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
         const created = await adapter.createAgent({
           id: testAgentId,
           name: "PG Direct Test Agent",
-          bio: "Test agent for PostgreSQL direct tests",
+          bio: ["Test agent for PostgreSQL direct tests"],
           createdAt: Date.now(),
           updatedAt: Date.now(),
         });
@@ -151,7 +152,7 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
       });
 
       it("should handle multiple operations", async () => {
-        const db = adapter.getDatabase();
+        const db = adapter.getDatabase() as DrizzleDatabase;
 
         // Execute multiple operations
         const results = await Promise.all([
@@ -169,7 +170,7 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
 
     describe("Error Handling", () => {
       it("should handle query errors gracefully", async () => {
-        const db = adapter.getDatabase();
+        const db = adapter.getDatabase() as DrizzleDatabase;
 
         let errorThrown = false;
         try {
@@ -183,7 +184,7 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
       });
 
       it("should maintain connection after error", async () => {
-        const db = adapter.getDatabase();
+        const db = adapter.getDatabase() as DrizzleDatabase;
 
         // Cause an error
         try {
@@ -200,7 +201,7 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
 
     describe("Advanced Features", () => {
       it("should support JSON operations", async () => {
-        const db = adapter.getDatabase();
+        const db = adapter.getDatabase() as DrizzleDatabase;
 
         await db.execute(sql`
           CREATE TABLE IF NOT EXISTS json_test (
@@ -227,7 +228,7 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
       });
 
       it("should support array operations", async () => {
-        const db = adapter.getDatabase();
+        const db = adapter.getDatabase() as DrizzleDatabase;
 
         await db.execute(sql`
           CREATE TABLE IF NOT EXISTS array_test (
@@ -253,7 +254,7 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
       });
 
       it("should support timestamp operations", async () => {
-        const db = adapter.getDatabase();
+        const db = adapter.getDatabase() as DrizzleDatabase;
 
         const result = await db.execute(sql`
           SELECT 

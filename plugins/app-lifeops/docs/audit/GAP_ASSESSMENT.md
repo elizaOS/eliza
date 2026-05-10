@@ -1,3 +1,6 @@
+> [!NOTE]
+> **STATUS: SUPERSEDED — most items shipped.** See `eliza/docs/audits/lifeops-2026-05-09/REPORT.md` for the current state. Wave-1 deliverables (ScheduledTask spine, default packs, ENTITY+RELATIONSHIP store, first-run capability, plugin-health extraction) have largely landed. Remaining open items are tracked in the 2026-05-09 audit corpus. Retained in place so commit-history references still resolve.
+
 # LifeOps — Gap Assessment
 
 **Companion document to:** `UX_JOURNEYS.md` (canonical journey reference) and `HARDCODING_AUDIT.md` (current-state finding inventory).

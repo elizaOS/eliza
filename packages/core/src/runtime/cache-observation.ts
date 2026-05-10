@@ -137,25 +137,41 @@ export function normalizeCacheUsage(
 		cacheCreationInputTokens,
 		cachedInputTokens: effectiveCachedInputTokens,
 		cacheHitRate: cacheHitRate({
+			provider: options.provider,
 			inputTokens,
+			cacheReadInputTokens: effectiveCacheReadInputTokens,
+			cacheCreationInputTokens,
 			cachedInputTokens: effectiveCachedInputTokens,
 		}),
 		rawUsage: usageOrResponse,
 	};
 }
 
+function usesAdditiveCacheDenominator(provider?: string): boolean {
+	return provider?.toLowerCase() === "anthropic";
+}
+
 export function cacheHitRate(observation: {
+	provider?: string;
 	inputTokens?: number;
 	cachedInputTokens?: number;
 	cacheReadInputTokens?: number;
+	cacheCreationInputTokens?: number;
 }): number | undefined {
 	const inputTokens = observation.inputTokens;
-	const cachedInputTokens =
-		observation.cachedInputTokens ?? observation.cacheReadInputTokens;
-	if (!inputTokens || inputTokens <= 0 || cachedInputTokens === undefined) {
+	const cacheRead =
+		observation.cacheReadInputTokens ?? observation.cachedInputTokens;
+	if (!inputTokens || inputTokens <= 0 || cacheRead === undefined) {
 		return undefined;
 	}
-	return cachedInputTokens / inputTokens;
+	if (usesAdditiveCacheDenominator(observation.provider)) {
+		const denom =
+			inputTokens +
+			(observation.cacheReadInputTokens ?? 0) +
+			(observation.cacheCreationInputTokens ?? 0);
+		return denom > 0 ? cacheRead / denom : undefined;
+	}
+	return cacheRead / inputTokens;
 }
 
 export function hasCacheUsage(observation: CacheUsageObservation): boolean {
@@ -191,9 +207,18 @@ export function summarizeCacheUsage(
 		summary.cachedInputTokens += observation.cachedInputTokens ?? 0;
 	}
 
-	summary.cacheHitRate =
-		summary.inputTokens > 0
-			? summary.cachedInputTokens / summary.inputTokens
-			: 0;
+	let denom = 0;
+	let cacheReads = 0;
+	for (const observation of observations) {
+		denom += observation.inputTokens ?? 0;
+		if (usesAdditiveCacheDenominator(observation.provider)) {
+			denom +=
+				(observation.cacheReadInputTokens ?? 0) +
+				(observation.cacheCreationInputTokens ?? 0);
+		}
+		cacheReads +=
+			observation.cacheReadInputTokens ?? observation.cachedInputTokens ?? 0;
+	}
+	summary.cacheHitRate = denom > 0 ? cacheReads / denom : 0;
 	return summary;
 }

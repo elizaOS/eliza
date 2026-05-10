@@ -1,7 +1,6 @@
 /**
- * W2-B — Signal connector contribution.
- *
- * Wraps the LifeOps Signal mixin (`service-mixin-signal.ts`).
+ * Signal connector contribution. Wraps the LifeOps Signal mixin
+ * (`service-mixin-signal.ts`).
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { LifeOpsService } from "../service.js";

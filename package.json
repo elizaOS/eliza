@@ -18,7 +18,7 @@
     "node": "24.15.0"
   },
   "scripts": {
-    "postinstall": "node scripts/fix-windows-bun-stub.mjs && bun scripts/patch-nested-core-dist.mjs && bun scripts/patch-tsup-dts.mjs && bun scripts/ensure-workspace-symlinks.mjs && node scripts/ensure-native-plugins-linked.mjs && node scripts/patch-llama-cpp-capacitor.mjs",
+    "postinstall": "node scripts/fix-windows-bun-stub.mjs && bun scripts/patch-nested-core-dist.mjs && bun scripts/patch-tsup-dts.mjs && bun scripts/ensure-workspace-symlinks.mjs && node scripts/ensure-native-plugins-linked.mjs && node scripts/patch-llama-cpp-capacitor.mjs && node scripts/patch-llama-cpp-capacitor-x86_64.mjs && node scripts/patch-bigint-buffer.mjs",
     "fix-deps": "bun scripts/fix-workspace-deps.mjs",
     "fix-deps:check": "bun scripts/fix-workspace-deps.mjs --check",
     "fix-deps:restore": "bun scripts/fix-workspace-deps.mjs --restore",
@@ -101,6 +101,12 @@
     "test:e2e": "TEST_LANE=pr node scripts/run-all-tests.mjs --only=e2e",
     "test:e2e:live": "TEST_LANE=post-merge node scripts/run-all-tests.mjs --only=e2e",
     "test:lifeops": "node scripts/run-all-tests.mjs --filter=plugins/app-lifeops --only=e2e",
+    "lifeops:verify-cerebras": "bun --bun plugins/app-lifeops/scripts/verify-cerebras-wiring.ts",
+    "lifeops:bench": "bun --bun packages/app-core/scripts/lifeops-prompt-benchmark.ts",
+    "lifeops:full": "node scripts/lifeops-full-run.mjs",
+    "lifeops:aggregate": "node scripts/aggregate-lifeops-run.mjs",
+    "lifeops:bench-to-dataset": "node scripts/lifeops-benchmark-to-training-dataset.mjs",
+    "lifeops:optimize": "node scripts/lifeops-optimize-planner.mjs",
     "test:plugin": "node scripts/run-all-tests.mjs --only=e2e --pattern",
     "test:lint:no-vi-mocks": "node scripts/lint-no-vi-mocks.mjs",
     "test:lint:lane-coverage": "node scripts/lint-lane-coverage.mjs",
@@ -113,7 +119,7 @@
     "db:cloud:studio": "bun run --cwd cloud db:studio",
     "publish:dry-run": "bun scripts/publish-from-dist.mjs",
     "publish:packages": "bun scripts/publish-from-dist.mjs --apply",
-    "typecheck:dist": "tsc --noEmit -p tsconfig.dist-paths.json",
+    "typecheck:dist": "NODE_OPTIONS='--max-old-space-size=8192' tsc --noEmit -p tsconfig.dist-paths.json",
     "knip": "node scripts/knip-workspaces.mjs",
     "knip:strict": "node scripts/knip-workspaces.mjs --fail-on-issues"
   },
@@ -132,6 +138,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.14",
     "@capacitor/core": "8.3.1",
+    "chalk": "^5.3.0",
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-lifeops": "workspace:*",
     "@elizaos/core": "workspace:*",
@@ -186,6 +193,7 @@
     "error-ex": "1.3.4",
     "has-ansi": "6.0.2",
     "ai": "6.0.174",
+    "@ai-sdk/gateway": "3.0.109",
     "@ai-sdk/provider": "3.0.10",
     "@ai-sdk/provider-utils": "4.0.26",
     "@ai-sdk/openai": "3.0.58",

@@ -44,7 +44,7 @@ describe("Entity CRUD Operations", () => {
         id: uuidv4() as UUID,
         agentId: testAgentId,
         names: ["Test Entity"],
-        metadata: { type: "test" },
+        metadata: { type: "custom" },
       };
 
       const result = await adapter.createEntities([entity]);

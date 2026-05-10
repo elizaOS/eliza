@@ -17,6 +17,7 @@ import { fileURLToPath } from "url";
 import { AGENT_CONTEXTS, type AgentContext } from "./context-types.js";
 import {
   createAnthropicTeacher,
+  createCerebrasTeacher,
   createOpenAITeacher,
   exportToElizaNativeJSONL,
   type GenerationConfig,
@@ -69,6 +70,17 @@ function parseAgentDecisions(
 }
 
 function getTeacherModel(): TeacherModel {
+  // Standing direction: training defaults to Cerebras gpt-oss-120b. The
+  // teacher generates synthetic conversations; the agent under test is
+  // unaffected.
+  const trainProvider =
+    process.env.TRAIN_MODEL_PROVIDER?.trim() ?? process.env.TRAINING_PROVIDER?.trim();
+  const cerebrasKey = process.env.CEREBRAS_API_KEY;
+  if (trainProvider === "cerebras" && cerebrasKey) {
+    console.log("Using Cerebras gpt-oss-120b as teacher model");
+    return createCerebrasTeacher();
+  }
+
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
 
@@ -83,7 +95,7 @@ function getTeacherModel(): TeacherModel {
   }
 
   throw new Error(
-    "No teacher model API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY.",
+    "No teacher model API key found. Set CEREBRAS_API_KEY (preferred), ANTHROPIC_API_KEY, or OPENAI_API_KEY.",
   );
 }
 

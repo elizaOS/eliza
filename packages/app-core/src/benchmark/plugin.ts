@@ -157,10 +157,11 @@ function formatContextAsText(ctx: BenchmarkContext): string {
 
   if (isWooBench && ctx.payment_actions) {
     sections.push(
-      `\n## Payment Actions\nUse BENCHMARK_ACTION for money movement. Supported commands:\n` +
+      `\n## Payment Actions\nUse BENCHMARK_ACTION for every money movement. Supported commands:\n` +
         `- CREATE_APP_CHARGE: create a non-settling benchmark charge. Params: amount_usd, provider ("oxapay" or "stripe"), description.\n` +
         `- CHECK_PAYMENT: check the latest benchmark charge status before delivering paid content.\n` +
-        `These mirror Eliza Cloud app charge flows but execute against the WooBench mock provider during tests.`,
+        `These mirror Eliza Cloud app charge flows but execute against the WooBench mock provider during tests.\n` +
+        `If you ask for a dollar amount, the response must include BENCHMARK_ACTION with CREATE_APP_CHARGE; do not only mention payment in prose.`,
     );
   }
 
@@ -304,7 +305,7 @@ function formatContextAsText(ctx: BenchmarkContext): string {
         `For ordinary conversation, respond with actions: REPLY and put only the next conversational message in text.`,
       );
       sections.push(
-        `When charging money or checking payment status, call BENCHMARK_ACTION with command CREATE_APP_CHARGE or CHECK_PAYMENT and include the conversational message in text.`,
+        `When charging money or checking payment status, call BENCHMARK_ACTION with command CREATE_APP_CHARGE or CHECK_PAYMENT and include the conversational message in text. Never ask for money with REPLY alone.`,
       );
     } else {
       sections.push(
@@ -370,7 +371,8 @@ export function createBenchmarkPlugin(): Plugin {
     actions: [
       {
         name: "BENCHMARK_ACTION",
-        roleGate: { minRole: "USER" },
+        contextGate: {},
+        roleGate: { minRole: "NONE" },
         similes: [
           "EXECUTE",
           "DO",
@@ -407,7 +409,7 @@ export function createBenchmarkPlugin(): Plugin {
           "Supported params: command (agentbench), tool_name+arguments (tau-bench), " +
           "operation+element_id+value (mind2web).",
 
-        validate: async () => getBenchmarkContext() !== null,
+        validate: async () => true,
 
         handler: async (_runtime, _message, _state, options) => {
           // Extract params — TS runtime may pass as Struct, plain object, or nested

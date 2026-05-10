@@ -55,19 +55,7 @@ function AuthorizeAuthenticatedContent({
   redirectUri: string;
   state: string | null;
 }) {
-  const {
-    isLoading: authLoading,
-    isAuthenticated,
-    getToken,
-    signOut,
-    providers,
-    isProvidersLoading,
-  } = useAuth();
-  // Steward provider discovery (Google/Discord/etc) is fetched at app shell
-  // mount, but on a cold load to /app-auth/authorize the round-trip can take a
-  // few seconds. Reveal the login section atomically once providers resolve so
-  // OAuth buttons don't pop in one-by-one underneath passkey/email.
-  const providersReady = providers !== null || !isProvidersLoading;
+  const { isLoading: authLoading, isAuthenticated, getToken, signOut } = useAuth();
   const router = useRouter();
 
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
@@ -227,7 +215,7 @@ function AuthorizeAuthenticatedContent({
           onCancel={handleCancel}
         />
       ) : (
-        <SignedOutActions onCancel={handleCancel} providersReady={providersReady} />
+        <SignedOutActions onCancel={handleCancel} />
       )}
 
       <p className="text-center text-xs text-white/40">
@@ -346,23 +334,10 @@ function SignedInActions({
   );
 }
 
-function SignedOutActions({
-  onCancel,
-  providersReady,
-}: {
-  onCancel: () => void;
-  providersReady: boolean;
-}) {
+function SignedOutActions({ onCancel }: { onCancel: () => void }) {
   return (
     <div className="flex w-full flex-col gap-4">
-      {providersReady ? (
-        <StewardLogin variant="inline" showPasskey showEmail title="Sign in to authorize" />
-      ) : (
-        <div className="flex flex-col items-center gap-3 py-6">
-          <Loader2 className="h-6 w-6 animate-spin text-[#FF5800]" />
-          <p className="text-sm text-white/60">Loading sign-in options...</p>
-        </div>
-      )}
+      <StewardLogin variant="inline" showPasskey showEmail title="Sign in to authorize" />
       <BrandButton variant="ghost" onClick={onCancel} className="w-full">
         Cancel
       </BrandButton>

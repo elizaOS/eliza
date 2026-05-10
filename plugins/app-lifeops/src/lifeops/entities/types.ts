@@ -3,12 +3,10 @@
  *
  * An Entity is a node — a person, organization, place, project, or concept —
  * with per-connector identities and open-keyed extracted attributes. The user
- * is the special `self` Entity. See docs/audit/wave1-interfaces.md §2.1 and
- * docs/audit/GAP_ASSESSMENT.md §3.4 for the full design rationale.
+ * is the special `self` Entity.
  *
- * Frozen-shape contract: shapes here match `wave1-interfaces.md §2.1`
- * verbatim. The cross-package contract `LifeOpsEntity` in
- * `@elizaos/shared/contracts/lifeops` mirrors them.
+ * The cross-package contract `LifeOpsEntity` in
+ * `@elizaos/shared/contracts/lifeops` mirrors these shapes.
  */
 
 /**

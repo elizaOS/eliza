@@ -20,6 +20,6 @@
     "types": ["node", "vitest/globals"]
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/__tests__/**"],
+  "exclude": ["node_modules", "dist"],
   "extends": "../../../tsconfig.dist-paths.json"
 }

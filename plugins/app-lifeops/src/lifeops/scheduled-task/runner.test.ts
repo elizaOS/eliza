@@ -1,7 +1,7 @@
 /**
- * W1-A unit tests for the ScheduledTask spine.
+ * Unit tests for the ScheduledTask spine.
  *
- * Covers per IMPL §3.1 verification:
+ * Covers:
  *  - every trigger kind (schema-level)
  *  - every verb (snooze | skip | complete | dismiss | escalate |
  *    acknowledge | edit | reopen)
@@ -14,7 +14,7 @@
  *  - AnchorConsolidationPolicy merge mode
  *  - pipeline.onComplete fires on `completed`; does NOT fire on
  *    `acknowledged`
- *  - the runner does NOT pattern-match `promptInstructions` (§7.1)
+ *  - the runner does NOT pattern-match `promptInstructions`
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -37,14 +37,14 @@ import {
   registerBuiltInGates,
 } from "./gate-registry.js";
 import {
-  createInMemoryScheduledTaskLogStore,
-  type ScheduledTaskLogStore,
-} from "./state-log.js";
-import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
   type ScheduledTaskRunnerHandle,
 } from "./runner.js";
+import {
+  createInMemoryScheduledTaskLogStore,
+  type ScheduledTaskLogStore,
+} from "./state-log.js";
 import type {
   ActivitySignalBusView,
   GlobalPauseView,
@@ -109,7 +109,9 @@ function makeHarness(initialIso = "2026-05-09T12:00:00.000Z"): Harness {
     ownerFacts: () => ownerFacts,
     globalPause: { current: async () => pauseView } as GlobalPauseView,
     activity: { hasSignalSince: (...a) => activity.hasSignalSince(...a) },
-    subjectStore: { wasUpdatedSince: (...a) => subjectStore.wasUpdatedSince(...a) },
+    subjectStore: {
+      wasUpdatedSince: (...a) => subjectStore.wasUpdatedSince(...a),
+    },
     newTaskId: () => {
       counter += 1;
       return `task_${counter}`;
@@ -172,9 +174,7 @@ describe("ScheduledTaskRunner — schedule + idempotency", () => {
 
   it("dedupes by idempotencyKey", async () => {
     const h = makeHarness();
-    const a = await h.runner.schedule(
-      baseInput({ idempotencyKey: "uniq-1" }),
-    );
+    const a = await h.runner.schedule(baseInput({ idempotencyKey: "uniq-1" }));
     const b = await h.runner.schedule(
       baseInput({ idempotencyKey: "uniq-1", priority: "high" }),
     );
@@ -235,11 +235,10 @@ describe("ScheduledTaskRunner — every verb", () => {
 
   it("skip moves to skipped and fires pipeline.onSkip children", async () => {
     const h = makeHarness();
-    const child: Parameters<
-      ScheduledTaskRunnerHandle["schedule"]
-    >[0] = baseInput({
-      promptInstructions: "child",
-    });
+    const child: Parameters<ScheduledTaskRunnerHandle["schedule"]>[0] =
+      baseInput({
+        promptInstructions: "child",
+      });
     const parent = await h.runner.schedule(
       baseInput({ pipeline: { onSkip: [child as never] } }),
     );
@@ -265,9 +264,7 @@ describe("ScheduledTaskRunner — every verb", () => {
     expect(completed.state.status).toBe("completed");
     expect(completed.state.completedAt).toBeDefined();
     const all = await h.runner.list();
-    const childCreated = all.find(
-      (t) => t.promptInstructions === "follow-up",
-    );
+    const childCreated = all.find((t) => t.promptInstructions === "follow-up");
     expect(childCreated?.state.pipelineParentId).toBe(parent.taskId);
   });
 
@@ -279,7 +276,9 @@ describe("ScheduledTaskRunner — every verb", () => {
     );
     await h.runner.apply(parent.taskId, "dismiss", { reason: "user dismiss" });
     const all = await h.runner.list();
-    expect(all.find((t) => t.promptInstructions === "post-complete")).toBeUndefined();
+    expect(
+      all.find((t) => t.promptInstructions === "post-complete"),
+    ).toBeUndefined();
   });
 
   it("escalate writes a state-log row and bumps followupCount", async () => {
@@ -306,7 +305,9 @@ describe("ScheduledTaskRunner — every verb", () => {
     expect(acked.state.status).toBe("acknowledged");
     expect(acked.state.acknowledgedAt).toBeDefined();
     const all = await h.runner.list();
-    expect(all.find((t) => t.promptInstructions === "post-ack")).toBeUndefined();
+    expect(
+      all.find((t) => t.promptInstructions === "post-ack"),
+    ).toBeUndefined();
   });
 
   it("edit mutates allowed fields and rejects state mutation", async () => {
@@ -580,9 +581,7 @@ describe("ScheduledTaskRunner — fire path + gates", () => {
       baseInput({
         shouldFire: {
           compose: "first_deny",
-          gates: [
-            { kind: "late_evening_skip", params: { afterHour: 21 } },
-          ],
+          gates: [{ kind: "late_evening_skip", params: { afterHour: 21 } }],
         },
       }),
     );
@@ -754,7 +753,9 @@ describe("ScheduledTaskRunner — pipeline + filtering", () => {
 describe("ScheduledTaskRunner — runner does NOT pattern-match promptInstructions (cross-agent invariant §7.1)", () => {
   it("two tasks with identical text but different gates produce different state outcomes", async () => {
     const h = makeHarness("2026-05-09T12:00:00.000Z"); // Saturday
-    const taskA = await h.runner.schedule(baseInput({ promptInstructions: "go for a walk" }));
+    const taskA = await h.runner.schedule(
+      baseInput({ promptInstructions: "go for a walk" }),
+    );
     const taskB = await h.runner.schedule(
       baseInput({
         promptInstructions: "go for a walk",
@@ -808,6 +809,72 @@ describe("ScheduledTaskRunner — escalation ladder", () => {
   });
 });
 
+describe("ScheduledTaskRunner — getEscalationCursor (A6)", () => {
+  it("returns null for an unknown taskId", async () => {
+    const h = makeHarness();
+    expect(await h.runner.getEscalationCursor("nope")).toBeNull();
+  });
+
+  it("returns null when the task has no cursor recorded yet", async () => {
+    const h = makeHarness();
+    const task = await h.runner.schedule(baseInput({ priority: "high" }));
+    expect(await h.runner.getEscalationCursor(task.taskId)).toBeNull();
+  });
+
+  it("returns stepIndex=-1 + first-step channelKey after the initial fire", async () => {
+    const h = makeHarness("2026-05-09T12:00:00.000Z");
+    const task = await h.runner.schedule(baseInput({ priority: "high" }));
+    await h.runner.fire(task.taskId);
+    const view = await h.runner.getEscalationCursor(task.taskId);
+    expect(view).not.toBeNull();
+    expect(view?.stepIndex).toBe(-1);
+    expect(view?.lastFiredAt).toBe("2026-05-09T12:00:00.000Z");
+    expect(view?.channelKey).toBe("in_app");
+  });
+
+  it("reflects the snooze-reset cursor (lastFiredAt = new fire time)", async () => {
+    const h = makeHarness("2026-05-09T12:00:00.000Z");
+    const task = await h.runner.schedule(baseInput({ priority: "high" }));
+    await h.runner.fire(task.taskId);
+    await h.runner.apply(task.taskId, "snooze", { minutes: 60 });
+    const view = await h.runner.getEscalationCursor(task.taskId);
+    expect(view).not.toBeNull();
+    expect(view?.stepIndex).toBe(-1);
+    expect(view?.lastFiredAt).toBe("2026-05-09T13:00:00.000Z");
+  });
+
+  it("uses the inline ladder steps when escalation.steps is set", async () => {
+    const h = makeHarness("2026-05-09T12:00:00.000Z");
+    const task = await h.runner.schedule(
+      baseInput({
+        priority: "low",
+        escalation: {
+          steps: [
+            { delayMinutes: 0, channelKey: "imessage", intensity: "soft" },
+            { delayMinutes: 30, channelKey: "push", intensity: "normal" },
+          ],
+        },
+      }),
+    );
+    await h.runner.fire(task.taskId);
+    const view = await h.runner.getEscalationCursor(task.taskId);
+    expect(view).not.toBeNull();
+    expect(view?.stepIndex).toBe(-1);
+    expect(view?.channelKey).toBe("imessage");
+  });
+
+  it("returns null when metadata.escalationCursor is malformed (no stepIndex / lastDispatchedAt)", async () => {
+    const h = makeHarness();
+    const task = await h.runner.schedule(
+      baseInput({
+        priority: "medium",
+        metadata: { escalationCursor: { junk: 1 } },
+      }),
+    );
+    expect(await h.runner.getEscalationCursor(task.taskId)).toBeNull();
+  });
+});
+
 describe("ScheduledTaskRunner — dispatcher", () => {
   it("custom dispatcher receives the fire record", async () => {
     const dispatch = vi.fn(async () => undefined);
@@ -854,7 +921,11 @@ describe("ScheduledTaskRunner — every trigger kind (schema-level)", () => {
       { kind: "once", atIso: "2026-05-09T12:00:00.000Z" },
       { kind: "cron", expression: "0 9 * * 1-5", tz: "UTC" },
       { kind: "interval", everyMinutes: 30 },
-      { kind: "relative_to_anchor", anchorKey: "wake.confirmed", offsetMinutes: 10 },
+      {
+        kind: "relative_to_anchor",
+        anchorKey: "wake.confirmed",
+        offsetMinutes: 10,
+      },
       { kind: "during_window", windowKey: "morning" },
       { kind: "event", eventKind: "gmail.message.received" },
       { kind: "manual" },

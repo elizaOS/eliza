@@ -48,7 +48,7 @@ node scripts/benchmark/profile-inference.mjs \
 | Flag | Default | Purpose |
 |---|---|---|
 | `--target <url>` | `http://localhost:31337` | Agent API base URL |
-| `--config <path>` | `scripts/benchmark/configs/aosp-default.json` | Matrix config |
+| `--config <path>` | auto-detected per host (see below) | Matrix config |
 | `--token <str>` | `MILADY_API_TOKEN` / `ELIZA_API_TOKEN` env | API token if the server is auth-gated |
 | `--out <dir>` | `reports/porting/<YYYY-MM-DD>` | Output directory for `profile.json` + `profile.md` |
 | `--non-streaming` | streaming on | Use sync `/messages` instead of SSE; no first-token latency |
@@ -59,6 +59,46 @@ node scripts/benchmark/profile-inference.mjs \
 Auth: the harness sends both `Authorization: Bearer <token>` and
 `X-API-Token: <token>` when a token is provided, matching every header
 shape the server's `getProvidedApiToken` helper accepts.
+
+### Per-host config matrix
+
+The default config is auto-picked at startup via the same hardware
+hints used by `plugin-local-embedding`'s `chooseBackend`:
+
+| Host | Default config |
+|---|---|
+| `CUDA_VISIBLE_DEVICES` set & not `-1` | `configs/host-cuda.json` |
+| Darwin | `configs/host-metal.json` |
+| Linux/Windows (no CUDA) | `configs/host-cpu.json` |
+
+Pass `--config` explicitly to override. The shipped configs are:
+
+- `configs/host-cpu.json` — small matrix that runs in <2 min on a
+  laptop CPU. Used by the PR-level CI gate in
+  `.github/workflows/local-inference-bench.yml`.
+- `configs/host-cuda.json` — full matrix including `qjl-tbq3` and
+  DFlash drafter pairings. Use against a CUDA workstation.
+- `configs/host-metal.json` — Apple Silicon matrix; excludes the
+  `qjl-tbq3` leg until the MSL kernel lands.
+- `configs/aosp-arm64.json` — cuttlefish + connected real arm64 device
+  matrix; replaces the previous `aosp-default.json`.
+- `configs/ios-metal.json` — iOS / iPadOS Capacitor matrix.
+
+### CI hookup
+
+`.github/workflows/local-inference-bench.yml` runs the harness:
+
+- Every PR + every nightly cron at 05:00 UTC: stub-validation job
+  (boots `stub-agent-server.mjs` on a free port, runs `host-cpu.json`).
+  Cheap regression gate.
+- Nightly cron only (or `workflow_dispatch run_real_agent=true`): boots
+  `bun run dev`, runs the harness, uploads `reports/porting/<date>/`
+  as the `profile-nightly-<run_id>` artifact, opens / updates a
+  tracking issue labelled `nightly-local-inference`.
+- `workflow_dispatch run_cuttlefish=true`: profile against a
+  cuttlefish AVD that the operator booted via
+  `elizaos-cuttlefish.yml`. Writes
+  `reports/porting/<date>-cuttlefish/`.
 
 ## Validating the harness without the real path
 
@@ -137,7 +177,7 @@ Full structured matrix output. Schema:
   "target": "http://localhost:31337",
   "label": "...",
   "streaming": true,
-  "configPath": ".../aosp-default.json",
+  "configPath": ".../host-cpu.json",
   "startedAt": "ISO-8601",
   "finishedAt": "ISO-8601",
   "config": { /* echoed input config */ },
@@ -218,6 +258,10 @@ the QJL kernel landing), drop the `configGaps` synthesis from
 
 - The full matrix lives at `reports/porting/<YYYY-MM-DD>/profile.json`
   (and `.md`).
+- Nightly CI uploads it as the `profile-nightly-<run_id>` workflow
+  artifact (90-day retention) and posts the `profile.md` body to a
+  tracking issue labelled `nightly-local-inference` in
+  [the issue list](https://github.com/elizaOS/eliza/issues?q=is%3Aissue+label%3Anightly-local-inference).
 - The headline numbers from `profile.md` should be appended to the
   `## Current state on the AOSP image` section of
   [`docs/porting/on-device-quantization-porting-plan.md`](./on-device-quantization-porting-plan.md)

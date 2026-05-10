@@ -24,6 +24,8 @@ type PaymentsSubaction =
   | "recurring_charges";
 
 type PaymentsActionParams = {
+  subaction?: PaymentsSubaction;
+  /** One-release alias for `subaction`; planner cache hits keep working. */
   mode?: PaymentsSubaction;
   sourceId?: string;
   kind?: LifeOpsPaymentSourceKind;
@@ -65,12 +67,12 @@ function mergeParams(
   return params as PaymentsActionParams;
 }
 
-function normalizeMode(value: unknown): PaymentsSubaction | null {
+function normalizeSubaction(value: unknown): PaymentsSubaction | null {
   if (typeof value !== "string") {
     return null;
   }
   const normalized = value.trim().toLowerCase().replace(/[- ]/g, "_");
-  const modes: PaymentsSubaction[] = [
+  const subactions: PaymentsSubaction[] = [
     "dashboard",
     "list_sources",
     "add_source",
@@ -80,7 +82,7 @@ function normalizeMode(value: unknown): PaymentsSubaction | null {
     "spending_summary",
     "recurring_charges",
   ];
-  return (modes as string[]).includes(normalized)
+  return (subactions as string[]).includes(normalized)
     ? (normalized as PaymentsSubaction)
     : null;
 }
@@ -95,9 +97,14 @@ async function runPaymentsAction(
   void message;
   const params = mergeParams(message, options);
   const service = new LifeOpsService(runtime);
-  const mode = normalizeMode(params.mode) ?? "dashboard";
+  // Accept the legacy `mode` alias for one release so cached planner outputs
+  // keep resolving; new callers should use `subaction`.
+  const subaction =
+    normalizeSubaction(params.subaction) ??
+    normalizeSubaction(params.mode) ??
+    "dashboard";
 
-  switch (mode) {
+  switch (subaction) {
     case "dashboard": {
       const dashboard = await service.getPaymentsDashboard({
         windowDays: params.windowDays ?? null,
@@ -286,9 +293,16 @@ export const paymentsAction: Action & {
 
   parameters: [
     {
-      name: "mode",
+      name: "subaction",
       description:
         "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges (defaults dashboard).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "mode",
+      description:
+        "Legacy alias for `subaction`. Accepted for one release so cached planner outputs keep resolving; new callers should use `subaction`.",
       required: false,
       schema: { type: "string" as const },
     },

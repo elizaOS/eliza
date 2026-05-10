@@ -86,10 +86,30 @@ const server = http.createServer(async (req, res) => {
       }
       // Simulate variable model load times.
       await sleep(modelId.includes("8b") ? 350 : 120);
+      // Echo back the requested overrides on the loadedContextSize /
+      // loadedCacheTypeK/V fields so the benchmark harness can verify the
+      // server actually honoured the per-load overrides instead of
+      // silently dropping them.
+      const overrides =
+        body?.overrides && typeof body.overrides === "object"
+          ? body.overrides
+          : null;
       activeModel = {
         modelId,
         loadedAt: new Date().toISOString(),
         status: "ready",
+        loadedContextSize:
+          overrides && typeof overrides.contextSize === "number"
+            ? overrides.contextSize
+            : null,
+        loadedCacheTypeK:
+          overrides && typeof overrides.cacheTypeK === "string"
+            ? overrides.cacheTypeK
+            : null,
+        loadedCacheTypeV:
+          overrides && typeof overrides.cacheTypeV === "string"
+            ? overrides.cacheTypeV
+            : null,
       };
       return sendJson(res, 200, activeModel);
     }

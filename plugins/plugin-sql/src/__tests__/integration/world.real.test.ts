@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { worldTable } from "../../schema";
+import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
 describe("World Integration Tests", () => {
@@ -27,7 +28,7 @@ describe("World Integration Tests", () => {
   describe("World Tests", () => {
     beforeEach(async () => {
       // Clean up worlds table before each test
-      await adapter.getDatabase().delete(worldTable);
+      await (adapter.getDatabase() as DrizzleDatabase).delete(worldTable);
     });
 
     it("should create and retrieve a world", async () => {
@@ -37,7 +38,7 @@ describe("World Integration Tests", () => {
         agentId: testAgentId,
         name: "Test World",
         metadata: { owner: "test-user" },
-        serverId: "server1",
+        messageServerId: "a1111111-1111-4111-8111-111111111111" as UUID,
       };
       await adapter.createWorld(world);
 
@@ -48,30 +49,30 @@ describe("World Integration Tests", () => {
 
     it("should preserve UUID-shaped server ids outside RFC version constraints", async () => {
       const worldId = uuidv4() as UUID;
-      const serverId = "06df3cf3-6c0c-0449-9c80-87e36d1ea8f6" as UUID;
+      const messageServerId = "06df3cf3-6c0c-0449-9c80-87e36d1ea8f6" as UUID;
       await adapter.createWorld({
         id: worldId,
         agentId: testAgentId,
         name: "Canonical UUID World",
-        serverId,
+        messageServerId,
       });
 
       const retrieved = await adapter.getWorld(worldId);
-      expect(retrieved?.serverId).toBe(serverId);
+      expect(retrieved?.messageServerId).toBe(messageServerId);
     });
 
     it("should preserve nil UUID server ids", async () => {
       const worldId = uuidv4() as UUID;
-      const serverId = "00000000-0000-0000-0000-000000000000" as UUID;
+      const messageServerId = "00000000-0000-0000-0000-000000000000" as UUID;
       await adapter.createWorld({
         id: worldId,
         agentId: testAgentId,
         name: "Nil UUID World",
-        serverId,
+        messageServerId,
       });
 
       const retrieved = await adapter.getWorld(worldId);
-      expect(retrieved?.serverId).toBe(serverId);
+      expect(retrieved?.messageServerId).toBe(messageServerId);
     });
 
     it("should not create a world with a duplicate id", async () => {
@@ -80,13 +81,13 @@ describe("World Integration Tests", () => {
         id: worldId,
         agentId: testAgentId,
         name: "Test World 1",
-        serverId: "server1",
+        messageServerId: "b1111111-1111-4111-8111-111111111111" as UUID,
       };
       const world2: World = {
         id: worldId,
         agentId: testAgentId,
         name: "Test World 2",
-        serverId: "server2",
+        messageServerId: "b2222222-2222-4222-8222-222222222222" as UUID,
       };
       await adapter.createWorld(world1);
       await expect(adapter.createWorld(world2)).rejects.toThrow();
@@ -98,7 +99,7 @@ describe("World Integration Tests", () => {
         id: worldId,
         agentId: testAgentId,
         name: "Original World",
-        serverId: "server1",
+        messageServerId: "c1111111-1111-4111-8111-111111111111" as UUID,
       };
       await adapter.createWorld(originalWorld);
 
@@ -114,13 +115,13 @@ describe("World Integration Tests", () => {
         id: uuidv4() as UUID,
         agentId: testAgentId,
         name: "World One",
-        serverId: "server1",
+        messageServerId: "d1111111-1111-4111-8111-111111111111" as UUID,
       };
       const world2: World = {
         id: uuidv4() as UUID,
         agentId: testAgentId,
         name: "World Two",
-        serverId: "server2",
+        messageServerId: "d2222222-2222-4222-8222-222222222222" as UUID,
       };
       await adapter.createWorld(world1);
       await adapter.createWorld(world2);
@@ -140,7 +141,7 @@ describe("World Integration Tests", () => {
         id: worldId,
         agentId: testAgentId,
         name: "To Be Deleted",
-        serverId: "server1",
+        messageServerId: "e1111111-1111-4111-8111-111111111111" as UUID,
       };
       await adapter.createWorld(world);
 
@@ -162,13 +163,13 @@ describe("World Integration Tests", () => {
         id: uuidv4() as UUID,
         agentId: testAgentId,
         name: "World 0",
-        serverId: "server0",
+        messageServerId: "f0000000-0000-4000-8000-000000000000" as UUID,
       };
       const world2: World = {
         id: uuidv4() as UUID,
         agentId: testAgentId,
         name: "World 1",
-        serverId: "server1",
+        messageServerId: "f1111111-1111-4111-8111-111111111111" as UUID,
       };
       await adapter.createWorld(world1);
       await adapter.createWorld(world2);

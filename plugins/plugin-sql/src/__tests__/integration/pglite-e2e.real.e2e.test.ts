@@ -20,8 +20,8 @@ describe("PostgreSQL E2E Tests", () => {
 
     // Run migrations for each adapter
     const migrationService = new DatabaseMigrationService();
-    const db = adapter.getDatabase();
-    await migrationService.initializeWithDatabase(db as DrizzleDatabase);
+    const db = adapter.getDatabase() as DrizzleDatabase;
+    await migrationService.initializeWithDatabase(db);
     migrationService.discoverAndRegisterPluginSchemas([
       { name: "@elizaos/plugin-sql", description: "SQL plugin", schema },
     ]);
@@ -393,7 +393,7 @@ describe("PostgreSQL E2E Tests", () => {
       await adapter.createWorld({
         id: worldId,
         agentId,
-        serverId: uuidv4() as UUID,
+        messageServerId: uuidv4() as UUID,
         name: "Test World",
       });
 

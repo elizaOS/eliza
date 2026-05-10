@@ -43,6 +43,7 @@
   "license": "MIT",
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "@vscode/ripgrep": "^1.15.9",
     "zod": "^4.4.3"
   },

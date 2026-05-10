@@ -21,6 +21,9 @@
   "exclude": [
     "node_modules",
     "dist",
-    "src/__tests__/**/*"
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
   ]
 }

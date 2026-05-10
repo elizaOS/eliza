@@ -47,7 +47,8 @@
   },
   "exports": {
     ".": "./src/index.ts",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts"
   },
   "publishConfig": {
     "access": "public",
@@ -58,12 +59,14 @@
     "@elizaos/capacitor-contacts": "workspace:*",
     "@elizaos/capacitor-phone": "workspace:*",
     "@elizaos/capacitor-wifi": "workspace:*",
+    "@elizaos/app-task-coordinator": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-agent-skills": "workspace:*",
     "@elizaos/plugin-aosp-local-inference": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/plugin-capacitor-bridge": "workspace:*",
     "@elizaos/plugin-coding-tools": "workspace:*",
+    "@elizaos/plugin-commands": "workspace:*",
     "@elizaos/plugin-computeruse": "workspace:*",
     "@elizaos/plugin-discord": "workspace:*",
     "@elizaos/plugin-discord-local": "workspace:*",
@@ -93,6 +96,7 @@
     "coding-agent-adapters": "0.16.3",
     "dotenv": "^17.2.3",
     "drizzle-orm": "0.45.2",
+    "esbuild": "^0.28.0",
     "ethers": "^6.16.0",
     "git-workspace-service": "0.4.5",
     "jsdom": "^29.0.0",

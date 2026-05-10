@@ -11,6 +11,7 @@
     "skipLibCheck": true,
     "allowImportingTsExtensions": false,
     "noEmit": false,
+    "rewriteRelativeImportExtensions": true,
     "paths": {
       "@elizaos/plugin-groq": ["./src/provider-plugin.d.ts"]
     }

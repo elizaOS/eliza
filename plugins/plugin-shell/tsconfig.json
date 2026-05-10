@@ -22,5 +22,12 @@
     "types": ["node", "bun-types"]
   },
   "include": ["./**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "__tests__"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
+  ]
 }

@@ -9,18 +9,13 @@ import type {
 
 /**
  * In-memory implementation of {@link SendPolicyRegistry}. One instance per
- * runtime; populated by Wave 2 (W2-B) policy migration.
+ * runtime.
  *
  * Filter semantics:
- * - {@link list} with `source: "channel"` returns policies that apply to at
- *   least one channel-kind context (i.e. policies whose `appliesTo` returns
- *   `true` for any synthesized channel context, OR policies with no
- *   `appliesTo` predicate, since those run for every context). The simpler
- *   useful interpretation we ship is: `list` with no filter returns every
- *   registered policy in priority order; `list` with a `source` filter
- *   returns the same set since the registry does not store source affinity
- *   metadata. The filter is reserved for Wave 2 once policies declare
- *   per-source affinity explicitly.
+ * - {@link list} with no filter returns every registered policy in priority
+ *   order; {@link list} with a `source` filter returns the same set because
+ *   the registry does not store source-affinity metadata. The filter is a
+ *   reserved hook for callers that declare per-source affinity explicitly.
  */
 class InMemorySendPolicyRegistry implements SendPolicyRegistry {
   private readonly byKind = new Map<string, SendPolicyContribution>();

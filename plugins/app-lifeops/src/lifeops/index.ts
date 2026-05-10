@@ -11,8 +11,8 @@ export * from "./engine.js";
 export * from "./goal-grounding.js";
 export * from "./goal-semantic-evaluator.js";
 export * from "./google-plugin-delegates.js";
-// `health-bridge` was moved to `@elizaos/plugin-health` in Wave-1 (W1-B).
-// Re-export the surface so existing `from "./lifeops"` callers keep working.
+// `health-bridge` lives in `@elizaos/plugin-health`; re-export so existing
+// `from "./lifeops"` callers keep resolving.
 export {
   detectHealthBackend,
   getDailySummary,

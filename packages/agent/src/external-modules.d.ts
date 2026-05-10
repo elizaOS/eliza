@@ -259,6 +259,68 @@ declare module "@elizaos/plugin-discord" {
   const discordPlugin: unknown;
   export default discordPlugin;
 }
+
+declare module "@elizaos/plugin-whatsapp" {
+  import type { Plugin } from "@elizaos/core";
+
+  export function applyWhatsAppQrOverride(...args: unknown[]): void;
+  export function handleWhatsAppRoute(...args: unknown[]): unknown;
+  export type WhatsAppPairingEventLike = Record<string, unknown>;
+  export type WhatsAppPairingSessionLike = Record<string, unknown>;
+  export type WhatsAppRouteDeps = Record<string, unknown>;
+  export type WhatsAppRouteState = Record<string, unknown>;
+
+  export type WhatsAppPairingEvent = Record<string, unknown>;
+  export type WhatsAppPairingOptions = Record<string, unknown>;
+  export type WhatsAppPairingStatus = string;
+
+  export class WhatsAppPairingSession {
+    constructor(...args: unknown[]);
+    stop(): void;
+  }
+
+  export function sanitizeWhatsAppAccountId(...args: unknown[]): string;
+  export function whatsappAuthExists(...args: unknown[]): boolean;
+  export function whatsappLogout(...args: unknown[]): void;
+
+  const whatsappPlugin: Plugin;
+  export default whatsappPlugin;
+}
+
+declare module "@elizaos/plugin-computeruse" {
+  export function handleSandboxRoute(
+    req: unknown,
+    res: unknown,
+    pathname: unknown,
+    method: unknown,
+    options: unknown,
+  ): Promise<boolean>;
+  export function handleComputerUseRoutes(...args: unknown[]): unknown;
+}
+
+declare module "@elizaos/plugin-mcp" {
+  export function handleMcpRoutes(...args: unknown[]): unknown;
+}
+
+declare module "@elizaos/app-contacts" {
+  import type { Plugin, Provider } from "@elizaos/core";
+
+  export const contactsProvider: Provider;
+  export const appContactsPlugin: Plugin;
+}
+
+declare module "@elizaos/app-wifi" {
+  import type { Plugin, Provider } from "@elizaos/core";
+
+  export const appWifiPlugin: Plugin;
+  export const wifiNetworksProvider: Provider;
+}
+
+declare module "@elizaos/plugin-discord-local" {
+  const plugin: unknown;
+  export default plugin;
+}
+
 declare module "@elizaos/plugin-edge-tts";
 declare module "@elizaos/plugin-imessage" {
   export function resolveBlueBubblesWebhookPath(...args: unknown[]): string;

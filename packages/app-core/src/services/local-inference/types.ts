@@ -112,6 +112,28 @@ export interface LocalRuntimeAcceleration {
   };
 }
 
+/**
+ * Tokenizer family — names match the upstream model family the GGUF was
+ * trained against. Used by the DFlash drafter pair guard, by the catalog
+ * blurbs, and by any downstream code that needs to make tokenizer-aware
+ * decisions (e.g. spec-decode pairing requires drafter and target to share
+ * the exact vocabulary). Open string union so new families can be added
+ * without a code change in every consumer; the canonical members are
+ * enumerated for tooling.
+ */
+export type TokenizerFamily =
+  | "qwen3"
+  | "qwen2"
+  | "llama3"
+  | "gpt2"
+  | "smollm2"
+  | "bge"
+  | "sentencepiece"
+  | "deepseekv2"
+  | "mistral"
+  | "gemma"
+  | (string & {});
+
 export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
   id: string;
@@ -155,6 +177,32 @@ export interface CatalogModel {
   companionForModelId?: string;
   /** Extra catalog model ids to download alongside this model. */
   companionModelIds?: string[];
+  /**
+   * Maximum context length supported by the underlying GGUF, in tokens.
+   * This is the GGUF ceiling — actual load-time `contextSize` may be
+   * smaller (capped by the loader's runtime budget). When unset, callers
+   * should treat the model as opting into the loader's default
+   * (`"auto"` for `node-llama-cpp`, model file's reported `n_ctx_train`).
+   *
+   * Long-context models (>= 65k) get a small ranking boost on hosts with
+   * enough RAM/VRAM in `selectRecommendedModelForSlot`; see
+   * `recommendation.ts`.
+   */
+  contextLength?: number;
+  /**
+   * Default GPU offload strategy for this model. `"auto"` lets the loader
+   * decide based on VRAM probing; a number forces that many layers to
+   * VRAM. Per-load overrides (`LocalInferenceLoadArgs.gpuLayers`) win
+   * over this default.
+   */
+  gpuLayers?: "auto" | number;
+  /**
+   * Tokenizer family the GGUF was trained against. Used by the DFlash
+   * drafter pair guard (drafter and target MUST share the same family
+   * for spec-decode to work) and by recommendation/UI code that needs
+   * to surface family-aware messaging.
+   */
+  tokenizerFamily?: TokenizerFamily;
   /** Runtime-specific acceleration metadata. */
   runtime?: LocalRuntimeAcceleration;
 }
@@ -277,6 +325,17 @@ export interface ActiveModelState {
    */
   status: "idle" | "loading" | "ready" | "error";
   error?: string;
+  /**
+   * Effective KV-cache configuration the loader applied. Populated on
+   * `status === "ready"`; null while loading or on error. The benchmark
+   * harness relies on these to verify per-load overrides actually took
+   * effect (a 128k contextSize request that silently fell back to 8k is
+   * exactly the bug the per-load override path exists to prevent).
+   */
+  loadedContextSize?: number | null;
+  loadedCacheTypeK?: string | null;
+  loadedCacheTypeV?: string | null;
+  loadedGpuLayers?: number | null;
 }
 
 export interface DownloadEvent {

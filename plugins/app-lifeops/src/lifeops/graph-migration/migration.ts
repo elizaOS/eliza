@@ -114,7 +114,6 @@ function mapRelationshipType(
 ): string {
   const trimmed = legacy.trim().toLowerCase();
   if (mapping[trimmed]) return mapping[trimmed];
-  // Pass through verbatim for unknowns; W3-A reviews the long tail.
   return legacy;
 }
 

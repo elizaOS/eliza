@@ -1,12 +1,12 @@
 /**
- * W2-B — Google connector contribution.
+ * Google connector contribution.
  *
  * Wraps {@link import("../service-mixin-google.js").LifeOpsGoogleService}
  * (Gmail + Calendar + Drive grants). Gmail's outbound `send` is gated by
  * `requiresApproval: true`; the runtime's owner-send-policy enqueues the
  * approval ScheduledTask before this connector ever sees the dispatch.
  *
- * Capabilities are namespaced per W1-F §3.1 — the entries here mirror
+ * Capabilities are namespaced — the entries here mirror
  * `LIFEOPS_GOOGLE_CAPABILITIES` from `@elizaos/shared`.
  */
 import type { IAgentRuntime } from "@elizaos/core";

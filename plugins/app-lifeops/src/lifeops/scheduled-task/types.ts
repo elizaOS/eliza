@@ -1,18 +1,24 @@
 /**
- * Wave-1 frozen interface contract for `ScheduledTask` (W1-A).
+ * Frozen interface contract for `ScheduledTask`.
  *
- * Source of truth: `docs/audit/wave1-interfaces.md` §1.1 / §1.2 / §1.3 / §1.4 / §1.5.
- * Cross-agent invariants (do NOT violate): `docs/audit/wave1-interfaces.md` §7.
- * Reproduced here verbatim — any change requires the integration gate.
+ * The runner deliberately does NOT pattern-match on `promptInstructions` or
+ * on specific `kind` values — behavior is driven by the typed fields.
  *
- * Six other wave-1 agents read this same contract; if these signatures
- * drift from the doc, integration breaks. The runner deliberately does
- * NOT pattern-match on `promptInstructions` or on specific `kind`
- * values — behavior is driven by the typed fields.
+ * Terminal-state vocabulary note:
+ *  - `completed`, `skipped`, `expired`, `dismissed` are reachable via the
+ *    public chat verbs in `ScheduledTaskVerb` (and via fire-time gate /
+ *    completion-check decisions).
+ *  - `failed` is a **dispatcher-runtime outcome**, not a chat verb. There is
+ *    no public `apply("failed")` entry point. The runner enters `failed`
+ *    when an infra-level dispatch error surfaces, when a child task
+ *    propagates `failed` upstream, or when callers invoke
+ *    `runner.pipeline(taskId, "failed")` directly. `pipeline.onFail` then
+ *    propagates the outcome to children and flips the parent's state to
+ *    `failed` so observers see one consistent terminal state per branch.
  */
 
 // ---------------------------------------------------------------------------
-// §1.1 ScheduledTask schema (frozen)
+// ScheduledTask schema (frozen)
 // ---------------------------------------------------------------------------
 
 export type TerminalState =
@@ -101,11 +107,23 @@ export interface ScheduledTaskCompletionCheck {
   kind: string;
   params?: CompletionCheckParams;
   /**
-   * Mutually exclusive with `pipeline.onSkip` per GAP_ASSESSMENT §8.10.
-   * If both set, runner uses `pipeline.onSkip` and ignores this.
+   * Mutually exclusive with `pipeline.onSkip`. If both set, runner uses
+   * `pipeline.onSkip` and ignores this.
+   *
+   * For `kind === "approval"` tasks, the runner defaults this to
+   * {@link APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES} when the curator did
+   * not provide an explicit value (and `pipeline.onSkip` is empty).
    */
   followupAfterMinutes?: number;
 }
+
+/**
+ * Default `completionCheck.followupAfterMinutes` for approval-kind tasks
+ * when the curator did not set one explicitly. Approvals stale fast; a
+ * 60-minute followup is the documented baseline so curators do not need
+ * to repeat it on every approval definition.
+ */
+export const APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES = 60;
 
 export interface EscalationStep {
   delayMinutes: number;
@@ -241,10 +259,8 @@ export type GateDecision =
     };
 
 /**
- * Owner facts the gates / completion-checks read. Wave 1 ships an interim
- * wrapper around `LifeOpsOwnerProfile` (W1-C); Wave 2 generalizes via
- * `OwnerFactStore` (W2-E). This is the minimal interface this module
- * depends on — the surface every owner-fact consumer agrees to.
+ * Owner facts the gates / completion-checks read — the minimal surface every
+ * owner-fact consumer agrees to.
  */
 export interface OwnerFactsView {
   preferredName?: string;
@@ -257,11 +273,10 @@ export interface OwnerFactsView {
 }
 
 /**
- * Activity-signal subscriber surface. W1-A's runner consumes only the
- * read side here — completion-checks (`subject_updated`,
- * `health_signal_observed`) and `trigger.kind = "event"` listeners want
- * "did X happen since Y?" lookups. Wave-2 will widen this when the bus
- * lands a real publish/subscribe surface.
+ * Activity-signal subscriber surface. The runner consumes only the read
+ * side — completion-checks (`subject_updated`, `health_signal_observed`)
+ * and `trigger.kind = "event"` listeners need "did X happen since Y?"
+ * lookups.
  */
 export interface ActivitySignalBusView {
   hasSignalSince(args: {
@@ -272,9 +287,8 @@ export interface ActivitySignalBusView {
 }
 
 /**
- * Subject-resolution surface. W1-E ships full `EntityStore` /
- * `RelationshipStore` in Wave 1; this is the minimum the runner needs to
- * know about a subject to evaluate a completion-check.
+ * Subject-resolution surface — the minimum the runner needs to know about a
+ * subject to evaluate a completion-check.
  */
 export interface SubjectStoreView {
   wasUpdatedSince(args: {
@@ -284,9 +298,8 @@ export interface SubjectStoreView {
 }
 
 /**
- * Global-pause surface (`GlobalPauseStore` from W1-C). The runner
- * consults it pre-fire; tasks with `respectsGlobalPause: true` skip
- * with `reason = "global_pause"`.
+ * Global-pause surface (`GlobalPauseStore`). The runner consults it pre-fire;
+ * tasks with `respectsGlobalPause: true` skip with `reason = "global_pause"`.
  */
 export interface GlobalPauseView {
   current(): Promise<{
@@ -363,7 +376,7 @@ export interface AnchorConsolidationPolicy {
 }
 
 // ---------------------------------------------------------------------------
-// State-log row (W1-A, IMPL §3.1)
+// State-log row
 // ---------------------------------------------------------------------------
 
 export type ScheduledTaskLogTransition =
