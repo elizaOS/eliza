@@ -47,9 +47,18 @@ export type KvOffloadMode =
  *
  *   - `contextSize`        → node-llama-cpp `LlamaContextOptions.contextSize`
  *   - `cacheTypeK/V`       → node-llama-cpp `experimentalKvCacheKeyType` /
- *                            `experimentalKvCacheValueType` (stable for
- *                            f16/q8_0; TBQ types only on AOSP fork build).
- *                            Stock builds reject `tbq3_0`/`tbq4_0`/`qjl1_256`.
+ *                            `experimentalKvCacheValueType`. The milady
+ *                            fork binding (milady-ai/node-llama-cpp@
+ *                            v3.18.1-milady.3+) extends `GgmlType` to
+ *                            accept the lowercase aliases `tbq3_0`,
+ *                            `tbq4_0`, `qjl1_256`, `q4_polar` (mapped to
+ *                            enum slots 43/44/46/47). Whether the C++
+ *                            kernel for those types actually runs depends
+ *                            on the loaded `@node-llama-cpp/<platform>`
+ *                            binary: the milady-ai/llama.cpp prebuild
+ *                            implements them; the upstream prebuild
+ *                            forwards an unknown enum int to ggml and
+ *                            errors at the kernel layer.
  *   - `gpuLayers`          → node-llama-cpp `LlamaModelOptions.gpuLayers`
  *   - `flashAttention`     → node-llama-cpp `LlamaContextOptions.flashAttention`
  *                            (also as `defaultContextFlashAttention` at
@@ -95,13 +104,17 @@ export interface LocalInferenceLoadArgs {
 }
 
 /**
- * Allow-list for KV cache type strings. Stock `node-llama-cpp` only
- * supports the GGML quant types in its `GgmlType` enum (F16, Q4_0, Q8_0,
- * etc.). The TBQ / QJL types are AOSP fork additions — they only resolve
- * against the `apothic/llama.cpp-1bit-turboquant` libllama.so. If a desktop
- * caller asks for a fork-only type, we throw a clear error rather than
- * silently dropping the value (which is exactly what the previous code
- * did, and the bug this whole task exists to fix).
+ * Allow-list for KV cache type strings. The milady fork of node-llama-cpp
+ * (v3.18.1-milady.3+) extends `GgmlType` with TBQ3_0 (43), TBQ4_0 (44),
+ * QJL1_256 (46), Q4_POLAR (47) so the binding accepts the lowercase
+ * aliases below. Whether the C++ kernel actually runs depends on the
+ * loaded `@node-llama-cpp/<platform>` binary — the milady-ai/llama.cpp
+ * prebuild ships the kernels; upstream's prebuild does not.
+ *
+ * `validateLocalInferenceLoadArgs({ allowFork: false })` (the route-layer
+ * default) still throws on these strings so a UI/API caller can't land
+ * the desktop on a kernel that won't run; `allowFork: true` (the AOSP +
+ * resolved-args path) lets them through.
  */
 const FORK_ONLY_KV_CACHE_TYPES = new Set([
   "tbq3_0",
@@ -158,7 +171,7 @@ export function validateLocalInferenceLoadArgs(
     }
     if (!allowFork && isForkOnlyKvCacheType(value)) {
       throw new Error(
-        `${field}="${value}" requires the apothic/llama.cpp-1bit-turboquant fork. Stock node-llama-cpp builds (Linux/macOS/Windows desktop) only accept ${[...STOCK_KV_CACHE_TYPES].join(", ")}.`,
+        `${field}="${value}" requires the milady-ai/llama.cpp kernel. The milady-ai/node-llama-cpp binding accepts the string at the TS layer, but the upstream @node-llama-cpp/<platform> prebuild does not implement the underlying ggml type. Pass through the AOSP path or load the milady-ai/llama.cpp prebuilt binary. Stock-only types accepted here: ${[...STOCK_KV_CACHE_TYPES].join(", ")}.`,
       );
     }
     if (!allowFork && !isStockKvCacheType(value)) {

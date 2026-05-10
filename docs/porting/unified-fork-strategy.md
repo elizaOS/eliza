@@ -172,44 +172,73 @@ kernel landed correctly. Status legend: `✓` shipped on the unified fork,
    today, no llama.cpp upstream. Skip until upstream lands or until a
    model we want is HQQ-only.
 
-## F. node-llama-cpp gap — diagnosis and path
+## F. node-llama-cpp gap — RESOLVED (path (a) landed)
 
-**Diagnosis.** `node-llama-cpp@3.18.1` exposes
+**Status: shipped.** `milady-ai/node-llama-cpp` exists and is consumable
+as a bun-installable github URL drop-in. Milady's three pins
+(`/package.json`, `eliza/packages/app-core/package.json`,
+`eliza/plugins/plugin-local-embedding/package.json`) all reference
+`github:milady-ai/node-llama-cpp#v3.18.1-milady.3`. The fork's
+`src/gguf/types/GgufTensorInfoTypes.ts` extends `GgmlType` with
+TBQ3_0 (43), TBQ4_0 (44), QJL1_256 (46), Q4_POLAR (47) and
+`resolveGgmlTypeOption()` accepts the lowercase aliases (`tbq3_0`,
+`tbq4_0`, `qjl1_256`, `q4_polar`). The desktop W1-C plumbing now
+flows the strings through cleanly. Verified by
+`packages/app-core/src/services/local-inference/active-model.runtime.test.ts`.
+
+### Original diagnosis (kept for context)
+
+`node-llama-cpp@3.18.1` exposes
 `LlamaContextOptions.experimentalKvCacheKeyType`/`experimentalKvCacheValueType`
 typed as `"currentQuant" | keyof typeof GgmlType | GgmlType`. The
-`GgmlType` enum is **stock** — it does not contain `tbq3_0`, `tbq4_0`,
-`qjl1_256`, or `q4_polar`. `engine.ts:319-335` already threads
-`overrides.cacheTypeK/V` through to this option, but on a stock
-node-llama-cpp build the binding throws on those values at
-`createContext()`, which is exactly the gap
-`active-model.ts:49-52` calls out.
+stock `GgmlType` enum did not contain `tbq3_0`, `tbq4_0`, `qjl1_256`,
+or `q4_polar`. `engine.ts` already threaded `overrides.cacheTypeK/V`
+through to this option, but on a stock node-llama-cpp build the
+binding silently dropped those values via `resolveGgmlTypeOption(...) ??
+defaultContextKvCacheKeyType`, which was exactly the gap
+`active-model.ts` called out.
 
-**Two viable paths:**
+### How the fork was made bun-installable
 
-- **(a) Fork node-llama-cpp** to a `milady-ai/node-llama-cpp` mirror,
-  embed our unified fork as the bundled C++ source, and extend
-  `GgmlType` + `resolveGgmlTypeOption` to accept our additions. ~1 week.
-  This is the durable answer because it keeps the desktop path on the
-  same kernels as the AOSP `bun:ffi` path. Maintenance cost: rebase
-  against upstream node-llama-cpp on every minor release (they move
-  ~monthly).
-- **(b) Bypass via bun:ffi.** Drop node-llama-cpp on desktop entirely
-  and call our musl-linked `libllama.so` + `libeliza-llama-shim.so` via
-  bun:ffi the same way the AOSP path does (already wired in
-  `aosp-llama-adapter.ts`, just needs a desktop adapter and the
-  shim binding for `experimentalKvCache*`). ~3-5 days. Drops one C++
-  dependency and unifies the desktop+mobile codepath but loses the
-  battle-tested node-llama-cpp embedding/grammar/sampler stack.
+bun's github-URL install does NOT run devDependencies + `tsc --build`,
+so the resolved package needs `dist/` and `templates/packed/`
+pre-built on the target ref. Path (a) — the durable answer — is to
+commit those build outputs to a release branch:
 
-**Recommendation: (a) now, (b) later.** Forking node-llama-cpp lights
-up `cacheTypeK=tbq4_0` on every desktop build with no other code
-changes. Migrating the desktop path to bun:ffi is a separate cleanup
-once the bun:ffi shim has been hardened on phone hardware.
+1. Source branch `milady/extended-cache-types` carries the TS edits
+   to `GgmlType` and `resolveGgmlTypeOption`.
+2. Release branch `milady/release-v3.18.1-milady.2` contains the
+   built `dist/` (~5.7 MB) + `templates/packed/` (~164 KB) plus a
+   patch to `getModuleVersion.ts` that strips `-milady.N` so the
+   prebuilt-binary version comparison
+   (`@node-llama-cpp/<platform>@3.18.1`) succeeds.
+3. Tags `v3.18.1-milady.{1,2,3}` mark consumable refs; `.3` is
+   current.
 
-W1-C already extended `LocalInferenceLoadArgs.cacheTypeK/V` through
-`resolveLocalInferenceLoadArgs` and `engine.ts`; the binding-level reject
-is where it currently breaks. That's a 1-file change in our forked
-binding.
+Maintenance cost on upstream rebases: cherry-pick the GgmlType
+extension, rebuild dist, retag. ~1h per upstream minor.
+
+### Path (b) for later (bun:ffi bypass)
+
+Drop node-llama-cpp on desktop entirely and call our musl-linked
+`libllama.so` + `libeliza-llama-shim.so` via bun:ffi the same way the
+AOSP path does (already wired in `aosp-llama-adapter.ts`, just needs
+a desktop adapter and the shim binding for `experimentalKvCache*`).
+~3-5 days. Drops one C++ dependency and unifies the desktop+mobile
+codepath but loses the battle-tested node-llama-cpp embedding/grammar/
+sampler stack. Defer until the bun:ffi shim has been hardened on
+phone hardware.
+
+### Remaining gap
+
+The fork's TS layer accepts the strings; the C++ kernel only runs
+when the loaded `@node-llama-cpp/<platform>` binary is built from
+`milady-ai/llama.cpp` (the actual TBQ/QJL/Polar kernels). With the
+upstream prebuild loaded today, the binding silently falls back to
+its default cache type when the enum int isn't in ggml's type table.
+Wiring the milady-ai/llama.cpp prebuild publication into
+`@node-llama-cpp/<platform>` is the next step (tracked in §H step 9
+of this doc).
 
 ## G. CI strategy
 
