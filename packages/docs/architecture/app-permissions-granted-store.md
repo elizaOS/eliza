@@ -90,7 +90,7 @@ type AppPermissionsView = {
 };
 ```
 
-`isolation` is declared by the app in `elizaos.app.isolation` and defaults to `"none"` for older registry entries. It is advisory until Phase 2 worker execution lands.
+`isolation` is the effective execution mode after loader policy is applied. First-party apps may remain `"none"` unless they request `"worker"`; external apps are promoted to `"worker"` even when older registry entries did not persist an isolation field.
 
 `404` if no app is registered under `:slug`.
 

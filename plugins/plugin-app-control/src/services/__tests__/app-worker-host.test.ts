@@ -317,6 +317,24 @@ describe("AppWorkerHostService — Phase 2.2 bridge", () => {
 			expect(reply.result.status).toBe(204);
 		});
 
+		it("net: rejects non-http protocols even when manifest allows all hosts", async () => {
+			await service.spawn({
+				slug: "fixture-net-file-protocol",
+				isolation: "worker",
+				pluginEntryPath: FIXTURE_PLUGIN_PATH,
+				requestedPermissions: { net: { outbound: ["*"] } },
+				grantedNamespaces: ["net"],
+			});
+			const reply = await service.invoke(
+				"fixture-net-file-protocol",
+				"invokeAction",
+				{ actionName: "NET_FETCH", content: { url: "file:///etc/passwd" } },
+			);
+			expect(reply.ok).toBe(false);
+			if (reply.ok) return;
+			expect(reply.reason).toContain("http/https");
+		});
+
 		it("fs: round-trips a write+read inside statePath", async () => {
 			await service.spawn({
 				slug: "fixture-fs-ok",
@@ -359,6 +377,28 @@ describe("AppWorkerHostService — Phase 2.2 bridge", () => {
 			expect(reply.ok).toBe(false);
 			if (reply.ok) return;
 			expect(reply.reason).toContain("fs access not granted");
+		});
+
+		it("fs: rejects write when the manifest only declared read", async () => {
+			await service.spawn({
+				slug: "fixture-fs-write-not-declared",
+				isolation: "worker",
+				pluginEntryPath: FIXTURE_PLUGIN_PATH,
+				statePath: stateRoot,
+				requestedPermissions: { fs: { read: ["**"] } },
+				grantedNamespaces: ["fs"],
+			});
+			const reply = await service.invoke(
+				"fixture-fs-write-not-declared",
+				"invokeAction",
+				{
+					actionName: "FS_WRITE_THEN_READ",
+					content: { relPath: "x.txt", payload: "denied" },
+				},
+			);
+			expect(reply.ok).toBe(false);
+			if (reply.ok) return;
+			expect(reply.reason).toContain("fs.write access not allowed");
 		});
 
 		it("fs: rejects path-escape attempts outside statePath", async () => {

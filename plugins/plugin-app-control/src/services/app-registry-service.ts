@@ -121,6 +121,13 @@ export type SetGrantedNamespacesResult =
 	| { ok: true; view: AppPermissionsView }
 	| SetGrantedNamespacesError;
 
+interface AppWorkerHostServiceLike {
+	startForRegisteredApp?: (
+		slug: string,
+	) => Promise<{ ok: boolean; reason?: string }>;
+	stopWorker?: (slug: string) => Promise<void>;
+}
+
 function registryFilePath(stateDir: string): string {
 	return path.join(stateDir, "app-registry.json");
 }
@@ -186,9 +193,13 @@ async function readPersisted(file: string): Promise<PersistedShape> {
 		// explicit `trust: "first-party"` at register time.
 		const trust: AppTrust =
 			candidate.trust === "first-party" ? "first-party" : "external";
-		// Default `isolation` for back-compat with pre-Phase-2 entries.
-		const isolation: AppIsolation =
+		// Default `isolation` for back-compat with pre-Phase-2 entries, then
+		// apply the same Phase 3 policy used by register(): persisted external
+		// apps cannot retain or regain the in-process fast path after restart.
+		const declaredIsolation: AppIsolation =
 			candidate.isolation === "worker" ? "worker" : "none";
+		const isolation: AppIsolation =
+			trust === "external" ? "worker" : declaredIsolation;
 		entries.push({ ...candidate, trust, isolation });
 	}
 	return { version: 1, entries };
@@ -389,30 +400,7 @@ export class AppRegistryService extends Service {
 		// logged but do not fail the register call — the entry still
 		// persists so the operator can inspect / re-spawn later.
 		if (isolation === "worker") {
-			const hostService = this.runtime?.getService?.("app-worker-host") as
-				| {
-						startForRegisteredApp?: (
-							slug: string,
-						) => Promise<{ ok: boolean; reason?: string }>;
-				  }
-				| null
-				| undefined;
-			if (hostService?.startForRegisteredApp) {
-				try {
-					const result = await hostService.startForRegisteredApp(
-						persistedEntry.slug,
-					);
-					if (!result.ok) {
-						logger.warn(
-							`[plugin-app-control] auto-spawn failed for slug=${persistedEntry.slug}: ${result.reason ?? "unknown"}`,
-						);
-					}
-				} catch (error) {
-					logger.warn(
-						`[plugin-app-control] auto-spawn threw for slug=${persistedEntry.slug}: ${error instanceof Error ? error.message : String(error)}`,
-					);
-				}
-			}
+			await this.startWorkerBestEffort(persistedEntry.slug);
 		}
 	}
 
@@ -490,9 +478,11 @@ export class AppRegistryService extends Service {
 		// grants snapshot we just wrote. Avoids re-reading both files
 		// (which would also widen the race window if a concurrent PUT
 		// landed between this write and the re-read).
+		const view = buildViewFromGrants(entry, updatedGrants);
+		await this.refreshWorkerGrantsBestEffort(entry, view.grantedNamespaces);
 		return {
 			ok: true,
-			view: buildViewFromGrants(entry, updatedGrants),
+			view,
 		};
 	}
 
@@ -567,6 +557,53 @@ export class AppRegistryService extends Service {
 			});
 		}
 		return grants;
+	}
+
+	private getWorkerHostService(): AppWorkerHostServiceLike | null {
+		return (
+			(this.runtime?.getService?.("app-worker-host") as
+				| AppWorkerHostServiceLike
+				| null
+				| undefined) ?? null
+		);
+	}
+
+	private async startWorkerBestEffort(slug: string): Promise<void> {
+		const hostService = this.getWorkerHostService();
+		if (!hostService?.startForRegisteredApp) return;
+		try {
+			const result = await hostService.startForRegisteredApp(slug);
+			if (!result.ok) {
+				logger.warn(
+					`[plugin-app-control] auto-spawn failed for slug=${slug}: ${result.reason ?? "unknown"}`,
+				);
+			}
+		} catch (error) {
+			logger.warn(
+				`[plugin-app-control] auto-spawn threw for slug=${slug}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	}
+
+	private async refreshWorkerGrantsBestEffort(
+		entry: AppRegistryEntry,
+		grantedNamespaces: readonly RecognisedPermissionNamespace[],
+	): Promise<void> {
+		if (entry.isolation !== "worker") return;
+		const hostService = this.getWorkerHostService();
+		if (!hostService) return;
+		if (hostService.stopWorker) {
+			try {
+				await hostService.stopWorker(entry.slug);
+			} catch (error) {
+				logger.warn(
+					`[plugin-app-control] worker stop after grant change failed for slug=${entry.slug}: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+		}
+		if (grantedNamespaces.length > 0) {
+			await this.startWorkerBestEffort(entry.slug);
+		}
 	}
 }
 
