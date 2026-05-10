@@ -317,9 +317,19 @@ export function selectRecommendedModelForSlot(
       canFit(hardware, model, catalog) &&
       kernelRequirementsSatisfied(model, binaryKernels),
   );
+
+  // On hosts with >= 16 GB RAM/VRAM, give long-context (>= 64k) ladder
+  // entries a small bump so we surface 128k models when they fit. The
+  // ladder order still wins when long-context availability is the same
+  // for every entry (or when the host doesn't have the headroom).
+  const ranked =
+    eligible.length > 0 && hasLongContextHeadroom(hardware)
+      ? rankLadderByLongContext(eligible)
+      : eligible;
+
   const alternatives =
-    eligible.length > 0
-      ? eligible
+    ranked.length > 0
+      ? ranked
       : fallbackCandidates(slot, hardware, catalog).filter((model) =>
           kernelRequirementsSatisfied(model, binaryKernels),
         );
@@ -335,6 +345,22 @@ export function selectRecommendedModelForSlot(
       : `${platformClass} ${slot} ladder has no fitting catalog model`,
     alternatives,
   };
+}
+
+/**
+ * Stable sort that pulls long-context models toward the front while
+ * preserving relative order within each group. Used only on hosts with
+ * the long-context RAM/VRAM headroom — the ladder order remains the
+ * tie-breaker so DFlash-first preferences survive.
+ */
+function rankLadderByLongContext(ladder: CatalogModel[]): CatalogModel[] {
+  return ladder
+    .map((model, idx) => ({ model, idx, long: isLongContextModel(model) }))
+    .sort((left, right) => {
+      if (left.long !== right.long) return right.long ? 1 : -1;
+      return left.idx - right.idx;
+    })
+    .map((entry) => entry.model);
 }
 
 export function selectRecommendedModels(
