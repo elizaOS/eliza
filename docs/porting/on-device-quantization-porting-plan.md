@@ -103,26 +103,14 @@ DFlash hardening landed in the same session (W1-G):
 | `quantize_tbq3_0`, `quantize_tbq4_0`, `dequantize_row_tbq{3,4}_0` | `libggml-base.so` (x86_64 + arm64-v8a in APK) | TBQ3_0=43, TBQ4_0=44. Active on cuttlefish + real arm64 phones today. |
 | `eliza_llama_context_params_set_type_k` / `_set_type_v` | `libeliza-llama-shim.so` | KV cache type configurable per call from JS. |
 | `looksLikeBonsai(modelPath)` auto-routing | `aosp-llama-adapter.ts` | Any GGUF whose filename matches `/bonsai/i` auto-selects `{k:"tbq4_0", v:"tbq3_0"}`. |
-<<<<<<< HEAD
-| `looksLikeQjl(modelPath)` + `qjl1_256` cache type | `plugins/plugin-aosp-local-inference/src/aosp-llama-adapter.ts` (worktree-agent-a53ef95991ef78732) | Set `ELIZA_LLAMA_CACHE_TYPE_K=qjl1_256` to compose with TBQ V. Auto-detect QJL > Bonsai precedence. |
-| `block_qjl1_256` + `GGML_OP_ATTN_SCORE_QJL` + `quantize_row_qjl1_256` + `dequantize_row_qjl1_256` + `qjl_quantize_row_{ref,avx2,neon}` + `qjl_score_qk_{ref,avx2,neon}` ✓ | `libggml-base.so` (`ggml_attn_score_qjl`), `libggml-cpu.so` (kernels + `ggml_compute_forward_attn_score_qjl`). Built into both x86_64 and arm64-v8a libs by `compile-libllama.mjs` via the vendored patch series at `eliza/packages/app-core/scripts/aosp/llama-cpp-patches/qjl/{0001..0005}.patch` (auto-applied on every build by `applyVendoredPatches()` in `ensureLlamaCppCheckout`). | Type id 46. Bit-exact parity with the standalone kernel library at `packages/native-plugins/qjl-cpu/` verified by the new `qjl_fork_parity` host test (100/100 random vectors, signs+bf16 norms). NEON path active on arm64 (verified via `nm -D` on the shipped libggml-cpu.so). x86_64 falls back to scalar ref because the cross-build sets `GGML_NATIVE=OFF` for portability — correctness preserved, no perf regression on phones. |
-| `block_q4_polar` (`Q4_POLAR=45`) | `/tmp/llama-cpp-polar @ polarquant-q4` (4 commits, NOT in shipped fork yet) | Same — vendor + push to Apothic remote required. |
-=======
 | `looksLikeQjl(modelPath)` + `qjl1_256` cache type | `aosp-llama-adapter.ts` (worktree-agent-a55644a05aeeed035 commit `f674c14160`) | Set `ELIZA_LLAMA_CACHE_TYPE_K=qjl1_256` to compose with TBQ V. Auto-detect QJL > Bonsai precedence. |
 | `block_qjl1_256` + `GGML_OP_ATTN_SCORE_QJL` | `/tmp/llama-cpp-qjl @ qjl-kcache` (4 commits, NOT in shipped fork yet) | Not pushed to GitHub; vendor commit on Apothic side needed before next AOSP rebuild picks it up. |
-<<<<<<< HEAD
-| `block_q4_polar` (`Q4_POLAR=45`) — CPU kernels | `packages/native-plugins/polarquant-cpu/` (worktree-agent-afd1a696836234b22) | ✓ scalar + AVX2 + NEON dequantizer/dot land in the standalone library; SIMD-vs-scalar parity gated by `test/polar_simd_parity_test.c` (AVX2 path passes at max-abs ~5e-7 / dot rel-err ~2e-7 on 100 blocks; NEON cross-compiles cleanly under `aarch64-linux-gnu`). |
-| `block_q4_polar` — in-fork integration | `packages/native-plugins/polarquant-cpu/fork-integration/` | Staged but **not yet applied to the Apothic remote**. Drop-in `quants-polar.{h,c}` + 5 patches (`ggml-common.h`, `ggml.h`, `ggml-cpu.c`, `ggml-quants.c`, `ggml/src/ggml-cpu/CMakeLists.txt`). Vendor PR + Wikitext-2 PPL gate before `compile-libllama.mjs` pin bump. |
->>>>>>> origin/worktree-agent-afd02a6a0366cf6da
-| Speculative-decoding API | source landed (`aosp-dflash-adapter.ts`, llama-server cross-compile in `compile-libllama.mjs`); **not built** | Build env blocker (#16). |
-=======
 | `block_q4_polar` (`Q4_POLAR=45`) | `/tmp/llama-cpp-polar @ polarquant-q4` (4 commits, NOT in shipped fork yet) | Same — vendor + push to Apothic remote required. |
 | Speculative-decoding API | source landed (`aosp-dflash-adapter.ts`, llama-server cross-compile in `compile-libllama.mjs`); build env unblocked 2026-05-09 (W1-G); cross-compile artifact still pending CI run | Bundle now builds; `bun run --cwd packages/agent build:mobile` produces a fresh `agent-bundle.js`. llama-server arm64-v8a/musl build is the next step. |
->>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
 | Capacitor Android local-agent runtime | source landed (worktree-agent-a58ffa46f33215b6a) | ElizaAgentService gated on AOSP_BUILD; in-WebView local-agent kernel (`local-agent-kernel.ts`) generalized for both iOS and Android; shared TBQ resolver across adapters. |
 | Catalog `tokenizerFamily` field + DFlash pair guard | source landed on develop (W1-G commit, originally worktree-agent-a3b48813556536b5d `04a3fdb24d`) + acceptance-rate telemetry + dflash-doctor parity check | Backfilled across every catalog entry. `maybeRepairDflashDrafter` deleted (dead — every DFlash pair is now Qwen3↔Qwen3 vocab). |
 | QJL standalone kernel library | `packages/native-plugins/qjl-cpu/` (worktree-agent-a7e72f45ecf16deab) | 1100 LOC, scalar+AVX2+NEON, 100/100 bit-parity vs Python ref. |
-| PolarQuant standalone kernel library | `packages/native-plugins/polarquant-cpu/` (worktree-agent-a57094061cb3d026d → worktree-agent-afd1a696836234b22) | C+Python, scalar + AVX2 + NEON kernels, safetensors→GGUF converter, in-fork drop-in (`fork-integration/`). |
+| PolarQuant standalone kernel library | `packages/native-plugins/polarquant-cpu/` (worktree-agent-a57094061cb3d026d) | 1871 LOC (C+Python), scalar kernels + safetensors→GGUF converter. |
 | Benchmark harness | `scripts/benchmark/profile-inference.mjs` (commit `df5624f154`) | 48-combo matrix, stub-validated, ready when the build env unblocks. |
 | iOS / macOS Metal kernels | NOT done | Tasks #21, #22 — agents hit Anthropic usage cap. Resume after May 13 11pm PT reset. |
 
@@ -319,35 +307,9 @@ For Metal/iOS, the (3) gate runs against the iOS Capacitor build via
 - Per-kernel benchmark JSON: `reports/porting/<technique>/<runtime>/<date>.json`.
 - Per-build smoke + chat tok/s: `reports/aosp-sim/<date>/report.json`
   (extends the existing sim runner output).
-- **Nightly host-side end-to-end profile**: produced by
-  [`.github/workflows/local-inference-bench.yml`](../../.github/workflows/local-inference-bench.yml).
-  The workflow runs [`scripts/benchmark/profile-inference.mjs`](../../scripts/benchmark/profile-inference.mjs)
-  against `bun run dev` every night at 05:00 UTC and writes
-  `reports/porting/<YYYY-MM-DD>/profile.{json,md}` to the workflow
-  artifact `profile-nightly-<run_id>`. The same workflow opens (or
-  updates) a tracking issue labelled `nightly-local-inference` whose
-  body is the latest `profile.md`. To find the most recent numbers:
-  - Latest nightly issue:
-    `https://github.com/elizaOS/eliza/issues?q=is%3Aissue+is%3Aopen+label%3Anightly-local-inference`
-  - Latest workflow run:
-    `https://github.com/elizaOS/eliza/actions/workflows/local-inference-bench.yml`
-  - Latest archived artifact (90-day retention): browse the run page
-    above and download `profile-nightly-<run_id>`.
-- **PR-level harness regression check**: the same workflow runs the
-  stub-validation job on every PR that touches `scripts/benchmark/**`
-  or `plugins/plugin-local-embedding/**`. Failures here mean the
-  harness itself broke, not the agent.
-- **Cuttlefish AVD profile** (manual, on-demand): dispatch
-  `local-inference-bench.yml` with `run_cuttlefish=true` after the
-  matching cuttlefish workflow has booted the AVD and forwarded
-  port 31337. The profile lands at
-  `reports/porting/<YYYY-MM-DD>-cuttlefish/profile.{json,md}` in the
-  artifact `profile-cuttlefish-<run_id>`.
 - Cross-port comparison table: regenerated nightly into
   `docs/porting/on-device-quantization-porting-plan.md` (this file)
-  once the runners are wired up. Until automation lands, copy the
-  headline numbers from the nightly `profile.md` into the table at the
-  top of this document by hand.
+  once the runners are wired up.
 
 ## AOSP CI vs cuttlefish manual gate
 
