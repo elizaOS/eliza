@@ -82,6 +82,13 @@ export interface DflashGenerateResult {
   slotId: number;
 }
 
+export interface DflashMetricsSnapshot {
+  decoded: number;
+  drafted: number;
+  accepted: number;
+  acceptanceRate: number;
+}
+
 export interface DflashRuntimeStatus {
   enabled: boolean;
   required: boolean;
@@ -109,6 +116,53 @@ const METAL_UNSUPPORTED_CACHE_TYPES = new Set([
   "turbo2_tcq",
   "turbo3_tcq",
 ]);
+
+const DFLASH_METRIC_ALIASES = {
+  decoded: ["llamacpp:n_decode_total", "llamacpp:n_decode"],
+  drafted: ["llamacpp:n_drafted_total", "llamacpp:n_drafted"],
+  accepted: [
+    "llamacpp:n_drafted_accepted_total",
+    "llamacpp:n_drafted_accepted",
+    "llamacpp:n_accepted_total",
+    "llamacpp:n_accepted",
+  ],
+} as const;
+
+export function parseDflashMetrics(body: string): DflashMetricsSnapshot | null {
+  const samples = new Map<string, number>();
+  for (const rawLine of body.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const match = line.match(
+      /^([a-zA-Z_:][\w:]*)(?:\{[^}]*\})?\s+([+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/,
+    );
+    if (!match) continue;
+    const name = match[1];
+    const value = Number(match[2]);
+    if (!name || !Number.isFinite(value)) continue;
+    samples.set(name, (samples.get(name) ?? 0) + value);
+  }
+
+  const readFirst = (aliases: readonly string[]): number | null => {
+    for (const alias of aliases) {
+      const value = samples.get(alias);
+      if (value !== undefined) return value;
+    }
+    return null;
+  };
+
+  const drafted = readFirst(DFLASH_METRIC_ALIASES.drafted);
+  const accepted = readFirst(DFLASH_METRIC_ALIASES.accepted);
+  if (drafted === null || accepted === null) return null;
+
+  const decoded = readFirst(DFLASH_METRIC_ALIASES.decoded) ?? 0;
+  return {
+    decoded,
+    drafted,
+    accepted,
+    acceptanceRate: drafted > 0 ? accepted / drafted : Number.NaN,
+  };
+}
 
 function readBool(name: string): boolean {
   const raw = process.env[name]?.trim().toLowerCase();

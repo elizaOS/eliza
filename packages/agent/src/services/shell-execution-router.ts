@@ -127,22 +127,36 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
   const start = Date.now();
   return await new Promise<ShellResult>((resolve) => {
     const timeoutMs = req.timeoutMs ?? 30_000;
+    const useDetachedProcessGroup = process.platform !== "win32";
     const child = spawn(req.command, req.args.slice(), {
       cwd: req.cwd,
       env: req.env ? { ...process.env, ...req.env } : process.env,
+      detached: useDetachedProcessGroup,
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
     let stderr = "";
     let timedOut = false;
 
-    const timer = setTimeout(() => {
-      timedOut = true;
+    const killChildTree = () => {
+      try {
+        if (useDetachedProcessGroup && child.pid !== undefined) {
+          process.kill(-child.pid, "SIGKILL");
+          return;
+        }
+      } catch {
+        // Fall back to killing the direct child below.
+      }
       try {
         child.kill("SIGKILL");
       } catch {
         // child may already have exited
       }
+    };
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killChildTree();
     }, timeoutMs);
     if (typeof timer.unref === "function") timer.unref();
 
@@ -198,6 +212,22 @@ async function runInSandbox(
   };
 }
 
+function assertShellCapability(
+  req: ShellRequest,
+  mode: ShellExecutionMode,
+  toolName: string,
+): void {
+  const decision = getRouterBroker(() => mode).check({
+    kind: "shell",
+    op: "exec",
+    target: req.command,
+    toolName,
+  });
+  if (decision.allowed !== true) {
+    throw new Error(`[shell] capability denied: ${decision.reason}`);
+  }
+}
+
 /**
  * Single entry point for one-shot shell execution. Mode dispatch:
  *   - `cloud`      → throws.
@@ -222,23 +252,12 @@ export async function runShell(
 
   const mode = resolveShellExecutionMode(ctx);
 
-  // Broker check uses the same mode source the router dispatches on, so the
-  // policy and the runtime path agree. Singleton-cached so the audit log is
-  // unified across all runShell calls in a process. The broker subsumes the
-  // legacy explicit cloud-mode rejection: shell.exec is hard-denied in the
-  // cloud profile, so any cloud-mode call fails here with a stable,
-  // policy-keyed error.
-  const decision = getRouterBroker(() => mode).check({
-    kind: "shell",
-    op: "exec",
-    target: req.command,
-    toolName: req.toolName,
-  });
-  if (decision.allowed !== true) {
-    throw new Error(`[shell] capability denied: ${decision.reason}`);
+  if (mode === "cloud") {
+    throw new Error("Local shell execution disabled in cloud mode.");
   }
 
   if (mode === "local-safe") {
+    assertShellCapability(req, mode, `sandbox.${req.toolName}`);
     if (process.platform === "win32") {
       throw new Error(
         "[shell-router] Windows local-safe sandbox not yet implemented",
@@ -253,5 +272,6 @@ export async function runShell(
     return await runInSandbox(req, manager);
   }
 
+  assertShellCapability(req, mode, req.toolName);
   return await runOnHost(req);
 }

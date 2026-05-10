@@ -11,6 +11,34 @@ import type {
 import { resolveOwnerEntityId } from "../runtime/owner-entity.ts";
 import { fetchConfiguredOwnerName } from "./owner-name.ts";
 
+export {
+  type ClusterMemoriesQuery,
+  type ClusterSearchQuery,
+  createNativeRelationshipsGraphService,
+  getMemoriesForCluster,
+  type RelationshipsConversationMessage,
+  type RelationshipsConversationSnippet,
+  type RelationshipsFactExtractedInformation,
+  type RelationshipsFactProvenance,
+  type RelationshipsGraphEdge,
+  type RelationshipsGraphQuery,
+  type RelationshipsGraphService,
+  type RelationshipsGraphSnapshot,
+  type RelationshipsGraphStats,
+  type RelationshipsIdentityEdge,
+  type RelationshipsIdentityHandle,
+  type RelationshipsIdentitySummary,
+  type RelationshipsMergeCandidate,
+  type RelationshipsPersonDetail,
+  type RelationshipsPersonFact,
+  type RelationshipsPersonSummary,
+  type RelationshipsProfile,
+  type RelationshipsRelevantMemory,
+  type RelationshipsServiceLike,
+  type RelationshipsUserPersonalityPreference,
+  searchMemoriesForCluster,
+} from "@elizaos/core";
+
 type RelationshipsFeatureRuntime = IAgentRuntime & {
   enableRelationships?: () => Promise<void>;
   isRelationshipsEnabled?: () => boolean;

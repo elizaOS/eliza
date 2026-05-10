@@ -389,6 +389,13 @@ function cmakeFlagsForTarget(target, ctx) {
     if (process.env.MINGW_TOOLCHAIN_FILE) {
       flags.push(`-DCMAKE_TOOLCHAIN_FILE=${process.env.MINGW_TOOLCHAIN_FILE}`);
     }
+    // Statically link backends into llama-server.exe. With the default
+    // (BACKEND_DL=ON) MSVC builds, the dynamic loader looks for a generic
+    // `ggml_backend_init` export but ggml-cpu.dll only exports
+    // `ggml_backend_cpu_init` (per-backend symbol name), so the loader
+    // fails and inference can't run. -DGGML_BACKEND_DL=OFF embeds the
+    // backend's init directly into the binary.
+    flags.push("-DGGML_BACKEND_DL=OFF", "-DBUILD_SHARED_LIBS=OFF");
   } else if (platform === "ios") {
     // iOS cross-compile (host must be macOS with Xcode). The Capacitor
     // plugin's xcframework patch consumes the resulting static archive +
@@ -909,7 +916,15 @@ function probeKernels(target, buildDir, outDir) {
   };
 
   if (canRunOnHost) {
-    const serverBin = path.join(outDir, "llama-server");
+    // On Windows the binary is named with .exe suffix; on macOS/Linux it has
+    // no extension. Probe both so the kernel detection works on every host.
+    const serverBinCandidates = [
+      path.join(outDir, "llama-server"),
+      path.join(outDir, "llama-server.exe"),
+    ];
+    const serverBin =
+      serverBinCandidates.find((p) => fs.existsSync(p)) ??
+      serverBinCandidates[0];
     if (fs.existsSync(serverBin)) {
       const result = spawnSync(serverBin, ["--help"], {
         encoding: "utf8",
@@ -932,7 +947,7 @@ function probeKernels(target, buildDir, outDir) {
     //   Metal:  ggml/src/ggml-metal/<name>.metal.air (or .o for setup)
     //   Vulkan: ggml/src/ggml-vulkan/<name>.cpp.o + compiled SPIR-V
     //   CPU:    ggml/src/ggml-cpu/<name>.cpp.o
-    const objects = collectFilesUnder(buildDir, /\.(o|air|spv)$/);
+    const objects = collectFilesUnder(buildDir, /\.(o|obj|air|spv)$/);
     const names = objects.join("\n").toLowerCase();
     // Per-backend kernels (CUDA/Metal/Vulkan emit per-kernel object files).
     kernels.dflash = /dflash|flash[-_]?attn[-_]?ext/.test(names);
@@ -1060,11 +1075,16 @@ function buildTarget({ target, args, ctx }) {
     ? ["llama", "ggml", "ggml-base", "ggml-cpu", "ggml-metal"]
     : ["llama-server", "llama-cli", "llama-speculative-simple"];
 
+  // MSVC + Xcode are multi-config generators — cmake --build needs an
+  // explicit --config flag, otherwise it defaults to Debug and the install
+  // step below looks in the wrong subdir. Use Release for runtime perf.
+  const isMultiConfig = platform === "windows" || platform === "ios";
   run(
     "cmake",
     [
       "--build",
       buildDir,
+      ...(isMultiConfig ? ["--config", "Release"] : []),
       "--target",
       ...cmakeBuildTargets,
       "-j",
@@ -1113,7 +1133,17 @@ function buildTarget({ target, args, ctx }) {
       fs.copyFileSync(candidate, path.join(outDir, path.basename(candidate)));
     }
   } else {
-    const binDir = path.join(buildDir, "bin");
+    // MSVC and Xcode are multi-config generators: binaries land in
+    // bin/Release/ (or bin/Debug/ when --config Release is missing). Resolve
+    // the actual directory by preferring Release, then Debug, then the
+    // single-config layout used by Ninja / Unix Makefiles on macOS/Linux.
+    const binDirCandidates = [
+      path.join(buildDir, "bin", "Release"),
+      path.join(buildDir, "bin", "Debug"),
+      path.join(buildDir, "bin"),
+    ];
+    const binDir =
+      binDirCandidates.find((p) => fs.existsSync(p)) ?? binDirCandidates[2];
     const executableNames = [
       "llama-server",
       "llama-cli",

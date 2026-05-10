@@ -4261,6 +4261,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			},
 		});
 		const plannerRuntime: PlannerRuntime = {
+			getService: (service) => args.runtime.getService(service),
 			useModel: (modelType, modelParams, provider) =>
 				args.runtime.useModel(
 					modelType,
