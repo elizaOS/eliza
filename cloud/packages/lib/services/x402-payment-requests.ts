@@ -9,6 +9,7 @@ import {
 } from "@x402/svm";
 import Decimal from "decimal.js";
 import { isAddress } from "viem";
+import { memoriesRepository } from "@/db/repositories/agents/memories";
 import { type CryptoPayment, cryptoPaymentsRepository } from "@/db/repositories/crypto-payments";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
@@ -153,6 +154,7 @@ export type CreatePaymentRequestInput = {
   network?: string;
   description?: string;
   callbackUrl?: string;
+  callbackChannel?: Record<string, unknown>;
   appId?: string;
   metadata?: Record<string, unknown>;
   expiresInSeconds?: number;
@@ -333,6 +335,79 @@ async function triggerCallback(payment: CryptoPayment, event: Record<string, unk
   }
 }
 
+function stringValue(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function callbackChannel(metadata: Record<string, unknown>): Record<string, unknown> | undefined {
+  const channel = metadata.callbackChannel ?? metadata.callback_channel;
+  return isRecord(channel) ? channel : undefined;
+}
+
+function formatUsd(amount: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+async function triggerChannelCallback(
+  payment: CryptoPayment,
+  status: "paid" | "failed",
+  reason?: string,
+): Promise<void> {
+  const metadata = metadataOf(payment);
+  const channel = callbackChannel(metadata);
+  if (!channel) return;
+
+  const roomId = stringValue(channel, "roomId") ?? stringValue(channel, "room_id");
+  const agentId = stringValue(channel, "agentId") ?? stringValue(channel, "agent_id");
+  if (!roomId || !agentId) return;
+
+  const amountUsd = Number(metadata.amountUsd ?? payment.credits_to_add ?? 0);
+  const source = stringValue(channel, "source") ?? "payment";
+  const text =
+    status === "paid"
+      ? `Payment went through for ${formatUsd(amountUsd)}.`
+      : `Payment did not go through for ${formatUsd(amountUsd)}.`;
+
+  try {
+    await memoriesRepository.create({
+      id: crypto.randomUUID(),
+      roomId,
+      entityId: agentId,
+      agentId,
+      type: "messages",
+      content: {
+        text,
+        source: "agent",
+        channelType: source,
+        x402PaymentRequestId: payment.id,
+        paymentStatus: status,
+        ...(reason && { reason }),
+      },
+      metadata: {
+        type: "message",
+        role: "agent",
+        dialogueType: "message",
+        visibility: "visible",
+        x402PaymentEvent:
+          status === "paid" ? "x402.payment_request.paid" : "x402.payment_request.failed",
+        x402PaymentRequestId: payment.id,
+        channel,
+      },
+    });
+  } catch (error) {
+    logger.warn("[x402-payment-requests] channel callback failed", {
+      paymentRequestId: payment.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 class X402PaymentRequestsService {
   async create(input: CreatePaymentRequestInput): Promise<{
     paymentRequest: X402PaymentRequestView;
@@ -449,6 +524,7 @@ class X402PaymentRequestsService {
         kind: KIND,
         appId: input.appId,
         callbackUrl,
+        callbackChannel: input.callbackChannel,
         description,
         requirements,
         extensions,
@@ -580,7 +656,7 @@ class X402PaymentRequestsService {
         userId: payment.user_id,
         amount: amountUsd,
         source: appId ? "miniapp" : "creator_revenue_share",
-        sourceId: appId ?? payment.id,
+        sourceId: payment.id,
         dedupeBySourceId: true,
         description: `${appId ? "App" : "x402"} payment request ${payment.id}`,
         metadata: {
@@ -601,6 +677,7 @@ class X402PaymentRequestsService {
       paymentRequest: this.toView(settledPayment),
       settlement,
     });
+    await triggerChannelCallback(settledPayment, "paid");
 
     return {
       paymentRequest: this.toView(settledPayment),
@@ -619,6 +696,7 @@ class X402PaymentRequestsService {
       reason,
       ...(details && { details }),
     });
+    await triggerChannelCallback(payment, "failed", reason);
   }
 
   toView(payment: CryptoPayment): X402PaymentRequestView {
