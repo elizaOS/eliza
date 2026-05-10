@@ -110,8 +110,8 @@ docker push ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-dflash
 
 VAST_TEMPLATE_NAME=eliza-cloud-eliza-1-27b \
 VAST_IMAGE=ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-dflash \
-MODEL_REPO=bartowski/Qwen_Eliza-1-27B-GGUF \
-MODEL_FILE=Qwen_Eliza-1-27B-Q4_K_M.gguf \
+MODEL_REPO=elizaos/eliza-1-27b-gguf-q4_k_m \
+MODEL_FILE=text/eliza-1-pro-27b-128k.gguf \
 MODEL_ALIAS=vast/eliza-1-27b \
 DFLASH_DRAFTER_REPO=spiritbuun/Eliza-1-27B-DFlash-GGUF \
 DFLASH_DRAFTER_FILE=dflash-draft-3.6-q8_0.gguf \
@@ -121,14 +121,14 @@ LLAMA_DRAFT_MAX=16 \
 bun cloud/scripts/vast/upsert-template.ts
 ```
 
-For Eliza-1 4B/9B, use `bartowski/Qwen_Eliza-1-{4B,9B}-GGUF` as the target
-repo and `psychopenguin/Eliza-1-{4B,9B}-DFlash-FP16-GGUF` with the
-`*-DFlash-Q4_K_M.gguf` drafter. Those Eliza-1 drafters are repaired on startup
+For smaller tiers, use the canonical `elizaos/eliza-1-*` GGUF repos as the
+target repo and the corresponding Eliza-1 DFlash drafter. Those drafters are
+repaired on startup
 when they are missing `tokenizer.ggml.merges`; bundle llama.cpp's `gguf-py`
 next to `llama-server` or set `GGUF_PYTHONPATH` in the template image.
 `LLAMA_CACHE_TYPE_K/V` can be set for TurboQuant-capable forks; stock upstream
 images will reject those cache types.
-The worker also disables Qwen thinking mode with
+The worker also disables thinking mode with
 `--chat-template-kwargs '{"enable_thinking":false}'`; the DFlash drafter was
 not trained on think-wrapped text and acceptance/throughput collapse when it is
 left on.

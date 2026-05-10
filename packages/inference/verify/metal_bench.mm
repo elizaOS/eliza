@@ -128,6 +128,23 @@ struct PolarMvArgs {
     uint32_t use_qjl;
 };
 
+struct TurboArgsMulti {
+    uint32_t head_dim;
+    uint32_t n_kv;
+    uint32_t kv_stride_blocks;
+    uint32_t q_head;
+    uint32_t head_offset_bytes;
+    uint32_t blocks_per_threadgroup;
+};
+
+struct QjlScoreArgsMulti {
+    uint32_t n_heads;
+    uint32_t n_kv_heads;
+    uint32_t n_tokens;
+    uint32_t proj_dim;
+    uint32_t tokens_per_threadgroup;
+};
+
 // turbo3_tcq codebook (512 entries) — copied from the verify path. We only
 // need bytes that are byte-identical to whatever the shader expects; the
 // values themselves don't change perf characteristics. Use a deterministic
@@ -599,6 +616,324 @@ static int run_mode_fp16ref(id<MTLDevice> device, id<MTLCommandQueue> queue,
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+// MODE: batched — command-buffer batching sweep.
+//
+// Wave-5 finding: 4 of 5 Metal kernels cluster at ~240 µs median GPU time on
+// M4 Max regardless of buffer-size differences. They are hitting the
+// command-buffer-launch / threadgroup-schedule floor, not memory bandwidth.
+// To break the floor we batch N command-encoder dispatches into a single
+// MTLCommandBuffer, commit once, and waitUntilCompleted once. The GPU sees
+// one continuous stream of work and the per-dispatch overhead amortises.
+//
+// What this mode measures, for each kernel × N ∈ {1, 4, 16, 64, 128, 256}:
+//   - total_us       : wall time of one batched commit→wait round
+//   - per_disp_us    : total_us / N (amortised per-dispatch cost)
+//   - throughput     : N / total_us — dispatches/sec for the kernel
+//   - bargein_us     : per-batch barge-in cancellation latency. The GPU can
+//                      only cancel a command buffer at a buffer boundary, so
+//                      a batch of N dispatches cannot be interrupted mid-
+//                      buffer. Worst-case cancellation latency = total_us
+//                      (we just submitted the buffer; we wait for it to
+//                      finish). Expected average = total_us / 2.
+//
+// We keep N=1 in the grid so the batched-mode result is directly comparable
+// to single-dispatch baseline numbers from default mode.
+// ---------------------------------------------------------------------------
+
+struct BatchedResult {
+    int N;
+    double total_us_med;     // median per batched commit
+    double total_us_p99;
+    double per_disp_us;      // total_us_med / N
+    double throughput_disps_per_s;
+    double bargein_worst_us; // == total_us_med
+    double bargein_avg_us;   // == total_us_med / 2
+};
+
+// One batched commit: encode N dispatches into the same encoder, end-encoding,
+// commit, waitUntilCompleted. Bindings are per-dispatch identical (same
+// buffers, same args), but each dispatch IS a separate dispatchThreadgroups
+// call so the GPU schedules N threadgroup grids back-to-back.
+//
+// Timing: we measure CPU-side wall (commit→wait) and GPU-side
+// (GPUEndTime − GPUStartTime). For batched mode the relevant figure is
+// GPU-side total: that's the time the GPU was actually busy executing the
+// batched workload, with no command-buffer launch tax between dispatches.
+static void encode_batched_commit(
+    id<MTLCommandQueue> queue,
+    KernelBench & kb,
+    int N,
+    bool is_turbo3, bool is_turbo4, bool is_turbo3_tcq,
+    bool is_qjl, bool is_polar,
+    double & gpu_us_total, double & cpu_us_total)
+{
+    @autoreleasepool {
+        id<MTLCommandBuffer> cmd = [queue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
+        [enc setComputePipelineState:kb.pso];
+
+        // Bind once — same buffers used for all N dispatches in this buffer.
+        if (is_turbo3 || is_turbo4 || is_turbo3_tcq) {
+            [enc setBuffer:kb.q_buf      offset:0 atIndex:0];
+            [enc setBuffer:kb.k_buf      offset:0 atIndex:1];
+            [enc setBuffer:kb.scores_buf offset:0 atIndex:2];
+            if (is_turbo3_tcq) {
+                [enc setBuffer:kb.cb_buf offset:0 atIndex:3];
+                [enc setBytes:&kb.turbo_args length:sizeof(kb.turbo_args) atIndex:4];
+            } else {
+                [enc setBytes:&kb.turbo_args length:sizeof(kb.turbo_args) atIndex:3];
+            }
+        } else if (is_qjl) {
+            [enc setBuffer:kb.q_buf      offset:0 atIndex:0];
+            [enc setBuffer:kb.k_buf      offset:0 atIndex:1];
+            [enc setBuffer:kb.scores_buf offset:0 atIndex:2];
+            [enc setBytes:&kb.qjl_args length:sizeof(kb.qjl_args) atIndex:3];
+        } else if (is_polar) {
+            [enc setBuffer:kb.k_buf      offset:0 atIndex:0];
+            [enc setBuffer:kb.q_buf      offset:0 atIndex:1];
+            [enc setBuffer:kb.scores_buf offset:0 atIndex:2];
+            [enc setBytes:&kb.polar_args length:sizeof(kb.polar_args) atIndex:3];
+        }
+
+        // N back-to-back dispatchThreadgroups into the same encoder. No
+        // memoryBarrierWithScope between dispatches because the bench
+        // workload writes to scores_buf only — read-after-write hazards
+        // exist in production but not in this perf harness; each dispatch
+        // here just remeasures the kernel cost. Adding barriers would inject
+        // synthetic stalls and obscure the launch-floor measurement.
+        for (int j = 0; j < N; j++) {
+            [enc dispatchThreadgroups:kb.grid threadsPerThreadgroup:kb.threadgroup];
+        }
+        [enc endEncoding];
+
+        struct timespec t0{}, t1{};
+        clock_gettime(CLOCK_MONOTONIC, &t0);
+        [cmd commit];
+        [cmd waitUntilCompleted];
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+
+        cpu_us_total = (double)(t1.tv_sec - t0.tv_sec) * 1.0e6
+                     + (double)(t1.tv_nsec - t0.tv_nsec) * 1.0e-3;
+        gpu_us_total = ([cmd GPUEndTime] - [cmd GPUStartTime]) * 1.0e6;
+    }
+}
+
+static int run_mode_batched(id<MTLDevice> device, id<MTLCommandQueue> queue,
+                            int iters_per_N, int warmup, const char * out_path) {
+    // Build the same five-kernel set as default mode. Reuses the buffer
+    // setup verbatim — we do NOT replace the single-dispatch baseline path,
+    // we just add a batched commit on top of the same buffers.
+    std::vector<KernelBench> kernels(5);
+    kernels[0].name = "turbo3";
+    kernels[0].source_path = "../metal/turbo3.metal";
+    kernels[0].kernel_func = "kernel_turbo3_dot";
+    kernels[1].name = "turbo4";
+    kernels[1].source_path = "../metal/turbo4.metal";
+    kernels[1].kernel_func = "kernel_turbo4_dot";
+    kernels[2].name = "turbo3_tcq";
+    kernels[2].source_path = "../metal/turbo3_tcq.metal";
+    kernels[2].kernel_func = "kernel_turbo3_tcq_dot";
+    kernels[3].name = "qjl";
+    kernels[3].source_path = "../metal/qjl.metal";
+    kernels[3].kernel_func = "kernel_attn_score_qjl1_256";
+    kernels[4].name = "polar";
+    kernels[4].source_path = "../metal/polar.metal";
+    kernels[4].kernel_func = "kernel_mul_mv_q4_polar_f32";
+
+    for (auto & kb : kernels) {
+        kb.pso = compile_kernel(device, kb.source_path.c_str(), kb.kernel_func.c_str());
+        if (!kb.pso) {
+            std::fprintf(stderr, "[batched] aborting: %s pipeline failed\n", kb.name.c_str());
+            return 1;
+        }
+    }
+
+    // Buffers — duplicated from default mode setup so this mode is self-
+    // contained and can be invoked without --mode default first.
+    std::vector<float>   q_turbo   = randn_floats(kHeadDim, 0xA1);
+    std::vector<uint8_t> k_turbo3  = rand_bytes((size_t)kTurboNkv * kTurbo3BlockBytes    * kTurbo3BlocksPerKv,    0xA2);
+    std::vector<uint8_t> k_turbo4  = rand_bytes((size_t)kTurboNkv * kTurbo4BlockBytes    * kTurbo4BlocksPerKv,    0xA3);
+    std::vector<uint8_t> k_turbo3t = rand_bytes((size_t)kTurboNkv * kTurbo3TcqBlockBytes * kTurbo3TcqBlocksPerKv, 0xA4);
+    std::vector<float>   tcq_cb    = make_tcq_codebook();
+    std::vector<float>   q_qjl     = randn_floats((size_t)kQjlHeads * kQjlProjDim, 0xB1);
+    std::vector<uint8_t> k_qjl     = rand_bytes((size_t)kQjlKvHeads * kSeq * kQjlBlockBytes, 0xB2);
+    std::vector<float>   q_polar   = randn_floats((size_t)kHeadDim, 0xC1);
+    std::vector<uint8_t> k_polar   = rand_bytes((size_t)kPolarRows * kPolarBlockBytes, 0xC2);
+
+    auto make_buf = [&](const void * data, size_t bytes) {
+        return [device newBufferWithBytes:data length:bytes options:MTLResourceStorageModeShared];
+    };
+    auto zero_buf = [&](size_t bytes) {
+        id<MTLBuffer> b = [device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+        std::memset([b contents], 0, [b length]);
+        return b;
+    };
+
+    {
+        auto & kb = kernels[0];
+        kb.q_buf = make_buf(q_turbo.data(), q_turbo.size() * sizeof(float));
+        kb.k_buf = make_buf(k_turbo3.data(), k_turbo3.size());
+        kb.scores_buf = zero_buf((size_t)kTurboNkv * sizeof(float));
+        kb.turbo_args = TurboArgs{ kHeadDim, (uint32_t)kTurboNkv, kTurbo3BlocksPerKv, 0u, 0u };
+        kb.threadgroup = MTLSizeMake(32, 1, 1);
+        kb.grid = MTLSizeMake((NSUInteger)kTurboNkv, 1, 1);
+        kb.n_outputs = kTurboNkv;
+    }
+    {
+        auto & kb = kernels[1];
+        kb.q_buf = make_buf(q_turbo.data(), q_turbo.size() * sizeof(float));
+        kb.k_buf = make_buf(k_turbo4.data(), k_turbo4.size());
+        kb.scores_buf = zero_buf((size_t)kTurboNkv * sizeof(float));
+        kb.turbo_args = TurboArgs{ kHeadDim, (uint32_t)kTurboNkv, kTurbo4BlocksPerKv, 0u, 0u };
+        kb.threadgroup = MTLSizeMake(32, 1, 1);
+        kb.grid = MTLSizeMake((NSUInteger)kTurboNkv, 1, 1);
+        kb.n_outputs = kTurboNkv;
+    }
+    {
+        auto & kb = kernels[2];
+        kb.q_buf = make_buf(q_turbo.data(), q_turbo.size() * sizeof(float));
+        kb.k_buf = make_buf(k_turbo3t.data(), k_turbo3t.size());
+        kb.scores_buf = zero_buf((size_t)kTurboNkv * sizeof(float));
+        kb.cb_buf = make_buf(tcq_cb.data(), tcq_cb.size() * sizeof(float));
+        kb.turbo_args = TurboArgs{ kHeadDim, (uint32_t)kTurboNkv, kTurbo3TcqBlocksPerKv, 0u, 0u };
+        kb.threadgroup = MTLSizeMake(32, 1, 1);
+        kb.grid = MTLSizeMake((NSUInteger)kTurboNkv, 1, 1);
+        kb.n_outputs = kTurboNkv;
+    }
+    {
+        auto & kb = kernels[3];
+        kb.q_buf = make_buf(q_qjl.data(), q_qjl.size() * sizeof(float));
+        kb.k_buf = make_buf(k_qjl.data(), k_qjl.size());
+        kb.scores_buf = zero_buf((size_t)kQjlHeads * kSeq * sizeof(float));
+        kb.qjl_args = QjlScoreArgs{ (uint32_t)kQjlHeads, (uint32_t)kQjlKvHeads,
+                                    (uint32_t)kSeq, (uint32_t)kQjlProjDim };
+        kb.threadgroup = MTLSizeMake(32, 1, 1);
+        kb.grid = MTLSizeMake((NSUInteger)kQjlHeads, (NSUInteger)kSeq, 1);
+        kb.n_outputs = kQjlHeads * kSeq;
+    }
+    {
+        auto & kb = kernels[4];
+        kb.q_buf = make_buf(q_polar.data(), q_polar.size() * sizeof(float));
+        kb.k_buf = make_buf(k_polar.data(), k_polar.size());
+        kb.scores_buf = zero_buf((size_t)kPolarRows * sizeof(float));
+        kb.polar_args = PolarMvArgs{ (uint32_t)kPolarRows, kHeadDim, 0u };
+        kb.threadgroup = MTLSizeMake(32, 1, 1);
+        kb.grid = MTLSizeMake((NSUInteger)kPolarRows, 1, 1);
+        kb.n_outputs = kPolarRows;
+    }
+
+    const int batch_grid[] = { 1, 4, 16, 64, 128, 256 };
+    const int N_BATCH = sizeof(batch_grid) / sizeof(batch_grid[0]);
+
+    // 5 kernels × 6 batch sizes × (warmup + iters_per_N) commits.
+    // For the largest batch (N=256) at ~250µs per dispatch we expect ~64 ms
+    // per commit; with iters_per_N=20 that's ~1.3 s × 5 kernels = ~6.5 s,
+    // plus warmup (~3 s). Comfortably inside the 15-min budget.
+    std::printf("[batched] iters_per_N=%d warmup=%d batch_grid={1,4,16,64,128,256}\n",
+                iters_per_N, warmup);
+
+    struct KernelBatchedResults {
+        std::string name;
+        std::vector<BatchedResult> per_N;
+    };
+    std::vector<KernelBatchedResults> kbr(kernels.size());
+
+    struct timespec t_start{}; clock_gettime(CLOCK_MONOTONIC, &t_start);
+
+    for (size_t i = 0; i < kernels.size(); i++) {
+        kbr[i].name = kernels[i].name;
+        bool is_t3  = (i == 0), is_t4 = (i == 1), is_tcq = (i == 2);
+        bool is_qjl_k = (i == 3), is_pol = (i == 4);
+
+        for (int b = 0; b < N_BATCH; b++) {
+            int N = batch_grid[b];
+            // Warmup: a few batched commits at this N to prime caches and
+            // the command queue. Larger N → fewer warmup iterations needed.
+            int wm = (N >= 64) ? std::max(2, warmup / 8) : warmup;
+            for (int w = 0; w < wm; w++) {
+                double g, c;
+                encode_batched_commit(queue, kernels[i], N,
+                                      is_t3, is_t4, is_tcq, is_qjl_k, is_pol,
+                                      g, c);
+            }
+            // Measure
+            int it_n = (N >= 128) ? std::max(8, iters_per_N / 4) : iters_per_N;
+            std::vector<double> gpu_totals; gpu_totals.reserve(it_n);
+            for (int it = 0; it < it_n; it++) {
+                double g, c;
+                encode_batched_commit(queue, kernels[i], N,
+                                      is_t3, is_t4, is_tcq, is_qjl_k, is_pol,
+                                      g, c);
+                gpu_totals.push_back(g);
+            }
+            BatchedResult r{};
+            r.N = N;
+            r.total_us_med = median(gpu_totals);
+            r.total_us_p99 = percentile(gpu_totals, 0.99);
+            r.per_disp_us = (N > 0) ? r.total_us_med / (double)N : 0.0;
+            r.throughput_disps_per_s = (r.total_us_med > 0.0)
+                ? ((double)N / (r.total_us_med * 1.0e-6)) : 0.0;
+            r.bargein_worst_us = r.total_us_med;
+            r.bargein_avg_us = r.total_us_med * 0.5;
+            kbr[i].per_N.push_back(r);
+        }
+    }
+
+    struct timespec t_end{}; clock_gettime(CLOCK_MONOTONIC, &t_end);
+    double total_s = (double)(t_end.tv_sec - t_start.tv_sec)
+                   + (double)(t_end.tv_nsec - t_start.tv_nsec) * 1.0e-9;
+    std::printf("[batched] total measurement wall: %.2fs\n", total_s);
+
+    std::printf("\n%-12s | %4s | %12s | %12s | %14s | %14s | %14s\n",
+                "kernel", "N", "total_us_med", "per_disp_us",
+                "thru_disp/s", "bargein_avg", "bargein_worst");
+    std::printf("-------------+------+--------------+--------------+----------------+----------------+----------------\n");
+    for (auto & k : kbr) {
+        for (auto & r : k.per_N) {
+            std::printf("%-12s | %4d | %12.2f | %12.2f | %14.0f | %14.2f | %14.2f\n",
+                        k.name.c_str(), r.N, r.total_us_med, r.per_disp_us,
+                        r.throughput_disps_per_s, r.bargein_avg_us, r.bargein_worst_us);
+        }
+    }
+
+    FILE * fp = std::fopen(out_path, "w");
+    if (!fp) { std::fprintf(stderr, "[batched] cannot open %s\n", out_path); return 1; }
+    std::fprintf(fp, "{\n");
+    std::fprintf(fp, "  \"device\": \"%s\",\n", [[device name] UTF8String]);
+    std::fprintf(fp, "  \"date\": \"2026-05-10\",\n");
+    std::fprintf(fp, "  \"mode\": \"batched\",\n");
+    std::fprintf(fp, "  \"description\": \"command-buffer batching sweep — N dispatches per MTLCommandBuffer to amortize launch overhead. N=1 is the single-dispatch baseline; larger N reduces per-dispatch GPU cost until launch floor disappears.\",\n");
+    std::fprintf(fp, "  \"iters_per_N\": %d,\n", iters_per_N);
+    std::fprintf(fp, "  \"warmup\": %d,\n", warmup);
+    std::fprintf(fp, "  \"batch_grid\": [1, 4, 16, 64, 128, 256],\n");
+    std::fprintf(fp, "  \"bargein_note\": \"At batch=N, command-buffer cancellation latency ≈ total_us_med (worst case: just submitted) or total_us_med/2 (average). The GPU cannot preempt mid-buffer — it can only stop accepting new buffers. Voice scaffold barge-in <=1 kernel-tick contract holds at N=1 (~250µs ≈ one tick); breaks at N≥4 (~1ms per buffer).\",\n");
+    std::fprintf(fp, "  \"kernels\": [\n");
+    for (size_t i = 0; i < kbr.size(); i++) {
+        std::fprintf(fp, "    {\n");
+        std::fprintf(fp, "      \"name\": \"%s\",\n", kbr[i].name.c_str());
+        std::fprintf(fp, "      \"per_N\": [\n");
+        for (size_t j = 0; j < kbr[i].per_N.size(); j++) {
+            auto & r = kbr[i].per_N[j];
+            std::fprintf(fp,
+                "        { \"N\": %d, \"total_us_med\": %.4f, \"total_us_p99\": %.4f, "
+                "\"per_disp_us\": %.4f, \"throughput_disps_per_s\": %.2f, "
+                "\"bargein_worst_us\": %.4f, \"bargein_avg_us\": %.4f }%s\n",
+                r.N, r.total_us_med, r.total_us_p99,
+                r.per_disp_us, r.throughput_disps_per_s,
+                r.bargein_worst_us, r.bargein_avg_us,
+                j + 1 == kbr[i].per_N.size() ? "" : ",");
+        }
+        std::fprintf(fp, "      ]\n");
+        std::fprintf(fp, "    }%s\n", i + 1 == kbr.size() ? "" : ",");
+    }
+    std::fprintf(fp, "  ]\n");
+    std::fprintf(fp, "}\n");
+    std::fclose(fp);
+    std::printf("\n[batched] wrote %s\n", out_path);
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, const char * argv[]) {
@@ -634,6 +969,15 @@ int main(int argc, const char * argv[]) {
             int rn = runs_override   > 0 ? runs_override   : 3;
             const char * out = out_path ? out_path : "bench_results/m4max_fp16ref_2026-05-10.json";
             return run_mode_fp16ref(device, queue, it, wm, rn, out);
+        }
+        if (std::strcmp(mode, "batched") == 0) {
+            // iters_override means iters_per_N here; default 32 keeps the
+            // largest-N sweep (256 dispatches × ~250 µs ≈ 64 ms each ×
+            // 32 = ~2 s for that single cell, ~10–15 s per kernel total).
+            int it = iters_override > 0 ? iters_override : 32;
+            int wm = warmup_override >= 0 ? warmup_override : 16;
+            const char * out = out_path ? out_path : "bench_results/m4max_batched_2026-05-10.json";
+            return run_mode_batched(device, queue, it, wm, out);
         }
         // Fall through: default mode.
         if (!out_path) out_path = "bench_results/m4max_2026-05-10.json";

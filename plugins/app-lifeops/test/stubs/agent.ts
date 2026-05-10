@@ -46,6 +46,8 @@ export function getAgentEventService(): null {
   return null;
 }
 
+export const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
+
 export function resolveOwnerEntityId(runtime?: { agentId?: string }): string {
   return runtime?.agentId ?? "owner-1";
 }

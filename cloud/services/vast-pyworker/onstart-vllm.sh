@@ -56,8 +56,8 @@
 #   VLLM_EXPERIMENTAL_QJL   — explicit experimental QJL opt-in. Requires
 #                             VLLM_QJL_BENCHMARK_GATE=passed and appends
 #                             QJL_ADDITIONAL_CONFIG_JSON to additional-config.
-#   TOOL_PARSER             — default qwen3_coder.
-#   REASONING_PARSER        — default qwen3.
+#   TOOL_PARSER             — default eliza1.
+#   REASONING_PARSER        — default eliza1.
 #   COMPILATION_CONFIG_JSON — JSON blob for `--compilation-config`. Empty = skip.
 #   EXTRA_VLLM_ARGS         — extra args appended verbatim before --port.
 #   HUGGING_FACE_HUB_TOKEN  — for gated repos.
@@ -165,8 +165,8 @@ WEIGHT_QUANT="${WEIGHT_QUANT:-}"
 KV_CACHE_DTYPE="${KV_CACHE_DTYPE:-}"
 VLLM_ENABLE_TURBOQUANT="${VLLM_ENABLE_TURBOQUANT:-0}"
 VLLM_TURBOQUANT_PRESET="${VLLM_TURBOQUANT_PRESET:-quality}"
-TOOL_PARSER="${TOOL_PARSER:-qwen3_coder}"
-REASONING_PARSER="${REASONING_PARSER:-qwen3}"
+TOOL_PARSER="${TOOL_PARSER:-eliza1}"
+REASONING_PARSER="${REASONING_PARSER:-eliza1}"
 COMPILATION_CONFIG_JSON="${COMPILATION_CONFIG_JSON:-}"
 ADDITIONAL_CONFIG_JSON="${ADDITIONAL_CONFIG_JSON:-}"
 VLLM_METAL_ADDITIONAL_CONFIG_JSON="${VLLM_METAL_ADDITIONAL_CONFIG_JSON:-}"

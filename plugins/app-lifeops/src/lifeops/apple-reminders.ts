@@ -1,5 +1,11 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import type { IAgentRuntime } from "@elizaos/core";
+import {
+  type IPermissionsRegistry,
+  PERMISSIONS_REGISTRY_SERVICE,
+} from "@elizaos/agent";
+import type { FeatureResult } from "@elizaos/shared";
 
 const execFileAsync = promisify(execFile);
 
@@ -210,35 +216,85 @@ async function execAppleReminderScript(
   return typeof stdout === "string" ? stdout.trim() : "";
 }
 
+/**
+ * macOS surfaces TCC denial via osascript stderr. Two stable signatures
+ * appear in the wild:
+ *   - "Not authorized to send Apple events to Reminders. (-1743)"
+ *   - "execution error: ... (-1743)" (errAEEventNotPermitted)
+ *
+ * We match on either the english text or the numeric code so that
+ * localized macOS installs still degrade through the same path.
+ */
+function isPermissionDeniedStderr(stderr: string): boolean {
+  if (!stderr) return false;
+  if (stderr.includes("-1743")) return true;
+  if (/Not authorized to send Apple events/i.test(stderr)) return true;
+  if (/Reminders.*not authorized/i.test(stderr)) return true;
+  return false;
+}
+
+function getRegistryFromRuntime(
+  runtime: IAgentRuntime | null | undefined,
+): IPermissionsRegistry | null {
+  if (!runtime) return null;
+  const service = runtime.getService(PERMISSIONS_REGISTRY_SERVICE);
+  if (!service) return null;
+  // The registry is registered under its serviceType. The Service base type
+  // doesn't carry the IPermissionsRegistry shape, so cast through unknown.
+  return service as unknown as IPermissionsRegistry;
+}
+
+function buildPermissionFailure(
+  runtime: IAgentRuntime | null | undefined,
+  action: string,
+): Extract<FeatureResult<never>, { reason: "permission" }> {
+  const registry = getRegistryFromRuntime(runtime);
+  let canRequest = true;
+  if (registry) {
+    registry.recordBlock("reminders", { app: "lifeops", action });
+    const state = registry.get("reminders");
+    canRequest = state.canRequest;
+  }
+  return {
+    ok: false,
+    reason: "permission",
+    permission: "reminders",
+    canRequest,
+  };
+}
+
+function extractStderr(error: unknown): string {
+  if (typeof error === "object" && error && "stderr" in error) {
+    return String((error as { stderr?: unknown }).stderr ?? "");
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
+export type NativeAppleReminderSuccess = {
+  provider: "apple_reminders";
+  reminderId: string | null;
+};
+
+export type NativeAppleReminderDeleteSuccess = {
+  provider: "apple_reminders";
+};
+
 export async function createNativeAppleReminderLikeItem(args: {
   kind: NativeAppleReminderLikeKind;
   title: string;
   dueAt: string;
   notes?: string | null;
   originalIntent?: string | null;
-}): Promise<
-  | {
-      ok: true;
-      provider: "apple_reminders";
-      reminderId: string | null;
-    }
-  | {
-      ok: false;
-      provider: "apple_reminders";
-      error: string;
-      skippedReason:
-        | "unsupported_platform"
-        | "invalid_due_at"
-        | "missing_title"
-        | "native_error";
-    }
-> {
+  runtime?: IAgentRuntime | null;
+}): Promise<FeatureResult<NativeAppleReminderSuccess>> {
   if (process.platform !== "darwin") {
     return {
       ok: false,
-      provider: "apple_reminders",
-      error: "Native Apple reminders are only available on macOS.",
-      skippedReason: "unsupported_platform",
+      reason: "not_supported",
+      platform: process.platform,
     };
   }
 
@@ -246,9 +302,8 @@ export async function createNativeAppleReminderLikeItem(args: {
   if (!title) {
     return {
       ok: false,
-      provider: "apple_reminders",
-      error: "Reminder title is required.",
-      skippedReason: "missing_title",
+      reason: "native_error",
+      message: "Reminder title is required.",
     };
   }
 
@@ -256,9 +311,8 @@ export async function createNativeAppleReminderLikeItem(args: {
   if (!parts) {
     return {
       ok: false,
-      provider: "apple_reminders",
-      error: `Invalid dueAt for native Apple reminder: ${args.dueAt}`,
-      skippedReason: "invalid_due_at",
+      reason: "native_error",
+      message: `Invalid dueAt for native Apple reminder: ${args.dueAt}`,
     };
   }
 
@@ -274,21 +328,20 @@ export async function createNativeAppleReminderLikeItem(args: {
     ]);
     return {
       ok: true,
-      provider: "apple_reminders",
-      reminderId: reminderId || null,
+      data: {
+        provider: "apple_reminders",
+        reminderId: reminderId || null,
+      },
     };
   } catch (error) {
-    const details =
-      typeof error === "object" && error && "stderr" in error
-        ? String((error as { stderr?: unknown }).stderr ?? "")
-        : error instanceof Error
-          ? error.message
-          : String(error);
+    const stderr = extractStderr(error);
+    if (isPermissionDeniedStderr(stderr)) {
+      return buildPermissionFailure(args.runtime, "reminders.create");
+    }
     return {
       ok: false,
-      provider: "apple_reminders",
-      error: details || "Failed to create native Apple reminder.",
-      skippedReason: "native_error",
+      reason: "native_error",
+      message: stderr || "Failed to create native Apple reminder.",
     };
   }
 }
@@ -300,30 +353,13 @@ export async function updateNativeAppleReminderLikeItem(args: {
   dueAt: string;
   notes?: string | null;
   originalIntent?: string | null;
-}): Promise<
-  | {
-      ok: true;
-      provider: "apple_reminders";
-      reminderId: string | null;
-    }
-  | {
-      ok: false;
-      provider: "apple_reminders";
-      error: string;
-      skippedReason:
-        | "unsupported_platform"
-        | "invalid_due_at"
-        | "missing_title"
-        | "missing_reminder_id"
-        | "native_error";
-    }
-> {
+  runtime?: IAgentRuntime | null;
+}): Promise<FeatureResult<NativeAppleReminderSuccess>> {
   if (process.platform !== "darwin") {
     return {
       ok: false,
-      provider: "apple_reminders",
-      error: "Native Apple reminders are only available on macOS.",
-      skippedReason: "unsupported_platform",
+      reason: "not_supported",
+      platform: process.platform,
     };
   }
 
@@ -331,9 +367,8 @@ export async function updateNativeAppleReminderLikeItem(args: {
   if (!reminderId) {
     return {
       ok: false,
-      provider: "apple_reminders",
-      error: "Native Apple reminder id is required.",
-      skippedReason: "missing_reminder_id",
+      reason: "native_error",
+      message: "Native Apple reminder id is required.",
     };
   }
 
@@ -341,9 +376,8 @@ export async function updateNativeAppleReminderLikeItem(args: {
   if (!title) {
     return {
       ok: false,
-      provider: "apple_reminders",
-      error: "Reminder title is required.",
-      skippedReason: "missing_title",
+      reason: "native_error",
+      message: "Reminder title is required.",
     };
   }
 
@@ -351,9 +385,8 @@ export async function updateNativeAppleReminderLikeItem(args: {
   if (!parts) {
     return {
       ok: false,
-      provider: "apple_reminders",
-      error: `Invalid dueAt for native Apple reminder: ${args.dueAt}`,
-      skippedReason: "invalid_due_at",
+      reason: "native_error",
+      message: `Invalid dueAt for native Apple reminder: ${args.dueAt}`,
     };
   }
 
@@ -373,48 +406,33 @@ export async function updateNativeAppleReminderLikeItem(args: {
     );
     return {
       ok: true,
-      provider: "apple_reminders",
-      reminderId: nextReminderId || reminderId,
+      data: {
+        provider: "apple_reminders",
+        reminderId: nextReminderId || reminderId,
+      },
     };
   } catch (error) {
-    const details =
-      typeof error === "object" && error && "stderr" in error
-        ? String((error as { stderr?: unknown }).stderr ?? "")
-        : error instanceof Error
-          ? error.message
-          : String(error);
+    const stderr = extractStderr(error);
+    if (isPermissionDeniedStderr(stderr)) {
+      return buildPermissionFailure(args.runtime, "reminders.update");
+    }
     return {
       ok: false,
-      provider: "apple_reminders",
-      error: details || "Failed to update native Apple reminder.",
-      skippedReason: "native_error",
+      reason: "native_error",
+      message: stderr || "Failed to update native Apple reminder.",
     };
   }
 }
 
 export async function deleteNativeAppleReminderLikeItem(
   reminderId: string,
-): Promise<
-  | {
-      ok: true;
-      provider: "apple_reminders";
-    }
-  | {
-      ok: false;
-      provider: "apple_reminders";
-      error: string;
-      skippedReason:
-        | "unsupported_platform"
-        | "missing_reminder_id"
-        | "native_error";
-    }
-> {
+  options?: { runtime?: IAgentRuntime | null },
+): Promise<FeatureResult<NativeAppleReminderDeleteSuccess>> {
   if (process.platform !== "darwin") {
     return {
       ok: false,
-      provider: "apple_reminders",
-      error: "Native Apple reminders are only available on macOS.",
-      skippedReason: "unsupported_platform",
+      reason: "not_supported",
+      platform: process.platform,
     };
   }
 
@@ -422,9 +440,8 @@ export async function deleteNativeAppleReminderLikeItem(
   if (!normalizedReminderId) {
     return {
       ok: false,
-      provider: "apple_reminders",
-      error: "Native Apple reminder id is required.",
-      skippedReason: "missing_reminder_id",
+      reason: "native_error",
+      message: "Native Apple reminder id is required.",
     };
   }
 
@@ -434,20 +451,24 @@ export async function deleteNativeAppleReminderLikeItem(
     ]);
     return {
       ok: true,
-      provider: "apple_reminders",
+      data: {
+        provider: "apple_reminders",
+      },
     };
   } catch (error) {
-    const details =
-      typeof error === "object" && error && "stderr" in error
-        ? String((error as { stderr?: unknown }).stderr ?? "")
-        : error instanceof Error
-          ? error.message
-          : String(error);
+    const stderr = extractStderr(error);
+    if (isPermissionDeniedStderr(stderr)) {
+      return buildPermissionFailure(options?.runtime, "reminders.delete");
+    }
     return {
       ok: false,
-      provider: "apple_reminders",
-      error: details || "Failed to delete native Apple reminder.",
-      skippedReason: "native_error",
+      reason: "native_error",
+      message: stderr || "Failed to delete native Apple reminder.",
     };
   }
 }
+
+// Internal helpers exposed for unit testing.
+export const __testing = {
+  isPermissionDeniedStderr,
+};

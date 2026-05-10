@@ -98,7 +98,7 @@ const HOST_PORT = 31337;
 // short enough that a real failure still surfaces quickly.
 const HEALTH_TIMEOUT_MS = 600_000;
 const HEALTH_POLL_INTERVAL_MS = 2_000;
-// Cuttlefish x86_64 has no GPU; Llama-3.2-1B decoding a 9k-token
+// Cuttlefish x86_64 has no GPU; Eliza-1 decoding a 9k-token
 // planner prompt on CPU runs for several minutes per turn (planner +
 // action evaluator + reply). End-to-end chat lands at 25–45 min on
 // cvd's 4 emulated vCPUs (each model call is ~12 min wall-clock; a

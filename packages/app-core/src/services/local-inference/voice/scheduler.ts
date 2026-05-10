@@ -1,4 +1,5 @@
 import { BargeInController } from "./barge-in";
+import type { PhonemeTokenizer } from "./phoneme-tokenizer";
 import { PhraseCache } from "./phrase-cache";
 import { PhraseChunker } from "./phrase-chunker";
 import { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
@@ -26,6 +27,10 @@ export interface SchedulerDeps {
   backend: OmniVoiceBackend;
   sink?: AudioSink;
   phraseCache?: PhraseCache;
+  /** Optional. Required only when `config.chunkerConfig.chunkOn ===
+   *  'phoneme-stream'`. Pass a real tokenizer in production; tests may
+   *  pass `CharacterPhonemeStub`. */
+  phonemeTokenizer?: PhonemeTokenizer;
 }
 
 interface InFlight {

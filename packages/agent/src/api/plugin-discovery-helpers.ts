@@ -1160,7 +1160,6 @@ export function categorizePlugin(
     "mistral",
     "cohere",
     "perplexity",
-    "qwen",
     "minimax",
     "zai",
   ];

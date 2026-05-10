@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { BargeInController } from "./barge-in";
+import {
+  CharacterPhonemeStub,
+  _resetStubWarnLatchForTests,
+} from "./phoneme-tokenizer";
 import { PhraseCache, canonicalizePhraseText } from "./phrase-cache";
 import { PhraseChunker, chunkTokens } from "./phrase-chunker";
 import { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
@@ -12,6 +16,11 @@ import type {
   SpeakerPreset,
   TextToken,
 } from "./types";
+import {
+  VoicePresetFormatError,
+  readVoicePresetFile,
+  writeVoicePresetFile,
+} from "./voice-preset-format";
 
 function tok(index: number, text: string): TextToken {
   return { index, text };
@@ -326,6 +335,41 @@ describe("VoiceScheduler end-to-end", () => {
     expect(sched.bargeIn.cancelSignal().cancelled).toBe(true);
     expect(ticksAfter - ticksBefore).toBeLessThanOrEqual(1);
     expect(sink.totalWritten()).toBe(0);
+  });
+
+  it("drops audio for IPA-mode sub-phrase chunks overlapping rejected range", async () => {
+    const backend = new StubBackend();
+    backend.delay = 20;
+    const sink = new InMemoryAudioSink();
+    const tokenizer = new CharacterPhonemeStub();
+    const rollbacks: number[] = [];
+    const sched = new VoiceScheduler(
+      {
+        chunkerConfig: {
+          maxTokensPerPhrase: 100,
+          chunkOn: "phoneme-stream",
+          phonemesPerChunk: 4,
+        },
+        preset: makePreset(),
+        ringBufferCapacity: 4096,
+        sampleRate: 24000,
+      },
+      { backend, sink },
+      { onRollback: (id) => rollbacks.push(id) },
+      tokenizer,
+    );
+
+    // Each token is 4 chars => 4 phonemes => exactly one chunk per token.
+    await sched.accept(tok(0, "abcd"));
+    await sched.accept(tok(1, "efgh"));
+    await sched.accept(tok(2, "ijkl"));
+
+    // Reject token 1; chunk #1 (token range [1..1]) must roll back; #0 stays.
+    await sched.reject({ fromIndex: 1, toIndex: 1 });
+    await sched.waitIdle();
+
+    expect(rollbacks).toContain(1);
+    expect(rollbacks).not.toContain(0);
   });
 
   it("uses phrase cache for precomputed common utterances (no backend call)", async () => {

@@ -144,17 +144,6 @@ const MINIMAX_TEXT_MODEL_IDS = [
   "minimax/minimax-m2.5",
   "minimax/minimax-m2.1-lightning",
 ] as const;
-const QWEN_TEXT_MODEL_IDS = [
-  "alibaba/qwen-3.6-max-preview",
-  "alibaba/eliza1.6-plus",
-  "alibaba/eliza1-max",
-  "alibaba/eliza1-max-thinking",
-  "alibaba/eliza1.5-plus",
-  "alibaba/eliza1.5-flash",
-  "alibaba/eliza1-coder-plus",
-  "alibaba/eliza1-coder-next",
-  "alibaba/qwen-3-14b",
-] as const;
 const DEEPSEEK_TEXT_MODEL_IDS = [
   "deepseek/deepseek-v4-pro",
   "deepseek/deepseek-v4-flash",
@@ -163,7 +152,6 @@ const DEEPSEEK_TEXT_MODEL_IDS = [
 ] as const;
 const ZAI_TEXT_MODEL_IDS = ["zai/glm-5.1", "zai/glm-5-turbo"] as const;
 const MOONSHOT_TEXT_MODEL_IDS = ["moonshotai/kimi-k2.6"] as const;
-const META_TEXT_MODEL_IDS = ["meta/llama-4-maverick", "meta/llama-4-scout"] as const;
 const BYTEDANCE_TEXT_MODEL_IDS = ["bytedance/seed-1.8", "bytedance/seed-1.6"] as const;
 const AMAZON_TEXT_MODEL_IDS = [
   "amazon/nova-2-lite",
@@ -199,16 +187,12 @@ function formatProviderLabel(provider: string): string {
       return "Mistral";
     case "minimax":
       return "Minimax";
-    case "alibaba":
-      return "Alibaba (Qwen)";
     case "deepseek":
       return "DeepSeek";
     case "zai":
       return "Z.AI (Zhipu)";
     case "moonshotai":
       return "Moonshot (Kimi)";
-    case "meta":
-      return "Meta (Llama)";
     case "bytedance":
       return "ByteDance (Seed)";
     case "amazon":
@@ -263,7 +247,6 @@ function titleCase(value: string): string {
       if (part === "mistral") return "Mistral";
       if (part === "minimax") return "Minimax";
       if (part === "abab6.5") return "abab6.5";
-      if (part === "qwen") return "Qwen";
       if (part === "deepseek") return "DeepSeek";
       if (part === "glm") return "GLM";
       if (part === "kimi") return "Kimi";
@@ -457,11 +440,9 @@ const STATIC_TEXT_MODEL_IDS = [
   ...XAI_TEXT_MODEL_IDS,
   ...MISTRAL_TEXT_MODEL_IDS,
   ...MINIMAX_TEXT_MODEL_IDS,
-  ...QWEN_TEXT_MODEL_IDS,
   ...DEEPSEEK_TEXT_MODEL_IDS,
   ...ZAI_TEXT_MODEL_IDS,
   ...MOONSHOT_TEXT_MODEL_IDS,
-  ...META_TEXT_MODEL_IDS,
   ...BYTEDANCE_TEXT_MODEL_IDS,
   ...AMAZON_TEXT_MODEL_IDS,
   ...COHERE_TEXT_MODEL_IDS,

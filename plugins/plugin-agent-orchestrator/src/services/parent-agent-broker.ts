@@ -468,7 +468,8 @@ const CLOUD_COMMANDS: CloudCommandDefinition[] = [
   },
   {
     command: "advertising.accounts.discover",
-    description: "List selectable provider ad accounts from a temporary provider access token.",
+    description:
+      "List selectable provider ad accounts from a temporary provider access token.",
     method: "POST",
     path: "/api/v1/advertising/accounts/discover",
     risk: "read",
@@ -845,7 +846,26 @@ function cloudBody(
   if (isRecord(params.body)) return params.body;
   if (isRecord(params.json)) return params.json;
 
-  const reserved = new Set(["query", "confirmed", "confirm", "params"]);
+  const reserved = new Set([
+    "query",
+    "confirmed",
+    "confirm",
+    "params",
+    ...(definition.pathParams ?? []),
+  ]);
+  if (definition.pathParams?.includes("id")) {
+    reserved.add("appId");
+    reserved.add("applicationId");
+    reserved.add("domainId");
+    reserved.add("campaignId");
+    reserved.add("paymentRequestId");
+  }
+  if (definition.pathParams?.includes("chargeId")) {
+    reserved.add("charge_id");
+  }
+  if (definition.pathParams?.includes("recordId")) {
+    reserved.add("record_id");
+  }
   const body: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(params)) {
     if (reserved.has(key)) continue;

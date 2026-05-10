@@ -55,7 +55,7 @@
 //       block_tbq3_0 packs 32 floats into 14 bytes vs 64 bytes for fp16
 //       (4–4.6× reduction). KV cache is the dominant memory consumer on
 //       long contexts on phones, so this is the difference between
-//       "Bonsai loads but OOMs after 1k tokens" and "Bonsai loads and chats".
+//       "Eliza-1 loads but OOMs after 1k tokens" and "Eliza-1 loads and chats".
 //     - QJL1_256 (slot 46) — 1-bit JL-transform K-cache (256 sketch dims,
 //       34 bytes/block). From W1-A's QJL series.
 //     - Q4_POLAR (slot 47) — 4-bit PolarQuant weight quantization. From

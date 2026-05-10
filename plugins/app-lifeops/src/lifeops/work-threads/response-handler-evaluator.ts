@@ -23,7 +23,7 @@ function looksLikeThreadIntent(text: string): boolean {
 export const workThreadResponseHandlerEvaluator: ResponseHandlerEvaluator = {
   name: "lifeops.work_thread_router",
   description:
-    "Routes active LifeOps work-thread and pending-prompt turns into the task/messaging planner surface.",
+    "Routes active owner work-thread and pending-prompt turns into the task/messaging planner surface.",
   priority: 40,
   async shouldRun({ runtime, message }) {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -87,15 +87,15 @@ export const workThreadResponseHandlerEvaluator: ResponseHandlerEvaluator = {
       clearReply: true,
       addContexts: ["tasks", "messaging", "automation"],
       addCandidateActions: [
-        "lifeops_thread_control",
-        "LIFEOPS_THREAD_CONTROL",
-        "scheduled_task",
-        "SCHEDULED_TASK",
+        "work_thread",
+        "WORK_THREAD",
+        "scheduled_tasks",
+        "SCHEDULED_TASKS",
       ],
-      addParentActionHints: ["LIFEOPS_THREAD_CONTROL", "SCHEDULED_TASK", "MESSAGE"],
+      addParentActionHints: ["WORK_THREAD", "SCHEDULED_TASKS", "MESSAGE"],
       addContextSlices: [
         hasThreadState
-          ? "Active LifeOps thread or pending prompt is relevant to this turn."
+          ? "Active owner work thread or pending prompt is relevant to this turn."
           : "User asked to create or manage durable thread work.",
       ],
       debug: [

@@ -46,79 +46,14 @@
         }
       ],
       "descriptionCompressed": "Broadcast 1-4 structured questions to the user (UI integration pending; non-blocking).",
-      "similes": [
-        "ASK",
-        "CLARIFY"
-      ],
+      "similes": ["ASK", "CLARIFY"],
       "exampleCalls": [
         {
           "user": "Use ASK_USER_QUESTION with the provided parameters.",
-          "actions": [
-            "ASK_USER_QUESTION"
-          ],
+          "actions": ["ASK_USER_QUESTION"],
           "params": {
             "ASK_USER_QUESTION": {
               "questions": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "BASH",
-      "description": "Execute a shell command via /bin/bash -c <command>. Runs synchronously in the session cwd by default. Returns stdout, stderr, and exit code. Hard timeout kills the command. Paths under the configured blocklist are off-limits as cwd.",
-      "parameters": [
-        {
-          "name": "command",
-          "description": "Shell command to run; executed via /bin/bash -c <command>.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "description",
-          "description": "Five to ten word humanly-readable summary of the command.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "timeout",
-          "description": "Hard timeout in ms; clamped to [100, 600000]. Default 120000.",
-          "required": false,
-          "schema": {
-            "type": "number"
-          }
-        },
-        {
-          "name": "cwd",
-          "description": "Absolute working directory; must not resolve under a blocked path. Defaults to the session cwd.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Run a shell command synchronously.",
-      "similes": [
-        "SHELL",
-        "EXEC",
-        "RUN_COMMAND"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use BASH with the provided parameters.",
-          "actions": [
-            "BASH"
-          ],
-          "params": {
-            "BASH": {
-              "command": "example",
-              "description": "example",
-              "timeout": 1,
-              "cwd": "example"
             }
           }
         }
@@ -209,12 +144,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "close",
-              "list",
-              "new",
-              "switch"
-            ]
+            "enum": ["close", "list", "new", "switch"]
           }
         },
         {
@@ -377,9 +307,7 @@
       "exampleCalls": [
         {
           "user": "Use BROWSER with the provided parameters.",
-          "actions": [
-            "BROWSER"
-          ],
+          "actions": ["BROWSER"],
           "params": {
             "BROWSER": {
               "action": "back",
@@ -429,17 +357,11 @@
         }
       ],
       "descriptionCompressed": "Check owner free/busy for one ISO-8601 time window and list overlapping events.",
-      "similes": [
-        "AM_I_FREE",
-        "AVAILABILITY_CHECK",
-        "FREE_BUSY"
-      ],
+      "similes": ["AM_I_FREE", "AVAILABILITY_CHECK", "FREE_BUSY"],
       "exampleCalls": [
         {
           "user": "Use CHECK_AVAILABILITY with the provided parameters.",
-          "actions": [
-            "CHECK_AVAILABILITY"
-          ],
+          "actions": ["CHECK_AVAILABILITY"],
           "params": {
             "CHECK_AVAILABILITY": {
               "startAt": "example",
@@ -486,9 +408,7 @@
       "exampleCalls": [
         {
           "user": "Use CHECKIN with the provided parameters.",
-          "actions": [
-            "CHECKIN"
-          ],
+          "actions": ["CHECKIN"],
           "params": {
             "CHECKIN": {
               "kind": "example",
@@ -591,11 +511,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "left",
-              "middle",
-              "right"
-            ]
+            "enum": ["left", "middle", "right"]
           }
         },
         {
@@ -614,12 +530,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "up",
-              "down",
-              "left",
-              "right"
-            ]
+            "enum": ["up", "down", "left", "right"]
           }
         },
         {
@@ -657,9 +568,7 @@
       "exampleCalls": [
         {
           "user": "Use COMPUTER_USE with the provided parameters.",
-          "actions": [
-            "COMPUTER_USE"
-          ],
+          "actions": ["COMPUTER_USE"],
           "params": {
             "COMPUTER_USE": {
               "action": "screenshot",
@@ -708,9 +617,7 @@
       "exampleCalls": [
         {
           "user": "Use CREATE_LINEAR_COMMENT with the provided parameters.",
-          "actions": [
-            "CREATE_LINEAR_COMMENT"
-          ],
+          "actions": ["CREATE_LINEAR_COMMENT"],
           "params": {
             "CREATE_LINEAR_COMMENT": {
               "issueId": "example",
@@ -765,9 +672,7 @@
       "exampleCalls": [
         {
           "user": "Use CREATE_LINEAR_ISSUE with the provided parameters.",
-          "actions": [
-            "CREATE_LINEAR_ISSUE"
-          ],
+          "actions": ["CREATE_LINEAR_ISSUE"],
           "params": {
             "CREATE_LINEAR_ISSUE": {
               "issueData": "example"
@@ -790,16 +695,11 @@
         }
       ],
       "descriptionCompressed": "delete Linear comment id",
-      "similes": [
-        "remove-linear-comment",
-        "erase-linear-comment"
-      ],
+      "similes": ["remove-linear-comment", "erase-linear-comment"],
       "exampleCalls": [
         {
           "user": "Use DELETE_LINEAR_COMMENT with the provided parameters.",
-          "actions": [
-            "DELETE_LINEAR_COMMENT"
-          ],
+          "actions": ["DELETE_LINEAR_COMMENT"],
           "params": {
             "DELETE_LINEAR_COMMENT": {
               "commentId": "example"
@@ -831,9 +731,7 @@
       "exampleCalls": [
         {
           "user": "Use DELETE_LINEAR_ISSUE with the provided parameters.",
-          "actions": [
-            "DELETE_LINEAR_ISSUE"
-          ],
+          "actions": ["DELETE_LINEAR_ISSUE"],
           "params": {
             "DELETE_LINEAR_ISSUE": {
               "issueId": "example"
@@ -852,11 +750,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "screenshot",
-              "ocr",
-              "detect_elements"
-            ]
+            "enum": ["screenshot", "ocr", "detect_elements"]
           }
         },
         {
@@ -1066,9 +960,7 @@
       "exampleCalls": [
         {
           "user": "Use DESKTOP with the provided parameters.",
-          "actions": [
-            "DESKTOP"
-          ],
+          "actions": ["DESKTOP"],
           "params": {
             "DESKTOP": {
               "subaction": "screenshot",
@@ -1136,9 +1028,7 @@
       "exampleCalls": [
         {
           "user": "Use DISCORD_SETUP_CREDENTIALS with the provided parameters.",
-          "actions": [
-            "DISCORD_SETUP_CREDENTIALS"
-          ],
+          "actions": ["DISCORD_SETUP_CREDENTIALS"],
           "params": {
             "DISCORD_SETUP_CREDENTIALS": {
               "service": "example",
@@ -1186,16 +1076,11 @@
         }
       ],
       "descriptionCompressed": "Replace exact-match text in a file (single match by default; pass replace_all for multiple).",
-      "similes": [
-        "EDIT_FILE",
-        "MODIFY_FILE"
-      ],
+      "similes": ["EDIT_FILE", "MODIFY_FILE"],
       "exampleCalls": [
         {
           "user": "Use EDIT with the provided parameters.",
-          "actions": [
-            "EDIT"
-          ],
+          "actions": ["EDIT"],
           "params": {
             "EDIT": {
               "file_path": "example",
@@ -1237,17 +1122,11 @@
         }
       ],
       "descriptionCompressed": "Create and switch into a git worktree for parallel work.",
-      "similes": [
-        "GIT_WORKTREE_ADD",
-        "ADD_WORKTREE",
-        "OPEN_WORKTREE"
-      ],
+      "similes": ["GIT_WORKTREE_ADD", "ADD_WORKTREE", "OPEN_WORKTREE"],
       "exampleCalls": [
         {
           "user": "Use ENTER_WORKTREE with the provided parameters.",
-          "actions": [
-            "ENTER_WORKTREE"
-          ],
+          "actions": ["ENTER_WORKTREE"],
           "params": {
             "ENTER_WORKTREE": {
               "name": "example",
@@ -1272,20 +1151,237 @@
         }
       ],
       "descriptionCompressed": "Exit current worktree, restore previous cwd, optionally git worktree remove --force.",
-      "similes": [
-        "LEAVE_WORKTREE",
-        "POP_WORKTREE",
-        "GIT_WORKTREE_REMOVE"
-      ],
+      "similes": ["LEAVE_WORKTREE", "POP_WORKTREE", "GIT_WORKTREE_REMOVE"],
       "exampleCalls": [
         {
           "user": "Use EXIT_WORKTREE with the provided parameters.",
-          "actions": [
-            "EXIT_WORKTREE"
-          ],
+          "actions": ["EXIT_WORKTREE"],
           "params": {
             "EXIT_WORKTREE": {
               "cleanup": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "FILE",
+      "description": "Read, write, edit, search, find, or list workspace files through one FILE action. Choose action=read/write/edit/grep/glob/ls. All paths must be absolute unless an operation explicitly defaults to the session cwd.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "File operation to run.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "file_path",
+          "description": "Absolute path for read/write/edit operations.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "path",
+          "description": "Absolute file or directory path for grep/glob/ls. Defaults to the session cwd where supported.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "content",
+          "description": "Full file contents for action=write.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "old_string",
+          "description": "Exact substring to replace for action=edit.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "new_string",
+          "description": "Replacement substring for action=edit.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "replace_all",
+          "description": "For action=edit, replace every occurrence instead of requiring one match.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "pattern",
+          "description": "Regex for action=grep or glob pattern for action=glob.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "glob",
+          "description": "Optional ripgrep glob filter for action=grep.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "type",
+          "description": "Optional ripgrep file type for action=grep.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "output_mode",
+          "description": "For action=grep: content, files_with_matches, or count.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["content", "files_with_matches", "count"]
+          }
+        },
+        {
+          "name": "-A",
+          "description": "For action=grep content mode, lines after each match.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "-B",
+          "description": "For action=grep content mode, lines before each match.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "-C",
+          "description": "For action=grep content mode, lines around each match.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "case_insensitive",
+          "description": "For action=grep, match case-insensitively.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "multiline",
+          "description": "For action=grep, enable multiline regex matching.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "head_limit",
+          "description": "For action=grep, truncate output to the first N lines.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "show_line_numbers",
+          "description": "For action=grep, include 1-based line numbers in content output.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "offset",
+          "description": "For action=read, zero-based line offset.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "For action=read, max number of lines to return.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "ignore",
+          "description": "For action=ls, glob patterns to exclude.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "descriptionCompressed": "File operations umbrella: action=read/write/edit/grep/glob/ls.",
+      "similes": [
+        "READ",
+        "WRITE",
+        "EDIT",
+        "GREP",
+        "GLOB",
+        "LS",
+        "READ_FILE",
+        "WRITE_FILE",
+        "EDIT_FILE",
+        "FILE_OPERATION",
+        "FILE_IO"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use FILE with the provided parameters.",
+          "actions": ["FILE"],
+          "params": {
+            "FILE": {
+              "action": "example",
+              "file_path": "example",
+              "path": "example",
+              "content": "example",
+              "old_string": "example",
+              "new_string": "example",
+              "replace_all": false,
+              "pattern": "example",
+              "glob": "example",
+              "type": "example",
+              "output_mode": "content",
+              "-A": 1,
+              "-B": 1,
+              "-C": 1,
+              "case_insensitive": false,
+              "multiline": false,
+              "head_limit": 1,
+              "show_line_numbers": false,
+              "offset": 1,
+              "limit": 1,
+              "ignore": "example"
             }
           }
         }
@@ -1325,9 +1421,7 @@
       "exampleCalls": [
         {
           "user": "Use FIRST_RUN with the provided parameters.",
-          "actions": [
-            "FIRST_RUN"
-          ],
+          "actions": ["FIRST_RUN"],
           "params": {
             "FIRST_RUN": {
               "path": "example",
@@ -1351,16 +1445,11 @@
         }
       ],
       "descriptionCompressed": "Restore stashed form session.",
-      "similes": [
-        "RESUME_FORM",
-        "CONTINUE_FORM"
-      ],
+      "similes": ["RESUME_FORM", "CONTINUE_FORM"],
       "exampleCalls": [
         {
           "user": "Use FORM_RESTORE with the provided parameters.",
-          "actions": [
-            "FORM_RESTORE"
-          ],
+          "actions": ["FORM_RESTORE"],
           "params": {
             "FORM_RESTORE": {
               "sessionId": "example"
@@ -1400,9 +1489,7 @@
       "exampleCalls": [
         {
           "user": "Use GET_LINEAR_ACTIVITY with the provided parameters.",
-          "actions": [
-            "GET_LINEAR_ACTIVITY"
-          ],
+          "actions": ["GET_LINEAR_ACTIVITY"],
           "params": {
             "GET_LINEAR_ACTIVITY": {
               "filters": "example",
@@ -1444,9 +1531,7 @@
       "exampleCalls": [
         {
           "user": "Use GET_LINEAR_ISSUE with the provided parameters.",
-          "actions": [
-            "GET_LINEAR_ISSUE"
-          ],
+          "actions": ["GET_LINEAR_ISSUE"],
           "params": {
             "GET_LINEAR_ISSUE": {
               "issueId": "example",
@@ -1468,8 +1553,162 @@
       ]
     },
     {
+      "name": "GITHUB",
+      "description": "GitHub umbrella for pull requests, issues, and notification triage. Use action=pr_list/pr_review/issue_create/issue_assign/issue_close/issue_reopen/issue_comment/issue_label/notification_triage.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "GitHub operation to run.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "repo",
+          "description": "Repository in owner/name form.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "number",
+          "description": "Pull request or issue number.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "state",
+          "description": "PR state for pr_list: open, closed, or all.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["open", "closed", "all"],
+            "default": "open"
+          }
+        },
+        {
+          "name": "author",
+          "description": "Optional PR author username filter for pr_list.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "review_action",
+          "description": "For action=pr_review: approve, request-changes, or comment.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["approve", "request-changes", "comment"]
+          }
+        },
+        {
+          "name": "title",
+          "description": "Issue title for action=issue_create.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "body",
+          "description": "Issue body, issue comment body, or PR review body.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "assignees",
+          "description": "GitHub usernames to assign.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "labels",
+          "description": "Labels to apply on issue create or issue_label.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "as",
+          "description": "Identity to use: agent or user.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["agent", "user"],
+            "default": "agent"
+          }
+        },
+        {
+          "name": "accountId",
+          "description": "Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "confirmed",
+          "description": "Must be true for GitHub write operations.",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "descriptionCompressed": "GitHub: pr_list|pr_review|issue_create|issue_assign|issue_close|issue_reopen|issue_comment|issue_label|notification_triage",
+      "similes": [
+        "GITHUB_PR_OP",
+        "GITHUB_ISSUE_OP",
+        "GITHUB_NOTIFICATION_TRIAGE",
+        "GITHUB_PULL_REQUEST",
+        "GITHUB_ISSUE",
+        "GITHUB_NOTIFICATIONS"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use GITHUB with the provided parameters.",
+          "actions": ["GITHUB"],
+          "params": {
+            "GITHUB": {
+              "action": "example",
+              "repo": "example",
+              "number": 1,
+              "state": "open",
+              "author": "example",
+              "review_action": "approve",
+              "title": "example",
+              "body": "example",
+              "assignees": "example",
+              "labels": "example",
+              "as": "agent",
+              "accountId": "example",
+              "confirmed": false
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "GLOB",
-      "description": "Find files matching a glob pattern (e.g. '**/*.ts'). Returns up to 100 absolute paths sorted by mtime descending. Excludes VCS, build, and dependency directories. Use this instead of BASH for file discovery.",
+      "description": "Find files matching a glob pattern (e.g. '**/*.ts'). Returns up to 100 absolute paths sorted by mtime descending. Excludes VCS, build, and dependency directories. Use this instead of SHELL for file discovery.",
       "parameters": [
         {
           "name": "pattern",
@@ -1489,15 +1728,11 @@
         }
       ],
       "descriptionCompressed": "Find files by glob (e.g. '**/*.ts'); returns absolute paths sorted by mtime.",
-      "similes": [
-        "FIND_FILES"
-      ],
+      "similes": ["FIND_FILES"],
       "exampleCalls": [
         {
           "user": "Use GLOB with the provided parameters.",
-          "actions": [
-            "GLOB"
-          ],
+          "actions": ["GLOB"],
           "params": {
             "GLOB": {
               "pattern": "example",
@@ -1509,7 +1744,7 @@
     },
     {
       "name": "GREP",
-      "description": "Search file contents using ripgrep (a fast regex search). Returns matching files, counts, or line content. Always excludes VCS directories. Use this instead of BASH for content search.",
+      "description": "Search file contents using ripgrep (a fast regex search). Returns matching files, counts, or line content. Always excludes VCS directories. Use this instead of SHELL for content search.",
       "parameters": [
         {
           "name": "pattern",
@@ -1549,11 +1784,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "content",
-              "files_with_matches",
-              "count"
-            ]
+            "enum": ["content", "files_with_matches", "count"]
           }
         },
         {
@@ -1614,17 +1845,11 @@
         }
       ],
       "descriptionCompressed": "Ripgrep wrapper: regex search across files, returns matches/counts/files.",
-      "similes": [
-        "SEARCH_CONTENT",
-        "RIPGREP",
-        "RG"
-      ],
+      "similes": ["SEARCH_CONTENT", "RIPGREP", "RG"],
       "exampleCalls": [
         {
           "user": "Use GREP with the provided parameters.",
-          "actions": [
-            "GREP"
-          ],
+          "actions": ["GREP"],
           "params": {
             "GREP": {
               "pattern": "example",
@@ -1655,12 +1880,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "today",
-            "trend",
-            "by_metric",
-            "status"
-          ],
+          "examples": ["today", "trend", "by_metric", "status"],
           "descriptionCompressed": "health query: today | trend | by_metric | status"
         },
         {
@@ -1679,11 +1899,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "steps",
-            "sleep_hours",
-            "heart_rate"
-          ],
+          "examples": ["steps", "sleep_hours", "heart_rate"],
           "descriptionCompressed": "by_metric: steps|heart_rate|sleep_hours|calories|distance_meters|active_minutes"
         },
         {
@@ -1693,9 +1909,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "2026-05-10"
-          ],
+          "examples": ["2026-05-10"],
           "descriptionCompressed": "YYYY-MM-DD single-day"
         },
         {
@@ -1707,11 +1921,7 @@
             "minimum": 1,
             "maximum": 365
           },
-          "examples": [
-            1,
-            7,
-            30
-          ],
+          "examples": [1, 7, 30],
           "descriptionCompressed": "window days trend|by_metric"
         }
       ],
@@ -1730,9 +1940,7 @@
       "exampleCalls": [
         {
           "user": "Use HEALTH with the provided parameters.",
-          "actions": [
-            "HEALTH"
-          ],
+          "actions": ["HEALTH"],
           "params": {
             "HEALTH": {
               "subaction": "today",
@@ -1811,9 +2019,7 @@
       "exampleCalls": [
         {
           "user": "Use LIFEOPS with the provided parameters.",
-          "actions": [
-            "LIFEOPS"
-          ],
+          "actions": ["LIFEOPS"],
           "params": {
             "LIFEOPS": {
               "verb": "example",
@@ -1832,7 +2038,7 @@
       "description": "Manage Linear issues, comments, and activity. Operations: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. The op is inferred from the message text when not explicitly provided.",
       "parameters": [
         {
-          "name": "subaction",
+          "name": "action",
           "description": "Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Inferred from message text when omitted.",
           "required": false,
           "schema": {
@@ -1868,12 +2074,10 @@
       "exampleCalls": [
         {
           "user": "Use LINEAR with the provided parameters.",
-          "actions": [
-            "LINEAR"
-          ],
+          "actions": ["LINEAR"],
           "params": {
             "LINEAR": {
-              "subaction": "example"
+              "action": "example"
             }
           }
         }
@@ -1907,10 +2111,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "solana",
-              "evm"
-            ]
+            "enum": ["solana", "evm"]
           }
         },
         {
@@ -2007,9 +2208,7 @@
       "exampleCalls": [
         {
           "user": "Use LIQUIDITY with the provided parameters.",
-          "actions": [
-            "LIQUIDITY"
-          ],
+          "actions": ["LIQUIDITY"],
           "params": {
             "LIQUIDITY": {
               "subaction": "onboard",
@@ -2058,9 +2257,7 @@
       "exampleCalls": [
         {
           "user": "Use LIST_ACTIVE_BLOCKS with the provided parameters.",
-          "actions": [
-            "LIST_ACTIVE_BLOCKS"
-          ],
+          "actions": ["LIST_ACTIVE_BLOCKS"],
           "params": {
             "LIST_ACTIVE_BLOCKS": {
               "includeLiveStatus": false,
@@ -2100,9 +2297,7 @@
       "exampleCalls": [
         {
           "user": "Use LIST_LINEAR_COMMENTS with the provided parameters.",
-          "actions": [
-            "LIST_LINEAR_COMMENTS"
-          ],
+          "actions": ["LIST_LINEAR_COMMENTS"],
           "params": {
             "LIST_LINEAR_COMMENTS": {
               "issueId": "example",
@@ -2143,9 +2338,7 @@
       "exampleCalls": [
         {
           "user": "Use LIST_OVERDUE_FOLLOWUPS with the provided parameters.",
-          "actions": [
-            "LIST_OVERDUE_FOLLOWUPS"
-          ],
+          "actions": ["LIST_OVERDUE_FOLLOWUPS"],
           "params": {
             "LIST_OVERDUE_FOLLOWUPS": {
               "thresholdDays": 1,
@@ -2157,7 +2350,7 @@
     },
     {
       "name": "LS",
-      "description": "List entries in a directory, sorted with directories first then files. Each directory name has a trailing '/'. Pass an `ignore` array of glob patterns to skip entries. Use this instead of BASH for directory listing.",
+      "description": "List entries in a directory, sorted with directories first then files. Each directory name has a trailing '/'. Pass an `ignore` array of glob patterns to skip entries. Use this instead of SHELL for directory listing.",
       "parameters": [
         {
           "name": "path",
@@ -2180,16 +2373,11 @@
         }
       ],
       "descriptionCompressed": "List a directory; dirs first, files second; supports ignore globs.",
-      "similes": [
-        "LIST_DIR",
-        "DIR"
-      ],
+      "similes": ["LIST_DIR", "DIR"],
       "exampleCalls": [
         {
           "user": "Use LS with the provided parameters.",
-          "actions": [
-            "LS"
-          ],
+          "actions": ["LS"],
           "params": {
             "LS": {
               "path": "example",
@@ -2238,9 +2426,7 @@
       "exampleCalls": [
         {
           "user": "Use MARK_FOLLOWUP_DONE with the provided parameters.",
-          "actions": [
-            "MARK_FOLLOWUP_DONE"
-          ],
+          "actions": ["MARK_FOLLOWUP_DONE"],
           "params": {
             "MARK_FOLLOWUP_DONE": {
               "contactId": "example",
@@ -2361,9 +2547,7 @@
       "exampleCalls": [
         {
           "user": "Use MCP with the provided parameters.",
-          "actions": [
-            "MCP"
-          ],
+          "actions": ["MCP"],
           "params": {
             "MCP": {
               "subaction": "call_tool",
@@ -2447,9 +2631,7 @@
       "exampleCalls": [
         {
           "user": "Use MESSAGE_HANDOFF with the provided parameters.",
-          "actions": [
-            "MESSAGE_HANDOFF"
-          ],
+          "actions": ["MESSAGE_HANDOFF"],
           "params": {
             "MESSAGE_HANDOFF": {
               "verb": "example",
@@ -2465,10 +2647,10 @@
     },
     {
       "name": "MUSIC",
-      "description": "Unified music action. Use flat op for everything: library (playlist, play_query, search_youtube, download), playback transport (pause, resume, skip, stop, queue), play_audio, routing, zones. ",
+      "description": "Unified music action. Use flat action for everything: library (playlist, play_query, search_youtube, download), playback transport (pause, resume, skip, stop, queue), play_audio, routing, zones. ",
       "parameters": [
         {
-          "name": "subaction",
+          "name": "action",
           "description": "Flat operation: playlist | play_query | search_youtube | download | pause | resume | skip | stop | queue | play_audio | routing | zones (hyphens and legacy aliases accepted).",
           "required": false,
           "schema": {
@@ -2588,11 +2770,10 @@
       "exampleCalls": [
         {
           "user": "Use MUSIC with the provided parameters.",
-          "actions": [
-            "MUSIC"
-          ],
+          "actions": ["MUSIC"],
           "params": {
             "MUSIC": {
+              "action": "playlist",
               "subaction": "example",
               "query": "example",
               "url": "example",
@@ -2619,11 +2800,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "generate",
-              "custom",
-              "extend"
-            ]
+            "enum": ["generate", "custom", "extend"]
           }
         },
         {
@@ -2664,9 +2841,7 @@
       "exampleCalls": [
         {
           "user": "Use MUSIC_GENERATION with the provided parameters.",
-          "actions": [
-            "MUSIC_GENERATION"
-          ],
+          "actions": ["MUSIC_GENERATION"],
           "params": {
             "MUSIC_GENERATION": {
               "subaction": "generate",
@@ -2688,12 +2863,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "playlist",
-              "play_query",
-              "search_youtube",
-              "download"
-            ]
+            "enum": ["playlist", "play_query", "search_youtube", "download"]
           }
         },
         {
@@ -2702,12 +2872,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "save",
-              "load",
-              "delete",
-              "add"
-            ]
+            "enum": ["save", "load", "delete", "add"]
           }
         },
         {
@@ -2759,9 +2924,7 @@
       "exampleCalls": [
         {
           "user": "Use MUSIC_LIBRARY with the provided parameters.",
-          "actions": [
-            "MUSIC_LIBRARY"
-          ],
+          "actions": ["MUSIC_LIBRARY"],
           "params": {
             "MUSIC_LIBRARY": {
               "subaction": "playlist",
@@ -2806,17 +2969,11 @@
         }
       ],
       "descriptionCompressed": "publish update bot Nostr profile (kind: 0 metadata)",
-      "similes": [
-        "UPDATE_NOSTR_PROFILE",
-        "SET_NOSTR_PROFILE",
-        "NOSTR_PROFILE"
-      ],
+      "similes": ["UPDATE_NOSTR_PROFILE", "SET_NOSTR_PROFILE", "NOSTR_PROFILE"],
       "exampleCalls": [
         {
           "user": "Use NOSTR_PUBLISH_PROFILE with the provided parameters.",
-          "actions": [
-            "NOSTR_PUBLISH_PROFILE"
-          ],
+          "actions": ["NOSTR_PUBLISH_PROFILE"],
           "params": {
             "NOSTR_PUBLISH_PROFILE": {
               "name": "example",
@@ -2828,6 +2985,27 @@
       ]
     },
     {
+      "name": "OWNER_FINANCES",
+      "description": "Owner finances: payment sources, transaction imports, spending summaries, recurring charges, and subscription audits.",
+      "parameters": [],
+      "descriptionCompressed": "owner finances: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
+      "similes": ["MONEY", "FINANCES", "PAYMENTS", "SUBSCRIPTIONS"]
+    },
+    {
+      "name": "OWNER_HEALTH",
+      "description": "Owner health telemetry reads across HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura. Actions: today, trend, by_metric, status.",
+      "parameters": [],
+      "descriptionCompressed": "owner health: today|trend|by_metric|status; read-only telemetry",
+      "similes": ["HEALTH", "FITNESS", "WELLNESS"]
+    },
+    {
+      "name": "OWNER_SCREENTIME",
+      "description": "Owner screen-time and activity analytics across local activity, app usage, and browser reports.",
+      "parameters": [],
+      "descriptionCompressed": "owner screentime: summary|today|weekly|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity",
+      "similes": ["SCREENTIME", "SCREEN_TIME", "ACTIVITY_REPORT"]
+    },
+    {
       "name": "PAYMENT",
       "description": "Payment router for the active mysticism reading session. Set op to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message).",
       "parameters": [
@@ -2837,10 +3015,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "check",
-              "request"
-            ]
+            "enum": ["check", "request"]
           }
         },
         {
@@ -2881,15 +3056,45 @@
       "exampleCalls": [
         {
           "user": "Use PAYMENT with the provided parameters.",
-          "actions": [
-            "PAYMENT"
-          ],
+          "actions": ["PAYMENT"],
           "params": {
             "PAYMENT": {
               "subaction": "check",
               "amount": "example",
               "entityId": "example",
               "roomId": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "PERSONAL_ASSISTANT",
+      "description": "Owner personal-assistant workflows. Use action=book_travel for real travel booking and action=scheduling for scheduling negotiation.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Assistant workflow to run.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "personal assistant workflows: action=book_travel|scheduling",
+      "similes": [
+        "ASSISTANT",
+        "BOOK_TRAVEL",
+        "SCHEDULING",
+        "SCHEDULING_NEGOTIATION"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use PERSONAL_ASSISTANT with the provided parameters.",
+          "actions": ["PERSONAL_ASSISTANT"],
+          "params": {
+            "PERSONAL_ASSISTANT": {
+              "action": "example"
             }
           }
         }
@@ -2909,19 +3114,11 @@
         }
       ],
       "descriptionCompressed": "Place a phone call via Android Telecom. Requires CALL_PHONE permission.",
-      "similes": [
-        "CALL",
-        "DIAL",
-        "RING",
-        "PHONE_CALL",
-        "MAKE_CALL"
-      ],
+      "similes": ["CALL", "DIAL", "RING", "PHONE_CALL", "MAKE_CALL"],
       "exampleCalls": [
         {
           "user": "Use PLACE_CALL with the provided parameters.",
-          "actions": [
-            "PLACE_CALL"
-          ],
+          "actions": ["PLACE_CALL"],
           "params": {
             "PLACE_CALL": {
               "phoneNumber": "example"
@@ -2978,9 +3175,7 @@
       "exampleCalls": [
         {
           "user": "Use PLAY_AUDIO with the provided parameters.",
-          "actions": [
-            "PLAY_AUDIO"
-          ],
+          "actions": ["PLAY_AUDIO"],
           "params": {
             "PLAY_AUDIO": {
               "query": "example",
@@ -3018,9 +3213,7 @@
       "exampleCalls": [
         {
           "user": "Use PLAY_EMOTE with the provided parameters.",
-          "actions": [
-            "PLAY_EMOTE"
-          ],
+          "actions": ["PLAY_EMOTE"],
           "params": {
             "PLAY_EMOTE": {
               "emote": "example"
@@ -3039,13 +3232,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "pause",
-              "resume",
-              "skip",
-              "stop",
-              "queue"
-            ]
+            "enum": ["pause", "resume", "skip", "stop", "queue"]
           }
         },
         {
@@ -3083,9 +3270,7 @@
       "exampleCalls": [
         {
           "user": "Use PLAYBACK with the provided parameters.",
-          "actions": [
-            "PLAYBACK"
-          ],
+          "actions": ["PLAYBACK"],
           "params": {
             "PLAYBACK": {
               "subaction": "pause",
@@ -3137,9 +3322,7 @@
       "exampleCalls": [
         {
           "user": "Use READ with the provided parameters.",
-          "actions": [
-            "READ"
-          ],
+          "actions": ["READ"],
           "params": {
             "READ": {
               "file_path": "example",
@@ -3160,11 +3343,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "tarot",
-              "astrology",
-              "iching"
-            ]
+            "enum": ["tarot", "astrology", "iching"]
           }
         },
         {
@@ -3173,11 +3352,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "start",
-              "followup",
-              "deepen"
-            ]
+            "enum": ["start", "followup", "deepen"]
           }
         },
         {
@@ -3225,9 +3400,7 @@
       "exampleCalls": [
         {
           "user": "Use READING with the provided parameters.",
-          "actions": [
-            "READING"
-          ],
+          "actions": ["READING"],
           "params": {
             "READING": {
               "type": "tarot",
@@ -3277,9 +3450,7 @@
       "exampleCalls": [
         {
           "user": "Use RELEASE_BLOCK with the provided parameters.",
-          "actions": [
-            "RELEASE_BLOCK"
-          ],
+          "actions": ["RELEASE_BLOCK"],
           "params": {
             "RELEASE_BLOCK": {
               "ruleId": "example",
@@ -3317,9 +3488,7 @@
       "exampleCalls": [
         {
           "user": "Use RS_2004 with the provided parameters.",
-          "actions": [
-            "RS_2004"
-          ],
+          "actions": ["RS_2004"],
           "params": {
             "RS_2004": {
               "subaction": "example",
@@ -3379,9 +3548,7 @@
       "exampleCalls": [
         {
           "user": "Use SCAPE with the provided parameters.",
-          "actions": [
-            "SCAPE"
-          ],
+          "actions": ["SCAPE"],
           "params": {
             "SCAPE": {
               "subaction": "example",
@@ -3401,15 +3568,9 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "summary",
-              "inspect"
-            ]
+            "enum": ["summary", "inspect"]
           },
-          "examples": [
-            "summary",
-            "inspect"
-          ],
+          "examples": ["summary", "inspect"],
           "descriptionCompressed": "schedule op: summary | inspect"
         },
         {
@@ -3419,24 +3580,16 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "America/Los_Angeles",
-            "UTC"
-          ],
+          "examples": ["America/Los_Angeles", "UTC"],
           "descriptionCompressed": "IANA tz override"
         }
       ],
       "descriptionCompressed": "passive schedule inference activity+screen-time+health: summary | inspect(sleep meals evidence-windows)",
-      "similes": [
-        "SLEEP_INFERENCE",
-        "MEAL_INFERENCE"
-      ],
+      "similes": ["SLEEP_INFERENCE", "MEAL_INFERENCE"],
       "exampleCalls": [
         {
           "user": "Use SCHEDULE with the provided parameters.",
-          "actions": [
-            "SCHEDULE"
-          ],
+          "actions": ["SCHEDULE"],
           "params": {
             "SCHEDULE": {
               "subaction": "summary",
@@ -3477,9 +3630,7 @@
       "exampleCalls": [
         {
           "user": "Use SEARCH_LINEAR_ISSUES with the provided parameters.",
-          "actions": [
-            "SEARCH_LINEAR_ISSUES"
-          ],
+          "actions": ["SEARCH_LINEAR_ISSUES"],
           "params": {
             "SEARCH_LINEAR_ISSUES": {
               "filters": "example",
@@ -3526,14 +3677,66 @@
       "exampleCalls": [
         {
           "user": "Use SET_FOLLOWUP_THRESHOLD with the provided parameters.",
-          "actions": [
-            "SET_FOLLOWUP_THRESHOLD"
-          ],
+          "actions": ["SET_FOLLOWUP_THRESHOLD"],
           "params": {
             "SET_FOLLOWUP_THRESHOLD": {
               "contactId": "example",
               "contactName": "example",
               "thresholdDays": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SHELL",
+      "description": "Execute a shell command via the configured local shell. Runs synchronously in the session cwd by default. Returns stdout, stderr, and exit code. Hard timeout kills the command. Paths under the configured blocklist are off-limits as cwd.",
+      "parameters": [
+        {
+          "name": "command",
+          "description": "Shell command to run; executed via /bin/bash -c <command>.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "description",
+          "description": "Five to ten word humanly-readable summary of the command.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeout",
+          "description": "Hard timeout in ms; clamped to [100, 600000]. Default 120000.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "cwd",
+          "description": "Absolute working directory; must not resolve under a blocked path. Defaults to the session cwd.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Run a shell command synchronously.",
+      "similes": ["BASH", "EXEC", "RUN_COMMAND"],
+      "exampleCalls": [
+        {
+          "user": "Use SHELL with the provided parameters.",
+          "actions": ["SHELL"],
+          "params": {
+            "SHELL": {
+              "command": "example",
+              "description": "example",
+              "timeout": 1,
+              "cwd": "example"
             }
           }
         }
@@ -3565,12 +3768,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "all",
-              "products",
-              "orders",
-              "customers"
-            ]
+            "enum": ["all", "products", "orders", "customers"]
           }
         },
         {
@@ -3607,9 +3805,7 @@
       "exampleCalls": [
         {
           "user": "Use SHOPIFY with the provided parameters.",
-          "actions": [
-            "SHOPIFY"
-          ],
+          "actions": ["SHOPIFY"],
           "params": {
             "SHOPIFY": {
               "subaction": "example",
@@ -3651,9 +3847,7 @@
       "exampleCalls": [
         {
           "user": "Use SKILL with the provided parameters.",
-          "actions": [
-            "SKILL"
-          ],
+          "actions": ["SKILL"],
           "params": {
             "SKILL": {
               "subaction": "example"
@@ -3666,12 +3860,7 @@
       "name": "START_TUNNEL",
       "description": "Start an ngrok tunnel to expose a local port to the internet. Supports action chaining by providing tunnel metadata that can be used for webhook configuration, API testing, or remote access workflows.",
       "parameters": [],
-      "similes": [
-        "OPEN_TUNNEL",
-        "CREATE_TUNNEL",
-        "NGROK_START",
-        "TUNNEL_UP"
-      ]
+      "similes": ["OPEN_TUNNEL", "CREATE_TUNNEL", "NGROK_START", "TUNNEL_UP"]
     },
     {
       "name": "STOP_TUNNEL",
@@ -3717,9 +3906,7 @@
       "exampleCalls": [
         {
           "user": "Use TAILSCALE with the provided parameters.",
-          "actions": [
-            "TAILSCALE"
-          ],
+          "actions": ["TAILSCALE"],
           "params": {
             "TAILSCALE": {
               "subaction": "example",
@@ -3852,9 +4039,7 @@
       "exampleCalls": [
         {
           "user": "Use TODO with the provided parameters.",
-          "actions": [
-            "TODO"
-          ],
+          "actions": ["TODO"],
           "params": {
             "TODO": {
               "subaction": "example",
@@ -3873,10 +4058,10 @@
     },
     {
       "name": "TUNNEL",
-      "description": "Tunnel operations dispatched by `op`: start, stop, status. The `start` op accepts an optional `port` (defaults to 3000); `stop` and `status` take no parameters. Backed by whichever tunnel plugin is active (local Tailscale CLI, Eliza Cloud headscale, or ngrok).",
+      "description": "Tunnel operations dispatched by `action`: start, stop, status. The `start` action accepts an optional `port` (defaults to 3000); `stop` and `status` take no parameters. Backed by whichever tunnel plugin is active (local Tailscale CLI, Eliza Cloud headscale, or ngrok).",
       "parameters": [
         {
-          "name": "op",
+          "name": "action",
           "description": "Which tunnel sub-operation to run. One of: start, stop, status.",
           "required": true,
           "schema": {
@@ -3912,12 +4097,10 @@
       "exampleCalls": [
         {
           "user": "Use TUNNEL with the provided parameters.",
-          "actions": [
-            "TUNNEL"
-          ],
+          "actions": ["TUNNEL"],
           "params": {
             "TUNNEL": {
-              "op": "example",
+              "action": "example",
               "parameters": "example"
             }
           }
@@ -3946,9 +4129,7 @@
       "exampleCalls": [
         {
           "user": "Use UPDATE_LINEAR_ISSUE with the provided parameters.",
-          "actions": [
-            "UPDATE_LINEAR_ISSUE"
-          ],
+          "actions": ["UPDATE_LINEAR_ISSUE"],
           "params": {
             "UPDATE_LINEAR_ISSUE": {
               "issueId": "example"
@@ -3995,21 +4176,83 @@
         }
       ],
       "descriptionCompressed": "Fetch http(s) URL and return body as plain text (HTML stripped, capped).",
-      "similes": [
-        "FETCH_URL",
-        "GET_URL",
-        "DOWNLOAD_PAGE"
-      ],
+      "similes": ["FETCH_URL", "GET_URL", "DOWNLOAD_PAGE"],
       "exampleCalls": [
         {
           "user": "Use WEB_FETCH with the provided parameters.",
-          "actions": [
-            "WEB_FETCH"
-          ],
+          "actions": ["WEB_FETCH"],
           "params": {
             "WEB_FETCH": {
               "url": "example",
               "prompt": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "WORKTREE",
+      "description": "Manage the current git worktree stack. Choose action=enter to create and switch into an isolated worktree, or action=exit to leave the current worktree and optionally remove it.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Worktree operation to run.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "name",
+          "description": "For action=enter, optional worktree branch/dir name. Defaults to auto-*.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "path",
+          "description": "For action=enter, optional absolute worktree directory within sandbox roots.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "base",
+          "description": "For action=enter, optional base ref. Defaults to HEAD.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "cleanup",
+          "description": "For action=exit, remove the popped worktree directory with git worktree remove --force.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "descriptionCompressed": "Git worktree umbrella: action=enter/exit.",
+      "similes": [
+        "ENTER_WORKTREE",
+        "EXIT_WORKTREE",
+        "GIT_WORKTREE_ADD",
+        "GIT_WORKTREE_REMOVE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use WORKTREE with the provided parameters.",
+          "actions": ["WORKTREE"],
+          "params": {
+            "WORKTREE": {
+              "action": "example",
+              "name": "example",
+              "path": "example",
+              "base": "example",
+              "cleanup": false
             }
           }
         }
@@ -4037,16 +4280,11 @@
         }
       ],
       "descriptionCompressed": "Write a file at an absolute path (creates parents; rejects if existing file was not READ first).",
-      "similes": [
-        "WRITE_FILE",
-        "CREATE_FILE"
-      ],
+      "similes": ["WRITE_FILE", "CREATE_FILE"],
       "exampleCalls": [
         {
           "user": "Use WRITE with the provided parameters.",
-          "actions": [
-            "WRITE"
-          ],
+          "actions": ["WRITE"],
           "params": {
             "WRITE": {
               "file_path": "example",

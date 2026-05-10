@@ -460,7 +460,10 @@ class AdvertisingService {
       if (account) {
         const credentials = await this.getCredentials(account);
         const provider = this.getProvider(account.platform);
-        await provider.deleteCampaign(credentials, campaign.external_campaign_id);
+        const result = await provider.deleteCampaign(credentials, campaign.external_campaign_id);
+        if (!result.success) {
+          throw new Error(result.error || "Failed to delete campaign on platform");
+        }
       }
     }
 

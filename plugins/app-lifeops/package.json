@@ -84,7 +84,15 @@
   },
   "elizaos": {
     "app": {
-      "heroImage": "assets/hero.png"
+      "heroImage": "assets/hero.png",
+      "permissions": [
+        "reminders",
+        "calendar",
+        "health",
+        "screentime",
+        "contacts",
+        "notes"
+      ]
     }
   },
   "publishConfig": {

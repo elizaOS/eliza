@@ -232,6 +232,7 @@ function readAndroidLocalAgentToken(context) {
 
 async function selectAndroidLocalRuntime(context) {
   if (!context?.installed) return;
+  if (readAndroidLocalAgentToken(context)) return;
   console.log("[local-chat-smoke] Selecting Local runtime on Android.");
   await sleep(5000);
   // Current first-run flow: "I want to run it myself" -> "Use Local".

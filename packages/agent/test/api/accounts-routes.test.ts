@@ -168,4 +168,56 @@ describe("accounts routes provider-scoped account resolution", () => {
       true,
     );
   });
+
+  it("rejects external or unavailable subscription providers as imported API keys", async () => {
+    for (const [providerId, expected] of [
+      ["gemini-cli", "Gemini subscription auth must stay in Gemini CLI"],
+      [
+        "deepseek-coding",
+        "DeepSeek does not expose a first-party coding subscription surface",
+      ],
+    ] as const) {
+      const ctx = createContext({
+        method: "POST",
+        pathname: `/api/accounts/${providerId}`,
+        body: {
+          source: "api-key",
+          label: "Subscription",
+          apiKey: "sk-test-subscription-key",
+        },
+      });
+
+      const handled = await handleAccountsRoutes(ctx);
+
+      expect(handled).toBe(true);
+      expect(ctx.status).toBe(400);
+      expect((ctx.body as { error: string }).error).toContain(expected);
+    }
+  });
+
+  it("allows coding-plan credentials only on dedicated coding-plan providers", async () => {
+    poolMock.list.mockReturnValue([]);
+    poolMock.upsert.mockResolvedValue(undefined);
+    const ctx = createContext({
+      method: "POST",
+      pathname: "/api/accounts/zai-coding",
+      body: {
+        source: "api-key",
+        label: "z.ai Coding",
+        apiKey: "sk-test-zai-coding-key",
+      },
+    });
+
+    const handled = await handleAccountsRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(ctx.status).toBe(201);
+    expect(poolMock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerId: "zai-coding",
+        label: "z.ai Coding",
+        source: "api-key",
+      }),
+    );
+  });
 });

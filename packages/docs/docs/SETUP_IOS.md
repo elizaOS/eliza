@@ -62,8 +62,8 @@ open App.xcworkspace
 ## On-Demand Resources for GGUFs (planned, mirrors Android DFM)
 
 iOS App Store imposes a **200 MB cellular download limit** per app and
-a **4 GB total limit**; the bundled `Llama-3.2-1B-Q4_K_M.gguf` weighs
-~770 MB, and the production checkpoint can run several GB. Apple's
+a **4 GB total limit**; the bundled Eliza-1 GGUF can weigh several GB.
+Apple's
 recommended pattern for shipping on-demand large assets is **On-Demand
 Resources (ODR)** — the iOS equivalent of the Android Dynamic Feature
 Module that `scripts/miladyos/stage-models-dfm.mjs` already uses for

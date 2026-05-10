@@ -40,9 +40,16 @@ const { app, apiKey } = await cloud.routes.postApiV1Apps({
 //    instead, hand off to the `eliza-cloud-buy-domain` skill)
 ```
 
+If this flow is being executed by a spawned coding agent, use the `parent-agent`
+Cloud command bridge for account-bound app creation, deployment, monetization,
+charges, x402 requests, domains, media, and advertising. The direct SDK examples
+show the parent/app runtime shape; they are not permission to pass raw owner
+API keys or wallet keys to child workers.
+
 Full code in `references/sdk-flow.md`. The skill assumes you have:
 
-- `ELIZAOS_CLOUD_API_KEY` in env (Eliza packages this for you)
+- `ELIZAOS_CLOUD_API_KEY` in the parent/app runtime env (Eliza packages this
+  for you) or the `parent-agent` Cloud command bridge for spawned workers
 - `@elizaos/cloud-sdk` available (already a runtime dependency)
 - A goal and a name (make the name up if not given; collisions retry once with a 6-char suffix)
 

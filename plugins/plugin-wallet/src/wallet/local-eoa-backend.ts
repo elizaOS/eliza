@@ -111,6 +111,11 @@ class LocalSolanaSigner implements SolanaSigner {
     }
     return out;
   }
+
+  async signMessage(message: Uint8Array): Promise<Uint8Array> {
+    const nacl = await import("tweetnacl");
+    return nacl.default.sign.detached(message, this.keypair.secretKey);
+  }
 }
 
 /**

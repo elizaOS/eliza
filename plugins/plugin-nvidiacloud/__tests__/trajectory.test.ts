@@ -24,7 +24,7 @@ function createInlineRuntime(calls: CapturedLlmCall[]): IAgentRuntime {
   const settings: Record<string, string> = {
     NVIDIA_API_KEY: apiKey ?? "",
     NVIDIA_SMALL_MODEL:
-      process.env.NVIDIA_SMALL_MODEL ?? "meta/llama-3.1-8b-instruct",
+      process.env.NVIDIA_SMALL_MODEL ?? "openai/gpt-oss-120b",
   };
   const runtime = {
     agentId: "agent-nvidia",

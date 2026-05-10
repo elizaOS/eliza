@@ -13,7 +13,7 @@
  * sits near 9%.  The on-device perplexity number that actually
  * matters (PPL Δ ≤ +0.05) is end-to-end, not single-block, and is
  * gated separately by the calibration parity test against a real
- * Qwen3-0.6B checkpoint -- documented in README.md as next-session
+ * Eliza-1 lite checkpoint -- documented in README.md as next-session
  * work.
  *
  * Budget here: 12% relative.  Anything beyond that is a sign the C

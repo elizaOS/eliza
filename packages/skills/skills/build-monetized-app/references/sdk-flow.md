@@ -12,7 +12,10 @@ const cloud = new ElizaCloudClient({
 });
 ```
 
-`ELIZAOS_CLOUD_API_KEY` is provided by the Eliza runtime. Do not invent your own key.
+`ELIZAOS_CLOUD_API_KEY` is provided by the Eliza parent/app runtime. Do not
+invent your own key, and do not pass owner API keys or wallet private keys into
+spawned child workers. In orchestrated workers, use `USE_SKILL parent-agent`
+Cloud commands for account-bound operations.
 
 ## 1. Register the app
 

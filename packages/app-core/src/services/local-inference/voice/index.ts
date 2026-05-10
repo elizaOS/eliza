@@ -10,7 +10,23 @@ export { PcmRingBuffer, InMemoryAudioSink } from "./ring-buffer";
 export {
   SpeakerPresetCache,
   type PresetBundlePaths,
+  type LoadedPresetBundle,
 } from "./speaker-preset-cache";
+export {
+  VOICE_PRESET_MAGIC,
+  VOICE_PRESET_VERSION,
+  VOICE_PRESET_HEADER_BYTES,
+  VoicePresetFormatError,
+  readVoicePresetFile,
+  writeVoicePresetFile,
+  type VoicePresetFile,
+  type VoicePresetSeedPhrase,
+} from "./voice-preset-format";
+export {
+  CharacterPhonemeStub,
+  type Phoneme,
+  type PhonemeTokenizer,
+} from "./phoneme-tokenizer";
 export {
   PhraseCache,
   canonicalizePhraseText,
@@ -57,7 +73,7 @@ export {
  *
  * 2. Shared resources between text and voice (one instance each per
  *    engine, refcounted by `SharedResourceRegistry`):
- *      - tokenizer (Qwen/OmniVoice share a vocabulary)
+ *      - tokenizer (Eliza-1/OmniVoice share a vocabulary)
  *      - mmap regions for weights (deduplicated by absolute path)
  *      - the fused kernel set (TurboQuant/QJL/Polar live in the
  *        same shipped llama.cpp library after the fusion build)
@@ -84,4 +100,3 @@ export {
  *    code `"illegal-transition"`. The state is a discriminated
  *    union, never a string.
  */
-

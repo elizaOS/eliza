@@ -1,269 +1,286 @@
 # Action and Subaction Structure Audit - 2026-05-10
 
-Scope: production source action surfaces under `packages/core/src`,
-`packages/agent/src`, and `plugins/`, excluding `node_modules`, `dist`,
-generated specs, tests, `packages/examples`, `cloud/examples`, benchmark
-harnesses, and benchmark datasets.
+Scope: production action surfaces under `packages/core/src`, `packages/agent/src`,
+and `plugins/`, excluding tests, benchmark datasets, examples, templates,
+`dist`, `node_modules`, and `packages/app`. Generated specs were excluded from
+the primary enumeration but spot-checked for stale action names because core
+imports the generated action-doc registry.
 
-This audit is structural. It answers:
+This is a structural review. It treats examples and similes as routing evidence
+only; they are not counted as actions unless a real action definition or plugin
+registration exposes them.
 
-- What each action family does.
-- Which subactions are grouped below it.
-- Why that parent is the logical parent and why the name mostly fits.
-- Which grouping, naming, or ordering defects should be fixed.
+## Terms
 
-Implementation note: after this audit was drafted, the canonical
-discriminator was changed to `action` with legacy aliases still accepted, and
-the highest-impact public surfaces were consolidated. The current target
-taxonomy is now: `FILE`, `SHELL`, `WORKTREE`, `TASKS`, `OWNER_REMINDERS`,
-`OWNER_ALARMS`, `OWNER_GOALS`, `OWNER_TODOS`, `OWNER_HEALTH`,
-`OWNER_SCREENTIME`, `OWNER_ROUTINES`, `OWNER_FINANCES`, `PERSONAL_ASSISTANT`,
-`GITHUB`, `LINEAR`, `TUNNEL`, `MUSIC`, and `ROBLOX`. Older names such as
-`LIFE`, `SCHEDULED_TASK`, `MONEY`, `HEALTH`, `SCREEN_TIME`, `BASH`,
-`READ`/`WRITE`/`EDIT`/`GREP`/`GLOB`/`LS`, `GITHUB_PR_OP`,
-`GITHUB_ISSUE_OP`, `ROBLOX_ACTION`, `FORM_RESTORE`, `EXTRACT_PAGE`,
-`ANALYZE_IMAGE`, `SKILL_COMMAND`, and `QUERY_TRAJECTORIES` should be treated
-as legacy implementation/export names unless still explicitly registered by a
-package outside the consolidation pass.
+- Parent action: the planner-visible umbrella name, such as `MESSAGE`, `FILE`,
+  `OWNER_TODOS`, or `GITHUB`.
+- Child action / subaction: the discriminator value under the parent, now
+  intended to use the canonical parameter name `action`.
+- Promoted virtual action: a generated action named `<PARENT>_<CHILD>` from
+  `promoteSubactionsToActions(parent)`. It delegates to the parent and injects
+  the child discriminator.
+- Family: the higher-level domain bucket that explains why the parent exists at
+  all: conversation, owner operations, runtime/admin, developer tools, provider
+  integrations, media, finance, or games.
+- Exposed: registered by a plugin/capability action list.
+- Implementation-only: still present as code or export, but not registered by
+  the owning plugin in the current source.
 
-## Model Used By The Codebase
+## High Priority Misses
 
-There are three action shapes in this repository:
+| Issue | Evidence | Why It Matters | Recommendation |
+|---|---|---|---|
+| `SHELL_COMMAND` is still exposed by the agent plugin. | `packages/agent/src/runtime/eliza-plugin.ts` registers `terminalAction`; `terminalAction` still has `name = "SHELL_COMMAND"`. | The earlier consolidation normalized coding-tools to `SHELL`, but the default agent still exposes a second shell parent. Planner and audit output can choose either. | Rename agent `terminalAction` to `SHELL` or stop registering it when `coding-tools` is active. Keep `SHELL_COMMAND` as simile only. |
+| Generated docs and prompt repair artifacts still contain legacy names. | `packages/core/src/generated/action-docs.ts`, `packages/core/src/services/message.ts`, `packages/agent/src/runtime/prompt-compaction.ts`, and `plugins/app-training/src/core/context-catalog.ts` still reference names such as `SHELL_COMMAND`, `DISCORD_SETUP_CREDENTIALS`, `NOSTR_PUBLISH_PROFILE`, and `PLACE_CALL`. | Even if runtime action lists are cleaned up, generated docs and repair/context hints can reintroduce old names into planner prompts or correction logic. | Regenerate action docs after consolidation and add a retired-name lint over generated docs, prompt compaction, context catalogs, and repair maps. |
+| `TASKS` has a name collision. | `plugins/app-lifeops/src/actions/scheduled-task.ts` exposes LifeOps scheduled tasks as `TASKS`; `plugins/plugin-agent-orchestrator/src/actions/tasks.ts` also exposes orchestrator tasks as `TASKS`. | Both are large parents with different semantics: personal scheduled tasks vs coding/sub-agent work. If both plugins are active, action selection and promoted virtuals collide. | Rename one. Preferred: `SCHEDULED_TASKS` or `OWNER_TASKS` for LifeOps ScheduledTask CRUD, and reserve `TASKS` for orchestrator only if that is already established. |
+| The core repair layer still maps planner aliases to removed LifeOps names. | `packages/core/src/services/message.ts` maps todo/reminder aliases to `LIFE`, profile aliases to `PROFILE`, check-ins to `CHECKIN`, block aliases to `APP_BLOCK`/`WEBSITE_BLOCK`, and defaults still inject `subaction`. | A repair pass can rewrite a correct canonical action into a removed or non-registered action. This is worse than stale docs because it changes runtime behavior. | Update aliases to `OWNER_TODOS`, `OWNER_REMINDERS`, `OWNER_GOALS`, `OWNER_ROUTINES`, `OWNER_HEALTH`, `OWNER_SCREENTIME`, `OWNER_FINANCES`, `BLOCK`, `CALENDAR`, and `PERSONAL_ASSISTANT`; inject `action`, not `subaction`. |
+| The LifeOps provider still instructs the planner to use removed actions. | `plugins/app-lifeops/src/providers/lifeops.ts` still says `Use LIFE`, `Use PROFILE`, `Use SCREEN_TIME`, `Use APP_BLOCK`, `Use WEBSITE_BLOCK`, and `Use SUBSCRIPTIONS`, and still names `BOOK_TRAVEL` and `AUTOFILL` in routing guidance. | The planner sees canonical and legacy names in the same context. That defeats the consolidation even if the old actions are not registered. | Rewrite provider text around owner surfaces and provider-backed parents: `OWNER_*`, `BLOCK`, `CREDENTIALS`, `CALENDAR`, `MESSAGE`, `PERSONAL_ASSISTANT`, `CONNECTOR`, `RESOLVE_REQUEST`. |
+| `PLACE_CALL` is still a separate exposed action. | `plugins/app-phone/src/plugin.ts` registers `placeCallAction` with name `PLACE_CALL`. | User requested `PLACE_CALL` and `VOICE_CALL` to be a single action with providers. Current split leaves Android phone calls separate from Twilio/owner escalation calls. | Create one `VOICE_CALL` parent with provider/source selection. Register Android/app-phone as a provider or child implementation. |
+| `DISCORD_SETUP_CREDENTIALS` is still exposed. | `plugins/plugin-discord/index.ts` registers `setupCredentials`. | User requested connector setup to live under generic `CONNECTOR` and `CREDENTIALS`. A provider-specific credential action creates audit and planner ambiguity. | Move Discord pairing/setup behind `CONNECTOR action=connect/status/verify` and credential requests behind `CREDENTIALS`; keep this as internal compatibility only. |
+| `NOSTR_PUBLISH_PROFILE` is still exposed. | `plugins/plugin-nostr/src/index.ts` registers `publishProfile`. | User called this out as generic connector/credentials territory. It is identity metadata, not a planner-level universal action. | Fold into `CONNECTOR` or a future `IDENTITY` provider capability; keep Nostr service-specific code internal. |
+| `CALENDLY` remains provider-specific. | `plugins/plugin-calendly/src/index.ts` registers `CALENDLY`. | User wanted calendar providers to register capabilities under the standard calendar surface, with provider-only features marked as provider-only. | Register Calendly capabilities under `CALENDAR` provider metadata where equivalent. Keep true Calendly-only `book/cancel` either as `CALENDAR action=provider_operation provider=calendly` or clearly page-scoped. |
+| `LIFEOPS_ACTIONS` and `LIFEOPS_THREAD_CONTROL` preserve the name the user wanted destroyed. | `packages/agent/src/actions/page-action-groups.ts` exposes `LIFEOPS_ACTIONS`; `plugins/app-lifeops/src/actions/work-thread.ts` exposes `LIFEOPS_THREAD_CONTROL`. | Even after removing `LIFE`/`LIFEOPS`, the planner still sees LifeOps as an action namespace. | Rename page group to `OWNER_ACTIONS` or `PERSONAL_ASSISTANT_ACTIONS`; rename thread control to `WORK_THREAD` or `THREAD_CONTROL`. |
+| `PROFILE` was removed as an action but the replacement evaluator is not present. | No LifeOps profile/owner-fact response-handler evaluator for stable details, nicknames, handles, or relationship search hints was found. | The user explicitly wanted profile extraction as an evaluator registered to the response handler, not as a planner action. Removing the action without adding the evaluator loses capability. | Add an owner/entity fact evaluator that extracts stable owner facts, nicknames, handles, and relationship aliases into the owner fact/entity stores with auditability. |
+| `CHECKIN` is no longer registered, but stale routing still points to it. | Core alias maps and LifeOps default-pack comments still reference `CHECKIN`. | The desired model was "task/workflow/default initialization", not an action. Stale planner hints can still choose it. | Remove planner-facing references and express morning/night check-ins only as default `ScheduledTask` packs and workflow tests. |
+| `READ_ATTACHMENT` is implementation-only but still referenced by providers and repair code. | `readAttachmentAction` exists and provider text says "use READ_ATTACHMENT"; no production plugin registration was found. | The planner may be told to call an unavailable action. User also asked for an attachment parent with `READ` and `SAVE_ATTACHMENT_AS_DOCUMENT`. | Add an `ATTACHMENT` parent or register `READ_ATTACHMENT` intentionally. Preferred parent: `ATTACHMENT action=read|save_as_document`, with automatic link extraction still happening outside the action. |
+| `PAYMENT` is generic but plugin-local. | `plugins/plugin-mysticism` exposes `PAYMENT action=check|request`. | User wanted `PAYMENT` for agent charging/checking/paying money generally. Mysticism-specific payment status/request squats the generic name. | Rename to `MYSTICISM_PAYMENT`, or move it under a generic `PAYMENT` provider model only after defining the global payment contract. |
+| Canonical `action` is not yet normalized across major actions. | Many exposed parents still declare `subaction`, `op`, `operation`, or `verb` as the primary schema field. | The dispatcher accepts aliases, but planner-facing schemas still teach the old names. | Make schema docs and first-class parameters use `action`; keep legacy aliases second and clearly marked. |
 
-1. Flat leaf actions: a single action with no subaction discriminator, for
-   example `BASH`, `READ`, `BOOK_TRAVEL`, `PLACE_CALL`.
-2. Umbrella actions: one registered parent with a discriminator parameter,
-   usually `subaction`, and a switch/dispatcher in its handler. Examples:
-   `LIFE`, `MESSAGE`, `BROWSER`, `LINEAR`, `SKILL`.
-3. Promoted virtual actions: `promoteSubactionsToActions(parent)` creates
-   virtual top-level action names like `LIFE_CREATE` or `MESSAGE_SEND`.
-   These virtuals delegate to the parent handler and inject
-   `subaction: <value>`.
+## Current Target Ordering
 
-The intended parent is therefore the semantic domain owner: `MESSAGE` owns
-messaging verbs, `LIFE` owns personal task primitives, `CALENDAR` owns calendar
-and availability work, and so on. A child belongs under that parent when it
-shares the same data model, service boundary, authorization policy, account
-policy, and result semantics.
+The clean taxonomy should be ordered by who owns the state and side effects:
 
-## Parent Families
+1. Conversation turn control: `REPLY`, `IGNORE`, `NONE`, `CHOICE`.
+2. Cross-channel communications: `MESSAGE`, `POST`, `ROOM`, `CONTACT`, `ENTITY`.
+3. Owner operations: `OWNER_REMINDERS`, `OWNER_ALARMS`, `OWNER_GOALS`,
+   `OWNER_TODOS`, `OWNER_ROUTINES`, `OWNER_HEALTH`, `OWNER_SCREENTIME`,
+   `OWNER_FINANCES`, `CALENDAR`, `BLOCK`, `CREDENTIALS`, `PERSONAL_ASSISTANT`,
+   `CONNECTOR`, `RESOLVE_REQUEST`, `VOICE_CALL`.
+4. Runtime/admin state: `SETTINGS`, `RUNTIME`, `LOGS`, `DATABASE`, `MEMORY`,
+   `TRIGGER`, `WORKFLOW`, `PLUGIN`/`MANAGE_PLUGINS`, secrets/trust actions.
+5. Developer tools: `FILE`, `SHELL`, `WORKTREE`, `BROWSER`, `COMPUTER_USE`,
+   `MCP`.
+6. Provider integrations: `GITHUB`, `LINEAR`, `TUNNEL`, `MUSIC`, `WALLET`,
+   `SHOPIFY`, etc.
+7. App/game-specific actions: `ROBLOX`, `SCAPE`, `RS_2004`, `MC`,
+   `PREDICTION_MARKET`, `PLAY_EMOTE`, etc.
+
+This order matters because it keeps personal owner state separate from generic
+runtime state, provider-specific capabilities, and low-level automation.
+
+## Detailed Catalog
 
 ### Conversation And Messaging
 
-| Parent | Subactions / Children | What It Does | Parent Rationale | Issues |
+| Parent | Children | What It Does | Why This Parent And Name | Defects / Opportunities |
 |---|---|---|---|---|
-| `REPLY` | none | Replies in the current chat. | It is a leaf because it has no external side effect. Name is direct. | Good. |
-| `IGNORE` | none | Intentionally emits no reply. | Leaf because it is turn-control, not a domain operation. | Good, but examples are English-only. |
-| `NONE` | none | Responds without extra tool work. | Leaf for no-op conversational behavior. | Good. |
-| `MESSAGE` | `send`, `read_channel`, `read_with_contact`, `search`, `list_channels`, `list_servers`, `join`, `leave`, `react`, `edit`, `delete`, `pin`, `get_user`, `triage`, `list_inbox`, `search_inbox`, `draft_reply`, `draft_followup`, `respond`, `send_draft`, `schedule_draft_send`, `manage` | Unified connector-backed messaging, inbox, draft, send, and moderation surface. | Correct parent: all children operate on messages, inboxes, drafts, channels, or message connectors. The name is broad but accurate. | Too many modes for one family; subactions mix connector primitives with executive-assistant inbox workflows. Needs more examples and stronger subgroup docs. |
-| `POST` | `send`, `read`, `search` | Public/feed post operations. | Correctly separate from `MESSAGE`: posts are public/timeline content, not private/channel messages. | Good. Keep separate from `MESSAGE`. |
-| `MESSAGE_HANDOFF` | `enter`, `resume`, `status` via `verb` | Stops/restarts agent participation in a room handoff. | Conceptually belongs near `MESSAGE`, but state is LifeOps room policy, not generic connector messaging. | Uses `verb`, not `subaction`. Earlier reports mention `MESSAGE.handoff`; current name is fixed to `MESSAGE_HANDOFF`. Consider folding into `MESSAGE` only if generic connectors need it. |
-| `ROOM` | `follow`, `unfollow`, `mute`, `unmute` | Changes room participation/notification state. | Parent is room-level policy rather than message content. Name fits. | Not currently promoted in all paths; keep separate from `MESSAGE` because target is the room, not a message. |
+| `REPLY` | none | Sends a normal response in the current conversation. | Leaf because it has no external side effect. Name is exact. | Good. |
+| `IGNORE` | none | Intentionally emits no response. | Leaf turn-control action. Name is exact. | Good. |
+| `NONE` | none | Marks no tool/action work needed. | Leaf no-op action. Name is terse but established. | Good. |
+| `CHOICE` | option selection flow | Handles structured choice/selection UI. | Conversation/UI primitive, not a domain side effect. | Good, but action naming is less obvious than `SELECT_OPTION`. |
+| `SEND_TO_ADMIN` | none | Sends an autonomy/escalation message to an admin. | Parent is autonomy, but exposed as a leaf because message content carries the operation. | Optional/autonomy only. Consider whether this should be `MESSAGE action=send_draft target=admin`. |
+| `MESSAGE` | `send`, `read_channel`, `read_with_contact`, `search`, `list_channels`, `list_servers`, `join`, `leave`, `react`, `edit`, `delete`, `pin`, `get_user`, `triage`, `list_inbox`, `search_inbox`, `draft_reply`, `draft_followup`, `respond`, `send_draft`, `schedule_draft_send`, `manage` | Unified addressed messaging: DMs, channels, rooms, inboxes, drafts, replies, sends, and message management. | Correct parent because all children share message connector accounts, room/thread addressing, and message result semantics. Name is broad but accurate. | Still declares `subaction`/`operation`/`op`; should declare `action`. It also mixes low-level connector ops with assistant workflows. Subgroup docs should explicitly separate connector ops, inbox triage, drafting, and message management. |
+| `POST` | `send`, `read`, `search` | Public feed/timeline operations. | Correct sibling of `MESSAGE`: public posts are not addressed messages. Name is short and domain-clear. | Still declares `subaction`. Good parent boundary. |
+| `ROOM` | `follow`, `unfollow`, `mute`, `unmute` | Current or named room/chat notification policy. | Parent is room state, not message content. Name fits. | Still declares `subaction`. Stale LifeOps provider references `ROOM_OP`; normalize to `ROOM`. |
+| `CONTACT` | `create`, `read`, `search`, `update`, `delete`, `link`, `merge`, `activity`, `followup` | Rolodex contact records, identity links, activity, and contact follow-ups. | Correct parent for contact entity UX. Name is concrete and user-facing. | Overlaps LifeOps `ENTITY` and legacy `RELATIONSHIP`. It declares `subaction`, while `action` is also used for merge accept/reject, which complicates canonical migration. |
+| `ENTITY` | `add`, `list`, `log_interaction`, `set_identity`, `set_relationship`, `merge` | LifeOps entity/relationship graph operations. | Correct parent for identity and relationship records when the operation is graph-level rather than contact-list UX. | Registered as an unpromoted parent in LifeOps. Still declares `subaction`. Needs clear boundary with `CONTACT`. |
 
-### LifeOps
+### Owner Operations And LifeOps
 
-| Parent | Subactions / Children | What It Does | Parent Rationale | Issues |
+| Parent | Children | What It Does | Why This Parent And Name | Defects / Opportunities |
 |---|---|---|---|---|
-| `LIFE` | `create`, `update`, `delete`, `complete`, `skip`, `snooze`, `review`, `policy_set_reminder`, `policy_configure_escalation` | Manages owner habits, routines, reminders, alarms, todos, and goals. | Correct parent for personal life primitives. Name is broad but matches product domain. | It is overloaded. `create` needs `kind`/`definitionKind` to disambiguate tasks vs goals vs habits. |
-| `SCHEDULED_TASK` | `list`, `get`, `create`, `update`, `snooze`, `skip`, `complete`, `dismiss`, `cancel`, `reopen`, `history` | Direct CRUD/state control over the `ScheduledTask` spine. | Correct parent because AGENTS.md says all reminders, check-ins, follow-ups, watchers, approvals, outputs, and recaps route through `ScheduledTask`. | Good architecture. The user-facing difference between `LIFE` and `SCHEDULED_TASK` should be documented more sharply. |
-| `LIFEOPS` | `pause`, `resume`, `wipe` via `verb` | Global pause/resume/wipe controls. | Parent is app-level control, not an individual task. Name fits. | Uses `verb` instead of canonical `subaction`. |
-| `PROFILE` | `save`, `capture_phone` | Stores durable owner facts and phone info. | Correct parent for owner profile state. | Should not absorb goals/preferences that belong in `LIFE`; current descriptions call that out. |
-| `ENTITY` | `add`, `list`, `log_interaction`, `set_identity`, `set_relationship`, `merge` | People/org/relationship graph operations. | Correct parent for identity and relationship records. | Overlaps legacy `RELATIONSHIP`; consolidate docs and examples around `ENTITY`. |
-| `RELATIONSHIP` | `list_contacts`, `add_contact`, `log_interaction`, `add_follow_up`, `complete_follow_up`, `follow_up_list`, `days_since`, `list_overdue_followups`, `mark_followup_done`, `set_followup_threshold` | Legacy relationship/follow-up surface. | Historically parented relationship and cadence features. | Superseded conceptually by `ENTITY` plus `SCHEDULED_TASK`; keep only if needed for compatibility. |
-| `BLOCK` | `block`, `unblock`, `status`, `request_permission`, `release`, `list_active` | Website/app blocking and managed block rules. | Correct consolidated parent: block lifecycle shares permissions, confirmation, and state. | Good consolidation. Legacy `APP_BLOCK` and `WEBSITE_BLOCK` still exist in source and can confuse audits. |
-| `APP_BLOCK` | `block`, `unblock`, `status` | Native phone app blocking. | Valid domain slice, now logically child of `BLOCK`. | Treat as legacy/specialized implementation behind `BLOCK`. |
-| `WEBSITE_BLOCK` | `block`, `unblock`, `status`, `request_permission`, `release`, `list_active` | Desktop website blocking. | Valid domain slice, now logically child of `BLOCK`. | Treat as legacy/specialized implementation behind `BLOCK`. |
-| `MONEY` | `dashboard`, `list_sources`, `add_source`, `remove_source`, `import_csv`, `list_transactions`, `spending_summary`, `recurring_charges`, `subscription_audit`, `subscription_cancel`, `subscription_status` | Payments, transaction summaries, recurring charges, and subscriptions. | Correct parent because spending and subscriptions share financial source data. | Subscriptions are a distinct workflow; grouping is acceptable but descriptions must make cancellation side effects obvious. |
-| `PAYMENTS` | `dashboard`, `list_sources`, `add_source`, `remove_source`, `import_csv`, `list_transactions`, `spending_summary`, `recurring_charges` | Payment-source and transaction analytics. | Logically child of `MONEY`. | Legacy/specialized surface. |
-| `SUBSCRIPTIONS` | `audit`, `cancel`, `status` | Subscription audit and cancellation. | Logically child of `MONEY` because cancellation depends on recurring-charge evidence. | Cancellation is risky; preserve confirmation and browser-handoff gates. |
-| `CREDENTIALS` | `fill`, `whitelist_add`, `whitelist_list`, `search`, `list`, `inject_username`, `inject_password` | Password-manager lookup, autofill whitelist, and clipboard-only injection. | Correct parent for all credential handling. | Good consolidation, but the child set mixes browser autofill and password search. Keep gating strict. |
-| `AUTOFILL` | `fill`, `whitelist_add`, `whitelist_list` | Browser autofill allowlist flow. | Logically child of `CREDENTIALS`. | Legacy/specialized surface. |
-| `PASSWORD_MANAGER` | `search`, `list`, `inject_username`, `inject_password` | Password-manager lookup and clipboard injection. | Logically child of `CREDENTIALS`. | Legacy/specialized surface. |
-| `CALENDAR` | `feed`, `next_event`, `search_events`, `create_event`, `update_event`, `delete_event`, `trip_window`, `bulk_reschedule`, `check_availability`, `propose_times`, `update_preferences` | Calendar reads/writes, availability, travel windows, and meeting preferences. | Correct parent: all children use calendar state or scheduling preferences. | Large but coherent. `SCHEDULING_NEGOTIATION` stays separate because it is multi-turn workflow state. |
-| `GOOGLE_CALENDAR` | `feed`, `next_event`, `search_events`, `create_event`, `update_event`, `delete_event`, `trip_window` | Google Calendar-specific implementation. | Logically child/backend of `CALENDAR`. | Avoid exposing both unless needed for compatibility. |
-| `CALENDLY` | `list_event_types`, `availability`, `upcoming_events`, `single_use_link` | Calendly-specific reads/link creation. | It is a vendor child of scheduling, not generic calendar. | Could be under `CALENDAR` if all scheduling providers are unified later. |
-| `SCHEDULING_NEGOTIATION` | `start`, `propose`, `respond`, `finalize`, `cancel`, `list_active`, `list_proposals` | Multi-turn scheduling proposals and negotiation state. | Correct separate parent: it owns workflow state, not simple calendar CRUD. | Good separation. |
-| `SCHEDULE` | `summary`, `inspect` | Passive schedule inference from activity/screen-time/health. | Parent name is generic; child set is read-only inference. | Risk of confusion with calendar scheduling. Consider `SCHEDULE_INFERENCE`. |
-| `CHECKIN` | none | Runs morning/night LifeOps check-ins. | Leaf because `kind` is not a structural subaction; it is a check-in type. | Fine. |
-| `HEALTH` | `today`, `trend`, `by_metric`, `status` | Reads health/fitness telemetry. | Correct parent: all children are read-only health queries. | Good. |
-| `SCREEN_TIME` | `summary`, `today`, `weekly`, `weekly_average_by_app`, `by_app`, `by_website`, `activity_report`, `time_on_app`, `time_on_site`, `browser_activity` | Reads device/app/site usage analytics. | Correct parent for screen/activity telemetry. | Broad but read-only and coherent. |
-| `CONNECTOR` | `connect`, `disconnect`, `verify`, `status`, `list` | External service connector lifecycle. | Correct LifeOps connector parent. | Do not merge with `PLUGIN`; plugin lifecycle is runtime code, not user accounts. |
-| `DEVICE_INTENT` | `broadcast` | Pushes one-shot intents to paired devices. | Leaf-ish parent for device fanout; only one subaction. | If only one child remains, consider flattening unless more device ops are planned. |
-| `REMOTE_DESKTOP` | `start`, `status`, `end`, `list`, `revoke` | Remote desktop session lifecycle. | Correct parent: all children operate on sessions. | Uses direct subaction enum but is not promoted; decide if it should be. |
-| `RESOLVE_REQUEST` | `approve`, `reject` | Resolves pending owner approval queue items. | Correct parent for approval decisions. | Good. |
-| `VOICE_CALL` | `dial` | Drafts/confirms/escalates Twilio voice calls. | Parent has one child because future voice ops are plausible. | If no more child ops are expected, flatten to `VOICE_CALL` params. |
-| `BOOK_TRAVEL` | none | Drafts/approves real travel booking. | Leaf because the workflow itself is one bounded capability. | Good. |
-| `FIRST_RUN` | none | Runs defaults/customize/replay onboarding. | It uses mode-like inputs, but app lifecycle is narrow enough as a leaf. | Fine. |
-| `TOGGLE_FEATURE` | enable/disable via parameters | Feature flag control. | Leaf because feature key carries the specific target. | Name is clear. |
+| `OWNER_REMINDERS` | `create`, `update`, `delete`, `complete`, `skip`, `snooze`, `review` | Owner reminders backed by LifeOps definitions/ScheduledTask flows. | Good parent: owner-specific reminder UX. Name is explicit and avoids vague `LIFE`. | Delegates to legacy `lifeAction` internally and injects both `action` and `subaction`. That is acceptable during migration but should be retired. |
+| `OWNER_ALARMS` | `create`, `update`, `delete`, `complete`, `skip`, `snooze`, `review` | Alarm-like reminders. | Good parent because alarms have distinct user intent from generic reminders even if the backing model is shared. | Same legacy delegation caveat as `OWNER_REMINDERS`. |
+| `OWNER_GOALS` | `create`, `update`, `delete`, `review` | Long-term owner goals and progress review. | Good parent because goals are durable aspirations/progress records, not transient tasks. | Internal backing kind is `goal`; expose that only as an implementation detail. |
+| `OWNER_TODOS` | `create`, `update`, `delete`, `complete`, `skip`, `snooze`, `review` | Personal todos/tasks for the owner. | Good parent because it separates personal tasks from orchestrator/coding tasks. | Collision pressure from core advanced todo leaves and `plugin-todos` `TODO`. Need routing priority docs. |
+| `OWNER_ROUTINES` | `create`, `update`, `delete`, `complete`, `skip`, `snooze`, `review`, `schedule_summary`, `schedule_inspect` | Daily habits/routines plus passive schedule inspection. | Parent is owner routines/habits. Name is good. | `schedule_summary` and `schedule_inspect` are read-only schedule inference, not routine CRUD. Consider a separate `OWNER_SCHEDULE` or `SCHEDULE_INFERENCE` child under `OWNER_ROUTINES` only if it truly helps routine management. |
+| `OWNER_HEALTH` | `today`, `trend`, `by_metric`, `status` | Health/wearable telemetry reads. | Correct owner-scoped health parent. Name is clear and avoids generic app/plugin `HEALTH`. | Inherits `healthAction` schema with `subaction`; should expose `action`. |
+| `OWNER_SCREENTIME` | `summary`, `today`, `weekly`, `weekly_average_by_app`, `by_app`, `by_website`, `activity_report`, `time_on_app`, `time_on_site`, `browser_activity` | Screen/app/site usage analytics. | Correct owner telemetry parent. Name is clear. | Inherits `screenTimeAction` schema with `subaction`; should expose `action`. |
+| `OWNER_FINANCES` | `dashboard`, `list_sources`, `add_source`, `remove_source`, `import_csv`, `list_transactions`, `spending_summary`, `recurring_charges`, `subscription_audit`, `subscription_cancel`, `subscription_status` | Owner financial sources, transactions, recurring charges, and subscription audit/cancel/status. | Better than `MONEY`: owner scope and finance domain are explicit. | Still inherits `moneyAction` schema with `subaction`. Also conflates financial subscriptions and email subscriptions. Email unsubscribe should stay under `MESSAGE manage` or an email-specific capability. |
+| `BLOCK` | `block`, `unblock`, `status`, `request_permission`, `release`, `list_active`; target is `app` or `website` | Consolidated app/website blocking. | Correct parent because block lifecycle, permissioning, confirmation, and active-rule state are shared. | Good consolidation. Stale provider/repair text still points to `APP_BLOCK`/`WEBSITE_BLOCK`; fix those references. |
+| `CREDENTIALS` | `fill`, `whitelist_add`, `whitelist_list`, `search`, `list`, `inject_username`, `inject_password` | Browser autofill, password manager lookup, and credential injection. | Correct parent for credential handling. Name is broad enough for setup and use. | Still declares `subaction`. `DISCORD_SETUP_CREDENTIALS` and Nostr profile setup have not been folded into it. |
+| `CALENDAR` | `feed`, `next_event`, `search_events`, `create_event`, `update_event`, `delete_event`, `trip_window`, `bulk_reschedule`, `check_availability`, `propose_times`, `update_preferences` | Owner calendar reads/writes, availability, meeting options, travel windows, and preferences. | Correct parent because all children depend on calendar providers or scheduling preferences. | Still declares `subaction`. Calendly remains a separate exposed action instead of registering provider capabilities. |
+| `PERSONAL_ASSISTANT` | `book_travel`, `scheduling` | Travel booking and scheduling negotiation workflows. | Correct parent for assistant workflows that are broader than CRUD over a single store. Name is broad but acceptable because children are explicit. | This is the replacement for `BOOK_TRAVEL` and `SCHEDULING_NEGOTIATION`, but old provider text still names the old actions. Scheduling workflow may still be too many hidden steps; surface state/provider info more clearly. |
+| `CONNECTOR` | `connect`, `disconnect`, `verify`, `status`, `list` | Owner/agent connector account lifecycle. | Correct parent for external account connection state. Name is clear and should own provider setup. | Still declares `subaction`. Discord/Nostr/Calendly still expose provider-specific action surfaces. |
+| `RESOLVE_REQUEST` | `approve`, `reject` | Owner approval queue decisions. | Correct parent for approval resolution. Name says what it does. | Still declares `subaction`. Good boundary. |
+| `VOICE_CALL` | `dial` | Voice call drafting/confirmation, currently Twilio-oriented. | Correct parent if multiple voice providers become children/providers. | Still declares `subaction`. `PLACE_CALL` remains separate; provider unification is incomplete. |
+| `REMOTE_DESKTOP` | `start`, `status`, `end`, `list`, `revoke` | Remote session lifecycle. | Correct session parent, but user wanted `app-remote-desktop` with app interface. | Still under LifeOps, not clearly app-scoped. Name is okay; package boundary is questionable. |
+| `LIFEOPS_THREAD_CONTROL` | operation array: `create`, `steer`, `stop`, `mark_waiting`, `mark_completed`, `merge`, `attach_source`, `schedule_followup` | Work-thread lifecycle control. | Conceptually parent is work threads, not LifeOps. | Rename to `WORK_THREAD` or `THREAD_CONTROL`. The operation array is powerful but less planner-friendly than a normal `action` discriminator. |
+| `TASKS` in LifeOps | `list`, `get`, `create`, `update`, `snooze`, `skip`, `complete`, `acknowledge`, `dismiss`, `cancel`, `reopen`, `history` | Direct CRUD/state control over the one `ScheduledTask` primitive. | Architecturally correct per AGENTS.md: reminders, check-ins, follow-ups, watchers, recaps, approvals, and outputs all share `ScheduledTask`. | Name collides with orchestrator `TASKS`. Prefer `SCHEDULED_TASKS` or `OWNER_TASKS`; keep `ScheduledTask` as implementation contract. |
 
-### Agent Runtime And Memory
+### Runtime, Admin, Secrets, And Settings
 
-| Parent | Subactions / Children | What It Does | Parent Rationale | Issues |
+| Parent | Children | What It Does | Why This Parent And Name | Defects / Opportunities |
 |---|---|---|---|---|
-| `CONTACT` | `create`, `read`, `search`, `update`, `delete`, `link`, `merge`, `activity`, `followup` | Rolodex/contact operations in the agent runtime. | Correct parent: shared contact graph and entity-resolution semantics. | Overlaps LifeOps `ENTITY`; clarify which package owns public contact UX. |
-| `PLUGIN` | `install`, `uninstall`, `update`, `sync`, `eject`, `reinject`, `configure`, `read_config`, `toggle`, `list`, `disconnect` | Runtime plugin/connector management. | Correct parent for runtime/plugin lifecycle. | `disconnect` overlaps LifeOps `CONNECTOR.disconnect`; keep separate because service boundary differs. |
-| `RUNTIME` | `status`, `self_status`, `describe_actions`, `reload_config`, `restart` | Runtime introspection and control. | Correct parent for process/runtime state. | Good. |
-| `DATABASE` | `list_tables`, `get_table`, `query`, `search_vectors` | Read/query runtime database. | Correct parent for DB inspection. | Make write/default-read-only policy explicit wherever exposed. |
-| `LOGS` | `search`, `delete`, `set_level` | Agent log search/deletion/log-level control. | Correct parent for logs. | Destructive `delete` should stay owner-gated. |
-| `MEMORY` | `create`, `search`, `update`, `delete` | Agent memory CRUD. | Correct parent for memory store. | Good, but update/delete confirmation should remain prominent. |
-| `TRIGGER` | `create`, `update`, `delete`, `run`, `toggle` | Trigger lifecycle for interval/once/cron events. | Correct parent for trigger records. | Uses canonical promotion now, but needs examples and similes. |
-| `EXTRACT_PAGE` | output modes `html`, `links`, `markdown`, `screenshot` | Extracts page content through a host tool. | Leaf with mode parameter, not true subactions. | Good. |
-| `SETTINGS` | settings mutation dispatch | Owner-only settings mutation. | Parent is broad runtime settings state. | Parser did not recover all subactions; needs clearer explicit schema. |
-| `QUERY_TRAJECTORIES` | status/source filters | Reads trajectory records. | Leaf read action. | Good. |
-| `SHELL_COMMAND` | none | Runs an explicit shell command through older agent surface. | Leaf because command is the operation. | Overlaps `BASH`; choose canonical public shell action. |
-| `SKILL_COMMAND` | none | Dispatches slash skill commands. | Leaf command parser. | Separate from `SKILL` catalog and `USE_SKILL` invocation. |
-| `ANALYZE_IMAGE` | none | Vision analysis of image attachment/input. | Leaf media analysis. | Appears exported but not always registered; confirm intended exposure. |
-| `READ_ATTACHMENT` | none | Reads recent/current attachments and link previews. | Leaf context-read action. | Good. |
+| `SETTINGS` | `update_ai_provider`, `toggle_capability`, `toggle_training`, `set_owner_name`, `set` | Owner-only settings mutations. | Correct parent for runtime/world settings. Name is clear. | Uses canonical `action`. Good. Add `list` and `read` if users need discovery; current set is write-heavy. |
+| `TRIGGER` | `create`, `update`, `delete`, `run`, `toggle` | Scheduled/trigger task lifecycle in the agent app. | Correct parent for trigger records. | Still declares `subaction`. Boundary with `WORKFLOW` and LifeOps `ScheduledTask` needs explicit docs. |
+| `WORKFLOW` | `create`, `modify`, `activate`, `deactivate`, `toggle_active`, `delete`, `executions` | Workflow definitions and executions. | Correct parent for durable workflow records. | Uses `op`, not `action`. Should be normalized. |
+| `RUNTIME` | `status`, `self_status`, `describe_actions`, `reload_config`, `restart` | Runtime/process introspection and control. | Correct parent for runtime state. | Still declares `subaction`. Good action grouping. |
+| `LOGS` | `search`, `delete`, `set_level` | Log search, deletion, and log-level mutation. | Correct parent for logs. | Still declares `subaction`; destructive `delete` should stay tightly gated. |
+| `DATABASE` | `list_tables`, `get_table`, `query`, `search_vectors` | Database inspection/query. | Correct parent for DB state. | Still declares `subaction`. Make read-only/write policy explicit everywhere it is exposed. |
+| `MEMORY` | `create`, `search`, `update`, `delete` | Agent memory CRUD. | Correct parent for memory store operations. | Still declares `subaction`/`op`. Needs confirmation or role-gate clarity for destructive ops. |
+| `PLUGIN` | `install`, `uninstall`, `update`, `sync`, `eject`, `reinject`, `configure`, `read_config`, `toggle`, `list`, `disconnect` | Agent package/connector plugin management. | Correct parent for agent plugin lifecycle. | Still declares `subaction`. Overlaps core `MANAGE_PLUGINS`; decide which one is canonical. |
+| `MANAGE_PLUGINS` | `install`, `eject`, `sync`, `reinject`, `list`, `list_ejected`, `search`, `details`, `status`, `enable`, `disable`, `core_status`, `create` | Core plugin manager operations. | Correct core-admin parent. Name is explicit. | Still declares `subaction`. Collision/overlap with `PLUGIN` should be resolved or documented. |
+| `SET_SECRET` | none | Stores secrets/API keys. | Leaf because the side effect is singular and the payload contains the keys. | Good, but could be `CREDENTIALS action=set_secret` if unifying all credentials. |
+| `MANAGE_SECRET` | `get`, `set`, `delete`, `list`, `check` | Secrets CRUD/check. | Correct parent for secret store operations. | Still declares `subaction`/`operation`; overlaps `SET_SECRET`. |
+| `REQUEST_SECRET` | none | Requests a missing secret. | Leaf because request content carries target secret. | Good. |
+| `SECRETS_UPDATE_SETTINGS` | none | Onboarding settings update. | Leaf onboarding action. | Similar to `SETTINGS action=set`; consider folding once onboarding flow is no longer special. |
+| `TRUST_UPDATE_ROLE` | none | Trust/security role assignments. | Leaf because payload is role assignment array. | Boundary overlaps `ROLE`. Keep trust role model distinct from chat role model in docs. |
+| `EVALUATE_TRUST` | none | Reads trust profile/score for entity. | Leaf read operation. | Good. |
+| `REQUEST_ELEVATION` | none | Requests temporary permission elevation. | Leaf workflow. | Parameter named `action` means "action needing elevation", not subaction; avoid confusing migration tooling. |
+| `RECORD_TRUST_INTERACTION` | none | Records trust evidence. | Leaf because evidence type/data carries operation. | Good. |
 
-### Developer, Browser, And Automation Tools
+### Documents, Attachments, And Knowledge
 
-| Parent | Subactions / Children | What It Does | Parent Rationale | Issues |
+| Parent | Children | What It Does | Why This Parent And Name | Defects / Opportunities |
 |---|---|---|---|---|
-| `BROWSER` | `back`, `click`, `close`, `forward`, `get`, `hide`, `navigate`, `open`, `press`, `reload`, `screenshot`, `show`, `snapshot`, `state`, `tab`, `type`, `wait`, `realistic-click`, `realistic-fill`, `realistic-type`, `realistic-press`, `cursor-move`, `cursor-hide`, `autofill-login` | Browser tab/page control across workspace, bridge, and computeruse targets. | Correct parent: all children operate on a browser target. | Very large. It still has legacy `action` alias with extra values. Keep `subaction` canonical. |
-| `MANAGE_BROWSER_BRIDGE` | `install`, `reveal_folder`, `open_manager`, `refresh` | Browser companion extension setup/status. | Correctly separate from `BROWSER`: it manages bridge infrastructure, not page content. | Good. |
-| `COMPUTER_USE` | `screenshot`, `click`, `click_with_modifiers`, `double_click`, `right_click`, `mouse_move`, `type`, `key`, `key_combo`, `scroll`, `drag`, `detect_elements`, `ocr` | Cross-platform desktop/mouse/keyboard/screen control. | Correct parent: all children are direct GUI operations. | Uses `action`, not `subaction`; migrate schema aliasing carefully. |
-| `DESKTOP` | `screenshot`, `ocr`, `detect_elements` plus file/window/terminal intent in description | Legacy/alternate desktop operation group. | Parent name is broad but child set is currently reserved/partial. | Confusing overlap with `COMPUTER_USE` and coding tools. Reassess exposure. |
-| `BASH` | none | Runs shell command. | Leaf because command string is the operation. | Good. |
-| `READ` | none | Reads file. | Leaf coding tool. | Good. |
-| `WRITE` | none | Writes file. | Leaf coding tool. | Good. |
-| `EDIT` | none | Exact string replacement in file. | Leaf coding tool. | Good. |
-| `GREP` | output modes `content`, `files_with_matches`, `count` | Searches files with ripgrep. | Leaf with output mode, not domain subactions. | Good. |
-| `GLOB` | none | Finds files by glob. | Leaf. | Good. |
-| `LS` | none | Lists directory. | Leaf. | Good. |
-| `WEB_FETCH` | none | Fetches HTTP(S) text. | Leaf. | Good. |
-| `ASK_USER_QUESTION` | none | Broadcasts structured questions to UI. | Leaf because question array defines content. | Non-blocking semantics should be explicit in every planner surface. |
-| `ENTER_WORKTREE` | none | Creates/switches git worktree. | Leaf. | Good. |
-| `EXIT_WORKTREE` | none | Exits/removes worktree. | Leaf. | Good. |
-| `MCP` | `call_tool`, `read_resource`, `search_actions`, `list_connections` | MCP tool/resource routing. | Correct parent: same MCP connection registry and result adapter. | Good. |
-| `WORKFLOW` | `create`, `modify`, `activate`, `deactivate`, `toggle_active`, `delete`, `executions` via `op` | Workflow lifecycle. | Correct parent for workflow records. | Uses `op`; migrate toward `subaction` docs. |
-| `TASKS` | `create`, `spawn_agent`, `send`, `stop_agent`, `list_agents`, `cancel`, `history`, `control`, `share`, `provision_workspace`, `submit_workspace`, `manage_issues`, `archive`, `reopen` | Agent-orchestrator task and subagent lifecycle. | Correct parent for orchestrator task state. | Large and high-risk; needs examples per workflow. |
+| `DOCUMENT` | `list`, `search`, `read`, `write`, `edit`, `delete`, `import_file`, `import_url` | Stored document CRUD/import. | Correct parent because all children operate on the document store. | Still declares `subaction`. Good grouping. |
+| `READ_ATTACHMENT` | none; desired `ATTACHMENT action=read|save_as_document` | Reads current/recent attachments and link previews. | Current leaf name is direct, but attachments are a domain, not just read. | Not registered in production action lists found, while providers still reference it. Add `ATTACHMENT` parent or register intentionally. |
+| `GENERATE_MEDIA` | media type parameter | Generates image/video/audio media. | Parent is media generation, not specific file/document storage. | Good leaf/parameter shape. |
+| `VISION` | `describe`, `capture`, `set_mode`, `name_entity`, `identify_person`, `track_entity` | Camera/screen scene analysis and entity tracking. | Correct parent for live visual perception. | Still declares `subaction`. User wanted posted images analyzed automatically; this action may still be useful for live camera/screen, but automatic attachment image analysis should not require planner action. |
 
-### External Apps And SaaS
+### Developer Tools, Browser, Desktop, And MCP
 
-| Parent | Subactions / Children | What It Does | Parent Rationale | Issues |
+| Parent | Children | What It Does | Why This Parent And Name | Defects / Opportunities |
 |---|---|---|---|---|
-| `LINEAR` | `create_issue`, `get_issue`, `update_issue`, `delete_issue`, `create_comment`, `update_comment`, `delete_comment`, `list_comments`, `get_activity`, `clear_activity`, `search_issues` | Linear issue/comment/activity operations. | Correct parent: all children share Linear account/service. | Helper actions also exist (`CREATE_LINEAR_ISSUE`, etc.). Keep helpers internal or expose them intentionally, not both ambiguously. |
-| `LINEAR_ISSUE` | `create`, `get`, `update`, `delete` | Router slice for Linear issues. | Logical subgroup under `LINEAR`. | If exposed, duplicates `LINEAR` naming. |
-| `LINEAR_COMMENT` | `create` | Router slice for Linear comments. | Logical subgroup under `LINEAR`. | One-child parent; probably internal. |
-| `LINEAR_WORKFLOW` | `get_activity`, `clear_activity`, `search_issues` | Router slice for Linear activity/search. | Logical subgroup under `LINEAR`. | Internal/helper candidate. |
-| `GitHubActions.GITHUB_PR_OP` | PR list/review actions | GitHub PR operations. | Correct parent for PR-specific GitHub work. | Name resolves from enum property and is awkward in audits; ensure runtime name is plain string. |
-| `GitHubActions.GITHUB_ISSUE_OP` | issue create/assign/close/reopen/comment/label | GitHub issue operations. | Correct sibling to PR parent; issue lifecycle differs from PR review. | Same enum-name audit issue. |
-| `GitHubActions.GITHUB_NOTIFICATION_TRIAGE` | notification triage | Reads/scorers GitHub notifications. | Leaf because it is a single read/triage workflow. | Good. |
-| `SHOPIFY` | `search`, `products`, `inventory`, `orders`, `customers` | Shopify store operations. | Correct parent: same store/account boundary. | Values are domain nouns rather than verbs; acceptable, but subhandlers need clear second-stage operation names. |
-| `DISCORD_SETUP_CREDENTIALS` | none | Configures Discord credentials. | Leaf setup action. | Good. |
-| `NOSTR_PUBLISH_PROFILE` | none | Publishes Nostr kind-0 profile metadata. | Leaf. | Good. |
-| `FORM_RESTORE` | none | Restores stashed form state. | Leaf. | Good. |
+| `FILE` | `read`, `write`, `edit`, `grep`, `glob`, `ls` | File-system coding operations. | Correct parent because all children share path policy, cwd handling, and file-state service. Name is simple and canonical. | Good consolidation. Old leaf files remain implementation-only. |
+| `SHELL` | none | Runs shell commands. | Correct leaf because the command string is the operation. | Coding-tools is canonical, but agent still exposes `SHELL_COMMAND`. |
+| `WORKTREE` | `enter`, `exit` | Git worktree/session cwd transitions. | Correct parent because enter/exit are a lifecycle pair over the same state. | Good consolidation. Old `ENTER_WORKTREE`/`EXIT_WORKTREE` files remain implementation-only. |
+| `SHELL_COMMAND` | none | Runs a shell command through older agent terminal API. | Parent is functionally identical to `SHELL`; name is legacy and inconsistent. | Should be removed or renamed to `SHELL`. |
+| `BROWSER` | `back`, `click`, `close`, `context`, `forward`, `get`, `get_context`, `hide`, `info`, `list_tabs`, `navigate`, `open`, `open_tab`, `press`, `reload`, `screenshot`, `show`, `snapshot`, `state`, `tab`, `type`, `wait`, `close_tab`, `switch_tab`, `realistic_click`, `realistic_fill`, `realistic_type`, `realistic_press`, `cursor_move`, `cursor_hide`, `autofill_login` | Browser tab/page/workspace control. | Correct parent: all children operate on a browser target. | Schema still exposes both `action` and `subaction` and explicitly says "prefer subaction"; update to canonical `action`. Very large set needs subgroup examples: navigation, DOM input, screenshots/state, tabs, cursor realism, autofill. |
+| `MANAGE_BROWSER_BRIDGE` | `install`, `reveal_folder`, `open_manager`, `refresh` | Browser companion/extension setup. | Correctly separate from `BROWSER` because it manages infrastructure, not page content. | Still declares `subaction`; maybe `BROWSER_BRIDGE action=...` would be clearer. |
+| `COMPUTER_USE` | screenshot/click/key/type/scroll/drag/detect/ocr-style GUI ops | Direct GUI control. | Correct parent for desktop interaction primitives. | Uses `action` already. Good. |
+| `DESKTOP` | `file`, `window`, `terminal` plus reserved `screenshot`, `ocr`, `detect_elements` | Desktop operation grouping over computer-use file/window/terminal handlers. | Parent is too broad and overlaps `FILE`, `SHELL`, `COMPUTER_USE`. | Still declares `subaction` and nested `action`. Reassess exposure; maybe collapse into existing parents. |
+| `MCP` | `call_tool`, `read_resource`, `search_actions`, `list_connections` | MCP server tool/resource routing. | Correct parent because all children share MCP server/connection registry. | Still declares `subaction`; normalize. |
 
-### Skills, Media, Music, Wallet, Games
+### Agent Orchestration And Skills
 
-| Parent | Subactions / Children | What It Does | Parent Rationale | Issues |
+| Parent | Children | What It Does | Why This Parent And Name | Defects / Opportunities |
 |---|---|---|---|---|
-| `SKILL` | `search`, `details`, `sync`, `toggle`, `install`, `uninstall` | Skill catalog management. | Correct parent: all children manage the skill registry/install state. | Helper files also use `name: "SKILL"`. This pattern is valid but hard to audit. Needs more similes/examples. |
-| `USE_SKILL` | mode `guidance`, `script`, `auto` | Invokes an enabled skill. | Correctly separate from `SKILL`: using a skill is not catalog management. | Keep separate. |
-| `GENERATE_MEDIA` | media type image/video/audio | Generates media from prompt. | Leaf with media type parameter. | Source uses `spec.name`; ensure generated spec stays current. |
-| `MUSIC` | `playlist`, `play_query`, `search_youtube`, `download`, `pause`, `resume`, `skip`, `stop`, `queue`, `play_audio`, `routing`, `zones` | Music playback, library, playlist, routing, and zones. | Parent is user-facing music intent. | Too broad: playback, library management, and routing are distinct service boundaries. If kept, add examples for each subgroup. |
-| `MUSIC_LIBRARY` | `playlist`, `play_query`, `search_youtube`, `download` | Music library/search/download operations. | Logical child of `MUSIC`. | Helper-style action. Good boundary if exposed separately. |
-| `PLAYBACK` | `pause`, `resume`, `skip`, `stop`, `queue` | Playback state operations. | Logical child of `MUSIC`. | Good subgroup. |
-| `PLAY_AUDIO` | none | Plays a new song/query/URL. | Logical child of `MUSIC`, but leaf shape is fine. | Good. |
-| `MANAGE_ROUTING` | `set_mode`, `start_route`, `stop_route`, `status` | Audio routing. | Logical child of `MUSIC`. | If exposed, name is clear. |
-| `MANAGE_ZONES` | `create`, `delete`, `list`, `add`, `remove`, `show` | Audio zones. | Logical child of `MUSIC`. | Good. |
-| `MUSIC_GENERATION` | `generate`, `custom`, `extend` | Suno music generation. | Separate parent because it creates audio, not playback/library state. | Good. |
-| `WALLET` | `transfer`, `swap`, `bridge`, `gov` | Wallet token operations across chains. | Correct parent: shared wallet/router risk and chain registry. | High-risk side effects; keep dry-run/prepare confirmation clear. |
-| `LIQUIDITY` | `onboard`, `list_pools`, `open`, `close`, `reposition`, `list_positions`, `get_position`, `set_preferences` | LP/liquidity position management. | Correct separate parent: LP positions are not simple token transfers. | Good. |
-| `TOKEN_INFO` | `search`, `token`, `trending`, `new-pairs`, `chain-pairs`, `boosted`, `profiles`, `wallet` | Crypto token/market information. | Correct separate parent: read-only analytics, not wallet mutation. | Mixed kebab naming (`new-pairs`) differs from most snake_case subactions. |
-| `PAYMENT` | `check`, `request` | Mysticism payment request/status. | Correct plugin-local parent. | Name is generic; okay only inside plugin context. |
-| `READING` | `start`, `followup`, `deepen` | Mysticism readings. | Correct parent: all children are reading lifecycle operations. | Good. |
-| `VISION` | `describe`, `capture`, `set_mode`, `name_entity`, `identify_person`, `track_entity` | Vision/camera/screen perception. | Correct parent: shared perception service and memory. | Good. |
-| `TAILSCALE` | `start`, `stop` | Tailscale tunnel control. | Parent name is provider-specific. | Overlaps generic `TUNNEL`; prefer `TUNNEL` unless provider-specific control is required. |
-| `TUNNEL` | `start`, `stop`, `status` via `op` | Generic tunnel operations. | Better parent than provider-specific names. | Uses `op`; migrate docs. |
-| `START_TUNNEL`, `STOP_TUNNEL`, `GET_TUNNEL_STATUS` | none | Ngrok-specific tunnel leaves. | Provider-specific legacy/sibling leaves. | Keep only if ngrok direct actions are intentionally exposed. |
-| `RS_2004` | `walk_to`, `chop`, `mine`, `fish`, `burn`, `cook`, `fletch`, `craft`, `smith`, `drop`, `pickup`, `equip`, `unequip`, `use`, `use_on_item`, `use_on_object`, `open`, `close`, `deposit`, `withdraw`, `buy`, `sell`, `attack`, `cast_spell`, `set_style`, `eat`, `talk`, `navigate_dialog`, `interact_object`, `open_door`, `pickpocket` | 2004Scape game actions. | Correct game-domain parent. | Large and app-specific; out of main assistant taxonomy but not benchmark/example code. |
-| `SCAPE` | `walk_to`, `attack`, `chat_public`, `eat`, `drop`, `set_goal`, `complete_goal`, `remember` | Scape game/autonomy actions. | Correct game-domain parent. | App-specific. |
-| `MC` | `connect`, `disconnect`, `goto`, `stop`, `look`, `control`, `waypoint_goto`, `dig`, `place`, `chat`, `attack`, `waypoint_set`, `waypoint_delete` | Minecraft bot control. | Correct game-domain parent. | App-specific. |
-| `ROBLOX_ACTION` | `message`, `execute`, `get_player` | Roblox game bridge. | Correct game-domain parent. | Name has `_ACTION` suffix while most parents do not. |
-| `PREDICTION_MARKET` | `read`, `place-order` | Polymarket read/order router. | Correct parent for market actions. | Hyphenated `place-order` differs from snake_case convention. |
-| `PLACE_CALL` | none | Android phone call placement. | Leaf app-phone action. | Separate from LifeOps `VOICE_CALL`; decide which is canonical per platform. |
-| `PLAY_EMOTE` | none | Avatar emote animation. | Leaf visual side action. | Good. |
+| `TASKS` in agent-orchestrator | `create`, `spawn_agent`, `send`, `stop_agent`, `list_agents`, `cancel`, `history`, `control`, `share`, `provision_workspace`, `submit_workspace`, `manage_issues`, `archive`, `reopen` | Coding/sub-agent task lifecycle, ACP sessions, workspaces, issue management, and history. | Parent is orchestrator task state. Name is acceptable only if not shared with owner todo/reminder tasks. | Uses `subaction` and nested `action`; conflicts with LifeOps `TASKS`. Consider `AGENT_TASKS` or reserve `TASKS` here and rename LifeOps. |
+| `SKILL` | `search`, `details`, `sync`, `toggle`, `install`, `uninstall` | Skill catalog and install-state management. | Correct parent for skill registry state. | Still declares `subaction`. Good separation from `USE_SKILL`. |
+| `USE_SKILL` | mode parameter: `guidance`, `script`, `auto` | Invokes an installed/enabled skill. | Correct separate leaf because using a skill is not catalog management. | Good. |
 
-## Defects And Improvement Opportunities
+### External Work Providers
 
-1. Canonical discriminator is still inconsistent. The code defines
-   `CANONICAL_SUBACTION_KEY = "subaction"`, but current actions still expose
-   `action` (`BROWSER`, `COMPUTER_USE`), `op` (`WORKFLOW`, `TUNNEL`), and
-   `verb` (`LIFEOPS`, `MESSAGE_HANDOFF`). Keep aliases, but make new schemas
-   document `subaction` first.
+| Parent | Children | What It Does | Why This Parent And Name | Defects / Opportunities |
+|---|---|---|---|---|
+| `GITHUB` | PR ops `list`, `review`; issue ops `create`, `assign`, `close`, `reopen`, `comment`, `label`; notification triage | GitHub pull request, issue, and notification work. | Correct parent because one provider/account/service owns all GitHub work. | Good consolidation. Legacy `GITHUB_PR_OP`, `GITHUB_ISSUE_OP`, `GITHUB_NOTIFICATION_TRIAGE` remain implementation-only. |
+| `LINEAR` | `create_issue`, `get_issue`, `update_issue`, `delete_issue`, `create_comment`, `update_comment`, `delete_comment`, `list_comments`, `get_activity`, `clear_activity`, `search_issues` | Linear issues, comments, activity, and search. | Correct parent for one provider/account boundary. | Uses canonical `action`. Legacy `LINEAR_ISSUE`, `LINEAR_COMMENT`, `LINEAR_WORKFLOW` remain implementation-only and okay if not registered. |
+| `SHOPIFY` | `search`, `products`, `inventory`, `orders`, `customers` | Shopify store search and management reads/writes. | Correct provider parent. Name is clear. | Still declares `subaction`. Children are nouns rather than verbs; acceptable if second-stage parameters are clear. |
+| `CALENDLY` | `book`, `cancel` | Calendly booking handoff and cancellation. | Provider-specific parent; name is accurate but not canonical in the desired calendar architecture. | Fold under `CALENDAR` provider registration or mark as provider-only page action. |
+| `DISCORD_SETUP_CREDENTIALS` | none | Discord credential pairing/setup. | Leaf name describes implementation, not canonical capability. | Fold into `CONNECTOR`/`CREDENTIALS`. |
+| `NOSTR_PUBLISH_PROFILE` | none | Publish Nostr profile metadata. | Provider-specific identity mutation. | Fold into connector/identity provider capability. |
 
-2. Some consolidated parents coexist with legacy/specialized actions in
-   source: `BLOCK` vs `APP_BLOCK`/`WEBSITE_BLOCK`, `MONEY` vs
-   `PAYMENTS`/`SUBSCRIPTIONS`, `CREDENTIALS` vs `AUTOFILL`/`PASSWORD_MANAGER`,
-   `CALENDAR` vs `GOOGLE_CALENDAR`/`CALENDLY`, and `ENTITY` vs
-   `RELATIONSHIP`. That may be acceptable for compatibility, but generated
-   action docs and runtime exposure should make one canonical owner explicit.
+### Finance, Wallet, Payments, And Markets
 
-3. Several parents are too broad for planner learning without examples:
-   `MESSAGE`, `BROWSER`, `MUSIC`, `TASKS`, `SCHEDULED_TASK`, `CALENDAR`, and
-   `COMPUTER_USE`. Add at least one example per major subgroup, not one
-   example per every low-level child.
+| Parent | Children | What It Does | Why This Parent And Name | Defects / Opportunities |
+|---|---|---|---|---|
+| `WALLET` | `transfer`, `swap`, `bridge`, `gov`; nested governance `op=propose|vote|queue|execute` | Token transfers, swaps, bridging, and governance across chain handlers. | Correct parent because wallet risk, chain routing, and signing policy are shared. | Still declares `subaction` and nested `op`. High-risk side effects need prepare/execute clarity. |
+| `TOKEN_INFO` | `search`, `token`, `trending`, `new-pairs`, `chain-pairs`, `boosted`, `profiles`, `wallet` | Read-only crypto token/market/wallet analytics. | Correct separate parent because it is read-only analytics, not wallet mutation. | Still declares `subaction`; kebab-case children should be normalized or aliased to snake_case. |
+| `LIQUIDITY` | `onboard`, `list_pools`, `open`, `close`, `reposition`, `list_positions`, `get_position`, `set_preferences` | LP/liquidity position management. | Correct parent because LP positions are not simple token transfers. | Still declares `subaction`. Only exposed if LP manager plugin is loaded separately. |
+| `PREDICTION_MARKET` | `read`, `place-order` | Polymarket/public prediction market reads and readiness for order placement. | Correct parent because provider target can vary; current target is Polymarket. | Still declares `subaction`; `place-order` should be `place_order`. Signed placement is disabled, so name should not overpromise. |
+| `PAYMENT` in mysticism | `check`, `request` | Payment status/request for an active reading session. | Plugin-local parent, but globally generic name. | Rename or move under a global `PAYMENT` contract. |
+| `OWNER_FINANCES` | listed above | Owner spending/subscriptions. | Owner finance parent. | Do not use `PAYMENT` here unless the action actually moves/charges money. |
 
-4. Duplicate/helper action names make source audits difficult. `MESSAGE`
-   helper actions and `SKILL` helper actions reuse the parent name. Runtime
-   dispatch can handle this, but static tooling should label them
-   `parent=...` explicitly.
+### Music, Media, And Streaming
 
-5. Naming style is mostly snake_case, but there are exceptions:
-   `realistic-click`, `new-pairs`, `place-order`, and provider enum names
-   like `GitHubActions.GITHUB_PR_OP` in static extraction. Prefer snake_case
-   for new subaction values and reserve kebab-case as legacy aliases.
+| Parent | Children | What It Does | Why This Parent And Name | Defects / Opportunities |
+|---|---|---|---|---|
+| `MUSIC` | `playlist`, `play_query`, `search_youtube`, `download`, `pause`, `resume`, `skip`, `stop`, `queue`, `play_audio`, `routing`, `zones` | Music library, discovery, playback, queue, routing, and zones. | Correct user-facing parent. Name is clear. | Good consolidation. Internally broad; subgroup docs should separate library/search, playback, queue, routing, zones. |
+| `MUSIC_GENERATION` | `generate`, `custom`, `extend` | Suno music generation. | Separate from `MUSIC` playback/library because it creates new audio. | Still declares `subaction`. Could be `MUSIC action=generate` if a single music taxonomy is desired. |
+| `STREAM` in streaming plugin | `start`, `stop`, `status` with platform | RTMP streaming lifecycle across platforms. | Correct parent for live streaming provider lifecycle. | Still declares `subaction`. There is also an agent `STREAM` action with `go_live`/`go_offline`; ensure they are not both exposed in the same runtime. |
+| `PLAY_EMOTE` | none | Plays a companion avatar emote. | Leaf because one app-scoped side effect. | It is gated by app-companion session, which satisfies the "only when companions are running" direction. Could be renamed under `COMPANION action=play_emote` if more companion actions appear. |
 
-6. `SCHEDULE` is semantically "schedule inference", not calendar scheduling.
-   Renaming to `SCHEDULE_INFERENCE` would reduce confusion with `CALENDAR`
-   and `SCHEDULING_NEGOTIATION`.
+### Network, Browser Infrastructure, And Tunnels
 
-7. `DESKTOP` overlaps `COMPUTER_USE` and coding tools. If `DESKTOP` is meant
-   as a future file/window/terminal umbrella, give it real subactions. If not,
-   route screenshots/OCR/elements through `COMPUTER_USE` only.
+| Parent | Children | What It Does | Why This Parent And Name | Defects / Opportunities |
+|---|---|---|---|---|
+| `TUNNEL` | `start`, `stop`, `status` | Generic tunnel lifecycle. | Correct parent because ngrok, Tailscale, and Eliza Cloud/headscale should be providers. | Uses canonical `action`. Good. |
+| `TAILSCALE` | `start`, `stop` | Tailscale-specific tunnel control. | Provider-specific implementation. | No longer registered by `plugin-tailscale`; keep implementation-only or remove. |
+| `START_TUNNEL` / `STOP_TUNNEL` / `GET_TUNNEL_STATUS` | none | Ngrok-style legacy leaves. | Provider-specific implementation leaves. | No longer registered by `plugin-ngrok`; keep internal only or remove. |
 
-8. Tunnels have three surfaces: generic `TUNNEL`, provider-specific
-   `TAILSCALE`, and ngrok leaves. Prefer generic `TUNNEL` for planner-facing
-   routing and keep provider leaves internal or advanced.
+### Apps And Games
 
-9. High-risk financial and wallet actions (`WALLET`, `LIQUIDITY`,
-   `PREDICTION_MARKET`, `MONEY.subscription_cancel`) should consistently
-   expose prepare/dry-run/confirmed semantics in descriptions and examples.
+| Parent | Children | What It Does | Why This Parent And Name | Defects / Opportunities |
+|---|---|---|---|---|
+| `ROBLOX` | `message`, `execute`, `get_player` | Roblox bridge messaging/execution/player lookup. | Correct provider/app parent. Name is now clean. | Uses canonical `action`. Good. |
+| `SCAPE` | `walk_to`, `attack`, `chat_public`, `eat`, `drop`, `set_goal`, `complete_goal`, `remember` | Scape game/autonomy actions. | Correct app/game parent. | Still declares `subaction`; app-specific and okay. |
+| `RS_2004` | `walk_to`, `chop`, `mine`, `fish`, `burn`, `cook`, `fletch`, `craft`, `smith`, `drop`, `pickup`, `equip`, `unequip`, `use`, `use_on_item`, `use_on_object`, `open`, `close`, `deposit`, `withdraw`, `buy`, `sell`, `attack`, `cast_spell`, `set_style`, `eat`, `talk`, `navigate_dialog`, `interact_object`, `open_door`, `pickpocket` | 2004Scape SDK/game operations. | Correct app/game parent. | Still declares `subaction`; large but natural for game commands. |
+| `MC` | `connect`, `disconnect`, `goto`, `stop`, `look`, `control`, `waypoint_goto`, `dig`, `place`, `chat`, `attack`, `waypoint_set`, `waypoint_delete` | Minecraft bot control. | Correct app/game parent. | Still declares `subaction`. Consider `MINECRAFT` over `MC` for audit readability. |
+| `PLACE_CALL` | none | Android/app-phone outbound call placement. | Current app-phone leaf; name is clear but not canonical. | Must merge with `VOICE_CALL` provider model. |
 
-10. Game/app-specific parents (`RS_2004`, `SCAPE`, `MC`, `ROBLOX_ACTION`) are
-    structurally fine but should stay context-gated so they do not pollute
-    normal assistant action retrieval.
+## Implementation-Only Leftovers
 
-## Recommended Logical Ordering
+These are present in source but are not registered by the current owning plugin
+registration found in this pass. They are less urgent unless prompt text,
+repair code, exports, or external consumers still route to them.
 
-For planner surfaces, order parents from safest/commonest to riskiest:
+| Area | Implementation-only names | Current canonical exposure | Notes |
+|---|---|---|---|
+| Coding tools | `READ`, `WRITE`, `EDIT`, `GREP`, `GLOB`, `LS`, `WEB_FETCH`, `ASK_USER_QUESTION`, `ENTER_WORKTREE`, `EXIT_WORKTREE` | `FILE`, `SHELL`, `WORKTREE` | Good consolidation. Remove stale docs if any still advertise leaves. |
+| GitHub | `GITHUB_PR_OP`, `GITHUB_ISSUE_OP`, `GITHUB_NOTIFICATION_TRIAGE` | `GITHUB` | Good consolidation. |
+| Linear | `LINEAR_ISSUE`, `LINEAR_COMMENT`, `LINEAR_WORKFLOW`, plus leaf helpers | `LINEAR` | Good consolidation. |
+| Tunnel providers | `TAILSCALE`, `START_TUNNEL`, `STOP_TUNNEL`, `GET_TUNNEL_STATUS` | `TUNNEL` | Good consolidation; provider plugins now register no actions. |
+| Music | `MUSIC_LIBRARY`, `PLAY_AUDIO`, `MANAGE_ROUTING`, `MANAGE_ZONES`, playback/library leaves | `MUSIC` | Good consolidation. |
+| Form | `FORM_RESTORE` | none | Removed from plugin action list; evaluator/service remains. |
+| LifeOps old public actions | `LIFE`, `PROFILE`, `RELATIONSHIP`, `MONEY`, `PAYMENTS`, `SUBSCRIPTIONS`, `HEALTH`, `SCREEN_TIME`, `SCHEDULE`, `BOOK_TRAVEL`, `SCHEDULING_NEGOTIATION`, `FIRST_RUN`, `TOGGLE_FEATURE`, `DEVICE_INTENT`, `MESSAGE_HANDOFF`, `APP_BLOCK`, `WEBSITE_BLOCK`, `AUTOFILL`, `PASSWORD_MANAGER` | `OWNER_*`, `BLOCK`, `CREDENTIALS`, `CALENDAR`, `PERSONAL_ASSISTANT`, `TASKS`, `CONNECTOR`, etc. | The problem is not the files; the problem is stale provider text and core repair aliases still naming several of these. |
+| Core/agent removed leaves | `EXTRACT_PAGE`, `QUERY_TRAJECTORIES`, `SKILL_COMMAND`, `ANALYZE_IMAGE` | Browser/document/vision/skill surfaces | Removed from default agent registration. Verify no provider text still routes to them. |
 
-1. Conversation control: `REPLY`, `IGNORE`, `NONE`.
-2. Read-only context: `READ_ATTACHMENT`, `HEALTH`, `SCREEN_TIME`,
-   `SCHEDULE`, `TOKEN_INFO`, `QUERY_TRAJECTORIES`.
-3. Communication drafts and reads: `MESSAGE`, `POST`, `ROOM`.
-4. Personal organization: `LIFE`, `SCHEDULED_TASK`, `CALENDAR`,
-   `SCHEDULING_NEGOTIATION`, `PROFILE`, `ENTITY`.
-5. Local/browser/computer operations: `BROWSER`, `COMPUTER_USE`, coding tools,
-   `MCP`, `WORKFLOW`, `TASKS`.
-6. Admin/runtime: `PLUGIN`, `CONNECTOR`, `RUNTIME`, `DATABASE`, `LOGS`,
-   `MEMORY`, `TRIGGER`, `SETTINGS`, `SKILL`.
-7. High-risk side effects: `CREDENTIALS`, `BLOCK`, `MONEY`, `VOICE_CALL`,
-   `BOOK_TRAVEL`, `WALLET`, `LIQUIDITY`, `PREDICTION_MARKET`.
-8. Context-gated app/game surfaces: `RS_2004`, `SCAPE`, `MC`, `ROBLOX_ACTION`,
-   `PLAY_EMOTE`.
+## Discriminator Normalization Status
 
-## Immediate Fix List
+`packages/core/src/actions/subaction-dispatch.ts` now defines `action` as the
+canonical discriminator and accepts `subaction`, `op`, `operation`, `verb`,
+`subAction`, and `__subaction` as aliases. That helper change is correct, but
+schema normalization is incomplete.
 
-1. Document canonical parent ownership for each consolidated LifeOps family.
-2. Finish discriminator cleanup: every umbrella should document `subaction`
-   first, with `op`/`action`/`operation`/`verb` as aliases only where needed.
-3. Add examples to `MESSAGE`, `SCHEDULED_TASK`, `MUSIC`, `TASKS`,
-   `COMPUTER_USE`, and `BROWSER`.
-4. Decide canonical tunnel surface: `TUNNEL` vs `TAILSCALE` vs ngrok leaves.
-5. Decide canonical todo surface: core `TODO` leaves/umbrella vs
-   `plugin-todos` `TODO`.
-6. Rename or clarify `SCHEDULE`.
-7. Keep legacy LifeOps leaf actions out of generated planner docs unless
-   intentionally exposed.
+Already aligned or mostly aligned:
+
+- `FILE`
+- `WORKTREE`
+- `SETTINGS`
+- `LINEAR`
+- `GITHUB`
+- `TUNNEL`
+- `MUSIC`
+- `ROBLOX`
+- `OWNER_REMINDERS`
+- `OWNER_ALARMS`
+- `OWNER_GOALS`
+- `OWNER_TODOS`
+- `OWNER_ROUTINES`
+- `PERSONAL_ASSISTANT`
+- LifeOps `TASKS`
+
+Still teaching old discriminators in public schemas:
+
+- Core: `MESSAGE`, `POST`, `ROOM`, `ROLE`, `CHARACTER`, `DOCUMENT`,
+  `MANAGE_PLUGINS`, `MANAGE_SECRET`.
+- Agent: `CONTACT`, `TRIGGER`, `LOGS`, `RUNTIME`, `DATABASE`, `MEMORY`,
+  `PLUGIN`.
+- Browser/desktop: `BROWSER`, `MANAGE_BROWSER_BRIDGE`, `DESKTOP`, `MCP`,
+  `WORKFLOW`.
+- LifeOps: `BLOCK`, `CREDENTIALS`, `CALENDAR`, `CONNECTOR`, `ENTITY`,
+  `RESOLVE_REQUEST`, `VOICE_CALL`, `REMOTE_DESKTOP`, `OWNER_HEALTH`,
+  `OWNER_SCREENTIME`, `OWNER_FINANCES`.
+- Providers/plugins: `SKILL`, `TASKS` orchestrator, `TODO`, `CALENDLY`,
+  `SHOPIFY`, `WALLET`, `TOKEN_INFO`, `LIQUIDITY`, `PREDICTION_MARKET`,
+  `PAYMENT`, `READING`, `VISION`, `MUSIC_GENERATION`, `SCAPE`, `RS_2004`,
+  `MC`, `STREAM`.
+
+## Recommended Fix Sequence
+
+1. Fix stale routing metadata first: `packages/core/src/services/message.ts`,
+   `plugins/app-lifeops/src/providers/lifeops.ts`, and page action group names.
+2. Resolve hard collisions: `TASKS` vs `TASKS`, `SHELL_COMMAND` vs `SHELL`,
+   `PLACE_CALL` vs `VOICE_CALL`, `PAYMENT` generic naming.
+3. Implement the missing profile/relationship evaluator replacement before
+   deleting remaining `PROFILE` assumptions.
+4. Normalize schemas to `action` in high-traffic parents: `MESSAGE`, `BROWSER`,
+   `CONTACT`, `CALENDAR`, `BLOCK`, `CREDENTIALS`, `CONNECTOR`, `TASKS`
+   orchestrator, `WORKFLOW`, `MCP`.
+5. Fold provider-specific setup actions into provider registries:
+   Discord/Nostr/Calendly/phone call providers.
+6. Add a static audit test that fails when registered action names include
+   known retired names or when a schema exposes `subaction`, `op`, `operation`,
+   or `verb` without an `action` parameter.

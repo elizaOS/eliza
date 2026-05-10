@@ -100,6 +100,7 @@ for (const key of [
   "GATEWAY_INTERNAL_SECRET",
   "AGENT_SERVER_SHARED_SECRET",
   "AGENT_TEST_BOOTSTRAP_ADMIN",
+  "PAYOUT_STATUS_SKIP_LIVE_BALANCE",
 ]) {
   const value = process.env[key];
   if (isRealValue(value)) {

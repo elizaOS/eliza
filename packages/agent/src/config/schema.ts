@@ -293,6 +293,9 @@ const FIELD_LABELS: Record<string, string> = {
   "tools.web.fetch.maxChars": "Web Fetch Max Chars",
   "tools.web.fetch.timeoutSeconds": "Web Fetch Timeout (sec)",
   "tools.web.fetch.cacheTtlMinutes": "Web Fetch Cache TTL (min)",
+  "tools.cache.enabled": "Enable Tool-Call Cache",
+  "tools.cache.memoryCapacity": "Tool Cache In-Memory Capacity",
+  "tools.cache.diskRoot": "Tool Cache Disk Root",
   "tools.web.fetch.maxRedirects": "Web Fetch Max Redirects",
   "tools.web.fetch.userAgent": "Web Fetch User-Agent",
   "gateway.controlUi.basePath": "Control UI Base Path",
@@ -624,6 +627,12 @@ const FIELD_HELP: Record<string, string> = {
     "Timeout in seconds for web_fetch requests.",
   "tools.web.fetch.cacheTtlMinutes":
     "Cache TTL in minutes for web_fetch results.",
+  "tools.cache.enabled":
+    "Enable the cross-tool call cache (default: enabled). Caches results of cacheable tools (web_search, web_fetch, file_read, rag_search, knowledge_lookup) by canonicalized argument hash to a two-tier in-memory + on-disk store. Side-effect tools never cache.",
+  "tools.cache.memoryCapacity":
+    "In-memory LRU capacity for the tool-call cache. Default 1000.",
+  "tools.cache.diskRoot":
+    "Override the on-disk root for the tool-call cache. Default: ~/.milady/tool-cache.",
   "tools.web.fetch.maxRedirects":
     "Maximum redirects allowed for web_fetch (default: 3).",
   "tools.web.fetch.userAgent":

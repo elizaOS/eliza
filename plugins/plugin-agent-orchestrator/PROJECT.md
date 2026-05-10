@@ -14,7 +14,7 @@ stack to extract structure out of terminal byte streams. The Agent Client Protoc
 protocol underneath, `tool_call`, `thinking`, `diff`, `done` events, typed
 auth handshake, cooperative `session/cancel`. ACPX provides one CLI surface
 across 15 Agent Client Protocol (ACP)-compatible coding agents (codex, claude-code, gemini, copilot,
-cursor, droid, qwen, etc).
+cursor, droid, local Eliza-1 agents, etc).
 
 This plugin is a sibling-not-replacement: deploys alongside
 `plugin-agent-orchestrator`, exposes the same action names so users can switch

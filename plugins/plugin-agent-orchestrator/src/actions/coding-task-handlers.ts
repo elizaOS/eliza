@@ -199,10 +199,10 @@ export function splitAgentSpecsParam(input: string): string[] {
 const SKILLS_MANIFEST_FILENAME = "SKILLS.md";
 
 /**
- * Shared registry that maps spawned PTY session IDs to the recommended-skills
- * allow-list for that spawn. Created once at module load; the skill-callback
- * bridge reads from it when a child emits a USE_SKILL directive, and the
- * multi-agent spawn loop registers entries after `recommendSkillsForTask`.
+ * Shared registry that maps spawned PTY session IDs to the requestable skills
+ * rendered into that spawn's SKILLS.md. Created once at module load; the
+ * skill-callback bridge reads from it when a child emits a USE_SKILL directive,
+ * and the multi-agent spawn loop registers entries after manifest generation.
  *
  * Entries must be cleared explicitly on session teardown to avoid leaks;
  * `registerSessionEvents` owns that responsibility.
@@ -496,7 +496,9 @@ async function prepareSkillAwareness(
       reason:
         "bridge to parent runtime actions, connectors, Cloud commands, and confirmation flow",
     },
-    ...taskRecommendations.filter((rec) => rec.slug !== PARENT_AGENT_BROKER_SLUG),
+    ...taskRecommendations.filter(
+      (rec) => rec.slug !== PARENT_AGENT_BROKER_SLUG,
+    ),
   ];
   const recommendedSlugs = recommendationsWithParent.map((rec) => rec.slug);
   const includeLifeOpsBroker = recommendedSlugs.includes(
@@ -1161,7 +1163,10 @@ export async function handleMultiAgent(
       // task-local allow-list for enforcement, so it must match the manifest
       // rather than only the top recommendations.
       if (skillAwareness && skillAwareness.manifest.slugs.length > 0) {
-        sessionSkillAllowList.register(session.id, skillAwareness.manifest.slugs);
+        sessionSkillAllowList.register(
+          session.id,
+          skillAwareness.manifest.slugs,
+        );
       }
 
       // Register event handler

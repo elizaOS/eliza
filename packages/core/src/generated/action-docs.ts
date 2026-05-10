@@ -2806,73 +2806,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "BASH",
-			description:
-				"Execute a shell command via /bin/bash -c <command>. Runs synchronously in the session cwd by default. Returns stdout, stderr, and exit code. Hard timeout kills the command. Paths under the configured blocklist are off-limits as cwd.",
-			parameters: [
-				{
-					name: "command",
-					description:
-						"Shell command to run; executed via /bin/bash -c <command>.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Shell command to run. executed via /bin/bash -c <command>.",
-				},
-				{
-					name: "description",
-					description:
-						"Five to ten word humanly-readable summary of the command.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Five to ten word humanly-readable summary of the command.",
-				},
-				{
-					name: "timeout",
-					description:
-						"Hard timeout in ms; clamped to [100, 600000]. Default 120000.",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed:
-						"Hard timeout in ms. clamped to [100, 600000]. Default 120000.",
-				},
-				{
-					name: "cwd",
-					description:
-						"Absolute working directory; must not resolve under a blocked path. Defaults to the session cwd.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Absolute working directory. must not resolve under a blocked path. Defaults to the session cwd.",
-				},
-			],
-			descriptionCompressed: "Run a shell command synchronously.",
-			similes: ["SHELL", "EXEC", "RUN_COMMAND"],
-			exampleCalls: [
-				{
-					user: "Use BASH with the provided parameters.",
-					actions: ["BASH"],
-					params: {
-						BASH: {
-							command: "example",
-							description: "example",
-							timeout: 1,
-							cwd: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "BROWSER",
 			description:
 				"Single BROWSER action — control whichever browser target is registered. Targets are pluggable: `workspace` (electrobun-embedded BrowserView, the default; falls back to a JSDOM web mode when the desktop bridge isn't configured), `bridge` (the user's real Chrome/Safari via the Agent Browser Bridge companion extension), and `computeruse` (a local puppeteer-driven Chromium via plugin-computeruse). The agent uses what is available — the BrowserService picks the active target when none is specified. Use `subaction: \"autofill-login\"` with `domain` (and optional `username`, `submit`) to vault-gated autofill into an open workspace tab.",
@@ -4110,6 +4043,269 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "FILE",
+			description:
+				"Read, write, edit, search, find, or list workspace files through one FILE action. Choose action=read/write/edit/grep/glob/ls. All paths must be absolute unless an operation explicitly defaults to the session cwd.",
+			parameters: [
+				{
+					name: "action",
+					description: "File operation to run.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "File operation to run.",
+				},
+				{
+					name: "file_path",
+					description: "Absolute path for read/write/edit operations.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Absolute path for read/write/edit operations.",
+				},
+				{
+					name: "path",
+					description:
+						"Absolute file or directory path for grep/glob/ls. Defaults to the session cwd where supported.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Absolute file or directory path for grep/glob/ls. Defaults to the session cwd where supported.",
+				},
+				{
+					name: "content",
+					description: "Full file contents for action=write.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Full file contents for action=write.",
+				},
+				{
+					name: "old_string",
+					description: "Exact substring to replace for action=edit.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Exact substring to replace for action=edit.",
+				},
+				{
+					name: "new_string",
+					description: "Replacement substring for action=edit.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Replacement substring for action=edit.",
+				},
+				{
+					name: "replace_all",
+					description:
+						"For action=edit, replace every occurrence instead of requiring one match.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"For action=edit, replace every occurrence instead of requiring one match.",
+				},
+				{
+					name: "pattern",
+					description: "Regex for action=grep or glob pattern for action=glob.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Regex for action=grep or glob pattern for action=glob.",
+				},
+				{
+					name: "glob",
+					description: "Optional ripgrep glob filter for action=grep.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional ripgrep glob filter for action=grep.",
+				},
+				{
+					name: "type",
+					description: "Optional ripgrep file type for action=grep.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional ripgrep file type for action=grep.",
+				},
+				{
+					name: "output_mode",
+					description:
+						"For action=grep: content, files_with_matches, or count.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["content", "files_with_matches", "count"],
+					},
+					descriptionCompressed:
+						"For action=grep: content, files_with_matches, or count.",
+				},
+				{
+					name: "-A",
+					description: "For action=grep content mode, lines after each match.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"For action=grep content mode, lines after each match.",
+				},
+				{
+					name: "-B",
+					description: "For action=grep content mode, lines before each match.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"For action=grep content mode, lines before each match.",
+				},
+				{
+					name: "-C",
+					description: "For action=grep content mode, lines around each match.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"For action=grep content mode, lines around each match.",
+				},
+				{
+					name: "case_insensitive",
+					description: "For action=grep, match case-insensitively.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "For action=grep, match case-insensitively.",
+				},
+				{
+					name: "multiline",
+					description: "For action=grep, enable multiline regex matching.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"For action=grep, enable multiline regex matching.",
+				},
+				{
+					name: "head_limit",
+					description: "For action=grep, truncate output to the first N lines.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"For action=grep, truncate output to the first N lines.",
+				},
+				{
+					name: "show_line_numbers",
+					description:
+						"For action=grep, include 1-based line numbers in content output.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"For action=grep, include 1-based line numbers in content output.",
+				},
+				{
+					name: "offset",
+					description: "For action=read, zero-based line offset.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "For action=read, zero-based line offset.",
+				},
+				{
+					name: "limit",
+					description: "For action=read, max number of lines to return.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"For action=read, max number of lines to return.",
+				},
+				{
+					name: "ignore",
+					description: "For action=ls, glob patterns to exclude.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "For action=ls, glob patterns to exclude.",
+				},
+			],
+			descriptionCompressed:
+				"File operations umbrella: action=read/write/edit/grep/glob/ls.",
+			similes: [
+				"READ",
+				"WRITE",
+				"EDIT",
+				"GREP",
+				"GLOB",
+				"LS",
+				"READ_FILE",
+				"WRITE_FILE",
+				"EDIT_FILE",
+				"FILE_OPERATION",
+				"FILE_IO",
+			],
+			exampleCalls: [
+				{
+					user: "Use FILE with the provided parameters.",
+					actions: ["FILE"],
+					params: {
+						FILE: {
+							action: "example",
+							file_path: "example",
+							path: "example",
+							content: "example",
+							old_string: "example",
+							new_string: "example",
+							replace_all: false,
+							pattern: "example",
+							glob: "example",
+							type: "example",
+							output_mode: "content",
+							"-A": 1,
+							"-B": 1,
+							"-C": 1,
+							case_insensitive: false,
+							multiline: false,
+							head_limit: 1,
+							show_line_numbers: false,
+							offset: 1,
+							limit: 1,
+							ignore: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "FIRST_RUN",
 			description:
 				"Owner-only. Run the first-run capability with path = defaults | customize | replay. ",
@@ -4290,9 +4486,185 @@ export const allActionsSpec = {
 				"Get the current status of the ngrok tunnel including URL, port, and uptime info. Supports action chaining by providing tunnel metadata for monitoring...",
 		},
 		{
+			name: "GITHUB",
+			description:
+				"GitHub umbrella for pull requests, issues, and notification triage. Use action=pr_list/pr_review/issue_create/issue_assign/issue_close/issue_reopen/issue_comment/issue_label/notification_triage.",
+			parameters: [
+				{
+					name: "action",
+					description: "GitHub operation to run.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "GitHub operation to run.",
+				},
+				{
+					name: "repo",
+					description: "Repository in owner/name form.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Repository in owner/name form.",
+				},
+				{
+					name: "number",
+					description: "Pull request or issue number.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Pull request or issue number.",
+				},
+				{
+					name: "state",
+					description: "PR state for pr_list: open, closed, or all.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["open", "closed", "all"],
+						default: "open",
+					},
+					descriptionCompressed: "PR state for pr_list: open, closed, or all.",
+				},
+				{
+					name: "author",
+					description: "Optional PR author username filter for pr_list.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional PR author username filter for pr_list.",
+				},
+				{
+					name: "review_action",
+					description:
+						"For action=pr_review: approve, request-changes, or comment.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["approve", "request-changes", "comment"],
+					},
+					descriptionCompressed:
+						"For action=pr_review: approve, request-changes, or comment.",
+				},
+				{
+					name: "title",
+					description: "Issue title for action=issue_create.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Issue title for action=issue_create.",
+				},
+				{
+					name: "body",
+					description: "Issue body, issue comment body, or PR review body.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Issue body, issue comment body, or PR review body.",
+				},
+				{
+					name: "assignees",
+					description: "GitHub usernames to assign.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "GitHub usernames to assign.",
+				},
+				{
+					name: "labels",
+					description: "Labels to apply on issue create or issue_label.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed:
+						"Labels to apply on issue create or issue_label.",
+				},
+				{
+					name: "as",
+					description: "Identity to use: agent or user.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["agent", "user"],
+						default: "agent",
+					},
+					descriptionCompressed: "Identity to use: agent or user.",
+				},
+				{
+					name: "accountId",
+					description:
+						"Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.",
+				},
+				{
+					name: "confirmed",
+					description: "Must be true for GitHub write operations.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed: "Must be true for GitHub write operations.",
+				},
+			],
+			descriptionCompressed:
+				"GitHub: pr_list|pr_review|issue_create|issue_assign|issue_close|issue_reopen|issue_comment|issue_label|notification_triage",
+			similes: [
+				"GITHUB_PR_OP",
+				"GITHUB_ISSUE_OP",
+				"GITHUB_NOTIFICATION_TRIAGE",
+				"GITHUB_PULL_REQUEST",
+				"GITHUB_ISSUE",
+				"GITHUB_NOTIFICATIONS",
+			],
+			exampleCalls: [
+				{
+					user: "Use GITHUB with the provided parameters.",
+					actions: ["GITHUB"],
+					params: {
+						GITHUB: {
+							action: "example",
+							repo: "example",
+							number: 1,
+							state: "open",
+							author: "example",
+							review_action: "approve",
+							title: "example",
+							body: "example",
+							assignees: "example",
+							labels: "example",
+							as: "agent",
+							accountId: "example",
+							confirmed: false,
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "GLOB",
 			description:
-				"Find files matching a glob pattern (e.g. '**/*.ts'). Returns up to 100 absolute paths sorted by mtime descending. Excludes VCS, build, and dependency directories. Use this instead of BASH for file discovery.",
+				"Find files matching a glob pattern (e.g. '**/*.ts'). Returns up to 100 absolute paths sorted by mtime descending. Excludes VCS, build, and dependency directories. Use this instead of SHELL for file discovery.",
 			parameters: [
 				{
 					name: "pattern",
@@ -4336,7 +4708,7 @@ export const allActionsSpec = {
 		{
 			name: "GREP",
 			description:
-				"Search file contents using ripgrep (a fast regex search). Returns matching files, counts, or line content. Always excludes VCS directories. Use this instead of BASH for content search.",
+				"Search file contents using ripgrep (a fast regex search). Returns matching files, counts, or line content. Always excludes VCS directories. Use this instead of SHELL for content search.",
 			parameters: [
 				{
 					name: "pattern",
@@ -4683,7 +5055,7 @@ export const allActionsSpec = {
 				"Manage Linear issues, comments, and activity. Operations: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. The op is inferred from the message text when not explicitly provided.",
 			parameters: [
 				{
-					name: "subaction",
+					name: "action",
 					description:
 						"Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Inferred from message text when omitted.",
 					required: false,
@@ -4726,7 +5098,7 @@ export const allActionsSpec = {
 					actions: ["LINEAR"],
 					params: {
 						LINEAR: {
-							subaction: "example",
+							action: "example",
 						},
 					},
 				},
@@ -5038,7 +5410,7 @@ export const allActionsSpec = {
 		{
 			name: "LS",
 			description:
-				"List entries in a directory, sorted with directories first then files. Each directory name has a trailing '/'. Pass an `ignore` array of glob patterns to skip entries. Use this instead of BASH for directory listing.",
+				"List entries in a directory, sorted with directories first then files. Each directory name has a trailing '/'. Pass an `ignore` array of glob patterns to skip entries. Use this instead of SHELL for directory listing.",
 			parameters: [
 				{
 					name: "path",
@@ -5394,10 +5766,10 @@ export const allActionsSpec = {
 		{
 			name: "MUSIC",
 			description:
-				"Unified music action. Use flat op for everything: library (playlist, play_query, search_youtube, download), playback transport (pause, resume, skip, stop, queue), play_audio, routing, zones. ",
+				"Unified music action. Use flat action for everything: library (playlist, play_query, search_youtube, download), playback transport (pause, resume, skip, stop, queue), play_audio, routing, zones. ",
 			parameters: [
 				{
-					name: "subaction",
+					name: "action",
 					description:
 						"Flat operation: playlist | play_query | search_youtube | download | pause | resume | skip | stop | queue | play_audio | routing | zones (hyphens and legacy aliases accepted).",
 					required: false,
@@ -5542,6 +5914,7 @@ export const allActionsSpec = {
 					actions: ["MUSIC"],
 					params: {
 						MUSIC: {
+							action: "playlist",
 							subaction: "example",
 							query: "example",
 							url: "example",
@@ -5782,6 +6155,33 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "OWNER_FINANCES",
+			description:
+				"Owner finances: payment sources, transaction imports, spending summaries, recurring charges, and subscription audits.",
+			parameters: [],
+			descriptionCompressed:
+				"owner finances: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
+			similes: ["MONEY", "FINANCES", "PAYMENTS", "SUBSCRIPTIONS"],
+		},
+		{
+			name: "OWNER_HEALTH",
+			description:
+				"Owner health telemetry reads across HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura. Actions: today, trend, by_metric, status.",
+			parameters: [],
+			descriptionCompressed:
+				"owner health: today|trend|by_metric|status; read-only telemetry",
+			similes: ["HEALTH", "FITNESS", "WELLNESS"],
+		},
+		{
+			name: "OWNER_SCREENTIME",
+			description:
+				"Owner screen-time and activity analytics across local activity, app usage, and browser reports.",
+			parameters: [],
+			descriptionCompressed:
+				"owner screentime: summary|today|weekly|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity",
+			similes: ["SCREENTIME", "SCREEN_TIME", "ACTIVITY_REPORT"],
+		},
+		{
 			name: "PAYMENT",
 			description:
 				"Payment router for the active mysticism reading session. Set op to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message).",
@@ -5850,6 +6250,41 @@ export const allActionsSpec = {
 							amount: "example",
 							entityId: "example",
 							roomId: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "PERSONAL_ASSISTANT",
+			description:
+				"Owner personal-assistant workflows. Use action=book_travel for real travel booking and action=scheduling for scheduling negotiation.",
+			parameters: [
+				{
+					name: "action",
+					description: "Assistant workflow to run.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Assistant workflow to run.",
+				},
+			],
+			descriptionCompressed:
+				"personal assistant workflows: action=book_travel|scheduling",
+			similes: [
+				"ASSISTANT",
+				"BOOK_TRAVEL",
+				"SCHEDULING",
+				"SCHEDULING_NEGOTIATION",
+			],
+			exampleCalls: [
+				{
+					user: "Use PERSONAL_ASSISTANT with the provided parameters.",
+					actions: ["PERSONAL_ASSISTANT"],
+					params: {
+						PERSONAL_ASSISTANT: {
+							action: "example",
 						},
 					},
 				},
@@ -6513,6 +6948,73 @@ export const allActionsSpec = {
 				"Set a recurring follow-up cadence threshold (in days) for a specific contact.",
 		},
 		{
+			name: "SHELL",
+			description:
+				"Execute a shell command via the configured local shell. Runs synchronously in the session cwd by default. Returns stdout, stderr, and exit code. Hard timeout kills the command. Paths under the configured blocklist are off-limits as cwd.",
+			parameters: [
+				{
+					name: "command",
+					description:
+						"Shell command to run; executed via /bin/bash -c <command>.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Shell command to run. executed via /bin/bash -c <command>.",
+				},
+				{
+					name: "description",
+					description:
+						"Five to ten word humanly-readable summary of the command.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Five to ten word humanly-readable summary of the command.",
+				},
+				{
+					name: "timeout",
+					description:
+						"Hard timeout in ms; clamped to [100, 600000]. Default 120000.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Hard timeout in ms. clamped to [100, 600000]. Default 120000.",
+				},
+				{
+					name: "cwd",
+					description:
+						"Absolute working directory; must not resolve under a blocked path. Defaults to the session cwd.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Absolute working directory. must not resolve under a blocked path. Defaults to the session cwd.",
+				},
+			],
+			descriptionCompressed: "Run a shell command synchronously.",
+			similes: ["BASH", "EXEC", "RUN_COMMAND"],
+			exampleCalls: [
+				{
+					user: "Use SHELL with the provided parameters.",
+					actions: ["SHELL"],
+					params: {
+						SHELL: {
+							command: "example",
+							description: "example",
+							timeout: 1,
+							cwd: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "SHOPIFY",
 			description:
 				"Manage a Shopify store. Operations: search (read-only catalog browsing across products, orders, and customers), products (CRUD on products), inventory (stock adjustments), orders (list/update orders), customers (CRUD on customers). Op is inferred from the message text when not explicitly provided.",
@@ -6872,10 +7374,10 @@ export const allActionsSpec = {
 		{
 			name: "TUNNEL",
 			description:
-				"Tunnel operations dispatched by `op`: start, stop, status. The `start` op accepts an optional `port` (defaults to 3000); `stop` and `status` take no parameters. Backed by whichever tunnel plugin is active (local Tailscale CLI, Eliza Cloud headscale, or ngrok).",
+				"Tunnel operations dispatched by `action`: start, stop, status. The `start` action accepts an optional `port` (defaults to 3000); `stop` and `status` take no parameters. Backed by whichever tunnel plugin is active (local Tailscale CLI, Eliza Cloud headscale, or ngrok).",
 			parameters: [
 				{
-					name: "op",
+					name: "action",
 					description:
 						"Which tunnel sub-operation to run. One of: start, stop, status.",
 					required: true,
@@ -6920,14 +7422,14 @@ export const allActionsSpec = {
 					actions: ["TUNNEL"],
 					params: {
 						TUNNEL: {
-							op: "example",
+							action: "example",
 							parameters: "example",
 						},
 					},
 				},
 			],
 			descriptionCompressed:
-				"Tunnel operations dispatched by `op`: start, stop, status. The `start` op accepts an optional `port` (defaults to 3000). `stop` and `status` take no params...",
+				"Tunnel operations dispatched by `action`: start, stop, status. The `start` action accepts an optional `port` (defaults to 3000). `stop` and `status` take no...",
 		},
 		{
 			name: "UPDATE_LINEAR_ISSUE",
@@ -7016,6 +7518,87 @@ export const allActionsSpec = {
 						WEB_FETCH: {
 							url: "example",
 							prompt: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "WORKTREE",
+			description:
+				"Manage the current git worktree stack. Choose action=enter to create and switch into an isolated worktree, or action=exit to leave the current worktree and optionally remove it.",
+			parameters: [
+				{
+					name: "action",
+					description: "Worktree operation to run.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Worktree operation to run.",
+				},
+				{
+					name: "name",
+					description:
+						"For action=enter, optional worktree branch/dir name. Defaults to auto-*.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For action=enter, optional worktree branch/dir name. Defaults to auto-*.",
+				},
+				{
+					name: "path",
+					description:
+						"For action=enter, optional absolute worktree directory within sandbox roots.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For action=enter, optional absolute worktree directory within sandbox roots.",
+				},
+				{
+					name: "base",
+					description: "For action=enter, optional base ref. Defaults to HEAD.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For action=enter, optional base ref. Defaults to HEAD.",
+				},
+				{
+					name: "cleanup",
+					description:
+						"For action=exit, remove the popped worktree directory with git worktree remove --force.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"For action=exit, remove the popped worktree directory with git worktree remove --force.",
+				},
+			],
+			descriptionCompressed: "Git worktree umbrella: action=enter/exit.",
+			similes: [
+				"ENTER_WORKTREE",
+				"EXIT_WORKTREE",
+				"GIT_WORKTREE_ADD",
+				"GIT_WORKTREE_REMOVE",
+			],
+			exampleCalls: [
+				{
+					user: "Use WORKTREE with the provided parameters.",
+					actions: ["WORKTREE"],
+					params: {
+						WORKTREE: {
+							action: "example",
+							name: "example",
+							path: "example",
+							base: "example",
+							cleanup: false,
 						},
 					},
 				},

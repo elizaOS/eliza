@@ -84,3 +84,54 @@ kernel void kernel_turbo4_dot(
         scores[args.q_head * args.n_kv + kv_idx] = sum;
     }
 }
+
+// Multi-block-per-dispatch variant. Same math as kernel_turbo4_dot; the
+// threadgroup processes `blocks_per_threadgroup` consecutive KV indices in a
+// 32-thread serial loop to amortise dispatch launch tax.
+struct turbo_dot_multi_args {
+    uint head_dim;
+    uint n_kv;
+    uint kv_stride_blocks;
+    uint q_head;
+    uint head_offset_bytes;
+    uint blocks_per_threadgroup;
+};
+
+kernel void kernel_turbo4_dot_multi(
+        device const float          * q             [[buffer(0)]],
+        device const block_turbo4_0 * k_blocks      [[buffer(1)]],
+        device       float          * scores        [[buffer(2)]],
+        constant     turbo_dot_multi_args & args    [[buffer(3)]],
+        uint                          tid           [[thread_position_in_threadgroup]],
+        uint                          tg_idx        [[threadgroup_position_in_grid]]) {
+    uint elem0  = tid * 4;
+    uint q_base = args.q_head * args.head_dim + elem0;
+
+    uint kv_base = tg_idx * args.blocks_per_threadgroup;
+    for (uint b = 0; b < args.blocks_per_threadgroup; ++b) {
+        uint kv_idx = kv_base + b;
+        if (kv_idx >= args.n_kv) return;
+
+        device const block_turbo4_0 * blk =
+            (device const block_turbo4_0 *)((device const uchar *)k_blocks + args.head_offset_bytes)
+            + kv_idx * args.kv_stride_blocks;
+        float norm = float(blk->norm);
+        uint qb_lo = blk->qs[(elem0 >> 1)];
+        uint qb_hi = blk->qs[(elem0 >> 1) + 1];
+
+        float acc = 0.0f;
+        for (uint local = 0; local < 4; ++local) {
+            uint qb  = (local < 2) ? qb_lo : qb_hi;
+            uint sh  = ((local & 1) << 2);
+            uint idx = (qb >> sh) & 0xFu;
+            float k_val = TURBO_CENTROIDS_4BIT[idx] * norm;
+            float q_val = q[q_base + local];
+            acc = fma(q_val, k_val, acc);
+        }
+
+        float sum = simd_sum(acc);
+        if (tid == 0) {
+            scores[args.q_head * args.n_kv + kv_idx] = sum;
+        }
+    }
+}

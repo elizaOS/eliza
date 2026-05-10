@@ -1,7 +1,7 @@
 ---
 title: "Ollama Plugin"
 sidebarTitle: "Ollama"
-description: "Ollama local model inference for Eliza — run Llama, Mistral, Gemma, and other models entirely on-device."
+description: "Ollama local model inference for Eliza — run Eliza-1 models entirely on-device."
 ---
 
 The Ollama plugin connects Eliza agents to a locally running Ollama instance, enabling fully on-device inference with no API keys and no data leaving your machine.
@@ -20,14 +20,11 @@ curl -fsSL https://ollama.com/install.sh | sh
 brew install ollama
 ```
 
-### 2. Pull a Model
+### 2. Create an Eliza-1 Model
 
 ```bash
-ollama pull gemma3
-# or
-ollama pull llama3.3
-# or
-ollama pull mistral
+ollama create eliza-1-2b -f packages/training/cloud/ollama/Modelfile.eliza-1-2b-q4_k_m
+ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-q4_k_m
 ```
 
 ### 3. Start Ollama
@@ -76,7 +73,7 @@ export OLLAMA_BASE_URL=http://localhost:11434
     "profiles": {
       "default": {
         "provider": "ollama",
-        "model": "llama3.3"
+        "model": "eliza-1-9b"
       }
     }
   }
@@ -85,30 +82,22 @@ export OLLAMA_BASE_URL=http://localhost:11434
 
 ## Supported Models
 
-Any model available in the Ollama library works. Common choices:
+Eliza local support is centered on the Eliza-1 Ollama Modelfiles published from
+the training pipeline:
 
-| Model | Parameters | Context | Best For |
-|-------|-----------|---------|---------|
-| `llama3.3` | 70B | 128k | General purpose |
-| `llama3.2` | 3B / 1B | 128k | Fast, lightweight |
-| `mistral` | 7B | 32k | Efficient reasoning |
-| `mixtral` | 8x7B | 32k | Code and analysis |
-| `gemma3` | 4B / 12B / 27B | 128k | Instruction following |
-| `qwen2.5` | 7B / 14B / 32B | 128k | Multilingual |
-| `phi4` | 14B | 16k | Microsoft Phi series |
-| `deepseek-r1` | 7B–70B | 128k | Reasoning |
-| `nomic-embed-text` | — | — | Embeddings |
-
-Browse all available models at [ollama.com/library](https://ollama.com/library).
+| Model | Purpose |
+|-------|---------|
+| `eliza-1-2b` | Fast local default and embedding fallback |
+| `eliza-1-9b` | Higher-quality local text generation |
+| `eliza-1-27b` | Workstation/server local text generation |
 
 ## Model Type Mapping
 
 | elizaOS Model Type | Default Ollama Model |
 |-------------------|---------------------|
-| `TEXT_SMALL` | `gemma3:latest` |
-| `TEXT_LARGE` | `gemma3:latest` |
-| `TEXT_EMBEDDING` | `nomic-embed-text` |
-| `IMAGE_DESCRIPTION` | `llava` (if installed) |
+| `TEXT_SMALL` | `eliza-1-2b` |
+| `TEXT_LARGE` | `eliza-1-9b` |
+| `TEXT_EMBEDDING` | `eliza-1-2b` |
 
 Override defaults via environment variables or in your auth profile:
 
@@ -118,8 +107,8 @@ Override defaults via environment variables or in your auth profile:
     "profiles": {
       "default": {
         "provider": "ollama",
-        "model": "llama3.3",
-        "modelSmall": "gemma3:4b"
+        "model": "eliza-1-9b",
+        "modelSmall": "eliza-1-2b"
       }
     }
   }
@@ -133,16 +122,14 @@ Override defaults via environment variables or in your auth profile:
 - GPU acceleration (NVIDIA CUDA, Apple Metal, AMD ROCm)
 - Streaming responses
 - Function calling (model-dependent)
-- Vision input (llava, gemma3 multimodal variants)
 
 ## Hardware Requirements
 
-| Model Size | RAM Required | GPU VRAM |
-|-----------|-------------|---------|
-| 7B | 8 GB | 6 GB |
-| 13B | 16 GB | 10 GB |
-| 34B | 32 GB | 24 GB |
-| 70B | 64 GB | 48 GB |
+| Model | RAM Required | GPU VRAM |
+|-------|-------------|---------|
+| `eliza-1-2b` | 8 GB | 4 GB |
+| `eliza-1-9b` | 24 GB | 12 GB |
+| `eliza-1-27b` | 64 GB | 48 GB |
 
 Models run on CPU if insufficient VRAM is available, but with reduced speed.
 
@@ -178,8 +165,8 @@ Ollama exposes an OpenAI-compatible API at `http://localhost:11434/v1`. Route th
   env: {
     OPENAI_API_KEY: "ollama",                        // any non-empty string
     OPENAI_BASE_URL: "http://localhost:11434/v1",     // ollama's openai-compat endpoint
-    SMALL_MODEL: "gemma3:4b",                        // your pulled model
-    LARGE_MODEL: "gemma3:4b",
+    SMALL_MODEL: "eliza-1-2b",
+    LARGE_MODEL: "eliza-1-9b",
   },
 }
 ```
@@ -197,11 +184,11 @@ If Eliza doesn't detect your Ollama instance:
 ### Slow Responses
 
 - Check available RAM/VRAM — models running on CPU are significantly slower
-- Try a smaller model: `gemma3:4b` or `llama3.2:3b`
+- Try `eliza-1-2b` before moving up to `eliza-1-9b`
 - Close other GPU-intensive applications
 
 ## Related
 
-- [Groq Plugin](/plugin-registry/llm/groq) — Fast cloud inference for Llama models
+- [Groq Plugin](/plugin-registry/llm/groq) — Fast cloud inference with GPT-OSS 120B
 - [OpenRouter Plugin](/plugin-registry/llm/openrouter) — Multi-provider gateway
 - [Model Providers](/runtime/models) — Compare all providers

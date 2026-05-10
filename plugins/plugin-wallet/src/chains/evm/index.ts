@@ -3,6 +3,7 @@ import { promoteSubactionsToActions } from "@elizaos/core";
 import { walletRouterAction } from "../wallet-action";
 import { tokenBalanceProvider } from "./providers/get-balance";
 import { evmWalletProvider } from "./providers/wallet";
+import { evmSignRoutes } from "./routes/sign";
 import { EVMService } from "./service";
 
 export {
@@ -24,6 +25,7 @@ export const evmPlugin: Plugin = {
   providers: [evmWalletProvider, tokenBalanceProvider],
   services: [EVMService] as ServiceClass[],
   actions: promoteSubactionsToActions(walletRouterAction as Action) as Action[],
+  routes: evmSignRoutes,
 };
 
 export default evmPlugin;
