@@ -30,10 +30,7 @@
     "@elizaos/core": "workspace:*",
     "@huggingface/transformers": "^4.0.0",
     "node-llama-cpp": "github:milady-ai/node-llama-cpp#v3.18.1-milady.3",
-    "nodejs-whisper": "^0.3.0",
-    "stream-browserify": "^3.0.0",
     "uuid": "^14.0.0",
-    "whisper-node": "^1.1.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
