@@ -8,7 +8,7 @@
  * template and reasoning controls consistently with LlamaChatSession.
  */
 
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -178,107 +178,6 @@ function normalizeGpuLayers(value: number | "auto"): string {
   return value === "auto" ? "99" : String(value);
 }
 
-function findPython(): string | null {
-  for (const candidate of ["python3", "python"]) {
-    const result = spawnSync(candidate, ["--version"], {
-      stdio: "ignore",
-      env: process.env,
-    });
-    if (result.status === 0) return candidate;
-  }
-  return null;
-}
-
-function maybeRepairDflashDrafter(
-  binaryPath: string,
-  targetModelPath: string,
-  drafterModelPath: string,
-): string {
-  if (readBool("ELIZA_DFLASH_REPAIR_DISABLED")) return drafterModelPath;
-  if (!fs.existsSync(targetModelPath) || !fs.existsSync(drafterModelPath)) {
-    return drafterModelPath;
-  }
-
-  const repairedPath = drafterModelPath.replace(/\.gguf$/i, ".repaired.gguf");
-  if (repairedPath === drafterModelPath) return drafterModelPath;
-  if (fs.existsSync(repairedPath)) return repairedPath;
-
-  const python = findPython();
-  if (!python) return drafterModelPath;
-
-  const bundledGgufPy = path.join(path.dirname(binaryPath), "gguf-py");
-  const pythonPath = [
-    fs.existsSync(bundledGgufPy) ? bundledGgufPy : null,
-    process.env.PYTHONPATH,
-  ]
-    .filter((value): value is string => Boolean(value))
-    .join(path.delimiter);
-
-  const repairCode = `
-import sys
-from pathlib import Path
-
-if len(sys.argv) != 4:
-    raise SystemExit("usage: repair_dflash.py TARGET DRAFTER OUT")
-
-target = Path(sys.argv[1])
-drafter = Path(sys.argv[2])
-out = Path(sys.argv[3])
-
-import gguf
-from gguf.scripts.gguf_new_metadata import MetadataDetails, copy_with_new_metadata, get_field_data
-
-target_reader = gguf.GGUFReader(target, "r")
-draft_reader = gguf.GGUFReader(drafter, "r")
-
-if get_field_data(draft_reader, gguf.Keys.Tokenizer.MERGES):
-    print(drafter)
-    raise SystemExit(0)
-
-merges = get_field_data(target_reader, gguf.Keys.Tokenizer.MERGES)
-if not merges:
-    raise SystemExit("target GGUF has no tokenizer.ggml.merges metadata")
-
-arch = get_field_data(draft_reader, gguf.Keys.General.ARCHITECTURE)
-writer = gguf.GGUFWriter(out, arch=arch, endianess=draft_reader.endianess)
-alignment = get_field_data(draft_reader, gguf.Keys.General.ALIGNMENT)
-if alignment is not None:
-    writer.data_alignment = alignment
-copy_with_new_metadata(
-    draft_reader,
-    writer,
-    {gguf.Keys.Tokenizer.MERGES: MetadataDetails(gguf.GGUFValueType.ARRAY, merges, sub_type=gguf.GGUFValueType.STRING)},
-    [],
-)
-print(out)
-`;
-
-  const result = spawnSync(
-    python,
-    ["-c", repairCode, targetModelPath, drafterModelPath, repairedPath],
-    {
-      env: {
-        ...process.env,
-        ...(pythonPath ? { PYTHONPATH: pythonPath } : {}),
-      },
-      encoding: "utf8",
-      maxBuffer: 16 * 1024 * 1024,
-    },
-  );
-
-  if (result.status !== 0) {
-    console.warn(
-      "[local-inference] DFlash drafter tokenizer repair failed; trying original drafter:",
-      result.stderr || result.stdout,
-    );
-    return drafterModelPath;
-  }
-
-  const outputPath = result.stdout.trim().split(/\r?\n/).at(-1)?.trim();
-  return outputPath && fs.existsSync(outputPath)
-    ? outputPath
-    : drafterModelPath;
-}
 
 function resolvePort(): Promise<number> {
   const explicit = Number.parseInt(process.env.ELIZA_DFLASH_PORT ?? "", 10);
@@ -329,11 +228,86 @@ async function fetchJson(
   }
 }
 
+async function fetchText(
+  url: string,
+  timeoutMs = 5_000,
+): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { method: "GET", signal: controller.signal });
+    if (!res.ok) return null;
+    return await res.text();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Cumulative speculative-decoding counters scraped from llama-server `/metrics`. */
+export interface DflashMetricsSnapshot {
+  drafted: number;
+  accepted: number;
+  decoded: number;
+  acceptanceRate: number;
+}
+
+/**
+ * Parse the cumulative speculative-decoding counters from llama-server's
+ * Prometheus-format `/metrics` endpoint. Returns null when none of the
+ * expected counters are present (older builds, server started without
+ * `--metrics`, drafter not yet engaged).
+ */
+export function parseDflashMetrics(
+  text: string,
+): DflashMetricsSnapshot | null {
+  const counters: Record<string, number> = {};
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const stripped = line.replace(/\{[^}]*\}/, "");
+    const space = stripped.indexOf(" ");
+    if (space <= 0) continue;
+    const name = stripped.slice(0, space);
+    const valueStr = stripped.slice(space + 1).trim();
+    const value = Number.parseFloat(valueStr);
+    if (!Number.isFinite(value)) continue;
+    counters[name] = value;
+  }
+  const decoded =
+    counters["llamacpp:n_decode_total"] ?? counters["llamacpp:n_decode"];
+  const drafted =
+    counters["llamacpp:n_drafted_total"] ?? counters["llamacpp:n_drafted"];
+  const accepted =
+    counters["llamacpp:n_drafted_accepted_total"] ??
+    counters["llamacpp:n_drafted_accepted"];
+  if (
+    decoded === undefined &&
+    drafted === undefined &&
+    accepted === undefined
+  ) {
+    return null;
+  }
+  const safeDrafted = drafted ?? 0;
+  const safeAccepted = accepted ?? 0;
+  const acceptanceRate =
+    safeDrafted > 0 ? safeAccepted / safeDrafted : Number.NaN;
+  return {
+    drafted: safeDrafted,
+    accepted: safeAccepted,
+    decoded: decoded ?? 0,
+    acceptanceRate,
+  };
+}
+
 export class DflashLlamaServer {
   private child: ChildProcess | null = null;
   private baseUrl: string | null = null;
   private stderrTail: string[] = [];
   private loadedPlan: DflashServerPlan | null = null;
+  /** Last cumulative metrics scraped from `/metrics` for delta-rate logging. */
+  private lastMetrics: DflashMetricsSnapshot | null = null;
 
   hasLoadedModel(): boolean {
     return this.child !== null && this.loadedPlan !== null;
@@ -358,11 +332,15 @@ export class DflashLlamaServer {
       throw new Error(`[dflash] ${status.reason}`);
     }
 
-    const drafterModelPath = maybeRepairDflashDrafter(
-      status.binaryPath,
-      plan.targetModelPath,
-      plan.drafterModelPath,
-    );
+    // Catalog enforces drafter-target tokenizer parity (see catalog.test.ts
+    // "DFlash pairs share a tokenizer family"), so the drafter GGUF can be
+    // handed directly to llama-server with no metadata repair. The previous
+    // `maybeRepairDflashDrafter` Python shim only paved over a single-pair
+    // SmolLM2/Bonsai vocab-mismatch bug; that pair was deleted from the
+    // catalog and the repair path is now dead. See
+    // docs/porting/dflash-drafter-strategy.md for the replacement (Qwen3-0.6B
+    // drafter for the Qwen3-vocab Bonsai target).
+    const drafterModelPath = plan.drafterModelPath;
     const port = await resolvePort();
     const host = process.env.ELIZA_DFLASH_HOST?.trim() || DEFAULT_HOST;
     const args = [
@@ -454,6 +432,7 @@ export class DflashLlamaServer {
     this.child = null;
     this.baseUrl = null;
     this.loadedPlan = null;
+    this.lastMetrics = null;
     if (!child) return;
     child.kill("SIGTERM");
     await Promise.race([
@@ -482,6 +461,7 @@ export class DflashLlamaServer {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     })) as Record<string, unknown>;
+    void this.scrapeAndLogAcceptance();
     const choice = Array.isArray(json.choices) ? json.choices[0] : null;
     const message =
       choice && typeof choice === "object"
@@ -496,6 +476,35 @@ export class DflashLlamaServer {
     if (typeof text === "string") return text;
     throw new Error(
       `[dflash] Unexpected llama-server response: ${JSON.stringify(json)}`,
+    );
+  }
+
+  /**
+   * Scrape llama-server's `/metrics` endpoint and return the current
+   * cumulative speculative-decoding counters. Returns null when the
+   * server isn't running, the endpoint isn't reachable, or the response
+   * doesn't contain the expected counters.
+   */
+  async getMetrics(): Promise<DflashMetricsSnapshot | null> {
+    if (!this.baseUrl) return null;
+    const text = await fetchText(`${this.baseUrl}/metrics`);
+    if (text === null) return null;
+    return parseDflashMetrics(text);
+  }
+
+  private async scrapeAndLogAcceptance(): Promise<void> {
+    const snapshot = await this.getMetrics().catch(() => null);
+    if (!snapshot) return;
+    const prev = this.lastMetrics;
+    this.lastMetrics = snapshot;
+    if (!prev) return;
+    const draftedDelta = snapshot.drafted - prev.drafted;
+    const acceptedDelta = snapshot.accepted - prev.accepted;
+    const decodedDelta = snapshot.decoded - prev.decoded;
+    if (draftedDelta <= 0) return;
+    const turnRate = acceptedDelta / draftedDelta;
+    console.info(
+      `[DFlash] acceptance_rate=${turnRate.toFixed(2)} (drafted=${draftedDelta}, accepted=${acceptedDelta}, decoded=${decodedDelta})`,
     );
   }
 

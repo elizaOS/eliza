@@ -33,6 +33,7 @@ describe("local inference catalog", () => {
     }
   });
 
+<<<<<<< HEAD
   it("declares contextLength on every entry whose blurb claims a long window", () => {
     // Catches the regression class this task exists to prevent: a blurb
     // saying "128k window" but no `contextLength` on the entry, so the
@@ -94,4 +95,30 @@ describe("local inference catalog", () => {
     }
     expect(offenders).toEqual([]);
   });
+=======
+  it("DFlash pairs share a tokenizer family", () => {
+    const dflashEntries = MODEL_CATALOG.filter((m) => m.runtime?.dflash);
+    expect(dflashEntries.length).toBeGreaterThan(0);
+    for (const entry of dflashEntries) {
+      const drafterId = entry.runtime!.dflash!.drafterModelId;
+      const drafter = MODEL_CATALOG.find((m) => m.id === drafterId);
+      expect(
+        drafter,
+        `drafter ${drafterId} of ${entry.id} not found in catalog`,
+      ).toBeDefined();
+      expect(
+        entry.tokenizerFamily,
+        `target ${entry.id} missing tokenizerFamily`,
+      ).toBeDefined();
+      expect(
+        drafter!.tokenizerFamily,
+        `drafter ${drafterId} missing tokenizerFamily`,
+      ).toBeDefined();
+      expect(
+        entry.tokenizerFamily,
+        `tokenizer mismatch: target ${entry.id} (${entry.tokenizerFamily}) ≠ drafter ${drafterId} (${drafter!.tokenizerFamily})`,
+      ).toBe(drafter!.tokenizerFamily);
+    }
+  });
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
 });
