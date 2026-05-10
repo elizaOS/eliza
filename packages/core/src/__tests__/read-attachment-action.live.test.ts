@@ -1,5 +1,5 @@
 /**
- * Live e2e for READ_ATTACHMENT.
+ * Live e2e for ATTACHMENT action=read.
  *
  * Replaces the deleted mocked unit suite (which mocked `useModel` to return
  * canned strings then asserted the canned strings flowed through). This test
@@ -21,7 +21,7 @@ import type { HandlerCallback, Media, Memory, UUID } from "../types";
 import { ContentType } from "../types";
 
 describeLive(
-	"READ_ATTACHMENT live (Cerebras)",
+	"ATTACHMENT read live (Cerebras)",
 	{ requiredEnv: ["OPENAI_API_KEY"] },
 	({ harness }) => {
 		it("reads a text attachment and returns a real LLM answer containing the secret token", async () => {

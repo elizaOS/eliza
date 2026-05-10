@@ -261,7 +261,7 @@ describe("SCHEDULED_TASKS promotion + alias normalization", () => {
     const virtuals = promoted.slice(1);
     expect(virtuals).toHaveLength(12);
     expect(virtuals.map((a) => a.name)).toEqual([
-      "SCHEDULED_SCHEDULED_TASKS_LIST",
+      "SCHEDULED_TASKS_LIST",
       "SCHEDULED_TASKS_GET",
       "SCHEDULED_TASKS_CREATE",
       "SCHEDULED_TASKS_UPDATE",
@@ -311,7 +311,7 @@ describe("SCHEDULED_TASKS promotion + alias normalization", () => {
       }),
     };
     const promoted = promoteSubactionsToActions(stubParent);
-    const list = promoted.find((a) => a.name === "SCHEDULED_SCHEDULED_TASKS_LIST");
+    const list = promoted.find((a) => a.name === "SCHEDULED_TASKS_LIST");
     expect(list).toBeDefined();
     const result = await list?.handler(
       STATIC_RUNTIME,
