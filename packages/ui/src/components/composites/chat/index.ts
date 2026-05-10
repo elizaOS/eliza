@@ -14,3 +14,4 @@ export * from "./chat-transcript";
 export * from "./chat-types";
 export * from "./chat-typing-indicator";
 export * from "./create-task-popover";
+export * from "./permission-card";
