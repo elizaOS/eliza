@@ -9,19 +9,14 @@
  */
 
 import { readFileSync } from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
+import { getElizaNamespace, resolveStateDir } from "@elizaos/core";
 
 function readConfig(): Record<string, unknown> | undefined {
   try {
-    const configPath = path.join(
-      process.env.ELIZA_STATE_DIR ??
-        process.env.ELIZA_STATE_DIR ??
-        path.join(os.homedir(), ".eliza"),
-      process.env.ELIZA_NAMESPACE === "eliza" || !process.env.ELIZA_NAMESPACE
-        ? "eliza.json"
-        : `${process.env.ELIZA_NAMESPACE}.json`,
-    );
+    const namespace = getElizaNamespace();
+    const filename = namespace === "eliza" ? "eliza.json" : `${namespace}.json`;
+    const configPath = path.join(resolveStateDir(), filename);
     const raw = readFileSync(configPath, "utf-8");
     return JSON.parse(raw);
   } catch {

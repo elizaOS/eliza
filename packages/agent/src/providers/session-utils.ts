@@ -4,9 +4,8 @@
  * These are simplified versions for use until @elizaos/core exports them.
  */
 
-import * as os from "node:os";
 import * as path from "node:path";
-import type { Provider } from "@elizaos/core";
+import { type Provider, resolveStateDir } from "@elizaos/core";
 
 const DEFAULT_AGENT_ID = "main";
 
@@ -15,9 +14,7 @@ const DEFAULT_AGENT_ID = "main";
  */
 function resolveAgentSessionsDir(agentId?: string): string {
   const id = agentId ?? DEFAULT_AGENT_ID;
-  const stateDir =
-    process.env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
-  return path.join(stateDir, "agents", id, "sessions");
+  return path.join(resolveStateDir(), "agents", id, "sessions");
 }
 
 /**

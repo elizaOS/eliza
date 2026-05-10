@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import { type IAgentRuntime, ModelType, resolveStateDir } from "@elizaos/core";
 import { parseJsonObjectResponse } from "./json-model-output.js";
 import type {
   SwarmCoordinatorContext,
@@ -110,9 +110,7 @@ function parseValidationResponse(raw: string): ValidationResponse | null {
 }
 
 function getValidationRootDir(): string {
-  const stateDir =
-    process.env.ELIZA_STATE_DIR?.trim() || path.join(homedir(), ".eliza");
-  return path.join(stateDir, "task-validation");
+  return path.join(resolveStateDir(), "task-validation");
 }
 
 function truncate(text: string, limit = 1200): string {
