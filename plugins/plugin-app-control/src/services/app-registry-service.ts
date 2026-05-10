@@ -370,6 +370,39 @@ export class AppRegistryService extends Service {
 				);
 			}
 		}
+
+		// Phase 2.5: if the app declared isolation:"worker", auto-spawn
+		// the sandbox worker via AppWorkerHostService. The host service
+		// is looked up by string type to avoid an import cycle between
+		// the registry and the host service modules. Spawn failures are
+		// logged but do not fail the register call — the entry still
+		// persists so the operator can inspect / re-spawn later.
+		if (isolation === "worker") {
+			const hostService = this.runtime?.getService?.("app-worker-host") as
+				| {
+						startForRegisteredApp?: (
+							slug: string,
+						) => Promise<{ ok: boolean; reason?: string }>;
+				  }
+				| null
+				| undefined;
+			if (hostService?.startForRegisteredApp) {
+				try {
+					const result = await hostService.startForRegisteredApp(
+						persistedEntry.slug,
+					);
+					if (!result.ok) {
+						logger.warn(
+							`[plugin-app-control] auto-spawn failed for slug=${persistedEntry.slug}: ${result.reason ?? "unknown"}`,
+						);
+					}
+				} catch (error) {
+					logger.warn(
+						`[plugin-app-control] auto-spawn threw for slug=${persistedEntry.slug}: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
+			}
+		}
 	}
 
 	async recordManifestRejection(rejection: ManifestRejection): Promise<void> {
