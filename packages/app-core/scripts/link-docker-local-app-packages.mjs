@@ -24,6 +24,8 @@ const localPackages = [
   "eliza/plugins/app-shopify",
   "eliza/plugins/app-vincent",
   "eliza/packages/app-core",
+  "eliza/cloud/packages/sdk",
+  "eliza/packages/cloud-routing",
   "eliza/packages/shared",
   "eliza/packages/skills",
   "eliza/packages/ui",
