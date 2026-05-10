@@ -51,9 +51,7 @@ function trimDemonstrationInput(rawInput: string): string {
 		rawInput.match(
 			/(?:^|\n)user(?:\s+message)?\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i,
 		) ??
-		rawInput.match(
-			/(?:^|\n)user_message\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i,
-		);
+		rawInput.match(/(?:^|\n)user_message\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i);
 	const candidate = userMatch?.[1]?.trim();
 	if (candidate && candidate.length > 0 && candidate.length <= 600) {
 		return candidate;

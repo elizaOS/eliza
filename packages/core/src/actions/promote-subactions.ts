@@ -75,12 +75,7 @@ export function listSubactionsFromParameters(
 ): readonly string[] {
 	if (!parameters) return [];
 	const candidate = parameters.find((p) =>
-		[
-			CANONICAL_SUBACTION_KEY,
-			"op",
-			"action",
-			"operation",
-		].includes(p.name),
+		[CANONICAL_SUBACTION_KEY, "op", "action", "operation"].includes(p.name),
 	);
 	if (!candidate) return [];
 	const schema = candidate.schema;

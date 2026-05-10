@@ -176,6 +176,7 @@ export * from "./search";
 export * from "./secrets";
 // Export security utilities
 export * from "./security";
+export * from "./sensitive-request-policy";
 export * from "./services";
 export * from "./services/agentEvent";
 export * from "./services/approval";
