@@ -14,11 +14,11 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Image,
   Skeleton,
   StatusBadge,
   Switch,
 } from "@elizaos/cloud-ui";
-import { Image } from "@elizaos/cloud-ui";
 import {
   Copy,
   Globe,

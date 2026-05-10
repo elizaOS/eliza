@@ -14,6 +14,7 @@ import {
   DialogClose,
   DialogContent,
   DialogTitle,
+  Image,
   Select,
   SelectContent,
   SelectItem,
@@ -25,7 +26,6 @@ import {
   TabsTrigger,
   useSetPageHeader,
 } from "@elizaos/cloud-ui";
-import { Image } from "@elizaos/cloud-ui";
 import {
   BarChart3,
   CheckCircle2,

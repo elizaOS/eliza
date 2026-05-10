@@ -9,8 +9,8 @@ import { secretsService } from "@/lib/services/secrets";
 import { logger } from "@/lib/utils/logger";
 import { Errors } from "../errors";
 import { OAUTH_PROVIDERS } from "../provider-registry";
-import { formatOAuthConnectionRole } from "../types";
 import type { OAuthConnection, OAuthStandardConnectionRole, TokenResult } from "../types";
+import { formatOAuthConnectionRole } from "../types";
 import {
   deletePlatformSecrets,
   fetchPlatformSecrets,

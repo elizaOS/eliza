@@ -16,10 +16,12 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const ProviderSchema = z.enum(["stripe", "oxapay"]);
+const PaymentContextSchema = z.enum(["verified_payer", "any_payer"]);
 const CreateChargeSchema = z.object({
   amount: z.number().min(1).max(10000),
   description: z.string().max(500).optional(),
   providers: z.array(ProviderSchema).min(1).max(2).optional(),
+  payment_context: PaymentContextSchema.optional(),
   success_url: z.string().url().optional(),
   cancel_url: z.string().url().optional(),
   callback_url: z.string().url().optional(),
@@ -61,6 +63,7 @@ app.post("/", async (c) => {
       amountUsd: parsed.data.amount,
       description: parsed.data.description,
       providers: parsed.data.providers,
+      paymentContext: parsed.data.payment_context,
       successUrl: parsed.data.success_url,
       cancelUrl: parsed.data.cancel_url,
       callbackUrl: parsed.data.callback_url,

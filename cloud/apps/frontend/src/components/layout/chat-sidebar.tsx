@@ -11,6 +11,14 @@
 "use client";
 
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  ElizaCloudLockup,
+  Switch,
+} from "@elizaos/cloud-ui";
+import {
   Globe,
   Link as LinkIcon,
   Loader2,
@@ -27,14 +35,6 @@ import { toast } from "sonner";
 import { useChatStore } from "@/lib/stores/chat-store";
 import { cn } from "@/lib/utils";
 import { ElizaAvatar } from "../chat/eliza-avatar";
-import { ElizaCloudLockup } from "@elizaos/cloud-ui";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@elizaos/cloud-ui";
-import { Switch } from "@elizaos/cloud-ui";
 import { SidebarBottomPanel } from "./sidebar-bottom-panel";
 
 interface ChatSidebarProps {

@@ -1,7 +1,7 @@
 import { DashboardErrorState, DashboardLoadingState } from "@elizaos/cloud-ui";
 import { Helmet } from "react-helmet-async";
-import { SettingsPageClient } from "./_components/settings-page-client";
 import { useUserProfile } from "../../lib/data/user";
+import { SettingsPageClient } from "./_components/settings-page-client";
 
 /** /dashboard/settings */
 export default function SettingsPage() {

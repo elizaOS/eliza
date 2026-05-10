@@ -5,8 +5,8 @@
  * Usage: tsx packages/scripts/set-billing-email.ts <org-id> <email>
  */
 
-import { loadEnvFiles } from "./local-dev-helpers";
 import { eq } from "drizzle-orm";
+import { loadEnvFiles } from "./local-dev-helpers";
 
 loadEnvFiles();
 

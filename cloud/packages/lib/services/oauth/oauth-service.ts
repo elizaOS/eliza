@@ -17,7 +17,6 @@ import { Errors } from "./errors";
 import { getProvider, isProviderConfigured, OAUTH_PROVIDERS } from "./provider-registry";
 import { initiateOAuth2 } from "./providers";
 import { tokenCache } from "./token-cache";
-import { formatOAuthConnectionRole, normalizeOAuthConnectionRole } from "./types";
 import type {
   GetTokenByPlatformParams,
   GetTokenParams,
@@ -30,6 +29,7 @@ import type {
   OAuthStandardConnectionRole,
   TokenResult,
 } from "./types";
+import { formatOAuthConnectionRole, normalizeOAuthConnectionRole } from "./types";
 
 const DEFAULT_REDIRECT = "/dashboard/settings?tab=connections";
 const STATE_TTL = 600; // 10 minutes

@@ -8,12 +8,7 @@ app.options("/*", () => handleWorkflowProxyOptions());
 
 for (const method of ["GET", "POST", "PUT", "DELETE"] as const) {
   app.on(method, "/*", async (c) =>
-    handleWorkflowProxyRequest(
-      c.req.raw,
-      c.req.param("agentId")!,
-      c.req.param("*") ?? "",
-      c,
-    ),
+    handleWorkflowProxyRequest(c.req.raw, c.req.param("agentId")!, c.req.param("*") ?? "", c),
   );
 }
 

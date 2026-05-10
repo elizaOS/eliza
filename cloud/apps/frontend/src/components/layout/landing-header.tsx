@@ -5,12 +5,11 @@
 
 "use client";
 
+import { Button, ElizaCloudLockup } from "@elizaos/cloud-ui";
 import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import UserMenu from "./user-menu";
-import { ElizaCloudLockup } from "@elizaos/cloud-ui";
-import { Button } from "@elizaos/cloud-ui";
 
 export default function LandingHeader() {
   const { ready, authenticated } = useSessionAuth();
