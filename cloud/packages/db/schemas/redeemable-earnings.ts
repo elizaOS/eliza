@@ -221,6 +221,8 @@ export const redeemableEarningsLedger = pgTable(
         user_agent?: string;
         idempotency_key?: string;
         completed_at?: string;
+        network?: string;
+        tx_hash?: string;
         refunded_at?: string;
         app_id?: string;
         earnings_type?: string;
