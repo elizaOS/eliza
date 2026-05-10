@@ -26,6 +26,7 @@ vi.mock("@elizaos/core", () => {
       TEXT_LARGE: "TEXT_LARGE",
       TEXT_SMALL: "TEXT_SMALL",
     },
+    promoteSubactionsToActions: (action: unknown) => [action],
     Service,
     logger,
   };
