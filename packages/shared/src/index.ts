@@ -21,11 +21,13 @@ export * from "./config/boot-config.js";
 // This keeps node-side benchmark / agent boot paths React-free.
 export * from "./config/boot-config-store.js";
 export * from "./config/branding.js";
+export * from "./config/channel-plugin-map.js";
 export * from "./config/cloud-only.js";
 export * from "./config/config.js";
 export * from "./config/config-catalog.js";
 export * from "./config/config-paths.js";
 export * from "./config/distribution-profile.js";
+export * from "./config/embedding-presets.js";
 export * from "./config/env-vars.js";
 export * from "./config/plugin-auto-enable.js";
 export * from "./config/plugin-manifest.js";
