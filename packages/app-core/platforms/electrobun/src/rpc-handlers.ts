@@ -180,7 +180,9 @@ type RpcMethodReturn<R> = [R] extends [undefined] ? void : R;
 type BunRpcHandlers = {
 	[K in keyof ElizaDesktopRPCSchema["bun"]["requests"]]: (
 		params: ElizaDesktopRPCSchema["bun"]["requests"][K]["params"],
-	) => Promise<RpcMethodReturn<ElizaDesktopRPCSchema["bun"]["requests"][K]["response"]>>;
+	) => Promise<
+		RpcMethodReturn<ElizaDesktopRPCSchema["bun"]["requests"][K]["response"]>
+	>;
 };
 
 export function buildBunRpcHandlers({
@@ -635,6 +637,9 @@ export function buildBunRpcHandlers({
 		desktopShowSaveDialog: async (
 			params: Parameters<typeof desktop.showSaveDialog>[0],
 		) => desktop.showSaveDialog(params),
+		desktopPickWorkspaceFolder: async (
+			params: Parameters<typeof desktop.pickWorkspaceFolder>[0],
+		) => desktop.pickWorkspaceFolder(params),
 
 		// ---- Gateway ----
 		gatewayStartDiscovery: async (
