@@ -100,12 +100,21 @@ function declaredHosts(): string[] {
 }
 
 function hostMatches(hostname: string, pattern: string): boolean {
-	if (pattern === "*") return true;
-	if (pattern.startsWith("*.")) {
-		const suffix = pattern.slice(2);
-		return hostname.endsWith(`.${suffix}`);
+	const normalizedHost = hostname.toLowerCase();
+	const normalizedPattern = pattern.toLowerCase();
+	if (normalizedPattern === "*") return true;
+	if (normalizedPattern.startsWith("*.")) {
+		const suffix = normalizedPattern.slice(2);
+		return normalizedHost.endsWith(`.${suffix}`);
 	}
-	return hostname === pattern;
+	return normalizedHost === normalizedPattern;
+}
+
+function hasDeclaredFsOperation(operation: "read" | "write"): boolean {
+	const block = requestedPermissions?.fs;
+	if (!block || typeof block !== "object" || Array.isArray(block)) return false;
+	const value = (block as { read?: unknown; write?: unknown })[operation];
+	return Array.isArray(value);
 }
 
 /**
@@ -138,6 +147,11 @@ async function gatedFetch(
 		);
 	}
 	const parsed = url instanceof URL ? url : new URL(url);
+	if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+		throw new Error(
+			`net access only supports http/https URLs (received ${parsed.protocol})`,
+		);
+	}
 	const allowed = declaredHosts();
 	if (!allowed.some((p) => hostMatches(parsed.hostname, p))) {
 		throw new Error(
@@ -147,11 +161,17 @@ async function gatedFetch(
 	return fetch(parsed, init);
 }
 
-function checkFsAccess(absolutePath: string): void {
+function checkFsAccess(
+	absolutePath: string,
+	operation: "read" | "write",
+): void {
 	if (!grantedSet.has("fs")) {
 		throw new Error(
 			"fs access not granted by user (sandbox: grantedNamespaces does not include 'fs')",
 		);
+	}
+	if (!hasDeclaredFsOperation(operation)) {
+		throw new Error(`fs.${operation} access not allowed by manifest`);
 	}
 	if (!statePath) {
 		throw new Error(
@@ -169,11 +189,11 @@ function checkFsAccess(absolutePath: string): void {
 
 const gatedFs = {
 	async readFile(path: string): Promise<string> {
-		checkFsAccess(path);
+		checkFsAccess(path, "read");
 		return fsPromises.readFile(path, "utf8");
 	},
 	async writeFile(path: string, content: string): Promise<void> {
-		checkFsAccess(path);
+		checkFsAccess(path, "write");
 		await fsPromises.mkdir(nodePath.dirname(path), { recursive: true });
 		await fsPromises.writeFile(path, content, "utf8");
 	},
