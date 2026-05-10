@@ -243,34 +243,44 @@ function readToolSet(value: GenerateTextParams["tools"]): ToolSet | undefined {
   // Record with numeric keys (`{0: tool, 1: tool}`), which makes the AI SDK
   // wire the tool name as "0" / "1" — the runtime parser then can't match
   // the response against canonical names like HANDLE_RESPONSE / PLAN_ACTIONS.
-  // Walk both forms and rebuild keyed by tool.name when present.
-  const entries: Iterable<unknown> = Array.isArray(value)
-    ? value
-    : Object.values(value as Record<string, unknown>);
+  // Walk both forms and rebuild keyed by tool.name when present. Heterogeneous
+  // Records (raw ToolDefinitions mixed with already-built AI SDK Tool objects
+  // that lack `.name`) preserve the SDK Tool entries under their original key
+  // so we don't silently drop them.
+  const isArr = Array.isArray(value);
+  const entries: Iterable<[string, unknown]> = isArr
+    ? (value as unknown[]).map((v, i) => [String(i), v] as [string, unknown])
+    : Object.entries(value as Record<string, unknown>);
 
   const tools: Record<string, unknown> = {};
   let sawNamedTool = false;
-  for (const rawTool of entries) {
-    if (!isRecord(rawTool) || typeof rawTool.name !== "string") {
+  for (const [origKey, rawTool] of entries) {
+    if (!isRecord(rawTool)) {
       continue;
     }
-    sawNamedTool = true;
-    const schema = isRecord(rawTool.parameters)
-      ? (rawTool.parameters as JSONSchema7)
-      : isRecord(rawTool.input_schema)
-        ? (rawTool.input_schema as JSONSchema7)
-        : ({ type: "object" } satisfies JSONSchema7);
-    tools[rawTool.name] = {
-      ...(typeof rawTool.description === "string" ? { description: rawTool.description } : {}),
-      inputSchema: jsonSchema(schema),
-    };
+    if (typeof rawTool.name === "string" && rawTool.name) {
+      sawNamedTool = true;
+      const schema = isRecord(rawTool.parameters)
+        ? (rawTool.parameters as JSONSchema7)
+        : isRecord(rawTool.input_schema)
+          ? (rawTool.input_schema as JSONSchema7)
+          : ({ type: "object" } satisfies JSONSchema7);
+      tools[rawTool.name] = {
+        ...(typeof rawTool.description === "string" ? { description: rawTool.description } : {}),
+        inputSchema: jsonSchema(schema),
+      };
+    } else if (!isArr) {
+      // Pre-built AI SDK Tool entry inside a Record — pass through under its
+      // original string key so heterogeneous callers don't lose tools.
+      tools[origKey] = rawTool;
+    }
   }
 
   if (sawNamedTool) {
     return Object.keys(tools).length > 0 ? (tools as ToolSet) : undefined;
   }
   // Fall back to the original Record (already keyed by canonical names).
-  return !Array.isArray(value) && isRecord(value) ? (value as ToolSet) : undefined;
+  return !isArr && isRecord(value) ? (value as ToolSet) : undefined;
 }
 
 function readToolChoice(value: GenerateTextParams["toolChoice"]): ToolChoice<ToolSet> | undefined {
