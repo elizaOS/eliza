@@ -26,7 +26,6 @@
     "dist/",
     "ios/Sources/",
     "ios/Plugin.xcodeproj/",
-    "electrobun/",
     "*.podspec",
     "dist"
   ],
