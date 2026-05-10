@@ -9,6 +9,7 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 
+import { getChannelRegistry } from "../channels/index.js";
 import { LifeOpsRepository } from "../repository.js";
 import {
   createCompletionCheckRegistry,
@@ -187,5 +188,10 @@ export function createRuntimeScheduledTaskRunner(
     globalPause: opts.globalPause ?? noopGlobalPause,
     activity: opts.activity ?? noopActivityBus,
     subjectStore: opts.subjectStore ?? noopSubjectStore,
+    channelKeys: () => {
+      const registry = getChannelRegistry(opts.runtime);
+      if (!registry) return new Set();
+      return new Set(registry.list().map((c) => c.kind));
+    },
   });
 }
