@@ -3582,6 +3582,17 @@ function refreshDescriptions(action: Action, runtime: IAgentRuntime): void {
 export const messageAction: Action = {
 	name: "MESSAGE",
 	similes: ["DM", "DIRECT_MESSAGE", "CHAT", "CHANNEL", "ROOM"],
+	tags: [
+		"domain:messages",
+		"capability:read",
+		"capability:write",
+		"capability:update",
+		"capability:delete",
+		"capability:send",
+		"capability:schedule",
+		"surface:remote-api",
+		"risk:irreversible",
+	],
 	description: MESSAGE_DESCRIPTION,
 	descriptionCompressed: MESSAGE_COMPRESSED,
 	contexts: MESSAGE_CONTEXTS,

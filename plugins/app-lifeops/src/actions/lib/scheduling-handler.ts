@@ -454,7 +454,12 @@ export const proposeMeetingTimesAction: Action & {
     "BULK_RESCHEDULE_MEETINGS",
     "RESCHEDULE_MEETINGS",
   ],
-  tags: ["meeting slots", "reschedule options"],
+  tags: [
+    "domain:calendar",
+    "capability:read",
+    "surface:remote-api",
+    "surface:internal",
+  ],
   description:
     "Propose concrete meeting time slots to offer to another person. This is " +
     "the dedicated action for any 'propose N times', 'suggest N slots', " +
@@ -670,6 +675,12 @@ export const proposeMeetingTimesAction: Action & {
 export const checkAvailabilityAction: Action = {
   name: "CHECK_AVAILABILITY",
   similes: ["AM_I_FREE", "AVAILABILITY_CHECK", "FREE_BUSY"],
+  tags: [
+    "domain:calendar",
+    "capability:read",
+    "surface:remote-api",
+    "cost:cheap",
+  ],
   description:
     "Check whether the owner is free or busy across a specific ISO-8601 " +
     "time window. Returns a free/busy summary and any overlapping events.",
@@ -838,11 +849,10 @@ export const updateMeetingPreferencesAction: Action & {
     "PROTECT_SLEEP",
   ],
   tags: [
-    "always-include",
-    "sleep window",
-    "no-call hours",
-    "protected hours",
-    "blackout window",
+    "domain:calendar",
+    "capability:write",
+    "capability:update",
+    "surface:internal",
   ],
   description:
     "Persist the owner's meeting scheduling preferences: preferred start/end " +
@@ -1189,16 +1199,18 @@ export const schedulingAction: Action & {
     "RESPOND_TO_MEETING_PROPOSAL",
     "FINALIZE_SCHEDULING_NEGOTIATION",
   ],
+  tags: [
+    "domain:calendar",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "surface:internal",
+  ],
   description:
-    "Multi-turn scheduling negotiation coordinator. Use this only for an " +
-    "existing proposal workflow: start a negotiation record, submit a concrete " +
-    "proposal for that negotiation, record accepted/declined responses, " +
-    "finalize the winning proposal, cancel, or list negotiations/proposals. " +
-    "Do not use this for first-turn calendar requests, recurring blocks, " +
-    "travel-time bundling, missed-call repair, or fresh candidate-slot " +
-    "searches; those belong to CALENDAR or MESSAGE with the appropriate inbox/draft operation.",
+    "Track a multi-turn meeting negotiation. Subactions: start (open a negotiation), propose (submit a concrete time), respond (accept/decline a proposal), finalize (commit the winner), cancel, list. " +
+    "Use only when an existing proposal workflow is in flight — first-turn calendar requests, recurring blocks, travel-time bundling, and fresh candidate-slot searches belong to CALENDAR or MESSAGE.",
   descriptionCompressed:
-    "Multi-turn scheduling negotiation lifecycle: start, propose, respond, finalize, cancel, and list negotiations/proposals.",
+    "multi-turn meeting negotiation: start|propose|respond|finalize|cancel|list; only for existing proposal workflows",
   contexts: ["calendar", "contacts", "tasks", "messaging"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,

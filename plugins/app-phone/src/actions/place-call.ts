@@ -106,6 +106,13 @@ export const placeCallAction: Action = {
   contextGate: { anyOf: [...PLACE_CALL_CONTEXTS] },
   roleGate: { minRole: "USER" },
   similes: ["CALL", "DIAL", "RING", "PHONE_CALL", "MAKE_CALL"],
+  tags: [
+    "domain:meta",
+    "capability:execute",
+    "capability:send",
+    "surface:device",
+    "risk:user-visible",
+  ],
   description:
     "Place a phone call to a given number using the Android Telecom service. " +
     "Requires the Phone app session to be active and the host device to have " +

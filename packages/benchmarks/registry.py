@@ -781,6 +781,37 @@ def _score_from_abliteration_robustness_json(data: JSONValue) -> ScoreExtraction
     )
 
 
+def _score_from_lifeops_bench_json(data: JSONValue) -> ScoreExtraction:
+    """Extract LifeOpsBench score from its aggregate result JSON.
+
+    The runner writes one JSON per ``__main__`` invocation containing
+    ``pass_at_1`` (headline), ``pass_at_k`` (multi-seed pass rate),
+    plus per-domain mean scores and the agent/eval cost split.
+    Higher is better; unit is ratio.
+    """
+    root = expect_dict(data, ctx="lifeops_bench:root")
+    pass_at_1 = expect_float(
+        get_required(root, "pass_at_1", ctx="lifeops_bench:root"),
+        ctx="lifeops_bench:pass_at_1",
+    )
+    return ScoreExtraction(
+        score=pass_at_1,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "pass_at_1": pass_at_1,
+            "pass_at_k": get_optional(root, "pass_at_k") or 0,
+            "seeds": get_optional(root, "seeds") or 0,
+            "total_cost_usd": get_optional(root, "total_cost_usd") or 0,
+            "agent_cost_usd": get_optional(root, "agent_cost_usd") or 0,
+            "eval_cost_usd": get_optional(root, "eval_cost_usd") or 0,
+            "total_latency_ms": get_optional(root, "total_latency_ms") or 0,
+            "model_name": get_optional(root, "model_name") or "",
+            "judge_model_name": get_optional(root, "judge_model_name") or "",
+        },
+    )
+
+
 def _score_from_action_calling_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="action_calling:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="action_calling:root"), ctx="action_calling:metrics")
@@ -2168,6 +2199,59 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _action_calling_result(output_dir: Path) -> Path:
         return output_dir / "action-calling-results.json"
 
+    # lifeops-bench
+    def _lifeops_bench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        """Build the LifeOpsBench CLI invocation.
+
+        ``model.model`` selects the agent backend: ``perfect`` / ``wrong``
+        for hermetic oracle runs; ``hermes`` / ``cerebras-direct`` /
+        ``eliza`` for adapter-backed runs that need an API key. Default
+        (no model specified) is ``perfect`` for cheap smoke runs.
+        """
+        agent = model.model or "perfect"
+        args = [
+            python,
+            "-m",
+            "eliza_lifeops_bench",
+            "--agent",
+            agent,
+            "--output-dir",
+            str(output_dir),
+        ]
+        domain = extra.get("domain")
+        if isinstance(domain, str) and domain.strip():
+            args.extend(["--domain", domain.strip()])
+        mode = extra.get("mode")
+        if isinstance(mode, str) and mode.strip():
+            args.extend(["--mode", mode.strip()])
+        scenario = extra.get("scenario")
+        if isinstance(scenario, str) and scenario.strip():
+            args.extend(["--scenario", scenario.strip()])
+        seeds = extra.get("seeds")
+        if isinstance(seeds, int) and seeds > 0:
+            args.extend(["--seeds", str(seeds)])
+        concurrency = extra.get("concurrency")
+        if isinstance(concurrency, int) and concurrency > 0:
+            args.extend(["--concurrency", str(concurrency)])
+        max_cost_usd = extra.get("max_cost_usd")
+        if isinstance(max_cost_usd, (int, float)) and not isinstance(max_cost_usd, bool):
+            args.extend(["--max-cost-usd", str(float(max_cost_usd))])
+        per_scenario_timeout_s = extra.get("per_scenario_timeout_s")
+        if isinstance(per_scenario_timeout_s, int) and per_scenario_timeout_s > 0:
+            args.extend(["--per-scenario-timeout-s", str(per_scenario_timeout_s)])
+        evaluator_model = extra.get("evaluator_model")
+        if isinstance(evaluator_model, str) and evaluator_model.strip():
+            args.extend(["--evaluator-model", evaluator_model.strip()])
+        judge_model = extra.get("judge_model")
+        if isinstance(judge_model, str) and judge_model.strip():
+            args.extend(["--judge-model", judge_model.strip()])
+        return args
+
+    def _lifeops_bench_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="lifeops_*.json")
+
     return [
         BenchmarkDefinition(
             id="solana",
@@ -2684,6 +2768,30 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_action_calling_cmd,
             locate_result=_action_calling_result,
             extract_score=_score_from_action_calling_json,
+        ),
+        BenchmarkDefinition(
+            id="lifeops_bench",
+            display_name="LifeOpsBench",
+            description="Multi-turn life-assistant tool-use benchmark (calendar/mail/messages/contacts/reminders/finance/travel/health/sleep/focus)",
+            cwd_rel="packages/benchmarks/lifeops-bench",
+            requirements=BenchmarkRequirements(
+                env_vars=("CEREBRAS_API_KEY", "ANTHROPIC_API_KEY"),
+                paths=(
+                    "packages/benchmarks/lifeops-bench/eliza_lifeops_bench",
+                    "packages/benchmarks/lifeops-bench/data/snapshots",
+                ),
+                notes=(
+                    "model.model selects the agent backend: 'perfect'/'wrong' for hermetic oracle runs (no env vars needed); "
+                    "'hermes'/'cerebras-direct'/'eliza' for live adapters. "
+                    "CEREBRAS_API_KEY is required when LIVE scenarios are scheduled (simulated user uses gpt-oss-120b). "
+                    "ANTHROPIC_API_KEY is required for the LIVE judge (claude-opus-4-7). "
+                    "Cost cap defaults to $10; override via extra.max_cost_usd. "
+                    "Score: pass@1 across all (scenario, seed) pairs. Higher is better."
+                ),
+            ),
+            build_command=_lifeops_bench_cmd,
+            locate_result=_lifeops_bench_result,
+            extract_score=_score_from_lifeops_bench_json,
         ),
     ]
 

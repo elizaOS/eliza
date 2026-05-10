@@ -170,10 +170,14 @@ export const toggleFeatureAction: Action = {
     "OPT_OUT",
   ],
   description:
-    "Owner-only: enable or disable a LifeOps capability (flight booking, push notifications, browser automation, escalation, etc.). " +
-    "The set of feature keys is registry-driven — only keys registered in the FeatureFlagRegistry are accepted.",
+    "Enable or disable a registered LifeOps capability (flight booking, push notifications, browser automation, escalation, etc.). Subactions: enable, disable. Only keys registered in the FeatureFlagRegistry are accepted.",
   descriptionCompressed:
-    "toggle LifeOps feature flight-booking push-notifs browser-automation escalation: enable | disable; registry-driven feature key set",
+    "enable|disable LifeOps feature flag; registry-driven keys (flight-booking, push-notifs, browser-automation, escalation)",
+  tags: [
+    "domain:meta",
+    "capability:update",
+    "surface:internal",
+  ],
   contexts: ["settings", "automation", "connectors"],
   roleGate: { minRole: "OWNER" },
   validate: async () => true,

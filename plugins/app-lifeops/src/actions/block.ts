@@ -284,18 +284,23 @@ export const blockAction: Action & {
     "PHONE_BLOCK_APPS",
     "BLOCK_APPS",
   ],
+  tags: [
+    "domain:focus",
+    "capability:write",
+    "capability:update",
+    "capability:delete",
+    "capability:read",
+    "capability:execute",
+    "surface:device",
+    "risk:irreversible",
+  ],
   description:
-    "Owner-only. Manage native blocking for phone apps OR desktop websites. " +
-    "Pick `target: app` for phone-app blocking (Family Controls / Usage Access) and `target: website` for desktop website blocking (hosts file / SelfControl). " +
-    "Subactions (target=app supports: block, unblock, status; target=website supports all six): " +
-    "block (start a focus/site/app block; website block always drafts first and requires confirmed:true), " +
-    "unblock (remove the active block), " +
-    "status (whether a block is active and when it ends), " +
-    "request_permission (website-only: request administrator/root approval for hosts-file edits), " +
-    "release (website-only: release a managed block rule by id; requires confirmed:true), " +
-    "list_active (website-only: list live OS-level + managed website block rules).",
+    "Block or unblock phone apps and desktop websites. " +
+    "Pick `target: app` for phone-app blocking (Family Controls / Usage Access) or `target: website` for desktop website blocking (hosts file / SelfControl). " +
+    "Subactions: block, unblock, status (all targets); request_permission, release, list_active (website only). " +
+    "Website blocks always draft first and require confirmed:true; release also requires confirmed:true.",
   descriptionCompressed:
-    "block app|website (phone-Family-Controls|hosts-file/SelfControl): block unblock status request_permission(web) release(web,ruleId,confirmed) list_active(web)",
+    "block/unblock apps+websites; subactions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
   contexts: ["screen_time", "browser", "automation", "tasks", "settings"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,

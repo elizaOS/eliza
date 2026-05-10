@@ -543,10 +543,19 @@ export const scheduledTaskAction: Action & {
     "MARK_FOLLOWUP_DONE",
     "SET_FOLLOWUP_THRESHOLD",
   ],
+  tags: [
+    "domain:reminders",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "capability:delete",
+    "capability:schedule",
+    "surface:internal",
+  ],
   description:
-    "Owner-only. The SCHEDULED_TASK umbrella exposes the ScheduledTask spine: list / get / create / update / snooze / skip / complete / dismiss / cancel / reopen / history. Every reminder, check-in, follow-up, approval, recap, watcher, output, and custom scheduled task lives here. Transitional ENTITY follow-up verbs collapse onto this surface.",
+    "Manage the owner's scheduled-task spine: reminders, check-ins, follow-ups, approvals, recaps, watchers, outputs, and custom tasks. Subactions: list, get, create, update, snooze, skip, complete, dismiss, cancel, reopen, history.",
   descriptionCompressed:
-    "scheduled-task umbrella: list get create update snooze skip complete dismiss cancel reopen history; kinds=reminder|checkin|followup|approval|recap|watcher|output|custom",
+    "scheduled tasks: list|get|create|update|snooze|skip|complete|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
   routingHint:
     'reminder/checkin/followup/approval/recap/watcher/output state ("snooze that", "what follow-ups today", "complete the check-in", "show task history") -> SCHEDULED_TASK; per-occurrence LifeOps verbs (complete/skip/snooze a definition\'s next occurrence) stay on LIFE',
   contexts: ["tasks", "reminders", "followups", "calendar"],

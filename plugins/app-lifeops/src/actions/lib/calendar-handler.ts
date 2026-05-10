@@ -3015,12 +3015,12 @@ export const calendarAction: Action & {
     "REBOOK_TRAVEL",
   ],
   tags: [
-    "always-include",
-    "calendar",
-    "event",
-    "recurring block",
-    "time block",
-    "travel itinerary",
+    "domain:calendar",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "capability:delete",
+    "surface:remote-api",
   ],
   description:
     "Interact with Google Calendar through LifeOps. " +

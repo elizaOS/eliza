@@ -287,16 +287,20 @@ export const healthAction: Action = {
     "ACTIVITY_METRICS",
   ],
   description:
-    "Query health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura — sleep " +
-    "(duration, quality, stages), steps, heart rate, workouts, calories, and " +
-    "other body/activity metrics. Subactions: today, trend, by_metric, status.",
+    "Read health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura: sleep, steps, heart rate, workouts, calories, distance. Subactions: today, trend, by_metric, status. Read-only — never writes.",
   descriptionCompressed:
-    "health/fitness telemetry HealthKit/GoogleFit/Strava/Fitbit/Withings/Oura: today | trend(days) | by_metric(steps heart-rate sleep calories distance workouts) | status",
+    "read health/fitness telemetry; subactions today|trend|by_metric|status; metrics steps|heart-rate|sleep|calories|distance|workouts; read-only",
   routingHint:
     "health/wearable reads (\"step count\", \"sleep last night\", heart rate, workouts) -> HEALTH; never answer from provider summaries or REPLY",
   // See `12-real-root-cause.md` — "general" widening so HEALTH stays
   // retrievable when the messageHandler routes wearable / sleep / steps
   // questions through the conversational frame.
+  tags: [
+    "domain:health",
+    "capability:read",
+    "surface:remote-api",
+    "cost:cheap",
+  ],
   contexts: ["general", "health", "tasks", "calendar"],
   roleGate: { minRole: "OWNER" },
   validate: async () => true,

@@ -5,8 +5,10 @@ Backed by 600 transactions across 4 accounts plus 8 subscriptions in
 travel, utilities, groceries, transit, fuel, pharmacy, coffee,
 entertainment, dining, shopping, tech.
 
-Finance flows route through the ``PAYMENTS`` umbrella for transactions
-and dashboards, and the ``SUBSCRIPTIONS`` umbrella for sub audit/cancel.
+Finance flows route through the ``MONEY`` umbrella for transactions,
+dashboards, subscription audit, and subscription cancel. Wave 4A
+collapsed the legacy ``PAYMENTS`` and ``SUBSCRIPTIONS_*`` action names
+into specialized ``MONEY_*`` verbs that share one parameter schema.
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ FINANCE_SCENARIOS: list[Scenario] = [
         instruction="how much did I spend in the last 7 days, broken down by category?",
         ground_truth_actions=[
             Action(
-                name="PAYMENTS",
+                name="MONEY_DASHBOARD",
                 kwargs={
                     "subaction": "dashboard",
                     "windowDays": 7,
@@ -54,7 +56,7 @@ FINANCE_SCENARIOS: list[Scenario] = [
         ),
         ground_truth_actions=[
             Action(
-                name="PAYMENTS",
+                name="MONEY_LIST_TRANSACTIONS",
                 kwargs={
                     "subaction": "list_transactions",
                     "merchantContains": "",
@@ -83,7 +85,7 @@ FINANCE_SCENARIOS: list[Scenario] = [
         instruction="what subscriptions am I paying for right now and how much?",
         ground_truth_actions=[
             Action(
-                name="SUBSCRIPTIONS_AUDIT",
+                name="MONEY_SUBSCRIPTION_AUDIT",
                 kwargs={
                     "subaction": "audit",
                     "queryWindowDays": 90,
@@ -108,7 +110,7 @@ FINANCE_SCENARIOS: list[Scenario] = [
         ),
         ground_truth_actions=[
             Action(
-                name="SUBSCRIPTIONS_CANCEL",
+                name="MONEY_SUBSCRIPTION_CANCEL",
                 kwargs={
                     "subaction": "cancel",
                     "serviceName": "Disney+",
@@ -141,7 +143,7 @@ FINANCE_SCENARIOS: list[Scenario] = [
         ),
         ground_truth_actions=[
             Action(
-                name="PAYMENTS",
+                name="MONEY_LIST_TRANSACTIONS",
                 kwargs={
                     "subaction": "list_transactions",
                     "merchantContains": "Delta",

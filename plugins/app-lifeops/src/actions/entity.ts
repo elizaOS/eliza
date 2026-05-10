@@ -459,11 +459,19 @@ export const entityAction: Action & {
     "SET_RELATIONSHIP",
   ],
   description:
-    "Owner-only. The ENTITY umbrella: people / organizations / projects / concepts the owner cares about, plus typed relationships between them. Subactions cover entity CRUD (add, list, set_identity, log_interaction, merge) and edge CRUD (set_relationship). Follow-up cadence belongs to SCHEDULED_TASK.",
+    "Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: add, list, set_identity, set_relationship, log_interaction, merge. Use SCHEDULED_TASK for follow-up cadence; use LIFE for one-off dated reminders to call/text someone.",
   descriptionCompressed:
-    "ENTITY = people/relationships. subactions add list log_interaction set_identity set_relationship merge; follow-up cadence belongs to SCHEDULED_TASK; one-off dated call/text reminders belong to LIFE",
+    "people+relationships: add|list|set_identity|set_relationship|log_interaction|merge; follow-up cadence → SCHEDULED_TASK",
   routingHint:
     'people/contacts/relationships ("add Pat to my contacts", "Pat is my manager") -> ENTITY; follow-up cadence ("follow up with David", "how long since I talked to X", "who is overdue") -> SCHEDULED_TASK; one-off dated reminders to call/text someone ("remember to call mom Sunday") -> LIFE',
+  tags: [
+    "domain:contacts",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "capability:delete",
+    "surface:internal",
+  ],
   contexts: ["contacts", "tasks", "calendar", "messaging", "memory"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,

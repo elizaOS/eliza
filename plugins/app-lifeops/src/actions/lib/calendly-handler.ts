@@ -253,15 +253,17 @@ export const calendlyAction: Action = {
     "CALENDLY_SCHEDULED_EVENTS",
   ],
   description:
-    "Work with Calendly specifically (calendly.com / api.calendly.com): " +
-    "list event types, check availability against a Calendly event type URI, " +
-    "list Calendly-scheduled events, generate Calendly single-use booking " +
-    "links. Subactions: list_event_types, availability, upcoming_events, " +
-    "single_use_link. " +
-    "Use this — NOT the Google-Calendar handler — whenever the user mentions Calendly by " +
-    "name or passes a calendly.com / api.calendly.com URL. Calendly is a " +
-    "separate third-party scheduling product with its own API, event-type " +
-    "URIs, and booking-link flow.",
+    "Work with Calendly specifically (calendly.com / api.calendly.com). " +
+    "Subactions: list_event_types, availability (against a Calendly event-type URI), upcoming_events, single_use_link (generate a one-shot booking link). " +
+    "Use this — not CALENDAR — whenever the user mentions Calendly by name or passes a calendly.com / api.calendly.com URL.",
+  descriptionCompressed:
+    "calendly: list_event_types|availability|upcoming_events|single_use_link; route here for calendly.com URLs",
+  tags: [
+    "domain:calendar",
+    "capability:read",
+    "capability:write",
+    "surface:remote-api",
+  ],
   contexts: ["calendar", "contacts", "tasks"],
   roleGate: { minRole: "OWNER" },
 
@@ -280,12 +282,24 @@ export const calendlyAction: Action = {
       name: "subaction",
       description:
         "One of: list_event_types, availability, upcoming_events, single_use_link. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      descriptionCompressed:
+        "calendly op: list_event_types|availability|upcoming_events|single_use_link",
       required: false,
-      schema: { type: "string" as const },
+      schema: {
+        type: "string" as const,
+        enum: [
+          "list_event_types",
+          "availability",
+          "upcoming_events",
+          "single_use_link",
+        ],
+      },
+      examples: ["list_event_types", "availability"],
     },
     {
       name: "intent",
       description: "Optional free-form description of the user's intent.",
+      descriptionCompressed: "free-form intent",
       required: false,
       schema: { type: "string" as const },
     },
@@ -293,27 +307,36 @@ export const calendlyAction: Action = {
       name: "eventTypeUri",
       description:
         "Calendly event type URI. Required for availability and single_use_link.",
+      descriptionCompressed:
+        "calendly event type URI (availability|single_use_link)",
       required: false,
       schema: { type: "string" as const },
+      examples: ["https://api.calendly.com/event_types/ABCDEFGH"],
     },
     {
       name: "startDate",
       description:
         "ISO date (YYYY-MM-DD) for range-based queries (availability, upcoming_events).",
+      descriptionCompressed: "YYYY-MM-DD range start",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+      examples: ["2026-05-12"],
     },
     {
       name: "endDate",
       description: "ISO date (YYYY-MM-DD) for range-based queries.",
+      descriptionCompressed: "YYYY-MM-DD range end",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+      examples: ["2026-05-19"],
     },
     {
       name: "timezone",
       description: "IANA timezone, e.g. America/Los_Angeles.",
+      descriptionCompressed: "IANA tz",
       required: false,
       schema: { type: "string" as const },
+      examples: ["America/Los_Angeles", "UTC"],
     },
   ],
 

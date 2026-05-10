@@ -2057,7 +2057,7 @@ export const lifeAction: Action & {
     "- One-off message-to-someone reminders ('remember to call mom Sunday') -> LIFE.create kind=definition cadence=once",
   ].join("\n"),
   descriptionCompressed:
-    "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal | habits routines reminders alarms todos goals everyday cadence:once|daily|weekly|interval|times_per_day",
+    "manage personal habits+routines+reminders+alarms+todos+goals; subactions create|update|delete|complete|skip|snooze|review|policy_set_reminder|policy_configure_escalation; cadence once|daily|weekly|interval|times_per_day",
   routingHint:
     'any imperative to set up / change / track a personal habit, routine, reminder, alarm, todo, or goal -> LIFE. Phrases: "remind me to…", "set up a … habit", "create a routine", "every day / morning / night / weekday", "track my…", "twice a week", "every 2 hours", "once tomorrow", "cancel my … habit", "complete today\'s …", "snooze the … reminder". One-off dated reminders to call/text someone also belong here. Never answer from provider summaries; never use REPLY when the user is asking for a habit/reminder/routine setup.',
   // Include "general" so habit/routine/reminder requests still surface LIFE
@@ -2065,6 +2065,15 @@ export const lifeAction: Action & {
   // (which it does for ~90% of self-care prompts in the benchmark — phrases
   // like "remind me to brush my teeth" route to general first, and the
   // tool-retrieval filter would otherwise exclude LIFE entirely).
+  tags: [
+    "domain:reminders",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "capability:delete",
+    "capability:schedule",
+    "surface:internal",
+  ],
   contexts: ["general", "tasks", "todos", "calendar", "health"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,

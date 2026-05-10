@@ -1,9 +1,15 @@
 """Focus-domain scenarios.
 
-Focus flows compose APP_BLOCK (block native apps), WEBSITE_BLOCK
-(host-file blocks), SCREEN_TIME (read-only telemetry), and
-SCHEDULED_TASK (timed wraps). All Focus actions are paired with explicit
-duration windows and confirmed flags where the manifest requires them.
+Focus flows compose ``BLOCK_BLOCK`` (block native apps or websites via
+phone-Family-Controls / hosts-file / SelfControl), ``SCREEN_TIME``
+(read-only telemetry), and ``SCHEDULED_TASK`` (timed wraps). Wave 4A
+collapsed the legacy ``APP_BLOCK`` and ``WEBSITE_BLOCK`` action names
+into the unified ``BLOCK_*`` family — the same handler honors both
+``packageNames`` (app blocks) and ``hostnames`` (website blocks)
+through one parameter schema.
+
+All Focus actions are paired with explicit duration windows and
+``confirmed`` flags where the manifest requires them.
 """
 
 from __future__ import annotations
@@ -29,7 +35,7 @@ FOCUS_SCENARIOS: list[Scenario] = [
         ),
         ground_truth_actions=[
             Action(
-                name="APP_BLOCK",
+                name="BLOCK_BLOCK",
                 kwargs={
                     "subaction": "block",
                     "intent": "block twitter and instagram for 25 minutes",
@@ -48,7 +54,7 @@ FOCUS_SCENARIOS: list[Scenario] = [
         ),
         world_seed=2026,
         max_turns=5,
-        description="Pomodoro-style block via APP_BLOCK.",
+        description="Pomodoro-style block via BLOCK_BLOCK with packageNames.",
     ),
     Scenario(
         id="focus.block_distracting_websites_2hr",
@@ -62,7 +68,7 @@ FOCUS_SCENARIOS: list[Scenario] = [
         ),
         ground_truth_actions=[
             Action(
-                name="WEBSITE_BLOCK",
+                name="BLOCK_BLOCK",
                 kwargs={
                     "subaction": "block",
                     "intent": "block hackernews and reddit for 120 minutes",
@@ -79,7 +85,7 @@ FOCUS_SCENARIOS: list[Scenario] = [
         ),
         world_seed=2026,
         max_turns=5,
-        description="WEBSITE_BLOCK requires explicit confirmed=True.",
+        description="BLOCK_BLOCK with hostnames; requires explicit confirmed=True.",
     ),
     Scenario(
         id="focus.list_active_blocks",
@@ -90,7 +96,7 @@ FOCUS_SCENARIOS: list[Scenario] = [
         instruction="what blocks are active right now?",
         ground_truth_actions=[
             Action(
-                name="WEBSITE_BLOCK",
+                name="BLOCK_LIST_ACTIVE",
                 kwargs={
                     "subaction": "list_active",
                     "includeLiveStatus": True,
