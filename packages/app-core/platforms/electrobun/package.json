@@ -16,7 +16,7 @@
 	"dependencies": {
 		"@elizaos/shared": "workspace:*",
 		"bonjour-service": "1.3.0",
-		"electrobun": "^1.16.0"
+		"electrobun": "^1.18.1"
 	},
 	"devDependencies": {
 		"typescript": "^6.0.0",
