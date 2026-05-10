@@ -16,12 +16,10 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -988,6 +986,14 @@ public class ElizaAgentService extends Service {
 
             env.putAll(agentEnv);
 
+            // Merge stderr into stdout so a single pump captures both streams
+            // and one failure mode — bun crashing mid-write before the buffered
+            // stderr line is flushed — can't lose the diagnostic. The previous
+            // BufferedReader.readLine() pump silently dropped any partial line
+            // that wasn't terminated with a newline, which is exactly what
+            // happens when a panic interrupts a Logger call mid-string.
+            pb.redirectErrorStream(true);
+
             Process started;
             try {
                 started = pb.start();
@@ -1002,7 +1008,9 @@ public class ElizaAgentService extends Service {
             agentProcess = started;
             File logFile = new File(root, AGENT_LOG_NAME);
             stdoutPump = startStreamPump(started.getInputStream(), logFile, "out");
-            stderrPump = startStreamPump(started.getErrorStream(), logFile, "err");
+            // stderrPump intentionally null — redirectErrorStream(true) merges
+            // both streams into getInputStream() so one pump captures everything.
+            stderrPump = null;
             currentStatus = "running";
             updateNotification();
             Log.i(TAG, "Agent process started (pid=" + safePid(started) + ").");
@@ -1096,20 +1104,34 @@ public class ElizaAgentService extends Service {
      */
     private Thread startStreamPump(InputStream stream, File logFile, String label) {
         Thread t = new Thread(() -> {
-            try (
-                BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
-                FileOutputStream logOut = new FileOutputStream(logFile, true)
-            ) {
-                String line;
-                while ((line = reader.readLine()) != null) {
+            byte[] buf = new byte[4096];
+            try (FileOutputStream logOut = new FileOutputStream(logFile, true)) {
+                StringBuilder lineBuf = new StringBuilder();
+                int n;
+                while ((n = stream.read(buf)) >= 0) {
                     if (Thread.currentThread().isInterrupted()) break;
-                    String stamped = "[" + label + "] " + line + "\n";
-                    logOut.write(stamped.getBytes());
-                    if ("err".equals(label)) {
-                        Log.w(TAG, line);
-                    } else {
-                        Log.i(TAG, line);
+                    // Mirror raw bytes to the log immediately so a mid-write
+                    // panic in the agent doesn't lose its last diagnostic.
+                    // BufferedReader.readLine() dropped partial lines on
+                    // crash; the byte-level pump captures everything.
+                    logOut.write(buf, 0, n);
+                    logOut.flush();
+                    // For logcat readability, accumulate complete lines and
+                    // emit them tagged. The post-loop drain below handles the
+                    // unterminated tail when the stream closes mid-line.
+                    for (int i = 0; i < n; i += 1) {
+                        char c = (char) (buf[i] & 0xFF);
+                        if (c == '\n') {
+                            String line = lineBuf.toString();
+                            lineBuf.setLength(0);
+                            if (!line.isEmpty()) Log.i(TAG, line);
+                        } else if (c != '\r') {
+                            lineBuf.append(c);
+                        }
                     }
+                }
+                if (lineBuf.length() > 0) {
+                    Log.w(TAG, lineBuf + " <eof — no trailing newline>");
                 }
             } catch (IOException error) {
                 if (!shuttingDown) {
