@@ -430,6 +430,13 @@ export function makeOpenAICompatibleClient(opts: {
   const f = opts.fetchImpl ?? fetch;
   const retries = opts.retries ?? DEFAULT_RETRIES;
   const baseBackoff = opts.baseBackoffMs ?? BASE_BACKOFF_MS;
+  // gpt-oss-* are reasoning models. Without reasoning_effort:"low" they
+  // burn most of the token budget on internal reasoning before producing
+  // visible content. For the drift-harness conversation flow ("respond
+  // briefly to this turn", "is this answer correct given expected X")
+  // there's no deep reasoning required, so "low" is the right default.
+  // Override via CEREBRAS_REASONING_EFFORT for experiments.
+  const reasoningEffort = process.env.CEREBRAS_REASONING_EFFORT ?? "low";
   return {
     async chat({ model, messages, maxTokens, temperature }) {
       const url = `${opts.baseUrl.replace(/\/$/, "")}/chat/completions`;
@@ -438,6 +445,7 @@ export function makeOpenAICompatibleClient(opts: {
         messages,
         max_tokens: maxTokens,
         temperature: temperature ?? 0.7,
+        reasoning_effort: reasoningEffort,
       });
       let lastErr: unknown;
       for (let attempt = 0; attempt <= retries; attempt++) {
@@ -465,9 +473,18 @@ export function makeOpenAICompatibleClient(opts: {
             throw new Error(`upstream ${resp.status}: ${text.slice(0, 200)}`);
           }
           const data = (await resp.json()) as {
-            choices?: Array<{ message?: { content?: string } }>;
+            choices?: Array<{
+              message?: { content?: string; reasoning?: string };
+              finish_reason?: string;
+            }>;
           };
-          const content = data.choices?.[0]?.message?.content ?? "";
+          // gpt-oss sometimes emits the answer in message.reasoning when
+          // content is empty (typically when the model used most of its
+          // budget on reasoning). Fall back to reasoning so we don't lose
+          // the response.
+          const choice = data.choices?.[0];
+          const content =
+            choice?.message?.content ?? choice?.message?.reasoning ?? "";
           return { content, latencyMs: Date.now() - start };
         } catch (err) {
           lastErr = err;
