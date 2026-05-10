@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { resolveStateDir } from "../utils/state-dir";
 import { PLAN_ACTIONS_TOOL_NAME } from "../actions/to-tool";
 import { plannerSchema, plannerTemplate } from "../prompts/planner";
 import {
@@ -2066,11 +2066,7 @@ let cachedDiskOptimizedPlannerPrompt: string | null = null;
 let cachedDiskOptimizedPlannerLoaded = false;
 
 function loadOptimizedPlannerFromDisk(): string | null {
-	const stateDir =
-		process.env.ELIZA_STATE_DIR?.trim() ||
-		process.env.MILADY_STATE_DIR?.trim() ||
-		join(homedir(), ".eliza");
-	const dir = join(stateDir, "optimized-prompts", "action_planner");
+	const dir = join(resolveStateDir(), "optimized-prompts", "action_planner");
 	if (!existsSync(dir)) return null;
 	const entries = readdirSync(dir)
 		.filter((f) => f.endsWith(".json"))

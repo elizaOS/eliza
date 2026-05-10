@@ -13,7 +13,12 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import {
+  getElizaNamespace,
+  logger,
+  resolveStateDir,
+  resolveUserPath,
+} from "@elizaos/core";
 import {
   type AccountCredentialRecord,
   deleteAccount,
@@ -217,14 +222,11 @@ function parseCodexCliAuthJson(raw: string): CodexCliAuthJson | null {
 }
 
 function readConfiguredAnthropicSetupToken(): string | null {
-  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
-  const configPath =
-    process.env.ELIZA_CONFIG_PATH?.trim() ||
-    path.join(
-      process.env.ELIZA_STATE_DIR?.trim() ||
-        path.join(os.homedir(), `.${namespace}`),
-      `${namespace}.json`,
-    );
+  const namespace = getElizaNamespace();
+  const explicitConfig = process.env.ELIZA_CONFIG_PATH?.trim();
+  const configPath = explicitConfig
+    ? resolveUserPath(explicitConfig)
+    : path.join(resolveStateDir(), `${namespace}.json`);
   try {
     const parsed = JSON.parse(fs.readFileSync(configPath, "utf-8")) as {
       env?: Record<string, unknown>;

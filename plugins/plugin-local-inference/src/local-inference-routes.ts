@@ -10,6 +10,7 @@ import {
 	type ContentValue,
 	logger,
 	readJsonBody,
+	resolveStateDir,
 	sendJson,
 	sendJsonError,
 } from "@elizaos/core";
@@ -196,9 +197,7 @@ const mobileDnsResolver = new dns.Resolver();
 mobileDnsResolver.setServers(MOBILE_DNS_SERVERS);
 
 function stateDir(): string {
-	return (
-		process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza")
-	);
+	return resolveStateDir();
 }
 
 function localInferenceRoot(): string {

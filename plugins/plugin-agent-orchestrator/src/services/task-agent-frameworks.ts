@@ -12,7 +12,12 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  getElizaNamespace,
+  type IAgentRuntime,
+  resolveStateDir,
+  resolveUserPath,
+} from "@elizaos/core";
 import type { PreflightResult } from "coding-agent-adapters";
 import type { AgentMetrics } from "./agent-metrics.js";
 import {
@@ -475,18 +480,12 @@ function extractOauthAccessToken(value: unknown): string | undefined {
 }
 
 function resolveElizaConfigPath(): string {
-  const explicit =
-    process.env.ELIZA_CONFIG_PATH?.trim() ||
-    process.env.ELIZA_CONFIG_PATH?.trim();
-  if (explicit) return explicit;
+  const explicit = process.env.ELIZA_CONFIG_PATH?.trim();
+  if (explicit) return resolveUserPath(explicit);
 
-  const stateDir =
-    process.env.ELIZA_STATE_DIR?.trim() ||
-    path.join(getUserHomeDir(), ".eliza");
-  const namespace = process.env.ELIZA_NAMESPACE?.trim();
-  const filename =
-    !namespace || namespace === "eliza" ? "eliza.json" : `${namespace}.json`;
-  return path.join(stateDir, filename);
+  const namespace = getElizaNamespace();
+  const filename = namespace === "eliza" ? "eliza.json" : `${namespace}.json`;
+  return path.join(resolveStateDir(), filename);
 }
 
 function readConfiguredSubscriptionProvider(): string | undefined {

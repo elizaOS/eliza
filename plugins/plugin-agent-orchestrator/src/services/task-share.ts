@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { getElizaNamespace, resolveStateDir, resolveUserPath } from "@elizaos/core";
 import { extractDevServerUrl } from "./ansi-utils.js";
 import type { SwarmCoordinator } from "./swarm-coordinator.js";
 import type { TaskArtifactRecord, TaskThreadDetail } from "./task-registry.js";
@@ -30,17 +30,12 @@ export interface TaskShareDiscovery {
 const URL_RE = /\bhttps?:\/\/[^\s<>"'`]+/gi;
 
 function resolveConfigPath(): string {
-  const explicit =
-    process.env.ELIZA_CONFIG_PATH?.trim() ||
-    process.env.ELIZA_CONFIG_PATH?.trim();
-  if (explicit) return explicit;
+  const explicit = process.env.ELIZA_CONFIG_PATH?.trim();
+  if (explicit) return resolveUserPath(explicit);
 
-  const stateDir =
-    process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza");
-  const namespace = process.env.ELIZA_NAMESPACE?.trim();
-  const filename =
-    !namespace || namespace === "eliza" ? "eliza.json" : `${namespace}.json`;
-  return path.join(stateDir, filename);
+  const namespace = getElizaNamespace();
+  const filename = namespace === "eliza" ? "eliza.json" : `${namespace}.json`;
+  return path.join(resolveStateDir(), filename);
 }
 
 function readElizaConfig(): Record<string, unknown> | null {

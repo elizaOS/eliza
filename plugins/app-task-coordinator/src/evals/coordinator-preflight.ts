@@ -3,6 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  getElizaNamespace,
+  resolveStateDir,
+  resolveUserPath,
+} from "@elizaos/core";
+import {
   CoordinatorEvalClient,
   resolveCoordinatorEvalBaseUrl,
 } from "./coordinator-eval-client.js";
@@ -172,13 +177,9 @@ function readJsonFile(filePath: string): Record<string, unknown> | null {
 
 function resolveElizaConfigPath(): string {
   const explicit = process.env.ELIZA_CONFIG_PATH?.trim();
-  if (explicit) return explicit;
-
-  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
-  const stateDir =
-    process.env.ELIZA_STATE_DIR?.trim() ||
-    path.join(getHomeDir(), `.${namespace}`);
-  return path.join(stateDir, `${namespace}.json`);
+  if (explicit) return resolveUserPath(explicit);
+  const namespace = getElizaNamespace();
+  return path.join(resolveStateDir(), `${namespace}.json`);
 }
 
 function commandExists(command: string): boolean {

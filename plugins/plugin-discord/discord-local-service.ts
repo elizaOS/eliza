@@ -26,6 +26,7 @@ import {
 	type Memory,
 	type MemoryMetadata,
 	type Plugin,
+	resolveStateDir,
 	Service,
 	stringToUuid,
 	type UUID,
@@ -128,20 +129,6 @@ type PendingRpcRequest = {
 	resolve: (value: DiscordLocalRpcPayload) => void;
 	reject: (error: Error) => void;
 };
-
-// ── Inline state-dir resolution (avoids @elizaos/agent dependency) ──
-
-function resolveStateDir(): string {
-	const explicit = process.env.ELIZA_STATE_DIR?.trim() || undefined;
-	if (explicit) {
-		if (explicit.startsWith("~")) {
-			return path.resolve(explicit.replace(/^~(?=$|[\\/])/, os.homedir()));
-		}
-		return path.resolve(explicit);
-	}
-	const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
-	return path.join(os.homedir(), `.${namespace}`);
-}
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
