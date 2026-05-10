@@ -90,7 +90,7 @@ async function build() {
   const tscResult = await $`tsc --project tsconfig.build.json`.nothrow();
   if (tscResult.exitCode !== 0) {
     console.warn(
-      `⚠ tsc exited with code ${tscResult.exitCode}; declarations may be incomplete (continuing build)`,
+      `⚠ tsc exited with code ${tscResult.exitCode}; declarations may be incomplete (continuing build)`
     );
   }
 
