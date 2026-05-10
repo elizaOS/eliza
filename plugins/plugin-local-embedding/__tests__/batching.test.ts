@@ -17,7 +17,11 @@ import { LocalEmbeddingManager } from "../src/index.ts";
  * speedup floor that would flap on CI.
  */
 describe("LocalEmbeddingManager batching", () => {
-  it("returns one vector per input and preserves order", async () => {
+  // Cold-start jitter: vitest's first transform of `../src/index.ts` plus
+  // the singleton's `validateConfig()` zod walk can punch through the
+  // default 5s timeout on a cold cache (W2-H observed ~21s transform).
+  // Warm runs are <100ms — bump only this test, not the whole file.
+  it("returns one vector per input and preserves order", { timeout: 30_000 }, async () => {
     // Stub the binding by replacing the manager's private context
     // before any real init runs. We construct a fresh manager and inject
     // a fake embedding context that returns deterministic vectors.
