@@ -14,6 +14,10 @@ export {
 } from "@elizaos/plugin-elizacloud";
 export type { ElizaConfig, ReleaseChannel, RolesConfig } from "@elizaos/shared";
 export {
+  CONNECTOR_PLUGINS,
+  STREAMING_PLUGINS,
+} from "@elizaos/shared";
+export {
   type ExtractActionParamsArgs,
   extractActionParamsViaLlm,
   type ParamSchemaDescriptor,
