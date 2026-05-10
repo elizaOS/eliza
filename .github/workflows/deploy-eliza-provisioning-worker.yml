@@ -159,16 +159,12 @@ jobs:
             # Info-level logs are filtered unless VERBOSE_LOGGING=true, so we
             # rely on systemd's own signals: process is active AND no fatal
             # error / restart-loop in the journal since deploy.
-            FALLBACK_SINCE_TS="$(date -u '+%Y-%m-%d %H:%M:%S')"
+            HEALTH_SINCE_TS="$(date -u '+%Y-%m-%d %H:%M:%S')"
             STABLE_THRESHOLD_SEC=20
             FATAL_LOG_PATTERN="\[(provisioning-worker|agent-router)\] (fatal|unhandled rejection)|node:internal/.*Error:|Error \[ERR_|^[A-Za-z]+Error:"
             for attempt in $(seq 1 18); do
               if sudo systemctl is-active --quiet "$SYSTEMD_UNIT"; then
-                ACTIVE_SINCE=$(systemctl show "$SYSTEMD_UNIT" --property=ActiveEnterTimestamp --value)
-                if [ -z "$ACTIVE_SINCE" ] || [ "$ACTIVE_SINCE" = "n/a" ]; then
-                  ACTIVE_SINCE="$FALLBACK_SINCE_TS"
-                fi
-                JOURNAL=$(sudo journalctl -u "$SYSTEMD_UNIT" --since "$ACTIVE_SINCE" --no-pager 2>/dev/null || true)
+                JOURNAL=$(sudo journalctl -u "$SYSTEMD_UNIT" --since "$HEALTH_SINCE_TS" --no-pager 2>/dev/null || true)
                 if echo "$JOURNAL" | grep -qE "$FATAL_LOG_PATTERN"; then
                   echo "::error::Worker logged a fatal error since deploy."
                   echo "$JOURNAL" | tail -n 50
@@ -186,11 +182,7 @@ jobs:
                     sleep 5
                     continue
                   fi
-                  ROUTER_ACTIVE_SINCE=$(systemctl show eliza-agent-router.service --property=ActiveEnterTimestamp --value)
-                  if [ -z "$ROUTER_ACTIVE_SINCE" ] || [ "$ROUTER_ACTIVE_SINCE" = "n/a" ]; then
-                    ROUTER_ACTIVE_SINCE="$FALLBACK_SINCE_TS"
-                  fi
-                  ROUTER_JOURNAL=$(sudo journalctl -u eliza-agent-router.service --since "$ROUTER_ACTIVE_SINCE" --no-pager 2>/dev/null || true)
+                  ROUTER_JOURNAL=$(sudo journalctl -u eliza-agent-router.service --since "$HEALTH_SINCE_TS" --no-pager 2>/dev/null || true)
                   if echo "$ROUTER_JOURNAL" | grep -qE "$FATAL_LOG_PATTERN"; then
                     echo "::error::Agent router logged a fatal error since activation."
                     echo "$ROUTER_JOURNAL" | tail -n 50
