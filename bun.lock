@@ -349,10 +349,7 @@
       "devDependencies": {
         "@biomejs/biome": "^2.4.14",
         "@types/bun": "^1.3.8",
-<<<<<<< HEAD
-=======
         "rcedit": "4.0.1",
->>>>>>> 88873eae9c678b5da2e53d83a442639ac605ce31
         "typescript": "^6.0.3",
         "vitest": "^4.0.18",
       },
@@ -386,30 +383,21 @@
         "@ai-sdk/gateway": "^3.0.109",
         "@ai-sdk/google": "^3.0.8",
         "@ai-sdk/openai": "^3.0.9",
-<<<<<<< HEAD
-=======
         "@ai-sdk/provider": "^3.0.10",
         "@ai-sdk/provider-utils": "^4.0.7",
->>>>>>> 88873eae9c678b5da2e53d83a442639ac605ce31
         "@anthropic-ai/sdk": "^0.92.0",
         "@elizaos/prompts": "workspace:*",
         "@noble/ciphers": "2.2.0",
         "@noble/hashes": "2.2.0",
         "@openrouter/ai-sdk-provider": "^2.0.0",
-<<<<<<< HEAD
-=======
         "@standard-schema/spec": "^1.0.0",
->>>>>>> 88873eae9c678b5da2e53d83a442639ac605ce31
         "adze": "^2.2.5",
         "ai": "^6.0.30",
         "coding-agent-adapters": "0.16.3",
         "dedent": "^1.7.1",
         "dotenv": "^17.2.3",
         "drizzle-orm": "0.45.2",
-<<<<<<< HEAD
-=======
         "eventsource-parser": "^3.0.8",
->>>>>>> 88873eae9c678b5da2e53d83a442639ac605ce31
         "fast-redact": "^3.5.0",
         "file-type": "^22.0.0",
         "fs-extra": "^11.3.2",
@@ -3159,10 +3147,7 @@
       "dependencies": {
         "@elizaos/cloud-routing": "workspace:*",
         "@elizaos/core": "workspace:*",
-<<<<<<< HEAD
-=======
         "@elizaos/plugin-browser": "workspace:*",
->>>>>>> 88873eae9c678b5da2e53d83a442639ac605ce31
       },
       "devDependencies": {
         "@eslint/js": "^10.0.0",
