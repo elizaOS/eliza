@@ -45,8 +45,7 @@ function resolveDispatch(options: Record<string, unknown> | undefined): {
   }
   const nested = pickRecord(options.parameters);
   const actionSource = nested ?? options;
-  const rawAction =
-    actionSource.action ?? actionSource.subaction ?? actionSource.op;
+  const rawAction = actionSource.action ?? actionSource.subaction ?? actionSource.op;
   const action = typeof rawAction === 'string' ? rawAction.toLowerCase() : null;
 
   let subOptions: Record<string, unknown>;
@@ -65,12 +64,7 @@ function resolveDispatch(options: Record<string, unknown> | undefined): {
       subOptions = rest;
     }
   } else {
-    const {
-      action: _omitAction,
-      subaction: _omitSubaction,
-      op: _omitOp,
-      ...rest
-    } = options;
+    const { action: _omitAction, subaction: _omitSubaction, op: _omitOp, ...rest } = options;
     subOptions = rest;
   }
 
