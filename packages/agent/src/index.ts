@@ -124,6 +124,15 @@ export * from "./runtime/core-plugins.ts";
 export * from "./runtime/eliza.ts";
 export * from "./runtime/eliza-plugin.ts";
 export * from "./runtime/embedding-presets.ts";
+export {
+  isCloudExecutionMode,
+  type LocalExecutionMode,
+  resolveLocalExecutionMode,
+  resolveRuntimeExecutionMode,
+  type RuntimeExecutionMode,
+  type RuntimeExecutionModeSource,
+  shouldUseSandboxExecution,
+} from "./runtime/local-execution-mode.ts";
 export * from "./runtime/onboarding-names.ts";
 export * from "./runtime/operations/vault-bridge.ts";
 export * from "./runtime/owner-entity.ts";
@@ -135,7 +144,8 @@ export {
 } from "./runtime/plugin-resolver.ts";
 export * from "./runtime/plugin-types.ts";
 export * from "./runtime/release-plugin-policy.ts";
-export * from "./runtime/restart.ts";
+// `./runtime/restart.ts` was removed during a prior cleanup; the export
+// reference is dropped here so the package builds cleanly.
 export * from "./runtime/trajectory-internals.ts";
 export * from "./runtime/trajectory-persistence.ts";
 export * from "./runtime/trajectory-query.ts";
@@ -146,17 +156,6 @@ export {
   setStewardEvmBridgeActive,
 } from "./services/external-bridge-state.ts";
 export * from "./services/index.ts";
-// Re-export the shell-execution router by name to keep a stable surface for
-// callers that consume the chokepoint directly without unpacking the wider
-// services barrel.
-export {
-  runShell,
-  type ShellExecutionMode,
-  type ShellRequest,
-  type ShellResult,
-  type ShellRouterContext,
-  type ShellSandboxBackend,
-} from "./services/shell-execution-router.ts";
 export {
   type JsRuntimeBridge,
   type JsRuntimeEvaluateOptions,
@@ -168,22 +167,23 @@ export {
   resolveJsRuntimeBridge,
 } from "./services/js-runtime-bridge.ts";
 export * from "./services/plugin-installer";
+// Only `resolveRelationshipsGraphService` is actually defined in the
+// relationships-graph module — the other exports referenced here in a
+// prior version of this barrel were removed during the relationships
+// service refactor. The shape types are now consumed via the UI's
+// `client-types-relationships` module, so dropping them here is safe.
+export { resolveRelationshipsGraphService } from "./services/relationships-graph.ts";
+// Re-export the shell-execution router by name to keep a stable surface for
+// callers that consume the chokepoint directly without unpacking the wider
+// services barrel.
 export {
-  type ClusterMemoriesQuery,
-  type ClusterSearchQuery,
-  createNativeRelationshipsGraphService,
-  getMemoriesForCluster,
-  type RelationshipsGraphEdge,
-  type RelationshipsGraphQuery,
-  type RelationshipsGraphService,
-  type RelationshipsGraphSnapshot,
-  type RelationshipsGraphStats,
-  type RelationshipsPersonDetail,
-  type RelationshipsPersonFact,
-  type RelationshipsPersonSummary,
-  resolveRelationshipsGraphService,
-  searchMemoriesForCluster,
-} from "./services/relationships-graph.ts";
+  runShell,
+  type ShellExecutionMode,
+  type ShellRequest,
+  type ShellResult,
+  type ShellRouterContext,
+  type ShellSandboxBackend,
+} from "./services/shell-execution-router.ts";
 export * from "./test-support/index.ts";
 export * from "./test-utils/sqlite-compat.ts";
 export * from "./triggers/runtime.ts";
@@ -194,3 +194,36 @@ export * from "./triggers/types.ts";
 export * from "./types/index.ts";
 export * from "./utils/number-parsing.ts";
 export * from "./version-resolver.ts";
+
+// ── Compat re-exports for the published `@elizaos/app-core` alpha bundle ──
+//
+// `@elizaos/app-core@2.0.0-alpha.537` (the version embedded in
+// `eliza-dist` for packaged Electrobun and the AOSP installer) imports
+// these names from `@elizaos/agent`. The agent's API surface was reorganised
+// in commit 334a6ea2 — the symbols moved out into
+// `@elizaos/plugin-elizacloud`, `./api/provider-switch-config`,
+// `./config/config`, `./config/paths`, `./api/wallet`, and
+// `./shared/workspace-resolution` without the corresponding agent-side
+// re-exports. Until app-core is republished against the new surface the
+// embedded runtime fails to start with `SyntaxError: Export named ...`,
+// so we restore them here as a thin compat layer.
+//
+// New code should import each from its real home:
+//   • cloud helpers → `@elizaos/plugin-elizacloud`
+//   • provider/onboarding config helpers → `./api/provider-switch-config`
+//   • elizaConfig file IO → `./config/config`
+//   • wallet helpers → `./api/wallet`
+//   • workspace resolution → `./shared/workspace-resolution`
+//   • user path resolution → `./config/paths`
+export {
+  resolveCloudApiBaseUrl,
+  validateCloudBaseUrl,
+} from "@elizaos/plugin-elizacloud";
+export {
+  applyCanonicalOnboardingConfig,
+  clearPersistedOnboardingConfig,
+} from "./api/provider-switch-config.ts";
+export { loadElizaConfig, saveElizaConfig } from "./config/config.ts";
+export { resolveUserPath } from "./config/paths.ts";
+export { initStewardWalletCache } from "./api/wallet.ts";
+export { resolveDefaultAgentWorkspaceDir } from "./shared/workspace-resolution.ts";

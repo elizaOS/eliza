@@ -20,6 +20,7 @@
  */
 
 import type { Context as VmContext, Script as VmScript } from "node:vm";
+import { resolveDistributionProfile } from "@elizaos/shared";
 
 /** Identifier for which concrete bridge implementation is running. */
 export type JsRuntimeKind =
@@ -62,9 +63,7 @@ export interface JsRuntimeImportOptions {
 export interface JsRuntimeBridge {
   readonly kind: JsRuntimeKind;
   evaluate(opts: JsRuntimeEvaluateOptions): Promise<JsValue>;
-  importModule(
-    opts: JsRuntimeImportOptions,
-  ): Promise<{ exports: JsValue }>;
+  importModule(opts: JsRuntimeImportOptions): Promise<{ exports: JsValue }>;
   dispose(): Promise<void>;
 }
 
@@ -111,8 +110,10 @@ function marshalValue(
     return { kind: "number", value: Number.isFinite(n) ? n : 0 };
   }
   if (t === "string") return { kind: "string", value: input as string };
-  if (t === "bigint") return { kind: "string", value: (input as bigint).toString() };
-  if (t === "symbol") return { kind: "string", value: (input as symbol).toString() };
+  if (t === "bigint")
+    return { kind: "string", value: (input as bigint).toString() };
+  if (t === "symbol")
+    return { kind: "string", value: (input as symbol).toString() };
 
   if (t === "function") {
     const id = `fn:${ctx.nextFunctionId++}`;
@@ -143,40 +144,16 @@ function marshalValue(
   return { kind: "undefined" };
 }
 
-/* ── Distribution profile (local fallback) ──────────────────────────────── */
-
-/**
- * Local fallback for the broker-track distribution profile. Once
- * `@elizaos/shared/distribution-profile` lands, this resolver should defer to
- * it. Until then the env hook below is the source of truth.
- */
-type DistributionProfile = "appstore" | "sideload" | "dev";
-
-function resolveDistributionProfileLocal(): DistributionProfile {
-  const raw =
-    typeof process !== "undefined"
-      ? (process.env?.MILADY_DISTRIBUTION_PROFILE ??
-        process.env?.ELIZA_DISTRIBUTION_PROFILE ??
-        "")
-      : "";
-  switch (raw.trim().toLowerCase()) {
-    case "appstore":
-      return "appstore";
-    case "sideload":
-      return "sideload";
-    case "dev":
-      return "dev";
-    default:
-      return "appstore";
-  }
-}
-
 /* ── host-node implementation ──────────────────────────────────────────── */
 
 interface HostNodeVm {
   Script: typeof VmScript;
   createContext(sandbox?: object): VmContext;
-  runInContext(code: string, ctx: VmContext, opts?: { timeout?: number; filename?: string }): unknown;
+  runInContext(
+    code: string,
+    ctx: VmContext,
+    opts?: { timeout?: number; filename?: string },
+  ): unknown;
 }
 
 class HostNodeBridge implements JsRuntimeBridge {
@@ -300,8 +277,9 @@ export async function resolveJsRuntimeBridge(): Promise<JsRuntimeBridge> {
 
   // Distribution profile is queried so future logic can lock down dev-only
   // bridges (e.g. host-node import of arbitrary file paths) on App Store
-  // builds. Currently informational only.
-  resolveDistributionProfileLocal();
+  // builds. Currently informational only — the call also validates the env
+  // var and throws on an unrecognized value.
+  resolveDistributionProfile();
 
   if (isNodeLikeRuntime()) {
     cachedBridge = new HostNodeBridge();

@@ -118,8 +118,11 @@ export async function formatInboundEnvelope(
 			// classifier toward the quoted topic, which broke routing for turns
 			// where the user replied to a long bot message and asked for something
 			// unrelated (e.g. an app build after a tech-debt status update).
+			// Use typographic curly quotes as outer delimiters so embedded straight
+			// `"` characters in the quoted content don't visually break the wrapper
+			// or confuse an LLM classifier reading the result.
 			replyContext = truncated
-				? `\n(in reply to @${refAuthor}: "${truncated}")`
+				? `\n(in reply to @${refAuthor}: “${truncated}”)`
 				: `\n(in reply to @${refAuthor})`;
 		} catch {
 			// Reply context is best-effort only.

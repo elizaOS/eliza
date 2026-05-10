@@ -11,7 +11,7 @@ import { spawn } from "node:child_process";
 import * as importPath from "node:path";
 import process from "node:process";
 import type { IAgentRuntime } from "@elizaos/core";
-import { resolveRuntimeExecutionMode } from "./execution-mode.js";
+import { resolveRuntimeExecutionMode } from "@elizaos/shared";
 
 export type ShellSandboxBackend =
   | "host"

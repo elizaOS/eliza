@@ -1,71 +1,49 @@
-# llama.cpp patches
+# llama.cpp patches — DEPRECATED archival drop (2026-05-09)
 
-Patches applied on top of the apothic/llama.cpp-1bit-turboquant fork
-(`b2b5273e8b275bb96362fe844a5202632eb3e52b`) before each AOSP build.
+> **Superseded by `milady-ai/llama.cpp @ v0.1.0-milady`.** These patch
+> series are no longer applied on AOSP builds. `compile-libllama.mjs`
+> now points at the unified Milady fork, which has TBQ + QJL + Q4_POLAR
+> baked in (plus the Metal kernel sources). See
+> `docs/porting/unified-fork-strategy.md` for the migration story.
 
-Each subdirectory is a `git format-patch`-style series. They are applied
-in numeric order via `apply-patches.mjs` from inside `compile-libllama.mjs`.
+The directory and `apply-patches.mjs` script are kept in-tree for one
+release as a rollback path. To re-enable the legacy flow:
 
-## Series
+1. In `compile-libllama.mjs`, restore the prior pin:
+   ```js
+   export const LLAMA_CPP_TAG    = "main-b8198-b2b5273";
+   export const LLAMA_CPP_COMMIT = "b2b5273e8b275bb96362fe844a5202632eb3e52b";
+   export const LLAMA_CPP_REMOTE = "https://github.com/Apothic-AI/llama.cpp-1bit-turboquant.git";
+   ```
+2. Re-add the `applyVendoredPatches({ srcDir: cacheDir, log })` call after
+   `patchLlamaCppSourceForMusl` in `ensureLlamaCppCheckout`.
+
+The two flows produce equivalent libraries on AOSP today (W1-A and W1-B
+patches were lifted directly into the fork tree). The fork path:
+- **Eliminates** the quadratic merge-conflict cost between QJL and
+  Polar in `ggml-common.h` / `ggml-cpu.c` (both modified the same
+  type_traits table; in-tree the conflict is resolved once, in patches
+  it's resolved on every cherry-pick from a moving base).
+- **Adds** the Metal kernel sources alongside the C/NEON sources, so a
+  future `bun run build:metal` doesn't need to apply runtime patches.
+- **Standardizes** on a single `LLAMA_CPP_TAG` across the host (DFlash)
+  and AOSP build paths (next agent: align
+  `build-llama-cpp-dflash.mjs` once DFlash is ported into the fork).
+
+Once a follow-up release verifies no consumer pins the patches
+directly, this directory can be deleted.
+
+## Historical content (frozen)
 
 ### `qjl/`
-
-Adds `GGML_TYPE_QJL1_256 = 46` + `GGML_OP_ATTN_SCORE_QJL`. K-side
-KV-cache quantization at ~1 bit per JL-projected coord plus a per-token
-bf16 norm. Composes with V-side `GGML_TYPE_TBQ3_0` for ~5.7× total KV
-reduction at long context (Qwen3-0.6B-shape, head_dim=128, 8 kv_heads).
-
-CPU kernels vendored from
-`packages/native-plugins/qjl-cpu/` (scalar + AVX2 + NEON, 100/100
-bit-parity vs the Python reference).
+Five patches that added `GGML_TYPE_QJL1_256 = 46` +
+`GGML_OP_ATTN_SCORE_QJL` to apothic@b2b5273. Now landed on
+`milady-ai/llama.cpp` branch `milady/qjl` and merged into
+`milady/integration` (slot 46 unchanged).
 
 ### `polarquant/`
-
-Adds `GGML_TYPE_Q4_POLAR = 45` + `block_q4_polar` (82B = fp16 d-norm +
-64B Q4 codes + 16B optional QJL residual = 5.125 bpw with QJL,
-4.125 without). Weight-side rotated quantizer with Lloyd-Max-for-N(0,1)
-centroids; rotation is precomputed in the GGUF converter so dequant is
-rotation-free.
-
-CPU kernels (scalar reference only this drop) vendored from
-`packages/native-plugins/polarquant-cpu/`. NEON / AVX2 SIMD are next-
-session work.
-
-The QJL residual sign-vector portability question (Python `torch.randint`
-vs C `xorshift32`) is gated behind a runtime flag
-`ggml_q4_polar_set_use_qjl()` — defaults off until the GGUF converter
-embeds the canonical signs in metadata. Effective bpw is therefore
-4.125 today.
-
-## How to apply
-
-```bash
-cd <llama.cpp checkout>
-git checkout b2b5273e8b275bb96362fe844a5202632eb3e52b
-for p in eliza/packages/app-core/scripts/aosp/llama-cpp-patches/*/[0-9]*.patch; do
-    git am < "$p"
-done
-```
-
-`compile-libllama.mjs` does this automatically before configuring CMake.
-
-## Updating a series
-
-When a vendored kernel library changes:
-
-1. Cherry-pick the corresponding commits from
-   `worktree-agent-a55644a05aeeed035` (QJL adapter wiring) or
-   `worktree-agent-af1c97296995ca45a` (PolarQuant).
-2. Re-run `git format-patch <base>..<branch>` in the local llama.cpp
-   working tree.
-3. Replace the relevant subdirectory contents with the new patch series.
-4. Bump the comment in `compile-libllama.mjs`'s pin block so the next
-   build invalidates its cache.
-
-## Why patches and not a fork?
-
-The Apothic fork is the actual remote we cross-compile against. Pushing
-QJL+PolarQuant changes there requires a maintainer review on that repo.
-Until those changes land upstream, the patches let an AOSP build pull
-the canonical fork tag and apply our deltas locally — no fork-of-fork
-to maintain on a separate remote.
+Four patches that added `GGML_TYPE_Q4_POLAR = 45` to apothic@b2b5273.
+Now landed on `milady-ai/llama.cpp` branch `milady/polarquant` —
+**slot bumped from 45 to 47** so QJL (46) and Polar (47) coexist
+without colliding on the reserved hole at 45 (which was
+`GGML_TYPE_COUNT` in the TBQ-only build).
